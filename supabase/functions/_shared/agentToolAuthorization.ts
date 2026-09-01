@@ -188,6 +188,18 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   get_operator_snapshot: role("scanner", "optional_brand"),
   // #1984 — same finance floor as brand analytics refunds; event-scoped.
   get_event_order_reconciliation: role("finance_manager", "event"),
+  get_brand_site: role("marketing_manager", "brand"),
+  list_site_pages: role("marketing_manager", "brand"),
+  get_site_page: role("marketing_manager", "brand"),
+  propose_site_content_update: role("marketing_manager", "brand"),
+  propose_site_settings_update: role("marketing_manager", "brand"),
+  attach_approved_site_media: role("marketing_manager", "brand"),
+  validate_site_draft: role("marketing_manager", "brand"),
+  create_site_preview: role("marketing_manager", "brand"),
+  publish_site: role("marketing_manager", "brand"),
+  get_site_operation_status: role("marketing_manager", "brand"),
+  list_site_versions: role("marketing_manager", "brand"),
+  rollback_site: role("marketing_manager", "brand"),
 });
 
 function unavailable(): never {

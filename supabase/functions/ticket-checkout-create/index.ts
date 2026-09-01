@@ -81,6 +81,46 @@ import {
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
+import { resolveSitesAttributionPepper } from "../_shared/sitesSecurity.ts";
+
+async function siteAttributionDigest(value: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(resolveSitesAttributionPepper()).buffer,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signed = new Uint8Array(
+    await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value)),
+  );
+  return Array.from(signed)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function persistSiteAttributionToken(
+  // deno-lint-ignore no-explicit-any
+  client: any,
+  checkoutSessionId: string,
+  value: unknown,
+): Promise<void> {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(value)) return;
+  try {
+    const { error } = await client.from("ticket_checkout_sessions").update({
+      site_attribution_token_digest: await siteAttributionDigest(value),
+    }).eq("id", checkoutSessionId).is("order_id", null)
+      .is("site_attribution_token_digest", null);
+    if (error) {
+      console.error(
+        "[ticket-checkout-create] site attribution binding skipped",
+      );
+    }
+  } catch {
+    // Attribution never changes checkout availability or payment correctness.
+    console.error("[ticket-checkout-create] site attribution binding skipped");
+  }
+}
 
 /**
  * issue #2579 — fire-and-forget refusal telemetry.
@@ -1383,6 +1423,11 @@ export const createTicketCheckoutCreateHandler = (
       ? body.attribution_click_id
       : null;
     await persistAttributionClickId(supabase as never, checkoutSessionId, attributionClickId);
+    await persistSiteAttributionToken(
+      supabase,
+      checkoutSessionId,
+      body.site_attribution_token,
+    );
 
     const totalCents = Number(session.totalCents ?? 0);
     // ORCH-1034 — the session/ticket currency (ticket → event currency). This is

@@ -1,0 +1,75 @@
+import {
+  DEFERRED_WEBSITE_STATES,
+  deriveWebsiteJourneyState,
+  primarySiteHost,
+  type BrandSiteOverview,
+} from "../contracts";
+import { BRAND_ROLE_RANK } from "../../utils/brandRole";
+
+const site = (status: BrandSiteOverview["status"]): BrandSiteOverview => ({
+  id: "00000000-0000-4000-8000-000000000001",
+  brand_id: "00000000-0000-4000-8000-000000000002",
+  renderer_key: "restaurant-website-v1",
+  renderer_version: 1,
+  status,
+  active_publication_id:
+    status === "published" ? "00000000-0000-4000-8000-000000000003" : null,
+  last_successful_publication_id: null,
+  provisioning_error_code: null,
+  created_at: "2026-08-30T00:00:00.000Z",
+  updated_at: "2026-08-30T00:00:00.000Z",
+  brand_site_hosts: [],
+});
+
+describe("#2830 Business Website journey", () => {
+  test("fails-on-revert: the monotonic rank floors are exact across all six roles", () => {
+    expect(BRAND_ROLE_RANK.marketing_manager).toBe(20);
+    for (const rank of [10, 19]) {
+      expect(rank < BRAND_ROLE_RANK.marketing_manager).toBe(true);
+    }
+    for (const role of [
+      "marketing_manager",
+      "finance_manager",
+      "event_manager",
+      "brand_admin",
+      "brand_owner",
+    ] as const) {
+      expect(BRAND_ROLE_RANK[role] >= BRAND_ROLE_RANK.marketing_manager).toBe(true);
+    }
+    expect(BRAND_ROLE_RANK.brand_admin).toBe(50);
+    expect(49 < BRAND_ROLE_RANK.brand_admin).toBe(true);
+  });
+
+  test("maps Core truth to the approved overview/progress/live/failure states", () => {
+    expect(deriveWebsiteJourneyState(null)).toBe(2);
+    expect(deriveWebsiteJourneyState(site("provisioning"))).toBe(4);
+    expect(deriveWebsiteJourneyState(site("draft"))).toBe(5);
+    expect(deriveWebsiteJourneyState(site("publishing"))).toBe(14);
+    expect(deriveWebsiteJourneyState(site("published"))).toBe(15);
+    expect(deriveWebsiteJourneyState(site("error"))).toBe(28);
+  });
+
+  test("custom-domain states remain registered outside the executable Slice A union", () => {
+    expect(DEFERRED_WEBSITE_STATES).toEqual([18, 19, 20, 21, 22, 31, 32, 33]);
+  });
+
+  test("selects only an explicitly primary permanent host and never guesses", () => {
+    const published = site("published");
+    published.brand_site_hosts = [
+      {
+        hostname: "secondary.sites.usemingla.com",
+        status: "pending",
+        is_primary: false,
+      },
+      {
+        hostname: "gogi.sites.usemingla.com",
+        status: "active",
+        is_primary: true,
+      },
+    ];
+    expect(primarySiteHost(published)?.hostname).toBe(
+      "gogi.sites.usemingla.com",
+    );
+    expect(primarySiteHost(site("draft"))).toBeNull();
+  });
+});

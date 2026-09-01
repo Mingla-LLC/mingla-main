@@ -123,6 +123,12 @@ function humanizeToolName(toolName: string): string {
     case "send_campaign_now": return "Send campaign";
     case "refund_order": return "Refund order";
     case "request_account_deletion": return "Delete account";
+    case "propose_site_content_update": return "Confirm Website draft";
+    case "propose_site_settings_update": return "Confirm Website settings draft";
+    case "attach_approved_site_media": return "Confirm Website image";
+    case "create_site_preview": return "Create private preview";
+    case "publish_site": return "Publish Website";
+    case "rollback_site": return "Publish earlier Website version";
     default: return toolName.replace(/_/g, " ");
   }
 }
@@ -178,6 +184,36 @@ function coverTypeLabel(type: unknown): string | null {
 
 function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
   const out: Field[] = [];
+  const isSiteTool = [
+    "propose_site_content_update",
+    "propose_site_settings_update",
+    "attach_approved_site_media",
+    "create_site_preview",
+    "publish_site",
+    "rollback_site",
+  ].includes(toolName);
+  if (isSiteTool) {
+    const brandId = typeof args.brand_id === "string" ? args.brand_id : "";
+    out.push({ label: "Brand", value: brandId ? `${brandId.slice(0, 8)}…` : "Selected brand" });
+    if (typeof args.page_role === "string") {
+      out.push({ label: "Page", value: args.page_role.replace(/_/g, " ") });
+    }
+    if (typeof args.change_summary === "string") {
+      out.push({ label: "Exact change", value: args.change_summary });
+    }
+    if (typeof args.expected_revision === "string") {
+      out.push({ label: "Expected revision", value: args.expected_revision });
+    }
+    out.push({
+      label: "Effect",
+      value: ["publish_site", "rollback_site"].includes(toolName)
+        ? "Changes the verified public Website"
+        : toolName === "create_site_preview"
+        ? "Private preview — not live"
+        : "Draft only — does not publish",
+    });
+    return out;
+  }
   if (toolName === "manage_brand_hours" && Array.isArray(args.hours)) {
     const weekdayLabels = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
     const rows = args.hours
@@ -461,6 +497,13 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     typeof liveArgs.event_id === "string" &&
     typeof liveArgs.brand_id === "string";
   const isCoverTool = isBrandWithCover || isOfferingCover;
+  const isSiteDraftConfirm = [
+    "propose_site_content_update",
+    "propose_site_settings_update",
+    "attach_approved_site_media",
+  ].includes(toolName);
+  const isSitePublishConfirm = toolName === "publish_site";
+  const isSiteRollbackConfirm = toolName === "rollback_site";
 
   // ----- delete-variant -----------------------------------------------------
   const deleteBrandId = isBrandDelete && typeof args.brand_id === "string" ? args.brand_id : null;
@@ -719,6 +762,18 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
         </View>
 
         <Text style={styles.identity} numberOfLines={2}>{identity}</Text>
+
+        {isSiteDraftConfirm || isSitePublishConfirm || isSiteRollbackConfirm ? (
+          <View style={styles.assuranceRow}>
+            <Text style={styles.assuranceText}>
+              {isSiteDraftConfirm
+                ? "This confirmation updates the saved draft only. It will not publish the Website."
+                : isSiteRollbackConfirm
+                ? "This is a separate rollback confirmation. The selected earlier revision will be validated and published as a new version."
+                : "This is a separate publish confirmation. Mingla will validate and verify this exact revision before the public Website changes."}
+            </Text>
+          </View>
+        ) : null}
 
         {/* ORCH-1103 — DELETE variant: assurance + cascade + type-to-confirm */}
         {isBrandDelete ? (
@@ -984,10 +1039,28 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                   confirmDisabled && styles.btnDisabled,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel="Confirm proposal"
+                accessibilityLabel={
+                  isSitePublishConfirm
+                    ? "Publish Website"
+                    : isSiteRollbackConfirm
+                    ? "Publish earlier Website version"
+                    : isSiteDraftConfirm
+                    ? "Confirm draft update"
+                    : "Confirm proposal"
+                }
                 accessibilityState={{ disabled: confirmDisabled }}
               >
-                <Text style={styles.confirmText}>{isExecuting ? "Working…" : "Confirm"}</Text>
+                <Text style={styles.confirmText}>
+                  {isExecuting
+                    ? "Working…"
+                    : isSitePublishConfirm
+                    ? "Publish Website"
+                    : isSiteRollbackConfirm
+                    ? "Publish earlier version"
+                    : isSiteDraftConfirm
+                    ? "Confirm draft update"
+                    : "Confirm"}
+                </Text>
               </Pressable>
             </>
           )}

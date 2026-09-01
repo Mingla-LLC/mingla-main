@@ -23,11 +23,13 @@ const repoRoot = path.resolve(__dirname, "../../..");
 const TOOL_FILES = [
   "supabase/functions/_shared/agentTools.ts",
   "supabase/functions/_shared/agentDomainTools.ts",
+  "supabase/functions/_shared/agentSiteTools.ts",
 ];
 const PROMPT_FILE = "supabase/functions/_shared/agentSystemPrompt.ts";
 
 const NAME_RE = /^\s*name:\s*"([a-z][a-z0-9_]*)"\s*,/gm;
 const WRITE_TOOL_RE = /writeTool\(\s*"([a-z][a-z0-9_]*)"/g;
+const SITE_TOOL_RE = /\b(?:tool|publicationTool)\(\s*"([a-z][a-z0-9_]*)"/g;
 const CAP_RE = /^-\s+([a-z][a-z0-9_]*)\s+—/gm;
 
 function extractNames(source, regex) {
@@ -43,6 +45,7 @@ export function check(toolSources, promptSource, failures) {
   for (const src of toolSources) {
     for (const n of extractNames(src, NAME_RE)) registered.add(n);
     for (const n of extractNames(src, WRITE_TOOL_RE)) registered.add(n);
+    for (const n of extractNames(src, SITE_TOOL_RE)) registered.add(n);
   }
   const advertised = extractNames(promptSource, CAP_RE);
   if (!/export const PROMPT_VERSION\s*=\s*"v\d+"/.test(promptSource)) {

@@ -6,15 +6,17 @@
 BEGIN;
 
 -- Latest-main certification integration: #1973 registered capability 117.
--- [TEST-MOD-APPROVED #1978] #1978 adds three venue-read requirements (120 total).
+-- [TEST-MOD-APPROVED #2830] The twelve approved Website tools bring the
+-- certification requirement set to 132; this still isolates the one missing
+-- #1973 unpublish capability at 131 rows.
 -- Reject an incomplete evidence set that omits ari.experience.unpublish.
 DO $certification$
 DECLARE
   v_run_id uuid;
   v_error text;
 BEGIN
-  IF (SELECT count(*) FROM public.ari_cert_capability_requirements) <> 120 THEN
-    RAISE EXCEPTION '#1973/#1978 expected exactly 120 certification requirements';
+  IF (SELECT count(*) FROM public.ari_cert_capability_requirements) <> 132 THEN
+    RAISE EXCEPTION '#1973/#2830 expected exactly 132 certification requirements';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.ari_cert_capability_requirements
@@ -29,7 +31,7 @@ BEGIN
     prior_compatible_pair, stranded_operation_count
   ) VALUES (
     repeat('7', 40),
-    'be0add47c599687bada05a16a2cf1bcc3cf4c8a8212e30e5ffeff6ca362a960f',
+    '0de714ca5cf4f3a78dea892dabaadde8c22d09407d939ec366a239b6d63953ad',
     '{"agent_chat":"v1973","agent_confirm_action":"v1973"}'::jsonb,
     'business-web-1973',
     '[
@@ -58,11 +60,11 @@ BEGIN
 
   BEGIN
     PERFORM public.ari_cert_finalize_run(v_run_id);
-    RAISE EXCEPTION '#1973/#1978 finalizer accepted incomplete evidence missing unpublish';
+    RAISE EXCEPTION '#1973/#2830 finalizer accepted incomplete evidence missing unpublish';
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_error = MESSAGE_TEXT;
-    IF v_error <> 'ari_cert_missing_capabilities:119' THEN
-      RAISE EXCEPTION '#1973/#1978 expected 119-row rejection, received %', v_error;
+    IF v_error <> 'ari_cert_missing_capabilities:131' THEN
+      RAISE EXCEPTION '#1973/#2830 expected 131-row rejection, received %', v_error;
     END IF;
   END;
 END;

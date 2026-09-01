@@ -183,6 +183,7 @@ export const NAV_GROUPS = [
     items: [
       { id: "business-people",           label: "People",             icon: "Users" },
       { id: "business-brands",           label: "Brands",             icon: "Building2" },
+      { id: "brand-sites",               label: "Brand Sites",        icon: "Globe" },
       { id: "business-offerings",        label: "Offerings",          icon: "CalendarDays" },
       { id: "business-venues",           label: "Venues",             icon: "Store" },
       { id: "business-payments",         label: "Payments",           icon: "CreditCard" },

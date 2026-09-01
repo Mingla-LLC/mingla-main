@@ -31,6 +31,8 @@ export const MIN_RANK = {
   REMOVE_TEAM_MEMBER: BRAND_ROLE_RANK.brand_admin, // 50
   REVOKE_INVITATION: BRAND_ROLE_RANK.brand_admin, // 50
   VIEW_AUDIT_LOG: BRAND_ROLE_RANK.brand_admin, // 50
+  // #2830 — Website workspace read/access floor shared with Core.
+  WEBSITE_WORKSPACE: 20, // marketing_manager; exact Core mirror
   // 13b expansion targets (defined now for forward-compat; not used in 13a):
   EDIT_PERMISSIONS_OVERRIDE: BRAND_ROLE_RANK.brand_admin, // 50 — 13b
   ASSIGN_EVENT_MANAGER_TO_EVENT: BRAND_ROLE_RANK.brand_admin, // 50 — 13b

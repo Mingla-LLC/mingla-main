@@ -323,8 +323,8 @@ export function violations(files) {
   const conversion = manifest.secrets?.find((entry) => entry.name === "AD_CONVERSION_TOKENS");
   if (
     manifest.policy?.normal_ceiling !== 87 ||
-    manifest.rollout?.expected_user_managed_count !== 87 ||
-    manifest.secrets?.length !== 87 ||
+    manifest.rollout?.expected_user_managed_count !== 88 ||
+    manifest.secrets?.length !== 88 ||
     pepper?.class !== "cryptographic_secret" ||
     pepper?.issue !== 1770 ||
     JSON.stringify(pepper?.readers) !== JSON.stringify([
@@ -333,7 +333,7 @@ export function violations(files) {
       "supabase/functions/offering-invite-dispatch/index.ts",
     ]) || !conversion?.bundle_fields?.some((field) => field.name === "ONESIGNAL_EVENT_STREAM_TOKEN_CURRENT" && field.owner === "Messaging Engineering" && field.source_type === "secure_vault") ||
     !conversion?.bundle_fields?.some((field) => field.name === "ONESIGNAL_EVENT_STREAM_TOKEN_PREVIOUS" && field.owner === "Messaging Engineering" && field.source_type === "secure_vault")
-  ) failures.push("secret manifest: #1770 exact 87-name pepper contract missing");
+  ) failures.push("secret manifest: #1770 pepper contract missing from approved 88-name manifest");
   return failures;
 }
 

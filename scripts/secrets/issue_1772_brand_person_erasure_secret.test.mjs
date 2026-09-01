@@ -43,15 +43,29 @@ const EXISTING_FIELDS = [
   ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_PREVIOUS_KEY_B64", "Messaging Engineering", "secure_vault"],
 ].map(([name, owner, source_type]) => ({ name, owner, source_type }));
 
-test("#1772 keeps the exact governed 87-name envelope with no direct secret name", () => {
+// [TEST-MOD-APPROVED #2830] — Sites appends the approved slot-88 bundled
+// security envelope; #1772's erasure field, reader, and ordering remain intact.
+test("#1772 keeps the exact governed 88-name envelope with no direct secret name", () => {
   const names = manifest.secrets.map((entry) => entry.name);
-  assert.equal(names.length, 87);
+  assert.equal(names.length, 88);
   assert.equal(
     crypto.createHash("sha256").update(JSON.stringify(names)).digest("hex"),
-    "237a2b52386d1614baaff71850587dc26c26b7b907b64a9ef148d32c84430b3b",
+    "d307cb63164cee4b1ec96a74d3b69c87f5dcee061d01f7145a2a97f030aada3b",
   );
-  assert.equal(manifest.rollout.expected_user_managed_count, 87);
-  assert.deepEqual(manifest.exceptions, []);
+  assert.equal(manifest.rollout.expected_user_managed_count, 88);
+  assert.deepEqual(manifest.exceptions, [
+    {
+      issue: 2830,
+      owner: "Platform Security",
+      approved_by: "Seth Ogieva (@sethogieva)",
+      approved_at: "2026-08-30T03:40:33Z",
+      first_set_not_before: "2026-08-30T03:40:33Z",
+      next_review_at: "2026-09-29T03:40:33Z",
+      expires_at: "2026-11-28T03:40:33Z",
+      primary_owner_ack: "Platform Security, founder-approved",
+      backup_owner_ack: "Platform Engineering, founder-approved",
+    },
+  ]);
   assert.equal(names.includes(FIELD), false);
   assert.equal(manifest.rollout.legacy_names.includes(FIELD), false);
   assert.equal(manifest.rollout.pending_bundle_names.includes(FIELD), false);

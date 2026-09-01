@@ -601,6 +601,18 @@ function renderToolResult(
     label = "Updated event";
   } else if (tr?.tool_name === "delete_brand") {
     label = "Deleted brand";
+  } else if (
+    tr?.tool_name === "propose_site_content_update" ||
+    tr?.tool_name === "propose_site_settings_update" ||
+    tr?.tool_name === "attach_approved_site_media"
+  ) {
+    label = "Website draft updated — not published";
+  } else if (tr?.tool_name === "create_site_preview") {
+    label = "Private Website preview ready";
+  } else if (tr?.tool_name === "publish_site") {
+    label = "Website publication operation started";
+  } else if (tr?.tool_name === "rollback_site") {
+    label = "Earlier Website version is publishing as a new version";
   }
   return (
     <View style={styles.successRibbon} accessibilityRole="text" accessibilityLabel={label}>

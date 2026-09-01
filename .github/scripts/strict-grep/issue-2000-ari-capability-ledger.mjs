@@ -18,6 +18,7 @@ const LEDGER_PATH = "docs/contracts/ari-capability-ledger.json";
 const TOOL_PATHS = [
   "supabase/functions/_shared/agentTools.ts",
   "supabase/functions/_shared/agentDomainTools.ts",
+  "supabase/functions/_shared/agentSiteTools.ts",
 ];
 const PROMPT_PATH = "supabase/functions/_shared/agentSystemPrompt.ts";
 
@@ -145,6 +146,18 @@ ari.trip.order_money
 ari.venue.gallery
 ari.partner.brand_links
 ari.partner.splits
+ari.sites.read_site
+ari.sites.list_pages
+ari.sites.read_page
+ari.sites.propose_content
+ari.sites.propose_settings
+ari.sites.attach_media
+ari.sites.validate_draft
+ari.sites.create_preview
+ari.sites.publish
+ari.sites.read_operation
+ari.sites.list_versions
+ari.sites.rollback
 `.trim().split(/\s+/));
 
 // Independent classification authority established by the source-contract
@@ -224,6 +237,7 @@ export function extractRegisteredTools(toolSources) {
   const patterns = [
     /^\s*name:\s*"([a-z][a-z0-9_]*)"\s*,/gm,
     /writeTool\(\s*"([a-z][a-z0-9_]*)"/g,
+    /(?:tool|publicationTool)\(\s*"([a-z][a-z0-9_]*)"/g,
   ];
   for (const source of toolSources) {
     for (const pattern of patterns) {

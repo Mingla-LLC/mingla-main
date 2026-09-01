@@ -155,8 +155,10 @@ export function check({
   }
   if (manifest) {
     const names = manifest.secrets?.map((record) => record.name) ?? [];
-    if (names.length !== 87 || new Set(names).size !== 87) {
-      violations.push(`${MANIFEST}:target_must_be_87_unique_names`);
+    // [TEST-MOD-APPROVED #2830] Founder-approved slot 88 is a bounded
+    // credential envelope protected by the unchanged 87/90 capacity policy.
+    if (names.length !== 88 || new Set(names).size !== 88) {
+      violations.push(`${MANIFEST}:target_must_be_88_unique_names`);
     }
     if (names.includes(FORBIDDEN_DIRECT_PAYSTACK_CONTROL)) {
       violations.push(`${MANIFEST}:standalone_paystack_control_forbidden`);
@@ -324,7 +326,7 @@ function selfTest() {
             "supabase/functions/offering-invite-dispatch/index.ts",
           ],
         },
-        ...Array.from({ length: 84 }, (_, index) => ({ name: `SYNTH_${index}` })),
+        ...Array.from({ length: 85 }, (_, index) => ({ name: `SYNTH_${index}` })),
       ],
     }),
     clientFiles: [{ path: "app-mobile/src/ok.ts", text: "export const ok = true;" }],

@@ -18,14 +18,15 @@ response into GitHub, chat, logs, artifacts, or this file.
 - Review names monthly. Escalate an expired, unexpected, missing, duplicate, or consumerless
   name immediately regardless of the count.
 
-The pull-request audit validates the exact 87-name target manifest offline. The scheduled/manual
+The pull-request audit validates the exact 88-name target manifest offline. The scheduled/manual
 workflow uses the dedicated least-privilege `SUPABASE_SECRET_AUDIT_ACCESS_TOKEN` only at live
 runtime and emits sorted names/reasons/counts, never raw CLI output. Until that separately
 authorized credential exists, the live step records an explicit warning and does not invoke the
 CLI.
 
 `supabase/secrets.manifest.json` is in `enforced` / `complete` mode. The live audit accepts only
-the exact 87-name manifest set and applies the 87/90 ceilings. The historical `transition` /
+the exact 88-name manifest set and applies the 87/90 ceilings. Slot 88 is the sole time-bounded,
+founder-approved issue #2830 exception; its live value remains separately gated. The historical `transition` /
 `pre_rollout` mode remains test-covered solely to prove the original #1203 consolidation math; it
 is not an authorized production state.
 
@@ -75,6 +76,11 @@ These objects are permitted:
 - `OFFERING_INVITE_TOKEN_PEPPER`: the #1770 standalone cryptographic secret used only by the
   shared offering-invite token helper, `marketing-send`, and the authenticated dispatch boundary. It stays outside every bundle
   because its independent rotation and audit boundary is part of invite authorization.
+- `MINGLA_SITES_SECURITY_JSON`: the #2830 slot-88 credential envelope. Only
+  `_shared/sitesSecurity.ts` may read the Core environment name, and it returns narrow directional
+  projections. The exact field contract, 30-day review, 90-day expiry, 24-hour previous-key
+  overlap, and sole #2830 capacity exception are fail-closed. Never set or distribute it from
+  repository content; live mutation retains its separate production gate.
 
 Do not put provider credentials, RAKs, account IDs, webhook/signing material, origins,
 sender IDs, app IDs, or payment keys into an operational bundle. Credential material belongs
@@ -117,7 +123,8 @@ authorize a secret, provider, or operational-boolean change.
    exit the locked order is: `SOURCE_REFUNDS_POST_DISABLED`, `PAYOUT_RELEASE_EXECUTE`,
    `PAYOUT_HOLD_ONBOARD_FLIP`, then `NOTIFICATION_RECIPIENT_HMAC_SECRET`.
 6. Run the exact names-only audit. After the #1770 approved standalone pepper, the enforced
-   state is exactly 87 user-managed names, 13 free slots, no exception, and no missing or unexpected name.
+   pre-Sites state is exactly 87 user-managed names. The approved repository target is exactly 88
+   names with 12 free slots and the sole #2830 exception; no other missing or unexpected name is allowed.
 7. Merge repository truth only after live truth exists and independent testing passes. Removing
    compatibility code requires a separate reviewed issue.
 
@@ -163,7 +170,7 @@ with secret configuration.
 
 ### #1808 content-share switch reconciliation
 
-The active `CONTENT_SHARE_V1_CREATE_ENABLED` direct name is not part of the final 87-name
+The active `CONTENT_SHARE_V1_CREATE_ENABLED` direct name is not part of the pre-Sites 87-name
 manifest. Reconcile it without a capacity exception in this exact order:
 
 1. Deploy the exact merged `shared-card` revision containing `resolveRuntimeBoolean` while the
@@ -176,7 +183,8 @@ manifest. Reconcile it without a capacity exception in this exact order:
 4. Unset only `CONTENT_SHARE_V1_CREATE_ENABLED`; prove creation and read again, then require an
    exact names-only audit of 86 user-managed names.
 5. Set the separately governed `OFFERING_INVITE_TOKEN_PEPPER`; the exact audit must then match
-   the final 87-name manifest. If the bundle-backed smoke fails before the unset, stop. If it
+   the historical 87-name manifest. Issue #2830 subsequently adds the separately approved slot-88
+   Sites envelope record. If the bundle-backed smoke fails before the unset, stop. If it
    fails immediately after the unset, restore only the direct flag and investigate; do not
    weaken the parser or bundle the pepper.
 

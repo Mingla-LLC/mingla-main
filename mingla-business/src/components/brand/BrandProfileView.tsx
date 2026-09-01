@@ -69,6 +69,7 @@ import { deriveCardStatus } from "../../../app/(tabs)/hub/eventCardStatus";
 // whose delete the `brands` RLS policy would refuse.
 import { useAuth } from "../../context/AuthContext";
 import { canDeleteBrand } from "../../utils/brandDeletePermission";
+import { isFeatureEnabled } from "../../config/featureFlags";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -193,6 +194,8 @@ export interface BrandProfileViewProps {
    * sees this entry point in the menu.
    */
   onAuditLog: (brandId: string) => void;
+  /** #2830 — opens the lazy, provider-neutral Website workspace. */
+  onWebsite?: (brandId: string) => void;
   /**
    * Called when user taps the "Blasts" Operations row (renamed from
    * "Customers" 2026-05-12 for bottom-nav consistency). Receives the
@@ -258,6 +261,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onPricingDefaults,
   onReports,
   onAuditLog,
+  onWebsite,
   onBlasts,
   onViewPublic,
   onCreateEvent,
@@ -402,6 +406,30 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // before this hook (preserves ORCH-0710 hook ordering).
   const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
   const canViewAuditLog = canPerformAction(currentRank, "VIEW_AUDIT_LOG");
+  const canViewWebsite = isFeatureEnabled("sites") &&
+    canPerformAction(currentRank, "WEBSITE_WORKSPACE");
+  const [websiteContext, setWebsiteContext] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (!canViewWebsite || brand === null || onWebsite === undefined) {
+      setWebsiteContext(null);
+      return () => {
+        active = false;
+      };
+    }
+    setWebsiteContext("Checking website status…");
+    void import("../../sites/brandWebsiteEntry")
+      .then(async ({ loadBrandWebsiteEntryContext }) => {
+        const context = await loadBrandWebsiteEntryContext(brand.id);
+        if (active) setWebsiteContext(context);
+      })
+      .catch(() => {
+        if (active) setWebsiteContext("Status unavailable");
+      });
+    return () => {
+      active = false;
+    };
+  }, [brand, canViewWebsite, onWebsite]);
   // META-ORCH-1076 — provider-neutral: a connected Paystack brand is payout-ready,
   // so the "Connect bank to sell tickets" banner + Operations sub treat it as
   // active even though its Stripe status is "not_connected".
@@ -416,6 +444,16 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // /brand/{id}/listing route is preserved as a thin redirect to the Hub tab.
   const operationsRows = useMemo<OperationsRow[]>(() => {
     const rows: OperationsRow[] = [];
+    if (canViewWebsite && onWebsite !== undefined) {
+      rows.push({
+        icon: "globe",
+        label: "Website",
+        sub: websiteContext ?? "Open website workspace",
+        onPress: () => {
+          if (brand !== null) onWebsite(brand.id);
+        },
+      });
+    }
     rows.push(
       {
         icon: "bank",
@@ -487,6 +525,9 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     onReports,
     onAuditLog,
     canViewAuditLog,
+    canViewWebsite,
+    onWebsite,
+    websiteContext,
     stripeStatus,
   ]);
 

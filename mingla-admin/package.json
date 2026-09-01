@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --test src/lib/__tests__/claimsPhone.test.js src/lib/__tests__/deckCardPreviewRules.test.js src/lib/__tests__/openExternal.test.js src/lib/__tests__/openExternal.adversarial.tester.test.js"
+    "test": "node --test src/lib/__tests__/claimsPhone.test.js src/lib/__tests__/deckCardPreviewRules.test.js src/lib/__tests__/openExternal.test.js src/lib/__tests__/openExternal.adversarial.tester.test.js src/pages/BrandSitesPage.issue2830.test.js"
   },
   "dependencies": {
     "@sentry/react": "10.12.0",

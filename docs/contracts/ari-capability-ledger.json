@@ -3,18 +3,18 @@
   "contract": "I-PROPOSED-ARI-CAPABILITY-LEDGER-TRUTH",
   "authority": {
     "support_status": "docs/contracts/ari-capability-ledger.json",
-    "registration_schema_executor": "supabase/functions/_shared/agentTools.ts and agentDomainTools.ts",
+    "registration_schema_executor": "supabase/functions/_shared/agentTools.ts, agentDomainTools.ts, and agentSiteTools.ts",
     "advertising": "supabase/functions/_shared/agentSystemPrompt.ts",
     "product_operations": "declared Business source roots below"
   },
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
-    "verified_at": "2026-08-25T00:00:00Z",
-    "registered_tool_count": 108,
-    "capability_count": 120,
+    "verified_at": "2026-08-30T00:00:00Z",
+    "registered_tool_count": 120,
+    "capability_count": 132,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 107,
+      "registered_unverified": 119,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -33,6 +33,7 @@
       "supabase/migrations",
       "supabase/functions/_shared/agentTools.ts",
       "supabase/functions/_shared/agentDomainTools.ts",
+      "supabase/functions/_shared/agentSiteTools.ts",
       "supabase/functions/_shared/agentSystemPrompt.ts"
     ],
     "external_overlay": "GitHub issues #1736, #1743, #1753, #1796, #2000 at the audit timestamp",
@@ -2362,7 +2363,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1980/#2593 agentDomainTools.ts:sendCampaignNow matches Business sendNow marketing-send {campaign_id} contract"
         }
       ],
@@ -2461,7 +2462,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1980/#2593 agentDomainTools.ts:runGrowthTool routes each engine to its app-lane function with {action,lane,brand_id,input}"
         }
       ],
@@ -2508,7 +2509,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1982/#2593 agentDomainTools.ts:getPayoutStatus reads pg_brand_can_collect boolean via finance_manager gate"
         }
       ],
@@ -2558,7 +2559,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1976 agentDomainTools.ts:getPartnerStatus reads partner_brand_links with derived status"
         }
       ],
@@ -2608,7 +2609,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1976/#2593 agentDomainTools.ts:disconnectPartner calls partner_disconnect_link on partner_brand_links row id"
         }
       ],
@@ -2707,7 +2708,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1981 agentDomainTools.ts:refundOrder sends lines+reason+Idempotency-Key to refund-order"
         }
       ],
@@ -2757,7 +2758,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1981 agentDomainTools.ts:cancelOrder sends reason+Idempotency-Key to cancel-order"
         }
       ],
@@ -2807,7 +2808,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1981/#2593 agentDomainTools.ts:cancelTripBooking preview\u2192commit with expectedRefundTotalCents fail-closed"
         }
       ],
@@ -2853,7 +2854,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1981 agentDomainTools.ts:retryInstallment calls biz_retry_installment under finance_manager gate"
         }
       ],
@@ -2903,7 +2904,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1984 agentDomainTools.ts:getBrandAnalytics reads brand_conversion_rollup + venue_intelligence_overview via assertAgentReadBrand"
         }
       ],
@@ -2949,7 +2950,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1983 agentDomainTools.ts:inviteBrandMember sends invitee_name to invite-brand-member"
         }
       ],
@@ -2999,7 +3000,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1983 agentDomainTools.ts:inviteScanner routes to invite-scanner with scope/scan contract"
         }
       ],
@@ -3045,7 +3046,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1983 agentDomainTools.ts:revokeBrandMember soft-deletes brand_team_members.removed_at"
         }
       ],
@@ -3095,7 +3096,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1984/#2593 agentDomainTools.ts:listGuestRoster calls biz_guest_roster_list with slim non-PII rows + real cursor pagination"
         }
       ],
@@ -3141,7 +3142,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1984 agentDomainTools.ts:exportBrandPeople sends brand-people-export {scope:brand_book,brandId,clientRequestId}"
         }
       ],
@@ -3375,7 +3376,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "0d96e695e7eaf7e4733f4444089aedead415f78f",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1983 agentDomainTools.ts:getOperatorSnapshot lists all accessible brands (brand_member), not owner-only"
         }
       ],
@@ -4438,7 +4439,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1982 agentDomainTools.ts:manageBrandPeople calls biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person"
         }
       ],
@@ -4639,7 +4640,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1976 agentDomainTools.ts:getBrandBalancesReports invokes brand-stripe-balances and reads brand_payout_releases"
         }
       ],
@@ -4689,7 +4690,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1982 agentDomainTools.ts:listBrandTeam mirrors listBrandTeamMembers + listBrandInvitations"
         }
       ],
@@ -4739,7 +4740,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1982 agentDomainTools.ts:revokeScannerInvitation mirrors scannerInvitationsService.revokeScannerInvitation"
         }
       ],
@@ -4989,7 +4990,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1984 agentDomainTools.ts:getEventOrderReconciliation aggregates orders sold/refunded/net without buyer PII"
         }
       ],
@@ -5673,7 +5674,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1981 agentDomainTools.ts:chargeInstallmentNow invokes manual-charge-installment"
         }
       ],
@@ -5727,7 +5728,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1981 agentDomainTools.ts:sendInstallmentReminder invokes send-installment-reminder"
         }
       ],
@@ -5878,7 +5879,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1976 agentDomainTools.ts:listPartnerBrandLinks mirrors partnerBrandLinksService.listPartnerBrandLinks"
         }
       ],
@@ -5928,7 +5929,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1976 agentDomainTools.ts:listPartnerSplits mirrors partnerSplitsService.listPartnerSplits"
         }
       ],
@@ -5941,6 +5942,258 @@
       ],
       "confidence": "high",
       "verified_at": "2026-08-25"
+    },
+    {
+      "id": "ari.sites.read_site",
+      "domain": "sites",
+      "outcome": "Read an accessible brand Website status and draft summary",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
+        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const getBrandSite"}]
+      },
+      "ari_tool": "get_brand_site",
+      "status": "registered_unverified",
+      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: caller-scoped Website read", "guard_role": "implementor"}],
+      "owning_issues": [2830, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-08-30"
+    },
+    {
+      "id": "ari.sites.list_pages",
+      "domain": "sites",
+      "outcome": "List fixed Website page roles and draft revisions",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
+        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const listSitePages"}]
+      },
+      "ari_tool": "list_site_pages",
+      "status": "registered_unverified",
+      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: fixed page-role registry", "guard_role": "implementor"}],
+      "owning_issues": [2830, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-08-30"
+    },
+    {
+      "id": "ari.sites.read_page",
+      "domain": "sites",
+      "outcome": "Read one structured Website draft page by fixed role",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
+        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const getSitePage"}]
+      },
+      "ari_tool": "get_site_page",
+      "status": "registered_unverified",
+      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: structured Website page reads", "guard_role": "implementor"}],
+      "owning_issues": [2830, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-08-30"
+    },
+    {
+      "id": "ari.sites.propose_content",
+      "domain": "sites",
+      "outcome": "Propose a revision-bound structured Website page update",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
+        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const proposeContent"}]
+      },
+      "ari_tool": "propose_site_content_update",
+      "status": "registered_unverified",
+      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: closed content proposal schema", "guard_role": "implementor"}],
+      "owning_issues": [2830, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-08-30"
+    },
+    {
+      "id": "ari.sites.propose_settings",
+      "domain": "sites",
+      "outcome": "Propose a revision-bound bounded Website settings update",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
+        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const proposeSettings"}]
+      },
+      "ari_tool": "propose_site_settings_update",
+      "status": "registered_unverified",
+      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: closed settings proposal schema", "guard_role": "implementor"}],
+      "owning_issues": [2830, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-08-30"
+    },
+    {
+      "id": "ari.sites.attach_media",
+      "domain": "sites",
+      "outcome": "Attach approved processed media to a typed Website block",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
+        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const attachMedia"}]
+      },
+      "ari_tool": "attach_approved_site_media",
+      "status": "registered_unverified",
+      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: READY media attachment contract", "guard_role": "implementor"}],
+      "owning_issues": [2830, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-08-30"
+    },
+    {
+      "id": "ari.sites.validate_draft",
+      "domain": "sites",
+      "outcome": "Validate a structured Website draft without publication",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
+        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const validateDraft"}]
+      },
+      "ari_tool": "validate_site_draft",
+      "status": "registered_unverified",
+      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: non-publishing validation receipt", "guard_role": "implementor"}],
+      "owning_issues": [2830, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-08-30"
+    },
+    {
+      "id": "ari.sites.create_preview",
+      "domain": "sites",
+      "outcome": "Create a private expiring Website preview for an exact validated revision",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
+        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const createSitePreview"}]
+      },
+      "ari_tool": "create_site_preview",
+      "status": "registered_unverified",
+      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: preview isolation and exact revision", "guard_role": "implementor"}],
+      "owning_issues": [2830, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-08-30"
+    },
+    {
+      "id": "ari.sites.publish",
+      "domain": "sites",
+      "outcome": "Publish one exact validated Website revision",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
+        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const publishSite"}]
+      },
+      "ari_tool": "publish_site",
+      "status": "registered_unverified",
+      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: confirmed exact-revision publication", "guard_role": "implementor"}],
+      "owning_issues": [2830, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-08-30"
+    },
+    {
+      "id": "ari.sites.read_operation",
+      "domain": "sites",
+      "outcome": "Read a durable safe Website operation receipt",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
+        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const getOperation"}]
+      },
+      "ari_tool": "get_site_operation_status",
+      "status": "registered_unverified",
+      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: safe operation receipt", "guard_role": "implementor"}],
+      "owning_issues": [2830, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-08-30"
+    },
+    {
+      "id": "ari.sites.list_versions",
+      "domain": "sites",
+      "outcome": "List immutable Website publication versions and safe receipts",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
+        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const listVersions"}]
+      },
+      "ari_tool": "list_site_versions",
+      "status": "registered_unverified",
+      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: immutable version list", "guard_role": "implementor"}],
+      "owning_issues": [2830, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-08-30"
+    },
+    {
+      "id": "ari.sites.rollback",
+      "domain": "sites",
+      "outcome": "Republish an immutable historical Website revision as a new version",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
+        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const rollbackSite"}]
+      },
+      "ari_tool": "rollback_site",
+      "status": "registered_unverified",
+      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: immutable rollback source", "guard_role": "implementor"}],
+      "owning_issues": [2830, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-08-30"
     }
   ]
 }

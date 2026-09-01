@@ -14,16 +14,20 @@ describe("featureFlags", () => {
     process.env = ORIGINAL_ENV;
   });
 
-  test("defaults: ari and marketing on, paystack and accountSideToggle off", async () => {
+  // [TEST-MOD-APPROVED #2830] Sites is intentionally dark until the separately
+  // governed Gogi pilot enablement; the existing flag expectations are intact.
+  test("defaults: ari and marketing on; paystack, side toggle and Sites off", async () => {
     delete process.env.EXPO_PUBLIC_FF_ARI_ENABLED;
     delete process.env.EXPO_PUBLIC_FF_MARKETING_SEND_ENABLED;
     delete process.env.EXPO_PUBLIC_FF_PAYSTACK_ENABLED;
     delete process.env.EXPO_PUBLIC_FF_ACCOUNT_SIDE_TOGGLE;
+    delete process.env.EXPO_PUBLIC_FF_SITES_ENABLED;
     const { featureFlags } = await import("../featureFlags");
     expect(featureFlags.ari).toBe(true);
     expect(featureFlags.marketingSend).toBe(true);
     expect(featureFlags.paystack).toBe(false);
     expect(featureFlags.accountSideToggle).toBe(false);
+    expect(featureFlags.sites).toBe(false);
   });
 
   test("EXPO_PUBLIC_FF_*=false disables feature", async () => {

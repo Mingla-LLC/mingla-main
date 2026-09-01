@@ -10,7 +10,8 @@ import {
 const manifest = JSON.parse(readFileSync(DEFAULT_MANIFEST, "utf8"));
 const exceptionWindowNow = Date.parse("2026-08-01T00:00:00Z");
 // [TEST-MOD-APPROVED #1770] Written reason: Seth authorized one standalone
-// invite pepper, moving exact final-state fixtures from 86 to 87 names.
+// invite pepper moved final-state fixtures to 87 names. #2830's independently
+// approved Sites credential envelope occupies bounded slot 88.
 
 function clone(value) {
   return structuredClone(value);
@@ -45,8 +46,14 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   // the shipped mode (mirrors the enforced test's clone below).
   const transition = clone(manifest);
   transition.secrets = transition.secrets.filter((record) =>
-    record.name !== "OFFERING_INVITE_TOKEN_PEPPER"
+    !["OFFERING_INVITE_TOKEN_PEPPER", "MINGLA_SITES_SECURITY_JSON"].includes(
+      record.name,
+    )
   );
+  transition.rollout.pending_bundle_names =
+    transition.rollout.pending_bundle_names.filter((name) =>
+      name !== "MINGLA_SITES_SECURITY_JSON"
+    );
   transition.rollout.live_audit_mode = "transition";
   transition.rollout.transition_stage = "pre_rollout";
   const target = transition.secrets.map((record) => record.name);
@@ -88,12 +95,12 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   assert.match(drifted.failures.join("\n"), /transition_count/);
 });
 
-test("issue #1203: enforced live audit uses only the final 87-name target", () => {
+test("issue #1203: enforced live audit uses only the approved 88-name target", () => {
   const enforced = clone(manifest);
   enforced.rollout.live_audit_mode = "enforced";
-  enforced.rollout.expected_user_managed_count = 87;
+  enforced.rollout.expected_user_managed_count = 88;
   const target = enforced.secrets.map((record) => record.name);
-  assert.equal(target.length, 87);
+  assert.equal(target.length, 88);
   assert.equal(
     auditSecretBudget({
       manifest: enforced,

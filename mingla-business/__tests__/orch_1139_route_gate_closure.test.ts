@@ -150,6 +150,9 @@ const EXPECTED: Record<string, Bucket> = {
   support: "gated-default",
   trip: "gated-default",
   venue: "gated-default",
+  // [TEST-MOD-APPROVED #2830] — the native Website Studio return is an
+  // authenticated handoff route and belongs to no public/connect/invite set.
+  "website-return": "gated-default",
   index: "gated-default",
   notifications: "gated-default",
 };

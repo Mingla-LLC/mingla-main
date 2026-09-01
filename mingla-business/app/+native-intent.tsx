@@ -133,6 +133,7 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "t",
   "trip",
   "venue",
+  "website-return",
 ]);
 
 /** `scheme:` prefix per RFC 3986. Anything without one is a relative path (R-1). */

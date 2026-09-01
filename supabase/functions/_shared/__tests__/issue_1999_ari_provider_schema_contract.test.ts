@@ -92,7 +92,7 @@ function actualRegistry(): GeminiToolDef[] {
   }));
 }
 
-Deno.test("#1999 happy: all 108 actual Ari tools compile for Gemini typed parameters", () => {
+Deno.test("#1999 happy: all 120 actual Ari tools compile for Gemini typed parameters", () => {
   // [TEST-MOD-APPROVED #1975+#1978+#1979] Stay + venue listing + venue manage tools; 77→80.
   // [TEST-MOD-APPROVED #1971] Five trip tools; 85→86. Only the registry-size
   // baseline moves — every schema-compilation assertion is unchanged and now
@@ -100,10 +100,13 @@ Deno.test("#1999 happy: all 108 actual Ari tools compile for Gemini typed parame
   // [TEST-MOD-APPROVED #1984] get_event_order_reconciliation; 87→90.
   // [TEST-MOD-APPROVED #1976] balances/partner links/splits; 87→90.
   // [TEST-MOD-APPROVED #1981] charge + reminder; 90→92.
+  // [TEST-MOD-APPROVED #2830] The twelve bounded Website declarations extend
+  // the current exact provider census (108→120); their nested closed schemas
+  // compile here too.
   const tools = actualRegistry();
   assertEquals(
     tools.length,
-    108,
+    120,
     "registry baseline changed; provider coverage must be reviewed",
   );
 
@@ -205,4 +208,3 @@ Deno.test("#1999 happy: numeric enums normalize narrowly and invalid enum member
     );
   }
 });
-

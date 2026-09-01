@@ -10,6 +10,10 @@ const NAMES = [
   "list_brands", "list_events", "quote_stay", "get_payout_status", "get_partner_status",
   "get_tax_status", "get_brand_analytics", "list_brand_audit_log", "list_guest_roster", "get_operator_snapshot",
 ];
+const SITE_READ_NAMES = [
+  "get_brand_site", "list_site_pages", "get_site_page", "validate_site_draft",
+  "get_site_operation_status", "list_site_versions",
+];
 // [#2438 SC-13] The two reviewed Phase 3B lifecycles. This guard tracks whichever
 // one the registry declares instead of pinning shadow, so the SC-21 cutover does
 // not red it; a third value is still rejected.
@@ -36,7 +40,7 @@ export function twoAccountPublicRlsProof(ownerId, memberRows, publicBrands) {
 
 export function check(sources) {
   const failures = [];
-  const { helper, chat, confirm, tools, domain, prompt, hook, screen, list, publicMigration, scopeMigration, scopeTest, migrationWorkflow, writerTest, ciManifest } = sources;
+  const { helper, chat, confirm, tools, domain, sites, prompt, hook, screen, list, publicMigration, scopeMigration, scopeTest, migrationWorkflow, writerTest, ciManifest } = sources;
   for (const token of [
     '.eq("account_id", userId)', '.eq("user_id", userId)', '.not("accepted_at", "is", null)', '.is("removed_at", null)',
     '.is("brand.deleted_at", null)', 'role: "owner"', 'effective_rank: 60',
@@ -49,6 +53,16 @@ export function check(sources) {
     const at = owner.indexOf(`"${name}"`);
     const window = owner.slice(at, at + (name === "get_operator_snapshot" ? 2600 : 1500));
     if (at < 0 || !/(resolveAccessibleAgentBrands|assertAgentReadBrand|assertAgentReadEvent)/.test(window)) {
+      failures.push(`${name} lacks the shared tenant authority`);
+    }
+  }
+  const registeredSiteReads = SITE_READ_NAMES.filter((name) => helper.includes(`"${name}"`));
+  if (registeredSiteReads.length !== SITE_READ_NAMES.length) failures.push("six-read Sites registry is incomplete");
+  for (const name of SITE_READ_NAMES) {
+    const at = sites.indexOf(`"${name}"`);
+    const nextTool = sites.indexOf("\nconst ", at + 1);
+    const window = sites.slice(at, nextTool < 0 ? sites.length : nextTool);
+    if (at < 0 || !window.includes("assertAgentReadBrand(client, userId, args.brand_id)")) {
       failures.push(`${name} lacks the shared tenant authority`);
     }
   }
@@ -150,6 +164,7 @@ const SOURCE_FILES = {
   confirm: "supabase/functions/agent-confirm-action/index.ts",
   tools: "supabase/functions/_shared/agentTools.ts",
   domain: "supabase/functions/_shared/agentDomainTools.ts",
+  sites: "supabase/functions/_shared/agentSiteTools.ts",
   prompt: "supabase/functions/_shared/agentSystemPrompt.ts",
   hook: "mingla-business/src/hooks/useAgentChat.ts",
   screen: "mingla-business/src/screens/ari/AriChatScreen.tsx",
@@ -197,6 +212,10 @@ if (process.argv.includes("--self-test")) {
   const scopeRevertDetected = scopeReverted.some((failure) => failure.includes("database scope immutability"));
   const composerReverted = check({ ...sources, screen: sources.screen.replace("disabled={chat.isSending || brands.isLoading || rateLimited || !conversationSelectionReady}", "disabled={chat.isSending}") });
   const composerRevertDetected = composerReverted.some((failure) => failure.includes("persistent cooldown"));
+  const siteRegistryReverted = check({ ...sources, helper: sources.helper.replace('  "get_brand_site",\n', "") });
+  const siteRegistryRevertDetected = siteRegistryReverted.some((failure) => failure.includes("six-read Sites registry"));
+  const siteExecutorReverted = check({ ...sources, sites: sources.sites.replace("    await assertAgentReadBrand(client, userId, args.brand_id);", "") });
+  const siteExecutorRevertDetected = siteExecutorReverted.some((failure) => failure.includes("lacks the shared tenant authority"));
 
   // [#2438 SC-13/SC-17] Execute the terminal branch instead of merely writing it.
   const withLifecycle = (value) => withRegistry((suite) => { suite.lifecycle = value; });
@@ -216,11 +235,12 @@ if (process.argv.includes("--self-test")) {
 
   if (good.length > 0 || !revertDetected || !historyRevertDetected || !confirmationRevertDetected || !writerProvenanceRevertDetected
       || !shadowRevertDetected || !scopeRevertDetected || !composerRevertDetected
+      || !siteRegistryRevertDetected || !siteExecutorRevertDetected
       || !terminalLifecycleAccepted || !forgedLifecycleDetected || !wrapperDecoupled) {
-    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerProvenanceReverts, shadowReverted, scopeReverted, composerReverted, acceptedLifecycles, forgedLifecycles, wrapperDecoupled });
+    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerProvenanceReverts, shadowReverted, scopeReverted, composerReverted, siteRegistryReverted, siteExecutorReverted, acceptedLifecycles, forgedLifecycles, wrapperDecoupled });
     process.exit(1);
   }
-  console.log(`issue-2013 self-test PASS: clean source passes; owner, history, confirmation-writer, ${writerProvenanceReverts.length} typed writer-provenance, immutable-scope, composer-gate and ${forgedLifecycles.length} forged-lifecycle reverts fail; ${acceptedLifecycles.length} reviewed lifecycles pass and the deletable CI wrapper is decoupled from provider ${CI_BATCH_PROVIDER}.`);
+  console.log(`issue-2013 self-test PASS: clean source passes; owner, history, confirmation-writer, ${writerProvenanceReverts.length} typed writer-provenance, immutable-scope, composer-gate, Sites registry/executor and ${forgedLifecycles.length} forged-lifecycle reverts fail; ${acceptedLifecycles.length} reviewed lifecycles pass and the deletable CI wrapper is decoupled from provider ${CI_BATCH_PROVIDER}.`);
   process.exit(0);
 }
 
