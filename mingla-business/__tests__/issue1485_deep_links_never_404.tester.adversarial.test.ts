@@ -10,9 +10,9 @@
  *      walks the real `app/` route tree at test time, derives a URL per route
  *      file, and then SIMULATES THE WHOLE REWRITE CHAIN (not just the catch-all)
  *      for a normal browser user-agent. Every derived URL must land on the SPA
- *      shell. New routes are covered the moment they are added; a greedy rewrite
- *      inserted ABOVE the catch-all is caught even though the catch-all itself
- *      is untouched.
+ *      shell or its explicitly owned public-document handler. New routes are
+ *      covered the moment they are added; a greedy rewrite inserted ABOVE the
+ *      catch-all is caught even though the catch-all itself is untouched.
  *
  *   B. BOUNDARY / NEAR-MISS PATHS. `_expo/static` with no trailing slash,
  *      `_expo/staticX/`, a nested `/x/_expo/static/`, uppercase, percent-encoded
@@ -72,6 +72,7 @@ type Rewrite = { source: string; destination: string; has?: HasCondition[] };
 type HeaderRule = { source: string; headers: { key: string; value: string }[] };
 type VercelConfig = {
   rewrites: Rewrite[];
+  redirects?: Array<Rewrite & { permanent?: boolean }>;
   headers: HeaderRule[];
   cleanUrls?: boolean;
   trailingSlash?: boolean;
@@ -92,6 +93,10 @@ const catchAll = vercel.rewrites[vercel.rewrites.length - 1];
  * A.0 asserts this map covers every rewrite, so it cannot silently rot.
  */
 const COMPILED_SRC: Record<string, string> = {
+  // [TEST-MOD-APPROVED #2986] Host discovery documents must bypass the Expo
+  // shell with their own MIME-correct handlers.
+  "/robots.txt": "^/robots\\.txt$",
+  "/sitemap.xml": "^/sitemap\\.xml$",
   // [TEST-MOD-APPROVED #1615] The stable content page and immutable portrait
   // rewrites did not exist when #1485 froze this exhaustive transcription.
   // Their real compiled forms keep every rewrite covered without weakening the
@@ -201,6 +206,9 @@ const EXTRA_LIVE_PATHS = [
   "/favicon.ico",
   "/.well-known/apple-app-site-association",
   "/.well-known/assetlinks.json",
+  // [TEST-MOD-APPROVED #2986] These are live server documents, never SPA HTML.
+  "/robots.txt",
+  "/sitemap.xml",
 ];
 
 /**
@@ -208,15 +216,33 @@ const EXTRA_LIVE_PATHS = [
  * Everything else must reach the shell.
  */
 const STATIC_HANDLER_PATHS: Record<string, string> = {
+  "/robots.txt": "/api/robots",
+  "/sitemap.xml": "/api/sitemap",
   "/stripe-onboarding-return": "/stripe-onboarding-return.html",
   "/auth/callback": "/auth/callback.html",
   "/accept-brand-invitation": "/accept-brand-invitation-entry",
 };
 
+// [TEST-MOD-APPROVED #2986] These five route families are now authoritative
+// server documents for browsers and crawlers alike. This is deliberately
+// separate from static callbacks so A.3 continues deriving route examples from
+// the real Expo tree rather than hard-coding its coverage set.
+const PUBLIC_DOCUMENT_HANDLERS: Array<{ pattern: RegExp; destination: string }> = [
+  { pattern: /^\/e\/[^/]+\/[^/]+$/, destination: "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug" },
+  { pattern: /^\/t\/[^/]+\/[^/]+$/, destination: "/api/public-trip?brandSlug=:brandSlug&tripSlug=:tripSlug" },
+  { pattern: /^\/exp\/[^/]+\/[^/]+$/, destination: "/api/public-experience?brandSlug=:brandSlug&experienceSlug=:experienceSlug" },
+  { pattern: /^\/b\/[^/]+\/v\/[^/]+$/, destination: "/api/public-venue?brandSlug=:brandSlug&venueSlug=:venueSlug" },
+  { pattern: /^\/b\/[^/]+$/, destination: "/api/public-brand?brandSlug=:brandSlug" },
+];
+
+const publicDocumentDestination = (pathname: string): string | undefined =>
+  PUBLIC_DOCUMENT_HANDLERS.find(({ pattern }) => pattern.test(pathname))?.destination;
+
 /**
- * Walks the compiled rewrite chain the way Vercel does for an ordinary browser:
- * rewrites are evaluated in order after the filesystem miss, and a rewrite whose
- * `has` block requires a crawler user-agent is skipped.
+ * Walks the compiled rewrite chain the way Vercel does for an ordinary browser.
+ * [TEST-MOD-APPROVED #2986] Public documents no longer carry User-Agent gates;
+ * retaining the defensive skip means any future bot-only rewrite is still
+ * unable to masquerade as browser coverage.
  */
 function resolveForBrowser(
   pathname: string,
@@ -288,7 +314,7 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
     }
   });
 
-  it("A.3 — every derived route reaches the SPA shell through the full rewrite chain", () => {
+  it("A.3 — every derived route reaches its explicit document owner through the full rewrite chain", () => {
     const failures: string[] = [];
     for (const url of [...DERIVED_URLS, ...EXTRA_LIVE_PATHS]) {
       const resolved = resolveForBrowser(url);
@@ -300,6 +326,13 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
       if (expectedStatic) {
         if (resolved.destination !== expectedStatic) {
           failures.push(`${url} -> ${resolved.destination} (want ${expectedStatic})`);
+        }
+        continue;
+      }
+      const expectedPublicDocument = publicDocumentDestination(url);
+      if (expectedPublicDocument) {
+        if (resolved.destination !== expectedPublicDocument) {
+          failures.push(`${url} -> ${resolved.destination} (want ${expectedPublicDocument})`);
         }
         continue;
       }
@@ -324,32 +357,20 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
     }
   });
 
-  it("A.5 — the bot/OG rewrites are bot-gated and cannot steal a browser request", () => {
+  it("A.5 — public documents are UA-independent; OG endpoints still precede the shell", () => {
     const botGated = vercel.rewrites.filter((r) => (r.has?.length ?? 0) > 0);
-    // [TEST-MOD-APPROVED #1968] The experience metadata handler is the fifth
-    // crawler-only rewrite; the browser-stealing invariant remains unchanged.
-    expect(botGated.length).toBe(5);
-    for (const rewrite of botGated) {
-      const ua = rewrite.has?.find((h) => h.type === "header" && h.key === "user-agent");
-      expect([rewrite.source, Boolean(ua)]).toEqual([rewrite.source, true]);
-      expect(ua?.value).toContain("facebookexternalhit");
-    }
-    // With a crawler UA the bot rewrites DO win — SC-5. Simulated directly
-    // because resolveForBrowser() deliberately skips them.
+    // [TEST-MOD-APPROVED #2986] The five crawler-only forks were the root
+    // defect: browser and crawler status/body truth can no longer diverge.
+    expect(botGated).toEqual([]);
+    expect(JSON.stringify(vercel.rewrites)).not.toMatch(/facebookexternalhit|googlebot|crawler|spider/i);
     for (const [pathname, expected] of [
       ["/e/acme/summer-party", "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug"],
-      // [TEST-MOD-APPROVED #1968] Experience chat snippets resolve through
-      // their canonical /exp URL without entering Explorer's /s share system.
+      ["/t/acme/weekend-away", "/api/public-trip?brandSlug=:brandSlug&tripSlug=:tripSlug"],
       ["/exp/acme/gallery-tour", "/api/public-experience?brandSlug=:brandSlug&experienceSlug=:experienceSlug"],
-      // [TEST-MOD-APPROVED #1615] Venue crawlers now receive the venue's own
-      // canonical metadata rather than the parent brand's generic metadata.
+      ["/b/acme", "/api/public-brand?brandSlug=:brandSlug"],
       ["/b/acme/v/rooftop", "/api/public-venue?brandSlug=:brandSlug&venueSlug=:venueSlug"],
     ] as [string, string][]) {
-      const hit = vercel.rewrites.find(
-        (r) =>
-          (r.has?.length ?? 0) > 0 && new RegExp(COMPILED_SRC[r.source]).test(pathname),
-      );
-      expect([pathname, hit?.destination]).toEqual([pathname, expected]);
+      expect([pathname, resolveForBrowser(pathname)?.destination]).toEqual([pathname, expected]);
     }
     // And the OG image endpoints are not bot-gated but still precede the shell.
     expect(resolveForBrowser("/og/event/abc-123.png")?.destination).toBe(

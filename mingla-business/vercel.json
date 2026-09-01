@@ -6,7 +6,16 @@
   "framework": null,
   "cleanUrls": true,
   "trailingSlash": false,
+  "redirects": [
+    { "source": "/e/:brandSlug/:eventSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/e/:brandSlug/:eventSlug", "permanent": true },
+    { "source": "/t/:brandSlug/:tripSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/t/:brandSlug/:tripSlug", "permanent": true },
+    { "source": "/exp/:brandSlug/:experienceSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/exp/:brandSlug/:experienceSlug", "permanent": true },
+    { "source": "/b/:brandSlug/v/:venueSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/b/:brandSlug/v/:venueSlug", "permanent": true },
+    { "source": "/b/:brandSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/b/:brandSlug", "permanent": true }
+  ],
   "rewrites": [
+    { "source": "/robots.txt", "destination": "/api/robots" },
+    { "source": "/sitemap.xml", "destination": "/api/sitemap" },
     { "source": "/s/:code", "destination": "/api/content-share?code=:code" },
     { "source": "/og/s/:code/v:version-r2.jpg", "destination": "/api/content-share-image?code=:code&version=:version" },
     { "source": "/share/:shareId.png", "destination": "/api/shared-card-image?shareId=:shareId&surface=s4" },
@@ -16,61 +25,11 @@
     { "source": "/og/brand/:brandSlug.png", "destination": "/api/og-brand?brandSlug=:brandSlug" },
     { "source": "/og/trip/:tripId.png", "destination": "/api/og-trip?tripId=:tripId" },
     { "source": "/og/venue/:brandSlug/:venueSlug.png", "destination": "/api/og-venue?brandSlug=:brandSlug&venueSlug=:venueSlug" },
-    {
-      "source": "/e/:brandSlug/:eventSlug",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
-        }
-      ],
-      "destination": "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug"
-    },
-    {
-      "source": "/t/:brandSlug/:tripSlug",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
-        }
-      ],
-      "destination": "/api/public-trip?brandSlug=:brandSlug&tripSlug=:tripSlug"
-    },
-    {
-      "source": "/exp/:brandSlug/:experienceSlug",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
-        }
-      ],
-      "destination": "/api/public-experience?brandSlug=:brandSlug&experienceSlug=:experienceSlug"
-    },
-    {
-      "source": "/b/:brandSlug",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
-        }
-      ],
-      "destination": "/api/public-brand?brandSlug=:brandSlug"
-    },
-    {
-      "source": "/b/:brandSlug/v/:venueSlug",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
-        }
-      ],
-      "destination": "/api/public-venue?brandSlug=:brandSlug&venueSlug=:venueSlug"
-    },
+    { "source": "/e/:brandSlug/:eventSlug", "destination": "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug" },
+    { "source": "/t/:brandSlug/:tripSlug", "destination": "/api/public-trip?brandSlug=:brandSlug&tripSlug=:tripSlug" },
+    { "source": "/exp/:brandSlug/:experienceSlug", "destination": "/api/public-experience?brandSlug=:brandSlug&experienceSlug=:experienceSlug" },
+    { "source": "/b/:brandSlug/v/:venueSlug", "destination": "/api/public-venue?brandSlug=:brandSlug&venueSlug=:venueSlug" },
+    { "source": "/b/:brandSlug", "destination": "/api/public-brand?brandSlug=:brandSlug" },
     { "source": "/stripe-onboarding-return", "destination": "/stripe-onboarding-return.html" },
     { "source": "/auth/callback", "destination": "/auth/callback.html" },
     { "source": "/accept-brand-invitation", "destination": "/accept-brand-invitation-entry" },

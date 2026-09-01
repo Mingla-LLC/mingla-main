@@ -774,6 +774,16 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue2796_competitor_decision_report_v3.implementor.pg17.test.sql
 
+          # Issue #2986 — intended-public Host search documents: all five route
+          # families resolve truthful lifecycle, source-readiness, and sitemap
+          # state on the fully replayed PostgreSQL 17 schema.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2986_public_search_documents.implementor.happy.pg17.test.sql
+          # Issue #2986 — adversarial ACL, forgery, redirect-cycle, address-
+          # privacy, lifecycle, and no-false-sitemap proof.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2986_public_search_documents.tester.adversarial.pg17.test.sql
+
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
       # "hide the address until someone buys" had that address served to an

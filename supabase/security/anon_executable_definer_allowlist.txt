@@ -14,7 +14,7 @@
 # INVESTIGATION_ORCH-1392 bucket (definer_privilege_gate_inventory.csv). Format:
 # `proname(identity_args)` exactly as pg_get_function_identity_arguments renders.
 #
-# Signature count: 193 (intended-public 24, internally-gated 108, predicate/read-helper 58, PostGIS 3).
+# Signature count: 196 (intended-public 27, internally-gated 108, predicate/read-helper 58, PostGIS 3).
 # (#1931 recomputed this line from the file itself AFTER its one appended signature, by
 #  counting non-comment, non-blank lines per section. The previous value of 194/25/109/57
 #  was already stale by two against the 192 lines then present; the count is not gate-
@@ -58,6 +58,10 @@ pg_public_ticket_types_remaining(p_event_id uuid)
 pg_public_trip_by_slug(p_brand_slug text, p_event_slug text)
 pg_public_trips_by_brand(p_brand_slug text)
 pg_published_trips_public(p_destination_query text, p_departure_query text, p_date_from timestamp with time zone, p_date_to timestamp with time zone, p_min_price_cents integer, p_max_price_cents integer, p_group_size_min integer, p_group_size_max integer, p_sort text, p_limit integer, p_offset integer)
+# #2986: exact Host-relative path only; returns the closed lifecycle plus address-safe visible facts, never authoring, buyer, token, contact, or exact hidden-address data.
+resolve_public_search_document(p_path text)
+# #2986: enumerable only by design; emits current, non-test, individually validated search_ready Host paths and real source timestamps, never page facts or noindex states.
+list_public_search_sitemap()
 # #1384: public discovery cards need source/display ranges; both functions expose only published place prices and fail closed on unavailable FX.
 place_discovery_range_for_viewer(p_place_pool_id uuid, p_display_currency character, p_snapshot uuid)
 place_discovery_ranges_for_viewer(p_place_pool_ids uuid[], p_display_currency character, p_snapshot uuid)
