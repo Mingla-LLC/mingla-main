@@ -26,7 +26,15 @@ if [[ "$mount_root" == "/" || "$mount_root" == "$HOME" || ! -d "$mount_root" ]];
   exit 65
 fi
 
+runner_uid="$(id -u)"
+runner_gid="$(id -g)"
+if [[ ! "$runner_uid" =~ ^[1-9][0-9]*$ || ! "$runner_gid" =~ ^[0-9]+$ ]]; then
+  printf '%s\n' 'SITES_PG17_ERROR code=INVALID_RUNNER_IDENTITY' >&2
+  exit 66
+fi
+
 exec docker run --rm --network host \
+  --user "$runner_uid:$runner_gid" \
   --volume "$mount_root:$mount_root" \
   --workdir "$PWD" \
   --env PGHOST \
