@@ -16030,7 +16030,7 @@
       "providerWorkflow": ".github/workflows/issue-1930-checkout-current-truth.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "02dc398b17e0c8bd5a4bec6614223475c7d3be084cb8fc457e94e22c9d7ef150",
+        "sourceSha256": "7ff12f58a3d808c7eb598b15b2d09fb1e4ac2f08521f2c6d77d22ff9626b8ead",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -16048,6 +16048,7 @@
           "supabase/functions/_shared/__tests__/issue_1930_ticket_lost_race_identity.tester.adversarial.test.ts",
           "supabase/functions/_shared/__tests__/issue_1930_transition_rework.test.ts",
           "supabase/functions/_shared/checkoutSaleTruth.ts",
+          "supabase/functions/_shared/secretBundle.ts",
           "supabase/functions/_shared/sourceRefundControlPlane.ts",
           "supabase/functions/checkout-sale-revocation/**",
           "supabase/functions/reconcile-stuck-checkouts/**",
