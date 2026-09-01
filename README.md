@@ -127,6 +127,15 @@ supabase db push
 
 Supabase migration application is operator-gated; edge function deploys happen only from merged `main`.
 
+The agent guard is not wired up by a clone. `.claude/` is gitignored, so the hook that runs it is per-machine. Add it once, in `.claude/settings.json`:
+
+```json
+{ "hooks": { "PreToolUse": [ { "matcher": "Bash",
+  "hooks": [ { "type": "command", "command": "$CLAUDE_PROJECT_DIR/scripts/agent-guard/bash-guard.py" } ] } ] } }
+```
+
+Until that line exists, a fresh clone has no guard at all — the script is present and does nothing. See Agent Guards below.
+
 ## Store Submissions (EAS Submit)
 
 Both mobile apps are wired for automated store submission via `eas submit`. Submissions are scoped to safe defaults: Android lands as a **draft in the internal testing track**, iOS lands in **TestFlight**. Final production rollout always requires a manual click in Play Console / App Store Connect.
@@ -162,3 +171,31 @@ python3 scripts/docs/check_readme_snapshot.py
 ```
 
 Both apps ship the SAME version — bump `app-mobile` and `mingla-business` together (CI parity gate enforces it).
+
+## Agent Guards
+
+`scripts/agent-guard/bash-guard.py` is a `PreToolUse`/`Bash` hook that refuses command shapes which have destroyed, or nearly destroyed, work in this repo. It blocks four groups:
+
+| Group | Blocked |
+|---|---|
+| Destroying local work | `git reset --hard`, whole-tree `git checkout .` / `git restore .`, `git clean -fd`, `git add -A` |
+| Rewriting shared history | force-push, `git branch -D` |
+| Operator-only GitHub state | `gh pr merge`, `gh repo delete/edit/archive`, ruleset / branch-protection / permissions writes, destructive `gh api ... -X DELETE` |
+| Cost and production | `--watch` CI polling (one org-wide API quota), `supabase db push` / `db reset` |
+
+It also warns, without blocking, on `git reset origin/<ref>` — resetting against a remote ref that has moved stages the reversal of everything landed since you branched.
+
+Wiring is per-machine (see Local Development). The tracked self-test runs in CI on every pull request as the `issue-2897-agent-guard-selftest` suite in `.github/ci-batch/MANIFEST.json`:
+
+```bash
+python3 scripts/agent-guard/guard-selftest.py scripts/agent-guard/bash-guard.py
+```
+
+It asserts both directions — what must be blocked and what must stay allowed — and reads the rule table out of the guard's own source, so a rule added without both a must-block and a must-allow case fails the build.
+
+### Limits — read these
+
+- **`MINGLA_ALLOW_DESTRUCTIVE=1` lifts every rule at once.** There is no per-rule override, by design: the same escape hatch as `.githooks/pre-commit`'s `MINGLA_ALLOW_MAIN_COMMIT`, and the reason nobody deletes the guard the first time it blocks legitimate work.
+- **The variable must be set in the environment that launches Claude Code, not inside the command being run.** The hook is a separate process spawned before your command executes, so `export MINGLA_ALLOW_DESTRUCTIVE=1 && <cmd>` does *not* lift the block. Relaunch with it set.
+- **This stops accidents, not intent.** An agent that decides to override it can, and one that spells a command differently enough will slip past a pattern. It is a seatbelt, not a sandbox.
+- **Patterns anchor to the head of a command segment.** A rule name quoted inside a script body is data, not an invocation. The cost is the mirror case: a line of prose or heredoc text that *begins* with a blocked command is still blocked.

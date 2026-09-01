@@ -2,11 +2,12 @@
   "$comment": [
     "#2438 / #2148 Phase 3B additive shadow registry on the Phase 2 deterministic runner.",
     "Locked inventory: 199 legacy origins, 67 suites (23 baseline + 32 Phase 3A terminal + 12 Phase 3B shadow), 89 external providers; 194 outer assertion capabilities.",
-    "All 12 Phase 3B historical wrappers remain live during shadow; setup is separate from 36 assertion outers and 40 maximum leaves."
+    "All 12 Phase 3B historical wrappers remain live during shadow; setup is separate from 36 assertion outers and 40 maximum leaves.",
+    "#2897 post-seal addition: issue-2897-agent-guard-selftest (node20-noinstall, python3 only). Terminal totals are now 201 origins / 85 suites / 241 outer assertions; the sealed 200/84/240 and every frozen wave digest are unchanged, and the delta is declared by name in SUITES_ADDED_SINCE_SEAL in .github/scripts/ci-batch/validate-manifest-v2.mjs."
   ],
   "schemaVersion": 2,
-  "expectedExecutableSuites": 84,
-  "expectedSuites": 84,
+  "expectedExecutableSuites": 85,
+  "expectedSuites": 85,
   "setupProfiles": {
     "node20-noinstall": {
       "runtime": {
@@ -11395,6 +11396,58 @@
         "setupSha256": "fce8c9d46e2169faea662850185f9d94d5ca1dd4ba1dc9468b06973a47559244",
         "triggerSha256": "854ebd1b04b516b953383792176de9e4fcae3da0490049aa2ed1267c89369b23"
       }
+    },
+    {
+      "id": "issue-2897-agent-guard-selftest",
+      "class": "node20-noinstall",
+      "origin": ".github/workflows/issue-2897-agent-guard-selftest.yml",
+      "originPaths": [
+        "scripts/agent-guard/**",
+        ".github/workflows/issue-2897-agent-guard-selftest.yml"
+      ],
+      "steps": [
+        {
+          "name": "Run ISSUE-2897 agent-guard self-test and rule parity",
+          "cwd": ".",
+          "run": "python3 scripts/agent-guard/guard-selftest.py scripts/agent-guard/bash-guard.py",
+          "invocation": {
+            "kind": "raw-shell",
+            "command": "bash",
+            "argv": [
+              "-c",
+              "python3 scripts/agent-guard/guard-selftest.py scripts/agent-guard/bash-guard.py"
+            ]
+          },
+          "exceptionRationale": "Raw shell, matching every other batched entry. There is no legacy workflow command to preserve byte-for-byte here - the suite was born in the registry.",
+          "commandId": "assert:issue-2897-agent-guard-selftest:01"
+        }
+      ],
+      "lifecycle": "batched-active",
+      "ownerIssue": "#2897",
+      "runtime": {
+        "name": "node",
+        "version": "20"
+      },
+      "setupProfile": "node20-noinstall",
+      "cwd": ".",
+      "envNames": [],
+      "isolation": "clean-worktree",
+      "expectedFiles": [
+        "scripts/agent-guard/bash-guard.py",
+        "scripts/agent-guard/guard-selftest.py"
+      ],
+      "externalReferenceFiles": [],
+      "requiredContext": "CI batch: node20-noinstall",
+      "timingSeconds": {
+        "p50": null,
+        "p95": null,
+        "evidence": "not-yet-measured"
+      },
+      "generatedPaths": [
+        "suite-results.json"
+      ],
+      "exceptionRationale": "No legacy workflow exists to preserve: I-2148-CI-TOPOLOGY-BOUNDED bans a new issue-*.yml lane, so #2897 registers straight into the batch. Raw shell is kept so this entry reads and executes identically to every other batched suite.",
+      "timeoutSeconds": 480
     }
   ],
   "legacyOrigins": [
@@ -20708,6 +20761,14 @@
       "disposition": "batched-active",
       "replacementSuite": "production-readiness-audit",
       "rationale": "Original wrapper was removed in Phase 0; the named registry suite is its sole executable replacement."
+    },
+    {
+      "stem": "issue-2897-agent-guard-selftest",
+      "extension": "yml",
+      "disposition": "batched-active",
+      "ownerIssue": "#2897",
+      "rationale": "#2897. Reserved identity, never a real workflow file: I-2148-CI-TOPOLOGY-BOUNDED forbids adding an issue-*.yml lane, and every suite must be claimed by exactly one origin. The disposition is accurate - the suite runs inside ci-batch.yml and no wrapper exists.",
+      "replacementSuite": "issue-2897-agent-guard-selftest"
     }
   ],
   "migrationWaves": {
@@ -22604,8 +22665,8 @@
   ],
   "commandCapabilities": {
     "schemaVersion": 1,
-    "expectedCommands": 240,
-    "registrySha256": "7af6028109ff91e1c996a8231e932d5deb26b714d2c22b2264b17fb072593091",
+    "expectedCommands": 241,
+    "registrySha256": "335f4729ce53bebb8f1e6e9732cfb4e6fa58f900e9b7c831dbabe6a53cb2b80c",
     "commands": [
       {
         "id": "assert:issue-1282-google-bespoke-copy-tests:01",
@@ -25660,6 +25721,18 @@
         "env": null,
         "compound": true,
         "payloadSha256": "f14d4846bfea1794d378312167b19a7b0ce2ae20a28d9fb0791864ff624df547"
+      },
+      {
+        "id": "assert:issue-2897-agent-guard-selftest:01",
+        "suiteId": "issue-2897-agent-guard-selftest",
+        "stepIndex": 0,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "python3 scripts/agent-guard/guard-selftest.py scripts/agent-guard/bash-guard.py"
+        ],
+        "payloadSha256": "e58231584f67a195979062aafce903059c7d9283a048d1ba1954ec83c4f2c48f"
       }
     ]
   },

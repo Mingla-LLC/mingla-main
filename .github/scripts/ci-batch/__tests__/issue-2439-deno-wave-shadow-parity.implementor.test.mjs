@@ -26,11 +26,18 @@ import {
   PROVIDERS_ADDED_SINCE_SEAL,
   trackedFilesCalls, trackedFilesProcessInvocations,
   validateRegistry, withTrackedFilesScope, PHASE3C_SHADOW_MARKER, PHASE3C_WRAPPER_NAMES,
+  SUITES_ADDED_SINCE_SEAL,
 } from "../validate-manifest-v2.mjs";
 import { executesLeaves, absentFileIsFailure, evaluateTypedPredicate, expectedPrimarySuites, retryIsHonoured, sleepBounded, minimalChildEnvironment } from "../run-suite-batch.mjs";
 import { reconcilePhase3bReports, selectionDocument } from "../select-phase3b-suites.mjs";
 import { commandFingerprint } from "../run-suite-batch.mjs";
 import { isPrimarySuite, isMigratedSuite, suiteCommandFingerprint } from "../validate-manifest-v2.mjs";
+
+// [TEST-MOD-APPROVED #2897] Counts derived from the validator's single declared
+// post-seal set, never re-typed. See SUITES_ADDED_SINCE_SEAL.
+const ADDED_SUITES = SUITES_ADDED_SINCE_SEAL.length;
+const ADDED_STEPS = SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
+
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../../../..");
@@ -595,7 +602,7 @@ test("#2439 SC-11 lifecycle is atomic, dispositions are honest, and providers tr
   assert.ok(["shadow-active", "batched-historical"].includes(suites[0].lifecycle));
   const origins = manifest.legacyOrigins.filter((origin) => origin.migrationWave === WAVE);
   assert.equal(origins.length, 17);
-  assert.equal(manifest.legacyOrigins.length, 200, "legacyOrigins must stay 200");
+  assert.equal(manifest.legacyOrigins.length, 200 + ADDED_SUITES, "legacyOrigins must stay 200 plus declared post-seal additions");
   // SC-11.3: not one of the 17 declares a service, container, Postgres image or
   // DB URL, so the inherited `database-special` rationale was false on all 14.
   for (const origin of origins) {
@@ -667,12 +674,12 @@ test("#2439 SC-11 lifecycle is atomic, dispositions are honest, and providers tr
 });
 
 test("#2439 SC-11.4 registry totals are counted on the merged tree, never typed", () => {
-  assert.equal(manifest.suites.length, 84);
-  assert.equal(manifest.expectedSuites, 84);
-  assert.equal(manifest.expectedExecutableSuites, 84);
-  assert.equal(manifest.suites.reduce((sum, suite) => sum + suite.steps.length, 0), 240);
-  assert.equal(manifest.commandCapabilities.commands.length, 240);
-  assert.equal(manifest.commandCapabilities.expectedCommands, 240);
+  assert.equal(manifest.suites.length, 84 + ADDED_SUITES);
+  assert.equal(manifest.expectedSuites, 84 + ADDED_SUITES);
+  assert.equal(manifest.expectedExecutableSuites, 84 + ADDED_SUITES);
+  assert.equal(manifest.suites.reduce((sum, suite) => sum + suite.steps.length, 0), 240 + ADDED_STEPS);
+  assert.equal(manifest.commandCapabilities.commands.length, 240 + ADDED_STEPS);
+  assert.equal(manifest.commandCapabilities.expectedCommands, 240 + ADDED_STEPS);
   assert.equal(manifest.phase3cLeafCapabilities.expectedLeaves, 54);
   assert.equal(manifest.executionClasses.length, 29);
   assert.equal(manifest.classes.length, 14, "Phase 3C adds NO new GitHub Actions job");
