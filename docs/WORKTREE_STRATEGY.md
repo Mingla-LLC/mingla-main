@@ -250,8 +250,13 @@ Before merging any PR (per-ORCH branch → main), the orchestrator MUST verify A
 5. **Vercel `[deploy]` tag present** in the commit subject if the ORCH touches any Vercel-built surface (`mingla-business/`, `mingla-admin/`, `mingla-marketing/`). See `feedback_vercel_deploy_gate.md`.
 6. **Strict-grep + Tests-Append-Only + Migrations-Baseline gates** all passed against the latest HEAD.
 7. **No `skipped` conclusion on a draft-gated workflow** (issue #2881). Since #2881, every pull-request workflow except the two that produce the ruleset-required checks skips its jobs while the pull request is a draft and re-fires on `ready_for_review`. A `skipped` conclusion on one of those workflows **at merge time is a FAILURE, not a pass** — it means the `ready_for_review` re-fire never happened and that workflow never executed against the merged code. GitHub counts `skipped` as satisfying a required check, so nothing else will catch it. Expected count on any merged SHA: **zero**. The always-on exempt set is the `ALWAYS_ON` registry in `.github/scripts/strict-grep/issue-2881-pr-draft-gate-policy.mjs`; those two never report `skipped` at all.
+8. **`main` ITSELF IS GREEN.** Run `node scripts/ci/main-health.mjs pregate` and require exit 0. It performs ONE snapshot read of the newest completed push-to-`main` run of every workflow and refuses when any of them is red, naming the failing check, the commit and who merged it. No `--watch`, no polling — the API quota is one shared wallet.
 
 If ANY gate fails, do NOT merge. Investigate root cause, fix, push, re-run.
+
+**Why item 8 exists (#2909).** On 2026-09-01 `main` was red across three consecutive commits for roughly two hours and nobody found out; the discovery was accidental, during unrelated work. Three engineers merged onto it in that window, one of them the orchestrator immediately after an explicit approval. Items 1–6 all passed, correctly, because every one of them asks about the PULL REQUEST. None of them asked whether the branch being merged INTO was healthy, so a green PR on a red `main` was certified as ready. Merging onto a red `main` compounds the breakage, hands the next person a failure they will blame on their own diff, and — under #2882, where the full suite runs after merge — converts the merge gate into no gate at all.
+
+The same check runs unattended as the `Pre-merge: main is green` job on every pull request, and its wiring is held by the class-A gate `issue-2909-main-health-wiring.mjs`. Running it by hand before `gh pr merge` is still required: the job reports, the human decides, and neither substitutes for the other.
 
 ---
 
