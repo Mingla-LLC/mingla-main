@@ -14,9 +14,12 @@ on:
 permissions:
   contents: read
 
+# [WORKFLOW-MOD-APPROVED #2241] PR contract runs cancel only an obsolete
+# generation of the same PR; schedule/dispatch production runs stay unique
+# and non-cancellable so backup/restore work cannot pending-displace.
 concurrency:
-  group: mingla-sites-production-backup-restore
-  cancel-in-progress: false
+  group: ci-sites-backup-restore-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
   contracts:

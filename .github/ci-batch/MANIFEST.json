@@ -22507,6 +22507,16 @@
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
     {
+      "workflow": "sites-backup-restore.yml",
+      "ownerIssue": "#2899",
+      "transition": "retained-live-provider",
+      "providerWorkflow": ".github/workflows/sites-backup-restore.yml",
+      "referenceFiles": [
+        "scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs"
+      ],
+      "rationale": "#2899 adds the live Sites recovery provider after the frozen #2148 authority; the exact consumer is declared and subtracted without moving the seal."
+    },
+    {
       "workflow": "strict-grep-mingla-business.yml",
       "ownerIssue": "#2148",
       "transition": "retained-live-provider",

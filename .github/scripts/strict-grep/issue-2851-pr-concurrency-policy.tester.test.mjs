@@ -97,15 +97,18 @@ function byId(active, id) {
   return active.find((run) => run.id === id);
 }
 
-test("real YAML remains the complete canonical 123-workflow policy", () => {
+// [TEST-MOD-APPROVED #2241] #2899 adds the mixed-event Sites recovery
+// workflow to the exact PR family; its production events remain protected by
+// the same run-id isolation and PR-only cancellation policy.
+test("real YAML remains the complete canonical 124-workflow policy", () => {
   const result = auditWorkflowSources(readWorkflowSources(TEST_ROOT));
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.counts, {
-    totalWorkflows: 130,
-    prFamily: 123,
-    standardPullRequest: 122,
+    totalWorkflows: 131,
+    prFamily: 124,
+    standardPullRequest: 123,
     pullRequestTarget: 1,
-    normalPolicies: 122,
+    normalPolicies: 123,
     exceptions: 1,
   });
 });
