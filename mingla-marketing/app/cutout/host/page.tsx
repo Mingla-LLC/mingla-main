@@ -60,7 +60,7 @@ const FAQ = [
 export default function CutoutHostPage() {
   return (
     <CutoutShell>
-      <CutoutNav surface="host" homeHref="/cutout/host" mobileDockOffset="5rem" />
+      <CutoutNav surface="host" homeHref="/cutout/host" />
 
       <CutoutHero
         eyebrow="Mingla Host"

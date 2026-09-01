@@ -278,3 +278,23 @@
   }
   .cut-float-a, .cut-float-b, .cut-float-c { animation: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   #2902 — the Explorer deck, moulded.
+
+   The swiped cards belong to the shipped `HeroPlaceDeck`, which must not be
+   edited (the Explorer page has to stay identical to the live one). Each card
+   is the direct child of a `.group.absolute` StackCell, so the treatment is
+   applied by SCOPE instead: only inside `[data-cut-deck]`, and only to that
+   child.
+
+   `!important` is required and is not laziness — the card components set
+   `boxShadow` as an INLINE style, which no ordinary rule can beat.
+--------------------------------------------------------------------------- */
+[data-cut-deck] .group.absolute > * {
+  box-shadow:
+    0 18px 40px -12px rgba(0, 0, 0, 0.62),
+    0 3px 3px 0 rgba(0, 0, 0, 0.18),
+    0 -9px 0 0 rgba(0, 0, 0, 0.34) inset,
+    0 4px 0 0 rgba(255, 255, 255, 0.22) inset !important;
+}

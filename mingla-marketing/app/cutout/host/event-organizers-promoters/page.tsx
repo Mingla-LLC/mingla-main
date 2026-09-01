@@ -78,7 +78,7 @@ const FAQ = [
 export default function EventOrganisersLandingPage() {
   return (
     <CutoutShell>
-      <CutoutNav surface="host" homeHref="/cutout/host" mobileDockOffset="5rem" />
+      <CutoutNav surface="host" homeHref="/cutout/host" />
 
       {/* 1 — HERO. AIgocy §section-hero, ported faithfully. */}
       <CutoutHero
