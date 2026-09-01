@@ -1,5 +1,6 @@
 import sharp, { type Metadata } from "sharp";
 import type { PayloadRequest } from "payload";
+import type { UploadGrantStage } from "./uploadGrantObservability";
 import { cmsConfig } from "./config";
 import { sha256 } from "./crypto";
 import {
@@ -194,9 +195,7 @@ function hasExactContainerBoundary(bytes: Uint8Array, mime: string): boolean {
 export async function createUploadGrant(
   req: PayloadRequest,
   input: { filename: string; content_type: string; bytes: number },
-  onStage?: (
-    stage: "grant_media_create" | "grant_media_update" | "grant_presign",
-  ) => void,
+  onStage?: (stage: UploadGrantStage) => void,
 ) {
   const user = req.user as unknown as {
     tenantId?: string;
@@ -216,7 +215,9 @@ export async function createUploadGrant(
   const declaredMime = input.content_type as
     "image/jpeg" | "image/png" | "image/webp";
   const previousGrantContext = req.context.minglaMediaGrant;
+  const previousStageObserver = req.context.minglaUploadGrantStage;
   req.context.minglaMediaGrant = true;
+  req.context.minglaUploadGrantStage = onStage;
   try {
     onStage?.("grant_media_create");
     const media = await req.payload.create({
@@ -262,6 +263,7 @@ export async function createUploadGrant(
     };
   } finally {
     req.context.minglaMediaGrant = previousGrantContext;
+    req.context.minglaUploadGrantStage = previousStageObserver;
   }
 }
 

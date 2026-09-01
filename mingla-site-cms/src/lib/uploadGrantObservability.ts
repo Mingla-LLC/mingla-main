@@ -17,6 +17,10 @@ export type UploadGrantStage =
   | "body_parsing"
   | "grant_creation"
   | "grant_media_create"
+  | "grant_media_create_hook_preflight"
+  | "grant_media_create_core_authorize"
+  | "grant_media_create_core_authorized"
+  | "grant_media_create_access"
   | "grant_media_update"
   | "grant_presign";
 
