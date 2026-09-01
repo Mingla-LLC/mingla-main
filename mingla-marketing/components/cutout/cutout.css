@@ -205,7 +205,23 @@
 .cut-btn-light { background: var(--cut-btn-light-bg); box-shadow: var(--cut-btn-light-shadow); color: var(--cut-ink); }
 .cut-btn-brand { background: var(--cut-btn-brand-bg); box-shadow: var(--cut-btn-brand-shadow); color: #fff; }
 
-/* Gradient headline fill — AIgocy .text-gradient-1, warmed. */
+/* Gradient headline fill — AIgocy .text-gradient-1, warmed.
+   ---------------------------------------------------------------------------
+   DESCENDER CLIPPING, and the real cause.
+   `background-clip: text` paints the gradient ONLY inside the element's
+   background box. Mochiy Pop One's descenders ("y", "g", "p") hang below the
+   line box, so they fell outside the painted area and were cut off in a clean
+   horizontal line. Raising line-height alone did NOT fix it — the paint box is
+   what matters, not the leading.
+   The fix is to grow the BACKGROUND BOX with padding-bottom, then pull the
+   layout back with an equal negative margin so vertical rhythm is unchanged.
+   --------------------------------------------------------------------------- */
+.cut-gradient-text,
+.cut-gradient-brand {
+  padding-bottom: 0.22em;
+  margin-bottom: -0.16em;
+}
+
 .cut-gradient-text {
   background: linear-gradient(132deg, #3a352e 11%, #14120f 79%);
   -webkit-background-clip: text;
@@ -226,20 +242,16 @@
 }
 
 /* Display scale — AIgocy .text-display-2 is 96/96/-0.03em. */
-/* line-height 1.0 clipped every descender — the tails of "y" and "g" were cut
-   clean off, made worse by background-clip:text on the gradient fill. 1.08 plus
-   a little bottom padding gives them room without loosening the block. */
+/* Leading only — the descender fix lives on the gradient spans above. */
 .cut-display {
   font-size: clamp(2.5rem, 6.6vw, 5.6rem);
-  line-height: 1.08;
+  line-height: 1.12;
   letter-spacing: -0.03em;
-  padding-bottom: 0.08em;
 }
 .cut-display-2 {
   font-size: clamp(1.875rem, 4.2vw, 3.25rem);
-  line-height: 1.12;
+  line-height: 1.16;
   letter-spacing: -0.03em;
-  padding-bottom: 0.06em;
 }
 
 /* The scroll cue — AIgocy .scroll-more: bottom-centred, top corners only. */
