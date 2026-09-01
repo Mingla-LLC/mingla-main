@@ -954,6 +954,24 @@ test("#2893 bootstrap is value-blind and reconciles exact private bucket policy"
   assert.match(sql, /20971520/g);
   assert.match(sql, /public\s*=\s*false/);
   assert.match(sql, /auth\.uid\(\)\s*=\s*:'sites_runtime_reader_subject'::uuid/);
+  assert.equal(
+    sql.includes(String.raw`[0-9a-f]{64}\.json$`),
+    true,
+  );
+  assert.equal(
+    sql.includes(String.raw`(master|320|640|960|1440|1920)\.webp$`),
+    true,
+  );
+  assert.equal(
+    sql.includes(String.raw`[0-9a-f]{64}\\.json$`),
+    false,
+  );
+  assert.equal(
+    sql.includes(String.raw`(master|320|640|960|1440|1920)\\.webp$`),
+    false,
+  );
+  assert.match(sql, /sites_runtime_reader_path_semantics_valid/);
+  assert.match(sql, /RUNTIME_READER_PATH_SEMANTICS_INVALID/);
   assert.match(sql, /roles && ARRAY\['public', 'anon', 'authenticated'\]::name\[\]/);
   assert.match(sql, /pgrst\.db_schemas/);
   assert.match(sql, /DATA_API_EXPOSURE/);
@@ -1138,4 +1156,239 @@ test("#2893 command failures log only allowlisted error codes, never env values"
     assert.doesNotMatch(source, /error\.(?:message|stack)/);
   }
   assert.equal(existsSync(join(REPO_ROOT, "sites-backup-result.json")), false);
+});
+
+test("#2952 recovery database files stay inside the CI-mounted workspace", () => {
+  const backupSource = readFileSync(
+    join(SITES_DIR, "backup-sites-cms.mjs"),
+    "utf8",
+  );
+  const restoreSource = readFileSync(
+    join(SITES_DIR, "restore-sites-cms.mjs"),
+    "utf8",
+  );
+
+  assert.match(
+    backupSource,
+    /mkdtempSync\(join\(outputDirectory, "\.scratch-"\)\)/,
+  );
+  assert.match(
+    restoreSource,
+    /mkdtempSync\(join\(dirname\(bundlePath\), "\.restore-"\)\)/,
+  );
+  assert.doesNotMatch(backupSource, /mkdtempSync\(join\(tmpdir\(\)/);
+  assert.doesNotMatch(restoreSource, /mkdtempSync\(join\(tmpdir\(\)/);
+});
+
+test("#2958 pinned PostgreSQL clients preserve the non-root runner identity", () => {
+  const wrapper = readFileSync(join(SITES_DIR, "pg17-client.sh"), "utf8");
+
+  assert.match(wrapper, /runner_uid="\$\(id -u\)"/);
+  assert.match(wrapper, /runner_gid="\$\(id -g\)"/);
+  assert.match(wrapper, /--user "\$runner_uid:\$runner_gid"/);
+  assert.match(wrapper, /INVALID_RUNNER_IDENTITY/);
+  assert.doesNotMatch(wrapper, /--user (?:root|0(?::0)?)(?:\s|\\)/);
+  assert.doesNotMatch(wrapper, /--privileged/);
+});
+
+test("#2962 private Blob transport emits finite codes and never provider output", async () => {
+  const {
+    classifyBlobFailure,
+    runBlobTransport,
+  } = await import("../vercel-blob-transport.mjs");
+
+  const cases = new Map([
+    ["File doesn't exist at /tmp/private", "PRIVATE_INPUT_UNREADABLE"],
+    ["No Vercel Blob credentials found", "PRIVATE_CREDENTIAL_MISSING"],
+    ["Vercel Blob: Access denied, please provide a valid token", "PRIVATE_AUTHORIZATION_FAILED"],
+    ["Vercel Blob: This store has been suspended", "PRIVATE_STORE_SUSPENDED"],
+    ["Vercel Blob: Content type mismatch", "PRIVATE_CONTENT_REJECTED"],
+    ["Vercel Blob: Pathname mismatch", "PRIVATE_PATH_REJECTED"],
+    ["Vercel Blob: Precondition failed", "PRIVATE_IMMUTABLE_CONFLICT"],
+    ["Vercel Blob: Too many requests", "PRIVATE_RATE_LIMITED"],
+    ["Vercel Blob: The blob service is currently not available", "PRIVATE_SERVICE_UNAVAILABLE"],
+    ["TypeError: fetch failed", "PRIVATE_NETWORK_FAILED"],
+    ["provider-private-detail", "PRIVATE_UNCLASSIFIED_FAILURE"],
+  ]);
+  for (const [providerOutput, code] of cases) {
+    assert.equal(classifyBlobFailure(providerOutput), code);
+  }
+
+  const sentinel = "provider-private-detail-with-secret";
+  assert.throws(() => runBlobTransport({
+    operation: "get",
+    pathname:
+      `recovery/sites/mingla-sites-${SITE_ID}-20260901T000000000Z-${"a".repeat(64)}.msbk`,
+    outputPath: join(tmpdir(), "issue-2962-readback-must-not-exist.msbk"),
+    env: { BLOB_READ_WRITE_TOKEN: "token-value-that-is-long-enough-to-pass" },
+    spawn() {
+      return { status: 1, stdout: sentinel, stderr: sentinel };
+    },
+  }), (error) => {
+    assert.equal(error.code, "PRIVATE_UNCLASSIFIED_FAILURE");
+    assert.doesNotMatch(error.message, new RegExp(sentinel));
+    return true;
+  });
+
+  const transport = readFileSync(
+    join(SITES_DIR, "vercel-blob-transport.mjs"),
+    "utf8",
+  );
+  assert.doesNotMatch(transport, /console\.(?:log|error|warn)/);
+  assert.doesNotMatch(transport, /process\.(?:stdout|stderr)\.write\([^\n]*result\./);
+});
+
+test("#2970 private Blob uploads are single-part when small and multipart when large", async () => {
+  const {
+    runBlobTransport,
+    SINGLE_PART_MAX_BYTES,
+  } = await import("../vercel-blob-transport.mjs");
+  const invocations = [];
+  const pathname =
+    `recovery/sites/mingla-sites-${SITE_ID}-20260901T000000000Z-${"b".repeat(64)}.msbk`;
+
+  for (const size of [SINGLE_PART_MAX_BYTES, SINGLE_PART_MAX_BYTES + 1]) {
+    runBlobTransport({
+      operation: "put",
+      sourcePath: "/mounted/private-backup.msbk",
+      pathname,
+      env: { BLOB_READ_WRITE_TOKEN: "token-value-that-is-long-enough-to-pass" },
+      exists: () => true,
+      stat: () => ({ isFile: () => true, size }),
+      spawn(command, args) {
+        invocations.push({ command, args, size });
+        return { status: 0, stdout: "private-provider-url", stderr: "" };
+      },
+    });
+  }
+
+  assert.equal(invocations.length, 2);
+  assert.equal(invocations.every(({ command }) => command === "npx"), true);
+  const multipartValue = ({ args }) => args[args.indexOf("--multipart") + 1];
+  assert.equal(multipartValue(invocations[0]), "false");
+  assert.equal(multipartValue(invocations[1]), "true");
+  assert.equal(invocations.every(({ args }) =>
+    args.includes("--access") && args.includes("private") &&
+    args.includes("--allow-overwrite") && args.includes("false")), true);
+});
+
+test("#2975 direct private Blob HTTP transport validates upload and status classes", async () => {
+  const {
+    classifyBlobHttpStatus,
+    runBlobHttpTransport,
+  } = await import("../vercel-blob-http-transport.mjs");
+  const pathname =
+    `recovery/sites/mingla-sites-${SITE_ID}-20260901T000000000Z-${"c".repeat(64)}.msbk`;
+  const storeId = "storeid123456789";
+  const token = `vercel_blob_rw_${storeId}_${"s".repeat(30)}`;
+  const sourcePath = join(SITES_DIR, "pg17-client.sh");
+  const root = mkdtempSync(join(tmpdir(), "issue-2975-http-"));
+  const metadataPath = join(root, "upload.json");
+  let observed;
+
+  try {
+    const privateHost = "providerhost1234.private.blob.vercel-storage.com";
+    await runBlobHttpTransport({
+      operation: "put",
+      sourcePath,
+      pathname,
+      metadataPath,
+      env: { BLOB_READ_WRITE_TOKEN: token },
+      async fetchImpl(url, init) {
+        observed = { url: String(url), init };
+        return Response.json({
+          url: `https://${privateHost}/${pathname}`,
+          downloadUrl: `https://${privateHost}/${pathname}?download=1`,
+          pathname,
+          contentType: "application/octet-stream",
+          contentDisposition: "attachment",
+          etag: "private-etag",
+        });
+      },
+    });
+    assert.match(observed.url, /^https:\/\/vercel\.com\/api\/blob\/\?pathname=/);
+    assert.equal(observed.init.method, "PUT");
+    assert.equal(observed.init.headers["x-api-version"], "12");
+    assert.equal(observed.init.headers["x-vercel-blob-access"], "private");
+    assert.equal(observed.init.headers["x-add-random-suffix"], "0");
+    assert.equal(observed.init.headers["x-allow-overwrite"], "0");
+    assert.equal(observed.init.headers.authorization, `Bearer ${token}`);
+    assert.equal(Buffer.isBuffer(observed.init.body), true);
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
+    assert.equal(metadata.pathname, pathname);
+    assert.equal(new URL(metadata.url).hostname, privateHost);
+    assert.equal(metadata.etag, "private-etag");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+
+  const expected = new Map([
+    [401, "PRIVATE_AUTHORIZATION_FAILED"],
+    [404, "PRIVATE_STORE_OR_OBJECT_NOT_FOUND"],
+    [409, "PRIVATE_IMMUTABLE_CONFLICT"],
+    [413, "PRIVATE_FILE_TOO_LARGE"],
+    [415, "PRIVATE_CONTENT_REJECTED"],
+    [429, "PRIVATE_RATE_LIMITED"],
+    [503, "PRIVATE_SERVICE_UNAVAILABLE"],
+    [400, "PRIVATE_PROVIDER_HTTP_REJECTED"],
+  ]);
+  for (const [status, code] of expected) {
+    assert.equal(classifyBlobHttpStatus(status), code);
+  }
+
+  const transport = readFileSync(
+    join(SITES_DIR, "vercel-blob-http-transport.mjs"),
+    "utf8",
+  );
+  assert.doesNotMatch(transport, /console\.(?:log|error|warn)/);
+  assert.doesNotMatch(transport, /response\.(?:text|body)\s*\(/);
+});
+
+test("#2980 restore directs the custom-format dump into the exact ephemeral database", () => {
+  const restoreSource = readFileSync(
+    join(SITES_DIR, "restore-sites-cms.mjs"),
+    "utf8",
+  );
+  assert.match(
+    restoreSource,
+    /"pg_restore",[\s\S]*?"--dbname",\s*"postgres",[\s\S]*?extracted\.databasePath/,
+  );
+  assert.doesNotMatch(
+    restoreSource,
+    /"pg_restore",[\s\S]*?"--dbname",\s*env\./,
+  );
+});
+
+test("#2985 Core readiness timestamps compare as instants while digests stay exact", async () => {
+  const { timestampsRepresentSameInstant } = await import("../lib/sites-ops.mjs");
+  assert.equal(
+    timestampsRepresentSameInstant(
+      "2026-09-01T14:40:42.133Z",
+      "2026-09-01T14:40:42.133+00:00",
+    ),
+    true,
+  );
+  assert.equal(
+    timestampsRepresentSameInstant(
+      "2026-09-01T14:40:42.133Z",
+      "2026-09-01T14:40:42.134+00:00",
+    ),
+    false,
+  );
+  assert.equal(timestampsRepresentSameInstant("invalid", "invalid"), false);
+
+  const restoreSource = readFileSync(
+    join(SITES_DIR, "restore-sites-cms.mjs"),
+    "utf8",
+  );
+  const backupSource = readFileSync(
+    join(SITES_DIR, "backup-sites-cms.mjs"),
+    "utf8",
+  );
+  assert.match(restoreSource, /timestampsRepresentSameInstant\(/);
+  assert.match(backupSource, /timestampsRepresentSameInstant\(/);
+  assert.match(
+    restoreSource,
+    /restore_drill_evidence_digest !== evidenceDigest/,
+  );
 });

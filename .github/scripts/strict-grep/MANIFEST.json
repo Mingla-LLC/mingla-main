@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 631,
-  "selfTestWiredFloor": 402,
+  "expectedStrictGrepMjsFiles": 632,
+  "selfTestWiredFloor": 403,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -4621,6 +4621,18 @@
       "jobKeys": [
         "consumer-multiday-contract"
       ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2241-secret-readiness.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/issue-2290-queue-worker-has-cron-caller.mjs",

@@ -2,51 +2,105 @@
 
 set -euo pipefail
 
-: "${SUPABASE_PROJECT_ID:?SUPABASE_PROJECT_ID is required}"
-
-functions_root="${1:-supabase/functions}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
+project_ref="${SUPABASE_PROJECT_ID:-}"
+merged_commit=""
+remediation=false
+governed_bundle_deploy=false
+transition_inputs=false
+functions=()
+coordinator_args=()
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --function)
+      [[ "$#" -ge 2 && -n "$2" ]] || { echo "FAIL deploy: --function requires a name" >&2; exit 2; }
+      functions+=("$2")
+      coordinator_args+=("--function" "$2")
+      shift 2
+      ;;
+    --project-ref)
+      [[ "$#" -ge 2 && -n "$2" ]] || { echo "FAIL deploy: --project-ref requires a value" >&2; exit 2; }
+      project_ref="$2"
+      shift 2
+      ;;
+    --merged-commit)
+      [[ "$#" -ge 2 && -n "$2" ]] || { echo "FAIL deploy: --merged-commit requires a value" >&2; exit 2; }
+      merged_commit="$2"
+      coordinator_args+=("--merged-commit" "$2")
+      shift 2
+      ;;
+    --issue-2241-remediation)
+      remediation=true
+      shift
+      ;;
+    --ad-input|--delivery-input)
+      [[ "$#" -ge 2 && -n "$2" ]] || { echo "FAIL deploy: $1 requires a secure input path" >&2; exit 2; }
+      coordinator_args+=("$1" "$2")
+      governed_bundle_deploy=true
+      shift 2
+      ;;
+    --delivery-v3-input|--delivery-v4-input)
+      [[ "$#" -ge 2 && -n "$2" ]] || { echo "FAIL deploy: $1 requires a secure input path" >&2; exit 2; }
+      coordinator_args+=("$1" "$2")
+      transition_inputs=true
+      shift 2
+      ;;
+    *)
+      echo "FAIL deploy: unsupported argument $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+[[ -n "$project_ref" ]] || { echo "FAIL deploy: explicit production project ref required" >&2; exit 2; }
+[[ "${#functions[@]}" -gt 0 ]] || { echo "FAIL deploy: explicit --function selection required; deploy-all is forbidden" >&2; exit 2; }
 
 node "${repo_root}/scripts/ops/verify-production-supabase-authority.mjs" \
   --mode=offline \
-  --target-ref "${SUPABASE_PROJECT_ID}"
+  --target-ref "$project_ref"
 
-deploy_function() {
-  local func_name="$1"
-  local output
-  local exit_code
+if [[ "$remediation" == true ]]; then
+  exec node "${repo_root}/scripts/secrets/reconcile-governed-secrets.mjs" \
+    --project-ref "$project_ref" \
+    "${coordinator_args[@]}"
+fi
 
+if [[ "$transition_inputs" == true ]]; then
+  echo "FAIL deploy: delivery v3/v4 transition inputs require --issue-2241-remediation" >&2
+  exit 2
+fi
+
+[[ -n "$merged_commit" ]] || { echo "FAIL deploy: --merged-commit is required" >&2; exit 2; }
+
+if [[ "$governed_bundle_deploy" == true ]]; then
+  exec node "${repo_root}/scripts/secrets/reconcile-governed-secrets.mjs" \
+    --normal-governed-deploy \
+    --project-ref "$project_ref" \
+    "${coordinator_args[@]}"
+fi
+
+preflight_args=(
+  --project-ref "$project_ref"
+  --merged-commit "$merged_commit"
+)
+for function_name in "${functions[@]}"; do
+  preflight_args+=(--function "$function_name")
+done
+node "${repo_root}/scripts/secrets/preflight-function-secret-readiness.mjs" \
+  "${preflight_args[@]}"
+
+for function_name in "${functions[@]}"; do
   set +e
-  output=$(supabase functions deploy "$func_name" \
-    --project-ref "$SUPABASE_PROJECT_ID" \
+  deploy_output=$(supabase functions deploy "$function_name" \
+    --project-ref "$project_ref" \
     --use-api 2>&1)
-  exit_code=$?
+  deploy_status=$?
   set -e
-
-  printf '%s\n' "$output"
-
-  if [[ "$exit_code" -eq 0 ]]; then
-    return 0
+  if [[ "$deploy_status" -ne 0 && "$deploy_output" != *'unexpected deploy status 409: {"message":"deployment already exists"}'* ]]; then
+    echo "FAIL deploy: function deployment failed for ${function_name}" >&2
+    exit "$deploy_status"
   fi
-
-  if [[ "$output" == *'unexpected deploy status 409: {"message":"deployment already exists"}'* ]]; then
-    printf 'Function %s is already current; continuing.\n' "$func_name"
-    return 0
-  fi
-
-  return "$exit_code"
-}
-
-for dir in "$functions_root"/*/; do
-  func_name=$(basename "$dir")
-  if [[ "$func_name" == _* ]]; then
-    continue
-  fi
-  if [[ ! -f "${dir}index.ts" ]]; then
-    echo "Skipping $func_name (no index.ts entrypoint)"
-    continue
-  fi
-  echo "Deploying $func_name..."
-  deploy_function "$func_name"
+  echo "PASS deployed ${function_name}"
 done

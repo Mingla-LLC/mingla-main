@@ -18,6 +18,11 @@ on:
       - "supabase/functions/_shared/contentShare*.ts"
       - "supabase/functions/event-cover-video-*/**"
       - "supabase/functions/_shared/eventCoverVideo.issue2715.*.test.ts"
+      # #2905 — the Bunny status-enum seam. bunnyStream.ts is the shared module
+      # the reconciler and the webhook cross between; its proofs run in this
+      # lane (the CI origin registry is locked, so no new workflow file).
+      - "supabase/functions/_shared/bunnyStream.ts"
+      - "supabase/functions/_shared/bunnyStream.issue2905.*.test.ts"
       - "supabase/functions/run-business-place-authoring-pipeline/**"
       - "supabase/migrations/*1719*"
       - "supabase/security/anon_executable_definer_allowlist.txt"
@@ -78,6 +83,14 @@ jobs:
           supabase/functions/event-cover-video-source-uploaded/index.issue2715.test.ts
           supabase/functions/event-cover-video-upload-intent/index.issue2715.race.test.ts
           supabase/functions/event-cover-video-webhook/index.issue2715.races.test.ts
+      - name: "#2905 Bunny status-enum seam + stall deadline"
+        run: >-
+          deno test --allow-env --allow-read --allow-net --no-check
+          supabase/functions/_shared/bunnyStream.test.ts
+          supabase/functions/_shared/bunnyStream.issue2905.enum-seam.test.ts
+          supabase/functions/event-cover-video-webhook/index.issue2905.silent200.test.ts
+          supabase/functions/event-cover-video-webhook/__tests__/bunny-webhook.test.ts
+          supabase/functions/event-cover-video-reaper/__tests__/
 
   postgres-17-adversarial:
     if: ${{ github.event.pull_request.draft != true }}

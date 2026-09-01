@@ -77,7 +77,8 @@ function compact(value, key = "") {
   }
   if (typeof value !== "object") return value;
   const result = {};
-  for (const [childKey, childValue] of Object.entries(value)) {
+  for (const childKey of Object.keys(value).sort()) {
+    const childValue = value[childKey];
     if (
       [
         "id",
@@ -140,7 +141,6 @@ function projectSettings(settings) {
     seo_description: settings.seo_description,
     social_image: settings.social_image,
     analytics_consent_mode: settings.analytics_consent_mode,
-    renderer_key: settings.renderer_key,
   });
 }
 
@@ -252,7 +252,6 @@ export function seedDocuments({ heroMediaId, homeId, contactId, tenantId }) {
       seo_description: GOGI_SEED_COPY.description,
       social_image: heroMediaId,
       analytics_consent_mode: "optional",
-      renderer_key: "restaurant-website-v1",
     },
     navigation: { tenant: tenantId, pages: [homeId, contactId] },
     footer: {
@@ -275,7 +274,6 @@ function baselineSettings() {
     typography: "editorial-serif",
     canonical_url: CANONICAL_URL,
     analytics_consent_mode: "optional",
-    renderer_key: "restaurant-website-v1",
   };
 }
 

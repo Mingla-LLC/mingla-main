@@ -8,6 +8,7 @@ on:
       - "supabase/functions/reconcile-stuck-checkouts/**"
       - "supabase/functions/rsvp-contribution-create/**"
       - "supabase/functions/checkout-sale-revocation/**"
+      - "supabase/functions/_shared/secretBundle.ts"
       - "supabase/functions/_shared/*WebhookRouter.ts"
       - "supabase/functions/_shared/checkoutSaleTruth.ts"
       - "supabase/functions/_shared/sourceRefundControlPlane.ts"

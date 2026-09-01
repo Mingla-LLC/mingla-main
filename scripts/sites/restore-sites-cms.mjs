@@ -8,8 +8,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -25,6 +24,7 @@ import {
   safeCliFailure,
   sha256Bytes,
   stableJson,
+  timestampsRepresentSameInstant,
   validateReadinessResponse,
   writeSafeResult,
 } from "./lib/sites-ops.mjs";
@@ -133,7 +133,7 @@ export async function runRestore({
   const coreConfig = coreConfigFromEnv(env);
   verifyPostgres17(env, spawn);
   assertEmptyTarget(env, spawn);
-  const temporary = mkdtempSync(join(tmpdir(), "mingla-sites-restore-"));
+  const temporary = mkdtempSync(join(dirname(bundlePath), ".restore-"));
   chmodSync(temporary, 0o700);
   try {
     const plaintextPath = join(temporary, "backup.plain");
@@ -147,6 +147,8 @@ export async function runRestore({
         "--exit-on-error",
         "--no-owner",
         "--no-privileges",
+        "--dbname",
+        "postgres",
         extracted.databasePath,
       ],
       env,
@@ -207,7 +209,10 @@ export async function runRestore({
     });
     validateReadinessResponse(readiness, siteId, "restore_drill");
     if (
-      readiness.readiness.restore_drill_verified_at !== verifiedAt ||
+      !timestampsRepresentSameInstant(
+        readiness.readiness.restore_drill_verified_at,
+        verifiedAt,
+      ) ||
       readiness.readiness.restore_drill_evidence_digest !== evidenceDigest
     ) fail("CORE_READINESS_READBACK_MISMATCH");
     const result = {

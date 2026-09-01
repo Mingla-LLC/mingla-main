@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import { serviceClient } from "../_shared/ticketCheckout.ts";
 import { neutralizeTicketStripeAttempt } from "./ticketProviderNeutralization.ts";
+import { resolveCheckoutRevocationExecute } from "../_shared/secretBundle.ts";
 
 type Revocation = {
   id: string;
@@ -22,7 +23,7 @@ serve(async (req) => {
   ) {
     return Response.json({ error: "not_authorized" }, { status: 401 });
   }
-  if (Deno.env.get("CHECKOUT_REVOCATION_EXECUTE") !== "true") {
+  if (!resolveCheckoutRevocationExecute()) {
     return Response.json({ disabled: true, claimed: 0 });
   }
   const client = serviceClient();

@@ -10,8 +10,10 @@ import {
   bunnyPlayUrl,
   bunnyPresignTusUpload,
   bunnyThumbnailUrl,
+  bunnyApiVideoStatusAsWebhookStatus,
   hmacSha256Hex,
-  mapBunnyStatus,
+  mapBunnyStatusFromApiVideo,
+  mapBunnyStatusFromWebhook,
   sha256Hex,
   verifyBunnyWebhookSignature,
   type BunnyVideo,
@@ -75,15 +77,65 @@ Deno.test("TUS presign signature = sha256Hex(libraryId + apiKey + expire + video
   );
 });
 
-Deno.test("mapBunnyStatus maps the documented Bunny status enum", () => {
-  assert(mapBunnyStatus(0) === "processing", "0 Queued → processing");
-  assert(mapBunnyStatus(1) === "processing", "1 Processing → processing");
-  assert(mapBunnyStatus(2) === "processing", "2 Encoding → processing");
-  assert(mapBunnyStatus(3) === "ready", "3 Finished → ready");
-  assert(mapBunnyStatus(4) === "processing", "4 ResolutionFinished → processing (wait for 3)");
-  assert(mapBunnyStatus(5) === "failed", "5 Failed → failed");
-  assert(mapBunnyStatus(6) === "ignore", "6+ → ignore");
-  assert(mapBunnyStatus(99) === "ignore", "unknown → ignore");
+// [TEST-MOD-APPROVED #2905] Rename only — `mapBunnyStatus` became
+// `mapBunnyStatusFromWebhook` because Bunny publishes TWO numeric status enums
+// under the same name and this one is the WEBHOOK enum. Every assertion below
+// keeps its original expected value: 17 production rows prove real Bunny
+// webhooks send Status 3 on finish, so this mapping is correct and must not
+// change. Only the misleading comment on case 4 is corrected — it is
+// ResolutionFinished in the WEBHOOK enum, which is genuinely not terminal there.
+Deno.test("mapBunnyStatusFromWebhook maps the documented Bunny WEBHOOK status enum", () => {
+  assert(mapBunnyStatusFromWebhook(0) === "processing", "0 Queued → processing");
+  assert(mapBunnyStatusFromWebhook(1) === "processing", "1 Processing → processing");
+  assert(mapBunnyStatusFromWebhook(2) === "processing", "2 Encoding → processing");
+  assert(mapBunnyStatusFromWebhook(3) === "ready", "webhook 3 Finished → ready");
+  assert(
+    mapBunnyStatusFromWebhook(4) === "processing",
+    "webhook 4 ResolutionFinished → processing (the webhook stream still owes a 3)",
+  );
+  assert(mapBunnyStatusFromWebhook(5) === "failed", "5 Failed → failed");
+  assert(mapBunnyStatusFromWebhook(6) === "ignore", "6+ → ignore");
+  assert(mapBunnyStatusFromWebhook(99) === "ignore", "unknown → ignore");
+});
+
+// [TEST-MOD-APPROVED #2905] The API video-object enum is a DIFFERENT enum and
+// gets its own mapper. 3 and 4 are inverted relative to the webhook enum above;
+// asserting both in one file is the point — the seam is visible here.
+Deno.test("mapBunnyStatusFromApiVideo maps the Bunny API VIDEO-OBJECT status enum", () => {
+  assert(mapBunnyStatusFromApiVideo(0) === "processing", "0 Created → processing");
+  assert(mapBunnyStatusFromApiVideo(1) === "processing", "1 Uploaded → processing");
+  assert(mapBunnyStatusFromApiVideo(2) === "processing", "2 Processing → processing");
+  assert(
+    mapBunnyStatusFromApiVideo(3) === "processing",
+    "api 3 Transcoding → processing (NOT ready — the webhook enum's 3 is finished)",
+  );
+  assert(
+    mapBunnyStatusFromApiVideo(4) === "ready",
+    "api 4 Finished → ready (NOT processing — this is the #2905 wedge)",
+  );
+  assert(mapBunnyStatusFromApiVideo(5) === "failed", "5 Error → failed");
+  assert(mapBunnyStatusFromApiVideo(6) === "failed", "6 UploadFailed → failed");
+  assert(mapBunnyStatusFromApiVideo(7) === "processing", "7 JitSegmenting → processing");
+  assert(mapBunnyStatusFromApiVideo(8) === "processing", "8 JitPlaylistsCreated → processing");
+  assert(mapBunnyStatusFromApiVideo(99) === "ignore", "unknown → ignore");
+});
+
+// [TEST-MOD-APPROVED #2905] The one sanctioned crossing, asserted end to end:
+// an API number in, the equivalent WEBHOOK number out, and the webhook mapper
+// agreeing on the lifecycle. This is the assertion whose absence let #2905 ship.
+Deno.test("bunnyApiVideoStatusAsWebhookStatus crosses the two enums without inverting them", () => {
+  assert(bunnyApiVideoStatusAsWebhookStatus(4) === 3, "api 4 Finished → webhook 3 Finished");
+  assert(bunnyApiVideoStatusAsWebhookStatus(3) === 2, "api 3 Transcoding → webhook 2 Encoding");
+  assert(bunnyApiVideoStatusAsWebhookStatus(5) === 5, "api 5 Error → webhook 5 Failed");
+  assert(bunnyApiVideoStatusAsWebhookStatus(99) === null, "unknown api status is never laundered");
+  for (const apiStatus of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
+    const crossed = bunnyApiVideoStatusAsWebhookStatus(apiStatus);
+    assert(crossed !== null, `api ${apiStatus} must translate`);
+    assert(
+      mapBunnyStatusFromWebhook(crossed as number) === mapBunnyStatusFromApiVideo(apiStatus),
+      `api ${apiStatus} lost its lifecycle crossing the enum seam`,
+    );
+  }
 });
 
 Deno.test("verifyBunnyWebhookSignature accepts a valid HMAC and rejects tampering", async () => {

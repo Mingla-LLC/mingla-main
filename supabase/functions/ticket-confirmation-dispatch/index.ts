@@ -88,6 +88,7 @@ import {
   mintOrderClaimToken,
   shouldIssueOrderAttendanceClaimForNotification,
 } from "../_shared/attendanceClaim.ts";
+import { resolveGovernedAdField } from "../_shared/governedAdSecret.ts";
 
 const MINGLA_LOGO_URL = minglaLogoUrl();
 
@@ -1494,7 +1495,10 @@ export const handler = async (req: Request): Promise<Response> => {
               paymentStatus: order.payment_status,
             })
           ) {
-            const pepper = Deno.env.get("ATTENDANCE_CLAIM_PEPPER");
+            const pepper = resolveGovernedAdField(
+              "ATTENDANCE_CLAIM_PEPPER",
+              "ATTENDANCE_CLAIM_PEPPER",
+            );
             if (!pepper) throw new Error("attendance_claim_pepper_missing");
             const minted = mintOrderClaimToken();
             const digest = await hmacOrderClaimDigest(minted.raw, pepper);

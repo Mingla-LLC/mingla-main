@@ -36,6 +36,7 @@
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import type { PressableStateCallbackType, ViewStyle } from "react-native";
 
 import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
 import {
@@ -56,6 +57,7 @@ export type DownloadMinglaClaimPhase =
   | "loading"
   | "ready"
   | "error"
+  | "unavailable"
   | "terminal"
   | "rate";
 
@@ -88,6 +90,35 @@ const useDevicePlatform = (): DevicePlatform => {
   return platform;
 };
 
+type WebTransitionStyle = ViewStyle & {
+  transitionProperty: "opacity";
+  transitionDuration: "0ms" | "150ms";
+};
+
+const webTransitionStyle = (reducedMotion: boolean): WebTransitionStyle => ({
+  transitionProperty: "opacity",
+  transitionDuration: reducedMotion ? "0ms" : "150ms",
+});
+
+const useReducedMotionOnWeb = (): boolean => {
+  const [reduced, setReduced] = useState<boolean>(() =>
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true,
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return undefined;
+    const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (query === undefined) return undefined;
+    const update = (): void => setReduced(query.matches);
+    query.addEventListener?.("change", update);
+    return (): void => query.removeEventListener?.("change", update);
+  }, []);
+
+  return reduced;
+};
+
 export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
   eventName,
   eventType,
@@ -98,6 +129,7 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
   onRetryClaim,
 }) => {
   const platform = useDevicePlatform();
+  const reducedMotion = useReducedMotionOnWeb();
   const noun = eventType === "trip" ? "trip" : eventType === "experience" ? "experience" : "event";
   const target = useMemo(
     () =>
@@ -222,15 +254,38 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
         <Pressable
           accessibilityRole="link"
           accessibilityLabel={destinationLabel}
-          style={styles.primaryBadge}
+          style={(
+            {
+              pressed,
+              hovered,
+              focused,
+            }: PressableStateCallbackType & {
+              hovered?: boolean;
+              focused?: boolean;
+            },
+          ) => [
+            styles.primaryBadge,
+            Platform.OS === "web" ? webTransitionStyle(reducedMotion) : null,
+            hovered && !pressed ? styles.primaryBadgeHovered : null,
+            pressed ? styles.primaryBadgePressed : null,
+            focused ? styles.primaryBadgeFocused : null,
+          ]}
           testID="confirm-app-cta-primary"
           onPress={open}
         >
-          <Icon name="download" size={16} color={textTokens.inverse} />
+          <Icon name="externalLink" size={18} color={textTokens.inverse} />
           <Text style={styles.primaryBadgeText}>Open in Mingla</Text>
         </Pressable>
       </View>
-      {claimPhase === "error" ? (
+      {claimPhase === "unavailable" ? (
+        <Text
+          style={styles.claimNote}
+          accessibilityLiveRegion="polite"
+          role="status"
+        >
+          Your tickets are confirmed. You can open the app and sign in with your checkout email or phone.
+        </Text>
+      ) : claimPhase === "error" ? (
         <View style={styles.claimNoteRow}>
           <Text style={styles.claimNote}>
             Your tickets are confirmed. We couldn’t prepare the Mingla link.
@@ -294,18 +349,30 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
   },
   badgeRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    flexWrap: "wrap",
+    alignSelf: "stretch",
   },
   primaryBadge: {
-    minHeight: 44,
+    width: "100%",
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    justifyContent: "center",
+    gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.full,
+    borderRadius: radius.md,
     backgroundColor: accent.warm,
+  },
+  primaryBadgeHovered: {
+    opacity: 0.94,
+  },
+  primaryBadgePressed: {
+    opacity: 0.88,
+  },
+  primaryBadgeFocused: {
+    outlineWidth: 2,
+    outlineStyle: "solid",
+    outlineColor: accent.warm,
+    outlineOffset: 2,
   },
   primaryBadgeText: {
     color: textTokens.inverse,

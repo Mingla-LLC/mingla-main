@@ -212,7 +212,7 @@ USING (
       bucket_id = 'sites-publication-artifacts'
       AND name ~ (
         '^publications/' || :'sites_pilot_site_id' ||
-        '/[0-9a-f-]{36}/[0-9a-f]{64}\\.json$'
+        '/[0-9a-f-]{36}/[0-9a-f]{64}\.json$'
       )
     )
     OR
@@ -220,11 +220,71 @@ USING (
       bucket_id = 'sites-media-approved'
       AND name ~ (
         '^approved/' || :'sites_pilot_site_id' ||
-        '/[0-9a-f-]{36}/[0-9a-f]{64}/(master|320|640|960|1440|1920)\\.webp$'
+        '/[0-9a-f-]{36}/[0-9a-f]{64}/(master|320|640|960|1440|1920)\.webp$'
       )
     )
   )
 );
+
+-- Execute PostgreSQL's real regex engine against the exact policy grammar.
+-- This catches over-escaping that a JavaScript or static-text approximation
+-- cannot detect before the runtime reader is entrusted with a publication.
+WITH path_patterns AS (
+  SELECT
+    '^publications/' || :'sites_pilot_site_id' ||
+      '/[0-9a-f-]{36}/[0-9a-f]{64}\.json$' AS artifact_pattern,
+    '^approved/' || :'sites_pilot_site_id' ||
+      '/[0-9a-f-]{36}/[0-9a-f]{64}/(master|320|640|960|1440|1920)\.webp$'
+      AS media_pattern,
+    overlay(
+      :'sites_pilot_site_id'
+      placing CASE WHEN left(:'sites_pilot_site_id', 1) = 'f' THEN 'e' ELSE 'f' END
+      from 1 for 1
+    ) AS wrong_site_id,
+    repeat('1', 8) || '-' || repeat('1', 4) || '-4' || repeat('1', 3) ||
+      '-8' || repeat('1', 3) || '-' || repeat('1', 12) AS publication_id,
+    repeat('2', 8) || '-' || repeat('2', 4) || '-4' || repeat('2', 3) ||
+      '-8' || repeat('2', 3) || '-' || repeat('2', 12) AS media_id
+)
+SELECT
+  (
+    'publications/' || :'sites_pilot_site_id' ||
+      '/' || publication_id || '/' || repeat('a', 64) || '.json'
+  ) ~ artifact_pattern
+  AND NOT (
+    'publications/' || wrong_site_id || '/' || publication_id || '/' ||
+      repeat('a', 64) || '.json'
+  ) ~ artifact_pattern
+  AND NOT (
+    'publications/' || :'sites_pilot_site_id' ||
+      '/' || publication_id || '/' || repeat('a', 64) || '.jsonx'
+  ) ~ artifact_pattern
+  AND (
+    'approved/' || :'sites_pilot_site_id' ||
+      '/' || media_id || '/' || repeat('b', 64) || '/320.webp'
+  ) ~ media_pattern
+  AND NOT (
+    'approved/' || wrong_site_id || '/' || media_id || '/' ||
+      repeat('b', 64) || '/320.webp'
+  ) ~ media_pattern
+  AND NOT (
+    'approved/' || :'sites_pilot_site_id' ||
+      '/' || media_id || '/' || repeat('b', 64) || '/original.webp'
+  ) ~ media_pattern
+  AND NOT (
+    'quarantine/' || :'sites_pilot_site_id' || '/probe.webp'
+  ) ~ media_pattern
+  AND NOT (
+    'recovery/' || :'sites_pilot_site_id' || '/probe.json'
+  ) ~ artifact_pattern
+  AS sites_runtime_reader_path_semantics_valid
+FROM path_patterns
+\gset
+\if :sites_runtime_reader_path_semantics_valid
+\else
+  \echo 'SITES_BOOTSTRAP_ERROR code=RUNTIME_READER_PATH_SEMANTICS_INVALID'
+  SELECT 1 / 0;
+\endif
 
 -- A second policy for authenticated/PUBLIC would compose with OR and silently
 -- widen this identity. A new project must have no competing user-facing policy.

@@ -11,20 +11,28 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 const manifest = JSON.parse(read("supabase/secrets.manifest.json"));
 const FIELD = "BRAND_PERSON_ERASURE_CHALLENGE_SECRET";
 const READER = "supabase/functions/support-brand-person-erasure/erasureContract.ts";
-const EXISTING_READERS = [
+const EXPECTED_READERS = [
   "supabase/functions/_shared/capiTokens.ts",
   "supabase/functions/_shared/notificationRecipientHmac.ts",
   "supabase/functions/_shared/oneSignalEventStreamAuth.ts",
   "supabase/functions/_shared/sourceRefundAttentionToken.ts",
   "supabase/functions/_shared/sourceRefundNotificationRecipient.ts",
   "supabase/functions/_shared/adAppReadinessProviders/appsflyer.ts",
+  "supabase/functions/_shared/governedAdSecret.ts",
   "supabase/functions/admin-ad-app-readiness/index.ts",
+  "supabase/functions/attendance-claim-backfill/index.ts",
+  "supabase/functions/attendance-claim-link/index.ts",
+  "supabase/functions/claim-attendance/index.ts",
+  "supabase/functions/competitor-intel-worker/index.ts",
   "supabase/functions/notify-dispatch/index.ts",
   "supabase/functions/onesignal-event-stream/index.ts",
+  "supabase/functions/resend-webhook/index.ts",
   "supabase/functions/source-refund-attention/index.ts",
   "supabase/functions/notify-outbox-drain/index.ts",
+  READER,
+  "supabase/functions/ticket-confirmation-dispatch/index.ts",
 ];
-const EXISTING_FIELDS = [
+const EXPECTED_FIELDS = [
   ["APPSFLYER_API_V2_TOKEN", "Growth Engineering", "provider_dashboard_and_secure_vault"],
   ["NOTIFICATION_RECIPIENT_HMAC_SECRET", "Messaging Engineering", "secure_vault"],
   ["ONESIGNAL_EVENT_STREAM_TOKEN_CURRENT", "Messaging Engineering", "secure_vault"],
@@ -41,6 +49,11 @@ const EXISTING_FIELDS = [
   ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_CURRENT_KEY_B64", "Messaging Engineering", "secure_vault"],
   ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_PREVIOUS_KID", "Messaging Engineering", "secure_vault"],
   ["SOURCE_REFUND_NOTIFICATION_RECIPIENT_PREVIOUS_KEY_B64", "Messaging Engineering", "secure_vault"],
+  [FIELD, "Platform Security", "secure_vault"],
+  ["ATTENDANCE_CLAIM_PEPPER", "Platform Security", "secure_vault"],
+  ["META_COMPETITOR_ACCESS_TOKEN", "Growth Engineering", "provider_dashboard_and_secure_vault"],
+  ["META_COMPETITOR_IG_USER_ID", "Growth Engineering", "provider_dashboard"],
+  ["RESEND_WEBHOOK_SECRET", "Messaging Security", "secure_vault"],
 ].map(([name, owner, source_type]) => ({ name, owner, source_type }));
 
 // [TEST-MOD-APPROVED #2830] — Sites appends the approved slot-88 bundled
@@ -71,18 +84,12 @@ test("#1772 keeps the exact governed 88-name envelope with no direct secret name
   assert.equal(manifest.rollout.pending_bundle_names.includes(FIELD), false);
 });
 
-test("#1772 appends exactly one governed reader and field without changing predecessors", () => {
+test("#1772 keeps exact reader and field ordering through the authorized #2241 successors", () => {
   const envelope = manifest.secrets.find((entry) => entry.name === "AD_CONVERSION_TOKENS");
   assert.ok(envelope);
-  assert.deepEqual(envelope.readers.slice(0, -1), EXISTING_READERS);
-  assert.equal(envelope.readers.at(-1), READER);
+  assert.deepEqual(envelope.readers, EXPECTED_READERS);
   assert.equal(envelope.readers.filter((value) => value === READER).length, 1);
-  assert.deepEqual(envelope.bundle_fields.slice(0, -1), EXISTING_FIELDS);
-  assert.deepEqual(envelope.bundle_fields.at(-1), {
-    name: FIELD,
-    owner: "Platform Security",
-    source_type: "secure_vault",
-  });
+  assert.deepEqual(envelope.bundle_fields, EXPECTED_FIELDS);
   assert.equal(envelope.bundle_fields.filter((value) => value.name === FIELD).length, 1);
 });
 

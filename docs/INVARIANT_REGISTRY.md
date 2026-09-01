@@ -1,5 +1,14 @@
 # Invariant Registry
 
+## DRAFT — issue #2947 (the ticket waiting room)
+
+### I-PROPOSED-2947-ONE-EXPIRY-OWNER-AND-IT-FILTERS (DRAFT)
+
+- **Rule:** `reconcile-stuck-checkouts`, driven by `orch_1187_reconcile_stuck_checkouts` every 15 minutes, is the only mechanism that expires a `ticket_checkout_sessions` row **on the passage of time**. Its batch SELECT must carry `expires_at < now()`. Selecting by age alone lets permanently-held rows — a queued hold sits at `expires_at = 'infinity'::timestamptz` — occupy every batch slot and starve real expiries indefinitely, and it stops `SWEEP_BATCH_LIMIT` bounding expirable rows rather than rows scanned. The predicate is applied on the query the database runs, before the ORDER BY and the LIMIT, never as a post-limit filter in the function. The free/no-ref arm may later be set-based, and its decision must be provably identical to `classify()` for every `refClass` × provider-status combination. No second time-based expiry mechanism may be created. A capacity cut (`issue_2947_release_newest_holds`) is an explicit organiser-triggered release carrying its own `failure_reason`, and admission (`issue_2947_queue_admit_due`) only ever moves `expires_at` forward from `'infinity'` to a real timestamp — neither is a time-based expiry and neither is constrained by this rule.
+- **Enforcement:** the slice-1 suite `supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2947_sweep_expiry_filter.test.ts`, which drives the real handler over a fixture table rather than grepping the source, plus the slice-4 equivalence suite. The REVIEW-corrected structural assertion — that no new `cron.job` row performs a time-based expiry of `ticket_checkout_sessions`, with admission and capacity release named as permitted — is **not yet wired**: it requires a new gate under `.github/`, which the issue #2947 SPEC lists as DO-NOT-TOUCH. That conflict is registered for the orchestrator and must be resolved before slice 2 introduces the admission cron job.
+- **Regression:** deleting the `expires_at` predicate from the batch SELECT makes the starvation cases return 0 expiries from a 50-row batch of unexpirable rows, and additionally starves the webhook-lost finalize arm; the quiet-path case stays green across that same deletion, which is what proves the change is invisible to the pre-queue population.
+- **Established:** DRAFT at issue #2947 IMPLEMENT (slice 1) on 2026-09-01, on executed production evidence (rolled back): with 60 queued rows present, 50 of 50 batch slots held unexpirable rows and all 6 genuinely-expired rows were starved out. The orchestrator flips DRAFT to ACTIVE only after independent tester PASS and a verified edge-function deploy.
+
 ## ACTIVE — issue #2855 (pending-venue dependency schema remains reviewed and fail-closed)
 
 ### I-PROPOSED-2855-PENDING-VENUE-SCHEMA-REVIEWED (ACTIVE)

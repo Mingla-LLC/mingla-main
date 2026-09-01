@@ -18,10 +18,15 @@ export type PaymentOperationFlagField =
   | "payout_hold_onboard_flip"
   | "payout_release_execute"
   | "source_refunds_post_disabled"
-  | "paystack_payout_hold_onboard_flip";
+  | "paystack_payout_hold_onboard_flip"
+  | "checkout_revocation_execute";
 type LegacyPaymentOperationFlagField = Exclude<
   PaymentOperationFlagField,
-  "paystack_payout_hold_onboard_flip"
+  "paystack_payout_hold_onboard_flip" | "checkout_revocation_execute"
+>;
+type Schema3PaymentOperationFlagField = Exclude<
+  PaymentOperationFlagField,
+  "checkout_revocation_execute"
 >;
 export type AlertRecipientField =
   | "api_health"
@@ -245,10 +250,15 @@ type DeliveryFlags = {
   schema_version: 3;
   marketing_send_live_enabled: boolean;
   sms_live_enabled: { ng: boolean; us: boolean };
+  payment_operations: Record<Schema3PaymentOperationFlagField, boolean>;
+} | {
+  schema_version: 4;
+  marketing_send_live_enabled: boolean;
+  sms_live_enabled: { ng: boolean; us: boolean };
   payment_operations: Record<PaymentOperationFlagField, boolean>;
 };
 
-function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
+export function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
   if (new TextEncoder().encode(raw).byteLength >= MAX_BUNDLE_BYTES) {
     return { ok: false, reason: "oversized" };
   }
@@ -260,7 +270,7 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
   }
   if (!isRecord(parsed)) return { ok: false, reason: "not_object" };
   const version = parsed.schema_version;
-  if (version !== 1 && version !== 2 && version !== 3) {
+  if (version !== 1 && version !== 2 && version !== 3 && version !== 4) {
     return {
       ok: false,
       reason: "schema_version",
@@ -271,7 +281,9 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
     "schema_version",
     "marketing_send_live_enabled",
     "sms_live_enabled",
-    ...(version === 2 || version === 3 ? ["payment_operations"] : []),
+    ...(version === 2 || version === 3 || version === 4
+      ? ["payment_operations"]
+      : []),
   ]);
   if (Object.keys(parsed).some((field) => !allowed.has(field))) {
     return { ok: false, reason: "unknown_field", field: "unknown" };
@@ -280,7 +292,9 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
     const field of [
       "marketing_send_live_enabled",
       "sms_live_enabled",
-      ...(version === 2 || version === 3 ? ["payment_operations"] : []),
+      ...(version === 2 || version === 3 || version === 4
+        ? ["payment_operations"]
+        : []),
     ]
   ) {
     if (!Object.hasOwn(parsed, field)) {
@@ -310,9 +324,10 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
   }
   let paymentOperations:
     | Record<LegacyPaymentOperationFlagField, boolean>
+    | Record<Schema3PaymentOperationFlagField, boolean>
     | Record<PaymentOperationFlagField, boolean>
     | undefined;
-  if (version === 2 || version === 3) {
+  if (version === 2 || version === 3 || version === 4) {
     const operations = parsed.payment_operations;
     if (!isRecord(operations)) {
       return {
@@ -325,9 +340,10 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
       "payout_hold_onboard_flip",
       "payout_release_execute",
       "source_refunds_post_disabled",
-      ...(version === 3
+      ...(version === 3 || version === 4
         ? ["paystack_payout_hold_onboard_flip" as const]
         : []),
+      ...(version === 4 ? ["checkout_revocation_execute" as const] : []),
     ] as const;
     if (
       Object.keys(operations).some((field) =>
@@ -361,10 +377,16 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
       payout_release_execute: operations.payout_release_execute as boolean,
       source_refunds_post_disabled: operations
         .source_refunds_post_disabled as boolean,
-      ...(version === 3
+      ...(version === 3 || version === 4
         ? {
           paystack_payout_hold_onboard_flip:
             operations.paystack_payout_hold_onboard_flip as boolean,
+        }
+        : {}),
+      ...(version === 4
+        ? {
+          checkout_revocation_execute:
+            operations.checkout_revocation_execute as boolean,
         }
         : {}),
     };
@@ -387,10 +409,24 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
       },
     };
   }
+  if (version === 3) {
+    return {
+      ok: true,
+      value: {
+        schema_version: 3,
+        ...deliveryValues,
+        payment_operations:
+          paymentOperations as Record<
+            Schema3PaymentOperationFlagField,
+            boolean
+          >,
+      },
+    };
+  }
   return {
     ok: true,
     value: {
-      schema_version: 3,
+      schema_version: 4,
       ...deliveryValues,
       payment_operations:
         paymentOperations as Record<PaymentOperationFlagField, boolean>,
@@ -557,7 +593,8 @@ export function resolvePaymentOperationFlagValue(
   const result = raw ? parseDeliveryBundle(raw) : null;
   if (
     result?.ok &&
-    (result.value.schema_version === 2 || result.value.schema_version === 3)
+    (result.value.schema_version === 2 || result.value.schema_version === 3 ||
+      result.value.schema_version === 4)
   ) {
     return result.value.payment_operations[field];
   }
@@ -577,7 +614,7 @@ export function resolvePaystackPayoutHoldOnboardFlip(
   const raw = getEnv(bundle);
   const result = raw ? parseDeliveryBundle(raw) : null;
   if (result?.ok) {
-    return result.value.schema_version === 3
+    return result.value.schema_version === 3 || result.value.schema_version === 4
       ? result.value.payment_operations.paystack_payout_hold_onboard_flip
       : false;
   }
@@ -591,6 +628,25 @@ export function resolvePaystackPayoutHoldOnboardFlip(
     );
   }
   return false;
+}
+
+/**
+ * Issue #2241 checkout execution authority. Schema v4 is authoritative; every
+ * older or invalid bundle falls back only to the exact direct migration name.
+ */
+export function resolveCheckoutRevocationExecute(
+  getEnv: SecretEnvGetter = defaultGetEnv,
+): boolean {
+  const bundle = "MINGLA_DELIVERY_FLAGS_JSON";
+  const field = "checkout_revocation_execute";
+  const legacyName = "CHECKOUT_REVOCATION_EXECUTE";
+  const raw = getEnv(bundle);
+  const result = raw ? parseDeliveryBundle(raw) : null;
+  if (result?.ok && result.value.schema_version === 4) {
+    return result.value.payment_operations.checkout_revocation_execute;
+  }
+  const legacy = fallback(bundle, field, legacyName, result, getEnv);
+  return parseLegacyBoolean(legacy) ?? false;
 }
 
 export function resolveAlertRecipientValue(

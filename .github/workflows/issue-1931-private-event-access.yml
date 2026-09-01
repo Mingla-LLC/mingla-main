@@ -204,6 +204,15 @@ jobs:
               # infix would also swallow the step-1 counter migration and the
               # step-1b observer, which this phase must still apply.
               *20270604002491_issue_2491_c2_step34_switch_sold_readers.sql) continue ;;
+              # issue #2879 — SKIPPED FOR THE SAME REASON #2491's step 3/4 is.
+              # This phase replays the chain WITHOUT #1931, and #2879 re-emits
+              # `pg_direct_event_checkout_bundle` to make the payment-redirect
+              # window count as held. That function's body reaches
+              # `issue_1931_event_ordinary_read_blocked` and
+              # `multi_date_pricing_mode`, validated at CREATE time.
+              # EXACT FILENAME: an `*_issue_2879_*` infix would swallow every
+              # later migration of this umbrella too.
+              *20270609002879_issue_2879_redirect_window_counts_as_held.sql) continue ;;
               # issue #2489 — SKIPPED under the standing instruction above ("any
               # future migration that re-emits a #1931-defined object belongs on
               # this list too").

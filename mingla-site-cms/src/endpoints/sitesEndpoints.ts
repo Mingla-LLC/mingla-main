@@ -9,6 +9,7 @@ import {
   callCore,
   readCorePublicationSource,
   readCoreRetentionProjection,
+  reconcileVerificationPath,
   verifyCoreRequest,
 } from "../lib/gateway";
 import {
@@ -27,6 +28,7 @@ import {
 import { base64url } from "../lib/crypto";
 import { cmsConfig } from "../lib/config";
 import { MINGLA_BUSINESS_ORIGIN } from "../lib/origins";
+import { sitesJsonResponse } from "../lib/http";
 import {
   emitCmsObservation,
   observeCmsEndpoint,
@@ -49,10 +51,7 @@ import {
 } from "../lib/studioRequestAuth";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
-  return Response.json(data, {
-    status,
-    headers: { "cache-control": "no-store, private", ...headers },
-  });
+  return sitesJsonResponse(data, status, headers);
 }
 async function objectBody(
   req: PayloadRequest,
@@ -211,10 +210,7 @@ async function provisionOrReconcile(req: PayloadRequest): Promise<Response> {
   let bodyText = "";
   try {
     bodyText = (await req.text?.()) || "";
-    const path = new URL(req.url || "http://local").pathname.replace(
-      /^.*\/api/,
-      "",
-    );
+    const path = reconcileVerificationPath(req.url || "http://local");
     const envelope = await verifyCoreRequest(req, bodyText, path);
     const body = JSON.parse(bodyText) as Record<string, unknown>;
     const brandId = String(body.brand_id || "");
@@ -685,6 +681,7 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
         req: mediaScoped,
         depth: 0,
         limit: 100,
+        showHiddenFields: true,
         sort: "-updatedAt",
         where: tenantWhere,
       }),

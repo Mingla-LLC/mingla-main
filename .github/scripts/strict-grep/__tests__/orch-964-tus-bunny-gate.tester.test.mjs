@@ -13,7 +13,17 @@
  *
  * scan() contracts (per the gate modules):
  *   orch-0770  scan({uploadIntent, shared, bunnyStream, config, publicPage})
- *   orch-0770b scan({webhook, bunnyStream, sourceUploaded})
+ *   orch-0770b scan(<every key of the gate's exported REL map>)
+ *
+ * [TEST-MOD-APPROVED #2905] The 0770b source set GREW — the reconciler
+ * (event-cover-video-reaper/index.ts) joined the webhook family because it now
+ * synthesises webhook bodies, so its enum crossing and stall deadline are
+ * webhook-family invariants. A hand-copied three-key source list left the new
+ * source absent; `scan()` reads an absent source as "" and every RP-* rule then
+ * fired on a PRISTINE tree — a rule that always fires carries no information.
+ * The live builder below is now DERIVED from the gate's exported REL map, so
+ * this class of drift cannot recur, and a completeness test below proves every
+ * declared source is load-bearing.
  *
  * #958 masking note: this file imports the gates' pure `scan()` functions
  * directly and never spawns a nested `node --test` child — so no NODE_TEST_CONTEXT
@@ -29,7 +39,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { scan as scan0770 } from "../orch-0770-event-cover-video-processing.mjs";
-import { scan as scan0770b } from "../orch-0770b-bunny-webhook-family.mjs";
+import { REL as REL_0770B, scan as scan0770b } from "../orch-0770b-bunny-webhook-family.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // __tests__ → strict-grep → scripts → .github → repo root (cwd-independent).
@@ -55,11 +65,12 @@ const live0770 = () => ({
   publicPage: read(P.publicPage),
 });
 
-const live0770b = () => ({
-  webhook: read(P.webhook),
-  bunnyStream: read(P.bunnyStream),
-  sourceUploaded: read(P.sourceUploaded),
-});
+// [TEST-MOD-APPROVED #2905] Derived from the gate's own REL map, not a copied
+// literal: whatever sources the 0770b gate declares, this fixture supplies.
+const live0770b = () =>
+  Object.fromEntries(
+    Object.entries(REL_0770B).map(([key, rel]) => [key, read(rel)]),
+  );
 
 const hasPrefix = (failures, prefix) => failures.some((m) => m.startsWith(prefix));
 
@@ -165,4 +176,70 @@ test("orch-0770b: reintroducing verifyCloudinaryNotificationSignature into the w
   s.webhook += "\nverifyCloudinaryNotificationSignature(rawBody);\n";
   const f = scan0770b(s);
   assert.ok(hasPrefix(f, "WH-CLD:"), `expected a WH-CLD Cloudinary-reintroduction failure, got: ${JSON.stringify(f)}`);
+});
+
+// ── orch-0770b — #2905 source-set completeness + reconciler (RP-*) invariants ──
+//
+// Appended for #2905. The RP-* rules cover the reconciler
+// (event-cover-video-reaper/index.ts), which replays a Bunny API video-object
+// status as a webhook body. Two failure modes are proven here against the REAL
+// on-disk sources, in BOTH directions: the pristine tree is clean (test 2
+// above), and each individual invariant genuinely trips when reverted.
+
+test("orch-0770b: the live fixture supplies every source the gate declares, and each one is load-bearing", () => {
+  const live = live0770b();
+  assert.deepEqual(
+    Object.keys(live).sort(),
+    Object.keys(REL_0770B).sort(),
+    "the live fixture must supply exactly the gate's declared source set",
+  );
+  // Path-rename tripwire: the two paths this file already named by hand must
+  // still be the ones the gate reads.
+  assert.equal(REL_0770B.webhook, P.webhook, "0770b webhook source path drifted");
+  assert.equal(REL_0770B.sourceUploaded, P.sourceUploaded, "0770b source-uploaded path drifted");
+  assert.equal(REL_0770B.bunnyStream, P.bunnyStream, "0770b bunnyStream source path drifted");
+  // Every declared source must matter: omitting any one of them must NOT scan
+  // clean. This is what makes "absent source reads as empty" a loud failure
+  // rather than a silently-skipped rule set.
+  for (const key of Object.keys(REL_0770B)) {
+    const short = { ...live };
+    delete short[key];
+    assert.notDeepEqual(
+      scan0770b(short),
+      [],
+      `omitting the ${key} source must not scan clean — that source's rules would be dark`,
+    );
+  }
+});
+
+test("orch-0770b: dropping the reconciler's named enum crossing trips RP-1", () => {
+  const s = live0770b();
+  s.reaper = s.reaper.replaceAll("bunnyApiVideoStatusAsWebhookStatus", "identityStatus");
+  const f = scan0770b(s);
+  assert.ok(hasPrefix(f, "RP-1:"), `expected an RP-1 enum-crossing failure, got: ${JSON.stringify(f)}`);
+});
+
+test("orch-0770b: replaying the raw API video-object status as the webhook Status trips RP-1", () => {
+  const s = live0770b();
+  s.reaper = s.reaper.replace("Status: webhookStatus", "Status: provider.video.status");
+  assert.ok(
+    /\bStatus:\s*provider\.video\.status/.test(s.reaper),
+    "fixture mutation must actually plant the raw API status in the webhook body",
+  );
+  const f = scan0770b(s);
+  assert.ok(hasPrefix(f, "RP-1:"), `expected an RP-1 raw-status failure, got: ${JSON.stringify(f)}`);
+});
+
+test("orch-0770b: removing the reconciler's stall deadline constant trips RP-2", () => {
+  const s = live0770b();
+  s.reaper = s.reaper.replaceAll("COVER_VIDEO_STALL_MS", "SOME_OTHER_BOUND");
+  const f = scan0770b(s);
+  assert.ok(hasPrefix(f, "RP-2:"), `expected an RP-2 stall-deadline failure, got: ${JSON.stringify(f)}`);
+});
+
+test("orch-0770b: removing the reconciler's stall evaluator trips RP-2", () => {
+  const s = live0770b();
+  s.reaper = s.reaper.replaceAll("evaluateCoverVideoStall", "neverStalls");
+  const f = scan0770b(s);
+  assert.ok(hasPrefix(f, "RP-2:"), `expected an RP-2 stall-evaluator failure, got: ${JSON.stringify(f)}`);
 });

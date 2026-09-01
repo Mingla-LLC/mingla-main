@@ -11,7 +11,6 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,6 +29,7 @@ import {
   SITES_BUCKETS,
   stableJson,
   storageConfigFromEnv,
+  timestampsRepresentSameInstant,
   validateManagementBackupResponse,
   validateManagementProjectResponse,
   validateCmsDatabaseUrl,
@@ -427,7 +427,7 @@ export async function runBackup({
   if (resolve(resultPath).startsWith(`${realpathSync(outputDirectory)}/`) === false) {
     fail("RESULT_PATH_OUTSIDE_OUTPUT");
   }
-  const temporary = mkdtempSync(join(tmpdir(), "mingla-sites-backup-"));
+  const temporary = mkdtempSync(join(outputDirectory, ".scratch-"));
   chmodSync(temporary, 0o700);
   try {
     const managementProject = await readManagementProject(env, fetchImpl, now);
@@ -666,8 +666,14 @@ export async function recordBackupEvidence({
   validateReadinessResponse(readiness, siteId, "nightly_backup");
   if (
     readiness.readiness.backup_retention_days !== 7 ||
-    readiness.readiness.database_backup_verified_at !== result.database_backup_verified_at ||
-    readiness.readiness.object_manifest_verified_at !== result.object_manifest_verified_at
+    !timestampsRepresentSameInstant(
+      readiness.readiness.database_backup_verified_at,
+      result.database_backup_verified_at,
+    ) ||
+    !timestampsRepresentSameInstant(
+      readiness.readiness.object_manifest_verified_at,
+      result.object_manifest_verified_at,
+    )
   ) fail("CORE_READINESS_READBACK_MISMATCH");
   process.stdout.write("SITES_BACKUP_EVIDENCE_OK\n");
   return readiness;

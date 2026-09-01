@@ -13042,7 +13042,7 @@
       "providerWorkflow": ".github/workflows/issue-1456-edge-deploy-idempotency.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "647646fa64d0796d3bb40b961d73117a830394398b66e09e09716328ff662442",
+        "sourceSha256": "b2543cd80d0a6dc0067ad902300d9fa0c0def03f4c99bd4dfc4e2518391cfd20",
         "triggers": [
           "pull_request",
           "push"
@@ -13051,7 +13051,10 @@
           ".github/workflows/deploy-functions.yml",
           ".github/workflows/issue-1456-edge-deploy-idempotency.yml",
           "scripts/ci/issue1456-edge-deploy-idempotency.test.mjs",
-          "scripts/deploy-supabase-functions.sh"
+          "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
+          "scripts/ci/select-changed-edge-functions.mjs",
+          "scripts/deploy-supabase-functions.sh",
+          "supabase/function-env.contract.json"
         ],
         "jobKeys": [
           "exact-duplicate-only"
@@ -14934,7 +14937,7 @@
       "providerWorkflow": ".github/workflows/issue-1719-unified-sharing.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "3fb2df7e9bf97146f2108d02429e76f5ca9ff4a8cde4f6ff80f0cec40fb738d7",
+        "sourceSha256": "210836d5ddb255985a0cdafdb8e567341214b0c34ff8bbca3166a48550299850",
         "triggers": [
           "pull_request",
           "push"
@@ -14949,6 +14952,8 @@
           "packages/sharing/**",
           "scripts/issue-1719/**",
           "scripts/issue-2589/**",
+          "supabase/functions/_shared/bunnyStream.issue2905.*.test.ts",
+          "supabase/functions/_shared/bunnyStream.ts",
           "supabase/functions/_shared/contentShare*.ts",
           "supabase/functions/_shared/eventCoverVideo.issue2715.*.test.ts",
           "supabase/functions/event-cover-video-*/**",
@@ -16030,7 +16035,7 @@
       "providerWorkflow": ".github/workflows/issue-1930-checkout-current-truth.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "dfe465e62966c78f00d35b45b118aa095eff222e00b1033a8e159169def3845d",
+        "sourceSha256": "b7333c7e19fd3f7cb34475056d63ff4f1e455321127316974a1123244932925a",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -16048,6 +16053,7 @@
           "supabase/functions/_shared/__tests__/issue_1930_ticket_lost_race_identity.tester.adversarial.test.ts",
           "supabase/functions/_shared/__tests__/issue_1930_transition_rework.test.ts",
           "supabase/functions/_shared/checkoutSaleTruth.ts",
+          "supabase/functions/_shared/secretBundle.ts",
           "supabase/functions/_shared/sourceRefundControlPlane.ts",
           "supabase/functions/checkout-sale-revocation/**",
           "supabase/functions/reconcile-stuck-checkouts/**",
@@ -16093,7 +16099,7 @@
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "1f8eeb5e4f9365a966ecf3048ab9145f45616e059216ab88c36d9fd66f697fdc",
+        "sourceSha256": "42f84490837c0ddbf1246de902af343b1124e3b5d63d0c2ea58501ad58342457",
         "triggers": [
           "pull_request",
           "push"
@@ -17730,7 +17736,7 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e865b2202f35f0ddad88b63d61efcbf46e15010ce9710dc78fc2bd5e73c5aa30",
+        "sourceSha256": "306147d1db0f83e8b2bda72d0e65fdb2b959d7010b3fe1388a464375d18bf308",
         "triggers": [
           "pull_request",
           "push"
@@ -21586,6 +21592,7 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/deploy-functions.yml",
       "referenceFiles": [
+        "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
         "scripts/ops/verify-production-supabase-authority.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
@@ -22478,6 +22485,7 @@
       "providerWorkflow": ".github/workflows/production-supabase-authority.yml",
       "referenceFiles": [
         "scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs",
+        "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
         "scripts/ops/__tests__/issue_2016_production_authority.amendment2.implementor.test.mjs",
         "scripts/ops/__tests__/issue_2016_production_authority.tester.adversarial.test.mjs"
       ],
@@ -22504,6 +22512,16 @@
         "supabase/migrations/__tests__/orch_1392_grant_sweep.test.ts"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
+    },
+    {
+      "workflow": "sites-backup-restore.yml",
+      "ownerIssue": "#2899",
+      "transition": "retained-live-provider",
+      "providerWorkflow": ".github/workflows/sites-backup-restore.yml",
+      "referenceFiles": [
+        "scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs"
+      ],
+      "rationale": "#2899 adds the live Sites recovery provider after the frozen #2148 authority; the exact consumer is declared and subtracted without moving the seal."
     },
     {
       "workflow": "strict-grep-mingla-business.yml",
@@ -22581,6 +22599,7 @@
       "providerWorkflow": ".github/workflows/supabase-secret-budget.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs",
+        ".github/scripts/strict-grep/issue-2241-secret-readiness.mjs",
         "scripts/ops/verify-production-supabase-authority.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."

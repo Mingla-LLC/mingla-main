@@ -61,6 +61,7 @@ export type IconName =
   | "pieChart"
   | "funnel"
   | "link"
+  | "externalLink"
   | "users"
   | "tag"
   | "send"
@@ -261,6 +262,12 @@ const RENDERERS: Record<IconName, Renderer> = {
   pieChart: () => <Path d="M21 15.5A9 9 0 1 1 8.5 3 M21 12A9 9 0 0 0 12 3v9h9z" />,
   funnel: () => <Path d="M3 4h18l-7 9v7l-4-2v-5L3 4z" />,
   link: () => <Path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" />,
+  externalLink: () => (
+    <>
+      <Path d="M15 3h6v6M10 14L21 3" />
+      <Path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    </>
+  ),
   users: () => (
     <>
       <Path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />

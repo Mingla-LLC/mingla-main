@@ -9,6 +9,12 @@ on:
       - '.github/workflows/issue-1456-edge-deploy-idempotency.yml'
       - 'scripts/deploy-supabase-functions.sh'
       - 'scripts/ci/issue1456-edge-deploy-idempotency.test.mjs'
+      # #2948 — the wrapper's guard and its CALLER now fail together or not at
+      # all. The 06:48 outage was a caller/callee mismatch, so the lane that
+      # proves the callee refuses also proves the caller complies.
+      - 'scripts/ci/issue2948-deploy-invocation-shape.test.mjs'
+      - 'scripts/ci/select-changed-edge-functions.mjs'
+      - 'supabase/function-env.contract.json'
   push:
     branches:
       - main
@@ -17,6 +23,12 @@ on:
       - '.github/workflows/issue-1456-edge-deploy-idempotency.yml'
       - 'scripts/deploy-supabase-functions.sh'
       - 'scripts/ci/issue1456-edge-deploy-idempotency.test.mjs'
+      # #2948 — the wrapper's guard and its CALLER now fail together or not at
+      # all. The 06:48 outage was a caller/callee mismatch, so the lane that
+      # proves the callee refuses also proves the caller complies.
+      - 'scripts/ci/issue2948-deploy-invocation-shape.test.mjs'
+      - 'scripts/ci/select-changed-edge-functions.mjs'
+      - 'supabase/function-env.contract.json'
 
 concurrency:
   group: ci-issue-1456-edge-deploy-idempotency-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
@@ -37,3 +49,5 @@ jobs:
           FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       - name: Prove duplicate-only continuation and fail-closed behavior
         run: node scripts/ci/issue1456-edge-deploy-idempotency.test.mjs
+      - name: Prove no workflow invokes the deploy wrapper in a forbidden shape
+        run: node scripts/ci/issue2948-deploy-invocation-shape.test.mjs

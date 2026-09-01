@@ -104,14 +104,21 @@ test("edge deploy rejects unrelated target before the Supabase executable runs",
 
   const result = spawnSync(
     "bash",
-    [join(REPO_ROOT, "scripts/deploy-supabase-functions.sh"), join(root, "functions")],
+    [
+      join(REPO_ROOT, "scripts/deploy-supabase-functions.sh"),
+      "--project-ref",
+      UNRELATED_REF,
+      "--merged-commit",
+      "0123456789abcdef0123456789abcdef01234567",
+      "--function",
+      "probe",
+    ],
     {
       cwd: REPO_ROOT,
       encoding: "utf8",
       env: {
         ...process.env,
         PATH: `${bin}:${process.env.PATH}`,
-        SUPABASE_PROJECT_ID: UNRELATED_REF,
       },
     },
   );
