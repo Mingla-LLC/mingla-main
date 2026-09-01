@@ -49,6 +49,10 @@ import {
   requireAuthenticatedStudioRequest,
   studioMediaGrantRequest,
 } from "../lib/studioRequestAuth";
+import {
+  observeUploadGrantFailure,
+  type UploadGrantStage,
+} from "../lib/uploadGrantObservability";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
   return sitesJsonResponse(data, status, headers);
@@ -581,10 +585,14 @@ async function publish(req: PayloadRequest): Promise<Response> {
 }
 
 async function uploadGrant(req: PayloadRequest): Promise<Response> {
+  let stage: UploadGrantStage = "mutation_assertion";
   try {
     assertMutationRequest(req.headers);
+    stage = "session_binding";
     const { request } = await requireAuthenticatedStudioRequest(req);
+    stage = "body_parsing";
     const body = await objectBody(req);
+    stage = "grant_creation";
     return json({
       ok: true,
       data: await createUploadGrant(request, {
@@ -594,6 +602,7 @@ async function uploadGrant(req: PayloadRequest): Promise<Response> {
       }),
     });
   } catch (error) {
+    observeUploadGrantFailure(req, stage, error);
     return safeFailure(error);
   }
 }
