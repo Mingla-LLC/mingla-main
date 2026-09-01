@@ -327,6 +327,7 @@ async function processUpload(
     overrideAccess: false,
     req,
     depth: 0,
+    showHiddenFields: true,
   });
   const key = String(media.quarantine_key || "");
   if (media.state !== "UPLOADING" || !key || !/^[0-9a-f]{64}$/.test(checksum))
@@ -572,6 +573,7 @@ export async function tombstoneMedia(req: PayloadRequest, mediaId: string) {
     overrideAccess: false,
     req: studioMediaGrantRequest(req),
     depth: 0,
+    showHiddenFields: true,
   });
   const tenantId = relationshipId(media.tenant);
   if (
@@ -656,6 +658,7 @@ export async function tombstoneMedia(req: PayloadRequest, mediaId: string) {
     overrideAccess: false,
     req: studioMediaGrantRequest(req),
     depth: 0,
+    showHiddenFields: true,
     data: {
       state: "TOMBSTONED",
       tombstoned_at: new Date().toISOString(),
@@ -680,6 +683,7 @@ export async function restoreTombstonedMedia(
     overrideAccess: false,
     req: studioMediaGrantRequest(req),
     depth: 0,
+    showHiddenFields: true,
   });
   const tenantId = relationshipId(media.tenant);
   const recoveryUntil = typeof media.recovery_until === "string"
@@ -792,6 +796,7 @@ export async function runRetentionSweep(
     overrideAccess: true,
     depth: 0,
     limit: 5000,
+    showHiddenFields: true,
     sort: "createdAt",
     where: { tenant: { equals: tenantId } },
   });

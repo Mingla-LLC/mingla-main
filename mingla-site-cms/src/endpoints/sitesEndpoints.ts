@@ -681,6 +681,7 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
         req: mediaScoped,
         depth: 0,
         limit: 100,
+        showHiddenFields: true,
         sort: "-updatedAt",
         where: tenantWhere,
       }),
