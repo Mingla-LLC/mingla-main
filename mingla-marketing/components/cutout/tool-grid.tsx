@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { cn } from '@/lib/cn'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
-import { CutoutCard, CutoutTile } from './primitives'
+import { Card3D, Layer } from '@/components/ui/3d-card'
+import { CutoutTile } from './primitives'
 import type { HostTool } from '@/lib/design-preview/host-tools'
 
 // #2902 — the tool grid, and the three-step switcher above it.
@@ -16,15 +17,33 @@ import type { HostTool } from '@/lib/design-preview/host-tools'
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
+/**
+ * The tool card, on the 3D tilt shell.
+ *
+ * The card follows the cursor with a small rotation, and the tile, title and
+ * body sit at different depths so they part slightly as it turns — the
+ * layered-depth idea from the supplied 3D card, applied to Mingla's moulded
+ * surface rather than to a photograph. Tilt is capped at 6 degrees: the demo's
+ * 10.5 reads well on one large card and like a wobble across a grid of ten.
+ * `prefers-reduced-motion` renders it flat and still.
+ */
 export function ToolCard({ tool, icon }: { tool: HostTool; icon: React.ReactNode }) {
   return (
-    <CutoutCard pad="md" interactive className="h-full">
-      <CutoutTile>{icon}</CutoutTile>
-      <h3 className="mt-4 font-display text-[1.125rem] leading-tight tracking-[-0.02em] text-[var(--cut-ink)]">
-        {tool.title}
-      </h3>
-      <p className="mt-2 text-[0.9375rem] leading-relaxed text-[var(--cut-body)]">{tool.body}</p>
-    </CutoutCard>
+    <Card3D intensity={6}>
+      <div className="cut-card cut-card-interactive h-full p-6 sm:p-8">
+        <Layer z={40}>
+          <CutoutTile>{icon}</CutoutTile>
+        </Layer>
+        <Layer z={26}>
+          <h3 className="mt-4 font-display text-[1.125rem] leading-tight tracking-[-0.02em] text-[var(--cut-ink)]">
+            {tool.title}
+          </h3>
+        </Layer>
+        <Layer z={14}>
+          <p className="mt-2 text-[0.9375rem] leading-relaxed text-[var(--cut-body)]">{tool.body}</p>
+        </Layer>
+      </div>
+    </Card3D>
   )
 }
 

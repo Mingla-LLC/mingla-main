@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 import { AppQrPanel } from '@/components/marketing/app-qr-panel'
+import { AppleMark, PlayMark } from '@/components/ui/store-marks'
 import { detectClientPlatform, type Platform } from '@/lib/device-platform'
 import { resolveExplorerAppTarget } from '@/lib/explorer-app-target'
 import {
@@ -70,6 +71,12 @@ interface DeviceCtaProps {
   label?: ReactNode
   className?: string
   withArrow?: boolean
+  /**
+   * Shows the Apple and Google Play marks side by side ahead of the label.
+   * The action is device-aware either way; the marks tell a desktop visitor
+   * which platforms exist before they commit to the tap.
+   */
+  storeMarks?: boolean
 }
 
 const SIZES = {
@@ -97,6 +104,7 @@ export function DeviceCta({
   label,
   className,
   withArrow = true,
+  storeMarks = false,
 }: DeviceCtaProps) {
   const [platform, setPlatform] = useState<Platform>('other')
   const [qrOpen, setQrOpen] = useState(false)
@@ -108,6 +116,13 @@ export function DeviceCta({
   const classes = cn(classesFor(variant, size), className)
   const arrow = withArrow ? (
     <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+  ) : null
+  const marks = storeMarks ? (
+    <span className="mr-0.5 flex shrink-0 items-center gap-2" aria-hidden="true">
+      <AppleMark className="h-[18px] w-[18px]" />
+      <span className="h-4 w-px bg-current opacity-25" />
+      <PlayMark className="h-[17px] w-[17px]" />
+    </span>
   ) : null
 
   if (surface === 'host') {
@@ -136,6 +151,7 @@ export function DeviceCta({
         }}
         className={classes}
       >
+        {marks}
         {text}
         {arrow}
       </a>
@@ -166,6 +182,7 @@ export function DeviceCta({
         }}
         className={classes}
       >
+        {marks}
         {text}
         {arrow}
       </a>
@@ -191,6 +208,7 @@ export function DeviceCta({
         }}
         className={classes}
       >
+        {marks}
         {text}
         {arrow}
       </button>

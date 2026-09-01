@@ -4,6 +4,7 @@ import {
   BarChart3, CalendarCheck, CreditCard, Globe, Mail, MapPin,
   Megaphone, Search, Sparkles, Users,
 } from 'lucide-react'
+import { Card3D, Layer } from '@/components/ui/3d-card'
 import {
   CutoutCard, CutoutFaq, CutoutFooter, CutoutHeading, CutoutHero, CutoutNav,
   CutoutSection, CutoutShell, CutReveal, DeviceCta, FaqSchema,
@@ -175,10 +176,16 @@ export default function CutoutHostPage() {
           <div className="grid gap-4 sm:grid-cols-3">
             {HOST_LIMITS.map((limit, i) => (
               <CutReveal key={limit.title} variant="lift" delay={i * 0.07}>
-                <CutoutCard pad="md" className="h-full">
-                  <h3 className="font-display text-[1.0625rem] leading-tight text-[var(--cut-ink)]">{limit.title}</h3>
-                  <p className="mt-2.5 text-[0.9375rem] leading-relaxed text-[var(--cut-body)]">{limit.body}</p>
-                </CutoutCard>
+                <Card3D intensity={5}>
+                  <div className="cut-card cut-card-interactive h-full p-6 sm:p-8">
+                    <Layer z={22}>
+                      <h3 className="font-display text-[1.0625rem] leading-tight text-[var(--cut-ink)]">{limit.title}</h3>
+                    </Layer>
+                    <Layer z={12}>
+                      <p className="mt-2.5 text-[0.9375rem] leading-relaxed text-[var(--cut-body)]">{limit.body}</p>
+                    </Layer>
+                  </div>
+                </Card3D>
               </CutReveal>
             ))}
           </div>

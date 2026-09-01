@@ -28,13 +28,20 @@ export default function CutoutExplorerPage() {
       <div data-cut-deck className="relative h-full">
         <ExplorerHero cityKey="lagos" />
 
-        {/* Beneath the sliding cards, above the hero's own bottom pill row.
-            Measured, not guessed: at 1440x900 the deck ends at y=747 and the
-            pill row starts at y=844, so the action is centred in that 97px gap.
-            The first attempt sat at 5.25rem and overlapped the card. */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-[4.7rem] z-30 flex justify-center px-6">
+        {/* Between the headline and the cards, per Seth. Measured rather than
+            guessed: the headline ends at y=295 and the deck starts at y=376 on
+            desktop (81px of clearance); y=242 to y=344 on mobile (102px). These
+            percentages centre a 52px action inside both. */}
+        <div className="pointer-events-none absolute inset-x-0 top-[31.6%] z-30 flex justify-center px-6 md:top-[34.4%]">
           <div className="pointer-events-auto">
-            <DeviceCta surface="explorer" location="hero_under_deck" variant="primary" size="lg" />
+            <DeviceCta
+              surface="explorer"
+              location="hero_above_deck"
+              variant="primary"
+              size="md"
+              withArrow={false}
+              storeMarks
+            />
           </div>
         </div>
       </div>
