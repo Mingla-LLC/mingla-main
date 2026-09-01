@@ -1,6 +1,7 @@
 "use client";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { MINGLA_BUSINESS_ORIGIN } from "../../../../lib/origins";
 
 function ExchangeContent() {
   const params = useSearchParams();
@@ -9,9 +10,7 @@ function ExchangeContent() {
       ? "working"
       : "failed",
   );
-  const [returnUrl, setReturnUrl] = useState(
-    "https://business.usemingla.com",
-  );
+  const [returnUrl, setReturnUrl] = useState(MINGLA_BUSINESS_ORIGIN);
   useEffect(() => {
     const code = params.get("code");
     const destination = "studio";

@@ -36,6 +36,7 @@ interface MediaStatus {
     | "QUARANTINED"
     | "PROCESSING"
     | "READY"
+    | "TOMBSTONED"
     | "REJECTED"
     | "RETRYABLE_FAILED";
   rejection_code: string | null;
@@ -61,6 +62,7 @@ export interface StudioMediaLibraryItem {
     | "QUARANTINED"
     | "PROCESSING"
     | "READY"
+    | "TOMBSTONED"
     | "REJECTED"
     | "RETRYABLE_FAILED";
   width: number | null;
@@ -68,6 +70,7 @@ export interface StudioMediaLibraryItem {
   rejection_code: string | null;
   thumbnail_url: string | null;
   in_use: boolean;
+  recoverable_until: string | null;
 }
 
 export interface StudioMediaLibraryTarget {
@@ -221,6 +224,30 @@ export async function removeUnusedStudioMedia(
       { method: "POST" },
     ),
   );
+}
+
+export async function restoreStudioMedia(
+  mediaId: string,
+  bindings: Pick<StudioMediaBindings, "request"> = DEFAULT_BINDINGS,
+): Promise<void> {
+  if (!/^[0-9a-f-]{36}$/i.test(mediaId)) {
+    throw new Error("VALIDATION_FAILED");
+  }
+  await envelope(
+    await bindings.request(
+      `/api/mingla/media/${encodeURIComponent(mediaId)}/restore`,
+      { method: "POST" },
+    ),
+  );
+}
+
+export function isStudioMediaRecoverable(
+  recoverableUntil: string | null,
+  nowMs = Date.now(),
+): boolean {
+  if (!recoverableUntil) return false;
+  const deadline = Date.parse(recoverableUntil);
+  return Number.isFinite(deadline) && deadline > nowMs;
 }
 
 export function validateStudioMediaFile(file: Pick<File, "type" | "size">): string | null {

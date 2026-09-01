@@ -434,16 +434,48 @@ export function bunnyBestMp4(
   return { url: bunnyPlayUrl(video.guid, heightP), heightP };
 }
 
-// Map the Bunny numeric webhook Status → our provider-agnostic job lifecycle.
+// ── #2905 THE TWO BUNNY STATUS ENUMS ────────────────────────────────────────
+//
+// Bunny publishes TWO DIFFERENT numeric enums under the same name `Status`/
+// `status`, and 3 and 4 mean the OPPOSITE thing in each. Until #2905 a single
+// unnamed `mapBunnyStatus()` served both, and the reconciler fed it the wrong
+// one — so a FINISHED video was read as "still encoding" and the job wedged
+// forever (production job e055c562-…, wedged 2026-08-30 → 2026-09-01).
+//
+//   WEBHOOK enum  — the POST body Bunny sends to event-cover-video-webhook.
+//     0 Queued · 1 Processing · 2 Encoding · 3 FINISHED · 4 ResolutionFinished
+//     · 5 Failed · 6..10 presigned-upload / caption / title events.
+//     Proven from production: every job that ever reached `applied` carries
+//     provider_payload.bunny_webhook = {"Status": 3, …} (17 rows).
+//
+//   API VIDEO-OBJECT enum — the `status` field of
+//     GET /library/{id}/videos/{guid}, i.e. `bunnyGetVideo().video.status`.
+//     0 Created · 1 Uploaded · 2 Processing · 3 TRANSCODING · 4 FINISHED
+//     · 5 Error · 6 UploadFailed · 7 JitSegmenting · 8 JitPlaylistsCreated.
+//     Proven from production: the wedged row persisted status 4 together with
+//     encodeProgress 100 and storageSize 14,808,154 against a 3,050,776-byte
+//     source — API 4 is terminal-finished, not "one step before finished".
+//
+// RULE: never map a value without saying WHICH enum it came from. The two
+// mappers below are named for their source, and exactly ONE function is
+// allowed to cross between them (`bunnyApiVideoStatusAsWebhookStatus`).
+// ────────────────────────────────────────────────────────────────────────────
+
+export type BunnyLifecycle = "processing" | "ready" | "failed" | "ignore";
+
+// Map the Bunny numeric WEBHOOK Status → our provider-agnostic job lifecycle.
 // 0 Queued / 1 Processing / 2 Encoding → processing; 3 Finished → ready;
 // 4 Resolution finished → processing (wait for 3); 5 Failed → failed.
 // 6 PresignedUploadStarted / 7 PresignedUploadFinished / 8 PresignedUploadFailed
 // / 9 CaptionsGenerated / 10 TitleOrDescriptionGenerated are NOT part of the
 // cover-video encode lifecycle → intentionally ignored (fall through to default).
 // https://docs.bunny.net/stream/webhooks (verified 2026-07-03)
-export function mapBunnyStatus(
-  status: number,
-): "processing" | "ready" | "failed" | "ignore" {
+//
+// #2905: DO NOT feed this an API video-object status. It is correct exactly as
+// written for the webhook stream and must not change — 17 production rows prove
+// real Bunny webhooks send Status 3 on finish. Renamed from `mapBunnyStatus` so
+// the enum it belongs to is stated at every call site.
+export function mapBunnyStatusFromWebhook(status: number): BunnyLifecycle {
   switch (status) {
     case 0:
     case 1:
@@ -458,6 +490,65 @@ export function mapBunnyStatus(
     default:
       // 6/7/8/9/10 and any future/unknown status are intentionally ignored.
       return "ignore";
+  }
+}
+
+// #2905 — map the Bunny API VIDEO-OBJECT `status` (bunnyGetVideo().video.status)
+// → the same provider-agnostic lifecycle. This is a DIFFERENT enum from the
+// webhook one above: here 4 is Finished and 3 is Transcoding.
+// https://docs.bunny.net/reference/video_getvideo
+//
+// 7 JitSegmenting / 8 JitPlaylistsCreated are just-in-time encoding transitions
+// that only occur on JIT-enabled libraries; they are transitional, never
+// terminal, so they map to `processing` and the reaper's stall deadline is the
+// backstop if a JIT library never reaches 4.
+export function mapBunnyStatusFromApiVideo(status: number): BunnyLifecycle {
+  switch (status) {
+    case 0: // Created
+    case 1: // Uploaded
+    case 2: // Processing
+    case 3: // Transcoding  ← NOT finished. The webhook enum's 3 IS finished.
+    case 7: // JitSegmenting
+    case 8: // JitPlaylistsCreated
+      return "processing";
+    case 4: // Finished     ← terminal. The webhook enum's 4 is NOT terminal.
+      return "ready";
+    case 5: // Error
+    case 6: // UploadFailed
+      return "failed";
+    default:
+      return "ignore";
+  }
+}
+
+// #2905 — THE ONE SANCTIONED ENUM CROSSING.
+//
+// The reconciler (event-cover-video-reaper) recovers a job by reading provider
+// truth from the API and replaying it through the SAME finalize implementation
+// the live webhook uses, which requires a webhook-enum body. Rather than let an
+// API number silently masquerade as a webhook number (the #2905 defect), the
+// API status is mapped to a lifecycle by its OWN mapper and then re-expressed as
+// the canonical webhook status for that lifecycle:
+//
+//     API 4 Finished    → lifecycle "ready"      → webhook 3 Finished
+//     API 3 Transcoding → lifecycle "processing" → webhook 2 Encoding
+//     API 5 Error       → lifecycle "failed"     → webhook 5 Failed
+//     anything else     → lifecycle "ignore"     → null (do not synthesize)
+//
+// Returning null (never a number) for `ignore` keeps an unknown provider status
+// from being laundered into a lifecycle-bearing webhook body.
+export function bunnyApiVideoStatusAsWebhookStatus(
+  apiStatus: number,
+): number | null {
+  switch (mapBunnyStatusFromApiVideo(apiStatus)) {
+    case "ready":
+      return 3; // webhook Finished
+    case "processing":
+      return 2; // webhook Encoding
+    case "failed":
+      return 5; // webhook Failed
+    case "ignore":
+      return null;
   }
 }
 

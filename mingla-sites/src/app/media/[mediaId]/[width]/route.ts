@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { sha256 } from "../../../../lib/crypto";
 import { runtimeConfig } from "../../../../lib/config";
 import { loadPublication, normalizePublicHost } from "../../../../lib/publication";
+import { readPrivateObject } from "../../../../lib/storageReader";
 
 export async function GET(
   _request: Request,
@@ -23,9 +24,10 @@ export async function GET(
       !reference.object_key.endsWith(".webp")
     ) throw new Error();
     const config = runtimeConfig();
-    const object = await fetch(
-      `${config.artifactReadBaseUrl}/${encodeURIComponent(config.approvedMediaBucket)}/${reference.object_key}`,
-      { headers: { authorization: `Bearer ${config.artifactReadToken}` }, cache: "force-cache" },
+    const object = await readPrivateObject(
+      config.approvedMediaBucket,
+      reference.object_key,
+      "force-cache",
     );
     if (!object.ok) throw new Error();
     const bytes = new Uint8Array(await object.arrayBuffer());

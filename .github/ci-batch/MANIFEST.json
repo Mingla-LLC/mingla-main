@@ -12639,12 +12639,14 @@
       "providerWorkflow": ".github/workflows/issue-1403-listing-insights-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "bb8c010875f47752985c930a54c659e118119f905c67fe49313f634013ae3255",
+        "sourceSha256": "79b9117c5b5b6ffb4eb2fba3359624eb6704e5e43411044db53eb44515e4a717",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          "mingla-business/scripts/ci/bundle-baseline.json"
+        ],
         "jobKeys": [
           "issue-1403-listing-insights",
           "issue-1403-venue-rollup-pg17"
@@ -12720,12 +12722,14 @@
       "providerWorkflow": ".github/workflows/issue-1421-venue-organic-insights-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "8fc9b35326cb6f9caadbbde092de843bfd7b75ca8990e77edf432cb8b277cf7a",
+        "sourceSha256": "630a48de898000a24dc1ce5d27a4cae93e67c7edc6bd521a49750da59a663101",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          "mingla-business/scripts/ci/bundle-baseline.json"
+        ],
         "jobKeys": [
           "issue-1421-migration-pg17",
           "issue-1421-venue-organic-insights"
@@ -12909,12 +12913,13 @@
       "providerWorkflow": ".github/workflows/issue-1431-stay-ads-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "b0461f5575efc5004a33567b181247f5013cfbfd6ed43257f89f5f4a73073b07",
+        "sourceSha256": "7933542661939d0f1092c68564017f4ebde83e420a71fcae2ca45c1a9119f336",
         "triggers": [
           "pull_request",
           "push"
         ],
         "pathScope": [
+          "!mingla-business/scripts/ci/bundle-baseline.json",
           ".github/workflows/issue-1431-stay-ads-tests.yml",
           "app-mobile/**",
           "mingla-admin/**",
@@ -13090,7 +13095,7 @@
       "providerWorkflow": ".github/workflows/issue-1456-edge-deploy-idempotency.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "1f134ff179aee31cb038e9731518313096a749141ede5b24158e94063824f33b",
+        "sourceSha256": "9e55280e591a749d254d73b6299d245b65add39fd6b1a2ff6c7f5e03e08a3b18",
         "triggers": [
           "pull_request",
           "push"
@@ -13099,7 +13104,10 @@
           ".github/workflows/deploy-functions.yml",
           ".github/workflows/issue-1456-edge-deploy-idempotency.yml",
           "scripts/ci/issue1456-edge-deploy-idempotency.test.mjs",
-          "scripts/deploy-supabase-functions.sh"
+          "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
+          "scripts/ci/select-changed-edge-functions.mjs",
+          "scripts/deploy-supabase-functions.sh",
+          "supabase/function-env.contract.json"
         ],
         "jobKeys": [
           "exact-duplicate-only"
@@ -13470,12 +13478,14 @@
       "providerWorkflow": ".github/workflows/issue-1484-stay-desktop-shell-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "43111500eb8c1dcbade6fba97215d5f5b1825a55021a1ece2bd053cc8a71a79e",
+        "sourceSha256": "e9cfa640eee608992f4b68e801a379b258cbd7107c9d4ea22d9cf04dcdfc87df",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          "mingla-business/scripts/ci/bundle-baseline.json"
+        ],
         "jobKeys": [
           "issue-1484-stay-desktop-shell"
         ],
@@ -13568,12 +13578,14 @@
       "providerWorkflow": ".github/workflows/issue-1486-dormant-render-suites.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "ee5a83851c0054bce1f509fd958c557060923ef8444ecd513febf3b6f7f1870f",
+        "sourceSha256": "7fa3013c6b56f40cb3a6b06d6b2d9c5f1984355d74bab9a98787fb02d5b36076",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          "mingla-business/scripts/ci/bundle-baseline.json"
+        ],
         "jobKeys": [
           "issue-1486-dormant-render-suites"
         ],
@@ -13604,12 +13616,14 @@
       "providerWorkflow": ".github/workflows/issue-1501-add-rooms-form-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "521d7fbbd435e89c7c3e572c8c98131a0481d79bfdc39dad74fe315cee0be006",
+        "sourceSha256": "ff41c6df31a9be0405cfa5ba9bd7b18a4d9c7b434abc44a63162f5627ae7ff88",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          "mingla-business/scripts/ci/bundle-baseline.json"
+        ],
         "jobKeys": [
           "issue-1501-add-rooms-form"
         ],
@@ -13848,12 +13862,14 @@
       "providerWorkflow": ".github/workflows/issue-1532-stay-manager-ux-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "7020aa20ecda1a8346b11b5eb4279d622cbda4424168ac900fffde09baf0ebba",
+        "sourceSha256": "7169924728ee1316ba0d5a51c364a8cbd6a2f55bca6c1e88d6a0618d060811fb",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          "mingla-business/scripts/ci/bundle-baseline.json"
+        ],
         "jobKeys": [
           "issue-1532-stay-manager-ux"
         ],
@@ -14974,19 +14990,23 @@
       "providerWorkflow": ".github/workflows/issue-1719-unified-sharing.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "df866cc75a6b5278d9df0caf676059c0c41876b57a58da2c8b5fb44650cb075b",
+        "sourceSha256": "d1ae58ed30aa941e8bf6e1dbf3012fec5c5f52381299db0337563a21c3683412",
         "triggers": [
           "pull_request",
           "push"
         ],
         "pathScope": [
+          "!mingla-business/scripts/ci/bundle-baseline.json",
           ".github/workflows/issue-1719-unified-sharing.yml",
           "app-mobile/**",
           "mingla-business/**",
+          "mingla-business/scripts/ci/bundle-baseline.json",
           "mingla-marketing/**",
           "packages/sharing/**",
           "scripts/issue-1719/**",
           "scripts/issue-2589/**",
+          "supabase/functions/_shared/bunnyStream.issue2905.*.test.ts",
+          "supabase/functions/_shared/bunnyStream.ts",
           "supabase/functions/_shared/contentShare*.ts",
           "supabase/functions/_shared/eventCoverVideo.issue2715.*.test.ts",
           "supabase/functions/event-cover-video-*/**",
@@ -15578,7 +15598,7 @@
       "providerWorkflow": ".github/workflows/issue-1857-phone-country-authority-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "de8df82d38bc5a9a258379bbc679db0260a50c41f771b7fa50f134be609c97aa",
+        "sourceSha256": "1991a474e9035057bb6f779b02cfe11b85f920023ba4bd2539eba7ea07d788b5",
         "triggers": [
           "pull_request",
           "push"
@@ -15594,6 +15614,7 @@
           "app-mobile/src/services/rsvpDeckService.ts",
           "app-mobile/src/services/venueReservationService.ts",
           "docs/INVARIANT_REGISTRY.md",
+          "mingla-business/scripts/ci/bundle-baseline.json",
           "mingla-business/src/components/event/**",
           "mingla-business/src/components/stay/BuyerStayGuestExperience.tsx",
           "mingla-business/src/components/venue/GuestVenueReservation.tsx",
@@ -16067,7 +16088,7 @@
       "providerWorkflow": ".github/workflows/issue-1930-checkout-current-truth.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "02dc398b17e0c8bd5a4bec6614223475c7d3be084cb8fc457e94e22c9d7ef150",
+        "sourceSha256": "7ff12f58a3d808c7eb598b15b2d09fb1e4ac2f08521f2c6d77d22ff9626b8ead",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -16085,6 +16106,7 @@
           "supabase/functions/_shared/__tests__/issue_1930_ticket_lost_race_identity.tester.adversarial.test.ts",
           "supabase/functions/_shared/__tests__/issue_1930_transition_rework.test.ts",
           "supabase/functions/_shared/checkoutSaleTruth.ts",
+          "supabase/functions/_shared/secretBundle.ts",
           "supabase/functions/_shared/sourceRefundControlPlane.ts",
           "supabase/functions/checkout-sale-revocation/**",
           "supabase/functions/reconcile-stuck-checkouts/**",
@@ -16130,7 +16152,7 @@
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "f541d502c503b510a93edf3839fc6684fccb913c8554084cab0847bf894dc06b",
+        "sourceSha256": "649eb4b37b4202791ae66602e273dbe863daf8d555b606f36138e93251fecc31",
         "triggers": [
           "pull_request",
           "push"
@@ -16719,11 +16741,12 @@
       "providerWorkflow": ".github/workflows/issue-1995-contact-book-blast.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "665bc07590d372d96787c8694759fdb24ceebadb05770e9530b10f8efac45fc3",
+        "sourceSha256": "853871948146cae350d5f5fda4ed708ce79aa7dc2f616ae2b17e2b1bfb3fe35e",
         "triggers": [
           "pull_request"
         ],
         "pathScope": [
+          "!mingla-business/scripts/ci/bundle-baseline.json",
           ".github/scripts/strict-grep/issue-1995-contact-book-blast.mjs",
           ".github/scripts/strict-grep/issue-2714-campaign-open-truth.mjs",
           ".github/workflows/issue-1995-contact-book-blast.yml",
@@ -17485,7 +17508,7 @@
       "providerWorkflow": ".github/workflows/issue-2097-stripe-fee-refund-truth.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "9510e1e0bf7ce2de5769e97c5e8eae6e10bf567399b2de6bbc91d0bf3ee9b7bf",
+        "sourceSha256": "d6a46c7cc3464c4e51b19c35c2cf7b442d9b5ce5a8eef51fd9c572a18d3fa5f7",
         "triggers": [
           "pull_request",
           "push",
@@ -17496,6 +17519,7 @@
           ".github/workflows/issue-2097-stripe-fee-refund-truth.yml",
           "mingla-admin/src/pages/BusinessMoneyLedgerPage.jsx",
           "mingla-admin/src/services/adminRefundReconciliationService.js",
+          "mingla-business/scripts/ci/bundle-baseline.json",
           "mingla-business/src/services/__tests__/orderRefundService.issue2097.test.ts",
           "mingla-business/src/services/eventOrdersService.ts",
           "mingla-business/src/services/orderRefundService.ts",
@@ -17765,7 +17789,7 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e3a4f9a2ce638511e525972e6e79f386dd2ed972b221f6abae24eee42fcf4c5b",
+        "sourceSha256": "9bced267ff4c1747a51063356477997df7a3510628bc81e4497373bbb2296ccc",
         "triggers": [
           "pull_request",
           "push"
@@ -19721,11 +19745,12 @@
       "providerWorkflow": ".github/workflows/issue-871-attendance-entitlement-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "2fae7e7f3396fc7157ff3c89928a4ceb46b89e1e7dc7588750163b0ce120ab8f",
+        "sourceSha256": "bcf604d19b8c9e1b9acfc353bdd573322ff57af5f4b2fc8e0675e9be24e6efb4",
         "triggers": [
           "pull_request"
         ],
         "pathScope": [
+          "!mingla-business/scripts/ci/bundle-baseline.json",
           ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs",
           ".github/workflows/issue-871-attendance-entitlement-tests.yml",
           "app-mobile/**",
@@ -19824,12 +19849,14 @@
       "providerWorkflow": ".github/workflows/issue-874-business-analytics-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "680f8581d527097abd20f24afd345703460548194ac23c2eb2f99420ce290719",
+        "sourceSha256": "38cf90ecc86d4a712d586952d9a8dfc5edf2ba7f39f3b9fcfc9dc96f5522632b",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          "mingla-business/scripts/ci/bundle-baseline.json"
+        ],
         "jobKeys": [
           "issue-874-business-analytics"
         ],
@@ -21626,6 +21653,7 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/deploy-functions.yml",
       "referenceFiles": [
+        "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
         "scripts/ops/verify-production-supabase-authority.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
@@ -22518,6 +22546,7 @@
       "providerWorkflow": ".github/workflows/production-supabase-authority.yml",
       "referenceFiles": [
         "scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs",
+        "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
         "scripts/ops/__tests__/issue_2016_production_authority.amendment2.implementor.test.mjs",
         "scripts/ops/__tests__/issue_2016_production_authority.tester.adversarial.test.mjs"
       ],
@@ -22544,6 +22573,16 @@
         "supabase/migrations/__tests__/orch_1392_grant_sweep.test.ts"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
+    },
+    {
+      "workflow": "sites-backup-restore.yml",
+      "ownerIssue": "#2899",
+      "transition": "retained-live-provider",
+      "providerWorkflow": ".github/workflows/sites-backup-restore.yml",
+      "referenceFiles": [
+        "scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs"
+      ],
+      "rationale": "#2899 adds the live Sites recovery provider after the frozen #2148 authority; the exact consumer is declared and subtracted without moving the seal."
     },
     {
       "workflow": "strict-grep-mingla-business.yml",
@@ -22621,6 +22660,7 @@
       "providerWorkflow": ".github/workflows/supabase-secret-budget.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs",
+        ".github/scripts/strict-grep/issue-2241-secret-readiness.mjs",
         "scripts/ops/verify-production-supabase-authority.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."

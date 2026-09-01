@@ -50,6 +50,11 @@ const assertTargetTriggerMutantFails = (source) => {
   assert.throws(() => assertBatchTriggerBoundary(mutant), /ci-batch top-level event set/);
 };
 const PARTIAL_REFERENCE_DELTAS = [{
+  // [TEST-MOD-APPROVED #2241] Independently mirror the validator's reviewed
+  // secret-readiness reference without moving the frozen provider seal.
+  workflow: "supabase-secret-budget.yml",
+  referenceFiles: [".github/scripts/strict-grep/issue-2241-secret-readiness.mjs"],
+}, {
   workflow: "issue-1486-dormant-render-suites.yml",
   referenceFiles: [".github/scripts/strict-grep/issue-2774-public-hero-accessibility.mjs"],
 }, {
@@ -58,6 +63,20 @@ const PARTIAL_REFERENCE_DELTAS = [{
     "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
     "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
   ],
+}, {
+  // [TEST-MOD-APPROVED #2948] Independently mirror the two reviewed reference
+  // deltas #2948 declares. `issue2948-deploy-invocation-shape.test.mjs` names
+  // BOTH workflows and consumes BOTH: it executes deploy-functions.yml's own
+  // deploy command to prove it names its functions explicitly, and it excludes
+  // production-supabase-authority.yml's `bash -n <wrapper>` from that scan
+  // because a syntax check is not an invocation. Neither is a new provider, so
+  // the frozen 73/c0813be9… authority is unchanged and still asserted at full
+  // strength below.
+  workflow: "deploy-functions.yml",
+  referenceFiles: ["scripts/ci/issue2948-deploy-invocation-shape.test.mjs"],
+}, {
+  workflow: "production-supabase-authority.yml",
+  referenceFiles: ["scripts/ci/issue2948-deploy-invocation-shape.test.mjs"],
 }, {
   // [TEST-MOD-APPROVED #1772] Independently mirror A4's reviewed Supabase reference delta.
   workflow: "supabase-migrations-and-stripe-deno.yml",
@@ -261,7 +280,39 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   // #2725: Amendment 8 adds the PG17 competitor-budget workflow covered by this refreshed seal.
   assert.equal(sha(reconstructed), "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f");
 
+  // [TEST-MOD-APPROVED #2241] Every reviewed post-seal provider addition is
+  // independently removal- and widening-sensitive. #2899's Sites recovery
+  // provider therefore cannot be omitted or granted another reference while
+  // leaving the original c0813… authority green.
+  for (const addition of PROVIDERS_ADDED_SINCE_SEAL) {
+    for (const [label, referenceFiles] of [
+      ["removed", null],
+      ["widened", [...addition.referenceFiles, "undeclared/provider-reference.mjs"]],
+    ]) {
+      const mutatedDeclared = new Map(declared);
+      if (referenceFiles === null) mutatedDeclared.delete(addition.workflow);
+      else mutatedDeclared.set(addition.workflow, JSON.stringify(referenceFiles));
+      const mutatedSealed = referenceNormalized.filter((item) =>
+        mutatedDeclared.get(item.workflow) !== JSON.stringify(item.referenceFiles));
+      assert.notEqual(
+        sha([...mutatedSealed, ...carried].sort((a, b) => a.workflow.localeCompare(b.workflow))),
+        "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f",
+        `${label} provider addition must remain RED against the frozen seal: ${addition.workflow}`,
+      );
+    }
+  }
+
   for (const partial of PARTIAL_REFERENCE_DELTAS) {
+    const removedDeclarations = PARTIAL_REFERENCE_DELTAS.filter((item) => item.workflow !== partial.workflow);
+    const removedNormalized = independentlyNormalizePartialReferences(providers, removedDeclarations);
+    const removedSealed = removedNormalized.filter((item) => declared.get(item.workflow) !== JSON.stringify(item.referenceFiles));
+    assert.notEqual(sha([...removedSealed, ...carried].sort((a, b) => a.workflow.localeCompare(b.workflow))),
+      "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f",
+      `removed partial-reference declaration must remain RED against the frozen seal: ${partial.workflow}`);
+    const widenedDeclarations = structuredClone(PARTIAL_REFERENCE_DELTAS);
+    widenedDeclarations.find((item) => item.workflow === partial.workflow).referenceFiles.push("undeclared/provider-reference.mjs");
+    assert.throws(() => independentlyNormalizePartialReferences(providers, widenedDeclarations), /must exist/,
+      `widened partial-reference declaration must be RED: ${partial.workflow}`);
     const missing = structuredClone(providers);
     missing.find((item) => item.workflow === partial.workflow).referenceFiles = missing
       .find((item) => item.workflow === partial.workflow).referenceFiles

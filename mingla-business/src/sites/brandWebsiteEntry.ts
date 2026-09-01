@@ -9,8 +9,13 @@ type EntrySite = {
   }[];
 };
 
+type EntryAvailability = {
+  available: boolean;
+  site?: EntrySite | null;
+};
+
 type EntryEnvelope =
-  | { ok: true; data: EntrySite }
+  | { ok: true; data: EntryAvailability }
   | { ok: false; error?: { code?: string } };
 
 function entryContext(site: EntrySite): string {
@@ -31,15 +36,21 @@ function entryContext(site: EntrySite): string {
  */
 export async function loadBrandWebsiteEntryContext(
   brandId: string,
-): Promise<string> {
+): Promise<string | null> {
   const { data, error } = await supabase.functions.invoke<EntryEnvelope>(
     "brand-site-control",
-    { body: { route: `/v1/brands/${brandId}/site`, method: "GET" } },
+    {
+      body: {
+        route: `/v1/brands/${brandId}/site-availability`,
+        method: "GET",
+      },
+    },
   );
   if (error) throw new Error("WEBSITE_STATUS_UNAVAILABLE");
   if (!data || data.ok !== true) {
-    if (data?.error?.code === "NOT_FOUND") return "Not set up";
     throw new Error("WEBSITE_STATUS_UNAVAILABLE");
   }
-  return entryContext(data.data);
+  if (data.data.available !== true) return null;
+  if (!data.data.site) return "Not set up";
+  return entryContext(data.data.site);
 }

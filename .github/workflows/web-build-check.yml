@@ -16,6 +16,13 @@ name: Web Build Check
 on:
   pull_request:
     branches: [main]
+    # #2885 AC-4 — a pull request whose ONLY changed file is the machine-written
+    # boot-payload baseline cannot affect this suite. Those recording PRs were
+    # starting 53 jobs each, ~15/day (~51,000 job-min/month). `paths-ignore`
+    # skips ONLY when nothing else changed: touch this file alongside anything
+    # and this workflow runs exactly as it always did.
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
 
 # ORCH-1383 — cancel a superseded PR run instead of letting it finish.
 # Measured: 28 of 260 July strict-grep runs (10.8%) were superseded before finishing.
@@ -182,25 +189,26 @@ jobs:
       run:
         working-directory: mingla-site-cms
     env:
-      DATABASE_URL: postgresql://fixture.invalid/sites
+      DATABASE_URL: ${{ format('postgresql://{0}:{1}@{2}:{3}/{4}?sslmode=require', 'sites_cms_app.abcdefghijklmnopqrst', 'fixture', 'aws-0-us-east-2.pooler.supabase.com', '6543', 'postgres') }}
+      SITES_DATABASE_POOL_MAX: "3"
       PAYLOAD_SECRET: QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=
-      SITES_CORE_BASE_URL: https://core.invalid
-      SITES_CMS_ORIGIN: https://studio.invalid
-      SUPABASE_S3_ENDPOINT: https://storage.invalid
-      SUPABASE_S3_REGION: fixture
+      SITES_CORE_BASE_URL: https://gqnoajqerqhnvulmnyvv.supabase.co
+      SITES_CMS_ORIGIN: https://studio.sites.usemingla.com
+      SUPABASE_S3_ENDPOINT: https://abcdefghijklmnopqrst.storage.supabase.co/storage/v1/s3
+      SUPABASE_S3_REGION: us-east-2
       SUPABASE_S3_ACCESS_KEY_ID: fixture
       SUPABASE_S3_SECRET_ACCESS_KEY: fixture
-      SITES_MEDIA_QUARANTINE_BUCKET: quarantine
-      SITES_MEDIA_APPROVED_BUCKET: approved
-      SITES_PUBLICATION_ARTIFACT_BUCKET: artifacts
-      SITES_MEDIA_RECOVERY_BUCKET: recovery
+      SITES_MEDIA_QUARANTINE_BUCKET: sites-media-quarantine
+      SITES_MEDIA_APPROVED_BUCKET: sites-media-approved
+      SITES_PUBLICATION_ARTIFACT_BUCKET: sites-publication-artifacts
+      SITES_MEDIA_RECOVERY_BUCKET: sites-media-recovery
       SITES_PREVIEW_SIGNING_SECRET: QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=
       MINGLA_CMS_TO_CORE_CURRENT_KID: cms-core-current
       MINGLA_CMS_TO_CORE_CURRENT_KEY_B64: QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=
       MINGLA_CORE_TO_CMS_CURRENT_KID: core-cms-current
       MINGLA_CORE_TO_CMS_CURRENT_KEY_B64: Q0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0M=
       SITES_CANDIDATE_PROBE_SECRET: REREREREREREREREREREREREREREREREREREREREREQ=
-      SITES_PUBLIC_RUNTIME_ORIGIN: https://runtime.invalid
+      SITES_PUBLIC_RUNTIME_ORIGIN: https://gogi.sites.usemingla.com
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
@@ -225,10 +233,13 @@ jobs:
         working-directory: mingla-sites
     env:
       SITES_CORE_BASE_URL: https://core.invalid
-      SITES_ARTIFACT_READ_BASE_URL: https://objects.invalid
-      SITES_ARTIFACT_READ_TOKEN: fixture-read-token
-      SITES_PUBLICATION_ARTIFACT_BUCKET: artifacts
-      SITES_MEDIA_APPROVED_BUCKET: approved
+      SITES_CMS_PROJECT_REF: abcdefghijklmnopqrst
+      SITES_STORAGE_SUPABASE_URL: https://abcdefghijklmnopqrst.supabase.co
+      SITES_STORAGE_SUPABASE_ANON_KEY: fixture-anon-key
+      SITES_STORAGE_READER_EMAIL: sites-reader@example.invalid
+      SITES_STORAGE_READER_PASSWORD: fixture-reader-password
+      SITES_PUBLICATION_ARTIFACT_BUCKET: sites-publication-artifacts
+      SITES_MEDIA_APPROVED_BUCKET: sites-media-approved
       SITES_ALLOWED_HOST_SUFFIX: sites.usemingla.com
       MINGLA_RUNTIME_TO_CORE_CURRENT_KID: runtime-core-current
       MINGLA_RUNTIME_TO_CORE_CURRENT_KEY_B64: RUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUU=

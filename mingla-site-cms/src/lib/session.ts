@@ -1,6 +1,7 @@
 import type { TypedUser } from "payload";
 import { cmsConfig } from "./config";
 import { base64url, fromBase64url, hmac, timingSafeEqual } from "./crypto";
+import { MINGLA_BUSINESS_ORIGIN } from "./origins";
 
 export const STUDIO_COOKIE = "__Host-mingla_studio";
 export const STUDIO_CSRF_COOKIE = "__Host-mingla_studio_csrf";
@@ -157,7 +158,7 @@ export function studioReturnLocationFromContext(
   const suffix = result ? `&result=${encodeURIComponent(result)}` : "";
   return context.return_surface === "native"
     ? `mingla-business://website-return?brandId=${brandId}${suffix}`
-    : `https://business.usemingla.com/brand/${brandId}/website${
+    : `${MINGLA_BUSINESS_ORIGIN}/brand/${brandId}/website${
       result ? `?studioResult=${encodeURIComponent(result)}` : ""
     }`;
 }

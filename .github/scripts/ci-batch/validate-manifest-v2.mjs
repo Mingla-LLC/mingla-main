@@ -172,6 +172,16 @@ const LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256 = "1676cbe80860ee0181cf95fcbd70dc
 // independently said 606 and 603, auto-merged clean with no conflict marker.
 export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
   Object.freeze({
+    // [#2899] Sites recovery is a new live workflow provider after the frozen
+    // #2148 seal. Subtract only its exact independently discovered consumer;
+    // omission or widening remains a hard failure without moving c0813….
+    issue: 2899,
+    workflow: "sites-backup-restore.yml",
+    referenceFiles: Object.freeze([
+      "scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs",
+    ]),
+  }),
+  Object.freeze({
     issue: 2591,
     workflow: "postgres-contract-suites.yml",
     // Discovery derives a provider record from the source files that name a
@@ -214,6 +224,13 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
 // historical record; live discovery and MANIFEST.json retain the full record.
 export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
   Object.freeze({
+    issue: 2241,
+    workflow: "supabase-secret-budget.yml",
+    referenceFiles: Object.freeze([
+      ".github/scripts/strict-grep/issue-2241-secret-readiness.mjs",
+    ]),
+  }),
+  Object.freeze({
     issue: 2774,
     workflow: "issue-1486-dormant-render-suites.yml",
     referenceFiles: Object.freeze([
@@ -226,6 +243,29 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
     referenceFiles: Object.freeze([
       "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
       "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
+    ]),
+  }),
+  Object.freeze({
+    // [#2948] `issue2948-deploy-invocation-shape.test.mjs` names BOTH workflows
+    // on purpose and is a real consumer of each: it asserts that
+    // deploy-functions.yml invokes the deploy wrapper with explicit
+    // `--function` + `--merged-commit` selection (the exact shape whose absence
+    // stopped every edge deploy on 2026-09-01), and it excludes
+    // production-supabase-authority.yml's `bash -n <wrapper>` from that scan,
+    // because a syntax check is not an invocation. Naming the workflow is what
+    // makes it a reference file here. Both providers already belong to the
+    // frozen 73, so this is a reference-file delta, not a new provider.
+    issue: 2948,
+    workflow: "deploy-functions.yml",
+    referenceFiles: Object.freeze([
+      "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
+    ]),
+  }),
+  Object.freeze({
+    issue: 2948,
+    workflow: "production-supabase-authority.yml",
+    referenceFiles: Object.freeze([
+      "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
     ]),
   }),
   Object.freeze({

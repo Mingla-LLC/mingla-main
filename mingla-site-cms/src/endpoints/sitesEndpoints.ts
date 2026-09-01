@@ -9,11 +9,13 @@ import {
   callCore,
   readCorePublicationSource,
   readCoreRetentionProjection,
+  reconcileVerificationPath,
   verifyCoreRequest,
 } from "../lib/gateway";
 import {
   completeUpload,
   createUploadGrant,
+  restoreTombstonedMedia,
   runRetentionSweep,
   tombstoneMedia,
 } from "../lib/mediaPipeline";
@@ -25,6 +27,8 @@ import {
 } from "../lib/studioMediaSelection";
 import { base64url } from "../lib/crypto";
 import { cmsConfig } from "../lib/config";
+import { MINGLA_BUSINESS_ORIGIN } from "../lib/origins";
+import { sitesJsonResponse } from "../lib/http";
 import {
   emitCmsObservation,
   observeCmsEndpoint,
@@ -47,10 +51,7 @@ import {
 } from "../lib/studioRequestAuth";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
-  return Response.json(data, {
-    status,
-    headers: { "cache-control": "no-store, private", ...headers },
-  });
+  return sitesJsonResponse(data, status, headers);
 }
 async function objectBody(
   req: PayloadRequest,
@@ -209,10 +210,7 @@ async function provisionOrReconcile(req: PayloadRequest): Promise<Response> {
   let bodyText = "";
   try {
     bodyText = (await req.text?.()) || "";
-    const path = new URL(req.url || "http://local").pathname.replace(
-      /^.*\/api/,
-      "",
-    );
+    const path = reconcileVerificationPath(req.url || "http://local");
     const envelope = await verifyCoreRequest(req, bodyText, path);
     const body = JSON.parse(bodyText) as Record<string, unknown>;
     const brandId = String(body.brand_id || "");
@@ -683,10 +681,9 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
         req: mediaScoped,
         depth: 0,
         limit: 100,
+        showHiddenFields: true,
         sort: "-updatedAt",
-        where: {
-          and: [tenantWhere, { state: { not_equals: "TOMBSTONED" } }],
-        },
+        where: tenantWhere,
       }),
       req.payload.find({
         collection: "site-settings",
@@ -723,6 +720,11 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
               ? `/api/mingla/media/${encodeURIComponent(String(item.id))}/thumbnail`
               : null,
           in_use: referenced.has(String(item.id)),
+          recoverable_until:
+            item.state === "TOMBSTONED" &&
+              typeof item.recovery_until === "string"
+              ? item.recovery_until
+              : null,
         })),
         targets: studioMediaTargets(pages.docs),
         close_url: "/admin/collections/pages",
@@ -830,6 +832,24 @@ async function mediaTombstone(req: PayloadRequest): Promise<Response> {
         media_id: result.id,
         state: result.state,
         recovery_until: result.recovery_until,
+      },
+    });
+  } catch (error) {
+    return safeFailure(error);
+  }
+}
+
+async function mediaRestore(req: PayloadRequest): Promise<Response> {
+  try {
+    assertMutationRequest(req.headers);
+    const { request } = await requireAuthenticatedStudioRequest(req);
+    const id = new URL(req.url || "http://local").pathname.split("/").at(-2)!;
+    const result = await restoreTombstonedMedia(request, id);
+    return json({
+      ok: true,
+      data: {
+        media_id: result.id,
+        state: result.state,
       },
     });
   } catch (error) {
@@ -1631,7 +1651,7 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
         "cache-control": "no-store, private",
         "x-robots-tag": "noindex, nofollow",
         "content-security-policy":
-          "default-src 'none'; style-src 'unsafe-inline'; img-src https:; frame-ancestors 'self' https://business.usemingla.com; base-uri 'none'; form-action 'none'",
+          `default-src 'none'; style-src 'unsafe-inline'; img-src https:; frame-ancestors 'self' ${MINGLA_BUSINESS_ORIGIN}; base-uri 'none'; form-action 'none'`,
       },
     });
   } catch (error) {
@@ -1728,6 +1748,15 @@ export const sitesEndpoints: Endpoint[] = [
       "/mingla/media/{mediaId}/tombstone",
       "studio_to_cms",
       mediaTombstone,
+    ),
+  },
+  {
+    path: "/mingla/media/:mediaId/restore",
+    method: "post",
+    handler: observeCmsEndpoint(
+      "/mingla/media/{mediaId}/restore",
+      "studio_to_cms",
+      mediaRestore,
     ),
   },
   {

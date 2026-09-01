@@ -10,6 +10,7 @@ import {
   sha256Digest,
 } from "../_shared/attendanceClaim.ts";
 import { ticketCorsHeaders } from "../_shared/ticketCheckout.ts";
+import { resolveGovernedAdField } from "../_shared/governedAdSecret.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -29,9 +30,18 @@ serve(async (req) => {
   const { checkoutSessionId, buyerStatusToken } = body;
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const pepper = Deno.env.get("ATTENDANCE_CLAIM_PEPPER");
-  if (!url || !key || !pepper) {
+  const pepper = resolveGovernedAdField(
+    "ATTENDANCE_CLAIM_PEPPER",
+    "ATTENDANCE_CLAIM_PEPPER",
+  );
+  if (!url || !key) {
     return json(500, { ok: false, error: "claim_link_failed" });
+  }
+  if (!pepper) {
+    return json(503, {
+      ok: false,
+      error: "claim_link_temporarily_unavailable",
+    });
   }
   try {
     const admin = createClient(url, key, { auth: { persistSession: false } });

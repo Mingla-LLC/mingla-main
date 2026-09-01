@@ -39,7 +39,17 @@ Deno.test("#871 SC-5/6 global order and client pagination have no capped tail", 
 Deno.test("#871 SC-8/9/10 preserves RSVP SHA-256 and domain-separated order HMAC", () => {
   assert(!foundation.includes("ALTER TABLE public.event_rsvps"));
   assertStringIncludes(foundation, "pass_recovery_token_hash");
-  assertStringIncludes(link, 'Deno.env.get("ATTENDANCE_CLAIM_PEPPER")');
+  assertStringIncludes(
+    link,
+    'import { resolveGovernedAdField } from "../_shared/governedAdSecret.ts";',
+  );
+  assertStringIncludes(
+    link,
+    `const pepper = resolveGovernedAdField(
+    "ATTENDANCE_CLAIM_PEPPER",
+    "ATTENDANCE_CLAIM_PEPPER",
+  );`,
+  );
   assertStringIncludes(helper, 'crypto.subtle.sign("HMAC"');
   assertStringIncludes(foundation, "attendance_claim_token_digest bytea");
 });

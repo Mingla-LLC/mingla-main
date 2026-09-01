@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { postgresAdapter } from "@payloadcms/db-postgres";
@@ -18,16 +19,30 @@ import { StudioUsers } from "./collections/StudioUsers";
 import { Tenants } from "./collections/Tenants";
 import { sitesEndpoints } from "./endpoints/sitesEndpoints";
 import { cmsConfig } from "./lib/config";
+import { MINGLA_BUSINESS_ORIGIN } from "./lib/origins";
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
 const config = cmsConfig();
+const databaseConnectionUrl = new URL(config.databaseUrl);
+databaseConnectionUrl.searchParams.delete("sslmode");
+const supabaseRootCa = readFileSync(
+  path.resolve(dirname, "certs", "supabase-prod-ca-2021.crt"),
+  "utf8",
+);
 
 export default buildConfig({
   serverURL: config.cmsOrigin,
   secret: config.payloadSecret,
   db: postgresAdapter({
-    pool: { connectionString: config.databaseUrl, max: 10 },
+    pool: {
+      connectionString: databaseConnectionUrl.toString(),
+      max: config.databasePoolMax,
+      ssl: {
+        ca: supabaseRootCa,
+        rejectUnauthorized: true,
+      },
+    },
     schemaName: "sites_cms",
     idType: "uuid",
     migrationDir: path.resolve(dirname, "migrations"),
@@ -59,7 +74,7 @@ export default buildConfig({
     graphQL: "/disabled-graphql",
     graphQLPlayground: "/disabled-graphql-playground",
   },
-  cors: [config.cmsOrigin, "https://business.usemingla.com"],
+  cors: [config.cmsOrigin, MINGLA_BUSINESS_ORIGIN],
   csrf: [config.cmsOrigin],
   collections: [
     StudioUsers,
