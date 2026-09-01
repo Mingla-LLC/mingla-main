@@ -64,10 +64,9 @@ export default function CutoutHostPage() {
       <CutoutNav surface="host" homeHref="/cutout/host" />
 
       <CutoutHero
-        eyebrow="Mingla Host"
         line1="Everything a"
         line2={<span className="cut-gradient-brand">host needs.</span>}
-        lede="A website in seconds. Bookings that fill. Marketing that brings them back."
+        lede="One app builds your website, publishes your events, trips and stays, sells the tickets and tables, and brings the right people back."
         image="/marketing/host-hero/world-hosts-create-poster.jpg"
         video="/marketing/host-hero/world-hosts-create-preview.mp4"
         scrollTo="#tools"

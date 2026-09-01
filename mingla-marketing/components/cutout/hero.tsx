@@ -26,8 +26,8 @@ import { ScrollMore } from './hero-graphic'
 // ---------------------------------------------------------------
 
 interface CutoutHeroProps {
-  /** Badge text above the headline. */
-  eyebrow: string
+  /** Badge above the headline. Omit to lead straight with the headline. */
+  eyebrow?: string
   /** First headline line. */
   line1: ReactNode
   /** Second line. Nothing sits inside it now — the atmosphere is behind. */
@@ -95,6 +95,7 @@ export function CutoutHero({
       </div>
 
       <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center text-center">
+        {eyebrow ? (
         <CutReveal variant="rise">
           <span className="cut-btn-light inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-[0.75rem] font-bold uppercase tracking-[0.14em] text-[var(--cut-accent-ink)]">
             <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -110,9 +111,10 @@ export function CutoutHero({
             {eyebrow}
           </span>
         </CutReveal>
+        ) : null}
 
         <CutReveal variant="headline" delay={0.08}>
-          <h1 className="cut-display mt-7 font-display">
+          <h1 className={cn('cut-display font-display', eyebrow && 'mt-7')}>
             <span className="cut-gradient-text block">{line1}</span>
             <span className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:mt-4 sm:flex-nowrap">
               {line2}
