@@ -139,12 +139,19 @@ export function validateCmsDatabaseUrl(env) {
   } catch {
     fail("INVALID_CMS_DATABASE_URL");
   }
+  const isDirect =
+    decodeURIComponent(url.username) === "sites_cms_migrator" &&
+    url.hostname === `db.${projectRef}.supabase.co` &&
+    url.port === "5432";
+  const isSessionPooler =
+    decodeURIComponent(url.username) === `sites_cms_migrator.${projectRef}` &&
+    /^[a-z0-9-]+\.pooler\.supabase\.com$/.test(url.hostname) &&
+    url.port === "5432";
   if (
     url.protocol !== "postgresql:" ||
-    decodeURIComponent(url.username) !== "sites_cms_migrator" ||
+    (!isDirect && !isSessionPooler) ||
     decodeURIComponent(url.password).length < 32 ||
-    url.hostname !== `db.${projectRef}.supabase.co` ||
-    url.port !== "5432" || url.pathname !== "/postgres" ||
+    url.pathname !== "/postgres" ||
     url.hash || url.searchParams.size !== 1 ||
     url.searchParams.get("sslmode") !== "require"
   ) fail("INVALID_CMS_DATABASE_URL");

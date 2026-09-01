@@ -2,7 +2,9 @@ import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 
 export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
-  CREATE SCHEMA IF NOT EXISTS "sites_cms";
+  -- The value-blind bootstrap creates and owns this schema before Payload runs.
+  -- Repeating that DDL here would require the migrator to hold database-wide
+  -- creation privilege on managed Postgres, which containment forbids.
   REVOKE ALL ON SCHEMA "sites_cms" FROM PUBLIC, anon, authenticated;
   CREATE TYPE "sites_cms"."enum_tenants_status" AS ENUM('provisioning', 'active', 'suspended');
   CREATE TYPE "sites_cms"."enum_pages_blocks_media_feature_alignment" AS ENUM('left', 'right');

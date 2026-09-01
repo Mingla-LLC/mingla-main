@@ -1,3 +1,4 @@
+import { X509Certificate } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { loadCmsConfig } from "./config";
@@ -61,6 +62,32 @@ function validEnvironment(
 }
 
 describe("#2893 production CMS launch configuration", () => {
+  it("keeps schema creation in the privileged bootstrap, not the bounded Payload migrator", () => {
+    const foundationMigration = readFileSync(
+      "src/migrations/20260830_122002_issue_2830_sites_foundation.ts",
+      "utf8",
+    );
+    expect(foundationMigration).not.toMatch(/CREATE\s+SCHEMA/i);
+    expect(foundationMigration).toContain(
+      'REVOKE ALL ON SCHEMA "sites_cms" FROM PUBLIC, anon, authenticated',
+    );
+  });
+
+  it("pins the Supabase database trust root and keeps certificate verification on", () => {
+    const certificate = new X509Certificate(
+      readFileSync("src/certs/supabase-prod-ca-2021.crt", "utf8"),
+    );
+    expect(certificate.subject).toContain("CN=Supabase Root 2021 CA");
+    expect(certificate.fingerprint256).toBe(
+      "80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA",
+    );
+    const payloadConfig = readFileSync("src/payload.config.ts", "utf8");
+    expect(payloadConfig).toContain('databaseConnectionUrl.searchParams.delete("sslmode")');
+    expect(payloadConfig).toContain("ca: supabaseRootCa");
+    expect(payloadConfig).toContain("rejectUnauthorized: true");
+    expect(payloadConfig).not.toContain("rejectUnauthorized: false");
+  });
+
   it("accepts only the exact Supabase S3 endpoint shape", () => {
     expect(loadCmsConfig(validEnvironment()).storageEndpoint).toBe(
       "https://abcdefghijklmnopqrst.storage.supabase.co/storage/v1/s3",
@@ -128,7 +155,7 @@ describe("#2893 production CMS launch configuration", () => {
     }
   });
 
-  it("admits migration mode only for the exact direct migrator connection", () => {
+  it("admits migration mode only for the exact direct or session-pooler migrator connection", () => {
     const migration = loadCmsConfig(
       validEnvironment({
         SITES_DATABASE_CONNECTION_MODE: "migration",
@@ -138,6 +165,18 @@ describe("#2893 production CMS launch configuration", () => {
       }),
     );
     expect(migration.databaseUrl).toContain("db.abcdefghijklmnopqrst.supabase.co:5432");
+    const sessionMigration = loadCmsConfig(
+      validEnvironment({
+        SITES_DATABASE_CONNECTION_MODE: "migration",
+        DATABASE_URL: postgresFixtureUrl({
+          user: "sites_cms_migrator.abcdefghijklmnopqrst",
+          host: "aws-0-us-east-2.pooler.supabase.com",
+          port: "5432",
+          sslmode: "require",
+        }),
+      }),
+    );
+    expect(sessionMigration.databaseUrl).toContain("pooler.supabase.com:5432");
     for (const databaseUrl of [
       postgresFixtureUrl({ user: "sites_cms_app", host: "db.abcdefghijklmnopqrst.supabase.co", sslmode: "require" }),
       postgresFixtureUrl({ user: "sites_cms_migrator", host: "aws-0-us-east-2.pooler.supabase.com", port: "6543", sslmode: "require" }),
@@ -150,7 +189,7 @@ describe("#2893 production CMS launch configuration", () => {
             DATABASE_URL: databaseUrl,
           }),
         )
-      ).toThrow("Migration database configuration must use the direct migrator connection.");
+      ).toThrow("Migration database configuration must use a direct or session-pooler migrator connection.");
     }
     expect(() =>
       loadCmsConfig(
@@ -165,6 +204,19 @@ describe("#2893 production CMS launch configuration", () => {
         validEnvironment({
           DATABASE_URL: postgresFixtureUrl({
             user: "sites_cms_app.zyxwvutsrqponmlkjihg", host: "aws-0-us-east-2.pooler.supabase.com", port: "6543", sslmode: "require",
+          }),
+        }),
+      )
+    ).toThrow("CMS database and object storage must use the same project.");
+    expect(() =>
+      loadCmsConfig(
+        validEnvironment({
+          SITES_DATABASE_CONNECTION_MODE: "migration",
+          DATABASE_URL: postgresFixtureUrl({
+            user: "sites_cms_migrator.zyxwvutsrqponmlkjihg",
+            host: "aws-0-us-east-2.pooler.supabase.com",
+            port: "5432",
+            sslmode: "require",
           }),
         }),
       )

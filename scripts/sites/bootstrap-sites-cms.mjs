@@ -36,12 +36,19 @@ function adminUrl(env, ref) {
   } catch {
     fail("INVALID_ADMIN_DATABASE_URL");
   }
+  const isDirect =
+    decodeURIComponent(url.username) === "postgres" &&
+    url.hostname === `db.${ref}.supabase.co` &&
+    url.port === "5432";
+  const isSessionPooler =
+    decodeURIComponent(url.username) === `postgres.${ref}` &&
+    /^[a-z0-9-]+\.pooler\.supabase\.com$/.test(url.hostname) &&
+    url.port === "5432";
   if (
     url.protocol !== "postgresql:" ||
-    decodeURIComponent(url.username) !== "postgres" ||
+    (!isDirect && !isSessionPooler) ||
     decodeURIComponent(url.password).length < 32 ||
-    url.hostname !== `db.${ref}.supabase.co` ||
-    url.port !== "5432" || url.pathname !== "/postgres" ||
+    url.pathname !== "/postgres" ||
     url.hash || url.searchParams.size !== 1 ||
     url.searchParams.get("sslmode") !== "require"
   ) fail("INVALID_ADMIN_DATABASE_URL");
