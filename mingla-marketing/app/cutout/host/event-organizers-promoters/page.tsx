@@ -90,7 +90,7 @@ export default function EventOrganisersLandingPage() {
             <HeroGraphic />
           </>
         }
-        lede="A flyer says what is happening. Mingla says why it matters, sells the night at one honest price, and hands you the door and the guest list when it is over."
+        lede="Build the page. Price the tiers. Reach your people. Work the door. Keep the list."
         image="/marketing/host-hero/world-hosts-create-poster.jpg"
         scrollTo="#answer"
         actions={
@@ -108,10 +108,10 @@ export default function EventOrganisersLandingPage() {
         crumbs={CRUMBS}
         lastChecked="1 September 2026"
         question="How do I promote an event and sell tickets without five different tools?"
-        answer="You need four things in one place: a page a buyer can open, a checkout that shows the real total, a way to reach people who already came, and a door that does not depend on one person holding a printed list. Mingla Host is those four things."
+        answer="In one app: a page people can open, a checkout that shows the real total, email and SMS to the people who already came, and a door that runs off a scanner instead of a printed list."
         detail={[
-          'Most organisers assemble this out of a link-in-bio, a ticketing site, a design tool, a mailing list and a spreadsheet. It works, and it costs a weekend of admin per event plus a service fee your buyer meets at the worst possible moment — the checkout.',
-          'On Mingla the same loop is one flow: describe the night, publish the page, sell at an all-in price, import the contacts you already have, scan people in, and export who came. Everything below is that flow, with the file in Mingla’s source that proves each step ships.',
+          'Most organisers stitch that out of five products. It works, and it costs a weekend per event — plus a service fee the buyer only meets at checkout.',
+          'Describe the night, publish, sell, promote, scan, export. Same loop, one app.',
         ]}
         aside={
           <OnThisPage
@@ -130,7 +130,7 @@ export default function EventOrganisersLandingPage() {
         <CutReveal>
           <CutoutHeading
             eyebrow="The product, running"
-            lede="Pick a step. Nothing advances on its own."
+            lede="Pick a step."
             action={<DeviceCta surface="host" location="workflow" variant="primary" size="md" />}
           >
             Announce on Monday. <span className="text-[var(--cut-accent)]">Work the door on Saturday.</span>
@@ -140,9 +140,9 @@ export default function EventOrganisersLandingPage() {
           <CutoutAccordionSwap
             label="How an event runs on Mingla"
             steps={[
-              { id: 'build', label: 'Build it', caption: 'Describe the night in a sentence. Ari turns it into a page with tiers, and the page is what a buyer opens.', items: HOST_BUILD, panel: <div className="flex justify-center"><EventPagePreview /></div> },
-              { id: 'promote', label: 'Promote it', caption: 'The people most likely to come are the ones who came last time. Bring that list with you, then reach past it.', items: HOST_PROMOTE, panel: <div className="flex justify-center"><EventPagePreview bare /></div> },
-              { id: 'run', label: 'Run it', caption: 'Take the money, work the door, and finish with a list you keep rather than a number you screenshot.', items: HOST_MEASURE, panel: <HostSellThroughChart /> },
+              { id: 'build', label: 'Build it', caption: 'Describe the night. Ari builds the page and the tiers.', items: HOST_BUILD, panel: <div className="flex justify-center"><EventPagePreview /></div> },
+              { id: 'promote', label: 'Promote it', caption: 'Email and text the people who came last time. Then reach past them.', items: HOST_PROMOTE, panel: <div className="flex justify-center"><EventPagePreview bare /></div> },
+              { id: 'run', label: 'Run it', caption: 'Take the money, scan them in, keep the list.', items: HOST_MEASURE, panel: <HostSellThroughChart /> },
             ]}
           />
         </div>
@@ -154,7 +154,7 @@ export default function EventOrganisersLandingPage() {
         <div className="grid gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16">
           <CutReveal>
             <CutoutHeading eyebrow="Before / after"
-              lede="The same event, run two ways."
+              lede="Same event. Fewer tabs."
               action={<DeviceCta surface="host" location="before_after" variant="quiet" size="md" />}>
               Five products, <span className="text-[var(--cut-accent)]">or one.</span>
             </CutoutHeading>
@@ -189,7 +189,7 @@ export default function EventOrganisersLandingPage() {
       <CutoutSection aria-label="How to sell out an event">
         <CutReveal>
           <CutoutHeading eyebrow="Useful either way"
-            lede="None of this requires Mingla. It is what separates the organisers whose second event outsells their first.">
+            lede="None of this needs Mingla. It is what makes a second event outsell the first.">
             Six things that decide <span className="text-[var(--cut-accent)]">whether a night sells.</span>
           </CutoutHeading>
         </CutReveal>
@@ -258,7 +258,7 @@ export default function EventOrganisersLandingPage() {
         <CutReveal variant="lift">
           <div className="flex flex-col items-center text-center">
             <CutoutHeading align="center"
-              lede="Build the page, set the tiers, and have something a buyer can open — before you finish the flyer.">
+              lede="Something a buyer can open, before you finish the flyer.">
               Put your next night <span className="text-[var(--cut-accent)]">on Mingla.</span>
             </CutoutHeading>
             <div className="mt-9"><DeviceCta surface="host" location="cta" variant="primary" size="lg" /></div>

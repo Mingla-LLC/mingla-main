@@ -61,7 +61,7 @@ export default function CutoutExplorerPage() {
             <HeroGraphic />
           </>
         }
-        lede="Tell Mingla what kind of night it is. Get back a plan you can send to the group — real places, in the right order, that everyone can agree on before Friday."
+        lede="Tell Mingla the night you want. Get a place — or a whole plan — that fits. On your own, or with the people you love."
         image={LAGOS_VENUES[0]?.photo ?? ''}
         actions={
           <>
@@ -71,19 +71,13 @@ export default function CutoutExplorerPage() {
             </Link>
           </>
         }
-        footnote={
-          <>
-            <span className="cut-btn-light inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[0.75rem] font-semibold text-[var(--cut-body)]">
-              Free to download
-            </span>
-            <span>Real places from Mingla’s own Lagos inventory.</span>
-          </>
-        }
+        scrollTo="#places"
+        footnote={<span>Free. Live in Lagos, London and US cities.</span>}
       />
 
       {/* The deck — real Lagos places, framed through cut-out windows. Sits
           immediately under the fold so the hero itself stays one viewport. */}
-      <CutoutSection rhythm="tight" aria-label="Places on Mingla in Lagos">
+      <CutoutSection id="places" rhythm="tight" aria-label="Places on Mingla in Lagos">
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {deck.map((venue, i) => (
             <CutReveal key={venue.placeKey} variant="lift" delay={i * 0.08}>

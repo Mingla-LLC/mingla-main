@@ -30,7 +30,14 @@ interface CutoutHeroProps {
   eyebrow: string
   /** First headline line. */
   line1: ReactNode
-  /** Second line — rendered as a flex row so the graphic can sit inside it. */
+  /**
+   * Second line — a flex row so the graphic can sit INSIDE it.
+   *
+   * CONSTRAINT: keep this short. At 96px the row has room for roughly twelve
+   * characters plus the graphic. Longer and the graphic wraps to its own line,
+   * where it stops reading as part of the headline and becomes exactly the kind
+   * of floating decoration this design is not supposed to have.
+   */
   line2: ReactNode
   lede: ReactNode
   actions: ReactNode
@@ -113,7 +120,7 @@ export function CutoutHero({
         <CutReveal variant="headline" delay={0.08}>
           <h1 className="cut-display mt-7 font-display">
             <span className="cut-gradient-text block">{line1}</span>
-            <span className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:mt-4">
+            <span className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:mt-4 sm:flex-nowrap">
               {line2}
             </span>
           </h1>

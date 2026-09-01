@@ -98,14 +98,6 @@ export function CutoutAccordionSwap({
                             <p className="mt-1.5 text-[0.875rem] leading-relaxed text-[var(--cut-body)]">
                               {cap.body}
                             </p>
-                            {/* The receipt. Unusual on a marketing page, and the
-                                reason an operator believes the claim above it. */}
-                            <p
-                              className="mt-1.5 truncate font-dashboard text-[0.6875rem] text-[var(--cut-muted)]"
-                              title={cap.evidence}
-                            >
-                              {cap.evidence}
-                            </p>
                           </li>
                         ))}
                       </ul>
