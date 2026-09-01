@@ -36,8 +36,13 @@ const DENIED = [
   liveWorkflow("stripe", "connect", "smoke"),
 ];
 // [TEST-MOD-APPROVED #2909] Census re-pinned, assertion strength unchanged.
-// #2895 added a 131st workflow (sites-backup-restore.yml) that declares
-// `pull_request`, making it the 124th PR-family member. These literals are the
+// #2895 added a 131st workflow -- the Sites backup-and-restore lane -- that
+// declares `pull_request`, making it the 124th PR-family member. Its filename
+// is deliberately NOT written here: the frozen provider seal derives, for every
+// workflow filename, the sorted set of tracked files containing that name as a
+// literal, so a passing mention in a comment silently rewrites that workflow's
+// record and reds `external reference file inventory drifted`. MEASURED -- the
+// first draft of this note did exactly that. These literals are the
 // membership tripwire and they are SUPPOSED to move when membership moves --
 // that is why they are hand-pinned rather than derived, and it is why this suite
 // went red on `main` the moment the workflow landed. Nothing is relaxed: the
@@ -64,8 +69,14 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // narrowed. Denied-workflow hashes, concurrency policy, test logic and every
 // mutation are unchanged.
 // Previous value (pre-#2885): a132a0155b04b0dc3bcbdd3edec6d119a7a43dfbe8db02929302c44336b69138
+// [TEST-MOD-APPROVED #2909] Second move in the same commit: #2909 adds one job
+// to each of two PR-family hosts (the pre-merge main check and the red-main
+// alert). This digest covers the whole document minus concurrency, so a job
+// addition MUST move it. Membership is unchanged by that edit -- the identity
+// digest and the count above moved only for the new #2895 member.
+// Previous value (pre-#2909 job additions): 757010090a432703e28f14aaebded53351c10614c10b0f7b33f668f5d6243884
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "757010090a432703e28f14aaebded53351c10614c10b0f7b33f668f5d6243884";
+  "167a83523a47aa487bee41e443b93b7f58f293eccc6d92bec47e6459d783cde1";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

@@ -138,3 +138,47 @@ jobs:
           process.exit(1);
           RATCHET
           node /tmp/manifest-ratchet.mjs
+
+  # issue #2909 — the pre-merge gate learns to check `main`.
+  #
+  # On 2026-09-01 `main` was red for roughly two hours across three commits and
+  # nobody found out. Three engineers merged onto it, one of them the
+  # orchestrator immediately after an explicit approval, because the pre-merge
+  # gate verified every check on the PULL REQUEST and never asked whether `main`
+  # itself was healthy. A green PR on a red `main` is exactly what that gate
+  # was built to certify, so it certified it.
+  #
+  # This job closes that. It lives in THIS workflow deliberately: this is the
+  # only pull-request workflow with no positive `paths:` filter, so it starts on
+  # every pull request. Hosting it in a paths-gated lane would reproduce the
+  # class of hole it exists to close — a check that silently skips is worth what
+  # a check that never existed is worth.
+  #
+  # It is a REPORTING check with the same strength every other gate here has:
+  # it turns red, and the repository's own all-checks-green-before-merge rule
+  # refuses the merge. It is in no ruleset, and putting it in one is out of
+  # scope for #2909.
+  #
+  # `permissions:` is JOB-level on purpose. This workflow declares no
+  # workflow-level `permissions:` key, so the sibling job inherits the
+  # repository default; adding one at workflow level would move its token too.
+  main-health-pregate:
+    name: "Pre-merge: main is green"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # The fixture suite runs FIRST and needs no token: a snapshot reader whose
+      # own logic is unproven can report a confident green it never measured.
+      - name: "main-health self-test (regression guard)"
+        run: node scripts/ci/main-health.mjs --self-test
+      - name: "Refuse to certify a merge onto a red main"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/ci/main-health.mjs pregate
