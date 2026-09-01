@@ -150,6 +150,9 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
     const method = transportPath === "/" && typeof input.method === "string"
       ? input.method.toUpperCase()
       : req.method;
+    const availabilityMatch = path.match(
+      /^\/v1\/brands\/([^/]+)\/site-availability$/,
+    );
     const brandMatch = path.match(/^\/v1\/brands\/([^/]+)\/site$/);
     const editorMatch = path.match(/^\/v1\/brands\/([^/]+)\/editor-session$/);
     const siteMatch = path.match(
@@ -162,6 +165,16 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
       /^\/v1\/sites\/([^/]+)\/(versions|analytics)$/,
     );
     const ariMatch = path.match(/^\/v1\/sites\/([^/]+)\/ari$/);
+
+    if (availabilityMatch && method === "GET") {
+      const brandId = requireUuid(availabilityMatch[1]);
+      const { data, error } = await db.user.rpc(
+        "brand_site_business_availability",
+        { p_brand_id: brandId },
+      );
+      if (error) return sitesFailure("FORBIDDEN", 403);
+      return sitesJson({ ok: true, data });
+    }
 
     if (brandMatch && method === "GET") {
       const brandId = requireUuid(brandMatch[1]);

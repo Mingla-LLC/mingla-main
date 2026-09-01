@@ -75,13 +75,21 @@ describe("#2830 explicit Website journey owner", () => {
 
   it("keeps the lazy Brand Profile entry customer-safe and status-aware", async () => {
     const invoke = supabase.functions.invoke as jest.Mock;
+    // [TEST-MOD-APPROVED #2893] The entry now consumes the stronger Core-backed
+    // per-brand availability projection. The status assertions are preserved.
     for (const [status, expected] of [
       ["provisioning", "Setting up…"],
       ["publishing", "Publishing…"],
       ["error", "Publish needs attention"],
     ]) {
       invoke.mockResolvedValueOnce({
-        data: { ok: true, data: site(status as BrandSiteOverview["status"]) },
+        data: {
+          ok: true,
+          data: {
+            available: true,
+            site: site(status as BrandSiteOverview["status"]),
+          },
+        },
         error: null,
       });
       await expect(
@@ -89,7 +97,7 @@ describe("#2830 explicit Website journey owner", () => {
       ).resolves.toBe(expected);
     }
     invoke.mockResolvedValueOnce({
-      data: { ok: false, error: { code: "NOT_FOUND" } },
+      data: { ok: true, data: { available: true, site: null } },
       error: null,
     });
     await expect(

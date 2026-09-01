@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { Media } from "../collections/Media";
 import { enforceLiveStudioWrite } from "./access";
+import { sha256 } from "./crypto";
 import { callCore } from "./gateway";
 import { tombstoneMedia } from "./mediaPipeline";
 import {
@@ -17,6 +18,14 @@ import {
 } from "./studioRequestAuth";
 
 vi.mock("./gateway", () => ({ callCore: vi.fn(async () => ({ status: "authorized" })) }));
+vi.mock("./objectStore", () => ({
+  deleteObject: vi.fn(async () => undefined),
+  presignedQuarantinePut: vi.fn(async () => ({ url: "", headers: {} })),
+  readObject: vi.fn(async () =>
+    new TextEncoder().encode("studio-authority-media")
+  ),
+  writeObject: vi.fn(async () => undefined),
+}));
 
 const session: StudioSession = {
   version: 1,
@@ -38,14 +47,15 @@ beforeAll(() => {
     PAYLOAD_SECRET: "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
     SITES_CORE_BASE_URL: "https://core.invalid",
     SITES_CMS_ORIGIN: "https://studio.invalid",
-    SUPABASE_S3_ENDPOINT: "https://storage.invalid",
-    SUPABASE_S3_REGION: "fixture",
+    SUPABASE_S3_ENDPOINT:
+      "https://abcdefghijklmnopqrst.storage.supabase.co/storage/v1/s3",
+    SUPABASE_S3_REGION: "us-east-2",
     SUPABASE_S3_ACCESS_KEY_ID: "fixture",
     SUPABASE_S3_SECRET_ACCESS_KEY: "fixture",
-    SITES_MEDIA_QUARANTINE_BUCKET: "quarantine",
-    SITES_MEDIA_APPROVED_BUCKET: "approved",
-    SITES_PUBLICATION_ARTIFACT_BUCKET: "artifacts",
-    SITES_MEDIA_RECOVERY_BUCKET: "recovery",
+    SITES_MEDIA_QUARANTINE_BUCKET: "sites-media-quarantine",
+    SITES_MEDIA_APPROVED_BUCKET: "sites-media-approved",
+    SITES_PUBLICATION_ARTIFACT_BUCKET: "sites-publication-artifacts",
+    SITES_MEDIA_RECOVERY_BUCKET: "sites-media-recovery",
     SITES_PREVIEW_SIGNING_SECRET:
       "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
     MINGLA_CMS_TO_CORE_CURRENT_KEY_B64:
@@ -202,6 +212,12 @@ describe("#2830 live Studio request authority", () => {
 
   it("bounds tombstone Media grants without mutating ordinary relationship reads", async () => {
     const liveUser = payloadUser(session);
+    const mediaId = "00000000-0000-4000-8000-000000000006";
+    const sourceDigest = "a".repeat(64);
+    const objectBytes = new TextEncoder().encode("studio-authority-media");
+    const objectDigest = await sha256(objectBytes);
+    const approvedBase =
+      `approved/${session.site_id}/${mediaId}/${sourceDigest}`;
     const base = await request(liveUser);
     const calls: Array<{
       operation: "findByID" | "find" | "update";
@@ -212,8 +228,28 @@ describe("#2830 live Studio request authority", () => {
       findByID: vi.fn(async (input) => {
         calls.push({ operation: "findByID", ...input });
         return input.req.context.minglaMediaGrant === true
-          ? { id: "media-1", tenant: session.tenant_id, state: "READY" }
-          : { id: "media-1", tenant: session.tenant_id };
+          ? {
+            id: mediaId,
+            tenant: session.tenant_id,
+            state: "READY",
+            approved_master_key: `${approvedBase}/master.webp`,
+            rendition_manifest: {
+              version: 1,
+              master: {
+                key: `${approvedBase}/master.webp`,
+                digest: objectDigest,
+                bytes: objectBytes.byteLength,
+              },
+              renditions: [320, 640, 960, 1440, 1920].map((width) => ({
+                target_width: width,
+                width,
+                key: `${approvedBase}/${width}.webp`,
+                digest: objectDigest,
+                bytes: objectBytes.byteLength,
+              })),
+            },
+          }
+          : { id: mediaId, tenant: session.tenant_id };
       }),
       find: vi.fn(async (input) => {
         calls.push({ operation: "find", ...input });
@@ -221,12 +257,12 @@ describe("#2830 live Studio request authority", () => {
       }),
       update: vi.fn(async (input) => {
         calls.push({ operation: "update", ...input });
-        return { id: "media-1", state: "TOMBSTONED" };
+        return { id: mediaId, state: "TOMBSTONED" };
       }),
     };
     const ordinaryRequest = { ...base, payload } as never;
 
-    await expect(tombstoneMedia(ordinaryRequest, "media-1")).resolves.toMatchObject({
+    await expect(tombstoneMedia(ordinaryRequest, mediaId)).resolves.toMatchObject({
       state: "TOMBSTONED",
     });
 

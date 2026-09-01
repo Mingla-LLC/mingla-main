@@ -7,8 +7,10 @@ import {
   attachStudioMedia,
   canSelectStudioMedia,
   isStudioSessionEnded,
+  isStudioMediaRecoverable,
   loadStudioMediaLibrary,
   removeUnusedStudioMedia,
+  restoreStudioMedia,
   uploadStudioMedia,
   validateStudioMediaFile,
   type StudioMediaLibrary,
@@ -174,6 +176,24 @@ export default function StudioMediaManager() {
       if (returnExpiredStudioSession(error)) return;
       setLibraryError(
         "That image is now used by the draft or could not be removed. Nothing was detached.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restoreRemoved = async (mediaId: string) => {
+    setBusy(true);
+    setLibraryError(null);
+    try {
+      await restoreStudioMedia(mediaId);
+      setSelectedMediaId(mediaId);
+      setSuccess("The image is READY to use again.");
+      await refreshLibrary();
+    } catch (error) {
+      if (returnExpiredStudioSession(error)) return;
+      setLibraryError(
+        "That image could not be restored. Its recovery window may have ended or its protected copy may be unavailable.",
       );
     } finally {
       setBusy(false);
@@ -355,14 +375,30 @@ export default function StudioMediaManager() {
                     : item.rejection_code ?? item.state.replaceAll("_", " ")}
                 </span>
               </button>
-              <button
-                type="button"
-                className="studio-text-button"
-                disabled={item.in_use || item.state !== "READY" || busy}
-                onClick={() => void removeUnused(item.id, item.in_use)}
-              >
-                {item.in_use ? "Used in draft" : "Remove unused"}
-              </button>
+              {item.state === "TOMBSTONED" ? (
+                <button
+                  type="button"
+                  className="studio-text-button"
+                  disabled={
+                    busy ||
+                    !isStudioMediaRecoverable(item.recoverable_until)
+                  }
+                  onClick={() => void restoreRemoved(item.id)}
+                >
+                  {isStudioMediaRecoverable(item.recoverable_until)
+                    ? "Restore image"
+                    : "Recovery ended"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="studio-text-button"
+                  disabled={item.in_use || item.state !== "READY" || busy}
+                  onClick={() => void removeUnused(item.id, item.in_use)}
+                >
+                  {item.in_use ? "Used in draft" : "Remove unused"}
+                </button>
+              )}
             </article>
           ))}
         </div>

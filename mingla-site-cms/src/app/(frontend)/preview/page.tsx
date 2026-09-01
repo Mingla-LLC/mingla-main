@@ -1,5 +1,6 @@
 import PreviewChrome from "../../../components/PreviewChrome";
 import StudioSafeReturn from "../../../components/StudioSafeReturn";
+import { MINGLA_BUSINESS_ORIGIN } from "../../../lib/origins";
 import {
   decodePreviewGrant,
   decodePreviewReturnContext,
@@ -25,7 +26,7 @@ export default async function PreviewPage({
         returnUrl={
           context
             ? studioReturnLocationFromContext(context, "preview_expired")
-            : "https://business.usemingla.com"
+            : MINGLA_BUSINESS_ORIGIN
         }
         title="This private preview ended."
         body="Nothing was published. Return to the exact Website workspace for a fresh preview."
