@@ -73,37 +73,20 @@ interface DeviceCtaProps {
 }
 
 const SIZES = {
-  md: 'h-11 px-5 text-[0.9375rem]',
-  lg: 'h-14 px-7 text-base',
+  md: 'h-12 px-6 text-[0.9375rem]',
+  lg: 'h-[3.75rem] px-8 text-base',
 } as const
 
+/**
+ * AIgocy's buttons are MOULDED: an inset top highlight, an inset dark bottom
+ * band, and a six-step drop stack. The first pass gave them one flat shadow and
+ * that is a large part of why the page read as bland. The recipes now live in
+ * `cutout.css` as `.cut-btn-{dark,light,brand}`.
+ */
 function classesFor(variant: NonNullable<DeviceCtaProps['variant']>, size: 'md' | 'lg') {
-  const base = cn(
-    'inline-flex shrink-0 items-center justify-center gap-2 rounded-full',
-    'font-display font-medium tracking-[-0.005em] whitespace-nowrap',
-    'transition-all duration-200 ease-out-quart cursor-pointer focus-ring',
-    SIZES[size],
-  )
-  switch (variant) {
-    case 'primary':
-      return cn(
-        base,
-        'bg-[var(--cut-accent)] text-white shadow-[var(--cut-shadow-tile)]',
-        'hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-100',
-      )
-    case 'ink':
-      return cn(
-        base,
-        'bg-[var(--cut-ink)] text-[var(--cut-shell)] shadow-[var(--cut-shadow-tile)]',
-        'hover:-translate-y-0.5 hover:brightness-125 active:translate-y-0',
-      )
-    case 'quiet':
-      return cn(
-        base,
-        'bg-[var(--cut-card)] text-[var(--cut-ink)] shadow-[var(--cut-shadow-card)]',
-        'hover:-translate-y-0.5 hover:shadow-[var(--cut-shadow-card-hover)] active:translate-y-0',
-      )
-  }
+  const tint =
+    variant === 'primary' ? 'cut-btn-brand' : variant === 'ink' ? 'cut-btn-dark' : 'cut-btn-light'
+  return cn('cut-btn font-display tracking-[-0.005em] focus-ring', tint, SIZES[size])
 }
 
 export function DeviceCta({

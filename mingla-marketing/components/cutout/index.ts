@@ -1,6 +1,8 @@
 // #2902 — Cutout design system barrel.
 export { CutoutShell, CutoutSection, CutoutCard, CutoutMedia, CutoutTile, CutoutEyebrow, CutoutHeading, CutoutConnector } from './primitives'
 export { CutoutNav } from './cutout-nav'
+export { CutoutHero } from './hero'
+export { HeroGraphic, ScrollMore } from './hero-graphic'
 export { CutoutFooter } from './footer'
 export { DeviceCta, type CutoutSurface } from './device-cta'
 export { CutReveal } from './motion'

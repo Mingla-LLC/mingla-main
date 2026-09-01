@@ -75,11 +75,13 @@ interface CutoutCardProps {
   as?: 'div' | 'li' | 'article'
 }
 
+// AIgocy pads .features-item at 32px and .pricing-item / .team-item at 40px.
+// The first pass used 24–28 and the cards read as cramped next to the template.
 const PAD = {
   none: '',
-  sm: 'p-4',
-  md: 'p-6 sm:p-7',
-  lg: 'p-7 sm:p-9',
+  sm: 'p-4 sm:p-5',
+  md: 'p-6 sm:p-8',
+  lg: 'p-8 sm:p-10',
 } as const
 
 export function CutoutCard({
@@ -137,8 +139,8 @@ export function CutoutTile({
     <span
       aria-hidden="true"
       className={cn(
-        'cut-tile inline-flex h-12 w-12 shrink-0 items-center justify-center text-white',
-        overhang && '-ml-2 -mt-8 sm:-ml-3 sm:-mt-10',
+        'cut-tile inline-flex h-14 w-14 shrink-0 items-center justify-center text-white',
+        overhang && '-ml-3 -mt-12 sm:-ml-4 sm:-mt-14',
         className,
       )}
     >
@@ -157,9 +159,9 @@ export function CutoutEyebrow({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-2 rounded-full px-3 py-1.5',
-        'text-[0.6875rem] font-bold uppercase tracking-[0.16em]',
-        'bg-[var(--cut-card)] text-[var(--cut-accent-ink)] shadow-[var(--cut-shadow-card)]',
+        'inline-flex items-center gap-2 rounded-full px-4 py-2.5',
+        'text-[0.75rem] font-bold uppercase tracking-[0.14em]',
+        'cut-btn-light text-[var(--cut-accent-ink)]',
         className,
       )}
     >
@@ -204,10 +206,8 @@ export function CutoutHeading({
       {eyebrow ? <CutoutEyebrow className="mb-5">{eyebrow}</CutoutEyebrow> : null}
       <Tag
         className={cn(
-          'font-display tracking-[-0.03em] text-[var(--cut-ink)]',
-          Tag === 'h1'
-            ? 'max-w-[16ch] text-[clamp(2.5rem,6vw,4.75rem)] leading-[1.02]'
-            : 'max-w-[20ch] text-[clamp(1.875rem,3.6vw,3rem)] leading-[1.06]',
+          'font-display cut-gradient-text',
+          Tag === 'h1' ? 'cut-display max-w-[15ch]' : 'cut-display-2 max-w-[18ch]',
           align === 'center' && 'mx-auto',
         )}
       >
@@ -216,7 +216,7 @@ export function CutoutHeading({
       {lede ? (
         <p
           className={cn(
-            'mt-5 max-w-2xl text-base leading-relaxed text-[var(--cut-body)] sm:text-[1.0625rem]',
+            'mt-6 max-w-2xl text-[1.0625rem] leading-relaxed text-[var(--cut-body)] sm:text-lg',
             align === 'center' && 'mx-auto',
           )}
         >

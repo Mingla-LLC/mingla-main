@@ -60,7 +60,7 @@ export function CutoutNav({ surface, homeHref }: CutoutNavProps) {
         {/* The bar. `pr-1.5` leaves exactly the gap the overhanging CTA sits in. */}
         <div
           className={cn(
-            'relative flex items-center gap-2 rounded-full py-1.5 pl-4 pr-1.5 sm:pl-6',
+            'relative flex items-center gap-2 rounded-full py-2 pl-5 pr-2 sm:pl-7',
             'transition-all duration-300 ease-out-quart',
           )}
           // At rest the bar was rgba(250,248,244,0.58) on a #faf8f4 shell —
@@ -68,11 +68,16 @@ export function CutoutNav({ surface, homeHref }: CutoutNavProps) {
           // it into an orange blur. Both were only visible on a built page.
           // The pill now sits ABOVE the shell in tone (white, not parchment) and
           // blurs only once there is content behind it worth blurring.
+          // Moulded like every other surface: inset top light, inset bottom
+          // band, soft drop. AIgocy's nav is a floating physical pill, not a
+          // translucent strip.
           style={{
-            background: scrolled ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.74)',
-            backdropFilter: scrolled ? 'blur(20px) saturate(1.5)' : 'none',
-            WebkitBackdropFilter: scrolled ? 'blur(20px) saturate(1.5)' : 'none',
-            boxShadow: scrolled ? 'var(--cut-shadow-nav)' : 'var(--cut-shadow-card)',
+            background: scrolled
+              ? 'rgba(253,251,248,0.94)'
+              : 'linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(250,247,242,0.86) 100%)',
+            backdropFilter: 'blur(20px) saturate(1.4)',
+            WebkitBackdropFilter: 'blur(20px) saturate(1.4)',
+            boxShadow: 'var(--cut-mould)',
           }}
         >
           <Link

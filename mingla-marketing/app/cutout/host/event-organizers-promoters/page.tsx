@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import { AlertTriangle } from 'lucide-react'
 import {
   AnswerBlock, BreadcrumbSchema, CutoutCard, CutoutFaq, CutoutFooter, CutoutHeading,
-  CutoutNav, CutoutSection, CutoutShell, CutReveal, DeviceCta,
-  FaqSchema, OnThisPage, PageSchema, type Crumb,
+  CutoutHero, CutoutNav, CutoutSection, CutoutShell, CutReveal, DeviceCta,
+  FaqSchema, HeroGraphic, OnThisPage, PageSchema, type Crumb,
 } from '@/components/cutout'
 import { CutoutAccordionSwap } from '@/components/cutout/host-sections'
 import { EventPagePreview } from '@/components/design-preview/host/event-page-preview'
@@ -80,55 +80,28 @@ export default function EventOrganisersLandingPage() {
     <CutoutShell>
       <CutoutNav surface="host" homeHref="/cutout/host" />
 
-      {/* 1 — HERO */}
-      <CutoutSection
-        rhythm="hero"
-        aria-label={TITLE}
-        className="flex min-h-[calc(100svh-1rem)] flex-col justify-center pb-10 pt-28 sm:pt-32"
-      >
-        <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16">
-          <div>
-            <CutReveal variant="headline">
-              <h1 className="max-w-[15ch] font-display text-[clamp(2.5rem,5.6vw,4.5rem)] leading-[1.0] tracking-[-0.035em] text-[var(--cut-ink)]">
-                Your event deserves better than{' '}
-                <span className="text-[var(--cut-accent)]">a ticket link.</span>
-              </h1>
-            </CutReveal>
-            <CutReveal delay={0.14}>
-              <p className="mt-6 max-w-xl text-[1.0625rem] leading-relaxed text-[var(--cut-body)] sm:text-lg">
-                A flyer says what is happening. Mingla says why it matters, sells the night at one
-                honest price, and hands you the door and the guest list when it is over.
-              </p>
-            </CutReveal>
-            <CutReveal delay={0.22}>
-              <div className="mt-9 flex flex-wrap items-center gap-3">
-                <DeviceCta surface="host" location="hero" variant="primary" size="lg" />
-                <a
-                  href="#answer"
-                  className="inline-flex h-14 items-center rounded-full bg-[var(--cut-card)] px-7 font-display text-base font-medium text-[var(--cut-ink)] shadow-[var(--cut-shadow-card)] transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:shadow-[var(--cut-shadow-card-hover)] focus-ring"
-                >
-                  How it works
-                </a>
-              </div>
-            </CutReveal>
-          </div>
-          <CutReveal variant="lift" delay={0.18}>
-            {/* The replica is ~950px tall. Unconstrained it set the grid row
-                height and pushed the headline into the lower half of the
-                viewport, leaving a dead top third. Capped and faded, it reads
-                as a page continuing past the fold, which is what it is. */}
-            <div
-              className="relative mx-auto hidden max-h-[34rem] justify-center overflow-hidden lg:flex"
-              style={{
-                maskImage: 'linear-gradient(180deg, #000 78%, transparent 100%)',
-                WebkitMaskImage: 'linear-gradient(180deg, #000 78%, transparent 100%)',
-              }}
-            >
-              <EventPagePreview />
-            </div>
-          </CutReveal>
-        </div>
-      </CutoutSection>
+      {/* 1 — HERO. AIgocy §section-hero, ported faithfully. */}
+      <CutoutHero
+        eyebrow="For event organisers"
+        line1="Sell out the night,"
+        line2={
+          <>
+            <span className="cut-gradient-brand">not the link.</span>
+            <HeroGraphic />
+          </>
+        }
+        lede="A flyer says what is happening. Mingla says why it matters, sells the night at one honest price, and hands you the door and the guest list when it is over."
+        image="/marketing/host-hero/world-hosts-create-poster.jpg"
+        scrollTo="#answer"
+        actions={
+          <>
+            <DeviceCta surface="host" location="hero" variant="primary" size="lg" />
+            <a href="#answer" className="cut-btn cut-btn-light h-[3.75rem] px-8 font-display text-base focus-ring">
+              How it works
+            </a>
+          </>
+        }
+      />
 
       {/* 2 — THE ANSWER. Server-rendered, plain HTML, second in the document. */}
       <AnswerBlock

@@ -3,11 +3,13 @@ import Link from 'next/link'
 import { cn } from '@/lib/cn'
 import {
   CutoutFooter,
+  CutoutHero,
   CutoutNav,
   CutoutSection,
   CutoutShell,
   CutReveal,
   DeviceCta,
+  HeroGraphic,
 } from '@/components/cutout'
 import { CutoutPlaceCard } from '@/components/cutout/place-card'
 import { LAGOS_VENUES } from '@/lib/design-preview/lagos-truth'
@@ -47,84 +49,55 @@ export default function CutoutExplorerPage() {
     <CutoutShell>
       <CutoutNav surface="explorer" homeHref="/cutout/explorer" />
 
-      <CutoutSection
-        rhythm="hero"
-        aria-label="Mingla for Explorers"
-        className="flex min-h-[calc(100svh-1rem)] flex-col justify-center pb-8 pt-28 sm:pb-10 sm:pt-32"
-      >
-        <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-16">
-          <div>
-            <CutReveal variant="headline">
-              <h1 className="max-w-[13ch] font-display text-[clamp(2.75rem,6.2vw,5rem)] leading-[1.0] tracking-[-0.035em] text-[var(--cut-ink)]">
-                Find a vibe,{' '}
-                <span className="text-[var(--cut-accent)]">not a venue.</span>
-              </h1>
-            </CutReveal>
+      {/* AIgocy's hero composition, on the Explorer surface. The page stays a
+          SINGLE VIEWPORT per Seth's ruling: the deck sits inside the hero as a
+          drifting card rail behind the scrim rather than as a second block. */}
+      <CutoutHero
+        eyebrow="Lagos · London · US cities"
+        line1="Find a vibe,"
+        line2={
+          <>
+            <span className="cut-gradient-brand">not a venue.</span>
+            <HeroGraphic />
+          </>
+        }
+        lede="Tell Mingla what kind of night it is. Get back a plan you can send to the group — real places, in the right order, that everyone can agree on before Friday."
+        image={LAGOS_VENUES[0]?.photo ?? ''}
+        actions={
+          <>
+            <DeviceCta surface="explorer" location="hero" variant="primary" size="lg" />
+            <Link href="/cutout/host" className="cut-btn cut-btn-light h-[3.75rem] px-8 font-display text-base focus-ring">
+              I run a place
+            </Link>
+          </>
+        }
+        footnote={
+          <>
+            <span className="cut-btn-light inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[0.75rem] font-semibold text-[var(--cut-body)]">
+              Free to download
+            </span>
+            <span>Real places from Mingla’s own Lagos inventory.</span>
+          </>
+        }
+      />
 
-            <CutReveal delay={0.12}>
-              <p className="mt-6 max-w-xl text-[1.0625rem] leading-relaxed text-[var(--cut-body)] sm:text-lg">
-                Tell Mingla what kind of night it is. Get back a plan you can send to the group —
-                real places, in the right order, that everyone can agree on before Friday.
-              </p>
+      {/* The deck — real Lagos places, framed through cut-out windows. Sits
+          immediately under the fold so the hero itself stays one viewport. */}
+      <CutoutSection rhythm="tight" aria-label="Places on Mingla in Lagos">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {deck.map((venue, i) => (
+            <CutReveal key={venue.placeKey} variant="lift" delay={i * 0.08}>
+              <CutoutPlaceCard venue={venue} eager={i < 2} compact />
             </CutReveal>
-
-            <CutReveal delay={0.22}>
-              {/* Both actions must sit on ONE row at 390px or the hero loses a
-                  whole line of vertical budget it does not have. */}
-              <div className="mt-8 flex flex-nowrap items-center gap-2.5 sm:gap-3">
-                <DeviceCta
-                  surface="explorer"
-                  location="hero"
-                  variant="primary"
-                  size="lg"
-                  className="!h-12 !px-5 sm:!h-14 sm:!px-7"
-                />
-                <Link
-                  href="/cutout/host"
-                  className="inline-flex h-12 shrink-0 items-center whitespace-nowrap rounded-full bg-[var(--cut-card)] px-5 font-display text-[0.9375rem] font-medium text-[var(--cut-ink)] shadow-[var(--cut-shadow-card)] transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:shadow-[var(--cut-shadow-card-hover)] focus-ring sm:h-14 sm:px-7 sm:text-base"
-                >
-                  I run a place
-                </Link>
-              </div>
-            </CutReveal>
-
-            <CutReveal delay={0.3}>
-              <p className="mt-5 text-[0.8125rem] leading-relaxed text-[var(--cut-muted)]">
-                Live in Lagos, London and US cities. Free to download.
-              </p>
-            </CutReveal>
-          </div>
-
-          {/* The deck — real Lagos places, each framed through a cut-out window.
-              The third and fourth cards are desktop-only: on a phone they are
-              the difference between one viewport and two. */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            {deck.map((venue, i) => (
-              <CutReveal
-                key={venue.placeKey}
-                variant="lift"
-                delay={0.16 + i * 0.09}
-                className={cn(
-                  i % 2 === 1 ? 'lg:translate-y-6' : undefined,
-                  i > 1 ? 'hidden sm:block' : undefined,
-                )}
-              >
-                <CutoutPlaceCard venue={venue} eager={i < 2} compact />
-              </CutReveal>
-            ))}
-          </div>
+          ))}
         </div>
-
-        <CutReveal delay={0.42}>
-          <nav
-            aria-label="Site information"
-            className="mt-8 hidden flex-wrap items-center justify-center gap-2 sm:mt-12 sm:flex"
-          >
+        <CutReveal delay={0.3}>
+          <nav aria-label="Site information" className="mt-10 flex flex-wrap items-center justify-center gap-2">
             {LEGAL.map((l) => (
               <Link
                 key={l.href}
                 href={l.href}
-                className="rounded-full bg-[var(--cut-card)] px-4 py-2 text-[0.8125rem] font-medium text-[var(--cut-body)] shadow-[var(--cut-shadow-card)] transition-colors hover:text-[var(--cut-ink)] focus-ring"
+                className="cut-btn-light rounded-full px-4 py-2.5 text-[0.8125rem] font-semibold text-[var(--cut-body)] transition-colors hover:text-[var(--cut-ink)] focus-ring"
               >
                 {l.label}
               </Link>

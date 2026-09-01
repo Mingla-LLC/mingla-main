@@ -1,142 +1,263 @@
 /* ---------------------------------------------------------------------------
-   #2902 — the "Cutout" design foundation.
+   #2902 — the Cutout design foundation, v2.
 
-   AIgocy's LAYOUT LANGUAGE rendered in MINGLA'S BRAND, per Seth's ruling on
-   2026-09-01: take the nested cut-out cards, soft borderless shadows,
-   overhanging tiles, dark chips and section rhythm; leave the slate-blue and
-   hot red behind.
+   FAITHFUL port of AIgocy's actual design, with only colour and type changed.
+   The first pass took the template's grammar and lost its look; this one copies
+   the real recipes out of `assets/css/styles.css` and re-tints them.
 
-   The whole system is scoped under [data-cutout] so it cannot leak onto the
-   live `/` or `/host` while those pages are still the shipped design.
+   THE SIGNATURE, and the thing the first pass missed entirely — every surface
+   in AIgocy is MOULDED, not flat. A card carries four shadows:
 
-   The single idea the whole system is built from: NESTED ROUNDED RECTANGLES,
-   each one inset inside the last — ground → page shell → section → card →
-   media window — with elements that deliberately BREAK OUT of their parent's
-   edge. That overhang is the "cut-out" read.
+       0 7.77px 16px  rgba(0,0,0,.059)              soft drop
+       0 3px    3px   rgba(0,0,0,.102)              contact shadow
+       0 -8px   0     rgba(0,0,0,.051)      inset   bottom band  ← the thickness
+       0 4px    0     rgba(255,255,255,.6)  inset   top highlight ← the light
+
+   That inset bottom band plus the inset top highlight is what makes every card
+   read as cut from a solid slab with real depth, rather than a rectangle with a
+   drop shadow. Buttons use the same trick with a harder bottom band. This is
+   the "cut-out card effect".
+
+   Colour mapping (AIgocy → Mingla):
+       --body      #EDECEC  → warm ground
+       neutral-100 #F4F4F5  → warm card
+       neutral-900 #18181B  → Mingla ink
+       --brand     #FD3A25  → Mingla warm #eb7825
+
+   Everything is scoped under [data-cutout] so it cannot leak onto the live site.
 --------------------------------------------------------------------------- */
 
 [data-cutout] {
-  /* Grounds. The ground is deliberately DARKER than the page shell — that
-     contrast is what makes the shell read as a card lying on a surface. */
-  --cut-ground: #efe9df;
-  --cut-shell: #faf8f4;
-  --cut-card: #ffffff;
-  --cut-card-sunken: #f5f2ec;
-  --cut-ink: #0e0e10;
+  --cut-ground: #ece7e0;      /* AIgocy --body, warmed */
+  --cut-shell: #f7f4ef;
+  --cut-card: #f6f3ee;        /* AIgocy --neutral-100, warmed */
+  --cut-card-raised: #fdfbf8;
+  --cut-card-sunken: #ece8e1;
+  --cut-ink: #14120f;         /* AIgocy --primary, warmed */
+  --cut-ink-900: #1c1a17;     /* AIgocy --neutral-900, warmed */
   --cut-accent: #eb7825;
+  --cut-accent-deep: #c85f14;
   --cut-accent-ink: #a8450e;
 
-  /* Radii. Each nesting level steps DOWN, which is what keeps concentric
-     corners looking parallel rather than accidental. */
+  /* AIgocy radii: 32 on cards, 40 on shell / pricing / team. */
   --cut-r-shell: 40px;
-  --cut-r-card: 28px;
-  --cut-r-media: 20px;
-  --cut-r-tile: 18px;
-  --cut-r-pill: 999px;
+  --cut-r-card: 32px;
+  --cut-r-lg: 40px;
+  --cut-r-media: 24px;
+  --cut-r-tile: 20px;
 
-  /* Shadows. Borderless and wide — AIgocy never draws a card outline, it
-     floats the card instead. Warm-tinted so they sit on parchment. */
-  --cut-shadow-card:
-    0 1px 2px rgba(14, 14, 16, 0.03),
-    0 10px 28px rgba(14, 14, 16, 0.055);
-  --cut-shadow-card-hover:
-    0 2px 6px rgba(14, 14, 16, 0.05),
-    0 22px 56px rgba(14, 14, 16, 0.09);
-  /* The overhanging dark tile needs a tighter, darker shadow or it reads as
-     printed onto the card rather than sitting above it. */
-  --cut-shadow-tile:
-    0 2px 4px rgba(14, 14, 16, 0.14),
-    0 8px 20px rgba(14, 14, 16, 0.20);
-  --cut-shadow-shell: 0 12px 60px rgba(14, 14, 16, 0.08);
-  --cut-shadow-nav:
-    0 1px 2px rgba(14, 14, 16, 0.04),
-    0 12px 32px rgba(14, 14, 16, 0.10);
+  /* THE MOULDED CARD. Verbatim structure, warm-tinted. */
+  --cut-mould:
+    0 7.77px 16px 0 rgba(20, 18, 15, 0.06),
+    0 3px 3px 0 rgba(20, 18, 15, 0.10),
+    0 -8px 0 0 rgba(20, 18, 15, 0.05) inset,
+    0 4px 0 0 rgba(255, 255, 255, 0.72) inset;
 
-  --cut-hairline: rgba(14, 14, 16, 0.07);
-  --cut-body: rgba(14, 14, 16, 0.66);
-  --cut-muted: rgba(14, 14, 16, 0.45);
+  --cut-mould-hover:
+    0 18px 34px 0 rgba(20, 18, 15, 0.10),
+    0 3px 3px 0 rgba(20, 18, 15, 0.10),
+    0 -8px 0 0 rgba(20, 18, 15, 0.05) inset,
+    0 4px 0 0 rgba(255, 255, 255, 0.8) inset;
+
+  /* Dark moulded surface — AIgocy .team-item. */
+  --cut-mould-dark:
+    0 7.77px 2.21px 0 rgba(0, 0, 0, 0.06),
+    0 3px 3px 0 rgba(0, 0, 0, 0.10),
+    0 -8px 0 0 #0d0c0a inset,
+    0 4px 0 0 rgba(255, 255, 255, 0.10) inset;
+
+  /* THE 3D BUTTON. AIgocy .tf-btn — inset top light, inset bottom dark, and a
+     six-step drop stack. This is most of why the template's buttons feel real. */
+  --cut-btn-dark-bg:
+    radial-gradient(62.56% 62.56% at 28.14% -10.42%, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0) 100%),
+    linear-gradient(0deg, #211f1c, #211f1c);
+  --cut-btn-dark-shadow:
+    0 -3px 0 0 #070605 inset,
+    0 1px 0 0 rgba(255, 255, 255, 0.30) inset,
+    0 2.77px 2.21px 0 rgba(0, 0, 0, 0.12),
+    0 6.65px 5.32px 0 rgba(0, 0, 0, 0.13),
+    0 12.52px 10.02px 0 rgba(0, 0, 0, 0.13),
+    0 22.34px 17.87px 0 rgba(0, 0, 0, 0.14),
+    0 41.78px 33.42px 0 rgba(0, 0, 0, 0.13);
+
+  --cut-btn-light-bg:
+    radial-gradient(62.56% 62.56% at 28.14% -10.42%, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 100%),
+    linear-gradient(0deg, #faf8f5, #faf8f5);
+  --cut-btn-light-shadow:
+    0 -3px 0 0 #e5e0d8 inset,
+    0 1px 0 0 rgba(255, 255, 255, 0.90) inset,
+    0 2.77px 2.21px 0 rgba(20, 18, 15, 0.10),
+    0 3px 3px 0 rgba(20, 18, 15, 0.10);
+
+  --cut-btn-brand-bg:
+    radial-gradient(62.56% 62.56% at 28.14% -10.42%, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 100%),
+    linear-gradient(180deg, #f0842f 0%, #e06a17 100%);
+  --cut-btn-brand-shadow:
+    0 -3px 0 0 #a8450e inset,
+    0 1px 0 0 rgba(255, 255, 255, 0.35) inset,
+    0 2.77px 2.21px 0 rgba(168, 69, 14, 0.14),
+    0 6.65px 5.32px 0 rgba(168, 69, 14, 0.14),
+    0 16px 26px 0 rgba(235, 120, 37, 0.28),
+    0 40px 60px 0 rgba(235, 120, 37, 0.18);
+
+  /* The hero pill's glow stack — AIgocy .title-icon .box, re-tinted. */
+  --cut-pill-glow:
+    0 3.44px 5.57px 0 rgba(0, 0, 0, 0.09),
+    0 22.91px 37.08px 0 rgba(235, 120, 37, 0.17),
+    0 76px 123px 0 rgba(235, 120, 37, 0.06),
+    0 56px 83px 0 rgba(235, 120, 37, 0.26),
+    0 14px 34px 0 rgba(235, 120, 37, 0.26),
+    0 1px 2px 0 rgba(235, 120, 37, 0.42);
+
+  --cut-shadow-shell: 0 12px 60px rgba(20, 18, 15, 0.10);
+  --cut-hairline: rgba(20, 18, 15, 0.08);
+  --cut-body: rgba(20, 18, 15, 0.62);
+  --cut-muted: rgba(20, 18, 15, 0.42);
 }
 
-/* Dark bands invert the same variables rather than adding a parallel set, so a
-   card written once renders correctly on both grounds. */
 [data-cutout] [data-cut-band='dark'] {
-  --cut-ground: #08090c;
-  --cut-shell: #08090c;
-  --cut-card: rgba(255, 255, 255, 0.055);
-  --cut-card-sunken: rgba(255, 255, 255, 0.03);
+  --cut-ground: #14120f;
+  --cut-shell: #14120f;
+  --cut-card: #1c1a17;
+  --cut-card-raised: #232019;
+  --cut-card-sunken: rgba(255, 255, 255, 0.04);
   --cut-ink: #ffffff;
   --cut-accent-ink: var(--cut-accent);
   --cut-hairline: rgba(255, 255, 255, 0.10);
-  --cut-body: rgba(255, 255, 255, 0.68);
-  --cut-muted: rgba(255, 255, 255, 0.46);
-  --cut-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px rgba(0, 0, 0, 0.34);
-  --cut-shadow-card-hover: 0 2px 6px rgba(0, 0, 0, 0.34), 0 22px 56px rgba(0, 0, 0, 0.42);
+  --cut-body: rgba(255, 255, 255, 0.66);
+  --cut-muted: rgba(255, 255, 255, 0.44);
+  --cut-mould: var(--cut-mould-dark);
+  --cut-mould-hover:
+    0 18px 34px 0 rgba(0, 0, 0, 0.44),
+    0 3px 3px 0 rgba(0, 0, 0, 0.10),
+    0 -8px 0 0 #0d0c0a inset,
+    0 4px 0 0 rgba(255, 255, 255, 0.14) inset;
+  --cut-btn-light-bg:
+    radial-gradient(62.56% 62.56% at 28.14% -10.42%, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0) 100%),
+    linear-gradient(0deg, #262320, #262320);
+  --cut-btn-light-shadow:
+    0 -3px 0 0 #0d0c0a inset,
+    0 1px 0 0 rgba(255, 255, 255, 0.12) inset,
+    0 3px 3px 0 rgba(0, 0, 0, 0.24);
 }
 
-/* The page shell — the card the entire site lies on. */
 .cut-shell {
   background: var(--cut-shell);
   border-radius: var(--cut-r-shell);
   box-shadow: var(--cut-shadow-shell);
-  overflow: clip; /* `clip` not `hidden`: it does NOT create a scroll container,
-                     so `position: sticky` and the fixed nav still work. */
+  overflow: clip;
 }
 
 @media (max-width: 640px) {
   [data-cutout] {
-    --cut-r-shell: 24px;
-    --cut-r-card: 22px;
-    --cut-r-media: 16px;
+    --cut-r-shell: 28px;
+    --cut-r-card: 26px;
+    --cut-r-lg: 30px;
+    --cut-r-media: 20px;
   }
 }
 
-/* A card. Borderless, floating, with a hairline only where a border genuinely
-   aids separation (dense data rows). */
 .cut-card {
   background: var(--cut-card);
   border-radius: var(--cut-r-card);
-  box-shadow: var(--cut-shadow-card);
-  transition: box-shadow 260ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--cut-mould);
+  transition: box-shadow 300ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 300ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-
+.cut-card-raised { background: var(--cut-card-raised); }
 .cut-card-interactive:hover {
-  box-shadow: var(--cut-shadow-card-hover);
-  transform: translateY(-3px);
+  box-shadow: var(--cut-mould-hover);
+  transform: translateY(-4px);
 }
 
-/* The media window: a rounded rectangle INSET inside the card, which is the
-   literal "cut out" — the card frames a hole the media shows through. */
 .cut-media {
   border-radius: var(--cut-r-media);
   overflow: hidden;
   background: var(--cut-card-sunken);
+  /* The media window is SUNK into the card — inverse of the card's own light. */
+  box-shadow:
+    0 2px 0 0 rgba(255, 255, 255, 0.5),
+    0 -3px 8px 0 rgba(20, 18, 15, 0.06) inset;
 }
 
-/* The overhanging tile. Negative margins are the whole effect: the tile hangs
-   past the card's top-left corner so the card reads as cut around it. */
 .cut-tile {
-  background: var(--cut-ink);
+  background: var(--cut-btn-dark-bg);
   border-radius: var(--cut-r-tile);
-  box-shadow: var(--cut-shadow-tile);
+  box-shadow: var(--cut-btn-dark-shadow);
 }
 
-/* Connector rail — the thin line with dot nodes that links AIgocy's feature
-   cards to a centre. Drawn in CSS so it costs no image and no layout. */
-.cut-connector {
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--cut-hairline) 12%,
-    var(--cut-hairline) 88%,
-    transparent
-  );
+/* Buttons — the moulded pill in three tints. */
+.cut-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), filter 200ms;
 }
+.cut-btn:hover { transform: translateY(-2px); filter: brightness(1.06); }
+.cut-btn:active { transform: translateY(0); filter: brightness(1); }
+.cut-btn-dark { background: var(--cut-btn-dark-bg); box-shadow: var(--cut-btn-dark-shadow); color: #fff; }
+.cut-btn-light { background: var(--cut-btn-light-bg); box-shadow: var(--cut-btn-light-shadow); color: var(--cut-ink); }
+.cut-btn-brand { background: var(--cut-btn-brand-bg); box-shadow: var(--cut-btn-brand-shadow); color: #fff; }
+
+/* Gradient headline fill — AIgocy .text-gradient-1, warmed. */
+.cut-gradient-text {
+  background: linear-gradient(132deg, #3a352e 11%, #14120f 79%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+[data-cut-band='dark'] .cut-gradient-text {
+  background: linear-gradient(132deg, #ffffff 11%, #b9b2a6 79%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.cut-gradient-brand {
+  background: linear-gradient(180deg, #f0842f 0%, #d0620f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Display scale — AIgocy .text-display-2 is 96/96/-0.03em. */
+.cut-display {
+  font-size: clamp(2.75rem, 7vw, 6rem);
+  line-height: 1.0;
+  letter-spacing: -0.03em;
+}
+.cut-display-2 {
+  font-size: clamp(2rem, 4.4vw, 3.5rem);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+}
+
+/* The scroll cue — AIgocy .scroll-more: bottom-centred, top corners only. */
+.cut-scroll-more {
+  border-radius: 40px 40px 0 0;
+  background: var(--cut-card-sunken);
+}
+
+.cut-connector {
+  background: linear-gradient(90deg, transparent, var(--cut-hairline) 12%, var(--cut-hairline) 88%, transparent);
+}
+
+@keyframes cut-float-a { 0%,100% { transform: translate3d(0,0,0) rotate(-8deg); } 50% { transform: translate3d(5px,-7px,0) rotate(4deg); } }
+@keyframes cut-float-b { 0%,100% { transform: translate3d(0,0,0) rotate(10deg); } 50% { transform: translate3d(-8px,-6px,0) rotate(-6deg); } }
+@keyframes cut-float-c { 0%,100% { transform: translate3d(0,0,0) rotate(-3deg); } 50% { transform: translate3d(8px,10px,0) rotate(9deg); } }
+.cut-float-a { animation: cut-float-a 7s ease-in-out infinite; }
+.cut-float-b { animation: cut-float-b 9s ease-in-out infinite; }
+.cut-float-c { animation: cut-float-c 8s ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
-  .cut-card,
-  .cut-card-interactive:hover {
+  .cut-card, .cut-card-interactive:hover, .cut-btn, .cut-btn:hover {
     transition: none;
     transform: none;
   }
+  .cut-float-a, .cut-float-b, .cut-float-c { animation: none; }
 }

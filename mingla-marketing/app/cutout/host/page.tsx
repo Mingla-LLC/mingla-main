@@ -5,8 +5,8 @@ import {
 } from 'lucide-react'
 import {
   CutoutCard, CutoutEyebrow, CutoutFaq, CutoutFooter, CutoutHeading, CutoutMedia,
-  CutoutNav, CutoutSection, CutoutShell, CutoutTile, CutReveal,
-  DeviceCta, FaqSchema,
+  CutoutHero, CutoutNav, CutoutSection, CutoutShell, CutoutTile, CutReveal,
+  DeviceCta, FaqSchema, HeroGraphic,
 } from '@/components/cutout'
 import { CutoutAccordionSwap, CutoutFeatureHub } from '@/components/cutout/host-sections'
 import { EventPagePreview } from '@/components/design-preview/host/event-page-preview'
@@ -71,71 +71,35 @@ export default function CutoutHostPage() {
     <CutoutShell>
       <CutoutNav surface="host" homeHref="/cutout/host" />
 
-      {/* 1 — HERO. AIgocy §section-hero. */}
-      <CutoutSection
-        rhythm="hero"
-        aria-label="Mingla Host"
-        className="flex min-h-[calc(100svh-1rem)] flex-col justify-center pb-10 pt-28 sm:pt-32"
-      >
-        <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16">
-          <div>
-            <CutReveal><CutoutEyebrow>Mingla Host</CutoutEyebrow></CutReveal>
-            <CutReveal variant="headline" delay={0.06}>
-              <h1 className="mt-5 max-w-[14ch] font-display text-[clamp(2.75rem,6vw,4.75rem)] leading-[1.0] tracking-[-0.035em] text-[var(--cut-ink)]">
-                Sell the night. <span className="text-[var(--cut-accent)]">Then run it.</span>
-              </h1>
-            </CutReveal>
-            <CutReveal delay={0.16}>
-              <p className="mt-6 max-w-xl text-[1.0625rem] leading-relaxed text-[var(--cut-body)] sm:text-lg">
-                Build the page, price the tiers, email the people who came last time, work the
-                door, and finish with a guest list you keep. One product, from announce to doors.
-              </p>
-            </CutReveal>
-            <CutReveal delay={0.24}>
-              <div className="mt-9 flex flex-wrap items-center gap-3">
-                <DeviceCta surface="host" location="hero" variant="primary" size="lg" />
-                <a
-                  href="#workflow"
-                  className="inline-flex h-14 items-center rounded-full bg-[var(--cut-card)] px-7 font-display text-base font-medium text-[var(--cut-ink)] shadow-[var(--cut-shadow-card)] transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:shadow-[var(--cut-shadow-card-hover)] focus-ring"
-                >
-                  See it run
-                </a>
-              </div>
-            </CutReveal>
-            <CutReveal delay={0.32}>
-              <div className="mt-7 flex flex-wrap items-center gap-3">
-                <ProvenanceChip kind="product-capability" />
-                <span className="text-[0.8125rem] text-[var(--cut-muted)]">
-                  Every capability names the file in Mingla’s source that proves it ships.
-                </span>
-              </div>
-            </CutReveal>
-          </div>
-
-          <CutReveal variant="lift" delay={0.2}>
-            <CutoutCard pad="sm" className="mx-auto max-w-[26rem]">
-              <CutoutMedia ratio="wide">
-                <video
-                  aria-hidden="true" tabIndex={-1} autoPlay muted loop playsInline
-                  preload="metadata"
-                  poster="/marketing/host-hero/world-hosts-create-poster.jpg"
-                  className="absolute inset-0 h-full w-full object-cover"
-                >
-                  <source src="/marketing/host-hero/world-hosts-create-preview.mp4" type="video/mp4" />
-                </video>
-              </CutoutMedia>
-              <div className="grid grid-cols-3 gap-2 px-1 pb-1 pt-4">
-                {FACTS.map((f) => (
-                  <div key={f.label}>
-                    <p className="font-display text-[0.9375rem] leading-tight text-[var(--cut-ink)]">{f.value}</p>
-                    <p className="mt-1 text-[0.6875rem] leading-snug text-[var(--cut-muted)]">{f.label}</p>
-                  </div>
-                ))}
-              </div>
-            </CutoutCard>
-          </CutReveal>
-        </div>
-      </CutoutSection>
+      {/* 1 — HERO. AIgocy §section-hero, ported faithfully. */}
+      <CutoutHero
+        eyebrow="Mingla Host"
+        line1="Sell the night."
+        line2={
+          <>
+            <span className="cut-gradient-brand">Then run it.</span>
+            <HeroGraphic />
+          </>
+        }
+        lede="Build the page, price the tiers, email the people who came last time, work the door, and finish with a guest list you keep. One product, from announce to doors."
+        image="/marketing/host-hero/world-hosts-create-poster.jpg"
+        video="/marketing/host-hero/world-hosts-create-preview.mp4"
+        scrollTo="#workflow"
+        actions={
+          <>
+            <DeviceCta surface="host" location="hero" variant="primary" size="lg" />
+            <a href="#workflow" className="cut-btn cut-btn-light h-[3.75rem] px-8 font-display text-base focus-ring">
+              See it run
+            </a>
+          </>
+        }
+        footnote={
+          <>
+            <ProvenanceChip kind="product-capability" />
+            <span>Every capability names the file in Mingla’s source that proves it ships.</span>
+          </>
+        }
+      />
 
       {/* 2 — ICP STRIP. AIgocy §section-partner (client logos) → the operators we
              serve. Fake customer logos are forbidden; these are real internal
