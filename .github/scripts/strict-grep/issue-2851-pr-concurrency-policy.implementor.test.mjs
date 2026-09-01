@@ -74,12 +74,15 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // and moves the frozen #2148 seal) so the lane that proves the deploy wrapper
 // still REFUSES a deploy-all also proves its caller complies. That lane is
 // PR-family, so its document is inside this digest.
+// Round 2 moved it once more: the Sites recovery lane's `contracts` job gained
+// the readback-wiring suite, and that lane is also PR-family. Same reasoning,
+// same untouched counts, same revert-sensitivity loop below.
 // PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are deliberately UNCHANGED: no
 // workflow was added, removed or renamed, and this delta is one existing
 // workflow's non-concurrency document. Every revert-sensitivity assertion below
 // is untouched and still red on reversion.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "f3a1954a5345e3a8cf329f7ea35eac3e52088ac5799b7a77d459c5ef251fb248";
+  "687f47d36ce6ec80a4131b550af85fcf0fb1edc32887c4b694ede64e1288f5a0";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -93,8 +96,9 @@ const DENIED_FULL_SHA256 = [
   // failure-alert job. This digest is the workflow's BYTES; the assertion that
   // it is denied PR cancellation is unchanged, still runs, and still fails on
   // the reversions proven in tests 5-10. Only the pinned value moves, and only
-  // because the file genuinely changed.
-  "6201684e6c624694226d78ffb4620f3af70550d4bcd1b2f1648042aa49976160",
+  // because the file genuinely changed. Round 2 moved it again: the deploy
+  // step's `if:` now spells out its own success() precondition.
+  "662c833b4fd222a4d708d64a5ac0f7ff9f8b6b972522a671645d182619973c18",
   "0ca059b1118b93b455ee539ff31c28b2fe6ad53c61c5f61faee5c5eccb9cb7f5",
   "ae053d47c1cea32c1889cc00eba1ed11b5bbec30dd726c3d078af92f3dfdf76a",
   "c6056ea23b01ad1e38e2cfe94891872dbed9dba94c9d7e5464c354f1563fc132",

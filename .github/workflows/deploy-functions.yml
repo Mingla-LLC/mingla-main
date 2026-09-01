@@ -75,7 +75,15 @@ jobs:
         run: node scripts/ci/select-changed-edge-functions.mjs
 
       - name: Deploy the selected edge functions
-        if: steps.select.outputs.count != '0'
+        # `success()` is spelled out rather than relied upon. The one thing this
+        # step must never do is run after a selection step that FAILED — a
+        # refused selection arrives as an empty `count` and no selection file at
+        # all. #2948: not a bug that fired (the "selection file is empty" line in
+        # the 14:17 log is Actions echoing this script's source, and that run's
+        # selection was correct), but a question that log raised, closed here
+        # rather than left resting on which implicit status check a custom step
+        # condition carries.
+        if: success() && steps.select.outputs.count != '0'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
