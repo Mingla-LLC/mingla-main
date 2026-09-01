@@ -428,11 +428,30 @@ export const handleReaper = async (
           webhookStatus,
         }),
       );
-      // The stall deadline only fires when provider truth is still NOT terminal
-      // after this tick's promotion attempt. A finished or failed provider asset
-      // is never stalled — the replay above owns it.
-      if (providerLifecycle !== "ready" && providerLifecycle !== "failed") {
-        await failStalledIf(candidate, "non_terminal");
+      // #2905 — the stall deadline is keyed on THIS TICK'S ACTUAL OUTCOME, not
+      // on what the provider claims. Gating it on `providerLifecycle` alone
+      // would re-open the wedge for the case where Bunny reports Finished but
+      // the promotion still cannot complete — e.g. `availableResolutions`
+      // advertises a rendition the CDN does not actually serve (play_720p.mp4
+      // 404s for the wedged production asset right now), which 503s the ready
+      // branch on every tick, forever, with the job never leaving `processing`.
+      if (response.ok) {
+        // The promotion path ran to completion. Only a provider that is itself
+        // still mid-encode can be stalled here.
+        if (providerLifecycle !== "ready" && providerLifecycle !== "failed") {
+          await failStalledIf(candidate, "non_terminal");
+        }
+      } else {
+        // The promotion could not complete. A provider read that failed INSIDE
+        // the replay is transient and must never fail a job; every other
+        // incompletion (unfetchable derivative or poster, refused transition) is
+        // a genuine stall once the deadline has passed.
+        const replayBody = await response.clone().json().catch(() => null);
+        const transient = replayBody !== null &&
+          typeof replayBody === "object" &&
+          (replayBody as Record<string, unknown>).error ===
+            "provider_temporarily_unavailable";
+        await failStalledIf(candidate, transient ? "unreadable" : "non_terminal");
       }
     }
 
