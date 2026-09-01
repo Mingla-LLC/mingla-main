@@ -1,6 +1,5 @@
 import sharp, { type Metadata } from "sharp";
 import type { PayloadRequest } from "payload";
-import type { UploadGrantStage } from "./uploadGrantObservability";
 import { cmsConfig } from "./config";
 import { sha256 } from "./crypto";
 import {
@@ -195,7 +194,6 @@ function hasExactContainerBoundary(bytes: Uint8Array, mime: string): boolean {
 export async function createUploadGrant(
   req: PayloadRequest,
   input: { filename: string; content_type: string; bytes: number },
-  onStage?: (stage: UploadGrantStage) => void,
 ) {
   const user = req.user as unknown as {
     tenantId?: string;
@@ -215,11 +213,8 @@ export async function createUploadGrant(
   const declaredMime = input.content_type as
     "image/jpeg" | "image/png" | "image/webp";
   const previousGrantContext = req.context.minglaMediaGrant;
-  const previousStageObserver = req.context.minglaUploadGrantStage;
   req.context.minglaMediaGrant = true;
-  req.context.minglaUploadGrantStage = onStage;
   try {
-    onStage?.("grant_media_create");
     const media = await req.payload.create({
       collection: "media",
       overrideAccess: false,
@@ -239,7 +234,6 @@ export async function createUploadGrant(
       },
     });
     const key = `quarantine/${user.siteId}/${media.id}/${crypto.randomUUID()}`;
-    onStage?.("grant_media_update");
     await req.payload.update({
       collection: "media",
       id: media.id,
@@ -247,7 +241,6 @@ export async function createUploadGrant(
       req,
       data: { quarantine_key: key },
     });
-    onStage?.("grant_presign");
     const grant = await presignedQuarantinePut(
       cmsConfig().quarantineBucket,
       key,
@@ -263,7 +256,6 @@ export async function createUploadGrant(
     };
   } finally {
     req.context.minglaMediaGrant = previousGrantContext;
-    req.context.minglaUploadGrantStage = previousStageObserver;
   }
 }
 
