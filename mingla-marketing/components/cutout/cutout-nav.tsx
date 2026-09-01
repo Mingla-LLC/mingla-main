@@ -3,19 +3,23 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Compass, Info, MapPin, Menu, Newspaper, Store } from 'lucide-react'
-import { FloatingDock, type DockItem } from '@/components/ui/floating-dock'
 import { SideMenu } from '@/components/ui/side-menu'
 import { DeviceCta, type CutoutSurface } from './device-cta'
 
 // ---------------------------------------------------------------
-// #2902 — Cutout nav. No header bar; the elements float.
+// #2902 — Cutout nav. No bar, no dock.
 //
-//   desktop → the floating dock, icons and labels, magnifying on hover
-//   mobile  → a side menu, opened from a floating button. The bottom dock is
-//             gone per Seth.
+// The floating dock is gone: the side panel is now the only menu, at every
+// width, so there is one navigation model rather than two doing the same job.
+// What floats over the hero is three separate moulded surfaces — wordmark,
+// action, menu button — with nothing tying them together.
 //
-// The action pill is the SAME tint as the wordmark's pill, so the two floating
-// surfaces read as a pair rather than as a light thing and a dark thing.
+// BREATHING ROOM AND CONCENTRIC CURVES. The shell's corner radius is 40px and
+// it sits 12px inside the viewport. Elements pinned at 14px were only ~2px off
+// the shell's edge, fouling that corner. They now sit 28px from the viewport,
+// i.e. 16px inside the shell — which is 40px minus a pill's own ~24px radius,
+// so the pill's curve runs concentric with the shell's instead of cutting
+// across it. The horizontal inset matches for the same reason.
 // ---------------------------------------------------------------
 
 const LINKS = [
@@ -29,7 +33,7 @@ const LINKS = [
 interface CutoutNavProps {
   surface: CutoutSurface
   homeHref: string
-  /** Explorer moves its action beneath the deck, so the nav drops it. */
+  /** Explorer moves its action beneath the headline, so the nav drops it. */
   showAction?: boolean
 }
 
@@ -37,18 +41,11 @@ export function CutoutNav({ surface, homeHref, showAction = true }: CutoutNavPro
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
 
-  const items: DockItem[] = LINKS.map(({ href, label, Icon }) => ({
-    href,
-    title: label,
-    active: pathname === href || pathname.startsWith(`${href}/`),
-    icon: <Icon className="h-full w-full" strokeWidth={1.9} aria-hidden="true" />,
-  }))
-
   return (
     <>
       <div
-        className="pointer-events-none fixed inset-x-0 z-50 px-4 sm:px-6"
-        style={{ top: 'max(0.875rem, env(safe-area-inset-top))' }}
+        className="pointer-events-none fixed inset-x-0 z-50 px-5 sm:px-7"
+        style={{ top: 'max(1.75rem, calc(env(safe-area-inset-top) + 0.75rem))' }}
       >
         <div className="mx-auto flex max-w-6xl items-center gap-3">
           <Link
@@ -66,11 +63,7 @@ export function CutoutNav({ surface, homeHref, showAction = true }: CutoutNavPro
             />
           </Link>
 
-          <div className="pointer-events-auto mx-auto hidden md:block">
-            <FloatingDock items={items} label="Primary" />
-          </div>
-
-          <div className="pointer-events-auto ml-auto flex items-center gap-2 md:ml-0">
+          <div className="pointer-events-auto ml-auto flex items-center gap-2.5">
             {showAction ? (
               <DeviceCta
                 surface={surface}
@@ -81,13 +74,12 @@ export function CutoutNav({ surface, homeHref, showAction = true }: CutoutNavPro
               />
             ) : null}
 
-            {/* Mobile opens the side menu; the bottom dock is gone. */}
             <button
               type="button"
               onClick={() => setMenuOpen(true)}
               aria-label="Open menu"
               aria-expanded={menuOpen}
-              className="cut-btn cut-btn-light flex h-12 w-12 items-center justify-center rounded-full focus-ring md:hidden"
+              className="cut-btn cut-btn-light flex h-12 w-12 items-center justify-center rounded-full focus-ring"
             >
               <Menu className="h-5 w-5" aria-hidden="true" />
             </button>
@@ -96,7 +88,7 @@ export function CutoutNav({ surface, homeHref, showAction = true }: CutoutNavPro
       </div>
 
       <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} title="Menu">
-        <nav aria-label="Primary mobile" className="flex flex-col gap-1.5">
+        <nav aria-label="Primary" className="flex flex-col gap-1.5">
           {LINKS.map(({ href, label, Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`)
             return (

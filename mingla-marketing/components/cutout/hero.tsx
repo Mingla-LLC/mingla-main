@@ -60,7 +60,7 @@ export function CutoutHero({
     <section
       aria-label="Introduction"
       className={cn(
-        'relative flex min-h-[100svh] flex-col items-center justify-center overflow-hidden px-5 pb-24 pt-32 sm:px-8 sm:pt-36',
+        'relative flex min-h-[100svh] flex-col items-center justify-center overflow-hidden px-5 pb-24 pt-36 sm:px-8 sm:pt-40',
         className,
       )}
     >
