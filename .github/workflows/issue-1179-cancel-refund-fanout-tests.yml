@@ -2,6 +2,8 @@ name: Issue 1179 cancellation refund fan-out
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/event-cancel-refund-fanout/**"
       - "supabase/functions/_shared/paystackRefunds.ts"
@@ -23,6 +25,7 @@ concurrency:
 
 jobs:
   issue-1179-deno-check:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 1179 edge fn type-check"
     runs-on: ubuntu-latest
     steps:
@@ -36,6 +39,7 @@ jobs:
           supabase/functions/event-cancel-refund-fanout/index.ts
 
   issue-1179-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 1179 cancel-refund fan-out proof (PG17)"
     runs-on: ubuntu-latest
     # #2148 — the `services:` block that used to live here is gone. A service

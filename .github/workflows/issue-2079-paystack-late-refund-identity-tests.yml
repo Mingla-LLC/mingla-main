@@ -1,6 +1,8 @@
 name: issue-2079-provider-correct-late-refund
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270411002079_issue_2079_paystack_late_refund_identity.sql"
       - "supabase/migrations/__tests__/issue_2079_paystack_late_refund_identity.test.sql"
@@ -45,6 +47,7 @@ concurrency:
 
 jobs:
   issue-2079-provider-correct-late-refund:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +72,7 @@ jobs:
       - run: deno check supabase/functions/_shared/paystackRefunds.ts supabase/functions/_shared/sourceRefundControlPlane.ts supabase/functions/checkout-sale-revocation/index.ts supabase/functions/ticket-checkout-confirm/index.ts supabase/functions/_shared/stripeWebhookRouter.ts supabase/functions/reconcile-stuck-checkouts/index.ts
 
   issue-2079-postgres-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

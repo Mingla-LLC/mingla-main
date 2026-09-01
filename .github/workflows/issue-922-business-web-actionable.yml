@@ -21,6 +21,8 @@ on:
       - "mingla-business/vercel.json"
       - ".github/workflows/issue-922-business-web-actionable.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: *issue922_paths
 
 concurrency:
@@ -29,6 +31,7 @@ concurrency:
 
 jobs:
   issue-922-business-web-actionable:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:

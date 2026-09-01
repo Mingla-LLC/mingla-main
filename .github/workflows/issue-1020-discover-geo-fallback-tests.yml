@@ -22,6 +22,8 @@ on:
       # without this path a change to that action would not re-run it.
       - ".github/actions/migrated-postgres/**"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270117001020_issue_1020_discover_city_geo_fallback.sql"
       - "supabase/migrations/__tests__/issue_1020_discover_geo_fallback.test.sql"
@@ -49,6 +51,7 @@ jobs:
   # the implementor happy-path and the tester adversarial.
   # ---------------------------------------------------------------------------
   issue-1020-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 1020 geo-radius fallback proof (PG17)"
     runs-on: ubuntu-latest
     # #2148 — the `services:` block that used to live here is gone. A service
@@ -89,6 +92,7 @@ jobs:
   # the implementor edge-fn threading test and the tester cache-key sentinel.
   # ---------------------------------------------------------------------------
   issue-1020-deno:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 1020 edge-fn threading + cache-key (Deno 1.46)"
     runs-on: ubuntu-latest
     steps:

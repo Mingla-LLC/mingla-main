@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 629,
-  "selfTestWiredFloor": 401,
+  "expectedStrictGrepMjsFiles": 631,
+  "selfTestWiredFloor": 402,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -9458,6 +9458,24 @@
       ],
       "selfTest": "none",
       "jobKeys": ["issue-2851-pr-concurrency-policy-tester"]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2881-pr-draft-gate-policy.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": ["plain", "self-test"],
+      "selfTest": "wired",
+      "jobKeys": ["issue-2881-pr-draft-gate-policy"]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2881-pr-draft-gate-policy.implementor.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": ["plain"],
+      "selfTest": "none",
+      "jobKeys": ["issue-2881-pr-draft-gate-policy-implementor"]
     },
     {
       "script": ".github/scripts/strict-grep/issue-2871-concurrency-proof-event-independence.tester.test.mjs",

@@ -1,6 +1,8 @@
 name: issue-1930-checkout-current-truth
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/ticket-checkout-**"
       - "supabase/functions/reconcile-stuck-checkouts/**"
@@ -34,6 +36,7 @@ concurrency:
 
 jobs:
   issue-1930-checkout-current-truth:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -70,6 +73,7 @@ jobs:
           supabase/functions/reconcile-stuck-checkouts/index.ts
 
   issue-1930-postgres-races:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

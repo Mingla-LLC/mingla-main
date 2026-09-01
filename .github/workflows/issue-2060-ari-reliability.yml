@@ -2,6 +2,8 @@ name: "Issue #2060 — Ari reliability foundation"
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/_shared/agentReliability.ts"
       - "supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.test.ts"
@@ -64,6 +66,7 @@ concurrency:
 
 jobs:
   reliability-contracts:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -97,6 +100,7 @@ jobs:
           npx tsc --noEmit --pretty false --target es2021 --module commonjs --strict --skipLibCheck src/services/agentReliability.ts
 
   reliability-certification-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     services:

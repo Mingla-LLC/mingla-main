@@ -11,6 +11,8 @@ on:
       - ".github/workflows/issue-2393-valid-marketing-test-fixtures.yml"
       - ".github/actions/migrated-postgres/**"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql"
       - "supabase/migrations/__tests__/issue_1821_accepted_email_sms_invites.test.sql"
@@ -28,6 +30,7 @@ concurrency:
 
 jobs:
   pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 2393 repaired fixtures (fresh PG17)"
     runs-on: ubuntu-latest
     timeout-minutes: 30

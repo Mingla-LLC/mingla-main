@@ -16,6 +16,8 @@ name: Issue #1484 Stay Desktop Shell
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 concurrency:
@@ -24,6 +26,7 @@ concurrency:
 
 jobs:
   issue-1484-stay-desktop-shell:
+    if: ${{ github.event.pull_request.draft != true }}
     name: Stay desktop shell (render proof + gates)
     runs-on: ubuntu-latest
     timeout-minutes: 30

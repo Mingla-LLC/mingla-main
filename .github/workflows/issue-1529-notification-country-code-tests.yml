@@ -23,6 +23,8 @@ on:
       - "supabase/functions/marketing-send/index.ts"
       - ".github/workflows/issue-1529-notification-country-code-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270211001529_issue_1529_notification_country_code.sql"
       - "supabase/migrations/__tests__/issue_1529_e164_parity.test.sql"
@@ -57,6 +59,7 @@ jobs:
   # every smsAdapter contract is re-verified here rather than assumed.
   # -------------------------------------------------------------------------
   issue-1529-contracts:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -105,6 +108,7 @@ jobs:
   # cannot pass vacuously.
   # -------------------------------------------------------------------------
   postgres-17-runtime:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     services:

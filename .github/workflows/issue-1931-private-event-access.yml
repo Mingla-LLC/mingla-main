@@ -2,6 +2,8 @@ name: "Issue #1931 private event access"
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270413001931_issue_1931_private_event_access.sql"
       - "supabase/migrations/__tests__/issue_1931_*"
@@ -41,6 +43,7 @@ concurrency:
 
 jobs:
   postgres-replay:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     services:
@@ -322,6 +325,7 @@ jobs:
         run: bash scripts/ci/security_definer_anon_gate.sh
 
   gates-and-edge:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -342,6 +346,7 @@ jobs:
       - run: deno test --allow-env --allow-read --allow-net supabase/functions/private-event-access/__tests__/issue_1931_private_event_access_edge.test.ts
 
   clients:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

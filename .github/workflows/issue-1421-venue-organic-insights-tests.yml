@@ -2,6 +2,8 @@ name: Issue #1421 Venue Organic Insights
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 concurrency:
@@ -10,6 +12,7 @@ concurrency:
 
 jobs:
   issue-1421-venue-organic-insights:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -65,6 +68,7 @@ jobs:
         run: npx expo export -p web --output-dir /tmp/issue-1421-web
 
   issue-1421-migration-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     # #2148 — the `services:` block that used to live here is gone. A service

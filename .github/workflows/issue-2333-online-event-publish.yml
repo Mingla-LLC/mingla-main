@@ -11,6 +11,8 @@ name: issue-2333-online-event-publish
 # render a blank location line. Both are gated here.
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue2333Paths
       - "supabase/migrations/20270427002333_issue_2333_publish_online_city_optional.sql"
       - "supabase/migrations/20270427002334_issue_2333_patch_taxonomy_online_city_optional.sql"
@@ -40,6 +42,7 @@ concurrency:
 
 jobs:
   issue-2333-postgres-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2333 online publish + edit + discovery, hybrid stays guarded"
     runs-on: ubuntu-latest
     services:
@@ -186,6 +189,7 @@ jobs:
   # S4 + the S3 consumer co-requisite. Separate job: no database needed, and it must not
   # queue behind a 300-migration apply.
   issue-2333-client-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2333 client guards, map-host deny, and the consumer Online badge"
     runs-on: ubuntu-latest
     steps:

@@ -1,6 +1,8 @@
 name: issue-2097-stripe-fee-refund-truth
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/ticket-checkout-create/**"
       - "supabase/functions/refund-order/**"
@@ -33,6 +35,7 @@ concurrency:
 
 jobs:
   issue-2097-deno-and-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +47,7 @@ jobs:
       - run: deno check supabase/functions/refund-order/index.ts supabase/functions/admin-refund-order/index.ts supabase/functions/event-cancel-refund-fanout/index.ts supabase/functions/cancel-trip-booking/index.ts supabase/functions/admin-reconcile-ticket-refund/index.ts supabase/functions/_shared/stripeWebhookRouter.ts
 
   issue-2097-postgres-17:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

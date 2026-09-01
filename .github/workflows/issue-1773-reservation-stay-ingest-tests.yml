@@ -15,6 +15,8 @@ on:
       - ".github/workflows/issue-1773-reservation-stay-ingest-tests.yml"
       - "docs/INVARIANT_REGISTRY.md"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: *paths
 
 permissions:
@@ -26,6 +28,7 @@ concurrency:
 
 jobs:
   issue-1773-reservation-stay-ingest:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:

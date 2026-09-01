@@ -2,6 +2,8 @@ name: Issue 1406 customer patterns performance
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270131001875_issue_875_brand_customer_commitment_patterns.sql"
       - "supabase/migrations/20270131002006_issue_1406_customer_patterns_timezone_performance.sql"
@@ -28,6 +30,7 @@ concurrency:
 
 jobs:
   issue-1406-customer-patterns-performance-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue #1406 customer patterns performance (PG17)"
     runs-on: ubuntu-latest
     timeout-minutes: 20

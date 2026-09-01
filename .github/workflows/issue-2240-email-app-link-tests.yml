@@ -23,6 +23,8 @@ name: issue-2240-email-app-link
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue_2240_paths
       - "supabase/functions/_shared/email/appLink.ts"
       - "supabase/functions/_shared/email/ticketBody.ts"
@@ -59,6 +61,7 @@ concurrency:
 
 jobs:
   issue-2240-offline:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2240 Offline — the email's link names a route that exists"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -89,6 +92,7 @@ jobs:
         run: node .github/scripts/strict-grep/i-2240-email-app-link-sole-owner.mjs
 
   issue-2240-live-destination:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2240 Live — the link really lands on a store, per device"
     runs-on: ubuntu-latest
     timeout-minutes: 10

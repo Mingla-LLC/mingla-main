@@ -7,6 +7,8 @@ name: issue-2101-named-buyer-checkout
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue_2101_paths
       - "supabase/migrations/20270414002101_issue_2101_named_buyer_checkout_access.sql"
       - "supabase/migrations/__tests__/issue_2101_named_buyer_checkout_access.test.sql"
@@ -56,6 +58,7 @@ concurrency:
 
 jobs:
   issue-2101-contract-guard:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2101 guard — pairing, Metro resolution, native isolation, validator, writers, levers"
     runs-on: ubuntu-latest
     steps:
@@ -73,6 +76,7 @@ jobs:
       - run: node .github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs
 
   issue-2101-edge:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2101 Edge — the fence runs before any session, capacity, provider or free-ticket work"
     runs-on: ubuntu-latest
     steps:
@@ -86,6 +90,7 @@ jobs:
           supabase/functions/ticket-checkout-create/__tests__/issue_2101_named_buyer_access.test.ts
 
   issue-2101-business-suites:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2101 Business — Event render-proof (items 17-22), validator, and the native null-render suites"
     runs-on: ubuntu-latest
     defaults:
@@ -138,6 +143,7 @@ jobs:
           src/utils/__tests__/orch_1375_adversarial_next_url_resolution.test.ts
 
   issue-2101-postgres-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2101 PostgreSQL 17 — decision, identity, blocks, epochs, ACLs, audit, transfer guard"
     runs-on: ubuntu-latest
     # #2148 — the `services:` block that used to live here is gone. A service

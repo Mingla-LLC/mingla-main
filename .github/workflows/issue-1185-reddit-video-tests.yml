@@ -33,6 +33,8 @@ on:
       - "mingla-admin/src/**"
       - ".github/workflows/issue-1185-reddit-video-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/**"
       - "mingla-admin/src/**"
@@ -44,6 +46,7 @@ concurrency:
 
 jobs:
   edge:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -95,6 +98,7 @@ jobs:
             supabase/functions/_shared/__tests__/adCreativeMatrix.test.ts
 
   admin:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

@@ -21,6 +21,8 @@ name: Issue #1486 Dormant Render Suites
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 concurrency:
@@ -29,6 +31,7 @@ concurrency:
 
 jobs:
   issue-1486-dormant-render-suites:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#1486 — dormant render suites (batched)"
     runs-on: ubuntu-latest
     timeout-minutes: 25

@@ -57,6 +57,8 @@ on:
     - cron: "*/15 * * * *"
   workflow_dispatch:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue2524_paths
       - ".github/workflows/bundle-baseline-automerge.yml"
       - "mingla-business/scripts/ci/bundle-baseline-automerge.mjs"
@@ -82,7 +84,7 @@ jobs:
   # event. This repository is public; that separation is not cosmetic.
   guard-tests:
     name: "issue #2524: the five auto-merge guards"
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+    if: ${{ (github.event.pull_request.draft != true) && (github.event_name == 'pull_request' || github.event_name == 'push') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -109,7 +111,7 @@ jobs:
 
   automerge:
     name: "Merge the current baseline recording PR, if it is safe and green"
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (github.event.pull_request.draft != true) && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

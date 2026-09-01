@@ -17,6 +17,8 @@ name: issue-2150-free-resubmit-idempotent
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue_2150_paths
       - "supabase/migrations/20270419002150_issue_2150_free_resubmit_idempotent.sql"
       - "supabase/migrations/__tests__/issue_2150_free_resubmit_idempotent.test.sql"
@@ -54,6 +56,7 @@ concurrency:
 
 jobs:
   issue-2150-edge-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2150 Edge — a resubmit returns the existing order, never re-finalizes"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -78,6 +81,7 @@ jobs:
       - run: deno check supabase/functions/ticket-checkout-create/index.ts
 
   issue-2150-client-guard:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2150 Client — the guest holds the token, and 'already reserved' is not 'failed'"
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -102,6 +106,7 @@ jobs:
         run: npx jest issue_2136 --runInBand
 
   issue-2150-strict-grep:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2150 Gates — the exemption AND the ORCH-0791 tombstone both survive"
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -120,6 +125,7 @@ jobs:
       - run: node .github/scripts/strict-grep/orch-0791-checkout-session-never-reused-post-terminal.mjs
 
   issue-2150-postgres-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2150 PostgreSQL 17 — 4 submits, 1 order, 1 ticket, 1 email, 1 SMS"
     runs-on: ubuntu-latest
     timeout-minutes: 30

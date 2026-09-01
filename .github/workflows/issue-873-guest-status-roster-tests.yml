@@ -15,6 +15,8 @@ on:
       # without this path a change to that action would not re-run it.
       - ".github/actions/migrated-postgres/**"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270319000873_issue_0873_guest_status_roster.sql"
       - "supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql"
@@ -36,6 +38,7 @@ concurrency:
 
 jobs:
   action-edge:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 873 reminder/retry action boundary"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -50,6 +53,7 @@ jobs:
           supabase/functions/guest-roster-actions/issue_873_actions.tester_adversarial.test.ts
 
   business-render:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 873 Business shared roster render"
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -67,6 +71,7 @@ jobs:
       - run: npx jest --config jest.issue873.render.cjs --runInBand
 
   issue-873-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 873 roster truth and authorization (fresh PG17)"
     runs-on: ubuntu-latest
     timeout-minutes: 25

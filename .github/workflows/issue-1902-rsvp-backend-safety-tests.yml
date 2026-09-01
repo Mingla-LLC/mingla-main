@@ -10,6 +10,8 @@ on:
       - ".github/scripts/strict-grep/issue-1902-rsvp-backend-safety.mjs"
       - ".github/workflows/issue-1902-rsvp-backend-safety-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/**issue_1902_public_event_lifecycle*"
       - "supabase/functions/public-submit-rsvp/**"
@@ -26,6 +28,7 @@ concurrency:
 
 jobs:
   rsvp-backend-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#1902 RSVP SQLSTATE and handler contract"
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -63,6 +66,7 @@ jobs:
         run: deno check supabase/functions/public-submit-rsvp/index.ts
 
   rsvp-backend-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#1902 fresh PostgreSQL 17 RSVP boundary"
     runs-on: ubuntu-latest
     timeout-minutes: 20

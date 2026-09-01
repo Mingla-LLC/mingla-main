@@ -2,6 +2,8 @@ name: Strict Grep Gates (Mingla Host)
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, Seth]
     paths:
       - "mingla-business/**"
@@ -471,6 +473,7 @@ concurrency:
 
 jobs:
   static-gates:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Strict grep — static gates (class A)"
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -546,7 +549,7 @@ jobs:
   class-a-budget:
     name: "Strict grep — class A elapsed-time budget (out-of-band)"
     needs: [static-gates]
-    if: always()
+    if: ${{ (github.event.pull_request.draft != true) && (always()) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -566,6 +569,7 @@ jobs:
         run: node .github/scripts/strict-grep/issue-2594-class-a-budget.mjs --enforce
 
   dep-gates:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Strict grep — dependency gates (class B)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -594,6 +598,7 @@ jobs:
           if-no-files-found: error
 
   expo-export-gate:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Strict grep — web-export deprecation parser (class C)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -655,6 +660,7 @@ jobs:
           if-no-files-found: error
 
   jest-suites:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Strict grep — app-mobile structural suites (class D)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -825,6 +831,7 @@ jobs:
           if-no-files-found: error
 
   full-clone-gates:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Strict grep — full-history gates (class E)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -872,6 +879,7 @@ jobs:
   # ===========================================================================
 
   orch-0778-web-stripe-native-import-gate:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "ORCH-0778: Stripe native imports stay behind .native boundaries"
     runs-on: ubuntu-latest
     steps:
@@ -888,6 +896,7 @@ jobs:
   # Keeps @sentry/browser out of the web graph except as the lazy dynamic import()
   # inside src/diagnostics/sentry.ts, and fails RED on revert to the no-op stub.
   issue-890-web-sentry-lazy-only:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#890: web @sentry/browser is lazy dynamic-import only (no static import; no stub revert)"
     runs-on: ubuntu-latest
     steps:
@@ -901,6 +910,7 @@ jobs:
         run: node .github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs
 
   orch-0885-a-no-bottomnav-on-wide-desktop:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "ORCH-0885-A: No BottomNav outside (tabs)/_layout.tsx + desktop gate via hook only"
     runs-on: ubuntu-latest
     steps:
@@ -912,6 +922,7 @@ jobs:
         run: node .github/scripts/strict-grep/orch-0885-a-no-bottomnav-on-wide-desktop.mjs
 
   orch-1271-admin-authz-foundation:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "ORCH-1271: admin single-gate + audited-write primitive + gate-first (I-PROPOSED-1271-ADMIN-SINGLE-GATE + I-PROPOSED-1271-ADMIN-WRITE-AUDITED + I-PROPOSED-1271-ADMIN-GATE-FIRST-STATEMENT)"
     runs-on: ubuntu-latest
     steps:
@@ -933,6 +944,7 @@ jobs:
         run: node .github/scripts/strict-grep/i-admin-gate-first-statement.mjs
 
   orch-1273-offerings-read-only:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "ORCH-1273: offerings/venues admin-read RLS + read RPCs are READ-ONLY (I-PROPOSED-1273-OFFERINGS-READ-ONLY + I-PROPOSED-1273-OFFERINGS-ADMIN-READ-CROSSBRAND)"
     runs-on: ubuntu-latest
     steps:
@@ -961,6 +973,7 @@ jobs:
   # ===========================================================================
 
   orch-1387-wallet-type-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "ORCH-1387: scoped wallet type-contract lane — PaymentSheetInitInput wallet keys vendor-typed against the installed @stripe/stripe-react-native; two-sided: reverting the extension breaks the typetest positives, any-widening trips TS2578 on the negatives (D-6-immune scoped tsc lane, never the app baselines)"
     runs-on: ubuntu-latest
     defaults:

@@ -2,6 +2,8 @@ name: Issue 2168 revocation refund handoff
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/checkout-sale-revocation/**"
       - "supabase/migrations/20270419002168_issue_2168_revocation_refund_handoff.sql"
@@ -15,6 +17,7 @@ concurrency:
 
 jobs:
   issue-2168-deno-check:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 2168 edge fn type-check"
     runs-on: ubuntu-latest
     steps:
@@ -27,6 +30,7 @@ jobs:
           deno check supabase/functions/checkout-sale-revocation/index.ts
 
   issue-2168-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 2168 refund handoff proof (PG17)"
     runs-on: ubuntu-latest
     services:

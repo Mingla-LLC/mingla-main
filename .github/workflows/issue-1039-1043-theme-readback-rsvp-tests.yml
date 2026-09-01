@@ -29,6 +29,8 @@ on:
       - "mingla-business/src/services/businessEvents.ts"
       - ".github/workflows/issue-1039-1043-theme-readback-rsvp-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270110000000_issue_1039_mgmt_view_theme_columns.sql"
       - "supabase/migrations/__tests__/issue_1039_management_view_theme_columns.test.ts"
@@ -45,6 +47,7 @@ concurrency:
 
 jobs:
   issue-1039-migration-deno-test:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue #1039: management-view theme columns migration contract (deno test)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -60,6 +63,7 @@ jobs:
           supabase/migrations/__tests__/issue_1039_mgmt_view_exact_columns.test.ts
 
   issue-1043-business-jest:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue #1043/#1039: RSVP theme write + publish forward (fails-on-revert jest)"
     runs-on: ubuntu-latest
     timeout-minutes: 12

@@ -1,6 +1,8 @@
 name: issue-2305-conflict-review-queue
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270426002305_issue_2305_conflict_resolution.sql"
       - "supabase/migrations/20270430002305_issue_2305_conflict_resolution_rework.sql"
@@ -50,6 +52,7 @@ jobs:
   # can tell those two apart, which is why this runs the full migration chain
   # rather than asserting on source.
   issue-2305-postgres-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -103,6 +106,7 @@ jobs:
   # class guard; this job runs it directly so a failure here names its own
   # origin instead of being buried in a batch summary.
   issue-2305-class-guard:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
