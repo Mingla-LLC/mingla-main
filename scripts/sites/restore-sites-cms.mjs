@@ -8,8 +8,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -133,7 +132,7 @@ export async function runRestore({
   const coreConfig = coreConfigFromEnv(env);
   verifyPostgres17(env, spawn);
   assertEmptyTarget(env, spawn);
-  const temporary = mkdtempSync(join(tmpdir(), "mingla-sites-restore-"));
+  const temporary = mkdtempSync(join(dirname(bundlePath), ".restore-"));
   chmodSync(temporary, 0o700);
   try {
     const plaintextPath = join(temporary, "backup.plain");

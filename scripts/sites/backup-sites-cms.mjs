@@ -11,7 +11,6 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -427,7 +426,7 @@ export async function runBackup({
   if (resolve(resultPath).startsWith(`${realpathSync(outputDirectory)}/`) === false) {
     fail("RESULT_PATH_OUTSIDE_OUTPUT");
   }
-  const temporary = mkdtempSync(join(tmpdir(), "mingla-sites-backup-"));
+  const temporary = mkdtempSync(join(outputDirectory, ".scratch-"));
   chmodSync(temporary, 0o700);
   try {
     const managementProject = await readManagementProject(env, fetchImpl, now);

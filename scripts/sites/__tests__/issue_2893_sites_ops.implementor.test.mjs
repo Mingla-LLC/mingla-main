@@ -1157,3 +1157,25 @@ test("#2893 command failures log only allowlisted error codes, never env values"
   }
   assert.equal(existsSync(join(REPO_ROOT, "sites-backup-result.json")), false);
 });
+
+test("#2952 recovery database files stay inside the CI-mounted workspace", () => {
+  const backupSource = readFileSync(
+    join(SITES_DIR, "backup-sites-cms.mjs"),
+    "utf8",
+  );
+  const restoreSource = readFileSync(
+    join(SITES_DIR, "restore-sites-cms.mjs"),
+    "utf8",
+  );
+
+  assert.match(
+    backupSource,
+    /mkdtempSync\(join\(outputDirectory, "\.scratch-"\)\)/,
+  );
+  assert.match(
+    restoreSource,
+    /mkdtempSync\(join\(dirname\(bundlePath\), "\.restore-"\)\)/,
+  );
+  assert.doesNotMatch(backupSource, /mkdtempSync\(join\(tmpdir\(\)/);
+  assert.doesNotMatch(restoreSource, /mkdtempSync\(join\(tmpdir\(\)/);
+});
