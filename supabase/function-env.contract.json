@@ -817,7 +817,9 @@
     },
     "event-cover-video-source-uploaded": {
       "migration_fallback_top_level": [],
-      "optional_top_level": [],
+      "optional_top_level": [
+        "EVENT_COVER_SOURCE_ACK_DEADLINE_MS"
+      ],
       "required_bundle_fields": {},
       "required_top_level": [
         "BUNNY_ACCOUNT_API_KEY",
