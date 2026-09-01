@@ -14219,14 +14219,12 @@
       "providerWorkflow": ".github/workflows/issue-1614-onconflict-arbiter-audit.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "43207657043fe177cdb93a8cc8a0a1044469ab977b735eacef932eb034774af4",
+        "sourceSha256": "d4e9bba5d9c7f04d5c1c3629b3dab34f4e4b9a3d008228c1b60ca8ad19f77a11",
         "triggers": [
           "pull_request",
           "push"
         ],
-        "pathScope": [
-          "mingla-business/scripts/ci/bundle-baseline.json"
-        ],
+        "pathScope": [],
         "jobKeys": [
           "issue-1614-onconflict-arbiter-audit"
         ],

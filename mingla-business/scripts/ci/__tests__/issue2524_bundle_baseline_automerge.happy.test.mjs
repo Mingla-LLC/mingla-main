@@ -753,6 +753,10 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
   const WORKFLOWS = join(ROOT, WORKFLOW_DIR);
 
   // Assembled, never literal — see the #2148 registry note at the top of this file.
+  //
+  // Each entry is here because something OTHER than convenience keeps it here.
+  // "It is cheap" is not a reason to be on this list, and "it is expensive" is
+  // not a reason to come off it.
   const KEEP = new Set([
     // Required by ruleset 19508605, whose bypass actor list is EMPTY.
     ["framework-major-guard", "yml"].join("."),
@@ -760,6 +764,16 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
     ["mingla-business-jest-suite", "yml"].join("."),
     // #2058's provenance proof: the check that the PR is genuinely machine-authored.
     ["bundle-baseline-provenance-guard", "yml"].join("."),
+    // #1614's arbiter audit is deliberately UNFILTERED and its own suite pins
+    // that shape — `assert.match(workflow, /pull_request:\s*\n\s*push:\s*\n\s*branches: \[main\]/)`
+    // and `assert.doesNotMatch(workflow, /\n\s+paths:/)` in the test named
+    // "always-run workflow wires every implementor and tester contract". #2885
+    // scoped it anyway on the reasoning that a JSON file cannot add an upsert
+    // site — true, and beside the point: the audit's contract is that it runs on
+    // EVERYTHING, so that its census can never be narrowed one defensible
+    // exception at a time. That contract is worth more than the one job saved,
+    // so the exclusion was reverted rather than the assertion weakened.
+    ["issue-1614-onconflict-arbiter-audit", "yml"].join("."),
   ]);
 
   function globToRe(glob) {
@@ -879,7 +893,12 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
     // main. Only the ratchet — which must re-measure main after every merge —
     // is allowed to run for a baseline-only commit.
     const started = startedBy(BASELINE_PATH, ["push"]);
-    assert.deepEqual([...started].sort(), [["bundle-baseline-ratchet", "yml"].join(".")]);
+    assert.deepEqual([...started].sort(), [
+      // Must re-measure main after every merge — it is the mechanism.
+      ["bundle-baseline-ratchet", "yml"].join("."),
+      // Always-run by its own pinned contract; see KEEP above.
+      ["issue-1614-onconflict-arbiter-audit", "yml"].join("."),
+    ].sort());
   });
 
   test("an ordinary pull request is untouched by this scoping", () => {
