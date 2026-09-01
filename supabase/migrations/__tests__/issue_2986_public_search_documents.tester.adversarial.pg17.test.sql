@@ -277,6 +277,44 @@ BEGIN
 END
 $a8$;
 
+-- A10 (independent tester addition): lifecycle overlays are subordinate to
+-- source privacy. An archive state intended for ended/cancelled offerings must
+-- never turn an unverified physical brand into a public fact document.
+DO $a10$
+DECLARE v jsonb;
+BEGIN
+  INSERT INTO auth.users(id,instance_id,aud,role,email,encrypted_password,created_at,updated_at)
+  VALUES ('29860000-0000-4000-8000-000000000901','00000000-0000-0000-0000-000000000000',
+          'authenticated','authenticated','brand-privacy-i2986@example.test','x',now(),now());
+  INSERT INTO public.creator_accounts(id) VALUES ('29860000-0000-4000-8000-000000000901');
+  INSERT INTO public.brands(
+    id,account_id,name,slug,kind,claim_status,description,cover_media_url,cover_media_type,
+    default_currency,pricing_currency)
+  VALUES (
+    '29860000-0000-4000-8000-000000000910','29860000-0000-4000-8000-000000000901',
+    'Unverified Private Physical Brand','i2986privatebrand','physical','none',
+    'Private unverified brand facts that must never be exposed through an overlay lifecycle mistake.',
+    'https://images.example.test/i2986-private-brand.jpg','image','USD','usd');
+
+  SET LOCAL ROLE service_role;
+  PERFORM set_config('request.jwt.claim.role','service_role',true);
+  PERFORM public.upsert_public_search_document(
+    'brand','29860000-0000-4000-8000-000000000910','/b/i2986privatebrand','expired_archived',NULL,
+    '{}',now(),now(),now()+interval '30 day',
+    'adversarial private archive overlay','issue_2986_tester',false);
+  RESET ROLE;
+
+  SET LOCAL ROLE anon;
+  PERFORM set_config('request.jwt.claim.role','anon',true);
+  v:=public.resolve_public_search_document('/b/i2986privatebrand');
+  RESET ROLE;
+  IF v->>'state' IS DISTINCT FROM 'draft'
+     OR v->'facts' IS DISTINCT FROM 'null'::jsonb THEN
+    RAISE EXCEPTION 'ISSUE-2986 A10 FAIL: lifecycle overlay exposed private/draft brand facts: %',v;
+  END IF;
+END
+$a10$;
+
 -- A9 (independent tester addition): a review timestamp is evidence about the
 -- live source, not a caller-owned freshness override. A future source timestamp
 -- must be rejected; otherwise later real source edits that are still earlier
