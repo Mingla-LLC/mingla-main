@@ -109,7 +109,7 @@ export function BentoGrid({
       whileInView="visible"
       viewport={{ once: true, amount: 0.15 }}
       className={cn(
-        'grid grid-cols-1 gap-4 lg:grid-cols-6 lg:auto-rows-[16rem]',
+        'grid grid-cols-1 gap-4 lg:grid-cols-6 lg:auto-rows-[14rem]',
         className,
       )}
     >

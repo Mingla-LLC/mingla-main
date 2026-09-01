@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/aurora-bento-grid'
 import { HOST_BENTO } from '@/lib/design-preview/host-bento'
 import { AriCreativeCard } from '@/components/ui/ari-creative-card'
-import { EventDemandCard } from '@/components/ui/event-demand-card'
+import { HostFigure } from '@/components/ui/host-figures'
 import { HOST_LIMITS, HOST_SWAP } from '@/lib/design-preview/host-tools'
 import { ICP_CARDS } from '@/lib/design-preview/icp-cards'
 import { ExpandingCards, type CardItem } from '@/components/ui/expanding-cards'
@@ -162,11 +162,12 @@ export default function CutoutHostPage() {
                   </div>
                 ) : null}
 
-                {/* Events shows the demand read itself: the weather it reacts
-                    to, the price it lands on, and the shape of the night. */}
-                {card.id === 'events' ? (
+                {/* Each tool shows what it does rather than describing it:
+                    the demand read, the instalments landing, tonight's floor,
+                    who one send reaches. */}
+                {card.figure ? (
                   <div className="mt-5 min-h-0 flex-1">
-                    <EventDemandCard />
+                    <HostFigure id={card.id} />
                   </div>
                 ) : null}
 

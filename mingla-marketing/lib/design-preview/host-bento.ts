@@ -20,6 +20,12 @@ export interface BentoCard {
   tone: 'ink' | 'brand' | 'raised'
   /** Which figure from tool-visuals to render. */
   visual: string
+  /**
+   * Whether this card renders a HostFigure. It lives here, in a server-safe
+   * module, because the page is a Server Component and cannot call into the
+   * 'use client' figure registry to ask.
+   */
+  figure?: boolean
   source: string
 }
 
@@ -40,6 +46,7 @@ export const HOST_BENTO: readonly BentoCard[] = [
     body: 'Create events with AI reading the demand before you price them.',
     points: ['Demand forecast', 'Weather', 'Ticket scanning', 'Guest lists'],
     span: 'lg:col-span-2 lg:row-span-2',
+    figure: true,
     tone: 'ink',
     visual: 'orders',
     source: 'mingla-business/src/services/eventOrdersService.ts',
@@ -49,7 +56,8 @@ export const HOST_BENTO: readonly BentoCard[] = [
     title: 'Trips',
     body: 'Host trips and let the group plan them together.',
     points: ['Group chat', 'Instalments', 'Itineraries'],
-    span: 'lg:col-span-2',
+    span: 'lg:col-span-2 lg:row-span-2',
+    figure: true,
     tone: 'ink',
     visual: 'host',
     source: 'mingla-business/src/utils/tripToLiveEvent.ts',
@@ -59,7 +67,8 @@ export const HOST_BENTO: readonly BentoCard[] = [
     title: 'Venue management',
     body: 'Run a restaurant or a club from one place.',
     points: ['Reservations', 'Table ordering', 'Menu intelligence', 'Demand forecast'],
-    span: 'lg:col-span-2',
+    span: 'lg:col-span-2 lg:row-span-2',
+    figure: true,
     tone: 'raised',
     visual: 'venue',
     source: 'mingla-business/src/services/reservationMetricsService.ts',
@@ -69,7 +78,8 @@ export const HOST_BENTO: readonly BentoCard[] = [
     title: 'Marketing',
     body: 'Reach the people who already came, and the ones who should.',
     points: ['Email', 'SMS', 'CRM nurturing'],
-    span: 'lg:col-span-2',
+    span: 'lg:col-span-2 lg:row-span-2',
+    figure: true,
     tone: 'raised',
     visual: 'email',
     source: 'supabase/functions/marketing-send',

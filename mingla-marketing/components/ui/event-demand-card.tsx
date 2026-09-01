@@ -52,7 +52,7 @@ export function EventDemandCard({ className }: { className?: string }) {
   useEffect(() => setMarket(detectMarket()), [])
 
   return (
-    <div className={cn('flex h-full flex-col justify-center gap-3.5', className)}>
+    <div className={cn('flex h-full flex-col gap-3.5', className)}>
       {/* The weather read, which is a real Events feature and the reason the
           shape of the night moves. */}
       <motion.div
