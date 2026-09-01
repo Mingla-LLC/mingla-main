@@ -42,8 +42,17 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // #1930 shared-resolver trigger addition, #2241 secret-readiness lanes,
 // #2893/#2899 Sites workflow authority, and #2885's reviewed baseline-only path
 // exclusions. The seven exclusions and their authorities remain unchanged.
+// [TEST-MOD-APPROVED #2909] Mechanically re-derived from the reviewed merged
+// tree. #2909 adds ONE job to each of two PR-family hosts -- the pre-merge
+// "is main green" check and the red-main alert -- and this digest covers each
+// PR-family document minus its concurrency map, so a job addition MUST move it.
+// What does NOT move, and did not: PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256
+// are untouched, because no workflow was added, removed, or reclassified. The
+// seven denied non-PR workflows keep their complete-byte authorities, the counts
+// stay exact-equal, and every mutation case is unchanged.
+// Previous value (pre-#2909): 9e888ff1ff620746a57c023022f8864743c1094dba0a9d57d4f6fc15933a5a10
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "9e888ff1ff620746a57c023022f8864743c1094dba0a9d57d4f6fc15933a5a10";
+  "63f4476558d567acfb780c89aed4ac9024825c580993fe728b3469ce27fe2a71";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
