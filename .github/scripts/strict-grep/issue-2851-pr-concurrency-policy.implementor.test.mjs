@@ -81,8 +81,15 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // workflow was added, removed or renamed, and this delta is one existing
 // workflow's non-concurrency document. Every revert-sensitivity assertion below
 // is untouched and still red on reversion.
+// [TEST-MOD-APPROVED #3009] Re-derived after #3009 made the existing Business
+// web-build lane compile with the production Sites pilot switch and inspect the
+// resulting bundle for static substitution. The PR-family inventory, identity,
+// and concurrency policy remain unchanged. Both semantic units are independently
+// reverted in the loop below before this new digest is trusted. The value was
+// re-derived from fresh origin/main at 3835b60d3 so #2948's concurrently landed
+// workflow proofs remain part of the combined authority.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "687f47d36ce6ec80a4131b550af85fcf0fb1edc32887c4b694ede64e1288f5a0";
+  "e39b5a9f1ef5d86f745a99e7818b76ef694edb1b14b24fbe1239224685ad7322";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -314,6 +321,18 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "          supabase/functions/event-cover-video-webhook/index.issue2905.silent200.test.ts\n"],
     [liveWorkflow("issue", "1719", "unified", "sharing"),
       "          supabase/functions/event-cover-video-reaper/__tests__/\n"],
+    // [TEST-MOD-APPROVED #3009] The compile-time pilot switch and the
+    // post-export bundle verifier are distinct semantic units. Removing either
+    // must invalidate the authority digest, so the re-pin above cannot accept
+    // the workflow change without proving both exact reversions stay visible.
+    [liveWorkflow("web", "build", "check"),
+      "EXPO_PUBLIC_FF_SITES_ENABLED=true "],
+    [liveWorkflow("web", "build", "check"), [
+      '      - name: "#3009 Sites feature switch is static in the exported bundle"',
+      "        working-directory: mingla-business",
+      "        run: node scripts/ci/issue-3009-sites-feature-flag-export.mjs",
+      "",
+    ].join("\n")],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
