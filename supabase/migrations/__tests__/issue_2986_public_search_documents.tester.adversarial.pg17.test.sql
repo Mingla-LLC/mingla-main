@@ -249,7 +249,7 @@ BEGIN
   -- that fixture clock trigger long enough to model the later committed source
   -- transaction that production receives, then restore it before resolving.
   EXECUTE 'ALTER TABLE public.events DISABLE TRIGGER trg_events_updated_at';
-  UPDATE public.events SET updated_at=clock_timestamp()+interval '1 minute'
+  UPDATE public.events SET updated_at=clock_timestamp()
   WHERE id='29860000-0000-4000-8000-000000000501';
   EXECUTE 'ALTER TABLE public.events ENABLE TRIGGER trg_events_updated_at';
   SET LOCAL ROLE anon;
