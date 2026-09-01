@@ -2305,3 +2305,34 @@ test("#2913 adversarial: no prefix bypass or user-managed set drift is accepted"
     "unexpected:UNAPPROVED_EXTRA",
   );
 });
+
+test("#2913 tester adversarial: a governed user name cannot hide as platform-managed", () => {
+  const governedUserName = manifest.secrets[0].name;
+  assert(!contract.platform_managed.includes(governedUserName));
+  const smuggled = structuredClone(contract);
+  smuggled.platform_managed = [
+    ...smuggled.platform_managed,
+    governedUserName,
+  ].sort();
+
+  assert.throws(
+    () =>
+      assertLiveNameParity({
+        contract: smuggled,
+        manifest,
+        liveNames: [
+          ...manifest.secrets.map((record) => record.name),
+          ...ISSUE_2241_EXTRA_NAMES,
+          ...ISSUE_2913_EXACT_PLATFORM_MANAGED,
+        ],
+        projectRef,
+        mode: "issue-2241-remediation",
+      }),
+    (error) => {
+      assert(error instanceof ReadinessError);
+      assert.equal(error.code, "live_name_set_mismatch");
+      assert.deepEqual(error.details, [`missing:${governedUserName}`]);
+      return true;
+    },
+  );
+});
