@@ -49,8 +49,8 @@ const CHIPS = [
 
 const TYPE_MS = 26
 const HOLD_AFTER_TYPING = 900
-const SCROLL_MS = 9000
-const HOLD_AT_END = 1400
+const SCROLL_MS = 22000
+const HOLD_AT_END = 2200
 
 type Phase = 'typing' | 'building' | 'site'
 
@@ -67,8 +67,6 @@ export function AriCreativeCard({
   const { ref, active } = useActiveInViewport<HTMLDivElement>()
   const [phase, setPhase] = useState<Phase>('typing')
   const [typed, setTyped] = useState('')
-  // How far through the brief we are, 0–1. Drives the skeleton filling in.
-  const progress = phase === 'building' ? 1 : typed.length / PROMPT.length
   const timers = useRef<number[]>([])
 
   const clearTimers = () => {
@@ -101,9 +99,9 @@ export function AriCreativeCard({
       })
       const typedDone = chars.length * TYPE_MS
       timers.current.push(window.setTimeout(() => setPhase('building'), typedDone + HOLD_AFTER_TYPING))
-      timers.current.push(window.setTimeout(() => setPhase('site'), typedDone + HOLD_AFTER_TYPING + 900))
+      timers.current.push(window.setTimeout(() => setPhase('site'), typedDone + HOLD_AFTER_TYPING + 2100))
       timers.current.push(
-        window.setTimeout(run, typedDone + HOLD_AFTER_TYPING + 900 + SCROLL_MS + HOLD_AT_END),
+        window.setTimeout(run, typedDone + HOLD_AFTER_TYPING + 2100 + SCROLL_MS + HOLD_AT_END),
       )
     }
     run()
@@ -133,7 +131,6 @@ export function AriCreativeCard({
               <span className="h-2 w-2 rounded-full bg-white/25" />
               <span className="h-2 w-2 rounded-full bg-white/25" />
               <span className="h-2 w-2 rounded-full bg-white/25" />
-              <span className="ml-2 truncate text-[10px] text-white/45">gogi-lagos.vercel.app</span>
             </div>
             <div className="relative h-[calc(100%-1.75rem)] overflow-hidden">
               <motion.img
@@ -156,7 +153,7 @@ export function AriCreativeCard({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
             transition={{ duration: reduced ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute inset-0 flex flex-col"
+            className="absolute inset-0 flex flex-col justify-center"
           >
             {/* One presentational object. Nothing inside is focusable, because
                 nothing inside can do anything on this page. */}
@@ -194,6 +191,55 @@ export function AriCreativeCard({
                 </p>
               </div>
 
+              {/* Drafting, INSIDE the chat. Ari's reply lands in the same
+                  bubble as the brief rather than in a second panel below it,
+                  so the card reads as one conversation and not two sections. */}
+              <AnimatePresence>
+                {phase === 'building' ? (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-3 flex items-center gap-3 border-t border-white/12 pt-3">
+                      <span className="flex gap-1" aria-hidden="true">
+                        {[0, 1, 2].map((i) => (
+                          <motion.span
+                            key={i}
+                            className="h-1.5 w-1.5 rounded-full bg-white/70"
+                            animate={{ opacity: [0.25, 1, 0.25] }}
+                            transition={{ duration: 1.1, repeat: Infinity, delay: i * 0.16 }}
+                          />
+                        ))}
+                      </span>
+                      <span className="font-dashboard text-[0.8125rem] text-white/80">
+                        Building your site…
+                      </span>
+                    </div>
+
+                    {/* The page taking shape, still inside the bubble. */}
+                    <div className="mt-3 space-y-1.5">
+                      {[
+                        { w: '34%', h: 7 },
+                        { w: '100%', h: 26 },
+                        { w: '68%', h: 7 },
+                      ].map((blk, i) => (
+                        <motion.span
+                          key={i}
+                          className="block rounded bg-white/25"
+                          style={{ width: blk.w, height: blk.h }}
+                          initial={{ opacity: 0, scaleX: 0.3 }}
+                          animate={{ opacity: 1, scaleX: 1 }}
+                          transition={{ duration: 0.4, delay: i * 0.12, ease: [0.16, 1, 0.3, 1] }}
+                        />
+                      ))}
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
                 {CHIPS.map(({ icon: Icon, label }) => (
                   <span
@@ -210,48 +256,6 @@ export function AriCreativeCard({
               </div>
             </div>
 
-            {/* The page forming underneath as the brief is typed. It fills
-                what was dead space and makes the transition to the real site
-                read as a continuation rather than a cut. */}
-            <div
-              aria-hidden="true"
-              className="mt-4 flex flex-1 flex-col gap-2 overflow-hidden rounded-2xl bg-black/15 p-4 ring-1 ring-inset ring-white/10"
-            >
-              {[
-                { w: '38%', h: 10 },
-                { w: '100%', h: 42 },
-                { w: '72%', h: 10 },
-              ].map((blk, i) => (
-                <motion.span
-                  key={i}
-                  className="block rounded-md bg-white/22"
-                  style={{ width: blk.w, height: blk.h }}
-                  initial={{ opacity: 0, scaleX: 0.25 }}
-                  animate={{
-                    opacity: progress > (i + 1) / 6 ? 1 : 0.14,
-                    scaleX: progress > (i + 1) / 6 ? 1 : 0.25,
-                  }}
-                  transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-                />
-              ))}
-              <div className="mt-1 flex gap-2">
-                {[0, 1, 2].map((i) => (
-                  <motion.span
-                    key={i}
-                    className="h-8 flex-1 rounded-md bg-white/16"
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{
-                      opacity: progress > 0.62 + i * 0.1 ? 1 : 0.12,
-                      y: progress > 0.62 + i * 0.1 ? 0 : 6,
-                    }}
-                    transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                  />
-                ))}
-              </div>
-              <p className="mt-auto text-center text-[0.75rem] font-semibold text-white/60">
-                {phase === 'building' ? 'Publishing…' : 'Ari is drafting the page'}
-              </p>
-            </div>
           </motion.div>
         )}
       </AnimatePresence>

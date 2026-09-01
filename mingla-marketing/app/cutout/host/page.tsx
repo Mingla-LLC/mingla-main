@@ -156,12 +156,14 @@ export default function CutoutHostPage() {
                   <div className="mt-6 min-h-[16rem] flex-1">
                     <AriCreativeCard
                       siteSrc="/marketing/host-icp/gogi-site.jpg"
-                      siteAlt="The gögi website Ari built — hero, menu with prices, ordering and a table booking form."
+                      siteAlt="A restaurant website Ari built — hero, menu with prices, online ordering and a table booking form."
                     />
                   </div>
                 ) : null}
 
-                <div className="mt-6 flex flex-wrap gap-2">
+                {/* The brand tile's chips are gone — the demo inside it says
+                    all three things better than a label row could. */}
+                <div className={cn('mt-6 flex flex-wrap gap-2', card.tone === 'brand' && 'hidden')}>
                   {card.points.map((p) => (
                     <span
                       key={p}
