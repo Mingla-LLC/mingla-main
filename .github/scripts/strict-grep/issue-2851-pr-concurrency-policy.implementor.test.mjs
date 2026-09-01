@@ -35,9 +35,22 @@ const DENIED = [
   liveWorkflow("sprint", "rollover"),
   liveWorkflow("stripe", "connect", "smoke"),
 ];
-const PR_FAMILY_COUNT = 123;
+// [TEST-MOD-APPROVED #2909] Census re-pinned, assertion strength unchanged.
+// #2895 added a 131st workflow (sites-backup-restore.yml) that declares
+// `pull_request`, making it the 124th PR-family member. These literals are the
+// membership tripwire and they are SUPPOSED to move when membership moves --
+// that is why they are hand-pinned rather than derived, and it is why this suite
+// went red on `main` the moment the workflow landed. Nothing is relaxed: the
+// counts stay exact-equal, the digests stay full-byte, and the seven denied
+// non-PR workflows and their hashes are untouched. #2909 additionally moves the
+// new member onto the canonical policy, so `normalPolicies` moves 122 -> 123 in
+// the same commit that moves `prFamily` 123 -> 124.
+// Previous values (pre-#2909): count 123,
+//   identity a229542a59e0bcb3403a81e6ff938845f0e6a06faa5245a0edb43b9015322912
+//   withoutConcurrency 1f9e545979c705a09b13f22ee73d00449aba8fce0b6149fc7e673319173a0b63
+const PR_FAMILY_COUNT = 124;
 const PR_FAMILY_IDENTITY_SHA256 =
-  "a229542a59e0bcb3403a81e6ff938845f0e6a06faa5245a0edb43b9015322912";
+  "9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04";
 // [TEST-MOD-APPROVED #2885] Mechanically re-derived from reviewed current main
 // after #2885 added a bundle-baseline path exclusion to fourteen existing
 // PR-family workflows. Two candidates were REVERTED rather than have their
@@ -52,7 +65,7 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // mutation are unchanged.
 // Previous value (pre-#2885): a132a0155b04b0dc3bcbdd3edec6d119a7a43dfbe8db02929302c44336b69138
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "1f9e545979c705a09b13f22ee73d00449aba8fce0b6149fc7e673319173a0b63";
+  "757010090a432703e28f14aaebded53351c10614c10b0f7b33f668f5d6243884";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -157,15 +170,15 @@ function expectMutationFailure(name, mutate, diagnostic) {
   );
 }
 
-test("the real tree has 123 canonical PR-family policies and the sole load exception", () => {
+test("the real tree has 124 canonical PR-family policies and the sole load exception", () => {
   const result = auditWorkflowSources(readWorkflowSources());
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.counts, {
-    totalWorkflows: 130,
-    prFamily: 123,
-    standardPullRequest: 122,
+    totalWorkflows: 131,
+    prFamily: 124,
+    standardPullRequest: 123,
     pullRequestTarget: 1,
-    normalPolicies: 122,
+    normalPolicies: 123,
     exceptions: 1,
   });
 });
@@ -174,17 +187,17 @@ test("the real tree has 123 canonical PR-family policies and the sole load excep
 // merged, then became an empty moving-base comparison downstream. Preserve the
 // same exact 123 identities and non-concurrency semantics with current-tree
 // digests, and preserve the seven exclusions with durable full-byte hashes.
-test("the real tree independently classifies 123 PR-family and seven non-PR workflows", () => {
+test("the real tree independently classifies 124 PR-family and seven non-PR workflows", () => {
   const sources = readWorkflowSources();
   const authority = assertCurrentTreeAuthority(sources);
   const audit = auditWorkflowSources(sources);
   assert.deepEqual(audit.errors, []);
   assert.deepEqual(audit.counts, {
-    totalWorkflows: 130,
-    prFamily: 123,
-    standardPullRequest: 122,
+    totalWorkflows: 131,
+    prFamily: 124,
+    standardPullRequest: 123,
     pullRequestTarget: 1,
-    normalPolicies: 122,
+    normalPolicies: 123,
     exceptions: 1,
   });
 

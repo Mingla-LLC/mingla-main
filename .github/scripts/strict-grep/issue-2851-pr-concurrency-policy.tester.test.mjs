@@ -97,15 +97,19 @@ function byId(active, id) {
   return active.find((run) => run.id === id);
 }
 
-test("real YAML remains the complete canonical 123-workflow policy", () => {
+// [TEST-MOD-APPROVED #2909] Census re-pinned, assertion strength unchanged --
+// see the same note in the implementor suite. #2895 added the 131st workflow and
+// the 124th PR-family member; #2909 puts it on the canonical policy, so
+// normalPolicies moves with prFamily in one commit.
+test("real YAML remains the complete canonical 124-workflow policy", () => {
   const result = auditWorkflowSources(readWorkflowSources(TEST_ROOT));
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.counts, {
-    totalWorkflows: 130,
-    prFamily: 123,
-    standardPullRequest: 122,
+    totalWorkflows: 131,
+    prFamily: 124,
+    standardPullRequest: 123,
     pullRequestTarget: 1,
-    normalPolicies: 122,
+    normalPolicies: 123,
     exceptions: 1,
   });
 });
