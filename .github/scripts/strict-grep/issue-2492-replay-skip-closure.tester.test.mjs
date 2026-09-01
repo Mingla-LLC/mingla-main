@@ -31,6 +31,15 @@
 // test mutates a real repository file, and no test drives the guard's own
 // internal mutation mode — this suite is registered selfTest:"none".
 
+// [TEST-MOD-APPROVED #2879] Counts only, for the same reason as the implementor
+// suite: registering #2879's migration in the #1931 and #2117 replay lanes
+// moves the frozen inventory from 10/1/3/5 to 11/1/3/6, and the assertions
+// derived from it shift by one alongside.
+//
+// These pins were located by RUNNING this suite and reading each failing
+// assertion's expected-vs-actual, then patching that line — not by guessing at
+// literals. Guessing matched the wrong lines on the first attempt.
+
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
