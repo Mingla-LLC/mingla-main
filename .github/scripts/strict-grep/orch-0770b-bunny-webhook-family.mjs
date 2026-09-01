@@ -58,7 +58,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = join(__dirname, "..", "..", "..");
 
-const REL = {
+// [#2905] EXPORTED on purpose: this map is the single authority for the
+// webhook family's source set. `scan()` treats every key here as REQUIRED —
+// an absent key is read as "" and trips that source's rules. When the family
+// grew to include the reconciler, a caller that hand-copied a shorter list
+// silently started reporting RP-* failures on a pristine tree. Callers must
+// derive their source set from this export, never from a copied literal.
+export const REL = {
   webhook: "supabase/functions/event-cover-video-webhook/index.ts",
   bunnyStream: "supabase/functions/_shared/bunnyStream.ts",
   sourceUploaded: "supabase/functions/event-cover-video-source-uploaded/index.ts",

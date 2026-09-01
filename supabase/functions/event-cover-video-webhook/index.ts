@@ -369,9 +369,14 @@ export const handleBunnyWebhook = async (
     });
   }
   const best = bunnyBestMp4(video.video);
-  // #2905 — logged BEFORE the guard so the retryable 503 branches below keep the
-  // exact `if (x === null) { return jsonResponse({error:"derivative_not_ready"},503); }`
-  // shape that orch-0770b WH-6 pins (no mutation, no destroy, stable 503).
+  // #2905 — logged BEFORE the guard so the two retryable 503 branches below keep
+  // the exact `if (x === null) { return jsonResponse(...); }` shape that
+  // orch-0770b WH-6 pins (no mutation, no destroy, stable 503).
+  //
+  // This comment deliberately does NOT spell out the retryable error token. The
+  // #964 tester reverts that token with a single-occurrence `String.replace` on
+  // the RAW source; a comment naming it above the first real branch absorbs the
+  // mutation, and the pinned WH-6 assertion silently stops firing.
   logWebhook("derivative_probe", {
     availableResolutions: video.video.availableResolutions,
     heightP: best?.heightP ?? null,

@@ -55,8 +55,21 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // branch that changes what it applies. Both new branches are added to the
 // revert-sensitivity loop below, so this digest cannot be re-pinned without
 // each individual change being independently proven to move it.
+//
+// [TEST-MOD-APPROVED #2905] Re-derived again after #2905 extended the #1719
+// unified-sharing lane — the sole live provider for the event-cover-video
+// suites — with the Bunny status-enum seam. The CI origin registry is locked
+// (I-2148-CI-TOPOLOGY-BOUNDED bans a new issue-*.yml lane), so the proofs for
+// the shared `bunnyStream.ts` module attach to the lane that already owns the
+// cover-video functions: two `paths` triggers and one `deno test` step.
+//
+// The concurrency policy itself is UNTOUCHED — `auditWorkflowSources` reports
+// zero errors and the 124/7 partition is unchanged. Only the non-concurrency
+// semantic content of one existing PR-family workflow moved. Five of the added
+// lines are in the revert-sensitivity loop below, so this re-pin is proven
+// line-by-line rather than accepted on assertion.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "f96a37990702de022bacc3088183d59f9738953964f771377a81c905445736a6";
+  "b66fce574091546bd0af94ed693a952768cae9e7b76f67f306725fed33471f18";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -264,6 +277,18 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "              *20270609002879_issue_2879_redirect_window_counts_as_held.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "              *20270609002879_issue_2879_redirect_window_counts_as_held.sql) continue ;;\n"],
+    // [TEST-MOD-APPROVED #2905] The #1719 lane's two new `paths` triggers and
+    // three new `deno test` targets. Each must independently move the digest.
+    [liveWorkflow("issue", "1719", "unified", "sharing"),
+      '      - "supabase/functions/_shared/bunnyStream.ts"\n'],
+    [liveWorkflow("issue", "1719", "unified", "sharing"),
+      '      - "supabase/functions/_shared/bunnyStream.issue2905.*.test.ts"\n'],
+    [liveWorkflow("issue", "1719", "unified", "sharing"),
+      "          supabase/functions/_shared/bunnyStream.issue2905.enum-seam.test.ts\n"],
+    [liveWorkflow("issue", "1719", "unified", "sharing"),
+      "          supabase/functions/event-cover-video-webhook/index.issue2905.silent200.test.ts\n"],
+    [liveWorkflow("issue", "1719", "unified", "sharing"),
+      "          supabase/functions/event-cover-video-reaper/__tests__/\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
