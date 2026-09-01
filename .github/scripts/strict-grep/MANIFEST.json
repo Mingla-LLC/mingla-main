@@ -18,7 +18,7 @@
   "expectedStrictGrepMjsFiles": 630,
   "selfTestWiredFloor": 402,
   "unenforcedCap": 2,
-  "fixtureCap": 10,
+  "fixtureCap": 9,
   "capableUnwiredCap": 23,
   "externalGateDirs": [
     "app-mobile/scripts/ci",
@@ -1825,12 +1825,13 @@
     {
       "script": ".github/scripts/strict-grep/i-proposed-1224-business-route-adversarial.test.mjs",
       "kind": "file",
-      "enforcement": "fixture",
-      "invocation": null,
-      "modes": [],
-      "selfTest": "capable-unwired",
-      "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-1224-business-route.mjs",
