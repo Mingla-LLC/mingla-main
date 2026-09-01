@@ -6,7 +6,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { decodeManifestTextRepresentations, validateManifestTextRepresentations, validateRegistry, validatePhase2Contract, forbiddenEmbeddedSetup, withTrackedFilesScope, discoverWorkflowProviders, discoverLiveOrigins, DEFAULT_ROOT } from "../ci-batch/validate-manifest-v2.mjs";
+import { decodeManifestTextRepresentations, validateManifestTextRepresentations, validateRegistry, validatePhase2Contract, forbiddenEmbeddedSetup, SUITES_ADDED_SINCE_SEAL, withTrackedFilesScope, discoverWorkflowProviders, discoverLiveOrigins, DEFAULT_ROOT } from "../ci-batch/validate-manifest-v2.mjs";
 import { commandFingerprint, executesLeaves, absentFileIsFailure } from "../ci-batch/run-suite-batch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -26,6 +26,15 @@ const PHASE3C_ASSERTION_SHA256 = "7df4a25e2fe8642092c96b444427fb01e8a4103ebb392d
 const PHASE3C_CAPABILITY_SHA256 = "625a72f9109b1b05887ac6e399d21d03c4ebd476345dd90df150bb8fc658b255";
 const PHASE3C_TIMEOUT_SHA256 = "a1d4ed3f7b064f6f9fb2dba35572c7dea56049e0315073d0a433420b1f14a869";
 const PHASE3C_LEAF_SHA256 = "a5707e6e6450e63192c2c0c93b2a4422fb1802970a0082c51b45eac1b5be68a1";
+// [#2897] Suites registered AFTER the Phase 1 -> Phase 3C seal, read from the
+// validator's single declared set - never re-typed here. They are SUBTRACTED
+// before every frozen digest below, in the same shape #2591 used for
+// PROVIDERS_ADDED_SINCE_SEAL. Nothing is re-frozen: the Phase 1 baseline digest
+// and the Phase 3C capability digest keep their original literals and stay
+// armed, so an UNDECLARED 85th suite still breaks them. What is declared gets
+// its own digest below.
+const POST_SEAL_IDS = new Set(SUITES_ADDED_SINCE_SEAL.map((item) => item.suite));
+const POST_SEAL_CAPABILITY_SHA256 = "17c1cbd750d21c4905e08221e1576b08399eecc1d1f67e98ef04f51c80bcfb07";
 
 function clone(value) { return structuredClone(value); }
 function manifest() { return JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8")); }
@@ -61,11 +70,13 @@ export function verifyLive() {
   // and selecting by lifecycle VALUE would auto-pass at shadow and go wrong the
   // moment a later wave reached terminal. Every existing digest below is
   // unchanged under this selection, which is what proves it is the same set.
-  const baseline = value.suites.filter((suite) => !suite.migrationWave);
+  const baseline = value.suites.filter((suite) => !suite.migrationWave && !POST_SEAL_IDS.has(suite.id));
+  const postSeal = value.suites.filter((suite) => POST_SEAL_IDS.has(suite.id));
   const shadow = value.suites.filter((suite) => suite.migrationWave === "phase3a-node-wave");
   const phase3b = value.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");
   const phase3c = value.suites.filter((suite) => suite.migrationWave === "phase3c-deno-wave");
-  assert.equal(value.suites.length, 84);
+  assert.equal(value.suites.length, 84 + SUITES_ADDED_SINCE_SEAL.length);
+  assert.equal(postSeal.length, POST_SEAL_IDS.size);
   assert.equal(baseline.flatMap((suite) => suite.steps).length, 51);
   assert.equal(shadow.length, 32);
   assert.equal(shadow.flatMap((suite) => suite.steps).length, 107);
@@ -82,15 +93,23 @@ export function verifyLive() {
   assert.equal(phase3c.flatMap((suite) => suite.steps).length, 46);
   assert.equal(phase3c.flatMap((suite) => suite.steps).flatMap((step) => step.children || []).length, 54);
   assert.equal(assertionDigest(phase3c), PHASE3C_ASSERTION_SHA256, "the ordered 17 Phase 3C variants / 46 commands drifted");
-  assert.equal(orderedDigest(value.commandCapabilities.commands.slice(194)), PHASE3C_CAPABILITY_SHA256, "Phase 3C assertion capabilities drifted");
+  // Bounded at 240, not open-ended: the slice must keep meaning "Phase 3C's 46",
+  // and an open tail would silently absorb every later addition into a digest
+  // named after a wave it does not belong to.
+  assert.equal(orderedDigest(value.commandCapabilities.commands.slice(194, 240)), PHASE3C_CAPABILITY_SHA256, "Phase 3C assertion capabilities drifted");
+  assert.equal(orderedDigest(value.commandCapabilities.commands.slice(240)), POST_SEAL_CAPABILITY_SHA256, "post-seal assertion capabilities drifted");
+  assert.deepEqual([...new Set(value.commandCapabilities.commands.slice(240).map((c) => c.suiteId))].sort(),
+    [...POST_SEAL_IDS].sort(), "post-seal capabilities must belong to declared post-seal suites");
   assert.equal(value.phase3cLeafCapabilities.registrySha256, PHASE3C_LEAF_SHA256, "Phase 3C leaf capabilities drifted");
-  assert.equal(value.commandCapabilities.commands.length, 240);
+  assert.equal(value.commandCapabilities.commands.length,
+    240 + SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0));
   // [#2439 SC-2.3] The runner must route this wave through the LEAF branch.
   // Without this, 46 outers report executed and all 54 leaves silently never
   // run - a green check carrying no information on seventeen migrations.
   assert.ok(phase3c.every((suite) => executesLeaves(suite)), "phase3c-deno-wave must route through the runner leaf branch");
   assert.ok(phase3b.every((suite) => executesLeaves(suite)), "phase3b-postgres-wave leaf routing must be preserved");
-  assert.ok(baseline.concat(shadow).every((suite) => !executesLeaves(suite)), "Phase 1 and Phase 3A must keep the single-command branch");
+  assert.ok(baseline.concat(shadow, postSeal).every((suite) => !executesLeaves(suite)), "Phase 1, Phase 3A and post-seal suites must keep the single-command branch");
+  assert.equal(postSeal.flatMap((suite) => suite.steps).filter((step) => forbiddenEmbeddedSetup(step.run)).length, 0);
   // [#2439 SC-5.1] Fail-loud absence is derived per TARGET, not per wave: a
   // target registered as a conditional proof skips, anything else fails.
   const anyRequired = (suite) => suite.steps.flatMap((step) => step.children || [])

@@ -81,14 +81,21 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // workflow was added, removed or renamed, and this delta is one existing
 // workflow's non-concurrency document. Every revert-sensitivity assertion below
 // is untouched and still red on reversion.
-// [TEST-MOD-APPROVED #2967] Round 3: the #1719 unified-sharing lane gained two
-// `paths` entries and two test steps for the bounded cover-video acknowledgement.
-// That lane is PR-family, so its non-concurrency document is inside this digest.
-// PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 stay UNCHANGED — no workflow was
-// added, removed or renamed; this is one existing workflow's document moving.
-// The revert-sensitivity assertions below are untouched and still red on reversion.
+// [TEST-MOD-APPROVED #3009] Re-derived after #3009 made the existing Business
+// web-build lane compile with the production Sites pilot switch and inspect the
+// resulting bundle for static substitution. The PR-family inventory, identity,
+// and concurrency policy remain unchanged. Both semantic units are independently
+// reverted in the loop below before this new digest is trusted. The value was
+// re-derived from fresh origin/main at 3835b60d3 so #2948's concurrently landed
+// workflow proofs remain part of the combined authority.
+// [TEST-MOD-APPROVED #2967] Then re-derived once more: the #1719 unified-sharing
+// lane gained two `paths` entries and two test steps for the bounded cover-video
+// acknowledgement. That lane is PR-family, so its non-concurrency document is in
+// this digest too. #3009's re-derivation above is preserved and stacked on, not
+// replaced. PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 stay UNCHANGED — no
+// workflow was added, removed or renamed in either change.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "6b98f4a4b09c5b4f737ea6cba85520a0c5b5f6288fcfba227eac912597a1f427";
+  "111aafee8b7801ed41628f1bc14e91a80a5bfcfdfd9901154b58838cd2e2352a";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -320,6 +327,18 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "          supabase/functions/event-cover-video-webhook/index.issue2905.silent200.test.ts\n"],
     [liveWorkflow("issue", "1719", "unified", "sharing"),
       "          supabase/functions/event-cover-video-reaper/__tests__/\n"],
+    // [TEST-MOD-APPROVED #3009] The compile-time pilot switch and the
+    // post-export bundle verifier are distinct semantic units. Removing either
+    // must invalidate the authority digest, so the re-pin above cannot accept
+    // the workflow change without proving both exact reversions stay visible.
+    [liveWorkflow("web", "build", "check"),
+      "EXPO_PUBLIC_FF_SITES_ENABLED=true "],
+    [liveWorkflow("web", "build", "check"), [
+      '      - name: "#3009 Sites feature switch is static in the exported bundle"',
+      "        working-directory: mingla-business",
+      "        run: node scripts/ci/issue-3009-sites-feature-flag-export.mjs",
+      "",
+    ].join("\n")],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);

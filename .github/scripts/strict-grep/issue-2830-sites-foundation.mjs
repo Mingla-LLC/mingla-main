@@ -360,7 +360,8 @@ export function violations(files) {
   ) failures.push("Ari closed tool registry: exact twelve-tool set drifted");
 
   const flag = files.businessFlag ?? "";
-  need(flag, 'sites: readEnvFlag("EXPO_PUBLIC_FF_SITES_ENABLED", false)', "Business feature flag", failures);
+  need(flag, "sites: readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, false)", "Business feature flag", failures);
+  forbid(flag, "process.env[", "Business static feature flag", failures);
   const route = files.businessRoute ?? "";
   for (const token of [
     "role.rank >= 20",
@@ -794,7 +795,8 @@ function selfTest() {
     ["callback", "/pilot-deactivation", "/pilot-shutdown-removed", "ambiguous CMS callback"],
     ["businessProfile", "websiteContext !== null", "websiteContext === null", "non-pilot Website zero signal"],
     ["deployWrapper", "--use-api", "--use-docker", "Sites exact Edge deploy wrapper"],
-    ["businessFlag", 'readEnvFlag("EXPO_PUBLIC_FF_SITES_ENABLED", false)', 'readEnvFlag("EXPO_PUBLIC_FF_SITES_ENABLED", true)', "Business feature flag"],
+    ["businessFlag", "readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, false)", "readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, true)", "Business feature flag"],
+    ["businessFlag", "process.env.EXPO_PUBLIC_FF_SITES_ENABLED", 'process.env["EXPO_PUBLIC_FF_SITES_ENABLED"]', "Business static feature flag"],
     ["businessRoute", "role.rank >= 20", "role.rank >= 10", "Business Website route"],
     ["businessRoute", "await persistPublicationOperation(operation);", "await persistPublicationPointer(operation);", "durable publication dispatch"],
     ["businessRoute", "!canResetFailedPublicationOperation(", "!canResetAnyPublicationOperation(", "Business Website route"],

@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { canonicalDependencyCwds, createIsolatedWorkspace, dependencyMaterializations, expectedPrimarySuites, loadManifest, expectedSuites, runSuites, verdict, runStep } from "../run-suite-batch.mjs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
-import { canonicalInstallIdentity } from "../validate-manifest-v2.mjs";
+import { canonicalInstallIdentity, SUITES_ADDED_SINCE_SEAL } from "../validate-manifest-v2.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../../..");
@@ -72,14 +72,17 @@ test("R1: the expected set is derived from the manifest, and the real manifest i
   assert.equal(new Set(ids).size, ids.length, "suite ids must be unique");
 });
 
+// [TEST-MOD-APPROVED #2897] The 55 established suites are unchanged; the vector
+// and the total now add the validator's single declared post-seal set rather than
+// carrying a second hand-typed number that must agree with it.
 test("#2438 primary routing freezes 55 established suites and excludes every Phase 3B suite", () => {
   const manifest = loadManifest(); const phase3b = new Set(manifest.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave").map((suite) => suite.id));
   const vector = Object.fromEntries(manifest.classes.map((klass) => [klass, expectedPrimarySuites(manifest, klass).length]));
   assert.deepEqual(vector, { "admin-node20-install":2, "app-node22-install":6, "business-node20-1":2, "business-node20-2":3,
     "business-node20-3":5, "business-node20-4":5, "business-node22-ignore-scripts":3, "cross-root-node22-ignore-scripts":1,
-    "node20-19-noinstall":1, "node20-noinstall":14, "node22-noinstall":10, "ota-app-node20-19-install":1,
+    "node20-19-noinstall":1, "node20-noinstall":14 + SUITES_ADDED_SINCE_SEAL.length, "node22-noinstall":10, "ota-app-node20-19-install":1,
     "ota-business-node20-19-install":1, "root-node20-yaml-no-save":1 });
-  assert.equal(expectedPrimarySuites(manifest, null).length, 55);
+  assert.equal(expectedPrimarySuites(manifest, null).length, 55 + SUITES_ADDED_SINCE_SEAL.length);
   assert.equal(expectedPrimarySuites(manifest, null).some((suite) => phase3b.has(suite.id)), false);
 });
 
