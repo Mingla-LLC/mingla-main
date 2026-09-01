@@ -5,6 +5,7 @@ import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { APP_STORE_URL, PLAY_STORE_URL } from "../../src/constants/storeLinks";
 import { accent, canvas, glass, spacing, text as textTokens } from "../../src/constants/designSystem";
+import { scrubAttendanceClaimFragment } from "../../src/utils/attendanceClaimDeepLink";
 
 export default function AttendanceClaimLanding(): React.ReactElement | null {
   const [parsed, setParsed] = useState(false);
@@ -19,7 +20,15 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
     }
     let active = true;
     const raw = window.location.hash.replace(/^#/, "");
-    window.history.replaceState(null, "", window.location.pathname);
+    // Expo Router can reconcile its initial route after this screen's first
+    // effect and restore the launch fragment. Scrub once more immediately
+    // before the next paint so a claim credential never remains in browser
+    // history or the visible address bar.
+    scrubAttendanceClaimFragment(
+      window.location,
+      window.history,
+      window.requestAnimationFrame.bind(window),
+    );
     void import("../../src/utils/attendanceClaimDeepLink").then(
       ({ attendanceAppUrlFromFragment }) => {
         if (!active) return;

@@ -3,6 +3,20 @@ const UUID =
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const REQUIRED_KEYS = ["v", "kind", "event", "source", "token"];
 
+type AttendanceClaimLocation = Pick<Location, "pathname" | "search">;
+type AttendanceClaimHistory = Pick<History, "replaceState">;
+
+export const scrubAttendanceClaimFragment = (
+  location: AttendanceClaimLocation,
+  history: AttendanceClaimHistory,
+  requestFrame: (callback: FrameRequestCallback) => number,
+): void => {
+  const cleanUrl = `${location.pathname}${location.search}`;
+  const scrub = (): void => history.replaceState(null, "", cleanUrl);
+  scrub();
+  requestFrame(scrub);
+};
+
 export const attendanceAppUrlFromFragment = (raw: string): string | null => {
   const params = new URLSearchParams(raw);
   if (
