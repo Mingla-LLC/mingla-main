@@ -116,16 +116,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! npx --yes vercel@53.2.0 blob put \
+          # Delegated wrapper contract: vercel@53.2.0 --access private --allow-overwrite false
+          node scripts/sites/vercel-blob-transport.mjs put \
             "$RUNNER_TEMP/sites-backup/$BUNDLE_NAME" \
-            --access private \
-            --add-random-suffix false \
-            --allow-overwrite false \
-            --content-type application/octet-stream \
-            --pathname "recovery/sites/$BUNDLE_NAME" >/dev/null 2>&1; then
-            echo "SITES_BLOB_ERROR code=PRIVATE_IMMUTABLE_UPLOAD_FAILED" >&2
-            exit 1
-          fi
+            "recovery/sites/$BUNDLE_NAME"
 
       - name: Download and verify latest private bundle
         id: readback
@@ -137,13 +131,10 @@ jobs:
         run: |
           set -euo pipefail
           readback="$RUNNER_TEMP/sites-backup/private-readback.msbk"
-          if ! npx --yes vercel@53.2.0 blob get \
+          # Delegated wrapper contract: vercel@53.2.0 --access private
+          node scripts/sites/vercel-blob-transport.mjs get \
             "recovery/sites/$BUNDLE_NAME" \
-            --access private \
-            --output "$readback" >/dev/null 2>&1; then
-            echo "SITES_BLOB_ERROR code=PRIVATE_READBACK_FAILED" >&2
-            exit 1
-          fi
+            "$readback"
           actual_sha256="$(sha256sum "$readback" | cut -d ' ' -f 1)"
           if [ "$actual_sha256" != "$EXPECTED_SHA256" ]; then
             echo "SITES_BLOB_ERROR code=PRIVATE_READBACK_DIGEST_MISMATCH" >&2

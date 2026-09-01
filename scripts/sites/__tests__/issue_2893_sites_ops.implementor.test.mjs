@@ -1190,3 +1190,50 @@ test("#2958 pinned PostgreSQL clients preserve the non-root runner identity", ()
   assert.doesNotMatch(wrapper, /--user (?:root|0(?::0)?)(?:\s|\\)/);
   assert.doesNotMatch(wrapper, /--privileged/);
 });
+
+test("#2962 private Blob transport emits finite codes and never provider output", async () => {
+  const {
+    classifyBlobFailure,
+    runBlobTransport,
+  } = await import("../vercel-blob-transport.mjs");
+
+  const cases = new Map([
+    ["File doesn't exist at /tmp/private", "PRIVATE_INPUT_UNREADABLE"],
+    ["No Vercel Blob credentials found", "PRIVATE_CREDENTIAL_MISSING"],
+    ["Vercel Blob: Access denied, please provide a valid token", "PRIVATE_AUTHORIZATION_FAILED"],
+    ["Vercel Blob: This store has been suspended", "PRIVATE_STORE_SUSPENDED"],
+    ["Vercel Blob: Content type mismatch", "PRIVATE_CONTENT_REJECTED"],
+    ["Vercel Blob: Pathname mismatch", "PRIVATE_PATH_REJECTED"],
+    ["Vercel Blob: Precondition failed", "PRIVATE_IMMUTABLE_CONFLICT"],
+    ["Vercel Blob: Too many requests", "PRIVATE_RATE_LIMITED"],
+    ["Vercel Blob: The blob service is currently not available", "PRIVATE_SERVICE_UNAVAILABLE"],
+    ["TypeError: fetch failed", "PRIVATE_NETWORK_FAILED"],
+    ["provider-private-detail", "PRIVATE_UNCLASSIFIED_FAILURE"],
+  ]);
+  for (const [providerOutput, code] of cases) {
+    assert.equal(classifyBlobFailure(providerOutput), code);
+  }
+
+  const sentinel = "provider-private-detail-with-secret";
+  assert.throws(() => runBlobTransport({
+    operation: "get",
+    pathname:
+      `recovery/sites/mingla-sites-${SITE_ID}-20260901T000000000Z-${"a".repeat(64)}.msbk`,
+    outputPath: join(tmpdir(), "issue-2962-readback-must-not-exist.msbk"),
+    env: { BLOB_READ_WRITE_TOKEN: "token-value-that-is-long-enough-to-pass" },
+    spawn() {
+      return { status: 1, stdout: sentinel, stderr: sentinel };
+    },
+  }), (error) => {
+    assert.equal(error.code, "PRIVATE_UNCLASSIFIED_FAILURE");
+    assert.doesNotMatch(error.message, new RegExp(sentinel));
+    return true;
+  });
+
+  const transport = readFileSync(
+    join(SITES_DIR, "vercel-blob-transport.mjs"),
+    "utf8",
+  );
+  assert.doesNotMatch(transport, /console\.(?:log|error|warn)/);
+  assert.doesNotMatch(transport, /process\.(?:stdout|stderr)\.write\([^\n]*result\./);
+});
