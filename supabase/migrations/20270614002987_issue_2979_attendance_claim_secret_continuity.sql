@@ -456,6 +456,14 @@ BEGIN
        SET state = 'claimed', resolved_via = v_resolved,
            reconciled_at = now(), updated_at = now()
      WHERE order_id = p_source_id;
+    UPDATE public.attendance_claim_deliveries
+       SET status = 'failed_terminal', next_attempt_at = NULL,
+           lease_id = NULL, lease_expires_at = NULL,
+           provider_attempt_started_at = NULL,
+           last_error_code = 'claim_resolved', updated_at = now()
+     WHERE source_id = p_source_id
+       AND kind IN ('order_recovery_email', 'order_recovery_sms')
+       AND status IN ('pending', 'processing', 'failed_retryable');
   END IF;
   RETURN jsonb_build_object('result', 'claimed', 'eventId', p_event_id);
 END;
@@ -546,6 +554,14 @@ BEGIN
        SET state = 'claimed', resolved_via = 'verified_identity',
            reconciled_at = now(), updated_at = now()
      WHERE order_id = v_order.id;
+    UPDATE public.attendance_claim_deliveries
+       SET status = 'failed_terminal', next_attempt_at = NULL,
+           lease_id = NULL, lease_expires_at = NULL,
+           provider_attempt_started_at = NULL,
+           last_error_code = 'claim_resolved', updated_at = now()
+     WHERE source_id = v_order.id
+       AND kind IN ('order_recovery_email', 'order_recovery_sms')
+       AND status IN ('pending', 'processing', 'failed_retryable');
     PERFORM public.add_buyer_to_event_chat(
       v_order.event_id, p_user_id, v_order.id, NULL);
     UPDATE public.pending_trip_chat_claims
@@ -565,20 +581,57 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public
 AS $function$
+  WITH item_counts AS (
+    SELECT count(*) AS total,
+           count(*) FILTER (WHERE r.state = 'selected') AS selected,
+           count(*) FILTER (WHERE r.state = 'replacement_issued')
+             AS replacement_issued,
+           count(*) FILTER (WHERE r.state = 'delivery_safe') AS delivery_safe,
+           count(*) FILTER (WHERE r.state = 'claimed') AS claimed,
+           count(*) FILTER (WHERE r.state = 'attention_required')
+             AS attention_required,
+           count(*) FILTER (WHERE r.state = 'no_longer_eligible')
+             AS no_longer_eligible,
+           count(*) FILTER (WHERE r.state = 'legacy_retired') AS legacy_retired,
+           count(*) FILTER (WHERE EXISTS (
+             SELECT 1 FROM public.orders o
+              WHERE o.id = r.order_id
+                AND o.attendance_claim_legacy_token_digest IS NOT NULL
+           )) AS legacy_proofs
+      FROM public.attendance_claim_recovery_items r
+  ), delivery_counts AS (
+    SELECT count(*) AS total,
+           count(*) FILTER (WHERE d.status = 'pending') AS pending,
+           count(*) FILTER (WHERE d.status = 'processing') AS processing,
+           count(*) FILTER (WHERE d.status = 'sent') AS sent,
+           count(*) FILTER (WHERE d.status = 'failed_retryable')
+             AS failed_retryable,
+           count(*) FILTER (WHERE d.status = 'failed_terminal')
+             AS failed_terminal
+      FROM public.attendance_claim_deliveries d
+     WHERE d.kind IN ('order_recovery_email', 'order_recovery_sms')
+       AND EXISTS (
+         SELECT 1 FROM public.attendance_claim_recovery_items r
+          WHERE r.order_id = d.source_id
+       )
+  )
   SELECT jsonb_build_object(
-    'total', count(*),
-    'selected', count(*) FILTER (WHERE state = 'selected'),
-    'replacementIssued', count(*) FILTER (WHERE state = 'replacement_issued'),
-    'deliverySafe', count(*) FILTER (WHERE state = 'delivery_safe'),
-    'claimed', count(*) FILTER (WHERE state = 'claimed'),
-    'attentionRequired', count(*) FILTER (WHERE state = 'attention_required'),
-    'legacyRetired', count(*) FILTER (WHERE state = 'legacy_retired'),
-    'legacyProofs', count(*) FILTER (WHERE EXISTS (
-      SELECT 1 FROM public.orders o
-       WHERE o.id = attendance_claim_recovery_items.order_id
-         AND o.attendance_claim_legacy_token_digest IS NOT NULL
-    ))
-  ) FROM public.attendance_claim_recovery_items;
+    'total', i.total,
+    'selected', i.selected,
+    'replacementIssued', i.replacement_issued,
+    'deliverySafe', i.delivery_safe,
+    'claimed', i.claimed,
+    'attentionRequired', i.attention_required,
+    'noLongerEligible', i.no_longer_eligible,
+    'legacyRetired', i.legacy_retired,
+    'legacyProofs', i.legacy_proofs,
+    'deliveryTotal', d.total,
+    'deliveryPending', d.pending,
+    'deliveryProcessing', d.processing,
+    'deliverySent', d.sent,
+    'deliveryFailedRetryable', d.failed_retryable,
+    'deliveryFailedTerminal', d.failed_terminal
+  ) FROM item_counts i CROSS JOIN delivery_counts d;
 $function$;
 
 CREATE OR REPLACE FUNCTION public.claim_issue_2979_attendance_claim_recovery_batch(
@@ -600,14 +653,21 @@ DECLARE
 BEGIN
   -- Only a lease durably marked immediately before provider I/O is acceptance
   -- ambiguous. A crash before that marker is a definite no-send and may retry.
-  WITH ambiguous AS (
+  WITH unresolved AS (
+    SELECT r.order_id
+      FROM public.attendance_claim_recovery_items r
+     WHERE r.state IN ('selected', 'replacement_issued')
+     FOR UPDATE
+  ), ambiguous AS (
     UPDATE public.attendance_claim_deliveries d
        SET status = 'sent', delivered_at = now(),
            last_error_code = 'provider_acceptance_ambiguous',
            lease_id = NULL, lease_expires_at = NULL, updated_at = now()
+      FROM unresolved r
      WHERE d.kind IN ('order_recovery_email', 'order_recovery_sms')
        AND d.status = 'processing' AND d.lease_expires_at <= now()
        AND d.provider_attempt_started_at IS NOT NULL
+       AND d.source_id = r.order_id
      RETURNING d.source_id
   )
   UPDATE public.attendance_claim_recovery_items r
@@ -623,7 +683,12 @@ BEGIN
          last_error_code = 'lease_expired_before_provider', updated_at = now()
    WHERE d.kind IN ('order_recovery_email', 'order_recovery_sms')
      AND d.status = 'processing' AND d.lease_expires_at <= now()
-     AND d.provider_attempt_started_at IS NULL;
+     AND d.provider_attempt_started_at IS NULL
+     AND EXISTS (
+       SELECT 1 FROM public.attendance_claim_recovery_items r
+        WHERE r.order_id = d.source_id
+          AND r.state IN ('selected', 'replacement_issued')
+     );
 
   -- Re-decide lifecycle eligibility before leasing. This is deliberately the
   -- same ownership/payment/event/ticket truth used by issuance, not the
@@ -750,17 +815,39 @@ SET search_path = public
 AS $function$
 DECLARE
   v_delivery public.attendance_claim_deliveries%ROWTYPE;
+  v_recovery_state text;
   v_secondary_id uuid;
   v_secondary_lease uuid;
 BEGIN
   IF p_outcome NOT IN ('accepted', 'ambiguous', 'retryable', 'terminal') THEN
     RETURN jsonb_build_object('result', 'invalid');
   END IF;
+  SELECT r.state INTO v_recovery_state
+    FROM public.attendance_claim_recovery_items r
+   WHERE r.order_id = p_order_id
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('result', 'stale_lease');
+  END IF;
   SELECT d.* INTO v_delivery FROM public.attendance_claim_deliveries d
    WHERE d.id = p_delivery_id AND d.source_id = p_order_id
      AND d.kind IN ('order_recovery_email', 'order_recovery_sms')
    FOR UPDATE;
-  IF NOT FOUND OR v_delivery.status <> 'processing'
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('result', 'stale_lease');
+  END IF;
+  IF v_recovery_state = 'claimed' THEN
+    UPDATE public.attendance_claim_deliveries
+       SET status = 'failed_terminal', next_attempt_at = NULL,
+           lease_id = NULL, lease_expires_at = NULL,
+           provider_attempt_started_at = NULL,
+           last_error_code = 'claim_resolved', updated_at = now()
+     WHERE id = v_delivery.id
+       AND status IN ('pending', 'processing', 'failed_retryable');
+    RETURN jsonb_build_object('result', 'claim_resolved');
+  END IF;
+  IF v_recovery_state NOT IN ('selected', 'replacement_issued')
+     OR v_delivery.status <> 'processing'
      OR v_delivery.lease_id IS DISTINCT FROM p_lease_id THEN
     RETURN jsonb_build_object('result', 'stale_lease');
   END IF;
@@ -779,7 +866,8 @@ BEGIN
     UPDATE public.attendance_claim_recovery_items
        SET state = 'delivery_safe', delivery_safe_at = coalesce(delivery_safe_at, now()),
            updated_at = now()
-     WHERE order_id = p_order_id;
+     WHERE order_id = p_order_id
+       AND state IN ('selected', 'replacement_issued');
     RETURN jsonb_build_object('result', 'delivery_safe');
   END IF;
 
@@ -792,7 +880,12 @@ BEGIN
            provider_attempt_started_at = NULL,
            last_error_code = left(coalesce(p_error_code, 'retryable'), 80),
            updated_at = now()
-     WHERE id = v_delivery.id;
+     WHERE id = v_delivery.id
+       AND EXISTS (
+         SELECT 1 FROM public.attendance_claim_recovery_items r
+          WHERE r.order_id = p_order_id
+            AND r.state IN ('selected', 'replacement_issued')
+       );
     RETURN jsonb_build_object('result', 'retryable');
   END IF;
 
@@ -828,7 +921,8 @@ BEGIN
          SET requires_secondary_delivery = true,
              secondary_delivery_id = v_secondary_id,
              state = 'replacement_issued', updated_at = now()
-       WHERE order_id = p_order_id;
+       WHERE order_id = p_order_id
+         AND state IN ('selected', 'replacement_issued');
       RETURN jsonb_build_object(
         'result', 'secondary_required',
         'deliveryId', v_secondary_id,
@@ -839,7 +933,8 @@ BEGIN
 
   UPDATE public.attendance_claim_recovery_items
      SET state = 'attention_required', updated_at = now()
-   WHERE order_id = p_order_id;
+   WHERE order_id = p_order_id
+     AND state IN ('selected', 'replacement_issued');
   RETURN jsonb_build_object('result', 'attention_required');
 END;
 $function$;
