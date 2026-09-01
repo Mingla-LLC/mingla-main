@@ -12,8 +12,9 @@ import { usePathname } from 'next/navigation'
 // reachable, and never in a hero frame.
 
 const PAIR = [
-  { href: '/design-preview/explorer-lagos', label: 'Explorer · Lagos' },
-  { href: '/host/design-preview/events', label: 'Host · Event organisers' },
+  { href: '/cutout/explorer', label: 'Explorer' },
+  { href: '/cutout/host', label: 'Host' },
+  { href: '/cutout/host/event-organizers-promoters', label: 'Landing page' },
 ]
 
 export function PreviewBanner() {
@@ -26,7 +27,7 @@ export function PreviewBanner() {
       style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
     >
       <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-warm">
-        #2902 design preview — not the live site
+        #2902 Cutout foundation — not the live site
       </span>
       <nav aria-label="Design preview surfaces" className="flex items-center gap-2">
         {PAIR.map((p) => {

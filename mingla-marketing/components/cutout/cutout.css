@@ -1,0 +1,142 @@
+/* ---------------------------------------------------------------------------
+   #2902 — the "Cutout" design foundation.
+
+   AIgocy's LAYOUT LANGUAGE rendered in MINGLA'S BRAND, per Seth's ruling on
+   2026-09-01: take the nested cut-out cards, soft borderless shadows,
+   overhanging tiles, dark chips and section rhythm; leave the slate-blue and
+   hot red behind.
+
+   The whole system is scoped under [data-cutout] so it cannot leak onto the
+   live `/` or `/host` while those pages are still the shipped design.
+
+   The single idea the whole system is built from: NESTED ROUNDED RECTANGLES,
+   each one inset inside the last — ground → page shell → section → card →
+   media window — with elements that deliberately BREAK OUT of their parent's
+   edge. That overhang is the "cut-out" read.
+--------------------------------------------------------------------------- */
+
+[data-cutout] {
+  /* Grounds. The ground is deliberately DARKER than the page shell — that
+     contrast is what makes the shell read as a card lying on a surface. */
+  --cut-ground: #efe9df;
+  --cut-shell: #faf8f4;
+  --cut-card: #ffffff;
+  --cut-card-sunken: #f5f2ec;
+  --cut-ink: #0e0e10;
+  --cut-accent: #eb7825;
+  --cut-accent-ink: #a8450e;
+
+  /* Radii. Each nesting level steps DOWN, which is what keeps concentric
+     corners looking parallel rather than accidental. */
+  --cut-r-shell: 40px;
+  --cut-r-card: 28px;
+  --cut-r-media: 20px;
+  --cut-r-tile: 18px;
+  --cut-r-pill: 999px;
+
+  /* Shadows. Borderless and wide — AIgocy never draws a card outline, it
+     floats the card instead. Warm-tinted so they sit on parchment. */
+  --cut-shadow-card:
+    0 1px 2px rgba(14, 14, 16, 0.03),
+    0 10px 28px rgba(14, 14, 16, 0.055);
+  --cut-shadow-card-hover:
+    0 2px 6px rgba(14, 14, 16, 0.05),
+    0 22px 56px rgba(14, 14, 16, 0.09);
+  /* The overhanging dark tile needs a tighter, darker shadow or it reads as
+     printed onto the card rather than sitting above it. */
+  --cut-shadow-tile:
+    0 2px 4px rgba(14, 14, 16, 0.14),
+    0 8px 20px rgba(14, 14, 16, 0.20);
+  --cut-shadow-shell: 0 12px 60px rgba(14, 14, 16, 0.08);
+  --cut-shadow-nav:
+    0 1px 2px rgba(14, 14, 16, 0.04),
+    0 12px 32px rgba(14, 14, 16, 0.10);
+
+  --cut-hairline: rgba(14, 14, 16, 0.07);
+  --cut-body: rgba(14, 14, 16, 0.66);
+  --cut-muted: rgba(14, 14, 16, 0.45);
+}
+
+/* Dark bands invert the same variables rather than adding a parallel set, so a
+   card written once renders correctly on both grounds. */
+[data-cutout] [data-cut-band='dark'] {
+  --cut-ground: #08090c;
+  --cut-shell: #08090c;
+  --cut-card: rgba(255, 255, 255, 0.055);
+  --cut-card-sunken: rgba(255, 255, 255, 0.03);
+  --cut-ink: #ffffff;
+  --cut-accent-ink: var(--cut-accent);
+  --cut-hairline: rgba(255, 255, 255, 0.10);
+  --cut-body: rgba(255, 255, 255, 0.68);
+  --cut-muted: rgba(255, 255, 255, 0.46);
+  --cut-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px rgba(0, 0, 0, 0.34);
+  --cut-shadow-card-hover: 0 2px 6px rgba(0, 0, 0, 0.34), 0 22px 56px rgba(0, 0, 0, 0.42);
+}
+
+/* The page shell — the card the entire site lies on. */
+.cut-shell {
+  background: var(--cut-shell);
+  border-radius: var(--cut-r-shell);
+  box-shadow: var(--cut-shadow-shell);
+  overflow: clip; /* `clip` not `hidden`: it does NOT create a scroll container,
+                     so `position: sticky` and the fixed nav still work. */
+}
+
+@media (max-width: 640px) {
+  [data-cutout] {
+    --cut-r-shell: 24px;
+    --cut-r-card: 22px;
+    --cut-r-media: 16px;
+  }
+}
+
+/* A card. Borderless, floating, with a hairline only where a border genuinely
+   aids separation (dense data rows). */
+.cut-card {
+  background: var(--cut-card);
+  border-radius: var(--cut-r-card);
+  box-shadow: var(--cut-shadow-card);
+  transition: box-shadow 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cut-card-interactive:hover {
+  box-shadow: var(--cut-shadow-card-hover);
+  transform: translateY(-3px);
+}
+
+/* The media window: a rounded rectangle INSET inside the card, which is the
+   literal "cut out" — the card frames a hole the media shows through. */
+.cut-media {
+  border-radius: var(--cut-r-media);
+  overflow: hidden;
+  background: var(--cut-card-sunken);
+}
+
+/* The overhanging tile. Negative margins are the whole effect: the tile hangs
+   past the card's top-left corner so the card reads as cut around it. */
+.cut-tile {
+  background: var(--cut-ink);
+  border-radius: var(--cut-r-tile);
+  box-shadow: var(--cut-shadow-tile);
+}
+
+/* Connector rail — the thin line with dot nodes that links AIgocy's feature
+   cards to a centre. Drawn in CSS so it costs no image and no layout. */
+.cut-connector {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--cut-hairline) 12%,
+    var(--cut-hairline) 88%,
+    transparent
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cut-card,
+  .cut-card-interactive:hover {
+    transition: none;
+    transform: none;
+  }
+}
