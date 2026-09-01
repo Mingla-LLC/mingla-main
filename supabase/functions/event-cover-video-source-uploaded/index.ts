@@ -40,6 +40,64 @@ const mergeProviderPayload = (
   source_upload: sourceUpload,
 });
 
+// ── #2967 THE ACKNOWLEDGEMENT DEADLINE ──────────────────────────────────────
+// #2715's storage-metadata repair (PR #2843) returns an UNCHANGED canonical
+// `source_uploading` with HTTP 200 when the TUS offsets are exact but Bunny's
+// `storageSize` is still zero, deliberately so the client's ~2s loop retries.
+// That is correct for a transient registration lag. It had NO bound, so a
+// provider-side stall — bytes fully delivered, object never committed — was
+// indistinguishable from a two-second lag: 120 acknowledgements in 346 seconds,
+// every one HTTP 200, every one a database no-op, `updated_at` frozen at job
+// creation, and the user watching "Finishing upload…" forever.
+//
+// WHY 90 SECONDS:
+//   • This deadline covers a transfer that is ALREADY COMPLETE (exact TUS
+//     offset equality against Bunny's own HEAD is the precondition for
+//     reaching it). It is not an encoding deadline — #2905's 12h stall sweep
+//     owns encoding and is deliberately untouched here.
+//   • The slowest HEALTHY job on this pipeline had its full derivative set
+//     live ~21s after TUS completion (#2905 recovery job e055c562); a positive
+//     `storageSize` appears well before the derivatives do. 90s is >4x the
+//     slowest healthy case end-to-end.
+//   • It is ~45 client poll cycles at the 2s loop interval, so a genuinely
+//     slow-but-alive Bunny gets dozens of chances before we call it dead.
+//   • It bounds the user's wait at a minute and a half instead of eleven more
+//     hours of spinner (the #2967 job's TUS resource died at 14:30:08 and the
+//     12h sweep would not have touched it until 01:30).
+export const SOURCE_ACK_DEADLINE_MS = Number.parseInt(
+  Deno.env.get("EVENT_COVER_SOURCE_ACK_DEADLINE_MS") ?? "90000",
+  10,
+);
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+
+// The acknowledgement clock lives under its own `source_ack` key so it can
+// never collide with the `source_upload` receipt the success path writes (that
+// receipt is what `sourceUploadedAtFromPayload` reads for `sourceUploadedAt`).
+const mergeAckPayload = (
+  existing: unknown,
+  ack: Record<string, unknown>,
+): Record<string, unknown> => ({
+  ...asRecord(existing),
+  source_ack: { ...asRecord(asRecord(existing).source_ack), ...ack },
+});
+
+const ackClockStartedAtMs = (providerPayload: unknown): number | null => {
+  const value = asRecord(asRecord(providerPayload).source_ack).tus_complete_at;
+  if (typeof value !== "string") return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const expiresAtMs = (value: unknown): number | null => {
+  if (typeof value !== "string") return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 const defaultDeps = {
   bunnyGetVideo,
   bunnyPresignTusUpload,
@@ -176,6 +234,50 @@ export const handleEventCoverVideoSourceUploaded = async (
   const storageSize = typeof video.video.storageSize === "number"
     ? video.video.storageSize
     : 0;
+  const nowMs = Date.now();
+
+  // #2967 — a job still in `source_uploading` whose TUS resource has EXPIRED
+  // while Bunny reports NO committed object is a definite, detectable death:
+  // the resumable resource is gone, so those bytes can never be re-offered
+  // against this job and no later acknowledgement can ever succeed. Fail it
+  // here instead of leaving it to #2905's 12h stall sweep — the production job
+  // in this issue expired at 14:30:08 with `failure_code = NULL`, and the sweep
+  // would not have touched it until 01:30 the next morning while the sheet said
+  // "The video is uploaded."
+  //
+  // A POSITIVE storageSize means Bunny DID commit the object, so an expired
+  // transport is irrelevant and this branch never fires — a user who returns to
+  // a backgrounded upload an hour later still gets acknowledged, not killed.
+  const tusExpiresAt = expiresAtMs(job.tus_expires_at);
+  if (storageSize <= 0 && tusExpiresAt !== null && nowMs >= tusExpiresAt) {
+    const { data: expiredJob } = await supabase.rpc(
+      "cover_video_transition_job",
+      {
+        p_job_id: job.id,
+        p_from_statuses: ["source_uploading"],
+        p_to_status: "failed",
+        p_provider_status: video.video.status,
+        p_provider_progress: null,
+        p_patch: {
+          failure_code: "source_transport_expired",
+          failure_message:
+            "The upload session expired before the video service confirmed it.",
+        },
+      },
+    );
+    if (expiredJob?.status === "failed") await deps.destroyCoverVideoAsset(job);
+    console.warn(
+      "[event-cover-video-source-uploaded]",
+      JSON.stringify({
+        jobId: job.id,
+        requestId,
+        stage: "tus_transport_expired",
+        tusExpiresAt: job.tus_expires_at,
+      }),
+    );
+    return jsonResponse(mapEventCoverVideoStatus(expiredJob ?? job));
+  }
+
   const presign = await deps.bunnyPresignTusUpload(guid ?? "");
   let tusHead: Response;
   try {
@@ -209,12 +311,97 @@ export const handleEventCoverVideoSourceUploaded = async (
     // incomplete upload: preserve canonical source_uploading truth so the
     // client's acknowledgement loop retries instead of failing a fully
     // uploaded source.
+    //
+    // #2967 — but BOUNDED. The offsets matching is the moment the transfer is
+    // provably complete, so that is where the clock starts. It is recorded on
+    // the job (this used to be a pure database no-op, which is why `updated_at`
+    // stayed frozen through 120 acknowledgements) and read back on every later
+    // pass.
+    let ackStartedAtMs = ackClockStartedAtMs(job.provider_payload);
+    if (ackStartedAtMs === null) {
+      const { data: markedJob, error: markError } = await supabase
+        .from("event_cover_video_jobs")
+        .update({
+          provider_payload: mergeAckPayload(job.provider_payload, {
+            tus_complete_at: new Date(nowMs).toISOString(),
+            tus_offset: uploadOffset,
+          }),
+        })
+        .eq("id", job.id)
+        .eq("status", "source_uploading")
+        .select("*")
+        .maybeSingle();
+      if (markError || !markedJob) {
+        // The clock could not be written. Do NOT silently pretend it was: say
+        // so, and keep answering canonical retryable truth. The client-side
+        // deadline is the backstop for exactly this case — that is why the
+        // bound exists on both sides.
+        console.warn(
+          "[event-cover-video-source-uploaded]",
+          JSON.stringify({
+            code: markError?.code ?? null,
+            jobId: job.id,
+            requestId,
+            stage: "ack_clock_write_failed",
+          }),
+        );
+        return jsonResponse(mapEventCoverVideoStatus(job));
+      }
+      ackStartedAtMs = ackClockStartedAtMs(markedJob.provider_payload) ?? nowMs;
+      console.log(
+        "[event-cover-video-source-uploaded]",
+        JSON.stringify({
+          deadlineMs: SOURCE_ACK_DEADLINE_MS,
+          jobId: job.id,
+          requestId,
+          stage: "ack_clock_started",
+        }),
+      );
+      return jsonResponse(mapEventCoverVideoStatus(markedJob));
+    }
+    const waitedMs = nowMs - ackStartedAtMs;
+    if (waitedMs >= SOURCE_ACK_DEADLINE_MS) {
+      // Bunny took the bytes and never committed the object. This is not a lag
+      // any longer: stop answering "still working" and give the caller a real,
+      // retryable terminal failure it can act on.
+      const { data: deadlineJob } = await supabase.rpc(
+        "cover_video_transition_job",
+        {
+          p_job_id: job.id,
+          p_from_statuses: ["source_uploading"],
+          p_to_status: "failed",
+          p_provider_status: video.video.status,
+          p_provider_progress: null,
+          p_patch: {
+            failure_code: "source_ack_deadline_exceeded",
+            failure_message:
+              "The video service never confirmed this upload arrived.",
+          },
+        },
+      );
+      if (deadlineJob?.status === "failed") {
+        await deps.destroyCoverVideoAsset(job);
+      }
+      console.warn(
+        "[event-cover-video-source-uploaded]",
+        JSON.stringify({
+          deadlineMs: SOURCE_ACK_DEADLINE_MS,
+          jobId: job.id,
+          requestId,
+          stage: "bunny_storage_metadata_deadline_exceeded",
+          waitedMs,
+        }),
+      );
+      return jsonResponse(mapEventCoverVideoStatus(deadlineJob ?? job));
+    }
     console.log(
       "[event-cover-video-source-uploaded]",
       JSON.stringify({
+        deadlineMs: SOURCE_ACK_DEADLINE_MS,
         jobId: job.id,
         requestId,
         stage: "bunny_storage_metadata_pending",
+        waitedMs,
       }),
     );
     return jsonResponse(mapEventCoverVideoStatus(job));
