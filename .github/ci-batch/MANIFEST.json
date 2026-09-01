@@ -14934,7 +14934,7 @@
       "providerWorkflow": ".github/workflows/issue-1719-unified-sharing.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "df9e520e55a0592ad5b600386a72e652054dec7302e7a680c73bd2ff37963f16",
+        "sourceSha256": "d1ae58ed30aa941e8bf6e1dbf3012fec5c5f52381299db0337563a21c3683412",
         "triggers": [
           "pull_request",
           "push"
@@ -14949,6 +14949,8 @@
           "packages/sharing/**",
           "scripts/issue-1719/**",
           "scripts/issue-2589/**",
+          "supabase/functions/_shared/bunnyStream.issue2905.*.test.ts",
+          "supabase/functions/_shared/bunnyStream.ts",
           "supabase/functions/_shared/contentShare*.ts",
           "supabase/functions/_shared/eventCoverVideo.issue2715.*.test.ts",
           "supabase/functions/event-cover-video-*/**",

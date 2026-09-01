@@ -4,6 +4,15 @@
 // by any terminal transition the inline paths missed or that failed transiently:
 //   • cancelled / failed jobs with a provider asset id + reaped_at IS NULL;
 //   • abandoned drafts (source_uploaded / ready, never applied, > 24h old).
+//
+// #2905 — this function also owns the two mechanisms that make a wedged job
+// impossible: (1) it reconciles provider truth through the SAME finalize
+// implementation the live webhook uses, translating the Bunny API video-object
+// status into the webhook status with the one named crossing
+// (bunnyApiVideoStatusAsWebhookStatus) instead of letting the two enums pass for
+// each other; and (2) it enforces COVER_VIDEO_STALL_MS, after which a
+// non-terminal job becomes a visible, retryable failure with a real
+// failure_code. A job now always ends: promoted, failed, or reaped.
 // For each: destroy the asset (provider-agnostic destroyCoverVideoAsset), then
 // stamp reaped_at. reaped_at guards double-delete; a Bunny delete of an absent
 // guid returns 404 → treated as ok → idempotent.
@@ -28,9 +37,11 @@ import {
   serviceRoleClient,
 } from "../_shared/eventCoverVideo.ts";
 import {
+  bunnyApiVideoStatusAsWebhookStatus,
   bunnyFindVideoByTitle,
   bunnyGetVideo,
   hmacSha256Hex,
+  mapBunnyStatusFromApiVideo,
 } from "../_shared/bunnyStream.ts";
 import { handleBunnyWebhook } from "../event-cover-video-webhook/index.ts";
 
@@ -99,6 +110,89 @@ export const selectReconciliationCandidates = (
     )
   );
 
+// ── #2905 STALL DEADLINE ────────────────────────────────────────────────────
+//
+// #2715 correctly stopped age from reaping durable work, but combined with a
+// promotion path that could not fire it made a wedged job IMMORTAL: it never
+// completed, never failed, never reaped. Production job e055c562-… sat in
+// `processing` for 3 days with failure_code NULL and no user-visible affordance.
+//
+// A non-terminal job past this deadline becomes a VISIBLE, RETRYABLE failure
+// (mapEventCoverVideoStatus sets canRetry for `failed`), never a silent delete.
+//
+// WHY 12 HOURS:
+//   • The reconciler ticks every 6h, so 12h guarantees a job gets at least TWO
+//     full provider-truth promotion attempts before it is ever called stalled.
+//     Anything under 6h could declare a job stalled on the same tick that would
+//     have promoted it.
+//   • Bunny may legitimately encode well beyond 120s (#2715), so a
+//     seconds-or-minutes deadline is wrong on its face. The slowest cover video
+//     that ever reached `applied` in production took 93s (2026-08-12 18:03:43 →
+//     18:05:16); 12h is ~465× that and ~1,700× the median (18s).
+//   • It is HALF the pre-existing 24h abandoned-draft window, so a stalled job
+//     surfaces to the host the same day they uploaded it — strictly sooner than
+//     the old code, which silently deleted it at 24h with no explanation.
+export const COVER_VIDEO_STALL_MS = 12 * 60 * 60 * 1000;
+
+// Only non-terminal states are stallable. `ready` is authoritative provider
+// truth waiting on its owner to apply it (and cover_video_transition_job has no
+// ready→failed edge), so it is deliberately excluded.
+const STALLABLE_STATUSES = [
+  "source_uploading",
+  "source_uploaded",
+  "processing_queued",
+  "processing",
+];
+
+export type StallVerdict =
+  | { stalled: false; reason: string }
+  | {
+    stalled: true;
+    failureCode: "processing_stalled" | "provider_asset_missing";
+    failureMessage: string;
+  };
+
+// PURE. `providerRead` is how this tick's `bunnyGetVideo` resolved:
+//   "non_terminal" — read succeeded, provider is still not finished/failed.
+//   "absent"       — HTTP 404: the provider asset is definitively gone.
+//   "unreadable"   — network / 5xx / not-configured. NEVER stalls: a Bunny
+//                    outage must not convert healthy work into failure.
+export function evaluateCoverVideoStall(input: {
+  status: string | null;
+  createdAt: string | null;
+  nowMs: number;
+  providerRead: "non_terminal" | "absent" | "unreadable";
+}): StallVerdict {
+  if (!STALLABLE_STATUSES.includes(input.status ?? "")) {
+    return { stalled: false, reason: "not_stallable_status" };
+  }
+  if (input.providerRead === "unreadable") {
+    return { stalled: false, reason: "provider_unreadable" };
+  }
+  const createdMs = input.createdAt === null
+    ? Number.NaN
+    : Date.parse(input.createdAt);
+  if (!Number.isFinite(createdMs)) {
+    return { stalled: false, reason: "created_at_unparseable" };
+  }
+  if (input.nowMs - createdMs < COVER_VIDEO_STALL_MS) {
+    return { stalled: false, reason: "within_stall_window" };
+  }
+  return input.providerRead === "absent"
+    ? {
+      stalled: true,
+      failureCode: "provider_asset_missing",
+      failureMessage:
+        "The uploaded video is no longer available at the media host.",
+    }
+    : {
+      stalled: true,
+      failureCode: "processing_stalled",
+      failureMessage:
+        "Video processing did not finish in time. Try uploading it again.",
+    };
+}
+
 const defaultDeps = {
   bunnyFindVideoByTitle,
   bunnyGetVideo,
@@ -149,6 +243,57 @@ export const handleReaper = async (
       return jsonResponse({ ok: false, error: "reconcile_claim_failed" });
     }
     let reconciled = 0;
+    let stalled = 0;
+    // #2905 — drive the stall deadline through the canonical transition RPC so a
+    // stalled job becomes a real, visible, retryable terminal failure with a
+    // failure_code (never a silent delete), and queue its asset for reclamation
+    // in this same tick.
+    const failStalledIf = async (
+      candidate: ReapCandidate,
+      providerRead: "non_terminal" | "absent" | "unreadable",
+    ): Promise<void> => {
+      const verdict = evaluateCoverVideoStall({
+        createdAt: candidate.created_at ?? null,
+        nowMs,
+        providerRead,
+        status: candidate.status,
+      });
+      if (!verdict.stalled) return;
+      const { data: failedJob } = await supabase.rpc(
+        "cover_video_transition_job",
+        {
+          p_job_id: candidate.id,
+          p_from_statuses: STALLABLE_STATUSES,
+          p_to_status: "failed",
+          p_provider_status: null,
+          p_provider_progress: null,
+          p_patch: {
+            failure_code: verdict.failureCode,
+            failure_message: verdict.failureMessage,
+          },
+        },
+      );
+      if (failedJob?.status !== "failed") return;
+      stalled += 1;
+      console.warn(
+        "[event-cover-video-reaper]",
+        JSON.stringify({
+          createdAt: candidate.created_at,
+          failureCode: verdict.failureCode,
+          jobId: candidate.id,
+          stage: "stall_deadline_failed_job",
+        }),
+      );
+      if (!targets.some((target) => target.id === candidate.id)) {
+        targets.push({
+          id: candidate.id,
+          provider: candidate.provider,
+          source_asset_id: candidate.source_asset_id,
+          source_public_id: candidate.source_public_id,
+          action: "reap",
+        });
+      }
+    };
     for (const candidate of (claimed ?? []) as ReapCandidate[]) {
       if (
         ["cancelled", "failed", "superseded"].includes(candidate.status ?? "")
@@ -181,9 +326,20 @@ export const handleReaper = async (
           { p_job_id: candidate.id, p_lease_seconds: 60 },
         );
         const token = allocation.data?.provider_allocation_token;
-        if (typeof token !== "string") continue;
+        // #2905 — an unresolvable allocation is the OTHER immortality hole: no
+        // asset id means the promotion path can never run for this row. The
+        // deadline is the only thing that can end it. A provider lookup that
+        // failed is transient ("unreadable" → never stalls); a lookup that
+        // authoritatively found nothing is "absent".
+        if (typeof token !== "string") {
+          await failStalledIf(candidate, "non_terminal");
+          continue;
+        }
         const lookup = await deps.bunnyFindVideoByTitle(candidate.id);
-        if (!lookup.ok) continue;
+        if (!lookup.ok) {
+          await failStalledIf(candidate, "unreadable");
+          continue;
+        }
         const resolution = await supabase.rpc(
           "cover_video_resolve_provider_allocation",
           {
@@ -194,16 +350,46 @@ export const handleReaper = async (
           },
         );
         if (!resolution.error && resolution.data) reconciled += 1;
+        if (lookup.guid === null) await failStalledIf(candidate, "absent");
         continue;
       }
       const guid = typeof candidate.source_asset_id === "string"
         ? candidate.source_asset_id
         : "";
       const provider = await deps.bunnyGetVideo(guid);
-      if (!provider.ok) continue;
+      if (!provider.ok) {
+        // A 404 is definitive provider absence; anything else is transient and
+        // must never convert healthy work into failure.
+        await failStalledIf(
+          candidate,
+          provider.status === 404 ? "absent" : "unreadable",
+        );
+        continue;
+      }
+      // ── #2905 THE ENUM SEAM ──────────────────────────────────────────────
+      // `provider.video.status` is the Bunny API VIDEO-OBJECT enum (4 =
+      // Finished, 3 = Transcoding). `handleBunnyWebhook` reads the Bunny
+      // WEBHOOK enum (3 = Finished, 4 = ResolutionFinished). Passing the raw
+      // API number across (the shipped bug) read a FINISHED video as "still
+      // encoding, wait for 3" — a 3 that can never arrive after a 4 — so the
+      // reconciler could never complete a job, and read a TRANSCODING video as
+      // ready, which would have published a half-encoded video. The crossing is
+      // now made exactly once, by one function named for both enums.
+      const webhookStatus = bunnyApiVideoStatusAsWebhookStatus(
+        provider.video.status,
+      );
+      const providerLifecycle = mapBunnyStatusFromApiVideo(
+        provider.video.status,
+      );
+      if (webhookStatus === null) {
+        // An unknown/ignorable API status is never laundered into a webhook
+        // body, but it still counts as non-terminal for the stall deadline.
+        await failStalledIf(candidate, "non_terminal");
+        continue;
+      }
       const rawBody = JSON.stringify({
         VideoGuid: guid,
-        Status: provider.video.status,
+        Status: webhookStatus,
       });
       const secret = Deno.env.get("BUNNY_STREAM_WEBHOOK_KEY") ?? "";
       if (secret.length === 0) continue;
@@ -230,6 +416,24 @@ export const handleReaper = async (
         },
       );
       if (response.ok) reconciled += 1;
+      console.log(
+        "[event-cover-video-reaper]",
+        JSON.stringify({
+          apiStatus: provider.video.status,
+          jobId: candidate.id,
+          jobStatus: candidate.status,
+          lifecycle: providerLifecycle,
+          replayStatus: response.status,
+          stage: "reconcile_replay",
+          webhookStatus,
+        }),
+      );
+      // The stall deadline only fires when provider truth is still NOT terminal
+      // after this tick's promotion attempt. A finished or failed provider asset
+      // is never stalled — the replay above owns it.
+      if (providerLifecycle !== "ready" && providerLifecycle !== "failed") {
+        await failStalledIf(candidate, "non_terminal");
+      }
     }
 
     let reaped = 0;
@@ -262,6 +466,7 @@ export const handleReaper = async (
       reaped,
       failed,
       reconciled,
+      stalled,
       timestamp: new Date(nowMs).toISOString(),
     });
   } catch (err) {

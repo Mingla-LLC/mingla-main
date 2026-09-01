@@ -12,9 +12,24 @@ import {
   bunnyBestMp4,
   bunnyGetVideo,
   bunnyThumbnailUrl,
-  mapBunnyStatus,
+  mapBunnyStatusFromWebhook,
   verifyBunnyWebhookSignature,
 } from "../_shared/bunnyStream.ts";
+
+// #2905 — the webhook was completely silent: nine real Bunny callbacks for the
+// wedged production job (2026-08-30 03:11:23 → 03:11:39) left ZERO function
+// logs, and every one of them returned an indistinguishable HTTP 200. A dropped
+// webhook, an ignored webhook and a genuine promotion all looked identical in
+// the gateway log. Every exit below now names itself.
+const logWebhook = (
+  stage: string,
+  fields: Record<string, unknown>,
+  level: "info" | "warn" = "info",
+): void => {
+  const line = JSON.stringify({ stage, ...fields });
+  if (level === "warn") console.warn("[event-cover-video-webhook]", line);
+  else console.log("[event-cover-video-webhook]", line);
+};
 
 const defaultDeps = {
   bunnyGetVideo,
@@ -159,6 +174,10 @@ export const handleBunnyWebhook = async (
     );
   }
   if (!existingJob) {
+    // #2905 — a guid we do not own is a legitimate no-op, but it MUST NOT be
+    // indistinguishable from a promotion in the log. This is the only place a
+    // real finish signal can be dropped without a trace, so it logs at warn.
+    logWebhook("unknown_guid", { videoGuid, providerStatus: status }, "warn");
     return jsonResponse({ ok: true, ignored: "unknown_guid" });
   }
 
@@ -166,40 +185,94 @@ export const handleBunnyWebhook = async (
   if (
     existingJob.status === "cancelled" || existingJob.status === "superseded"
   ) {
+    logWebhook("terminal_ignored", {
+      jobId: existingJob.id,
+      jobStatus: existingJob.status,
+      providerStatus: status,
+      videoGuid,
+    });
     return jsonResponse({ ok: true, ignored: existingJob.status });
   }
   if (existingJob.status === "applied") {
+    logWebhook("terminal_ignored", {
+      jobId: existingJob.id,
+      jobStatus: "applied",
+      providerStatus: status,
+      videoGuid,
+    });
     return jsonResponse({ ok: true, ignored: "already_applied" });
   }
   if (existingJob.status === "failed") {
+    logWebhook("terminal_ignored", {
+      jobId: existingJob.id,
+      jobStatus: "failed",
+      providerStatus: status,
+      videoGuid,
+    });
     return jsonResponse({ ok: true, ignored: "already_failed" });
   }
   if (existingJob.status === "ready") {
+    logWebhook("terminal_ignored", {
+      jobId: existingJob.id,
+      jobStatus: "ready",
+      providerStatus: status,
+      videoGuid,
+    });
     return jsonResponse({ ok: true, ignored: "already_ready" });
   }
 
-  // 4) Map the numeric Bunny Status to our lifecycle.
-  const mapped = mapBunnyStatus(status);
+  // 4) Map the numeric Bunny WEBHOOK Status to our lifecycle. #2905: this is the
+  //    webhook enum ONLY (3 = Finished). An API video-object status must be
+  //    translated by bunnyApiVideoStatusAsWebhookStatus before it reaches here.
+  const mapped = mapBunnyStatusFromWebhook(status);
   if (mapped === "processing") {
     const progress = await deps.bunnyGetVideo(videoGuid);
-    await supabase.rpc("cover_video_transition_job", {
-      p_job_id: existingJob.id,
-      p_from_statuses: [
-        "source_uploading",
-        "source_uploaded",
-        "processing_queued",
-        "processing",
-      ],
-      p_to_status: "processing",
-      p_provider_status: status,
-      p_provider_progress:
-        progress.ok && typeof progress.video.encodeProgress === "number"
-          ? Math.max(
-            0,
-            Math.min(100, Math.round(progress.video.encodeProgress)),
-          )
-          : null,
-      p_patch: {},
+    const { data: processingJob } = await supabase.rpc(
+      "cover_video_transition_job",
+      {
+        p_job_id: existingJob.id,
+        p_from_statuses: [
+          "source_uploading",
+          "source_uploaded",
+          "processing_queued",
+          "processing",
+        ],
+        p_to_status: "processing",
+        p_provider_status: status,
+        p_provider_progress:
+          progress.ok && typeof progress.video.encodeProgress === "number"
+            ? Math.max(
+              0,
+              Math.min(100, Math.round(progress.video.encodeProgress)),
+            )
+            : null,
+        p_patch: {},
+      },
+    );
+    // #2905 — cover_video_transition_job returns the UNCHANGED row when its
+    // CAS does not apply (e.g. source_uploading has no legal edge to
+    // processing). Silently discarding that made every one of the nine real
+    // 2026-08-30 webhooks look successful. A lost progress update is not
+    // load-bearing (the reconciler re-reads provider truth), so this stays 200
+    // — but it is now named in the log and in the body.
+    if (processingJob && processingJob.status !== "processing") {
+      logWebhook("transition_lost", {
+        attemptedTo: "processing",
+        jobId: existingJob.id,
+        jobStatus: processingJob.status,
+        providerStatus: status,
+        videoGuid,
+      }, "warn");
+      return jsonResponse({
+        ok: true,
+        ignored: "transition_lost",
+        from: processingJob.status,
+      });
+    }
+    logWebhook("processing", {
+      jobId: existingJob.id,
+      providerStatus: status,
+      videoGuid,
     });
     return jsonResponse({ ok: true });
   }
@@ -226,20 +299,40 @@ export const handleBunnyWebhook = async (
     if (failedJob?.status === "failed") {
       await deps.destroyCoverVideoAsset(existingJob);
     }
+    logWebhook("provider_failed", {
+      jobId: existingJob.id,
+      jobStatus: failedJob?.status ?? null,
+      providerStatus: status,
+      videoGuid,
+    }, "warn");
     return jsonResponse({ ok: true });
   }
   if (mapped === "ignore") {
+    logWebhook("status_ignored", {
+      jobId: existingJob.id,
+      providerStatus: status,
+      videoGuid,
+    });
     return jsonResponse({ ok: true, ignored: `status_${status}` });
   }
 
   const video = await deps.bunnyGetVideo(videoGuid);
   if (!video.ok) {
+    logWebhook("provider_unavailable", {
+      jobId: existingJob.id,
+      reason: video.reason,
+      videoGuid,
+    }, "warn");
     return jsonResponse({
       error: "provider_temporarily_unavailable",
       detail: video.reason,
     }, 503);
   }
   if (existingJob.source_sha256 && !video.video.originalHash) {
+    logWebhook("source_identity_pending", {
+      jobId: existingJob.id,
+      videoGuid,
+    }, "warn");
     return jsonResponse({ error: "source_identity_pending" }, 503);
   }
   if (
@@ -276,10 +369,26 @@ export const handleBunnyWebhook = async (
     });
   }
   const best = bunnyBestMp4(video.video);
+  // #2905 — logged BEFORE the guard so the retryable 503 branches below keep the
+  // exact `if (x === null) { return jsonResponse({error:"derivative_not_ready"},503); }`
+  // shape that orch-0770b WH-6 pins (no mutation, no destroy, stable 503).
+  logWebhook("derivative_probe", {
+    availableResolutions: video.video.availableResolutions,
+    heightP: best?.heightP ?? null,
+    jobId: existingJob.id,
+    ready: best !== null,
+    videoGuid,
+  }, best === null ? "warn" : "info");
   if (best === null) {
     return jsonResponse({ error: "derivative_not_ready" }, 503);
   }
   const head = await headWithRetry(best.url, 3, 2000);
+  logWebhook("derivative_head", {
+    jobId: existingJob.id,
+    reachable: head !== null,
+    url: best.url,
+    videoGuid,
+  }, head === null ? "warn" : "info");
   if (head === null) {
     return jsonResponse({ error: "derivative_not_ready" }, 503);
   }
@@ -341,6 +450,11 @@ export const handleBunnyWebhook = async (
   const posterUrl = bunnyThumbnailUrl(videoGuid);
   const posterHead = await headWithRetry(posterUrl, 3, 2000);
   if (posterHead === null) {
+    logWebhook("poster_not_ready", {
+      jobId: existingJob.id,
+      posterUrl,
+      videoGuid,
+    }, "warn");
     return jsonResponse({ error: "poster_not_ready" }, 503);
   }
   const providerPayload = mergeBunnyPayload(existingJob.provider_payload, {
@@ -377,6 +491,26 @@ export const handleBunnyWebhook = async (
     });
     return jsonResponse({ error: "internal_error" }, 500);
   }
+  // #2905 — the finish signal is the one thing that must never be lost. When the
+  // CAS does not apply, cover_video_transition_job returns the UNCHANGED row, so
+  // `readyJob` is truthy and the old code fell straight through to auto-apply and
+  // answered 200. That silently discarded a Finished callback (this is exactly
+  // what a source_uploading→ready webhook does: the RPC has no such edge). A
+  // retryable 503 instead makes Bunny redeliver and keeps the reconciler tick
+  // counting it as unreconciled, so the promotion is retried rather than lost.
+  if (readyJob.status !== "ready") {
+    logWebhook("ready_transition_lost", {
+      attemptedTo: "ready",
+      jobId: existingJob.id,
+      jobStatus: readyJob.status,
+      providerStatus: status,
+      videoGuid,
+    }, "warn");
+    return jsonResponse({
+      error: "ready_transition_lost",
+      detail: String(readyJob.status ?? "unknown"),
+    }, 503);
+  }
 
   const applied = await autoApplyEventCover(
     supabase,
@@ -385,8 +519,19 @@ export const handleBunnyWebhook = async (
     posterUrl,
   );
   if (!applied.ok) {
+    logWebhook("ready_apply_failed", {
+      jobId: existingJob.id,
+      providerStatus: status,
+      videoGuid,
+    }, "warn");
     return jsonResponse({ ok: true, status: "ready", applyFailed: true });
   }
+  logWebhook("ready", {
+    jobId: existingJob.id,
+    processedUrl: derivative.url,
+    providerStatus: status,
+    videoGuid,
+  });
   return jsonResponse({ ok: true });
 };
 
