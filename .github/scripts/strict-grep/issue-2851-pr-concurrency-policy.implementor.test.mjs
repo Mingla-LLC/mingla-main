@@ -77,6 +77,10 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // Previous value (pre-#2909 job additions): 757010090a432703e28f14aaebded53351c10614c10b0f7b33f668f5d6243884
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   "167a83523a47aa487bee41e443b93b7f58f293eccc6d92bec47e6459d783cde1";
+// The seven non-PR workflows below are pinned by their COMPLETE bytes, and they
+// are untouched by #2909. Recorded here so the next census move can see at a
+// glance which literals are membership (they move when membership moves) and
+// which are tamper seals (they move only when someone edits those files).
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
