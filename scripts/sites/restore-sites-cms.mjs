@@ -146,6 +146,8 @@ export async function runRestore({
         "--exit-on-error",
         "--no-owner",
         "--no-privileges",
+        "--dbname",
+        "postgres",
         extracted.databasePath,
       ],
       env,

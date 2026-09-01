@@ -1343,3 +1343,18 @@ test("#2975 direct private Blob HTTP transport validates upload and status class
   assert.doesNotMatch(transport, /console\.(?:log|error|warn)/);
   assert.doesNotMatch(transport, /response\.(?:text|body)\s*\(/);
 });
+
+test("#2980 restore directs the custom-format dump into the exact ephemeral database", () => {
+  const restoreSource = readFileSync(
+    join(SITES_DIR, "restore-sites-cms.mjs"),
+    "utf8",
+  );
+  assert.match(
+    restoreSource,
+    /"pg_restore",[\s\S]*?"--dbname",\s*"postgres",[\s\S]*?extracted\.databasePath/,
+  );
+  assert.doesNotMatch(
+    restoreSource,
+    /"pg_restore",[\s\S]*?"--dbname",\s*env\./,
+  );
+});
