@@ -21,6 +21,9 @@
 // compile time — so it never triggers the TurboModule import-eval that crashes
 // the web bundle. The runtime module is still loaded lazily via require() below.
 import type ReactNativeVideoTrim from "react-native-video-trim";
+
+import { accent, colors } from "../../constants/designSystem";
+
 import type { VideoTrimFinishPayload } from "./coverPickerVideoTrimUpload";
 
 type _NativeVideoTrimDefault = typeof ReactNativeVideoTrim;
@@ -43,12 +46,77 @@ type VideoTrimSpec = {
   onShow?: (callback: () => void) => VideoTrimSubscription;
 };
 
+// issue #2968 — every field below is a real `EditorConfig` key on
+// `react-native-video-trim@8.1.0`
+// (node_modules/react-native-video-trim/lib/typescript/src/NativeVideoTrim.d.ts).
+// The colour fields are typed `string` on purpose: the library's JS wrapper
+// (`showEditor` in lib/module/index.js) runs `processColor()` on them itself, so
+// the public signature takes CSS colour strings, not the numeric processColor
+// values the TurboModule spec declares.
 type ShowEditorOptions = {
+  // Pinned by the orch-0978 C1 strict-grep gate and the #1350 suites — these
+  // four are load-bearing and stay REQUIRED.
   cancelButtonText: string;
   enablePreciseTrimming: boolean;
   maxDuration: number;
   saveButtonText: string;
+  // issue #2968 presentation/copy fields. Optional, mirroring the library's own
+  // `Partial<Omit<EditorConfig, ...>>` signature (index.d.ts:11-17) — the native
+  // side falls back to its defaults for anything omitted. Deliberately NOT made
+  // required: a required field turns a deleted affordance into a COMPILE error,
+  // which would mask the runtime regression test behind a type error instead of
+  // letting the assertion that actually describes the user-visible behaviour be
+  // the thing that fails. Enforcement lives in
+  // `__tests__/coverPickerVideoTrimEditor.windowAffordance.issue2968.test.ts`,
+  // which reads the real options object handed to the native `showEditor`.
+  cancelDialogCancelText?: string;
+  cancelDialogConfirmText?: string;
+  cancelDialogMessage?: string;
+  cancelDialogTitle?: string;
+  cancelTrimmingDialogCancelText?: string;
+  cancelTrimmingDialogConfirmText?: string;
+  cancelTrimmingDialogMessage?: string;
+  cancelTrimmingDialogTitle?: string;
+  enableHapticFeedback?: boolean;
+  handleIconColor?: string;
+  headerText?: string;
+  headerTextColor?: string;
+  headerTextSize?: number;
+  saveDialogCancelText?: string;
+  saveDialogConfirmText?: string;
+  saveDialogMessage?: string;
+  saveDialogTitle?: string;
+  trimmerColor?: string;
 };
+
+// issue #2968 [trim window affordance] — the trim window IS draggable, but the
+// gesture is invisible. Proven by reading the shipped native sources of
+// `react-native-video-trim@8.1.0`:
+//
+//   iOS     VideoTrimmer.swift:470-474
+//           "// Range drag: platform-default long press (0.5s hold, 10pt
+//            allowable movement)" — rangeDragGestureRecognizer is a
+//           UILongPressGestureRecognizer left at its DEFAULT 0.5s press
+//           duration, unlike the two edge grabbers which set
+//           minimumPressDuration = 0.
+//   Android VideoTrimmerView.kt:247-252 — the same range drag is armed from
+//           `GestureDetector.SimpleOnGestureListener.onLongPress`.
+//
+// So on BOTH platforms a plain swipe across the window body does nothing: the
+// user must press and HOLD before sliding. The two `❮`/`❯` chevrons, meanwhile,
+// respond instantly (minimumPressDuration = 0) and are the only thing on screen
+// drawn as a grip — so users grab those first, hit the maxDuration clamp, feel
+// nothing move, and conclude the window cannot be repositioned at all.
+//
+// `EditorConfig` exposes no way to draw a grip on the window body, so the header
+// line is the only channel the library gives us to name the gesture. Keep it to
+// ONE short line: the native header label is single-line (iOS
+// VideoTrimmerViewController.swift:329 `numberOfLines = 1`) inside a horizontal
+// scroll view, so anything longer is simply pushed off-screen.
+const TRIM_HINT_TEXT_SIZE = 14;
+
+const trimWindowHint = (maxDurationMs: number): string =>
+  `${Math.round(maxDurationMs / 1000)}s max · press and hold the box, then slide`;
 
 type NativeVideoTrimModule = {
   default?: VideoTrimSpec;
@@ -190,7 +258,56 @@ export const trimVideoWithDedicatedEditor = (
         // "rc 1" export failure). A cover never needs frame-accurate cut points
         // and Bunny re-compresses server-side (I-966), so the re-encode is
         // wasted work. `false` is the library default.
+        //
+        // issue #2968 CONFIRMED NOT THE CAUSE of the "can't move the window"
+        // report: driving a 45s clip (keyframes every 5s) on iOS 26.5 moved the
+        // window to 00:21.433 → 00:36.433 — 21.433 is not a keyframe multiple,
+        // so stream-copy does NOT coarsen the handle positions. This stays
+        // false.
         enablePreciseTrimming: false,
+        // issue #2968 — name the hidden press-and-hold gesture (see
+        // trimWindowHint above) and the duration cap in the one header line the
+        // library gives us. Derived from maxDurationMs so it can never drift
+        // from the cap actually enforced by the editor.
+        headerText: trimWindowHint(maxDurationMs),
+        headerTextSize: TRIM_HINT_TEXT_SIZE,
+        headerTextColor: colors.text.inverse,
+        // issue #2968 — `trimmerColor` paints the whole window frame (iOS
+        // VideoTrimmerThumb.updateTrimmerColor: leading + trailing + top +
+        // bottom). Painting it Mingla warm makes the window read as OUR
+        // interactive control instead of the library's default #f1d247 chrome,
+        // and gives the top/bottom bars — the press-and-hold surface — the same
+        // brand weight as the chevrons. `handleIconColor` tints only the two
+        // chevron glyphs; Mingla ink on warm keeps them legible.
+        trimmerColor: accent.warm,
+        handleIconColor: colors.text.primary,
+        // issue #2968 — feedback at the cap. Both platforms fire a HEAVY impact
+        // haptic on the clamp transition (iOS VideoTrimmer.swift:1019-1022 /
+        // 1078-1081 `impactFeedbackGenerator?.impactOccurred()`), which is the
+        // only "the handle will not go further" signal the library emits. It is
+        // the library default today; pinned explicitly here so a library default
+        // change cannot silently take the cap feedback away.
+        enableHapticFeedback: true,
+        // issue #2968 — the editor's dialogs shipped the library's untranslated
+        // defaults ("Confirmation!" / "Are you sure want to save?" / Close /
+        // Proceed — lib/module/index.js:79-100), which are ungrammatical and
+        // read as a bug. Mingla voice: say what happens next, name the action on
+        // the button, never blame the user.
+        saveDialogTitle: "Use this clip?",
+        saveDialogMessage:
+          "We'll cut your video down to the part inside the box and use it as your cover.",
+        saveDialogCancelText: "Keep trimming",
+        saveDialogConfirmText: "Use clip",
+        cancelDialogTitle: "Leave without a cover?",
+        cancelDialogMessage:
+          "Your trim won't be saved and no video will be added.",
+        cancelDialogCancelText: "Keep trimming",
+        cancelDialogConfirmText: "Discard",
+        cancelTrimmingDialogTitle: "Stop trimming?",
+        cancelTrimmingDialogMessage:
+          "We'll stop here and come back with no cover video added.",
+        cancelTrimmingDialogCancelText: "Keep going",
+        cancelTrimmingDialogConfirmText: "Stop",
       });
     } catch (error) {
       settle(() => reject(error));
