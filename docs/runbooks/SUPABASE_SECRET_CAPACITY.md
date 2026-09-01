@@ -13,8 +13,15 @@ response into GitHub, chat, logs, artifacts, or this file.
 - A temporary migration name expires within 72 hours unless its issue records a shorter
   approved window.
 - 91 or more user-managed names is an unconditional blocking breach.
-- The seven platform-managed `SUPABASE_*` defaults do not count against the user budget and
-  never belong in `supabase/secrets.manifest.json`.
+- Supabase documents seven built-in Edge Function defaults: `SUPABASE_URL`, `SUPABASE_DB_URL`,
+  `SUPABASE_PUBLISHABLE_KEYS`, `SUPABASE_SECRET_KEYS`, `SUPABASE_JWKS`, and the legacy
+  `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`. With the existing
+  `SUPABASE_SENTRY_DSN` platform classification, the #2241 readiness gate excludes one exact,
+  sorted eight-name allowlist. Those names do not count against the user budget and never belong
+  in `supabase/secrets.manifest.json`.
+- The readiness exclusion is exact-name authority, not a `SUPABASE_*` prefix bypass. A future
+  unknown `SUPABASE_*` name remains blocking until primary documentation, names-only runtime
+  evidence, an investigation, and a reviewed exact-name contract change authorize it.
 - Review names monthly. Escalate an expired, unexpected, missing, duplicate, or consumerless
   name immediately regardless of the count.
 

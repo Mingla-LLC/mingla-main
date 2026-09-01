@@ -2191,3 +2191,117 @@ test("#2241 happy: production deploy-all is rejected", () => {
   );
   assert(deploy.includes("--use-api"));
 });
+
+const ISSUE_2913_NEW_PLATFORM_DEFAULTS = Object.freeze([
+  "SUPABASE_DB_URL",
+  "SUPABASE_JWKS",
+  "SUPABASE_PUBLISHABLE_KEYS",
+  "SUPABASE_SECRET_KEYS",
+]);
+
+const ISSUE_2913_EXACT_PLATFORM_MANAGED = Object.freeze([
+  "SUPABASE_ANON_KEY",
+  "SUPABASE_DB_URL",
+  "SUPABASE_JWKS",
+  "SUPABASE_PUBLISHABLE_KEYS",
+  "SUPABASE_SECRET_KEYS",
+  "SUPABASE_SENTRY_DSN",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "SUPABASE_URL",
+]);
+
+test("#2913 happy: exact provider defaults preserve 88/93 user-managed parity", () => {
+  assert.deepEqual(
+    contract.platform_managed,
+    ISSUE_2913_EXACT_PLATFORM_MANAGED,
+  );
+  const normalUserNames = manifest.secrets.map((record) => record.name);
+  const normal = assertLiveNameParity({
+    contract,
+    manifest,
+    liveNames: [...normalUserNames, ...contract.platform_managed],
+    projectRef,
+  });
+  const remediation = assertLiveNameParity({
+    contract,
+    manifest,
+    liveNames: [
+      ...normalUserNames,
+      ...ISSUE_2241_EXTRA_NAMES,
+      ...contract.platform_managed,
+    ],
+    projectRef,
+    mode: "issue-2241-remediation",
+  });
+
+  assert.equal(normal.liveUserManaged.length, 88);
+  assert.equal(remediation.liveUserManaged.length, 93);
+});
+
+test("#2913 adversarial: each new provider default is required by exact name", () => {
+  const liveNames = [
+    ...manifest.secrets.map((record) => record.name),
+    ...ISSUE_2241_EXTRA_NAMES,
+    ...contract.platform_managed,
+  ];
+  for (const platformName of ISSUE_2913_NEW_PLATFORM_DEFAULTS) {
+    const reverted = structuredClone(contract);
+    reverted.platform_managed = reverted.platform_managed.filter((name) =>
+      name !== platformName
+    );
+    assert.throws(
+      () =>
+        assertLiveNameParity({
+          contract: reverted,
+          manifest,
+          liveNames,
+          projectRef,
+          mode: "issue-2241-remediation",
+        }),
+      (error) =>
+        error instanceof ReadinessError &&
+        error.code === "live_name_set_mismatch" &&
+        error.details.includes(`unexpected:${platformName}`),
+      platformName,
+    );
+  }
+});
+
+test("#2913 adversarial: no prefix bypass or user-managed set drift is accepted", () => {
+  const normalUserNames = manifest.secrets.map((record) => record.name);
+  const liveNames = [
+    ...normalUserNames,
+    ...ISSUE_2241_EXTRA_NAMES,
+    ...contract.platform_managed,
+  ];
+  const expectMismatch = (changedLiveNames, detail) => {
+    assert.throws(
+      () =>
+        assertLiveNameParity({
+          contract,
+          manifest,
+          liveNames: changedLiveNames,
+          projectRef,
+          mode: "issue-2241-remediation",
+        }),
+      (error) =>
+        error instanceof ReadinessError &&
+        error.code === "live_name_set_mismatch" &&
+        error.details.includes(detail),
+      detail,
+    );
+  };
+
+  expectMismatch(
+    [...liveNames, "SUPABASE_FUTURE_DEFAULT"],
+    "unexpected:SUPABASE_FUTURE_DEFAULT",
+  );
+  expectMismatch(
+    liveNames.filter((name) => name !== normalUserNames[0]),
+    `missing:${normalUserNames[0]}`,
+  );
+  expectMismatch(
+    [...liveNames, "UNAPPROVED_EXTRA"],
+    "unexpected:UNAPPROVED_EXTRA",
+  );
+});
