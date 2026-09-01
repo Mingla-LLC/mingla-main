@@ -181,9 +181,16 @@ function exactKeys(value, expected, code) {
 }
 
 export function validateManagementProjectResponse(value, expectedRef, now = new Date()) {
+  const currentIdentityShape = value && typeof value === "object" &&
+    (Object.hasOwn(value, "id") || Object.hasOwn(value, "organization_id"));
   exactKeys(
     value,
-    ["created_at", "database", "name", "organization_slug", "ref", "region", "status"],
+    currentIdentityShape
+      ? [
+        "created_at", "database", "id", "name", "organization_id",
+        "organization_slug", "ref", "region", "status",
+      ]
+      : ["created_at", "database", "name", "organization_slug", "ref", "region", "status"],
     "PROJECT_RESPONSE_SCHEMA_INVALID",
   );
   exactKeys(
@@ -194,6 +201,8 @@ export function validateManagementProjectResponse(value, expectedRef, now = new 
   const created = Date.parse(value.created_at);
   if (
     typeof expectedRef !== "string" || value.ref !== expectedRef ||
+    (currentIdentityShape && value.id !== expectedRef) ||
+    (currentIdentityShape && value.organization_id !== "mrcqqkovdchaltvquggd") ||
     value.organization_slug !== "mrcqqkovdchaltvquggd" ||
     value.name !== "mingla-sites-cms-prod" ||
     value.region !== "us-east-2" ||
