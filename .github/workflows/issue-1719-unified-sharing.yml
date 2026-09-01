@@ -20,8 +20,18 @@ on:
       - "supabase/migrations/*1719*"
       - "supabase/security/anon_executable_definer_allowlist.txt"
       - ".github/workflows/issue-1719-unified-sharing.yml"
+      # #2885 AC-4 — the machine-written baseline sits under a broad pattern
+      # above, so a one-file recording PR matched this filter and ran the whole
+      # suite. LAST on purpose: any other changed file still matches a positive
+      # pattern above, so this only skips a baseline-ONLY change.
+      - "!mingla-business/scripts/ci/bundle-baseline.json"
   push:
     branches: [main]
+    # #2885 AC-4 — the baseline recording auto-merges now (~15/day), so this
+    # suite would re-run on main for a one-number JSON measurement. Same waste,
+    # other side of the merge. Any other file in the push and this runs.
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
 
 concurrency:
   group: ci-issue-1719-unified-sharing-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}

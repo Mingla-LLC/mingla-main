@@ -22,6 +22,13 @@ name: Tests Append-Only
 on:
   pull_request:
     branches: [main, Seth]
+    # #2885 AC-4 — a pull request whose ONLY changed file is the machine-written
+    # boot-payload baseline cannot affect this suite. Those recording PRs were
+    # starting 53 jobs each, ~15/day (~51,000 job-min/month). `paths-ignore`
+    # skips ONLY when nothing else changed: touch this file alongside anything
+    # and this workflow runs exactly as it always did.
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
   push:
     branches: [Seth]
 
