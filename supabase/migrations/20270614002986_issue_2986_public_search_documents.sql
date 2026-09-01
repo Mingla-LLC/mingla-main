@@ -467,6 +467,42 @@ $function$;
 REVOKE ALL ON FUNCTION public.public_search_source_facts(text,text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.public_search_source_facts(text,text) TO service_role;
 
+-- #2489 owns one fail-closed registry of every function/view that carries its
+-- shared address-privacy gate. public_search_source_facts deliberately joined
+-- that set above, so declare it atomically in this still-unapplied migration.
+-- CREATE OR REPLACE preserves the existing owner; the explicit privilege
+-- restatement keeps the terminal grant state self-evident on a full replay.
+CREATE OR REPLACE FUNCTION public.issue_2489_gate_registry()
+RETURNS TABLE (object_name text, object_kind text)
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $function$
+  SELECT * FROM (VALUES
+    ('issue_2489_public_theme',          'function'),
+    ('business_public_events_view',      'view'),
+    ('events_public_view',               'view'),
+    ('pg_discover_business_events',      'function'),
+    ('pg_public_brand_upcoming',         'function'),
+    ('pg_public_event_by_slug',          'function'),
+    ('pg_public_rsvp_by_slug',           'function'),
+    ('pg_public_experience_by_slug',     'function'),
+    ('pg_direct_event_checkout_bundle',  'function'),
+    ('public_search_source_facts',       'function')
+  ) AS t(object_name, object_kind)
+$function$;
+
+COMMENT ON FUNCTION public.issue_2489_gate_registry() IS
+  '#2489 — the pinned set of objects required to carry the shared address-privacy '
+  'gate. Compared for SET EQUALITY, in both directions, against what the catalog '
+  'actually references, at the end of a true-order full-chain replay. Adding a gated '
+  'object means adding it here in the same change. #2986 declares '
+  'public_search_source_facts as an intentional function carrier.';
+
+REVOKE ALL ON FUNCTION public.issue_2489_gate_registry() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.issue_2489_gate_registry()
+  TO anon, authenticated, service_role;
+
 -- The sole public document resolver: one request, one lifecycle decision, one
 -- safe fact payload, independent of User-Agent. No overlay row means
 -- public_noindex only when the source itself is exact-link visible.

@@ -43,7 +43,8 @@ describe("#2986 migration lifecycle and privacy boundary", () => {
     expect(migration).toContain("ALTER TABLE public.public_search_document_audit FORCE ROW LEVEL SECURITY");
     expect(migration).toContain("REVOKE ALL ON TABLE public.public_search_document_audit FROM PUBLIC, anon, authenticated");
     expect(migration.match(/GRANT EXECUTE ON FUNCTION public\.(resolve_public_search_document\(text\)|list_public_search_sitemap\(\)) TO anon, authenticated, service_role;/g)).toHaveLength(2);
-    expect(migration.match(/TO anon, authenticated, service_role;/g)).toHaveLength(2);
+    expect(migration.match(/GRANT EXECUTE ON FUNCTION public\.issue_2489_gate_registry\(\)\s+TO anon, authenticated, service_role;/g)).toHaveLength(1);
+    expect(migration.match(/TO anon, authenticated, service_role;/g)).toHaveLength(3);
     expect(migration).not.toMatch(/GRANT\s+(?:SELECT|INSERT|UPDATE|DELETE|ALL).*TO\s+(?:anon|authenticated)/i);
   });
 
@@ -57,6 +58,36 @@ describe("#2986 migration lifecycle and privacy boundary", () => {
     expect(source).toContain("public.pg_offering_visibility_gate(e.visibility,e.deleted_at,'direct')");
     expect(source).toContain("public.issue_2489_address_withheld(e.theme)");
     expect(source).not.toMatch(/contact_email|contact_phone|online_url|location_geo|\blat\b|\blng\b|organiser_contact|created_by/);
+  });
+
+  it("declares the new address-privacy carrier in #2489's exact registry", () => {
+    const sourceGrant = "GRANT EXECUTE ON FUNCTION public.public_search_source_facts(text,text) TO service_role;";
+    const registryStart = migration.indexOf("CREATE OR REPLACE FUNCTION public.issue_2489_gate_registry()", migration.indexOf(sourceGrant));
+    const registryEnd = migration.indexOf("$function$;", registryStart);
+    expect(registryStart).toBeGreaterThan(migration.indexOf(sourceGrant));
+    expect(registryEnd).toBeGreaterThan(registryStart);
+
+    const registry = migration.slice(registryStart, registryEnd);
+    const declared = [
+      ["issue_2489_public_theme", "function"],
+      ["business_public_events_view", "view"],
+      ["events_public_view", "view"],
+      ["pg_discover_business_events", "function"],
+      ["pg_public_brand_upcoming", "function"],
+      ["pg_public_event_by_slug", "function"],
+      ["pg_public_rsvp_by_slug", "function"],
+      ["pg_public_experience_by_slug", "function"],
+      ["pg_direct_event_checkout_bundle", "function"],
+      ["public_search_source_facts", "function"],
+    ] as const;
+    for (const [name, kind] of declared) {
+      expect(registry.match(new RegExp(`\\('${name}',\\s*'${kind}'\\)`, "g"))).toHaveLength(1);
+    }
+    expect(registry.match(/\('[a-z0-9_]+',\s*'(?:function|view)'\)/g)).toHaveLength(declared.length);
+    expect(registry).toContain("IMMUTABLE");
+    expect(registry).toContain("SET search_path = ''");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.issue_2489_gate_registry() FROM PUBLIC;");
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.issue_2489_gate_registry()\n  TO anon, authenticated, service_role;");
   });
 
   it("rejects alternate hosts, queries, fragments, encodings, traversal and redirect chains", () => {
