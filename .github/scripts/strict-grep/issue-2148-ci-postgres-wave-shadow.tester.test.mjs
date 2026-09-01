@@ -11,6 +11,7 @@ import {
   discoverLiveOrigins,
   discoverWorkflowProviders,
   PROVIDERS_ADDED_SINCE_SEAL,
+  SUITES_ADDED_SINCE_SEAL,
   isNonAuthoritativeProviderEvidence,
   validateRegistry,
 } from "../ci-batch/validate-manifest-v2.mjs";
@@ -175,7 +176,10 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
   // validator subtracts from the frozen provider seal. Subject and strength unchanged;
   // the number simply stops being typed in a second place where it can disagree.
-  assert.deepEqual([value.legacyOrigins.length, value.suites.length, value.commandCapabilities.commands.length, value.workflowProviders.length], [200,84,240,91 + PROVIDERS_ADDED_SINCE_SEAL.length]);
+  // [TEST-MOD-APPROVED #2897] Every figure derived from a declared set, none re-typed.
+  const addedSuites = SUITES_ADDED_SINCE_SEAL.length;
+  const addedSteps = SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
+  assert.deepEqual([value.legacyOrigins.length, value.suites.length, value.commandCapabilities.commands.length, value.workflowProviders.length], [200 + addedSuites, 84 + addedSuites, 240 + addedSteps, 91 + PROVIDERS_ADDED_SINCE_SEAL.length]);
   assert.deepEqual([suites.length, suites.flatMap((suite) => suite.steps).length, value.phase3bLeafCapabilities.leaves.length, value.phase3bLeafCapabilities.currentExecutedLeaves, value.phase3bLeafCapabilities.currentAbsentLeaves], [12,36,40,40,0]);
   assert.equal(sha(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
   assert.equal(sha(value.commandCapabilities.commands.slice(51,158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");

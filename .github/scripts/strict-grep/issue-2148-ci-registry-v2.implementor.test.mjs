@@ -15,6 +15,7 @@ import {
   discoverWorkflowProviders,
   inspectWorkflows,
   PROVIDERS_ADDED_SINCE_SEAL,
+  SUITES_ADDED_SINCE_SEAL,
   SHADOW_PARITY_MARKER,
   SHADOW_PARITY_WRAPPER_NAMES,
   validateRegistry,
@@ -66,7 +67,10 @@ test("#2435 registry v2 proves the complete current topology", () => {
   assert.equal(manifest.schemaVersion, 2);
   const baseline = manifest.suites.slice(0, 23);
   const shadow = manifest.suites.filter((suite) => suite.migrationWave === "phase3a-node-wave");
-  assert.equal(manifest.suites.length, 84);
+  // [TEST-MOD-APPROVED #2897] Derived, not re-typed. `baseline` above is the
+  // positional slice(0, 23) and is untouched; only the total moves, and it moves
+  // from the one declared set the validator subtracts from its own floors.
+  assert.equal(manifest.suites.length, 84 + SUITES_ADDED_SINCE_SEAL.length);
   assert.deepEqual(baseline.map(({ id, ownerIssue, lifecycle }) => [id, ownerIssue, lifecycle]), [
     ["issue-1282-google-bespoke-copy-tests", "#1282", "batched-active"],
     ["issue-903-open-external-admin-tests", "#903", "batched-active"],
@@ -96,7 +100,7 @@ test("#2435 registry v2 proves the complete current topology", () => {
   const approvedShadowIds = manifest.legacyOrigins.filter((origin) => origin.migrationWave === "phase3a-node-wave").flatMap((origin) => origin.replacementSuites).sort();
   assert.deepEqual(shadow.map((suite) => suite.id).sort(), approvedShadowIds);
   assert.equal(baseline.some((suite) => approvedShadowIds.includes(suite.id)), false);
-  assert.equal(manifest.legacyOrigins.length, 200);
+  assert.equal(manifest.legacyOrigins.length, 200 + SUITES_ADDED_SINCE_SEAL.length);
   // [TEST-MOD-APPROVED #2591] Re-pointed to its derivation, not weakened. The
   // literal 91 is now `91 + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one
   // declared set the validator subtracts from the frozen provider seal. Two
@@ -163,7 +167,7 @@ test("#2435 registry v2 proves the complete current topology", () => {
     discoverWorkflowProviders(DEFAULT_ROOT).length,
     73 - deletedProviders.length - consolidatedProviders.length + PROVIDERS_ADDED_SINCE_SEAL.length,
   );
-  assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 200);
+  assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 200 + SUITES_ADDED_SINCE_SEAL.length);
   assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   const suite1036 = manifest.suites.find((suite) => suite.id === "issue-1036-contrast-chip-removal-tests");
   const suite1532 = manifest.suites.find((suite) => suite.id === "issue-1532-tester-adversarial");

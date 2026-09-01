@@ -37,11 +37,29 @@ const ALLOWED_DISPOSITIONS = new Set([
 // are re-dispositioned, never removed).
 const CONSOLIDATED_ORIGIN_PROVIDER = ".github/workflows/postgres-contract-suites.yml";
 const LOCKED_ASSERTION_CAPABILITY_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
-const LOCKED_SHADOW_CAPABILITY_SHA256 = "7af6028109ff91e1c996a8231e932d5deb26b714d2c22b2264b17fb072593091";
+const LOCKED_SHADOW_CAPABILITY_SHA256 = "335f4729ce53bebb8f1e6e9732cfb4e6fa58f900e9b7c831dbabe6a53cb2b80c";
 const LOCKED_SHADOW_CONTRACT_SHA256 = "b54121cb297f466d1d4d0ed4fae467e5c895804898018b752aa8e191159e673c";
 const LOCKED_PHASE3B_CONTRACT_SHA256 = "8b3a94d67e1e32b7cb5580bbab84db525ad196769608d42cc0607652a3c6cad9";
 const LOCKED_PHASE3C_CONTRACT_SHA256 = "caaed7cab03f977c040a68e884b2c2dfb4316f832756de8e10943179d2e5abe5";
 const LOCKED_SETUP_PROFILES_SHA256 = "982809d5c0f79590410647543013b8bd71d40b1ae47d1ae4728761e1659adc47";
+// [#2897] Suites registered AFTER the #2442 seal, declared by id in ONE place.
+// Every count below is derived from this set rather than hand-typed, for the same
+// reason #2591 gave for PROVIDERS_ADDED_SINCE_SEAL: two literals that must agree
+// is how a number lands where two sides had said different things and auto-merged
+// clean. An UNDECLARED extra suite is still red - the derived floor moves only
+// when a name is added here, in the diff, on its own issue.
+export const SUITES_ADDED_SINCE_SEAL = Object.freeze([
+  { suite: "issue-2897-agent-guard-selftest", issue: 2897, steps: 1 },
+]);
+const SEALED_SUITES = 84;
+const SEALED_CAPABILITIES = 240;
+const SEALED_ORIGINS = 200;
+const SEALED_PRIMARY_HOSTS = 55;
+const EXPECTED_SUITES = SEALED_SUITES + SUITES_ADDED_SINCE_SEAL.length;
+const EXPECTED_ORIGINS = SEALED_ORIGINS + SUITES_ADDED_SINCE_SEAL.length;
+const EXPECTED_PRIMARY_HOSTS = SEALED_PRIMARY_HOSTS + SUITES_ADDED_SINCE_SEAL.length;
+const EXPECTED_CAPABILITIES = SEALED_CAPABILITIES
+  + SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
 const PINNED_CHECKOUT = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683";
 const PINNED_SETUP_NODE = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020";
 const PINNED_UPLOAD_ARTIFACT = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02";
@@ -1215,7 +1233,12 @@ function setupExecutable(executable, argv) {
   // managers, bespoke bootstrap wrappers, and future setup tools would otherwise
   // recreate the same bypass under a new name. Adding a family is a reviewed
   // grammar change, not an accidental green.
-  return !new Set(["node", "npx", "grep", "echo", "printf", "true", "false", "exit", "test", "["]).has(executable);
+  // [#2897] python3 joins the family list as a reviewed grammar change, not an
+  // accidental green. It is an interpreter exactly as `node` is - it grants no
+  // bootstrap reach `node` does not already have - and the repo already runs
+  // python3 gates elsewhere (scripts/docs/**, scripts/ci/**). The agent-guard
+  // self-test is the first such gate to live in the batch.
+  return !new Set(["node", "npx", "python3", "grep", "echo", "printf", "true", "false", "exit", "test", "["]).has(executable);
 }
 
 export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
@@ -1431,8 +1454,8 @@ export function validateRegistry(
   errors.push(...validatePhase3cMarkers(manifest, workflowSources));
   if (manifest.schemaVersion !== 2) fail(errors, "schemaVersion must be exactly 2");
   if (manifest.generatedAtCommit !== undefined) fail(errors, "generatedAtCommit is forbidden: it makes registry diffs nondeterministic");
-  if (manifest.expectedExecutableSuites !== 84 || manifest.expectedSuites !== 84 || manifest.shadowExpectedVariants !== 44) {
-    fail(errors, "wave lock requires exactly 84 executable suites, including 32 Phase 3A, 12 Phase 3B and 17 Phase 3C variants");
+  if (manifest.expectedExecutableSuites !== EXPECTED_SUITES || manifest.expectedSuites !== EXPECTED_SUITES || manifest.shadowExpectedVariants !== 44) {
+    fail(errors, `wave lock requires exactly ${EXPECTED_SUITES} executable suites: ${SEALED_SUITES} sealed (32 Phase 3A, 12 Phase 3B, 17 Phase 3C) plus ${SUITES_ADDED_SINCE_SEAL.length} declared since`);
   }
   if (!Array.isArray(manifest.classes) || manifest.classes.length === 0 || new Set(manifest.classes).size !== manifest.classes.length) {
     fail(errors, "classes must be a non-empty unique array");
@@ -1442,7 +1465,13 @@ export function validateRegistry(
   } else if (crypto.createHash("sha256").update(JSON.stringify(manifest.setupProfiles)).digest("hex") !== LOCKED_SETUP_PROFILES_SHA256) {
     fail(errors, "setupProfiles differ from the exact reviewed Phase 2 + #2437 + #2439 shadow setup contract");
   }
-  if (!Array.isArray(manifest.suites) || manifest.suites.length !== 84) fail(errors, "suites must contain exactly 84 entries");
+  if (!Array.isArray(manifest.suites) || manifest.suites.length !== EXPECTED_SUITES) fail(errors, `suites must contain exactly ${EXPECTED_SUITES} entries`);
+  for (const declared of SUITES_ADDED_SINCE_SEAL) {
+    const found = (manifest.suites || []).filter((suite) => suite.id === declared.suite);
+    if (found.length !== 1 || found[0].steps?.length !== declared.steps) {
+      fail(errors, `declared post-seal suite ${declared.suite} (#${declared.issue}) is missing or does not carry its declared ${declared.steps} step(s)`);
+    }
+  }
 
   const resolvedMatrixSource = matrixSource ?? fs.readFileSync(path.join(root, ".github/workflows/ci-batch.yml"), "utf8");
   errors.push(...validatePhase2Contract(manifest, resolvedMatrixSource));
@@ -1641,10 +1670,10 @@ export function validateRegistry(
   const capabilityCommands = capabilityRegistry?.commands || [];
   const capabilityRegistryDigest = crypto.createHash("sha256").update(JSON.stringify(capabilityCommands)).digest("hex");
   const preservedPhase2Digest = crypto.createHash("sha256").update(JSON.stringify(capabilityCommands.slice(0, 51))).digest("hex");
-  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== 240
-      || capabilityCommands.length !== 240 || capabilityRegistry?.registrySha256 !== LOCKED_SHADOW_CAPABILITY_SHA256
+  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== EXPECTED_CAPABILITIES
+      || capabilityCommands.length !== EXPECTED_CAPABILITIES || capabilityRegistry?.registrySha256 !== LOCKED_SHADOW_CAPABILITY_SHA256
       || capabilityRegistryDigest !== capabilityRegistry?.registrySha256) {
-    fail(errors, "the 240 assertion command capabilities must equal the locked Phase 1 + Phase 3A + Phase 3B + Phase 3C registry");
+    fail(errors, `the ${EXPECTED_CAPABILITIES} assertion command capabilities must equal the locked Phase 1 + Phase 3A + Phase 3B + Phase 3C registry plus the declared post-seal additions`);
   }
   if (preservedPhase2Digest !== LOCKED_ASSERTION_CAPABILITY_SHA256) fail(errors, "the current-main 51 Phase 2 assertion capabilities changed");
   const capabilitiesById = new Map();
@@ -2131,10 +2160,10 @@ export function validateRegistry(
     manifest.suites.filter((suite) => suite.class === klass && isPrimarySuite(suite)).length]));
   const expectedPrimaryVector = { "admin-node20-install":2, "app-node22-install":6, "business-node20-1":2, "business-node20-2":3,
     "business-node20-3":5, "business-node20-4":5, "business-node22-ignore-scripts":3, "cross-root-node22-ignore-scripts":1,
-    "node20-19-noinstall":1, "node20-noinstall":14, "node22-noinstall":10, "ota-app-node20-19-install":1,
+    "node20-19-noinstall":1, "node20-noinstall":14 + SUITES_ADDED_SINCE_SEAL.length, "node22-noinstall":10, "ota-app-node20-19-install":1,
     "ota-business-node20-19-install":1, "root-node20-yaml-no-save":1 };
   if (JSON.stringify(Object.entries(primaryVector).sort()) !== JSON.stringify(Object.entries(expectedPrimaryVector).sort())
-      || Object.values(primaryVector).reduce((sum, count) => sum + count, 0) !== 55) fail(errors, "primary lane must retain exactly the frozen 55-suite host vector");
+      || Object.values(primaryVector).reduce((sum, count) => sum + count, 0) !== EXPECTED_PRIMARY_HOSTS) fail(errors, `primary lane must retain exactly the frozen ${SEALED_PRIMARY_HOSTS}-suite host vector plus ${SUITES_ADDED_SINCE_SEAL.length} declared addition(s)`);
   // Derived, not positional: `slice(158)` meant "the migrated waves" only while
   // Phase 3B was the last block in the array. Select the capabilities owned by
   // migrated suites and the check keeps meaning what it says as waves are added.
@@ -2168,7 +2197,7 @@ export function validateRegistry(
   }
 
   const legacy = manifest.legacyOrigins || [];
-  if (!Array.isArray(legacy) || legacy.length !== 200) fail(errors, "legacyOrigins must contain exactly the amended 200 origins");
+  if (!Array.isArray(legacy) || legacy.length !== EXPECTED_ORIGINS) fail(errors, `legacyOrigins must contain exactly the amended ${EXPECTED_ORIGINS} origins`);
   const legacyKeys = new Set();
   const suiteClaims = new Map();
   for (const item of legacy) {
