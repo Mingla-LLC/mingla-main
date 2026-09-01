@@ -64,13 +64,16 @@ export function CutoutNav({ surface, homeHref, showAction = true }: CutoutNavPro
           </Link>
 
           <div className="pointer-events-auto ml-auto flex items-center gap-2.5">
+            {/* Hidden below `sm`: with three marks and a constant label the
+                pill is ~190px, and a 390px bar cannot hold the wordmark, this
+                and the menu button. The side panel carries the action there. */}
             {showAction ? (
               <DeviceCta
                 surface={surface}
                 location="nav"
                 variant="quiet"
                 size="md"
-                withArrow={false}
+                className="hidden sm:inline-flex"
               />
             ) : null}
 

@@ -1,8 +1,12 @@
-// #2902 — official store marks, as inline SVG.
+// #2902 — platform marks, as inline SVG.
 //
 // lucide's `Apple` is a piece of fruit, not the Apple logo, so the real marks
-// are drawn here. Both are used only to label their own platform's download
-// action, which is the use each vendor's guidelines permit.
+// are drawn here. Each is used only to label its own platform's action, which
+// is the use each vendor's guidelines permit.
+//
+// The web mark is drawn rather than taken from lucide because lucide's icons
+// are STROKE glyphs and these two are FILLED. Mixing the two at 18px makes the
+// odd one out look broken; a filled monitor sits in the row correctly.
 
 export function AppleMark({ className }: { className?: string }) {
   return (
@@ -17,6 +21,15 @@ export function PlayMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
       <path d="M3.6 2.3a1 1 0 0 0-.5.88v17.64a1 1 0 0 0 .5.88l.1.05 9.9-9.75-9.9-9.75-.1.05Zm11.2 8.05L5.3 1.02l11.6 6.6-2.1 2.73Zm0 3.3 2.1 2.73-11.6 6.6 9.5-9.33Zm1.5-1.65 3.2-1.82c.66-.37.66-1.31 0-1.68l-3-1.7-2.3 3.02 2.1 2.18Z" />
+    </svg>
+  )
+}
+
+/** Desktop web. Filled, to match the two brand marks beside it. */
+export function WebMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M3 4.5A1.5 1.5 0 0 1 4.5 3h15A1.5 1.5 0 0 1 21 4.5v10a1.5 1.5 0 0 1-1.5 1.5h-6.25v2.5h3.25a.75.75 0 0 1 0 1.5H7.5a.75.75 0 0 1 0-1.5h3.25V16H4.5A1.5 1.5 0 0 1 3 14.5v-10Zm1.5 0v10h15v-10h-15Z" />
     </svg>
   )
 }

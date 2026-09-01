@@ -41,8 +41,6 @@ export default function CutoutExplorerPage() {
               location="hero_above_deck"
               variant="primary"
               size="md"
-              withArrow={false}
-              storeMarks
             />
           </div>
         </div>

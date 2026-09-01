@@ -4,13 +4,10 @@ import { ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 import { AppQrPanel } from '@/components/marketing/app-qr-panel'
-import { AppleMark, PlayMark } from '@/components/ui/store-marks'
+import { AppleMark, PlayMark, WebMark } from '@/components/ui/store-marks'
 import { detectClientPlatform, type Platform } from '@/lib/device-platform'
 import { resolveExplorerAppTarget } from '@/lib/explorer-app-target'
-import {
-  BUSINESS_APP_CHOICE_COPY,
-  resolveBusinessAppTarget,
-} from '@/lib/business-app-target'
+import { resolveBusinessAppTarget } from '@/lib/business-app-target'
 import { siteAttribution, type SiteCampaign } from '@/lib/links-src'
 
 // ---------------------------------------------------------------
@@ -71,12 +68,6 @@ interface DeviceCtaProps {
   label?: ReactNode
   className?: string
   withArrow?: boolean
-  /**
-   * Shows the Apple and Google Play marks side by side ahead of the label.
-   * The action is device-aware either way; the marks tell a desktop visitor
-   * which platforms exist before they commit to the tap.
-   */
-  storeMarks?: boolean
 }
 
 const SIZES = {
@@ -103,8 +94,7 @@ export function DeviceCta({
   size = 'lg',
   label,
   className,
-  withArrow = true,
-  storeMarks = false,
+  withArrow = false,
 }: DeviceCtaProps) {
   const [platform, setPlatform] = useState<Platform>('other')
   const [qrOpen, setQrOpen] = useState(false)
@@ -117,21 +107,27 @@ export function DeviceCta({
   const arrow = withArrow ? (
     <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
   ) : null
-  const marks = storeMarks ? (
-    <span className="mr-0.5 flex shrink-0 items-center gap-2" aria-hidden="true">
-      <AppleMark className="h-[18px] w-[18px]" />
-      <span className="h-4 w-px bg-current opacity-25" />
-      <PlayMark className="h-[17px] w-[17px]" />
+  /**
+   * One label, one icon set, everywhere. The DESTINATION stays device-aware —
+   * that is the whole point of this component — but the button no longer
+   * changes its words depending on what you are holding. Showing all three
+   * platforms tells every visitor that Mingla exists on all of them, which
+   * "Download the app" and "Use on web" each only said half of.
+   */
+  const marks = (
+    <span className="mr-1 flex shrink-0 items-center gap-1.5" aria-hidden="true">
+      <AppleMark className="h-[17px] w-[17px]" />
+      <PlayMark className="h-[16px] w-[16px]" />
+      <WebMark className="h-[16px] w-[16px]" />
     </span>
-  ) : null
+  )
 
   if (surface === 'host') {
     const attribution = siteAttribution(campaignFor('host', location))
     const target = resolveBusinessAppTarget(platform, attribution)
     const canInstall = target.canInstall && target.installHref !== null
     const href = canInstall ? (target.installHref as string) : target.webHref
-    const text =
-      label ?? (canInstall ? BUSINESS_APP_CHOICE_COPY.download : BUSINESS_APP_CHOICE_COPY.useWeb)
+    const text = label ?? 'Use Mingla'
 
     return (
       <a
@@ -162,7 +158,7 @@ export function DeviceCta({
     platform,
     siteAttribution(campaignFor('explorer', location)),
   )
-  const text = label ?? 'Get the app'
+  const text = label ?? 'Use Mingla'
 
   // Phone: a real anchor to the attributed OneLink. It navigates, so it must be
   // an <a> — and it carries no aria-haspopup, because it can never open a dialog.
