@@ -21,8 +21,6 @@ on:
       - "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql"
       - ".github/workflows/issue-679-brand-follows-rls-proof.yml"
   pull_request:
-    # issue #2881 — ready_for_review is required wherever the draft gate is set.
-    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270305000679_issue_679_brand_follows.sql"
       - "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql"
@@ -37,7 +35,6 @@ concurrency:
 
 jobs:
   issue-679-brand-follows-rls:
-    if: ${{ github.event.pull_request.draft != true }}
     name: "#679 brand_follows owner-only RLS (PG17 docker attack suite)"
     runs-on: ubuntu-latest
     timeout-minutes: 10

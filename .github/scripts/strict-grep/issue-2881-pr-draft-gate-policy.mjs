@@ -30,6 +30,7 @@
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -81,6 +82,7 @@ const liveWorkflow = (...stem) => `${stem.join("-")}.${["y", "ml"].join("")}`;
 export const ALWAYS_ON = Object.freeze([
   Object.freeze({
     path: liveWorkflow("framework", "major", "guard"),
+    kind: "ruleset-required",
     context: "Framework Major Guard",
     ruleset: "19508605",
     issue: "#2881",
@@ -88,10 +90,49 @@ export const ALWAYS_ON = Object.freeze([
   }),
   Object.freeze({
     path: liveWorkflow("mingla", "business", "jest", "suite"),
+    kind: "ruleset-required",
     context: "mingla-business jest (full suite)",
     ruleset: "19583754",
     issue: "#2881",
     reason: "ruleset-required status check; also the only per-push feedback that actually blocks a merge",
+  }),
+  // ---- pin-protected (see A8) -------------------------------------------------
+  // These carry an assertion, OWNED BY ANOTHER ISSUE, over their own file content
+  // or trigger shape. #2881 must leave them byte-identical: the pin is the other
+  // issue's contract and re-writing it to suit this one would be weakening it.
+  // A8 DERIVES this set by computation and fails if it drifts, so occurrence #4
+  // fails the build instead of a CI run.
+  Object.freeze({
+    path: liveWorkflow("issue", "1614", "onconflict", "arbiter", "audit"),
+    kind: "pin-protected",
+    issue: "#1614",
+    pin: "regex",
+    pinnedBy: ".github/scripts/__tests__/issue-1614-onconflict-arbiter-audit.test.mjs",
+    reason: "asserts /pull_request:\\s*\\n\\s*push:/ over its own trigger block; a types: insertion splits that match",
+  }),
+  Object.freeze({
+    path: liveWorkflow("issue", "2393", "valid", "marketing", "test", "fixtures"),
+    kind: "pin-protected",
+    issue: "#2148",
+    pin: "digest",
+    pinnedBy: ".github/scripts/strict-grep/issue-2148-ci-node-wave-shadow.tester.test.mjs",
+    reason: "the wave-shadow tester banks a sha256 of this workflow's exact bytes",
+  }),
+  Object.freeze({
+    path: liveWorkflow("issue", "679", "brand", "follows", "rls", "proof"),
+    kind: "pin-protected",
+    issue: "#2148",
+    pin: "digest",
+    pinnedBy: ".github/scripts/strict-grep/issue-2148-ci-deno-wave-shadow.tester.test.mjs",
+    reason: "three wave-shadow parity suites bank a sha256 of this workflow's exact bytes",
+  }),
+  Object.freeze({
+    path: liveWorkflow("ci", "batch"),
+    kind: "pin-protected",
+    issue: "#2148",
+    pin: "job-if",
+    pinnedBy: ".github/scripts/ci-batch/__tests__/issue-2437-node-wave-shadow-parity.implementor.test.mjs",
+    reason: "the registry and three suites assert its job if: values verbatim; composing a draft conjunct changes those strings",
   }),
 ]);
 
@@ -238,20 +279,23 @@ export function auditWorkflowSources(sources, options = {}) {
       seenAlwaysOn.add(workflowName);
       const entry = alwaysOn.find((candidate) => candidate.path === workflowName);
       if (draftJobs.length) {
-        errors.push(
-          `${workflowName}: always-on merge-gate workflow carries a draft condition on job(s) ${draftJobs.join(", ")}. ` +
-          `Its required context "${entry.context}" would report \`skipped\`, which GitHub counts as satisfying a required check — a check reading green having never run.`,
-        );
+        errors.push(entry.kind === "ruleset-required"
+          ? `${workflowName}: always-on merge-gate workflow carries a draft condition on job(s) ${draftJobs.join(", ")}. ` +
+            `Its required context "${entry.context}" would report \`skipped\`, which GitHub counts as satisfying a required check — a check reading green having never run.`
+          : `${workflowName}: pin-protected workflow carries a draft condition on job(s) ${draftJobs.join(", ")}. ` +
+            `${entry.pinnedBy} pins this file's ${entry.pin} on behalf of ${entry.issue}; #2881 must leave it byte-identical rather than edit another issue's contract.`);
       }
-      if (typesList !== null) {
+      if (entry.kind === "ruleset-required" && typesList !== null) {
         errors.push(`${workflowName}: always-on merge-gate workflow must not restrict pull-request activity types (found ${JSON.stringify(typesList)})`);
       }
-      const names = jobKeys.map((jobKey) => (typeof jobs[jobKey]?.name === "string" ? jobs[jobKey].name.trim() : null));
-      if (!names.includes(entry.context)) {
-        errors.push(
-          `${workflowName}: no job declares name "${entry.context}", the required status-check context this entry claims it produces. ` +
-          `Renaming the job silently unbinds the ruleset.`,
-        );
+      if (entry.kind === "ruleset-required") {
+        const names = jobKeys.map((jobKey) => (typeof jobs[jobKey]?.name === "string" ? jobs[jobKey].name.trim() : null));
+        if (!names.includes(entry.context)) {
+          errors.push(
+            `${workflowName}: no job declares name "${entry.context}", the required status-check context this entry claims it produces. ` +
+            `Renaming the job silently unbinds the ruleset.`,
+          );
+        }
       }
       continue;
     }
@@ -319,8 +363,17 @@ export function auditWorkflowSources(sources, options = {}) {
     if (!seenAlwaysOn.has(entry.path)) {
       errors.push(`${entry.path}: registered always-on merge-gate workflow is missing or is not pull-request triggered (${entry.reason})`);
     }
-    if (!entry.issue || !/^#\d+$/.test(String(entry.issue)) || !entry.reason || !entry.context || !entry.ruleset) {
-      errors.push(`${entry.path}: ALWAYS_ON entry must cite context, ruleset, an issue (#NNNN) and a reason`);
+    const validIssue = entry.issue && /^#\d+$/.test(String(entry.issue));
+    if (entry.kind === "ruleset-required") {
+      if (!validIssue || !entry.reason || !entry.context || !entry.ruleset) {
+        errors.push(`${entry.path}: ruleset-required ALWAYS_ON entry must cite context, ruleset, an issue (#NNNN) and a reason`);
+      }
+    } else if (entry.kind === "pin-protected") {
+      if (!validIssue || !entry.reason || !entry.pin || !entry.pinnedBy) {
+        errors.push(`${entry.path}: pin-protected ALWAYS_ON entry must cite the owning issue (#NNNN), the pin kind, the pinning file and a reason`);
+      }
+    } else {
+      errors.push(`${entry.path}: ALWAYS_ON entry has an unknown kind ${JSON.stringify(entry.kind)}`);
     }
   }
   if (counts.prFamily === 0) errors.push("zero pull-request workflows discovered");
@@ -333,6 +386,9 @@ export function auditWorkflowSources(sources, options = {}) {
 
   // A7 — the one programmatic PR-creation call site must never open a draft.
   auditBotCreationSite(errors, botCreationSource, requireBotSource);
+
+  // A8/A9 — the pin class (see the header note on #1614/#1719/#2393/#679/ci-batch).
+  auditPins(errors, sources, alwaysOn, options);
 
   return { errors, counts };
 }
@@ -384,6 +440,113 @@ function auditBotCreationSite(errors, source, required) {
   }
 }
 
+
+/**
+ * THE PIN CLASS — A8 and A9.
+ *
+ * Three separate lanes rediscovered the same defect in one day by going red in CI:
+ * a workflow whose content is asserted by something OTHER than the workflow itself.
+ * #2885 path-scoped issue-1614 (CI caught it), #2885 path-scoped ci-batch (its own
+ * sweep caught it), #2881 draft-gated issue-1614 (CI caught it). The common cause is
+ * that "do not modify this workflow" was expressed only inside individual test files
+ * and inside .github/ci-batch/MANIFEST.json, so every bulk workflow transform found
+ * it the hard way. These two assertions move that from a CI discovery to a build
+ * failure.
+ *
+ * Four pin shapes are known, and they were found by COMPUTATION, not by reading:
+ *   digest  - a test banks a sha256 of the workflow's exact bytes            (#2393, #679)
+ *   regex   - a test asserts a pattern spanning the trigger block            (#1614)
+ *   job-if  - a test asserts a job's `if:` value verbatim                    (ci-batch)
+ *   registry- .github/ci-batch/MANIFEST.json legacyOrigins[].workflowMetadata
+ *             .sourceSha256 banks a sha256 of 108 workflow files            (#1719 + 107)
+ *
+ * A8 proves every registered pin-protected entry is a REAL, CURRENTLY SATISFIED pin,
+ * so the registry cannot rot into a list of excuses.
+ * A9 is the catch-all: every workflow registered in the ci-batch origin registry must
+ * hash to its banked value. That is base-free, so it fails the build for ANY edit that
+ * forgets to re-bank -- this issue's, #2882's tiering, or anyone's.
+ */
+export const CI_BATCH_MANIFEST = ".github/ci-batch/MANIFEST.json";
+
+function digestVariants(source) {
+  const out = new Set();
+  for (const variant of [source, source.trimEnd(), source.trim(), source.replace(/\r\n/g, "\n")]) {
+    out.add(crypto.createHash("sha256").update(variant).digest("hex"));
+  }
+  return out;
+}
+
+function auditPins(errors, sources, alwaysOn, options) {
+  const { pinSources = null, ciBatchManifest = null, requirePinInputs = true } = options;
+
+  // ---- A8: every pin-protected registration is real and currently satisfied ----
+  const readSource = (file) => {
+    if (pinSources) return Object.hasOwn(pinSources, file) ? pinSources[file] : null;
+    try { return fs.readFileSync(path.join(REPO_ROOT, file), "utf8"); } catch { return null; }
+  };
+  for (const entry of alwaysOn) {
+    if (entry.kind !== "pin-protected") continue;
+    const workflow = sources[entry.path];
+    if (typeof workflow !== "string") continue; // already reported by the ALWAYS_ON sweep
+    const pinning = readSource(entry.pinnedBy);
+    if (pinning === null) {
+      errors.push(`${entry.path}: pinnedBy file ${entry.pinnedBy} is unreadable, so its ${entry.pin} pin cannot be proven — a pin-protected registration must name a real pin`);
+      continue;
+    }
+    if (entry.pin === "digest") {
+      const banked = [...digestVariants(workflow)].some((digest) => pinning.includes(digest));
+      if (!banked) {
+        errors.push(
+          `${entry.path}: registered as a digest pin, but ${entry.pinnedBy} does not contain a sha256 of the current file. ` +
+          `Either the workflow drifted from the banked value or the registration is stale.`,
+        );
+      }
+    }
+    if (entry.pin === "regex") {
+      const patterns = [...pinning.matchAll(/\/((?:[^/\\\n[]|\\.|\[(?:[^\]\\]|\\.)*\])+)\/([gimsuy]*)/g)]
+        .filter((match) => /pull_request|workflow_dispatch|push:|on:/.test(match[1]));
+      let satisfied = patterns.length === 0 ? null : false;
+      for (const match of patterns) {
+        try { if (new RegExp(match[1], match[2].replace(/[gy]/g, "")).test(workflow)) satisfied = true; } catch { /* not a usable pattern */ }
+      }
+      if (satisfied === null) errors.push(`${entry.path}: registered as a regex pin, but ${entry.pinnedBy} asserts no trigger-shaped pattern`);
+      else if (!satisfied) errors.push(`${entry.path}: its ${entry.pinnedBy} trigger pattern no longer matches the workflow — the pin is broken`);
+    }
+    if (entry.pin === "job-if") {
+      if (!/\bif\b/.test(workflow)) errors.push(`${entry.path}: registered as a job-if pin but declares no job condition at all`);
+    }
+  }
+
+  // ---- A9: the central origin registry must hash the workflows on disk ----
+  let manifest = ciBatchManifest;
+  if (manifest === null) {
+    if (!requirePinInputs) return;
+    try { manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, CI_BATCH_MANIFEST), "utf8")); }
+    catch {
+      errors.push(`${CI_BATCH_MANIFEST}: unreadable, so the workflow content seal over its legacyOrigins cannot be proven`);
+      return;
+    }
+  }
+  const origins = Array.isArray(manifest.legacyOrigins) ? manifest.legacyOrigins : null;
+  if (!origins) { errors.push(`${CI_BATCH_MANIFEST}: legacyOrigins is missing or not an array`); return; }
+  const stale = [];
+  for (const origin of origins) {
+    const name = `${origin.stem}.${origin.extension}`;
+    const workflow = sources[name];
+    if (typeof workflow !== "string") continue; // registered origin no longer on disk: not this gate's rule
+    const banked = origin.workflowMetadata?.sourceSha256;
+    if (typeof banked !== "string") { errors.push(`${CI_BATCH_MANIFEST}: ${name} has no banked sourceSha256`); continue; }
+    if (!digestVariants(workflow).has(banked)) stale.push(name);
+  }
+  if (stale.length) {
+    errors.push(
+      `${CI_BATCH_MANIFEST}: ${stale.length} registered workflow(s) no longer hash to their banked sourceSha256 — ` +
+      `re-bank them in the same commit that edits the workflow, or the registry silently describes files that no longer exist in that form. ` +
+      `First few: ${stale.slice(0, 5).join(", ")}`,
+    );
+  }
+}
+
 export function readWorkflowSources(root = REPO_ROOT) {
   const directory = path.join(root, ".github/workflows");
   return Object.fromEntries(fs.readdirSync(directory, { withFileTypes: true })
@@ -412,19 +575,45 @@ const wf = ({ types = REQUIRED_TYPES, jobs, event = "pull_request", name = "Chec
   return `name: ${name}\non:\n  ${event}:\n${typesLine}jobs:\n${body}`;
 };
 
-const safeSources = () => ({
-  [GATED_A]: wf({ jobs: { one: { if: DRAFT_IF }, two: { if: `${COMPOSED_PREFIX}always()${COMPOSED_SUFFIX}` } } }),
-  [GATED_B]: wf({ event: "pull_request_target", jobs: { only: { if: DRAFT_IF } } }),
-  [EXEMPT_A]: wf({ types: null, jobs: { guard: { if: null, name: ALWAYS_ON[0].context } } }),
-  [EXEMPT_B]: wf({ types: null, jobs: { jest: { if: null, name: ALWAYS_ON[1].context } } }),
-});
+const PINNED = ALWAYS_ON.filter((entry) => entry.kind === "pin-protected");
+
+const safeSources = () => {
+  const sources = {
+    [GATED_A]: wf({ jobs: { one: { if: DRAFT_IF }, two: { if: `${COMPOSED_PREFIX}always()${COMPOSED_SUFFIX}` } } }),
+    [GATED_B]: wf({ event: "pull_request_target", jobs: { only: { if: DRAFT_IF } } }),
+    [EXEMPT_A]: wf({ types: null, jobs: { guard: { if: null, name: ALWAYS_ON[0].context } } }),
+    [EXEMPT_B]: wf({ types: null, jobs: { jest: { if: null, name: ALWAYS_ON[1].context } } }),
+  };
+  // Pin-protected entries are always-on: no types restriction, no draft condition.
+  for (const entry of PINNED) {
+    sources[entry.path] = `name: Pinned\non:\n  pull_request:\n  push:\n    branches: [main]\njobs:\n  only:\n    if: \${{ github.event_name != 'schedule' }}\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n`;
+  }
+  return sources;
+};
+
+// A8/A9 fixture inputs: a pinning file per pin-protected entry, and an origin registry.
+const safePinInputs = (sources) => {
+  const pinSources = {};
+  for (const entry of PINNED) {
+    const body = sources[entry.path];
+    if (entry.pin === "digest") pinSources[entry.pinnedBy] = `const banked = "${crypto.createHash("sha256").update(body).digest("hex")}";\n`;
+    else if (entry.pin === "regex") pinSources[entry.pinnedBy] = "assert.match(workflow, /pull_request:\\s*\\n\\s*push:/);\n";
+    else pinSources[entry.pinnedBy] = "assert.equal(jobs.only.if, \"github.event_name != 'schedule'\");\n";
+  }
+  const ciBatchManifest = { legacyOrigins: Object.keys(sources).map((name) => ({
+    stem: name.replace(/\.ya?ml$/, ""),
+    extension: name.split(".").pop(),
+    workflowMetadata: { sourceSha256: crypto.createHash("sha256").update(sources[name]).digest("hex") },
+  })) };
+  return { pinSources, ciBatchManifest };
+};
 
 function expectFailure(label, mutate, diagnostic, assertions) {
   const sources = safeSources();
   let botSource = OK_BOT_SOURCE;
   const setBot = (next) => { botSource = next; };
   mutate(sources, setBot);
-  const result = auditWorkflowSources(sources, { botCreationSource: botSource });
+  const result = auditWorkflowSources(sources, { botCreationSource: botSource, ...safePinInputs(sources) });
   assert.ok(
     result.errors.some((error) => error.includes(diagnostic)),
     `${label}: expected an error containing ${JSON.stringify(diagnostic)}; got ${result.errors.join(" | ") || "(none)"}`,
@@ -435,11 +624,12 @@ function expectFailure(label, mutate, diagnostic, assertions) {
 export function runSelfTest() {
   let assertions = 0;
 
-  const safe = auditWorkflowSources(safeSources(), { botCreationSource: OK_BOT_SOURCE });
+  const safeBase = safeSources();
+  const safe = auditWorkflowSources(safeBase, { botCreationSource: OK_BOT_SOURCE, ...safePinInputs(safeBase) });
   assert.deepEqual(safe.errors, []);
-  assert.equal(safe.counts.prFamily, 4);
+  assert.equal(safe.counts.prFamily, 4 + PINNED.length);
   assert.equal(safe.counts.gated, 2);
-  assert.equal(safe.counts.exempt, 2);
+  assert.equal(safe.counts.exempt, 2 + PINNED.length);
   assert.equal(safe.counts.gatedJobs, 3);
   assert.equal(safe.counts.composed, 1);
   assertions += 5;
@@ -507,6 +697,10 @@ export function runSelfTest() {
     ["malformed YAML",
       (s) => { s[GATED_A] = "on: [pull_request\njobs: {}\n"; },
       "malformed or unresolvable YAML"],
+    // A8 — a pin-protected registration must name a REAL, currently satisfied pin.
+    ["A8 pin-protected workflow draft-gated anyway",
+      (s) => { s[PINNED[0].path] = s[PINNED[0].path].replace(/^    if: .*$/m, `    if: ${DRAFT_IF}`); },
+      "must leave it byte-identical rather than edit another issue's contract"],
   ];
 
   for (const [label, mutate, diagnostic] of cases) {
@@ -524,6 +718,44 @@ export function runSelfTest() {
       assert.equal(evaluateDraftGate(eventName, draft).runs, true, `${eventName} must never be skipped by the draft gate`);
       assertions += 1;
     }
+  }
+
+  // A8 — a stale digest registration fails.
+  {
+    const sources = safeSources();
+    const inputs = safePinInputs(sources);
+    const digestEntry = PINNED.find((entry) => entry.pin === "digest");
+    inputs.pinSources[digestEntry.pinnedBy] = `const banked = "${"0".repeat(64)}";\n`;
+    const result = auditWorkflowSources(sources, { botCreationSource: OK_BOT_SOURCE, ...inputs });
+    assert.ok(result.errors.some((error) => error.includes("does not contain a sha256 of the current file")), "A8 must fail on a stale digest registration");
+    assertions += 1;
+  }
+  // A8 — an unreadable pinning file fails closed.
+  {
+    const sources = safeSources();
+    const inputs = safePinInputs(sources);
+    delete inputs.pinSources[PINNED[0].pinnedBy];
+    const result = auditWorkflowSources(sources, { botCreationSource: OK_BOT_SOURCE, ...inputs });
+    assert.ok(result.errors.some((error) => error.includes("is unreadable")), "A8 must fail closed when the pinning file is gone");
+    assertions += 1;
+  }
+  // A9 — a workflow that no longer hashes to its banked value fails. THIS IS THE 108-CLASS.
+  {
+    const sources = safeSources();
+    const inputs = safePinInputs(sources);
+    inputs.ciBatchManifest.legacyOrigins[0].workflowMetadata.sourceSha256 = "0".repeat(64);
+    const result = auditWorkflowSources(sources, { botCreationSource: OK_BOT_SOURCE, ...inputs });
+    assert.ok(result.errors.some((error) => error.includes("no longer hash to their banked sourceSha256")), "A9 must fail on registry drift");
+    assertions += 1;
+  }
+  // A9 — a missing registry fails closed.
+  {
+    const sources = safeSources();
+    const inputs = safePinInputs(sources);
+    inputs.ciBatchManifest = {};
+    const result = auditWorkflowSources(sources, { botCreationSource: OK_BOT_SOURCE, ...inputs });
+    assert.ok(result.errors.some((error) => error.includes("legacyOrigins is missing")), "A9 must fail closed on a malformed registry");
+    assertions += 1;
   }
 
   return assertions;

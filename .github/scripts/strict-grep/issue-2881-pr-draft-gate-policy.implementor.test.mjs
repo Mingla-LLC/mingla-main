@@ -13,6 +13,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -20,6 +23,7 @@ import { auditWorkflowSources as auditConcurrency } from "./issue-2851-pr-concur
 
 import {
   ALWAYS_ON,
+  CI_BATCH_MANIFEST,
   BOT_PR_CREATION_SITE,
   COMPOSED_PREFIX,
   COMPOSED_SUFFIX,
@@ -265,4 +269,87 @@ test("both new gate files are registered batch:A in MANIFEST.json", () => {
   const gate = manifest.gates.find((g) => g.script.endsWith("/issue-2881-pr-draft-gate-policy.mjs"));
   assert.equal(gate.selfTest, "wired");
   assert.deepEqual([...gate.modes].sort(), ["plain", "self-test"]);
+});
+
+// --- the PIN CLASS (#1614 / #1719 / #2393 / #679 / ci-batch) -------------------
+// Three lanes rediscovered this defect by going red in CI on one day. These tests
+// move the fourth discovery to build time.
+
+const gitOut = (args) => {
+  const result = spawnSync("git", args, { cwd: REPO_ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout;
+};
+const mergeBase = () => gitOut(["merge-base", "HEAD", "origin/main"]).trim();
+
+test("T-11 every pin-protected workflow is byte-identical to the merge base", () => {
+  const base = mergeBase();
+  const pinned = ALWAYS_ON.filter((entry) => entry.kind === "pin-protected");
+  assert.ok(pinned.length > 0, "the pin-protected registry must not be empty — three lanes proved this class exists");
+  const paths = pinned.map((entry) => `.github/workflows/${entry.path}`);
+  const changed = gitOut(["diff", "--name-only", base, "--", ...paths]).trim();
+  assert.equal(changed, "", `#2881 modified a pin-protected workflow: ${changed}`);
+});
+
+test("T-12 no workflow OUTSIDE the pin registry has a pin this change breaks — occurrence #4 fails here, not in CI", () => {
+  const base = mergeBase();
+  const dir = ".github/workflows";
+  const headSources = readWorkflowSources();
+  const baseNames = gitOut(["ls-tree", "--name-only", `${base}:${dir}`]).split("\n").filter((n) => /\.ya?ml$/i.test(n));
+  const baseSources = Object.fromEntries(baseNames.map((n) => [n, gitOut(["show", `${base}:${dir}/${n}`])]));
+  const registered = new Set(ALWAYS_ON.map((entry) => entry.path));
+
+  const trackedSources = gitOut(["ls-files"]).split("\n").filter(Boolean)
+    .filter((f) => /\.(mjs|cjs|js|ts|tsx)$/.test(f) && !f.startsWith(`${dir}/`) && !f.includes("issue-2881-pr-draft-gate-policy"));
+
+  const digestsOf = (source) => new Set([source, source.trimEnd(), source.trim(), source.replace(/\r\n/g, "\n")]
+    .map((variant) => createHash("sha256").update(variant).digest("hex")));
+  const REGEX_LITERAL = /\/((?:[^/\\\n[]|\\.|\[(?:[^\]\\]|\\.)*\])+)\/([gimsuy]*)/g;
+
+  const broken = [];
+  for (const file of trackedSources) {
+    let src;
+    try { src = readFileSync(join(REPO_ROOT, file), "utf8"); } catch { continue; }
+    for (const [name, headSource] of Object.entries(headSources)) {
+      if (registered.has(name)) continue;                 // declared, and T-11 proves it is untouched
+      const baseSource = baseSources[name];
+      if (baseSource === undefined || baseSource === headSource) continue;  // unchanged: cannot be broken by us
+      if (!src.includes(name)) continue;                  // catches template-literal paths too
+      for (const digest of digestsOf(baseSource)) {
+        if (src.includes(digest)) { broken.push(`${name}: ${file} banks a sha256 of the pre-#2881 file`); break; }
+      }
+      for (const match of src.matchAll(REGEX_LITERAL)) {
+        if (match[1].length < 8) continue;
+        let pattern;
+        try { pattern = new RegExp(match[1], match[2].replace(/[gy]/g, "")); } catch { continue; }
+        let atBase, atHead;
+        try { atBase = pattern.test(baseSource); atHead = pattern.test(headSource); } catch { continue; }
+        if (atBase && !atHead) broken.push(`${name}: ${file} asserts /${match[1].slice(0, 70)}/ which matched before #2881 and does not now`);
+      }
+      const baseJobs = [...baseSource.matchAll(/^ {4}if: (.+)$/gm)].map((m) => m[1].trim());
+      for (const raw of baseJobs) {
+        const inner = (/^\$\{\{\s*([\s\S]*?)\s*\}\}$/.exec(raw)?.[1] ?? raw).trim();
+        if (inner.length < 12 || headSource.includes(inner) ) continue;
+        if (src.includes(`"${inner}"`) || src.includes(`'${inner}'`)) broken.push(`${name}: ${file} pins job if: ${JSON.stringify(inner)} verbatim`);
+      }
+    }
+  }
+  assert.deepEqual([...new Set(broken)], [],
+    "a workflow outside the pin registry carries an assertion #2881 breaks. Restore it byte-identical and register it in ALWAYS_ON as pin-protected.");
+});
+
+test("T-13 the ci-batch origin registry hashes the workflows on disk (A9 — the 108-workflow seal)", () => {
+  const manifest = JSON.parse(readFileSync(join(REPO_ROOT, CI_BATCH_MANIFEST), "utf8"));
+  const sources = readWorkflowSources();
+  const stale = [];
+  let checked = 0;
+  for (const origin of manifest.legacyOrigins ?? []) {
+    const name = `${origin.stem}.${origin.extension}`;
+    const source = sources[name];
+    if (typeof source !== "string") continue;
+    checked += 1;
+    if (createHash("sha256").update(source).digest("hex") !== origin.workflowMetadata?.sourceSha256) stale.push(name);
+  }
+  assert.ok(checked > 50, `expected the origin registry to cover most workflows, only saw ${checked}`);
+  assert.deepEqual(stale, [], "re-bank sourceSha256 in the same commit that edits the workflow");
 });

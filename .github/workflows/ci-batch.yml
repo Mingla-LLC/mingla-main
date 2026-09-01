@@ -23,8 +23,6 @@ name: CI batch (per-issue suites)
 
 on:
   pull_request:
-    # issue #2881 — ready_for_review is required wherever the draft gate is set.
-    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
@@ -48,7 +46,7 @@ jobs:
     name: "CI batch: ${{ matrix.class }}"
     # jobs.<job_id>.if is evaluated before matrix expansion, so this condition
     # deliberately uses only the event context available at that point.
-    if: ${{ (github.event.pull_request.draft != true) && (github.event_name != 'workflow_dispatch') }}
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.hostTimeoutMinutes }}
     strategy:
@@ -404,7 +402,7 @@ jobs:
 
   dispatch:
     name: "CI batch: issue-2300-orch-artifact-reap (bounded dispatch)"
-    if: ${{ (github.event.pull_request.draft != true) && (github.event_name == 'workflow_dispatch' && inputs.suite == 'issue-2300-orch-artifact-reap') }}
+    if: github.event_name == 'workflow_dispatch' && inputs.suite == 'issue-2300-orch-artifact-reap'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
