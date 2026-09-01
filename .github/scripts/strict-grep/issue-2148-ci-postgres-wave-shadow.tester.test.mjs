@@ -63,6 +63,20 @@ const PARTIAL_REFERENCE_DELTAS = [{
     "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
   ],
 }, {
+  // [TEST-MOD-APPROVED #2948] Independently mirror the two reviewed reference
+  // deltas #2948 declares. `issue2948-deploy-invocation-shape.test.mjs` names
+  // BOTH workflows and consumes BOTH: it executes deploy-functions.yml's own
+  // deploy command to prove it names its functions explicitly, and it excludes
+  // production-supabase-authority.yml's `bash -n <wrapper>` from that scan
+  // because a syntax check is not an invocation. Neither is a new provider, so
+  // the frozen 73/c0813be9… authority is unchanged and still asserted at full
+  // strength below.
+  workflow: "deploy-functions.yml",
+  referenceFiles: ["scripts/ci/issue2948-deploy-invocation-shape.test.mjs"],
+}, {
+  workflow: "production-supabase-authority.yml",
+  referenceFiles: ["scripts/ci/issue2948-deploy-invocation-shape.test.mjs"],
+}, {
   // [TEST-MOD-APPROVED #1772] Independently mirror A4's reviewed Supabase reference delta.
   workflow: "supabase-migrations-and-stripe-deno.yml",
   referenceFiles: [

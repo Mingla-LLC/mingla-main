@@ -228,6 +228,29 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
     ]),
   }),
   Object.freeze({
+    // [#2948] `issue2948-deploy-invocation-shape.test.mjs` names BOTH workflows
+    // on purpose and is a real consumer of each: it asserts that
+    // deploy-functions.yml invokes the deploy wrapper with explicit
+    // `--function` + `--merged-commit` selection (the exact shape whose absence
+    // stopped every edge deploy on 2026-09-01), and it excludes
+    // production-supabase-authority.yml's `bash -n <wrapper>` from that scan,
+    // because a syntax check is not an invocation. Naming the workflow is what
+    // makes it a reference file here. Both providers already belong to the
+    // frozen 73, so this is a reference-file delta, not a new provider.
+    issue: 2948,
+    workflow: "deploy-functions.yml",
+    referenceFiles: Object.freeze([
+      "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
+    ]),
+  }),
+  Object.freeze({
+    issue: 2948,
+    workflow: "production-supabase-authority.yml",
+    referenceFiles: Object.freeze([
+      "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
+    ]),
+  }),
+  Object.freeze({
     issue: 1772,
     workflow: "supabase-migrations-and-stripe-deno.yml",
     referenceFiles: Object.freeze([

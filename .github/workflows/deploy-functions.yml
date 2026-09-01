@@ -1,33 +1,141 @@
 name: Deploy Supabase Edge Functions
 
+# #2948 — this workflow used to invoke the deploy wrapper BARE, which was the
+# deploy-all entry point until #2886 replaced the wrapper's contract with
+# explicit `--function` selection and did not update its only caller. Every run
+# since `d7eabd82c` has died on
+#   FAIL deploy: explicit --function selection required; deploy-all is forbidden
+# having deployed nothing, and nobody was told. The wrapper's refusal is correct
+# and is NOT relaxed: the caller now names the functions it means.
 on:
   push:
     branches:
       - main
     paths:
       - 'supabase/functions/**'
+      - 'supabase/function-env.contract.json'
       - 'docs/contracts/production-supabase-authority.json'
       - 'scripts/ops/verify-production-supabase-authority.mjs'
       - 'scripts/deploy-supabase-functions.sh'
+      - 'scripts/ci/select-changed-edge-functions.mjs'
+      # #994's rule: a gate that cannot run on the file class its bug lives in
+      # is theatre. The 06:48 breakage was a wrapper-vs-caller mismatch, so
+      # editing the caller must re-run the caller.
+      - '.github/workflows/deploy-functions.yml'
   workflow_dispatch:
+    inputs:
+      functions:
+        description: >-
+          Space- or comma-separated edge function names to deploy. Required:
+          there is no deploy-all, by design.
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The push range is what decides the selection; a shallow clone cannot
+          # resolve `github.event.before` and the selector fails closed on it.
+          fetch-depth: 0
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
         env:
           FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # #2948 — PINNED. `version: latest` resolves through an unauthenticated
+          # GitHub release lookup that rate-limits: it is the whole cause of the
+          # 08-30 02:20 and 08-31 14:05 failures on `main`
+          # ("Failed to resolve latest Supabase CLI release: rate limit exceeded"),
+          # each of which shipped no edge functions and then "healed" on the next
+          # run when the limit reset. A pin cannot rate-limit.
+          version: 2.116.0
         env:
           FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-      - name: Deploy all edge functions
+      - name: Select the exact functions this event must deploy
+        id: select
+        env:
+          MINGLA_DEPLOY_EVENT: ${{ github.event_name }}
+          MINGLA_DEPLOY_BEFORE: ${{ github.event.before }}
+          MINGLA_DEPLOY_SHA: ${{ github.sha }}
+          MINGLA_DEPLOY_DISPATCH_FUNCTIONS: ${{ inputs.functions }}
+          MINGLA_DEPLOY_SELECTION_PATH: ${{ runner.temp }}/edge-deploy-functions
+        run: node scripts/ci/select-changed-edge-functions.mjs
+
+      - name: Deploy the selected edge functions
+        if: steps.select.outputs.count != '0'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          MINGLA_DEPLOY_SELECTION_PATH: ${{ runner.temp }}/edge-deploy-functions
+        shell: bash
         run: |
-          scripts/deploy-supabase-functions.sh
+          set -euo pipefail
+          # Names are read from a file, never interpolated into this script, so
+          # a selection value can never become a shell command.
+          args=()
+          while IFS= read -r function_name; do
+            [ -n "$function_name" ] || continue
+            args+=(--function "$function_name")
+          done < "$MINGLA_DEPLOY_SELECTION_PATH"
+          if [ "${#args[@]}" -eq 0 ]; then
+            echo "FAIL deploy: selection file is empty but the selector reported functions" >&2
+            exit 2
+          fi
+          scripts/deploy-supabase-functions.sh \
+            --merged-commit "$GITHUB_SHA" \
+            "${args[@]}"
+
+  # #2948 AC-5. A failed deployment must reach a human, and it must do so
+  # DETERMINISTICALLY. #2909's `Alert: main went red` lives in another workflow
+  # and evaluates the newest COMPLETED run per workflow, so whether it can see
+  # this workflow's failure is a race decided by which run finishes first. This
+  # job runs inside the same run as the deploy it reports, so there is no race.
+  # It is additive to #2909, not a replacement for it.
+  alert:
+    name: "Alert: edge functions did not deploy"
+    needs: deploy
+    if: always() && needs.deploy.result != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Tell a human the deploy did not happen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Same thread #2912 escalates to, so red-`main` noise stays in one place.
+          MINGLA_EDGE_DEPLOY_ALERT_ISSUE: '2909'
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          body=$(printf '%s\n' \
+            "EDGE_DEPLOY_ALERT error_code=EDGE_FUNCTION_DEPLOY_DID_NOT_HAPPEN" \
+            "" \
+            "- result: ${DEPLOY_RESULT}" \
+            "- commit: ${GITHUB_SHA}" \
+            "- pushed by: ${GITHUB_ACTOR}" \
+            "- run: ${run_url}" \
+            "" \
+            "Production edge functions are still running whatever was last deployed successfully." \
+            "Read the live versions before assuming which commit that is:" \
+            "GET https://api.supabase.com/v1/projects/<ref>/functions")
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${MINGLA_EDGE_DEPLOY_ALERT_ISSUE}/comments" \
+            -f body="$body" >/dev/null
+          echo "EDGE_DEPLOY_ALERT posted to #${MINGLA_EDGE_DEPLOY_ALERT_ISSUE}"

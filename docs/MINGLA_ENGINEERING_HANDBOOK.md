@@ -332,8 +332,17 @@ When you add a migration:
 Seth handles deploys. After Seth confirms the migration is applied, he or the orchestrator uses the
 guarded repository wrapper from the repository root:
 
+> **#2948 — there is no deploy-all.** Since #2886 the wrapper refuses a bare
+> invocation (`FAIL deploy: explicit --function selection required; deploy-all is
+> forbidden`) and requires `--merged-commit`. Name the functions you mean, from
+> MERGED `main`. In CI the selection is computed for you by
+> `scripts/ci/select-changed-edge-functions.mjs`; by hand, pass them.
+
 ```bash
-SUPABASE_PROJECT_ID=gqnoajqerqhnvulmnyvv scripts/deploy-supabase-functions.sh
+SUPABASE_PROJECT_ID=gqnoajqerqhnvulmnyvv scripts/deploy-supabase-functions.sh \
+  --merged-commit "$(git rev-parse HEAD)" \
+  --function <name> \
+  --function <another-name>
 ```
 
 An issue-approved single-function surgical deployment must first pass the exact-target verifier and

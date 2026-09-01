@@ -68,12 +68,33 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // semantic content of one existing PR-family workflow moved. Five of the added
 // lines are in the revert-sensitivity loop below, so this re-pin is proven
 // line-by-line rather than accepted on assertion.
+// [TEST-MOD-APPROVED #2948] Re-derived once more. #2948 added one step and three
+// trigger paths to the #1456 edge-deploy idempotency lane (named by issue, not
+// by filename — a workflow filename in this file becomes a provider reference
+// and moves the frozen #2148 seal) so the lane that proves the deploy wrapper
+// still REFUSES a deploy-all also proves its caller complies. That lane is
+// PR-family, so its document is inside this digest.
+// PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are deliberately UNCHANGED: no
+// workflow was added, removed or renamed, and this delta is one existing
+// workflow's non-concurrency document. Every revert-sensitivity assertion below
+// is untouched and still red on reversion.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "b66fce574091546bd0af94ed693a952768cae9e7b76f67f306725fed33471f18";
+  "f3a1954a5345e3a8cf329f7ea35eac3e52088ac5799b7a77d459c5ef251fb248";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
-  "7fe5131de1ff59b0b247b9c718ca01bbcfcb637ff115e1e5751e052c05bdb72a",
+  // [TEST-MOD-APPROVED #2948] Index 2 is the edge-function deploy workflow —
+  // named through DENIED's `liveWorkflow` helper above, never as a literal,
+  // because a workflow filename in this file becomes a provider reference and
+  // moves the frozen #2148 seal. Re-pinned after #2948 replaced that workflow's
+  // bare `scripts/deploy-supabase-functions.sh` invocation — the deploy-all
+  // entry point until #2886 changed the wrapper's contract and left this caller
+  // behind — with a computed, explicitly named selection, and added a
+  // failure-alert job. This digest is the workflow's BYTES; the assertion that
+  // it is denied PR cancellation is unchanged, still runs, and still fails on
+  // the reversions proven in tests 5-10. Only the pinned value moves, and only
+  // because the file genuinely changed.
+  "6201684e6c624694226d78ffb4620f3af70550d4bcd1b2f1648042aa49976160",
   "0ca059b1118b93b455ee539ff31c28b2fe6ad53c61c5f61faee5c5eccb9cb7f5",
   "ae053d47c1cea32c1889cc00eba1ed11b5bbec30dd726c3d078af92f3dfdf76a",
   "c6056ea23b01ad1e38e2cfe94891872dbed9dba94c9d7e5464c354f1563fc132",
