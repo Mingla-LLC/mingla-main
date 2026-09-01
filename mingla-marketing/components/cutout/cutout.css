@@ -306,14 +306,17 @@
    the hero itself: the deck has 77px of slack beneath it before the hero's own
    pill row. `:has()` is used because the root has no class of its own.
 --------------------------------------------------------------------------- */
+/* Translation alone could not open enough room — 56px already ate most of the
+   77px of slack beneath the deck, and the result still read as cramped. Scaling
+   about the BOTTOM edge frees height from the top without pushing the deck into
+   the hero's own pill row, so the band opens to ~110px and the action gets a
+   real margin on both sides. The deck shrinks ~9%, which is not noticeable. */
 [data-cut-deck] div:has(> .group.absolute) {
-  transform: translateY(20px);
+  transform: translateY(24px) scale(0.95);
+  transform-origin: center bottom;
 }
 @media (min-width: 768px) {
-  /* 56px, not 30px. A 48px action needs a band of 48 + 12 above + 12 below =
-     72px; the unshifted desktop band is 16px, so the deck has to move 56px to
-     open it. The deck has 77px of slack beneath it, so this leaves 21px. */
   [data-cut-deck] div:has(> .group.absolute) {
-    transform: translateY(56px);
+    transform: translateY(53px) scale(0.91);
   }
 }

@@ -13,6 +13,7 @@ import {
 import {
   ALL_TOOLS, HOST_LIMITS, HOST_STEPS, HOST_SWAP,
 } from '@/lib/design-preview/host-tools'
+import { LAGOS_VENUES } from '@/lib/design-preview/lagos-truth'
 
 // #2902 — Mingla Host, on AIgocy's design, telling Seth's story:
 // "Mingla gives you all the tools to be a successful host."
@@ -57,6 +58,14 @@ const FAQ = [
   { q: 'Which marketing is included?', a: 'Email, SMS, paid advertising and a CRM that turns guests into contacts you own. SMS is live in the US and UK.' },
   { q: 'What does it cost?', a: 'Not published on this prototype. The production page carries real pricing or none at all.' },
 ]
+
+/**
+ * One photograph per tool, drawn from Mingla's own Lagos place pool — real,
+ * owned imagery used illustratively, rather than stock. Ten tools, ten photos.
+ */
+const IMAGES: Record<string, string> = Object.fromEntries(
+  ALL_TOOLS.map((tool, i) => [tool.id, LAGOS_VENUES[i % LAGOS_VENUES.length].photo]),
+)
 
 export default function CutoutHostPage() {
   return (
@@ -104,7 +113,13 @@ export default function CutoutHostPage() {
           </CutoutHeading>
         </CutReveal>
         <div className="mt-14">
-          <StepSwitcher steps={HOST_STEPS} icons={ICONS} charts={STEP_CHARTS} label="Build, sell or grow" />
+          <StepSwitcher
+            steps={HOST_STEPS}
+            icons={ICONS}
+            images={IMAGES}
+            charts={STEP_CHARTS}
+            label="Build, sell or grow"
+          />
         </div>
       </CutoutSection>
 
@@ -118,8 +133,8 @@ export default function CutoutHostPage() {
         </CutReveal>
         <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
           {ALL_TOOLS.map((tool, i) => (
-            <CutReveal key={tool.id} variant="lift" delay={(i % 5) * 0.06}>
-              <ToolCard tool={tool} icon={ICONS[tool.id]} />
+            <CutReveal key={tool.id} variant="lift" delay={(i % 5) * 0.06} className="h-[19rem]">
+              <ToolCard tool={tool} icon={ICONS[tool.id]} imageUrl={IMAGES[tool.id]} />
             </CutReveal>
           ))}
         </div>

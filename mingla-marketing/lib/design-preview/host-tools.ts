@@ -18,6 +18,8 @@
 
 export interface HostTool {
   id: string
+  /** Subtitle line on the card — which part of the story this tool serves. */
+  group: 'Build' | 'Sell' | 'Grow'
   /** Two to four words. The promise, not the feature name. */
   title: string
   /** One sentence. What it does, plainly. */
@@ -30,18 +32,21 @@ export interface HostTool {
 export const TOOLS_BUILD: readonly HostTool[] = [
   {
     id: 'site',
+    group: 'Build',
     title: 'A site in seconds',
     body: 'Describe your business. Ari writes it, designs it and publishes it.',
     source: 'mingla-sites/',
   },
   {
     id: 'host',
+    group: 'Build',
     title: 'Host anything',
     body: 'Events, trips, experiences and stays all publish from one place.',
     source: 'mingla-business/src/services/eventOrdersService.ts',
   },
   {
     id: 'venue',
+    group: 'Build',
     title: 'Run your venue',
     body: 'Spaces, hours, capacity and staff, managed from your phone.',
     source: 'mingla-business/src/services/reservationMetricsService.ts',
@@ -52,18 +57,21 @@ export const TOOLS_BUILD: readonly HostTool[] = [
 export const TOOLS_SELL: readonly HostTool[] = [
   {
     id: 'orders',
+    group: 'Sell',
     title: 'Take the money',
     body: 'Tickets, tables, bookings and deposits, at one all-in price.',
     source: 'mingla-business/src/services/eventOrdersService.ts',
   },
   {
     id: 'reservations',
+    group: 'Sell',
     title: 'Fill the calendar',
     body: 'Reservations and stays, with the no-shows designed out.',
     source: 'mingla-business/src/services/stayReservationService.ts',
   },
   {
     id: 'discovery',
+    group: 'Sell',
     title: 'Get found',
     body: 'Your community finds you by vibe, place and timing — not just by name.',
     source: 'mingla-marketing/components/sections/explorer-home/event-card.tsx',
@@ -74,24 +82,28 @@ export const TOOLS_SELL: readonly HostTool[] = [
 export const TOOLS_GROW: readonly HostTool[] = [
   {
     id: 'email',
+    group: 'Grow',
     title: 'Email marketing',
     body: 'Campaigns to your own list, with tracking and one-tap unsubscribe.',
     source: 'supabase/functions/marketing-send',
   },
   {
     id: 'sms',
+    group: 'Grow',
     title: 'SMS marketing',
     body: 'Text the people who actually read their messages.',
     source: 'supabase/functions/send-venue-sms',
   },
   {
     id: 'ads',
+    group: 'Grow',
     title: 'Paid ads, no agency',
     body: 'Launch, target and measure paid campaigns from inside Mingla.',
     source: 'supabase/functions/admin-ad-create-campaign',
   },
   {
     id: 'crm',
+    group: 'Grow',
     title: 'CRM that nurtures',
     body: 'Every guest becomes a contact you own, and a reason to return.',
     source: 'mingla-business/src/features/people',

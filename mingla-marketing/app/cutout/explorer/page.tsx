@@ -34,7 +34,7 @@ export default function CutoutExplorerPage() {
             deck ROOT starts at y=311, so the real clearance was 16px. The deck
             is nudged down in cutout.css to open a 72px band, and these
             percentages centre the 48px action inside it. */}
-        <div className="pointer-events-none absolute inset-x-0 top-[29.6%] z-30 flex justify-center px-6 md:top-[34.1%]">
+        <div className="pointer-events-none absolute inset-x-0 top-[30.8%] z-30 flex justify-center px-6 md:top-[36.2%]">
           <div className="pointer-events-auto">
             <DeviceCta
               surface="explorer"
