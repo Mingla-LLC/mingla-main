@@ -244,6 +244,13 @@ export function validateManagementBackupResponse(value, {
   if (value.walg_enabled !== true) fail("DATABASE_BACKUP_WALG_DISABLED");
   if (value.physical_backup_data === null) {
     if (value.pitr_enabled !== false) fail("BACKUP_RESPONSE_SCHEMA_INVALID");
+  } else if (
+    value.physical_backup_data &&
+    typeof value.physical_backup_data === "object" &&
+    !Array.isArray(value.physical_backup_data) &&
+    Object.keys(value.physical_backup_data).length === 0
+  ) {
+    if (value.pitr_enabled !== false) fail("BACKUP_RESPONSE_SCHEMA_INVALID");
   } else {
     exactKeys(
       value.physical_backup_data,
