@@ -7,12 +7,13 @@ import { Card3D, Layer } from '@/components/ui/3d-card'
 import { cn } from '@/lib/cn'
 import {
   CutoutCard, CutoutFaq, CutoutFooter, CutoutHeading, CutoutHero, CutoutNav,
-  CutoutSection, CutoutShell, CutReveal, DeviceCta, FaqSchema, ToolVisual,
+  CutoutSection, CutoutShell, CutReveal, DeviceCta, FaqSchema,
 } from '@/components/cutout'
 import {
   AuroraBackground, BentoGrid, BentoGridItem,
 } from '@/components/ui/aurora-bento-grid'
 import { HOST_BENTO } from '@/lib/design-preview/host-bento'
+import { AriCreativeCard } from '@/components/ui/ari-creative-card'
 import { HOST_LIMITS, HOST_SWAP } from '@/lib/design-preview/host-tools'
 import { ICP_CARDS } from '@/lib/design-preview/icp-cards'
 import { ExpandingCards, type CardItem } from '@/components/ui/expanding-cards'
@@ -148,21 +149,15 @@ export default function CutoutHostPage() {
                   </p>
                 </div>
 
+                {/* The brand tile runs the Ari demo instead of a static
+                    figure: Ari takes the brief, then the real site it built
+                    scrolls past inside the same card. */}
                 {card.tone === 'brand' ? (
-                  // The figures are drawn in accent-on-sunken, which is
-                  // invisible ON the accent. Re-pointing the two tokens for
-                  // this tile only turns it white-on-orange without forking
-                  // the component.
-                  <div
-                    className="mt-6 flex-1"
-                    style={
-                      {
-                        '--cut-accent': '#ffffff',
-                        '--cut-card-sunken': 'rgba(255,255,255,0.14)',
-                      } as React.CSSProperties
-                    }
-                  >
-                    <ToolVisual id={card.visual} />
+                  <div className="mt-6 min-h-[16rem] flex-1">
+                    <AriCreativeCard
+                      siteSrc="/marketing/host-icp/gogi-site.jpg"
+                      siteAlt="The gögi website Ari built — hero, menu with prices, ordering and a table booking form."
+                    />
                   </div>
                 ) : null}
 

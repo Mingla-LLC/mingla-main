@@ -27,9 +27,9 @@ export const HOST_BENTO: readonly BentoCard[] = [
   {
     id: 'website',
     title: 'Prompt your website into existence',
-    body: 'Describe your business. Get a state-of-the-art site, free, in seconds.',
-    points: ['Written by Ari', 'Designed and published', 'Free'],
-    span: 'md:col-span-4 md:row-span-2',
+    body: 'Describe your business. Get a state-of-the-art site, free, in seconds. This one is gögi, a 24/7 food house in Lekki — built by Ari, live today.',
+    points: ['Written by Ari', 'Menu & ordering', 'Live site'],
+    span: 'md:col-span-4 md:row-span-3',
     tone: 'brand',
     visual: 'site',
     source: 'mingla-sites/',
