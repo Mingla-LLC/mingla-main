@@ -248,6 +248,17 @@ test("#2893 backup database target is the exact approved Sites project", () => {
     }),
   };
   assert.equal(validateCmsDatabaseUrl(valid), valid.SITES_CMS_DATABASE_URL);
+  const sessionPooler = postgresFixtureUrl({
+    user: `sites_cms_migrator.${ref}`,
+    credential: password,
+    host: "aws-0-us-east-2.pooler.supabase.com",
+    port: "5432",
+    sslmode: "require",
+  });
+  assert.equal(validateCmsDatabaseUrl({
+    ...valid,
+    SITES_CMS_DATABASE_URL: sessionPooler,
+  }), sessionPooler);
   for (const databaseUrl of [
     postgresFixtureUrl({ user: "sites_cms_migrator", credential: password, host: `db.${"b".repeat(20)}.supabase.co`, sslmode: "require" }),
     postgresFixtureUrl({ user: "sites_cms_migrator", credential: password, host: "aws-0-us-east-2.pooler.supabase.com", port: "6543", sslmode: "require" }),
@@ -846,7 +857,7 @@ test("#2893 managed-backup failure invokes only the signed pilot deactivation co
   }), false);
 });
 
-test("#2893 CMS rollout is bootstrap, direct-role Payload migration, reconciliation", () => {
+test("#2893 CMS rollout is bootstrap, isolated-role Payload migration, reconciliation", () => {
   const secret = "m".repeat(40);
   const env = {
     SITES_CMS_PROJECT_REF: "a".repeat(20),
@@ -875,7 +886,11 @@ test("#2893 CMS rollout is bootstrap, direct-role Payload migration, reconciliat
     spawn(command, args, options) {
       order.push("migrate");
       invocation = { command, args, options };
-      return { status: 0, stdout: "[00:00:00] INFO: Done.\n", stderr: "" };
+      return {
+        status: 0,
+        stdout: "[00:00:00] \u001b[32mINFO\u001b[39m: \u001b[36mDone.\u001b[39m\n",
+        stderr: "",
+      };
     },
   });
   assert.deepEqual(order, ["bootstrap", "migrate", "bootstrap"]);
@@ -897,6 +912,29 @@ test("#2893 CMS rollout is bootstrap, direct-role Payload migration, reconciliat
     },
   }), /PAYLOAD_MIGRATION_RECEIPT_MISSING/);
   assert.deepEqual(failedOrder, ["bootstrap", "migrate"]);
+  const sessionEnv = {
+    ...env,
+    SITES_CMS_MIGRATOR_DATABASE_URL: postgresFixtureUrl({
+      user: `sites_cms_migrator.${"a".repeat(20)}`,
+      credential: secret,
+      host: "aws-0-us-east-2.pooler.supabase.com",
+      port: "5432",
+      sslmode: "require",
+    }),
+  };
+  let sessionInvocation;
+  applySitesCmsMigrations({
+    env: sessionEnv,
+    bootstrap() {},
+    spawn(command, args, options) {
+      sessionInvocation = { command, args, options };
+      return { status: 0, stdout: "Done.\n", stderr: "" };
+    },
+  });
+  assert.equal(
+    sessionInvocation.options.env.DATABASE_URL,
+    sessionEnv.SITES_CMS_MIGRATOR_DATABASE_URL,
+  );
   assert.throws(() => applySitesCmsMigrations({
     env: {
       ...env,
@@ -919,6 +957,23 @@ test("#2893 bootstrap is value-blind and reconciles exact private bucket policy"
   assert.match(sql, /roles && ARRAY\['public', 'anon', 'authenticated'\]::name\[\]/);
   assert.match(sql, /pgrst\.db_schemas/);
   assert.match(sql, /DATA_API_EXPOSURE/);
+  assert.doesNotMatch(sql, /WITH\s+LOGIN\s+NOSUPERUSER/);
+  assert.match(sql, /AND NOT rolsuper/);
+  assert.match(sql, /AND NOT rolcreatedb/);
+  assert.match(sql, /AND NOT rolcreaterole/);
+  assert.match(sql, /AND NOT rolinherit/);
+  assert.match(sql, /AND NOT rolreplication/);
+  assert.match(sql, /AND NOT rolbypassrls/);
+  assert.match(sql, /SITES_BOOTSTRAP_ERROR code=ROLE_ATTRIBUTE_MISMATCH/);
+  assert.match(sql, /member_role\.rolname = current_user/);
+  assert.match(sql, /grantor_role\.rolname = 'supabase_admin'/);
+  assert.match(sql, /AND NOT membership\.inherit_option/);
+  assert.match(sql, /AND NOT membership\.set_option/);
+  assert.match(sql, /GRANT sites_cms_migrator TO postgres WITH SET TRUE, INHERIT FALSE/);
+  assert.match(sql, /SET LOCAL ROLE sites_cms_migrator/);
+  assert.match(sql, /RESET ROLE;\s*REVOKE sites_cms_migrator FROM postgres GRANTED BY postgres/);
+  assert.match(sql, /REVOKE sites_cms_migrator FROM postgres GRANTED BY postgres/);
+  assert.match(sql, /SITES_BOOTSTRAP_ERROR code=ROLE_ADMIN_MEMBERSHIP_MISMATCH/);
   assert.doesNotMatch(sql, /\\quit\s+[0-9]/);
   assert.doesNotMatch(sql, /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
 
@@ -946,6 +1001,31 @@ test("#2893 bootstrap is value-blind and reconciles exact private bucket policy"
   assert.doesNotMatch(invocation.args.join(" "), new RegExp(secret));
   assert.equal(invocation.options.env.PGPASSWORD, secret.repeat(2));
   assert.equal(invocation.options.env.PGDATABASE, "postgres");
+
+  const sessionAdminUrl = postgresFixtureUrl({
+    user: `postgres.${"a".repeat(20)}`,
+    credential: secret.repeat(2),
+    host: "aws-0-us-east-2.pooler.supabase.com",
+    port: "5432",
+    sslmode: "require",
+  });
+  bootstrapSitesCms({
+    env: {
+      SITES_CMS_PROJECT_REF: "a".repeat(20),
+      SUPABASE_S3_ENDPOINT:
+        `https://${"a".repeat(20)}.storage.supabase.co/storage/v1/s3`,
+      SITES_CMS_ADMIN_DATABASE_URL: sessionAdminUrl,
+      SITES_CMS_MIGRATOR_PASSWORD: `${secret}-migrator-0000000000000000`,
+      SITES_CMS_APP_PASSWORD: `${secret}-app-000000000000000000000`,
+      SITES_RUNTIME_READER_SUBJECT: MEDIA_ID,
+      SITES_PILOT_SITE_ID: SITE_ID,
+    },
+    spawn(_command, _args, options) {
+      assert.equal(options.env.PGUSER, `postgres.${"a".repeat(20)}`);
+      assert.equal(options.env.PGPORT, "5432");
+      return { status: 0, stdout: "SITES_BOOTSTRAP_OK", stderr: "" };
+    },
+  });
 
   for (const adminUrl of [
     postgresFixtureUrl({ user: "postgres", credential: secret.repeat(2), host: `db.${"b".repeat(20)}.supabase.co`, sslmode: "require" }),

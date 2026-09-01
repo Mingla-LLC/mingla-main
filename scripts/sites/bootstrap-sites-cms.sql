@@ -46,35 +46,46 @@ END
 $bootstrap_roles$;
 
 ALTER ROLE sites_cms_migrator
-  WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS
+  WITH LOGIN NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS
   PASSWORD :'sites_cms_migrator_password';
 ALTER ROLE sites_cms_app
-  WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS
+  WITH LOGIN NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS
   PASSWORD :'sites_cms_app_password';
 ALTER ROLE sites_cms_migrator SET search_path = sites_cms, public;
 ALTER ROLE sites_cms_app SET search_path = sites_cms, public;
 
--- Role attributes are not the whole privilege boundary: a pre-existing role
--- membership could silently restore capabilities that the ALTER ROLE above
--- removed. This project is new and dedicated, so either Sites role appearing
--- on either side of any membership edge is a bootstrap-blocking condition.
-DO $role_membership_containment$
+-- Supabase's managed `postgres` role has CREATEROLE but is intentionally not a
+-- true superuser. PostgreSQL therefore rejects even an explicit NOSUPERUSER
+-- clause. New roles are non-superuser by default; prove that invariant after
+-- applying every managed-platform-compatible hardening attribute.
+DO $role_attribute_containment$
 BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM pg_auth_members membership
-    JOIN pg_roles granted_role ON granted_role.oid = membership.roleid
-    JOIN pg_roles member_role ON member_role.oid = membership.member
-    WHERE granted_role.rolname IN ('sites_cms_migrator', 'sites_cms_app')
-       OR member_role.rolname IN ('sites_cms_migrator', 'sites_cms_app')
+  IF (
+    SELECT count(*) <> 2
+      OR NOT bool_and(
+        rolcanlogin
+        AND NOT rolsuper
+        AND NOT rolcreatedb
+        AND NOT rolcreaterole
+        AND NOT rolinherit
+        AND NOT rolreplication
+        AND NOT rolbypassrls
+      )
+    FROM pg_roles
+    WHERE rolname IN ('sites_cms_migrator', 'sites_cms_app')
   ) THEN
-    RAISE EXCEPTION 'SITES_BOOTSTRAP_ERROR code=ROLE_MEMBERSHIP_PRESENT';
+    RAISE EXCEPTION 'SITES_BOOTSTRAP_ERROR code=ROLE_ATTRIBUTE_MISMATCH';
   END IF;
 END
-$role_membership_containment$;
+$role_attribute_containment$;
 
+-- Ownership and ALTER DEFAULT PRIVILEGES require SET access to the target role.
+-- Create a transaction-local grant from postgres, then remove that exact grant
+-- before commit so only Supabase's non-inheritable admin edge remains.
+GRANT sites_cms_migrator TO postgres WITH SET TRUE, INHERIT FALSE;
 CREATE SCHEMA IF NOT EXISTS sites_cms AUTHORIZATION sites_cms_migrator;
 ALTER SCHEMA sites_cms OWNER TO sites_cms_migrator;
+SET LOCAL ROLE sites_cms_migrator;
 REVOKE ALL ON SCHEMA sites_cms FROM PUBLIC, anon, authenticated, service_role;
 GRANT USAGE ON SCHEMA sites_cms TO sites_cms_app;
 
@@ -96,6 +107,59 @@ GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA sites_cms TO sites_cms_ap
 REVOKE ALL ON ALL TABLES IN SCHEMA sites_cms FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA sites_cms FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sites_cms FROM PUBLIC, anon, authenticated, service_role;
+RESET ROLE;
+REVOKE sites_cms_migrator FROM postgres GRANTED BY postgres;
+
+-- Role attributes are not the whole privilege boundary: a pre-existing role
+-- membership could silently restore capabilities that the ALTER ROLE above
+-- removed. PostgreSQL 16+ automatically gives a non-superuser role creator an
+-- ADMIN-only membership in each role it creates. Managed Supabase relies on
+-- that edge so `postgres` can reconcile passwords on a later bootstrap. Allow
+-- exactly those two non-inheritable, non-settable admin edges and nothing else.
+DO $role_membership_containment$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_auth_members membership
+    JOIN pg_roles granted_role ON granted_role.oid = membership.roleid
+    JOIN pg_roles member_role ON member_role.oid = membership.member
+    JOIN pg_roles grantor_role ON grantor_role.oid = membership.grantor
+    WHERE (
+      granted_role.rolname IN ('sites_cms_migrator', 'sites_cms_app')
+      OR member_role.rolname IN ('sites_cms_migrator', 'sites_cms_app')
+    )
+      AND NOT (
+        granted_role.rolname IN ('sites_cms_migrator', 'sites_cms_app')
+        AND member_role.rolname = current_user
+        AND grantor_role.rolname = 'supabase_admin'
+        AND membership.admin_option
+        AND NOT membership.inherit_option
+        AND NOT membership.set_option
+      )
+  ) THEN
+    RAISE EXCEPTION 'SITES_BOOTSTRAP_ERROR code=ROLE_MEMBERSHIP_PRESENT';
+  END IF;
+
+  IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)
+    AND (
+      SELECT count(*) <> 2
+        OR NOT bool_and(
+          member_role.rolname = current_user
+          AND grantor_role.rolname = 'supabase_admin'
+          AND membership.admin_option
+          AND NOT membership.inherit_option
+          AND NOT membership.set_option
+        )
+      FROM pg_auth_members membership
+      JOIN pg_roles granted_role ON granted_role.oid = membership.roleid
+      JOIN pg_roles member_role ON member_role.oid = membership.member
+      JOIN pg_roles grantor_role ON grantor_role.oid = membership.grantor
+      WHERE granted_role.rolname IN ('sites_cms_migrator', 'sites_cms_app')
+    ) THEN
+    RAISE EXCEPTION 'SITES_BOOTSTRAP_ERROR code=ROLE_ADMIN_MEMBERSHIP_MISMATCH';
+  END IF;
+END
+$role_membership_containment$;
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES
