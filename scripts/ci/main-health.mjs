@@ -73,8 +73,31 @@ export function latestCompletedPerWorkflow(runs) {
  * failing job — Seth's ruling requirement 3: a red `main` is one event, not
  * fifty.
  */
+/**
+ * The newest run per workflow that has NOT finished. A red verdict whose
+ * workflow already has a newer run in flight is still red — nothing has
+ * superseded it yet — but saying so out loud is what stops the reader
+ * dismissing an old SHA as stale noise.
+ */
+export function newestPendingPerWorkflow(runs) {
+  const byWorkflow = new Map();
+  const ordered = [...(runs ?? [])].sort((left, right) => {
+    const l = Date.parse(left?.run_started_at ?? left?.created_at ?? 0) || 0;
+    const r = Date.parse(right?.run_started_at ?? right?.created_at ?? 0) || 0;
+    return r - l;
+  });
+  for (const run of ordered) {
+    if (run?.status === "completed") continue;
+    const key = run?.workflow_id ?? run?.name;
+    if (key == null || byWorkflow.has(key)) continue;
+    byWorkflow.set(key, run);
+  }
+  return byWorkflow;
+}
+
 export function evaluateHealth(runs) {
   const latest = latestCompletedPerWorkflow(runs);
+  const pending = newestPendingPerWorkflow(runs);
   const red = latest
     .filter((run) => RED.has(run.conclusion))
     .map((run) => ({
@@ -86,6 +109,7 @@ export function evaluateHealth(runs) {
       actor: run.actor?.login ?? run.triggering_actor?.login ?? "unknown",
       startedAt: run.run_started_at ?? run.created_at ?? "",
       url: run.html_url ?? "",
+      pendingSha: String(pending.get(run.workflow_id ?? run.name)?.head_sha ?? "").slice(0, 9),
     }))
     .sort((left, right) => left.workflow.localeCompare(right.workflow));
   return {
@@ -116,10 +140,13 @@ export function fetchBranchRuns({
   token,
   perPage = 100,
 } = {}) {
+  // NOT filtered to `status=completed`. The completed runs decide the colour;
+  // the in-flight ones are what let the report say "a newer verdict is on its
+  // way", which is the difference between an engineer acting on this and
+  // dismissing it as stale.
   const query = [
     `branch=${encodeURIComponent(branch)}`,
     "event=push",
-    "status=completed",
     "exclude_pull_requests=true",
     `per_page=${perPage}`,
   ].join("&");
@@ -181,6 +208,9 @@ export function renderReport(health, { repository, branch }) {
     lines.push(`  ${entry.workflow} — ${entry.conclusion}`);
     lines.push(`    commit ${entry.shortSha} "${entry.title}" merged by ${entry.actor}`);
     lines.push(`    ${entry.url}`);
+    if (entry.pendingSha && entry.pendingSha !== entry.shortSha) {
+      lines.push(`    (a newer run of this workflow, at ${entry.pendingSha}, has not finished yet)`);
+    }
   }
   return lines.join("\n");
 }
@@ -347,6 +377,18 @@ export function runSelfTest() {
   assertOk(withSelfRun([run({})], null).length === 1, "no self record must leave the snapshot untouched");
   assertOk(selfRunFromEnv({}) === null, "an unset self record must be null, never a fabricated green");
   assertions += 2;
+
+  // An in-flight newer run does not clear a red verdict, but it IS reported, so
+  // an old SHA in the alert cannot be mistaken for stale noise.
+  const withPending = evaluateHealth([
+    run({ workflow_id: 5, name: "Slow", status: "queued", conclusion: null, head_sha: "dddddddddddd", run_started_at: "2026-09-01T07:00:00Z" }),
+    run({ workflow_id: 5, name: "Slow", conclusion: "failure", head_sha: "eeeeeeeeeeee", run_started_at: "2026-09-01T05:00:00Z" }),
+  ]);
+  assertOk(!withPending.healthy, "a queued newer run must not clear a red verdict");
+  assertOk(withPending.red[0].pendingSha === "ddddddddd", "the in-flight run must be reported");
+  assertOk(renderReport(withPending, { repository: "r", branch: "main" }).includes("has not finished yet"), "the report must say a newer verdict is pending");
+  assertOk(evaluateHealth([run({ workflow_id: 6, name: "Q", conclusion: "failure" })]).red[0].pendingSha === "", "no in-flight run must annotate nothing");
+  assertions += 4;
 
   const green = evaluateHealth([run({ conclusion: "success" })]);
   assertOk(renderReport(green, { repository: "r", branch: "main" }).includes("GREEN"), "green report");
