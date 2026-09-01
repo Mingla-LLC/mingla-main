@@ -49,6 +49,16 @@ const rules = [
     /mode === "issue_2979_recovery"[\s\S]*claim_issue_2979_attendance_claim_recovery_batch[\s\S]*issue_order_attendance_claim_proof_v2[\s\S]*complete_issue_2979_attendance_claim_delivery/,
   ],
   [
+    "ISSUE2979_RECOVERY_REQUIRES_GOVERNED_CURRENT",
+    "recovery",
+    /runIssue2979RecoveryWhenGoverned[\s\S]*current\.generation !== "governed_v2"[\s\S]*mode === "issue_2979_recovery"[\s\S]*runIssue2979RecoveryWhenGoverned/,
+  ],
+  [
+    "ISSUE2979_RECOVERY_EMAIL_ONE_SHOT",
+    "recovery",
+    /retryOnNetworkAmbiguity === false[\s\S]*return "ambiguous"[\s\S]*mode === "issue_2979_recovery"[\s\S]*retryOnNetworkAmbiguity: false/,
+  ],
+  [
     "ISSUE2979_AMBIGUOUS_IS_DELIVERY_SAFE",
     "migration",
     /provider_acceptance_ambiguous[\s\S]*provider_attempt_started_at IS NOT NULL[\s\S]*state = 'delivery_safe'[\s\S]*lease_expired_before_provider[\s\S]*provider_attempt_started_at IS NULL[\s\S]*provider_boundary_missing/,
@@ -66,12 +76,17 @@ const rules = [
   [
     "ISSUE2979_CONFIRMATION_REPLAY_NO_ROTATION",
     "dispatch",
-    /buyer_user_id,[\s\S]*resolveAttendanceClaimPepperRing[\s\S]*issue_order_attendance_claim_proof_v2[\s\S]*p_allow_retry_rotation: false/,
+    /resolveAttendanceClaimPepperRing[\s\S]*issue_order_attendance_claim_proof_v2[\s\S]*p_allow_retry_rotation: false/,
+  ],
+  [
+    "ISSUE2979_MIGRATION_FIRST_OLD_WRAPPER",
+    "migration",
+    /claim_attendance_internal\([\s\S]*SELECT public\.claim_attendance_internal_v2\([\s\S]*p_proof_digest, p_proof_digest/,
   ],
   [
     "ISSUE2979_WORKFLOW_IMPLEMENTOR_COVERAGE",
     "workflow",
-    /issue_2979_attendance_pepper_ring\.implementor\.happy\.test\.ts[\s\S]*issue_2979_dual_pepper_claim\.implementor\.happy\.test\.ts[\s\S]*issue_2979_recovery_delivery\.implementor\.happy\.test\.ts[\s\S]*issue_2979_governed_claim\.implementor\.happy\.test\.ts[\s\S]*issue_2979_attendance_claim_continuity\.implementor\.happy\.pg17\.test\.sql/,
+    /issue_2979_attendance_pepper_ring\.implementor\.happy\.test\.ts[\s\S]*issue_2979_attendance_claim_continuity\.implementor\.happy\.test\.ts[\s\S]*issue_2979_recovery_delivery\.implementor\.happy\.test\.ts[\s\S]*issue_2979_ticket_confirmation_claim\.implementor\.happy\.test\.ts[\s\S]*issue_2979_attendance_claim_continuity\.tester\.adversarial\.test\.ts[\s\S]*issue_2979_recovery_delivery\.tester\.adversarial\.test\.ts[\s\S]*issue_2979_ticket_confirmation_claim\.tester\.adversarial\.test\.ts[\s\S]*issue_2979_attendance_claim_secret_continuity\.implementor\.happy\.test\.sql[\s\S]*issue_2979_attendance_claim_secret_continuity\.tester\.adversarial\.test\.sql/,
   ],
 ];
 
@@ -89,6 +104,34 @@ function check(sources) {
     recoveryStart < 0 || recoveryEnd < recoveryStart ||
     recoveryBranch.includes("enqueue_attendance_claim_deliveries")
   ) failures.push("ISSUE2979_EXACT_RECOVERY_MODE broad enqueue entered recovery");
+  if (
+    recoveryBranch.indexOf("runIssue2979RecoveryWhenGoverned") < 0 ||
+    recoveryBranch.indexOf("runIssue2979RecoveryWhenGoverned") >
+      recoveryBranch.indexOf("createClient")
+  ) {
+    failures.push(
+      "ISSUE2979_RECOVERY_REQUIRES_GOVERNED_CURRENT gate does not precede work",
+    );
+  }
+  const dispatchFetchStart = sources.dispatch.indexOf(
+    "const { data: orderRaw",
+  );
+  const dispatchFetchEnd = sources.dispatch.indexOf(
+    ".maybeSingle();",
+    dispatchFetchStart,
+  );
+  const liveOrderFetch = sources.dispatch.slice(
+    dispatchFetchStart,
+    dispatchFetchEnd,
+  );
+  if (
+    dispatchFetchStart < 0 || dispatchFetchEnd < dispatchFetchStart ||
+    !liveOrderFetch.includes("buyer_user_id,")
+  ) {
+    failures.push(
+      "ISSUE2979_LIVE_ORDER_FETCH_BUYER_OWNER missing from live order fetch",
+    );
+  }
   if (/\b235\b/.test(sources.recovery + sources.migration)) {
     failures.push("ISSUE2979_NO_HARDCODED_LIVE_COUNTS historical count detected");
   }
@@ -137,6 +180,21 @@ if (process.argv.includes("--self-test")) {
   if (!check(widened).some((failure) => failure.includes("EXACT_RECOVERY_MODE"))) {
     failures.push("recovery widening revert was not detected");
   }
+  const liveFetchStart = sources.dispatch.indexOf("const { data: orderRaw");
+  const liveFetchEnd = sources.dispatch.indexOf(".maybeSingle();", liveFetchStart);
+  const ownerlessDispatch = {
+    ...sources,
+    dispatch: sources.dispatch.slice(0, liveFetchStart) +
+      sources.dispatch.slice(liveFetchStart, liveFetchEnd).replace(
+        "      buyer_user_id,\n",
+        "",
+      ) + sources.dispatch.slice(liveFetchEnd),
+  };
+  if (
+    !check(ownerlessDispatch).some((failure) =>
+      failure.includes("LIVE_ORDER_FETCH_BUYER_OWNER")
+    )
+  ) failures.push("live order fetch owner revert was not detected");
   if (failures.length) {
     console.error(failures.join("\n"));
     process.exit(1);

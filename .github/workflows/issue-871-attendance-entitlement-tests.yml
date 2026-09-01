@@ -61,16 +61,16 @@ jobs:
           supabase/migrations/__tests__/issue_0871_attendance_claim_and_roster.test.ts
       - name: Execute issue 2979 implementor and independent tester contracts
         run: |
-          deno test --allow-read \
+          deno test --allow-read --allow-env \
             supabase/functions/_shared/__tests__/issue_2979_attendance_pepper_ring.implementor.happy.test.ts \
-            supabase/functions/claim-attendance/__tests__/issue_2979_dual_pepper_claim.implementor.happy.test.ts \
+            supabase/functions/claim-attendance/__tests__/issue_2979_attendance_claim_continuity.implementor.happy.test.ts \
             supabase/functions/attendance-claim-backfill/__tests__/issue_2979_recovery_delivery.implementor.happy.test.ts \
-            supabase/functions/ticket-confirmation-dispatch/__tests__/issue_2979_governed_claim.implementor.happy.test.ts
+            supabase/functions/ticket-confirmation-dispatch/__tests__/issue_2979_ticket_confirmation_claim.implementor.happy.test.ts
           for test_file in \
-            supabase/functions/claim-attendance/__tests__/issue_2979_dual_pepper_claim.tester.adversarial.test.ts \
+            supabase/functions/claim-attendance/__tests__/issue_2979_attendance_claim_continuity.tester.adversarial.test.ts \
             supabase/functions/attendance-claim-backfill/__tests__/issue_2979_recovery_delivery.tester.adversarial.test.ts \
-            supabase/functions/ticket-confirmation-dispatch/__tests__/issue_2979_governed_claim.tester.adversarial.test.ts; do
-            if [[ -f "$test_file" ]]; then deno test --allow-read "$test_file"; fi
+            supabase/functions/ticket-confirmation-dispatch/__tests__/issue_2979_ticket_confirmation_claim.tester.adversarial.test.ts; do
+            if [[ -f "$test_file" ]]; then deno test --allow-read --allow-env "$test_file"; fi
           done
       - name: Execute invariant guard and its revert self-test
         run: |
@@ -144,8 +144,8 @@ jobs:
           PGPASSWORD: ${{ format('issue-871-ci-{0}', github.run_id) }}
         run: |
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
-            -f supabase/migrations/__tests__/issue_2979_attendance_claim_continuity.implementor.happy.pg17.test.sql
-          tester_sql=supabase/migrations/__tests__/issue_2979_attendance_claim_continuity.tester.adversarial.pg17.test.sql
+            -f supabase/migrations/__tests__/issue_2979_attendance_claim_secret_continuity.implementor.happy.test.sql
+          tester_sql=supabase/migrations/__tests__/issue_2979_attendance_claim_secret_continuity.tester.adversarial.test.sql
           if [[ -f "$tester_sql" ]]; then
             psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f "$tester_sql"
           fi

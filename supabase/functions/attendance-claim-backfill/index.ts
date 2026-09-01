@@ -15,7 +15,10 @@ import {
 import { EMAIL_SENDERS, formatSenderHeader } from "../_shared/email/index.ts";
 import { renderAttendanceClaimAvailableEmail } from "../_shared/email/ticketBody.ts";
 import { qrTokenPepper } from "../_shared/ticketCheckout.ts";
-import { resolveAttendanceClaimPepperRing } from "../_shared/governedAdSecret.ts";
+import {
+  type AttendanceClaimPepperRing,
+  resolveAttendanceClaimPepperRing,
+} from "../_shared/governedAdSecret.ts";
 import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
 
 type Delivery = {
@@ -94,13 +97,24 @@ const smsOutcome = (
   return "terminal";
 };
 
-async function sendEmail(input: {
+export async function runIssue2979RecoveryWhenGoverned<T>(
+  pepperRing: AttendanceClaimPepperRing,
+  recoveryWork: () => Promise<T>,
+): Promise<{ allowed: false } | { allowed: true; value: T }> {
+  if (pepperRing.current.generation !== "governed_v2") {
+    return { allowed: false };
+  }
+  return { allowed: true, value: await recoveryWork() };
+}
+
+export async function sendEmail(input: {
   to: string;
   eventTitle: string;
   claimUrl: string;
   deliveryKey: string;
   passUrl?: string;
   beforeProviderIo?: () => Promise<void>;
+  retryOnNetworkAmbiguity?: boolean;
 }): Promise<EmailDeliveryResult> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
   if (!apiKey) return "terminal";
@@ -133,6 +147,7 @@ async function sendEmail(input: {
   try {
     response = await request();
   } catch {
+    if (input.retryOnNetworkAmbiguity === false) return "ambiguous";
     // Retry only while the same plaintext and provider idempotency key remain
     // in memory. If both responses are ambiguous, preserve the issued proof and
     // terminalize as provider-ambiguous rather than rotate a possibly delivered link.
@@ -149,7 +164,7 @@ async function sendEmail(input: {
     : "terminal";
 }
 
-serve(async (req) => {
+export const handler = async (req: Request): Promise<Response> => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const url = Deno.env.get("SUPABASE_URL");
   const pepperRing = resolveAttendanceClaimPepperRing();
@@ -164,214 +179,228 @@ serve(async (req) => {
     mode?: unknown;
   };
   const limit = Math.min(Math.max(Number(body.limit ?? 25), 1), 50);
+
+  if (body.mode === "issue_2979_recovery") {
+    const gated = await runIssue2979RecoveryWhenGoverned(
+      pepperRing,
+      async (): Promise<Response> => {
+        const admin = createClient(url, serviceKey, {
+          auth: { persistSession: false },
+        });
+        if (pepperRing.previous === null) {
+          const { data: preview, error: previewError } = await admin.rpc(
+            "preview_issue_2979_attendance_claim_recovery",
+          );
+          const legacyProofs =
+            typeof preview === "object" && preview !== null &&
+              "legacyProofs" in preview &&
+              typeof preview.legacyProofs === "number"
+              ? preview.legacyProofs
+              : null;
+          if (previewError || legacyProofs === null || legacyProofs > 0) {
+            return claimJson(503, {
+              ok: false,
+              error: "recovery_temporarily_unavailable",
+            });
+          }
+        }
+        const { data: claimed, error: claimError } = await admin.rpc(
+          "claim_issue_2979_attendance_claim_recovery_batch",
+          { p_limit: limit },
+        );
+        if (claimError) {
+          return claimJson(500, { ok: false, error: "recovery_claim_failed" });
+        }
+        let deliverySafe = 0;
+        let retryable = 0;
+        let attentionRequired = 0;
+        const markProviderAttempt = async (
+          orderId: string,
+          deliveryId: string,
+          leaseId: string,
+        ): Promise<void> => {
+          const { data, error } = await admin.rpc(
+            "mark_issue_2979_attendance_claim_provider_attempt",
+            {
+              p_order_id: orderId,
+              p_delivery_id: deliveryId,
+              p_lease_id: leaseId,
+            },
+          );
+          if (error || data !== true) {
+            throw new Error("recovery_provider_boundary_failed");
+          }
+        };
+        for (const raw of Array.isArray(claimed) ? claimed : []) {
+          const delivery = recoveryDeliveryFrom(raw);
+          if (!delivery) continue;
+          const minted = mintOrderClaimToken();
+          const digest = await hmacOrderClaimDigest(
+            minted.raw,
+            pepperRing.current.secret,
+          );
+          const { data: issuance, error: issuanceError } = await admin.rpc(
+            "issue_order_attendance_claim_proof_v2",
+            {
+              p_order_id: delivery.order_id,
+              p_event_id: delivery.event_id,
+              p_digest: bytesToPostgresHex(digest),
+              p_generation: pepperRing.current.generation,
+              p_allow_retry_rotation: true,
+            },
+          );
+          const issueResult =
+            typeof issuance === "object" && issuance !== null &&
+              "result" in issuance && typeof issuance.result === "string"
+              ? issuance.result
+              : "invalid";
+          if (issuanceError || issueResult !== "issued") {
+            await admin.rpc("complete_issue_2979_attendance_claim_delivery", {
+              p_order_id: delivery.order_id,
+              p_delivery_id: delivery.delivery_id,
+              p_lease_id: delivery.lease_id,
+              p_outcome: issueResult === "ineligible"
+                ? "terminal"
+                : "retryable",
+              p_error_code: issueResult === "ineligible"
+                ? "source_ineligible"
+                : "issuance_retryable",
+            });
+            if (issueResult === "ineligible") attentionRequired += 1;
+            else retryable += 1;
+            continue;
+          }
+
+          const claimWebUrl = attendanceClaimUrls({
+            kind: "order",
+            eventId: delivery.event_id,
+            sourceId: delivery.order_id,
+            token: minted.token,
+          }).webClaimUrl;
+          let outcome: "accepted" | "ambiguous" | "retryable" | "terminal";
+          let errorCode: string | null = null;
+          if (delivery.channel === "email") {
+            if (!delivery.buyer_email) {
+              outcome = "terminal";
+              errorCode = "email_unavailable";
+            } else {
+              const result = await sendEmail({
+                to: delivery.buyer_email,
+                eventTitle: delivery.event_title,
+                claimUrl: claimWebUrl,
+                deliveryKey:
+                  `issue-2979-${delivery.delivery_id}-${delivery.attempt_count}`,
+                retryOnNetworkAmbiguity: false,
+                beforeProviderIo: () =>
+                  markProviderAttempt(
+                    delivery.order_id,
+                    delivery.delivery_id,
+                    delivery.lease_id,
+                  ),
+              });
+              outcome = result === "sent" ? "accepted" : result;
+              errorCode = result === "ambiguous"
+                ? "provider_acceptance_ambiguous"
+                : result === "retryable"
+                ? "email_retryable"
+                : result === "terminal"
+                ? "email_terminal"
+                : null;
+            }
+          } else if (delivery.buyer_phone_e164) {
+            const result = await smsAdapter.send({
+              to: delivery.buyer_phone_e164,
+              brandName: "Mingla",
+              message: recoverySmsMessage(claimWebUrl),
+              beforeProviderIo: () =>
+                markProviderAttempt(
+                  delivery.order_id,
+                  delivery.delivery_id,
+                  delivery.lease_id,
+                ),
+            });
+            outcome = smsOutcome(result);
+            errorCode = outcome === "accepted" ? null : `sms_${outcome}`;
+          } else {
+            outcome = "terminal";
+            errorCode = "sms_unavailable";
+          }
+
+          const { data: completed } = await admin.rpc(
+            "complete_issue_2979_attendance_claim_delivery",
+            {
+              p_order_id: delivery.order_id,
+              p_delivery_id: delivery.delivery_id,
+              p_lease_id: delivery.lease_id,
+              p_outcome: outcome,
+              p_error_code: errorCode,
+            },
+          );
+          const completion = typeof completed === "object" && completed !== null
+            ? completed as Record<string, unknown>
+            : {};
+
+          if (
+            completion.result === "secondary_required" &&
+            typeof completion.deliveryId === "string" &&
+            typeof completion.leaseId === "string" &&
+            delivery.buyer_phone_e164
+          ) {
+            const result = await smsAdapter.send({
+              to: delivery.buyer_phone_e164,
+              brandName: "Mingla",
+              message: recoverySmsMessage(claimWebUrl),
+              beforeProviderIo: () =>
+                markProviderAttempt(
+                  delivery.order_id,
+                  completion.deliveryId as string,
+                  completion.leaseId as string,
+                ),
+            });
+            const secondaryOutcome = smsOutcome(result);
+            const { data: secondaryCompleted } = await admin.rpc(
+              "complete_issue_2979_attendance_claim_delivery",
+              {
+                p_order_id: delivery.order_id,
+                p_delivery_id: completion.deliveryId,
+                p_lease_id: completion.leaseId,
+                p_outcome: secondaryOutcome,
+                p_error_code: secondaryOutcome === "accepted"
+                  ? null
+                  : `sms_${secondaryOutcome}`,
+              },
+            );
+            const secondaryResult = typeof secondaryCompleted === "object" &&
+                secondaryCompleted !== null && "result" in secondaryCompleted
+              ? secondaryCompleted.result
+              : null;
+            if (secondaryResult === "delivery_safe") deliverySafe += 1;
+            else if (secondaryResult === "retryable") retryable += 1;
+            else attentionRequired += 1;
+          } else if (completion.result === "delivery_safe") deliverySafe += 1;
+          else if (completion.result === "retryable") retryable += 1;
+          else attentionRequired += 1;
+        }
+        return claimJson(200, {
+          ok: true,
+          mode: "issue_2979_recovery",
+          claimed: Array.isArray(claimed) ? claimed.length : 0,
+          deliverySafe,
+          retryable,
+          attentionRequired,
+        });
+      },
+    );
+    return gated.allowed ? gated.value : claimJson(503, {
+      ok: false,
+      error: "recovery_temporarily_unavailable",
+    });
+  }
+
   const rsvpPepper = qrTokenPepper();
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false },
   });
-
-  if (body.mode === "issue_2979_recovery") {
-    if (
-      pepperRing.current.generation === "governed_v2" &&
-      pepperRing.previous === null
-    ) {
-      const { data: preview, error: previewError } = await admin.rpc(
-        "preview_issue_2979_attendance_claim_recovery",
-      );
-      const legacyProofs = typeof preview === "object" && preview !== null &&
-          "legacyProofs" in preview &&
-          typeof preview.legacyProofs === "number"
-        ? preview.legacyProofs
-        : null;
-      if (previewError || legacyProofs === null || legacyProofs > 0) {
-        return claimJson(503, {
-          ok: false,
-          error: "recovery_temporarily_unavailable",
-        });
-      }
-    }
-    const { data: claimed, error: claimError } = await admin.rpc(
-      "claim_issue_2979_attendance_claim_recovery_batch",
-      { p_limit: limit },
-    );
-    if (claimError) {
-      return claimJson(500, { ok: false, error: "recovery_claim_failed" });
-    }
-    let deliverySafe = 0;
-    let retryable = 0;
-    let attentionRequired = 0;
-    const markProviderAttempt = async (
-      orderId: string,
-      deliveryId: string,
-      leaseId: string,
-    ): Promise<void> => {
-      const { data, error } = await admin.rpc(
-        "mark_issue_2979_attendance_claim_provider_attempt",
-        {
-          p_order_id: orderId,
-          p_delivery_id: deliveryId,
-          p_lease_id: leaseId,
-        },
-      );
-      if (error || data !== true) {
-        throw new Error("recovery_provider_boundary_failed");
-      }
-    };
-    for (const raw of Array.isArray(claimed) ? claimed : []) {
-      const delivery = recoveryDeliveryFrom(raw);
-      if (!delivery) continue;
-      const minted = mintOrderClaimToken();
-      const digest = await hmacOrderClaimDigest(
-        minted.raw,
-        pepperRing.current.secret,
-      );
-      const { data: issuance, error: issuanceError } = await admin.rpc(
-        "issue_order_attendance_claim_proof_v2",
-        {
-          p_order_id: delivery.order_id,
-          p_event_id: delivery.event_id,
-          p_digest: bytesToPostgresHex(digest),
-          p_generation: pepperRing.current.generation,
-          p_allow_retry_rotation: true,
-        },
-      );
-      const issueResult = typeof issuance === "object" && issuance !== null &&
-          "result" in issuance && typeof issuance.result === "string"
-        ? issuance.result
-        : "invalid";
-      if (issuanceError || issueResult !== "issued") {
-        await admin.rpc("complete_issue_2979_attendance_claim_delivery", {
-          p_order_id: delivery.order_id,
-          p_delivery_id: delivery.delivery_id,
-          p_lease_id: delivery.lease_id,
-          p_outcome: issueResult === "ineligible" ? "terminal" : "retryable",
-          p_error_code: issueResult === "ineligible"
-            ? "source_ineligible"
-            : "issuance_retryable",
-        });
-        if (issueResult === "ineligible") attentionRequired += 1;
-        else retryable += 1;
-        continue;
-      }
-
-      const claimWebUrl = attendanceClaimUrls({
-        kind: "order",
-        eventId: delivery.event_id,
-        sourceId: delivery.order_id,
-        token: minted.token,
-      }).webClaimUrl;
-      let outcome: "accepted" | "ambiguous" | "retryable" | "terminal";
-      let errorCode: string | null = null;
-      if (delivery.channel === "email") {
-        if (!delivery.buyer_email) {
-          outcome = "terminal";
-          errorCode = "email_unavailable";
-        } else {
-          const result = await sendEmail({
-            to: delivery.buyer_email,
-            eventTitle: delivery.event_title,
-            claimUrl: claimWebUrl,
-            deliveryKey:
-              `issue-2979-${delivery.delivery_id}-${delivery.attempt_count}`,
-            beforeProviderIo: () =>
-              markProviderAttempt(
-                delivery.order_id,
-                delivery.delivery_id,
-                delivery.lease_id,
-              ),
-          });
-          outcome = result === "sent" ? "accepted" : result;
-          errorCode = result === "ambiguous"
-            ? "provider_acceptance_ambiguous"
-            : result === "retryable"
-            ? "email_retryable"
-            : result === "terminal"
-            ? "email_terminal"
-            : null;
-        }
-      } else if (delivery.buyer_phone_e164) {
-        const result = await smsAdapter.send({
-          to: delivery.buyer_phone_e164,
-          brandName: "Mingla",
-          message: recoverySmsMessage(claimWebUrl),
-          beforeProviderIo: () =>
-            markProviderAttempt(
-              delivery.order_id,
-              delivery.delivery_id,
-              delivery.lease_id,
-            ),
-        });
-        outcome = smsOutcome(result);
-        errorCode = outcome === "accepted" ? null : `sms_${outcome}`;
-      } else {
-        outcome = "terminal";
-        errorCode = "sms_unavailable";
-      }
-
-      const { data: completed } = await admin.rpc(
-        "complete_issue_2979_attendance_claim_delivery",
-        {
-          p_order_id: delivery.order_id,
-          p_delivery_id: delivery.delivery_id,
-          p_lease_id: delivery.lease_id,
-          p_outcome: outcome,
-          p_error_code: errorCode,
-        },
-      );
-      const completion = typeof completed === "object" && completed !== null
-        ? completed as Record<string, unknown>
-        : {};
-
-      if (
-        completion.result === "secondary_required" &&
-        typeof completion.deliveryId === "string" &&
-        typeof completion.leaseId === "string" &&
-        delivery.buyer_phone_e164
-      ) {
-        const result = await smsAdapter.send({
-          to: delivery.buyer_phone_e164,
-          brandName: "Mingla",
-          message: recoverySmsMessage(claimWebUrl),
-          beforeProviderIo: () =>
-            markProviderAttempt(
-              delivery.order_id,
-              completion.deliveryId as string,
-              completion.leaseId as string,
-            ),
-        });
-        const secondaryOutcome = smsOutcome(result);
-        const { data: secondaryCompleted } = await admin.rpc(
-          "complete_issue_2979_attendance_claim_delivery",
-          {
-            p_order_id: delivery.order_id,
-            p_delivery_id: completion.deliveryId,
-            p_lease_id: completion.leaseId,
-            p_outcome: secondaryOutcome,
-            p_error_code: secondaryOutcome === "accepted"
-              ? null
-              : `sms_${secondaryOutcome}`,
-          },
-        );
-        const secondaryResult = typeof secondaryCompleted === "object" &&
-            secondaryCompleted !== null && "result" in secondaryCompleted
-          ? secondaryCompleted.result
-          : null;
-        if (secondaryResult === "delivery_safe") deliverySafe += 1;
-        else if (secondaryResult === "retryable") retryable += 1;
-        else attentionRequired += 1;
-      } else if (completion.result === "delivery_safe") deliverySafe += 1;
-      else if (completion.result === "retryable") retryable += 1;
-      else attentionRequired += 1;
-    }
-    return claimJson(200, {
-      ok: true,
-      mode: "issue_2979_recovery",
-      claimed: Array.isArray(claimed) ? claimed.length : 0,
-      deliverySafe,
-      retryable,
-      attentionRequired,
-    });
-  }
-
   const orderPepper = pepperRing.current.secret;
 
   const { data: enqueued, error: enqueueError } = await admin.rpc(
@@ -546,4 +575,6 @@ serve(async (req) => {
     retryable,
     terminal,
   });
-});
+};
+
+if (import.meta.main) serve(handler);

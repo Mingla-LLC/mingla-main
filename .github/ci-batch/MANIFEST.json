@@ -19762,7 +19762,7 @@
       "providerWorkflow": ".github/workflows/issue-871-attendance-entitlement-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "ff0803ef134c3d605e4de40fe4cc715640cd2080cd53487a136fdda33a7c672d",
+        "sourceSha256": "8def25091587ca7e95b7d54982f0399a3949fe84acaae0d5753331f4958109ad",
         "triggers": [
           "pull_request"
         ],

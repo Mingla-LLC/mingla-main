@@ -1055,6 +1055,7 @@ export const handler = async (req: Request): Promise<Response> => {
       event_id,
       buyer_name,
       buyer_email,
+      buyer_user_id,
       total_cents,
       currency,
       payment_method,

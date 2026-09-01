@@ -476,7 +476,8 @@ SECURITY DEFINER
 SET search_path = public
 AS $function$
   SELECT public.claim_attendance_internal_v2(
-    p_user_id, p_kind, p_event_id, p_source_id, p_proof_digest, NULL);
+    p_user_id, p_kind, p_event_id, p_source_id,
+    p_proof_digest, p_proof_digest);
 $function$;
 
 -- Replace only the proof-retirement portion of the #2217 identity claim. The
