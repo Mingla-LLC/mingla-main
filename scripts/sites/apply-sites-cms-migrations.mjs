@@ -8,6 +8,10 @@ import { bootstrapSitesCms } from "./bootstrap-sites-cms.mjs";
 import { fail, requiredEnv, safeCliFailure } from "./lib/sites-ops.mjs";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const ANSI_CONTROL_SEQUENCE = new RegExp(
+  `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
+  "g",
+);
 
 function migratorUrl(env) {
   const projectRef = requiredEnv(env, "SITES_CMS_PROJECT_REF");
@@ -19,12 +23,19 @@ function migratorUrl(env) {
   } catch {
     fail("INVALID_MIGRATOR_DATABASE_URL");
   }
+  const isDirect =
+    decodeURIComponent(url.username) === "sites_cms_migrator" &&
+    url.hostname === `db.${projectRef}.supabase.co` &&
+    url.port === "5432";
+  const isSessionPooler =
+    decodeURIComponent(url.username) === `sites_cms_migrator.${projectRef}` &&
+    /^[a-z0-9-]+\.pooler\.supabase\.com$/.test(url.hostname) &&
+    url.port === "5432";
   if (
     !["postgres:", "postgresql:"].includes(url.protocol) ||
-    decodeURIComponent(url.username) !== "sites_cms_migrator" ||
+    (!isDirect && !isSessionPooler) ||
     decodeURIComponent(url.password).length < 32 ||
-    url.hostname !== `db.${projectRef}.supabase.co` ||
-    url.port !== "5432" || url.pathname !== "/postgres" ||
+    url.pathname !== "/postgres" ||
     url.hash || url.searchParams.size !== 1 ||
     url.searchParams.get("sslmode") !== "require"
   ) fail("INVALID_MIGRATOR_DATABASE_URL");
@@ -67,7 +78,8 @@ export function applySitesCmsMigrations({
     },
   );
   if (result.error || result.status !== 0) fail("PAYLOAD_MIGRATION_FAILED");
-  const receipt = `${String(result.stdout || "")}\n${String(result.stderr || "")}`;
+  const receipt = `${String(result.stdout || "")}\n${String(result.stderr || "")}`
+    .replace(ANSI_CONTROL_SEQUENCE, "");
   if (!/(?:^|\s)Done\.(?:\s|$)/.test(receipt)) {
     fail("PAYLOAD_MIGRATION_RECEIPT_MISSING");
   }

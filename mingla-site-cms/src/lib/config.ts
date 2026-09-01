@@ -80,13 +80,19 @@ function databaseUrl(env: NodeJS.ProcessEnv): string {
     throw new Error("Invalid server database connection mode.");
   }
   if (connectionMode === "migration") {
+    const direct =
+      parsed.username === "sites_cms_migrator" &&
+      /^db\.[a-z0-9]{20}\.supabase\.co$/.test(parsed.hostname) &&
+      parsed.port === "5432";
+    const sessionPooler =
+      /^sites_cms_migrator\.[a-z0-9]{20}$/.test(parsed.username) &&
+      /^[a-z0-9-]+\.pooler\.supabase\.com$/.test(parsed.hostname) &&
+      parsed.port === "5432";
     if (
-      parsed.username !== "sites_cms_migrator" ||
-      !/^db\.[a-z0-9]{20}\.supabase\.co$/.test(parsed.hostname) ||
-      parsed.port !== "5432" ||
+      (!direct && !sessionPooler) ||
       parsed.searchParams.size !== 1 ||
       parsed.searchParams.get("sslmode") !== "require"
-    ) throw new Error("Migration database configuration must use the direct migrator connection.");
+    ) throw new Error("Migration database configuration must use a direct or session-pooler migrator connection.");
     return value;
   }
   if (
@@ -138,6 +144,7 @@ function sitesDatabaseProjectRef(
   const parsed = new URL(value);
   if (env.SITES_DATABASE_CONNECTION_MODE === "migration") {
     return parsed.hostname.match(/^db\.([a-z0-9]{20})\.supabase\.co$/)?.[1] ??
+      parsed.username.match(/^sites_cms_migrator\.([a-z0-9]{20})$/)?.[1] ??
       null;
   }
   return parsed.username.match(/^sites_cms_app\.([a-z0-9]{20})$/)?.[1] ??
