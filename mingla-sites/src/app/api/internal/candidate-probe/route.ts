@@ -3,6 +3,7 @@ import {
   assertRestaurantArtifact,
   isSafeHref,
   type MediaReference,
+  type RestaurantBlock,
 } from "../../../../contracts/artifact";
 import { hmacBase64, sha256 } from "../../../../lib/crypto";
 import { runtimeConfig } from "../../../../lib/config";
@@ -44,6 +45,17 @@ export async function verifyCandidateMedia(
     if (await sha256(bytes) !== item.integrity) return false;
   }
   return true;
+}
+
+export function areCandidateLinksSafe(blocks: RestaurantBlock[]): boolean {
+  return blocks.flatMap((block) =>
+    Object.entries(block)
+      .filter(([field]) =>
+        field === "href" || field === "url" || field.endsWith("_url")
+      )
+      .map(([, link]) => link)
+      .filter((link) => link != null)
+  ).every(isSafeHref);
 }
 
 export async function POST(request: Request) {
@@ -92,11 +104,6 @@ export async function POST(request: Request) {
     assertRestaurantArtifact(artifact);
     if (artifact.site_id !== siteId || artifact.brand_id !== brandId || artifact.publication_id !== publicationId) throw new Error();
     const allBlocks = artifact.pages.flatMap((page) => page.blocks);
-    const links = allBlocks.flatMap((block) =>
-      Object.entries(block)
-        .filter(([field]) => field === "href" || field === "url" || field.endsWith("_url"))
-        .map(([, link]) => link),
-    );
     const assetsOk = await verifyCandidateMedia(
       artifact.media,
       config.approvedMediaBucket,
@@ -110,7 +117,7 @@ export async function POST(request: Request) {
       assets_ok: assetsOk,
       accessibility_ok: allBlocks.some((block) => block.type === "hero" && typeof block.heading === "string"),
       consent_ok: true,
-      cta_ok: links.every(isSafeHref),
+      cta_ok: areCandidateLinksSafe(allBlocks),
       leak_check_ok: !/(payload|supabase|vercel|database_url|secret_access_key)/i.test(serialized),
       observed_digest: digest,
       status_code: 200,
