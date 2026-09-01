@@ -37,6 +37,7 @@ jobs:
           scripts/sites/__tests__/issue_2893_gogi_activation.test.mjs
           scripts/sites/__tests__/issue_2893_sites_ops.tester.adversarial.test.mjs
           scripts/sites/__tests__/issue_2948_backup_window_absent.test.mjs
+          scripts/sites/__tests__/issue_2948_readback_wiring.test.mjs
 
   backup_restore:
     name: "Private backup and isolated restore"
