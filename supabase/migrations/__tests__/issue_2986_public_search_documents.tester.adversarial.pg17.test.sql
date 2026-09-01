@@ -240,6 +240,7 @@ DO $a8$
 DECLARE
   v jsonb;
   v_count int;
+  v_source_updated_at timestamptz;
   v_common jsonb := '{"facts_verified":true,"canonical_verified":true,"visible_html_verified":true,"metadata_verified":true,"schema_verified":true,"image_rights_verified":true,"action_verified":true,"schedule_verified":true,"location_verified":true,"organizer_verified":true,"price_or_free_verified":true,"privacy_moderation_verified":true}';
 BEGIN
   -- This suite is intentionally one rollback-only transaction. The repository's
@@ -259,12 +260,15 @@ BEGIN
   IF v->>'state'<>'stale' OR v_count<>0 THEN
     RAISE EXCEPTION 'ISSUE-2986 A8 FAIL: changed source stayed searchable (resolver %, sitemap %)',v,v_count;
   END IF;
+  v_source_updated_at := (
+    public.public_search_source_facts('/e/i2986adv/good','event')->'facts'->>'sourceUpdatedAt'
+  )::timestamptz;
 
   SET LOCAL ROLE service_role;
   PERFORM set_config('request.jwt.claim.role','service_role',true);
   PERFORM public.upsert_public_search_document(
     'event','29860000-0000-4000-8000-000000000501','/e/i2986adv/good','search_ready',NULL,v_common,
-    now()+interval '2 minute',now(),now()+interval '30 day','fresh source re-review','issue_2986_adv',false);
+    v_source_updated_at,now(),now()+interval '30 day','fresh source re-review','issue_2986_adv',false);
   RESET ROLE;
   SET LOCAL ROLE anon;
   PERFORM set_config('request.jwt.claim.role','anon',true);
