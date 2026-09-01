@@ -127,6 +127,14 @@ export const ALWAYS_ON = Object.freeze([
     reason: "three wave-shadow parity suites bank a sha256 of this workflow's exact bytes",
   }),
   Object.freeze({
+    path: liveWorkflow("bundle", "baseline", "automerge"),
+    kind: "pin-protected",
+    issue: "#2524",
+    pin: "regex",
+    pinnedBy: "mingla-business/scripts/ci/__tests__/issue2524_bundle_baseline_automerge.happy.test.mjs",
+    reason: "a SECURITY pin on a PUBLIC repo: asserts the App token is minted only in the schedule/workflow_dispatch job and never on a pull_request event, by matching that job's if: verbatim. Also removes the residual hazard that bundle-baseline-automerge.mjs treats `skipped` as a passing conclusion.",
+  }),
+  Object.freeze({
     path: liveWorkflow("ci", "batch"),
     kind: "pin-protected",
     issue: "#2148",

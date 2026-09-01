@@ -299,38 +299,61 @@ test("T-12 no workflow OUTSIDE the pin registry has a pin this change breaks —
   const baseSources = Object.fromEntries(baseNames.map((n) => [n, gitOut(["show", `${base}:${dir}/${n}`])]));
   const registered = new Set(ALWAYS_ON.map((entry) => entry.path));
 
+  // Only workflows this change actually touched can carry a pin it breaks.
+  const changed = Object.keys(headSources)
+    .filter((name) => !registered.has(name))
+    .filter((name) => baseSources[name] !== undefined && baseSources[name] !== headSources[name]);
+
+  // Indexes, built once. NO "this source names the workflow" filter: #2524 and #2589
+  // both ASSEMBLE the filename (`["bundle-baseline-automerge", "yml"].join(".")`)
+  // precisely so a scanner cannot see it, so name-based narrowing is structurally
+  // blind — that is how the #2524 security pin reached CI instead of failing here.
+  const digestIndex = new Map();
+  const jobIfIndex = new Map();
+  for (const name of changed) {
+    const before = baseSources[name];
+    for (const variant of [before, before.trimEnd(), before.trim(), before.replace(/\r\n/g, "\n")]) {
+      digestIndex.set(createHash("sha256").update(variant).digest("hex"), name);
+    }
+    for (const match of before.matchAll(/^ {4}if: (.+)$/gm)) {
+      const raw = match[1].trim();
+      const inner = (/^\$\{\{\s*([\s\S]*?)\s*\}\}$/.exec(raw)?.[1] ?? raw).trim();
+      if (inner.length >= 12 && !headSources[name].includes(inner)) jobIfIndex.set(inner, name);
+    }
+  }
+
+  const REGEX_LITERAL = /\/((?:[^/\\\n[]|\\.|\[(?:[^\]\\]|\\.)*\])+)\/([gimsuy]*)/g;
+  const HEX64 = /\b[0-9a-f]{64}\b/g;
   const trackedSources = gitOut(["ls-files"]).split("\n").filter(Boolean)
     .filter((f) => /\.(mjs|cjs|js|ts|tsx)$/.test(f) && !f.startsWith(`${dir}/`) && !f.includes("issue-2881-pr-draft-gate-policy"));
-
-  const digestsOf = (source) => new Set([source, source.trimEnd(), source.trim(), source.replace(/\r\n/g, "\n")]
-    .map((variant) => createHash("sha256").update(variant).digest("hex")));
-  const REGEX_LITERAL = /\/((?:[^/\\\n[]|\\.|\[(?:[^\]\\]|\\.)*\])+)\/([gimsuy]*)/g;
 
   const broken = [];
   for (const file of trackedSources) {
     let src;
     try { src = readFileSync(join(REPO_ROOT, file), "utf8"); } catch { continue; }
-    for (const [name, headSource] of Object.entries(headSources)) {
-      if (registered.has(name)) continue;                 // declared, and T-11 proves it is untouched
-      const baseSource = baseSources[name];
-      if (baseSource === undefined || baseSource === headSource) continue;  // unchanged: cannot be broken by us
-      if (!src.includes(name)) continue;                  // catches template-literal paths too
-      for (const digest of digestsOf(baseSource)) {
-        if (src.includes(digest)) { broken.push(`${name}: ${file} banks a sha256 of the pre-#2881 file`); break; }
+    for (const match of src.matchAll(HEX64)) {
+      const name = digestIndex.get(match[0]);
+      if (name) broken.push(`${name}: ${file} banks a sha256 of the pre-#2881 file`);
+    }
+    for (const [literal, name] of jobIfIndex) {
+      if (src.includes(`"${literal}"`) || src.includes(`'${literal}'`) || src.includes(`\`${literal}\``)) {
+        broken.push(`${name}: ${file} pins a job if: value verbatim`);
       }
-      for (const match of src.matchAll(REGEX_LITERAL)) {
-        if (match[1].length < 8) continue;
+    }
+    // Regex literals only from non-comment lines: this repo's audit-regex-matches-comments
+    // trap produced a false positive here (a prose "Mingla_Artifacts/ + .github/scripts/").
+    for (const line of src.split("\n")) {
+      const trimmed = line.trimStart();
+      if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
+      for (const match of line.matchAll(REGEX_LITERAL)) {
+        if (match[1].length < 10) continue;
         let pattern;
         try { pattern = new RegExp(match[1], match[2].replace(/[gy]/g, "")); } catch { continue; }
-        let atBase, atHead;
-        try { atBase = pattern.test(baseSource); atHead = pattern.test(headSource); } catch { continue; }
-        if (atBase && !atHead) broken.push(`${name}: ${file} asserts /${match[1].slice(0, 70)}/ which matched before #2881 and does not now`);
-      }
-      const baseJobs = [...baseSource.matchAll(/^ {4}if: (.+)$/gm)].map((m) => m[1].trim());
-      for (const raw of baseJobs) {
-        const inner = (/^\$\{\{\s*([\s\S]*?)\s*\}\}$/.exec(raw)?.[1] ?? raw).trim();
-        if (inner.length < 12 || headSource.includes(inner) ) continue;
-        if (src.includes(`"${inner}"`) || src.includes(`'${inner}'`)) broken.push(`${name}: ${file} pins job if: ${JSON.stringify(inner)} verbatim`);
+        for (const name of changed) {
+          let atBase, atHead;
+          try { atBase = pattern.test(baseSources[name]); atHead = pattern.test(headSources[name]); } catch { break; }
+          if (atBase && !atHead) broken.push(`${name}: ${file} asserts /${match[1].slice(0, 70)}/ which matched before #2881 and does not now`);
+        }
       }
     }
   }
