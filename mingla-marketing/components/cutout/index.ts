@@ -2,7 +2,7 @@
 export { CutoutShell, CutoutSection, CutoutCard, CutoutMedia, CutoutTile, CutoutEyebrow, CutoutHeading, CutoutConnector } from './primitives'
 export { CutoutNav } from './cutout-nav'
 export { CutoutHero } from './hero'
-export { HeroGraphic, ScrollMore } from './hero-graphic'
+export { HeroAtmosphere, ScrollMore } from './hero-graphic'
 export { CutoutFooter } from './footer'
 export { DeviceCta, type CutoutSurface } from './device-cta'
 export { CutReveal } from './motion'
@@ -18,3 +18,4 @@ export {
   type FaqEntry,
 } from './schema'
 export { ToolCard, StepSwitcher } from './tool-grid'
+export { TimeToLiveChart, SellThroughChart, ChannelMixChart, STEP_CHARTS } from './charts'

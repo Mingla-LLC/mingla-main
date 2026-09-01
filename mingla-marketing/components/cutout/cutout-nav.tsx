@@ -106,7 +106,14 @@ export function CutoutNav({ surface, homeHref }: CutoutNavProps) {
             )}
           </Link>
 
-          <nav aria-label="Primary" className="ml-4 hidden items-center gap-1 lg:flex">
+          {/* The menu is a TABBED control, not a row of links: one sunken
+              track with the active item raised out of it as a moulded pill.
+              Same cut-out grammar as the cards. */}
+          <nav
+            aria-label="Primary"
+            className="ml-5 hidden items-center gap-1 rounded-full p-1 lg:flex"
+            style={{ background: 'var(--cut-card-sunken)' }}
+          >
             {LINKS.map((l) => {
               const active = pathname === l.href || pathname.startsWith(`${l.href}/`)
               return (
@@ -115,9 +122,9 @@ export function CutoutNav({ surface, homeHref }: CutoutNavProps) {
                   href={l.href}
                   aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'rounded-full px-3.5 py-2 text-[0.9375rem] font-medium transition-colors duration-200 focus-ring',
+                    'rounded-full px-4 py-2 text-[0.9375rem] font-medium transition-all duration-300 focus-ring',
                     active
-                      ? 'text-[var(--cut-accent-ink)]'
+                      ? 'cut-btn cut-btn-light text-[var(--cut-ink)]'
                       : 'text-[var(--cut-body)] hover:text-[var(--cut-ink)]',
                   )}
                 >

@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 import { CutReveal } from './motion'
-import { ScrollMore } from './hero-graphic'
+import { HeroAtmosphere, ScrollMore } from './hero-graphic'
 
 // ---------------------------------------------------------------
 // #2902 — AIgocy's hero, ported faithfully.
@@ -30,17 +30,11 @@ interface CutoutHeroProps {
   eyebrow: string
   /** First headline line. */
   line1: ReactNode
-  /**
-   * Second line — a flex row so the graphic can sit INSIDE it.
-   *
-   * CONSTRAINT: keep this short. At 96px the row has room for roughly twelve
-   * characters plus the graphic. Longer and the graphic wraps to its own line,
-   * where it stops reading as part of the headline and becomes exactly the kind
-   * of floating decoration this design is not supposed to have.
-   */
+  /** Second line. Nothing sits inside it now — the atmosphere is behind. */
   line2: ReactNode
   lede: ReactNode
-  actions: ReactNode
+  /** Exactly ONE action, and it is always the device-aware app CTA. */
+  action: ReactNode
   /** Background photograph. Illustrative is fine; it is atmosphere. */
   image: string
   /** Optional video plate layered over the photo. */
@@ -55,7 +49,7 @@ export function CutoutHero({
   line1,
   line2,
   lede,
-  actions,
+  action,
   image,
   video,
   scrollTo,
@@ -100,6 +94,8 @@ export function CutoutHero({
         />
       </div>
 
+      <HeroAtmosphere />
+
       <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center text-center">
         <CutReveal variant="rise">
           <span className="cut-btn-light inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-[0.75rem] font-bold uppercase tracking-[0.14em] text-[var(--cut-accent-ink)]">
@@ -133,7 +129,7 @@ export function CutoutHero({
         </CutReveal>
 
         <CutReveal delay={0.3}>
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">{actions}</div>
+          <div className="mt-10 flex justify-center">{action}</div>
         </CutReveal>
 
         {footnote ? (

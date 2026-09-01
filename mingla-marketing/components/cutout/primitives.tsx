@@ -6,13 +6,19 @@ import { cn } from '@/lib/cn'
 // these renders the page's indexable content, and answer engines largely do not
 // execute JS — the meaning has to be in the HTML.
 
-/** The page shell: the card the whole site lies on. */
-export function CutoutShell({ children }: { children: ReactNode }) {
+/**
+ * The page shell: the card the whole site lies on.
+ *
+ * `dark` is for the Explorer surface, which stays the night canvas it already
+ * is — the Cutout treatment there is the shell and the nav, not a repaint.
+ */
+export function CutoutShell({ children, dark = false }: { children: ReactNode; dark?: boolean }) {
   return (
     <div
       data-cutout
+      data-cut-band={dark ? 'dark' : undefined}
       className="min-h-screen px-2 pb-2 pt-2 sm:px-3 sm:pb-3 sm:pt-3"
-      style={{ background: 'var(--cut-ground, #efe9df)' }}
+      style={{ background: dark ? '#0a0a0c' : 'var(--cut-ground, #efe9df)' }}
     >
       <div className="cut-shell relative">{children}</div>
     </div>

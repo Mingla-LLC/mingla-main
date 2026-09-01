@@ -3,7 +3,7 @@ import { AlertTriangle } from 'lucide-react'
 import {
   AnswerBlock, BreadcrumbSchema, CutoutCard, CutoutFaq, CutoutFooter, CutoutHeading,
   CutoutHero, CutoutNav, CutoutSection, CutoutShell, CutReveal, DeviceCta,
-  FaqSchema, HeroGraphic, OnThisPage, PageSchema, type Crumb,
+  FaqSchema, OnThisPage, PageSchema, type Crumb,
 } from '@/components/cutout'
 import { CutoutAccordionSwap } from '@/components/cutout/host-sections'
 import { EventPagePreview } from '@/components/design-preview/host/event-page-preview'
@@ -84,23 +84,11 @@ export default function EventOrganisersLandingPage() {
       <CutoutHero
         eyebrow="For event organisers"
         line1="Sell out the night,"
-        line2={
-          <>
-            <span className="cut-gradient-brand">not the link.</span>
-            <HeroGraphic />
-          </>
-        }
-        lede="Build the page. Price the tiers. Reach your people. Work the door. Keep the list."
+        line2={<span className="cut-gradient-brand">not the link.</span>}
+        lede="Sell the tickets. Run the door. Keep the guest list."
         image="/marketing/host-hero/world-hosts-create-poster.jpg"
         scrollTo="#answer"
-        actions={
-          <>
-            <DeviceCta surface="host" location="hero" variant="primary" size="lg" />
-            <a href="#answer" className="cut-btn cut-btn-light h-[3.75rem] px-8 font-display text-base focus-ring">
-              How it works
-            </a>
-          </>
-        }
+        action={<DeviceCta surface="host" location="hero" variant="primary" size="lg" />}
       />
 
       {/* 2 — THE ANSWER. Server-rendered, plain HTML, second in the document. */}

@@ -38,10 +38,13 @@ export interface Step {
 export function StepSwitcher({
   steps,
   icons,
+  charts,
   label,
 }: {
   steps: readonly Step[]
   icons: Record<string, React.ReactNode>
+  /** One illustrative chart per step — every section carries a visual. */
+  charts?: Record<string, React.ReactNode>
   label: string
 }) {
   const reduced = useMinglaReducedMotion()
@@ -95,22 +98,29 @@ export function StepSwitcher({
           <p className="mx-auto max-w-xl text-center text-[1.0625rem] leading-relaxed text-[var(--cut-body)]">
             {step.caption}
           </p>
-          <div
-            className={cn(
-              'mt-10 grid gap-5',
-              step.tools.length === 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3',
-            )}
-          >
-            {step.tools.map((tool, i) => (
+          <div className="mt-10 grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:gap-8">
+            <div className={cn('grid gap-5', step.tools.length >= 4 ? 'sm:grid-cols-2' : 'sm:grid-cols-3 lg:grid-cols-1')}>
+              {step.tools.map((tool, i) => (
+                <motion.div
+                  key={tool.id}
+                  initial={reduced ? false : { opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: reduced ? 0 : 0.5, delay: reduced ? 0 : 0.08 + i * 0.07, ease: EASE }}
+                >
+                  <ToolCard tool={tool} icon={icons[tool.id]} />
+                </motion.div>
+              ))}
+            </div>
+            {charts?.[step.id] ? (
               <motion.div
-                key={tool.id}
                 initial={reduced ? false : { opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: reduced ? 0 : 0.5, delay: reduced ? 0 : 0.08 + i * 0.07, ease: EASE }}
+                transition={{ duration: reduced ? 0 : 0.55, delay: reduced ? 0 : 0.18, ease: EASE }}
+                className="lg:sticky lg:top-28 lg:self-start"
               >
-                <ToolCard tool={tool} icon={icons[tool.id]} />
+                {charts[step.id]}
               </motion.div>
-            ))}
+            ) : null}
           </div>
         </motion.div>
       </AnimatePresence>

@@ -6,8 +6,8 @@ import {
 } from 'lucide-react'
 import {
   CutoutCard, CutoutFaq, CutoutFooter, CutoutHeading, CutoutHero, CutoutNav,
-  CutoutSection, CutoutShell, CutReveal, DeviceCta, FaqSchema, HeroGraphic,
-  StepSwitcher, ToolCard,
+  CutoutSection, CutoutShell, CutReveal, DeviceCta, FaqSchema,
+  STEP_CHARTS, StepSwitcher, ToolCard,
 } from '@/components/cutout'
 import {
   ALL_TOOLS, HOST_LIMITS, HOST_STEPS, HOST_SWAP,
@@ -65,24 +65,12 @@ export default function CutoutHostPage() {
       <CutoutHero
         eyebrow="Mingla Host"
         line1="Everything a"
-        line2={
-          <>
-            <span className="cut-gradient-brand">host needs.</span>
-            <HeroGraphic />
-          </>
-        }
-        lede="A site in seconds. Events, trips, stays. Orders, reservations, and the marketing to fill them. One app."
+        line2={<span className="cut-gradient-brand">host needs.</span>}
+        lede="A website in seconds. Bookings that fill. Marketing that brings them back."
         image="/marketing/host-hero/world-hosts-create-poster.jpg"
         video="/marketing/host-hero/world-hosts-create-preview.mp4"
         scrollTo="#tools"
-        actions={
-          <>
-            <DeviceCta surface="host" location="hero" variant="primary" size="lg" />
-            <a href="#tools" className="cut-btn cut-btn-light h-[3.75rem] px-8 font-display text-base focus-ring">
-              See the tools
-            </a>
-          </>
-        }
+        action={<DeviceCta surface="host" location="hero" variant="primary" size="lg" />}
       />
 
       {/* Who it is for. One line of chips — real links, no decoration. */}
@@ -115,7 +103,7 @@ export default function CutoutHostPage() {
           </CutoutHeading>
         </CutReveal>
         <div className="mt-14">
-          <StepSwitcher steps={HOST_STEPS} icons={ICONS} label="Build, sell or grow" />
+          <StepSwitcher steps={HOST_STEPS} icons={ICONS} charts={STEP_CHARTS} label="Build, sell or grow" />
         </div>
       </CutoutSection>
 
