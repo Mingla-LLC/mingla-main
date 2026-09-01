@@ -117,10 +117,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Delegated wrapper contract: vercel@53.2.0 --access private --allow-overwrite false
-          node scripts/sites/vercel-blob-transport.mjs put \
+          # HTTP parity contract: vercel@53.2.0 --access private --allow-overwrite false
+          node scripts/sites/vercel-blob-http-transport.mjs put \
             "$RUNNER_TEMP/sites-backup/$BUNDLE_NAME" \
-            "recovery/sites/$BUNDLE_NAME"
+            "recovery/sites/$BUNDLE_NAME" \
+            "$RUNNER_TEMP/sites-backup/blob-upload.json"
 
       - name: Download and verify latest private bundle
         id: readback
@@ -132,10 +133,11 @@ jobs:
         run: |
           set -euo pipefail
           readback="$RUNNER_TEMP/sites-backup/private-readback.msbk"
-          # Delegated wrapper contract: vercel@53.2.0 --access private
-          node scripts/sites/vercel-blob-transport.mjs get \
+          # HTTP parity contract: vercel@53.2.0 --access private
+          node scripts/sites/vercel-blob-http-transport.mjs get \
             "recovery/sites/$BUNDLE_NAME" \
-            "$readback"
+            "$readback" \
+            "$RUNNER_TEMP/sites-backup/blob-upload.json"
           actual_sha256="$(sha256sum "$readback" | cut -d ' ' -f 1)"
           if [ "$actual_sha256" != "$EXPECTED_SHA256" ]; then
             echo "SITES_BLOB_ERROR code=PRIVATE_READBACK_DIGEST_MISMATCH" >&2
