@@ -200,6 +200,134 @@ BEGIN
 END
 $h5$;
 
+-- H6: elapsed master occurrences are not current inventory. All three
+-- scheduled offering families reject a fresh search promotion, resolve stale,
+-- expose no live action, and leave the sitemap even if their status row still
+-- says scheduled.
+DO $h6$
+DECLARE
+  r record;
+  v jsonb;
+  v_checks jsonb;
+  v_source_updated_at timestamptz;
+  v_rejected int := 0;
+  v_count int;
+BEGIN
+  UPDATE public.event_dates
+  SET start_at=clock_timestamp()-interval '10 day',
+      end_at=clock_timestamp()-interval '9 day'
+  WHERE event_id IN (
+    '29860000-0000-4000-8000-000000000101',
+    '29860000-0000-4000-8000-000000000102',
+    '29860000-0000-4000-8000-000000000103')
+    AND is_master;
+
+  FOR r IN SELECT * FROM i2986_ids WHERE kind IN ('event','trip','experience') ORDER BY kind LOOP
+    v_checks := jsonb_build_object(
+      'facts_verified',true,'canonical_verified',true,'visible_html_verified',true,
+      'metadata_verified',true,'schema_verified',true,'image_rights_verified',true,'action_verified',true);
+    IF r.kind='event' THEN
+      v_checks := v_checks||'{"schedule_verified":true,"location_verified":true,"organizer_verified":true,"price_or_free_verified":true,"privacy_moderation_verified":true}'::jsonb;
+    ELSIF r.kind='trip' THEN
+      v_checks := v_checks||'{"schedule_verified":true,"location_verified":true,"itinerary_verified":true,"destination_verified":true,"operator_verified":true,"fulfillment_verified":true,"price_or_inquiry_verified":true,"availability_verified":true}'::jsonb;
+    ELSE
+      v_checks := v_checks||'{"schedule_verified":true,"location_verified":true,"operator_verified":true,"duration_verified":true,"inclusions_verified":true,"fulfillment_verified":true,"price_or_inquiry_verified":true,"availability_verified":true}'::jsonb;
+    END IF;
+    v_source_updated_at := (
+      public.public_search_source_facts(r.path,r.kind)->'facts'->>'sourceUpdatedAt'
+    )::timestamptz;
+    SET LOCAL ROLE service_role;
+    PERFORM set_config('request.jwt.claim.role','service_role',true);
+    BEGIN
+      PERFORM public.upsert_public_search_document(
+        r.kind,r.id,r.path,'search_ready',NULL,v_checks,v_source_updated_at,
+        now(),now()+interval '30 day','elapsed offering rejection proof','issue_2986_pg_happy',false);
+    EXCEPTION WHEN OTHERS THEN
+      IF SQLERRM LIKE '%public_search_readiness_incomplete%' THEN
+        v_rejected := v_rejected+1;
+      ELSE
+        RAISE;
+      END IF;
+    END;
+    RESET ROLE;
+  END LOOP;
+  IF v_rejected<>3 THEN
+    RAISE EXCEPTION 'ISSUE-2986 H6 FAIL: only % of 3 elapsed offering promotions were rejected',v_rejected;
+  END IF;
+
+  FOR r IN SELECT * FROM i2986_ids WHERE kind IN ('event','trip','experience') ORDER BY kind LOOP
+    SET LOCAL ROLE anon;
+    PERFORM set_config('request.jwt.claim.role','anon',true);
+    v:=public.resolve_public_search_document(r.path);
+    RESET ROLE;
+    IF v->>'state'<>'stale' OR (v->'facts'->>'actionAvailable')::boolean IS DISTINCT FROM false THEN
+      RAISE EXCEPTION 'ISSUE-2986 H6 FAIL: elapsed % retained search/action truth: %',r.kind,v;
+    END IF;
+  END LOOP;
+  SET LOCAL ROLE anon;
+  PERFORM set_config('request.jwt.claim.role','anon',true);
+  SELECT count(*) INTO v_count FROM public.list_public_search_sitemap();
+  RESET ROLE;
+  IF v_count<>0 THEN
+    RAISE EXCEPTION 'ISSUE-2986 H6 FAIL: sitemap retained % rows after every promoted offering elapsed',v_count;
+  END IF;
+END
+$h6$;
+
+-- H7: private source eligibility wins over every factless lifecycle overlay.
+-- Archive, redirect and gone labels must not expose an unverified physical
+-- brand's title, description or media.
+DO $h7$
+DECLARE v jsonb; v_state text;
+BEGIN
+  INSERT INTO auth.users(id,instance_id,aud,role,email,encrypted_password,created_at,updated_at)
+  VALUES ('29860000-0000-4000-8000-000000000601','00000000-0000-0000-0000-000000000000',
+          'authenticated','authenticated','private-i2986-happy@example.test','x',now(),now());
+  INSERT INTO public.creator_accounts(id) VALUES ('29860000-0000-4000-8000-000000000601');
+  INSERT INTO public.brands(
+    id,account_id,name,slug,kind,claim_status,description,cover_media_url,cover_media_type,
+    default_currency,pricing_currency)
+  VALUES (
+    '29860000-0000-4000-8000-000000000610','29860000-0000-4000-8000-000000000601',
+    'Issue 2986 Private Brand','i2986private','physical','none',
+    'Private brand facts used to prove that lifecycle overlays cannot bypass source eligibility.',
+    'https://images.example.test/i2986-private.jpg','image','USD','usd');
+
+  FOREACH v_state IN ARRAY ARRAY['expired_archived','redirected','gone'] LOOP
+    SET LOCAL ROLE service_role;
+    PERFORM set_config('request.jwt.claim.role','service_role',true);
+    PERFORM public.upsert_public_search_document(
+      'brand','29860000-0000-4000-8000-000000000610','/b/i2986private',v_state,
+      CASE WHEN v_state='redirected' THEN '/b/i2986brand' ELSE NULL END,
+      '{}',now(),now(),now()+interval '30 day','private overlay precedence proof','issue_2986_pg_happy',false);
+    RESET ROLE;
+
+    SET LOCAL ROLE anon;
+    PERFORM set_config('request.jwt.claim.role','anon',true);
+    v:=public.resolve_public_search_document('/b/i2986private');
+    RESET ROLE;
+    IF v->>'state' IS DISTINCT FROM 'draft' OR v->'facts' IS DISTINCT FROM 'null'::jsonb THEN
+      RAISE EXCEPTION 'ISSUE-2986 H7 FAIL: % overlay exposed private facts: %',v_state,v;
+    END IF;
+  END LOOP;
+
+  -- Even a source-visible Host cannot borrow an offering-only archive state.
+  SET LOCAL ROLE service_role;
+  PERFORM set_config('request.jwt.claim.role','service_role',true);
+  PERFORM public.upsert_public_search_document(
+    'brand','29860000-0000-4000-8000-000000000010','/b/i2986brand','expired_archived',NULL,
+    '{}',now(),now(),now()+interval '30 day','invalid brand archive proof','issue_2986_pg_happy',false);
+  RESET ROLE;
+  SET LOCAL ROLE anon;
+  PERFORM set_config('request.jwt.claim.role','anon',true);
+  v:=public.resolve_public_search_document('/b/i2986brand');
+  RESET ROLE;
+  IF v->>'state' IS DISTINCT FROM 'draft' OR v->'facts' IS DISTINCT FROM 'null'::jsonb THEN
+    RAISE EXCEPTION 'ISSUE-2986 H7 FAIL: offering-only archive state exposed visible brand facts: %',v;
+  END IF;
+END
+$h7$;
+
 -- R1: pre-fix behavior had no approved overlay and could never distinguish a
 -- verified page from ordinary public_noindex. It must fail the same readiness
 -- assertion that the real resolver passes in H3.

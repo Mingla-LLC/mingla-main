@@ -130,7 +130,8 @@ BEGIN
         AND length(btrim(COALESCE(e.description,''))) >= 40
         AND e.cover_media_url ~ '^https://'
         AND (e.is_online OR NULLIF(btrim(e.location_text),'') IS NOT NULL OR NULLIF(btrim(e.city),'') IS NOT NULL)
-        AND EXISTS (SELECT 1 FROM public.event_dates d WHERE d.event_id = e.id AND d.is_master)
+        AND EXISTS (SELECT 1 FROM public.event_dates d
+                    WHERE d.event_id = e.id AND d.is_master AND d.end_at > now())
         AND (e.event_type='rsvp' OR EXISTS (
           SELECT 1 FROM public.ticket_types tt WHERE tt.event_id=e.id
             AND tt.deleted_at IS NULL AND NOT tt.is_hidden AND NOT tt.is_disabled
@@ -150,7 +151,8 @@ BEGIN
         AND length(btrim(COALESCE(e.description,''))) >= 40
         AND e.cover_media_url ~ '^https://'
         AND NULLIF(btrim(COALESCE(e.destination_text, e.theme #>> '{business_trip,destinationLocationText}')),'') IS NOT NULL
-        AND EXISTS (SELECT 1 FROM public.event_dates d WHERE d.event_id=e.id AND d.is_master)
+        AND EXISTS (SELECT 1 FROM public.event_dates d
+                    WHERE d.event_id=e.id AND d.is_master AND d.end_at > now())
         AND EXISTS (
           SELECT 1 FROM public.ticket_types tt WHERE tt.event_id=e.id
             AND tt.deleted_at IS NULL AND NOT tt.is_hidden AND NOT tt.is_disabled
@@ -169,7 +171,8 @@ BEGIN
         AND length(btrim(e.title)) >= 4
         AND length(btrim(COALESCE(e.description,''))) >= 40
         AND e.cover_media_url ~ '^https://'
-        AND EXISTS (SELECT 1 FROM public.event_dates d WHERE d.event_id=e.id AND d.is_master)
+        AND EXISTS (SELECT 1 FROM public.event_dates d
+                    WHERE d.event_id=e.id AND d.is_master AND d.end_at > now())
         AND (e.is_online OR EXISTS (SELECT 1 FROM public.experience_stops s WHERE s.event_id=e.id))
         AND EXISTS (
           SELECT 1 FROM public.ticket_types tt WHERE tt.event_id=e.id
@@ -293,7 +296,8 @@ BEGIN
        OR NOT public.public_search_source_is_search_ready(NEW.entity_kind,NEW.entity_id)
        OR v_source->>'sourceState' IS DISTINCT FROM 'visible'
        OR v_source->'facts'->>'id' IS DISTINCT FROM NEW.entity_id::text
-       OR v_source_updated_at IS NULL OR NEW.source_updated_at < v_source_updated_at THEN
+       OR v_source_updated_at IS NULL
+       OR NEW.source_updated_at IS DISTINCT FROM v_source_updated_at THEN
       RAISE EXCEPTION 'public_search_readiness_incomplete' USING ERRCODE='22023';
     END IF;
     NEW.search_ready_at := COALESCE(NEW.search_ready_at,now());
@@ -387,7 +391,10 @@ BEGIN
           (SELECT CASE WHEN public.issue_2489_address_withheld(e.theme) THEN s.place_name ELSE COALESCE(NULLIF(s.address,''),s.place_name) END
              FROM public.experience_stops s WHERE s.event_id=e.id ORDER BY s.stop_order LIMIT 1)) END,
         'priceCents',pricing.price_cents,'currency',pricing.currency,'isFree',pricing.is_free,
-        'actionAvailable',CASE WHEN e.event_type='rsvp' THEN true ELSE pricing.price_cents IS NOT NULL END,
+        'actionAvailable',CASE
+          WHEN e.status NOT IN ('scheduled','live') OR ed.end_at IS NULL OR ed.end_at <= now() THEN false
+          WHEN e.event_type='rsvp' THEN true
+          ELSE pricing.price_cents IS NOT NULL END,
         'sourceUpdatedAt',GREATEST(
           e.updated_at,b.updated_at,COALESCE(ed.updated_at,e.updated_at),
           COALESCE(pricing.updated_at,e.updated_at),COALESCE(stop_meta.updated_at,e.updated_at)))) END
@@ -419,7 +426,11 @@ BEGIN
         SELECT 1 FROM public.events e WHERE e.brand_id=b.id AND e.status IN ('scheduled','live','ended','cancelled')
           AND public.pg_offering_visibility_gate(e.visibility,e.deleted_at,'direct')))
       THEN 'visible' ELSE 'draft' END,
-      CASE WHEN b.deleted_at IS NULL AND ca.deleted_at IS NULL THEN jsonb_strip_nulls(jsonb_build_object(
+      CASE WHEN b.deleted_at IS NULL AND ca.deleted_at IS NULL AND (
+        b.kind IS DISTINCT FROM 'physical' OR b.claim_status='verified' OR EXISTS (
+          SELECT 1 FROM public.events e WHERE e.brand_id=b.id AND e.status IN ('scheduled','live','ended','cancelled')
+            AND public.pg_offering_visibility_gate(e.visibility,e.deleted_at,'direct')))
+      THEN jsonb_strip_nulls(jsonb_build_object(
         'kind','brand','id',b.id,'brandSlug',b.slug,'brandName',b.name,'title',b.name,
         'description',b.description,'imageUrl',COALESCE(b.cover_media_url,b.profile_photo_url),
         'imageType',COALESCE(b.cover_media_type,'image'),
@@ -480,6 +491,18 @@ BEGIN
   SELECT * INTO v_doc FROM public.public_search_documents d WHERE d.canonical_path=p_path;
   v_has_doc := FOUND;
 
+  v_source := public.public_search_source_facts(p_path,v_kind);
+  v_source_state := v_source->>'sourceState';
+  v_facts := v_source->'facts';
+
+  -- A lifecycle overlay is never permission to reveal a private/draft source.
+  -- Missing sources may still carry factless gone/redirected history, but an
+  -- existing ineligible source always fails closed before any overlay state.
+  IF v_source_state='draft' THEN
+    RETURN jsonb_build_object('valid',true,'kind',v_kind,'state','draft',
+      'canonicalPath',p_path,'integrityOk',true,'facts',NULL);
+  END IF;
+
   IF v_has_doc AND v_doc.lifecycle_state='redirected' THEN
     RETURN jsonb_build_object('valid',true,'kind',v_kind,'state','redirected','canonicalPath',p_path,
       'redirectTargetPath',v_doc.redirect_target_path,'integrityOk',true);
@@ -487,10 +510,6 @@ BEGIN
   IF v_has_doc AND v_doc.lifecycle_state='gone' THEN
     RETURN jsonb_build_object('valid',true,'kind',v_kind,'state','gone','canonicalPath',p_path,'integrityOk',true);
   END IF;
-
-  v_source := public.public_search_source_facts(p_path,v_kind);
-  v_source_state := v_source->>'sourceState';
-  v_facts := v_source->'facts';
 
   IF v_has_doc AND v_facts IS NOT NULL AND v_facts <> 'null'::jsonb THEN
     v_integrity := v_doc.entity_kind=v_kind AND v_doc.entity_id=(v_facts->>'id')::uuid;
@@ -501,6 +520,16 @@ BEGIN
   IF NOT v_integrity THEN
     RETURN jsonb_build_object('valid',true,'kind',v_kind,'state','dependency_failure',
       'canonicalPath',p_path,'integrityOk',false);
+  END IF;
+
+  -- Archive is fact-bearing and therefore valid only for source-confirmed
+  -- ended/cancelled offerings. Any other kind/state pairing fails closed.
+  IF v_has_doc AND v_doc.lifecycle_state='expired_archived' AND (
+       v_kind NOT IN ('event','trip','experience')
+       OR v_facts->>'status' IS NULL
+       OR v_facts->>'status' NOT IN ('ended','cancelled')) THEN
+    RETURN jsonb_build_object('valid',true,'kind',v_kind,'state','draft',
+      'canonicalPath',p_path,'integrityOk',true,'facts',NULL);
   END IF;
 
   IF v_has_doc AND v_doc.lifecycle_state='expired_archived' THEN
@@ -516,7 +545,7 @@ BEGIN
     OR NOT public.public_search_validation_complete(v_doc.entity_kind,v_doc.validation_checks)
     OR NOT public.public_search_source_is_search_ready(v_doc.entity_kind,v_doc.entity_id)
     OR v_doc.source_updated_at IS NULL
-    OR v_doc.source_updated_at < (v_facts->>'sourceUpdatedAt')::timestamptz) THEN
+    OR v_doc.source_updated_at IS DISTINCT FROM (v_facts->>'sourceUpdatedAt')::timestamptz) THEN
     v_effective := 'stale';
   ELSE
     v_effective := v_doc.lifecycle_state;
@@ -552,6 +581,7 @@ AS $function$
     AND public.public_search_source_is_search_ready(d.entity_kind,d.entity_id)
     AND (public.public_search_source_facts(d.canonical_path,d.entity_kind)->'facts'->>'id')=d.entity_id::text
     AND d.source_updated_at >= (public.public_search_source_facts(d.canonical_path,d.entity_kind)->'facts'->>'sourceUpdatedAt')::timestamptz
+    AND d.source_updated_at <= (public.public_search_source_facts(d.canonical_path,d.entity_kind)->'facts'->>'sourceUpdatedAt')::timestamptz
   ORDER BY d.canonical_path;
 $function$;
 
@@ -576,7 +606,10 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $function$
-DECLARE v_row public.public_search_documents%ROWTYPE;
+DECLARE
+  v_row public.public_search_documents%ROWTYPE;
+  v_source jsonb;
+  v_derived_source_updated_at timestamptz;
 BEGIN
   -- Authorization is intentionally the first executable guard.
   IF auth.role() IS DISTINCT FROM 'service_role' AND NOT public.is_admin_user() THEN
@@ -585,13 +618,29 @@ BEGIN
   IF length(btrim(COALESCE(p_change_reason,''))) < 3 THEN RAISE EXCEPTION 'reason_required'; END IF;
   IF length(btrim(COALESCE(p_change_source,''))) < 2 THEN RAISE EXCEPTION 'source_required'; END IF;
 
+  -- The caller timestamp is only a bounded review/concurrency hint. The
+  -- authoritative source version is derived inside this definer and is the
+  -- only value ever persisted, so an admin payload cannot pin future freshness.
+  v_source := public.public_search_source_facts(p_canonical_path,p_entity_kind);
+  BEGIN
+    v_derived_source_updated_at := (v_source->'facts'->>'sourceUpdatedAt')::timestamptz;
+  EXCEPTION WHEN OTHERS THEN
+    v_derived_source_updated_at := NULL;
+  END;
+  IF p_lifecycle_state='search_ready' AND (
+       p_source_updated_at IS NULL
+       OR v_derived_source_updated_at IS NULL
+       OR p_source_updated_at > clock_timestamp()+interval '5 minutes') THEN
+    RAISE EXCEPTION 'public_search_readiness_incomplete' USING ERRCODE='22023';
+  END IF;
+
   INSERT INTO public.public_search_documents(
     entity_kind,entity_id,canonical_path,lifecycle_state,redirect_target_path,
     validation_checks,source_updated_at,verified_at,review_due_at,change_reason,
     change_source,updated_by,is_test_record)
   VALUES (
     p_entity_kind,p_entity_id,p_canonical_path,p_lifecycle_state,p_redirect_target_path,
-    COALESCE(p_validation_checks,'{}'::jsonb),p_source_updated_at,p_verified_at,p_review_due_at,
+    COALESCE(p_validation_checks,'{}'::jsonb),v_derived_source_updated_at,p_verified_at,p_review_due_at,
     p_change_reason,p_change_source,auth.uid(),COALESCE(p_is_test_record,false))
   ON CONFLICT (canonical_path) DO UPDATE SET
     entity_kind=EXCLUDED.entity_kind,entity_id=EXCLUDED.entity_id,

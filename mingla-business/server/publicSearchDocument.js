@@ -248,6 +248,85 @@ const detailRows = (facts) => {
   return rows;
 };
 
+// Exact browser runtime embedded in the no-JavaScript-safe public document.
+// Kept as one owner so the shipped interaction can be executed verbatim in
+// Node's synthetic-browser regression harness.
+const browserRuntimeScript = (canonicalUrl) => `(function(){
+  var canonical=${escapeJsonForHtml(canonicalUrl)};
+  var share=document.getElementById("mingla-share");
+  var shareStatus=document.getElementById("mingla-share-status");
+  var fallback=document.getElementById("mingla-share-fallback");
+  var fallbackInput=document.getElementById("mingla-share-fallback-input");
+  var runtimeStatus=document.getElementById("mingla-runtime-status");
+  function setShareStatus(message,showFallback){
+    if(shareStatus)shareStatus.textContent=message;
+    if(fallback)fallback.hidden=!showFallback;
+  }
+  function finishShare(){
+    if(!share)return;
+    share.disabled=false;
+    share.setAttribute("aria-busy","false");
+  }
+  function showBootstrapFailure(){
+    if(runtimeStatus)runtimeStatus.textContent="Interactive features could not load. This page and its links still work.";
+  }
+  if(fallbackInput){
+    var selectFallback=function(){if(typeof fallbackInput.select==="function")fallbackInput.select();};
+    fallbackInput.addEventListener("focus",selectFallback);
+    fallbackInput.addEventListener("click",selectFallback);
+  }
+  if(share){
+    share.addEventListener("click",async function(){
+      share.disabled=true;
+      share.setAttribute("aria-busy","true");
+      if(typeof navigator.share==="function"){
+        setShareStatus("Opening sharing options…",false);
+        try{
+          await navigator.share({title:document.title,url:canonical});
+          setShareStatus("Shared successfully.",false);
+        }catch(error){
+          if(error&&error.name==="AbortError")setShareStatus("Share cancelled. Select and copy the link below if you still want to share it.",true);
+          else setShareStatus("Sharing failed. Select and copy the link below.",true);
+        }finally{finishShare();}
+        return;
+      }
+      if(navigator.clipboard&&typeof navigator.clipboard.writeText==="function"){
+        setShareStatus("Copying link…",false);
+        try{
+          await navigator.clipboard.writeText(canonical);
+          setShareStatus("Link copied.",false);
+        }catch(error){
+          setShareStatus("Could not copy automatically. Select and copy the link below.",true);
+        }finally{finishShare();}
+        return;
+      }
+      setShareStatus("Sharing is not available here. Select and copy the link below.",true);
+      finishShare();
+    });
+  }
+  if(typeof fetch!=="function"){
+    showBootstrapFailure();
+    return;
+  }
+  fetch("/index.html",{credentials:"same-origin",headers:{"x-mingla-public-bootstrap":"1"}})
+    .then(function(response){if(!response.ok)throw new Error("bootstrap_http");return response.text();})
+    .then(function(html){
+      if(!html)throw new Error("bootstrap_empty");
+      var parsed=new DOMParser().parseFromString(html,"text/html");
+      var scripts=parsed.querySelectorAll("script[src]");
+      if(!scripts.length)throw new Error("bootstrap_scripts_missing");
+      scripts.forEach(function(source){
+        if(document.querySelector('script[data-mingla-expo="'+source.src+'"]'))return;
+        var script=document.createElement("script");
+        script.src=source.src;
+        script.type=source.type||"text/javascript";
+        script.defer=true;
+        script.dataset.minglaExpo=source.src;
+        document.body.appendChild(script);
+      });
+    }).catch(function(){showBootstrapFailure();});
+})();`;
+
 const renderVisibleDocument = ({ facts, state, canonicalPath, attributionQuery = "" }) => {
   const canonicalUrl = `${PUBLIC_HOST_ORIGIN}${canonicalPath}`;
   const title = documentTitle(facts);
@@ -282,7 +361,7 @@ const renderVisibleDocument = ({ facts, state, canonicalPath, attributionQuery =
   <style>
     :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#080706;color:#fff8f1}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% 5%,rgba(244,124,32,.2),transparent 30rem),#080706;color:#fff8f1}
-    a{color:inherit}.shell{max-width:1120px;margin:0 auto;padding:24px clamp(18px,4vw,56px) 64px}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-weight:900;letter-spacing:.02em}.brand-logo{display:block;width:auto;height:42px;max-width:170px;object-fit:contain}.hero{display:grid;gap:clamp(28px,5vw,64px);align-items:center;min-height:calc(100vh - 100px);padding:52px 0}.hero.has-image{grid-template-columns:minmax(0,1fr) minmax(280px,.78fr)}.eyebrow{color:#ff9a4d;font-size:.82rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase}.status{display:inline-flex;margin:18px 0 0;padding:8px 12px;border:1px solid rgba(255,154,77,.42);border-radius:999px;color:#ffd5b2}.status[role="status"]{border-color:#f2b84b;color:#ffe0a0}.hero h1{margin:14px 0 18px;font-size:clamp(2.8rem,7vw,6.8rem);line-height:.92;letter-spacing:-.05em}.summary{max-width:720px;margin:0;color:#e5d5c7;font-size:clamp(1.08rem,2vw,1.35rem);line-height:1.58}.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:30px 0}.fact{padding:16px;border:1px solid rgba(255,255,255,.13);border-radius:16px;background:rgba(255,255,255,.05)}.fact dt{color:#c9b8aa;font-size:.78rem;text-transform:uppercase;letter-spacing:.1em}.fact dd{margin:7px 0 0;font-weight:750}.actions{display:flex;flex-wrap:wrap;gap:12px}.cta,.share{display:inline-flex;min-height:52px;align-items:center;justify-content:center;padding:0 24px;border-radius:999px;font:inherit;font-weight:900}.cta{background:#f47c20;color:#090807;text-decoration:none}.share{border:1px solid rgba(255,255,255,.24);background:transparent;color:#fff8f1;cursor:pointer}.share:focus-visible,.cta:focus-visible,.brand:focus-visible{outline:3px solid #fff;outline-offset:4px}.cover{width:100%;max-height:72vh;aspect-ratio:4/5;border-radius:30px;object-fit:cover;border:1px solid rgba(255,255,255,.14);box-shadow:0 28px 80px rgba(0,0,0,.45)}.trust{border-top:1px solid rgba(255,255,255,.12);padding-top:24px;color:#a99a8f;font-size:.9rem}@media(max-width:780px){.hero.has-image{grid-template-columns:1fr}.hero{min-height:auto;padding-top:64px}.cover{aspect-ratio:16/10;order:-1}}
+    a{color:inherit}.shell{max-width:1120px;margin:0 auto;padding:24px clamp(18px,4vw,56px) 64px}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-weight:900;letter-spacing:.02em}.brand-logo{display:block;width:auto;height:42px;max-width:170px;object-fit:contain}.hero{display:grid;gap:clamp(28px,5vw,64px);align-items:center;min-height:calc(100vh - 100px);padding:52px 0}.hero.has-image{grid-template-columns:minmax(0,1fr) minmax(280px,.78fr)}.eyebrow{color:#ff9a4d;font-size:.82rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase}.status{display:inline-flex;margin:18px 0 0;padding:8px 12px;border:1px solid rgba(255,154,77,.42);border-radius:999px;color:#ffd5b2}.status[role="status"]{border-color:#f2b84b;color:#ffe0a0}.hero h1{margin:14px 0 18px;font-size:clamp(2.8rem,7vw,6.8rem);line-height:.92;letter-spacing:-.05em}.summary{max-width:720px;margin:0;color:#e5d5c7;font-size:clamp(1.08rem,2vw,1.35rem);line-height:1.58}.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:30px 0}.fact{padding:16px;border:1px solid rgba(255,255,255,.13);border-radius:16px;background:rgba(255,255,255,.05)}.fact dt{color:#c9b8aa;font-size:.78rem;text-transform:uppercase;letter-spacing:.1em}.fact dd{margin:7px 0 0;font-weight:750}.actions{display:flex;flex-wrap:wrap;gap:12px}.cta,.share{display:inline-flex;min-height:52px;align-items:center;justify-content:center;padding:0 24px;border-radius:999px;font:inherit;font-weight:900}.cta{background:#f47c20;color:#090807;text-decoration:none}.share{border:1px solid rgba(255,255,255,.24);background:transparent;color:#fff8f1;cursor:pointer}.share:disabled{cursor:wait;opacity:.7}.share:focus-visible,.cta:focus-visible,.brand:focus-visible,.share-fallback input:focus-visible{outline:3px solid #fff;outline-offset:4px}.share-feedback{min-height:1.5rem;margin:12px 0 0;color:#ffe0a0}.share-fallback{max-width:680px;margin:12px 0 0;padding:14px;border:1px solid rgba(255,255,255,.18);border-radius:14px;background:rgba(255,255,255,.05)}.share-fallback p{margin:0 0 8px;color:#e5d5c7}.share-fallback input{width:100%;padding:10px;border:1px solid rgba(255,255,255,.24);border-radius:9px;background:#15120f;color:#fff8f1;font:inherit;user-select:all}.runtime-status{min-height:1.3rem;margin:16px 0 0;color:#f2b84b}.cover{width:100%;max-height:72vh;aspect-ratio:4/5;border-radius:30px;object-fit:cover;border:1px solid rgba(255,255,255,.14);box-shadow:0 28px 80px rgba(0,0,0,.45)}.trust{border-top:1px solid rgba(255,255,255,.12);padding-top:24px;color:#a99a8f;font-size:.9rem}@media(max-width:780px){.hero.has-image{grid-template-columns:1fr}.hero{min-height:auto;padding-top:64px}.cover{aspect-ratio:16/10;order:-1}}
   </style>
 </head>
 <body><div id="root">
@@ -295,13 +374,16 @@ const renderVisibleDocument = ({ facts, state, canonicalPath, attributionQuery =
         <h1>${escapeHtml(text(facts.title, labelForKind(facts.kind)))}</h1>
         <p class="summary">${escapeHtml(description)}</p>
         ${rows.length ? `<dl class="facts">${rows.map(([term, value]) => `<div class="fact"><dt>${escapeHtml(term)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>` : ""}
-        <div class="actions">${action ? `<a class="cta" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>` : ""}<button class="share" id="mingla-share" type="button">Share</button></div>
+        <div class="actions">${action ? `<a class="cta" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>` : ""}<button class="share" id="mingla-share" type="button" aria-describedby="mingla-share-status mingla-share-fallback">Share</button></div>
+        <p class="share-feedback" id="mingla-share-status" role="status" aria-live="polite">Share this page using your device or copy its canonical link.</p>
+        <div class="share-fallback" id="mingla-share-fallback" hidden><p>Select and copy this canonical Mingla link:</p><input id="mingla-share-fallback-input" aria-label="Canonical Mingla link" type="text" readonly value="${escapeHtml(canonicalUrl)}" /></div>
+        <p class="runtime-status" id="mingla-runtime-status" role="status" aria-live="polite"></p>
       </div>
       ${image ? `<img class="cover" src="${escapeHtml(image)}" alt="${escapeHtml(text(facts.imageAlt, `${text(facts.title)} cover image`))}" />` : ""}
     </article>
     <footer class="trust">Public facts supplied by ${escapeHtml(text(facts.brandName, "the host"))} and served from Mingla’s authoritative Host domain.</footer>
   </main></div>
-  <script>(function(){var canonical=${escapeJsonForHtml(canonicalUrl)};var share=document.getElementById("mingla-share");if(share){share.addEventListener("click",function(){if(navigator.share){navigator.share({title:document.title,url:canonical}).catch(function(){});}else if(navigator.clipboard){navigator.clipboard.writeText(canonical).then(function(){share.textContent="Link copied";}).catch(function(){});}});}fetch("/index.html",{credentials:"same-origin",headers:{"x-mingla-public-bootstrap":"1"}}).then(function(response){return response.ok?response.text():"";}).then(function(html){if(!html)return;var parsed=new DOMParser().parseFromString(html,"text/html");parsed.querySelectorAll("script[src]").forEach(function(source){if(document.querySelector('script[data-mingla-expo="'+source.src+'"]'))return;var script=document.createElement("script");script.src=source.src;script.type=source.type||"text/javascript";script.defer=true;script.dataset.minglaExpo=source.src;document.body.appendChild(script);});}).catch(function(){});})();</script>
+  <script>${browserRuntimeScript(canonicalUrl)}</script>
 </body>
 </html>`;
 };
@@ -312,15 +394,12 @@ const renderStatePage = ({ status, heading, message }) => `<!doctype html>
 <style>:root{color-scheme:dark;font-family:Inter,system-ui,sans-serif}body{min-height:100vh;margin:0;display:grid;place-items:center;background:#080706;color:#fff8f1}.state{max-width:680px;padding:40px;text-align:center}.code{color:#f47c20;font-weight:900;letter-spacing:.16em}h1{font-size:clamp(2.6rem,7vw,5.5rem);margin:14px 0}p{color:#d7c6b8;font-size:1.2rem;line-height:1.6}a{display:inline-block;margin-top:18px;color:#ff9a4d}</style></head>
 <body><main class="state"><div class="code">${status}</div><h1>${escapeHtml(heading)}</h1><p>${escapeHtml(message)}</p><a href="https://usemingla.com/">Explore Mingla</a></main></body></html>`;
 
-const cacheForState = (state) => {
-  if (state === "search_ready" || state === "public_noindex") return "public, s-maxage=300, stale-while-revalidate=3600";
-  if (state === "stale" || state === "expired_archived") return "public, s-maxage=60, stale-while-revalidate=300";
-  if (state === "redirected") return "public, s-maxage=300";
-  return "private, no-store, max-age=0";
-};
+const cacheForState = () => "private, no-store, max-age=0, must-revalidate";
 
 const setBaseHeaders = (res, state) => {
   res.setHeader("cache-control", cacheForState(state));
+  res.setHeader("cdn-cache-control", "no-store");
+  res.setHeader("vercel-cdn-cache-control", "no-store");
   res.setHeader("x-robots-tag", state === "search_ready" ? "index, follow" : "noindex");
   res.setHeader("content-security-policy", "default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; connect-src 'self' https://*.supabase.co https://us.i.posthog.com https://*.posthog.com https://www.google-analytics.com https://region1.google-analytics.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
   res.setHeader("referrer-policy", "strict-origin-when-cross-origin");
@@ -420,6 +499,7 @@ module.exports = {
   APEX_ORGANIZATION_ID,
   PUBLIC_HOST_ORIGIN,
   attributionQueryFromRequest,
+  browserRuntimeScript,
   buildPublicPath,
   buildRedirectTarget,
   firstQueryValue,

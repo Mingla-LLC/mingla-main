@@ -162,3 +162,41 @@ describe("#2986 Business retirement compatibility remains public-route-only", ()
     expect(platformUrl).toContain("? HOST_PUBLIC_ORIGIN");
   });
 });
+
+describe("#2986 lifecycle rework keeps source truth authoritative", () => {
+  it("derives the persisted source version and rejects forged future review hints", () => {
+    const upsert = functionBody("upsert_public_search_document");
+    const trigger = functionBody("tg_validate_public_search_document");
+    const resolver = functionBody("resolve_public_search_document");
+    const sitemap = functionBody("list_public_search_sitemap");
+
+    expect(upsert).toContain("v_source := public.public_search_source_facts(p_canonical_path,p_entity_kind)");
+    expect(upsert).toContain("p_source_updated_at > clock_timestamp()+interval '5 minutes'");
+    expect(upsert).toContain("COALESCE(p_validation_checks,'{}'::jsonb),v_derived_source_updated_at");
+    expect(upsert).not.toContain("COALESCE(p_validation_checks,'{}'::jsonb),p_source_updated_at");
+    expect(trigger).toContain("NEW.source_updated_at IS DISTINCT FROM v_source_updated_at");
+    expect(resolver).toContain("v_doc.source_updated_at IS DISTINCT FROM (v_facts->>'sourceUpdatedAt')::timestamptz");
+    expect(sitemap).toContain("d.source_updated_at <=");
+  });
+
+  it("rejects elapsed offering inventory and disables its public action", () => {
+    const readiness = functionBody("public_search_source_is_search_ready");
+    const source = functionBody("public_search_source_facts");
+
+    expect(occurrences(readiness, "d.end_at > now()")).toBe(3);
+    expect(source).toContain("e.status NOT IN ('scheduled','live') OR ed.end_at IS NULL OR ed.end_at <= now()");
+  });
+
+  it("evaluates source privacy before archive, redirect or gone overlays", () => {
+    const resolver = functionBody("resolve_public_search_document");
+    const source = functionBody("public_search_source_facts");
+    const sourceGate = resolver.indexOf("IF v_source_state='draft' THEN");
+
+    expect(sourceGate).toBeGreaterThanOrEqual(0);
+    expect(sourceGate).toBeLessThan(resolver.indexOf("v_doc.lifecycle_state='redirected'"));
+    expect(sourceGate).toBeLessThan(resolver.indexOf("v_doc.lifecycle_state='expired_archived'"));
+    expect(resolver).toContain("v_kind NOT IN ('event','trip','experience')");
+    expect(resolver).toContain("v_facts->>'status' NOT IN ('ended','cancelled')");
+    expect(source).toContain("b.kind IS DISTINCT FROM 'physical' OR b.claim_status='verified'");
+  });
+});

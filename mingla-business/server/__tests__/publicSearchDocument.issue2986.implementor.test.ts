@@ -279,3 +279,40 @@ describe("#2986 source wiring is one resolver, not five revived readers", () => 
     expect(config.rewrites.filter((rewrite) => publicSources.has(rewrite.source)).every((rewrite) => rewrite.has === undefined)).toBe(true);
   });
 });
+
+describe("#2986 privacy transitions and Share recovery remain user-safe", () => {
+  it.each(["search_ready", "public_noindex", "stale", "expired_archived", "draft", "gone"])(
+    "serves %s with resolver-owned no-store headers",
+    async (state) => {
+      const resolution = resolutionFor("event", state);
+      if (state === "expired_archived") resolution.facts.status = "ended";
+      const result = await invoke({ state, resolution });
+      expect(result.headers["cache-control"]).toBe("private, no-store, max-age=0, must-revalidate");
+      expect(result.headers["cdn-cache-control"]).toBe("no-store");
+      expect(result.headers["vercel-cdn-cache-control"]).toBe("no-store");
+      expect(result.headers["cache-control"]).not.toMatch(/s-maxage|stale-while-revalidate|public/);
+    },
+  );
+
+  it("applies the same no-store contract to redirects and dependency failures", async () => {
+    const redirected = await invoke({ resolution: {
+      valid: true, kind: "event", state: "redirected", canonicalPath: "/e/acme/summer-night",
+      redirectTargetPath: "/e/acme/autumn-night", integrityOk: true,
+    } });
+    const failed = await invoke({ rpcError: true });
+    for (const result of [redirected, failed]) {
+      expect(result.headers["cache-control"]).toBe("private, no-store, max-age=0, must-revalidate");
+      expect(result.headers["cdn-cache-control"]).toBe("no-store");
+      expect(result.headers["vercel-cdn-cache-control"]).toBe("no-store");
+    }
+  });
+
+  it("ships visible live-region feedback and a canonical manual-copy fallback", async () => {
+    const result = await invoke({ kind: "event" });
+    expect(result.body).toContain('id="mingla-share-status" role="status" aria-live="polite"');
+    expect(result.body).toContain('id="mingla-runtime-status" role="status" aria-live="polite"');
+    expect(result.body).toContain('id="mingla-share-fallback" hidden');
+    expect(result.body).toContain('aria-label="Canonical Mingla link" type="text" readonly');
+    expect(result.body).toContain('value="https://host.usemingla.com/e/acme/summer-night"');
+  });
+});
