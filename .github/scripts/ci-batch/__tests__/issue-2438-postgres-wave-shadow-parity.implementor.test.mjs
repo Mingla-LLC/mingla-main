@@ -5,11 +5,18 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, normalizeProviderReferenceFilesForSeal, providerDiscoveryAccounting, PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL, PROVIDERS_ADDED_SINCE_SEAL, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope } from "../validate-manifest-v2.mjs";
+import { discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, normalizeProviderReferenceFilesForSeal, providerDiscoveryAccounting, PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL, PROVIDERS_ADDED_SINCE_SEAL, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope, SUITES_ADDED_SINCE_SEAL,
+} from "../validate-manifest-v2.mjs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import { buildShardReport, commandFingerprint, createIsolatedWorkspace, expectedPrimarySuites, materializeToolExposures, minimalChildEnvironment, resolveLeafCapability, runSuiteV2, validateSetupEvidence } from "../run-suite-batch.mjs";
 import { expectedPhase3bIdentities, reconcilePhase3bReports, selectionDocument } from "../select-phase3b-suites.mjs";
+
+// [TEST-MOD-APPROVED #2897] Counts derived from the validator's single declared
+// post-seal set, never re-typed. See SUITES_ADDED_SINCE_SEAL.
+const ADDED_SUITES = SUITES_ADDED_SINCE_SEAL.length;
+const ADDED_STEPS = SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
+
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const manifest = () => JSON.parse(fs.readFileSync(path.join(ROOT, ".github/ci-batch/MANIFEST.json"), "utf8"));
@@ -147,7 +154,7 @@ function assertWave(value) {
   // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
   // validator subtracts from the frozen provider seal. Subject and strength unchanged;
   // the number simply stops being typed in a second place where it can disagree.
-  assert.equal(value.legacyOrigins.length, 200); assert.equal(value.suites.length, 84); assert.equal(value.commandCapabilities.commands.length, 240); assert.equal(value.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
+  assert.equal(value.legacyOrigins.length, 200 + ADDED_SUITES); assert.equal(value.suites.length, 84 + ADDED_SUITES); assert.equal(value.commandCapabilities.commands.length, 240 + ADDED_STEPS); assert.equal(value.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   assert.equal(suites.length, 12); assert.equal(suites.flatMap((suite) => suite.steps).length, 36);
   // [TEST-MOD-APPROVED #2438 · SC-21] Terminal, and atomic on all three carriers of
   // the lifecycle: the suites, the wave header, and the legacy-origin dispositions.
