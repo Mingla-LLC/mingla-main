@@ -194,6 +194,9 @@ function hasExactContainerBoundary(bytes: Uint8Array, mime: string): boolean {
 export async function createUploadGrant(
   req: PayloadRequest,
   input: { filename: string; content_type: string; bytes: number },
+  onStage?: (
+    stage: "grant_media_create" | "grant_media_update" | "grant_presign",
+  ) => void,
 ) {
   const user = req.user as unknown as {
     tenantId?: string;
@@ -215,6 +218,7 @@ export async function createUploadGrant(
   const previousGrantContext = req.context.minglaMediaGrant;
   req.context.minglaMediaGrant = true;
   try {
+    onStage?.("grant_media_create");
     const media = await req.payload.create({
       collection: "media",
       overrideAccess: false,
@@ -234,6 +238,7 @@ export async function createUploadGrant(
       },
     });
     const key = `quarantine/${user.siteId}/${media.id}/${crypto.randomUUID()}`;
+    onStage?.("grant_media_update");
     await req.payload.update({
       collection: "media",
       id: media.id,
@@ -241,6 +246,7 @@ export async function createUploadGrant(
       req,
       data: { quarantine_key: key },
     });
+    onStage?.("grant_presign");
     const grant = await presignedQuarantinePut(
       cmsConfig().quarantineBucket,
       key,

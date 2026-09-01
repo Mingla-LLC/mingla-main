@@ -18,13 +18,17 @@ describe("#2931 upload-grant failure observability", () => {
   it("records the exact safe stage and allowlisted rejection code", () => {
     const log = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
-    observeUploadGrantFailure(request(), "grant_creation", new Error("FORBIDDEN"));
+    observeUploadGrantFailure(
+      request(),
+      "grant_media_update",
+      new Error("FORBIDDEN"),
+    );
 
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
       metric: "cms.media.upload_grant_failure",
       request_id: REQUEST_ID,
       site_id: SITE_ID,
-      state_transition: "upload_grant_grant_creation->request_rejected",
+      state_transition: "upload_grant_grant_media_update->request_rejected",
       safe_error_code: "FORBIDDEN",
       status_code: 403,
     });

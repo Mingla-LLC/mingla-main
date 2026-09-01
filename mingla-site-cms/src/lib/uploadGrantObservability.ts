@@ -15,7 +15,10 @@ export type UploadGrantStage =
   | "mutation_assertion"
   | "session_binding"
   | "body_parsing"
-  | "grant_creation";
+  | "grant_creation"
+  | "grant_media_create"
+  | "grant_media_update"
+  | "grant_presign";
 
 function safeUuid(value: unknown): string | null {
   return typeof value === "string" && UUID_PATTERN.test(value)

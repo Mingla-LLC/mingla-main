@@ -599,6 +599,8 @@ async function uploadGrant(req: PayloadRequest): Promise<Response> {
         filename: String(body.filename || "image"),
         content_type: String(body.content_type || ""),
         bytes: Number(body.bytes),
+      }, (nextStage) => {
+        stage = nextStage;
       }),
     });
   } catch (error) {
