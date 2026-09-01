@@ -6,11 +6,15 @@ const FOREIGN_SITE_ID = "00000000-0000-4000-8000-000000000099";
 
 beforeAll(() => {
   Object.assign(process.env, {
-    SITES_CORE_BASE_URL: "https://core.invalid",
-    SITES_ARTIFACT_READ_BASE_URL: "https://storage.invalid",
-    SITES_ARTIFACT_READ_TOKEN: "fixture-read-token",
-    SITES_PUBLICATION_ARTIFACT_BUCKET: "artifacts",
-    SITES_MEDIA_APPROVED_BUCKET: "approved",
+    SITES_CORE_BASE_URL: "https://gqnoajqerqhnvulmnyvv.supabase.co",
+    SITES_CMS_PROJECT_REF: "abcdefghijklmnopqrst",
+    SITES_STORAGE_SUPABASE_URL:
+      "https://abcdefghijklmnopqrst.supabase.co",
+    SITES_STORAGE_SUPABASE_ANON_KEY: "fixture-anon-key",
+    SITES_STORAGE_READER_EMAIL: "sites-reader@example.invalid",
+    SITES_STORAGE_READER_PASSWORD: "fixture-reader-password",
+    SITES_PUBLICATION_ARTIFACT_BUCKET: "sites-publication-artifacts",
+    SITES_MEDIA_APPROVED_BUCKET: "sites-media-approved",
     MINGLA_RUNTIME_TO_CORE_CURRENT_KID: "runtime-key-1",
     MINGLA_RUNTIME_TO_CORE_CURRENT_KEY_B64:
       "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",

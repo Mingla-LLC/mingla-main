@@ -18,6 +18,7 @@ import { StudioUsers } from "./collections/StudioUsers";
 import { Tenants } from "./collections/Tenants";
 import { sitesEndpoints } from "./endpoints/sitesEndpoints";
 import { cmsConfig } from "./lib/config";
+import { MINGLA_BUSINESS_ORIGIN } from "./lib/origins";
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
@@ -27,7 +28,10 @@ export default buildConfig({
   serverURL: config.cmsOrigin,
   secret: config.payloadSecret,
   db: postgresAdapter({
-    pool: { connectionString: config.databaseUrl, max: 10 },
+    pool: {
+      connectionString: config.databaseUrl,
+      max: config.databasePoolMax,
+    },
     schemaName: "sites_cms",
     idType: "uuid",
     migrationDir: path.resolve(dirname, "migrations"),
@@ -59,7 +63,7 @@ export default buildConfig({
     graphQL: "/disabled-graphql",
     graphQLPlayground: "/disabled-graphql-playground",
   },
-  cors: [config.cmsOrigin, "https://business.usemingla.com"],
+  cors: [config.cmsOrigin, MINGLA_BUSINESS_ORIGIN],
   csrf: [config.cmsOrigin],
   collections: [
     StudioUsers,

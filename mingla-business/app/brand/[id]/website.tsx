@@ -50,6 +50,7 @@ import {
   type WebsiteWorkspacePanel,
   type WorkspaceNotice,
 } from "../../../src/sites/websiteJourney";
+import { loadBrandWebsiteEntryContext } from "../../../src/sites/brandWebsiteEntry";
 import {
   openStudioHandoff,
   studioReturnSurface,
@@ -95,8 +96,11 @@ export default function BrandWebsiteRoute(): React.ReactElement {
   const offline =
     network?.isConnected === false || network?.isInternetReachable === false;
   const role = useCurrentBrandRole(safeBrandId || null);
-  const enabled =
-    isFeatureEnabled("sites") && role.rank >= 20 && safeBrandId.length > 0;
+  const globallyEnabled = isFeatureEnabled("sites");
+  const canCheckAvailability = globallyEnabled && !role.isLoading &&
+    role.rank >= 20 && safeBrandId.length > 0;
+  const [websiteAvailable, setWebsiteAvailable] = useState<boolean | null>(null);
+  const enabled = canCheckAvailability && websiteAvailable === true;
   const brand = useBrand(enabled ? safeBrandId : null);
   const site = useBrandSite(safeBrandId, enabled);
   const refetchSite = site.refetch;
@@ -137,6 +141,24 @@ export default function BrandWebsiteRoute(): React.ReactElement {
   const analytics = useBrandSiteAnalytics(site.data?.id ?? null, workReady);
   const publish = usePublishBrandSite(safeBrandId, site.data?.id ?? null);
   const rollback = useRollbackBrandSite(safeBrandId);
+
+  useEffect(() => {
+    let active = true;
+    setWebsiteAvailable(null);
+    if (!canCheckAvailability) return () => {
+      active = false;
+    };
+    void loadBrandWebsiteEntryContext(safeBrandId)
+      .then((context) => {
+        if (active) setWebsiteAvailable(context !== null);
+      })
+      .catch(() => {
+        if (active) setWebsiteAvailable(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [canCheckAvailability, safeBrandId]);
 
   useEffect(() => {
     let active = true;
@@ -350,11 +372,21 @@ export default function BrandWebsiteRoute(): React.ReactElement {
     ],
   );
 
-  if (!isFeatureEnabled("sites")) {
+  if (!globallyEnabled) {
     return <Redirect href={`/brand/${safeBrandId}` as never} />;
   }
   if (!role.isLoading && role.rank < 20) {
     return <Redirect href={`/brand/${safeBrandId}` as never} />;
+  }
+  if (canCheckAvailability && websiteAvailable === false) {
+    return <Redirect href={`/brand/${safeBrandId}` as never} />;
+  }
+  if (role.isLoading || websiteAvailable !== true) {
+    return (
+      <SafeScreen style={{ backgroundColor: canvas.discover }}>
+        {null}
+      </SafeScreen>
+    );
   }
 
   return (

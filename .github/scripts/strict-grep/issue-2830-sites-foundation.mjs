@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PATHS = {
   migration: "supabase/migrations/20270609002830_issue_2830_mingla_sites_foundation.sql",
+  liveMigration: "supabase/migrations/20270613002893_issue_2893_sites_readiness_activation.sql",
+  liveSql: "supabase/migrations/__tests__/issue_2893_sites_readiness_activation.test.sql",
+  deployWrapper: "scripts/ops/deploy-sites-edge-functions.sh",
+  deployWrapperTest: "scripts/ops/__tests__/issue_2893_sites_edge_deploy_wrapper.test.mjs",
   security: "supabase/functions/_shared/sitesSecurity.ts",
   contracts: "supabase/functions/_shared/sitesContracts.ts",
   observability: "supabase/functions/_shared/sitesObservability.ts",
@@ -16,6 +21,7 @@ const PATHS = {
   ariTools: "supabase/functions/_shared/agentSiteTools.ts",
   ariAuthorization: "supabase/functions/_shared/agentToolAuthorization.ts",
   denoHappy: "supabase/functions/_shared/__tests__/issue_2830_sites_foundation_happy.test.ts",
+  denoLive: "supabase/functions/_shared/__tests__/issue_2893_sites_live_readiness.test.ts",
   businessFlag: "mingla-business/src/config/featureFlags.ts",
   businessRoute: "mingla-business/app/brand/[id]/website.tsx",
   businessView: "mingla-business/src/components/sites/BrandWebsiteView.tsx",
@@ -122,6 +128,13 @@ function json(source, label, failures) {
 export function violations(files) {
   const failures = [];
   const migration = files.migration ?? "";
+  // [TEST-MOD-APPROVED #2893] The approved forward-only live-readiness repair
+  // pins the already-merged foundation byte-for-byte and adds new checks below;
+  // no existing #2830 assertion is weakened or removed.
+  if (
+    crypto.createHash("sha256").update(migration).digest("hex") !==
+      "000116c86351b3d11fd95fec97002c87598ee3de88653ea2ecfb811500216d71"
+  ) failures.push("Core foundation migration: historical migration was modified");
   for (const table of [
     "brand_sites",
     "brand_site_hosts",
@@ -194,6 +207,78 @@ export function violations(files) {
   }
   forbid(migration, "CREATE POLICY scanner", "scanner isolation", failures);
 
+  const liveMigration = files.liveMigration ?? "";
+  for (const token of [
+    "CREATE TABLE public.brand_site_readiness_receipts",
+    "brand_site_readiness_receipt_immutable",
+    "CREATE OR REPLACE FUNCTION public.brand_site_configure_pilot_binding",
+    "CREATE OR REPLACE FUNCTION public.brand_site_record_readiness_evidence",
+    "CREATE OR REPLACE FUNCTION public.brand_site_record_host_readiness",
+    "CREATE OR REPLACE FUNCTION public.brand_site_activate_gogi_pilot",
+    "CREATE OR REPLACE FUNCTION public.brand_site_deactivate_gogi_pilot",
+    "CREATE OR REPLACE FUNCTION public.brand_site_business_availability",
+    "CREATE OR REPLACE FUNCTION public.brand_site_retention_protection",
+    "interval '26 hours'",
+    "interval '100 days'",
+    "interval '15 minutes'",
+    "host.status = 'pending' AND host.activated_at IS NULL",
+    "pilot_enabled = true",
+    "pilot_enabled = false",
+    "733bc470-45e1-4684-8896-acd7e26074ff",
+    "1f3d2ddf-b741-4e2f-8884-d7222a660c7e",
+    "https://studio.sites.usemingla.com",
+    "https://gogi.sites.usemingla.com",
+    "REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER",
+    "TO service_role, postgres",
+    "TO authenticated, postgres",
+  ]) need(liveMigration, token, "Core live-readiness repair", failures);
+  forbid(
+    liveMigration,
+    "GRANT EXECUTE ON FUNCTION public.brand_site_activate_gogi_pilot(uuid,uuid,text,uuid)\n  TO authenticated",
+    "Core live-readiness service boundary",
+    failures,
+  );
+
+  const liveSql = files.liveSql ?? "";
+  for (const token of [
+    "missing evidence activated pilot",
+    "missing host evidence activated pilot",
+    "stale database backup activated pilot",
+    "stale manifest activated pilot",
+    "stale restore drill activated pilot",
+    "stale host probe activated pilot",
+    "wrong pilot binding activated",
+    "wrong publication evidence activated pilot",
+    "non-pending host activated pilot",
+    "deactivation did not fail safe or preserve last-good",
+    "host readiness operation did not replay after activation",
+    "deactivation operation did not replay exactly",
+    "deactivation operation accepted a different reason",
+    "non-pilot availability leaked Website state",
+    "readiness receipt was mutable",
+  ]) need(liveSql, token, "Core live-readiness SQL regression", failures);
+
+  const deployWrapper = files.deployWrapper ?? "";
+  for (const token of [
+    'PROJECT_REF="gqnoajqerqhnvulmnyvv"',
+    "brand-site-control",
+    "brand-site-cms-callback",
+    "brand-site-runtime-resolve",
+    "brand-site-attribution",
+    "--use-api",
+    "--no-verify-jwt",
+    'functions list --project-ref "$PROJECT_REF" --output json',
+  ]) need(deployWrapper, token, "Sites exact Edge deploy wrapper", failures);
+  for (const token of ["--prune", "db push", 'for dir in "$functions_root"']) {
+    forbid(deployWrapper, token, "Sites exact Edge deploy wrapper", failures);
+  }
+  need(
+    files.deployWrapperTest ?? "",
+    "deploys only the four pinned functions through the API",
+    "Sites Edge deploy wrapper regression",
+    failures,
+  );
+
   const security = files.security ?? "";
   if ((security.match(/Deno\.env\.get\(ENVELOPE_NAME\)/g) ?? []).length !== 1) {
     failures.push("slot 88: exactly one environment read required");
@@ -227,6 +312,16 @@ export function violations(files) {
   for (const token of [
     'service.rpc("brand_site_mark_operation_ambiguous"',
     'p_safe_error_code: "CALLBACK_AMBIGUOUS"',
+    "/readiness-evidence",
+    'value.evidence_kind === "nightly_backup"',
+    'value.evidence_kind === "restore_drill"',
+    '"brand_site_record_readiness_evidence"',
+    '"brand_site_retention_protection"',
+    "/pilot-deactivation",
+    'value.reason_code === "BACKUP_READINESS_FAILED"',
+    '"brand_site_deactivate_gogi_pilot"',
+    '.eq("pilot_site_id", siteId)',
+    "safePilotDeactivationReceipt(data, siteId)",
   ]) need(files.callback ?? "", token, "ambiguous CMS callback", failures);
   for (const forbidden of [
     "authorization:",
@@ -313,6 +408,20 @@ export function violations(files) {
     'return "Publishing…"',
   ]) need(files.businessEntry ?? "", token, "status-aware Brand Profile entry", failures);
   need(files.businessProfile ?? "", 'import("../../sites/brandWebsiteEntry")', "lazy Brand Profile entry boundary", failures);
+  for (const token of [
+    "websiteContext !== null",
+    "setWebsiteContext(null)",
+  ]) need(files.businessProfile ?? "", token, "non-pilot Website zero signal", failures);
+  forbid(files.businessProfile ?? "", "Checking website status…", "non-pilot Website zero signal", failures);
+  forbid(files.businessProfile ?? "", "Status unavailable", "non-pilot Website zero signal", failures);
+  for (const token of [
+    "/site-availability",
+    "if (data.data.available !== true) return null",
+  ]) need(files.businessEntry ?? "", token, "Core-backed Website availability", failures);
+  for (const token of [
+    "websiteAvailable === false",
+    "websiteAvailable !== true",
+  ]) need(route, token, "direct Website route availability", failures);
   forbid(files.businessProfile ?? "", 'import("../../services/brandSitesService")', "Business eager bundle boundary", failures);
   forbid(files.businessProfile ?? "", 'import("../../sites/websiteJourney")', "Business eager bundle boundary", failures);
   forbid(files.businessView ?? "", "Journey state", "customer-safe Website state", failures);
@@ -384,12 +493,14 @@ export function violations(files) {
     "signedCoreRequest",
     "previewGrantRequest",
   ]) need(files.cmsEndpoints ?? "", token, "Studio gateway", failures);
+  // [TEST-MOD-APPROVED #2893] The tenant-authorized media restore endpoint is
+  // the ninth live Core authorization check; the previous eight remain.
   const studioAuthCalls = (files.cmsEndpoints ?? "").match(
     /requireAuthenticatedStudioRequest\(req\)/g,
   )?.length ?? 0;
-  if (studioAuthCalls !== 8) {
+  if (studioAuthCalls !== 9) {
     failures.push(
-      `Studio live authorization: expected 8 endpoint checks, found ${studioAuthCalls}`,
+      `Studio live authorization: expected 9 endpoint checks, found ${studioAuthCalls}`,
     );
   }
   for (const token of [
@@ -418,12 +529,14 @@ export function violations(files) {
     "newestRank > 50",
     "90 * 24 * 60 * 60_000",
   ]) need(files.cmsMedia ?? "", token, "media and retention", failures);
+  // [TEST-MOD-APPROVED #2893] Restore adds an exact find+update pair under the
+  // same narrow media grant, raising the protected operation count 2 -> 4.
   const tombstoneMediaGrantCalls = (files.cmsMedia ?? "").match(
     /req: studioMediaGrantRequest\(req\)/g,
   )?.length ?? 0;
-  if (tombstoneMediaGrantCalls !== 2) {
+  if (tombstoneMediaGrantCalls !== 4) {
     failures.push(
-      `media and retention: expected 2 protected tombstone Media operations, found ${tombstoneMediaGrantCalls}`,
+      `media and retention: expected 4 protected tombstone/restore Media operations, found ${tombstoneMediaGrantCalls}`,
     );
   }
   for (const token of [
@@ -627,6 +740,7 @@ export function violations(files) {
 
   for (const token of [
     "issue_2830_sites_foundation_happy.test.ts",
+    "issue_2893_sites_live_readiness.test.ts",
     "final 88-name bundled-authority state",
   ]) need(files.secretWorkflow ?? "", token, "existing secret CI lane", failures);
   for (const token of [
@@ -645,6 +759,13 @@ export function violations(files) {
   ]) need(files.runbook ?? "", token, "Sites operations runbook", failures);
   need(files.invariant ?? "", "I-PROPOSED-2830-SITES-LAST-GOOD-TENANT-BOUNDARY (DRAFT)", "invariant registry", failures);
   need(files.denoHappy ?? "", "slot-88 import closure stays exact and value-blind", "implementor regression", failures);
+  for (const token of [
+    "readiness callback accepts only the two exact v1 bodies",
+    "signed retention is bound through the Core projection",
+    "backup failure can only disable the exact bound Gogi pilot",
+    "activation is forward-only, atomic, and service-only",
+    "exact non-pruning four-function wrapper",
+  ]) need(files.denoLive ?? "", token, "live-readiness strict regression", failures);
   for (const token of [
     "site_attribution_token_digest",
     '.is("site_attribution_token_digest",',
@@ -666,6 +787,13 @@ function selfTest() {
   const cleanFailures = violations(clean);
   if (cleanFailures.length) throw new Error(`clean fixture failed:\n${cleanFailures.join("\n")}`);
   const reversions = [
+    ["liveMigration", "host.status = 'pending' AND host.activated_at IS NULL", "host.status = 'active' AND host.activated_at IS NOT NULL", "Core live-readiness repair"],
+    ["denoLive", "activation is forward-only, atomic, and service-only", "activation is optional", "live-readiness strict regression"],
+    ["liveMigration", "CREATE OR REPLACE FUNCTION public.brand_site_activate_gogi_pilot", "CREATE OR REPLACE FUNCTION public.brand_site_enable_unverified_pilot", "Core live-readiness repair"],
+    ["callback", "/readiness-evidence", "/readiness-unverified", "ambiguous CMS callback"],
+    ["callback", "/pilot-deactivation", "/pilot-shutdown-removed", "ambiguous CMS callback"],
+    ["businessProfile", "websiteContext !== null", "websiteContext === null", "non-pilot Website zero signal"],
+    ["deployWrapper", "--use-api", "--use-docker", "Sites exact Edge deploy wrapper"],
     ["businessFlag", 'readEnvFlag("EXPO_PUBLIC_FF_SITES_ENABLED", false)', 'readEnvFlag("EXPO_PUBLIC_FF_SITES_ENABLED", true)', "Business feature flag"],
     ["businessRoute", "role.rank >= 20", "role.rank >= 10", "Business Website route"],
     ["businessRoute", "await persistPublicationOperation(operation);", "await persistPublicationPointer(operation);", "durable publication dispatch"],
