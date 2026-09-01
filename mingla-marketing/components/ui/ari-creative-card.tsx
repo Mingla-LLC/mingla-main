@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CalendarCheck, ImageIcon, UtensilsCrossed } from 'lucide-react'
+import { ArrowUp, CalendarCheck, ImageIcon, UtensilsCrossed } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { useActiveInViewport } from '@/lib/use-active-in-viewport'
@@ -32,6 +32,11 @@ import { useActiveInViewport } from '@/lib/use-active-in-viewport'
 //  4. TOKENS, not `dark:` variants. The tile it sits in is already dark, so
 //     the component takes the surrounding Cutout tokens rather than carrying
 //     its own light/dark fork.
+//
+// ONE SCREEN, TWO STATES. The composer and the site occupy the SAME box —
+// same footprint, same radius, same ring — so the swap is a crossfade in place
+// rather than a small bubble being replaced by a large frame. That is the
+// whole reason the composer fills its container instead of sitting centred.
 //
 // The reveal is a CAPTURED SCROLL of the real site, not an iframe:
 // usemingla.com sets `frame-ancestors 'self'`, and a live frame is heavy on a
@@ -121,7 +126,8 @@ export function AriCreativeCard({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: reduced ? 0 : 0.6, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute inset-0 overflow-hidden rounded-2xl bg-black/25 ring-1 ring-inset ring-white/15"
+            data-ari-screen="site"
+            className="absolute inset-0 overflow-hidden rounded-2xl bg-black/25 ring-1 ring-inset ring-white/15 backdrop-blur-sm"
           >
             {/* Browser chrome, so it reads as a website and not a photo. */}
             <div
@@ -153,18 +159,21 @@ export function AriCreativeCard({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
             transition={{ duration: reduced ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute inset-0 flex flex-col justify-center"
+            data-ari-screen="composer"
+            className="absolute inset-0"
           >
-            {/* One presentational object. Nothing inside is focusable, because
-                nothing inside can do anything on this page. */}
+            {/* One presentational object filling the SAME box the site will
+                occupy. Nothing inside is focusable, because nothing inside can
+                do anything on this page — including the send control, which is
+                there to make it read as Ari, not to be pressed. */}
             <div
               role="img"
               aria-label={`Ari, the Mingla Host assistant, receiving the request: ${PROMPT}`}
-              className="rounded-2xl bg-black/25 p-3 ring-1 ring-inset ring-white/15 backdrop-blur-sm"
+              className="flex h-full flex-col rounded-2xl bg-black/25 p-4 ring-1 ring-inset ring-white/15 backdrop-blur-sm"
             >
               <div className="flex items-start gap-3">
                 {/* The Ari orb, as the shipped AriInput draws it. */}
-                <span className="relative mt-0.5 h-9 w-9 shrink-0" aria-hidden="true">
+                <span className="relative mt-0.5 h-10 w-10 shrink-0" aria-hidden="true">
                   {!reduced && active ? (
                     <span
                       className="absolute inset-0 rounded-full opacity-50"
@@ -181,7 +190,7 @@ export function AriCreativeCard({
                   />
                 </span>
 
-                <p className="min-h-[3.5rem] flex-1 font-dashboard text-[0.875rem] leading-snug text-white/90">
+                <p className="flex-1 font-dashboard text-[0.9375rem] leading-snug text-white/90">
                   {typed}
                   <span
                     aria-hidden="true"
@@ -203,7 +212,7 @@ export function AriCreativeCard({
                     transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
                     className="overflow-hidden"
                   >
-                    <div className="mt-3 flex items-center gap-3 border-t border-white/12 pt-3">
+                    <div className="mt-4 flex items-center gap-3 border-t border-white/12 pt-4">
                       <span className="flex gap-1" aria-hidden="true">
                         {[0, 1, 2].map((i) => (
                           <motion.span
@@ -218,17 +227,15 @@ export function AriCreativeCard({
                         Building your site…
                       </span>
                     </div>
-
-                    {/* The page taking shape, still inside the bubble. */}
-                    <div className="mt-3 space-y-1.5">
+                    <div className="mt-4 space-y-2">
                       {[
-                        { w: '34%', h: 7 },
-                        { w: '100%', h: 26 },
-                        { w: '68%', h: 7 },
+                        { w: '34%', h: 8 },
+                        { w: '100%', h: 34 },
+                        { w: '68%', h: 8 },
                       ].map((blk, i) => (
                         <motion.span
                           key={i}
-                          className="block rounded bg-white/25"
+                          className="block rounded bg-white/22"
                           style={{ width: blk.w, height: blk.h }}
                           initial={{ opacity: 0, scaleX: 0.3 }}
                           animate={{ opacity: 1, scaleX: 1 }}
@@ -240,22 +247,34 @@ export function AriCreativeCard({
                 ) : null}
               </AnimatePresence>
 
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                {CHIPS.map(({ icon: Icon, label }) => (
-                  <span
-                    key={label}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[0.6875rem] font-semibold text-white/70"
-                  >
-                    <Icon className="h-3 w-3" aria-hidden="true" />
-                    {label}
-                  </span>
-                ))}
-                <span className="ml-auto text-[0.625rem] font-bold uppercase tracking-[0.14em] text-white/40">
-                  Ari
+              {/* Chips and the send control sit on the composer's floor, so the
+                  panel reads as a real input surface at any height. */}
+              <div className="mt-auto flex items-end justify-between gap-3 pt-4">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {CHIPS.map(({ icon: Icon, label }) => (
+                    <span
+                      key={label}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1.5 text-[0.6875rem] font-semibold text-white/70"
+                    >
+                      <Icon className="h-3 w-3" aria-hidden="true" />
+                      {label}
+                    </span>
+                  ))}
+                </div>
+
+                <span
+                  aria-hidden="true"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white"
+                  style={{
+                    background: 'linear-gradient(180deg, #f0842f 0%, #dd6a16 100%)',
+                    boxShadow:
+                      '0 -2px 0 0 #a8450e inset, 0 1px 0 0 rgba(255,255,255,0.3) inset, 0 4px 10px rgba(20,18,15,0.28)',
+                  }}
+                >
+                  <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.4} />
                 </span>
               </div>
             </div>
-
           </motion.div>
         )}
       </AnimatePresence>
