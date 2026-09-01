@@ -9,6 +9,7 @@ import {
   writeObject,
 } from "./objectStore";
 import { emitCmsObservation } from "./observability";
+import { studioMediaGrantRequest } from "./studioRequestAuth";
 
 const ACCEPTED = new Set(["image/jpeg", "image/png", "image/webp"]);
 const WIDTHS = [320, 640, 960, 1440, 1920] as const;
@@ -393,7 +394,7 @@ export async function tombstoneMedia(req: PayloadRequest, mediaId: string) {
     collection: "media",
     id: mediaId,
     overrideAccess: false,
-    req,
+    req: studioMediaGrantRequest(req),
     depth: 0,
   });
   const tenantId = relationshipId(media.tenant);
@@ -442,26 +443,20 @@ export async function tombstoneMedia(req: PayloadRequest, mediaId: string) {
   ) {
     throw new Error("INVALID_STATE");
   }
-  const previousGrantContext = req.context.minglaMediaGrant;
-  req.context.minglaMediaGrant = true;
-  try {
-    return await req.payload.update({
-      collection: "media",
-      id: mediaId,
-      overrideAccess: false,
-      req,
-      depth: 0,
-      data: {
-        state: "TOMBSTONED",
-        tombstoned_at: new Date().toISOString(),
-        recovery_until: new Date(
-          Date.now() + 30 * 24 * 60 * 60_000,
-        ).toISOString(),
-      },
-    });
-  } finally {
-    req.context.minglaMediaGrant = previousGrantContext;
-  }
+  return req.payload.update({
+    collection: "media",
+    id: mediaId,
+    overrideAccess: false,
+    req: studioMediaGrantRequest(req),
+    depth: 0,
+    data: {
+      state: "TOMBSTONED",
+      tombstoned_at: new Date().toISOString(),
+      recovery_until: new Date(
+        Date.now() + 30 * 24 * 60 * 60_000,
+      ).toISOString(),
+    },
+  });
 }
 
 export function mediaMayBePurged(input: {

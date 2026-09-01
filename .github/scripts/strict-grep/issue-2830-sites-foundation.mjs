@@ -398,6 +398,8 @@ export function violations(files) {
     'throw new Error("FORBIDDEN")',
     "delete context.minglaSignedCore",
     "studioMediaGrantRequest",
+    "loadStudioMediaAttachRecords",
+    "req: studioMediaGrantRequest(request)",
   ]) need(files.cmsStudioAuth ?? "", token, "Studio live authorization", failures);
   const signedCoreStrips = (files.cmsStudioAuth ?? "").match(
     /delete context\.minglaSignedCore/g,
@@ -416,6 +418,14 @@ export function violations(files) {
     "newestRank > 50",
     "90 * 24 * 60 * 60_000",
   ]) need(files.cmsMedia ?? "", token, "media and retention", failures);
+  const tombstoneMediaGrantCalls = (files.cmsMedia ?? "").match(
+    /req: studioMediaGrantRequest\(req\)/g,
+  )?.length ?? 0;
+  if (tombstoneMediaGrantCalls !== 2) {
+    failures.push(
+      `media and retention: expected 2 protected tombstone Media operations, found ${tombstoneMediaGrantCalls}`,
+    );
+  }
   for (const token of [
     'headers["if-none-match"] = "*"',
     "response.status === 412",
@@ -660,8 +670,10 @@ function selfTest() {
     ["cmsEndpoints", "await runRetentionSweep(", "await runRetentionSweepRemoved(", "Studio gateway"],
     ["cmsUsers", "admin: canAccessStudioAdmin", "admin: noAccess", "Studio admin admission"],
     ["cmsMedia", "newestRank > 50", "newestRank > 0", "media and retention"],
+    ["cmsMedia", "req: studioMediaGrantRequest(req)", "req", "media and retention"],
     ["cmsSession", "decodeSessionReturnContext", "decodeExpiredSessionUnchecked", "fixed Studio return owner"],
     ["cmsStudioAuth", "delete context.minglaSignedCore", "context.minglaSignedCore = true", "Studio live authorization"],
+    ["cmsStudioAuth", "req: studioMediaGrantRequest(request)", "req: request", "Studio live authorization"],
     ["cmsEndpoints", "requireAuthenticatedStudioRequest(req)", "sessionFromHeaders(req.headers)", "Studio live authorization"],
     ["cmsNav", '["Media", "/studio/media"]', '["Media", "/admin/collections/media"]', "stripped Studio navigation"],
     ["cmsMediaClient", "grant.upload_url", '"/api/direct-upload"', "executable Studio media manager"],

@@ -58,3 +58,33 @@ export function studioMediaGrantRequest(
   delete context.minglaSignedCore;
   return { ...req, context };
 }
+
+/**
+ * Loads the page through ordinary Studio authority so its later mutation must
+ * reauthorize against Core, while exposing protected processing fields only on
+ * the tenant-scoped Media read.
+ */
+export async function loadStudioMediaAttachRecords(
+  request: PayloadRequest,
+  pageId: string,
+  mediaId: string,
+) {
+  const [page, media] = await Promise.all([
+    request.payload.findByID({
+      collection: "pages",
+      id: pageId,
+      overrideAccess: false,
+      req: request,
+      draft: true,
+      depth: 0,
+    }),
+    request.payload.findByID({
+      collection: "media",
+      id: mediaId,
+      overrideAccess: false,
+      req: studioMediaGrantRequest(request),
+      depth: 0,
+    }),
+  ]);
+  return { page, media };
+}

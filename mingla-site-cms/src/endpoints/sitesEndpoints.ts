@@ -41,6 +41,7 @@ import {
   STUDIO_CSRF_COOKIE,
 } from "../lib/session";
 import {
+  loadStudioMediaAttachRecords,
   requireAuthenticatedStudioRequest,
   studioMediaGrantRequest,
 } from "../lib/studioRequestAuth";
@@ -773,23 +774,11 @@ async function studioMediaAttach(req: PayloadRequest): Promise<Response> {
     const { request } = await requireAuthenticatedStudioRequest(req);
     const body = await objectBody(req);
     const mediaId = new URL(req.url || "http://local").pathname.split("/").at(-2)!;
-    const [page, media] = await Promise.all([
-      req.payload.findByID({
-        collection: "pages",
-        id: String(body.page_id || ""),
-        overrideAccess: false,
-        req: request,
-        draft: true,
-        depth: 0,
-      }),
-      req.payload.findByID({
-        collection: "media",
-        id: mediaId,
-        overrideAccess: false,
-        req: request,
-        depth: 0,
-      }),
-    ]);
+    const { page, media } = await loadStudioMediaAttachRecords(
+      request,
+      String(body.page_id || ""),
+      mediaId,
+    );
     if (media.state !== "READY") throw new Error("MEDIA_PROCESSING");
     if (body.field !== "media" && body.field !== "images") {
       throw new Error("VALIDATION_FAILED");

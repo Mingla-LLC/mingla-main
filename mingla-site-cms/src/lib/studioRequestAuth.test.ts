@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { enforceLiveStudioWrite } from "./access";
 import { callCore } from "./gateway";
+import { tombstoneMedia } from "./mediaPipeline";
 import {
   encodeSession,
   payloadUser,
@@ -9,6 +10,7 @@ import {
   type StudioSession,
 } from "./session";
 import {
+  loadStudioMediaAttachRecords,
   requireAuthenticatedStudioRequest,
   studioMediaGrantRequest,
 } from "./studioRequestAuth";
@@ -120,6 +122,105 @@ describe("#2830 live Studio request authority", () => {
       operation: "update",
       overrideAccess: false,
       req: authorized.request,
+    } as never);
+    expect(callCore).toHaveBeenCalledWith(
+      `/internal/v1/sites/${session.site_id}/authorize`,
+      session.site_id,
+      expect.any(String),
+      { user_id: session.user_id, min_rank: 20 },
+    );
+  });
+
+  it("exposes READY only to the granted Media read while keeping the Page request ordinary", async () => {
+    const calls: Array<{ collection: string; req: { context: Record<string, unknown> } }> = [];
+    const request = {
+      context: {},
+      payload: {
+        findByID: vi.fn(async (input) => {
+          calls.push(input);
+          if (input.collection === "media") {
+            return input.req.context.minglaMediaGrant === true
+              ? { id: "media-1", state: "READY" }
+              : { id: "media-1" };
+          }
+          return { id: "page-1", revision: "revision-1", blocks: [] };
+        }),
+      },
+    } as never;
+
+    const records = await loadStudioMediaAttachRecords(
+      request,
+      "page-1",
+      "media-1",
+    );
+
+    expect(records.media.state).toBe("READY");
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.collection).toBe("pages");
+    expect(calls[0]?.req).toBe(request);
+    expect(calls[0]?.req.context).not.toHaveProperty("minglaMediaGrant");
+    expect(calls[1]?.collection).toBe("media");
+    expect(calls[1]?.req).not.toBe(request);
+    expect(calls[1]?.req.context).toMatchObject({ minglaMediaGrant: true });
+    expect(calls[1]?.req.context).not.toHaveProperty("minglaSignedCore");
+  });
+
+  it("bounds tombstone Media grants without mutating ordinary relationship reads", async () => {
+    const liveUser = payloadUser(session);
+    const base = await request(liveUser);
+    const calls: Array<{
+      operation: "findByID" | "find" | "update";
+      collection: string;
+      req: { context: Record<string, unknown>; user: unknown; headers: Headers };
+    }> = [];
+    const payload = {
+      findByID: vi.fn(async (input) => {
+        calls.push({ operation: "findByID", ...input });
+        return input.req.context.minglaMediaGrant === true
+          ? { id: "media-1", tenant: session.tenant_id, state: "READY" }
+          : { id: "media-1", tenant: session.tenant_id };
+      }),
+      find: vi.fn(async (input) => {
+        calls.push({ operation: "find", ...input });
+        return { docs: [] };
+      }),
+      update: vi.fn(async (input) => {
+        calls.push({ operation: "update", ...input });
+        return { id: "media-1", state: "TOMBSTONED" };
+      }),
+    };
+    const ordinaryRequest = { ...base, payload } as never;
+
+    await expect(tombstoneMedia(ordinaryRequest, "media-1")).resolves.toMatchObject({
+      state: "TOMBSTONED",
+    });
+
+    const mediaRead = calls.find((call) => call.operation === "findByID")!;
+    const relationshipReads = calls.filter((call) => call.operation === "find");
+    const mediaUpdate = calls.find((call) => call.operation === "update")!;
+    expect(mediaRead.req.context).toMatchObject({ minglaMediaGrant: true });
+    expect(relationshipReads.map((call) => call.collection)).toEqual([
+      "pages",
+      "site-settings",
+    ]);
+    for (const call of relationshipReads) {
+      expect(call.req).toBe(ordinaryRequest);
+      expect(call.req.context).not.toHaveProperty("minglaMediaGrant");
+    }
+    expect(mediaUpdate.req.context).toMatchObject({ minglaMediaGrant: true });
+    for (const call of [mediaRead, mediaUpdate]) {
+      expect(call.req).not.toBe(ordinaryRequest);
+      expect(call.req.context).not.toHaveProperty("minglaSignedCore");
+      expect(call.req.user).toBe(liveUser);
+      expect(call.req.headers).toBe(base.headers);
+    }
+    expect(base.context).toEqual({});
+
+    vi.mocked(callCore).mockClear();
+    await enforceLiveStudioWrite({
+      operation: "update",
+      overrideAccess: false,
+      req: mediaUpdate.req,
     } as never);
     expect(callCore).toHaveBeenCalledWith(
       `/internal/v1/sites/${session.site_id}/authorize`,
