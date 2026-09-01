@@ -45,7 +45,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
   {
     id: 'event-organizers-promoters',
     title: 'Events & promoters',
-    usp: 'Sellouts',
+    usp: 'Events',
     description: 'Build the page, price the tiers, work the door, and keep the guest list.',
     // An empty event hall, stage rigged and lit, before doors.
     imgSrc: '/marketing/host-icp/events-hall.jpg',
@@ -54,7 +54,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
   {
     id: 'restaurants-cafes',
     title: 'Restaurants & cafés',
-    usp: 'Covers',
+    usp: 'Restaurants',
     description: 'Turn a menu and a slow Tuesday into a plan people book ahead.',
     // A dining room laid for service at golden hour.
     imgSrc: '/marketing/host-icp/restaurants-room.jpg',
@@ -63,7 +63,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
   {
     id: 'bars-clubs-nightlife',
     title: 'Bars & nightlife',
-    usp: 'Nights',
+    usp: 'Clubs',
     description: 'Tickets, tables and guest lists for the nights people talk about.',
     // A bar room at night, bottle shelf lit, before the crowd.
     imgSrc: '/marketing/host-icp/nightlife-bar.jpg',
@@ -72,7 +72,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
   {
     id: 'venues-activity-spaces',
     title: 'Venues & spaces',
-    usp: 'Bookings',
+    usp: 'Venues',
     description: 'Show what the space does, take the booking, manage the calendar.',
     // A high-ceilinged event space, chairs set aside, light pouring in.
     imgSrc: '/marketing/host-icp/venues-space.jpg',
@@ -99,7 +99,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
   {
     id: 'pop-ups-independent-creators',
     title: 'Pop-ups & creators',
-    usp: 'Drops',
+    usp: 'Pop Ups',
     description: 'A page, a drop and a sell-out window, spun up in minutes.',
     // A pop-up gallery and market room, work hung, tables set.
     imgSrc: '/marketing/host-icp/creators-popup.jpg',

@@ -7,7 +7,7 @@ import { Card3D, Layer } from '@/components/ui/3d-card'
 import {
   CutoutCard, CutoutFaq, CutoutFooter, CutoutHeading, CutoutHero, CutoutNav,
   CutoutSection, CutoutShell, CutReveal, DeviceCta, FaqSchema,
-  STEP_CHARTS, StepSwitcher, ToolCard,
+  StepSwitcher, ToolCard,
 } from '@/components/cutout'
 import {
   ALL_TOOLS, HOST_LIMITS, HOST_STEPS, HOST_SWAP,
@@ -123,13 +123,13 @@ export default function CutoutHostPage() {
       {/* The story: build, sell, grow. */}
       <CutoutSection id="tools" aria-label="Build, sell and grow with Mingla">
         <CutReveal>
-          <CutoutHeading align="center" eyebrow="Build. Sell. Grow."
+          <CutoutHeading align="center"
             lede="Ten tools. One app. No agency, no stack, no weekend of admin.">
             Everything between an idea and a <span className="cut-gradient-brand">full room.</span>
           </CutoutHeading>
         </CutReveal>
         <div className="mt-14">
-          <StepSwitcher steps={HOST_STEPS} icons={ICONS} charts={STEP_CHARTS} label="Build, sell or grow" />
+          <StepSwitcher steps={HOST_STEPS} icons={ICONS} label="Build, sell or grow" />
         </div>
       </CutoutSection>
 

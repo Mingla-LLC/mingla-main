@@ -86,12 +86,15 @@ export const ExpandingCards = React.forwardRef<HTMLUListElement, ExpandingCardsP
               key={item.id}
               data-active={active}
               onMouseEnter={() => setActiveIndex(index)}
-              // The collapsed floor is arithmetic, not taste. Six collapsed
-              // cards at 148px ate 888 of the 1092px row and left the ACTIVE
-              // card just 204px — the min-width was fighting the expansion.
-              // At 104px the six take 624 and the open card gets ~468px, which
-              // is what the 5fr track actually wants.
-              className="group relative min-h-0 min-w-0 overflow-hidden rounded-[var(--cut-r-card)] md:min-w-[104px]"
+              // The collapsed floor is arithmetic, not taste, and the longest
+              // word sets it. "Restaurants" measured 113px against a 104px
+              // card and overflowed; 116px holds it with the pill a step
+              // smaller. Six collapsed cards then take 696 of the 1092px row
+              // and the ACTIVE card still gets ~396px — enough for its title,
+              // two lines and the control. (At 148px the open card collapsed
+              // to 204px, which is the failure this arithmetic exists to
+              // avoid.)
+              className="group relative min-h-0 min-w-0 overflow-hidden rounded-[var(--cut-r-card)] md:min-w-[116px]"
               style={{ boxShadow: 'var(--cut-mould)' }}
             >
               <img
@@ -121,7 +124,7 @@ export const ExpandingCards = React.forwardRef<HTMLUListElement, ExpandingCardsP
                 aria-hidden={active}
                 className={cn(
                   'absolute bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-3 py-1.5',
-                  'bg-white/16 font-display text-[0.75rem] text-white ring-1 ring-inset ring-white/25 backdrop-blur-md',
+                  'bg-white/16 font-display text-[0.6875rem] text-white ring-1 ring-inset ring-white/25 backdrop-blur-md',
                   !reduced && 'transition-opacity duration-300',
                   active && 'opacity-0',
                 )}

@@ -64,17 +64,20 @@ export function CutoutNav({ surface, homeHref, showAction = true }: CutoutNavPro
           </Link>
 
           <div className="pointer-events-auto ml-auto flex items-center gap-2.5">
-            {/* Hidden below `sm`: with three marks and a constant label the
-                pill is ~190px, and a 390px bar cannot hold the wordmark, this
-                and the menu button. The side panel carries the action there. */}
+            {/* Hidden below `sm`, because even at one icon the pill plus the
+                wordmark plus the menu button overflow a 390px bar. The side
+                panel carries the action there.
+
+                The WRAPPER carries `hidden`, not the button. Passing `hidden`
+                to DeviceCta did nothing: `.cut-btn` sets `display:inline-flex`
+                and cutout.css loads after Tailwind's utilities, so the custom
+                class won and the CTA rendered anyway — overflowing the header
+                on every phone. A build cannot catch that; only looking at 390px
+                did. */}
             {showAction ? (
-              <DeviceCta
-                surface={surface}
-                location="nav"
-                variant="quiet"
-                size="md"
-                className="hidden sm:inline-flex"
-              />
+              <div className="hidden sm:block">
+                <DeviceCta surface={surface} location="nav" variant="quiet" size="md" />
+              </div>
             ) : null}
 
             <button

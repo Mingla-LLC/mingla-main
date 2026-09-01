@@ -18,4 +18,4 @@ export {
   type FaqEntry,
 } from './schema'
 export { ToolCard, StepSwitcher } from './tool-grid'
-export { TimeToLiveChart, SellThroughChart, ChannelMixChart, STEP_CHARTS } from './charts'
+export { ToolVisual } from './tool-visuals'

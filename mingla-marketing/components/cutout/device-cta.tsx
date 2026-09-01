@@ -115,39 +115,17 @@ export function DeviceCta({
    * "Download the app" and "Use on web" each only said half of.
    */
   /**
-   * Label first, then the platforms as an overlapping stack of discs — the
-   * avatar-group idiom. Three loose glyphs ahead of the words read as clutter;
-   * one clustered object reads as a single "available on" mark, and it lets
-   * the words lead, which is what a button should do.
+   * ONE mark, not three. The stacked discs made the pill ~190px, which a
+   * 390px header cannot hold alongside the wordmark and the menu button.
    *
-   * The discs are a TRANSLUCENT tint of the button's own surface with the glyph
-   * in currentColor. The first attempt filled each disc with currentColor and
-   * punched the glyph out; at 26px, three overlapping, that rendered as a heavy
-   * black blob on the light variants.
+   * The single glyph is the DEVICE'S OWN: Apple on iOS, Play on Android, a
+   * monitor on desktop. That keeps it honest about where the tap actually
+   * goes while costing one icon's width instead of three.
    */
-  const disc =
-    variant === 'quiet' ? 'rgba(20,18,15,0.10)' : 'rgba(255,255,255,0.26)'
-  const ringTint =
-    variant === 'primary' ? '#e5701c' : variant === 'ink' ? '#211f1c' : '#f6f3ee'
+  const PlatformMark =
+    platform === 'ios' ? AppleMark : platform === 'android' ? PlayMark : WebMark
   const marks = (
-    <span className="ml-1.5 flex shrink-0 items-center" aria-hidden="true">
-      {[AppleMark, PlayMark, WebMark].map((Mark, i) => (
-        <span
-          key={i}
-          className="flex items-center justify-center rounded-full"
-          style={{
-            width: 24,
-            height: 24,
-            marginLeft: i === 0 ? 0 : -8,
-            zIndex: 3 - i,
-            background: disc,
-            boxShadow: `0 0 0 1.5px ${ringTint}`,
-          }}
-        >
-          <Mark className={i === 0 ? 'h-[12px] w-[12px]' : 'h-[11px] w-[11px]'} />
-        </span>
-      ))}
-    </span>
+    <PlatformMark className="ml-0.5 h-[17px] w-[17px] shrink-0" />
   )
 
   if (surface === 'host') {
