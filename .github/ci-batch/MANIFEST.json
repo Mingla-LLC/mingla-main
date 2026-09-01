@@ -13042,7 +13042,7 @@
       "providerWorkflow": ".github/workflows/issue-1456-edge-deploy-idempotency.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "1f134ff179aee31cb038e9731518313096a749141ede5b24158e94063824f33b",
+        "sourceSha256": "9e55280e591a749d254d73b6299d245b65add39fd6b1a2ff6c7f5e03e08a3b18",
         "triggers": [
           "pull_request",
           "push"
@@ -13051,7 +13051,10 @@
           ".github/workflows/deploy-functions.yml",
           ".github/workflows/issue-1456-edge-deploy-idempotency.yml",
           "scripts/ci/issue1456-edge-deploy-idempotency.test.mjs",
-          "scripts/deploy-supabase-functions.sh"
+          "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
+          "scripts/ci/select-changed-edge-functions.mjs",
+          "scripts/deploy-supabase-functions.sh",
+          "supabase/function-env.contract.json"
         ],
         "jobKeys": [
           "exact-duplicate-only"
