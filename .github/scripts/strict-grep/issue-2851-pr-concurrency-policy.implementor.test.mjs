@@ -39,10 +39,12 @@ const PR_FAMILY_COUNT = 123;
 const PR_FAMILY_IDENTITY_SHA256 =
   "a229542a59e0bcb3403a81e6ff938845f0e6a06faa5245a0edb43b9015322912";
 // [TEST-MOD-APPROVED #2885] Mechanically re-derived from reviewed current main
-// after #2885 added a bundle-baseline path exclusion to fifteen existing
-// PR-family workflows (sixteen minus #1614's arbiter audit, whose own suite
-// pins it as always-run; that exclusion was reverted rather than its assertion
-// weakened). This digest covers the `on:` block, which is exactly what
+// after #2885 added a bundle-baseline path exclusion to fourteen existing
+// PR-family workflows. Two candidates were REVERTED rather than have their
+// assertions weakened, both because they are deliberately always-run and both
+// pinned by their own suites: #1614's onConflict arbiter audit, and ci-batch,
+// whose header states "NO paths: filter, deliberately" and whose #2148
+// runner-v2 tester asserts `doesNotMatch(/^\s*paths(?:-ignore)?:/m)`. This digest covers the `on:` block, which is exactly what
 // that change edits, so it MUST move. What must not move, and did not, is the
 // membership: PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are untouched
 // because no workflow was added, removed, or reclassified — only path filters
@@ -50,7 +52,7 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // mutation are unchanged.
 // Previous value (pre-#2885): a132a0155b04b0dc3bcbdd3edec6d119a7a43dfbe8db02929302c44336b69138
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "7047d777403644254d2460846e12e3f89e8e4a3cd7849317a07cce8f87d6a00c";
+  "1f9e545979c705a09b13f22ee73d00449aba8fce0b6149fc7e673319173a0b63";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

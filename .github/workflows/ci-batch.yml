@@ -23,20 +23,8 @@ name: CI batch (per-issue suites)
 
 on:
   pull_request:
-    # #2885 AC-4 — a pull request whose ONLY changed file is the machine-written
-    # boot-payload baseline cannot affect this suite. Those recording PRs were
-    # starting 53 jobs each, ~15/day (~51,000 job-min/month). `paths-ignore`
-    # skips ONLY when nothing else changed: touch this file alongside anything
-    # and this workflow runs exactly as it always did.
-    paths-ignore:
-      - "mingla-business/scripts/ci/bundle-baseline.json"
   push:
     branches: [main]
-    # #2885 AC-4 — the baseline recording auto-merges now (~15/day), so this
-    # suite would re-run on main for a one-number JSON measurement. Same waste,
-    # other side of the merge. Any other file in the push and this runs.
-    paths-ignore:
-      - "mingla-business/scripts/ci/bundle-baseline.json"
   workflow_dispatch:
     inputs:
       suite:

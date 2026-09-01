@@ -764,6 +764,17 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
     ["mingla-business-jest-suite", "yml"].join("."),
     // #2058's provenance proof: the check that the PR is genuinely machine-authored.
     ["bundle-baseline-provenance-guard", "yml"].join("."),
+    // ci-batch is deliberately UNFILTERED. Its own header says so — "NO paths:
+    // filter, deliberately" — and #2148's runner-v2 tester asserts
+    // `doesNotMatch(/^\s*paths(?:-ignore)?:/m)` against it, an assertion written
+    // to cover exactly the `paths-ignore` move #2885 tried. The reason is
+    // recorded in that header: the batch consolidated ~340 individually
+    // paths-gated jobs, and a paths-gated suite silently skips on a PR that
+    // misses its globs — which is how a latent main-red landed in PR #743 and
+    // surfaced on someone else's unrelated PR. It is the single most expensive
+    // entry on this list (15 jobs) and it stays, because "it is expensive" is
+    // not a reason to come off.
+    ["ci-batch", "yml"].join("."),
     // #1614's arbiter audit is deliberately UNFILTERED and its own suite pins
     // that shape — `assert.match(workflow, /pull_request:\s*\n\s*push:\s*\n\s*branches: \[main\]/)`
     // and `assert.doesNotMatch(workflow, /\n\s+paths:/)` in the test named
@@ -896,8 +907,9 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
     assert.deepEqual([...started].sort(), [
       // Must re-measure main after every merge — it is the mechanism.
       ["bundle-baseline-ratchet", "yml"].join("."),
-      // Always-run by its own pinned contract; see KEEP above.
+      // Always-run by their own pinned contracts; see KEEP above.
       ["issue-1614-onconflict-arbiter-audit", "yml"].join("."),
+      ["ci-batch", "yml"].join("."),
     ].sort());
   });
 
