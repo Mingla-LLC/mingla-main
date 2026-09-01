@@ -35,24 +35,15 @@ const DENIED = [
   liveWorkflow("sprint", "rollover"),
   liveWorkflow("stripe", "connect", "smoke"),
 ];
-const PR_FAMILY_COUNT = 123;
+const PR_FAMILY_COUNT = 124;
 const PR_FAMILY_IDENTITY_SHA256 =
-  "a229542a59e0bcb3403a81e6ff938845f0e6a06faa5245a0edb43b9015322912";
-// [TEST-MOD-APPROVED #2885] Mechanically re-derived from reviewed current main
-// after #2885 added a bundle-baseline path exclusion to fourteen existing
-// PR-family workflows. Two candidates were REVERTED rather than have their
-// assertions weakened, both because they are deliberately always-run and both
-// pinned by their own suites: #1614's onConflict arbiter audit, and ci-batch,
-// whose header states "NO paths: filter, deliberately" and whose #2148
-// runner-v2 tester asserts `doesNotMatch(/^\s*paths(?:-ignore)?:/m)`. This digest covers the `on:` block, which is exactly what
-// that change edits, so it MUST move. What must not move, and did not, is the
-// membership: PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are untouched
-// because no workflow was added, removed, or reclassified — only path filters
-// narrowed. Denied-workflow hashes, concurrency policy, test logic and every
-// mutation are unchanged.
-// Previous value (pre-#2885): a132a0155b04b0dc3bcbdd3edec6d119a7a43dfbe8db02929302c44336b69138
+  "9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04";
+// [TEST-MOD-APPROVED #2241] Mechanically re-derived after the exact approved
+// #1930 shared-resolver trigger addition, #2241 secret-readiness lanes,
+// #2893/#2899 Sites workflow authority, and #2885's reviewed baseline-only path
+// exclusions. The seven exclusions and their authorities remain unchanged.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "1f9e545979c705a09b13f22ee73d00449aba8fce0b6149fc7e673319173a0b63";
+  "9e888ff1ff620746a57c023022f8864743c1094dba0a9d57d4f6fc15933a5a10";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -147,6 +138,14 @@ function removePolicy(source) {
   return updated;
 }
 
+function removeExactLine(source, line, label) {
+  const occurrences = source.split(line).length - 1;
+  assert.equal(occurrences, 1, `${label}: expected exactly one mutation target`);
+  const updated = source.replace(line, "");
+  assert.notEqual(updated, source, `${label}: mutation must change workflow semantics`);
+  return updated;
+}
+
 function expectMutationFailure(name, mutate, diagnostic) {
   const sources = readWorkflowSources();
   mutate(sources);
@@ -157,34 +156,43 @@ function expectMutationFailure(name, mutate, diagnostic) {
   );
 }
 
-test("the real tree has 123 canonical PR-family policies and the sole load exception", () => {
+// [TEST-MOD-APPROVED #2241] #2899's Sites recovery workflow is a mixed
+// PR/schedule/dispatch workflow and therefore joins the exact PR-family set.
+test("the real tree has 124 canonical PR-family policies and the sole load exception", () => {
   const result = auditWorkflowSources(readWorkflowSources());
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.counts, {
-    totalWorkflows: 130,
-    prFamily: 123,
-    standardPullRequest: 122,
+    totalWorkflows: 131,
+    prFamily: 124,
+    standardPullRequest: 123,
     pullRequestTarget: 1,
-    normalPolicies: 122,
+    normalPolicies: 123,
     exceptions: 1,
   });
 });
 
 // [TEST-MOD-APPROVED #2582] The origin/main diff was valid before #2851
 // merged, then became an empty moving-base comparison downstream. Preserve the
-// same exact 123 identities and non-concurrency semantics with current-tree
+// same exact 124 identities and non-concurrency semantics with current-tree
 // digests, and preserve the seven exclusions with durable full-byte hashes.
-test("the real tree independently classifies 123 PR-family and seven non-PR workflows", () => {
+test("the real tree independently classifies 124 PR-family and seven non-PR workflows", () => {
   const sources = readWorkflowSources();
   const authority = assertCurrentTreeAuthority(sources);
   const audit = auditWorkflowSources(sources);
+  const sitesRecoveryName = liveWorkflow("sites", "backup", "restore");
+  assert.deepEqual(
+    canonicalize(sources)[sitesRecoveryName].events,
+    ["pull_request", "schedule", "workflow_dispatch"],
+    "Sites recovery must remain an exact mixed PR/production-event workflow",
+  );
+  assert.ok(authority.names.includes(sitesRecoveryName), "Sites recovery must remain in the PR-family authority");
   assert.deepEqual(audit.errors, []);
   assert.deepEqual(audit.counts, {
-    totalWorkflows: 130,
-    prFamily: 123,
-    standardPullRequest: 122,
+    totalWorkflows: 131,
+    prFamily: 124,
+    standardPullRequest: 123,
     pullRequestTarget: 1,
-    normalPolicies: 122,
+    normalPolicies: 123,
     exceptions: 1,
   });
 
@@ -226,6 +234,30 @@ test("the real tree independently classifies 123 PR-family and seven non-PR work
   assert.notEqual(semanticAuthority.withoutConcurrencySha256, authority.withoutConcurrencySha256);
   assert.throws(() => assertCurrentTreeAuthority(semanticDrift), /non-concurrency semantic digest drifted/);
 
+  // [TEST-MOD-APPROVED #2241] Each workflow delta that legitimately moved the
+  // digest is independently revert-sensitive; the unrelated semantic mutation
+  // above remains a separate widening tripwire.
+  for (const [name, line] of [
+    [liveWorkflow("issue", "1930", "checkout", "current", "truth"), '      - "supabase/functions/_shared/secretBundle.ts"\n'],
+    [liveWorkflow("supabase", "secret", "budget"), '      - "supabase/function-env.contract.json"\n'],
+    [liveWorkflow("supabase", "secret", "budget"), "          supabase/functions/_shared/__tests__/issue_2893_sites_live_readiness.test.ts\n"],
+    [liveWorkflow("web", "build", "check"), '      SITES_DATABASE_POOL_MAX: "3"\n'],
+    [liveWorkflow("web", "build", "check"), '      - "mingla-business/scripts/ci/bundle-baseline.json"\n'],
+    [liveWorkflow("bundle", "baseline", "automerge"), '      - ".github/workflows/**"\n'],
+  ]) {
+    const reverted = { ...sources };
+    reverted[name] = removeExactLine(reverted[name], line, name);
+    assert.throws(() => assertCurrentTreeAuthority(reverted), /non-concurrency semantic digest drifted/);
+  }
+
+  const sitesWithoutPullRequest = { ...sources };
+  sitesWithoutPullRequest[sitesRecoveryName] = removeExactLine(
+    sitesWithoutPullRequest[sitesRecoveryName],
+    `  pull_request:\n    paths:\n      - ".github/workflows/${sitesRecoveryName}"\n      - "scripts/sites/**"\n`,
+    "Sites recovery pull_request authority",
+  );
+  assert.throws(() => assertCurrentTreeAuthority(sitesWithoutPullRequest), /identity count drifted/);
+
   const concurrencyDrift = { ...sources };
   const concurrencyName = liveWorkflow("framework", "major", "guard");
   concurrencyDrift[concurrencyName] = removePolicy(concurrencyDrift[concurrencyName]);
@@ -241,6 +273,21 @@ test("the real tree independently classifies 123 PR-family and seven non-PR work
     () => assertCurrentTreeAuthority({ [liveWorkflow("malformed", "fixture")]: "on: [pull_request\n" }),
     /Command failed/,
   );
+});
+
+// [TEST-MOD-APPROVED #2241] The #2899 recovery workflow mixes PR contracts
+// with irreversible production backup/restore events. Its canonical policy
+// must cancel only same-PR superseded runs and isolate every production run.
+test("Sites recovery mixed events use the exact event-safe concurrency policy", () => {
+  const sources = readWorkflowSources();
+  const name = liveWorkflow("sites", "backup", "restore");
+  assert.deepEqual(auditWorkflowSources(sources).errors, []);
+
+  const reverted = { ...sources };
+  reverted[name] = replacePolicy(reverted[name], "mingla-sites-production-backup-restore", false);
+  const errors = auditWorkflowSources(reverted).errors;
+  assert.ok(errors.some((error) => error.includes(`${name}: same-workflow cross-PR identity collision`)));
+  assert.ok(errors.some((error) => error.includes(`${name}: cancellation is not exactly PR-family scoped`)));
 });
 
 test("the seven non-PR workflows remain outside the PR cancellation mandate", () => {

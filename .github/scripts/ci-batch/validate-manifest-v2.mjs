@@ -154,6 +154,16 @@ const LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256 = "1676cbe80860ee0181cf95fcbd70dc
 // independently said 606 and 603, auto-merged clean with no conflict marker.
 export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
   Object.freeze({
+    // [#2899] Sites recovery is a new live workflow provider after the frozen
+    // #2148 seal. Subtract only its exact independently discovered consumer;
+    // omission or widening remains a hard failure without moving c0813….
+    issue: 2899,
+    workflow: "sites-backup-restore.yml",
+    referenceFiles: Object.freeze([
+      "scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs",
+    ]),
+  }),
+  Object.freeze({
     issue: 2591,
     workflow: "postgres-contract-suites.yml",
     // Discovery derives a provider record from the source files that name a
@@ -195,6 +205,13 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
 // declarations remove only the named new references while reconstructing the
 // historical record; live discovery and MANIFEST.json retain the full record.
 export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
+  Object.freeze({
+    issue: 2241,
+    workflow: "supabase-secret-budget.yml",
+    referenceFiles: Object.freeze([
+      ".github/scripts/strict-grep/issue-2241-secret-readiness.mjs",
+    ]),
+  }),
   Object.freeze({
     issue: 2774,
     workflow: "issue-1486-dormant-render-suites.yml",

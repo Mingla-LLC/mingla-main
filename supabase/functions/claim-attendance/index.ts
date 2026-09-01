@@ -8,6 +8,7 @@ import {
   parseAttendanceClaimRequest,
   sha256Digest,
 } from "../_shared/attendanceClaim.ts";
+import { resolveGovernedAdField } from "../_shared/governedAdSecret.ts";
 
 type Outcome =
   | "success"
@@ -25,7 +26,10 @@ serve(async (req) => {
   const url = Deno.env.get("SUPABASE_URL");
   const anon = Deno.env.get("SUPABASE_ANON_KEY");
   const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const pepper = Deno.env.get("ATTENDANCE_CLAIM_PEPPER");
+  const pepper = resolveGovernedAdField(
+    "ATTENDANCE_CLAIM_PEPPER",
+    "ATTENDANCE_CLAIM_PEPPER",
+  );
   if (!url || !anon || !service || !pepper) {
     return claimJson(500, { ok: false, error: "claim_failed" });
   }
