@@ -1179,3 +1179,14 @@ test("#2952 recovery database files stay inside the CI-mounted workspace", () =>
   assert.doesNotMatch(backupSource, /mkdtempSync\(join\(tmpdir\(\)/);
   assert.doesNotMatch(restoreSource, /mkdtempSync\(join\(tmpdir\(\)/);
 });
+
+test("#2958 pinned PostgreSQL clients preserve the non-root runner identity", () => {
+  const wrapper = readFileSync(join(SITES_DIR, "pg17-client.sh"), "utf8");
+
+  assert.match(wrapper, /runner_uid="\$\(id -u\)"/);
+  assert.match(wrapper, /runner_gid="\$\(id -g\)"/);
+  assert.match(wrapper, /--user "\$runner_uid:\$runner_gid"/);
+  assert.match(wrapper, /INVALID_RUNNER_IDENTITY/);
+  assert.doesNotMatch(wrapper, /--user (?:root|0(?::0)?)(?:\s|\\)/);
+  assert.doesNotMatch(wrapper, /--privileged/);
+});
