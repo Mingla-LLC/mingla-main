@@ -174,6 +174,17 @@ check("the workflow computes its selection with the selector script", () => {
   assert.match(workflowCode, /MINGLA_DEPLOY_SHA:/);
 });
 
+check("the deploy step cannot run after a failed selection", () => {
+  const step = workflowCode.slice(workflowCode.indexOf("- name: Deploy the selected edge functions"));
+  const condition = step.match(/if:\s*(.+)/)?.[1] ?? "";
+  assert.match(
+    condition,
+    /success\(\)\s*&&/,
+    "the deploy step must state its own success precondition",
+  );
+  assert.match(condition, /steps\.select\.outputs\.count\s*!=\s*'0'/);
+});
+
 check("the checkout is deep enough to resolve the pushed range", () => {
   assert.match(
     workflowCode,
