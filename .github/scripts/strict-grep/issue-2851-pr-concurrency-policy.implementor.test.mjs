@@ -81,8 +81,14 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // workflow was added, removed or renamed, and this delta is one existing
 // workflow's non-concurrency document. Every revert-sensitivity assertion below
 // is untouched and still red on reversion.
+// [TEST-MOD-APPROVED #2967] Round 3: the #1719 unified-sharing lane gained two
+// `paths` entries and two test steps for the bounded cover-video acknowledgement.
+// That lane is PR-family, so its non-concurrency document is inside this digest.
+// PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 stay UNCHANGED — no workflow was
+// added, removed or renamed; this is one existing workflow's document moving.
+// The revert-sensitivity assertions below are untouched and still red on reversion.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "687f47d36ce6ec80a4131b550af85fcf0fb1edc32887c4b694ede64e1288f5a0";
+  "6b98f4a4b09c5b4f737ea6cba85520a0c5b5f6288fcfba227eac912597a1f427";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
