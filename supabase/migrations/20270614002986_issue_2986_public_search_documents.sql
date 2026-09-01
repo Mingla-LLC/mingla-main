@@ -618,9 +618,12 @@ BEGIN
   IF length(btrim(COALESCE(p_change_reason,''))) < 3 THEN RAISE EXCEPTION 'reason_required'; END IF;
   IF length(btrim(COALESCE(p_change_source,''))) < 2 THEN RAISE EXCEPTION 'source_required'; END IF;
 
-  -- The caller timestamp is only a bounded review/concurrency hint. The
-  -- authoritative source version is derived inside this definer and is the
-  -- only value ever persisted, so an admin payload cannot pin future freshness.
+  -- The caller timestamp is a compare-and-set review token for promotion.
+  -- The authoritative source version is derived inside this definer and is
+  -- the only value ever persisted. search_ready therefore requires the exact
+  -- version the reviewer saw: a stale token cannot be silently laundered into
+  -- approval of newer, unreviewed facts. Conservative non-index states remain
+  -- writable during source churn so an emergency demotion cannot be blocked.
   v_source := public.public_search_source_facts(p_canonical_path,p_entity_kind);
   BEGIN
     v_derived_source_updated_at := (v_source->'facts'->>'sourceUpdatedAt')::timestamptz;
@@ -630,7 +633,8 @@ BEGIN
   IF p_lifecycle_state='search_ready' AND (
        p_source_updated_at IS NULL
        OR v_derived_source_updated_at IS NULL
-       OR p_source_updated_at > clock_timestamp()+interval '5 minutes') THEN
+       OR p_source_updated_at > clock_timestamp()
+       OR p_source_updated_at IS DISTINCT FROM v_derived_source_updated_at) THEN
     RAISE EXCEPTION 'public_search_readiness_incomplete' USING ERRCODE='22023';
   END IF;
 

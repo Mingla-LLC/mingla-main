@@ -164,16 +164,21 @@ describe("#2986 Business retirement compatibility remains public-route-only", ()
 });
 
 describe("#2986 lifecycle rework keeps source truth authoritative", () => {
-  it("derives the persisted source version and rejects forged future review hints", () => {
+  it("derives persistence but requires the exact current review token for promotion", () => {
     const upsert = functionBody("upsert_public_search_document");
     const trigger = functionBody("tg_validate_public_search_document");
     const resolver = functionBody("resolve_public_search_document");
     const sitemap = functionBody("list_public_search_sitemap");
 
     expect(upsert).toContain("v_source := public.public_search_source_facts(p_canonical_path,p_entity_kind)");
-    expect(upsert).toContain("p_source_updated_at > clock_timestamp()+interval '5 minutes'");
+    expect(upsert).toContain("p_source_updated_at > clock_timestamp()");
+    expect(upsert).toContain("p_source_updated_at IS DISTINCT FROM v_derived_source_updated_at");
+    expect(upsert).not.toContain("p_source_updated_at > clock_timestamp()+interval");
     expect(upsert).toContain("COALESCE(p_validation_checks,'{}'::jsonb),v_derived_source_updated_at");
     expect(upsert).not.toContain("COALESCE(p_validation_checks,'{}'::jsonb),p_source_updated_at");
+    expect(upsert.indexOf("p_lifecycle_state='search_ready'")).toBeLessThan(
+      upsert.indexOf("p_source_updated_at IS DISTINCT FROM v_derived_source_updated_at"),
+    );
     expect(trigger).toContain("NEW.source_updated_at IS DISTINCT FROM v_source_updated_at");
     expect(resolver).toContain("v_doc.source_updated_at IS DISTINCT FROM (v_facts->>'sourceUpdatedAt')::timestamptz");
     expect(sitemap).toContain("d.source_updated_at <=");

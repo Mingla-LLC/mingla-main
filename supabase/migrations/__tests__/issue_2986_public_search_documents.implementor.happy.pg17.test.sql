@@ -158,6 +158,149 @@ BEGIN
 END
 $h3$;
 
+-- H4b: source review is a compare-and-set contract across all five kinds.
+-- A stale or future review token can never be laundered into search_ready.
+-- Conservative public_noindex demotion remains available during source churn,
+-- stores the newly derived source version, and cannot enter the sitemap. The
+-- exact newly reviewed token then restores search_ready for every family.
+CREATE TEMP TABLE i2986_review_tokens AS
+SELECT i.kind,i.id,i.path,d.validation_checks,
+       (public.public_search_source_facts(i.path,i.kind)->'facts'->>'sourceUpdatedAt')::timestamptz AS reviewed_t1,
+       NULL::timestamptz AS current_t2
+FROM i2986_ids i
+JOIN public.public_search_documents d ON d.canonical_path=i.path;
+
+DO $h4b_source_change$
+BEGIN
+  -- Model five independently committed source edits without relying on this
+  -- rollback-only transaction's transaction_timestamp()-based touch triggers.
+  EXECUTE 'ALTER TABLE public.events DISABLE TRIGGER trg_events_updated_at';
+  UPDATE public.events SET updated_at=clock_timestamp()
+  WHERE id IN (
+    '29860000-0000-4000-8000-000000000101',
+    '29860000-0000-4000-8000-000000000102');
+  EXECUTE 'ALTER TABLE public.events ENABLE TRIGGER trg_events_updated_at';
+
+  UPDATE public.experience_stops SET updated_at=clock_timestamp()
+  WHERE id='29860000-0000-4000-8000-000000000204';
+
+  EXECUTE 'ALTER TABLE public.place_pool DISABLE TRIGGER update_place_pool_updated_at';
+  UPDATE public.place_pool SET updated_at=clock_timestamp()
+  WHERE id='29860000-0000-4000-8000-000000000301';
+  EXECUTE 'ALTER TABLE public.place_pool ENABLE TRIGGER update_place_pool_updated_at';
+
+  -- Event 101 also advances the owning brand's derived inventory timestamp;
+  -- the other updates advance trip, experience and venue independently.
+  UPDATE i2986_review_tokens t
+  SET current_t2=(
+    public.public_search_source_facts(t.path,t.kind)->'facts'->>'sourceUpdatedAt'
+  )::timestamptz;
+
+  IF EXISTS (SELECT 1 FROM i2986_review_tokens WHERE current_t2<=reviewed_t1) THEN
+    RAISE EXCEPTION 'ISSUE-2986 H4b FAIL: source edit did not advance every family review token';
+  END IF;
+END
+$h4b_source_change$;
+
+DO $h4b$
+DECLARE
+  r record;
+  v jsonb;
+  v_stale_rejected int := 0;
+  v_future_rejected int := 0;
+  v_count int;
+BEGIN
+  FOR r IN SELECT * FROM i2986_review_tokens ORDER BY kind LOOP
+    -- A conservative demotion must not be held hostage by a missing review.
+    SET LOCAL ROLE service_role;
+    PERFORM set_config('request.jwt.claim.role','service_role',true);
+    v:=public.upsert_public_search_document(
+      r.kind,r.id,r.path,'public_noindex',NULL,r.validation_checks,NULL,
+      now(),now()+interval '30 day','missing review safe demotion proof','issue_2986_pg_happy',false);
+    RESET ROLE;
+    IF v->>'lifecycle_state'<>'public_noindex'
+       OR (v->>'source_updated_at')::timestamptz IS DISTINCT FROM r.current_t2 THEN
+      RAISE EXCEPTION 'ISSUE-2986 H4b FAIL: % missing-token demotion did not persist current source truth: %',r.kind,v;
+    END IF;
+
+    -- Restore with the exact token, then prove stale-token demotion is equally
+    -- available and remains a visibility-reducing operation.
+    SET LOCAL ROLE service_role;
+    PERFORM set_config('request.jwt.claim.role','service_role',true);
+    PERFORM public.upsert_public_search_document(
+      r.kind,r.id,r.path,'search_ready',NULL,r.validation_checks,r.current_t2,
+      now(),now()+interval '30 day','exact review intermediate restore','issue_2986_pg_happy',false);
+    v:=public.upsert_public_search_document(
+      r.kind,r.id,r.path,'public_noindex',NULL,r.validation_checks,r.reviewed_t1,
+      now(),now()+interval '30 day','stale review safe demotion proof','issue_2986_pg_happy',false);
+    RESET ROLE;
+    IF v->>'lifecycle_state'<>'public_noindex'
+       OR (v->>'source_updated_at')::timestamptz IS DISTINCT FROM r.current_t2 THEN
+      RAISE EXCEPTION 'ISSUE-2986 H4b FAIL: % stale-token demotion did not persist current source truth: %',r.kind,v;
+    END IF;
+
+    SET LOCAL ROLE service_role;
+    PERFORM set_config('request.jwt.claim.role','service_role',true);
+    BEGIN
+      PERFORM public.upsert_public_search_document(
+        r.kind,r.id,r.path,'search_ready',NULL,r.validation_checks,r.reviewed_t1,
+        now(),now()+interval '30 day','stale review promotion rejection','issue_2986_pg_happy',false);
+    EXCEPTION WHEN SQLSTATE '22023' THEN
+      v_stale_rejected:=v_stale_rejected+1;
+    END;
+    BEGIN
+      PERFORM public.upsert_public_search_document(
+        r.kind,r.id,r.path,'search_ready',NULL,r.validation_checks,r.current_t2+interval '1 day',
+        now(),now()+interval '30 day','future review promotion rejection','issue_2986_pg_happy',false);
+    EXCEPTION WHEN SQLSTATE '22023' THEN
+      v_future_rejected:=v_future_rejected+1;
+    END;
+    RESET ROLE;
+
+    SET LOCAL ROLE anon;
+    PERFORM set_config('request.jwt.claim.role','anon',true);
+    v:=public.resolve_public_search_document(r.path);
+    RESET ROLE;
+    IF v->>'state'<>'public_noindex' THEN
+      RAISE EXCEPTION 'ISSUE-2986 H4b FAIL: rejected % promotions changed conservative state: %',r.kind,v;
+    END IF;
+  END LOOP;
+
+  IF v_stale_rejected<>5 OR v_future_rejected<>5 THEN
+    RAISE EXCEPTION 'ISSUE-2986 H4b FAIL: rejected stale %, future %, expected 5 each',
+      v_stale_rejected,v_future_rejected;
+  END IF;
+  SET LOCAL ROLE anon;
+  PERFORM set_config('request.jwt.claim.role','anon',true);
+  SELECT count(*) INTO v_count FROM public.list_public_search_sitemap();
+  RESET ROLE;
+  IF v_count<>0 THEN
+    RAISE EXCEPTION 'ISSUE-2986 H4b FAIL: noindex demotions left % sitemap rows',v_count;
+  END IF;
+
+  FOR r IN SELECT * FROM i2986_review_tokens ORDER BY kind LOOP
+    SET LOCAL ROLE service_role;
+    PERFORM set_config('request.jwt.claim.role','service_role',true);
+    v:=public.upsert_public_search_document(
+      r.kind,r.id,r.path,'search_ready',NULL,r.validation_checks,r.current_t2,
+      now(),now()+interval '30 day','exact review promotion proof','issue_2986_pg_happy',false);
+    RESET ROLE;
+    IF v->>'lifecycle_state'<>'search_ready'
+       OR (v->>'source_updated_at')::timestamptz IS DISTINCT FROM r.current_t2 THEN
+      RAISE EXCEPTION 'ISSUE-2986 H4b FAIL: exact current token did not promote %: %',r.kind,v;
+    END IF;
+  END LOOP;
+
+  SET LOCAL ROLE anon;
+  PERFORM set_config('request.jwt.claim.role','anon',true);
+  SELECT count(*) INTO v_count FROM public.list_public_search_sitemap();
+  RESET ROLE;
+  IF v_count<>5 THEN
+    RAISE EXCEPTION 'ISSUE-2986 H4b FAIL: exact current review restored % sitemap rows, expected 5',v_count;
+  END IF;
+END
+$h4b$;
+
 -- H5: freshness includes derived facts, not only the owning row. Model later
 -- committed updates to event inventory (which also changes its brand page), an
 -- experience stop, and venue source copy; all four affected documents demote
