@@ -44,7 +44,7 @@ describe("#2893 Business Website availability projection", () => {
     );
 
     expect(flags).toContain(
-      'sites: readEnvFlag("EXPO_PUBLIC_FF_SITES_ENABLED", false)',
+      "sites: readEnvFlag(process.env.EXPO_PUBLIC_FF_SITES_ENABLED, false)",
     );
     expect(profile).toContain("websiteContext !== null");
     expect(profile).not.toContain("Checking website status…");
