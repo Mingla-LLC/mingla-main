@@ -31,6 +31,16 @@ export const DOOR_PRICE: Record<Market, string> = {
 }
 
 /**
+ * The trip the Trips figure shows. Cities and regions only -- never a named
+ * business, which would be a claim about someone's availability and price.
+ */
+export const TRIP_PLAN: Record<Market, { from: string; to: string; instalment: string }> = {
+  NG: { from: 'Lagos', to: 'Obudu', instalment: '4 × ₦12,000' },
+  GB: { from: 'London', to: 'Lisbon', instalment: '4 × £120' },
+  US: { from: 'New York', to: 'Tulum', instalment: '4 × $180' },
+}
+
+/**
  * Only the three live markets resolve. Everything else falls to the default
  * rather than guessing at a currency Mingla does not trade in.
  */

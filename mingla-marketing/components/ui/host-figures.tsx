@@ -17,6 +17,7 @@ import { motion, useReducedMotion } from 'framer-motion'
 
 import { cn } from '@/lib/cn'
 import { EventDemandCard } from '@/components/ui/event-demand-card'
+import { TripPlanCard } from '@/components/ui/trip-plan-card'
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const VIEWPORT = { once: true, margin: '-40px' } as const
@@ -41,52 +42,6 @@ function Figure({
       </div>
       {children}
     </div>
-  )
-}
-
-// --- Trips: the group settling up, as instalments landing one by one. -------
-
-const TRIP_PAID = 3
-const TRIP_TOTAL = 4
-
-function TripsFigure() {
-  const reduced = useReducedMotion()
-  return (
-    <Figure headline={`${TRIP_PAID} of ${TRIP_TOTAL} paid`} sub="Instalments · the group settles up in chat">
-      <motion.div
-        className="flex gap-2"
-        role="img"
-        aria-label={`An instalment plan with ${TRIP_PAID} of ${TRIP_TOTAL} shares paid.`}
-        initial={reduced ? undefined : 'hidden'}
-        whileInView={reduced ? undefined : 'visible'}
-        viewport={VIEWPORT}
-        variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.09 } } }}
-      >
-        {Array.from({ length: TRIP_TOTAL }, (_, i) => {
-          const paid = i < TRIP_PAID
-          return (
-            <motion.span
-              key={i}
-              aria-hidden="true"
-              className={cn(
-                'h-2.5 flex-1 rounded-full',
-                !paid && 'bg-white/[0.12] ring-1 ring-inset ring-white/15',
-              )}
-              // Grow from the left, the way a plan fills up.
-              style={{ transformOrigin: 'left', ...(paid ? { background: BRAND } : null) }}
-              variants={{
-                hidden: { scaleX: 0, opacity: 0 },
-                visible: {
-                  scaleX: 1,
-                  opacity: 1,
-                  transition: { duration: 0.45, ease: EASE },
-                },
-              }}
-            />
-          )
-        })}
-      </motion.div>
-    </Figure>
   )
 }
 
@@ -190,7 +145,7 @@ function MarketingFigure() {
 
 const FIGURES: Record<string, ComponentType> = {
   events: EventDemandCard,
-  trips: TripsFigure,
+  trips: TripPlanCard,
   venue: VenueFigure,
   marketing: MarketingFigure,
 }
