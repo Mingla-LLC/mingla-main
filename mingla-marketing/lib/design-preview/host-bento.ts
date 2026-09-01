@@ -29,7 +29,7 @@ export const HOST_BENTO: readonly BentoCard[] = [
     title: 'Prompt your website into existence',
     body: 'Describe your business. Get a state-of-the-art site, free, in seconds.',
     points: ['Written by Ari', 'Menu & ordering', 'Live site'],
-    span: 'md:col-span-4 md:row-span-3',
+    span: 'md:col-span-4 md:row-span-2',
     tone: 'brand',
     visual: 'site',
     source: 'mingla-sites/',

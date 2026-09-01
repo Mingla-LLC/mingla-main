@@ -33,10 +33,14 @@ import { useActiveInViewport } from '@/lib/use-active-in-viewport'
 //     the component takes the surrounding Cutout tokens rather than carrying
 //     its own light/dark fork.
 //
-// ONE SCREEN, TWO STATES. The composer and the site occupy the SAME box —
-// same footprint, same radius, same ring — so the swap is a crossfade in place
-// rather than a small bubble being replaced by a large frame. That is the
-// whole reason the composer fills its container instead of sitting centred.
+// ONE BOX THAT GROWS. Earlier the composer was stretched to the site's full
+// footprint so the swap would be seamless — but a chat bubble holding the
+// whole tile open for a website that has not arrived yet reads as dead space.
+//
+// So the box is now sized by its CONTENT and animates between states: a
+// compact composer, taller as Ari drafts, then expanding to fill the tile when
+// the site arrives. Same box throughout — framer-motion's `layout` animates the
+// change — so the transition is still continuous, just no longer pre-reserved.
 //
 // The reveal is a CAPTURED SCROLL of the real site, not an iframe:
 // usemingla.com sets `frame-ancestors 'self'`, and a live frame is heavy on a
@@ -117,59 +121,58 @@ export function AriCreativeCard({
   }, [active, reduced])
 
   return (
-    <div ref={ref} className={cn('relative h-full w-full overflow-hidden rounded-2xl', className)}>
-      <AnimatePresence mode="wait">
-        {phase === 'site' ? (
-          <motion.div
-            key="site"
-            initial={reduced ? false : { opacity: 0, scale: 1.04 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: reduced ? 0 : 0.6, ease: [0.16, 1, 0.3, 1] }}
-            data-ari-screen="site"
-            className="absolute inset-0 overflow-hidden rounded-2xl bg-black/25 ring-1 ring-inset ring-white/15 backdrop-blur-sm"
-          >
-            {/* Browser chrome, so it reads as a website and not a photo. */}
-            <div
-              aria-hidden="true"
-              className="flex h-7 items-center gap-1.5 bg-black/40 px-3"
+    <div ref={ref} className={cn('relative flex h-full w-full flex-col justify-end', className)}>
+      <motion.div
+        data-ari-screen={phase === 'site' ? 'site' : 'composer'}
+        // `layout` is what makes the box GROW into the site rather than cut to
+        // it. Off under reduced motion, where the size simply changes.
+        layout={!reduced}
+        transition={{ layout: { duration: 0.7, ease: [0.16, 1, 0.3, 1] } }}
+        className={cn(
+          'overflow-hidden rounded-2xl bg-black/25 ring-1 ring-inset ring-white/15 backdrop-blur-sm',
+          phase === 'site' && 'h-full',
+        )}
+      >
+        <AnimatePresence mode="wait">
+          {phase === 'site' ? (
+            <motion.div
+              key="site"
+              initial={reduced ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: reduced ? 0 : 0.45, ease: [0.16, 1, 0.3, 1] }}
+              className="flex h-full flex-col"
             >
-              <span className="h-2 w-2 rounded-full bg-white/25" />
-              <span className="h-2 w-2 rounded-full bg-white/25" />
-              <span className="h-2 w-2 rounded-full bg-white/25" />
-            </div>
-            <div className="relative h-[calc(100%-1.75rem)] overflow-hidden">
-              <motion.img
-                src={siteSrc}
-                alt={siteAlt}
-                loading="lazy"
-                decoding="async"
-                draggable={false}
-                className="absolute left-0 top-0 w-full"
-                initial={reduced ? false : { y: 0 }}
-                animate={reduced ? undefined : { y: '-62%' }}
-                transition={{ duration: SCROLL_MS / 1000, ease: 'linear' }}
-              />
-            </div>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="composer"
-            initial={reduced ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: reduced ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] }}
-            data-ari-screen="composer"
-            className="absolute inset-0"
-          >
-            {/* One presentational object filling the SAME box the site will
-                occupy. Nothing inside is focusable, because nothing inside can
-                do anything on this page — including the send control, which is
-                there to make it read as Ari, not to be pressed. */}
-            <div
+              {/* Browser chrome, so it reads as a website and not a photo. */}
+              <div aria-hidden="true" className="flex h-7 shrink-0 items-center gap-1.5 bg-black/40 px-3">
+                <span className="h-2 w-2 rounded-full bg-white/25" />
+                <span className="h-2 w-2 rounded-full bg-white/25" />
+                <span className="h-2 w-2 rounded-full bg-white/25" />
+              </div>
+              <div className="relative flex-1 overflow-hidden">
+                <motion.img
+                  src={siteSrc}
+                  alt={siteAlt}
+                  loading="lazy"
+                  decoding="async"
+                  draggable={false}
+                  className="absolute left-0 top-0 w-full"
+                  initial={reduced ? false : { y: 0 }}
+                  animate={reduced ? undefined : { y: '-62%' }}
+                  transition={{ duration: SCROLL_MS / 1000, ease: 'linear', delay: 0.5 }}
+                />
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="composer"
               role="img"
               aria-label={`Ari, the Mingla Host assistant, receiving the request: ${PROMPT}`}
-              className="flex h-full flex-col rounded-2xl bg-black/25 p-4 ring-1 ring-inset ring-white/15 backdrop-blur-sm"
+              initial={reduced ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: reduced ? 0 : 0.3 }}
+              className="p-4"
             >
               <div className="flex items-start gap-3">
                 {/* The Ari orb, as the shipped AriInput draws it. */}
@@ -190,7 +193,7 @@ export function AriCreativeCard({
                   />
                 </span>
 
-                <p className="flex-1 font-dashboard text-[0.9375rem] leading-snug text-white/90">
+                <p className="min-h-[2.5rem] flex-1 font-dashboard text-[0.9375rem] leading-snug text-white/90">
                   {typed}
                   <span
                     aria-hidden="true"
@@ -200,9 +203,8 @@ export function AriCreativeCard({
                 </p>
               </div>
 
-              {/* Drafting, INSIDE the chat. Ari's reply lands in the same
-                  bubble as the brief rather than in a second panel below it,
-                  so the card reads as one conversation and not two sections. */}
+              {/* Drafting, INSIDE the chat: Ari's reply lands in the same bubble
+                  as the brief, and the box grows to hold it. */}
               <AnimatePresence>
                 {phase === 'building' ? (
                   <motion.div
@@ -230,7 +232,7 @@ export function AriCreativeCard({
                     <div className="mt-4 space-y-2">
                       {[
                         { w: '34%', h: 8 },
-                        { w: '100%', h: 34 },
+                        { w: '100%', h: 30 },
                         { w: '68%', h: 8 },
                       ].map((blk, i) => (
                         <motion.span
@@ -247,9 +249,7 @@ export function AriCreativeCard({
                 ) : null}
               </AnimatePresence>
 
-              {/* Chips and the send control sit on the composer's floor, so the
-                  panel reads as a real input surface at any height. */}
-              <div className="mt-auto flex items-end justify-between gap-3 pt-4">
+              <div className="mt-4 flex items-end justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-1.5">
                   {CHIPS.map(({ icon: Icon, label }) => (
                     <span
@@ -274,10 +274,10 @@ export function AriCreativeCard({
                   <ArrowUp className="h-[18px] w-[18px]" strokeWidth={2.4} />
                 </span>
               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
     </div>
   )
 }
