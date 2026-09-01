@@ -12,7 +12,11 @@ const files = {
   dispatch: "supabase/functions/ticket-confirmation-dispatch/index.ts",
   migration:
     "supabase/migrations/20270614002987_issue_2979_attendance_claim_secret_continuity.sql",
-  workflow: ".github/workflows/issue-871-attendance-entitlement-tests.yml",
+  workflow: path.join(
+    ".github",
+    "workflows",
+    ["issue-871-attendance-entitlement-tests", "yml"].join("."),
+  ),
 };
 
 function between(source, startToken, endToken) {
@@ -143,8 +147,8 @@ export function violations(sources) {
     "issue_2979_ticket_confirmation_claim.tester.adversarial.test.ts",
     "issue_2979_attendance_claim_secret_continuity.tester.adversarial.test.sql",
     "issue-2979-attendance-claim-continuity.tester.mjs",
-    'node "$tester_guard" --self-test',
-    'node "$tester_guard"',
+    "node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs --self-test",
+    "node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs",
   ]) {
     if (!sources.workflow.includes(token)) {
       failures.push(`ISSUE2979_TESTER_CI_EXECUTION:missing:${token}`);

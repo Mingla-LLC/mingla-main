@@ -80,11 +80,8 @@ jobs:
         run: |
           node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs --self-test
           node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs
-          tester_guard=.github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs
-          if [[ -f "$tester_guard" ]]; then
-            node "$tester_guard" --self-test
-            node "$tester_guard"
-          fi
+          node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs --self-test
+          node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs
       - name: Install buyer-web dependencies
         working-directory: mingla-business
         run: npm ci
