@@ -135,6 +135,14 @@ export const ALWAYS_ON = Object.freeze([
     reason: "a SECURITY pin on a PUBLIC repo: asserts the App token is minted only in the schedule/workflow_dispatch job and never on a pull_request event, by matching that job's if: verbatim. Also removes the residual hazard that bundle-baseline-automerge.mjs treats `skipped` as a passing conclusion.",
   }),
   Object.freeze({
+    path: liveWorkflow("sites", "backup", "restore"),
+    kind: "pin-protected",
+    issue: "#2851",
+    pin: "literal",
+    pinnedBy: ".github/scripts/strict-grep/issue-2851-pr-concurrency-policy.implementor.test.mjs",
+    reason: "the #2851 revert-sensitivity probe removes an EXACT multi-line block from this file's pull_request trigger to prove the identity-count assertion is still red on reversion. Inserting types: between `pull_request:` and `paths:` deletes that mutation target, so the probe finds 0 matches and the proof stops proving anything.",
+  }),
+  Object.freeze({
     path: liveWorkflow("strict", "grep", "mingla", "business"),
     kind: "pin-protected",
     issue: "#2594",
@@ -208,6 +216,25 @@ function eventNames(document, workflowName, errors) {
 }
 
 /** True iff the string is a draft condition in ANY shape — canonical or not. */
+
+/**
+ * Extract JS string literals (single, double, backtick) from a source and
+ * normalise the escapes that matter for matching YAML: \n, \t, \" and \'.
+ * Used by the "literal" pin kind, where a test embeds an EXACT multi-line block
+ * of a workflow -- #2851's revert-sensitivity probe removes such a block to
+ * prove its own assertion is still red on reversion. Inserting a line inside
+ * that block deletes the mutation target, and the probe then proves nothing.
+ */
+export function stringLiterals(source) {
+  const out = [];
+  for (const match of source.matchAll(/`((?:[^`\\]|\\[\s\S])*)`|"((?:[^"\\\n]|\\[\s\S])*)"|'((?:[^'\\\n]|\\[\s\S])*)'/g)) {
+    const raw = match[1] ?? match[2] ?? match[3];
+    if (typeof raw !== "string" || raw.length < 12) continue;
+    out.push(raw.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"').replace(/\\'/g, "'"));
+  }
+  return out;
+}
+
 export function carriesDraftCondition(value) {
   return typeof value === "string" && value.includes(DRAFT_MARKER);
 }
@@ -528,6 +555,22 @@ function auditPins(errors, sources, alwaysOn, options) {
       if (satisfied === null) errors.push(`${entry.path}: registered as a regex pin, but ${entry.pinnedBy} asserts no trigger-shaped pattern`);
       else if (!satisfied) errors.push(`${entry.path}: its ${entry.pinnedBy} trigger pattern no longer matches the workflow — the pin is broken`);
     }
+    if (entry.pin === "literal") {
+      // Template literals interpolate (`${name}`), so match on the static fragments
+      // between interpolations: every fragment of a genuine embedded block appears
+      // verbatim in the workflow.
+      const embedded = stringLiterals(pinning).filter((literal) => {
+        if (!literal.includes("\n")) return false;
+        const fragments = literal.split(/\$\{[^}]*\}/).map((part) => part.trim()).filter((part) => part.length >= 8);
+        return fragments.length > 0 && fragments.every((fragment) => workflow.includes(fragment));
+      });
+      if (!embedded.length) {
+        errors.push(
+          `${entry.path}: registered as a literal pin, but ${entry.pinnedBy} embeds no multi-line block of this workflow. ` +
+          `Either the workflow drifted out from under the probe or the registration is stale.`,
+        );
+      }
+    }
     if (entry.pin === "job-if") {
       if (!/\bif\b/.test(workflow)) errors.push(`${entry.path}: registered as a job-if pin but declares no job condition at all`);
     }
@@ -614,6 +657,7 @@ const safePinInputs = (sources) => {
     const body = sources[entry.path];
     if (entry.pin === "digest") pinSources[entry.pinnedBy] = `const banked = "${crypto.createHash("sha256").update(body).digest("hex")}";\n`;
     else if (entry.pin === "regex") pinSources[entry.pinnedBy] = "assert.match(workflow, /pull_request:\\s*\\n\\s*push:/);\n";
+    else if (entry.pin === "literal") pinSources[entry.pinnedBy] = "const block = `on:\\n  pull_request:\\n  push:\\n`;\n";
     else pinSources[entry.pinnedBy] = "assert.equal(jobs.only.if, \"github.event_name != 'schedule'\");\n";
   }
   const ciBatchManifest = { legacyOrigins: Object.keys(sources).map((name) => ({

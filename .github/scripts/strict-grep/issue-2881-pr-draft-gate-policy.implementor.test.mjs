@@ -34,6 +34,7 @@ import {
   carriesDraftCondition,
   evaluateDraftGate,
   isCanonicalDraftIf,
+  stringLiterals,
   readWorkflowSources,
   runSelfTest,
 } from "./issue-2881-pr-draft-gate-policy.mjs";
@@ -343,6 +344,28 @@ test("T-12 no workflow OUTSIDE the pin registry has a pin this change breaks —
     for (const match of src.matchAll(HEX64)) {
       const name = digestIndex.get(match[0]);
       if (name) broken.push(`${name}: ${file} banks a sha256 of the pre-#2881 file`);
+    }
+    // LITERAL-BLOCK pins: a test that embeds an exact multi-line block of a workflow
+    // in order to delete it and prove its own assertion is still red on reversion.
+    // Inserting a line inside that block removes the mutation target and the probe
+    // silently stops proving anything — that is how #2851's Sites-recovery probe
+    // broke. Template interpolations are matched on their static fragments.
+    // Bounded: an embedded block OF A WORKFLOW necessarily contains workflow YAML
+    // tokens, so require one before doing any per-workflow work. Without this the
+    // sweep is O(every string literal in the repo x every changed workflow).
+    const WORKFLOW_TOKEN = /(pull_request|workflow_dispatch|runs-on|jobs:|steps:|uses:|paths:|schedule:|branches:)/;
+    // Whole-file gate first: extracting every string literal is the expensive step, so
+    // only pay it for sources that could possibly embed a workflow block at all.
+    const literalCandidates = src.length <= 512_000 && WORKFLOW_TOKEN.test(src) ? stringLiterals(src) : [];
+    for (const literal of literalCandidates) {
+      if (!literal.includes("\n") || !WORKFLOW_TOKEN.test(literal)) continue;
+      const fragments = literal.split(/\$\{[^}]*\}/).map((part) => part.trim()).filter((part) => part.length >= 8);
+      if (!fragments.length) continue;
+      for (const name of changed) {
+        const inBase = fragments.every((fragment) => baseSources[name].includes(fragment));
+        const inHead = fragments.every((fragment) => headSources[name].includes(fragment));
+        if (inBase && !inHead) broken.push(`${name}: ${file} embeds a multi-line block that #2881 split apart`);
+      }
     }
     for (const [literal, name] of jobIfIndex) {
       if (src.includes(`"${literal}"`) || src.includes(`'${literal}'`) || src.includes(`\`${literal}\``)) {

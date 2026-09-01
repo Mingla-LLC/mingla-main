@@ -7,8 +7,6 @@ on:
     - cron: "23 7 * * *"
   workflow_dispatch:
   pull_request:
-    # issue #2881 — ready_for_review is required wherever the draft gate is set.
-    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ".github/workflows/sites-backup-restore.yml"
       - "scripts/sites/**"
@@ -25,7 +23,6 @@ concurrency:
 
 jobs:
   contracts:
-    if: ${{ github.event.pull_request.draft != true }}
     name: "Sites recovery contracts"
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -45,7 +42,9 @@ jobs:
   backup_restore:
     name: "Private backup and isolated restore"
     needs: contracts
-    if: ${{ (github.event.pull_request.draft != true) && (github.event_name != 'pull_request' && github.ref == 'refs/heads/main') }}
+    if: >-
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: mingla-sites-production
@@ -187,7 +186,11 @@ jobs:
     # Any scheduled/main run that does not finish the production backup and
     # restore successfully is signed-deactivated before the safe alert. This
     # includes a skipped backup_restore job caused by a contract failure.
-    if: ${{ (github.event.pull_request.draft != true) && (always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.backup_restore.result != 'success') }}
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      needs.backup_restore.result != 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: mingla-sites-production
@@ -207,7 +210,13 @@ jobs:
   alert:
     name: "Safe recovery failure alert"
     needs: [contracts, backup_restore, deactivate]
-    if: ${{ (github.event.pull_request.draft != true) && (always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (needs.contracts.result != 'success' || needs.backup_restore.result != 'success' || needs.deactivate.result == 'failure')) }}
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      (needs.contracts.result != 'success' ||
+      needs.backup_restore.result != 'success' ||
+      needs.deactivate.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
