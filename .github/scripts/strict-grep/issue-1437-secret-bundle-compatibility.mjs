@@ -240,9 +240,39 @@ function forbidToken(source, token, label, failures) {
   if (source.includes(token)) failures.push(`${label}: forbidden ${token}`);
 }
 
+function deliveryParserSource(source) {
+  const start = source.indexOf("export function parseDeliveryBundle(");
+  const end = source.indexOf("\nexport function ", start + 1);
+  if (start < 0 || end < 0) return "";
+  return source.slice(start, end);
+}
+
+function mutateDeliveryParserToken(source, from, to, scopeStart, scopeEnd) {
+  const parserStart = source.indexOf("export function parseDeliveryBundle(");
+  const parserEnd = source.indexOf("\nexport function ", parserStart + 1);
+  if (parserStart < 0 || parserEnd < 0) {
+    throw new Error("delivery parser mutation anchor missing");
+  }
+  const start = scopeStart
+    ? source.indexOf(scopeStart, parserStart)
+    : parserStart;
+  const end = scopeEnd ? source.indexOf(scopeEnd, start) : parserEnd;
+  if (start < parserStart || end < start || end > parserEnd) {
+    throw new Error("delivery parser mutation scope missing");
+  }
+  const scoped = source.slice(start, end);
+  if (!scoped.includes(from) || scoped.indexOf(from) !== scoped.lastIndexOf(from)) {
+    throw new Error(`delivery parser mutation target is not exact: ${from}`);
+  }
+  const mutated = scoped.replace(from, to);
+  if (mutated === scoped) throw new Error("delivery parser mutation was a no-op");
+  return source.slice(0, start) + mutated + source.slice(end);
+}
+
 export function violations(files) {
   const failures = [];
   const bundle = files.bundle ?? "";
+  const deliveryParser = deliveryParserSource(bundle);
   for (
     const token of [
       "export type PaymentOperationFlagField",
@@ -253,16 +283,45 @@ export function violations(files) {
       'payout_release_execute: "PAYOUT_RELEASE_EXECUTE"',
       'source_refunds_post_disabled: "SOURCE_REFUNDS_POST_DISABLED"',
       '"paystack_payout_hold_onboard_flip"',
-      "if (version !== 1 && version !== 2 && version !== 3)",
-      '...(version === 2 || version === 3 ? ["payment_operations"] : [])',
       "export function resolvePaymentOperationFlagValue",
       "export function resolvePaystackPayoutHoldOnboardFlip",
       "result.value.schema_version === 3",
       "return parseLegacyBoolean(legacy)",
     ]
   ) {
-    requireToken(bundle, token, "strict v1/v2 delivery bundle", failures);
+    requireToken(bundle, token, "strict v1-v4 delivery bundle", failures);
   }
+  requireToken(
+    deliveryParser,
+    "if (version !== 1 && version !== 2 && version !== 3 && version !== 4)",
+    "strict v1-v4 version whitelist",
+    failures,
+  );
+  const allowedFieldsStart = deliveryParser.indexOf("const allowed = new Set([");
+  const allowedFieldsEnd = deliveryParser.indexOf("  ]);", allowedFieldsStart);
+  const allowedFields = allowedFieldsStart >= 0 && allowedFieldsEnd >= 0
+    ? deliveryParser.slice(allowedFieldsStart, allowedFieldsEnd)
+    : "";
+  requireToken(
+    allowedFields,
+    "version === 2 || version === 3 || version === 4",
+    "payment_operations allowed for schemas 2/3/4",
+    failures,
+  );
+  const requiredFieldsStart = deliveryParser.indexOf(
+    "for (\n    const field of [",
+    allowedFieldsEnd,
+  );
+  const requiredFieldsEnd = deliveryParser.indexOf("  ) {", requiredFieldsStart);
+  const requiredFields = requiredFieldsStart >= 0 && requiredFieldsEnd >= 0
+    ? deliveryParser.slice(requiredFieldsStart, requiredFieldsEnd)
+    : "";
+  requireToken(
+    requiredFields,
+    "version === 2 || version === 3 || version === 4",
+    "payment_operations required for schemas 2/3/4",
+    failures,
+  );
 
   const hmac = files.hmac ?? "";
   for (
@@ -609,11 +668,34 @@ function selfTest() {
   const reversions = [
     {
       key: "bundle",
-      value: valid.bundle.replace(
+      value: mutateDeliveryParserToken(
+        valid.bundle,
+        "if (version !== 1 && version !== 2 && version !== 3 && version !== 4)",
         "if (version !== 1 && version !== 2 && version !== 3)",
-        "if (version !== 1 && version !== 2)",
       ),
       expected: "version",
+    },
+    {
+      key: "bundle",
+      value: mutateDeliveryParserToken(
+        valid.bundle,
+        "version === 2 || version === 3 || version === 4",
+        "version === 2 || version === 3",
+        "const allowed = new Set([",
+        "  ]);",
+      ),
+      expected: "payment_operations allowed for schemas 2/3/4",
+    },
+    {
+      key: "bundle",
+      value: mutateDeliveryParserToken(
+        valid.bundle,
+        "version === 2 || version === 3 || version === 4",
+        "version === 2 || version === 3",
+        "for (\n    const field of [",
+        "  ) {",
+      ),
+      expected: "payment_operations required for schemas 2/3/4",
     },
     {
       key: "bundle",

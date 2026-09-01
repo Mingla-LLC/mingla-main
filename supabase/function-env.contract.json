@@ -417,6 +417,98 @@
       "required_bundle_fields": {},
       "required_top_level": []
     },
+    "brand-site-attribution": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {
+        "MINGLA_SITES_SECURITY_JSON": [
+          "attribution_pepper_b64",
+          "cms_to_core_current_key_b64",
+          "cms_to_core_current_kid",
+          "cms_to_core_previous_key_b64",
+          "cms_to_core_previous_kid",
+          "core_to_cms_current_key_b64",
+          "core_to_cms_current_kid",
+          "core_to_cms_previous_key_b64",
+          "core_to_cms_previous_kid",
+          "runtime_to_core_current_key_b64",
+          "runtime_to_core_current_kid",
+          "runtime_to_core_previous_key_b64",
+          "runtime_to_core_previous_kid",
+          "schema_version"
+        ]
+      },
+      "required_top_level": []
+    },
+    "brand-site-cms-callback": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {
+        "MINGLA_SITES_SECURITY_JSON": [
+          "attribution_pepper_b64",
+          "cms_to_core_current_key_b64",
+          "cms_to_core_current_kid",
+          "cms_to_core_previous_key_b64",
+          "cms_to_core_previous_kid",
+          "core_to_cms_current_key_b64",
+          "core_to_cms_current_kid",
+          "core_to_cms_previous_key_b64",
+          "core_to_cms_previous_kid",
+          "runtime_to_core_current_key_b64",
+          "runtime_to_core_current_kid",
+          "runtime_to_core_previous_key_b64",
+          "runtime_to_core_previous_kid",
+          "schema_version"
+        ]
+      },
+      "required_top_level": []
+    },
+    "brand-site-control": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {
+        "MINGLA_SITES_SECURITY_JSON": [
+          "attribution_pepper_b64",
+          "cms_to_core_current_key_b64",
+          "cms_to_core_current_kid",
+          "cms_to_core_previous_key_b64",
+          "cms_to_core_previous_kid",
+          "core_to_cms_current_key_b64",
+          "core_to_cms_current_kid",
+          "core_to_cms_previous_key_b64",
+          "core_to_cms_previous_kid",
+          "runtime_to_core_current_key_b64",
+          "runtime_to_core_current_kid",
+          "runtime_to_core_previous_key_b64",
+          "runtime_to_core_previous_kid",
+          "schema_version"
+        ]
+      },
+      "required_top_level": []
+    },
+    "brand-site-runtime-resolve": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {
+        "MINGLA_SITES_SECURITY_JSON": [
+          "attribution_pepper_b64",
+          "cms_to_core_current_key_b64",
+          "cms_to_core_current_kid",
+          "cms_to_core_previous_key_b64",
+          "cms_to_core_previous_kid",
+          "core_to_cms_current_key_b64",
+          "core_to_cms_current_kid",
+          "core_to_cms_previous_key_b64",
+          "core_to_cms_previous_kid",
+          "runtime_to_core_current_key_b64",
+          "runtime_to_core_current_kid",
+          "runtime_to_core_previous_key_b64",
+          "runtime_to_core_previous_kid",
+          "schema_version"
+        ]
+      },
+      "required_top_level": []
+    },
     "brand-stripe-account-session": {
       "migration_fallback_top_level": [],
       "optional_top_level": [
@@ -2734,6 +2826,39 @@
         "defaultGetEnv",
         "diagnosticEnv"
       ]
+    },
+    "supabase/functions/_shared/sitesSecurity.ts": {
+      "allowed_bundle_fields": {
+        "MINGLA_SITES_SECURITY_JSON": [
+          "attribution_pepper_b64",
+          "cms_to_core_current_key_b64",
+          "cms_to_core_current_kid",
+          "cms_to_core_previous_key_b64",
+          "cms_to_core_previous_kid",
+          "core_to_cms_current_key_b64",
+          "core_to_cms_current_kid",
+          "core_to_cms_previous_key_b64",
+          "core_to_cms_previous_kid",
+          "runtime_to_core_current_key_b64",
+          "runtime_to_core_current_kid",
+          "runtime_to_core_previous_key_b64",
+          "runtime_to_core_previous_kid",
+          "schema_version"
+        ]
+      },
+      "allowed_top_level": [
+        "MINGLA_SITES_SECURITY_JSON"
+      ],
+      "closure_call_identifiers": [
+        "resolveCmsToCoreVerifier",
+        "resolveCoreToCmsSigner",
+        "resolveRuntimeToCoreVerifier",
+        "resolveSitesAttributionPepper"
+      ],
+      "dynamic_getters": [
+        "ENVELOPE_NAME"
+      ],
+      "local_call_identifiers": []
     },
     "supabase/functions/_shared/snapchat.ts": {
       "allowed_call_expressions": {

@@ -45,7 +45,7 @@ export function violations(files) {
   } catch {
     return ["contract_or_manifest_invalid_json"];
   }
-  if (manifest.secrets?.length !== 87) failures.push("manifest:not_exact_87");
+  if (manifest.secrets?.length !== 88) failures.push("manifest:not_exact_88");
   const records = new Map(
     manifest.secrets?.map((record) => [record.name, record]),
   );
@@ -191,7 +191,7 @@ export function violations(files) {
     [
       "live_name_set_mismatch",
       "in_memory_receipt_authority_required",
-      "remediation_requires_exact_92",
+      "remediation_requires_exact_93",
       "remediation_function_set_mismatch",
       "assertLiveNameParity",
     ],
@@ -328,7 +328,7 @@ function readFiles() {
 
 function fixture() {
   const filler = Array.from(
-    { length: 85 },
+    { length: 86 },
     (_, index) => ({ name: `SAFE_${index}` }),
   );
   return {
@@ -388,7 +388,7 @@ function fixture() {
       ],
     }),
     preflight:
-      "live_name_set_mismatch in_memory_receipt_authority_required remediation_requires_exact_92 remediation_function_set_mismatch assertLiveNameParity",
+      "live_name_set_mismatch in_memory_receipt_authority_required remediation_requires_exact_93 remediation_function_set_mismatch assertLiveNameParity",
     resolver:
       "AD_CONVERSION_TOKENS governed_ad_bundle_invalid governed_ad_legacy_fallback legacyName !== LEGACY_NAMES[field]",
     service:
@@ -419,7 +419,7 @@ function selfTest() {
     ["cta", 'name="externalLink" size={18}', "buyer-cta"],
     ["componentTest", "all seven phases", "buyer-component-test"],
     ["componentTest", "navigationsAfter", "buyer-component-test"],
-    ["preflight", "remediation_requires_exact_92", "preflight"],
+    ["preflight", "remediation_requires_exact_93", "preflight"],
     ["setter", "existing_field_omitted", "setter"],
     ["coordinator", "receipt_replay_rejected", "coordinator"],
     ["coordinator", "assertLiveNameParity", "coordinator"],
@@ -440,8 +440,20 @@ function selfTest() {
       throw new Error(`reversion not caught: ${key}:${token}`);
     }
   }
+  const manifest = JSON.parse(clean.manifest);
+  for (const secrets of [
+    manifest.secrets.slice(1),
+    [...manifest.secrets, { name: "UNAPPROVED_EXTRA" }],
+  ]) {
+    const broken = { ...clean, manifest: JSON.stringify({ secrets }) };
+    if (
+      !violations(broken).some((failure) =>
+        failure.includes("manifest:not_exact_88")
+      )
+    ) throw new Error("manifest cardinality reversion not caught");
+  }
   console.log(
-    `issue-2241 secret-readiness self-test PASS (${cases.length} reversions)`,
+    `issue-2241 secret-readiness self-test PASS (${cases.length + 2} reversions)`,
   );
 }
 

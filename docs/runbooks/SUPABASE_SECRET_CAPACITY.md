@@ -109,7 +109,7 @@ after all 17 pass may the bundle be transformed value-blindly to exact schema v3
 Paystack field false and all six pre-existing controls unchanged. Activation is a separate
 post-#1845 operation.
 
-### #2241 exact-87 readiness reconciliation
+### #2241 exact-88 readiness reconciliation
 
 `supabase/function-env.contract.json` is the checked inventory for every production Edge
 function. Run `audit-function-secret-contract.mjs` before any deploy; it follows recursive
@@ -135,7 +135,7 @@ Normal deployment of any of the eight bundle-dependent functions must use the sa
 the complete authoritative object(s) supplied in the same process: `--ad-input <0600-path>` for
 an AD reader and/or `--delivery-input <0600-path>` for the checkout delivery reader, alongside
 the explicit `--function`, `--project-ref`, and `--merged-commit` arguments. Before its first
-apply or deploy, that route requires exact value-blind live-name parity with the 87-name manifest.
+apply or deploy, that route requires exact value-blind live-name parity with the 88-name manifest.
 It then applies the complete object, creates and consumes the protected in-memory receipt, runs
 the later function-readiness preflight, deploys only the selected functions with `--use-api`, and
 verifies source/JWT parity. A receipt file, receipt CLI argument, receipt environment variable,
@@ -156,7 +156,7 @@ credential as a substitute for continuity.
 
 The remediation is valid only from the exact clean merged commit that current remote `main`
 reports via `git ls-remote` (a stale local tracking ref is not authority), within 72 hours, against
-production ref `gqnoajqerqhnvulmnyvv`, while live names equal the exact 87-name manifest plus
+production ref `gqnoajqerqhnvulmnyvv`, while live names equal the exact 88-name manifest plus
 `ATTENDANCE_CLAIM_PEPPER`, `CHECKOUT_REVOCATION_EXECUTE`,
 `META_COMPETITOR_ACCESS_TOKEN`, `META_COMPETITOR_IG_USER_ID`, and
 `RESEND_WEBHOOK_SECRET`. Its recursive deploy set is exactly:
@@ -169,7 +169,7 @@ production ref `gqnoajqerqhnvulmnyvv`, while live names equal the exact 87-name 
 `attendance-claim-link`, `claim-attendance`, `attendance-claim-backfill`,
 `competitor-intel-worker`, and `resend-webhook`.
 
-The coordinator first proves exact value-blind 92-name remediation parity; mismatch permits zero
+The coordinator first proves exact value-blind 93-name remediation parity; mismatch permits zero
 apply or deploy calls. It then applies the reconstructed complete AD object. A same-run applied AD receipt
 and a prepared-transition receipt for the exact preserved delivery-v3 → v4 candidate authorize
 that one 23-function deploy. It downloads each deployed function, recursively follows relative
@@ -181,11 +181,11 @@ unset.
 While every direct fallback remains, run value-blind attendance, checkout (without money
 movement), competitor observation, Resend signature, prior AD/delivery reader, and synthetic
 non-PII #1772 challenge smokes. Only after all pass may the five direct names be removed, one at a
-time, in this order: `META_COMPETITOR_IG_USER_ID` (91),
-`META_COMPETITOR_ACCESS_TOKEN` (90), `RESEND_WEBHOOK_SECRET` (89),
-`CHECKOUT_REVOCATION_EXECUTE` (88), and `ATTENDANCE_CLAIM_PEPPER` last (87). Stop on any fallback
+time, in this order: `META_COMPETITOR_IG_USER_ID` (92),
+`META_COMPETITOR_ACCESS_TOKEN` (91), `RESEND_WEBHOOK_SECRET` (90),
+`CHECKOUT_REVOCATION_EXECUTE` (89), and `ATTENDANCE_CLAIM_PEPPER` last (88). Stop on any fallback
 or invalid-bundle diagnostic or failed smoke. Then run the exact names-only audit and manually
-dispatch the credential-backed workflow; both must execute and report exact 87 parity.
+dispatch the credential-backed workflow; both must execute and report exact 88 parity.
 
 Rollback before any unset restores the prior complete bundle from its authoritative source.
 After an unset, restore that exact direct name first from its approved source, verify the fallback

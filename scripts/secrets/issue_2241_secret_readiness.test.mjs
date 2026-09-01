@@ -31,6 +31,7 @@ import {
   validateFunctionEnvContract,
 } from "./audit-function-secret-contract.mjs";
 import {
+  assertLiveNameParity,
   evaluateFunctionReadiness,
   ReadinessError,
   reduceLiveSecretNames,
@@ -268,8 +269,8 @@ function receiptSet(nowMs = Date.parse("2026-08-31T12:00:00.000Z")) {
 
 test("#2241 happy: checked contract classifies the complete production import graph", () => {
   assert.deepEqual(auditFunctionSecretContract(), []);
-  assert.equal(Object.keys(contract.functions).length, 228);
-  assert.equal(manifest.secrets.length, 87);
+  assert.equal(Object.keys(contract.functions).length, 232);
+  assert.equal(manifest.secrets.length, 88);
 });
 
 test("#2241 happy: every exact direct reader is bundle-first with only its matching fallback", () => {
@@ -1281,11 +1282,11 @@ test("#2241 happy: normal deploy accepts a selected function with every required
     mergedCommit,
   });
   assert.deepEqual(result.selected_functions, ["admin-place-search"]);
-  assert.equal(result.live_user_managed_count, 87);
+  assert.equal(result.live_user_managed_count, 88);
   assert.equal(result.bundle_receipts, 0);
 });
 
-test("#2241 happy: exact 92 remediation and protected receipt set pass once", () => {
+test("#2241 happy: exact 93 remediation and protected receipt set pass once", () => {
   const set = receiptSet();
   const result = evaluateFunctionReadiness({
     contract,
@@ -1305,7 +1306,7 @@ test("#2241 happy: exact 92 remediation and protected receipt set pass once", ()
     },
     verifyReceiptSet: set.authority.verifyReceiptSet,
   });
-  assert.equal(result.live_user_managed_count, 92);
+  assert.equal(result.live_user_managed_count, 93);
   assert.equal(result.selected_functions.length, 23);
   assert.throws(
     () =>
@@ -1394,6 +1395,45 @@ test("#2241 adversarial: exact live/project/function sets and in-memory authorit
       error.code === "in_memory_receipt_authority_required",
     "a persisted receipt-shaped object alone cannot authorize deploy",
   );
+});
+
+test("#2241 adversarial: exact 88/93 cardinalities reject both off-by-one directions", () => {
+  const normal = manifest.secrets.map((record) => record.name);
+  const remediation = [...normal, ...ISSUE_2241_EXTRA_NAMES];
+  for (const liveNames of [normal.slice(1), [...normal, "UNAPPROVED_EXTRA"]]) {
+    assert.throws(
+      () =>
+        assertLiveNameParity({
+          contract,
+          manifest,
+          liveNames,
+          projectRef,
+        }),
+      (error) =>
+        error instanceof ReadinessError &&
+        error.code === "live_name_set_mismatch",
+    );
+  }
+  for (
+    const liveNames of [
+      remediation.slice(1),
+      [...remediation, "UNAPPROVED_EXTRA"],
+    ]
+  ) {
+    assert.throws(
+      () =>
+        assertLiveNameParity({
+          contract,
+          manifest,
+          liveNames,
+          projectRef,
+          mode: "issue-2241-remediation",
+        }),
+      (error) =>
+        error instanceof ReadinessError &&
+        error.code === "live_name_set_mismatch",
+    );
+  }
 });
 
 test("#2241 adversarial: altered/wrong-key/stale/wrong-context receipts fail", () => {
