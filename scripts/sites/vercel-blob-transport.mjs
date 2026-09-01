@@ -7,9 +7,13 @@ import { fileURLToPath } from "node:url";
 
 const BUNDLE_PATHNAME =
   /^recovery\/sites\/mingla-sites-[0-9a-f-]{36}-[0-9TZ]+-[0-9a-f]{64}\.msbk$/;
+export const SINGLE_PART_MAX_BYTES = 8 * 1024 * 1024;
 
 export function classifyBlobFailure(output) {
   const value = String(output || "").toLowerCase();
+  if (/npm (?:error|err!)|could not determine executable/.test(value)) {
+    return "PRIVATE_CLI_BOOTSTRAP_FAILED";
+  }
   if (
     /file doesn't exist|path to upload is not a file|error while reading file/.test(value)
   ) return "PRIVATE_INPUT_UNREADABLE";
@@ -30,8 +34,12 @@ export function classifyBlobFailure(output) {
     return "PRIVATE_SERVICE_UNAVAILABLE";
   }
   if (
-    /fetch failed|failed to fetch|network error|network request failed|internet connection|load failed|terminated|enotfound|econnreset|etimedout|socket/.test(value)
+    /fetch failed|failed to fetch|network error|network request failed|internet connection|load failed|terminated|enotfound|eai_again|econnreset|econnrefused|etimedout|epipe|und_err|socket/.test(value)
   ) return "PRIVATE_NETWORK_FAILED";
+  if (/unknown error, please visit/.test(value)) return "PRIVATE_PROVIDER_UNKNOWN";
+  if (/unexpected error occurred|filehandle object was closed/.test(value)) {
+    return "PRIVATE_CLI_UNEXPECTED";
+  }
   return "PRIVATE_UNCLASSIFIED_FAILURE";
 }
 
@@ -48,6 +56,8 @@ export function runBlobTransport({
   outputPath,
   env = process.env,
   spawn = spawnSync,
+  exists = existsSync,
+  stat = statSync,
 } = {}) {
   const token = String(env.BLOB_READ_WRITE_TOKEN || "");
   if (token.length < 32) fail("PRIVATE_CREDENTIAL_MISSING");
@@ -56,15 +66,18 @@ export function runBlobTransport({
   let args;
   if (operation === "put") {
     const source = resolve(String(sourcePath || ""));
-    if (!existsSync(source) || !statSync(source).isFile() || statSync(source).size < 1) {
+    const sourceStat = exists(source) ? stat(source) : null;
+    if (!sourceStat?.isFile() || sourceStat.size < 1) {
       fail("PRIVATE_INPUT_UNREADABLE");
     }
+    const multipart = sourceStat.size > SINGLE_PART_MAX_BYTES;
     args = [
       "--yes", "vercel@53.2.0", "blob", "put", source,
       "--access", "private",
       "--add-random-suffix", "false",
       "--allow-overwrite", "false",
       "--content-type", "application/octet-stream",
+      "--multipart", String(multipart),
       "--pathname", pathname,
     ];
   } else if (operation === "get") {
@@ -88,7 +101,8 @@ export function runBlobTransport({
   }
   if (operation === "get") {
     const output = resolve(String(outputPath || ""));
-    if (!existsSync(output) || !statSync(output).isFile() || statSync(output).size < 1) {
+    const outputStat = exists(output) ? stat(output) : null;
+    if (!outputStat?.isFile() || outputStat.size < 1) {
       fail("PRIVATE_READBACK_MISSING");
     }
   }

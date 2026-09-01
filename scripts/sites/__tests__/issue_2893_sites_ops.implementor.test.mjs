@@ -1237,3 +1237,37 @@ test("#2962 private Blob transport emits finite codes and never provider output"
   assert.doesNotMatch(transport, /console\.(?:log|error|warn)/);
   assert.doesNotMatch(transport, /process\.(?:stdout|stderr)\.write\([^\n]*result\./);
 });
+
+test("#2970 private Blob uploads are single-part when small and multipart when large", async () => {
+  const {
+    runBlobTransport,
+    SINGLE_PART_MAX_BYTES,
+  } = await import("../vercel-blob-transport.mjs");
+  const invocations = [];
+  const pathname =
+    `recovery/sites/mingla-sites-${SITE_ID}-20260901T000000000Z-${"b".repeat(64)}.msbk`;
+
+  for (const size of [SINGLE_PART_MAX_BYTES, SINGLE_PART_MAX_BYTES + 1]) {
+    runBlobTransport({
+      operation: "put",
+      sourcePath: "/mounted/private-backup.msbk",
+      pathname,
+      env: { BLOB_READ_WRITE_TOKEN: "token-value-that-is-long-enough-to-pass" },
+      exists: () => true,
+      stat: () => ({ isFile: () => true, size }),
+      spawn(command, args) {
+        invocations.push({ command, args, size });
+        return { status: 0, stdout: "private-provider-url", stderr: "" };
+      },
+    });
+  }
+
+  assert.equal(invocations.length, 2);
+  assert.equal(invocations.every(({ command }) => command === "npx"), true);
+  const multipartValue = ({ args }) => args[args.indexOf("--multipart") + 1];
+  assert.equal(multipartValue(invocations[0]), "false");
+  assert.equal(multipartValue(invocations[1]), "true");
+  assert.equal(invocations.every(({ args }) =>
+    args.includes("--access") && args.includes("private") &&
+    args.includes("--allow-overwrite") && args.includes("false")), true);
+});
