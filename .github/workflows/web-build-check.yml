@@ -178,6 +178,7 @@ jobs:
           npm run typecheck
           npm run build
           npm run test:search-foundation
+          node --test scripts/issue-2981-host-owner-isolation.tester.test.mjs
       - name: "#2771 no web analytics before explicit grant"
         working-directory: mingla-business
         run: |

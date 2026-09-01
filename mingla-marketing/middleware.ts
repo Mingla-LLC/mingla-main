@@ -22,6 +22,7 @@ import {
 const CAREERS_PREFIX = '/careers'
 const INTERNAL_SHARE_PREFIX = '/api/internal-share-proxy/'
 const INTERNAL_PROXY_HEADER = 'x-mingla-internal-share-route'
+const EXACT_SHARE_OWNER_PATHS = new Set(['/api/content-share-analytics'])
 const PUBLIC_SHARE_PATH = /^(?:\/p\/[a-f0-9]{36}|\/share\/[a-f0-9]{36}\.png|\/og\/share\/[a-f0-9]{36}\.png|\/api\/shared-card\/[a-f0-9]{36}|\/s\/[0-9A-Za-z]{16}|\/og\/s\/[0-9A-Za-z]{16}\/v[1-9][0-9]*-r2\.jpg|\/api\/content-share\/[0-9A-Za-z]{16}|\/api\/content-share-readiness\/[0-9A-Za-z]{16}\/[1-9][0-9]*)$/
 const SHARE_OWNER_PREFIXES = [
   '/p/',
@@ -36,7 +37,10 @@ const SHARE_OWNER_PREFIXES = [
 ] as const
 
 function isShareOwnerPath(pathname: string): boolean {
-  return SHARE_OWNER_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  return (
+    EXACT_SHARE_OWNER_PATHS.has(pathname) ||
+    SHARE_OWNER_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  )
 }
 
 function internalSharePath(pathname: string): string | null {
@@ -137,6 +141,6 @@ export const config = {
     '/share/:path*',
     '/og/share/:path*',
     '/api/shared-card/:path*',
-    '/((?!_next/|.well-known/|api/internal-share-proxy/).*)',
+    '/((?!_next/|.well-known/|api/internal-share-proxy/|api/content-share-analytics$).*)',
   ],
 }

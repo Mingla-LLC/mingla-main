@@ -101,6 +101,7 @@ const REQUIRED_FILES = new Set([
   'mingla-marketing/next.config.ts',
   'mingla-marketing/package.json',
   'mingla-marketing/scripts/verify-search-foundation.mjs',
+  'mingla-marketing/scripts/issue-2981-host-owner-isolation.tester.test.mjs',
   'scripts/apex-route-model/apex-route-resolver.mjs',
   ['.github', 'workflows', ['web-build-check', 'yml'].join('.')].join('/'),
   ...SEARCH_PAGE_FILES.values(),
@@ -239,6 +240,12 @@ function validate(io) {
   if (!/NOINDEX_LIFECYCLES\.has\(contract\.lifecycle\)/.test(metadata) || !/robots:\s*\{\s*index:\s*false/.test(metadata)) {
     fail('NOINDEX_METADATA', 'public noindex metadata must fail closed through the lifecycle set')
   }
+  if (
+    !/title:\s*\{\s*absolute:\s*contract\.title\s*\}/.test(metadata) ||
+    !/title:\s*\{\s*absolute:\s*input\.title\s*\}/.test(metadata)
+  ) {
+    fail('TITLE_BRANDING', 'page metadata must own an absolute title so the root template cannot repeat Mingla')
+  }
 
   for (const [pathname, relativePath] of SEARCH_PAGE_FILES) {
     if (!read(relativePath).includes(`searchRouteMetadata('${pathname}')`)) {
@@ -282,8 +289,17 @@ function validate(io) {
   ]) {
     if (!middleware.includes(token)) fail('HOST_LIFECYCLE_RUNTIME', `missing ${token}`)
   }
-  if (!middleware.includes('.well-known/') || !middleware.includes('api/internal-share-proxy/')) {
-    fail('HOST_EXCLUSIONS', 'association and internal share paths are not excluded')
+  const sharePrefixBlock = arraySlice(middleware, 'const SHARE_OWNER_PREFIXES = [', '] as const')
+  if (
+    !middleware.includes('.well-known/') ||
+    !middleware.includes('api/internal-share-proxy/') ||
+    !middleware.includes("const EXACT_SHARE_OWNER_PATHS = new Set(['/api/content-share-analytics'])") ||
+    !middleware.includes('EXACT_SHARE_OWNER_PATHS.has(pathname)') ||
+    !middleware.includes('api/internal-share-proxy/|api/content-share-analytics$') ||
+    sharePrefixBlock.includes('/api/content-share-analytics') ||
+    !registry.includes("{ id: 'public-share-analytics', owner: 'share analytics API', match: '/api/content-share-analytics' }")
+  ) {
+    fail('HOST_EXCLUSIONS', 'association, internal share, and exact analytics paths must keep explicit owners')
   }
 
   const nextConfig = read('mingla-marketing/next.config.ts')
@@ -365,14 +381,23 @@ function validate(io) {
     fail('RUNTIME_TEST_REGISTRATION', 'package script is missing')
   }
   const runtimeTest = read('mingla-marketing/scripts/verify-search-foundation.mjs')
-  for (const token of ['BROWSER_AGENT', 'CRAWLER_AGENT', "host: 'www.usemingla.com'", 'manifest.webmanifest', 'apple-app-site-association', "'/favicon.ico'", "'/apple-icon.png'", 'mingla-icon-192.png', 'mingla-icon-512.png']) {
+  for (const token of ['BROWSER_AGENT', 'CRAWLER_AGENT', "host: 'www.usemingla.com'", 'manifest.webmanifest', 'apple-app-site-association', "'/favicon.ico'", "'/apple-icon.png'", 'mingla-icon-192.png', 'mingla-icon-512.png', 'assertSingleBrandMention']) {
     if (!runtimeTest.includes(token)) fail('RUNTIME_TEST_COVERAGE', `missing ${token}`)
+  }
+
+  const hostOwnerTest = read('mingla-marketing/scripts/issue-2981-host-owner-isolation.tester.test.mjs')
+  for (const token of ["['/api/content-share-analytics', 'POST']", 'assert.notEqual(response.status, 308']) {
+    if (!hostOwnerTest.includes(token)) fail('HOST_OWNER_TEST_COVERAGE', `missing ${token}`)
   }
 
   const workflowPath = ['.github', 'workflows', ['web-build-check', 'yml'].join('.')].join('/')
   const workflow = read(workflowPath)
-  if (!workflow.includes('#2981 marketing search foundation') || !workflow.includes('npm run test:search-foundation')) {
-    fail('CI_REGISTRATION', 'web build CI does not run the #2981 production-server proof')
+  if (
+    !workflow.includes('#2981 marketing search foundation') ||
+    !workflow.includes('npm run test:search-foundation') ||
+    !workflow.includes('node --test scripts/issue-2981-host-owner-isolation.tester.test.mjs')
+  ) {
+    fail('CI_REGISTRATION', 'web build CI does not run both #2981 production-server proofs')
   }
 
   const marketing = read('MARKETING.md')

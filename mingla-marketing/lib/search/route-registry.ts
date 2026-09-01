@@ -225,6 +225,7 @@ export const ROUTE_OWNER_EXCLUSIONS = [
   { id: 'public-share-pages', owner: 'share proxy', match: '/p/** and /s/**' },
   { id: 'public-share-assets', owner: 'share proxy', match: '/share/** and /og/**' },
   { id: 'public-share-apis', owner: 'share proxy', match: '/api/content-share/** and /api/shared-card/**' },
+  { id: 'public-share-analytics', owner: 'share analytics API', match: '/api/content-share-analytics' },
   { id: 'internal-share-apis', owner: 'server-only share proxy', match: '/api/internal-share-proxy/**' },
 ] as const
 

@@ -201,6 +201,11 @@ function assertIcoDimensions(body, width, height, label) {
   assert.equal(body[7] || 256, height, `${label} height`)
 }
 
+function assertSingleBrandMention(title, label) {
+  const mentions = title.match(/\bMingla\b/g)?.length ?? 0
+  assert(mentions <= 1, `${label} repeats Mingla branding in title: ${title}`)
+}
+
 async function main() {
   const port = await availablePort()
   const child = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', String(port)], {
@@ -229,6 +234,7 @@ async function main() {
       assert.doesNotMatch(browserFacts.robots, /noindex/i, `${pathname} browser indexability`)
       assert.doesNotMatch(crawlerFacts.robots, /noindex/i, `${pathname} crawler indexability`)
       assert(browserFacts.title.length >= 12, `${pathname} has a useful title`)
+      assertSingleBrandMention(browserFacts.title, pathname)
       assert((browserFacts.description ?? '').length >= 50, `${pathname} has a useful description`)
       assert(browserFacts.h1.length >= 8, `${pathname} has one primary answer heading`)
       assert(browserFacts.main.length >= 100, `${pathname} has material server-rendered content`)
@@ -280,6 +286,7 @@ async function main() {
       const facts = pageFacts(response.body.toString('utf8'))
       assert.match(facts.robots, /noindex/i, `${pathname} explicit noindex`)
       assert.equal(facts.canonical, null, `${pathname} has no search canonical`)
+      assertSingleBrandMention(facts.title, pathname)
     }
     pass('public-noindex routes and route families')
 

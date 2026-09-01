@@ -16,7 +16,7 @@ export function searchRouteMetadata(pathname: string): Metadata {
   const contract = requireRouteContract(pathname, 'search_ready') as SearchReadyRouteContract
   const canonical = canonicalUrlForSearchRoute(pathname)
   return {
-    title: contract.title,
+    title: { absolute: contract.title },
     description: contract.description,
     alternates: { canonical },
     robots: { index: true, follow: true },
@@ -44,7 +44,7 @@ export function publicNoindexMetadata(
     throw new Error(`${pathname} must be registered in a noindex lifecycle`)
   }
   return {
-    title: input.title,
+    title: { absolute: input.title },
     ...(input.description ? { description: input.description } : {}),
     robots: { index: false, follow: input.follow ?? false },
     openGraph: {
