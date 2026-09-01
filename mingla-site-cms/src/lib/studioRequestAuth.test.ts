@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { Media } from "../collections/Media";
 import { enforceLiveStudioWrite } from "./access";
 import { callCore } from "./gateway";
 import { tombstoneMedia } from "./mediaPipeline";
@@ -139,9 +140,7 @@ describe("#2830 live Studio request authority", () => {
         findByID: vi.fn(async (input) => {
           calls.push(input);
           if (input.collection === "media") {
-            return input.req.context.minglaMediaGrant === true
-              ? { id: "media-1", state: "READY" }
-              : { id: "media-1" };
+            return { id: "media-1", state: "READY" };
           }
           return { id: "page-1", revision: "revision-1", blocks: [] };
         }),
@@ -163,6 +162,42 @@ describe("#2830 live Studio request authority", () => {
     expect(calls[1]?.req).not.toBe(request);
     expect(calls[1]?.req.context).toMatchObject({ minglaMediaGrant: true });
     expect(calls[1]?.req.context).not.toHaveProperty("minglaSignedCore");
+  });
+
+  it("uses the real Media field access callbacks to hide every system-only field", async () => {
+    const fields = Media.fields as Array<{
+      name?: string;
+      access?: { read?: (args: { req: unknown }) => unknown };
+    }>;
+    const ordinary = await request(payloadUser(session));
+    const granted = studioMediaGrantRequest(ordinary as never);
+    const signedCore = {
+      ...ordinary,
+      context: { minglaSignedCore: true },
+    };
+
+    for (const name of [
+      "state",
+      "detected_mime",
+      "bytes",
+      "width",
+      "height",
+      "checksum",
+      "quarantine_key",
+      "approved_master_key",
+      "rendition_manifest",
+      "rejection_code",
+      "created_by",
+      "quarantine_delete_by",
+      "recovery_until",
+      "tombstoned_at",
+    ]) {
+      const read = fields.find((field) => field.name === name)?.access?.read;
+      expect(read, `${name} must define field access.read`).toBeTypeOf("function");
+      expect(read!({ req: ordinary }), `${name} ordinary tenant read`).toBe(false);
+      expect(read!({ req: granted }), `${name} media-grant read`).toBe(true);
+      expect(read!({ req: signedCore }), `${name} signed-Core read`).toBe(true);
+    }
   });
 
   it("bounds tombstone Media grants without mutating ordinary relationship reads", async () => {

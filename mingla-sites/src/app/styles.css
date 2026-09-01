@@ -32,8 +32,15 @@ body {
 }
 
 a {
+  display: inline-flex;
+  align-items: center;
   color: inherit;
   text-underline-offset: 4px;
+}
+
+:where(a, button, summary) {
+  min-width: 44px;
+  min-height: 44px;
 }
 
 :focus-visible {

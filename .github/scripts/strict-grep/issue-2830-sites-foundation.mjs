@@ -438,6 +438,18 @@ export function violations(files) {
     failures,
   );
   for (const token of [
+    "read: systemMediaField",
+    "access: systemFieldAccess",
+  ]) need(files.cmsMediaCollection ?? "", token, "custom media pipeline boundary", failures);
+  const protectedMediaFieldCount = (files.cmsMediaCollection ?? "").match(
+    /access: systemFieldAccess/g,
+  )?.length ?? 0;
+  if (protectedMediaFieldCount !== 14) {
+    failures.push(
+      `custom media pipeline boundary: expected 14 read-protected system fields, found ${protectedMediaFieldCount}`,
+    );
+  }
+  for (const token of [
     "now + 30 * 60",
     "session.absolute_expires_at",
     "secure: true",
@@ -551,6 +563,7 @@ export function violations(files) {
     "min-width: 320px",
     "88svh",
     "76svh",
+    ":where(a, button, summary) {\n  min-width: 44px;\n  min-height: 44px;\n}",
     "@media (prefers-reduced-motion: reduce)",
   ]) need(files.publicStyles ?? "", token, "Restaurant Website v1 visual contract", failures);
   for (const token of [
@@ -671,6 +684,8 @@ function selfTest() {
     ["cmsUsers", "admin: canAccessStudioAdmin", "admin: noAccess", "Studio admin admission"],
     ["cmsMedia", "newestRank > 50", "newestRank > 0", "media and retention"],
     ["cmsMedia", "req: studioMediaGrantRequest(req)", "req", "media and retention"],
+    ["cmsMediaCollection", "  read: systemMediaField,\n", "", "custom media pipeline boundary"],
+    ["cmsMediaCollection", 'access: systemFieldAccess', 'access: { create: systemMediaField, update: systemMediaField }', "custom media pipeline boundary"],
     ["cmsSession", "decodeSessionReturnContext", "decodeExpiredSessionUnchecked", "fixed Studio return owner"],
     ["cmsStudioAuth", "delete context.minglaSignedCore", "context.minglaSignedCore = true", "Studio live authorization"],
     ["cmsStudioAuth", "req: studioMediaGrantRequest(request)", "req: request", "Studio live authorization"],
@@ -689,6 +704,7 @@ function selfTest() {
     ["publicRenderer", 'aria-labelledby={page.role === "home"', 'aria-labelledby={true || page.role === "home"', "public last-good runtime"],
     ["publicRenderer", 'className="fact-rail"', 'className="facts"', "Restaurant Website v1 composition"],
     ["publicStyles", "--gold: #cda052", "--gold: #d85a22", "Restaurant Website v1 visual contract"],
+    ["publicStyles", ":where(a, button, summary) {\n  min-width: 44px;\n  min-height: 44px;\n}", ":where(a, button, summary) {\n  min-width: 32px;\n  min-height: 32px;\n}", "Restaurant Website v1 visual contract"],
     ["checkout", '.is("site_attribution_token_digest",', '.neq("site_attribution_token_digest",', "checkout first-touch handoff"],
     ["publicPackage", '"next": "16.3.3"', '"@payloadcms/next": "3.88.0",\n    "next": "16.3.3"', "production dependency isolation"],
     ["businessView", "Managed securely by Mingla.", "Configure custom domain", "deferred domain UI"],

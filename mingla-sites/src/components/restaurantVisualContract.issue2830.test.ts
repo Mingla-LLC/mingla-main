@@ -41,6 +41,24 @@ describe("#2830 Restaurant Website v1 visual and accessibility contract", () => 
     expect(renderer).toContain('className="skip"');
   });
 
+  it("gives every rendered interactive element a physical 44 by 44 CSS-pixel floor", () => {
+    expect(styles).toContain(
+      ":where(a, button, summary) {\n  min-width: 44px;\n  min-height: 44px;\n}",
+    );
+    expect(styles).toMatch(
+      /a \{[\s\S]*?display: inline-flex;[\s\S]*?align-items: center;/,
+    );
+    for (const surface of [
+      'className="brand"',
+      'className="fact-rail"',
+      "View on Mingla",
+      "Open map",
+      'className="footer"',
+    ]) {
+      expect(renderer).toContain(surface);
+    }
+  });
+
   it("retains canonical commerce, consent, canonical metadata and crawler owners", () => {
     expect(renderer).toContain("isCanonicalMinglaHref");
     expect(renderer).toContain("TrackedLink");

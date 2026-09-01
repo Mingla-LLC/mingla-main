@@ -51,7 +51,7 @@ export const Media: CollectionConfig = {
       defaultValue: "UPLOADING",
       options: [...MEDIA_STATES],
       admin: { readOnly: true },
-      access: { create: systemMediaField, update: systemMediaField },
+      access: systemFieldAccess,
     },
     {
       name: "original_filename_safe",
@@ -67,7 +67,7 @@ export const Media: CollectionConfig = {
       options: ["image/jpeg", "image/png", "image/webp"],
     },
     { name: "detected_mime", type: "text", admin: { readOnly: true }, access: systemFieldAccess },
-    { name: "bytes", type: "number", admin: { readOnly: true }, access: { create: systemMediaField, update: systemMediaField } },
+    { name: "bytes", type: "number", admin: { readOnly: true }, access: systemFieldAccess },
     { name: "width", type: "number", admin: { readOnly: true }, access: systemFieldAccess },
     { name: "height", type: "number", admin: { readOnly: true }, access: systemFieldAccess },
     { name: "checksum", type: "text", admin: { readOnly: true }, access: systemFieldAccess },
