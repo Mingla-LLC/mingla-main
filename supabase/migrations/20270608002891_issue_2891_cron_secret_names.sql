@@ -79,22 +79,28 @@ COMMENT ON FUNCTION public.issue_2891_cron_secret_audit() IS
 
 -- ── probe ──────────────────────────────────────────────────────────────────
 DO $probe$
-DECLARE v_missing int; v_examined int; v_caught int;
+DECLARE v_missing int; v_examined int; v_caught int; v_secrets int; v_named int;
 BEGIN
-  -- 1. the two named jobs now reference a secret that EXISTS
-  SELECT count(*) INTO v_missing FROM public.issue_2891_cron_secret_audit();
-  SELECT count(*) INTO v_examined FROM cron.job WHERE command ILIKE '%vault.decrypted_secrets%';
-  IF v_examined < 1 THEN
-    RAISE EXCEPTION 'PROBE FAIL: no cron references the vault at all — the audit would be vacuous';
+  -- ARM 1 (runs anywhere) — the two jobs this migration owns now name the
+  -- secret that exists, and no longer name the ones that never did. This is
+  -- the structural claim, and it is true on any database including one whose
+  -- vault is empty.
+  SELECT count(*) INTO v_named FROM cron.job
+   WHERE jobname IN ('keep-functions-warm','orch-0875-process-booking-deadlines')
+     AND command LIKE '%name = ''service_role_key''%';
+  IF v_named <> 2 THEN
+    RAISE EXCEPTION 'PROBE FAIL: expected both jobs to name service_role_key, found %', v_named;
   END IF;
-  IF v_missing <> 0 THEN
-    RAISE EXCEPTION 'PROBE FAIL: % of % vault-using crons still name a missing secret', v_missing, v_examined;
+  SELECT count(*) INTO v_named FROM cron.job
+   WHERE command LIKE '%supabase_anon_key%' OR command LIKE '%supabase_service_role_key%';
+  IF v_named <> 0 THEN
+    RAISE EXCEPTION 'PROBE FAIL: % cron(s) still name a secret that does not exist', v_named;
   END IF;
-  RAISE NOTICE 'issue #2891: 0 missing secrets across % vault-using cron jobs', v_examined;
 
-  -- 2. THE AUDIT ACTUALLY CATCHES ONE. Without this, "0 missing" is
-  --    indistinguishable from a regex that matches nothing — which is exactly
-  --    the failure mode this whole migration exists to fix.
+  -- ARM 2 (runs anywhere) — THE AUDIT ACTUALLY CATCHES ONE. Scoped to a
+  -- canary this probe creates, so it is meaningful whether the vault is
+  -- populated or empty. Without this, "0 missing" would be indistinguishable
+  -- from a regex matching nothing — the very failure being fixed.
   PERFORM cron.schedule('issue_2891_probe_canary', '0 5 31 2 *', $canary$
     SELECT (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'issue_2891_secret_that_does_not_exist');
   $canary$);
@@ -104,12 +110,22 @@ BEGIN
   IF v_caught <> 1 THEN
     RAISE EXCEPTION 'PROBE FAIL: the audit did not flag a deliberately broken job — it reports zero because it sees nothing';
   END IF;
-  RAISE NOTICE 'issue #2891: audit correctly flagged the canary, then it was removed';
 
-  -- 3. the canary is gone; the audit must be clean again
-  SELECT count(*) INTO v_missing FROM public.issue_2891_cron_secret_audit();
-  IF v_missing <> 0 THEN
-    RAISE EXCEPTION 'PROBE FAIL: canary survived cleanup, audit reports %', v_missing;
+  -- ARM 3 (production only) — with a populated vault, NOTHING may be missing.
+  -- A from-zero CI replay has no project secrets at all, so every reference
+  -- is legitimately unresolvable there and this assertion would be false for
+  -- reasons that have nothing to do with the fix. The skip is GUARDED on the
+  -- vault being provably empty, never on convenience.
+  SELECT count(*) INTO v_secrets FROM vault.decrypted_secrets;
+  SELECT count(*) INTO v_examined FROM cron.job WHERE command ILIKE '%vault.decrypted_secrets%';
+  IF v_secrets = 0 THEN
+    RAISE NOTICE 'issue #2891: vault holds no secrets (from-zero replay); % vault-using crons checked structurally only', v_examined;
+  ELSE
+    SELECT count(*) INTO v_missing FROM public.issue_2891_cron_secret_audit();
+    IF v_missing <> 0 THEN
+      RAISE EXCEPTION 'PROBE FAIL: % missing secret reference(s) across % vault-using cron jobs', v_missing, v_examined;
+    END IF;
+    RAISE NOTICE 'issue #2891: 0 missing references across % vault-using cron jobs', v_examined;
   END IF;
 END $probe$;
 
