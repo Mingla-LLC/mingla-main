@@ -2,6 +2,7 @@ import { X509Certificate } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { loadCmsConfig } from "./config";
+import { reconcileVerificationPath } from "./gateway";
 import { MINGLA_BUSINESS_ORIGIN } from "./origins";
 
 function postgresFixtureUrl({
@@ -62,6 +63,21 @@ function validEnvironment(
 }
 
 describe("#2893 production CMS launch configuration", () => {
+  it("#2914 verifies the exact production reconcile path including /api", () => {
+    const operationId = "00000000-0000-4000-8000-000000000001";
+    const productionPath = `/api/internal/reconcile/${operationId}`;
+    expect(
+      reconcileVerificationPath(
+        `https://studio.sites.usemingla.com${productionPath}`,
+      ),
+    ).toBe(productionPath);
+    expect(() =>
+      reconcileVerificationPath(
+        `https://studio.sites.usemingla.com/internal/reconcile/${operationId}`,
+      )
+    ).toThrow("SIGNATURE_INVALID");
+  });
+
   it("keeps schema creation in the privileged bootstrap, not the bounded Payload migrator", () => {
     const foundationMigration = readFileSync(
       "src/migrations/20260830_122002_issue_2830_sites_foundation.ts",
