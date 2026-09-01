@@ -246,6 +246,19 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
     ]),
   }),
   Object.freeze({
+    // [#2986] Both files consume the frozen #2117 provider deliberately: the
+    // runtime security suite proves the #2986 migration remains ordered after
+    // #2117, while the allowlist-delta gate pins that workflow's narrow
+    // intended-public reader exception. This is an exact reference-file delta
+    // on an existing sealed provider, never a new provider or a moved seal.
+    issue: 2986,
+    workflow: "issue-2117-offering-visibility-gate-tests.yml",
+    referenceFiles: Object.freeze([
+      "mingla-business/server/__tests__/publicSearchMigration.issue2986.security.test.ts",
+      "scripts/ci/issue_2986_allowlist_delta_gate.mjs",
+    ]),
+  }),
+  Object.freeze({
     // [#2948] `issue2948-deploy-invocation-shape.test.mjs` names BOTH workflows
     // on purpose and is a real consumer of each: it asserts that
     // deploy-functions.yml invokes the deploy wrapper with explicit
@@ -275,6 +288,10 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
       ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
       ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.self-test.mjs",
       ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs",
+      // [#2986] This suite names the existing migration provider to prove the
+      // public-search migration is collected there as well as in #2117's
+      // ordered replay. Keep the older #1772 references and add only this one.
+      "mingla-business/server/__tests__/publicSearchMigration.issue2986.security.test.ts",
       "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs",
     ]),
   }),
