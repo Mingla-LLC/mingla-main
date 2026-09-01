@@ -1271,3 +1271,75 @@ test("#2970 private Blob uploads are single-part when small and multipart when l
     args.includes("--access") && args.includes("private") &&
     args.includes("--allow-overwrite") && args.includes("false")), true);
 });
+
+test("#2975 direct private Blob HTTP transport validates upload and status classes", async () => {
+  const {
+    classifyBlobHttpStatus,
+    runBlobHttpTransport,
+  } = await import("../vercel-blob-http-transport.mjs");
+  const pathname =
+    `recovery/sites/mingla-sites-${SITE_ID}-20260901T000000000Z-${"c".repeat(64)}.msbk`;
+  const storeId = "storeid123456789";
+  const token = `vercel_blob_rw_${storeId}_${"s".repeat(30)}`;
+  const sourcePath = join(SITES_DIR, "pg17-client.sh");
+  const root = mkdtempSync(join(tmpdir(), "issue-2975-http-"));
+  const metadataPath = join(root, "upload.json");
+  let observed;
+
+  try {
+    const privateHost = "providerhost1234.private.blob.vercel-storage.com";
+    await runBlobHttpTransport({
+      operation: "put",
+      sourcePath,
+      pathname,
+      metadataPath,
+      env: { BLOB_READ_WRITE_TOKEN: token },
+      async fetchImpl(url, init) {
+        observed = { url: String(url), init };
+        return Response.json({
+          url: `https://${privateHost}/${pathname}`,
+          downloadUrl: `https://${privateHost}/${pathname}?download=1`,
+          pathname,
+          contentType: "application/octet-stream",
+          contentDisposition: "attachment",
+          etag: "private-etag",
+        });
+      },
+    });
+    assert.match(observed.url, /^https:\/\/vercel\.com\/api\/blob\/\?pathname=/);
+    assert.equal(observed.init.method, "PUT");
+    assert.equal(observed.init.headers["x-api-version"], "12");
+    assert.equal(observed.init.headers["x-vercel-blob-access"], "private");
+    assert.equal(observed.init.headers["x-add-random-suffix"], "0");
+    assert.equal(observed.init.headers["x-allow-overwrite"], "0");
+    assert.equal(observed.init.headers.authorization, `Bearer ${token}`);
+    assert.equal(Buffer.isBuffer(observed.init.body), true);
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
+    assert.equal(metadata.pathname, pathname);
+    assert.equal(new URL(metadata.url).hostname, privateHost);
+    assert.equal(metadata.etag, "private-etag");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+
+  const expected = new Map([
+    [401, "PRIVATE_AUTHORIZATION_FAILED"],
+    [404, "PRIVATE_STORE_OR_OBJECT_NOT_FOUND"],
+    [409, "PRIVATE_IMMUTABLE_CONFLICT"],
+    [413, "PRIVATE_FILE_TOO_LARGE"],
+    [415, "PRIVATE_CONTENT_REJECTED"],
+    [429, "PRIVATE_RATE_LIMITED"],
+    [503, "PRIVATE_SERVICE_UNAVAILABLE"],
+    [400, "PRIVATE_PROVIDER_HTTP_REJECTED"],
+  ]);
+  for (const [status, code] of expected) {
+    assert.equal(classifyBlobHttpStatus(status), code);
+  }
+
+  const transport = readFileSync(
+    join(SITES_DIR, "vercel-blob-http-transport.mjs"),
+    "utf8",
+  );
+  assert.doesNotMatch(transport, /console\.(?:log|error|warn)/);
+  assert.doesNotMatch(transport, /response\.(?:text|body)\s*\(/);
+});
