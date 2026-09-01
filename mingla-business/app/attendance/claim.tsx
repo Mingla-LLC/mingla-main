@@ -20,10 +20,10 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
     }
     let active = true;
     const raw = window.location.hash.replace(/^#/, "");
-    // Expo Router can reconcile its initial route after this screen's first
-    // effect and restore the launch fragment. Scrub once more immediately
-    // before the next paint so a claim credential never remains in browser
-    // history or the visible address bar.
+    // Expo Router reconciles its launch route after the first frame and can
+    // restore the fragment or drop the query. The helper captures pathname +
+    // search once, scrubs immediately, then uses a bounded two-frame scrub so
+    // the final visible history entry retains the query without a credential.
     scrubAttendanceClaimFragment(
       window.location,
       window.history,

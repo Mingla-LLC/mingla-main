@@ -13,8 +13,12 @@ export const scrubAttendanceClaimFragment = (
 ): void => {
   const cleanUrl = `${location.pathname}${location.search}`;
   const scrub = (): void => history.replaceState(null, "", cleanUrl);
+  const scrubAfterRouterReconciliation = (): void => {
+    scrub();
+    requestFrame(scrub);
+  };
   scrub();
-  requestFrame(scrub);
+  requestFrame(scrubAfterRouterReconciliation);
 };
 
 export const attendanceAppUrlFromFragment = (raw: string): string | null => {
