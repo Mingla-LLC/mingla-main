@@ -92,22 +92,16 @@
   --cut-btn-brand-bg:
     radial-gradient(62.56% 62.56% at 28.14% -10.42%, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 100%),
     linear-gradient(180deg, #f0842f 0%, #e06a17 100%);
+  /* NO GLOW. The brand button is moulded exactly like every other surface:
+     an inset top highlight, an inset dark bottom band, and tight NEUTRAL
+     drops. The two wide orange spreads that used to sit here read as a halo,
+     which is the opposite of a clean cut-out. */
   --cut-btn-brand-shadow:
     0 -3px 0 0 #a8450e inset,
     0 1px 0 0 rgba(255, 255, 255, 0.35) inset,
-    0 2.77px 2.21px 0 rgba(168, 69, 14, 0.14),
-    0 6.65px 5.32px 0 rgba(168, 69, 14, 0.14),
-    0 16px 26px 0 rgba(235, 120, 37, 0.28),
-    0 40px 60px 0 rgba(235, 120, 37, 0.18);
-
-  /* The hero pill's glow stack — AIgocy .title-icon .box, re-tinted. */
-  --cut-pill-glow:
-    0 3.44px 5.57px 0 rgba(0, 0, 0, 0.09),
-    0 22.91px 37.08px 0 rgba(235, 120, 37, 0.17),
-    0 76px 123px 0 rgba(235, 120, 37, 0.06),
-    0 56px 83px 0 rgba(235, 120, 37, 0.26),
-    0 14px 34px 0 rgba(235, 120, 37, 0.26),
-    0 1px 2px 0 rgba(235, 120, 37, 0.42);
+    0 2.77px 2.21px 0 rgba(20, 18, 15, 0.14),
+    0 6.65px 5.32px 0 rgba(20, 18, 15, 0.12),
+    0 12px 20px 0 rgba(20, 18, 15, 0.10);
 
   --cut-shadow-shell: 0 12px 60px rgba(20, 18, 15, 0.10);
   --cut-hairline: rgba(20, 18, 15, 0.08);
@@ -297,4 +291,29 @@
     0 3px 3px 0 rgba(0, 0, 0, 0.18),
     0 -9px 0 0 rgba(0, 0, 0, 0.34) inset,
     0 4px 0 0 rgba(255, 255, 255, 0.22) inset !important;
+}
+
+/* ---------------------------------------------------------------------------
+   #2902 — Explorer: room for the action between the headline and the cards.
+
+   Measured rather than assumed: the headline ends at y=295 and the DECK ROOT
+   (the visible top of the card area, not the first card) begins at y=311 —
+   16px of clearance on desktop, which no touch-sized button fits inside. My
+   earlier attempt measured `.group.absolute`, the card cell at y=376, and
+   concluded there was 81px. There was not; the cells sit inside a taller root.
+
+   Nudging the deck root down opens a real band without changing anything about
+   the hero itself: the deck has 77px of slack beneath it before the hero's own
+   pill row. `:has()` is used because the root has no class of its own.
+--------------------------------------------------------------------------- */
+[data-cut-deck] div:has(> .group.absolute) {
+  transform: translateY(20px);
+}
+@media (min-width: 768px) {
+  /* 56px, not 30px. A 48px action needs a band of 48 + 12 above + 12 below =
+     72px; the unshifted desktop band is 16px, so the deck has to move 56px to
+     open it. The deck has 77px of slack beneath it, so this leaves 21px. */
+  [data-cut-deck] div:has(> .group.absolute) {
+    transform: translateY(56px);
+  }
 }

@@ -161,11 +161,6 @@ export function CutoutFeatureHub({
 
       <div className="relative flex items-center justify-center py-4 lg:py-0">
         <span
-          aria-hidden="true"
-          className="absolute h-40 w-40 rounded-full blur-3xl"
-          style={{ background: 'rgba(235,120,37,0.30)' }}
-        />
-        <span
           className="relative flex h-28 w-28 items-center justify-center rounded-[28px] px-3 text-center font-display text-sm leading-tight text-white shadow-[var(--cut-shadow-tile)]"
           style={{ background: 'var(--cut-accent)' }}
         >

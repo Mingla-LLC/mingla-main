@@ -29,10 +29,12 @@ export default function CutoutExplorerPage() {
         <ExplorerHero cityKey="lagos" />
 
         {/* Between the headline and the cards, per Seth. Measured rather than
-            guessed: the headline ends at y=295 and the deck starts at y=376 on
-            desktop (81px of clearance); y=242 to y=344 on mobile (102px). These
-            percentages centre a 52px action inside both. */}
-        <div className="pointer-events-none absolute inset-x-0 top-[31.6%] z-30 flex justify-center px-6 md:top-[34.4%]">
+            guessed. The first pass measured `.group.absolute` — the card CELL
+            at y=376 — and read 81px of clearance. Wrong element: the visible
+            deck ROOT starts at y=311, so the real clearance was 16px. The deck
+            is nudged down in cutout.css to open a 72px band, and these
+            percentages centre the 48px action inside it. */}
+        <div className="pointer-events-none absolute inset-x-0 top-[29.6%] z-30 flex justify-center px-6 md:top-[34.1%]">
           <div className="pointer-events-auto">
             <DeviceCta
               surface="explorer"
