@@ -173,6 +173,14 @@ export function stableJson(value) {
     `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
 }
 
+export function timestampsRepresentSameInstant(left, right) {
+  const leftTime = Date.parse(left);
+  const rightTime = Date.parse(right);
+  return Number.isFinite(leftTime) &&
+    Number.isFinite(rightTime) &&
+    leftTime === rightTime;
+}
+
 function exactKeys(value, expected, code) {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail(code);
   const observed = Object.keys(value).sort();
