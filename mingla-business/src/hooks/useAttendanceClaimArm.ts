@@ -73,6 +73,7 @@ export type AttendanceClaimPhase =
   | "loading"
   | "ready"
   | "error"
+  | "unavailable"
   | "terminal"
   | "rate";
 
@@ -163,6 +164,8 @@ export function useAttendanceClaimArm(
       const code = error instanceof Error && "code" in error ? error.code : null;
       const phase: AttendanceClaimPhase = code === "rate_limited"
         ? "rate"
+        : code === "configuration"
+        ? "unavailable"
         : code === "invalid" || code === "ineligible"
         ? "terminal"
         : "error";

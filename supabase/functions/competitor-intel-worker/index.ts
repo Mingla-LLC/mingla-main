@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { normalizeCompetitorSource } from "../_shared/competitorSourceIdentity.ts";
 import { observeCompetitorWebsite } from "../_shared/competitorWebsiteObservation.ts";
+import { resolveGovernedAdField } from "../_shared/governedAdSecret.ts";
 
 export const ANALYZED_PROVIDER_ALLOWLIST = new Set(
   ["website", "instagram"] as const,
@@ -791,8 +792,14 @@ export async function observeInstagram(
 ): Promise<
   { facts: unknown; checkedAt: string; latestObservedAt: string | null }
 > {
-  const igUser = Deno.env.get("META_COMPETITOR_IG_USER_ID") ?? "";
-  const token = Deno.env.get("META_COMPETITOR_ACCESS_TOKEN") ?? "";
+  const igUser = resolveGovernedAdField(
+    "META_COMPETITOR_IG_USER_ID",
+    "META_COMPETITOR_IG_USER_ID",
+  ) ?? "";
+  const token = resolveGovernedAdField(
+    "META_COMPETITOR_ACCESS_TOKEN",
+    "META_COMPETITOR_ACCESS_TOKEN",
+  ) ?? "";
   const version = Deno.env.get("META_GRAPH_API_VERSION") ?? "v23.0";
   if (!igUser || !token) throw new Error("disabled");
   const fields =

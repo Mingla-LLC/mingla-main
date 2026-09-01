@@ -97,14 +97,9 @@ function byId(active, id) {
   return active.find((run) => run.id === id);
 }
 
-// The census here is INDEPENDENT of the implementor suite's: this file recounts
-// from its own parse rather than importing the other's literals, which is why
-// both had to move and why a single hand-typed number in one place would not
-// have been caught by the other.
-// [TEST-MOD-APPROVED #2909] Census re-pinned, assertion strength unchanged --
-// see the same note in the implementor suite. #2895 added the 131st workflow and
-// the 124th PR-family member; #2909 puts it on the canonical policy, so
-// normalPolicies moves with prFamily in one commit.
+// [TEST-MOD-APPROVED #2241] #2899 adds the mixed-event Sites recovery
+// workflow to the exact PR family; its production events remain protected by
+// the same run-id isolation and PR-only cancellation policy.
 test("real YAML remains the complete canonical 124-workflow policy", () => {
   const result = auditWorkflowSources(readWorkflowSources(TEST_ROOT));
   assert.deepEqual(result.errors, []);

@@ -18,6 +18,7 @@ import {
 } from "../_shared/email/index.ts";
 import { renderAttendanceClaimAvailableEmail } from "../_shared/email/ticketBody.ts";
 import { qrTokenPepper } from "../_shared/ticketCheckout.ts";
+import { resolveGovernedAdField } from "../_shared/governedAdSecret.ts";
 
 type Delivery = {
   id: string;
@@ -102,7 +103,10 @@ async function sendEmail(input: {
 serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const url = Deno.env.get("SUPABASE_URL");
-  const orderPepper = Deno.env.get("ATTENDANCE_CLAIM_PEPPER");
+  const orderPepper = resolveGovernedAdField(
+    "ATTENDANCE_CLAIM_PEPPER",
+    "ATTENDANCE_CLAIM_PEPPER",
+  );
   if (!serviceKey || !url || !orderPepper ||
     req.headers.get("authorization") !== `Bearer ${serviceKey}`) {
     return claimJson(401, { ok: false, error: "unauthorized" });

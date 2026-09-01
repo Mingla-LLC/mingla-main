@@ -954,6 +954,24 @@ test("#2893 bootstrap is value-blind and reconciles exact private bucket policy"
   assert.match(sql, /20971520/g);
   assert.match(sql, /public\s*=\s*false/);
   assert.match(sql, /auth\.uid\(\)\s*=\s*:'sites_runtime_reader_subject'::uuid/);
+  assert.equal(
+    sql.includes(String.raw`[0-9a-f]{64}\.json$`),
+    true,
+  );
+  assert.equal(
+    sql.includes(String.raw`(master|320|640|960|1440|1920)\.webp$`),
+    true,
+  );
+  assert.equal(
+    sql.includes(String.raw`[0-9a-f]{64}\\.json$`),
+    false,
+  );
+  assert.equal(
+    sql.includes(String.raw`(master|320|640|960|1440|1920)\\.webp$`),
+    false,
+  );
+  assert.match(sql, /sites_runtime_reader_path_semantics_valid/);
+  assert.match(sql, /RUNTIME_READER_PATH_SEMANTICS_INVALID/);
   assert.match(sql, /roles && ARRAY\['public', 'anon', 'authenticated'\]::name\[\]/);
   assert.match(sql, /pgrst\.db_schemas/);
   assert.match(sql, /DATA_API_EXPOSURE/);

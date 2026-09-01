@@ -78,14 +78,21 @@ test("malformed canonical-looking target reaches none of the three privileged si
 
   const deploy = spawnSync(
     "bash",
-    [join(REPO_ROOT, "scripts/deploy-supabase-functions.sh"), join(root, "functions")],
+    [
+      join(REPO_ROOT, "scripts/deploy-supabase-functions.sh"),
+      "--project-ref",
+      PADDED_REF,
+      "--merged-commit",
+      "0123456789abcdef0123456789abcdef01234567",
+      "--function",
+      "probe",
+    ],
     {
       cwd: root,
       encoding: "utf8",
       env: {
         ...process.env,
         PATH: `${bin}:${process.env.PATH}`,
-        SUPABASE_PROJECT_ID: PADDED_REF,
       },
     },
   );
