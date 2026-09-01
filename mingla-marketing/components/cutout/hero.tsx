@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 import { CutReveal } from './motion'
-import { HeroAtmosphere, ScrollMore } from './hero-graphic'
+import { ScrollMore } from './hero-graphic'
 
 // ---------------------------------------------------------------
 // #2902 — AIgocy's hero, ported faithfully.
@@ -93,8 +93,6 @@ export function CutoutHero({
           }}
         />
       </div>
-
-      <HeroAtmosphere />
 
       <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center text-center">
         <CutReveal variant="rise">

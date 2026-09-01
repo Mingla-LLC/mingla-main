@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 export default function CutoutExplorerPage() {
   return (
     <CutoutShell dark>
-      <CutoutNav surface="explorer" homeHref="/cutout/explorer" />
+      <CutoutNav surface="explorer" homeHref="/cutout/explorer" mobileDockOffset="5rem" />
       <ExplorerHero cityKey="lagos" />
     </CutoutShell>
   )

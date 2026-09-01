@@ -2,7 +2,7 @@
 export { CutoutShell, CutoutSection, CutoutCard, CutoutMedia, CutoutTile, CutoutEyebrow, CutoutHeading, CutoutConnector } from './primitives'
 export { CutoutNav } from './cutout-nav'
 export { CutoutHero } from './hero'
-export { HeroAtmosphere, ScrollMore } from './hero-graphic'
+export { ScrollMore } from './hero-graphic'
 export { CutoutFooter } from './footer'
 export { DeviceCta, type CutoutSurface } from './device-cta'
 export { CutReveal } from './motion'
