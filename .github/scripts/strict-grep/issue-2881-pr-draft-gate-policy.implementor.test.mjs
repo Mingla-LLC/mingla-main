@@ -328,6 +328,7 @@ test("T-12 no workflow OUTSIDE the pin registry has a pin this change breaks —
     .filter((f) => /\.(mjs|cjs|js|ts|tsx)$/.test(f) && !f.startsWith(`${dir}/`) && !f.includes("issue-2881-pr-draft-gate-policy"));
 
   const broken = [];
+  const regexLiterals = new Map();
   for (const file of trackedSources) {
     let src;
     try { src = readFileSync(join(REPO_ROOT, file), "utf8"); } catch { continue; }
@@ -342,18 +343,30 @@ test("T-12 no workflow OUTSIDE the pin registry has a pin this change breaks —
     }
     // Regex literals only from non-comment lines: this repo's audit-regex-matches-comments
     // trap produced a false positive here (a prose "Mingla_Artifacts/ + .github/scripts/").
+    // Collected here and evaluated ONCE below, deduplicated across the whole repo --
+    // the same literal appears in many files, and re-testing it against all 117 changed
+    // workflows per occurrence is what made this gate too slow for a bounded CI lane.
     for (const line of src.split("\n")) {
       const trimmed = line.trimStart();
       if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
       for (const match of line.matchAll(REGEX_LITERAL)) {
         if (match[1].length < 10) continue;
-        let pattern;
-        try { pattern = new RegExp(match[1], match[2].replace(/[gy]/g, "")); } catch { continue; }
-        for (const name of changed) {
-          let atBase, atHead;
-          try { atBase = pattern.test(baseSources[name]); atHead = pattern.test(headSources[name]); } catch { break; }
-          if (atBase && !atHead) broken.push(`${name}: ${file} asserts /${match[1].slice(0, 70)}/ which matched before #2881 and does not now`);
-        }
+        const key = `${match[1]}\u0000${match[2]}`;
+        if (!regexLiterals.has(key)) regexLiterals.set(key, { source: match[1], flags: match[2], files: [] });
+        const entry = regexLiterals.get(key);
+        if (!entry.files.includes(file)) entry.files.push(file);
+      }
+    }
+  }
+
+  for (const { source, flags, files } of regexLiterals.values()) {
+    let pattern;
+    try { pattern = new RegExp(source, flags.replace(/[gy]/g, "")); } catch { continue; }
+    for (const name of changed) {
+      let atBase, atHead;
+      try { atBase = pattern.test(baseSources[name]); atHead = pattern.test(headSources[name]); } catch { break; }
+      if (atBase && !atHead) {
+        for (const file of files) broken.push(`${name}: ${file} asserts /${source.slice(0, 70)}/ which matched before #2881 and does not now`);
       }
     }
   }
