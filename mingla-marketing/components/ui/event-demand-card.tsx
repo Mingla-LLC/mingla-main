@@ -17,17 +17,17 @@
 // Nothing here is a claim: no venue is named, and no figure is presented as a
 // result anyone achieved.
 //
-// It leads with the peak WINDOW rather than a suggested price on purpose. The
-// Host page is one static page serving London, the US and Lagos, and the
-// marketing site has no geo signal at all -- so any price here would show one
-// market's currency to all three. The window is the demand read itself, and it
-// reads the same in every market.
+// The suggested price is CURRENCY AWARE: the page serves London, the US and
+// Lagos, so the figure resolves the visitor's market in their own browser. See
+// lib/design-preview/market-price.ts for why that runs client-side.
 // ---------------------------------------------------------------
 
+import { useEffect, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { CloudRain } from 'lucide-react'
 
 import { cn } from '@/lib/cn'
+import { DEFAULT_MARKET, DOOR_PRICE, detectMarket, type Market } from '@/lib/design-preview/market-price'
 
 /** Half-hour buckets, 7pm through 4am. A night that builds late. */
 const DEMAND = [
@@ -44,6 +44,12 @@ const HOURS = ['7pm', '10pm', '1am', '4am'] as const
 
 export function EventDemandCard({ className }: { className?: string }) {
   const reduced = useReducedMotion()
+
+  // Resolved after mount, not during render: the server has no time zone, and
+  // reading one during render would make the markup differ from the client's
+  // and trip hydration. First paint shows the default, then it settles.
+  const [market, setMarket] = useState<Market>(DEFAULT_MARKET)
+  useEffect(() => setMarket(detectMarket()), [])
 
   return (
     <div className={cn('flex h-full flex-col justify-center gap-3.5', className)}>
@@ -63,11 +69,14 @@ export function EventDemandCard({ className }: { className?: string }) {
       </motion.div>
 
       <div>
-        <p className="font-dashboard text-[2rem] font-bold leading-none tracking-tight text-white tabular-nums">
-          10pm–1am
+        <p
+          data-market={market}
+          className="font-dashboard text-[2rem] font-bold leading-none tracking-tight text-white tabular-nums"
+        >
+          {DOOR_PRICE[market]}
         </p>
         <p className="mt-1.5 font-dashboard text-[0.8125rem] text-white/55">
-          Peak demand · Saturday night
+          Suggested door price · peaks 10pm–1am
         </p>
       </div>
 
