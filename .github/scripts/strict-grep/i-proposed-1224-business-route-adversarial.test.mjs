@@ -14,10 +14,11 @@
  *   T2 (CONTRACT, fails-on-revert): deleting the `async redirects()` block from
  *       next.config.ts makes the live gate EXIT 1.
  *   T3 (BASELINE): with the tree pristine, the live gate EXITs 0.
- *   T4 (KNOWN SCOPE GAP, documented as P2): a navigable `/organisers` href in an
- *       *app/* file is NOT caught (gate scans only components+lib). This test
- *       ASSERTS the current (gappy) behavior so a future scope-widening fix
- *       flips this assertion intentionally rather than silently.
+ *   T4 (CONTRACT): a navigable `/organisers` href in an *app/* file is caught;
+ *       app routes no longer sit outside the navigation-protection boundary.
+ *   T5-T8 (REGISTRY OWNER): removing the exact redirect, changing its
+ *       destination, making the projection temporary, or bypassing the derived
+ *       Next config owner each makes the live gate EXIT 1.
  *
  * Self-restoring: every perturbation is reverted in a finally, and a final
  * `git diff --quiet` guards that the working tree is clean on exit.
@@ -31,6 +32,7 @@ const GATE = join(ROOT, ".github/scripts/strict-grep/i-proposed-1224-business-ro
 const TOGGLE = join(ROOT, "mingla-marketing/components/marketing/surface-toggle.tsx");
 const CONFIG = join(ROOT, "mingla-marketing/next.config.ts");
 const APP_PAGE = join(ROOT, "mingla-marketing/app/host/page.tsx");
+const REGISTRY = join(ROOT, "mingla-marketing/lib/search/route-registry.ts");
 
 const runGate = () => {
   try {
@@ -80,22 +82,58 @@ check(
   ),
 );
 
-// T4: KNOWN SCOPE GAP — a navigable /organisers href in an app/ file is NOT
-// caught (gate scans only components+lib). Asserting the gappy status quo so a
-// future widening is a deliberate, visible change. P2 in the test report.
+// [TEST-MOD-APPROVED #2981] T4 closes the prior documented scope gap: app/
+// sources are navigable production sources and must receive the same protection.
 check(
-  "T4 documented scope gap: /organisers href in app/host/page.tsx -> gate STILL EXIT 0 (P2)",
+  "T4 app coverage: /organisers href in app/host/page.tsx -> gate EXIT 1",
   withPerturbation(
     APP_PAGE,
     (src) => src + '\nexport const STRAY = <a href="/organisers/x">x</a>\n',
-    () => runGate() === 0,
+    () => runGate() === 1,
+  ),
+);
+
+// [TEST-MOD-APPROVED #2981] T5-T8 independently attack the new single owner.
+check(
+  "T5 registry removal: exact organisers redirect contract removed -> gate EXIT 1",
+  withPerturbation(
+    REGISTRY,
+    (src) => src.replace(/\s*\{\s*id: 'organisers-redirect',[\s\S]*?\n\s*\},/, ""),
+    () => runGate() === 1,
+  ),
+);
+
+check(
+  "T6 registry destination: exact organisers redirect targets /tools -> gate EXIT 1",
+  withPerturbation(
+    REGISTRY,
+    (src) => src.replace("destination: '/host',", "destination: '/tools',"),
+    () => runGate() === 1,
+  ),
+);
+
+check(
+  "T7 registry permanence: redirect projection becomes temporary -> gate EXIT 1",
+  withPerturbation(
+    REGISTRY,
+    (src) => src.replace("permanent: true as const", "permanent: false as const"),
+    () => runGate() === 1,
+  ),
+);
+
+check(
+  "T8 derived config owner: Next stops consuming the registry -> gate EXIT 1",
+  withPerturbation(
+    CONFIG,
+    (src) => src.replace("return [...nextRedirectsFromRegistry()]", "return []"),
+    () => runGate() === 1,
   ),
 );
 
 // guard: tree must be clean after all perturbations restored
 let dirty = "";
 try {
-  dirty = execFileSync("git", ["diff", "--name-only", "--", TOGGLE, CONFIG, APP_PAGE], {
+  dirty = execFileSync("git", ["diff", "--name-only", "--", TOGGLE, CONFIG, APP_PAGE, REGISTRY], {
     cwd: ROOT,
     encoding: "utf8",
   }).trim();
@@ -106,4 +144,4 @@ if (failures.length > 0) {
   console.error(`\n${failures.length} adversarial assertion(s) failed:`, failures);
   process.exit(1);
 }
-console.log("\nORCH-1224 adversarial gate test passed (contract caught both reverts; scope gap documented).");
+console.log("\nORCH-1224 adversarial gate test passed (navigation and typed redirect ownership protected).");
