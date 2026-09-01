@@ -14,6 +14,7 @@ import {
 } from '@/lib/design-preview/host-tools'
 import { ICP_CARDS } from '@/lib/design-preview/icp-cards'
 import { ExpandingCards, type CardItem } from '@/components/ui/expanding-cards'
+import { ScrollVelocityRow } from '@/components/ui/scroll-velocity-text'
 
 // #2902 — Mingla Host, on AIgocy's design, telling Seth's story:
 // "Mingla gives you all the tools to be a successful host."
@@ -80,12 +81,31 @@ export default function CutoutHostPage() {
           link — the "Learn more" anchor is stretched over it. */}
       <CutoutSection aria-label="Who Mingla Host is for">
         <CutReveal>
-          <CutoutHeading align="center" eyebrow="Who it is for"
-            lede="Seven kinds of operator, one product. Hover a card to open it.">
+          <CutoutHeading align="center">
             Built for the people who make a <span className="cut-gradient-brand">city worth going out in.</span>
           </CutoutHeading>
         </CutReveal>
-        <CutReveal delay={0.1} className="mt-14">
+
+        {/* The operators, as a marquee. It replaces a sentence that only
+            counted them. `aria-hidden` because the same seven names are the
+            headings of the cards below — a screen reader should hear the list
+            once, not N duplicated copies of a decorative loop. */}
+        <CutReveal delay={0.06} className="mt-8">
+          <div aria-hidden="true" className="[mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
+            <ScrollVelocityRow baseVelocity={2.4} direction={-1}>
+              {ICP_CARDS.map((c) => (
+                <span
+                  key={c.id}
+                  className="mx-5 font-display text-[1.125rem] text-[var(--cut-muted)] sm:text-[1.375rem]"
+                >
+                  {c.title}
+                  <span className="ml-5 text-[var(--cut-accent)]">•</span>
+                </span>
+              ))}
+            </ScrollVelocityRow>
+          </div>
+        </CutReveal>
+        <CutReveal delay={0.12} className="mt-12">
           <ExpandingCards
             items={ICP_CARDS.map((c): CardItem => ({
               id: c.id,

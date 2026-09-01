@@ -30,7 +30,11 @@ export interface IcpCard {
   id: string
   /** Expanded heading — who this is for. */
   title: string
-  /** Collapsed rail — what they get. The USP, not the category name. */
+  /**
+   * Collapsed pill — ONE word, horizontal. The rotated sentence it replaces
+   * was hard to read, had no room at the foot of the card, and forced the
+   * collapsed rail narrower than a phone can use.
+   */
   usp: string
   description: string
   imgSrc: string
@@ -41,7 +45,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
   {
     id: 'event-organizers-promoters',
     title: 'Events & promoters',
-    usp: 'Sell out the night',
+    usp: 'Sellouts',
     description: 'Build the page, price the tiers, work the door, and keep the guest list.',
     // An empty event hall, stage rigged and lit, before doors.
     imgSrc: '/marketing/host-icp/events-hall.jpg',
@@ -50,7 +54,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
   {
     id: 'restaurants-cafes',
     title: 'Restaurants & cafés',
-    usp: 'Fill the quiet nights',
+    usp: 'Covers',
     description: 'Turn a menu and a slow Tuesday into a plan people book ahead.',
     // A dining room laid for service at golden hour.
     imgSrc: '/marketing/host-icp/restaurants-room.jpg',
@@ -59,7 +63,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
   {
     id: 'bars-clubs-nightlife',
     title: 'Bars & nightlife',
-    usp: 'Own the weekend',
+    usp: 'Nights',
     description: 'Tickets, tables and guest lists for the nights people talk about.',
     // A bar room at night, bottle shelf lit, before the crowd.
     imgSrc: '/marketing/host-icp/nightlife-bar.jpg',
@@ -68,7 +72,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
   {
     id: 'venues-activity-spaces',
     title: 'Venues & spaces',
-    usp: 'Book out the room',
+    usp: 'Bookings',
     description: 'Show what the space does, take the booking, manage the calendar.',
     // A high-ceilinged event space, chairs set aside, light pouring in.
     imgSrc: '/marketing/host-icp/venues-space.jpg',
@@ -77,7 +81,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
   {
     id: 'resorts-hotels-retreats',
     title: 'Resorts & hotels',
-    usp: 'Sell the whole stay',
+    usp: 'Stays',
     description: 'Stays, day passes and packages, with the local plan attached.',
     // A resort pool terrace at golden hour.
     imgSrc: '/marketing/host-icp/resorts-terrace.jpg',
@@ -86,7 +90,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
   {
     id: 'tours-experiences-adventures',
     title: 'Tours & experiences',
-    usp: 'Turn a day into a booking',
+    usp: 'Trips',
     description: 'Itinerary, inclusions, meeting point and payment in one page.',
     // A boardwalk trail through forest, morning light.
     imgSrc: '/marketing/host-icp/tours-trail.jpg',
@@ -95,7 +99,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
   {
     id: 'pop-ups-independent-creators',
     title: 'Pop-ups & creators',
-    usp: 'Live before the moment passes',
+    usp: 'Drops',
     description: 'A page, a drop and a sell-out window, spun up in minutes.',
     // A pop-up gallery and market room, work hung, tables set.
     imgSrc: '/marketing/host-icp/creators-popup.jpg',

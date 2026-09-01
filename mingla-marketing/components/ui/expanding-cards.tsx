@@ -12,8 +12,11 @@ import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 // `cn` lives.
 //
 // CHANGES TO THE PATTERN, per Seth:
-//   - The collapsed rail carries the USP, not just a name, so a card says what
-//     it is for before you open it.
+//   - The collapsed rail carries a ONE-WORD USP in a HORIZONTAL pill. The
+//     rotated sentence it replaces was hard to read, sat with no clearance at
+//     the foot of the card, and forced the rail narrower than a phone can use.
+//     A horizontal pill sets the minimum width instead, so the rail is thicker
+//     and the word is legible at a glance.
 //   - The expanded card carries a "Learn more" control. The whole card is
 //     still clickable — that control IS the link, stretched over the card with
 //     an ::after overlay. One anchor, no nested interactive elements, and no
@@ -83,7 +86,12 @@ export const ExpandingCards = React.forwardRef<HTMLUListElement, ExpandingCardsP
               key={item.id}
               data-active={active}
               onMouseEnter={() => setActiveIndex(index)}
-              className="group relative min-h-0 min-w-0 overflow-hidden rounded-[var(--cut-r-card)] md:min-w-[84px]"
+              // The collapsed floor is arithmetic, not taste. Six collapsed
+              // cards at 148px ate 888 of the 1092px row and left the ACTIVE
+              // card just 204px — the min-width was fighting the expansion.
+              // At 104px the six take 624 and the open card gets ~468px, which
+              // is what the 5fr track actually wants.
+              className="group relative min-h-0 min-w-0 overflow-hidden rounded-[var(--cut-r-card)] md:min-w-[104px]"
               style={{ boxShadow: 'var(--cut-mould)' }}
             >
               <img
@@ -108,12 +116,12 @@ export const ExpandingCards = React.forwardRef<HTMLUListElement, ExpandingCardsP
                 }}
               />
 
-              {/* Collapsed rail — the USP, turned on its side. */}
+              {/* Collapsed pill — horizontal, one word, clear of the bottom edge. */}
               <span
                 aria-hidden={active}
                 className={cn(
-                  'absolute left-4 top-5 hidden origin-top-left rotate-90 whitespace-nowrap',
-                  'font-display text-[0.8125rem] uppercase tracking-[0.14em] text-white/85 md:block',
+                  'absolute bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-3 py-1.5',
+                  'bg-white/16 font-display text-[0.75rem] text-white ring-1 ring-inset ring-white/25 backdrop-blur-md',
                   !reduced && 'transition-opacity duration-300',
                   active && 'opacity-0',
                 )}
