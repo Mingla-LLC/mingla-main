@@ -27,6 +27,17 @@
 // real lanes' globs match zero files, firing C-2 and C-3 on tests that expect
 // a clean result. Measured cost of a full copy: 14 MB + 1.4 MB.
 
+// [TEST-MOD-APPROVED #2879] The #1931 lane moved from TEN globs to ELEVEN and
+// the #2117 lane from FIVE to SIX. #2879 re-emits
+// `pg_direct_event_checkout_bundle` so the payment-redirect window counts as a
+// hold; that function's body reaches objects both phases deliberately exclude,
+// so the migration must be registered in each lane's skip list. The #2492 gate
+// itself named the exact filename to add.
+//
+// ONLY the pinned counts move. No assertion is deleted, no parser scenario is
+// relaxed, and the inventory stays an exact deepEqual — which is the whole
+// point of T-10: a parser blind to a lane must still red here.
+
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
