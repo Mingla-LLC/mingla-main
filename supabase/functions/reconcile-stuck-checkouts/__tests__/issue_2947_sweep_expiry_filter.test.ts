@@ -548,18 +548,52 @@ Deno.test("#2947 T-4 - an in-window webhook-lost payment is DEFERRED, not lost",
 // ── T-5 · the quiet path: today's Mingla must not notice this shipped ────────
 
 Deno.test("#2947 T-5 - the live pre-queue population behaves exactly as it did at b6ca942fb", async () => {
-  // The real in-flight population, read from production on 2026-09-01:
-  // 6 rows, all awaiting_web_redirect, all past expiry, all carrying a
-  // PaymentIntent, none in-window, none on the sentinel. With no queued row in
-  // existence the predicate must remove NOTHING, so this case is green both
-  // before and after the fix — that is what makes it a quiet-path assertion
-  // rather than a second copy of T-1.
+  // CORRECTED at issue #2947 slice-1 REWORK (tester F-2, [TEST-MOD-APPROVED
+  // #2947]). This fixture previously seeded six `pi_live_N` Stripe
+  // PaymentIntents at `requires_payment_method` and asserted
+  // `{expired: 6, skipped: 0}`. Production produces the OPPOSITE. The error was
+  // a misread probe: the SPEC's Q4a counted `stripe_payment_intent_id IS NOT
+  // NULL` and reported `with_pi 6`, but the Paystack arm stores its `mingla_*`
+  // reference in THAT SAME COLUMN (classify.ts:23-29), so "6 non-null refs" was
+  // carried forward as "6 Stripe PaymentIntents". It is not.
+  //
+  // The real in-flight population, re-read from production on 2026-09-01
+  // (read-only, `BEGIN READ ONLY … ROLLBACK`):
+  //
+  //   status                 n  past_expiry  paystack_ref  stripe_pi_ref  cs_ref  at_infinity
+  //   awaiting_web_redirect  6       6            6              0           0         0
+  //
+  // created 2026-08-17 23:39 .. 2026-08-19 03:59 UTC, oldest expiry
+  // 2026-08-17 23:54 — i.e. THIRTEEN TO FIFTEEN DAYS past expiry, so
+  // `expires_at < now()` is true for every one of them and the shipped
+  // predicate ADMITS them. Ref-class PAYSTACK ⇒ classify() returns
+  // `{action:"skip", reason:"paystack_unverified"}` unconditionally, without
+  // ever consulting the cutoff (classify.ts:170-174), so every one is skipped.
+  //
+  // The summary below is not a guess: all 24 retained sweep responses in
+  // `net._http_response` (2026-09-01 09:00:03 .. 14:45:03 UTC, spanning the
+  // v493 deploy at 14:17:53) carry ONE distinct body — `{"reconciled":0,
+  // "expired":0,"skipped":6,"errors":0}` with six `mingla_<sessionId>` piIds,
+  // `csId: null`, `skip: "paystack_unverified"`. This case asserts that body's
+  // shape exactly.
+  //
+  // WHY THIS CASE STILL EARNS ITS PLACE, and why the SPEC makes it the standing
+  // quiet-path baseline for all seven slices: these rows are past expiry, so
+  // the predicate removes NOTHING for them and the summary is identical before
+  // and after the fix. It is green on both sides of the revert BY DESIGN — that
+  // is the proof that today's Mingla cannot notice slice 1 shipped. A baseline
+  // pinned to a population that does not exist keeps passing while the real one
+  // moves, which is the #2113 unfalsifiable-check class; that is what this
+  // correction removes.
   const live = Array.from({ length: 6 }, (_, i) =>
     session({
       id: `live-${i}`,
       status: "awaiting_web_redirect",
-      stripe_payment_intent_id: `pi_live_${i}`,
-      stripe_account_id: "acct_live",
+      // The Paystack reference as production stores it: `mingla_*` in the
+      // stripe_payment_intent_id COLUMN. Not a Stripe id, never retrievable.
+      stripe_payment_intent_id: `mingla_live-${i}`,
+      stripe_checkout_session_id: null,
+      stripe_account_id: null,
       // oldest first, so `live-0` is the head of a created_at ASC batch
       expires_at: new Date(Date.now() - (40 - i) * MINUTE).toISOString(),
       created_at: new Date(Date.now() - (55 - i) * MINUTE).toISOString(),
@@ -571,27 +605,35 @@ Deno.test("#2947 T-5 - the live pre-queue population behaves exactly as it did a
     session({ id: "already-expired", status: "expired" }),
   ];
 
-  const piStatuses = Object.fromEntries(
-    live.map((row, i) => [`pi_live_${i}`, "requires_payment_method"]),
-  );
-  const h = harness([...live, ...terminal], piStatuses);
+  // No piStatuses map at all: the harness THROWS on any Stripe retrieve it was
+  // not told to expect, so an empty map is how this case proves the run made
+  // zero Stripe calls rather than merely asserting it afterwards.
+  const h = harness([...live, ...terminal]);
   const summary = await runSweep(h);
 
   // Every in-flight row still reaches the sweep — the batch is unchanged.
   assertEquals(h.rec.batchIds, live.map((row) => row.id));
-  assertEquals(h.rec.stripeRetrieves, live.map((_, i) => `pi_live_${i}`));
+  // A `mingla_*` reference must NEVER be sent to Stripe.
+  assertEquals(h.rec.stripeRetrieves, []);
+  assertEquals(h.rec.expiredIds, []);
+  assertEquals(h.rec.rpcCalls, []);
   assertEquals(summary, {
     reconciled: 0,
-    expired: 6,
-    skipped: 0,
+    expired: 0,
+    skipped: 6,
     errors: 0,
-    results: live.map((row, i) => ({
+    results: live.map((row) => ({
       sessionId: row.id,
-      piId: `pi_live_${i}`,
+      piId: row.stripe_payment_intent_id,
       csId: null,
-      status: "expired",
+      skip: "paystack_unverified",
     })),
   });
+  // The rows themselves are left exactly where they were — in-flight, unexpired.
+  for (const row of h.rows.filter((r) => r.id.startsWith("live-"))) {
+    assertEquals(row.status, "awaiting_web_redirect");
+    assertEquals(row.failure_reason ?? null, null);
+  }
   // Terminal rows untouched, as before.
   for (const row of terminal) {
     assertEquals(row.failure_reason ?? null, null);

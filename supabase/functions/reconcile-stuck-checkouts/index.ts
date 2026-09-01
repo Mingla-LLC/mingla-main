@@ -195,10 +195,19 @@ async (req) => {
     // nothing. No abandoned hold is released, so stock never returns to the
     // queue and the waiting room deadlocks itself.
     //
-    // `expires_at < now()` is what makes SWEEP_BATCH_LIMIT bound EXPIRABLE rows
-    // rather than rows scanned, and it excludes the `'infinity'` sentinel
-    // structurally — `'infinity' < now()` is false, for any row, forever,
-    // independent of anything a later slice does.
+    // `expires_at < now()` excludes the `'infinity'` sentinel STRUCTURALLY —
+    // `'infinity' < now()` is false, for any row, forever, independent of
+    // anything a later slice does. That is what this line buys.
+    //
+    // WHAT IT DOES NOT BUY (corrected at #2947 slice-1 rework, tester F-1; the
+    // DRAFT invariant carried the same overclaim and was corrected the same
+    // way): it bounds the batch to rows PAST EXPIRY. It does NOT bound the
+    // batch to rows this run can act on. A row past expiry may still be
+    // skipped fail-safe — `paystack_unverified` is the live case, six such
+    // rows today — so SWEEP_BATCH_LIMIT is an upper bound on rows CONSIDERED,
+    // not on work DONE. Any later slice that sizes throughput from this limit
+    // must subtract the permanently-skipped classes rather than assume them
+    // empty.
     //
     // WHAT THIS COSTS, stated rather than hidden: this function does two jobs,
     // and the other one is FINALIZE — recovering a session whose payment
