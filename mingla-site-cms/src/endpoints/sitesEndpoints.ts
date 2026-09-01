@@ -9,6 +9,7 @@ import {
   callCore,
   readCorePublicationSource,
   readCoreRetentionProjection,
+  reconcileVerificationPath,
   verifyCoreRequest,
 } from "../lib/gateway";
 import {
@@ -211,10 +212,7 @@ async function provisionOrReconcile(req: PayloadRequest): Promise<Response> {
   let bodyText = "";
   try {
     bodyText = (await req.text?.()) || "";
-    const path = new URL(req.url || "http://local").pathname.replace(
-      /^.*\/api/,
-      "",
-    );
+    const path = reconcileVerificationPath(req.url || "http://local");
     const envelope = await verifyCoreRequest(req, bodyText, path);
     const body = JSON.parse(bodyText) as Record<string, unknown>;
     const brandId = String(body.brand_id || "");

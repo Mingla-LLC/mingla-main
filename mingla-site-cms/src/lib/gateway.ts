@@ -2,6 +2,15 @@ import type { PayloadRequest } from "payload";
 import { cmsConfig } from "./config";
 import { hmac, sha256, timingSafeEqual } from "./crypto";
 
+const RECONCILE_PATH_RE =
+  /^\/api\/internal\/reconcile\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function reconcileVerificationPath(rawUrl: string): string {
+  const path = new URL(rawUrl || "http://local").pathname;
+  if (!RECONCILE_PATH_RE.test(path)) throw new Error("SIGNATURE_INVALID");
+  return path;
+}
+
 export type GatewayEnvelope = {
   schema_version: 1;
   issuer: string;
