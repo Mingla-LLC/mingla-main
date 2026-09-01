@@ -77,7 +77,8 @@ function compact(value, key = "") {
   }
   if (typeof value !== "object") return value;
   const result = {};
-  for (const [childKey, childValue] of Object.entries(value)) {
+  for (const childKey of Object.keys(value).sort()) {
+    const childValue = value[childKey];
     if (
       [
         "id",
