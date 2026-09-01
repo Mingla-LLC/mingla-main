@@ -29,6 +29,7 @@ import {
   SITES_BUCKETS,
   stableJson,
   storageConfigFromEnv,
+  timestampsRepresentSameInstant,
   validateManagementBackupResponse,
   validateManagementProjectResponse,
   validateCmsDatabaseUrl,
@@ -665,8 +666,14 @@ export async function recordBackupEvidence({
   validateReadinessResponse(readiness, siteId, "nightly_backup");
   if (
     readiness.readiness.backup_retention_days !== 7 ||
-    readiness.readiness.database_backup_verified_at !== result.database_backup_verified_at ||
-    readiness.readiness.object_manifest_verified_at !== result.object_manifest_verified_at
+    !timestampsRepresentSameInstant(
+      readiness.readiness.database_backup_verified_at,
+      result.database_backup_verified_at,
+    ) ||
+    !timestampsRepresentSameInstant(
+      readiness.readiness.object_manifest_verified_at,
+      result.object_manifest_verified_at,
+    )
   ) fail("CORE_READINESS_READBACK_MISMATCH");
   process.stdout.write("SITES_BACKUP_EVIDENCE_OK\n");
   return readiness;

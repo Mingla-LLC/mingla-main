@@ -1358,3 +1358,37 @@ test("#2980 restore directs the custom-format dump into the exact ephemeral data
     /"pg_restore",[\s\S]*?"--dbname",\s*env\./,
   );
 });
+
+test("#2985 Core readiness timestamps compare as instants while digests stay exact", async () => {
+  const { timestampsRepresentSameInstant } = await import("../lib/sites-ops.mjs");
+  assert.equal(
+    timestampsRepresentSameInstant(
+      "2026-09-01T14:40:42.133Z",
+      "2026-09-01T14:40:42.133+00:00",
+    ),
+    true,
+  );
+  assert.equal(
+    timestampsRepresentSameInstant(
+      "2026-09-01T14:40:42.133Z",
+      "2026-09-01T14:40:42.134+00:00",
+    ),
+    false,
+  );
+  assert.equal(timestampsRepresentSameInstant("invalid", "invalid"), false);
+
+  const restoreSource = readFileSync(
+    join(SITES_DIR, "restore-sites-cms.mjs"),
+    "utf8",
+  );
+  const backupSource = readFileSync(
+    join(SITES_DIR, "backup-sites-cms.mjs"),
+    "utf8",
+  );
+  assert.match(restoreSource, /timestampsRepresentSameInstant\(/);
+  assert.match(backupSource, /timestampsRepresentSameInstant\(/);
+  assert.match(
+    restoreSource,
+    /restore_drill_evidence_digest !== evidenceDigest/,
+  );
+});
