@@ -189,6 +189,23 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
       "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts",
     ]),
   }),
+  Object.freeze({
+    issue: 2909,
+    workflow: "sites-backup-restore.yml",
+    // [#2909] #2895 shipped this workflow as a NEW provider and declared it
+    // nowhere. The seal went RED on the next `main` commit and stayed red for
+    // two hours -- which is the tripwire working exactly as #2591 built it, not
+    // a false positive. The single reference is the #2893 implementor suite,
+    // which asserts this workflow's on-disk content; `.github/ci-capability-workflows.json`
+    // also names the path but is excluded from discovery by name above as a
+    // policy declaration rather than a consumer.
+    //
+    // This ADDS a provider. The registered count moves 92 -> 93, derived from
+    // PROVIDERS_ADDED_SINCE_SEAL.length, never hand-typed.
+    referenceFiles: Object.freeze([
+      "scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs",
+    ]),
+  }),
 ]);
 // [#2774] Reviewed reference-file additions to providers that ALREADY belong to
 // the frozen 73-provider authority. Unlike PROVIDERS_ADDED_SINCE_SEAL, these

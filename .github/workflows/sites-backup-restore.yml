@@ -14,9 +14,19 @@ on:
 permissions:
   contents: read
 
+# #2909: the canonical #2851 policy, not a hand-rolled literal. On schedule /
+# workflow_dispatch the expression resolves to `github.run_id`, so every
+# production backup-and-restore run owns a group nothing else can ever enter --
+# it can be neither cancelled nor pending-displaced. The fixed literal this
+# replaces put the PR `contracts` job and the production run in ONE
+# repository-wide group, where GitHub cancels the previously pending run each
+# time a newer one queues. `cancel-in-progress: false` never meant
+# "uninterruptible"; a run-unique group does. The side-effecting jobs below are
+# gated `github.event_name != 'pull_request'`, so the only thing a PR run
+# cancels here is an obsolete `contracts` job.
 concurrency:
-  group: mingla-sites-production-backup-restore
-  cancel-in-progress: false
+  group: ci-sites-backup-restore-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
   contracts:
