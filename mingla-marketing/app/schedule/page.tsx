@@ -3,15 +3,14 @@
 // call. Reads ?venue / ?report_url / ?source (+ optional name/email prefill) on
 // the client; the day → time → confirm flow is a client state machine.
 
-import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { ScheduleClient } from './ScheduleClient'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/schedule', {
   title: 'Book a call with Mingla',
   description: 'Grab 20 minutes with Mingla — pick a day and time that works for you.',
-  robots: { index: false, follow: false },
-}
+})
 
 export const dynamic = 'force-dynamic'
 

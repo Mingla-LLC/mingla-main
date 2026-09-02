@@ -3,14 +3,13 @@
 // report), and renders the FULL, ungated audit. Entering an email on the tool
 // never reveals this; only the emailed link does.
 
-import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { PricingReportPageClient } from './PricingReportPageClient'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/tools/pricing/report', {
   title: 'Your pricing audit — Mingla',
-  robots: { index: false, follow: false },
-}
+})
 
 export const dynamic = 'force-dynamic'
 

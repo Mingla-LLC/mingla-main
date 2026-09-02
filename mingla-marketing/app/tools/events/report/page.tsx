@@ -3,14 +3,13 @@
 // report), and renders the FULL, ungated report. Entering an email on the
 // predictor never reveals this; only the emailed link does.
 
-import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { EventReportPageClient } from './EventReportPageClient'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/tools/events/report', {
   title: 'Your event turnout report — Mingla',
-  robots: { index: false, follow: false },
-}
+})
 
 export const dynamic = 'force-dynamic'
 

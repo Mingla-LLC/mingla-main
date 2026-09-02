@@ -3,14 +3,13 @@
 // renders the FULL, ungated report. Entering an email on the quoter never reveals
 // this; only the emailed link does.
 
-import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { TripReportPageClient } from './TripReportPageClient'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/tools/trips/report', {
   title: 'Your trip quote — Mingla',
-  robots: { index: false, follow: false },
-}
+})
 
 export const dynamic = 'force-dynamic'
 

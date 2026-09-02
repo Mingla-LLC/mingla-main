@@ -1,13 +1,13 @@
-import type { Metadata } from 'next'
 import Link from 'next/link'
 import { SMS_TERMS_SECTIONS, SMS_TERMS_EFFECTIVE_DATE } from '@/lib/smsTermsContent'
 import { cn } from '@/lib/cn'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/sms-terms', {
   title: 'SMS Terms',
   description:
     'Mingla’s SMS messaging program terms — message types, frequency, rates, and how to reply STOP to opt out or HELP for help.',
-}
+})
 
 export default function SmsTermsPage() {
   return (

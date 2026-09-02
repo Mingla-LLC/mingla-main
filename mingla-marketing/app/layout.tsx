@@ -5,6 +5,8 @@ import './globals.css'
 import { ContentProtection } from '@/components/marketing/content-protection'
 import { PostHogProvider } from '@/components/marketing/posthog-provider'
 import { ConsentBanner } from '@/components/marketing/consent-banner'
+import { requireRouteContract, type SearchReadyRouteContract } from '@/lib/search/route-registry'
+import { SITE_ORIGIN } from '@/lib/site'
 
 // META-ORCH-1187 [Growth Analytics Hub] Phase 1 — LEG 1 (marketing web).
 // GA4 Measurement ID — public by design (web-only). Single shared stream.
@@ -50,17 +52,44 @@ const inter = Inter({
   weight: ['400', '500', '600', '700'],
 })
 
+const homeRoute = requireRouteContract('/', 'search_ready') as SearchReadyRouteContract
+
 export const metadata: Metadata = {
-  title: { default: 'Mingla — Find a vibe, not a venue.', template: '%s — Mingla' },
-  description:
-    "Mingla curates the spots, plans, and experiences that match the night you actually want — for hangouts, dates, group outings, and slow Sundays.",
-  metadataBase: new URL('https://www.usemingla.com'),
+  title: { default: homeRoute.title, template: '%s — Mingla' },
+  description: homeRoute.description,
+  metadataBase: new URL(SITE_ORIGIN),
+  applicationName: 'Mingla',
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      {
+        url: '/favicon.ico',
+        type: 'image/x-icon',
+        sizes: '32x32',
+      },
+      {
+        url: '/icon.png',
+        type: 'image/png',
+        sizes: '512x512',
+      },
+    ],
+    apple: [
+      {
+        url: '/apple-icon.png',
+        type: 'image/png',
+        sizes: '180x180',
+      },
+    ],
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${mochiy.variable} ${nunito.variable} ${inter.variable}`}>
       <body>
+        <noscript>
+          <style>{`.search-primary-answer{opacity:1!important;transform:none!important;filter:none!important}`}</style>
+        </noscript>
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-coral-500 focus:px-4 focus:py-2 focus:text-white"
