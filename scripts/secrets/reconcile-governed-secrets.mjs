@@ -22,7 +22,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { verifyProductionAuthority } from "../ops/verify-production-supabase-authority.mjs";
 import {
   auditFunctionSecretContract,
-  buildImportClosure,
+  buildRuntimeImportClosure,
   DEFAULT_CONTRACT,
   DEFAULT_MANIFEST,
 } from "./audit-function-secret-contract.mjs";
@@ -484,8 +484,14 @@ export function verifyDownloadedFunctionSources({
           functionName,
         ]);
       }
-      const localClosure = buildImportClosure(localEntrypoint, REPO_ROOT);
-      const remoteClosure = buildImportClosure(downloadedEntrypoint, tempRoot);
+      const localClosure = buildRuntimeImportClosure(
+        localEntrypoint,
+        REPO_ROOT,
+      );
+      const remoteClosure = buildRuntimeImportClosure(
+        downloadedEntrypoint,
+        tempRoot,
+      );
       if (
         localClosure.failures.length > 0 ||
         remoteClosure.failures.length > 0

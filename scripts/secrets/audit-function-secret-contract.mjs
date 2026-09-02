@@ -834,13 +834,17 @@ function firstArgumentOf(argumentsSource) {
  * are static; interpolation, concatenation, conditionals, and variables are
  * not allowed to disappear from the recursive closure.
  */
-function importSpecifiers(source) {
+function importSpecifiers(source, { runtimeOnly = false } = {}) {
   const stripped = stripComments(source);
   const specifiers = new Set();
   const failures = [];
   const staticImport =
     /(?:import|export)\s+(?:[^"'`;]*?\s+from\s+)?["']([^"']+)["']/g;
-  for (const match of stripped.matchAll(staticImport)) specifiers.add(match[1]);
+  for (const match of stripped.matchAll(staticImport)) {
+    const wholeDeclarationTypeOnly =
+      /^(?:import|export)\s+type\b/.test(match[0]);
+    if (!runtimeOnly || !wholeDeclarationTypeOnly) specifiers.add(match[1]);
+  }
 
   const dynamicImport = /\bimport\s*\(/g;
   for (const match of stripped.matchAll(dynamicImport)) {
@@ -861,6 +865,16 @@ function importSpecifiers(source) {
     specifiers.add(literal[2]);
   }
   return { failures, specifiers: [...specifiers] };
+}
+
+/**
+ * Collect only runtime imports. Supabase's server-side bundle omits modules
+ * reached exclusively by whole-declaration `import type` / `export type`
+ * edges, so production source readback must not require those erased files.
+ * Every other static shape remains a runtime edge and therefore fails closed.
+ */
+function runtimeImportSpecifiers(source) {
+  return importSpecifiers(source, { runtimeOnly: true });
 }
 
 function scanDirectEnvReads(source) {
@@ -1767,7 +1781,7 @@ function listFunctionEntrypoints(functionsRoot = FUNCTIONS_ROOT) {
     .sort(([left], [right]) => left.localeCompare(right));
 }
 
-export function buildImportClosure(entrypoint, repoRoot = REPO_ROOT) {
+function buildClosure(entrypoint, repoRoot, readSpecifiers) {
   const pending = [entrypoint];
   const visited = new Set();
   const failures = [];
@@ -1782,7 +1796,7 @@ export function buildImportClosure(entrypoint, repoRoot = REPO_ROOT) {
       failures.push(`${toRepoPath(current, repoRoot)}:source_unreadable`);
       continue;
     }
-    const imports = importSpecifiers(source);
+    const imports = readSpecifiers(source);
     failures.push(
       ...imports.failures.map((failure) =>
         `${toRepoPath(current, repoRoot)}:${failure}`
@@ -1803,6 +1817,14 @@ export function buildImportClosure(entrypoint, repoRoot = REPO_ROOT) {
     }
   }
   return { files: [...visited].sort(), failures };
+}
+
+export function buildImportClosure(entrypoint, repoRoot = REPO_ROOT) {
+  return buildClosure(entrypoint, repoRoot, importSpecifiers);
+}
+
+export function buildRuntimeImportClosure(entrypoint, repoRoot = REPO_ROOT) {
+  return buildClosure(entrypoint, repoRoot, runtimeImportSpecifiers);
 }
 
 export function scanFunctionSources({

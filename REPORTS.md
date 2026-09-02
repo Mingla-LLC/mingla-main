@@ -18,7 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
-- 2026-09-02 — Production source verification now recognizes TypeScript files erased from Supabase runtime bundles while continuing to require every executable dependency to match reviewed source exactly (#3054)
+- 2026-09-02 — Production source verification now recognizes TypeScript files erased from Supabase runtime bundles while continuing to require every executable dependency to match reviewed source exactly (#3054, PR #3057)
 - 2026-09-02 — The governed attendance release tool now recognizes and verifies the authenticated identity reader alongside the other four attendance functions, so the reviewed production rollout can complete without bypassing its deployment safeguards (#3050, PR #3051)
 - 2026-09-02 — Buyers keep access to valid tickets through attendance-secret rotation: legacy and governed proofs coexist safely, only affected claims are reissued, web links scrub their secret before app code runs, and retirement is blocked behind a reconciled 72-hour safety gate (#2979, PR #3041)
 - 2026-09-02 — Mingla Studio operators can now open their tenant-scoped Pages, Navigation, Footer, and Site Settings edit forms without Payload misreading version access as a missing document (#3035, PR #3036)
