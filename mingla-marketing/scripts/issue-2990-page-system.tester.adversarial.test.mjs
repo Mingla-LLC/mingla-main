@@ -40,15 +40,27 @@ function readBuildFile(relativePath) {
   return fs.readFileSync(filename, 'utf8')
 }
 
+function buildArtifactPath(href) {
+  const url = new URL(href, 'https://page-system.invalid')
+  assert.equal(url.origin, 'https://page-system.invalid', `unexpected stylesheet origin ${href}`)
+  assert(url.pathname.startsWith('/_next/'), `unexpected stylesheet path ${href}`)
+  return url.pathname.slice('/_next/'.length)
+}
+
 function linkedCss(html) {
   const hrefs = [...html.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="([^"]+)"[^>]*>/g)]
     .map((match) => match[1])
   assert(hrefs.length > 0, 'built route must link at least one stylesheet')
   return hrefs.map((href) => {
-    assert(href.startsWith('/_next/'), `unexpected stylesheet origin ${href}`)
-    return readBuildFile(href.slice('/_next/'.length))
+    return readBuildFile(buildArtifactPath(href))
   }).join('\n')
 }
+
+assert.equal(
+  buildArtifactPath('/_next/static/css/example.css?dpl=dpl_preview'),
+  'static/css/example.css',
+  'deployment cache-busting parameters must not become filesystem paths',
+)
 
 function assertFivePrintSafeFaqPairs(slug) {
   const html = readBuildFile(`server/app/internal/page-system/${slug}.html`)
