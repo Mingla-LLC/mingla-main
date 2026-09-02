@@ -142,7 +142,21 @@ const PR_FAMILY_IDENTITY_SHA256 =
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // [TEST-MOD-APPROVED #2986] The two approved search-validation commands
   // advance non-concurrency semantics; the 124-workflow policy is unchanged.
-  "9f9357a107cf6489c4952ae9be9503a16224bdcda86e312203c3eae8fdf42c2e";
+  // [TEST-MOD-APPROVED #2060] #2637 added `paths:` filters and test steps to
+  // the Ari reliability and Ari brand-management lanes. Both are PR-family, so
+  // their non-concurrency documents live inside this digest, exactly as the
+  // #2967 re-derivation above.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING, because that is the review this
+  // digest exists to force:
+  //   - no `concurrency:` block, `group:` or `cancel-in-progress:` value is
+  //     touched by e924a01b7 -- the change is additive path filters and steps;
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED, so no
+  //     workflow was added, removed or renamed;
+  //   - the policy audit itself still reports zero errors at 124 PR-family
+  //     workflows, which is the sibling test above.
+  // Every earlier re-derivation is preserved, not replaced.
+  "797b10aff9e20e0fef88eb4ee74ddf997f59d26665d3c40fc79981e5da99b075";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
