@@ -119,6 +119,8 @@ function filesBelow(relativeDirectory) {
 }
 
 function runSourceContract() {
+  const repoVercelIgnorePath = path.join(ROOT, '..', '.vercelignore')
+  const repoVercelIgnore = fs.existsSync(repoVercelIgnorePath) ? fs.readFileSync(repoVercelIgnorePath, 'utf8') : ''
   const registry = read('lib/search/route-registry.ts')
   const verification = read('scripts/verify-search-foundation.mjs')
   const strictGate = read('../.github/scripts/strict-grep/issue-2981-marketing-search-foundation.mjs')
@@ -160,6 +162,10 @@ function runSourceContract() {
   }
   assert.equal(packageJson.scripts['test:page-system'], 'node scripts/issue-2990-page-system.implementor.happy.test.mjs')
   assert(packageJson.scripts.build.startsWith('node scripts/issue-2990-page-system.implementor.happy.test.mjs --source-only && '))
+  if (repoVercelIgnore) {
+    assert.match(repoVercelIgnore, /^\/scripts\/$/m, 'repo scripts ignore must be root-anchored')
+    assert.doesNotMatch(repoVercelIgnore, /^scripts\/$/m, 'repo scripts ignore must not strip project build guards')
+  }
   assert.match(sitemap, /searchReadyRoutes\(\)/)
   assert.doesNotMatch(sitemap, /page-system/)
   pass('exact private route ownership and automatic build guard')

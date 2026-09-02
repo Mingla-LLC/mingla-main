@@ -24,10 +24,10 @@ Plus a repo-root `/.vercelignore` for paths NO Vercel project ever needs.
 
 Contains ONLY paths NO Vercel project deploys. Read by every project's build regardless of Root Directory setting.
 
-Allowed entries:
+Allowed entries (root-anchored so a same-named folder inside a Vercel project is not stripped):
 - `node_modules/`
-- Non-Vercel codebases: `app-mobile/`, `backend/`, `oauth-redirect/`, `scripts/`, `supabase/`, `tests/`
-- Repo-level documentation/archives: `Mingla_Artifacts/`, `Mingla_Roadmap/`
+- Non-Vercel codebases: `/app-mobile/`, `/backend/`, `/oauth-redirect/`, `/scripts/`, `/supabase/`, `/tests/`
+- Repo-level documentation/archives: `/Mingla_Artifacts/`, `/Mingla_Roadmap/`
 
 **FORBIDDEN entries:** any path under `mingla-admin/`, `mingla-business/`, or `mingla-marketing/`. Listing a Vercel project's own folder (or any subfolder of it) here will strip its own source on cacheless deploys.
 
