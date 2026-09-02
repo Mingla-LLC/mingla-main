@@ -294,7 +294,16 @@ async function main() {
     assert.equal(robots.status, 200)
     assert.match(String(robots.headers['content-type']), /^text\/plain\b/)
     const robotsBody = robots.body.toString('utf8')
-    for (const agent of ['Googlebot', 'Bingbot', 'OAI-SearchBot', 'Claude-SearchBot', 'Claude-User', 'PerplexityBot']) {
+    for (const agent of [
+      'Googlebot',
+      'Bingbot',
+      'OAI-SearchBot',
+      'ChatGPT-User',
+      'Claude-SearchBot',
+      'Claude-User',
+      'PerplexityBot',
+      'Perplexity-User',
+    ]) {
       assert.match(robotsBody, new RegExp(`User-Agent: ${agent}[\\s\\S]*?Allow: /`), `${agent} allowed`)
     }
     for (const agent of ['GPTBot', 'ClaudeBot', 'Google-Extended']) {

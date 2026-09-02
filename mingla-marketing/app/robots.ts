@@ -5,9 +5,11 @@ const SEARCH_CRAWLERS = [
   'Googlebot',
   'Bingbot',
   'OAI-SearchBot',
+  'ChatGPT-User',
   'Claude-SearchBot',
   'Claude-User',
   'PerplexityBot',
+  'Perplexity-User',
 ] as const
 
 const TRAINING_CRAWLERS = ['GPTBot', 'ClaudeBot', 'Google-Extended'] as const

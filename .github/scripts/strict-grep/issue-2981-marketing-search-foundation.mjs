@@ -312,7 +312,16 @@ function validate(io) {
   }
 
   const robots = read('mingla-marketing/app/robots.ts')
-  for (const agent of ['Googlebot', 'Bingbot', 'OAI-SearchBot', 'Claude-SearchBot', 'Claude-User', 'PerplexityBot']) {
+  for (const agent of [
+    'Googlebot',
+    'Bingbot',
+    'OAI-SearchBot',
+    'ChatGPT-User',
+    'Claude-SearchBot',
+    'Claude-User',
+    'PerplexityBot',
+    'Perplexity-User',
+  ]) {
     if (!robots.includes(`'${agent}'`)) fail('SEARCH_CRAWLER_POLICY', `${agent} is not named`)
   }
   for (const agent of ['GPTBot', 'ClaudeBot', 'Google-Extended']) {
