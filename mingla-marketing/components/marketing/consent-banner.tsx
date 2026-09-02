@@ -15,8 +15,8 @@
 //   denied  → remain uninitialized, do not show
 
 import { useEffect, useState } from 'react'
+import { SITE_ORIGIN } from '@/lib/site'
 import { AnimatePresence, motion } from 'framer-motion'
-import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
@@ -94,12 +94,18 @@ export function ConsentBanner(): React.ReactElement | null {
                 We&apos;d like to use analytics cookies to understand how the
                 site is used so we can improve it. Nothing is set until you
                 choose.{' '}
-                <Link
-                  href="/privacy-policy"
+                {/* Absolute, not "/privacy-policy". This banner is mounted by
+                    the ROOT layout, so it also renders on career.usemingla.com,
+                    where every path is rewritten under /careers -- the relative
+                    link resolved to /careers/privacy-policy and 404'd. A
+                    consent banner whose privacy link is broken is worse than
+                    no link, and the policy lives on the apex from any host. */}
+                <a
+                  href={`${SITE_ORIGIN}/privacy-policy`}
                   className="rounded-sm font-medium text-warm underline-offset-2 hover:underline focus-ring"
                 >
                   Privacy policy
-                </Link>
+                </a>
                 .
               </p>
             </div>
