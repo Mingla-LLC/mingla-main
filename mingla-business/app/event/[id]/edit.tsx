@@ -540,6 +540,70 @@ export default function EventEditRoute(): React.ReactElement {
   // `migratingLegacyIdRef` keeps this route's promotion state for the D-1
   // retained-draft guard; the registry dedupes concurrent promotions globally
   // (per d_* id across ALL surfaces — loop, routes, previews).
+  //
+  // issue #3040 — ONE promotion, ONE reconcile, TWO triggers.
+  //
+  // The reconcile below used to live inline in the autosave `.then`, and #2974
+  // then added a SECOND, independent `promoteLegacyDraftOnce` call inside
+  // `CreatorStep4Cover` that did none of it. That second call was harmful when
+  // it SUCCEEDED: `promoteLegacyDraftOnce` swaps the store entry from `d_*` to
+  // the server uuid, and with the route never told, `renderDraft` fell back to
+  // the retained `d_*` snapshot (issue #976 D-1) — so the wizard carried on
+  // editing a detached draft whose id no longer existed, and every later edit
+  // went nowhere. It was harmful when it FAILED too: a `console.warn` the user
+  // never sees, leaving the cover step permanently unable to upload.
+  //
+  // Promotion is now requested by the Cover step through
+  // `handleRequireServerDraft` and resolved HERE, by the route that owns route
+  // state and the URL — the same single-flight owner (#976), the same
+  // reconcile, and a real rejection the step can render.
+  const reconcilePromotedDraft = React.useCallback(
+    (localId: string, merged: DraftEvent): void => {
+      if (user !== null) {
+        promoteBusinessRecentDraft({
+          userId: user.id,
+          brandId: merged.brandId,
+          entityType: "event",
+          localId,
+          serverId: merged.id,
+        });
+      }
+      // Issue #976 — resolve handlers are unmount- and focus-guarded: a
+      // rapid wizard exit or a pushed Preview screen can never receive a
+      // stray setParams.
+      if (!mountedRef.current) return;
+      // ORCH-1355 (symptom 1) — resolve the wizard against the server id via
+      // route state, then reconcile the URL IN PLACE with setParams. A
+      // router.replace here would change the [id] segment → expo-router
+      // replaces the screen → the name TextInput remounts → the keyboard
+      // drops mid-type. setParams updates the focused route's params without
+      // a screen replace, so the input keeps focus AND the URL/route params
+      // land on the server id immediately (resume/kill lands on the real id).
+      setPromotedServerId(merged.id);
+      // #1022 A/F-7 — flush the edit that landed during promotion, now
+      // that a server row exists. Read the draft FRESH from the store so
+      // the flush carries every field written while we were in flight.
+      if (pendingPostPromotionSaveRef.current) {
+        pendingPostPromotionSaveRef.current = false;
+        const freshDraft =
+          useDraftEventStore.getState().getDraft(merged.id) ?? merged;
+        autosave.saveDraft(freshDraft);
+      }
+      if (navigationRef.isFocused()) {
+        router.setParams({
+          id: merged.id,
+          step: String(initialStep ?? 0),
+        });
+      } else {
+        pendingUrlReconcileRef.current = {
+          id: merged.id,
+          step: String(initialStep ?? 0),
+        };
+      }
+    },
+    [autosave, initialStep, navigationRef, router, user],
+  );
+
   const handleAutosaveDraft = React.useCallback(
     (incoming: DraftEvent): void => {
       if (!incoming.id.startsWith("d_")) {
@@ -563,47 +627,7 @@ export default function EventEditRoute(): React.ReactElement {
         draftId: incoming.id,
       })
         .then((merged) => {
-          if (user !== null) {
-            promoteBusinessRecentDraft({
-              userId: user.id,
-              brandId: incoming.brandId,
-              entityType: "event",
-              localId: incoming.id,
-              serverId: merged.id,
-            });
-          }
-          // Issue #976 — resolve handlers are unmount- and focus-guarded: a
-          // rapid wizard exit or a pushed Preview screen can never receive a
-          // stray setParams.
-          if (!mountedRef.current) return;
-          // ORCH-1355 (symptom 1) — resolve the wizard against the server id via
-          // route state, then reconcile the URL IN PLACE with setParams. A
-          // router.replace here would change the [id] segment → expo-router
-          // replaces the screen → the name TextInput remounts → the keyboard
-          // drops mid-type. setParams updates the focused route's params without
-          // a screen replace, so the input keeps focus AND the URL/route params
-          // land on the server id immediately (resume/kill lands on the real id).
-          setPromotedServerId(merged.id);
-          // #1022 A/F-7 — flush the edit that landed during promotion, now
-          // that a server row exists. Read the draft FRESH from the store so
-          // the flush carries every field written while we were in flight.
-          if (pendingPostPromotionSaveRef.current) {
-            pendingPostPromotionSaveRef.current = false;
-            const freshDraft =
-              useDraftEventStore.getState().getDraft(merged.id) ?? merged;
-            autosave.saveDraft(freshDraft);
-          }
-          if (navigationRef.isFocused()) {
-            router.setParams({
-              id: merged.id,
-              step: String(initialStep ?? 0),
-            });
-          } else {
-            pendingUrlReconcileRef.current = {
-              id: merged.id,
-              step: String(initialStep ?? 0),
-            };
-          }
+          reconcilePromotedDraft(incoming.id, merged);
         })
         .catch((error) => {
           migratingLegacyIdRef.current = null;
@@ -626,12 +650,50 @@ export default function EventEditRoute(): React.ReactElement {
     [
       autosave,
       isAuthReady,
-      initialStep,
-      navigationRef,
       queryClient,
-      router,
-      user,
+      reconcilePromotedDraft,
     ],
+  );
+
+  // issue #3040 — the Cover step's server-row precondition.
+  //
+  // The cover-video pipeline binds to a SERVER `events` row: a `d_*` id is a
+  // hard 400 at `event-cover-video-upload-intent` and creates no job at all.
+  // Reaching the Cover step is the exact moment that row stops being optional,
+  // so the step asks for it here and RENDERS the outcome — it never assumes
+  // the debounced autosave already landed (that save silently no-ops when auth
+  // is not ready, when an insert fails, or when the resolve handler unmounts).
+  //
+  // Resolves with the server uuid. REJECTS with a real error the step turns
+  // into a visible, retryable message. It never resolves with a `d_*` id, so
+  // the picker can never be enabled against an id the server will refuse.
+  const handleRequireServerDraft = React.useCallback(
+    async (): Promise<string> => {
+      const current = useDraftEventStore.getState().getDraft(
+        effectiveDraftId as string,
+      ) ?? lastResolvedDraftRef.current;
+      if (current === null) {
+        throw new Error("This event is still loading. Try again in a moment.");
+      }
+      if (!current.id.startsWith("d_")) return current.id;
+      if (!isAuthReady) {
+        throw new Error("Finishing sign-in. Try again in a moment.");
+      }
+      migratingLegacyIdRef.current = current.id;
+      try {
+        const merged = await promoteLegacyDraftOnce({
+          queryClient,
+          brandId: current.brandId,
+          draftId: current.id,
+        });
+        reconcilePromotedDraft(current.id, merged);
+        return merged.id;
+      } catch (error) {
+        migratingLegacyIdRef.current = null;
+        throw error;
+      }
+    },
+    [effectiveDraftId, isAuthReady, queryClient, reconcilePromotedDraft],
   );
 
   // Cycle 9b-2 edit-published branch — render the focused edit screen
@@ -780,6 +842,7 @@ export default function EventEditRoute(): React.ReactElement {
       onOpenPreview={handleOpenPreview}
       onOpenPaymentOnboarding={handleOpenPaymentOnboarding}
       onAutosaveDraft={handleAutosaveDraft}
+      onRequireServerDraft={handleRequireServerDraft}
       onDiscardServerDraft={handleDiscardDraft}
       onPublishDraft={async (draftToPublish) => {
         const published = await publishServerDraft.publishDraft(draftToPublish);

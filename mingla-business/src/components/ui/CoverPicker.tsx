@@ -1657,6 +1657,15 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
 // ----- Library tab (preview + action row + video affordance) -------------
 
+// issue #3040 — mirrors `autoApplyEventCover` in
+// `supabase/functions/event-cover-video-webhook/index.ts`. If this predicate
+// and that gate ever disagree, the sheet starts lying again.
+const coverVideoFinishesWithoutYou = (
+  status: EventCoverVideoStatus | null,
+): boolean =>
+  status !== null && status.targetKind === "event" &&
+  status.applyMode === "draft_auto";
+
 const videoProjectionCopy = (
   stage: EventCoverVideoUploadStage,
   status: EventCoverVideoStatus | null,
@@ -1668,9 +1677,17 @@ const videoProjectionCopy = (
     case "intent_pending": return { title: "Starting upload…", body: "Creating a secure, resumable upload.", percent: null, tone: "neutral" };
     case "uploading": return { title: "Uploading video", body: "You can close this sheet. Mingla will continue or resume when you return.", percent: stage.percent, tone: "neutral" };
     case "ack_pending": return { title: "Finishing upload…", body: "The video is uploaded. Confirming it arrived safely.", percent: null, tone: "neutral" };
+    // issue #3040 invariants 4 + 5 — the sheet must not promise something it
+    // does not do. "We'll finish automatically" is true for exactly ONE
+    // configuration: an EVENT target in `draft_auto`, which the Bunny webhook
+    // auto-applies server-side (`autoApplyEventCover`, gated on
+    // `target_kind === "event" && apply_mode === "draft_auto"`). Every other
+    // target — a published event, a brand, a venue — applies through the
+    // CLIENT on the next visit, so closing the sheet is safe but NOT
+    // self-completing, and the copy now says which one you are in.
     case "processing": return status?.status === "source_uploaded" || status?.status === "processing_queued"
-      ? { title: "Video uploaded", body: "Waiting for processing to begin. You can close this sheet.", percent: null, tone: "neutral" }
-      : { title: stage.percent === null ? "Processing video…" : "Processing video", body: stage.percent === null ? "This can take a while. You can close this sheet—we’ll finish automatically." : "You can close this sheet—we’ll finish automatically.", percent: stage.percent, tone: "neutral" };
+      ? { title: "Video uploaded", body: coverVideoFinishesWithoutYou(status) ? "Waiting for processing to begin. You can close this sheet—we’ll finish automatically." : "Waiting for processing to begin. You can close this sheet and we’ll pick this up when you come back.", percent: null, tone: "neutral" }
+      : { title: stage.percent === null ? "Processing video…" : "Processing video", body: coverVideoFinishesWithoutYou(status) ? (stage.percent === null ? "This can take a while. You can close this sheet—we’ll finish automatically." : "You can close this sheet—we’ll finish automatically.") : (stage.percent === null ? "This can take a while. You can close this sheet—we’ll apply it when you come back." : "You can close this sheet—we’ll apply it when you come back."), percent: stage.percent, tone: "neutral" };
     case "reattaching": return { title: "Reconnecting to your video…", body: "Checking the latest progress without starting over.", percent: null, tone: "neutral" };
     case "detached": return stage.sourceAcknowledged
       ? { title: "Still working in the background", body: "We can’t refresh the status right now. Your video is safe, and Mingla will check again when you’re connected.", percent: null, tone: "warning" }

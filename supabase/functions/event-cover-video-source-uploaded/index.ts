@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   corsHeaders,
-  destroyCoverVideoAsset,
   isValidUuid,
   jsonResponse,
   mapEventCoverVideoStatus,
@@ -40,57 +39,49 @@ const mergeProviderPayload = (
   source_upload: sourceUpload,
 });
 
-// ── #2967 THE ACKNOWLEDGEMENT DEADLINE ──────────────────────────────────────
-// #2715's storage-metadata repair (PR #2843) returns an UNCHANGED canonical
-// `source_uploading` with HTTP 200 when the TUS offsets are exact but Bunny's
-// `storageSize` is still zero, deliberately so the client's ~2s loop retries.
-// That is correct for a transient registration lag. It had NO bound, so a
-// provider-side stall — bytes fully delivered, object never committed — was
-// indistinguishable from a two-second lag: 120 acknowledgements in 346 seconds,
-// every one HTTP 200, every one a database no-op, `updated_at` frozen at job
-// creation, and the user watching "Finishing upload…" forever.
+// ── #3040 THE ACKNOWLEDGEMENT GATE IS THE TRANSFER, NOT THE ENCODE ──────────
 //
-// WHY 90 SECONDS:
-//   • This deadline covers a transfer that is ALREADY COMPLETE (exact TUS
-//     offset equality against Bunny's own HEAD is the precondition for
-//     reaching it). It is not an encoding deadline — #2905's 12h stall sweep
-//     owns encoding and is deliberately untouched here.
-//   • The slowest HEALTHY job on this pipeline had its full derivative set
-//     live ~21s after TUS completion (#2905 recovery job e055c562); a positive
-//     `storageSize` appears well before the derivatives do. 90s is >4x the
-//     slowest healthy case end-to-end.
-//   • It is ~45 client poll cycles at the 2s loop interval, so a genuinely
-//     slow-but-alive Bunny gets dozens of chances before we call it dead.
-//   • It bounds the user's wait at a minute and a half instead of eleven more
-//     hours of spinner (the #2967 job's TUS resource died at 14:30:08 and the
-//     12h sweep would not have touched it until 01:30).
-export const SOURCE_ACK_DEADLINE_MS = Number.parseInt(
-  Deno.env.get("EVENT_COVER_SOURCE_ACK_DEADLINE_MS") ?? "90000",
-  10,
-);
+// THE DEFECT THIS REPLACES (#3039, proven from production):
+//   `storageSize` is a POST-ENCODE signal and it was being used as a
+//   TRANSFER-COMPLETE gate. Job e055c562 reported storageSize = 14,808,154
+//   together with bunny_status = 4 (Finished) at 21s — the value became
+//   non-zero BECAUSE encoding finished, not because the bytes landed. So
+//   acknowledgement waited for the whole encode. #2967 then bounded that wait
+//   at 90s and DESTROYED the Bunny asset on breach, which deleted videos Bunny
+//   was still encoding (jobs 07d737b3 and aafe4ef9, 404 on everything).
+//
+// THE GATE THAT IS ACTUALLY CORRECT:
+//   Exact TUS offset equality read from Bunny's OWN authoritative HEAD
+//   (uploadOffset === uploadLength === source_bytes) is complete proof the
+//   transfer finished. Nothing else is needed and nothing else is waited for.
+//   Acknowledge there, advance the job to `source_uploaded`, and let the
+//   webhook + reaper own encode completion — that path works and #2905
+//   proved it (its 12h stall deadline is the encode bound and is untouched).
+//
+// THREE STRUCTURAL CONSEQUENCES, each load-bearing:
+//   1. `bunnyGetVideo` is NEVER a gate any more. It is read best-effort for
+//      provider metadata AFTER the transfer is already proven. The old
+//      `bunny_get_pending` branch was a second unbounded 200/"keep waiting"
+//      shape and it is gone.
+//   2. THIS FUNCTION DESTROYS NOTHING, EVER. Asset reclamation has exactly one
+//      owner — `event-cover-video-reaper`, which re-reads provider truth
+//      before it deletes and skips anything still processing. An endpoint that
+//      cannot see whether the provider is mid-encode must not be allowed to
+//      delete (issue #3040 invariant 1). `destroyCoverVideoAsset` is therefore
+//      not imported here.
+//   3. There is no acknowledgement deadline, so there is no
+//      `EVENT_COVER_SOURCE_ACK_DEADLINE_MS`. The 30-minute production override
+//      that is currently suppressing the destruction is no longer read by
+//      anything and can be removed once this deploys.
+//
+// The only remaining wait is on a transfer that is genuinely INCOMPLETE, and
+// that is bounded by the TUS lease (`tus_expires_at`, 1h) — checked below and
+// swept server-side by the reaper for a client that never returns.
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
-
-// The acknowledgement clock lives under its own `source_ack` key so it can
-// never collide with the `source_upload` receipt the success path writes (that
-// receipt is what `sourceUploadedAtFromPayload` reads for `sourceUploadedAt`).
-const mergeAckPayload = (
-  existing: unknown,
-  ack: Record<string, unknown>,
-): Record<string, unknown> => ({
-  ...asRecord(existing),
-  source_ack: { ...asRecord(asRecord(existing).source_ack), ...ack },
-});
-
-const ackClockStartedAtMs = (providerPayload: unknown): number | null => {
-  const value = asRecord(asRecord(providerPayload).source_ack).tus_complete_at;
-  if (typeof value !== "string") return null;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
 
 const expiresAtMs = (value: unknown): number | null => {
   if (typeof value !== "string") return null;
@@ -101,12 +92,61 @@ const expiresAtMs = (value: unknown): number | null => {
 const defaultDeps = {
   bunnyGetVideo,
   bunnyPresignTusUpload,
-  destroyCoverVideoAsset,
   requireBrandCoverManager,
   requireCoverVideoTargetManager,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
+};
+
+// The authoritative transfer verdict, read from Bunny's own TUS HEAD.
+//   "complete"   — uploadOffset === uploadLength === source_bytes. PROOF.
+//   "incomplete" — the HEAD answered and the bytes are demonstrably not all
+//                  there yet.
+//   "unreadable" — we could not ask (no guid/resource yet, network failure).
+//                  NEVER treated as either proof or failure.
+export type TusTransferVerdict =
+  | { kind: "complete"; uploadOffset: number; uploadLength: number }
+  | { kind: "incomplete"; uploadOffset: number; uploadLength: number }
+  | { kind: "unreadable"; reason: string };
+
+// EXPORTED so `event-cover-video-reaper` can ask the SAME question with the
+// SAME implementation when it sweeps an abandoned job (#3040 invariant 7).
+// "Did the transfer finish?" must have exactly one answer in this codebase.
+export const readTusTransfer = async (
+  sourceBytes: number,
+  guid: string | null,
+  tusResourceUrl: string | null,
+  deps: { bunnyPresignTusUpload: typeof bunnyPresignTusUpload },
+): Promise<TusTransferVerdict> => {
+  if (guid === null || tusResourceUrl === null) {
+    return { kind: "unreadable", reason: "transport_not_allocated" };
+  }
+  const presign = await deps.bunnyPresignTusUpload(guid);
+  let tusHead: Response;
+  try {
+    tusHead = await fetch(tusResourceUrl, {
+      method: "HEAD",
+      headers: {
+        AuthorizationSignature: presign.authorizationSignature,
+        AuthorizationExpire: String(presign.authorizationExpire),
+        LibraryId: presign.libraryId,
+        VideoId: presign.videoId,
+        "Tus-Resumable": "1.0.0",
+      },
+    });
+  } catch {
+    return { kind: "unreadable", reason: "tus_head_network" };
+  }
+  if (!tusHead.ok) {
+    return { kind: "unreadable", reason: `tus_head_http_${tusHead.status}` };
+  }
+  const uploadOffset = Number(tusHead.headers.get("upload-offset"));
+  const uploadLength = Number(tusHead.headers.get("upload-length"));
+  const complete = uploadOffset === sourceBytes && uploadLength === sourceBytes;
+  return complete
+    ? { kind: "complete", uploadOffset, uploadLength }
+    : { kind: "incomplete", uploadOffset, uploadLength };
 };
 
 export const handleEventCoverVideoSourceUploaded = async (
@@ -210,287 +250,207 @@ export const handleEventCoverVideoSourceUploaded = async (
     return jsonResponse(mapEventCoverVideoStatus(job));
   }
 
-  // #966 — Bunny is the sole cover-video provider: IGNORE the client-declared
-  // providerUpload payload; read the truth from Bunny (real bytes, real status).
-  // The Vector-C source byte cap is enforced HERE against Bunny's storageSize,
-  // never the client number. (The Cloudinary ack tail was removed as dead
-  // residue post-META-1270.)
   const guid = safeString(job.source_asset_id);
-  const video = await deps.bunnyGetVideo(guid ?? "");
-  if (!video.ok) {
-    // The video may not be registered yet — keep the job at source_uploading
-    // and return its mapped status so the client re-acks / polls.
+  const tusResourceUrl = safeString(job.tus_resource_url);
+  const nowMs = Date.now();
+
+  // ── #3040 STEP 1: read the ONLY signal that proves the transfer finished ──
+  // Bunny's own TUS HEAD. This runs BEFORE any provider-metadata read, because
+  // provider metadata is no longer allowed to gate anything.
+  const transfer = await readTusTransfer(
+    job.source_bytes,
+    guid,
+    tusResourceUrl,
+    deps,
+  );
+
+  // ── #3040 STEP 2: exact offset equality IS the acknowledgement ────────────
+  // Whatever Bunny's encode state, whatever `storageSize` says, and even if the
+  // TUS lease has since expired: the bytes are on Bunny, verified against
+  // Bunny's own HEAD. Advance the job and hand encoding to the webhook/reaper.
+  if (transfer.kind === "complete") {
+    // #966 — the source byte cap is still enforced against a PROVIDER number,
+    // never the client's. `uploadLength` is Bunny's own record of the resource
+    // size and `uploadOffset` proves that many bytes actually arrived, so it is
+    // a strictly better cap subject than `storageSize` — which counts the
+    // encoded renditions too (14,808,154 stored for a 3,050,776-byte source on
+    // job e055c562) and therefore over-rejected large-but-legal sources.
+    if (transfer.uploadLength > MAX_SOURCE_VIDEO_BYTES) {
+      const { data: failedJob } = await supabase.rpc(
+        "cover_video_transition_job",
+        {
+          p_job_id: job.id,
+          p_from_statuses: ["source_uploading"],
+          p_to_status: "failed",
+          p_provider_status: null,
+          p_provider_progress: null,
+          p_patch: {
+            failure_code: "source_over_cap",
+            failure_message: "Video source exceeded the maximum allowed size.",
+          },
+        },
+      );
+      // #3040 — deliberately NO destroy. The job is terminal-failed and carries
+      // its guid, so the reaper reclaims the asset on its next tick with
+      // provider truth in hand. This endpoint cannot see whether Bunny is
+      // mid-encode, so it is not allowed to delete.
+      console.warn(
+        "[event-cover-video-source-uploaded]",
+        JSON.stringify({
+          jobId: job.id,
+          maxSourceBytes: MAX_SOURCE_VIDEO_BYTES,
+          requestId,
+          stage: "tus_source_over_cap",
+          uploadLength: transfer.uploadLength,
+        }),
+      );
+      return jsonResponse(
+        {
+          error: "source_over_cap",
+          detail: "source_over_cap",
+          status: mapEventCoverVideoStatus(failedJob ?? job),
+        },
+        413,
+      );
+    }
+    // Provider metadata is recorded for observability only. A failed read is
+    // NOT a reason to withhold acknowledgement — that inversion is the whole
+    // bug this issue exists to remove.
+    const video = await deps.bunnyGetVideo(guid ?? "");
+    const bunnySourceUpload: Record<string, unknown> = {
+      acknowledged_at: new Date(nowMs).toISOString(),
+      // #3040 — the acknowledged size is the TRANSFERRED size (Bunny's TUS
+      // upload-length). `storageSize` is recorded beside it when it happens to
+      // be available, purely as an encode-progress observation.
+      transferredBytes: transfer.uploadLength,
+      storageSize: video.ok && typeof video.video.storageSize === "number"
+        ? video.video.storageSize
+        : null,
+      length: video.ok && typeof video.video.length === "number"
+        ? video.video.length
+        : null,
+      bunny_status: video.ok ? video.video.status : null,
+    };
+    const { data: bunnyUpdatedJob, error: bunnyUpdateError } = await supabase
+      .from("event_cover_video_jobs")
+      .update({
+        provider_payload: mergeProviderPayload(
+          job.provider_payload,
+          bunnySourceUpload,
+        ),
+        status: "source_uploaded",
+        tus_upload_offset: transfer.uploadOffset,
+      })
+      .eq("id", job.id)
+      .eq("status", "source_uploading")
+      .select("*")
+      .maybeSingle();
+    if (bunnyUpdateError || !bunnyUpdatedJob) {
+      // A webhook/cancel may win the source-upload CAS. Re-read and project that
+      // canonical truth instead of turning a valid race into a synthetic 500.
+      const { data: canonical, error: canonicalError } = await supabase
+        .from("event_cover_video_jobs")
+        .select("*")
+        .eq("id", job.id)
+        .maybeSingle();
+      if (!canonicalError && canonical) {
+        return jsonResponse(mapEventCoverVideoStatus(canonical));
+      }
+      console.error(
+        "[event-cover-video-source-uploaded] canonical read failed",
+        {
+          code: canonicalError?.code ?? bunnyUpdateError?.code,
+          requestId,
+        },
+      );
+      return jsonResponse({
+        error: "internal_error",
+        detail: "source_uploaded_canonical_read_failed",
+      }, 500);
+    }
     console.log(
       "[event-cover-video-source-uploaded]",
       JSON.stringify({
+        bunnyStatus: video.ok ? video.video.status : null,
         jobId: job.id,
-        reason: video.reason,
         requestId,
-        stage: "bunny_get_pending",
+        stage: "tus_transfer_proven_acknowledged",
+        status: bunnyUpdatedJob.status,
+        uploadOffset: transfer.uploadOffset,
       }),
     );
-    return jsonResponse(mapEventCoverVideoStatus(job));
+    return jsonResponse(mapEventCoverVideoStatus(bunnyUpdatedJob));
   }
-  const storageSize = typeof video.video.storageSize === "number"
-    ? video.video.storageSize
-    : 0;
-  const nowMs = Date.now();
 
-  // #2967 — a job still in `source_uploading` whose TUS resource has EXPIRED
-  // while Bunny reports NO committed object is a definite, detectable death:
-  // the resumable resource is gone, so those bytes can never be re-offered
-  // against this job and no later acknowledgement can ever succeed. Fail it
-  // here instead of leaving it to #2905's 12h stall sweep — the production job
-  // in this issue expired at 14:30:08 with `failure_code = NULL`, and the sweep
-  // would not have touched it until 01:30 the next morning while the sheet said
-  // "The video is uploaded."
+  // ── #3040 STEP 3: the transfer is NOT complete. Is the transport dead? ────
+  // Reaching here means the bytes are provably not all on Bunny (or we could
+  // not ask). If the TUS lease has expired, the resumable resource is gone and
+  // those bytes can never be re-offered against this job: that is a definite,
+  // detectable death, so fail it now with a real `failure_code` rather than
+  // leaving a spinner for the 12h stall sweep.
   //
-  // A POSITIVE storageSize means Bunny DID commit the object, so an expired
-  // transport is irrelevant and this branch never fires — a user who returns to
-  // a backgrounded upload an hour later still gets acknowledged, not killed.
+  // ORDER IS LOAD-BEARING: this check sits AFTER the transfer proof, so a
+  // completed upload whose lease expired while the user was away is
+  // acknowledged (step 2), never killed. #2967 placed it before the HEAD and
+  // gated it on `storageSize <= 0`, which made an expired lease lethal to a
+  // fully-transferred, still-encoding video.
   const tusExpiresAt = expiresAtMs(job.tus_expires_at);
-  if (storageSize <= 0 && tusExpiresAt !== null && nowMs >= tusExpiresAt) {
+  if (tusExpiresAt !== null && nowMs >= tusExpiresAt) {
     const { data: expiredJob } = await supabase.rpc(
       "cover_video_transition_job",
       {
         p_job_id: job.id,
         p_from_statuses: ["source_uploading"],
         p_to_status: "failed",
-        p_provider_status: video.video.status,
+        p_provider_status: null,
         p_provider_progress: null,
         p_patch: {
           failure_code: "source_transport_expired",
           failure_message:
-            "The upload session expired before the video service confirmed it.",
+            "The upload session expired before the video finished uploading.",
         },
       },
     );
-    if (expiredJob?.status === "failed") await deps.destroyCoverVideoAsset(job);
+    // #3040 — no destroy here either. See the header note: reclamation is the
+    // reaper's, and only the reaper's.
     console.warn(
       "[event-cover-video-source-uploaded]",
       JSON.stringify({
         jobId: job.id,
         requestId,
         stage: "tus_transport_expired",
+        transfer: transfer.kind,
         tusExpiresAt: job.tus_expires_at,
       }),
     );
     return jsonResponse(mapEventCoverVideoStatus(expiredJob ?? job));
   }
 
-  const presign = await deps.bunnyPresignTusUpload(guid ?? "");
-  let tusHead: Response;
-  try {
-    tusHead = await fetch(String(job.tus_resource_url ?? ""), {
-      method: "HEAD",
-      headers: {
-        AuthorizationSignature: presign.authorizationSignature,
-        AuthorizationExpire: String(presign.authorizationExpire),
-        LibraryId: presign.libraryId,
-        VideoId: presign.videoId,
-        "Tus-Resumable": "1.0.0",
-      },
-    });
-  } catch {
-    return jsonResponse({ error: "upload_verification_pending" }, 503);
-  }
-  const uploadOffset = Number(tusHead.headers.get("upload-offset"));
-  const uploadLength = Number(tusHead.headers.get("upload-length"));
-  if (
-    !tusHead.ok || uploadOffset !== job.source_bytes ||
-    uploadLength !== job.source_bytes
-  ) {
-    return jsonResponse({
-      error: "upload_incomplete",
-      detail: { uploadOffset, uploadLength },
-    }, 409);
-  }
-  if (storageSize <= 0) {
-    // Bunny can acknowledge the exact completed TUS offset before its video
-    // metadata exposes storageSize. This is provider registration lag, not an
-    // incomplete upload: preserve canonical source_uploading truth so the
-    // client's acknowledgement loop retries instead of failing a fully
-    // uploaded source.
-    //
-    // #2967 — but BOUNDED. The offsets matching is the moment the transfer is
-    // provably complete, so that is where the clock starts. It is recorded on
-    // the job (this used to be a pure database no-op, which is why `updated_at`
-    // stayed frozen through 120 acknowledgements) and read back on every later
-    // pass.
-    let ackStartedAtMs = ackClockStartedAtMs(job.provider_payload);
-    if (ackStartedAtMs === null) {
-      const { data: markedJob, error: markError } = await supabase
-        .from("event_cover_video_jobs")
-        .update({
-          provider_payload: mergeAckPayload(job.provider_payload, {
-            tus_complete_at: new Date(nowMs).toISOString(),
-            tus_offset: uploadOffset,
-          }),
-        })
-        .eq("id", job.id)
-        .eq("status", "source_uploading")
-        .select("*")
-        .maybeSingle();
-      if (markError || !markedJob) {
-        // The clock could not be written. Do NOT silently pretend it was: say
-        // so, and keep answering canonical retryable truth. The client-side
-        // deadline is the backstop for exactly this case — that is why the
-        // bound exists on both sides.
-        console.warn(
-          "[event-cover-video-source-uploaded]",
-          JSON.stringify({
-            code: markError?.code ?? null,
-            jobId: job.id,
-            requestId,
-            stage: "ack_clock_write_failed",
-          }),
-        );
-        return jsonResponse(mapEventCoverVideoStatus(job));
-      }
-      ackStartedAtMs = ackClockStartedAtMs(markedJob.provider_payload) ?? nowMs;
-      console.log(
-        "[event-cover-video-source-uploaded]",
-        JSON.stringify({
-          deadlineMs: SOURCE_ACK_DEADLINE_MS,
-          jobId: job.id,
-          requestId,
-          stage: "ack_clock_started",
-        }),
-      );
-      return jsonResponse(mapEventCoverVideoStatus(markedJob));
-    }
-    const waitedMs = nowMs - ackStartedAtMs;
-    if (waitedMs >= SOURCE_ACK_DEADLINE_MS) {
-      // Bunny took the bytes and never committed the object. This is not a lag
-      // any longer: stop answering "still working" and give the caller a real,
-      // retryable terminal failure it can act on.
-      const { data: deadlineJob } = await supabase.rpc(
-        "cover_video_transition_job",
-        {
-          p_job_id: job.id,
-          p_from_statuses: ["source_uploading"],
-          p_to_status: "failed",
-          p_provider_status: video.video.status,
-          p_provider_progress: null,
-          p_patch: {
-            failure_code: "source_ack_deadline_exceeded",
-            failure_message:
-              "The video service never confirmed this upload arrived.",
-          },
-        },
-      );
-      if (deadlineJob?.status === "failed") {
-        await deps.destroyCoverVideoAsset(job);
-      }
-      console.warn(
-        "[event-cover-video-source-uploaded]",
-        JSON.stringify({
-          deadlineMs: SOURCE_ACK_DEADLINE_MS,
-          jobId: job.id,
-          requestId,
-          stage: "bunny_storage_metadata_deadline_exceeded",
-          waitedMs,
-        }),
-      );
-      return jsonResponse(mapEventCoverVideoStatus(deadlineJob ?? job));
-    }
+  // ── #3040 STEP 4: transfer incomplete, transport still alive ─────────────
+  // Answer definitely, never with a 200 that means "nothing happened". The
+  // client resumes the TUS transfer from `uploadOffset`; the lease bounds it.
+  if (transfer.kind === "unreadable") {
     console.log(
       "[event-cover-video-source-uploaded]",
       JSON.stringify({
-        deadlineMs: SOURCE_ACK_DEADLINE_MS,
         jobId: job.id,
+        reason: transfer.reason,
         requestId,
-        stage: "bunny_storage_metadata_pending",
-        waitedMs,
+        stage: "tus_head_unreadable",
       }),
     );
-    return jsonResponse(mapEventCoverVideoStatus(job));
-  }
-  if (storageSize > MAX_SOURCE_VIDEO_BYTES) {
-    const { data: failedJob } = await supabase.rpc(
-      "cover_video_transition_job",
-      {
-        p_job_id: job.id,
-        p_from_statuses: ["source_uploading"],
-        p_to_status: "failed",
-        p_provider_status: video.video.status,
-        p_provider_progress: null,
-        p_patch: {
-          failure_code: "source_over_cap",
-          failure_message: "Video source exceeded the maximum allowed size.",
-        },
-      },
-    );
-    if (failedJob?.status === "failed") await deps.destroyCoverVideoAsset(job);
-    console.warn(
-      "[event-cover-video-source-uploaded]",
-      JSON.stringify({
-        jobId: job.id,
-        maxSourceBytes: MAX_SOURCE_VIDEO_BYTES,
-        requestId,
-        stage: "bunny_source_over_cap",
-        storageSize,
-      }),
-    );
-    return jsonResponse(
-      {
-        error: "source_over_cap",
-        detail: "source_over_cap",
-        status: mapEventCoverVideoStatus(failedJob ?? job),
-      },
-      413,
-    );
-  }
-  const bunnySourceUpload: Record<string, unknown> = {
-    acknowledged_at: new Date().toISOString(),
-    storageSize,
-    length: typeof video.video.length === "number" ? video.video.length : null,
-    bunny_status: video.video.status,
-  };
-  const { data: bunnyUpdatedJob, error: bunnyUpdateError } = await supabase
-    .from("event_cover_video_jobs")
-    .update({
-      provider_payload: mergeProviderPayload(
-        job.provider_payload,
-        bunnySourceUpload,
-      ),
-      status: "source_uploaded",
-      tus_upload_offset: uploadOffset,
-    })
-    .eq("id", job.id)
-    .eq("status", "source_uploading")
-    .select("*")
-    .maybeSingle();
-  if (bunnyUpdateError || !bunnyUpdatedJob) {
-    // A webhook/cancel may win the source-upload CAS. Re-read and project that
-    // canonical truth instead of turning a valid race into a synthetic 500.
-    const { data: canonical, error: canonicalError } = await supabase
-      .from("event_cover_video_jobs")
-      .select("*")
-      .eq("id", job.id)
-      .maybeSingle();
-    if (!canonicalError && canonical) {
-      return jsonResponse(mapEventCoverVideoStatus(canonical));
-    }
-    console.error("[event-cover-video-source-uploaded] canonical read failed", {
-      code: canonicalError?.code ?? bunnyUpdateError?.code,
-      requestId,
-    });
     return jsonResponse({
-      error: "internal_error",
-      detail: "source_uploaded_canonical_read_failed",
-    }, 500);
+      error: "upload_verification_pending",
+      detail: transfer.reason,
+    }, 503);
   }
-  console.log(
-    "[event-cover-video-source-uploaded]",
-    JSON.stringify({
-      jobId: job.id,
-      requestId,
-      stage: "bunny_source_uploaded_acknowledged",
-      status: bunnyUpdatedJob.status,
-    }),
-  );
-  return jsonResponse(mapEventCoverVideoStatus(bunnyUpdatedJob));
+  return jsonResponse({
+    error: "upload_incomplete",
+    detail: {
+      uploadOffset: transfer.uploadOffset,
+      uploadLength: transfer.uploadLength,
+    },
+  }, 409);
 };
 
 if (import.meta.main) {

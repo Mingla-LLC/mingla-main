@@ -85,6 +85,14 @@ export interface StepBodyProps {
    * local live id is le_* and is not the storage/database event id.
    */
   coverMediaEventId?: string | null;
+  /**
+   * issue #3040 — resolve (creating if needed) the SERVER `events` row this
+   * draft maps to, and reconcile the host route onto it. Supplied by the
+   * create routes; ABSENT on EditPublishedScreen, where the row already exists.
+   * Resolves with the server uuid, or REJECTS with an error the Cover step
+   * renders as a visible, retryable message. Never resolves a `d_*` id.
+   */
+  onRequireServerDraft?: () => Promise<string>;
   /** Brand default currency used when legacy/local drafts have null currency. */
   brandDefaultCurrency?: string | null;
   /**

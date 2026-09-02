@@ -849,24 +849,53 @@ Deno.test("#2715 full TUS truth wins over zero-byte Bunny metadata lag without c
       serviceRoleClient: () => client,
     } as never);
     const payload = await response.json();
-    assert(response.status === 200, `metadata lag became HTTP ${response.status}`);
-    assert(payload.status === "source_uploading", "active retry truth was lost");
-    // [TEST-MOD-APPROVED #2967] `updates === 0` -> the two properties it stood
-    // for. Both still fail on revert of the #2967 bound.
-    assert(destroys === 0, "metadata lag deleted provider truth");
+    assert(response.status === 200, `completed transfer became HTTP ${response.status}`);
+    // [TEST-MOD-APPROVED #3040] TWO SUPERSEDED ASSERTIONS, named precisely:
+    //   `payload.status === "source_uploading"`  ("active retry truth was lost")
+    //   `sourceJob.status === "source_uploading"` ("metadata lag moved canonical status")
+    //
+    // Both encoded the premise that a zero `storageSize` means the source is
+    // not yet acknowledgeable. It does not. `storageSize` only becomes non-zero
+    // when ENCODING finishes (#3039, job e055c562: storageSize 14,808,154
+    // arriving together with bunny_status 4 Finished at 21s), while this test's
+    // own fixture already proves the transfer complete — its HEAD returns
+    // upload-offset === upload-length === source_bytes, from Bunny.
+    //
+    // This test's NAME is "full TUS truth wins over zero-byte Bunny metadata
+    // lag", and the new assertion is what that sentence actually means: full
+    // TUS truth WINS, so the job advances.
+    //
+    // The half of #2715 that is untouched and still asserted below: the
+    // acknowledgement must not destroy provider work, and the write it makes
+    // must be the source-upload acknowledgement itself rather than a
+    // fabrication — `tus_upload_offset` is now REQUIRED to be present and to
+    // equal the offset the HEAD proved, instead of being required absent.
     assert(
-      canonicalMutations.length === 0,
-      `metadata lag mutated canonical source truth: ${
+      payload.status === "source_uploaded",
+      "full TUS truth did not win over zero-byte Bunny metadata",
+    );
+    assert(destroys === 0, "the acknowledgement deleted provider truth");
+    assert(
+      updates === 1,
+      `acknowledgement amplified writes across the retry stream: ${updates}`,
+    );
+    assert(
+      sourceJob.tus_upload_offset === 716_949,
+      "the acknowledgement did not persist the offset Bunny's own HEAD proved",
+    );
+    assert(
+      sourceJob.status === "source_uploaded",
+      "canonical status did not advance on a proven-complete transfer",
+    );
+    // `canonicalMutations` is retained as the ledger of which guarded fields the
+    // path touched: exactly the two the acknowledgement owns, never the others.
+    assert(
+      canonicalMutations.every((field) =>
+        field === "status" || field === "tus_upload_offset"
+      ),
+      `acknowledgement mutated fields it does not own: ${
         canonicalMutations.join(",")
       }`,
-    );
-    assert(
-      updates <= 1,
-      `metadata lag amplified writes across the retry stream: ${updates}`,
-    );
-    assert(
-      sourceJob.status === "source_uploading",
-      "metadata lag moved canonical status",
     );
   } finally {
     globalThis.fetch = old;

@@ -22,27 +22,54 @@ const repoFile = (relativePath: string): string =>
  * and session-idempotent, so it cannot mint a duplicate row alongside the
  * wizard's own promotion.
  *
- * Deleting the promotion effect, or re-pointing `coverRowId` back at the local
- * draft id, turns this suite red.
+ * [TEST-MOD-APPROVED #3040] FOUR SUPERSEDED ASSERTIONS, named precisely.
+ *
+ * T-2974-A-01..A-04 pinned that CreatorStep4Cover itself calls
+ * `promoteLegacyDraftOnce`, keeps the result in its own `promotedRowId` state,
+ * and reports a failure with `console.warn`. All four are invalidated by #3040,
+ * because that arrangement was wrong in BOTH directions:
+ *
+ *   • On SUCCESS, `promoteLegacyDraftOnce` swaps the store entry from `d_*` to
+ *     the server uuid. With the host route never told, the route's `renderDraft`
+ *     fell back to the retained `d_*` snapshot (issue #976 D-1) and the wizard
+ *     went on editing an id that no longer existed — later edits went nowhere
+ *     and the URL never reconciled onto the real row.
+ *   • On FAILURE, `console.warn` is invisible. The Cover step stayed silently
+ *     unable to upload, which is exactly the state the user was left in.
+ *
+ * The REQUIREMENT #2974 actually owns — a cover upload during creation must
+ * bind to a SERVER row, never a `d_*` id — is unchanged and is asserted below
+ * in a stronger form: the row is a rendered PRECONDITION (the picker cannot be
+ * opened without it), it is resolved by the route that owns identity, and a
+ * failure is a visible, retryable message rather than a console line.
  */
-describe("#2974 the Cover step resolves a SERVER row before any cover upload", () => {
+describe("#3040 the Cover step makes the SERVER row a visible precondition", () => {
   const step = repoFile("src/components/event/CreatorStep4Cover.tsx");
 
-  test("T-2974-A-01 the step drives the single promotion owner, not its own insert", () => {
-    expect(step).toContain(
-      'import { promoteLegacyDraftOnce } from "../../utils/draftPromotion";',
-    );
-    expect(step).toContain("void promoteLegacyDraftOnce({");
+  test("T-3040-A-01 the step no longer promotes behind the route's back", () => {
+    // Asserted on the CALL and the IMPORT, never the bare identifier: the
+    // prose above the effect names the old owner, and an assertion that a
+    // comment can satisfy is an assertion that carries no information
+    // (reference_audit_regex_matches_comments_same_file).
+    expect(step).not.toContain("promoteLegacyDraftOnce({");
+    expect(step).not.toContain('from "../../utils/draftPromotion"');
     // I-PROPOSED-0976-SINGLE-DRAFT-PROMOTION-OWNER: never a direct insert here.
     expect(step).not.toContain("createServerDraft(");
+    // It asks the host, which owns route state and the URL.
+    expect(step).toContain("onRequireServerDraft");
   });
 
-  test("T-2974-A-02 it promotes ONLY client-only d_* ids (a real uuid is a no-op)", () => {
-    expect(step).toContain('if (!localDraftRowId.startsWith("d_")) return undefined;');
+  test("T-3040-A-02 it asks ONLY for client-only d_* ids (a real uuid is a no-op)", () => {
+    expect(step).toContain(
+      'const needsServerRow = localDraftRowId.startsWith("d_");',
+    );
+    expect(step).toContain(
+      "if (!needsServerRow || onRequireServerDraft === undefined) return;",
+    );
   });
 
-  test("T-2974-A-03 the cover target consumes the promoted server row id", () => {
-    expect(step).toContain("const coverRowId = promotedRowId ?? localDraftRowId;");
+  test("T-3040-A-03 the cover target consumes the resolved server row id", () => {
+    expect(step).toContain("const coverRowId = serverRowId ?? localDraftRowId;");
     // The pre-fix expression handed the local draft id straight to the picker.
     expect(step).not.toContain("const coverRowId = coverMediaEventId ?? draft.id;");
     // META-ORCH-1059 parity: the target stays memoized on the resolved row id.
@@ -50,8 +77,13 @@ describe("#2974 the Cover step resolves a SERVER row before any cover upload", (
     expect(step).toMatch(/\[draft\.brandId,\s*coverRowId,\s*coverMediaApplyMode\]/);
   });
 
-  test("T-2974-A-04 a failed promotion is reported, never swallowed", () => {
-    expect(step).toContain("[CreatorStep4Cover] draft promotion failed");
+  test("T-3040-A-04 a failed resolution is RENDERED, never a console line", () => {
+    expect(step).not.toContain("[CreatorStep4Cover] draft promotion failed");
+    expect(step).toContain("setPrepareError(");
+    expect(step).toContain('label="Try again"');
+    expect(step).toContain("onPress={prepareServerRow}");
+    // And the picker cannot be opened while the row is missing.
+    expect(step).toContain("disabled={!coverReady}");
   });
 
   test("T-2974-A-05 the upload hook refuses a non-uuid event target outright", () => {

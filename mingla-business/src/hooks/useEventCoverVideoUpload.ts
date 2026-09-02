@@ -72,6 +72,28 @@ const isServerRowId = (value: string | undefined): boolean =>
 // server behaves.
 export const EVENT_COVER_VIDEO_ACK_DEADLINE_MS = 150_000;
 const ACK_POLL_INTERVAL_MS = 2_000;
+// issue #3040 — the client half of invariant 2 ("no unbounded wait anywhere").
+//
+// `waitForEventCoverVideoReady` is a `while (true)` that only exits on a
+// TERMINAL job status or an abort. Now that acknowledgement no longer waits for
+// the encode (#3039), the encode is where the user's time actually goes — and a
+// job that wedges upstream would hold this loop open for as long as the sheet
+// is mounted.
+//
+// Crossing this bound is NOT a failure and must never be rendered as one: the
+// job is alive server-side and finishes on its own (an event `draft_auto` job
+// is auto-applied by the webhook; every other target applies on the next
+// visit). We simply stop WATCHING and hand the user the "Check now" affordance
+// the `detached` stage already provides. Nothing is cancelled and nothing is
+// destroyed.
+//
+// WHY 10 MINUTES: the slowest cover video that ever reached `applied` in
+// production took 93s (#2905, job fddc283b) against a median of 18s, and #3039
+// showed Bunny legitimately taking minutes rather than seconds on a cold
+// library. 10 minutes is ~6.5x the slowest observed encode, and it is far
+// inside the reaper's 12h stall deadline so the server always owns the real
+// verdict.
+export const EVENT_COVER_VIDEO_WATCH_DEADLINE_MS = 600_000;
 const safeUploadError = (error: unknown): Error => error instanceof EventCoverVideoProcessingError
   ? error
   : error instanceof Error && "code" in error && error.code === "unauthenticated"
@@ -228,19 +250,43 @@ export function useEventCoverVideoUpload(
   const watch = useCallback(async (
     jobId: string, signal: AbortSignal, generation: number,
   ): Promise<void> => {
+    // issue #3040 — bound the WATCH, not the job. `waitForEventCoverVideoReady`
+    // is a `while (true)`; this controller ends our subscription to it after
+    // EVENT_COVER_VIDEO_WATCH_DEADLINE_MS while leaving the server job
+    // completely untouched.
+    const watchdog = new AbortController();
+    const stopWatching = (): void => watchdog.abort();
+    signal.addEventListener("abort", stopWatching, { once: true });
+    let deadlineReached = false;
+    const timer = setTimeout(() => {
+      deadlineReached = true;
+      watchdog.abort();
+    }, EVENT_COVER_VIDEO_WATCH_DEADLINE_MS);
     try {
       const ready = await waitForEventCoverVideoReady(jobId, {
         onStatus: (next) => { if (generationRef.current === generation) project(next); },
         pollIntervalMs: 2_000,
-        signal,
+        signal: watchdog.signal,
       });
       if (generationRef.current !== generation) return;
       await settleCanonical(ready, signal);
     } catch (caught) {
+      if (deadlineReached && !signal.aborted) {
+        // Not a failure. The job is still running server-side and will finish
+        // without us; surface the honest "still working" card with its real
+        // Check-now control instead of spinning forever.
+        if (generationRef.current === generation) {
+          setStage({ phase: "detached", percent: 0, sourceAcknowledged: true });
+        }
+        return;
+      }
       if (caught instanceof EventCoverVideoProcessingError && caught.lastStatus?.isTerminal && userIdRef.current) {
         await cleanupPersisted(userIdRef.current);
       }
       throw caught;
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", stopWatching);
     }
   }, [cleanupPersisted, project, settleCanonical]);
 

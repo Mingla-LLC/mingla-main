@@ -13,9 +13,8 @@
  * both flow through this step.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { useQueryClient } from "@tanstack/react-query";
 
 import {
   spacing,
@@ -31,13 +30,6 @@ import type { CoverPatch } from "../ui/CoverPicker";
 import type { CoverTarget } from "../ui/coverTarget";
 
 import { useBrand } from "../../hooks/useBrands";
-// issue #2974 — the cover pipeline binds to a SERVER `events` row. This step is
-// where a client-only draft id stops being acceptable, so this is where the
-// promotion is forced. `promoteLegacyDraftOnce` is the single owner of every
-// d_*→server promotion (issue #976, I-PROPOSED-0976-SINGLE-DRAFT-PROMOTION-OWNER):
-// it is single-flight per id and session-idempotent, so calling it here can
-// never mint a duplicate row alongside the wizard's own autosave promotion.
-import { promoteLegacyDraftOnce } from "../../utils/draftPromotion";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 
@@ -61,6 +53,7 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
   coverMediaEventId,
   coverMediaApplyMode,
   onCoverVideoProcessingChange,
+  onRequireServerDraft,
   showThemeRow = true,
 }) => {
   // #1022 A/F-13 — ONE discriminated sheet state, never two booleans. Opening
@@ -72,48 +65,68 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
 
   // C-2 — the row needs the brand theme to render inheritance truthfully.
   const brandQuery = useBrand(draft.brandId ?? null);
-  const queryClient = useQueryClient();
 
-  // issue #2974 — during event creation the wizard still holds the client-only
-  // `d_<ts36>` draft id, so `event-cover-video-upload-intent` answered
-  // 400 `event_id_invalid_uuid`, created ZERO job rows, and the sheet spun on
-  // "Reconnecting to your video…" forever. The server row was promoted lazily
-  // by a 700ms-debounced autosave that can silently no-op (auth not ready, a
-  // failed insert, an unmounted resolve handler), and the wizard's "Server
-  // draft" label is only `serverSaveState.lastSavedAt === null` — it is NOT
-  // evidence that a row exists.
+  // issue #3040 — THE SERVER ROW IS A PRECONDITION, NOT A HOPE.
   //
-  // Reaching the Cover step is the point where a server row becomes REQUIRED,
-  // so force it here rather than hoping the debounce already landed. By this
-  // step `lastStepReached > 0` already makes the draft dirty, so this promotes
-  // exactly the rows the wizard would have promoted anyway — no new ghost-row
-  // class. A real uuid (EditPublishedScreen) is a no-op.
+  // The cover-video pipeline binds to a SERVER `events` row: a client-only
+  // `d_<ts36>` id is a hard 400 `event_id_invalid_uuid` at
+  // `event-cover-video-upload-intent` and creates ZERO job rows, so nothing
+  // downstream can recover. #2974 called `promoteLegacyDraftOnce` from here
+  // directly, fire-and-forget. That was wrong in BOTH directions:
+  //
+  //   • On SUCCESS it swapped the store entry from `d_*` to the server uuid
+  //     while the host route knew nothing about it. `renderDraft` then fell
+  //     back to the retained `d_*` snapshot (issue #976 D-1) and the wizard
+  //     carried on editing a draft id that no longer existed — later edits
+  //     went nowhere and the URL never reconciled.
+  //   • On FAILURE it wrote a `console.warn` the user never sees, and the
+  //     Cover step stayed silently unable to upload anything, forever.
+  //
+  // The route owns identity, so the route resolves the row
+  // (`onRequireServerDraft`) and reconciles itself onto it. This step renders
+  // the outcome: it is honest while preparing, and honest — with a retry — when
+  // it fails. The picker cannot be opened against an id the server will refuse.
   const localDraftRowId = coverMediaEventId ?? draft.id;
-  const [promotedRowId, setPromotedRowId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!localDraftRowId.startsWith("d_")) return undefined;
-    let cancelled = false;
-    void promoteLegacyDraftOnce({
-      brandId: draft.brandId,
-      draftId: localDraftRowId,
-      queryClient,
-    })
-      .then((merged) => {
-        if (!cancelled) setPromotedRowId(merged.id);
+  const needsServerRow = localDraftRowId.startsWith("d_");
+  const [serverRowId, setServerRowId] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [prepareError, setPrepareError] = useState<string | null>(null);
+  const prepareAttemptRef = useRef(0);
+
+  const prepareServerRow = useCallback((): void => {
+    if (!needsServerRow || onRequireServerDraft === undefined) return;
+    const attempt = ++prepareAttemptRef.current;
+    setPreparing(true);
+    setPrepareError(null);
+    void onRequireServerDraft()
+      .then((rowId) => {
+        if (prepareAttemptRef.current !== attempt) return;
+        setPreparing(false);
+        // Never accept a non-uuid back: that is precisely the value the server
+        // refuses, and accepting it would re-enable the picker onto a 400.
+        if (rowId.startsWith("d_")) {
+          setPrepareError(
+            "This event isn't saved yet, so a cover can't be added. Tap Try again.",
+          );
+          return;
+        }
+        setServerRowId(rowId);
       })
       .catch((error: unknown) => {
-        // Never silent: the wizard's autosave promotion owns retry, and the
-        // upload hook refuses a non-uuid target with a finite, named error
-        // ("This event is still being created…") instead of a spinner.
-        console.warn("[CreatorStep4Cover] draft promotion failed", {
-          draftId: localDraftRowId,
-          reason: error instanceof Error ? error.message : String(error),
-        });
+        if (prepareAttemptRef.current !== attempt) return;
+        setPreparing(false);
+        setPrepareError(
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "We couldn't save this event yet. Tap Try again, or check your connection.",
+        );
       });
-    return (): void => {
-      cancelled = true;
-    };
-  }, [draft.brandId, localDraftRowId, queryClient]);
+  }, [needsServerRow, onRequireServerDraft]);
+
+  useEffect(() => {
+    prepareServerRow();
+  }, [prepareServerRow]);
+
   const brandThemeStatus = brandQuery.isLoading
     ? ("loading" as const)
     : brandQuery.isError
@@ -157,7 +170,11 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
   // so it keeps a constant reference across cover-selection re-renders (mirrors
   // the ExperienceCoverStep fix; the CoverPicker is shared). Only depends on the
   // event row id + brand + apply mode.
-  const coverRowId = promotedRowId ?? localDraftRowId;
+  const coverRowId = serverRowId ?? localDraftRowId;
+  // The picker may only open against a real server row. While the row is being
+  // prepared (or has failed to prepare) the button says so instead of opening a
+  // sheet that can only produce a 400.
+  const coverReady = !needsServerRow || serverRowId !== null;
   const target = useMemo<CoverTarget>(
     () => ({
       kind: "event",
@@ -191,16 +208,45 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
         </View>
         {credit !== null ? <Text style={styles.creditText}>{credit}</Text> : null}
         <Button
-          label={hasCover ? "Change cover" : "Add cover"}
+          label={
+            preparing
+              ? "Preparing…"
+              : hasCover
+                ? "Change cover"
+                : "Add cover"
+          }
           leadingIcon="upload"
           variant="secondary"
           size="md"
           shape="square"
+          disabled={!coverReady}
           onPress={() => setActiveSheet("cover")}
           accessibilityLabel={
-            hasCover ? "Change cover" : "Add cover photo, GIF, or video"
+            preparing
+              ? "Preparing this event before a cover can be added"
+              : hasCover
+                ? "Change cover"
+                : "Add cover photo, GIF, or video"
           }
+          testID="cover-step-add-cover"
         />
+        {/* issue #3040 — the server row could not be created. This used to be a
+            `console.warn` and an inert sheet; it is now a real, named error
+            with a control the user can actually reach. */}
+        {prepareError !== null ? (
+          <View style={styles.prepareError} testID="cover-step-prepare-error">
+            <Text style={styles.prepareErrorText}>{prepareError}</Text>
+            <Button
+              label="Try again"
+              variant="secondary"
+              size="sm"
+              shape="square"
+              onPress={prepareServerRow}
+              accessibilityLabel="Try preparing this event again"
+              testID="cover-step-prepare-retry"
+            />
+          </View>
+        ) : null}
       </View>
 
       {/* #1022 M1/M2/M3 — the Theme row. ONE edit serves three mounts: the
@@ -272,6 +318,15 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     marginBottom: spacing.sm,
+  },
+  prepareError: {
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  prepareErrorText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
   },
   creditText: {
     fontSize: typography.caption.fontSize,

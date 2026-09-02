@@ -109,6 +109,21 @@ jobs:
           src/components/event/__tests__/coverStepDraftPromotion.issue2974.test.ts
           --runInBand
         working-directory: mingla-business
+      # #3040 — the umbrella. Same lane, same reason as #2967 above: the CI
+      # origin registry is locked at 200 origins (I-2148-CI-TOPOLOGY-BOUNDED)
+      # and this workflow already path-scopes both
+      # `supabase/functions/event-cover-video-*/**` and `mingla-business/**`.
+      - name: "#3040 TUS transfer is the acknowledgement gate, not the encode"
+        run: >-
+          deno test --allow-env --allow-read --allow-net --no-check
+          supabase/functions/event-cover-video-source-uploaded/
+          supabase/functions/event-cover-video-reaper/__tests__/issue_3040_abandoned_source_upload.test.ts
+      - name: "#3040 client invariants — truthful copy, bounded watch, reachable retry"
+        run: >-
+          npx jest
+          src/components/event/__tests__/coverVideoDeterministic.issue3040.test.ts
+          --runInBand
+        working-directory: mingla-business
 
   postgres-17-adversarial:
     if: ${{ github.event.pull_request.draft != true }}
