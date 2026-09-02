@@ -603,7 +603,9 @@ Deno.test("#2855 records only its reviewed provider-reference delta", () => {
     "#2855's reviewed reference-file set drifted",
   );
   assert.equal(
-    createHash("sha256").update(canonicalDeclaration(declaration)).digest("hex"),
+    createHash("sha256").update(canonicalDeclaration(declaration)).digest(
+      "hex",
+    ),
     ISSUE_2855_DECLARATION_SHA256,
     "#2855's reviewed provider-reference delta drifted from the approved record",
   );
@@ -612,7 +614,8 @@ Deno.test("#2855 records only its reviewed provider-reference delta", () => {
   // The whole-file digest could see a #2855 declaration deleted outright. So can
   // this, on both the text and the semantic side.
   assert.throws(
-    () => assertComposedValidatorProvenance(validator.replace(PROVIDER_DELTA, "")),
+    () =>
+      assertComposedValidatorProvenance(validator.replace(PROVIDER_DELTA, "")),
     "deleting the #2855 declaration must fail exact-once ownership",
   );
   assert.throws(
@@ -793,8 +796,14 @@ Deno.test("#2648 every file this guard reads can also fire the lane that runs it
   const start = workflow.indexOf(anchor);
   assert.notEqual(start, -1, "the shared #2099 paths anchor is missing");
   const end = workflow.indexOf("\n  push:", start);
-  assert.notEqual(end, -1, "the push trigger that reuses the anchor is missing");
-  const declared = [...workflow.slice(start, end).matchAll(/^\s+- "([^"]+)"$/gm)]
+  assert.notEqual(
+    end,
+    -1,
+    "the push trigger that reuses the anchor is missing",
+  );
+  const declared = [
+    ...workflow.slice(start, end).matchAll(/^\s+- "([^"]+)"$/gm),
+  ]
     .map((match) => match[1]);
   assert.ok(declared.length > 0, "the #2099 paths anchor declares nothing");
 
