@@ -109,6 +109,11 @@ const INVARIANT_CONVERT = [
   // #1421 replaces the placeholder-pinning rule with the CI-wired truthful
   // organic-insight gate and behavioral/render coverage.
   "src/components/venue/__tests__/venueIntelligence.noFabrication.test.ts",
+  // #3025 moves the three merged #2986 structural source pins to one additive,
+  // self-testing strict-grep owner while retaining every Jest file byte-for-byte.
+  "server/__tests__/privateHostRoutesNoindex.issue2986.implementor.test.ts",
+  "server/__tests__/privateHostRoutesNoindex.issue2986.tester.adversarial.test.ts",
+  "server/__tests__/publicSearchMigration.issue2986.security.test.ts",
 ];
 
 // Render/RTL suites mis-swept into the default node/ts-jest config. Each imports a
