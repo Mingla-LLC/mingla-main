@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/issue-2990-page-system.implementor.happy.test.mjs --source-only && next build",
+    "postbuild": "node scripts/issue-2990-page-system.tester.adversarial.test.mjs",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
