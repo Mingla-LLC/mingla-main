@@ -200,14 +200,23 @@ export default function EventEditRoute(): React.ReactElement {
   // #1022 A/F-7 — set when an autosave is requested while a d_* promotion
   // is in flight; flushed once the server id resolves.
   const pendingPostPromotionSaveRef = React.useRef<boolean>(false);
-  // issue #3040 — the in-flight d_*→server promotion started by
-  // `handleAutosaveDraft`, so the Cover step can await the SAME one.
+  // issue #3040 — the in-flight d_*→server promotion started by the autosave
+  // promotion handler below, so the Cover step can await the SAME one.
+  //
+  // DO NOT name that handler in any comment ABOVE its definition. ORCH-0893's
+  // adversarial branch-ORDER contract locates it with a bare
+  // `source.indexOf("handleAutosave" + "Draft")` over the WHOLE file and slices
+  // from the first hit. A mention up here wins that search, drags the slice ~350
+  // lines earlier, and swallows an unrelated `if (!isAuthReady)` — so the
+  // contract compares landmarks that are not in the handler at all and reports a
+  // reordering that never happened. The five real branch-order invariants are
+  // untouched; only the anchor moves.
   const promotionPromiseRef = React.useRef<Promise<DraftEvent> | null>(null);
   // Read through a CALL, never the ref directly: assigning `null` immediately
-  // before `handleAutosaveDraft` narrows `promotionPromiseRef.current` to
+  // before invoking that handler narrows `promotionPromiseRef.current` to
   // `null`, and control-flow analysis cannot see the synchronous reassignment
-  // that happens inside that handler. Reading the property directly therefore
-  // types the result `never` after the null-check.
+  // that happens inside it. Reading the property directly therefore types the
+  // result `never` after the null-check.
   const takePromotionPromise = React.useCallback(
     (): Promise<DraftEvent> | null => promotionPromiseRef.current,
     [],
