@@ -10,7 +10,7 @@ export const scrubAttendanceClaimFragment = (
   location: AttendanceClaimLocation,
   history: AttendanceClaimHistory,
   requestFrame: (callback: FrameRequestCallback) => number,
-): void => {
+): (() => void) => {
   const cleanUrl = `${location.pathname}${location.search}`;
   const scrub = (): void => history.replaceState(null, "", cleanUrl);
   const scrubAfterRouterReconciliation = (): void => {
@@ -19,6 +19,9 @@ export const scrubAttendanceClaimFragment = (
   };
   scrub();
   requestFrame(scrubAfterRouterReconciliation);
+  return (): void => {
+    requestFrame(scrub);
+  };
 };
 
 export const attendanceAppUrlFromFragment = (raw: string): string | null => {

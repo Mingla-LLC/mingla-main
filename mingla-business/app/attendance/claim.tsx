@@ -12,6 +12,7 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
   const [appUrl, setAppUrl] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
   const autoAttemptedRef = React.useRef(false);
+  const scheduleFinalUrlRestoreRef = React.useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") {
@@ -20,11 +21,10 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
     }
     let active = true;
     const raw = window.location.hash.replace(/^#/, "");
-    // Expo Router reconciles its launch route after the first frame and can
-    // restore the fragment or drop the query. The helper captures pathname +
-    // search once, scrubs immediately, then uses a bounded two-frame scrub so
-    // the final visible history entry retains the query without a credential.
-    scrubAttendanceClaimFragment(
+    // The helper captures pathname + search once and removes the credential
+    // immediately. Its returned idempotent callback is retained for one final,
+    // bounded restore after this route's async parsed-state commit.
+    scheduleFinalUrlRestoreRef.current = scrubAttendanceClaimFragment(
       window.location,
       window.history,
       window.requestAnimationFrame.bind(window),
@@ -43,6 +43,11 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || !parsed) return;
+    scheduleFinalUrlRestoreRef.current?.();
+  }, [parsed]);
 
   const openMingla = useCallback(() => {
     if (!appUrl || opening) return;
