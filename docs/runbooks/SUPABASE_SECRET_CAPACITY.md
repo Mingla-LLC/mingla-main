@@ -163,10 +163,10 @@ credential as a substitute for continuity.
 
 The remediation is valid only from the exact clean merged commit that current remote `main`
 reports via `git ls-remote` (a stale local tracking ref is not authority), within 72 hours, against
-production ref `gqnoajqerqhnvulmnyvv`, while live names equal the exact 88-name manifest plus
-`ATTENDANCE_CLAIM_PEPPER`, `CHECKOUT_REVOCATION_EXECUTE`,
-`META_COMPETITOR_ACCESS_TOKEN`, `META_COMPETITOR_IG_USER_ID`, and
-`RESEND_WEBHOOK_SECRET`. Its recursive deploy set is exactly:
+production ref `gqnoajqerqhnvulmnyvv`, while live names equal the exact 88-name manifest plus the
+migration band. The band narrowed from five names to two on 2026-09-02 (founder-approved): it is
+now exactly `ATTENDANCE_CLAIM_PEPPER` and `CHECKOUT_REVOCATION_EXECUTE`. Its recursive deploy set
+is exactly:
 
 `brand-paystack-onboard`, `brand-stripe-onboard`, `payout-release-sweep`, `marketing-send`,
 `event-cancel-refund-fanout`, `rsvp-contribution-refund`, `source-refund-sweep`,
@@ -176,7 +176,7 @@ production ref `gqnoajqerqhnvulmnyvv`, while live names equal the exact 88-name 
 `attendance-claim-link`, `claim-attendance`, `attendance-claim-backfill`,
 `competitor-intel-worker`, and `resend-webhook`.
 
-The coordinator first proves exact value-blind 93-name remediation parity; mismatch permits zero
+The coordinator first proves exact value-blind 90-name remediation parity; mismatch permits zero
 apply or deploy calls. It then applies the reconstructed complete AD object. A same-run applied AD receipt
 and a prepared-transition receipt for the exact preserved delivery-v3 → v4 candidate authorize
 that one 23-function deploy. It downloads each deployed function, recursively follows relative
@@ -187,12 +187,24 @@ unset.
 
 While every direct fallback remains, run value-blind attendance, checkout (without money
 movement), competitor observation, Resend signature, prior AD/delivery reader, and synthetic
-non-PII #1772 challenge smokes. Only after all pass may the five direct names be removed, one at a
-time, in this order: `META_COMPETITOR_IG_USER_ID` (92),
-`META_COMPETITOR_ACCESS_TOKEN` (91), `RESEND_WEBHOOK_SECRET` (90),
-`CHECKOUT_REVOCATION_EXECUTE` (89), and `ATTENDANCE_CLAIM_PEPPER` last (88). Stop on any fallback
-or invalid-bundle diagnostic or failed smoke. Then run the exact names-only audit and manually
-dispatch the credential-backed workflow; both must execute and report exact 88 parity.
+non-PII #1772 challenge smokes. Only after all pass may a direct name be removed, one at a time.
+
+Removal is partially complete. `META_COMPETITOR_IG_USER_ID`, `META_COMPETITOR_ACCESS_TOKEN` and
+`RESEND_WEBHOOK_SECRET` were removed on 2026-09-02, each only after its bundle-first reader was
+observed logging zero `governed_ad_legacy_fallback` across post-removal production runs. The
+migration band was narrowed to the two names that remain so the gate keeps asserting a set that
+can actually exist; a band still expecting three removed names is a check that cannot pass (#2113).
+
+Separately, `EVENT_COVER_SOURCE_ACK_DEADLINE_MS` was live, absent from the manifest, and read by
+zero files repo-wide. Its removal is what took live from 94 to 93; it never belonged in the
+manifest and is not part of this band.
+
+The remaining order is `CHECKOUT_REVOCATION_EXECUTE` (89), then `ATTENDANCE_CLAIM_PEPPER` last
+(88) — the latter blocked on #2979, which owns recovery of the lost pepper authority and must
+populate the bundle field before the direct name can be unset. Do not invoke
+`attendance-claim-backfill` as a smoke: it sends claim deliveries in batches of up to 50. Stop on
+any fallback or invalid-bundle diagnostic or failed smoke. Then run the exact names-only audit and
+manually dispatch the credential-backed workflow; both must execute and report exact 88 parity.
 
 Rollback before any unset restores the prior complete bundle from its authoritative source.
 After an unset, restore that exact direct name first from its approved source, verify the fallback

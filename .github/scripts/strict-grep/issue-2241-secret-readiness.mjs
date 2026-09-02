@@ -79,7 +79,7 @@ export function violations(files) {
     contract.remediation?.issue !== 2241 ||
     contract.remediation?.production_ref !== "gqnoajqerqhnvulmnyvv" ||
     contract.remediation?.expires_after_merge_hours !== 72 ||
-    contract.remediation?.allowed_extra_live_names?.length !== 5 ||
+    contract.remediation?.allowed_extra_live_names?.length !== 2 ||
     contract.remediation?.selected_functions?.length !== 23
   ) failures.push("contract:remediation_contract_invalid");
   for (
@@ -191,7 +191,7 @@ export function violations(files) {
     [
       "live_name_set_mismatch",
       "in_memory_receipt_authority_required",
-      "remediation_requires_exact_93",
+      "remediation_requires_exact_90",
       "remediation_function_set_mismatch",
       "assertLiveNameParity",
     ],
@@ -353,7 +353,7 @@ function fixture() {
         issue: 2241,
         production_ref: "gqnoajqerqhnvulmnyvv",
         expires_after_merge_hours: 72,
-        allowed_extra_live_names: ["A", "B", "C", "D", "E"],
+        allowed_extra_live_names: ["A", "B"],
         selected_functions: Array.from(
           { length: 23 },
           (_, index) => `f${index}`,
@@ -388,7 +388,7 @@ function fixture() {
       ],
     }),
     preflight:
-      "live_name_set_mismatch in_memory_receipt_authority_required remediation_requires_exact_93 remediation_function_set_mismatch assertLiveNameParity",
+      "live_name_set_mismatch in_memory_receipt_authority_required remediation_requires_exact_90 remediation_function_set_mismatch assertLiveNameParity",
     resolver:
       "AD_CONVERSION_TOKENS governed_ad_bundle_invalid governed_ad_legacy_fallback legacyName !== LEGACY_NAMES[field]",
     service:
@@ -419,7 +419,7 @@ function selfTest() {
     ["cta", 'name="externalLink" size={18}', "buyer-cta"],
     ["componentTest", "all seven phases", "buyer-component-test"],
     ["componentTest", "navigationsAfter", "buyer-component-test"],
-    ["preflight", "remediation_requires_exact_93", "preflight"],
+    ["preflight", "remediation_requires_exact_90", "preflight"],
     ["setter", "existing_field_omitted", "setter"],
     ["coordinator", "receipt_replay_rejected", "coordinator"],
     ["coordinator", "assertLiveNameParity", "coordinator"],
