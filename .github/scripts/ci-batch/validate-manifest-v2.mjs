@@ -292,6 +292,16 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
     ]),
   }),
   Object.freeze({
+    // [#3060] The new closure guard consumes the existing #871 database-special
+    // provider so the exact migration and both PG17 proofs cannot be unwired.
+    // This is one reviewed reference-file delta on an already sealed provider.
+    issue: 3060,
+    workflow: "issue-871-attendance-entitlement-tests.yml",
+    referenceFiles: Object.freeze([
+      ".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs",
+    ]),
+  }),
+  Object.freeze({
     issue: 1772,
     workflow: "supabase-migrations-and-stripe-deno.yml",
     referenceFiles: Object.freeze([

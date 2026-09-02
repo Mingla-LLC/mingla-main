@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 637,
-  "selfTestWiredFloor": 407,
+  "expectedStrictGrepMjsFiles": 638,
+  "selfTestWiredFloor": 408,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -9550,6 +9550,15 @@
       "modes": ["self-test", "plain"],
       "selfTest": "wired",
       "jobKeys": ["issue-871-contract"]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": ["self-test", "plain"],
+      "selfTest": "wired",
+      "jobKeys": []
     }
   ]
 }
