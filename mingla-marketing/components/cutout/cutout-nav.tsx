@@ -46,7 +46,9 @@ export function CutoutNav({ surface, homeHref, showAction = true }: CutoutNavPro
       >
         <div className="mx-auto flex max-w-6xl items-center gap-3">
           <Link
-            href={homeHref}
+            /* The wordmark goes HOME, not to the current surface. It was bound
+               to homeHref, so on /host it linked to /host. */
+            href="/"
             aria-label="Mingla home"
             className="cut-card pointer-events-auto inline-flex shrink-0 items-center rounded-full px-5 py-3 focus-ring"
           >

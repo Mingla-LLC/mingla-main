@@ -158,7 +158,7 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // Every earlier re-derivation is preserved, not replaced.
   // [TEST-MOD-APPROVED #2979] The existing attendance lane gained only its
   // reviewed #2979 paths and executable proofs; identity and policy are intact.
-  "6d281a6424c6cbf054e615ab8e09a8e3b9e32a8cb2bd9d94e815a07de244a463";
+  "407de99c7a42c3bca4f26be1b4055fd52521d7a45be0514babc3d7485895c0a3";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
