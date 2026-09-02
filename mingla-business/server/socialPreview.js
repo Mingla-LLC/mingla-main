@@ -10,10 +10,15 @@ const { SHARED_CARD_PROXY_HEADER } = require("./sharedCardProxyAuth");
 const { contentShareOneLink } = require("./contentShareService");
 const { buildSharePortraitUrl, selectPreviewFacts, statusLabel, weekdayForShareTimezone, openStateForHours } = require("../../packages/sharing");
 
-const PUBLIC_ORIGIN = (
+const CONFIGURED_PUBLIC_ORIGIN = (
   process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL ||
   "https://host.usemingla.com"
 ).replace(/\/+$/, "");
+// Issue #2986: server previews must never resurrect Business as a competing
+// canonical, even if a stale Vercel env survives until #2050's final drain.
+const PUBLIC_ORIGIN = CONFIGURED_PUBLIC_ORIGIN === "https://business.usemingla.com"
+  ? "https://host.usemingla.com"
+  : CONFIGURED_PUBLIC_ORIGIN;
 
 // issue #2879 — these now live in ./supabaseRpc so api/event-checkout-bundle.js
 // can reach them without requiring this module, which drags in React and the

@@ -17789,7 +17789,7 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "306147d1db0f83e8b2bda72d0e65fdb2b959d7010b3fe1388a464375d18bf308",
+        "sourceSha256": "7c8a32d595487f1c112584881aeda520e0d520af970b6f6956b8dc9c9a982c96",
         "triggers": [
           "pull_request",
           "push"
@@ -22305,6 +22305,8 @@
       "referenceFiles": [
         ".github/scripts/strict-grep/issue-2492-replay-skip-closure.implementor.test.mjs",
         ".github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs",
+        "mingla-business/server/__tests__/publicSearchMigration.issue2986.security.test.ts",
+        "scripts/ci/issue_2986_allowlist_delta_gate.mjs",
         "supabase/migrations/20270420002160_issue_2160_multiday_multiselect.sql"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
@@ -22642,6 +22644,7 @@
         ".github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs",
         ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs",
         ".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs",
+        "mingla-business/server/__tests__/publicSearchMigration.issue2986.security.test.ts",
         "scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs",
         "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs",
         "supabase/functions/__tests__/orch_1289_stop_footer_wire_preview_parity.tester.test.ts",

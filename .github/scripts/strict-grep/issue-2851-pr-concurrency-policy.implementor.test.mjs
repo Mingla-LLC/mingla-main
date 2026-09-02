@@ -135,7 +135,9 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // revert-sensitivity loop below is untouched and still red on reversion; the Sites
 // recovery lane stays exempt and byte-identical so that loop keeps its target.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "4e39621cf89c24a690aea046c33dc360d1fdb0e9cc2739762aae67fbdd1f9312";
+  // [TEST-MOD-APPROVED #2986] The two approved search-validation commands
+  // advance non-concurrency semantics; the 124-workflow policy is unchanged.
+  "f3b7c56ece055d7efc766e063e9df909abb2a2fb65bd4823a78ced727bdbffa5";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

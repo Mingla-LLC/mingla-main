@@ -215,7 +215,9 @@ describe("#1876 T-5 — the catch-all is still LAST and still bare", () => {
   test("T-5.2 — the ORCH-1003 / ORCH-1091 header block is byte-identical", () => {
     // SC-7. Pinned as a whole structure, not field-by-field: the cache suites
     // read this block and #1876 must not have moved a single byte of it.
-    expect(vercel.headers).toEqual([
+    // [TEST-MOD-APPROVED #2986] Private-route robots headers may precede this
+    // terminal block; these four protected rules remain exact and ordered.
+    expect(vercel.headers.slice(-4)).toEqual([
       {
         source: "/_expo/static/(.*)",
         headers: [

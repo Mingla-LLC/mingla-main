@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { createRequire } from "node:module";
-import { Module } from "node:module";
 
 const ROOT = process.cwd();
 const read = (file) => fs.readFileSync(path.join(ROOT, file), "utf8");
@@ -64,32 +62,7 @@ test("all anonymous public web route families share their canonical URL directly
   assert.doesNotMatch(helper, /prepareBusinessContentShare|buildShortShareUrl/);
 });
 
-test("canonical experience URLs render rich chat metadata", () => {
-  Module._initPaths();
-  const require = createRequire(import.meta.url);
-  const { renderExperienceHtml } = require(
-    path.join(ROOT, "mingla-business/server/socialPreview.js"),
-  );
-  const row = {
-    id: "experience-1",
-    brand_slug: "art-roost-gallery",
-    brand_name: "Art Roost Gallery",
-    title: "Collector's Preview",
-    description: "An intimate guided look at new work.",
-    slug: "collectors-preview",
-    event_type: "experience",
-    location_text: "Lagos",
-    cover_media_url: "https://images.example.com/cover.jpg",
-    cover_media_type: "image",
-  };
-  const html = renderExperienceHtml(row);
-  const canonical =
-    "https://host.usemingla.com/exp/art-roost-gallery/collectors-preview";
-  assert.match(html, /property="og:title" content="Collector&#39;s Preview by Art Roost Gallery \| Mingla"/);
-  assert.ok(html.includes(`property="og:url" content="${canonical}"`));
-  assert.match(html, /property="og:description" content="An intimate guided look at new work\."/);
-  assert.match(html, /property="og:image" content="https:\/\/images\.example\.com\/cover\.jpg"/);
-
+test("canonical experience URLs use the UA-independent shared public-search handler", () => {
   const vercel = JSON.parse(read("mingla-business/vercel.json"));
   const rewrite = vercel.rewrites.find(
     (entry) => entry.source === "/exp/:brandSlug/:experienceSlug",
@@ -98,7 +71,19 @@ test("canonical experience URLs render rich chat metadata", () => {
     rewrite?.destination,
     "/api/public-experience?brandSlug=:brandSlug&experienceSlug=:experienceSlug",
   );
-  assert.ok(Array.isArray(rewrite?.has) && rewrite.has.length === 1);
+  assert.equal(Object.hasOwn(rewrite ?? {}, "has"), false);
+
+  const handler = read("mingla-business/api/public-experience.js");
+  assert.match(
+    handler,
+    /handlePublicSearchDocument\(\{ req, res, kind: "experience", slugs: \[brandSlug, experienceSlug\] \}\)/,
+  );
+  assert.doesNotMatch(handler, /user-agent|socialPreview|renderExperienceHtml|renderNotFoundHtml/);
+
+  const shared = read("mingla-business/server/publicSearchDocument.js");
+  assert.match(shared, /const handlePublicSearchDocument = async/);
+  assert.match(shared, /resolution\.kind !== kind/);
+  assert.match(shared, /facts\.kind !== kind/);
 });
 
 test("Explorer custom sharing and both snippet systems remain protected", () => {

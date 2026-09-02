@@ -20,7 +20,14 @@ const FROM_EXTRA =
   (Constants.expoConfig?.extra as Record<string, string> | undefined)
     ?.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL;
 const FROM_PROCESS_ENV = process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL;
-const RESOLVED = FROM_EXTRA ?? FROM_PROCESS_ENV;
+const HOST_PUBLIC_ORIGIN = "https://host.usemingla.com";
+const RETIRED_BUSINESS_ORIGIN = /^https:\/\/business\.usemingla\.com\/?$/i;
+const CONFIGURED = FROM_EXTRA ?? FROM_PROCESS_ENV;
+// Issue #2986: a stale control-plane value may not resurrect the retired
+// Business hostname in generated links while #2050's external drains continue.
+const RESOLVED = CONFIGURED && RETIRED_BUSINESS_ORIGIN.test(CONFIGURED.trim())
+  ? HOST_PUBLIC_ORIGIN
+  : CONFIGURED;
 
 if (!RESOLVED || RESOLVED.length === 0) {
   // Fail loud at module load — better than silent fallback to a broken URL.

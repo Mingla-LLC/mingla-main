@@ -6,7 +6,16 @@
   "framework": null,
   "cleanUrls": true,
   "trailingSlash": false,
+  "redirects": [
+    { "source": "/e/:brandSlug/:eventSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/e/:brandSlug/:eventSlug", "permanent": true },
+    { "source": "/t/:brandSlug/:tripSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/t/:brandSlug/:tripSlug", "permanent": true },
+    { "source": "/exp/:brandSlug/:experienceSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/exp/:brandSlug/:experienceSlug", "permanent": true },
+    { "source": "/b/:brandSlug/v/:venueSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/b/:brandSlug/v/:venueSlug", "permanent": true },
+    { "source": "/b/:brandSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/b/:brandSlug", "permanent": true }
+  ],
   "rewrites": [
+    { "source": "/robots.txt", "destination": "/api/robots" },
+    { "source": "/sitemap.xml", "destination": "/api/sitemap" },
     { "source": "/s/:code", "destination": "/api/content-share?code=:code" },
     { "source": "/og/s/:code/v:version-r2.jpg", "destination": "/api/content-share-image?code=:code&version=:version" },
     { "source": "/share/:shareId.png", "destination": "/api/shared-card-image?shareId=:shareId&surface=s4" },
@@ -16,67 +25,263 @@
     { "source": "/og/brand/:brandSlug.png", "destination": "/api/og-brand?brandSlug=:brandSlug" },
     { "source": "/og/trip/:tripId.png", "destination": "/api/og-trip?tripId=:tripId" },
     { "source": "/og/venue/:brandSlug/:venueSlug.png", "destination": "/api/og-venue?brandSlug=:brandSlug&venueSlug=:venueSlug" },
-    {
-      "source": "/e/:brandSlug/:eventSlug",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
-        }
-      ],
-      "destination": "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug"
-    },
-    {
-      "source": "/t/:brandSlug/:tripSlug",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
-        }
-      ],
-      "destination": "/api/public-trip?brandSlug=:brandSlug&tripSlug=:tripSlug"
-    },
-    {
-      "source": "/exp/:brandSlug/:experienceSlug",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
-        }
-      ],
-      "destination": "/api/public-experience?brandSlug=:brandSlug&experienceSlug=:experienceSlug"
-    },
-    {
-      "source": "/b/:brandSlug",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
-        }
-      ],
-      "destination": "/api/public-brand?brandSlug=:brandSlug"
-    },
-    {
-      "source": "/b/:brandSlug/v/:venueSlug",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
-        }
-      ],
-      "destination": "/api/public-venue?brandSlug=:brandSlug&venueSlug=:venueSlug"
-    },
+    { "source": "/e/:brandSlug/:eventSlug", "destination": "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug" },
+    { "source": "/t/:brandSlug/:tripSlug", "destination": "/api/public-trip?brandSlug=:brandSlug&tripSlug=:tripSlug" },
+    { "source": "/exp/:brandSlug/:experienceSlug", "destination": "/api/public-experience?brandSlug=:brandSlug&experienceSlug=:experienceSlug" },
+    { "source": "/b/:brandSlug/v/:venueSlug", "destination": "/api/public-venue?brandSlug=:brandSlug&venueSlug=:venueSlug" },
+    { "source": "/b/:brandSlug", "destination": "/api/public-brand?brandSlug=:brandSlug" },
     { "source": "/stripe-onboarding-return", "destination": "/stripe-onboarding-return.html" },
     { "source": "/auth/callback", "destination": "/auth/callback.html" },
     { "source": "/accept-brand-invitation", "destination": "/accept-brand-invitation-entry" },
     { "source": "/((?!_expo/static/|assets/|accept-brand-invitation-entry$).*)", "destination": "/" }
   ],
   "headers": [
+    {
+      "source": "/",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/__styleguide/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/accept-brand-invitation/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/accept-brand-invitation-entry/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/accept-scanner-invitation/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/account/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/analytics/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/ari/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/attendance/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/auth/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/booking/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/brand/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/checkout/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/checkout-experience/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/checkout-trip/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/connect-account-management/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/connect-onboarding/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/connect-partner-account-management/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/connect-partner-onboarding/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/connect-tax-registrations/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/event/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/experience/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/home/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/hub/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/insights/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/marketing/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/notifications/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/o/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/partner/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/people/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/recent/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/refund/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/reserve/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/rsvp/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/stay/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/stripe-onboarding-return/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/stripe-onboarding-return.html",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/support/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/trip/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/venue/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/website-return/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
     {
       "source": "/_expo/static/(.*)",
       "headers": [
