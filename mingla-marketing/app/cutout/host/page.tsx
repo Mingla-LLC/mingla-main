@@ -1,13 +1,11 @@
 import type { Metadata } from 'next'
 import {
-  BarChart3, CalendarCheck, CreditCard, Globe, Mail, MapPin,
-  Megaphone, Search, Sparkles, Users,
+  CalendarCheck, Globe, MapPin, Megaphone, Search, Sparkles, Users,
 } from 'lucide-react'
-import { Card3D, Layer } from '@/components/ui/3d-card'
 import { cn } from '@/lib/cn'
 import {
-  CutoutCard, CutoutFaq, CutoutFooter, CutoutHeading, CutoutHero, CutoutNav,
-  CutoutSection, CutoutShell, CutReveal, DeviceCta, FaqSchema,
+  CutoutFooter, CutoutHeading, CutoutHero, CutoutNav,
+  CutoutSection, CutoutShell, CutReveal, DeviceCta,
 } from '@/components/cutout'
 import {
   AuroraBackground, BentoGrid, BentoGridItem,
@@ -15,7 +13,6 @@ import {
 import { HOST_BENTO } from '@/lib/design-preview/host-bento'
 import { AriCreativeCard } from '@/components/ui/ari-creative-card'
 import { HostFigure } from '@/components/ui/host-figures'
-import { HOST_LIMITS, HOST_SWAP } from '@/lib/design-preview/host-tools'
 import { ICP_CARDS } from '@/lib/design-preview/icp-cards'
 import { ExpandingCards, type CardItem } from '@/components/ui/expanding-cards'
 import { ScrollVelocityRow } from '@/components/ui/scroll-velocity-text'
@@ -42,16 +39,6 @@ const ICP_ICONS: Record<string, React.ReactNode> = {
   'tours-experiences-adventures': <Search className="h-5 w-5" />,
   'pop-ups-independent-creators': <Users className="h-5 w-5" />,
 }
-
-
-const FAQ = [
-  { q: 'What is Mingla Host?', a: 'Every tool you need to run a hospitality business: a website, listings for events, trips, experiences and stays, orders and reservations, and the marketing to fill them.' },
-  { q: 'How fast is the website?', a: 'Seconds. Describe your business to Ari and it writes, designs and publishes the site.' },
-  { q: 'What can I sell?', a: 'Tickets, tables, bookings, deposits and stays — all at one all-in price, so buyers see the real total before they pay.' },
-  { q: 'How do people find me?', a: 'Explorers browse by vibe, place and timing. Publishing makes you eligible to be matched to them, not just found by name.' },
-  { q: 'Which marketing is included?', a: 'Email, SMS, paid advertising and a CRM that turns guests into contacts you own. SMS is live in the US and UK.' },
-  { q: 'What does it cost?', a: 'Not published on this prototype. The production page carries real pricing or none at all.' },
-]
 
 export default function CutoutHostPage() {
   return (
@@ -173,7 +160,7 @@ export default function CutoutHostPage() {
 
                 {/* The brand tile's chips are gone — the demo inside it says
                     all three things better than a label row could. */}
-                <div className={cn('mt-6 flex flex-wrap gap-2', card.tone === 'brand' && 'hidden')}>
+                <div className={cn('mt-6 flex flex-wrap gap-2', (card.tone === 'brand' || card.id === 'brain') && 'hidden')}>
                   {card.points.map((p) => (
                     <span
                       key={p}
@@ -198,89 +185,6 @@ export default function CutoutHostPage() {
             </div>
           </CutReveal>
         </div>
-      </CutoutSection>
-
-      {/* Before / after. Short both sides. */}
-      <CutoutSection aria-label="Hosting before and after Mingla">
-        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16">
-          <CutReveal>
-            <CutoutHeading eyebrow="Before / after"
-              lede="Same business. Fewer tabs.">
-              Five products, <span className="cut-gradient-brand">or one.</span>
-            </CutoutHeading>
-          </CutReveal>
-          <CutReveal delay={0.08}>
-            <CutoutCard pad="md">
-              <table className="w-full border-collapse text-left">
-                <caption className="sr-only">Hosting before and after Mingla</caption>
-                <thead>
-                  <tr>
-                    <th scope="col" className="pb-3 text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-[var(--cut-muted)]">Job</th>
-                    <th scope="col" className="pb-3 pl-4 text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-[var(--cut-muted)]">Today</th>
-                    <th scope="col" className="pb-3 pl-4 text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-[var(--cut-accent-ink)]">On Mingla</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {HOST_SWAP.map((row) => (
-                    <tr key={row.job} className="border-t" style={{ borderColor: 'var(--cut-hairline)' }}>
-                      <th scope="row" className="w-[22%] py-4 pr-3 align-top font-display text-[0.9375rem] leading-tight text-[var(--cut-ink)]">{row.job}</th>
-                      <td className="w-[36%] py-4 pl-4 align-top text-[0.875rem] text-[var(--cut-muted)]">{row.before}</td>
-                      <td className="w-[42%] py-4 pl-4 align-top text-[0.875rem] font-medium text-[var(--cut-ink)]">{row.after}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CutoutCard>
-          </CutReveal>
-        </div>
-      </CutoutSection>
-
-      {/* Straight answers. */}
-      <CutoutSection rhythm="tight" aria-label="Straight answers">
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-16">
-          <CutReveal>
-            <CutoutHeading eyebrow="Straight answers">
-              What Mingla <span className="cut-gradient-brand">does not do.</span>
-            </CutoutHeading>
-          </CutReveal>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {HOST_LIMITS.map((limit, i) => (
-              <CutReveal key={limit.title} variant="lift" delay={i * 0.07}>
-                <Card3D intensity={5}>
-                  <div className="cut-card cut-card-interactive h-full p-6 sm:p-8">
-                    <Layer z={22}>
-                      <h3 className="font-display text-[1.0625rem] leading-tight text-[var(--cut-ink)]">{limit.title}</h3>
-                    </Layer>
-                    <Layer z={12}>
-                      <p className="mt-2.5 text-[0.9375rem] leading-relaxed text-[var(--cut-body)]">{limit.body}</p>
-                    </Layer>
-                  </div>
-                </Card3D>
-              </CutReveal>
-            ))}
-          </div>
-        </div>
-      </CutoutSection>
-
-      <CutoutSection aria-label="Questions">
-        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:gap-16">
-          <CutReveal>
-            <CutoutHeading eyebrow="Questions">Asked first.</CutoutHeading>
-          </CutReveal>
-          <CutReveal delay={0.08}><CutoutFaq items={FAQ} /></CutReveal>
-        </div>
-        <FaqSchema items={FAQ} />
-      </CutoutSection>
-
-      <CutoutSection band="dark" aria-label="Get started">
-        <CutReveal variant="lift">
-          <div className="flex flex-col items-center text-center">
-            <CutoutHeading align="center" lede="Your site is a sentence away.">
-              Start hosting <span className="cut-gradient-brand">properly.</span>
-            </CutoutHeading>
-            <div className="mt-10"><DeviceCta surface="host" location="cta" variant="primary" size="lg" /></div>
-          </div>
-        </CutReveal>
       </CutoutSection>
 
       <CutoutFooter surface="host" />

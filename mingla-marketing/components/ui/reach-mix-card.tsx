@@ -136,7 +136,7 @@ export function ReachMixCard({ className }: { className?: string }) {
         <motion.div
           role="img"
           aria-label="Customers over a year. Without Mingla the line stays flat. With Mingla, four channels — owned, shared, earned and paid — stack up and keep growing."
-          className="relative min-h-[5rem] flex-1 overflow-hidden rounded-lg ring-1 ring-inset ring-white/10"
+          className="relative min-h-[9rem] flex-1 overflow-hidden rounded-lg ring-1 ring-inset ring-white/10"
           style={{
             background:
               'linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px 100%) 0 0 / calc(100% / 6) 100% repeat no-repeat,' +

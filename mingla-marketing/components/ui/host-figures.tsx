@@ -107,7 +107,7 @@ const AUDIENCES = [
 function MarketingFigure() {
   const reduced = useReducedMotion()
   return (
-    <Figure headline="3 audiences" sub="One send · email, SMS and a nudge in-app">
+    <div className="flex h-full flex-col justify-center">
       <motion.div
         className="flex flex-col gap-2.5"
         role="img"
@@ -140,7 +140,7 @@ function MarketingFigure() {
           </div>
         ))}
       </motion.div>
-    </Figure>
+    </div>
   )
 }
 
