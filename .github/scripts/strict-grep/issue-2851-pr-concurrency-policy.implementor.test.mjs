@@ -142,7 +142,23 @@ const PR_FAMILY_IDENTITY_SHA256 =
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // [TEST-MOD-APPROVED #2986] The two approved search-validation commands
   // advance non-concurrency semantics; the 124-workflow policy is unchanged.
-  "9f9357a107cf6489c4952ae9be9503a16224bdcda86e312203c3eae8fdf42c2e";
+  // [TEST-MOD-APPROVED #2060] #2637 added `paths:` filters and test steps to
+  // the Ari reliability and Ari brand-management lanes. Both are PR-family, so
+  // their non-concurrency documents live inside this digest, exactly as the
+  // #2967 re-derivation above.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING, because that is the review this
+  // digest exists to force:
+  //   - no `concurrency:` block, `group:` or `cancel-in-progress:` value is
+  //     touched by e924a01b7 -- the change is additive path filters and steps;
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED, so no
+  //     workflow was added, removed or renamed;
+  //   - the policy audit itself still reports zero errors at 124 PR-family
+  //     workflows, which is the sibling test above.
+  // Every earlier re-derivation is preserved, not replaced.
+  // [TEST-MOD-APPROVED #2979] The existing attendance lane gained only its
+  // reviewed #2979 paths and executable proofs; identity and policy are intact.
+  "6d281a6424c6cbf054e615ab8e09a8e3b9e32a8cb2bd9d94e815a07de244a463";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -369,6 +385,12 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     [liveWorkflow("web", "build", "check"),
       "          node --test scripts/issue-2981-host-owner-isolation.tester.test.mjs\n"],
     [liveWorkflow("bundle", "baseline", "automerge"), '      - ".github/workflows/**"\n'],
+    // [TEST-MOD-APPROVED #2979] One trigger and one executable guard from the
+    // attendance continuity delta must each remain part of this authority.
+    [liveWorkflow("issue", "871", "attendance", "entitlement", "tests"),
+      '      - "supabase/functions/_shared/governedAdSecret.ts"\n'],
+    [liveWorkflow("issue", "871", "attendance", "entitlement", "tests"),
+      "          node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs\n"],
     // [TEST-MOD-APPROVED #2879] The two filtered-replay skip entries this work
     // added. Each must independently move the digest, or the re-pin above
     // would be accepting a change nothing proves.

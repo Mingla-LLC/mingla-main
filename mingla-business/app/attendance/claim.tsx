@@ -5,12 +5,20 @@ import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { APP_STORE_URL, PLAY_STORE_URL } from "../../src/constants/storeLinks";
 import { accent, canvas, glass, spacing, text as textTokens } from "../../src/constants/designSystem";
+import {
+  consumeAttendanceClaimFragment,
+  createAttendanceClaimFragmentScrubber,
+} from "../../src/utils/attendanceClaimDeepLink";
 
+// #871 compatibility contract: `window.history.replaceState` is now owned by
+// the injected pre-Router bootstrap and the shared scrub helper. The route's
+// first effect must not call it directly or Router can restore the credential.
 export default function AttendanceClaimLanding(): React.ReactElement | null {
   const [parsed, setParsed] = useState(false);
   const [appUrl, setAppUrl] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
   const autoAttemptedRef = React.useRef(false);
+  const scheduleFinalUrlRestoreRef = React.useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") {
@@ -19,11 +27,22 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
     }
     let active = true;
     const raw = window.location.hash.replace(/^#/, "");
-    window.history.replaceState(null, "", window.location.pathname);
+    const handoff = consumeAttendanceClaimFragment(window, raw);
+    const capturedRaw = handoff.fragment;
+    const scrubAttendanceClaimFragment =
+      createAttendanceClaimFragmentScrubber(handoff);
+    // The head bootstrap captured the credential, launch URL, and Router state
+    // before Router could alter them. This defense helper retains only that
+    // clean URL/state for the final bounded lifecycle restore.
+    scheduleFinalUrlRestoreRef.current = scrubAttendanceClaimFragment(
+      window.location,
+      window.history,
+      window.requestAnimationFrame.bind(window),
+    );
     void import("../../src/utils/attendanceClaimDeepLink").then(
-      ({ attendanceAppUrlFromFragment }) => {
-        if (!active) return;
-        setAppUrl(attendanceAppUrlFromFragment(raw));
+          ({ attendanceAppUrlFromFragment }) => {
+            if (!active) return;
+            setAppUrl(attendanceAppUrlFromFragment(capturedRaw));
         setParsed(true);
       },
       () => {
@@ -34,6 +53,11 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || !parsed) return;
+    scheduleFinalUrlRestoreRef.current?.();
+  }, [parsed]);
 
   const openMingla = useCallback(() => {
     if (!appUrl || opening) return;

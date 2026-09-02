@@ -55,6 +55,14 @@ const PARTIAL_REFERENCE_DELTAS = [{
   workflow: "supabase-secret-budget.yml",
   referenceFiles: [".github/scripts/strict-grep/issue-2241-secret-readiness.mjs"],
 }, {
+  // [TEST-MOD-APPROVED #2979] The buyer-web export proof reads the existing
+  // actionable-web provider. Normalize only that reviewed reference so the
+  // frozen provider seal stays unchanged and removal/widening remains RED.
+  workflow: "issue-922-business-web-actionable.yml",
+  referenceFiles: [
+    "mingla-business/scripts/ci/issue-2979-attendance-export-pipeline.tester.test.mjs",
+  ],
+}, {
   workflow: "issue-1486-dormant-render-suites.yml",
   referenceFiles: [".github/scripts/strict-grep/issue-2774-public-hero-accessibility.mjs"],
 }, {

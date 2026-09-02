@@ -326,6 +326,12 @@
       },
       "required_top_level": [
         "RESEND_API_KEY",
+        "TERMII_API_KEY",
+        "TERMII_SENDER_ID",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_MESSAGING_SERVICE_SID",
+        "TWILIO_STATUS_CALLBACK_SECRET",
         "app.qr_token_pepper"
       ]
     },
@@ -2517,7 +2523,8 @@
       },
       "allowed_identifier_references": {
         "defaultGetEnv": [
-          "supabase/functions/_shared/governedAdSecret.ts@3429:defaultGetEnv:parameter_default:getEnv=defaultGetEnv"
+          "supabase/functions/_shared/governedAdSecret.ts@3721:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/governedAdSecret.ts@4471:defaultGetEnv:parameter_default:getEnv=defaultGetEnv"
         ]
       },
       "allowed_top_level": [

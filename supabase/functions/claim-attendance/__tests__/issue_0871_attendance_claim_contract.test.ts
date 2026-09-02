@@ -155,7 +155,9 @@ Deno.test("#871 order proof issuance belongs only to eligible confirmation email
     "supabase/functions/ticket-confirmation-dispatch/index.ts",
   );
   const emailBranch = dispatcher.indexOf('notification.channel === "email"');
-  const issueCall = dispatcher.indexOf('"issue_order_attendance_claim_proof"');
+  const issueCall = dispatcher.indexOf(
+    '"issue_order_attendance_claim_proof_v2"',
+  );
   const providerCall = dispatcher.indexOf(
     "sendResendEmailWithAttachment",
     issueCall,
@@ -166,7 +168,11 @@ Deno.test("#871 order proof issuance belongs only to eligible confirmation email
   );
   assertStringIncludes(
     dispatcher.slice(issueCall, providerCall),
-    "p_allow_retry_rotation: true",
+    "p_generation: pepperRing.current.generation",
+  );
+  assertStringIncludes(
+    dispatcher.slice(issueCall, providerCall),
+    "p_allow_retry_rotation: false",
   );
 
   const foundation = read(
@@ -184,6 +190,9 @@ Deno.test("#871 anonymous browser link acquisition supports preflight and retry 
   assertStringIncludes(source, 'req.method === "OPTIONS"');
   assertStringIncludes(source, "ticketCorsHeaders");
   assertStringIncludes(source, "claimJson(status, body, ticketCorsHeaders)");
+  assertStringIncludes(source, "resolveAttendanceClaimPepperRing");
+  assertStringIncludes(source, "issue_order_attendance_claim_proof_v2");
+  assertStringIncludes(source, "p_generation: pepperRing.current.generation");
   assertStringIncludes(source, "p_allow_retry_rotation: true");
 });
 
