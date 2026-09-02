@@ -6,7 +6,10 @@ import {
   readSignedSessionTenant,
   Tenants,
 } from "../collections/Tenants";
-import { StudioUsers } from "../collections/StudioUsers";
+import {
+  readExactStudioUser,
+  StudioUsers,
+} from "../collections/StudioUsers";
 import { sitesEndpoints } from "../endpoints/sitesEndpoints";
 import {
   encodeSession,
@@ -220,13 +223,18 @@ describe("#3029 Studio tenant bootstrap access", () => {
     expect(
       await Tenants.access?.admin?.(accessArgs(studioUser()) as never),
     ).toBe(false);
+    expect(
+      await readExactStudioUser(accessArgs(studioUser())),
+    ).toEqual({
+      id: { equals: USER_ID },
+      core_user_id: { equals: USER_ID },
+    });
     for (const operation of [
       Tenants.access?.create,
       Tenants.access?.update,
       Tenants.access?.delete,
       Tenants.access?.readVersions,
       Tenants.access?.unlock,
-      StudioUsers.access?.read,
       StudioUsers.access?.create,
       StudioUsers.access?.update,
       StudioUsers.access?.delete,

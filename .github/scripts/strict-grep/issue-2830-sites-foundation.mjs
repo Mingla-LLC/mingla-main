@@ -475,7 +475,7 @@ export function violations(files) {
     "Boolean(req.user)",
     "admin: { hidden: true }",
     "admin: canAccessStudioAdmin",
-    "read: noAccess",
+    "read: readExactStudioUser",
   ]) need(files.cmsUsers ?? "", token, "Studio admin admission", failures);
   for (const token of [
     "if (body.destination !== \"studio\")",
@@ -814,7 +814,7 @@ function selfTest() {
     ["security", "Deno.env.get(ENVELOPE_NAME)", "Deno.env.get(ENVELOPE_NAME); Deno.env.get(ENVELOPE_NAME)", "exactly one environment read"],
     ["ariTools", 'publicationTool("rollback_site")', 'publicationTool("rollback_site_removed")', "Ari closed tool registry"],
     ["cmsEndpoints", "await runRetentionSweep(", "await runRetentionSweepRemoved(", "Studio gateway"],
-    ["cmsUsers", "admin: canAccessStudioAdmin", "admin: noAccess", "Studio admin admission"],
+    ["cmsUsers", "read: readExactStudioUser", "read: noAccess", "Studio admin admission"],
     ["cmsMedia", "newestRank > 50", "newestRank > 0", "media and retention"],
     ["cmsMedia", "req: studioMediaGrantRequest(req)", "req", "media and retention"],
     ["cmsMediaCollection", "  read: systemMediaField,\n", "", "custom media pipeline boundary"],

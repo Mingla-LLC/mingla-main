@@ -36,6 +36,10 @@ body {
   outline-offset: 3px;
 }
 
+.app-header__account {
+  display: none !important;
+}
+
 .studio-nav {
   height: 100%;
   padding: 1.25rem 0.8rem;
