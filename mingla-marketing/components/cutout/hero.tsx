@@ -84,12 +84,22 @@ export function CutoutHero({
             style={{ backgroundImage: `url(${image})` }}
           />
         )}
-        {/* Scrim. The photograph is atmosphere; it never carries contrast. */}
+        {/* Scrim, matched to the live host hero: the photograph is atmosphere
+            and never carries contrast, but it is still a photograph. The old
+            radial ran to 0.97 and then to solid, which washed the plate out
+            entirely and left grey type on near-white. */}
         <div
           className="absolute inset-0"
           style={{
             background:
-              'radial-gradient(115% 85% at 50% 40%, rgba(247,244,239,0.70) 0%, rgba(247,244,239,0.86) 44%, rgba(247,244,239,0.97) 74%, var(--cut-shell) 100%)',
+              'linear-gradient(180deg, rgba(250,248,244,0.34) 0%, rgba(250,248,244,0.16) 48%, rgba(250,248,244,0.02) 78%)',
+          }}
+        />
+        {/* and the live hero's hand-off to the page below it */}
+        <div
+          className="absolute inset-x-0 bottom-0 h-36"
+          style={{
+            background: 'linear-gradient(180deg, rgba(247,244,239,0) 0%, rgba(247,244,239,0.7) 100%)',
           }}
         />
       </div>
@@ -123,7 +133,7 @@ export function CutoutHero({
         </CutReveal>
 
         <CutReveal delay={0.2}>
-          <p className="mt-8 max-w-2xl text-[1.0625rem] leading-relaxed text-[var(--cut-body)] sm:text-lg">
+          <p className="mt-8 max-w-2xl text-[1.0625rem] font-semibold leading-relaxed text-[var(--cut-ink)]/75 sm:text-lg">
             {lede}
           </p>
         </CutReveal>
