@@ -25,12 +25,17 @@ export const DEFAULT_MANIFEST = resolve(
 );
 export const FUNCTIONS_ROOT = resolve(REPO_ROOT, "supabase", "functions");
 
+// #2241: the migration band holds ONLY the direct names still set in
+// production. META_COMPETITOR_ACCESS_TOKEN, META_COMPETITOR_IG_USER_ID and
+// RESEND_WEBHOOK_SECRET were removed after their bundle-first readers logged
+// zero `governed_ad_legacy_fallback` in production, so the band narrows to the
+// two that remain. Each is still DECLARED as a bundle field; this list is the
+// leftover direct-name surface, not the declaration. Founder-approved
+// 2026-09-02. A band that still expects names nobody can produce is a check
+// that cannot pass (#2113).
 export const ISSUE_2241_EXTRA_NAMES = Object.freeze([
   "ATTENDANCE_CLAIM_PEPPER",
   "CHECKOUT_REVOCATION_EXECUTE",
-  "META_COMPETITOR_ACCESS_TOKEN",
-  "META_COMPETITOR_IG_USER_ID",
-  "RESEND_WEBHOOK_SECRET",
 ]);
 
 export const ISSUE_2241_FUNCTIONS = Object.freeze([

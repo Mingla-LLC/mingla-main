@@ -59,8 +59,14 @@ export default async function ExplorerHomePage({ searchParams }: ExplorerHomePag
             the ideal position ranged 35.6% at 800px to 39.8% at 1000px and the
             action sat 33px low on a tall window. Fitted against measurements at
             800/900/1000: band centre = 0.565*vh - 146, so the action's top is
-            that minus half its 42px height (the 180px constant is the fitted 167 plus
-            the 13px residual the first measurement showed). Mobile lays out differently and
+            that minus half its 42px height.
+
+            The constants are corrected for what is VISIBLE rather than what the
+            boxes say, which is where the remaining bias came from: the headline
+            BOX ends 9px above where its text actually ends, and the deck ROOT
+            starts 25px above the first visible card. Centring on the boxes left
+            the action 8-11px low. The band is measured text-bottom to
+            card-top.. Mobile lays out differently and
             keeps its own percentage.
 
             Between the headline and the cards. Measured rather than guessed:
@@ -68,7 +74,7 @@ export default async function ExplorerHomePage({ searchParams }: ExplorerHomePag
             so the real clearance was 16px. The deck is nudged down in
             cutout.css to open a 72px band and these percentages centre the
             48px action inside it. */}
-        <div className="pointer-events-none absolute inset-x-0 top-[33.9%] z-30 flex justify-center px-6 md:top-[calc(56.5vh_-_180px)]">
+        <div className="pointer-events-none absolute inset-x-0 top-[32.6%] z-30 flex justify-center px-6 md:top-[calc(56.5vh_-_188px)]">
           <div className="pointer-events-auto">
             <DeviceCta surface="explorer" location="hero_above_deck" variant="primary" size="md" />
           </div>

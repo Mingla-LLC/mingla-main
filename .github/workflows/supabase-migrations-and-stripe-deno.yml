@@ -413,6 +413,15 @@ jobs:
           # bind event_id and refuse cross-event splicing.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1977_rsvp_refund_event_binding.tester.adversarial.pg17.test.sql
+          # Issue #3044 — the RSVP draft owners must be reachable by a plain
+          # `supabase db push`, and must accept the nested theme.business_draft
+          # payload draftToServerInsert actually sends. #1977's suite above is
+          # green while production has none of these functions, because this
+          # database is built from EVERY migration file including the
+          # version-shadowed one; the ordering half lives in the mingla-business
+          # jest suite issue_3044_rsvp_draft_rpc_deploy_reachable.test.ts.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3044_rsvp_draft_graph_deploy_reachable.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
