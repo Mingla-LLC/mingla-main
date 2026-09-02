@@ -139,7 +139,7 @@ export default function EventOrganisersLandingPage() {
       {/* 4 — BEFORE / AFTER. A real <table> so it is readable by a screen reader
              and quotable by an answer engine, restyled into paired rows. */}
       <CutoutSection id="sale" aria-label="Running an event, before and after Mingla">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16">
           <CutReveal>
             <CutoutHeading eyebrow="Before / after"
               lede="Same event. Fewer tabs."
@@ -149,6 +149,7 @@ export default function EventOrganisersLandingPage() {
           </CutReveal>
           <CutReveal delay={0.08}>
             <CutoutCard pad="md">
+              <div className="min-w-0 overflow-x-auto">
               <table className="w-full border-collapse text-left">
                 <caption className="sr-only">Running a ticketed event, before and after Mingla</caption>
                 <thead>
@@ -168,6 +169,7 @@ export default function EventOrganisersLandingPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </CutoutCard>
           </CutReveal>
         </div>
@@ -230,7 +232,7 @@ export default function EventOrganisersLandingPage() {
 
       {/* 7 — FAQ */}
       <CutoutSection id="faq" aria-label="Questions from organisers">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:gap-16">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:gap-16">
           <CutReveal>
             <CutoutHeading eyebrow="Questions"
               action={<DeviceCta surface="host" location="faq" variant="quiet" size="md" />}>

@@ -87,9 +87,10 @@ export const HOST_BENTO: readonly BentoCard[] = [
   {
     id: 'brain',
     title: "Mingla's AI brain",
-    body: 'Ari drives people to your door — performance advertising, local targeting, and most of the work you were going to do yourself.',
+    body: 'Ari works every way in — paid, earned, shared and owned — so the people who would love you actually find you.',
     points: ['Performance ads', 'Local targeting', 'Ask Ari anything'],
-    span: 'lg:col-span-6',
+    span: 'lg:col-span-6 lg:row-span-2',
+    figure: true,
     tone: 'ink',
     visual: 'discovery',
     source: 'supabase/functions/admin-ad-create-campaign',

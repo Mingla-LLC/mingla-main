@@ -35,7 +35,7 @@ export function CutoutAccordionSwap({
   const step = steps[active]
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-14">
+    <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-14">
       <div role="tablist" aria-label={label} aria-orientation="vertical" className="flex flex-col gap-3">
         {steps.map((s, i) => {
           const isActive = i === active

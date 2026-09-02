@@ -18,6 +18,7 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { cn } from '@/lib/cn'
 import { EventDemandCard } from '@/components/ui/event-demand-card'
 import { TripPlanCard } from '@/components/ui/trip-plan-card'
+import { ReachMixCard } from '@/components/ui/reach-mix-card'
 
 const EASE = [0.16, 1, 0.3, 1] as const
 const VIEWPORT = { once: true, margin: '-40px' } as const
@@ -148,6 +149,7 @@ const FIGURES: Record<string, ComponentType> = {
   trips: TripPlanCard,
   venue: VenueFigure,
   marketing: MarketingFigure,
+  brain: ReachMixCard,
 }
 
 export function HostFigure({ id }: { id: string }) {

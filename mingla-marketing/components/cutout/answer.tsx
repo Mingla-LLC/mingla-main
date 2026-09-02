@@ -65,7 +65,7 @@ export function AnswerBlock({
         </nav>
       ) : null}
 
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-16">
+      <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-16">
         <div className="max-w-2xl">
           <CutoutEyebrow className="mb-5">The short answer</CutoutEyebrow>
           {/* No reveal wrapper on the question or the answer: these two nodes

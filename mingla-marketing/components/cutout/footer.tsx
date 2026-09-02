@@ -49,7 +49,7 @@ export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
   return (
     <CutoutSection band="dark" as="div" aria-label="Footer" className="pb-10">
       <footer>
-        <div className="grid gap-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)] lg:gap-20">
+        <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)] lg:gap-20">
           <div>
             <img
               src="/brand/mingla-wordmark.svg"

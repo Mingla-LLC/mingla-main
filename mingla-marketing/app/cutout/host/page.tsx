@@ -202,7 +202,7 @@ export default function CutoutHostPage() {
 
       {/* Before / after. Short both sides. */}
       <CutoutSection aria-label="Hosting before and after Mingla">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16">
           <CutReveal>
             <CutoutHeading eyebrow="Before / after"
               lede="Same business. Fewer tabs.">
@@ -237,13 +237,13 @@ export default function CutoutHostPage() {
 
       {/* Straight answers. */}
       <CutoutSection rhythm="tight" aria-label="Straight answers">
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-16">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-16">
           <CutReveal>
             <CutoutHeading eyebrow="Straight answers">
               What Mingla <span className="cut-gradient-brand">does not do.</span>
             </CutoutHeading>
           </CutReveal>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {HOST_LIMITS.map((limit, i) => (
               <CutReveal key={limit.title} variant="lift" delay={i * 0.07}>
                 <Card3D intensity={5}>
@@ -263,7 +263,7 @@ export default function CutoutHostPage() {
       </CutoutSection>
 
       <CutoutSection aria-label="Questions">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:gap-16">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:gap-16">
           <CutReveal>
             <CutoutHeading eyebrow="Questions">Asked first.</CutoutHeading>
           </CutReveal>
