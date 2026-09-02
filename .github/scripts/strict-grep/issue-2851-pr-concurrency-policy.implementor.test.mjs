@@ -107,8 +107,16 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // line-by-line rather than accepted on assertion. The value was re-derived
 // against the tree AFTER merging origin/main at 4dc1d9f72, so #3009's
 // concurrently landed web-build proofs remain part of the combined authority.
+// [TEST-MOD-APPROVED #3016] Re-derived after #3016 wired its new tester-owned
+// malformed authenticated-request CORS guard into the existing Supabase secret
+// budget lane on top of fresh origin/main at 2fa4dbb51, preserving #2947's two
+// independently guarded #2079 targets. The 124/7 workflow partition, identities,
+// concurrency policy, and every unrelated workflow semantic are unchanged. The
+// exact added Deno test target is independently removed in the revert-sensitivity
+// loop below, so this digest cannot be re-pinned without proving that one-line CI
+// contract. The value below is deliberately re-derived from the rebased tree.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "69a61e40a29b5f184f678269010fe491f01283ef2d9514499391db6dc25ea8bd";
+  "c5ad53f4d9739a1169b7f6027900a051a225fda3713f50de903ea046654b231c";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -318,6 +326,11 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     [liveWorkflow("issue", "1930", "checkout", "current", "truth"), '      - "supabase/functions/_shared/secretBundle.ts"\n'],
     [liveWorkflow("supabase", "secret", "budget"), '      - "supabase/function-env.contract.json"\n'],
     [liveWorkflow("supabase", "secret", "budget"), "          supabase/functions/_shared/__tests__/issue_2893_sites_live_readiness.test.ts\n"],
+    // [TEST-MOD-APPROVED #3016] The tester-owned malformed request guard must
+    // remain executable in the existing pull-request Deno lane. Removing this
+    // exact target must invalidate the non-concurrency authority digest.
+    [liveWorkflow("supabase", "secret", "budget"),
+      "          supabase/functions/_shared/__tests__/issue_3016_brand_site_control_cors_adversarial.test.ts\n"],
     [liveWorkflow("web", "build", "check"), '      SITES_DATABASE_POOL_MAX: "3"\n'],
     [liveWorkflow("web", "build", "check"), '      - "mingla-business/scripts/ci/bundle-baseline.json"\n'],
     [liveWorkflow("bundle", "baseline", "automerge"), '      - ".github/workflows/**"\n'],

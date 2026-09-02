@@ -35,6 +35,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { SUITES_ADDED_SINCE_SEAL } from '../../.github/scripts/ci-batch/validate-manifest-v2.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
@@ -384,7 +385,7 @@ test('A7 one short code renders one card FOREVER — the render is cached immuta
   assert.ok(!first.equals(other), 'two different short codes produced identical cards');
 });
 
-test('A8 CI collects THIS suite, the workflow content hash is re-banked, and this file cannot break the provider seal', () => {
+test('A8 CI collects THIS suite, the 200-origin sealed baseline ratchets exactly, and this file cannot break the provider seal', () => {
   // The workflow filename is assembled, never spelled out — see the header note.
   const WORKFLOW_NAME = ['issue-1719-unified-sharing', 'yml'].join('.');
   const WORKFLOW_REL = `.github/workflows/${WORKFLOW_NAME}`;
@@ -394,16 +395,54 @@ test('A8 CI collects THIS suite, the workflow content hash is re-banked, and thi
   // 1. Invoked by name. A test nobody runs is not a test.
   assert.ok(workflowSource.toString('utf8').includes(`node --test ${SELF}`), 'this suite is not invoked by the provider workflow');
 
-  // 2. The manifest's content hash of that workflow is CURRENT. `validate-manifest-v2`
-  //    fails closed on drift, so editing the workflow without re-banking this is
-  //    a red required gate. Re-derived here, never transcribed.
+  // 2. The manifest's origin inventory starts from the SEALED 200-entry baseline.
+  //    Each suite in the canonical post-seal declaration adds one exact provenance
+  //    claim. This is not a workflow-file count: the suite still rides the existing
+  //    batch provider and no new issue workflow exists.
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.github/ci-batch/MANIFEST.json'), 'utf8'));
-  assert.equal(manifest.legacyOrigins.length, 200, 'legacy origin registry must stay pinned at 200');
+  const SEALED_LEGACY_ORIGINS = 200;
+  const expectedLegacyOriginCount = SEALED_LEGACY_ORIGINS + SUITES_ADDED_SINCE_SEAL.length;
+  const assertExactLegacyOriginCount = (origins, label) => assert.equal(
+    origins.length,
+    expectedLegacyOriginCount,
+    `${label}: legacy origin registry must equal the sealed 200 baseline plus exact declared post-seal provenance claims; this is not a workflow-file count`,
+  );
+  assertExactLegacyOriginCount(manifest.legacyOrigins, 'current manifest');
+
+  // Exactness is load-bearing in BOTH directions. Remove the canonical #2897
+  // suite's in-memory provenance claim and the 200-entry undercount must fail;
+  // append one undeclared in-memory origin and the 202-entry overcount must fail.
+  // Neither mutation writes a fixture or changes the repository.
+  const declaredAgentGuard = SUITES_ADDED_SINCE_SEAL.find(({ issue }) => issue === 2897);
+  assert.ok(declaredAgentGuard, 'canonical post-seal declaration no longer identifies the #2897 suite');
+  const declaredClaimIndex = manifest.legacyOrigins.findIndex(
+    (item) => item.replacementSuite === declaredAgentGuard.suite,
+  );
+  assert.notEqual(declaredClaimIndex, -1, 'the #2897 suite has no provenance claim to remove');
+  const undercount = manifest.legacyOrigins.filter((_, index) => index !== declaredClaimIndex);
+  assert.throws(
+    () => assertExactLegacyOriginCount(undercount, 'declared-claim undercount mutant'),
+    { name: 'AssertionError', actual: expectedLegacyOriginCount - 1, expected: expectedLegacyOriginCount },
+    'removing the declared #2897 provenance claim must fail the exact-count contract',
+  );
+  const overcount = [
+    ...manifest.legacyOrigins,
+    { ...manifest.legacyOrigins[0], stem: 'issue-3017-undeclared-mutant' },
+  ];
+  assert.throws(
+    () => assertExactLegacyOriginCount(overcount, 'undeclared-origin overcount mutant'),
+    { name: 'AssertionError', actual: expectedLegacyOriginCount + 1, expected: expectedLegacyOriginCount },
+    'appending one undeclared provenance origin must fail the exact-count contract',
+  );
+
+  // 3. The manifest's content hash of the provider workflow is CURRENT.
+  //    `validate-manifest-v2` fails closed on drift, so editing the workflow
+  //    without re-banking this is a red required gate. Re-derived, never copied.
   const origin = manifest.legacyOrigins.find((item) => `${item.stem}.${item.extension}` === WORKFLOW_NAME);
   assert.ok(origin, 'provider workflow is not a registered origin');
   assert.equal(origin.workflowMetadata.sourceSha256, crypto.createHash('sha256').update(workflowSource).digest('hex'), 'the registered workflow hash no longer matches the workflow on disk');
 
-  // 3. The registered path scope re-runs this suite when the code it guards moves.
+  // 4. The registered path scope re-runs this suite when the code it guards moves.
   const globs = origin.workflowMetadata.pathScope;
   const matches = (file) => globs.some((glob) => new RegExp(`^${glob.split('**').map((part) => part.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')).join('.*')}$`).test(file));
   for (const file of [SELF, 'mingla-business/server/fallbackShareCard.js', 'mingla-business/server/cardIdentityRenderer.js']) {
@@ -411,7 +450,7 @@ test('A8 CI collects THIS suite, the workflow content hash is re-banked, and thi
   }
   assert.equal(matches('supabase/functions/manage-stay-inventory/index.ts'), false, 'path matcher accepts everything');
 
-  // 4. PROVIDER-SEAL HYGIENE. `discoverWorkflowProviders()` mints a provider
+  // 5. PROVIDER-SEAL HYGIENE. `discoverWorkflowProviders()` mints a provider
   //    record for any tracked non-workflow file naming a real workflow file, and
   //    that record set is frozen. This file must therefore never spell one out.
   const selfSource = fs.readFileSync(path.join(HERE, path.basename(SELF)), 'utf8');
