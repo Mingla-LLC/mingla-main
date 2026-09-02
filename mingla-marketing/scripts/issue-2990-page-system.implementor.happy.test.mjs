@@ -169,10 +169,15 @@ function runSourceContract() {
   assert.match(globals, /html:not\(:has\(\.page-system-printable\)\)/)
   assert.match(globals, /body:not\(:has\(\.page-system-printable\)\)/)
   assert.match(faqs, /<details[\s\S]*<summary>[\s\S]*ps-faq-answer/)
+  assert.match(faqs, /<\/details>[\s\S]*className="ps-faq-print-answer" data-print-faq-answer/)
+  assert.match(faqs, /ps-faq-print-answer[\s\S]*\{item\.question\}[\s\S]*\{item\.answer\}/)
   assert.match(pageSystemSources, /@media \(prefers-reduced-motion: reduce\)/)
   assert.match(pageSystemSources, /IntersectionObserver/)
   assert.match(pageSystemSources, /document\.visibilityState/)
   assert.match(pageSystemSources, /@media print/)
+  assert.match(pageSystemSources, /\.ps-faq-print-answer \{ display: none; \}/)
+  assert.match(pageSystemSources, /@media print[\s\S]*\.ps-faq \{ display: none !important; \}/)
+  assert.match(pageSystemSources, /@media print[\s\S]*\.ps-faq-print-answer \{[\s\S]*display: block !important;/)
   for (const asset of [
     'public/brand/mingla-wordmark.svg',
     'public/brand/mingla-business-logo.svg',
@@ -194,8 +199,12 @@ function runSourceContract() {
   pass('persistent-dock clearance, compact-height hero and 44px breadcrumb targets')
 
   for (const state of ['pending', 'loaded', 'failed']) assert(hostMedia.includes(state), `missing Host media state ${state}`)
-  assert.match(hostMedia, /onLoad=\{\(\) => setMediaState\('loaded'\)\}/)
-  assert.match(hostMedia, /onError=\{\(\) => setMediaState\('failed'\)\}/)
+  assert.match(hostMedia, /useRef<HTMLImageElement>\(null\)/)
+  assert.match(hostMedia, /useEffect\(\(\) => \{[\s\S]*imageRef\.current[\s\S]*image\?\.complete/)
+  assert.match(hostMedia, /image\.naturalWidth > 0 && image\.naturalHeight > 0 \? 'loaded' : 'failed'/)
+  assert.match(hostMedia, /setMediaState\(\(currentState\) => currentState === nextState \? currentState : nextState\)/)
+  assert.match(hostMedia, /onLoad=\{\(\) => settleMedia\('loaded'\)\}/)
+  assert.match(hostMedia, /onError=\{\(\) => settleMedia\('failed'\)\}/)
   assert.match(hostMedia, /role="status" aria-live="polite" aria-atomic="true"/)
   assert.match(hostMedia, /ps-host-media-fallback/)
   assert.match(hostMedia, /Mingla Host event-planning illustration/)
@@ -352,6 +361,7 @@ async function runRuntimeContract() {
         assert(browserFacts.main.includes('Make the event clear from launch to the door.'), 'Host media fallback is server rendered')
         assert(browserFacts.main.includes('Loading the illustrative Mingla Host concept image.'), 'Host media pending status is accessible')
       }
+      assert.equal((browser.body.match(/data-print-faq-answer="true"/g) ?? []).length, 5, `${route.pathname} has five server-rendered print FAQ answers outside details`)
       const chunkReport = routeChunkReport(route)
       process.stdout.write(`ROUTE ${route.pathname} html=${Buffer.byteLength(browser.body)}B chunks=${chunkReport.chunks} raw-js=${chunkReport.rawBytes}B gzip-js=${chunkReport.gzipBytes}B\n`)
     }

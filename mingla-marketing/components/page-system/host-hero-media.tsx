@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 type MediaState = 'pending' | 'loaded' | 'failed'
 
@@ -12,6 +12,17 @@ const STATUS_COPY: Record<MediaState, string> = {
 
 export function HostHeroMedia() {
   const [mediaState, setMediaState] = useState<MediaState>('pending')
+  const imageRef = useRef<HTMLImageElement>(null)
+
+  function settleMedia(nextState: Exclude<MediaState, 'pending'>) {
+    setMediaState((currentState) => currentState === nextState ? currentState : nextState)
+  }
+
+  useEffect(() => {
+    const image = imageRef.current
+    if (!image?.complete) return
+    settleMedia(image.naturalWidth > 0 && image.naturalHeight > 0 ? 'loaded' : 'failed')
+  }, [])
 
   return (
     <figure className="ps-host-hero-figure">
@@ -31,14 +42,15 @@ export function HostHeroMedia() {
           <span aria-hidden="true" className="ps-host-fallback-orbit ps-host-fallback-orbit-b" />
         </div>
         <img
+          ref={imageRef}
           className="ps-host-concept-image"
           src="/marketing/host-icp/events-hall.jpg"
           alt="A fictional event-hall scene used to illustrate an organiser preparing an experience"
           width="1600"
           height="1211"
           draggable="false"
-          onLoad={() => setMediaState('loaded')}
-          onError={() => setMediaState('failed')}
+          onLoad={() => settleMedia('loaded')}
+          onError={() => settleMedia('failed')}
           aria-hidden={mediaState === 'failed'}
         />
         <div className="ps-host-image-overlay" aria-hidden="true">

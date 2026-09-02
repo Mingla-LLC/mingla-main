@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { type ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { LAUNCH_CITIES, REVIEW_STATUS, type FaqEntry, type SourceEntry } from '@/content/page-system/shared'
 
 export function SectionIntro({
@@ -62,13 +62,19 @@ export function PersistentFaq({ items }: { readonly items: readonly FaqEntry[] }
   return (
     <div className="ps-faq-list">
       {items.map((item) => (
-        <details key={item.question} className="ps-faq">
-          <summary>
-            <span>{item.question}</span>
-            <span aria-hidden="true" className="ps-faq-mark">+</span>
-          </summary>
-          <div className="ps-faq-answer"><p>{item.answer}</p></div>
-        </details>
+        <Fragment key={item.question}>
+          <details className="ps-faq">
+            <summary>
+              <span>{item.question}</span>
+              <span aria-hidden="true" className="ps-faq-mark">+</span>
+            </summary>
+            <div className="ps-faq-answer"><p>{item.answer}</p></div>
+          </details>
+          <article className="ps-faq-print-answer" data-print-faq-answer>
+            <h3>{item.question}</h3>
+            <p>{item.answer}</p>
+          </article>
+        </Fragment>
       ))}
     </div>
   )
