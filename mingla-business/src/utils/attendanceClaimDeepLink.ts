@@ -4,7 +4,9 @@ const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const REQUIRED_KEYS = ["v", "kind", "event", "source", "token"];
 
 type AttendanceClaimLocation = Pick<Location, "pathname" | "search">;
-type AttendanceClaimHistory = Pick<History, "replaceState">;
+type AttendanceClaimHistory = Pick<History, "replaceState"> & {
+  readonly state?: unknown;
+};
 
 export const scrubAttendanceClaimFragment = (
   location: AttendanceClaimLocation,
@@ -12,7 +14,8 @@ export const scrubAttendanceClaimFragment = (
   requestFrame: (callback: FrameRequestCallback) => number,
 ): (() => void) => {
   const cleanUrl = `${location.pathname}${location.search}`;
-  const scrub = (): void => history.replaceState(null, "", cleanUrl);
+  const historyState = history.state;
+  const scrub = (): void => history.replaceState(historyState, "", cleanUrl);
   const scrubAfterRouterReconciliation = (): void => {
     scrub();
     requestFrame(scrub);
