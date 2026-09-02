@@ -48,6 +48,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { Toast } from "../ui/Toast";
+import { rsvpRpcFailureCopy } from "../../services/rsvpRpcFailure";
 import {
   useBulkApproveRsvps,
   useRsvpGuestList,
@@ -269,7 +270,12 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
       setStatus.mutate(
         { rsvpId: g.id, status: "approved" },
         {
-          onError: () => showToast(`Couldn't update ${g.displayName}. Try again.`),
+          // issue #3047 — "Try again." was said for EVERY failure, including the
+          // terminal 404 business_set_rsvp_guest_status returns in production
+          // today, where no number of retries can succeed. rsvpRpcFailureCopy
+          // reads the code and tells the truth.
+          onError: (error) =>
+            showToast(rsvpRpcFailureCopy(error, `approve ${g.displayName}`)),
         },
       );
     },
@@ -281,7 +287,9 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
       setStatus.mutate(
         { rsvpId: g.id, status: "denied" },
         {
-          onError: () => showToast(`Couldn't update ${g.displayName}. Try again.`),
+          // issue #3047 — terminal-aware, see handleApprove.
+          onError: (error) =>
+            showToast(rsvpRpcFailureCopy(error, `decline ${g.displayName}`)),
         },
       );
     },
@@ -295,9 +303,10 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
       { rsvpId: g.id, status: "denied" },
       {
         onSuccess: () => setRemoveTarget(null),
-        onError: () => {
+        // issue #3047 — terminal-aware, see handleApprove.
+        onError: (error) => {
           setRemoveTarget(null);
-          showToast(`Couldn't remove ${g.displayName}. Try again.`);
+          showToast(rsvpRpcFailureCopy(error, `remove ${g.displayName}`));
         },
       },
     );
@@ -310,7 +319,9 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
           showToast(`Approved ${res.approvedCount}. ${res.skippedForCapacity} didn't fit your limit.`);
         }
       },
-      onError: () => showToast("Couldn't approve everyone. Try again."),
+      // issue #3047 — terminal-aware, see handleApprove.
+      onError: (error) =>
+        showToast(rsvpRpcFailureCopy(error, "approve everyone")),
     });
   }, [bulkApprove, showToast]);
 
@@ -329,7 +340,10 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         { rsvpId: g.id, status: "approved" },
         {
           onSuccess: () => setSelectedGuest(null),
-          onError: () => setSheetNotice(`Couldn't update ${g.displayName}. Try again.`),
+          // issue #3047 — terminal-aware, see handleApprove. Still routed to the
+          // sheet's own nested Toast (#1376), never the console-root sibling.
+          onError: (error) =>
+            setSheetNotice(rsvpRpcFailureCopy(error, `approve ${g.displayName}`)),
         },
       );
     },
@@ -342,7 +356,10 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         { rsvpId: g.id, status: "denied" },
         {
           onSuccess: () => setSelectedGuest(null),
-          onError: () => setSheetNotice(`Couldn't update ${g.displayName}. Try again.`),
+          // issue #3047 — terminal-aware, see handleApprove. Still routed to the
+          // sheet's own nested Toast (#1376), never the console-root sibling.
+          onError: (error) =>
+            setSheetNotice(rsvpRpcFailureCopy(error, `decline ${g.displayName}`)),
         },
       );
     },

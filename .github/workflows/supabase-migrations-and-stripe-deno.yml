@@ -426,6 +426,16 @@ jobs:
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.adversarial.test.sql
+          # Issue #3047 — the RSVP publish / guest-status / Ari owners must be
+          # reachable by a plain `supabase db push`, and must behave once they
+          # are. This database is built from EVERY migration file including the
+          # version-shadowed 20270530001977, so the #1977 suite above is green
+          # while production has none of these functions; the assertion that can
+          # actually see that is the #3047 reachability MARKER inside this file,
+          # plus the ordering half in the mingla-business jest suite
+          # issue_3047_rsvp_rpc_deploy_reachable.test.ts.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3047_rsvp_publish_deploy_reachable.test.sql
           # Issue #1649 — behavioural probe for the normalised place-name claim
           # search. Runs against the REAL applied schema because the whole point
           # is row-level behaviour: does typing "Cafe Kayte" find "Café Kayté".

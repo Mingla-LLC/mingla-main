@@ -69,6 +69,10 @@ import {
 import type { ValidationError } from "../../utils/draftEventValidation";
 import { isDraftEventPristine } from "../../utils/draftEventPristine";
 import { resolvePaidPublishGuardCopy } from "../../utils/paidPublishGuards";
+import {
+  readRpcFailureMessage,
+  rsvpRpcFailureCopy,
+} from "../../services/rsvpRpcFailure";
 import { isChipInPayoutReady } from "../../utils/chipInPayoutReadiness";
 
 import { Button } from "../ui/Button";
@@ -246,6 +250,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const [coverVideoProcessing, setCoverVideoProcessing] =
     useState<boolean>(false);
   const [discardError, setDiscardError] = useState<string | null>(null);
+  // issue #3047 [rsvp-publish-reachable] — the publish dialog's OWN inline error,
+  // rendered by ConfirmDialog's errorMessage slot. Mirrors discardError exactly.
+  // See handleConfirmPublish for why this is not a Toast.
+  const [publishError, setPublishError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>({
     visible: false,
     message: "",
@@ -607,20 +615,56 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       setErrorsSheetVisible(true);
       return;
     }
-    // Happy path → confirm dialog.
+    // Happy path → confirm dialog. Clear any error left by a previous attempt.
+    setPublishError(null);
     setPublishConfirmVisible(true);
   }, [liveDraft]);
 
+  const handleClosePublishDialog = useCallback((): void => {
+    if (isPublishing) return;
+    setPublishConfirmVisible(false);
+    setPublishError(null);
+  }, [isPublishing]);
+
+  // issue #3047 [rsvp-publish-reachable] — HOW A FAILED PUBLISH SURFACES.
+  //
+  // What went wrong: `business_publish_rsvp_graph` is absent from production, so
+  // every Publish tap got a definite `404 PGRST202` from the gateway — and the
+  // organiser saw NOTHING. The dialog dismissed, no toast appeared, the row
+  // stayed `status='draft'`. Two causes, both fixed here:
+  //
+  //  1. MODAL RACE. The old catch called setPublishConfirmVisible(false) and
+  //     then handleShowToast(...) in the SAME commit. Toast is itself a native
+  //     <Modal>; presenting it while the ConfirmDialog's <Modal> is dismissing
+  //     makes the two contend for the screen-root VC and iOS New-Arch DROPS the
+  //     second one. This is device-proven in this very file's neighbour — see
+  //     the #1376 comments in RsvpGuestConsole ("which iOS drops while the sheet
+  //     modal is up") and the #1360 close-then-defer helper. So the fix is NOT a
+  //     better toast: it is to STOP CLOSING THE DIALOG. On failure the dialog
+  //     stays open and renders the error in its own errorMessage slot — exactly
+  //     what handleConfirmDiscard already does with discardError, and the
+  //     Publish button underneath IS the retry, in context, already reachable.
+  //
+  //  2. UNREADABLE ERROR. `supabase.rpc()` rejects with a PostgREST PLAIN
+  //     OBJECT, so `error instanceof Error ? error.message : String(error)`
+  //     produced the literal "[object Object]" — no guard reason could match and
+  //     the generic branch was the only one reachable. rsvpEvents now throws
+  //     RsvpRpcError (a real Error carrying message + code) and this reader uses
+  //     readRpcFailureMessage, which handles both shapes.
+  //
+  // A 404 is TERMINAL. rsvpRpcFailureCopy says so instead of inviting a retry
+  // that can never succeed — the same defect issue #2333 shipped for two days
+  // with `city_required`.
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     if (isPublishing) return;
     setIsPublishing(true);
+    setPublishError(null);
     const draftName = liveDraft.name;
     // Simulated 1.2s submit per spec AC#28.
     await new Promise<void>((resolve) => setTimeout(resolve, 1200));
     if (onPublishDraft === undefined) {
       setIsPublishing(false);
-      setPublishConfirmVisible(false);
-      handleShowToast("Could not publish this draft yet. Try again.");
+      setPublishError("Could not publish this draft yet. Try again.");
       return;
     }
     const draftToPublish = latestDraftRef.current;
@@ -633,13 +677,13 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       deleteDraft(draftToPublish.id);
       setIsPublishing(false);
       setPublishConfirmVisible(false);
+      setPublishError(null);
       onExit("published", {
         name: draftName,
         slug,
       });
     } catch (error) {
       setIsPublishing(false);
-      setPublishConfirmVisible(false);
       // ORCH-1075 + ORCH-1291 + issue #1014 — publish guards. The RSVP publish
       // RPC raises stripe_charges_disabled (chip-in ON, bank-less brand),
       // event_currency_required (chip-in ON, currency-less brand) and
@@ -648,20 +692,28 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       // provider-neutral payments onboarding (the pre-#1014 skip of
       // stripe_onboarding-action copies dead-toasted BOTH money reasons);
       // the date reason jumps to the When step (mirror Guard B).
-      const code = error instanceof Error ? error.message : String(error ?? "");
+      //
+      // These three DO close the dialog, because each one navigates the user
+      // somewhere else to fix the cause — there is nothing to retry in place,
+      // and the destination screen is itself the affordance. Only the
+      // fix-nothing-here failures keep the dialog open.
+      const code = readRpcFailureMessage(error);
       const guardCopy = resolvePaidPublishGuardCopy(code);
       if (guardCopy !== null && guardCopy.action === "stripe_onboarding") {
+        setPublishConfirmVisible(false);
         handleShowToast(guardCopy.body);
         onOpenStripeOnboard?.();
         return;
       }
       if (guardCopy !== null) {
+        setPublishConfirmVisible(false);
         handleShowToast(guardCopy.body);
         setShowStepErrors(true);
         setCurrentStep(1);
         return;
       }
       if (code.includes("offering_date_past")) {
+        setPublishConfirmVisible(false);
         handleShowToast(
           "A discoverable RSVP needs a future date. Update the date to publish.",
         );
@@ -669,7 +721,9 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         setCurrentStep(1);
         return;
       }
-      handleShowToast("Could not save this publish. Try again.");
+      // Everything else — including the terminal 404 this issue was opened on —
+      // stays on the dialog with a visible, persistent reason. NEVER silence.
+      setPublishError(rsvpRpcFailureCopy(error, "publish this RSVP"));
     }
   }, [
     liveDraft,
@@ -1078,7 +1132,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
 
       <ConfirmDialog
         visible={publishConfirmVisible}
-        onClose={() => setPublishConfirmVisible(false)}
+        onClose={handleClosePublishDialog}
         onConfirm={handleConfirmPublish}
         title={publishModalTitle}
         description="Your invite link goes live immediately. Guests can RSVP right away. You can edit details after publishing."
@@ -1086,6 +1140,11 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         confirmLoading={isPublishing}
         confirmDisabled={isPublishing}
         closeDisabled={isPublishing}
+        // issue #3047 — the failure surface. A publish that fails keeps this
+        // dialog up and shows the reason right here; the Confirm button is the
+        // retry. Presenting a Toast instead loses the message to the iOS
+        // modal-dismiss race (see handleConfirmPublish).
+        errorMessage={publishError}
       />
 
       <PublishErrorsSheet
