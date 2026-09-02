@@ -4,12 +4,9 @@ import { OrganiserImpactStats } from '@/components/sections/organiser-home/impac
 import { OrganiserAudienceTabs } from '@/components/sections/organiser-home/audience-tabs'
 import { OrganiserAudiences } from '@/components/sections/organiser-home/audiences'
 import { OrganiserFeatures } from '@/components/sections/organiser-home/features'
+import { searchRouteMetadata } from '@/lib/search/metadata'
 
-export const metadata = {
-  title: 'Mingla Host — we give people a reason to show up for you.',
-  description:
-    'The businesses with the most soul are the hardest to find. Mingla Host changes that — we take what makes your place, event, or experience special and put it in front of the people already looking for exactly that. Your business has a vibe. Your community is looking for it. Mingla helps them find you.',
-}
+export const metadata = searchRouteMetadata('/host')
 
 export default function OrganiserHomePage() {
   return (

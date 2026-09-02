@@ -1,9 +1,9 @@
-import type { Metadata } from 'next'
 import { IntentCard } from '@/components/sections/explorer-home/intent-card'
 import { EventCard } from '@/components/sections/explorer-home/event-card'
 import { HeroPlaceDeck } from '@/components/sections/explorer-home/hero-place-deck'
 import { DC_INTENT_PLANS } from '@/lib/dc-intent-plans'
 import { DC_SHOWCASE_EVENTS } from '@/lib/dc-showcase-events'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
 // ---------------------------------------------------------------
 // Intent Cards — preview route (ORCH-1007 [marketing real place cards — DC])
@@ -14,10 +14,9 @@ import { DC_SHOWCASE_EVENTS } from '@/lib/dc-showcase-events'
 // untouched — this is purely additive (new route + new component + new data).
 // ---------------------------------------------------------------
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/intent-preview', {
   title: 'Intent cards — preview',
-  robots: { index: false, follow: false },
-}
+})
 
 export default function IntentPreviewPage() {
   return (

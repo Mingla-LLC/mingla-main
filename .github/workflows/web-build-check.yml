@@ -168,6 +168,17 @@ jobs:
       - name: Install mingla-marketing dependencies for #2771
         working-directory: mingla-marketing
         run: npm ci
+      # [WORKFLOW-MOD-APPROVED #2981] The approved marketing-search foundation
+      # uses this existing production web lane for type, build, crawler/browser
+      # parity, canonical, lifecycle, redirect, robots, sitemap, schema, and
+      # brand-asset proof. No new provider or deploy workflow is created.
+      - name: "#2981 marketing search foundation"
+        working-directory: mingla-marketing
+        run: |
+          npm run typecheck
+          npm run build
+          npm run test:search-foundation
+          node --test scripts/issue-2981-host-owner-isolation.tester.test.mjs
       - name: "#2771 no web analytics before explicit grant"
         working-directory: mingla-business
         run: |

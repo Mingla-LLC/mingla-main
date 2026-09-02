@@ -1,13 +1,9 @@
-import type { Metadata } from 'next'
 import Link from 'next/link'
 import { TERMS_SECTIONS, TERMS_EFFECTIVE_DATE } from '@/lib/termsContent'
 import { cn } from '@/lib/cn'
+import { searchRouteMetadata } from '@/lib/search/metadata'
 
-export const metadata: Metadata = {
-  title: 'Terms of Service',
-  description:
-    'The legal terms that govern your access to and use of Mingla, including binding arbitration, liability limits, and acceptable-use rules.',
-}
+export const metadata = searchRouteMetadata('/terms-of-service')
 
 export default function TermsOfServicePage() {
   return (

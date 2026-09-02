@@ -211,7 +211,7 @@ export const TERMS_SECTIONS = [
     contact: {
       name: 'MINGLA LLC — Legal',
       email: 'legal@usemingla.com',
-      website: 'https://www.usemingla.com',
+      website: 'https://usemingla.com',
     },
   },
 ] as const

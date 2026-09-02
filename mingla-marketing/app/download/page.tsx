@@ -13,22 +13,22 @@
 // Future (ORCH-1313 P2): the iOS/Android branches can 302 to the AppsFlyer OneLink
 // for install attribution instead of the raw store URLs — this route is that seam.
 
-import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { AppStoreBadges } from '@/components/ui/app-store-badges'
 import { DownloadQr } from '@/components/marketing/download-qr'
 import { resolvePlatformFromUa } from '@/lib/device-platform'
 import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/store-links'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
 // It reads request headers → must not be statically cached.
 export const dynamic = 'force-dynamic'
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/download', {
   title: 'Get Mingla',
   description:
     'Download Mingla on the App Store or Google Play — scan the QR with your phone or pick your store.',
-}
+})
 
 export default async function DownloadPage() {
   const ua = (await headers()).get('user-agent') ?? ''

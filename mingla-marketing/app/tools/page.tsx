@@ -1,5 +1,5 @@
-import type { Metadata } from 'next'
 import Link from 'next/link'
+import { searchRouteMetadata } from '@/lib/search/metadata'
 
 // #1003 [Venue Website Grader — growth tools, test cut] — the /tools hub.
 //
@@ -7,11 +7,7 @@ import Link from 'next/link'
 // coming-soon cards rendered subtle and non-clickable. Server component — no
 // interactivity on this page.
 
-export const metadata: Metadata = {
-  title: 'Free AI tools for venues, events & experiences',
-  description:
-    'Free AI tools for people who run real places — grade your website, predict your event turnout, quote any trip, and audit your pricing. Built by Mingla.',
-}
+export const metadata = searchRouteMetadata('/tools')
 
 export default function ToolsHubPage() {
   return (

@@ -114,15 +114,24 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // concurrency policy, and every unrelated workflow semantic are unchanged. The
 // exact added Deno test target is independently removed in the revert-sensitivity
 // loop below, so this digest cannot be re-pinned without proving that one-line CI
-// contract. The value below is deliberately re-derived from the rebased tree.
-// [TEST-MOD-APPROVED #2967] Stacked again after re-merging main: the #1719
-// unified-sharing lane gained two `paths` entries and two test steps for the
-// bounded cover-video acknowledgement. That lane is PR-family, so its
-// non-concurrency document is inside this digest. Every earlier re-derivation
-// above is preserved, not replaced. PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256
-// are UNCHANGED — no workflow was added, removed or renamed by this branch.
+// contract.
+//
+// [TEST-MOD-APPROVED #2981] Mechanically re-derived from the combined current
+// workflow tree after #2981 added its typecheck/build/runtime search-foundation
+// step and independent host-owner test to that same web-build lane. The
+// PR-family identity/count and concurrency policy remain unchanged; only the
+// lane's non-concurrency document moved. The #3009 and #2981 semantic units are
+// each independently removed in the mutation table below, so this re-pin cannot
+// outlive a silent reversion of either authorized workflow change. The value
+// below was re-derived from disk after rebasing onto origin/main at ccfadd28c,
+// so #2947 and #3016 remain part of the combined authority as well.
+// [TEST-MOD-APPROVED #2967] The #1719 unified-sharing lane gained two `paths`
+// entries and two test steps for the bounded cover-video acknowledgement. That
+// lane is PR-family, so its non-concurrency document is inside this digest.
+// Every earlier re-derivation above is preserved, not replaced.
+// PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "8766836337d11874f4e3c03ca8872b11a3ea31156dada3f29f48b6acb27072a5";
+  "312cb3ed71cbf49f5aafc575c88347eb3848ad0ae79d7f264146856730ba0548";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -339,6 +348,15 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "          supabase/functions/_shared/__tests__/issue_3016_brand_site_control_cors_adversarial.test.ts\n"],
     [liveWorkflow("web", "build", "check"), '      SITES_DATABASE_POOL_MAX: "3"\n'],
     [liveWorkflow("web", "build", "check"), '      - "mingla-business/scripts/ci/bundle-baseline.json"\n'],
+    // [TEST-MOD-APPROVED #2981] The complete CI step and both runtime proof
+    // commands are individually revert-sensitive. Comments do not enter the
+    // YAML semantic document and therefore require no digest exception.
+    [liveWorkflow("web", "build", "check"),
+      `      - name: "#2981 marketing search foundation"\n        working-directory: mingla-marketing\n        run: |\n          npm run typecheck\n          npm run build\n          npm run test:search-foundation\n          node --test scripts/issue-2981-host-owner-isolation.tester.test.mjs\n`],
+    [liveWorkflow("web", "build", "check"),
+      "          npm run test:search-foundation\n"],
+    [liveWorkflow("web", "build", "check"),
+      "          node --test scripts/issue-2981-host-owner-isolation.tester.test.mjs\n"],
     [liveWorkflow("bundle", "baseline", "automerge"), '      - ".github/workflows/**"\n'],
     // [TEST-MOD-APPROVED #2879] The two filtered-replay skip entries this work
     // added. Each must independently move the digest, or the re-pin above

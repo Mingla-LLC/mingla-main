@@ -31,7 +31,6 @@
 // email href to carry attribution — that breaks the byte-frozen pin and is the
 // single easiest way to fail this ORCH's CI.
 
-import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import { resolvePlatformFromUa } from '@/lib/device-platform'
 import {
@@ -39,15 +38,16 @@ import {
   resolveBusinessAppTarget,
 } from '@/lib/business-app-target'
 import { siteAttribution } from '@/lib/links-src'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
 // Reads request headers → must not be statically cached.
 export const dynamic = 'force-dynamic'
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/host/download', {
   title: 'Get Mingla Host',
   description:
     'Get the Mingla Host app on iPhone or Android — or run your dashboard in the browser.',
-}
+})
 
 export default async function BusinessDownloadPage() {
   const ua = (await headers()).get('user-agent') ?? ''
