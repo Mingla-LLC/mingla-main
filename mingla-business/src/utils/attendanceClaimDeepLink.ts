@@ -3,6 +3,110 @@ const UUID =
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const REQUIRED_KEYS = ["v", "kind", "event", "source", "token"];
 
+export const ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY =
+  "__minglaAttendanceClaimFragment";
+
+export const ATTENDANCE_CLAIM_FRAGMENT_BOOTSTRAP =
+  `(()=>{const w=window,l=w.location,h=w.history;if(l.pathname!=="/attendance/claim"||l.hash==="")return;const f=l.hash.slice(1),u=l.pathname+l.search,s=h.state,v=Object.freeze({fragment:f,cleanUrl:u,historyState:s});Object.defineProperty(w,"${ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY}",{value:v,writable:false,enumerable:false,configurable:true});h.replaceState(s,"",u);})();`;
+
+export type AttendanceClaimFragmentHandoff = Readonly<{
+  fragment: string;
+  cleanUrl: string;
+  historyState: unknown;
+}>;
+
+type AttendanceClaimLocation = Readonly<{
+  pathname: string;
+  search: string;
+}>;
+type AttendanceClaimHistory = {
+  readonly state?: unknown;
+  replaceState(state: unknown, unused: string, url: string): void;
+};
+type AttendanceClaimWindow = {
+  readonly history: AttendanceClaimHistory;
+  readonly location: AttendanceClaimLocation & Readonly<{ hash: string }>;
+  [ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY]?: unknown;
+};
+type AttendanceClaimFrameCallback = (timestamp: number) => void;
+type AttendanceClaimRequestFrame = (
+  callback: AttendanceClaimFrameCallback,
+) => number;
+
+const isAttendanceClaimFragmentHandoff = (
+  value: unknown,
+): value is AttendanceClaimFragmentHandoff =>
+  typeof value === "object" && value !== null &&
+  typeof (value as { fragment?: unknown }).fragment === "string" &&
+  typeof (value as { cleanUrl?: unknown }).cleanUrl === "string" &&
+  "historyState" in value;
+
+export const consumeAttendanceClaimFragment = (
+  browserWindow: AttendanceClaimWindow,
+  directHashFragment = browserWindow.location.hash.replace(/^#/, ""),
+): AttendanceClaimFragmentHandoff => {
+  const hasBootstrapHandoff = Object.prototype.hasOwnProperty.call(
+    browserWindow,
+    ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY,
+  );
+  const capturedFragment = hasBootstrapHandoff
+    ? browserWindow[ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY]
+    : undefined;
+  if (hasBootstrapHandoff) {
+    delete browserWindow[ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY];
+  }
+  return isAttendanceClaimFragmentHandoff(capturedFragment)
+    ? capturedFragment
+    : {
+        fragment: directHashFragment,
+        cleanUrl: `${browserWindow.location.pathname}${browserWindow.location.search}`,
+        historyState: browserWindow.history.state,
+      };
+};
+
+type AttendanceClaimScrubCapture = Readonly<
+  Pick<AttendanceClaimFragmentHandoff, "cleanUrl" | "historyState">
+>;
+
+export const scrubAttendanceClaimFragment = (
+  location: AttendanceClaimLocation,
+  history: AttendanceClaimHistory,
+  requestFrame: AttendanceClaimRequestFrame,
+  captured?: AttendanceClaimScrubCapture,
+): (() => void) => {
+  const cleanUrl = captured?.cleanUrl ?? `${location.pathname}${location.search}`;
+  const historyState = captured ? captured.historyState : history.state;
+  const scrub = (): void => history.replaceState(historyState, "", cleanUrl);
+  const scrubAfterRouterReconciliation = (): void => {
+    scrub();
+    requestFrame(scrub);
+  };
+  scrub();
+  requestFrame(scrubAfterRouterReconciliation);
+  return (): void => {
+    requestFrame(scrub);
+  };
+};
+
+export const createAttendanceClaimFragmentScrubber = (
+  handoff: AttendanceClaimFragmentHandoff,
+) => {
+  const captured: AttendanceClaimScrubCapture = {
+    cleanUrl: handoff.cleanUrl,
+    historyState: handoff.historyState,
+  };
+  return (
+    location: AttendanceClaimLocation,
+    history: AttendanceClaimHistory,
+    requestFrame: AttendanceClaimRequestFrame,
+  ): (() => void) => scrubAttendanceClaimFragment(
+    location,
+    history,
+    requestFrame,
+    captured,
+  );
+};
+
 export const attendanceAppUrlFromFragment = (raw: string): string | null => {
   const params = new URLSearchParams(raw);
   if (

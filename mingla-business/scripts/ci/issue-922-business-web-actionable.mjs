@@ -60,8 +60,8 @@ function validateCatchallMatcher(source) {
 
 function validateRewrite(vercel) {
   invariant(
-    vercel.buildCommand.endsWith("node scripts/inject-mobile-blur-css.mjs && node scripts/build-invite-critical-entry.mjs"),
-    "builder must run after the final blur/chunk-recovery injector",
+    vercel.buildCommand.endsWith("node scripts/inject-attendance-claim-bootstrap.mjs && node scripts/inject-mobile-blur-css.mjs && node scripts/build-invite-critical-entry.mjs"),
+    "builder must run after the ordered attendance and blur/chunk-recovery injectors",
   );
   const dedicated = vercel.rewrites.findIndex(
     (rewrite) => rewrite.source === INVITE_SOURCE && rewrite.destination === INVITE_DESTINATION,
@@ -111,6 +111,7 @@ function validateOwnerPins() {
       "src/analytics/webAnalytics.web.ts",
       "src/components/ui/Button.tsx",
       "src/constants/designSystem.ts",
+      "scripts/inject-attendance-claim-bootstrap.mjs",
       "scripts/inject-mobile-blur-css.mjs",
       "scripts/build-invite-critical-entry.mjs",
     ].map((path) => [path, readFileSync(join(packageRoot, path), "utf8")]),
@@ -141,6 +142,7 @@ function validateWorkflow() {
     "mingla-business/src/analytics/webAnalytics.web.ts",
     "mingla-business/src/components/ui/Button.tsx",
     "mingla-business/src/constants/designSystem.ts",
+    "mingla-business/scripts/inject-attendance-claim-bootstrap.mjs",
     "mingla-business/scripts/inject-mobile-blur-css.mjs",
     "mingla-business/scripts/build-invite-critical-entry.mjs",
     "mingla-business/scripts/ci/issue-922-business-web-actionable.mjs",
@@ -150,7 +152,7 @@ function validateWorkflow() {
 
 function selfTest() {
   const vercel = {
-    buildCommand: "x && node scripts/inject-mobile-blur-css.mjs && node scripts/build-invite-critical-entry.mjs",
+    buildCommand: "x && node scripts/inject-attendance-claim-bootstrap.mjs && node scripts/inject-mobile-blur-css.mjs && node scripts/build-invite-critical-entry.mjs",
     rewrites: [
       { source: INVITE_SOURCE, destination: INVITE_DESTINATION },
       { source: SPA_CATCHALL, destination: "/" },

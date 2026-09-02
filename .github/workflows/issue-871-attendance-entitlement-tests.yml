@@ -11,13 +11,20 @@ on:
       - "supabase/functions/attendance-claim-link/**"
       - "supabase/functions/attendance-claim-backfill/**"
       - "supabase/functions/_shared/attendanceClaim.ts"
+      - "supabase/functions/_shared/governedAdSecret.ts"
       - "supabase/functions/rsvp-notify/**"
       - "supabase/functions/ticket-confirmation-dispatch/**"
       - "supabase/migrations/20270302000871_issue_0871_attendance_claim_foundation.sql"
       - "supabase/migrations/20270302000872_issue_0871_entitled_guest_roster.sql"
+      - "supabase/migrations/20270614002987_issue_2979_attendance_claim_secret_continuity.sql"
       - "supabase/migrations/__tests__/issue_0871*"
+      - "supabase/migrations/__tests__/issue_2979*"
       - "docs/INVARIANT_REGISTRY.md"
       - ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs"
+      - ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs"
+      - ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/ci-batch/MANIFEST.json"
       - ".github/workflows/issue-871-attendance-entitlement-tests.yml"
       # #2885 AC-4 — the machine-written baseline sits under a broad pattern
       # above, so a one-file recording PR matched this filter and ran the whole
@@ -45,16 +52,40 @@ jobs:
           supabase/functions/claim-attendance/index.ts
           supabase/functions/attendance-claim-link/index.ts
           supabase/functions/attendance-claim-backfill/index.ts
+          supabase/functions/ticket-confirmation-dispatch/index.ts
       - name: Execute edge, mobile, web and source contracts
         run: >-
           deno test --allow-read
           supabase/functions/claim-attendance/__tests__/issue_0871_attendance_claim_contract.test.ts
           supabase/functions/claim-attendance/__tests__/issue_0871_claim_fragment_pollution.tester.adversarial.test.ts
           supabase/migrations/__tests__/issue_0871_attendance_claim_and_roster.test.ts
+      - name: Execute issue 2979 implementor and independent tester contracts
+        run: |
+          deno test --allow-read --allow-env \
+            supabase/functions/_shared/__tests__/issue_2979_attendance_pepper_ring.implementor.happy.test.ts \
+            supabase/functions/claim-attendance/__tests__/issue_2979_attendance_claim_continuity.implementor.happy.test.ts \
+            supabase/functions/attendance-claim-backfill/__tests__/issue_2979_recovery_delivery.implementor.happy.test.ts \
+            supabase/functions/ticket-confirmation-dispatch/__tests__/issue_2979_ticket_confirmation_claim.implementor.happy.test.ts
+          for test_file in \
+            supabase/functions/claim-attendance/__tests__/issue_2979_attendance_claim_continuity.tester.adversarial.test.ts \
+            supabase/functions/attendance-claim-backfill/__tests__/issue_2979_recovery_delivery.tester.adversarial.test.ts \
+            supabase/functions/ticket-confirmation-dispatch/__tests__/issue_2979_ticket_confirmation_claim.tester.adversarial.test.ts; do
+            if [[ -f "$test_file" ]]; then deno test --allow-read --allow-env "$test_file"; fi
+          done
+      - name: Execute Android attendance CTA reachability contract
+        run: >-
+          node
+          app-mobile/src/components/__tests__/issue_2979_attendance_claim_android_cta.implementor.happy.test.tsx
       - name: Execute invariant guard and its revert self-test
         run: |
           node .github/scripts/strict-grep/issue-871-attendance-entitlement.mjs --self-test
           node .github/scripts/strict-grep/issue-871-attendance-entitlement.mjs
+      - name: Execute issue 2979 invariant guard and independent tester guard
+        run: |
+          node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs --self-test
+          node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs
+          node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs --self-test
+          node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs
       - name: Install buyer-web dependencies
         working-directory: mingla-business
         run: npm ci
@@ -109,3 +140,15 @@ jobs:
         run: >-
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1
           -f supabase/migrations/__tests__/issue_0871_attendance_roster_pg17.test.sql
+      - name: Execute issue 2979 migration contracts
+        env:
+          PGPASSWORD: ${{ format('issue-871-ci-{0}', github.run_id) }}
+        run: |
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2979_legacy_active_proof_generation.implementor.happy.test.sql
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2979_attendance_claim_secret_continuity.implementor.happy.test.sql
+          tester_sql=supabase/migrations/__tests__/issue_2979_attendance_claim_secret_continuity.tester.adversarial.test.sql
+          if [[ -f "$tester_sql" ]]; then
+            psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f "$tester_sql"
+          fi

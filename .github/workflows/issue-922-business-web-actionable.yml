@@ -9,8 +9,10 @@ on:
       - "mingla-business/src/analytics/webAnalytics.web.ts"
       - "mingla-business/src/components/ui/Button.tsx"
       - "mingla-business/src/constants/designSystem.ts"
+      - "mingla-business/scripts/inject-attendance-claim-bootstrap.mjs"
       - "mingla-business/scripts/inject-mobile-blur-css.mjs"
       - "mingla-business/scripts/build-invite-critical-entry.mjs"
+      - "mingla-business/scripts/ci/issue-2979-attendance-export-pipeline.tester.test.mjs"
       - "mingla-business/scripts/ci/issue-922-business-web-actionable.mjs"
       - "mingla-business/__tests__/issue922BusinessWebActionable.happy.test.ts"
       - "mingla-business/__tests__/issue922BusinessWebActionable.adversarial.test.ts"
@@ -55,8 +57,11 @@ jobs:
       - name: Export and build the dedicated entry
         run: |
           npx expo export -p web --clear
+          node scripts/inject-attendance-claim-bootstrap.mjs
           node scripts/inject-mobile-blur-css.mjs
           node scripts/build-invite-critical-entry.mjs
+      - name: Independent production-shaped attendance bootstrap guard
+        run: node --test scripts/ci/issue-2979-attendance-export-pipeline.tester.test.mjs
       - name: Structural, drift, route, and size guard
         run: ISSUE_922_REQUIRE_ADVERSARIAL=1 node scripts/ci/issue-922-business-web-actionable.mjs
       - name: Happy and independent adversarial unit tests

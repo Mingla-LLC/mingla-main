@@ -19762,18 +19762,23 @@
       "providerWorkflow": ".github/workflows/issue-871-attendance-entitlement-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e6fdaf5f2aace64cfcdf1ba12f04abfaddec0ebfbf0078f8f446df24651c1ade",
+        "sourceSha256": "be685dfe7b20756fd79f6a46ad3098fe0dbac430b2c8ded3f11a192003459c84",
         "triggers": [
           "pull_request"
         ],
         "pathScope": [
           "!mingla-business/scripts/ci/bundle-baseline.json",
+          ".github/ci-batch/MANIFEST.json",
+          ".github/scripts/strict-grep/MANIFEST.json",
+          ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs",
+          ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs",
           ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs",
           ".github/workflows/issue-871-attendance-entitlement-tests.yml",
           "app-mobile/**",
           "docs/INVARIANT_REGISTRY.md",
           "mingla-business/**",
           "supabase/functions/_shared/attendanceClaim.ts",
+          "supabase/functions/_shared/governedAdSecret.ts",
           "supabase/functions/attendance-claim-backfill/**",
           "supabase/functions/attendance-claim-link/**",
           "supabase/functions/claim-attendance/**",
@@ -19781,7 +19786,9 @@
           "supabase/functions/ticket-confirmation-dispatch/**",
           "supabase/migrations/20270302000871_issue_0871_attendance_claim_foundation.sql",
           "supabase/migrations/20270302000872_issue_0871_entitled_guest_roster.sql",
-          "supabase/migrations/__tests__/issue_0871*"
+          "supabase/migrations/20270614002987_issue_2979_attendance_claim_secret_continuity.sql",
+          "supabase/migrations/__tests__/issue_0871*",
+          "supabase/migrations/__tests__/issue_2979*"
         ],
         "jobKeys": [
           "issue-871-contract",
@@ -20038,7 +20045,7 @@
       "providerWorkflow": ".github/workflows/issue-922-business-web-actionable.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "4e7055df66c99a557dfcd17a5489db675e736a4c4457d0e2b98db569e89dd9f5",
+        "sourceSha256": "17e3386157af6adc93ebee588b1cea195e6c94171f2635e3bb3bb4931a063c60",
         "triggers": [
           "pull_request",
           "push"
@@ -20053,7 +20060,9 @@
           "mingla-business/playwright/issue922-business-web-actionable.spec.ts",
           "mingla-business/playwright/issue922-static-server.mjs",
           "mingla-business/scripts/build-invite-critical-entry.mjs",
+          "mingla-business/scripts/ci/issue-2979-attendance-export-pipeline.tester.test.mjs",
           "mingla-business/scripts/ci/issue-922-business-web-actionable.mjs",
+          "mingla-business/scripts/inject-attendance-claim-bootstrap.mjs",
           "mingla-business/scripts/inject-mobile-blur-css.mjs",
           "mingla-business/src/analytics/ConsentBanner.web.tsx",
           "mingla-business/src/analytics/webAnalytics.web.ts",
@@ -22475,6 +22484,7 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/issue-922-business-web-actionable.yml",
       "referenceFiles": [
+        "mingla-business/scripts/ci/issue-2979-attendance-export-pipeline.tester.test.mjs",
         "mingla-business/scripts/ci/issue-922-business-web-actionable.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."

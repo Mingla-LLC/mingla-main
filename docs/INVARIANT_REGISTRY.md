@@ -1,5 +1,34 @@
 # Invariant Registry
 
+## ACTIVE — issue #2979 (attendance-claim secret continuity)
+
+### I-PROPOSED-2979-ATTENDANCE-DUAL-PROOF-CONTINUITY (ACTIVE)
+
+- **Rule:** Attendance claims record their proof generation and remain single-use across the
+  bounded secret transition. An active `legacy_v1` digest is verified only with the legacy
+  candidate, an active `governed_v2` digest only with the governed candidate, either successful
+  claim clears both proof slots atomically, and consumed-proof replay remains a generic failure.
+- **Enforcement:** The generation-aware PostgreSQL claim function, the governed/direct Edge
+  resolver, the #2979 implementor and independent Deno/PG17 contracts, and both self-testing
+  #2979 strict guards in the retained #871 workflow.
+- **Status:** ACTIVE when PR #3041 merges after independent P0–P4-zero verification and explicit
+  Consumer iOS/Android, Business iOS/Android, and buyer-web acceptance. Production retirement
+  remains separately gated by the database-owned 72-hour finalizer.
+
+### I-PROPOSED-2979-RECOVERY-EXACT-SET-DELIVERY (ACTIVE)
+
+- **Rule:** Secret recovery may enqueue only execution-time eligible orders that still carry a
+  legacy proof. Each governed replacement is stable across retries; ambiguous provider acceptance
+  permits no resend or proof rotation; a claim always wins over late delivery completion; and
+  legacy material cannot retire until every eligible item is claimed, identity-resolved, or
+  delivery-safe with a valid governed proof and the latest such transition is at least 72 hours old.
+- **Enforcement:** The additive #2979 recovery ledger and finalizer, service-only RLS/grants,
+  `attendance-claim-backfill`, exact delivery adapters, implementor and independent adversarial
+  SQL/Deno suites, and the #2979 CI guards.
+- **Status:** ACTIVE when PR #3041 merges all-green. Production recovery and finalization must use
+  the value-blind preview/reconciliation procedures and may advance only when the finalizer itself
+  accepts the complete aggregate gate.
+
 ## ACTIVE — issue #2947 (the ticket waiting room)
 
 ## DRAFT — issue #2981 (marketing search foundation)

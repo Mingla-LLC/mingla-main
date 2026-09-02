@@ -55,8 +55,8 @@ FROM issue871_orders;
 
 -- Dedicated unowned race source with one current exact 32-byte proof.
 INSERT INTO public.orders(id,event_id,buyer_email,buyer_name,total_cents,currency,payment_status,source,
-  attendance_claim_token_digest,attendance_claim_token_created_at)
-VALUES(pg_temp.issue871_uuid('race-order'),pg_temp.issue871_uuid('race-event'),'race@example.test','Race',1000,'USD','paid','legacy',decode(repeat('ab',32),'hex'),now());
+  attendance_claim_token_digest,attendance_claim_token_created_at,attendance_claim_token_generation)
+VALUES(pg_temp.issue871_uuid('race-order'),pg_temp.issue871_uuid('race-event'),'race@example.test','Race',1000,'USD','paid','legacy',decode(repeat('ab',32),'hex'),now(),'legacy_v1');
 INSERT INTO public.tickets(id,order_id,ticket_type_id,event_id,qr_code,status,approval_status)
 VALUES(pg_temp.issue871_uuid('race-ticket'),pg_temp.issue871_uuid('race-order'),pg_temp.issue871_uuid('race-tier'),pg_temp.issue871_uuid('race-event'),'race-qr','valid','auto');
 
@@ -361,8 +361,8 @@ BEGIN
     v_owner,'order',pg_temp.issue871_uuid('race-event'),pg_temp.issue871_uuid('race-order'),
     decode(repeat('00',32),'hex')
   );
-  IF replay->>'result' <> 'already_claimed' THEN
-    RAISE EXCEPTION 'canonical owner replay after proof consumption failed: %',replay;
+  IF replay->>'result' <> 'invalid' THEN
+    RAISE EXCEPTION 'canonical owner replay after proof consumption was not rejected: %',replay;
   END IF;
   PERFORM set_config('request.jwt.claim.sub',v_owner::text,false);
   BEGIN

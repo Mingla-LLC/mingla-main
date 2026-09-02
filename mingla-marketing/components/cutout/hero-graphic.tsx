@@ -21,7 +21,7 @@ export function ScrollMore({ href, label = 'Scroll for more' }: { href: string; 
   return (
     <a
       href={href}
-      className="cut-scroll-more absolute bottom-16 left-1/2 hidden h-14 md:flex w-[19rem] max-w-[80vw] -translate-x-1/2 items-center justify-center gap-4 text-[0.9375rem] font-semibold text-[var(--cut-body)] transition-colors hover:text-[var(--cut-ink)] focus-ring sm:bottom-14"
+      className="cut-scroll-more absolute bottom-0 left-1/2 hidden h-14 md:flex w-[19rem] max-w-[80vw] -translate-x-1/2 items-center justify-center gap-4 text-[0.9375rem] font-semibold text-[var(--cut-body)] transition-colors hover:text-[var(--cut-ink)] focus-ring"
     >
       {label}
       <span
