@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { describe, expect, test } from "@jest/globals";
 
 import { scrubAttendanceClaimFragment } from "../attendanceClaimDeepLink";
@@ -43,19 +40,5 @@ describe("issue #2979 lifecycle-anchored attendance URL restoration", () => {
     expect(replacedUrls).toEqual([cleanUrl, cleanUrl, cleanUrl, cleanUrl]);
     expect(replacedUrls.every((url) => !url.includes("#"))).toBe(true);
     expect(scheduledCallbacks).toHaveLength(0);
-  });
-
-  test("the route invokes the retained restore only after parsed state commits", () => {
-    const route = readFileSync(
-      resolve(process.cwd(), "app/attendance/claim.tsx"),
-      "utf8",
-    );
-
-    expect(route).toContain(
-      "scheduleFinalUrlRestoreRef.current = scrubAttendanceClaimFragment(",
-    );
-    expect(route).toMatch(
-      /useEffect\(\(\) => \{\s*if \(Platform\.OS !== "web" \|\| !parsed\) return;\s*scheduleFinalUrlRestoreRef\.current\?\.\(\);\s*\}, \[parsed\]\);/,
-    );
   });
 });

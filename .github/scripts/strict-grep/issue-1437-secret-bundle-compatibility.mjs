@@ -36,6 +36,7 @@ const paths = {
 };
 
 const EXPECTED_DELIVERY_RUNTIME_CLOSURE = [
+  ["attendance-claim-backfill", false],
   ["brand-paystack-onboard", true],
   ["brand-stripe-onboard", true],
   ["event-cancel-refund-fanout", false],
@@ -224,7 +225,7 @@ function closureViolations(repoRoot) {
   const expectedNames = EXPECTED_DELIVERY_RUNTIME_CLOSURE.map(([name]) => name);
   const result = deriveDeliveryRuntimeClosure(trackedProductionFunctionFiles(repoRoot));
   const failures = compareClosure(result, expectedNames);
-  if (result.derived.length !== 17 || expectedNames.length !== 17) {
+  if (result.derived.length !== 18 || expectedNames.length !== 18) {
     failures.push(
       `runtime_closure:locked_count_mismatch:derived_${result.derived.length}:expected_${expectedNames.length}`,
     );
@@ -524,7 +525,7 @@ export function violations(files) {
   ) failures.push("manifest: Paystack payment field metadata invalid");
 
   const runbook = files.runbook ?? "";
-  for (const token of ["schema v3", "bundle-only", "all 17", "schema v2"]) {
+  for (const token of ["schema v3", "bundle-only", "all 18", "schema v2"]) {
     requireToken(runbook, token, "#1903 value-blind rollout runbook", failures);
   }
 
@@ -880,6 +881,26 @@ function selfTest() {
   const countMismatch = compareClosure(direct, ["direct", "stale"]);
   if (!countMismatch.some((failure) => failure.includes("exact_count_mismatch"))) {
     throw new Error("runtime_closure_count_mismatch_not_rejected");
+  }
+  const attendanceBackfill = EXPECTED_DELIVERY_RUNTIME_CLOSURE.find(([name]) =>
+    name === "attendance-claim-backfill"
+  );
+  if (JSON.stringify(attendanceBackfill) !== JSON.stringify(["attendance-claim-backfill", false])) {
+    throw new Error("runtime_closure_attendance_backfill_inventory_missing");
+  }
+  const withoutAttendanceBackfill = compareClosure(
+    {
+      derived: EXPECTED_DELIVERY_RUNTIME_CLOSURE
+        .map(([name]) => name)
+        .filter((name) => name !== "attendance-claim-backfill"),
+      relevantUnresolved: [],
+    },
+    EXPECTED_DELIVERY_RUNTIME_CLOSURE.map(([name]) => name),
+  );
+  if (!withoutAttendanceBackfill.some((failure) =>
+    failure.includes("stale_listed_consumer:attendance-claim-backfill")
+  )) {
+    throw new Error("runtime_closure_attendance_backfill_reversion_not_rejected");
   }
 }
 

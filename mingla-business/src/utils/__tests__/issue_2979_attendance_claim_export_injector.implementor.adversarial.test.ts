@@ -6,7 +6,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { runInNewContext } from "node:vm";
 
 import { afterEach, describe, expect, test } from "@jest/globals";
@@ -35,11 +35,31 @@ const fixturePath = (html = EXPORTED_SHELL): string => {
   return path;
 };
 
-const runInjector = (path: string) => spawnSync(
-  process.execPath,
-  [INJECTOR_PATH, path],
-  { cwd: BUSINESS_ROOT, encoding: "utf8" },
-);
+type InjectorResult = Readonly<{
+  status: number;
+  stderr: string;
+  stdout: string;
+}>;
+
+const runInjector = (path: string): Promise<InjectorResult> =>
+  new Promise((resolveResult) => {
+    execFile(
+      process.execPath,
+      [INJECTOR_PATH, path],
+      { cwd: BUSINESS_ROOT, encoding: "utf8" },
+      (error, stdout, stderr) => {
+        resolveResult({
+          status: error === null
+            ? 0
+            : typeof error.code === "number"
+            ? error.code
+            : 1,
+          stderr,
+          stdout,
+        });
+      },
+    );
+  });
 
 afterEach(() => {
   tempDirectories.splice(0).forEach((directory) => {
@@ -48,9 +68,9 @@ afterEach(() => {
 });
 
 describe("issue #2979 exported attendance bootstrap injection", () => {
-  test("injects exact bytes before all application JS and is idempotent", () => {
+  test("injects exact bytes before all application JS and is idempotent", async () => {
     const path = fixturePath();
-    const first = runInjector(path);
+    const first = await runInjector(path);
     expect(first.status).toBe(0);
     const injected = readFileSync(path, "utf8");
     const expectedTag =
@@ -66,7 +86,7 @@ describe("issue #2979 exported attendance bootstrap injection", () => {
       expect(index).toBeGreaterThan(bootstrapIndex);
     });
 
-    const second = runInjector(path);
+    const second = await runInjector(path);
     expect(second.status).toBe(0);
     expect(readFileSync(path, "utf8")).toBe(injected);
 
@@ -91,20 +111,21 @@ describe("issue #2979 exported attendance bootstrap injection", () => {
     expect(htmlOwner).not.toContain("ATTENDANCE_CLAIM_FRAGMENT_BOOTSTRAP");
   });
 
-  test("fails closed for missing, malformed, anchorless, and conflicting shells", () => {
+  test("fails closed for missing, malformed, anchorless, and conflicting shells", async () => {
     const missingDirectory = mkdtempSync(join(tmpdir(), "mingla-2979-a12-"));
     tempDirectories.push(missingDirectory);
-    expect(runInjector(join(missingDirectory, "missing.html")).status).not.toBe(0);
+    expect((await runInjector(join(missingDirectory, "missing.html"))).status)
+      .not.toBe(0);
 
     const malformed = fixturePath(
       `<html><head><body><script src="/_expo/static/js/web/index.js"></script></body></html>`,
     );
-    expect(runInjector(malformed).status).not.toBe(0);
+    expect((await runInjector(malformed)).status).not.toBe(0);
 
     const anchorless = fixturePath(
       `<!DOCTYPE html><html><head></head><body><div id="root"></div></body></html>`,
     );
-    expect(runInjector(anchorless).status).not.toBe(0);
+    expect((await runInjector(anchorless)).status).not.toBe(0);
 
     const conflicting = fixturePath(
       EXPORTED_SHELL.replace(
@@ -112,10 +133,10 @@ describe("issue #2979 exported attendance bootstrap injection", () => {
         `<script id="${MARKER}">conflicting</script></head>`,
       ),
     );
-    expect(runInjector(conflicting).status).not.toBe(0);
+    expect((await runInjector(conflicting)).status).not.toBe(0);
 
     const duplicate = fixturePath();
-    expect(runInjector(duplicate).status).toBe(0);
+    expect((await runInjector(duplicate)).status).toBe(0);
     const once = readFileSync(duplicate, "utf8");
     writeFileSync(
       duplicate,
@@ -124,7 +145,7 @@ describe("issue #2979 exported attendance bootstrap injection", () => {
       ))?.[0] + "</head>"),
       "utf8",
     );
-    expect(runInjector(duplicate).status).not.toBe(0);
+    expect((await runInjector(duplicate)).status).not.toBe(0);
 
     const injectorSource = readFileSync(INJECTOR_PATH, "utf8");
     expect(injectorSource).toMatch(
@@ -132,9 +153,9 @@ describe("issue #2979 exported attendance bootstrap injection", () => {
     );
   });
 
-  test("restores the exported launch query/state after Router loss", () => {
+  test("restores the exported launch query/state after Router loss", async () => {
     const path = fixturePath();
-    expect(runInjector(path).status).toBe(0);
+    expect((await runInjector(path)).status).toBe(0);
     const injected = readFileSync(path, "utf8");
     const bootstrapSource = injected.match(new RegExp(
       `<script id="${MARKER}">([\\s\\S]*?)</script>`,
@@ -202,9 +223,9 @@ describe("issue #2979 exported attendance bootstrap injection", () => {
     });
   });
 
-  test("is a no-op for lookalike routes and ships no credential sink", () => {
+  test("is a no-op for lookalike routes and ships no credential sink", async () => {
     const path = fixturePath();
-    expect(runInjector(path).status).toBe(0);
+    expect((await runInjector(path)).status).toBe(0);
     const injected = readFileSync(path, "utf8");
     const bootstrapSource = injected.match(new RegExp(
       `<script id="${MARKER}">([\\s\\S]*?)</script>`,

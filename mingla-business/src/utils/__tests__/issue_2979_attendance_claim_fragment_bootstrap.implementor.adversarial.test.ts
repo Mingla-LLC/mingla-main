@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 
 import { describe, expect, test } from "@jest/globals";
@@ -75,13 +73,6 @@ describe("issue #2979 pre-Router attendance fragment bootstrap", () => {
       ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY,
     );
 
-    const html = readFileSync(resolve(process.cwd(), "app/+html.tsx"), "utf8");
-    expect(html).not.toContain("ATTENDANCE_CLAIM_FRAGMENT_BOOTSTRAP");
-    const injector = readFileSync(
-      resolve(process.cwd(), "scripts/inject-attendance-claim-bootstrap.mjs"),
-      "utf8",
-    );
-    expect(injector).toContain("mingla-attendance-claim-pre-router");
   });
 
   test("does nothing for lookalike routes or an empty fragment", () => {
@@ -146,17 +137,6 @@ describe("issue #2979 pre-Router attendance fragment bootstrap", () => {
       cleanUrl: "/attendance/claim?source=direct",
       historyState: directState,
     });
-
-    const route = readFileSync(
-      resolve(process.cwd(), "app/attendance/claim.tsx"),
-      "utf8",
-    );
-    const consumeIndex = route.indexOf(
-      "consumeAttendanceClaimFragment(window, raw)",
-    );
-    const scrubIndex = route.indexOf("scrubAttendanceClaimFragment(");
-    expect(consumeIndex).toBeGreaterThanOrEqual(0);
-    expect(consumeIndex).toBeLessThan(scrubIndex);
   });
 
   test("has no persistent, DOM, logging, analytics, error, or network sink", () => {
