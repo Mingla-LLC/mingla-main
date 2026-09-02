@@ -4,7 +4,7 @@ import { ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 import { AppQrPanel } from '@/components/marketing/app-qr-panel'
-import { AppleMark, PlayMark, WebMark } from '@/components/ui/store-marks'
+import { AppleMark, PlayMark } from '@/components/ui/store-marks'
 import { detectClientPlatform, type Platform } from '@/lib/device-platform'
 import { resolveExplorerAppTarget } from '@/lib/explorer-app-target'
 import { resolveBusinessAppTarget } from '@/lib/business-app-target'
@@ -71,8 +71,8 @@ interface DeviceCtaProps {
 }
 
 const SIZES = {
-  md: 'h-12 px-6 text-[0.9375rem]',
-  lg: 'h-[3.75rem] px-8 text-base',
+  md: 'h-[2.625rem] px-5 text-[0.9375rem]',
+  lg: 'h-[3.25rem] px-7 text-base',
 } as const
 
 /**
@@ -118,15 +118,21 @@ export function DeviceCta({
    * ONE mark, not three. The stacked discs made the pill ~190px, which a
    * 390px header cannot hold alongside the wordmark and the menu button.
    *
-   * The single glyph is the DEVICE'S OWN: Apple on iOS, Play on Android, a
-   * monitor on desktop. That keeps it honest about where the tap actually
-   * goes while costing one icon's width instead of three.
+   * On a phone the store mark is INFORMATION -- Apple or Play tells you the tap
+   * ends in your store. On desktop there is no store, and the monitor glyph
+   * that used to sit here just said "this is a screen", which the reader is
+   * already looking at. An arrow says the one useful thing instead: this goes
+   * somewhere. Slightly smaller than before, so the pill reads as type with a
+   * mark rather than type with a badge.
    */
-  const PlatformMark =
-    platform === 'ios' ? AppleMark : platform === 'android' ? PlayMark : WebMark
-  const marks = (
-    <PlatformMark className="ml-0.5 h-[17px] w-[17px] shrink-0" />
-  )
+  const marks =
+    platform === 'ios' ? (
+      <AppleMark className="h-4 w-4 shrink-0" />
+    ) : platform === 'android' ? (
+      <PlayMark className="h-4 w-4 shrink-0" />
+    ) : (
+      <ArrowRight className="h-[15px] w-[15px] shrink-0" strokeWidth={2.5} aria-hidden="true" />
+    )
 
   if (surface === 'host') {
     const attribution = siteAttribution(campaignFor('host', location))
