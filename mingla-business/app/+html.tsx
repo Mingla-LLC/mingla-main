@@ -1,5 +1,6 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import { type PropsWithChildren } from "react";
+import { ATTENDANCE_CLAIM_FRAGMENT_BOOTSTRAP } from "../src/utils/attendanceClaimDeepLink";
 
 // ORCH-0964: web-only HTML document for mingla-business.
 //
@@ -22,6 +23,9 @@ export default function Root({ children }: PropsWithChildren) {
   return (
     <html lang="en">
       <head>
+        <script
+          dangerouslySetInnerHTML={{ __html: ATTENDANCE_CLAIM_FRAGMENT_BOOTSTRAP }}
+        />
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta

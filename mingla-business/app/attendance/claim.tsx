@@ -5,7 +5,10 @@ import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { APP_STORE_URL, PLAY_STORE_URL } from "../../src/constants/storeLinks";
 import { accent, canvas, glass, spacing, text as textTokens } from "../../src/constants/designSystem";
-import { scrubAttendanceClaimFragment } from "../../src/utils/attendanceClaimDeepLink";
+import {
+  consumeAttendanceClaimFragment,
+  scrubAttendanceClaimFragment,
+} from "../../src/utils/attendanceClaimDeepLink";
 
 export default function AttendanceClaimLanding(): React.ReactElement | null {
   const [parsed, setParsed] = useState(false);
@@ -21,8 +24,9 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
     }
     let active = true;
     const raw = window.location.hash.replace(/^#/, "");
-    // The helper captures pathname + search once and removes the credential
-    // immediately. Its returned idempotent callback is retained for one final,
+    const capturedRaw = consumeAttendanceClaimFragment(window, raw);
+    // The head bootstrap has already removed the credential and preserved the
+    // launch query. This defense helper retains that clean URL for one final,
     // bounded restore after this route's async parsed-state commit.
     scheduleFinalUrlRestoreRef.current = scrubAttendanceClaimFragment(
       window.location,
@@ -30,9 +34,9 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
       window.requestAnimationFrame.bind(window),
     );
     void import("../../src/utils/attendanceClaimDeepLink").then(
-      ({ attendanceAppUrlFromFragment }) => {
-        if (!active) return;
-        setAppUrl(attendanceAppUrlFromFragment(raw));
+          ({ attendanceAppUrlFromFragment }) => {
+            if (!active) return;
+            setAppUrl(attendanceAppUrlFromFragment(capturedRaw));
         setParsed(true);
       },
       () => {

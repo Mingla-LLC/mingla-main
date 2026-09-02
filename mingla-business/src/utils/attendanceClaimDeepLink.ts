@@ -3,9 +3,37 @@ const UUID =
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const REQUIRED_KEYS = ["v", "kind", "event", "source", "token"];
 
+export const ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY =
+  "__minglaAttendanceClaimFragment";
+
+export const ATTENDANCE_CLAIM_FRAGMENT_BOOTSTRAP =
+  `(()=>{const w=window,l=w.location,h=w.history;if(l.pathname!=="/attendance/claim"||l.hash==="")return;const f=l.hash.slice(1),u=l.pathname+l.search,s=h.state;Object.defineProperty(w,"${ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY}",{value:f,writable:false,enumerable:false,configurable:true});h.replaceState(s,"",u);})();`;
+
 type AttendanceClaimLocation = Pick<Location, "pathname" | "search">;
 type AttendanceClaimHistory = Pick<History, "replaceState"> & {
   readonly state?: unknown;
+};
+type AttendanceClaimWindow = Pick<Window, "location"> & {
+  [ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY]?: unknown;
+};
+
+export const consumeAttendanceClaimFragment = (
+  browserWindow: AttendanceClaimWindow,
+  directHashFragment = browserWindow.location.hash.replace(/^#/, ""),
+): string => {
+  const hasBootstrapHandoff = Object.prototype.hasOwnProperty.call(
+    browserWindow,
+    ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY,
+  );
+  const capturedFragment = hasBootstrapHandoff
+    ? browserWindow[ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY]
+    : undefined;
+  if (hasBootstrapHandoff) {
+    delete browserWindow[ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY];
+  }
+  return typeof capturedFragment === "string"
+    ? capturedFragment
+    : directHashFragment;
 };
 
 export const scrubAttendanceClaimFragment = (
