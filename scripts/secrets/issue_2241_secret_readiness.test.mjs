@@ -286,20 +286,16 @@ test("#2241 happy: checked contract classifies the complete production import gr
 test("#2241 happy: every exact direct reader is bundle-first with only its matching fallback", () => {
   const readers = {
     "supabase/functions/attendance-claim-link/index.ts": [
-      "ATTENDANCE_CLAIM_PEPPER",
-      "resolveGovernedAdField",
+      "resolveAttendanceClaimPepperRing",
     ],
     "supabase/functions/claim-attendance/index.ts": [
-      "ATTENDANCE_CLAIM_PEPPER",
-      "resolveGovernedAdField",
+      "resolveAttendanceClaimPepperRing",
     ],
     "supabase/functions/attendance-claim-backfill/index.ts": [
-      "ATTENDANCE_CLAIM_PEPPER",
-      "resolveGovernedAdField",
+      "resolveAttendanceClaimPepperRing",
     ],
     "supabase/functions/ticket-confirmation-dispatch/index.ts": [
-      "ATTENDANCE_CLAIM_PEPPER",
-      "resolveGovernedAdField",
+      "resolveAttendanceClaimPepperRing",
     ],
     "supabase/functions/competitor-intel-worker/index.ts": [
       "META_COMPETITOR_IG_USER_ID",

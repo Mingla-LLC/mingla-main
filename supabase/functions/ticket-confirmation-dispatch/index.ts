@@ -88,7 +88,7 @@ import {
   mintOrderClaimToken,
   shouldIssueOrderAttendanceClaimForNotification,
 } from "../_shared/attendanceClaim.ts";
-import { resolveGovernedAdField } from "../_shared/governedAdSecret.ts";
+import { resolveAttendanceClaimPepperRing } from "../_shared/governedAdSecret.ts";
 
 const MINGLA_LOGO_URL = minglaLogoUrl();
 
@@ -730,7 +730,6 @@ async function handleWaitlistNotificationDispatch(
 // call site below: `chosenDate ?? masterDate`. `masterDate ?? chosenDate` would
 // compile and re-ship #2162 verbatim.
 
-
 function buildRenderContext(args: {
   order: OrderJoin;
   lineItems: Array<{
@@ -1056,6 +1055,7 @@ export const handler = async (req: Request): Promise<Response> => {
       event_id,
       buyer_name,
       buyer_email,
+      buyer_user_id,
       total_cents,
       currency,
       payment_method,
@@ -1495,20 +1495,26 @@ export const handler = async (req: Request): Promise<Response> => {
               paymentStatus: order.payment_status,
             })
           ) {
-            const pepper = resolveGovernedAdField(
-              "ATTENDANCE_CLAIM_PEPPER",
-              "ATTENDANCE_CLAIM_PEPPER",
-            );
-            if (!pepper) throw new Error("attendance_claim_pepper_missing");
+            const pepperRing = resolveAttendanceClaimPepperRing();
+            if (!pepperRing) {
+              throw new Error("attendance_claim_pepper_missing");
+            }
             const minted = mintOrderClaimToken();
-            const digest = await hmacOrderClaimDigest(minted.raw, pepper);
+            const digest = await hmacOrderClaimDigest(
+              minted.raw,
+              pepperRing.current.secret,
+            );
             const { data: issuance, error: issuanceError } = await supabase.rpc(
-              "issue_order_attendance_claim_proof",
+              "issue_order_attendance_claim_proof_v2",
               {
                 p_order_id: order.id,
                 p_event_id: order.event_id,
                 p_digest: bytesToPostgresHex(digest),
-                p_allow_retry_rotation: true,
+                p_generation: pepperRing.current.generation,
+                // A replay may finish the existing notification lease but may
+                // never rotate a proof that could already be in the buyer's
+                // possession.
+                p_allow_retry_rotation: false,
               },
             );
             if (issuanceError) throw new Error("attendance_claim_issue_failed");

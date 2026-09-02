@@ -142,7 +142,10 @@ export function violations(files) {
     [
       "json(503",
       '"claim_link_temporarily_unavailable"',
-      "resolveGovernedAdField",
+      "resolveAttendanceClaimPepperRing",
+      "issue_order_attendance_claim_proof_v2",
+      "p_generation: pepperRing.current.generation",
+      "p_allow_retry_rotation: true",
     ],
     "attendance-claim-link",
     failures,
@@ -335,7 +338,7 @@ function fixture() {
     audit:
       "findCallBoundaryArguments dynamic_call_expression_undeclared dynamic_call_expression_unused dynamic_import_not_static callArgumentsAt tokenizeSyntax decodeIdentifierEscape invalid_identifier_escape skipRegexLiteral parseModuleLinkage buildGovernedBindingPlan parameterDefaultReceiver IDENTIFIER_REFERENCE_SITE computed_namespace_member consumedMemberPositions unrecognized_deno_env_access indirect_deno_env_get dynamic_getter_reference_undeclared allowed_identifier_references",
     claimFunction:
-      'resolveGovernedAdField; json(503; "claim_link_temporarily_unavailable"',
+      'resolveAttendanceClaimPepperRing; issue_order_attendance_claim_proof_v2; p_generation: pepperRing.current.generation; p_allow_retry_rotation: true; json(503; "claim_link_temporarily_unavailable"',
     componentTest:
       'for (const os of ["web", "ios", "android"] all seven phases keep a working primary action only a transient error renders the retry control reduced motion resolves the transition duration to zero expect(typeof mounted.primary.props.onPress).toBe("function") expect(navigationsAfter).toBe(navigationsBefore + 1)',
     contract: JSON.stringify({

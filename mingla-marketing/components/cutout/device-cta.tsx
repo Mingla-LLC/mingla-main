@@ -135,7 +135,10 @@ export function DeviceCta({
    * is the same trade the icon already makes, and the alternative is a
    * hydration mismatch.
    */
-  const defaultText = platform === 'ios' || platform === 'android' ? 'Use Mingla' : 'Use Mingla Web'
+  const onPhone = platform === 'ios' || platform === 'android'
+  // Only HOST has a web app. Explorer on desktop opens a QR panel to install
+  // the app, so "Use Mingla Web" there promised something that does not exist.
+  const defaultText = !onPhone && surface === 'host' ? 'Use Mingla Web' : 'Use Mingla'
 
   const marks =
     platform === 'ios' ? (
