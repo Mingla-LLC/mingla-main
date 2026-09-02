@@ -156,7 +156,7 @@ function RunningTheater({
   )
 }
 
-export function PricingAuditExperience() {
+export function PricingAuditExperience({ embedded = false }: { readonly embedded?: boolean } = {}) {
   const [phase, setPhase] = useState<Phase>('intake')
 
   const [description, setDescription] = useState('')
@@ -285,7 +285,7 @@ export function PricingAuditExperience() {
   // ── REPORT ──────────────────────────────────────────────────────────────
   if (phase === 'report' && report && runId) {
     return (
-      <div className="px-4 py-10 sm:px-6 md:px-10 md:py-16 [padding-left:max(1rem,env(safe-area-inset-left))] [padding-right:max(1rem,env(safe-area-inset-right))]">
+      <div className={embedded ? 'p-0' : 'px-4 py-10 sm:px-6 md:px-10 md:py-16 [padding-left:max(1rem,env(safe-area-inset-left))] [padding-right:max(1rem,env(safe-area-inset-right))]'}>
         <div className="mx-auto max-w-3xl">
           <button
             type="button"
@@ -307,7 +307,7 @@ export function PricingAuditExperience() {
   // ── RUNNING ─────────────────────────────────────────────────────────────
   if (phase === 'running') {
     return (
-      <div className="px-6 py-16 md:px-10 md:py-24 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]">
+      <div className={embedded ? 'p-0' : 'px-6 py-16 md:px-10 md:py-24 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]'}>
         <div className="mx-auto max-w-xl">
           <RunningTheater
             key={attempt}
@@ -326,14 +326,16 @@ export function PricingAuditExperience() {
 
   // ── INTAKE ──────────────────────────────────────────────────────────────
   return (
-    <div className="px-6 py-14 md:px-10 md:py-20 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]">
+    <div className={embedded ? 'p-0' : 'px-6 py-14 md:px-10 md:py-20 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]'}>
       <div className="mx-auto max-w-2xl">
         <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm">
           The Undercharging Audit
         </span>
-        <h1 className="mt-4 font-display text-4xl leading-[1.08] tracking-[-0.02em] text-white md:text-5xl">
-          Are you charging what you’re worth?
-        </h1>
+        {embedded ? (
+          <h3 className="mt-4 font-display text-4xl leading-[1.08] tracking-[-0.02em] text-white md:text-5xl">Are you charging what you’re worth?</h3>
+        ) : (
+          <h1 className="mt-4 font-display text-4xl leading-[1.08] tracking-[-0.02em] text-white md:text-5xl">Are you charging what you’re worth?</h1>
+        )}
         <p className="mt-4 max-w-xl text-base leading-relaxed text-white/72 md:text-lg">
           Most hosts price by guilt and quietly lose money — because their own time was never in
           the number. Get a free audit: your true cost per head, what comparable experiences

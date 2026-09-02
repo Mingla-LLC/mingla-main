@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { type ReactNode } from 'react'
 import { CutoutShell } from '@/components/cutout'
-import { PAGE_SYSTEM_PATHS, type PageSystemPath } from '@/content/page-system/shared'
+import { LAUNCH_CITIES, PAGE_SYSTEM_PATHS, type PageSystemPath } from '@/content/page-system/shared'
+import { CityHostAcquisitionBar } from './city-host-acquisition-bar'
 import { PageSystemNav } from './page-system-nav'
 
 const REVIEW_LABELS: Record<PageSystemPath, string> = {
@@ -15,15 +16,18 @@ export function PageSystemShell({
   currentPath,
   futurePath,
   audience,
+  hostAcquisition = false,
 }: {
   readonly children: ReactNode
   readonly currentPath: PageSystemPath
   readonly futurePath: string
   readonly audience: 'city' | 'explorer' | 'host'
+  readonly hostAcquisition?: boolean
 }) {
   return (
     <CutoutShell>
-      <div className="page-system-root" data-page-system data-audience={audience}>
+      <div className="page-system-root" data-page-system data-audience={audience} data-host-acquisition={hostAcquisition ? 'true' : undefined}>
+        {hostAcquisition ? <CityHostAcquisitionBar /> : null}
         <PageSystemNav />
         <main id="main" className="page-system-printable">
           {children}
@@ -32,6 +36,7 @@ export function PageSystemShell({
           <div>
             <img src="/brand/mingla-wordmark.svg" alt="Mingla" width="116" height="41" />
             <p>Find the plan. Publish what people can join.</p>
+            <p className="ps-footer-cities">{LAUNCH_CITIES.join(' · ')}</p>
           </div>
           <nav aria-label="Footer">
             <Link href="/">Explorer</Link>

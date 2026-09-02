@@ -4,13 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/issue-2990-page-system.implementor.happy.test.mjs --source-only && next build",
-    "postbuild": "node scripts/issue-2990-page-system.tester.adversarial.test.mjs",
+    "build": "node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs --source-only && next build",
+    "postbuild": "node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs --built-only",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:search-foundation": "node scripts/verify-search-foundation.mjs",
-    "test:page-system": "node scripts/issue-2990-page-system.implementor.happy.test.mjs",
+    "test:page-system": "node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs",
     "test:orch-1130": "node ../.github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs --self-test && node ../.github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs"
   },
   "dependencies": {

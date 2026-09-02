@@ -1,125 +1,65 @@
-import { LAGOS_CITY_CONTENT as content } from '@/content/page-system/city-lagos'
-import { publicNoindexMetadata } from '@/lib/search/metadata'
-import {
-  AudienceFork,
-  CityNavigator,
-  DemoDisclosure,
-  DirectAnswer,
-  FinalConversion,
-  PersistentFaq,
-  SectionIntro,
-  SemanticFlow,
-} from '@/components/page-system/content-blocks'
-import { EditorialHero } from '@/components/page-system/editorial-hero'
-import { MotionAwareMontage } from '@/components/page-system/motion-aware-montage'
+import { CityCatalogue } from '@/components/page-system/city-catalogue'
 import { PageSystemShell } from '@/components/page-system/page-system-shell'
+import { EXPLORER_CATEGORIES, LAUNCH_CITIES, type ExplorerCategorySlug } from '@/content/page-system/shared'
+import { getLagosCatalogueSnapshot } from '@/lib/page-system/city-catalogue.server'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
 const CURRENT_PATH = '/internal/page-system/city-lagos' as const
+const FUTURE_PATH = '/cities/lagos'
 
 export const metadata = publicNoindexMetadata('/internal/page-system/city-lagos', {
-  title: 'Lagos city page-system review — Mingla',
-  description: 'Private noindex review of the balanced Mingla Explorer and Mingla Host city-page system for Lagos.',
+  title: 'Things to do in Lagos, ranked by Mingla',
+  description: 'A private review of 50 real places and Mingla editorial plans for exploring Lagos.',
 })
 
-function LagosAbstractVisual() {
-  return (
-    <figure className="ps-abstract-figure">
-      <MotionAwareMontage label="Abstract planning cards moving around a shared Mingla plan">
-        <div className="ps-orbit ps-orbit-a"><span>mood</span><strong>social</strong></div>
-        <div className="ps-orbit ps-orbit-b"><span>time</span><strong>evening</strong></div>
-        <div className="ps-orbit ps-orbit-c"><span>action</span><strong>confirm</strong></div>
-        <div className="ps-plan-core">
-          <span>the plan</span>
-          <strong>Lagos</strong>
-          <small>people · place · action</small>
-        </div>
-      </MotionAwareMontage>
-      <figcaption>Illustrative concept — an abstract planning composition, not Lagos location evidence.</figcaption>
-    </figure>
-  )
+function first(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value
 }
 
-export default function LagosCityReviewPage() {
+export default async function LagosCityReviewPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const query = await searchParams
+  const snapshot = getLagosCatalogueSnapshot()
+  const detail = first(query.detail) ?? null
+  const initialType = first(query.type) === 'plans' || detail?.startsWith('plan:') ? 'plans' : 'places'
+  const requestedCategories = first(query.categories)?.split(',') ?? []
+  const initialCategories = requestedCategories.filter(
+    (candidate): candidate is ExplorerCategorySlug => EXPLORER_CATEGORIES.some((category) => category.slug === candidate),
+  )
+  const validIntents = new Set(snapshot.plans.map((plan) => plan.generatedCardId.replace('lagos-editorial-', '')))
+  const initialIntents = (first(query.intents)?.split(',') ?? []).filter((intent) => validIntents.has(intent))
+
   return (
-    <PageSystemShell currentPath={CURRENT_PATH} futurePath={content.futurePath} audience="city">
-      <EditorialHero
-        eyebrow={content.eyebrow}
-        title={content.title}
-        lede={content.lede}
-        primary={{ label: 'Choose your side', href: '#choose-lagos-path' }}
-        breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Lagos' }]}
-        visual={<LagosAbstractVisual />}
+    <PageSystemShell currentPath={CURRENT_PATH} futurePath={FUTURE_PATH} audience="city" hostAcquisition>
+      <header className="ps-city-hero">
+        <p className="ps-eyebrow">Mingla Explorer · Lagos</p>
+        <h1>Things to do in Lagos, ranked by Mingla</h1>
+        <p>Browse 50 real picks across all ten Explorer categories, or open a ready-made plan.</p>
+        <div className="ps-city-proof" aria-label="Catalogue snapshot summary">
+          <span><strong>50</strong> real places</span>
+          <span><strong>10</strong> balanced categories</span>
+          <span><strong>{snapshot.plans.length}</strong> editorial plans</span>
+        </div>
+        <p className="ps-source-note">Private Explorer snapshot: scores captured 1 June 2026; place records reviewed 7 August 2026. The pool follows Mingla’s Lagos city assignment, so check each address before travelling.</p>
+      </header>
+
+      <CityCatalogue
+        places={snapshot.places}
+        plans={snapshot.plans}
+        initialType={initialType}
+        initialCategories={initialCategories}
+        initialIntents={initialIntents}
+        initialDetail={detail}
       />
 
-      <DirectAnswer
-        heading={content.answerHeading}
-        paragraphs={[content.answer]}
-        note={content.availability}
-      />
-
-      <AudienceFork items={content.audiencePaths} />
-
-      <DemoDisclosure
-        description="Fictional choices demonstrate the planning method. They are not live Lagos listings or recommendations."
-      >
-        <div className="ps-demo-grid">
-          {content.demoChoices.map((choice) => (
-            <article key={choice.name} className="ps-demo-card">
-              <h3>{choice.name}</h3>
-              <dl>
-                <div><dt>Occasion</dt><dd>{choice.occasion}</dd></div>
-                <div><dt>Mood</dt><dd>{choice.mood}</dd></div>
-                <div><dt>Time</dt><dd>{choice.time}</dd></div>
-                <div><dt>Known cost</dt><dd>{choice.cost}</dd></div>
-                <div><dt>Travel</dt><dd>{choice.travel}</dd></div>
-                <div><dt>Entry</dt><dd>{choice.entry}</dd></div>
-                <div><dt>Comfort</dt><dd>{choice.comfort}</dd></div>
-                <div><dt>Evidence needed</dt><dd>{choice.evidence}</dd></div>
-              </dl>
-            </article>
-          ))}
-        </div>
-      </DemoDisclosure>
-
-      <section className="ps-section ps-dark-band" aria-labelledby="paired-flow-heading">
-        <SectionIntro
-          eyebrow="One city, two complete paths"
-          title="Discovery and hosting meet at a supported action."
-          lede="The visual flow and the ordered text carry the same meaning."
-        />
-        <h3 id="paired-flow-heading" className="sr-only">Paired Mingla flows</h3>
-        <div className="ps-flow-grid">
-          {content.flows.map((flow) => <SemanticFlow key={flow.title} {...flow} />)}
-        </div>
+      <section className="ps-launch-cities" aria-labelledby="launch-cities-heading">
+        <p className="ps-eyebrow">The city system scales</p>
+        <h2 id="launch-cities-heading">Next launch cities</h2>
+        <p>{LAUNCH_CITIES.join(' · ')}</p>
       </section>
-
-      <section className="ps-section" aria-labelledby="lagos-evidence-heading">
-        <SectionIntro eyebrow="Publication boundary" title="Local truth comes before local claims." />
-        <div className="ps-evidence-feature">
-          <span aria-hidden="true">!</span>
-          <div>
-            <h3 id="lagos-evidence-heading">Evidence review pending</h3>
-            <p>{content.evidence}</p>
-          </div>
-        </div>
-      </section>
-
-      <CityNavigator />
-
-      <section className="ps-section" aria-labelledby="lagos-faq-heading">
-        <SectionIntro eyebrow="Clear limits" title="Questions this review page should answer." />
-        <h3 id="lagos-faq-heading" className="sr-only">Lagos page questions</h3>
-        <PersistentFaq items={content.faqs} />
-      </section>
-
-      <FinalConversion
-        title="Choose the side of the plan you are on."
-        body="Explore ideas and shape a plan, or use Mingla Host to publish what people can join."
-        actions={[
-          { label: 'Explore Mingla', href: '/' },
-          { label: 'Explore Mingla Host', href: '/host' },
-        ]}
-      />
     </PageSystemShell>
   )
 }
