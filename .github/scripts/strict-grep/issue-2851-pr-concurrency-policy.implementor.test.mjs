@@ -134,10 +134,15 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // untouched BY CONSTRUCTION -- #2881 never edits a `concurrency:` block. The
 // revert-sensitivity loop below is untouched and still red on reversion; the Sites
 // recovery lane stays exempt and byte-identical so that loop keeps its target.
+// [TEST-MOD-APPROVED #2967] The #1719 unified-sharing lane gained two `paths`
+// entries and two test steps for the bounded cover-video acknowledgement. That
+// lane is PR-family, so its non-concurrency document is inside this digest.
+// Every earlier re-derivation above is preserved, not replaced.
+// PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // [TEST-MOD-APPROVED #2986] The two approved search-validation commands
   // advance non-concurrency semantics; the 124-workflow policy is unchanged.
-  "f3b7c56ece055d7efc766e063e9df909abb2a2fb65bd4823a78ced727bdbffa5";
+  "9f9357a107cf6489c4952ae9be9503a16224bdcda86e312203c3eae8fdf42c2e";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

@@ -253,7 +253,21 @@ Deno.test("#2715 completed TUS with pending Bunny storage metadata stays retryab
     const body = await response.json();
     assert(response.status === 200, `provider registration lag returned ${response.status}`);
     assert(body.status === "source_uploading", "canonical retryable status was not preserved");
-    assert(h.updates.length === 0, "storage metadata lag mutated source truth");
+    // [TEST-MOD-APPROVED #2967] The original assertion was
+    // `h.updates.length === 0` — "storage metadata lag mutated source truth".
+    // #2967 supersedes it: the lag is now BOUNDED, and the bound needs an
+    // anchor, so the first pending pass records WHEN the TUS offsets matched.
+    // That write was the whole point (the production job's `updated_at` stayed
+    // frozen through 120 acknowledgements, which is why a permanent stall was
+    // indistinguishable from a two-second lag). The invariant #2715 actually
+    // owns — the lag must never advance status and must never fabricate a
+    // source offset — is asserted here instead, and still fails on revert.
+    assert(
+      h.updates.every((p) =>
+        p.status === undefined && p.tus_upload_offset === undefined
+      ),
+      "storage metadata lag mutated source truth",
+    );
   } finally {
     globalThis.fetch = old;
   }

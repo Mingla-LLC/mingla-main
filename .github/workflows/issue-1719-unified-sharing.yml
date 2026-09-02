@@ -91,6 +91,24 @@ jobs:
           supabase/functions/event-cover-video-webhook/index.issue2905.silent200.test.ts
           supabase/functions/event-cover-video-webhook/__tests__/bunny-webhook.test.ts
           supabase/functions/event-cover-video-reaper/__tests__/
+      # #2967 + #2974 — the acknowledgement deadline, the TUS-expiry death, and
+      # the client-side "a 4xx is never a spinner" rule. They live in this lane
+      # because the CI origin registry is locked at 200 origins
+      # (I-2148-CI-TOPOLOGY-BOUNDED) and this workflow already path-scopes both
+      # `supabase/functions/event-cover-video-*/**` and `mingla-business/**`.
+      - name: "#2967 cover-video acknowledgement deadline + TUS expiry"
+        run: >-
+          deno test --allow-env --allow-read --allow-net --no-check
+          supabase/functions/event-cover-video-source-uploaded/index.issue2967.test.ts
+      - name: "#2967/#2974 client acknowledgement bound + no-spinner-on-4xx"
+        run: >-
+          npx jest
+          src/hooks/__tests__/useEventCoverVideoUpload.ackDeadline.issue2967.test.ts
+          src/hooks/__tests__/useEventCoverVideoUpload.test.ts
+          src/components/ui/__tests__/coverPickerDiscardAffordance.issue2974.test.ts
+          src/components/event/__tests__/coverStepDraftPromotion.issue2974.test.ts
+          --runInBand
+        working-directory: mingla-business
 
   postgres-17-adversarial:
     if: ${{ github.event.pull_request.draft != true }}

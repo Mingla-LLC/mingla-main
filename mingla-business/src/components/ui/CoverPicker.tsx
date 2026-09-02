@@ -1743,6 +1743,13 @@ const VideoStatusCard: React.FC<{
         {stage.phase === "detached" ? <Button label={stage.sourceAcknowledged ? "Check now" : "Resume upload"} accessibilityLabel={stage.sourceAcknowledged ? "Check video status now" : "Resume video upload"} variant="secondary" size="md" onPress={stage.sourceAcknowledged ? onCheck : onResume} /> : null}
         {stage.phase === "ready" ? <Button label="Retry saving" accessibilityLabel="Retry saving ready video cover" variant="secondary" size="md" onPress={onRetryReady} /> : null}
         {stage.phase === "error" ? <Button label="Try again" variant="secondary" size="md" onPress={onRetry} /> : null}
+        {/* issue #2974 — the error copy used to tell people to "cancel it first"
+            while `active` excludes the error phase, so NEITHER the Cancel nor the
+            Replace button rendered and there was no reachable cancel control
+            anywhere in the sheet. This is that control: it drops the local upload
+            record (and cancels the server job when one exists) so the next pick
+            starts clean. */}
+        {stage.phase === "error" ? <Button label="Discard upload" accessibilityLabel="Discard this video upload and start over" variant="ghost" size="md" onPress={onCancel} /> : null}
         {active && stage.phase !== "reattaching" && stage.phase !== "applying" ? <Button label="Replace" accessibilityLabel="Replace video upload" variant="secondary" size="md" onPress={() => setConfirming("replace")} /> : null}
         {active && stage.phase !== "reattaching" && stage.phase !== "ready" && stage.phase !== "applying" ? <Button label="Cancel" accessibilityLabel="Cancel video upload" variant="ghost" size="md" onPress={() => setConfirming("cancel")} /> : null}
       </View>
