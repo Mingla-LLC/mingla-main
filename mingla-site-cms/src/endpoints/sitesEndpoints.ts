@@ -194,12 +194,21 @@ async function returnToMingla(req: PayloadRequest): Promise<Response> {
   try {
     const session = await sessionFromHeaders(req.headers);
     if (!session) throw new Error("SESSION_EXPIRED");
+    const headers = new Headers({
+      location: studioReturnLocation(session),
+      "cache-control": "no-store, private",
+    });
+    headers.append(
+      "set-cookie",
+      `${STUDIO_COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`,
+    );
+    headers.append(
+      "set-cookie",
+      `${STUDIO_CSRF_COOKIE}=; Path=/; Max-Age=0; Secure; SameSite=Lax`,
+    );
     return new Response(null, {
       status: 302,
-      headers: {
-        location: studioReturnLocation(session),
-        "cache-control": "no-store, private",
-      },
+      headers,
     });
   } catch (error) {
     return safeFailure(error);
