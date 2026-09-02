@@ -239,7 +239,11 @@
     },
     "agent-chat": {
       "migration_fallback_top_level": [],
-      "optional_top_level": [],
+      "optional_top_level": [
+        "DENO_DEPLOYMENT_ID",
+        "MINGLA_RELEASE_SHA",
+        "SB_EXECUTION_ID"
+      ],
       "required_bundle_fields": {},
       "required_top_level": [
         "GEMINI_API_KEY_ARI",
@@ -249,7 +253,11 @@
     },
     "agent-confirm-action": {
       "migration_fallback_top_level": [],
-      "optional_top_level": [],
+      "optional_top_level": [
+        "DENO_DEPLOYMENT_ID",
+        "MINGLA_RELEASE_SHA",
+        "SB_EXECUTION_ID"
+      ],
       "required_bundle_fields": {},
       "required_top_level": [
         "GEMINI_API_KEY_ARI",

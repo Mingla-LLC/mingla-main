@@ -12,7 +12,7 @@ import {
   fetchProfile,
   upsertProfile,
 } from "../services/agentChatService";
-import { agentQueryKeys } from "./useAgentChat";
+import { agentQueryKeys } from "./agentQueryKeys";
 import { useAuth } from "../context/AuthContext";
 
 const DISABLED_KEY = ["ari-preferences-disabled"] as const;

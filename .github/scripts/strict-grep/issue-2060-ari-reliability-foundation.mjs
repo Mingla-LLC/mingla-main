@@ -7,7 +7,12 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const FILES = {
   edge: "supabase/functions/_shared/agentReliability.ts",
+  edgeHttp: "supabase/functions/_shared/agentReliabilityHttp.ts",
+  agentChat: "supabase/functions/agent-chat/index.ts",
+  agentConfirm: "supabase/functions/agent-confirm-action/index.ts",
   business: "mingla-business/src/services/agentReliability.ts",
+  agentChatService: "mingla-business/src/services/agentChatService.ts",
+  useAgentChat: "mingla-business/src/hooks/useAgentChat.ts",
   ledger: "docs/contracts/ari-capability-ledger.json",
   owners: "docs/contracts/ari-certification-domain-owners.json",
   observability: "docs/contracts/ari-observability.json",
@@ -17,6 +22,7 @@ const FILES = {
   certifier: "scripts/ari/certify-capabilities.mjs",
   migration: "supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql",
   currentMigration: "supabase/migrations/20270609002830_issue_2830_mingla_sites_foundation.sql",
+  setDigestMigration: "supabase/migrations/20270610002060_issue_2060_ari_cert_requirements_set_digest_post_2830.sql",
   invariants: "docs/INVARIANT_REGISTRY.md",
   rollback: "docs/runbooks/ARI_RELIABILITY_ROLLBACK.md",
   workflow: ".github/workflows/issue-2060-ari-reliability.yml",
@@ -83,12 +89,19 @@ export function checkContract(fixture) {
   );
   assert.equal(fixture.digest.contract, "ARI-CERT-TUPLE-V1", "portable digest contract");
 
-  const seamOwners = new Map(fixture.seams.seams.map((seam) => [seam.id, seam.owner_issue]));
-  assert.equal(seamOwners.get("task_state_and_client_turn"), 1985, "#1985 task-state owner");
-  assert.equal(seamOwners.get("atomic_execution_receipt"), 1972, "#1972 receipt owner");
-  assert.equal(seamOwners.get("brand_domain_readback"), 2063, "#2063 brand owner");
-  assert.equal(fixture.seams.seams.every((seam) => seam.state === "dependency_pending"), true, "unmerged seams must remain pending");
-  assert.equal(fixture.observability.status, "integration_held_until_1972_1985_merge", "observability hot-path integration must remain dependency-held");
+  const seamById = new Map(fixture.seams.seams.map((seam) => [seam.id, seam]));
+  assert.equal(seamById.get("task_state_and_client_turn")?.owner_issue, 1985, "#1985 task-state owner");
+  assert.equal(seamById.get("atomic_execution_receipt")?.owner_issue, 1972, "#1972 receipt owner");
+  assert.equal(seamById.get("brand_domain_readback")?.owner_issue, 2063, "#2063 brand owner");
+  assert.equal(seamById.get("task_state_and_client_turn")?.state, "ready", "#1985 seam must be ready");
+  assert.equal(seamById.get("atomic_execution_receipt")?.state, "ready", "#1972 seam must be ready");
+  assert.equal(seamById.get("brand_domain_readback")?.state, "ready", "#2063 brand seam must be ready");
+  assert.equal(
+    seamById.get("venue_operations_readback")?.state,
+    "dependency_pending",
+    "venue ops receipt-backed confirm alias remains dependency-pending",
+  );
+  assert.equal(fixture.observability.status, "hot_path_wired", "observability must reflect hot-path wire");
   for (const metric of ["dedupe_replay_count", "stuck_executing_count", "reconciliation_age_ms", "telemetry_missing_count"]) {
     assert.ok(fixture.observability.required_metrics.includes(metric), `missing observability metric ${metric}`);
   }
@@ -111,11 +124,54 @@ export function checkContract(fixture) {
     ": ARI_UNATTESTED_RELEASE",
     "createAriDeadline",
     "decideAriFinalization",
+    "mapLegacyAriErrorCode",
     'event: "ari_reliability"',
     "tenant_ref: string | null",
     "sanitizeAriTelemetryEvent",
     "user_message: definition.userMessage",
   ], "edge reliability");
+
+  need(fixture.edgeHttp, [
+    "runWithAriRequest",
+    "ariJsonResponse",
+    "ariErrorResponse",
+    "emitAriPhase",
+    "successEnvelope",
+    "errorEnvelope",
+  ], "edge reliability HTTP");
+
+  need(fixture.agentChat, [
+    'from "../_shared/agentReliabilityHttp.ts"',
+    "runWithAriRequest",
+    "ariJsonResponse",
+    "ariErrorResponse",
+    'emitAriPhase("received"',
+    'emitAriPhase("authorized"',
+  ], "agent-chat hot-path wire");
+
+  need(fixture.agentConfirm, [
+    'from "../_shared/agentReliabilityHttp.ts"',
+    "decideAriFinalization",
+    "runWithAriRequest",
+    "ariJsonResponse",
+    "ariErrorResponse",
+    'emitAriPhase("execution_claimed"',
+    'emitAriPhase("canonical_readback"',
+    "updateAriRequest({ executionId: body.pending_action_id })",
+  ], "agent-confirm-action hot-path wire");
+
+  need(fixture.agentChatService, [
+    'from "./agentReliability"',
+    "assertAriEnvelope",
+    "unwrapAriDomainPayload",
+    "allowUnattestedRelease",
+  ], "Business agentChatService envelope unwrap");
+
+  need(fixture.useAgentChat, [
+    "canDispatchAriIntent",
+    "reduceAriClientIntent",
+    "createAriClientIntent",
+  ], "useAgentChat recovery gate");
 
   need(fixture.business, [
     "stableId: string",
@@ -182,6 +238,14 @@ export function checkContract(fixture) {
     "'capability_count', 132",
   ], "#2830 current certification upgrade");
 
+  need(fixture.setDigestMigration, [
+    "private.ari_cert_requirements_set_digest_v1",
+    "'requirements-set'",
+    "'requirement'",
+    "v_requirements_digest := private.ari_cert_requirements_set_digest_v1()",
+    "IS DISTINCT FROM private.ari_cert_requirements_set_digest_v1()",
+  ], "#2060 Pass-5 requirements set digest");
+
   need(fixture.migration, [
     "CREATE TABLE IF NOT EXISTS public.ari_cert_runs",
     "CREATE TABLE IF NOT EXISTS public.ari_cert_evidence",
@@ -233,6 +297,8 @@ export function checkContract(fixture) {
     "issue_2060_ari_certification_foundation.test.ts",
     "certify-capabilities.issue2060.test.mjs",
     "agentReliability.issue2060.test.ts",
+    "issue_2060_ari_envelope_wire.implementor.test.ts",
+    "agentChatService.issue2060.wire.test.ts",
     "deno check supabase/functions/_shared/agentReliability.ts",
     "npx tsc --noEmit --pretty false",
     "issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
@@ -277,6 +343,8 @@ function selfTest() {
   bad(good, (x) => x.ledger.capabilities.pop(), "reduced ledger");
   bad(good, (x) => { delete x.owners.domains.brands; }, "missing owner");
   bad(good, (x) => { x.seams.seams[0].owner_issue = 2060; }, "competing state owner");
+  bad(good, (x) => { x.seams.seams[0].state = "dependency_pending"; }, "task-state seam reverted");
+  bad(good, (x) => { x.observability.status = "integration_held_until_1972_1985_merge"; }, "observability held again");
   bad(good, (x) => { x.observability.required_alerts.pop(); }, "missing alert");
   bad(good, (x) => { x.edge = x.edge.replaceAll('"RESULT_UNKNOWN"', '"RESULT_LOST"'); }, "unknown result family");
   bad(good, (x) => { x.business = x.business.replaceAll('reason: "offline"', 'reason: "terminal"'); }, "offline gate");
@@ -299,9 +367,12 @@ function selfTest() {
   bad(good, (x) => { x.certifier = x.certifier.replace("signCertificationAttestation", "trustCallerAttestation"); }, "unsigned certification");
   bad(good, (x) => { x.migration = x.migration.replace("extensions.hmac", "caller_signature"); }, "server signature removed");
   bad(good, (x) => { x.migration = x.migration.replaceAll("private.ari_cert_verified_provenance", "private.unverified_claims"); }, "canonical provenance removed");
+  bad(good, (x) => { x.setDigestMigration = x.setDigestMigration.replaceAll("ari_cert_requirements_set_digest_v1", "ari_cert_requirements_count_only"); }, "set-digest helper removed");
   bad(good, (x) => { x.workflow = x.workflow.replaceAll("issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql", "missing-unicode-boundary.test.sql"); }, "Unicode boundary CI wiring");
   bad(good, (x) => { x.unicodeBoundaryGuard = x.unicodeBoundaryGuard.replace("issue_2060_unicode_value_not_bound", "unicode_values_unbound"); }, "Unicode bound-field guard removed");
-  console.log("issue-2060 self-test: 1 GOOD + 27 BAD fixtures passed");
+  bad(good, (x) => { x.agentChat = x.agentChat.replaceAll("agentReliabilityHttp", "agentReliabilityMissing"); }, "agent-chat wire removed");
+  bad(good, (x) => { x.agentConfirm = x.agentConfirm.replaceAll("decideAriFinalization", "decideNothing"); }, "confirm finalization removed");
+  console.log("issue-2060 self-test: 1 GOOD + 31 BAD fixtures passed");
 }
 
 if (process.argv.includes("--self-test")) selfTest();

@@ -31,7 +31,7 @@ import {
   deleteConversation,
   type AgentConversation,
 } from "../../services/agentChatService";
-import { agentQueryKeys } from "../../hooks/useAgentChat";
+import { agentQueryKeys } from "../../hooks/agentQueryKeys";
 
 export interface ConversationDrawerProps {
   visible: boolean;

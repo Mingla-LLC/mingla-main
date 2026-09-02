@@ -83,6 +83,13 @@ import {
   chooseEffectiveTimezone,
   plannerClockContext,
 } from "../_shared/agentRelativeTime.ts";
+import {
+  ariErrorResponse,
+  ariJsonResponse,
+  emitAriPhase,
+  runWithAriRequest,
+  updateAriRequest,
+} from "../_shared/agentReliabilityHttp.ts";
 
 const MAX_MESSAGE_LENGTH = 4096;
 const HISTORY_WINDOW = 10;
@@ -429,10 +436,7 @@ async function commitTextTurn(args: {
 }
 
 function jsonResponse(status: number, body: Response_): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return ariJsonResponse(status, body);
 }
 
 function errorResponse(
@@ -441,7 +445,8 @@ function errorResponse(
   message: string,
   recovery?: { retry_after_seconds?: number; cooldown_until?: string },
 ): Response {
-  return jsonResponse(status, { kind: "error", code, message, ...recovery });
+  // Legacy `message` is intentionally discarded — registry owns user_message.
+  return ariErrorResponse(status, code, message, recovery);
 }
 
 function tenantScopeResponse(
@@ -482,35 +487,43 @@ function schemaErrorResponse(err: unknown): Response | null {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-  if (req.method !== "POST") {
-    return errorResponse(405, "METHOD_NOT_ALLOWED", "POST required");
-  }
+  return await runWithAriRequest({
+    requestIdHeader: req.headers.get("x-request-id"),
+  }, async () => {
+    emitAriPhase("received", { operationState: "sending" });
+    if (req.method === "OPTIONS") {
+      return new Response("ok", { headers: corsHeaders });
+    }
+    if (req.method !== "POST") {
+      return errorResponse(405, "METHOD_NOT_ALLOWED", "POST required");
+    }
 
-  // Race the handler against a wall-clock timeout
-  const timeout = new Promise<Response>((resolve) =>
-    setTimeout(
-      () =>
-        resolve(
-          errorResponse(504, "TIMEOUT", "Ari is taking too long — try again"),
-        ),
-      WALL_CLOCK_TIMEOUT_MS,
-    )
-  );
+    // Race the handler against a wall-clock timeout
+    const timeout = new Promise<Response>((resolve) =>
+      setTimeout(
+        () =>
+          resolve(
+            errorResponse(
+              504,
+              "TIMEOUT",
+              "Ari is taking too long — try again",
+            ),
+          ),
+        WALL_CLOCK_TIMEOUT_MS,
+      )
+    );
 
-  // Top-level safety net — without this, an uncaught exception in handle()
-  // returns Deno's default 500 with no body, leaving the client with a
-  // generic "Edge Function returned a non-2xx status code". Surface the
-  // exception message in a typed response so we can debug from the toast.
-  const wrapped = handle(req).catch((err: unknown) => {
-    const message = err instanceof Error ? err.message : String(err);
-    logError("agent-chat uncaught handler error", err, { fn: "agent-chat" });
-    return errorResponse(500, "HANDLER_THREW", `agent-chat threw: ${message}`);
+    // Top-level safety net — without this, an uncaught exception in handle()
+    // returns Deno's default 500 with no body, leaving the client with a
+    // generic "Edge Function returned a non-2xx status code". Exception text
+    // stays in structured logs only; the envelope never echoes it.
+    const wrapped = handle(req).catch((err: unknown) => {
+      logError("agent-chat uncaught handler error", err, { fn: "agent-chat" });
+      return errorResponse(500, "HANDLER_THREW", "agent-chat threw");
+    });
+
+    return await Promise.race([wrapped, timeout]);
   });
-
-  return await Promise.race([wrapped, timeout]);
 });
 
 async function handle(req: Request): Promise<Response> {
@@ -555,6 +568,7 @@ async function handle(req: Request): Promise<Response> {
   ) {
     return errorResponse(400, "BAD_REQUEST", "client_turn_id must be a UUID");
   }
+  updateAriRequest({ clientTurnId: body.client_turn_id });
   const requestMessage = typeof body.message === "string"
     ? body.message.trim()
     : "";
@@ -582,6 +596,7 @@ async function handle(req: Request): Promise<Response> {
     return errorResponse(401, "UNAUTHORIZED", "Invalid or expired session");
   }
   const userId = userData.user.id;
+  emitAriPhase("authorized", { operationState: "sending" });
 
   // Rate limit — uses service role (system table reads only)
   let serviceClient: SupabaseClient;

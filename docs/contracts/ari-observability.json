@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "contract": "I-ARI-CORRELATED-RELEASE-TRUTH",
-  "status": "integration_held_until_1972_1985_merge",
+  "status": "hot_path_wired",
   "event_name": "ari_reliability",
   "required_dimensions": [
     "release_sha",

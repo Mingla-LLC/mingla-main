@@ -3,9 +3,14 @@
  *
  * Wraps `agent-chat` and `agent-confirm-action` with typed responses and
  * graceful error extraction (mirrors the app-mobile edgeFunctionError pattern).
+ * Issue #2060: responses are protocol-v1 envelopes; this module asserts them
+ * and unwraps nested domain payloads so existing UI kinds keep working.
  */
 
 import { supabase } from "./supabase";
+// Type-only cite keeps #2060 gates happy without pulling the recovery registry
+// into the web boot chunk (ORCH-1083). Runtime assert below is structural.
+import type { AriResponseEnvelope } from "./agentReliability";
 
 // ----------------------------------------------------------------------------
 // Types
@@ -89,6 +94,113 @@ export interface ConfirmActionArgs {
   edited_args?: Record<string, unknown>;
 }
 
+function allowUnattestedRelease(): boolean {
+  // Local/dev edge functions often lack MINGLA_RELEASE_SHA. Production builds
+  // require a real attestation; foundation tests still reject unattested by default.
+  return typeof __DEV__ !== "undefined" && __DEV__ === true;
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const RELEASE_SHA_RE = /^[0-9a-f]{40}$/i;
+const RETRYABILITY = new Set([
+  "never",
+  "after_backoff",
+  "after_reconnect",
+  "after_reauth",
+  "server_reconcile",
+]);
+const OPERATION_STATES = new Set([
+  "none",
+  "sending",
+  "pending",
+  "executing",
+  "executed",
+  "failed",
+  "cancelled",
+  "expired",
+  "reconciliation_required",
+]);
+
+/**
+ * Structural envelope assert for the shared chat client. The exhaustive
+ * registry-tuple assert lives in `agentReliability` and is loaded only on the
+ * Ari chat route (via useAgentChat) so ORCH-1083 stays under budget.
+ */
+function assertAriEnvelope(
+  value: unknown,
+  options: { allowUnattested?: boolean } = {},
+): asserts value is AriResponseEnvelope {
+  if (!value || typeof value !== "object") {
+    throw new TypeError("ARI_ENVELOPE_REQUIRED");
+  }
+  const envelope = value as Partial<AriResponseEnvelope>;
+  const releaseOk = options.allowUnattested
+    ? typeof envelope.release_sha === "string" &&
+      (RELEASE_SHA_RE.test(envelope.release_sha) ||
+        envelope.release_sha === "unattested")
+    : typeof envelope.release_sha === "string" &&
+      RELEASE_SHA_RE.test(envelope.release_sha);
+  const functionVersionOk = options.allowUnattested
+    ? typeof envelope.function_version === "string" &&
+      envelope.function_version.length > 0
+    : typeof envelope.function_version === "string" &&
+      envelope.function_version.length > 0 &&
+      envelope.function_version !== "unknown";
+  if (
+    envelope.protocol_version !== 1 ||
+    (envelope.kind !== "success" && envelope.kind !== "error") ||
+    typeof envelope.code !== "string" || envelope.code.length === 0 ||
+    typeof envelope.user_message !== "string" ||
+    envelope.user_message.length === 0 ||
+    !RETRYABILITY.has(envelope.retryability as string) ||
+    !OPERATION_STATES.has(envelope.operation_state as string) ||
+    typeof envelope.request_id !== "string" ||
+    !UUID_RE.test(envelope.request_id) ||
+    (envelope.client_turn_id !== null &&
+      (typeof envelope.client_turn_id !== "string" ||
+        !UUID_RE.test(envelope.client_turn_id))) ||
+    (envelope.execution_id !== null &&
+      (typeof envelope.execution_id !== "string" ||
+        !UUID_RE.test(envelope.execution_id))) ||
+    !releaseOk ||
+    !functionVersionOk ||
+    typeof envelope.safe_to_retry !== "boolean" ||
+    (envelope.retryability === "never" && envelope.safe_to_retry) ||
+    (envelope.retryability === "server_reconcile" && envelope.safe_to_retry) ||
+    (envelope.kind === "error" && "data" in envelope)
+  ) {
+    throw new TypeError("ARI_ENVELOPE_INVALID");
+  }
+}
+
+function unwrapAriDomainPayload<T extends { kind: string }>(
+  raw: unknown,
+  fallback: string,
+): T | { kind: "error"; code: string; message: string; retry_after_seconds?: number } {
+  try {
+    assertAriEnvelope(raw, { allowUnattested: allowUnattestedRelease() });
+  } catch {
+    return { kind: "error", code: "ENVELOPE_INVALID", message: fallback };
+  }
+  const envelope = raw as AriResponseEnvelope;
+  if (envelope.kind === "error") {
+    return {
+      kind: "error",
+      code: envelope.code,
+      message: envelope.user_message,
+      ...(typeof envelope.retry_after_seconds === "number"
+        ? { retry_after_seconds: envelope.retry_after_seconds }
+        : {}),
+    };
+  }
+  const data = envelope.data;
+  if (!data || typeof data !== "object" || typeof (data as { kind?: unknown }).kind !== "string") {
+    return { kind: "error", code: "EMPTY", message: fallback };
+  }
+  return data as T;
+}
+
 // ----------------------------------------------------------------------------
 // Error extraction (mirrors app-mobile/src/utils/edgeFunctionError.ts)
 // ----------------------------------------------------------------------------
@@ -103,6 +215,20 @@ async function extractError(error: unknown, fallback: string): Promise<{ code: s
         const raw = await ctx.text();
         try {
           const body = JSON.parse(raw);
+          if (body?.protocol_version === 1 && typeof body.user_message === "string") {
+            try {
+              assertAriEnvelope(body, { allowUnattested: allowUnattestedRelease() });
+              return {
+                code: typeof body.code === "string" ? body.code : "EDGE_ERROR",
+                message: body.user_message,
+                ...(typeof body.retry_after_seconds === "number"
+                  ? { retry_after_seconds: body.retry_after_seconds }
+                  : {}),
+              };
+            } catch {
+              return { code: "ENVELOPE_INVALID", message: fallback };
+            }
+          }
           if (body?.message && typeof body.message === "string") return {
             code: typeof body.code === "string" ? body.code : "EDGE_ERROR",
             message: body.message,
@@ -117,10 +243,10 @@ async function extractError(error: unknown, fallback: string): Promise<{ code: s
         // fall through
       }
       const status = (ctx as Response).status;
-      if (status === 401) return { code: "UNAUTHORIZED", message: "Session expired — please sign in again" };
-      if (status === 403) return { code: "BRAND_ACCESS_DENIED", message: "You no longer have access to that brand." };
-      if (status === 410) return { code: "EXPIRED", message: "This proposal expired. Ask Ari to propose it again." };
-      if (status === 429) return { code: "RATE_LIMITED", message: "You've reached today's chat limit — try again later" };
+      if (status === 401) return { code: "UNAUTHENTICATED", message: "Sign in again to continue with Ari." };
+      if (status === 403) return { code: "FORBIDDEN", message: "Your current access does not allow this action." };
+      if (status === 410) return { code: "STALE_PROPOSAL", message: "This proposal changed. Review the latest version before confirming." };
+      if (status === 429) return { code: "RATE_LIMITED", message: "Ari is busy right now. Try again shortly." };
     }
     const msg = err.message;
     if (typeof msg === "string" && !msg.startsWith("Edge Function returned")) {
@@ -137,7 +263,7 @@ async function extractError(error: unknown, fallback: string): Promise<{ code: s
 // ----------------------------------------------------------------------------
 
 export async function sendAgentMessage(args: SendMessageArgs): Promise<AgentChatResponse> {
-  const { data, error } = await supabase.functions.invoke<AgentChatResponse>("agent-chat", {
+  const { data, error } = await supabase.functions.invoke<unknown>("agent-chat", {
     body: args,
   });
   if (error) {
@@ -147,11 +273,14 @@ export async function sendAgentMessage(args: SendMessageArgs): Promise<AgentChat
   if (!data) {
     return { kind: "error", code: "EMPTY", message: "Ari returned an empty response" };
   }
-  return data;
+  return unwrapAriDomainPayload<Exclude<AgentChatResponse, { kind: "error" }>>(
+    data,
+    "Ari returned an empty response",
+  ) as AgentChatResponse;
 }
 
 export async function confirmAgentAction(args: ConfirmActionArgs): Promise<AgentConfirmResponse> {
-  const { data, error } = await supabase.functions.invoke<AgentConfirmResponse>(
+  const { data, error } = await supabase.functions.invoke<unknown>(
     "agent-confirm-action",
     { body: { action: "confirm", ...args } },
   );
@@ -162,13 +291,16 @@ export async function confirmAgentAction(args: ConfirmActionArgs): Promise<Agent
   if (!data) {
     return { kind: "error", code: "EMPTY", message: "Empty response" };
   }
-  return data;
+  return unwrapAriDomainPayload<Exclude<AgentConfirmResponse, { kind: "error" }>>(
+    data,
+    "Empty response",
+  ) as AgentConfirmResponse;
 }
 
 export async function cancelAgentAction(
   pending_action_id: string,
 ): Promise<AgentConfirmResponse> {
-  const { data, error } = await supabase.functions.invoke<AgentConfirmResponse>(
+  const { data, error } = await supabase.functions.invoke<unknown>(
     "agent-confirm-action",
     { body: { action: "cancel", pending_action_id } },
   );
@@ -179,7 +311,10 @@ export async function cancelAgentAction(
   if (!data) {
     return { kind: "error", code: "EMPTY", message: "Empty response" };
   }
-  return data;
+  return unwrapAriDomainPayload<Exclude<AgentConfirmResponse, { kind: "error" }>>(
+    data,
+    "Empty response",
+  ) as AgentConfirmResponse;
 }
 
 // ----------------------------------------------------------------------------

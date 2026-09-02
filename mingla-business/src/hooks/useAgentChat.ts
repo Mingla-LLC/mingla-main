@@ -2,6 +2,7 @@
  * ORCH-0821 — useAgentChat
  * Manages chat state for one conversation: message history (React Query),
  * sendMessage mutation, pending-action tracking.
+ * Issue #2060: gates Send through canDispatchAriIntent / reduceAriClientIntent.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -14,14 +15,16 @@ import {
   fetchMessages,
   sendAgentMessage,
 } from "../services/agentChatService";
+import {
+  AriClientIntentRecord,
+  canDispatchAriIntent,
+  createAriClientIntent,
+  reduceAriClientIntent,
+} from "../services/agentReliability";
+import { useShareNetworkState } from "../components/ui/useShareNetworkState";
+import { agentQueryKeys } from "./agentQueryKeys";
 
-export const agentQueryKeys = {
-  conversationsRoot: () => ["ari", "conversations"] as const,
-  conversations: (brandId: string | null = null) => ["ari", "conversations", brandId ?? "unscoped"] as const,
-  messages: (conversationId: string | null) =>
-    ["ari", "messages", conversationId ?? "new"] as const,
-  profile: () => ["ari", "profile"] as const,
-};
+export { agentQueryKeys };
 
 export interface PendingActionView {
   pending_action_id: string;
@@ -121,6 +124,8 @@ export function useAgentChat(
   // ORCH-1004 — agent conversation messages are RLS auth.uid()-scoped; gate on
   // auth readiness so a pre-auth fire can't cache an empty thread as success.
   const { isAuthReady } = useAuth();
+  const online = useShareNetworkState();
+  const sendIntentRef = useRef<AriClientIntentRecord | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
   const [pendingAction, setPendingAction] = useState<PendingActionView | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -190,7 +195,12 @@ export function useAgentChat(
           ...prev.filter((m) => m.client_turn_id !== vars.clientTurnId),
           makeFailedMessage(vars.displayText, conversationId, vars.clientTurnId),
         ]);
-        if (response.code === "TASK_STATE_CONFLICT" || response.code === "CHOICE_STALE") {
+        if (
+          response.code === "TASK_STATE_CONFLICT" ||
+          response.code === "CHOICE_STALE" ||
+          response.code === "STALE_PROPOSAL" ||
+          response.code === "CONFLICT"
+        ) {
           void qc.invalidateQueries({ queryKey: agentQueryKeys.messages(conversationId) });
         }
         return;
@@ -236,36 +246,82 @@ export function useAgentChat(
   ): Promise<AgentChatResponse> => {
     setErrorMessage(null);
     setErrorCode(null);
+    const intent = createAriClientIntent({
+      intent: "send",
+      conversationId,
+      brandId,
+      draftText: displayText,
+    }, () => clientTurnId);
+    const current = sendIntentRef.current?.stableId === clientTurnId
+      ? sendIntentRef.current
+      : intent;
+    const gate = canDispatchAriIntent(current, online !== false);
+    if (!gate.allowed) {
+      const blocked: AgentChatResponse = {
+        kind: "error",
+        code: gate.reason === "offline"
+          ? "OFFLINE"
+          : gate.reason === "server_reconcile"
+          ? "RECONCILIATION_REQUIRED"
+          : "IN_FLIGHT",
+        message: gate.reason === "offline"
+          ? "You are offline. Your request is still here for you to retry."
+          : gate.reason === "server_reconcile"
+          ? "Ari is verifying the result before showing it as complete."
+          : "Ari is already working on that request.",
+      };
+      setErrorMessage(blocked.message);
+      setErrorCode(blocked.code);
+      return blocked;
+    }
+    sendIntentRef.current = reduceAriClientIntent(current, { type: "dispatch_started" });
     turnPayloads.current.set(clientTurnId, payload);
     setFailedMessages((prev) => prev.filter((m) => m.client_turn_id !== clientTurnId));
     const optimistic = makeOptimisticMessage(displayText, conversationId);
     setOptimisticMessages((prev) => [...prev, optimistic]);
-    return sendMutation.mutateAsync({
-      displayText,
-      optimisticId: optimistic.id,
-      clientTurnId,
-      epoch: brandEpoch.current,
-      ...payload,
-    });
-  }, [conversationId, sendMutation]);
-
-  const sendMessage = useCallback(
-    async (text: string): Promise<AgentChatResponse> => {
-      setErrorMessage(null);
-      setErrorCode(null);
-      const clientTurnId = newClientTurnId();
-      turnPayloads.current.set(clientTurnId, { message: text });
-      const optimistic = makeOptimisticMessage(text, conversationId);
-      setOptimisticMessages((prev) => [...prev, optimistic]);
-      return sendMutation.mutateAsync({
-        displayText: text,
-        message: text,
+    try {
+      const response = await sendMutation.mutateAsync({
+        displayText,
         optimisticId: optimistic.id,
         clientTurnId,
         epoch: brandEpoch.current,
+        ...payload,
       });
+      if (sendIntentRef.current?.stableId === clientTurnId) {
+        if (response.kind === "error") {
+          sendIntentRef.current = reduceAriClientIntent(sendIntentRef.current, {
+            type: "transport_uncertain",
+            code: response.code,
+          });
+        } else {
+          // Terminal success for this turn — retries must mint a new turn.
+          sendIntentRef.current = {
+            ...sendIntentRef.current,
+            state: "terminal",
+            lastCode: response.kind === "pending_action"
+              ? "PROPOSAL_READY"
+              : "PROPOSAL_READY",
+            retryAt: null,
+          };
+        }
+      }
+      return response;
+    } catch (err) {
+      if (sendIntentRef.current?.stableId === clientTurnId) {
+        sendIntentRef.current = reduceAriClientIntent(sendIntentRef.current, {
+          type: "transport_uncertain",
+          code: "TRANSPORT_UNAVAILABLE",
+        });
+      }
+      throw err;
+    }
+  }, [brandId, conversationId, online, sendMutation]);
+
+  const sendMessage = useCallback(
+    async (text: string): Promise<AgentChatResponse> => {
+      return sendTurn(text, { message: text });
     },
-    [conversationId, sendMutation],
+    [sendTurn],
   );
 
   const sendChoice = useCallback(
