@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-02 — Main and innocent pull requests can pass the complete class-A architecture checks again because independent CI authorities now recognize the reviewed Host search contracts they were missing (#3033, PR #3034)
 - 2026-09-02 — Mingla Studio now opens after a secure Website handoff with access to only the operator's hidden tenant, and Return to Mingla safely ends that Studio session (#3029, PR #3030)
 - 2026-09-02 — Mingla's marketing site now has one canonical search identity, factual search metadata and schema, explicit crawler/index rules, and a verified sitemap foundation for Explorer and Host growth (#2981, release recovery #3021, PR #3022)
 - 2026-09-01 — Host can now open the Website workspace in the browser because the Sites control gateway returns the complete browser contract on preflight, success, and safe failure responses (#3016, PR #3018)
