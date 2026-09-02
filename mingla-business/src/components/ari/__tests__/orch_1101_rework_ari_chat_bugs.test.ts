@@ -112,6 +112,7 @@ describe("ORCH-1101 REWORK · #2 — optimistic user message renders instantly",
     expect(block).toMatch(/optimistic-/);
   });
 
+  // [TEST-MOD-APPROVED #2060] — #2060 moved optimistic insert from sendMessage into sendTurn.
   it("inserts the optimistic bubble synchronously in sendTurn, before mutateAsync", () => {
     const sendBlock = useAgentChat.slice(
       useAgentChat.indexOf("const sendTurn = useCallback"),
