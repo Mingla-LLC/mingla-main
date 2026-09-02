@@ -422,7 +422,15 @@ BEGIN
   END IF;
 
   v_current_match := v_current IS NOT NULL
-    AND public.fixed_digest_equal(v_current, p_current_proof_digest);
+    AND CASE
+      -- Pre-governance orders keep their legacy proof in the active slot. Once
+      -- the governed reader is live, the Edge function supplies that proof in
+      -- the legacy argument rather than the governed/current argument.
+      WHEN p_kind = 'order' AND v_generation = 'legacy_v1' THEN
+        p_legacy_proof_digest IS NOT NULL
+          AND public.fixed_digest_equal(v_current, p_legacy_proof_digest)
+      ELSE public.fixed_digest_equal(v_current, p_current_proof_digest)
+    END;
   v_legacy_match := v_legacy IS NOT NULL
     AND p_legacy_proof_digest IS NOT NULL
     AND public.fixed_digest_equal(v_legacy, p_legacy_proof_digest);

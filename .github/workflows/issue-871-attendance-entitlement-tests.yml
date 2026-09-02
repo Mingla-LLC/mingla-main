@@ -72,6 +72,10 @@ jobs:
             supabase/functions/ticket-confirmation-dispatch/__tests__/issue_2979_ticket_confirmation_claim.tester.adversarial.test.ts; do
             if [[ -f "$test_file" ]]; then deno test --allow-read --allow-env "$test_file"; fi
           done
+      - name: Execute Android attendance CTA reachability contract
+        run: >-
+          node
+          app-mobile/src/components/__tests__/issue_2979_attendance_claim_android_cta.implementor.happy.test.tsx
       - name: Execute invariant guard and its revert self-test
         run: |
           node .github/scripts/strict-grep/issue-871-attendance-entitlement.mjs --self-test
