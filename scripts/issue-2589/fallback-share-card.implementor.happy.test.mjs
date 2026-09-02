@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { SUITES_ADDED_SINCE_SEAL } from '../../.github/scripts/ci-batch/validate-manifest-v2.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const require = createRequire(import.meta.url);
@@ -266,7 +267,7 @@ test('P9 the field is deterministic, luminance-normalised and seeded by the SHOR
   assert.deepEqual(pure.fieldStops(330), ['#F9B5D7', '#E94BBF', '#771C71']);
 });
 
-test('P10 CI actually COLLECTS this suite — registered in a live provider workflow, registry still at 200 origins', () => {
+test('P10 CI collects this suite — the 200-origin sealed baseline gains exact post-seal provenance claims, not workflow files', () => {
   const fs = require('node:fs');
   // #2589 — the provider workflow filename is ASSEMBLED FROM PARTS here, never
   // written as one literal, and it must stay that way. `discoverWorkflowProviders()`
@@ -284,11 +285,18 @@ test('P10 CI actually COLLECTS this suite — registered in a live provider work
   // 1. The suite is invoked by name. A test nobody runs is not a test.
   assert.ok(workflow.includes(`- run: node --test ${SELF}`), 'suite is not invoked by the workflow');
 
-  // 2. The origin registry is LOCKED at 200, which is why this rides an
-  //    existing provider instead of adding a workflow file. A new origin would
-  //    fail `validate-manifest-v2`, so the count is asserted here too.
+  // 2. The origin registry was SEALED at a 200-entry baseline. Each suite named
+  //    by the canonical post-seal declaration adds one exact provenance claim;
+  //    this is not a workflow-file count and this suite still rides an existing
+  //    provider instead of adding a workflow file.
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.github/ci-batch/MANIFEST.json'), 'utf8'));
-  assert.equal(manifest.legacyOrigins.length, 200, 'legacy origin registry must stay pinned at 200');
+  const SEALED_LEGACY_ORIGINS = 200;
+  const expectedLegacyOriginCount = SEALED_LEGACY_ORIGINS + SUITES_ADDED_SINCE_SEAL.length;
+  assert.equal(
+    manifest.legacyOrigins.length,
+    expectedLegacyOriginCount,
+    'legacy origin registry must equal the sealed 200 baseline plus exact declared post-seal provenance claims; this is not a workflow-file count',
+  );
   const origin = manifest.legacyOrigins.find((item) => `${item.stem}.${item.extension}` === WORKFLOW_NAME);
   assert.ok(origin, 'provider workflow is not a registered origin');
   assert.equal(origin.providerWorkflow, `.github/${WORKFLOW.split('/').slice(1).join('/')}`);

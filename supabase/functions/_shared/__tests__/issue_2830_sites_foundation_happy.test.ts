@@ -202,3 +202,148 @@ Deno.test("#2830 provisioning recovery is projected from the Core receipt", asyn
     );
   }
 });
+
+Deno.test({
+  name:
+    "#3016 brand-site-control emits the shared CORS contract on real response paths",
+  // Supabase Auth owns background timers even with session persistence off.
+  // The test restores fetch and env state; timer lifetime is library-owned.
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const [{ handleBrandSiteControl }, { corsHeaders }] = await Promise.all([
+      import("../../brand-site-control/index.ts"),
+      import("../cors.ts"),
+    ]);
+    const originalFetch = globalThis.fetch;
+    const originalUrl = Deno.env.get("SUPABASE_URL");
+    const originalAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const originalServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const brandId = "733bc470-45e1-4684-8896-acd7e26074ff";
+    const siteId = "90f19f28-42e2-4eb9-b88b-02829bfcb045";
+    const endpoint =
+      "https://fixture.supabase.co/functions/v1/brand-site-control";
+    const invokeBody = JSON.stringify({
+      route: `/v1/brands/${brandId}/site-availability`,
+      method: "GET",
+    });
+
+    const assertCors = (response: Response, label: string): void => {
+      for (const [name, value] of Object.entries(corsHeaders)) {
+        assert(
+          response.headers.get(name) === value,
+          `${label} lost ${name}`,
+        );
+      }
+    };
+
+    Deno.env.set("SUPABASE_URL", "https://fixture.supabase.co");
+    Deno.env.set("SUPABASE_ANON_KEY", "fixture-anon-key");
+    Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "fixture-service-key");
+    globalThis.fetch = ((input, init) => {
+      const request = input instanceof Request
+        ? input
+        : new Request(input, init);
+      const url = new URL(request.url);
+      if (url.pathname === "/auth/v1/user") {
+        if (request.headers.get("authorization") === "Bearer rejected") {
+          return Promise.resolve(
+            Response.json({ message: "invalid JWT" }, { status: 401 }),
+          );
+        }
+        return Promise.resolve(Response.json({
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          aud: "authenticated",
+          role: "authenticated",
+          email: "fixture@example.invalid",
+        }));
+      }
+      if (
+        url.pathname ===
+          "/rest/v1/rpc/brand_site_business_availability"
+      ) {
+        return Promise.resolve(
+          Response.json({ available: true, site_id: siteId }),
+        );
+      }
+      throw new Error(`unexpected fixture request: ${url.pathname}`);
+    }) as typeof fetch;
+
+    try {
+      const preflight = await handleBrandSiteControl(
+        new Request(endpoint, {
+          method: "OPTIONS",
+          headers: {
+            Origin: "https://host.usemingla.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers":
+              "authorization, apikey, content-type, x-client-info",
+          },
+        }),
+      );
+      assert(preflight.status === 204, `preflight status ${preflight.status}`);
+      assertCors(preflight, "preflight");
+
+      const forbidden = await handleBrandSiteControl(
+        new Request(endpoint, {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer rejected",
+            "Content-Type": "application/json",
+          },
+          body: invokeBody,
+        }),
+      );
+      assert(forbidden.status === 403, `forbidden status ${forbidden.status}`);
+      assertCors(forbidden, "forbidden response");
+      const forbiddenBody = await forbidden.json();
+      assert(
+        JSON.stringify(forbiddenBody) === JSON.stringify({
+          ok: false,
+          error: {
+            code: "FORBIDDEN",
+            message: "This Website action is not available for your role.",
+            retryable: false,
+            operation_id: null,
+          },
+        }),
+        "forbidden customer body changed",
+      );
+
+      const available = await handleBrandSiteControl(
+        new Request(endpoint, {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer accepted",
+            "Content-Type": "application/json",
+          },
+          body: invokeBody,
+        }),
+      );
+      assert(
+        available.status === 200,
+        `availability status ${available.status}`,
+      );
+      assertCors(available, "availability response");
+      assert(
+        JSON.stringify(await available.json()) === JSON.stringify({
+          ok: true,
+          data: { available: true, site_id: siteId },
+        }),
+        "availability customer body changed",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (
+        const [name, value] of [
+          ["SUPABASE_URL", originalUrl],
+          ["SUPABASE_ANON_KEY", originalAnonKey],
+          ["SUPABASE_SERVICE_ROLE_KEY", originalServiceKey],
+        ] as const
+      ) {
+        if (value === undefined) Deno.env.delete(name);
+        else Deno.env.set(name, value);
+      }
+    }
+  },
+});
