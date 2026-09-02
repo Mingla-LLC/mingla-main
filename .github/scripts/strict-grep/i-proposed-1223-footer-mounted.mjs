@@ -1,6 +1,22 @@
 #!/usr/bin/env node
 /**
- * ORCH-1223 [footer re-mount] — AMENDED by ORCH-1224.
+ * ORCH-1223 [footer re-mount] — AMENDED by ORCH-1224, AMENDED AGAIN by #2902.
+ *
+ * #2902 SUPERSEDES ONE ASSERTION, NAMED HERE:
+ *   old: app/host/layout.tsx must import `Footer` from '@/components/marketing/
+ *        footer' AND render `<Footer surface="organiser" ...>`.
+ *   why: the Host surface now ships the #2902 design, which carries its own
+ *        footer (`<CutoutFooter surface="host" />`) rendered by the page. The
+ *        old marketing Footer is no longer mounted anywhere on that surface.
+ *
+ * What the invariant PROTECTS is unchanged and is now checked directly rather
+ * than by proxy: the scrolling business surface must render a footer, and that
+ * footer must carry visible Privacy and Terms links for the store launch. That
+ * is a stronger check than the old one, which would have passed a `<Footer>`
+ * with those links deleted.
+ *
+ * The MUST-NOT-MOUNT half is untouched, and now also forbids the new footer on
+ * the explorer surface.
  *
  * The cleaned marketing footer must stay MOUNTED on the BUSINESS surface
  * (app/host/layout.tsx) and must NOT be mounted on the EXPLORER surface
@@ -29,8 +45,17 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const EXPLORER_LAYOUT = "mingla-marketing/app/(explorer)/layout.tsx";
-const BUSINESS_LAYOUT = "mingla-marketing/app/host/layout.tsx";
+const EXPLORER_SOURCES = [
+  "mingla-marketing/app/(explorer)/layout.tsx",
+  "mingla-marketing/app/(explorer)/page.tsx",
+];
+// The footer may be mounted by either the layout or the page, so the surface is
+// read as a whole. A silent un-mount still fails; that is the ORCH-1053 mode.
+const BUSINESS_SOURCES = [
+  "mingla-marketing/app/host/layout.tsx",
+  "mingla-marketing/app/host/page.tsx",
+];
+const FOOTER_COMPONENT = "mingla-marketing/components/cutout/footer.tsx";
 const FOOTER_MODULE = "@/components/marketing/footer";
 
 const root = process.cwd().endsWith("mingla-business")
@@ -51,26 +76,40 @@ const importRe = new RegExp(
   `import\\s*\\{[^}]*\\bFooter\\b[^}]*\\}\\s*from\\s*(['"\`])${FOOTER_MODULE_RE}\\1`,
 );
 // any `<Footer surface="..." ...>` render (used for the MUST-NOT-MOUNT check too).
-const anyRenderRe = /<Footer\b[^>]*\bsurface\s*=\s*['"][^'"]*['"]/;
+const anyRenderRe = /<(?:Footer|CutoutFooter)\b[^>]*\bsurface\s*=\s*['"][^'"]*['"]/;
 
 /**
  * Business layout satisfies the MUST-MOUNT invariant iff (after comment-stripping)
  * it imports `Footer` AND renders `<Footer surface="organiser" ...>`.
  */
-const evaluateMustMount = ({ label, code, surface }) => {
+// Either footer counts as mounted: the legacy marketing one or the #2902 one.
+const anyFooterMountRe = /<(?:Footer|CutoutFooter)\b[^>]*\bsurface\s*=\s*['"][^'"]*['"]/;
+
+const evaluateMustMount = ({ label, code }) => {
   const failures = [];
   const src = stripComments(code);
-
-  if (!importRe.test(src)) {
+  if (!anyFooterMountRe.test(src)) {
     failures.push(
-      `${label}: missing \`import { Footer } from '${FOOTER_MODULE}'\` — footer is un-mounted (ORCH-1053 failure mode). I-PROPOSED-1223-FOOTER-MOUNTED.`,
+      `${label}: no <Footer .../> or <CutoutFooter .../> render — footer is un-mounted (ORCH-1053 failure mode). I-PROPOSED-1223-FOOTER-MOUNTED.`,
     );
   }
-  const renderRe = new RegExp(`<Footer\\b[^>]*\\bsurface\\s*=\\s*(['"])${surface}\\1`);
-  if (!renderRe.test(src)) {
-    failures.push(
-      `${label}: missing \`<Footer surface="${surface}" .../>\` render — footer is un-mounted (ORCH-1053 failure mode). I-PROPOSED-1223-FOOTER-MOUNTED.`,
-    );
+  return failures;
+};
+
+/**
+ * The point of the mount: Privacy and Terms must be reachable from the business
+ * surface. Checked on the footer component itself, so deleting the links fails
+ * even while the mount survives.
+ */
+const evaluateLegalLinks = ({ label, code }) => {
+  const failures = [];
+  const src = stripComments(code);
+  for (const [name, href] of [["Privacy", "/privacy-policy"], ["Terms", "/terms-of-service"]]) {
+    if (!src.includes(href)) {
+      failures.push(
+        `${label}: footer does not link ${name} (${href}) — the store launch needs it visible. I-PROPOSED-1223-FOOTER-MOUNTED.`,
+      );
+    }
   }
   return failures;
 };
@@ -142,15 +181,47 @@ if (SELF_TEST) {
     }
   `;
 
-  const goodB = evaluateMustMount({ label: "business", code: GOOD_BUSINESS, surface: "organiser" });
+  // The #2902 shape: the page mounts the design's own footer.
+  const GOOD_BUSINESS_CUTOUT = `
+    import { CutoutFooter } from '@/components/cutout'
+    export default function HostPage() {
+      return (<div><main id="main" /><CutoutFooter surface="host" /></div>)
+    }
+  `;
+  const GOOD_FOOTER_LINKS = `
+    const COLUMNS = [{ links: [
+      { href: '/privacy-policy', label: 'Privacy' },
+      { href: '/terms-of-service', label: 'Terms' },
+    ] }]
+  `;
+  const BAD_FOOTER_LINKS_DROPPED = `
+    const COLUMNS = [{ links: [{ href: '/support', label: 'Support' }] }]
+  `;
+  // A CutoutFooter on the explorer surface is forbidden too.
+  const BAD_EXPLORER_CUTOUT = `
+    import { CutoutFooter } from '@/components/cutout'
+    export default function ExplorerPage() {
+      return (<><main id="main" /><CutoutFooter surface="explorer" /></>)
+    }
+  `;
+
+  const goodB = evaluateMustMount({ label: "business", code: GOOD_BUSINESS });
+  const goodBCutout = evaluateMustMount({ label: "business", code: GOOD_BUSINESS_CUTOUT });
+  const goodLinks = evaluateLegalLinks({ label: "footer", code: GOOD_FOOTER_LINKS });
+  const badLinks = evaluateLegalLinks({ label: "footer", code: BAD_FOOTER_LINKS_DROPPED });
+  const badECutout = evaluateMustNotMount({ label: "explorer", code: BAD_EXPLORER_CUTOUT });
   const goodE = evaluateMustNotMount({ label: "explorer", code: GOOD_EXPLORER });
   const goodEC = evaluateMustNotMount({ label: "explorer", code: GOOD_EXPLORER_COMMENTED });
-  const badBNoRender = evaluateMustMount({ label: "business", code: BAD_BUSINESS_NO_RENDER, surface: "organiser" });
-  const badBCommented = evaluateMustMount({ label: "business", code: BAD_BUSINESS_COMMENTED, surface: "organiser" });
+  const badBNoRender = evaluateMustMount({ label: "business", code: BAD_BUSINESS_NO_RENDER });
+  const badBCommented = evaluateMustMount({ label: "business", code: BAD_BUSINESS_COMMENTED });
   const badERemount = evaluateMustNotMount({ label: "explorer", code: BAD_EXPLORER_REMOUNTED });
 
   const ok =
     goodB.length === 0 &&
+    goodBCutout.length === 0 &&
+    goodLinks.length === 0 &&
+    badLinks.length >= 2 &&
+    badECutout.length >= 1 &&
     goodE.length === 0 &&
     goodEC.length === 0 &&
     badBNoRender.length >= 1 &&
@@ -165,6 +236,10 @@ if (SELF_TEST) {
       badBNoRender,
       badBCommented,
       badERemount,
+      goodBCutout,
+      goodLinks,
+      badLinks,
+      badECutout,
     });
     process.exit(1);
   }
@@ -174,22 +249,34 @@ if (SELF_TEST) {
 
 const failures = [];
 
-const businessAbs = join(root, BUSINESS_LAYOUT);
-if (!existsSync(businessAbs)) {
-  failures.push(`${BUSINESS_LAYOUT}: expected business marketing layout not found — cannot verify footer mount.`);
-} else {
-  failures.push(
-    ...evaluateMustMount({ label: BUSINESS_LAYOUT, code: readFileSync(businessAbs, "utf8"), surface: "organiser" }),
-  );
+const readSurface = (relPaths, what) => {
+  const parts = [];
+  for (const rel of relPaths) {
+    const abs = join(root, rel);
+    if (existsSync(abs)) parts.push(readFileSync(abs, "utf8"));
+  }
+  if (parts.length === 0) {
+    failures.push(`${relPaths.join(" / ")}: expected ${what} not found — cannot verify footer state.`);
+    return null;
+  }
+  return parts.join("\n");
+};
+
+const businessCode = readSurface(BUSINESS_SOURCES, "business marketing surface");
+if (businessCode !== null) {
+  failures.push(...evaluateMustMount({ label: BUSINESS_SOURCES.join(" / "), code: businessCode }));
 }
 
-const explorerAbs = join(root, EXPLORER_LAYOUT);
-if (!existsSync(explorerAbs)) {
-  failures.push(`${EXPLORER_LAYOUT}: expected explorer marketing layout not found — cannot verify footer absence.`);
+const explorerCode = readSurface(EXPLORER_SOURCES, "explorer marketing surface");
+if (explorerCode !== null) {
+  failures.push(...evaluateMustNotMount({ label: EXPLORER_SOURCES.join(" / "), code: explorerCode }));
+}
+
+const footerAbs = join(root, FOOTER_COMPONENT);
+if (!existsSync(footerAbs)) {
+  failures.push(`${FOOTER_COMPONENT}: footer component not found — cannot verify Privacy/Terms links.`);
 } else {
-  failures.push(
-    ...evaluateMustNotMount({ label: EXPLORER_LAYOUT, code: readFileSync(explorerAbs, "utf8") }),
-  );
+  failures.push(...evaluateLegalLinks({ label: FOOTER_COMPONENT, code: readFileSync(footerAbs, "utf8") }));
 }
 
 if (failures.length > 0) {

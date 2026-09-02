@@ -7,33 +7,25 @@ import { DeviceCta, type CutoutSurface } from './device-cta'
 // It is also a real internal-linking surface: SPEC §5 needs every core entity
 // page reachable from every page, or the 31-page pilot has no crawl graph.
 
+// Only routes that exist. The first draft linked a future sitemap -- cities,
+// blog, about, editorial standards and six ICP pages -- and nine of those
+// fourteen links 404ed. Those pages are owned by the search/page-system work;
+// when they land they get their entries back.
 const COLUMNS = [
   {
     title: 'Explore',
-    links: [
-      { href: '/explorer', label: 'For Explorers' },
-      { href: '/cities', label: 'Cities' },
-      { href: '/cities/lagos', label: 'Lagos' },
-      { href: '/cities/research-triangle', label: 'Research Triangle' },
-    ],
+    links: [{ href: '/', label: 'For Explorers' }],
   },
   {
     title: 'Host',
     links: [
       { href: '/host', label: 'For Hosts' },
-      { href: '/host/event-organizers-promoters', label: 'Event organisers' },
-      { href: '/host/restaurants-cafes', label: 'Restaurants & cafés' },
       { href: '/tools', label: 'Free tools' },
     ],
   },
   {
     title: 'Company',
-    links: [
-      { href: '/about', label: 'About' },
-      { href: '/blog', label: 'Blog' },
-      { href: '/editorial-standards', label: 'Editorial standards' },
-      { href: 'https://career.usemingla.com', label: 'Careers', external: true },
-    ],
+    links: [{ href: 'https://career.usemingla.com', label: 'Careers', external: true }],
   },
   {
     title: 'Legal',
