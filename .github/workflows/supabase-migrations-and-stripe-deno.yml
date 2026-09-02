@@ -445,6 +445,18 @@ jobs:
           # later edit set, which would be worse than the bug being fixed.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1653_publish_keeps_the_pin.test.sql
+          # Issue #3055 — the certification guard must assert a DELTA, not an
+          # absolute row count. 20270530001977 ended with `IF v_count <> 120`;
+          # #2830 later took the table to 132, so the file aborted on its own
+          # tail and NEVER RAN ANYWHERE, stranding the whole RSVP surface
+          # (#3044/#3047). The source gate proves the shape is gone; only this
+          # runtime test proves the shape still REFUSES a drifted set. T-3055-02
+          # is the one that matters: a same-count swap (set_approval back in,
+          # rsvp.update out) that `count(*) <> N` accepts for every N — exactly
+          # the state production was actually in — and the delta guard must
+          # still refuse it.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3055_ari_cert_requirement_delta.test.sql
           # Issue #1648 — the exact google_place_id pool lookup that stops a
           # venue we already hold from duplicating itself when the NAME search
           # missed. B-00 is the one that matters most: it asserts the return

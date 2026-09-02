@@ -13,7 +13,58 @@
 -- inside ari_execute_rsvp_operation and completes the shared #1972 receipt in
 -- the same transaction.
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- #3055 — RETIRED AS A PRODUCTION DELIVERY VEHICLE (decision (b), 2026-09-02).
+--
+-- This file is VERSION-SHADOWED. 20270530001977 sorts below production's applied
+-- head (20270616003047) and below 23 other already-applied versions, so
+-- `supabase db push --linked` will never reach it. It is NOT pending, and it must
+-- not be read as pending. Fixing its tail guard does not change that.
+--
+-- Its ROUTINES are already live in production, re-published byte-identically at
+-- reachable versions (bodies proven identical by md5 of pg_proc.prosrc):
+--   20270615003044 (#3044) — rsvp_domain_operation_receipts, issue_1977_rsvp_graph,
+--     business_create_rsvp_draft_graph, business_update_rsvp_graph,
+--     business_discard_rsvp_draft
+--   20270616003047 (#3047) — issue_1977_current_rsvp_publish_payload,
+--     business_publish_rsvp_graph, business_list_rsvp_roster,
+--     business_set_rsvp_guest_status, business_list_rsvp_contributions,
+--     issue_1977_agent_rsvp_payload, ari_execute_rsvp_operation
+-- Its CERTIFICATION-REQUIREMENT delta is delivered at 20270617003055 (#3055).
+--
+-- STILL NOT IN PRODUCTION and carried by none of the three — registered as a
+-- discovery on #3055, needs its own dispatch: the four `CREATE OR REPLACE`
+-- rewrites below of host_set_rsvp_status, host_bulk_approve_rsvps and
+-- biz_guest_roster_set_rsvp_approval (the "one guest-status effect owner"
+-- delegation), and the (uuid,uuid,text,text,text) widening of
+-- biz_prepare_rsvp_contribution_refund. Production still holds the pre-#1977
+-- bodies of all four.
+--
+-- This file is RETAINED, not deleted: it is the definition source the CI chain
+-- builds from and the pinned subject of the required
+-- issue-1977-ari-rsvp-lifecycle strict-grep gate. Do NOT rename it to a
+-- reachable version — that would make it a second owner of twelve routines
+-- #3044/#3047 already own, and would apply those four unreviewed rewrites as a
+-- side effect.
+-- ─────────────────────────────────────────────────────────────────────────────
+
 BEGIN;
+
+-- #3055 delta-guard baseline. Captured BEFORE any statement in this file touches
+-- public.ari_cert_capability_requirements, so the tail assertion compares against
+-- the real starting size of the set instead of a literal that rots the moment an
+-- unrelated capability is added. Transaction-local (set_config(..., true)), so it
+-- cannot leak into another migration in the same session.
+DO $issue_3055_cert_baseline$
+DECLARE v_baseline integer;
+BEGIN
+  IF to_regclass('public.ari_cert_capability_requirements') IS NULL THEN
+    RAISE EXCEPTION 'issue_1977_cert_requirements_table_missing';
+  END IF;
+  SELECT count(*) INTO v_baseline FROM public.ari_cert_capability_requirements;
+  PERFORM set_config('mingla.issue_1977_cert_baseline', v_baseline::text, true);
+END;
+$issue_3055_cert_baseline$;
 
 CREATE TABLE IF NOT EXISTS public.rsvp_domain_operation_receipts (
   actor_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -753,16 +804,25 @@ GRANT EXECUTE ON FUNCTION public.biz_guest_roster_set_rsvp_approval(uuid,text,te
 GRANT EXECUTE ON FUNCTION public.biz_prepare_rsvp_contribution_refund(uuid,uuid,text,text,text) TO authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.ari_execute_rsvp_operation(uuid,text,jsonb) TO authenticated,service_role;
 
--- #1977 certification requirements (120-row tip / #2592 digest be0add47…).
--- Do NOT replace ari_cert_begin_run / ari_cert_finalize_run in this PR — those
--- two functions already agree on be0add47… with capability_count 120. This
--- migration only:
+-- #1977 certification requirements. Do NOT replace ari_cert_begin_run /
+-- ari_cert_finalize_run in this PR. This migration only:
 --   1. retires the duplicate ari.guests.set_approval requirement in favour of
 --      set_rsvp_guest_status's selected scope (ledger + tools match);
---   2. inserts ari.rsvp.update (write) so the requirement set stays at 120;
+--   2. inserts ari.rsvp.update (write) so the requirement set stays the same size;
 --   3. promotes ari.rsvp.contribution_settings from unsupported → write.
--- Net row count stays 120. Digests on begin/finalize are intentionally left
--- alone (see issue #1977 / COMMS-0160 / #2592).
+-- Net row count is UNCHANGED — one out, one in. Digests on begin/finalize are
+-- intentionally left alone (see issue #1977 / COMMS-0160 / #2592).
+--
+-- #3055: the assertion below used to read `IF v_count <> 120`. That literal was
+-- true the day it was written and false from #2830 onward (which added 12
+-- capabilities), which aborted this entire file and stranded the RSVP surface.
+-- It was ALSO too weak: production held exactly 132 rows both before and after
+-- the drift, so a `<> 132` rewrite would have passed while the set was genuinely
+-- wrong (ari.guests.set_approval present, ari.rsvp.update absent — a same-count
+-- swap). The guard now asserts the DELTA this migration is responsible for:
+-- net-zero movement against a baseline captured at the top of the file, plus the
+-- three membership facts. That holds at 120, at 132 and at 200, and it catches
+-- the same-count swap that a literal cannot see.
 
 DROP TRIGGER IF EXISTS ari_cert_capability_requirements_immutable_trigger
   ON public.ari_cert_capability_requirements;
@@ -785,26 +845,50 @@ BEFORE UPDATE OR DELETE ON public.ari_cert_capability_requirements
 FOR EACH ROW EXECUTE FUNCTION public.ari_cert_evidence_immutable();
 
 DO $cert_requirements$
-DECLARE v_count integer;
+DECLARE
+  v_baseline integer := NULLIF(current_setting('mingla.issue_1977_cert_baseline', true), '')::integer;
+  v_final integer;
+  v_missing text;
 BEGIN
-  SELECT count(*) INTO v_count FROM public.ari_cert_capability_requirements;
-  IF v_count <> 120 THEN
-    RAISE EXCEPTION 'issue_1977_expected_120_certification_requirements:%', v_count;
+  -- A zero needs its denominator: refuse to "pass" if the baseline was never
+  -- captured, rather than silently comparing against NULL and doing nothing.
+  IF v_baseline IS NULL THEN
+    RAISE EXCEPTION 'issue_1977_certification_baseline_not_captured';
   END IF;
+
+  SELECT count(*) INTO v_final FROM public.ari_cert_capability_requirements;
+
+  -- (4) The set must be the same SIZE it was before this file's statements ran:
+  -- one requirement retired, one inserted. Never compared to a literal.
+  IF v_final <> v_baseline THEN
+    RAISE EXCEPTION
+      'issue_1977_certification_requirement_net_delta:baseline=% final=% delta=%',
+      v_baseline, v_final, v_final - v_baseline;
+  END IF;
+
+  -- (2) + (3) The two write requirements must exist with evidence_mode='write'.
+  SELECT string_agg(format('%s=>%s', expected.capability_id, expected.evidence_mode),
+                    ', ' ORDER BY expected.capability_id)
+    INTO v_missing
+  FROM (VALUES
+    ('ari.rsvp.update', 'write'),
+    ('ari.rsvp.contribution_settings', 'write')
+  ) expected(capability_id, evidence_mode)
+  LEFT JOIN public.ari_cert_capability_requirements actual
+    USING (capability_id, evidence_mode)
+  WHERE actual.capability_id IS NULL;
+
+  IF v_missing IS NOT NULL THEN
+    RAISE EXCEPTION 'issue_1977_certification_requirement_drift:missing=%', v_missing;
+  END IF;
+
+  -- (1) The retired duplicate must be gone.
   IF EXISTS (
-    SELECT 1
-    FROM (VALUES
-      ('ari.rsvp.update', 'write'),
-      ('ari.rsvp.contribution_settings', 'write')
-    ) expected(capability_id, evidence_mode)
-    LEFT JOIN public.ari_cert_capability_requirements actual
-      USING (capability_id, evidence_mode)
-    WHERE actual.capability_id IS NULL
-  ) OR EXISTS (
     SELECT 1 FROM public.ari_cert_capability_requirements
     WHERE capability_id = 'ari.guests.set_approval'
   ) THEN
-    RAISE EXCEPTION 'issue_1977_certification_requirement_drift';
+    RAISE EXCEPTION
+      'issue_1977_certification_requirement_drift:retired_still_present=ari.guests.set_approval';
   END IF;
 END;
 $cert_requirements$;

@@ -38,6 +38,12 @@ const files = {
   ledger: "docs/contracts/ari-capability-ledger.json",
 };
 
+// Strips SQL line comments so a check can look at executable SQL only. Prose
+// that *describes* a retired guard must not read as the guard itself (#3055).
+function stripSqlComments(source) {
+  return source.replace(/^\s*--.*$/gm, "").replace(/\s--.*$/gm, "");
+}
+
 function stripComments(source) {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -56,6 +62,15 @@ export function audit(base) {
   };
 
   const migration = read("migration");
+  const migrationSql = stripSqlComments(migration);
+  // Scope the certification assertions to the tail guard block itself. Checking
+  // the whole file passes vacuously: the DELETE statement above the guard
+  // contains the same capability_id literal the guard asserts on (#3055).
+  const certGuard =
+    migrationSql.match(/DO \$cert_requirements\$([\s\S]*?)\$cert_requirements\$;/)?.[1] ?? "";
+  if (!certGuard.trim()) {
+    failures.push("certification requirement guard block is missing");
+  }
   const tools = stripComments(read("tools"));
   const auth = read("auth");
   const prompt = read("prompt");
@@ -126,12 +141,52 @@ export function audit(base) {
     failures.push("organizer RSVP RPC gained public/anon execute");
   }
 
+  // #3055 — this used to require the literal
+  // `issue_1977_expected_120_certification_requirements`, i.e. the gate itself
+  // pinned the defect. An absolute row count aborted the whole file from #2830
+  // onward and stranded the RSVP surface. The certification delta must now be
+  // asserted by SHAPE: net-zero against a baseline captured at the top of the
+  // file, plus the three membership facts.
   if (
-    !migration.includes("issue_1977_expected_120_certification_requirements") ||
     !migration.includes("ari.rsvp.contribution_settings") ||
     !migration.includes("evidence_mode = 'write'")
   ) {
-    failures.push("contribution_settings write promote / 120-row assert is incomplete");
+    failures.push("contribution_settings write promote is incomplete");
+  }
+
+  if (
+    !migrationSql.includes("set_config('mingla.issue_1977_cert_baseline'") ||
+    !certGuard.includes("current_setting('mingla.issue_1977_cert_baseline'") ||
+    !certGuard.includes("issue_1977_certification_baseline_not_captured") ||
+    !certGuard.includes("v_final <> v_baseline")
+  ) {
+    failures.push(
+      "certification requirement guard is not delta-shaped (baseline capture + net-zero compare)",
+    );
+  }
+
+  if (
+    !certGuard.includes("issue_1977_certification_requirement_drift") ||
+    !certGuard.includes("'ari.rsvp.update', 'write'") ||
+    !certGuard.includes("'ari.rsvp.contribution_settings', 'write'") ||
+    !certGuard.includes("capability_id = 'ari.guests.set_approval'")
+  ) {
+    failures.push("certification requirement guard lost its membership assertions");
+  }
+
+  // The defect itself: an unqualified count(*) over the whole requirement table
+  // compared to an integer literal. Never reintroduce it here in any form.
+  if (
+    /count\(\*\)\s+INTO\s+\w+\s+FROM\s+public\.ari_cert_capability_requirements/i
+        .test(migrationSql) &&
+      /\b(?:v_count|v_final|v_rows)\s*(?:<>|!=|=)\s*\d+/.test(migrationSql) ||
+    /count\(\*\)\s+FROM\s+public\.ari_cert_capability_requirements\s*\)?\s*(?:<>|!=|=)\s*\d+/i
+      .test(migrationSql) ||
+    migrationSql.includes("issue_1977_expected_120_certification_requirements")
+  ) {
+    failures.push(
+      "certification guard compares the requirement set to an absolute row count literal",
+    );
   }
 
   if (
