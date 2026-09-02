@@ -15,13 +15,23 @@ export type AttendanceClaimFragmentHandoff = Readonly<{
   historyState: unknown;
 }>;
 
-type AttendanceClaimLocation = Pick<Location, "pathname" | "search">;
-type AttendanceClaimHistory = Pick<History, "replaceState"> & {
+type AttendanceClaimLocation = Readonly<{
+  pathname: string;
+  search: string;
+}>;
+type AttendanceClaimHistory = {
   readonly state?: unknown;
+  replaceState(state: unknown, unused: string, url: string): void;
 };
-type AttendanceClaimWindow = Pick<Window, "history" | "location"> & {
+type AttendanceClaimWindow = {
+  readonly history: AttendanceClaimHistory;
+  readonly location: AttendanceClaimLocation & Readonly<{ hash: string }>;
   [ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY]?: unknown;
 };
+type AttendanceClaimFrameCallback = (timestamp: number) => void;
+type AttendanceClaimRequestFrame = (
+  callback: AttendanceClaimFrameCallback,
+) => number;
 
 const isAttendanceClaimFragmentHandoff = (
   value: unknown,
@@ -61,7 +71,7 @@ type AttendanceClaimScrubCapture = Readonly<
 export const scrubAttendanceClaimFragment = (
   location: AttendanceClaimLocation,
   history: AttendanceClaimHistory,
-  requestFrame: (callback: FrameRequestCallback) => number,
+  requestFrame: AttendanceClaimRequestFrame,
   captured?: AttendanceClaimScrubCapture,
 ): (() => void) => {
   const cleanUrl = captured?.cleanUrl ?? `${location.pathname}${location.search}`;
@@ -88,7 +98,7 @@ export const createAttendanceClaimFragmentScrubber = (
   return (
     location: AttendanceClaimLocation,
     history: AttendanceClaimHistory,
-    requestFrame: (callback: FrameRequestCallback) => number,
+    requestFrame: AttendanceClaimRequestFrame,
   ): (() => void) => scrubAttendanceClaimFragment(
     location,
     history,
