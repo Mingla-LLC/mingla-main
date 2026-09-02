@@ -72,6 +72,7 @@ const FORBIDDEN_RECEIPT_KEYS = new Set([
 
 export const ISSUE_2241_JWT_POSTURE = Object.freeze({
   "attendance-claim-backfill": false,
+  "attendance-claim-identity": true,
   "attendance-claim-link": false,
   "brand-paystack-onboard": true,
   "brand-stripe-onboard": true,
