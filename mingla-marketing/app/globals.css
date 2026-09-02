@@ -390,10 +390,12 @@ video {
   -webkit-touch-callout: none;
   user-select: none;
 }
-/* Blank the page for print / print-to-PDF. */
+/* Blank ordinary marketing pages for print / print-to-PDF. #2990's private
+   guide fixtures carry an explicit printable owner and provide their own
+   route-scoped print treatment; every unrelated route keeps the prior lock. */
 @media print {
-  html,
-  body {
+  html:not(:has(.page-system-printable)),
+  body:not(:has(.page-system-printable)) {
     display: none !important;
   }
 }

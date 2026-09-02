@@ -42,6 +42,9 @@ const PUBLIC_NOINDEX_PATHS = [
   '/tools/venues/report',
   '/tools/trips/report',
   '/tools/pricing/report',
+  '/internal/page-system/city-lagos',
+  '/internal/page-system/explorer-event-guide',
+  '/internal/page-system/host-event-promoter-guide',
 ]
 
 const PUBLIC_NOINDEX_FAMILY_SAMPLES = [
