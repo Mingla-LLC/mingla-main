@@ -1,6 +1,16 @@
 /**
  * #2241 implementor proof.
  *
+ * [TEST-MOD-APPROVED #2241] The remediation cardinality literals move 93 -> 90.
+ * Reason: the migration band `allowed_extra_live_names` narrowed from five
+ * leftover direct names to the two still set in production
+ * (ATTENDANCE_CLAIM_PEPPER, CHECKOUT_REVOCATION_EXECUTE); the other three were
+ * removed after their bundle-first readers logged zero
+ * `governed_ad_legacy_fallback`. Founder-approved 2026-09-02. The assertion
+ * itself is UNCHANGED and still exact: remediation cardinality must equal
+ * declared (88) + band. Only the band's size changed. Leaving 93 would have
+ * demanded three names nobody can produce — a check that cannot pass (#2113).
+ *
  * Load-bearing assertions include:
  * - unclassified imported environment read fails closed
  * - signed receipt replay is rejected
@@ -1282,7 +1292,7 @@ test("#2241 happy: normal deploy accepts a selected function with every required
   assert.equal(result.bundle_receipts, 0);
 });
 
-test("#2241 happy: exact 93 remediation and protected receipt set pass once", () => {
+test("#2241 happy: exact 90 remediation and protected receipt set pass once", () => {
   const set = receiptSet();
   const result = evaluateFunctionReadiness({
     contract,
@@ -1302,7 +1312,7 @@ test("#2241 happy: exact 93 remediation and protected receipt set pass once", ()
     },
     verifyReceiptSet: set.authority.verifyReceiptSet,
   });
-  assert.equal(result.live_user_managed_count, 93);
+  assert.equal(result.live_user_managed_count, 90);
   assert.equal(result.selected_functions.length, 23);
   assert.throws(
     () =>
@@ -1393,7 +1403,7 @@ test("#2241 adversarial: exact live/project/function sets and in-memory authorit
   );
 });
 
-test("#2241 adversarial: exact 88/93 cardinalities reject both off-by-one directions", () => {
+test("#2241 adversarial: exact 88/90 cardinalities reject both off-by-one directions", () => {
   const normal = manifest.secrets.map((record) => record.name);
   const remediation = [...normal, ...ISSUE_2241_EXTRA_NAMES];
   for (const liveNames of [normal.slice(1), [...normal, "UNAPPROVED_EXTRA"]]) {
@@ -2206,7 +2216,7 @@ const ISSUE_2913_EXACT_PLATFORM_MANAGED = Object.freeze([
   "SUPABASE_URL",
 ]);
 
-test("#2913 happy: exact provider defaults preserve 88/93 user-managed parity", () => {
+test("#2913 happy: exact provider defaults preserve 88/90 user-managed parity", () => {
   assert.deepEqual(
     contract.platform_managed,
     ISSUE_2913_EXACT_PLATFORM_MANAGED,
@@ -2231,7 +2241,7 @@ test("#2913 happy: exact provider defaults preserve 88/93 user-managed parity", 
   });
 
   assert.equal(normal.liveUserManaged.length, 88);
-  assert.equal(remediation.liveUserManaged.length, 93);
+  assert.equal(remediation.liveUserManaged.length, 90);
 });
 
 test("#2913 adversarial: each new provider default is required by exact name", () => {
@@ -2330,5 +2340,70 @@ test("#2913 tester adversarial: a governed user name cannot hide as platform-man
       assert.deepEqual(error.details, [`missing:${governedUserName}`]);
       return true;
     },
+  );
+});
+
+// #2241 implementor regression proof for the 2026-09-02 founder-approved band
+// narrowing. The migration band is the set of leftover DIRECT names still set
+// in production — not a declaration. Three names were removed after their
+// bundle-first readers logged zero `governed_ad_legacy_fallback`, so a band of
+// five could never again match live and remediation mode could not pass at any
+// live count. These lock the band to what actually remains.
+test("#2241 regression: the migration band is exactly the two direct names still live", () => {
+  assert.deepEqual(
+    [...ISSUE_2241_EXTRA_NAMES],
+    ["ATTENDANCE_CLAIM_PEPPER", "CHECKOUT_REVOCATION_EXECUTE"],
+  );
+  assert.deepEqual(
+    contract.remediation.allowed_extra_live_names,
+    [...ISSUE_2241_EXTRA_NAMES].sort(),
+  );
+  for (
+    const removed of [
+      "META_COMPETITOR_ACCESS_TOKEN",
+      "META_COMPETITOR_IG_USER_ID",
+      "RESEND_WEBHOOK_SECRET",
+    ]
+  ) {
+    assert.ok(
+      !contract.remediation.allowed_extra_live_names.includes(removed),
+      `${removed} was removed from production and must not be in the band`,
+    );
+  }
+});
+
+test("#2241 regression: remediation parity passes at exactly 90 and rejects 93", () => {
+  const declared = manifest.secrets.map((record) => record.name);
+  const live = [...declared, ...ISSUE_2241_EXTRA_NAMES];
+  assert.equal(live.length, 90);
+
+  const result = assertLiveNameParity({
+    contract,
+    manifest,
+    liveNames: live,
+    projectRef,
+    mode: "issue-2241-remediation",
+  });
+  assert.equal(result.liveUserManaged.length, 90);
+
+  // The pre-narrowing live set can no longer satisfy the band: those three
+  // names are gone from production, so expecting them is unsatisfiable.
+  assert.throws(
+    () =>
+      assertLiveNameParity({
+        contract,
+        manifest,
+        liveNames: [
+          ...live,
+          "META_COMPETITOR_ACCESS_TOKEN",
+          "META_COMPETITOR_IG_USER_ID",
+          "RESEND_WEBHOOK_SECRET",
+        ],
+        projectRef,
+        mode: "issue-2241-remediation",
+      }),
+    (error) =>
+      error instanceof ReadinessError &&
+      error.code === "live_name_set_mismatch",
   );
 });

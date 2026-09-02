@@ -160,8 +160,8 @@ export function assertLiveNameParity({
   }
   if (
     mode === "issue-2241-remediation" &&
-    liveUserManaged.length !== 93
-  ) throw new ReadinessError("remediation_requires_exact_93");
+    liveUserManaged.length !== 90
+  ) throw new ReadinessError("remediation_requires_exact_90");
   return { liveUserManaged, manifestNames, remediation };
 }
 
