@@ -19762,7 +19762,7 @@
       "providerWorkflow": ".github/workflows/issue-871-attendance-entitlement-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "be685dfe7b20756fd79f6a46ad3098fe0dbac430b2c8ded3f11a192003459c84",
+        "sourceSha256": "5b1f3fcd10aef132d3a7d2dd652e8d44004dc1f8e436f4672a3602b0c0c1eb6b",
         "triggers": [
           "pull_request"
         ],
@@ -19772,6 +19772,7 @@
           ".github/scripts/strict-grep/MANIFEST.json",
           ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs",
           ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs",
+          ".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs",
           ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs",
           ".github/workflows/issue-871-attendance-entitlement-tests.yml",
           "app-mobile/**",
@@ -19787,8 +19788,10 @@
           "supabase/migrations/20270302000871_issue_0871_attendance_claim_foundation.sql",
           "supabase/migrations/20270302000872_issue_0871_entitled_guest_roster.sql",
           "supabase/migrations/20270614002987_issue_2979_attendance_claim_secret_continuity.sql",
+          "supabase/migrations/20270614003060_issue_3060_attendance_noncustomer_closure.sql",
           "supabase/migrations/__tests__/issue_0871*",
-          "supabase/migrations/__tests__/issue_2979*"
+          "supabase/migrations/__tests__/issue_2979*",
+          "supabase/migrations/__tests__/issue_3060*"
         ],
         "jobKeys": [
           "issue-871-contract",
@@ -22463,7 +22466,8 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/issue-871-attendance-entitlement-tests.yml",
       "referenceFiles": [
-        ".github/scripts/strict-grep/MANIFEST.json"
+        ".github/scripts/strict-grep/MANIFEST.json",
+        ".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },

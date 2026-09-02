@@ -17,12 +17,15 @@ on:
       - "supabase/migrations/20270302000871_issue_0871_attendance_claim_foundation.sql"
       - "supabase/migrations/20270302000872_issue_0871_entitled_guest_roster.sql"
       - "supabase/migrations/20270614002987_issue_2979_attendance_claim_secret_continuity.sql"
+      - "supabase/migrations/20270614003060_issue_3060_attendance_noncustomer_closure.sql"
       - "supabase/migrations/__tests__/issue_0871*"
       - "supabase/migrations/__tests__/issue_2979*"
+      - "supabase/migrations/__tests__/issue_3060*"
       - "docs/INVARIANT_REGISTRY.md"
       - ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs"
       - ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs"
       - ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs"
+      - ".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/ci-batch/MANIFEST.json"
       - ".github/workflows/issue-871-attendance-entitlement-tests.yml"
@@ -86,6 +89,10 @@ jobs:
           node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs
           node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs --self-test
           node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs
+      - name: Execute issue 3060 no-current-buyer closure guard
+        run: |
+          node .github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs --self-test
+          node .github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs
       - name: Install buyer-web dependencies
         working-directory: mingla-business
         run: npm ci
@@ -152,3 +159,11 @@ jobs:
           if [[ -f "$tester_sql" ]]; then
             psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f "$tester_sql"
           fi
+      - name: Execute issue 3060 exact-set closure contracts
+        env:
+          PGPASSWORD: ${{ format('issue-871-ci-{0}', github.run_id) }}
+        run: |
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3060_attendance_noncustomer_closure.implementor.happy.test.sql
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3060_attendance_noncustomer_closure.tester.adversarial.test.sql

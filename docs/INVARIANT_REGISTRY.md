@@ -29,6 +29,24 @@
   the value-blind preview/reconciliation procedures and may advance only when the finalizer itself
   accepts the complete aggregate gate.
 
+## ACTIVE — issue #3060 (operator-confirmed historical attendance closure)
+
+### I-PROPOSED-3060-NONCUSTOMER-CLOSURE-EXACT-AND-NONSENDING (ACTIVE)
+
+- **Rule:** An operator-confirmed no-current-buyer close is allowed only for the complete recovery
+  population identified by an exact row count and SHA-256 of sorted order IDs. It must refuse any
+  drift, buyer claim, provider attempt, incomplete delivery inventory, or partial recovery state;
+  it may terminalize untouched queue rows but may not contact anyone, fabricate delivery, or
+  delete or rewrite tickets, orders, or recovery history.
+- **Enforcement:** The service-role-only #3060 closure function writes one immutable decision
+  receipt, the #2979 finalizer revalidates that receipt's exact membership before retiring active
+  and legacy proof, and the #3060 PG17 happy/adversarial suites plus self-testing strict guard run
+  in the retained #871 workflow. The ordinary delivery-safe path still requires 72 hours and
+  preserves its governed active proof.
+- **Status:** ACTIVE when #3060 merges all-green. The production close must use a fresh value-blind
+  preview, match the reviewed exact set, and pass the database finalizer before the legacy direct
+  secret can be removed.
+
 ## ACTIVE — issue #2947 (the ticket waiting room)
 
 ## DRAFT — issue #2981 (marketing search foundation)
