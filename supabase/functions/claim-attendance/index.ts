@@ -19,9 +19,19 @@ type Outcome =
   | "rate_limited"
   | "internal_error";
 
+const STRICT_BEARER_TOKEN = /^Bearer ([^\s]+)$/i;
+
+function extractBearerToken(authorization: string | null): string | null {
+  return authorization?.match(STRICT_BEARER_TOKEN)?.[1] ?? null;
+}
+
 serve(async (req) => {
   if (req.method !== "POST") {
     return claimJson(400, { ok: false, error: "claim_invalid" });
+  }
+  const callerToken = extractBearerToken(req.headers.get("authorization"));
+  if (!callerToken) {
+    return claimJson(401, { ok: false, error: "authentication_required" });
   }
   const url = Deno.env.get("SUPABASE_URL");
   const anon = Deno.env.get("SUPABASE_ANON_KEY");
@@ -30,12 +40,15 @@ serve(async (req) => {
   if (!url || !anon || !service || !pepperRing) {
     return claimJson(500, { ok: false, error: "claim_failed" });
   }
-  const authorization = req.headers.get("authorization") ?? "";
   const viewer = createClient(url, anon, {
-    global: { headers: { authorization } },
     auth: { persistSession: false },
   });
-  const { data: authData } = await viewer.auth.getUser();
+  const { data: authData, error: authError } = await viewer.auth.getUser(
+    callerToken,
+  );
+  if (authError) {
+    return claimJson(401, { ok: false, error: "authentication_required" });
+  }
   if (!authData.user) {
     return claimJson(401, { ok: false, error: "authentication_required" });
   }

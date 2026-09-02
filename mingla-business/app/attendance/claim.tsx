@@ -10,6 +10,9 @@ import {
   createAttendanceClaimFragmentScrubber,
 } from "../../src/utils/attendanceClaimDeepLink";
 
+// #871 compatibility contract: `window.history.replaceState` is now owned by
+// the injected pre-Router bootstrap and the shared scrub helper. The route's
+// first effect must not call it directly or Router can restore the credential.
 export default function AttendanceClaimLanding(): React.ReactElement | null {
   const [parsed, setParsed] = useState(false);
   const [appUrl, setAppUrl] = useState<string | null>(null);
