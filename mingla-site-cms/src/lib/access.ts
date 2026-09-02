@@ -25,6 +25,15 @@ export const tenantRead: Access = ({ req }) => {
     ? { tenant: { equals: current.tenantId } }
     : false;
 };
+export const tenantVersionRead: Access = ({ req }) => {
+  const current = user(req);
+  return typeof current?.rank === "number" &&
+    current.rank >= 20 &&
+    typeof current.tenantId === "string" &&
+    current.tenantId.length > 0
+    ? { "version.tenant": { equals: current.tenantId } }
+    : false;
+};
 export const tenantWrite: Access = tenantRead;
 export const tenantMediaCreate: Access = ({ req }) => {
   if (req.context?.minglaMediaGrant !== true) return false;
