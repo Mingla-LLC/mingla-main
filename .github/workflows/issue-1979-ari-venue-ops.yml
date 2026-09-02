@@ -23,6 +23,8 @@ on:
       - ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs"
       - ".github/scripts/strict-grep/issue-1970-ari-capabilities-sync.mjs"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/_shared/agentDomainTools.ts"
       - "supabase/functions/_shared/agentToolAuthorization.ts"
@@ -53,6 +55,7 @@ concurrency:
 
 jobs:
   venue-ops-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

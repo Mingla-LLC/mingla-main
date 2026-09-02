@@ -2,6 +2,8 @@ name: "#2306 Lazy Native Imports"
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
     paths:
       - "app-mobile/src/lib/secureStoreSafe.ts"
@@ -25,6 +27,7 @@ concurrency:
 
 jobs:
   sole-owner-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +38,7 @@ jobs:
       - run: node .github/scripts/strict-grep/issue-2306-lazy-native-imports.mjs
 
   consumer-guard:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -50,6 +54,7 @@ jobs:
       - run: npx jest --runInBand src/lib/__tests__/issue_2306_secure_store_safe.test.ts
 
   host-guard:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     defaults:
       run:

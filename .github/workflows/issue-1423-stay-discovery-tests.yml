@@ -14,6 +14,8 @@ on:
       - "supabase/migrations/20270205001423_issue_1423_stay_discovery.sql"
       - ".github/workflows/issue-1423-stay-discovery-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "app-mobile/src/components/DiscoverScreen.tsx"
       - "app-mobile/src/components/discover/Stay*.tsx"
@@ -34,6 +36,7 @@ concurrency:
 
 jobs:
   consumer-stay-discovery:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:

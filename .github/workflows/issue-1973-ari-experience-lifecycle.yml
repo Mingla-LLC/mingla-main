@@ -2,6 +2,8 @@ name: Issue 1973 Ari experience lifecycle
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/agent-confirm-action/**"
       - "supabase/functions/parse-play-activities/**"
@@ -26,6 +28,7 @@ concurrency:
 
 jobs:
   deno-business-and-guard:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -69,6 +72,7 @@ jobs:
             src/utils/__tests__/publishedExperienceEditGuards.test.ts
 
   postgres-17:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:

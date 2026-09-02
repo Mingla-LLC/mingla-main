@@ -19,6 +19,8 @@ name: issue-2216-ticket-qr-image
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue_2216_paths
       # The generator and its local type declaration.
       - "supabase/functions/_shared/ticketQrImage.ts"
@@ -52,6 +54,7 @@ concurrency:
 
 jobs:
   issue-2216-edge-qr:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2216 Edge — every buyer-facing ticket carries a renderable QR"
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -101,6 +104,7 @@ jobs:
           deno check supabase/functions/ticket-checkout-status/index.ts
 
   issue-2216-carousel:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2216 Client — the confirmation carousel draws a real pass"
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -124,6 +128,7 @@ jobs:
         run: npx jest --ci src/components/checkout/__tests__/orch_0930_qr_carousel_mounted_guard.test.tsx
 
   issue-2216-strict-grep:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2216 — i-2216-ticket-qr-server-rendered"
     runs-on: ubuntu-latest
     timeout-minutes: 5

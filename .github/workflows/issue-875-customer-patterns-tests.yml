@@ -2,6 +2,8 @@ name: Issue 875 customer commitment patterns
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270131001875_issue_875_brand_customer_commitment_patterns.sql"
       - "supabase/migrations/__tests__/issue_875_brand_customer_commitment_patterns*.test.sql"
@@ -22,6 +24,7 @@ concurrency:
 
 jobs:
   issue-875-customer-patterns-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue #875 customer commitment patterns (PG17)"
     runs-on: ubuntu-latest
     timeout-minutes: 15

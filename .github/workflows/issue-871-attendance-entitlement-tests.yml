@@ -2,6 +2,8 @@ name: Issue 871 attendance entitlement
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "app-mobile/**"
       - "mingla-business/**"
@@ -29,6 +31,7 @@ concurrency:
 
 jobs:
   issue-871-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 871 edge/mobile/web contract"
     runs-on: ubuntu-latest
     steps:
@@ -64,6 +67,7 @@ jobs:
           --runInBand
 
   issue-871-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 871 atomic authorization proof (PG17)"
     runs-on: ubuntu-latest
     services:

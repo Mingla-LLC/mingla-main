@@ -2,6 +2,8 @@ name: Issue 1175 Paystack refunds
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/_shared/paystackRefunds.ts"
       - "supabase/functions/_shared/paystackRefundRouter.ts"
@@ -27,6 +29,7 @@ concurrency:
 
 jobs:
   issue-1175-paystack-refunds:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +57,7 @@ jobs:
         run: node --test mingla-admin/src/__tests__/issue1175_admin_refund_idempotency.test.js
 
   issue-1175-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 1175 executable manifest proof (PG17)"
     runs-on: ubuntu-latest
     # #2148 — the `services:` block that used to live here is gone. A service

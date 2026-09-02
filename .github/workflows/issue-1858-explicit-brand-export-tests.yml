@@ -13,6 +13,8 @@ on:
       - ".github/scripts/strict-grep/__tests__/issue-1858-explicit-brand-export.tester.adversarial.test.mjs"
       - ".github/workflows/issue-1858-explicit-brand-export-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270326001858_issue_1858_explicit_brand_export.sql"
       - "supabase/migrations/__tests__/issue_1858_explicit_brand_export.test.sql"
@@ -32,6 +34,7 @@ concurrency:
 
 jobs:
   issue-1858-explicit-brand-export:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:

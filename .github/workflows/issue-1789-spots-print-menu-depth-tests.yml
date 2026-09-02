@@ -24,6 +24,8 @@ on:
       - ".github/scripts/strict-grep/orch-1186c-menu-display-only.mjs"
       - ".github/workflows/issue-1789-spots-print-menu-depth-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/venue-qr-sheet/**"
       - "supabase/functions/_shared/ticketPdf.ts"
@@ -47,6 +49,7 @@ concurrency:
 
 jobs:
   qr-sheet-edge:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "venue-qr-sheet: printed URL, PDF rail, auth contract"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -61,6 +64,7 @@ jobs:
           supabase/functions/venue-qr-sheet/__tests__/issue_1789_venue_qr_sheet.test.ts
 
   dec-c-gate:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "DEC-C gate re-scope self-test (SPEC #1788 P-61a)"
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -75,6 +79,7 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1186c-menu-display-only.mjs
 
   business-client:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Spots + menu depth client logic"
     runs-on: ubuntu-latest
     timeout-minutes: 15

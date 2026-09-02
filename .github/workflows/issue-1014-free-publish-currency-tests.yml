@@ -40,6 +40,8 @@ on:
       - "packages/offering-rendering/**"
       - ".github/workflows/issue-1014-free-publish-currency-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270108001014_issue_1014_free_only_publish_currency_relax.sql"
       - "supabase/migrations/__tests__/issue_1014_free_publish_currency.test.ts"
@@ -53,6 +55,7 @@ concurrency:
 
 jobs:
   issue-1014-migration-deno-test:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue #1014: free-publish currency migration contract (deno test)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -72,6 +75,7 @@ jobs:
           supabase/migrations/__tests__/issue_1014_free_publish_currency.test.ts
 
   issue-1014-business-jest:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue #1014: guard copy + wizard mapping (fails-on-revert jest suites)"
     runs-on: ubuntu-latest
     timeout-minutes: 12

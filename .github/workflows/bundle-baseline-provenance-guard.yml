@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   provenance:
+    if: ${{ github.event.pull_request.draft != true }}
     name: Bundle baseline provenance guard
     runs-on: ubuntu-latest
     steps:

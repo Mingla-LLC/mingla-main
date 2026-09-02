@@ -249,6 +249,7 @@ Before merging any PR (per-ORCH branch → main), the orchestrator MUST verify A
 4. **Operator-confirmed.** Either operator explicitly says "merge" / "ship" / etc., OR the orchestrator has delegated end-to-end execution authority.
 5. **Vercel `[deploy]` tag present** in the commit subject if the ORCH touches any Vercel-built surface (`mingla-business/`, `mingla-admin/`, `mingla-marketing/`). See `feedback_vercel_deploy_gate.md`.
 6. **Strict-grep + Tests-Append-Only + Migrations-Baseline gates** all passed against the latest HEAD.
+7. **No `skipped` conclusion on a draft-gated workflow** (issue #2881). Since #2881, every pull-request workflow except the two that produce the ruleset-required checks skips its jobs while the pull request is a draft and re-fires on `ready_for_review`. A `skipped` conclusion on one of those workflows **at merge time is a FAILURE, not a pass** — it means the `ready_for_review` re-fire never happened and that workflow never executed against the merged code. GitHub counts `skipped` as satisfying a required check, so nothing else will catch it. Expected count on any merged SHA: **zero**. The always-on exempt set is the `ALWAYS_ON` registry in `.github/scripts/strict-grep/issue-2881-pr-draft-gate-policy.mjs`; those two never report `skipped` at all.
 
 If ANY gate fails, do NOT merge. Investigate root cause, fix, push, re-run.
 

@@ -68,6 +68,8 @@ on:
       - ".github/actions/migrated-postgres/**"
       - ".github/workflows/postgres-contract-suites.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/config.toml"
       - "supabase/migrations/**"
@@ -113,6 +115,7 @@ env:
 
 jobs:
   migration-chain:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Postgres contract suites — migration chain"
     runs-on: ubuntu-latest
     # Expected ~283 s (one bring-up + from-zero replay ~110 s, eight template

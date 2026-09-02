@@ -49,6 +49,8 @@ on:
       - "supabase/migrations/**"
       - ".github/workflows/meta-orch-1337-social-proof-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "packages/offering-rendering/**"
       # issue #2468 — PublicVenueScreen (the venue page's maps target) lives in
@@ -79,6 +81,7 @@ concurrency:
 
 jobs:
   meta-1337-deno-suites:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "META-ORCH-1337: Deno suites — social-proof types/reads, momentum cross-entity, guest identity privacy, guest-privacy RPC, guest-list sheet, OneLink guest funnel (1338/1339/1340/1341/1342 + rewritten 1157)"
     runs-on: ubuntu-latest
     steps:
@@ -222,6 +225,7 @@ jobs:
           echo "privacy guard line ${guard} precedes locationGeo read line ${geo}"
 
   meta-1337-business-jest-suites:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "META-ORCH-1337: mingla-business jest suites — 1339 trip/experience guest privacy + 1342 see-who's-going gate, guest funnel link, download-CTA store-links SSOT"
     runs-on: ubuntu-latest
     defaults:

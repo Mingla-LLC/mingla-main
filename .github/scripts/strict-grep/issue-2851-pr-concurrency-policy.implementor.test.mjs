@@ -125,8 +125,17 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // outlive a silent reversion of either authorized workflow change. The value
 // below was re-derived from disk after rebasing onto origin/main at ccfadd28c,
 // so #2947 and #3016 remain part of the combined authority as well.
+// [TEST-MOD-APPROVED #2881] Re-derived after #2881 draft-gated the PR-family lanes:
+// each gated workflow gained `types: [opened, synchronize, reopened,
+// ready_for_review]` and a draft condition on every job. Both are NON-CONCURRENCY
+// document changes, which is exactly what this digest absorbs. Named by issue, not
+// by filename, per the rule above. PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are
+// deliberately UNCHANGED: no workflow was added, removed or renamed. Concurrency is
+// untouched BY CONSTRUCTION -- #2881 never edits a `concurrency:` block. The
+// revert-sensitivity loop below is untouched and still red on reversion; the Sites
+// recovery lane stays exempt and byte-identical so that loop keeps its target.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "28dcbc01668081dd49821934f60563ddf17eaa8772f269579b05a27c84894e77";
+  "4e39621cf89c24a690aea046c33dc360d1fdb0e9cc2739762aae67fbdd1f9312";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

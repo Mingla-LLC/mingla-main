@@ -22,6 +22,8 @@ on:
       - "mingla-business/src/analytics/__tests__/webAnalytics.referrer.issue855pr2.test.ts"
       - ".github/workflows/issue-855-pr2-source-tracking-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/attribution-capture/**"
       - "mingla-business/src/analytics/webAnalytics.web.ts"
@@ -35,6 +37,7 @@ concurrency:
 
 jobs:
   attribution-capture-deno-tests:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "ISSUE-855 PR-2: attribution-capture entry_source classifier + existing suites (Deno)"
     runs-on: ubuntu-latest
     steps:
@@ -75,6 +78,7 @@ jobs:
           done
 
   source-tracking-business-jest:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "ISSUE-855 PR-2: client referrer capture + first-touch-wins (jest)"
     runs-on: ubuntu-latest
     defaults:

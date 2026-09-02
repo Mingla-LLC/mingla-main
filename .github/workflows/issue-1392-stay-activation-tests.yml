@@ -10,6 +10,8 @@ on:
       - "supabase/migrations/__tests__/issue_1392_stay_activation_guards*.sql"
       - ".github/workflows/issue-1392-stay-activation-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "scripts/ops/stay-rollout-policy*.mjs"
       - "supabase/functions/stay-reservations/**"
@@ -26,6 +28,7 @@ concurrency:
 
 jobs:
   rollout-policy:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -50,6 +53,7 @@ jobs:
           node .github/scripts/strict-grep/issue-1427-admin-stay-support.mjs
 
   backend-contracts:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -87,6 +91,7 @@ jobs:
           supabase/functions/_shared/sourceRefundControlPlane.ts
 
   client-contracts:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:

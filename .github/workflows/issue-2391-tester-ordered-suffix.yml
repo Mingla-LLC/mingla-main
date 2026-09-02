@@ -2,6 +2,8 @@ name: Issue #2391 tester ordered suffix integrity
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ".github/actions/migrated-postgres/**"
       - ".github/workflows/issue-2391-tester-ordered-suffix.yml"
@@ -13,6 +15,7 @@ concurrency:
 
 jobs:
   ordered-suffix-integrity:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

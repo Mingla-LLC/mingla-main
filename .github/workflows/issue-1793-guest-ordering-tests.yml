@@ -54,6 +54,8 @@ on:
       - ".github/scripts/strict-grep/issue-1793-guest-ordering-structure.mjs"
       - ".github/workflows/issue-1793-guest-ordering-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "packages/brand-rendering/venueOrdering/**"
       - "packages/brand-rendering/PublicVenueScreen.tsx"
@@ -88,6 +90,7 @@ concurrency:
 
 jobs:
   guest-ordering-rules:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Rules: the promises the guest surface makes"
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -120,6 +123,7 @@ jobs:
         run: npx jest --config jest.issue1793.cfg.cjs --runInBand
 
   guest-ordering-buyer-web:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Buyer web: anon, the sitting, the redirect, the return leg"
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -158,6 +162,7 @@ jobs:
           --runInBand
 
   guest-ordering-structure:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Structure: the gate's own self-test (GOOD + BAD per rule)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -175,6 +180,7 @@ jobs:
           --self-test
 
   guest-ordering-consumer:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Consumer: no auth, host-owned payment, no price without the server"
     runs-on: ubuntu-latest
     timeout-minutes: 15

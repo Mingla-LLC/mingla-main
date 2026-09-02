@@ -2,6 +2,8 @@ name: "Issue #2353 format truth and edit grant"
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270429002353_issue_2353_format_truth_and_edit_grant.sql"
       - "supabase/migrations/20270422001972_issue_1972_ari_event_lifecycle.sql"
@@ -28,6 +30,7 @@ concurrency:
 
 jobs:
   postgres-replay:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     services:
@@ -208,6 +211,7 @@ jobs:
         run: bash scripts/ci/security_definer_anon_gate.sh
 
   strict-grep-gate:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

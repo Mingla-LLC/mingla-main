@@ -20,6 +20,8 @@ name: issue-2217-confirmation-app-cta
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue_2217_paths
       - "supabase/migrations/20270421002217_issue_2217_identity_attendance_claim.sql"
       - "supabase/migrations/__tests__/issue_2217_identity_attendance_claim.test.sql"
@@ -57,6 +59,7 @@ concurrency:
 
 jobs:
   issue-2217-edge-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2217 Edge — the claim RPC takes a user id and nothing else"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -82,6 +85,7 @@ jobs:
       - run: deno check supabase/functions/attendance-claim-link/index.ts
 
   issue-2217-client-cta:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2217 Client — one button, and it points at the right store"
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -118,6 +122,7 @@ jobs:
         run: npx jest orch_1342_guest_funnel_link --runInBand
 
   issue-2217-postgres-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2217 PostgreSQL 17 — a guessed identifier is handed nothing"
     runs-on: ubuntu-latest
     timeout-minutes: 30

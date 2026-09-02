@@ -2,6 +2,8 @@ name: "#2220/#2223 Icon Geometry"
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
     paths:
       - "app-mobile/assets/adaptive-icon.png"
@@ -24,6 +26,7 @@ concurrency:
 
 jobs:
   icon-geometry:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

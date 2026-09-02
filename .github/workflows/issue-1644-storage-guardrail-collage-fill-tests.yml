@@ -33,6 +33,8 @@ on:
       - "supabase/migrations/__tests__/issue_1644_collage_reencode_jobs.test.sql"
       - ".github/workflows/issue-1644-storage-guardrail-collage-fill-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/_shared/imageCollage.ts"
       - "supabase/functions/_shared/storageHeadroomGuard.ts"
@@ -68,6 +70,7 @@ jobs:
   # the same files against collateral damage.
   # ---------------------------------------------------------------------------
   issue-1644-contracts:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -167,6 +170,7 @@ jobs:
   # would disable the guardrail entirely while every Deno test stayed green.
   # ---------------------------------------------------------------------------
   postgres-17-guard-rpc:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -242,6 +246,7 @@ jobs:
   # and seeding production's exact value.
   # ---------------------------------------------------------------------------
   postgres-17-collage-reencode-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

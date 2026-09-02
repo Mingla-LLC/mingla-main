@@ -14,6 +14,8 @@ on:
       # without this path a change to that action would not re-run it.
       - ".github/actions/migrated-postgres/**"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "mingla-business/src/components/stay/StayInventoryManager.tsx"
       - "mingla-business/src/components/stay/__tests__/stayAuthoringPermissions.issue1469.test.ts"
@@ -34,6 +36,7 @@ concurrency:
 
 jobs:
   client-permission-parity:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -60,6 +63,7 @@ jobs:
           src/types/stayInventory.ts
 
   postgres-17-runtime:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     # #2148 — the `services:` block that used to live here is gone. A service

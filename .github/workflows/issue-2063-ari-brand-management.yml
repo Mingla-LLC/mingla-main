@@ -2,6 +2,8 @@ name: "Issue #2063 Ari brand management"
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270507002063_issue_2063_ari_brand_management.sql"
       - "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql"
@@ -90,6 +92,7 @@ concurrency:
 
 jobs:
   issue-2063-contracts:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -131,6 +134,7 @@ jobs:
           node .github/scripts/strict-grep/issue-2063-ari-brand-management.mjs
 
   issue-2063-business-parity:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -151,6 +155,7 @@ jobs:
           src/components/ari/__tests__/orch_1103_rework3_create_attach_lifecycle.test.ts
 
   issue-2063-postgres:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     services:

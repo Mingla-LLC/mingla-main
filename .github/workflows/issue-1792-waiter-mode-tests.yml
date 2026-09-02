@@ -29,6 +29,8 @@ on:
       - "mingla-business/src/hooks/useVenueOrderTabs.ts"
       - ".github/workflows/issue-1792-waiter-mode-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/venue-order-staff/**"
       - "supabase/functions/_shared/venueOrderCore.ts"
@@ -50,6 +52,7 @@ concurrency:
 
 jobs:
   waiter-mode-server:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Server: the metadata merge, the session guard, the replay"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -65,6 +68,7 @@ jobs:
           supabase/functions/_shared/__tests__/issue_1848_order_gate_codes.test.ts
 
   waiter-mode-client:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Client: the pad's rules, and the ticket the kitchen cannot tell apart"
     runs-on: ubuntu-latest
     timeout-minutes: 15

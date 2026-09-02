@@ -38,6 +38,8 @@ on:
       - "app-mobile/src/hooks/__tests__/useAuthSimple.authFailureCapture.adversarial.issue1044.test.ts"
       - ".github/workflows/issue-1044-auth-failure-capture-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "mingla-business/src/context/AuthContext.tsx"
       - "mingla-business/src/diagnostics/reportNonFatal.ts"
@@ -55,6 +57,7 @@ concurrency:
 
 jobs:
   issue-1044-business-jest:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#1044 BIZ: native Google/Apple sign-in failures reach Sentry (fails-on-revert)"
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -94,6 +97,7 @@ jobs:
         run: npx jest src/diagnostics/__tests__/reportNonFatal.test.ts --runInBand
 
   issue-1044-consumer-node-test:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#1044 CONS: native Google/Apple sign-in failures reach Sentry (fails-on-revert)"
     runs-on: ubuntu-latest
     timeout-minutes: 15

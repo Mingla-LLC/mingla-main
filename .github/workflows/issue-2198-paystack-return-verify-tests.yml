@@ -16,6 +16,8 @@
 name: issue-2198-paystack-return-verify
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/_shared/paystackTicketReturnVerify.ts"
       - "supabase/functions/_shared/paystackWebhookRouter.ts"
@@ -56,6 +58,7 @@ concurrency:
 
 jobs:
   issue-2198-return-leg-deno:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Paystack return-leg verification (Deno runtime)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -128,6 +131,7 @@ jobs:
           supabase/functions/ticket-checkout-status/__tests__/issue_1930_preflight_contract.test.ts
 
   issue-2198-return-leg-business-jest:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Paystack return leg — what the guest sees (business jest)"
     runs-on: ubuntu-latest
     timeout-minutes: 15

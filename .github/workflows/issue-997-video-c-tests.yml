@@ -32,6 +32,8 @@ on:
       - "mingla-admin/src/**"
       - ".github/workflows/issue-997-video-c-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/**"
       - "supabase/config.toml"
@@ -44,6 +46,7 @@ concurrency:
 
 jobs:
   edge-and-schema:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -95,6 +98,7 @@ jobs:
           deno test --allow-env --allow-read "${files[@]}"
 
   admin:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

@@ -21,6 +21,8 @@ name: Issue #1486 Dormant Render Suites
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     # #2885 AC-4 — a pull request whose ONLY changed file is the machine-written
     # boot-payload baseline cannot affect this suite. Those recording PRs were
     # starting 53 jobs each, ~15/day (~51,000 job-min/month). `paths-ignore`
@@ -36,6 +38,7 @@ concurrency:
 
 jobs:
   issue-1486-dormant-render-suites:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#1486 — dormant render suites (batched)"
     runs-on: ubuntu-latest
     timeout-minutes: 25

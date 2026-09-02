@@ -24,6 +24,8 @@ name: issue-2323-free-order-claim-and-cta
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue_2323_paths
       # The one owner of "arm the claim from a finalized order".
       - "mingla-business/src/hooks/useAttendanceClaimArm.ts"
@@ -64,6 +66,7 @@ concurrency:
 
 jobs:
   issue-2323-client:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2323/#2326 Client — the screen asks, and the tap lands"
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -114,6 +117,7 @@ jobs:
         run: npx jest orch_1342_guest_funnel_link --runInBand
 
   issue-2323-postgres-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2323 PostgreSQL 17 — a free ticket follows its buyer, a guess follows nobody"
     runs-on: ubuntu-latest
     timeout-minutes: 30

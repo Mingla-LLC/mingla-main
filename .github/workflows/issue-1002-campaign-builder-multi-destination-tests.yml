@@ -36,6 +36,8 @@ on:
       - "supabase/migrations/20270107001002_issue_1002_ad_campaign_destinations.sql"
       - ".github/workflows/issue-1002-campaign-builder-multi-destination-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "mingla-admin/src/**"
       - "supabase/functions/admin-ad-create-campaign/**"
@@ -49,6 +51,7 @@ concurrency:
 
 jobs:
   issue-1002-admin-node-test:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "ISSUE-1002: campaign-builder multi-destination (admin node:test)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -73,6 +76,7 @@ jobs:
           src/__tests__/issue1002_multi_destination.tester_adversarial.test.js
 
   issue-1002-edge-deno-test:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "ISSUE-1002: admin-ad-create-campaign fan-out (edge deno test)"
     runs-on: ubuntu-latest
     timeout-minutes: 10

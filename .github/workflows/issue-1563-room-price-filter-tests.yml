@@ -50,6 +50,8 @@ on:
       - "mingla-business/jest.issue1563.cfg.cjs"
       - ".github/workflows/issue-1563-room-price-filter-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "packages/brand-rendering/stayRoomPriceFilter.ts"
       - "packages/brand-rendering/StayGuestBooking.tsx"
@@ -69,6 +71,7 @@ concurrency:
 
 jobs:
   room-price-filter:
+    if: ${{ github.event.pull_request.draft != true }}
     name: Room price filter (web-resolved render proof)
     runs-on: ubuntu-latest
     timeout-minutes: 30

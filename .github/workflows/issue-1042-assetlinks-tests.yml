@@ -41,6 +41,8 @@ on:
       - "scripts/probe-android-applinks.mjs"
       - ".github/workflows/issue-1042-assetlinks-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "mingla-marketing/public/.well-known/assetlinks.json"
       - "mingla-business/public/.well-known/assetlinks.json"
@@ -58,6 +60,7 @@ concurrency:
 
 jobs:
   issue-1042-assetlinks-parity:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#1042: assetlinks cross-file parity + fingerprint ratchet (fails-on-revert)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
