@@ -215,6 +215,18 @@ export default function RsvpEditRoute(): React.ReactElement {
   // #1022 A/F-7 — set when an autosave is requested while a d_* promotion
   // is in flight; flushed once the server id resolves.
   const pendingPostPromotionSaveRef = React.useRef<boolean>(false);
+  // issue #3040 — the in-flight d_*→server promotion started by
+  // `handleAutosaveDraft`, so the Cover step can await the SAME one.
+  const promotionPromiseRef = React.useRef<Promise<DraftEvent> | null>(null);
+  // Read through a CALL, never the ref directly: assigning `null` immediately
+  // before `handleAutosaveDraft` narrows `promotionPromiseRef.current` to
+  // `null`, and control-flow analysis cannot see the synchronous reassignment
+  // that happens inside that handler. Reading the property directly therefore
+  // types the result `never` after the null-check.
+  const takePromotionPromise = React.useCallback(
+    (): Promise<DraftEvent> | null => promotionPromiseRef.current,
+    [],
+  );
   const staleRecoveryDraftIdRef = React.useRef<string | null>(null);
   // ORCH-1150 (D-1) — retain the last resolved draft so the d_*→server migration
   // swap does NOT flash the `draft===null` Spinner (which remounts the wizard,
@@ -577,88 +589,6 @@ export default function RsvpEditRoute(): React.ReactElement {
   // `migratingLegacyIdRef` keeps this route's promotion state for the D-1
   // retained-draft guard; the registry dedupes concurrent promotions globally
   // (per d_* id across ALL surfaces — loop, routes, previews).
-  // issue #3040 — ONE promotion, ONE reconcile, TWO triggers (mirror of the
-  // event route; the RSVP wizard renders the same `CreatorStep4Cover`).
-  const reconcilePromotedDraft = React.useCallback(
-    (localId: string, merged: DraftEvent): void => {
-      if (user !== null) {
-        promoteBusinessRecentDraft({
-          userId: user.id,
-          brandId: merged.brandId,
-          entityType: "rsvp",
-          localId,
-          serverId: merged.id,
-        });
-      }
-      // Issue #976 — resolve handlers are unmount- and focus-guarded: a
-      // rapid wizard exit or a pushed Preview screen can never receive a
-      // stray setParams.
-      if (!mountedRef.current) return;
-      // ORCH-1355 (symptom 1) — resolve the wizard against the server id via
-      // route state, then reconcile the URL IN PLACE with setParams. A
-      // router.replace here would change the [id] segment → expo-router
-      // replaces the screen → the name TextInput remounts → the keyboard
-      // drops mid-type. setParams updates the focused route's params without
-      // a screen replace, so the input keeps focus AND the URL/route params
-      // land on the server id immediately (resume/kill lands on the real id).
-      setPromotedServerId(merged.id);
-      // #1022 A/F-7 — flush the edit that landed during promotion, now
-      // that a server row exists. Read the draft FRESH from the store so
-      // the flush carries every field written while we were in flight.
-      if (pendingPostPromotionSaveRef.current) {
-        pendingPostPromotionSaveRef.current = false;
-        const freshDraft =
-          useDraftEventStore.getState().getDraft(merged.id) ?? merged;
-        autosave.saveDraft(freshDraft);
-      }
-      if (navigationRef.isFocused()) {
-        router.setParams({
-          id: merged.id,
-          step: String(initialStep ?? 0),
-        });
-      } else {
-        pendingUrlReconcileRef.current = {
-          id: merged.id,
-          step: String(initialStep ?? 0),
-        };
-      }
-    },
-    [autosave, initialStep, navigationRef, router, user],
-  );
-
-  // issue #3040 — the Cover step's server-row precondition. See the event
-  // route for the full rationale: a `d_*` id is a hard 400 at
-  // `event-cover-video-upload-intent`, so the Cover step demands the row here
-  // and RENDERS the outcome instead of hoping the debounced autosave landed.
-  const handleRequireServerDraft = React.useCallback(
-    async (): Promise<string> => {
-      const current = useDraftEventStore.getState().getDraft(
-        effectiveDraftId as string,
-      ) ?? lastResolvedDraftRef.current;
-      if (current === null) {
-        throw new Error("This event is still loading. Try again in a moment.");
-      }
-      if (!current.id.startsWith("d_")) return current.id;
-      if (!isAuthReady) {
-        throw new Error("Finishing sign-in. Try again in a moment.");
-      }
-      migratingLegacyIdRef.current = current.id;
-      try {
-        const merged = await promoteLegacyDraftOnce({
-          queryClient,
-          brandId: current.brandId,
-          draftId: current.id,
-        });
-        reconcilePromotedDraft(current.id, merged);
-        return merged.id;
-      } catch (error) {
-        migratingLegacyIdRef.current = null;
-        throw error;
-      }
-    },
-    [effectiveDraftId, isAuthReady, queryClient, reconcilePromotedDraft],
-  );
-
   const handleAutosaveDraft = React.useCallback(
     (incoming: DraftEvent): void => {
       if (!incoming.id.startsWith("d_")) {
@@ -676,13 +606,67 @@ export default function RsvpEditRoute(): React.ReactElement {
       }
       if (!isAuthReady) return;
       migratingLegacyIdRef.current = incoming.id;
-      void promoteLegacyDraftOnce({
+      // issue #3040 — hold the single-flight promise so the Cover step's
+      // `handleRequireServerDraft` can join THIS promotion instead of starting
+      // a second one of its own.
+      const promotion = promoteLegacyDraftOnce({
         queryClient,
         brandId: incoming.brandId,
         draftId: incoming.id,
-      })
+      });
+      promotionPromiseRef.current = promotion;
+      void promotion
         .then((merged) => {
-          reconcilePromotedDraft(incoming.id, merged);
+          if (user !== null) {
+            promoteBusinessRecentDraft({
+              userId: user.id,
+              brandId: incoming.brandId,
+              entityType: "rsvp",
+              localId: incoming.id,
+              serverId: merged.id,
+            });
+          }
+          // Issue #976 — resolve handlers are unmount- and focus-guarded: a
+          // rapid wizard exit or a pushed Preview screen can never receive a
+          // stray setParams.
+          if (!mountedRef.current) return;
+          // ORCH-1355 (symptom 1) — resolve the wizard against the server id via
+          // route state, then reconcile the URL IN PLACE with setParams. A
+          // router.replace here would change the [id] segment → expo-router
+          // replaces the screen → the name TextInput remounts → the keyboard
+          // drops mid-type. setParams updates the focused route's params without
+          // a screen replace, so the input keeps focus AND the URL/route params
+          // land on the server id immediately (resume/kill lands on the real id).
+          //
+          // issue #3040 — this reconcile is deliberately INLINE here rather than
+          // extracted into a helper. I-PROPOSED-1355-DRAFT-PROMOTION-NO-REMOUNT
+          // is enforced by scanning THIS callback for `setPromotedServerId(` and
+          // `router.setParams(`, and that structural pin is the point: behind an
+          // indirection, a future edit could swap in a screen-replacing
+          // navigation and the gate would never see it. There is still exactly
+          // ONE promotion site — `handleRequireServerDraft` below drives this
+          // handler rather than promoting on its own.
+          setPromotedServerId(merged.id);
+          // #1022 A/F-7 — flush the edit that landed during promotion, now
+          // that a server row exists. Read the draft FRESH from the store so
+          // the flush carries every field written while we were in flight.
+          if (pendingPostPromotionSaveRef.current) {
+            pendingPostPromotionSaveRef.current = false;
+            const freshDraft =
+              useDraftEventStore.getState().getDraft(merged.id) ?? merged;
+            autosave.saveDraft(freshDraft);
+          }
+          if (navigationRef.isFocused()) {
+            router.setParams({
+              id: merged.id,
+              step: String(initialStep ?? 0),
+            });
+          } else {
+            pendingUrlReconcileRef.current = {
+              id: merged.id,
+              step: String(initialStep ?? 0),
+            };
+          }
         })
         .catch((error) => {
           migratingLegacyIdRef.current = null;
@@ -710,6 +694,53 @@ export default function RsvpEditRoute(): React.ReactElement {
       queryClient,
       router,
       user,
+    ],
+  );
+
+  // issue #3040 — the Cover step's server-row precondition (mirror of the event
+  // route; the RSVP wizard renders the same `CreatorStep4Cover`).
+  //
+  // It does NOT promote on its own. It DRIVES `handleAutosaveDraft` — the one
+  // site that performs the ORCH-1355 in-place reconcile — and then joins the
+  // very same single-flight promise that handler started to learn the resulting
+  // uuid. One promotion, one reconcile, two triggers.
+  const handleRequireServerDraft = React.useCallback(
+    async (): Promise<string> => {
+      const current = useDraftEventStore.getState().getDraft(
+        effectiveDraftId as string,
+      ) ?? lastResolvedDraftRef.current;
+      if (current === null) {
+        throw new Error("This event is still loading. Try again in a moment.");
+      }
+      if (!current.id.startsWith("d_")) return current.id;
+      if (!isAuthReady) {
+        throw new Error("Finishing sign-in. Try again in a moment.");
+      }
+      promotionPromiseRef.current = null;
+      handleAutosaveDraft(current);
+      const promotion = takePromotionPromise();
+      if (promotion === null) {
+        // The handler declined to promote (not dirty, or a promotion for this
+        // id is already in flight from an earlier keystroke and this call
+        // arrived inside that window). Join the registry directly — it is
+        // single-flight per id, so this can never mint a second row, and the
+        // in-flight promotion still owns the reconcile.
+        const merged = await promoteLegacyDraftOnce({
+          queryClient,
+          brandId: current.brandId,
+          draftId: current.id,
+        });
+        return merged.id;
+      }
+      const merged = await promotion;
+      return merged.id;
+    },
+    [
+      effectiveDraftId,
+      handleAutosaveDraft,
+      isAuthReady,
+      queryClient,
+      takePromotionPromise,
     ],
   );
 

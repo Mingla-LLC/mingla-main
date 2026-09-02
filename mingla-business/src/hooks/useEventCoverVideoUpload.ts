@@ -256,7 +256,14 @@ export function useEventCoverVideoUpload(
     // completely untouched.
     const watchdog = new AbortController();
     const stopWatching = (): void => watchdog.abort();
-    signal.addEventListener("abort", stopWatching, { once: true });
+    // An ALREADY-aborted caller signal never emits another "abort" event, so a
+    // listener alone would leave the watchdog live and this wait would never
+    // settle — the caller's promise hangs forever. That is reachable in
+    // production (the sheet is closed in the same tick the acknowledgement
+    // resolves, so `watch` is entered with a dead signal) and it is exactly what
+    // #2715's "interrupted acknowledgement + remount" case drives.
+    if (signal.aborted) watchdog.abort();
+    else signal.addEventListener("abort", stopWatching, { once: true });
     let deadlineReached = false;
     const timer = setTimeout(() => {
       deadlineReached = true;

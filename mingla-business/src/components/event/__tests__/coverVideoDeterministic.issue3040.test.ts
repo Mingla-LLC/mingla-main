@@ -107,6 +107,21 @@ describe("#3040 invariant 2 — no unbounded wait, client or server", () => {
     expect(hook).toMatch(/if \(deadlineReached && !signal\.aborted\) \{/);
   });
 
+  test("T-3040-C-04 an ALREADY-aborted caller signal must trip the watchdog immediately", () => {
+    // Regression for a bug this issue introduced and #2715's adversarial suite
+    // caught: routing the ready-wait through a watchdog controller means an
+    // `abort` LISTENER is no longer enough. A signal that is already aborted
+    // when `watch` is entered never emits another event, so the watchdog stays
+    // live and the caller's promise never settles — reachable in production
+    // whenever the sheet is closed in the same tick the acknowledgement
+    // resolves. Deleting either line below re-hangs
+    // `issue_2715_deterministic_video_uploads.tester.adversarial.test.ts`.
+    expect(hook).toContain("if (signal.aborted) watchdog.abort();");
+    expect(hook).toContain(
+      'else signal.addEventListener("abort", stopWatching, { once: true });',
+    );
+  });
+
   test("T-3040-C-03 the acknowledgement loop keeps its own client backstop", () => {
     expect(hook).toContain("export const EVENT_COVER_VIDEO_ACK_DEADLINE_MS = 150_000;");
     expect(hook).toContain("if (Date.now() >= ackDeadlineAt) {");

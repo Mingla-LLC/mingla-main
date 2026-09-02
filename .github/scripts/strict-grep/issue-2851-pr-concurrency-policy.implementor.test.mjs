@@ -155,8 +155,31 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     workflow was added, removed or renamed;
   //   - the policy audit itself still reports zero errors at 124 PR-family
   //     workflows, which is the sibling test above.
+  //
+  // [TEST-MOD-APPROVED #3040] Re-derived again. #3040 added TWO test steps to
+  // the #1719 unified-sharing lane (the deterministic cover-video umbrella).
+  // That lane is PR-family, so its non-concurrency document is inside this
+  // digest, exactly as the #2967 and #2060 re-derivations above.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING:
+  //   - the change is PURELY ADDITIVE steps. Grepping that lane's branch diff
+  //     for `concurrency`, `group:` and `cancel-in-progress` across added AND
+  //     removed lines returns ZERO — no concurrency block, group expression or
+  //     cancellation value is touched. Unlike #2967 this change adds no
+  //     `paths:` entries either; the lane already scopes the cover-video edge
+  //     functions and `mingla-business/**`. (The lane is named here the way
+  //     every note above names it — as "the #1719 unified-sharing lane", never
+  //     by its `.yml` path. A workflow FILENAME written in this file is counted
+  //     by `discoverWorkflowProviders()` as an external provider reference and
+  //     moves the frozen #2148 provider seal, exactly as the #2948 note on
+  //     DENIED_FULL_SHA256 below warns.);
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED, so no
+  //     workflow was added, removed or renamed (I-2148-CI-TOPOLOGY-BOUNDED is
+  //     green: "0 added workflow(s) in origin/main..HEAD");
+  //   - the policy audit itself still reports zero errors at 124 PR-family
+  //     workflows — the sibling test above, which passes.
   // Every earlier re-derivation is preserved, not replaced.
-  "797b10aff9e20e0fef88eb4ee74ddf997f59d26665d3c40fc79981e5da99b075";
+  "8ff3c94b9d5e6adfe8979936bef40bea6ea8c50a382d949ccf397124e5e64846";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
