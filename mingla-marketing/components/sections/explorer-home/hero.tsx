@@ -552,7 +552,7 @@ export function ExplorerHero({ cityKey = DEFAULT_CITY }: ExplorerHeroProps) {
             delay: reduced ? 0 : 0.18,
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="flex max-w-[min(56rem,calc(100vw-2rem))] flex-col items-center justify-center gap-y-[0.12em] font-display leading-[1.12] tracking-[-0.005em] text-text-primary"
+          className="search-primary-answer flex max-w-[min(56rem,calc(100vw-2rem))] flex-col items-center justify-center gap-y-[0.12em] font-display leading-[1.12] tracking-[-0.005em] text-text-primary"
           style={{ fontSize: 'clamp(1.7rem, 5.7vmin, 4rem)' }}
         >
           <span className="inline-flex items-center justify-center gap-x-[0.22em] whitespace-nowrap">

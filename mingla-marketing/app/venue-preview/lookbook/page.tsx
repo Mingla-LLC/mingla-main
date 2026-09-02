@@ -2,13 +2,12 @@
 // content so the set can be reviewed and signed off in one place. Each preview
 // is the real skin (an iframe of /venue-preview?sample=1&skin=…), scaled down.
 
-import type { Metadata } from 'next'
 import { SKIN_ORDER, skinMeta } from '../venueSkins'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/venue-preview/lookbook', {
   title: 'Venue skins — lookbook',
-  robots: { index: false, follow: false },
-}
+})
 
 export const dynamic = 'force-dynamic'
 

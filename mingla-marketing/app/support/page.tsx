@@ -1,11 +1,7 @@
-import type { Metadata } from 'next'
 import Link from 'next/link'
+import { searchRouteMetadata } from '@/lib/search/metadata'
 
-export const metadata: Metadata = {
-  title: 'Support',
-  description:
-    'Get help with Mingla — contact support, report a problem, or manage your account.',
-}
+export const metadata = searchRouteMetadata('/support')
 
 export default function SupportPage() {
   return (

@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test:search-foundation": "node scripts/verify-search-foundation.mjs",
     "test:orch-1130": "node ../.github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs --self-test && node ../.github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs"
   },
   "dependencies": {

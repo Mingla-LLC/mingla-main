@@ -93,16 +93,35 @@ function segmentMatches(pattern, segment) {
   return pattern === segment
 }
 
-/** `next.config.ts` redirect sources — a redirect IS a resolution. */
+/**
+ * Lifecycle-registry redirect sources — a redirect IS a resolution.
+ *
+ * Issue #2981 moved redirect truth beside indexing lifecycle truth. Keep the
+ * fail-loud model coupled to that single owner, while also proving Next still
+ * consumes the projection rather than leaving registered redirects dark.
+ */
 function buildRedirectSources(repoRoot) {
-  const src = readFileSync(join(repoRoot, 'mingla-marketing', 'next.config.ts'), 'utf8')
-  const block = /async\s+redirects\s*\(\s*\)\s*\{([\s\S]*?)\n {2}\}/.exec(src)
-  if (block === null) {
+  const nextConfig = readFileSync(join(repoRoot, 'mingla-marketing', 'next.config.ts'), 'utf8')
+  if (!nextConfig.includes('nextRedirectsFromRegistry()')) {
     throw new Error(
-      'could not locate the redirects() block in next.config.ts — the resolver is out of sync with the app and must not guess',
+      'next.config.ts no longer consumes nextRedirectsFromRegistry() — registered redirects would not be live',
     )
   }
-  return [...block[1].matchAll(/source:\s*'([^']+)'/g)].map((m) => m[1])
+  const registry = readFileSync(
+    join(repoRoot, 'mingla-marketing', 'lib', 'search', 'route-registry.ts'),
+    'utf8',
+  )
+  const block = /const REDIRECTED_ROUTES = \[([\s\S]*?)\] as const satisfies readonly RedirectedRouteContract\[\]/.exec(registry)
+  if (block === null) {
+    throw new Error(
+      'could not locate REDIRECTED_ROUTES in the search lifecycle registry — the resolver is out of sync with the app and must not guess',
+    )
+  }
+  const sources = [...block[1].matchAll(/source:\s*'([^']+)'/g)].map((m) => m[1])
+  if (sources.length === 0) {
+    throw new Error('the search lifecycle registry yielded zero redirect sources')
+  }
+  return sources
 }
 
 /**

@@ -1,13 +1,9 @@
-import type { Metadata } from 'next'
 import Link from 'next/link'
 import { PRIVACY_SECTIONS, PRIVACY_EFFECTIVE_DATE } from '@/lib/privacyContent'
 import { cn } from '@/lib/cn'
+import { searchRouteMetadata } from '@/lib/search/metadata'
 
-export const metadata: Metadata = {
-  title: 'Privacy Policy',
-  description:
-    'How Mingla collects, uses, discloses, and safeguards your information when you use our app and website.',
-}
+export const metadata = searchRouteMetadata('/privacy-policy')
 
 export default function PrivacyPolicyPage() {
   return (

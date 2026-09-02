@@ -2,6 +2,44 @@
 
 ## ACTIVE — issue #2947 (the ticket waiting room)
 
+## DRAFT — issue #2981 (marketing search foundation)
+
+### I-PROPOSED-2981-MARKETING-ORIGIN-ONE-OWNER (DRAFT)
+
+- **Rule:** `https://usemingla.com` is the sole canonical marketing origin. Only the exact
+  `www.usemingla.com` alias permanently redirects there, preserving path and query. Careers,
+  `.well-known`, public share routes/assets, and internal share APIs stay isolated from the
+  marketing redirect; `host.usemingla.com` remains the separate buyer/operator product authority.
+- **Enforcement:** `mingla-marketing/lib/site.ts`, the exact-host middleware branches, the typed
+  search registry, the production-server parity suite, and the #2981 adversarial strict gate.
+- **Status:** DRAFT until independent verification, merged-main proof, deployment, and live-origin
+  verification complete.
+
+### I-PROPOSED-2981-SEARCH-LIFECYCLE-ONE-OWNER (DRAFT)
+
+- **Rule:** Every public marketing route has exactly one of seven states: `draft`,
+  `public_noindex`, `search_ready`, `stale`, `expired_archived`, `redirected`, or `gone`. Only
+  `search_ready` routes are indexable, self-canonical, and present in the sitemap; the named
+  non-indexable states emit `noindex`, redirects are permanent, and gone routes return 410.
+- **Enforcement:** `mingla-marketing/lib/search/route-registry.ts` owns classification, metadata,
+  redirects, and sitemap derivation; the production Mozilla/Googlebot parity suite and #2981
+  adversarial strict gate reject missing, duplicated, leaked, or behaviorally divergent routes.
+- **Status:** DRAFT until independent verification, merged-main proof, deployment, and Search
+  Console submission/evidence complete.
+
+### I-PROPOSED-2981-ENTITY-GRAPH-FACTUAL (DRAFT)
+
+- **Rule:** Mingla's apex JSON-LD graph contains only verified Organization, WebSite, and two
+  MobileApplication identities backed by real Mingla brand assets and store destinations. Visible
+  illustrative product-demo values never enter structured data, and invented ratings, reviews,
+  downloads, usage totals, or performance claims are forbidden.
+- **Enforcement:** `mingla-marketing/lib/search/entity-graph.ts`, the one root graph mount, the
+  production-server schema and asset checks, and the #2981 adversarial strict gate.
+- **Status:** DRAFT until independent verification, merged-main proof, deployment, and live rich-
+  result validation complete.
+
+## DRAFT — issue #2947 (the ticket waiting room)
+
 ### I-PROPOSED-2947-ONE-EXPIRY-OWNER-AND-IT-FILTERS (ACTIVE)
 
 - **Rule:** `reconcile-stuck-checkouts`, driven by `orch_1187_reconcile_stuck_checkouts` every 15 minutes, is the only mechanism that expires a `ticket_checkout_sessions` row **on the passage of time**. Selecting by age alone lets permanently-held rows — a queued hold sits at `expires_at = 'infinity'::timestamptz` — occupy every batch slot and starve real expiries indefinitely. Its batch SELECT must carry `expires_at < now()`, applied on the query the database runs, before the ORDER BY and the LIMIT, never as a post-limit filter. This bounds the batch to rows **past expiry**. It does **not** bound the batch to rows the run can act on: a row past expiry may still be skipped fail-safe — `paystack_unverified` is the live case, six such rows today — so `SWEEP_BATCH_LIMIT` is an upper bound on rows *considered*, not on work *done*. Any slice that sizes throughput from this limit must subtract the permanently-skipped classes rather than assume them empty. The free/no-ref arm may later be set-based, and its decision must be provably identical to `classify()` for every `refClass` × provider-status combination. No second time-based expiry mechanism may be created. A capacity cut (`issue_2947_release_newest_holds`) is an explicit organiser-triggered release carrying its own `failure_reason`, and admission (`issue_2947_queue_admit_due`) only ever moves `expires_at` forward from `'infinity'` to a real timestamp — neither is a time-based expiry and neither is constrained by this rule.

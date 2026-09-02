@@ -5,10 +5,10 @@
 // (the default offering theme), and section layout — NOT the marketing brand
 // look. Loads Inter with heavy weights so the 900 hero title matches the app.
 
-import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { Inter } from 'next/font/google'
 import { TripPreviewClient } from './TripPreviewClient'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
 const previewInter = Inter({
   subsets: ['latin'],
@@ -16,10 +16,9 @@ const previewInter = Inter({
   display: 'swap',
 })
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/trip-preview', {
   title: 'Trip preview',
-  robots: { index: false, follow: false },
-}
+})
 
 export const dynamic = 'force-dynamic'
 
