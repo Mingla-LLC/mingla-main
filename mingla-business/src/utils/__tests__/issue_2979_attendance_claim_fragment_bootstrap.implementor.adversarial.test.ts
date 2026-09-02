@@ -62,7 +62,11 @@ describe("issue #2979 pre-Router attendance fragment bootstrap", () => {
       ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY,
     );
     expect(descriptor).toMatchObject({
-      value: "synthetic-claim-fragment",
+      value: {
+        fragment: "synthetic-claim-fragment",
+        cleanUrl: "/attendance/claim?source=email%20recovery&channel=sms",
+        historyState: routerState,
+      },
       writable: false,
       enumerable: false,
       configurable: true,
@@ -107,29 +111,44 @@ describe("issue #2979 pre-Router attendance fragment bootstrap", () => {
   });
 
   test("consumes and deletes the handoff once, then uses direct-hash fallback", () => {
+    const bootstrapState = { key: "bootstrap-state" };
+    const directState = { key: "direct-state" };
     const browserWindow = {
-      location: { hash: "#direct-fallback-fragment" } as Location,
+      location: {
+        pathname: "/attendance/claim",
+        search: "?source=direct",
+        hash: "#direct-fallback-fragment",
+      } as Location,
+      history: { state: directState } as History,
     };
     Object.defineProperty(
       browserWindow,
       ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY,
       {
-        value: "bootstrap-fragment",
+        value: {
+          fragment: "bootstrap-fragment",
+          cleanUrl: "/attendance/claim?source=bootstrap",
+          historyState: bootstrapState,
+        },
         enumerable: false,
         configurable: true,
       },
     );
 
-    expect(consumeAttendanceClaimFragment(browserWindow)).toBe(
-      "bootstrap-fragment",
-    );
+    expect(consumeAttendanceClaimFragment(browserWindow)).toEqual({
+      fragment: "bootstrap-fragment",
+      cleanUrl: "/attendance/claim?source=bootstrap",
+      historyState: bootstrapState,
+    });
     expect(Object.prototype.hasOwnProperty.call(
       browserWindow,
       ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY,
     )).toBe(false);
-    expect(consumeAttendanceClaimFragment(browserWindow)).toBe(
-      "direct-fallback-fragment",
-    );
+    expect(consumeAttendanceClaimFragment(browserWindow)).toEqual({
+      fragment: "direct-fallback-fragment",
+      cleanUrl: "/attendance/claim?source=direct",
+      historyState: directState,
+    });
 
     const route = readFileSync(
       resolve(process.cwd(), "app/attendance/claim.tsx"),

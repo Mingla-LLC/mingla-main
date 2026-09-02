@@ -7,7 +7,7 @@ import { APP_STORE_URL, PLAY_STORE_URL } from "../../src/constants/storeLinks";
 import { accent, canvas, glass, spacing, text as textTokens } from "../../src/constants/designSystem";
 import {
   consumeAttendanceClaimFragment,
-  scrubAttendanceClaimFragment,
+  createAttendanceClaimFragmentScrubber,
 } from "../../src/utils/attendanceClaimDeepLink";
 
 export default function AttendanceClaimLanding(): React.ReactElement | null {
@@ -24,10 +24,13 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
     }
     let active = true;
     const raw = window.location.hash.replace(/^#/, "");
-    const capturedRaw = consumeAttendanceClaimFragment(window, raw);
-    // The head bootstrap has already removed the credential and preserved the
-    // launch query. This defense helper retains that clean URL for one final,
-    // bounded restore after this route's async parsed-state commit.
+    const handoff = consumeAttendanceClaimFragment(window, raw);
+    const capturedRaw = handoff.fragment;
+    const scrubAttendanceClaimFragment =
+      createAttendanceClaimFragmentScrubber(handoff);
+    // The head bootstrap captured the credential, launch URL, and Router state
+    // before Router could alter them. This defense helper retains only that
+    // clean URL/state for the final bounded lifecycle restore.
     scheduleFinalUrlRestoreRef.current = scrubAttendanceClaimFragment(
       window.location,
       window.history,
