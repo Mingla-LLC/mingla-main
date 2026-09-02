@@ -1,5 +1,10 @@
 import type { CollectionConfig } from "payload";
-import { enforceLiveStudioWrite, tenantRead, tenantWrite } from "../lib/access";
+import {
+  enforceLiveStudioWrite,
+  tenantRead,
+  tenantVersionRead,
+  tenantWrite,
+} from "../lib/access";
 import { assertTenantPages, singletonPerTenant } from "../lib/tenantIntegrity";
 
 export const Navigation: CollectionConfig = {
@@ -12,7 +17,7 @@ export const Navigation: CollectionConfig = {
     read: tenantRead,
     update: tenantWrite,
     delete: () => false,
-    readVersions: tenantRead,
+    readVersions: tenantVersionRead,
     unlock: tenantWrite,
   },
   versions: { drafts: { autosave: false }, maxPerDoc: 50 },
