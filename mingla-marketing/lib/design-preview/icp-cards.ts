@@ -49,7 +49,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
     description: 'Build the page, price the tiers, work the door, and keep the guest list.',
     // An empty event hall, stage rigged and lit, before doors.
     imgSrc: '/marketing/host-icp/events-hall.jpg',
-    href: '/cutout/host/event-organizers-promoters',
+    href: '/host/event-organizers-promoters',
   },
   {
     id: 'restaurants-cafes',
@@ -58,7 +58,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
     description: 'Turn a menu and a slow Tuesday into a plan people book ahead.',
     // A dining room laid for service at golden hour.
     imgSrc: '/marketing/host-icp/restaurants-room.jpg',
-    href: '/cutout/host/restaurants-cafes',
+    href: '/host/restaurants-cafes',
   },
   {
     id: 'bars-clubs-nightlife',
@@ -67,7 +67,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
     description: 'Tickets, tables and guest lists for the nights people talk about.',
     // A bar room at night, bottle shelf lit, before the crowd.
     imgSrc: '/marketing/host-icp/nightlife-bar.jpg',
-    href: '/cutout/host/bars-clubs-nightlife',
+    href: '/host/bars-clubs-nightlife',
   },
   {
     id: 'venues-activity-spaces',
@@ -76,7 +76,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
     description: 'Show what the space does, take the booking, manage the calendar.',
     // A high-ceilinged event space, chairs set aside, light pouring in.
     imgSrc: '/marketing/host-icp/venues-space.jpg',
-    href: '/cutout/host/venues-activity-spaces',
+    href: '/host/venues-activity-spaces',
   },
   {
     id: 'resorts-hotels-retreats',
@@ -85,7 +85,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
     description: 'Stays, day passes and packages, with the local plan attached.',
     // A resort pool terrace at golden hour.
     imgSrc: '/marketing/host-icp/resorts-terrace.jpg',
-    href: '/cutout/host/resorts-hotels-retreats',
+    href: '/host/resorts-hotels-retreats',
   },
   {
     id: 'tours-experiences-adventures',
@@ -94,7 +94,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
     description: 'Itinerary, inclusions, meeting point and payment in one page.',
     // A boardwalk trail through forest, morning light.
     imgSrc: '/marketing/host-icp/tours-trail.jpg',
-    href: '/cutout/host/tours-experiences-adventures',
+    href: '/host/tours-experiences-adventures',
   },
   {
     id: 'pop-ups-independent-creators',
@@ -103,7 +103,7 @@ export const ICP_CARDS: readonly IcpCard[] = [
     description: 'A page, a drop and a sell-out window, spun up in minutes.',
     // A pop-up gallery and market room, work hung, tables set.
     imgSrc: '/marketing/host-icp/creators-popup.jpg',
-    href: '/cutout/host/pop-ups-independent-creators',
+    href: '/host/pop-ups-independent-creators',
   },
 ]
 

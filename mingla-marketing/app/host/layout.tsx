@@ -1,5 +1,4 @@
-import { GlassNav } from '@/components/marketing/glass-nav'
-import { Footer } from '@/components/marketing/footer'
+import '@/components/cutout/cutout.css'
 
 export default function BusinessLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -7,10 +6,8 @@ export default function BusinessLayout({ children }: { children: React.ReactNode
       data-theme="light"
       className="min-h-screen bg-parchment text-text-primary"
     >
-      <GlassNav />
       {/* ORCH-1223 mounts a cleaned footer here, superseding the ORCH-1053 removal (per Seth 2026-06-22 — store launch needs visible Privacy/Terms links). ORCH-1224: the footer lives on the BUSINESS surface ONLY (explorer is a one-viewport hero). The internal `surface="organiser"` discriminator value is kept (never user-visible). */}
       <main id="main">{children}</main>
-      <Footer surface="organiser" />
     </div>
   )
 }

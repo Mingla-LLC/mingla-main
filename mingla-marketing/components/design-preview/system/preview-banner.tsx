@@ -12,9 +12,9 @@ import { usePathname } from 'next/navigation'
 // reachable, and never in a hero frame.
 
 const PAIR = [
-  { href: '/cutout/explorer', label: 'Explorer' },
-  { href: '/cutout/host', label: 'Host' },
-  { href: '/cutout/host/event-organizers-promoters', label: 'Landing page' },
+  { href: '/', label: 'Explorer' },
+  { href: '/host', label: 'Host' },
+  { href: '/host/event-organizers-promoters', label: 'Landing page' },
 ]
 
 export function PreviewBanner() {
