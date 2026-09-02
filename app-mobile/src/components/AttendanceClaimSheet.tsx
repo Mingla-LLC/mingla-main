@@ -198,7 +198,7 @@ export function AttendanceClaimSheet({
       theme="dark"
       backgroundStyle={styles.sheet}
       header={header}
-      stickyFooter={footer}
+      scrollMode="scroll"
       accessibilityLabel="Connect attendance"
     >
       <View style={styles.body} onAccessibilityEscape={dismiss}>
@@ -209,6 +209,7 @@ export function AttendanceClaimSheet({
         </View>
         <Text style={styles.copy}>{body}</Text>
       </View>
+      {footer}
     </BaseBottomSheet>
   );
 }

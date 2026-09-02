@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "node scripts/ci/require-sentry-dsn-on-prod-web.mjs && npx expo export -p web && node scripts/inject-mobile-blur-css.mjs && node scripts/build-invite-critical-entry.mjs",
+  "buildCommand": "node scripts/ci/require-sentry-dsn-on-prod-web.mjs && npx expo export -p web && node scripts/inject-attendance-claim-bootstrap.mjs && node scripts/inject-mobile-blur-css.mjs && node scripts/build-invite-critical-entry.mjs",
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "framework": null,

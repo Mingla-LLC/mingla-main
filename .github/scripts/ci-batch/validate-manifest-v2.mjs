@@ -282,6 +282,16 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
     ]),
   }),
   Object.freeze({
+    // [#2979 A12] The independent tester consumes the production-shaped Expo
+    // single-output shell produced inside this existing provider. This is a
+    // reviewed reference-file delta, not a new workflow or provider.
+    issue: 2979,
+    workflow: "issue-922-business-web-actionable.yml",
+    referenceFiles: Object.freeze([
+      "mingla-business/scripts/ci/issue-2979-attendance-export-pipeline.tester.test.mjs",
+    ]),
+  }),
+  Object.freeze({
     issue: 1772,
     workflow: "supabase-migrations-and-stripe-deno.yml",
     referenceFiles: Object.freeze([
