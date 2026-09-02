@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 import { CutReveal } from './motion'
+import { CutoutHeroVideo } from './hero-video'
 import { ScrollMore } from './hero-graphic'
 
 // ---------------------------------------------------------------
@@ -67,17 +68,7 @@ export function CutoutHero({
       {/* The photographic plate. */}
       <div aria-hidden="true" className="absolute inset-0 overflow-hidden">
         {video ? (
-          <video
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="metadata"
-            poster={image}
-            className="absolute inset-0 h-full w-full scale-105 object-cover"
-          >
-            <source src={video} type="video/mp4" />
-          </video>
+          <CutoutHeroVideo src={video} poster={image} />
         ) : (
           <div
             className="absolute inset-0 scale-105 bg-cover bg-center"
