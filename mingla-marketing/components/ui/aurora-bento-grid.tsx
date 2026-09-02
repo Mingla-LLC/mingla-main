@@ -57,7 +57,7 @@ export function AuroraBackground({ className }: { className?: string }) {
   )
 
   return (
-    <div aria-hidden="true" className={cn('absolute inset-0 z-0 overflow-hidden', className)}>
+    <div aria-hidden="true" className={cn('absolute inset-0 z-0 isolate overflow-hidden', className)}>
       <Blob
         style={{
           top: '-18%',

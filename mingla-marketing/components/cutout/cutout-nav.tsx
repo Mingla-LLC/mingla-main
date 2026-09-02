@@ -23,11 +23,8 @@ import { DeviceCta, type CutoutSurface } from './device-cta'
 // ---------------------------------------------------------------
 
 const LINKS = [
-  { href: '/explorer', label: 'Explorer', Icon: Compass },
+  { href: '/', label: 'Explorer', Icon: Compass },
   { href: '/host', label: 'Host', Icon: Store },
-  { href: '/cities', label: 'Cities', Icon: MapPin },
-  { href: '/blog', label: 'Blog', Icon: Newspaper },
-  { href: '/about', label: 'About', Icon: Info },
 ]
 
 interface CutoutNavProps {

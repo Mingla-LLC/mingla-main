@@ -39,7 +39,12 @@ export interface CardItem {
   description: string
   imgSrc: string
   icon: React.ReactNode
-  linkHref: string
+  /**
+   * Optional. The seven ICP pages are not built yet, and a card that links
+   * nowhere beats one that links to a 404. Give the card its href back when
+   * its page lands and the control returns with it.
+   */
+  linkHref?: string
 }
 
 interface ExpandingCardsProps extends React.HTMLAttributes<HTMLUListElement> {
@@ -155,18 +160,20 @@ export const ExpandingCards = React.forwardRef<HTMLUListElement, ExpandingCardsP
 
                 {/* The link IS the whole card: ::after stretches it over the
                     tile, so one anchor serves both the button and the surface. */}
-                <a
-                  href={item.linkHref}
-                  className={cn(
-                    'mt-1 inline-flex w-fit items-center gap-2 rounded-full bg-white/14 px-4 py-2.5',
-                    'text-[0.875rem] font-semibold text-white ring-1 ring-inset ring-white/25 backdrop-blur-md',
-                    'transition-colors hover:bg-white/24 focus-ring',
-                    'after:absolute after:inset-0 after:content-[""]',
-                  )}
-                >
-                  Learn more
-                  <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-                </a>
+                {item.linkHref ? (
+                  <a
+                    href={item.linkHref}
+                    className={cn(
+                      'mt-1 inline-flex w-fit items-center gap-2 rounded-full bg-white/14 px-4 py-2.5',
+                      'text-[0.875rem] font-semibold text-white ring-1 ring-inset ring-white/25 backdrop-blur-md',
+                      'transition-colors hover:bg-white/24 focus-ring',
+                      'after:absolute after:inset-0 after:content-[""]',
+                    )}
+                  >
+                    Learn more
+                    <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                  </a>
+                ) : null}
               </div>
             </li>
           )

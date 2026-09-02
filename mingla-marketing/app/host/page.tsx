@@ -88,7 +88,6 @@ export default function CutoutHostPage() {
               usp: c.usp,
               description: c.description,
               imgSrc: c.imgSrc,
-              linkHref: c.href,
               icon: ICP_ICONS[c.id],
             }))}
           />
