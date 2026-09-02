@@ -69,6 +69,8 @@ jobs:
           supabase/functions/_shared/__tests__/issue_2079_stripe_webhook_identity.test.ts
           supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2079_stripe_hosted_identity.test.ts
           supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2079_stripe_hosted_null_relation.tester.adversarial.test.ts
+          supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2947_sweep_expiry_filter.test.ts
+          supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2947_sweep_limit_boundary.tester_adversarial.test.ts
       - run: deno check supabase/functions/_shared/paystackRefunds.ts supabase/functions/_shared/sourceRefundControlPlane.ts supabase/functions/checkout-sale-revocation/index.ts supabase/functions/ticket-checkout-confirm/index.ts supabase/functions/_shared/stripeWebhookRouter.ts supabase/functions/reconcile-stuck-checkouts/index.ts
 
   issue-2079-postgres-contract:

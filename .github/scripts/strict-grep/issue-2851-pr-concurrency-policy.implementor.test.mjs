@@ -88,6 +88,33 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // reverted in the loop below before this new digest is trusted. The value was
 // re-derived from fresh origin/main at 3835b60d3 so #2948's concurrently landed
 // workflow proofs remain part of the combined authority.
+// [TEST-MOD-APPROVED #2947] Re-derived after #2947 registered its two
+// reconcile-stuck-checkouts sweep suites on the existing #2079 Paystack
+// late-refund lane (named by issue, not by filename — a workflow filename in
+// this file becomes a provider reference and moves the frozen #2148 seal).
+// The suites were previously inert: they sat on no lane that wakes, so nothing
+// ever ran them. I-2148-CI-TOPOLOGY-BOUNDED bans a new issue-*.yml lane, so the
+// proofs attach to the lane that already owns `reconcile-stuck-checkouts`, as
+// two additional `deno test` targets on a step that already exists. No `paths`
+// trigger was widened and no lane was added. That lane is PR-family, so its
+// document is inside this digest.
+// PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are deliberately UNCHANGED: no
+// workflow was added, removed or renamed, and this delta is one existing
+// workflow's non-concurrency document. Reverting BOTH added lines reproduces
+// e39b5a9f… — the value origin/main pins at 4dc1d9f72 — proving this delta is
+// exactly those two lines and nothing else drifted. Each line is also
+// independently reverted in the loop below, so this re-pin is proven
+// line-by-line rather than accepted on assertion. The value was re-derived
+// against the tree AFTER merging origin/main at 4dc1d9f72, so #3009's
+// concurrently landed web-build proofs remain part of the combined authority.
+// [TEST-MOD-APPROVED #3016] Re-derived after #3016 wired its new tester-owned
+// malformed authenticated-request CORS guard into the existing Supabase secret
+// budget lane on top of fresh origin/main at 2fa4dbb51, preserving #2947's two
+// independently guarded #2079 targets. The 124/7 workflow partition, identities,
+// concurrency policy, and every unrelated workflow semantic are unchanged. The
+// exact added Deno test target is independently removed in the revert-sensitivity
+// loop below, so this digest cannot be re-pinned without proving that one-line CI
+// contract. The value below is deliberately re-derived from the rebased tree.
 // [TEST-MOD-APPROVED #2881] Re-derived after #2881 draft-gated the PR-family lanes:
 // each gated workflow gained `types: [opened, synchronize, reopened,
 // ready_for_review]` on its pull-request trigger and a draft condition on every job.
@@ -97,15 +124,11 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // workflow was added, removed or renamed, and assertion 1 above still proves the
 // inventory and the sole load exception. Concurrency is untouched BY CONSTRUCTION --
 // #2881 never edits a `concurrency:` block, and the #2851 gate itself still reports
-// the same normal/exception split.
-// The revert-sensitivity loop below is untouched and still red on reversion. That
-// loop is why this re-bank is safe rather than a weakening: an earlier attempt to
-// re-bank alone left the Sites recovery probe with ZERO mutation targets, because
-// inserting types: between `pull_request:` and `paths:` split the exact block it
-// removes. That lane is therefore exempted from draft-gating and restored
-// byte-identical, so the probe still has its target and still bites.
+// the same normal/exception split. The revert-sensitivity loop below is untouched and
+// still red on reversion; the Sites recovery lane is exempted from draft-gating and
+// left byte-identical precisely so that loop keeps its mutation target.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "955d3f0cc564ca2eef5156b2668e8fdcf3b28672fad1bec659bdd7caf74519fd";
+  "a950cedacc55d0f2d5ed81b41894ac78bbb329766e33d4f90ae1a1e8e22ab54e";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -315,6 +338,11 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     [liveWorkflow("issue", "1930", "checkout", "current", "truth"), '      - "supabase/functions/_shared/secretBundle.ts"\n'],
     [liveWorkflow("supabase", "secret", "budget"), '      - "supabase/function-env.contract.json"\n'],
     [liveWorkflow("supabase", "secret", "budget"), "          supabase/functions/_shared/__tests__/issue_2893_sites_live_readiness.test.ts\n"],
+    // [TEST-MOD-APPROVED #3016] The tester-owned malformed request guard must
+    // remain executable in the existing pull-request Deno lane. Removing this
+    // exact target must invalidate the non-concurrency authority digest.
+    [liveWorkflow("supabase", "secret", "budget"),
+      "          supabase/functions/_shared/__tests__/issue_3016_brand_site_control_cors_adversarial.test.ts\n"],
     [liveWorkflow("web", "build", "check"), '      SITES_DATABASE_POOL_MAX: "3"\n'],
     [liveWorkflow("web", "build", "check"), '      - "mingla-business/scripts/ci/bundle-baseline.json"\n'],
     [liveWorkflow("bundle", "baseline", "automerge"), '      - ".github/workflows/**"\n'],
@@ -349,6 +377,15 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "        run: node scripts/ci/issue-3009-sites-feature-flag-export.mjs",
       "",
     ].join("\n")],
+    // [TEST-MOD-APPROVED #2947] The #2079 lane's two new `deno test` targets.
+    // The implementor's expiry-filter suite and the tester's adversarial
+    // limit-boundary suite are distinct semantic units — each is what makes one
+    // of the two suites actually run — so each must independently move the
+    // digest, or the re-pin above would be accepting a change nothing proves.
+    [liveWorkflow("issue", "2079", "paystack", "late", "refund", "identity", "tests"),
+      "          supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2947_sweep_expiry_filter.test.ts\n"],
+    [liveWorkflow("issue", "2079", "paystack", "late", "refund", "identity", "tests"),
+      "          supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2947_sweep_limit_boundary.tester_adversarial.test.ts\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);

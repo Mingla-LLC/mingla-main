@@ -12,6 +12,7 @@ import {
 } from "../_shared/sitesContracts.ts";
 import { resolveCoreToCmsSigner } from "../_shared/sitesSecurity.ts";
 import { observeSitesRequest } from "../_shared/sitesObservability.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
 type JsonObject = Record<string, unknown>;
 const CUSTOMER_FAILURE_CODES = new Set<string>(SITES_SAFE_CUSTOMER_CODES);
@@ -428,10 +429,19 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
 }
 
 export async function handleBrandSiteControl(req: Request): Promise<Response> {
-  return await observeSitesRequest(req, {
+  const response = await observeSitesRequest(req, {
     service: "brand-site-control",
     direction: "customer_to_core",
     handler: handleBrandSiteControlRequest,
+  });
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(corsHeaders)) {
+    headers.set(name, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
   });
 }
 
