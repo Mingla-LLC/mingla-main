@@ -76,15 +76,12 @@ describe("issue #2979 pre-Router attendance fragment bootstrap", () => {
     );
 
     const html = readFileSync(resolve(process.cwd(), "app/+html.tsx"), "utf8");
-    const headIndex = html.indexOf("<head>");
-    const scriptIndex = html.indexOf("<script", headIndex);
-    const bodyIndex = html.indexOf("<body>", headIndex);
-    expect(headIndex).toBeGreaterThanOrEqual(0);
-    expect(scriptIndex).toBeGreaterThan(headIndex);
-    expect(scriptIndex).toBeLessThan(bodyIndex);
-    expect(html.slice(scriptIndex, bodyIndex)).toContain(
-      "ATTENDANCE_CLAIM_FRAGMENT_BOOTSTRAP",
+    expect(html).not.toContain("ATTENDANCE_CLAIM_FRAGMENT_BOOTSTRAP");
+    const injector = readFileSync(
+      resolve(process.cwd(), "scripts/inject-attendance-claim-bootstrap.mjs"),
+      "utf8",
     );
+    expect(injector).toContain("mingla-attendance-claim-pre-router");
   });
 
   test("does nothing for lookalike routes or an empty fragment", () => {

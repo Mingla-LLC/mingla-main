@@ -9,6 +9,7 @@ on:
       - "mingla-business/src/analytics/webAnalytics.web.ts"
       - "mingla-business/src/components/ui/Button.tsx"
       - "mingla-business/src/constants/designSystem.ts"
+      - "mingla-business/scripts/inject-attendance-claim-bootstrap.mjs"
       - "mingla-business/scripts/inject-mobile-blur-css.mjs"
       - "mingla-business/scripts/build-invite-critical-entry.mjs"
       - "mingla-business/scripts/ci/issue-922-business-web-actionable.mjs"
@@ -55,6 +56,7 @@ jobs:
       - name: Export and build the dedicated entry
         run: |
           npx expo export -p web --clear
+          node scripts/inject-attendance-claim-bootstrap.mjs
           node scripts/inject-mobile-blur-css.mjs
           node scripts/build-invite-critical-entry.mjs
       - name: Structural, drift, route, and size guard
