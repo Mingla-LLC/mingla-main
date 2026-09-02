@@ -125,6 +125,18 @@ export function DeviceCta({
    * somewhere. Slightly smaller than before, so the pill reads as type with a
    * mark rather than type with a badge.
    */
+  /**
+   * On a phone the label stays "Use Mingla" and the store mark says where the
+   * tap lands. On desktop there is no app to install, so the label says so
+   * outright rather than promising one.
+   *
+   * Like the mark, this resolves AFTER mount -- the server has no navigator,
+   * so it renders the web wording and a phone corrects it on hydration. That
+   * is the same trade the icon already makes, and the alternative is a
+   * hydration mismatch.
+   */
+  const defaultText = platform === 'ios' || platform === 'android' ? 'Use Mingla' : 'Use Mingla Web'
+
   const marks =
     platform === 'ios' ? (
       <AppleMark className="h-4 w-4 shrink-0" />
@@ -139,7 +151,7 @@ export function DeviceCta({
     const target = resolveBusinessAppTarget(platform, attribution)
     const canInstall = target.canInstall && target.installHref !== null
     const href = canInstall ? (target.installHref as string) : target.webHref
-    const text = label ?? 'Use Mingla'
+    const text = label ?? defaultText
 
     return (
       <a
@@ -170,7 +182,7 @@ export function DeviceCta({
     platform,
     siteAttribution(campaignFor('explorer', location)),
   )
-  const text = label ?? 'Use Mingla'
+  const text = label ?? defaultText
 
   // Phone: a real anchor to the attributed OneLink. It navigates, so it must be
   // an <a> — and it carries no aria-haspopup, because it can never open a dialog.

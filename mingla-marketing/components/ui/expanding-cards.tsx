@@ -123,7 +123,8 @@ export const ExpandingCards = React.forwardRef<HTMLUListElement, ExpandingCardsP
               <span
                 aria-hidden={active}
                 className={cn(
-                  'absolute bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-3 py-1.5',
+                  'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full px-3 py-1.5',
+                  'md:top-auto md:bottom-5 md:translate-y-0',
                   'bg-white/16 font-display text-[0.6875rem] text-white ring-1 ring-inset ring-white/25 backdrop-blur-md',
                   !reduced && 'transition-opacity duration-300',
                   active && 'opacity-0',

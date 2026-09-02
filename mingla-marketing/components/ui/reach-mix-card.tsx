@@ -94,7 +94,7 @@ export function ReachMixCard({ className }: { className?: string }) {
 
   return (
     <div className={cn('flex h-full flex-col gap-3', className)}>
-      <ul className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-5">
+      <ul className="grid grid-cols-2 gap-x-4 gap-y-2 lg:grid-cols-4">
         {SERIES.map((s) => (
           <li key={s.key} className="flex items-start gap-2">
             <span
@@ -112,20 +112,6 @@ export function ReachMixCard({ className }: { className?: string }) {
             </span>
           </li>
         ))}
-        <li className="flex items-start gap-2">
-          <span
-            aria-hidden="true"
-            className="mt-[9px] h-0 w-2.5 shrink-0 border-t-2 border-dashed border-white/45"
-          />
-          <span className="min-w-0">
-            <span className="block font-dashboard text-[0.8125rem] font-semibold text-white/70">
-              Without Mingla
-            </span>
-            <span className="block font-dashboard text-[0.6875rem] leading-tight text-white/45">
-              the same year, on your own
-            </span>
-          </span>
-        </li>
       </ul>
 
       <div className="flex min-h-0 flex-1 flex-col">

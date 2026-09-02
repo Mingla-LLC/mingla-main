@@ -59,9 +59,14 @@ export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
               className="h-8 w-auto select-none"
               draggable={false}
             />
+            {/* The footer already knows which site it is on, so it should say
+                the thing that site is about. The two-sided line described the
+                company, not the reader: on Host it spent its first clause on
+                explorers. */}
             <p className="mt-5 max-w-sm text-[0.9375rem] leading-relaxed text-[var(--cut-body)]">
-              Mingla helps people decide what to actually do — and helps the places and
-              organisers behind those plans get found, booked and paid.
+              {surface === 'host'
+                ? 'One app to run your place — your site, your events, trips and stays, your orders, and the marketing that fills them.'
+                : 'Mingla helps you decide what to actually do — and get you there.'}
             </p>
             <div className="mt-7">
               <DeviceCta surface={surface} location="footer" variant="primary" size="md" />
