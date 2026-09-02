@@ -70,6 +70,30 @@ const KNOWN_ABSOLUTE_COUNT_GUARDS: readonly string[] = [
   "20270614002986_issue_2986_public_search_documents.sql",
 ];
 
+/**
+ * ADJACENT CLASS, DELIBERATELY OUT OF THIS DETECTOR'S SCOPE — registered on #3055
+ * for a separate issue, NOT a blind spot.
+ *
+ * `ari_cert_finalize_run` carries `IF v_capability_count <> 132 THEN RAISE
+ * EXCEPTION 'ari_cert_missing_capabilities'`, where v_capability_count is
+ * `count(DISTINCT capability_id) FROM public.ari_cert_evidence WHERE run_id = …`.
+ * That is a per-run coverage denominator, not a count of a whole growing table,
+ * so it does not match the detector below — but it is the same hand-maintained
+ * literal, and it has already been bumped by hand three times:
+ *   20270504002060  <> 116
+ *   20270521001978  <> 120
+ *   20270529002060  <> 120
+ *   20270609002830  <> 132
+ *   20270610002060  <> 132
+ * The delta-shaped form is to compare against the live requirement set
+ * (`(SELECT count(*) FROM public.ari_cert_capability_requirements)`) instead of a
+ * literal. Not changed here: those literals are pinned by the required
+ * issue-2830-sites-foundation and issue-2060-ari-reliability-foundation gates
+ * (including a mutation test that swaps 132 for 120), so repairing them is a
+ * separate, gate-touching change. #3055's delta is count-neutral, so all five
+ * still hold.
+ */
+
 const stripSqlComments = (sql: string): string =>
   sql.replace(/^\s*--.*$/gm, "").replace(/\s--.*$/gm, "");
 
