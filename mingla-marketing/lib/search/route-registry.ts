@@ -157,6 +157,9 @@ const PUBLIC_NOINDEX_ROUTES = [
   ['/tools/venues/report', 'venue-report'],
   ['/tools/trips/report', 'trip-report'],
   ['/tools/pricing/report', 'pricing-report'],
+  // Internal engineering surface: the chart bank. Public but never indexed --
+  // it documents how the site is built, not what Mingla offers.
+  ['/internal/charts', 'internal-chart-bank'],
 ] as const
 
 const PUBLIC_NOINDEX_FAMILIES = [

@@ -316,7 +316,12 @@
   transform-origin: center bottom;
 }
 @media (min-width: 768px) {
+  /* On desktop the deck bottom sat 30px off the hero's own pill row, which read
+     as crowding. Scaling from `center bottom` could not fix that -- it pins the
+     bottom edge -- so the origin flips to `center top` here: the top stays put
+     under the action and the bottom lifts away from the pills. */
   [data-cut-deck] div:has(> .group.absolute) {
-    transform: translateY(53px) scale(0.91);
+    transform: translateY(65px) scale(0.86);
+    transform-origin: center top;
   }
 }

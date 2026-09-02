@@ -47,6 +47,7 @@ const PUBLIC_NOINDEX = [
   '/tools/venues/report',
   '/tools/trips/report',
   '/tools/pricing/report',
+  '/internal/charts',
 ]
 
 const PUBLIC_NOINDEX_FAMILIES = ['/orders', '/chat', '/board', '/invite']
@@ -65,6 +66,7 @@ const SEARCH_PAGE_FILES = new Map([
 ])
 
 const NOINDEX_PAGE_FILES = new Map([
+  ['/internal/charts', 'mingla-marketing/app/internal/charts/page.tsx'],
   ['/links', 'mingla-marketing/app/links/page.tsx'],
   ['/download', 'mingla-marketing/app/download/page.tsx'],
   ['/host/download', 'mingla-marketing/app/host/download/page.tsx'],
