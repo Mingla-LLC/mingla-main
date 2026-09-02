@@ -10,6 +10,31 @@ on:
     paths: &issue2099Paths
       - "supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql"
       - "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql"
+      # issue #2648 — the four files below are READ by
+      # issue_2855_pending_venue_schema_pin.implementor.test.ts, which this
+      # workflow runs, and none of them were listed here. So inputs that decide
+      # whether this lane passes could not fire it. Five merges between
+      # 2026-08-30 and 2026-09-02 changed validate-manifest-v2.mjs; every one of
+      # them reddened this job; none of them ran it. It sat red on main for three
+      # days and was carried past on #2887 as a proven-inherited failure.
+      #
+      # Listing the validator is safe in a way listing MANIFEST.json was not when
+      # #2193 removed it below. #2193's objection was that a foreign trigger
+      # charged #2099's private 1,024 B __common budget for growth it did not
+      # cause; #2855 fixed that at the source by gating SC-4 on six exact product
+      # paths (see "SC-4 scope" in the boot-payload job). A foreign trigger now
+      # runs the contract jobs and skips the bundle measurement entirely.
+      #
+      # The three frozen sibling migrations are listed for the same reason and
+      # cost nothing: this guard asserts their venue foreign keys, so a change to
+      # one of them MUST run this lane, and they do not otherwise change.
+      #
+      # The coupling is enforced rather than remembered: the #2648 test in that
+      # same file fails when a path it reads is absent from this list.
+      - "supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql"
+      - "supabase/migrations/20270606002725_issue_2725_competitor_intelligence.sql"
+      - "supabase/migrations/20270606002726_issue_2725_amendment_8_budget.sql"
+      - ".github/scripts/ci-batch/validate-manifest-v2.mjs"
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql"
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts"
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.concurrent.test.sh"
