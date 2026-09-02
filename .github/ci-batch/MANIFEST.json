@@ -20045,7 +20045,7 @@
       "providerWorkflow": ".github/workflows/issue-922-business-web-actionable.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "4e7055df66c99a557dfcd17a5489db675e736a4c4457d0e2b98db569e89dd9f5",
+        "sourceSha256": "17e3386157af6adc93ebee588b1cea195e6c94171f2635e3bb3bb4931a063c60",
         "triggers": [
           "pull_request",
           "push"
@@ -20060,7 +20060,9 @@
           "mingla-business/playwright/issue922-business-web-actionable.spec.ts",
           "mingla-business/playwright/issue922-static-server.mjs",
           "mingla-business/scripts/build-invite-critical-entry.mjs",
+          "mingla-business/scripts/ci/issue-2979-attendance-export-pipeline.tester.test.mjs",
           "mingla-business/scripts/ci/issue-922-business-web-actionable.mjs",
+          "mingla-business/scripts/inject-attendance-claim-bootstrap.mjs",
           "mingla-business/scripts/inject-mobile-blur-css.mjs",
           "mingla-business/src/analytics/ConsentBanner.web.tsx",
           "mingla-business/src/analytics/webAnalytics.web.ts",
@@ -22482,6 +22484,7 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/issue-922-business-web-actionable.yml",
       "referenceFiles": [
+        "mingla-business/scripts/ci/issue-2979-attendance-export-pipeline.tester.test.mjs",
         "mingla-business/scripts/ci/issue-922-business-web-actionable.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
