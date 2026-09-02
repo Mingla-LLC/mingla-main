@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-02 — Mingla's marketing site now has one canonical search identity, factual search metadata and schema, explicit crawler/index rules, and a verified sitemap foundation for Explorer and Host growth (#2981, release recovery #3021, PR #3022)
 - 2026-09-01 — Host can now open the Website workspace in the browser because the Sites control gateway returns the complete browser contract on preflight, success, and safe failure responses (#3016, PR #3018)
 - 2026-09-01 — Production secret readiness now recognizes Supabase's current platform-managed defaults by exact name while unknown future names still fail closed (#2913, PR #2916)
 - 2026-08-31 — Business teams can now safely merge duplicate Book contacts, reverse exact merges, promote primary channels, see alternate identity/history, and support can erase verified non-user records without losing suppression proof (#1772, PR #2868)
