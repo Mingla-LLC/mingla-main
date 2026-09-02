@@ -460,8 +460,23 @@ export function userMessageForSuccessCode(
   }
 }
 
+export interface AriReleaseAttestationEnv {
+  get: (name: string) => string | undefined;
+}
+
+function defaultReleaseAttestationEnv(): AriReleaseAttestationEnv {
+  return {
+    get(name: string) {
+      if (name === "MINGLA_RELEASE_SHA") return Deno.env.get("MINGLA_RELEASE_SHA");
+      if (name === "DENO_DEPLOYMENT_ID") return Deno.env.get("DENO_DEPLOYMENT_ID");
+      if (name === "SB_EXECUTION_ID") return Deno.env.get("SB_EXECUTION_ID");
+      return undefined;
+    },
+  };
+}
+
 export function resolveReleaseAttestation(
-  env: Pick<typeof Deno.env, "get"> = Deno.env,
+  env: AriReleaseAttestationEnv = defaultReleaseAttestationEnv(),
 ): AriReleaseAttestation {
   const sha = env.get("MINGLA_RELEASE_SHA")?.trim() ?? "";
   const deployment = env.get("DENO_DEPLOYMENT_ID")?.trim() ||

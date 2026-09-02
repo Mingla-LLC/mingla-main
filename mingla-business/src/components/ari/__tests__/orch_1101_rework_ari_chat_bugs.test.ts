@@ -112,10 +112,10 @@ describe("ORCH-1101 REWORK · #2 — optimistic user message renders instantly",
     expect(block).toMatch(/optimistic-/);
   });
 
-  it("inserts the optimistic bubble synchronously in sendMessage, before mutateAsync", () => {
+  it("inserts the optimistic bubble synchronously in sendTurn, before mutateAsync", () => {
     const sendBlock = useAgentChat.slice(
+      useAgentChat.indexOf("const sendTurn = useCallback"),
       useAgentChat.indexOf("const sendMessage = useCallback"),
-      useAgentChat.indexOf("const clearPendingAction"),
     );
     // setOptimisticMessages([...]) MUST run before mutateAsync returns.
     expect(sendBlock).toMatch(/setOptimisticMessages\(\(prev\) => \[\.\.\.prev, optimistic\]\)/);
