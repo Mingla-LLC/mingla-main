@@ -413,7 +413,7 @@ BEGIN
 
   IF NOT FOUND THEN RETURN jsonb_build_object('result', 'invalid'); END IF;
   IF v_owner = p_user_id THEN
-    RETURN jsonb_build_object('result', 'already_claimed', 'eventId', p_event_id);
+    RETURN jsonb_build_object('result', 'invalid');
   END IF;
   IF v_owner IS NOT NULL THEN RETURN jsonb_build_object('result', 'conflict'); END IF;
   IF p_kind = 'order' AND v_legacy IS NOT NULL

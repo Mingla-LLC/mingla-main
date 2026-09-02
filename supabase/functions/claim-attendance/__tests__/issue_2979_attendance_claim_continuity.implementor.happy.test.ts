@@ -145,3 +145,61 @@ Deno.test("#2979 A13 both attendance functions authenticate the exact caller bea
     );
   }
 });
+
+Deno.test("#2979 A14 consumed proofs never become idempotent Edge success", async () => {
+  const migration = await Deno.readTextFile(
+    new URL(
+      "../../../migrations/20270614002987_issue_2979_attendance_claim_secret_continuity.sql",
+      import.meta.url,
+    ),
+  );
+  const functionStart = migration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.claim_attendance_internal_v2(",
+  );
+  const functionEnd = migration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.claim_attendance_internal(",
+    functionStart,
+  );
+  assert(
+    functionStart >= 0 && functionEnd > functionStart,
+    "claim_attendance_internal_v2 boundary missing",
+  );
+  const claimFunction = migration.slice(functionStart, functionEnd);
+  assert(
+    claimFunction.includes(
+      "IF v_owner = p_user_id THEN\n    RETURN jsonb_build_object('result', 'invalid');",
+    ),
+    "same-owner proof replay is not rejected as invalid",
+  );
+  assert(
+    !claimFunction.includes("'already_claimed'"),
+    "database claim contract still exposes idempotent replay success",
+  );
+
+  const replayGuard = source.indexOf(
+    'result.result === "already_claimed"',
+  );
+  const invalidResponse = source.indexOf(
+    'return claimJson(400, { ok: false, error: "claim_invalid" });',
+    replayGuard,
+  );
+  const successResponse = source.indexOf(
+    "return claimJson(200",
+    invalidResponse,
+  );
+  assert(
+    replayGuard >= 0 &&
+      invalidResponse > replayGuard &&
+      successResponse > invalidResponse,
+    "Edge handler does not reject an old already_claimed result before success",
+  );
+  assert(
+    !source.includes('"idempotent_success"'),
+    "attempt audit still treats consumed replay as success",
+  );
+  assert(
+    source.slice(successResponse).includes('status: "claimed"') &&
+      !source.slice(successResponse).includes("status: result.result"),
+    "Edge success can expose a non-claimed database outcome",
+  );
+});

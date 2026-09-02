@@ -12,7 +12,6 @@ import { resolveAttendanceClaimPepperRing } from "../_shared/governedAdSecret.ts
 
 type Outcome =
   | "success"
-  | "idempotent_success"
   | "invalid"
   | "ineligible"
   | "conflict"
@@ -147,7 +146,11 @@ serve(async (req) => {
         error: "claim_temporarily_unavailable",
       });
     }
-    if (result.result === "invalid" || result.result === "conflict") {
+    if (
+      result.result === "already_claimed" ||
+      result.result === "invalid" ||
+      result.result === "conflict"
+    ) {
       outcome = result.result === "conflict" ? "conflict" : "invalid";
       return claimJson(400, { ok: false, error: "claim_invalid" });
     }
@@ -155,12 +158,14 @@ serve(async (req) => {
       outcome = "ineligible";
       return claimJson(409, { ok: false, error: "claim_ineligible" });
     }
-    outcome = result.result === "already_claimed"
-      ? "idempotent_success"
-      : "success";
+    if (result.result !== "claimed") {
+      outcome = "internal_error";
+      return claimJson(500, { ok: false, error: "claim_failed" });
+    }
+    outcome = "success";
     return claimJson(200, {
       ok: true,
-      status: result.result,
+      status: "claimed",
       eventId: result.eventId,
     });
   } catch {

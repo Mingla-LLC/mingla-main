@@ -361,8 +361,8 @@ BEGIN
     v_owner,'order',pg_temp.issue871_uuid('race-event'),pg_temp.issue871_uuid('race-order'),
     decode(repeat('00',32),'hex')
   );
-  IF replay->>'result' <> 'already_claimed' THEN
-    RAISE EXCEPTION 'canonical owner replay after proof consumption failed: %',replay;
+  IF replay->>'result' <> 'invalid' THEN
+    RAISE EXCEPTION 'canonical owner replay after proof consumption was not rejected: %',replay;
   END IF;
   PERFORM set_config('request.jwt.claim.sub',v_owner::text,false);
   BEGIN
