@@ -145,6 +145,8 @@ jobs:
           PGPASSWORD: ${{ format('issue-871-ci-{0}', github.run_id) }}
         run: |
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2979_legacy_active_proof_generation.implementor.happy.test.sql
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2979_attendance_claim_secret_continuity.implementor.happy.test.sql
           tester_sql=supabase/migrations/__tests__/issue_2979_attendance_claim_secret_continuity.tester.adversarial.test.sql
           if [[ -f "$tester_sql" ]]; then
