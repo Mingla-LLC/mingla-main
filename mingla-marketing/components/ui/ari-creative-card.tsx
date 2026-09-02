@@ -129,8 +129,8 @@ export function AriCreativeCard({
         layout={!reduced}
         transition={{ layout: { duration: 0.7, ease: [0.16, 1, 0.3, 1] } }}
         className={cn(
-          'overflow-hidden rounded-2xl bg-black/25 ring-1 ring-inset ring-white/15 backdrop-blur-sm',
-          phase === 'site' && 'h-full',
+          'shrink-0 rounded-2xl bg-black/25 ring-1 ring-inset ring-white/15 backdrop-blur-sm',
+          phase === 'site' && 'h-full overflow-hidden',
         )}
       >
         <AnimatePresence mode="wait">
@@ -214,7 +214,7 @@ export function AriCreativeCard({
                     transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
                     className="overflow-hidden"
                   >
-                    <div className="mt-4 flex items-center gap-3 border-t border-white/12 pt-4">
+                    <div className="mt-3 flex items-center gap-3 border-t border-white/12 pt-3">
                       <span className="flex gap-1" aria-hidden="true">
                         {[0, 1, 2].map((i) => (
                           <motion.span
@@ -229,11 +229,10 @@ export function AriCreativeCard({
                         Building your site…
                       </span>
                     </div>
-                    <div className="mt-4 space-y-2">
+                    <div className="mt-3 space-y-1.5">
                       {[
-                        { w: '34%', h: 8 },
-                        { w: '100%', h: 30 },
-                        { w: '68%', h: 8 },
+                        { w: '34%', h: 6 },
+                        { w: '100%', h: 22 },
                       ].map((blk, i) => (
                         <motion.span
                           key={i}
@@ -249,7 +248,7 @@ export function AriCreativeCard({
                 ) : null}
               </AnimatePresence>
 
-              <div className="mt-4 flex items-end justify-between gap-3">
+              <div className="mt-3 flex items-end justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-1.5">
                   {CHIPS.map(({ icon: Icon, label }) => (
                     <span
@@ -264,6 +263,7 @@ export function AriCreativeCard({
 
                 <span
                   aria-hidden="true"
+                  data-ari-send=""
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white"
                   style={{
                     background: 'linear-gradient(180deg, #f0842f 0%, #dd6a16 100%)',

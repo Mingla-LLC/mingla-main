@@ -87,7 +87,7 @@ export const HOST_BENTO: readonly BentoCard[] = [
   {
     id: 'brain',
     title: "Mingla's AI brain",
-    body: 'Ari works every way in — paid, earned, shared and owned — so the people who would love you actually find you.',
+    body: 'Ari is the brain underneath: it runs your ads, earns you mentions, gets guests sharing, and keeps your site and list working. Four ways in, all at once.',
     points: ['Performance ads', 'Local targeting', 'Ask Ari anything'],
     span: 'lg:col-span-6 lg:row-span-2',
     figure: true,

@@ -154,7 +154,7 @@ export default function CutoutHostPage() {
                     figure: Ari takes the brief, then the real site it built
                     scrolls past inside the same card. */}
                 {card.tone === 'brand' ? (
-                  <div className="mt-6 h-[20rem] lg:h-auto lg:min-h-0 lg:flex-1">
+                  <div className="mt-6 h-[24rem] lg:h-auto lg:min-h-0 lg:flex-1">
                     <AriCreativeCard
                       siteSrc="/marketing/host-icp/gogi-site.jpg"
                       siteAlt="A restaurant website Ari built — hero, menu with prices, online ordering and a table booking form."
