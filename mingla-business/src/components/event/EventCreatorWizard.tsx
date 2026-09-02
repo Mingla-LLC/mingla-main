@@ -201,6 +201,13 @@ export interface EventCreatorWizardProps {
   /** Push to /brand/[brandId]/payments/onboard when J-E3 path hit. */
   onOpenPaymentOnboarding: () => void;
   onAutosaveDraft?: (draft: DraftEvent) => void;
+  /**
+   * issue #3040 — resolve (creating if necessary) the SERVER `events` row this
+   * draft maps to, and reconcile the route onto it. Owned by the route because
+   * the route owns route state and the URL. Resolves with the server uuid;
+   * REJECTS with a real error the Cover step renders. Never resolves `d_*`.
+   */
+  onRequireServerDraft?: () => Promise<string>;
   onDiscardServerDraft?: (draft: DraftEvent) => Promise<void>;
   onPublishDraft?: (draft: DraftEvent) => Promise<PublishedEventSlug>;
   serverSaveState?: {
@@ -224,6 +231,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   onOpenPreview,
   onOpenPaymentOnboarding,
   onAutosaveDraft,
+  onRequireServerDraft,
   onDiscardServerDraft,
   onPublishDraft,
   serverSaveState,
@@ -791,6 +799,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       onShowToast: handleShowToast,
       scrollToBottom,
       coverMediaEventId: liveDraft.id,
+      onRequireServerDraft,
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: setCoverVideoProcessing,
@@ -1041,7 +1050,13 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
                 ? "Saving..."
                 : serverSaveState.lastSavedAt !== null
                   ? "Saved"
-                  : "Server draft"}
+                  // issue #3040 — this branch is `lastSavedAt === null`, i.e.
+                  // NOTHING has been written to `events` yet. It read "Server
+                  // draft", which states the opposite of the truth and sent two
+                  // separate investigations down the wrong path: it was taken as
+                  // evidence that a server row existed while the cover pipeline
+                  // was failing precisely because none did.
+                  : "Not saved yet"}
           </Text>
         ) : null}
       </View>

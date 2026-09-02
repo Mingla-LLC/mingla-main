@@ -577,6 +577,88 @@ export default function RsvpEditRoute(): React.ReactElement {
   // `migratingLegacyIdRef` keeps this route's promotion state for the D-1
   // retained-draft guard; the registry dedupes concurrent promotions globally
   // (per d_* id across ALL surfaces — loop, routes, previews).
+  // issue #3040 — ONE promotion, ONE reconcile, TWO triggers (mirror of the
+  // event route; the RSVP wizard renders the same `CreatorStep4Cover`).
+  const reconcilePromotedDraft = React.useCallback(
+    (localId: string, merged: DraftEvent): void => {
+      if (user !== null) {
+        promoteBusinessRecentDraft({
+          userId: user.id,
+          brandId: merged.brandId,
+          entityType: "rsvp",
+          localId,
+          serverId: merged.id,
+        });
+      }
+      // Issue #976 — resolve handlers are unmount- and focus-guarded: a
+      // rapid wizard exit or a pushed Preview screen can never receive a
+      // stray setParams.
+      if (!mountedRef.current) return;
+      // ORCH-1355 (symptom 1) — resolve the wizard against the server id via
+      // route state, then reconcile the URL IN PLACE with setParams. A
+      // router.replace here would change the [id] segment → expo-router
+      // replaces the screen → the name TextInput remounts → the keyboard
+      // drops mid-type. setParams updates the focused route's params without
+      // a screen replace, so the input keeps focus AND the URL/route params
+      // land on the server id immediately (resume/kill lands on the real id).
+      setPromotedServerId(merged.id);
+      // #1022 A/F-7 — flush the edit that landed during promotion, now
+      // that a server row exists. Read the draft FRESH from the store so
+      // the flush carries every field written while we were in flight.
+      if (pendingPostPromotionSaveRef.current) {
+        pendingPostPromotionSaveRef.current = false;
+        const freshDraft =
+          useDraftEventStore.getState().getDraft(merged.id) ?? merged;
+        autosave.saveDraft(freshDraft);
+      }
+      if (navigationRef.isFocused()) {
+        router.setParams({
+          id: merged.id,
+          step: String(initialStep ?? 0),
+        });
+      } else {
+        pendingUrlReconcileRef.current = {
+          id: merged.id,
+          step: String(initialStep ?? 0),
+        };
+      }
+    },
+    [autosave, initialStep, navigationRef, router, user],
+  );
+
+  // issue #3040 — the Cover step's server-row precondition. See the event
+  // route for the full rationale: a `d_*` id is a hard 400 at
+  // `event-cover-video-upload-intent`, so the Cover step demands the row here
+  // and RENDERS the outcome instead of hoping the debounced autosave landed.
+  const handleRequireServerDraft = React.useCallback(
+    async (): Promise<string> => {
+      const current = useDraftEventStore.getState().getDraft(
+        effectiveDraftId as string,
+      ) ?? lastResolvedDraftRef.current;
+      if (current === null) {
+        throw new Error("This event is still loading. Try again in a moment.");
+      }
+      if (!current.id.startsWith("d_")) return current.id;
+      if (!isAuthReady) {
+        throw new Error("Finishing sign-in. Try again in a moment.");
+      }
+      migratingLegacyIdRef.current = current.id;
+      try {
+        const merged = await promoteLegacyDraftOnce({
+          queryClient,
+          brandId: current.brandId,
+          draftId: current.id,
+        });
+        reconcilePromotedDraft(current.id, merged);
+        return merged.id;
+      } catch (error) {
+        migratingLegacyIdRef.current = null;
+        throw error;
+      }
+    },
+    [effectiveDraftId, isAuthReady, queryClient, reconcilePromotedDraft],
+  );
+
   const handleAutosaveDraft = React.useCallback(
     (incoming: DraftEvent): void => {
       if (!incoming.id.startsWith("d_")) {
@@ -600,47 +682,7 @@ export default function RsvpEditRoute(): React.ReactElement {
         draftId: incoming.id,
       })
         .then((merged) => {
-          if (user !== null) {
-            promoteBusinessRecentDraft({
-              userId: user.id,
-              brandId: incoming.brandId,
-              entityType: "rsvp",
-              localId: incoming.id,
-              serverId: merged.id,
-            });
-          }
-          // Issue #976 — resolve handlers are unmount- and focus-guarded: a
-          // rapid wizard exit or a pushed Preview screen can never receive a
-          // stray setParams.
-          if (!mountedRef.current) return;
-          // ORCH-1355 (symptom 1) — resolve the wizard against the server id via
-          // route state, then reconcile the URL IN PLACE with setParams. A
-          // router.replace here would change the [id] segment → expo-router
-          // replaces the screen → the name TextInput remounts → the keyboard
-          // drops mid-type. setParams updates the focused route's params without
-          // a screen replace, so the input keeps focus AND the URL/route params
-          // land on the server id immediately (resume/kill lands on the real id).
-          setPromotedServerId(merged.id);
-          // #1022 A/F-7 — flush the edit that landed during promotion, now
-          // that a server row exists. Read the draft FRESH from the store so
-          // the flush carries every field written while we were in flight.
-          if (pendingPostPromotionSaveRef.current) {
-            pendingPostPromotionSaveRef.current = false;
-            const freshDraft =
-              useDraftEventStore.getState().getDraft(merged.id) ?? merged;
-            autosave.saveDraft(freshDraft);
-          }
-          if (navigationRef.isFocused()) {
-            router.setParams({
-              id: merged.id,
-              step: String(initialStep ?? 0),
-            });
-          } else {
-            pendingUrlReconcileRef.current = {
-              id: merged.id,
-              step: String(initialStep ?? 0),
-            };
-          }
+          reconcilePromotedDraft(incoming.id, merged);
         })
         .catch((error) => {
           migratingLegacyIdRef.current = null;
@@ -835,6 +877,7 @@ export default function RsvpEditRoute(): React.ReactElement {
       onOpenPreview={handleOpenPreview}
       onOpenStripeOnboard={handleOpenStripe}
       onAutosaveDraft={handleAutosaveDraft}
+      onRequireServerDraft={handleRequireServerDraft}
       onDiscardServerDraft={handleDiscardDraft}
       onPublishDraft={async (draftToPublish) => {
         const published = await publishServerDraft.mutateAsync({

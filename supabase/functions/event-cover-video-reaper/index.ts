@@ -40,10 +40,14 @@ import {
   bunnyApiVideoStatusAsWebhookStatus,
   bunnyFindVideoByTitle,
   bunnyGetVideo,
+  bunnyPresignTusUpload,
   hmacSha256Hex,
   mapBunnyStatusFromApiVideo,
 } from "../_shared/bunnyStream.ts";
 import { handleBunnyWebhook } from "../event-cover-video-webhook/index.ts";
+// #3040 — ONE implementation of "did the TUS transfer finish?", shared with the
+// acknowledgement endpoint. The sweep below must not invent a second answer.
+import { readTusTransfer } from "../event-cover-video-source-uploaded/index.ts";
 
 export type ReapCandidate = {
   id: string;
@@ -57,6 +61,10 @@ export type ReapCandidate = {
   provider_allocation_identity?: string | null;
   provider_allocation_uncertain_at?: string | null;
   provider_allocation_token?: string | null;
+  // #3040 — the fields the abandoned-source_uploading sweep needs.
+  source_bytes?: number | null;
+  tus_expires_at?: string | null;
+  tus_resource_url?: string | null;
 };
 
 export type ReapTarget = {
@@ -222,7 +230,8 @@ export const handleReaper = async (
     const { data, error } = await supabase
       .from("event_cover_video_jobs")
       .select(
-        "id,status,provider,source_asset_id,source_public_id,applied_at,reaped_at,created_at",
+        // #3040 — tus_* + source_bytes feed the abandoned-source_uploading sweep.
+        "id,status,provider,source_asset_id,source_public_id,applied_at,reaped_at,created_at,source_bytes,tus_expires_at,tus_resource_url",
       )
       .is("reaped_at", null)
       .not("source_asset_id", "is", null)
@@ -294,6 +303,121 @@ export const handleReaper = async (
         });
       }
     };
+    // ── #3040 ABANDONED source_uploading SWEEP ──────────────────────────
+    // Invariant 7: a job whose client never comes back must still reach a
+    // terminal state SERVER-SIDE. Before this, it could not:
+    // `cover_video_claim_reconcile_jobs` only claims a `source_uploading` row
+    // when `provider_allocation_uncertain_at IS NOT NULL`, so an ordinary
+    // abandoned upload was claimed by NOTHING — the production row sat 24h+ in
+    // `source_uploading` with `failure_code = NULL` and no affordance anywhere.
+    //
+    // The claim RPC is deliberately NOT widened: it is pinned by #2715's SQL
+    // contract tests and its lease exists for the webhook-replay path. This
+    // sweep reads rows the tick already fetched, and every write it makes goes
+    // through `cover_video_transition_job`, whose CAS makes a concurrent or
+    // repeated run a no-op. No migration, no new matrix edge.
+    //
+    // Three outcomes, in order of preference:
+    //   RECOVER — Bunny's own TUS HEAD proves the transfer completed, so the
+    //             ack was simply never made. Advance `source_uploading →
+    //             source_uploaded` (an edge the matrix ALREADY has) and let the
+    //             normal promotion path finish it. This does NOT publish
+    //             anything: the webhook still runs its `source_sha256` vs
+    //             `originalHash` identity check before any `ready`, so the
+    //             #2967 interlock is intact and no unverified source can reach
+    //             a cover.
+    //   FAIL    — the transfer is incomplete AND the TUS lease has expired, so
+    //             those bytes can never be re-offered. Terminal, named,
+    //             retryable.
+    //   LEAVE   — transfer incomplete, lease still alive: the user may be
+    //             mid-upload right now. The 12h stall deadline is the backstop.
+    let sweptSourceUploading = 0;
+    for (const candidate of (data ?? []) as ReapCandidate[]) {
+      if (candidate.status !== "source_uploading") continue;
+      if (candidate.reaped_at != null) continue;
+      if (!hasAssetId(candidate.source_asset_id)) continue;
+      const guid = typeof candidate.source_asset_id === "string"
+        ? candidate.source_asset_id
+        : null;
+      const transfer = await readTusTransfer(
+        typeof candidate.source_bytes === "number" ? candidate.source_bytes : -1,
+        guid,
+        typeof candidate.tus_resource_url === "string"
+          ? candidate.tus_resource_url
+          : null,
+        { bunnyPresignTusUpload },
+      );
+      if (transfer.kind === "complete") {
+        const { data: advanced } = await supabase.rpc(
+          "cover_video_transition_job",
+          {
+            p_job_id: candidate.id,
+            p_from_statuses: ["source_uploading"],
+            p_to_status: "source_uploaded",
+            p_provider_status: null,
+            p_provider_progress: null,
+            p_patch: { tus_upload_offset: transfer.uploadOffset },
+          },
+        );
+        if (advanced?.status === "source_uploaded") {
+          sweptSourceUploading += 1;
+          console.warn(
+            "[event-cover-video-reaper]",
+            JSON.stringify({
+              jobId: candidate.id,
+              stage: "abandoned_source_upload_recovered",
+              uploadOffset: transfer.uploadOffset,
+            }),
+          );
+        }
+        continue;
+      }
+      const expiresAt = typeof candidate.tus_expires_at === "string"
+        ? Date.parse(candidate.tus_expires_at)
+        : Number.NaN;
+      if (!Number.isFinite(expiresAt) || nowMs < expiresAt) {
+        // Lease alive (or unreadable expiry): never convert a live upload into
+        // a failure. `failStalledIf` still owns the 12h backstop.
+        await failStalledIf(candidate, "non_terminal");
+        continue;
+      }
+      const { data: expired } = await supabase.rpc(
+        "cover_video_transition_job",
+        {
+          p_job_id: candidate.id,
+          p_from_statuses: ["source_uploading"],
+          p_to_status: "failed",
+          p_provider_status: null,
+          p_provider_progress: null,
+          p_patch: {
+            failure_code: "source_transport_expired",
+            failure_message:
+              "The upload session expired before the video finished uploading.",
+          },
+        },
+      );
+      if (expired?.status !== "failed") continue;
+      sweptSourceUploading += 1;
+      console.warn(
+        "[event-cover-video-reaper]",
+        JSON.stringify({
+          jobId: candidate.id,
+          stage: "abandoned_source_upload_expired",
+          transfer: transfer.kind,
+          tusExpiresAt: candidate.tus_expires_at,
+        }),
+      );
+      if (!targets.some((target) => target.id === candidate.id)) {
+        targets.push({
+          id: candidate.id,
+          provider: candidate.provider,
+          source_asset_id: candidate.source_asset_id,
+          source_public_id: candidate.source_public_id,
+          action: "reap",
+        });
+      }
+    }
+
     for (const candidate of (claimed ?? []) as ReapCandidate[]) {
       if (
         ["cancelled", "failed", "superseded"].includes(candidate.status ?? "")
@@ -486,6 +610,7 @@ export const handleReaper = async (
       failed,
       reconciled,
       stalled,
+      sweptSourceUploading,
       timestamp: new Date(nowMs).toISOString(),
     });
   } catch (err) {

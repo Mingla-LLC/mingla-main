@@ -6,10 +6,12 @@
 // seconds, every one HTTP 200, every one a database no-op). A single mocked
 // call cannot tell "returns pending once" from "returns pending forever", which
 // IS the bug — so nothing here asserts on one response in isolation.
-import {
-  handleEventCoverVideoSourceUploaded,
-  SOURCE_ACK_DEADLINE_MS,
-} from "./index.ts";
+// [TEST-MOD-APPROVED #3040] `SOURCE_ACK_DEADLINE_MS` no longer exists to import.
+// It was the deadline on an ENCODE that was mistaken for a transfer, and its
+// breach DESTROYED the provider asset (#3039). Acknowledgement is now gated on
+// exact TUS offset equality, which is complete proof the bytes arrived, so
+// there is no window to bound and nothing to destroy.
+import { handleEventCoverVideoSourceUploaded } from "./index.ts";
 
 const JOB_ID = "11a18413-bfbf-4087-9ba7-45f70deba0f3";
 const USER_ID = "44a18413-bfbf-4087-9ba7-45f70deba0f3";
@@ -201,7 +203,23 @@ const withClock = async (
   }
 };
 
-Deno.test("#2967 the real acknowledgement loop is BOUNDED — an uncommitted Bunny object fails instead of spinning forever", async () => {
+// [TEST-MOD-APPROVED #3040] SUPERSEDED ASSERTION, named precisely.
+//
+// This test previously asserted that a Bunny which never commits the object
+// drives the job to `failed` with `source_ack_deadline_exceeded` and that its
+// asset is DESTROYED (`h.destroys === 1`). Both halves are invalidated.
+//
+// `storageSize` is a POST-ENCODE signal (#3039: job e055c562 reported
+// storageSize = 14,808,154 together with bunny_status = 4 Finished at 21s), so
+// "uncommitted object" never meant "the bytes are not there" — it meant "Bunny
+// has not finished encoding yet". The deadline was therefore an encode deadline
+// wired to a delete, and it destroyed videos Bunny was still working on.
+//
+// What replaces it is the STRONGER property: with the transfer proven complete
+// by Bunny's own HEAD, the very first acknowledgement settles the job and no
+// asset is ever destroyed by this endpoint. The production stream of 120
+// acknowledgements is now structurally impossible.
+Deno.test("#3040 an uncommitted Bunny object is acknowledged on the FIRST call and its asset is NEVER destroyed", async () => {
   const h = harness({ storageSize: 0 });
   const observed: string[] = [];
   await withCompletedTusHead(() =>
@@ -223,152 +241,159 @@ Deno.test("#2967 the real acknowledgement loop is BOUNDED — an uncommitted Bun
       }
     })
   );
-  const last = observed[observed.length - 1];
   assert(
-    last === "failed",
-    `loop never left source_uploading — ${observed.length} acknowledgements, last status ${last}`,
+    observed.length === 1,
+    `the loop ran ${observed.length} times; exact TUS offset equality settles it on the first call`,
   );
   assert(
-    String(h.row.failure_code) === "source_ack_deadline_exceeded",
-    `expected source_ack_deadline_exceeded, got ${h.row.failure_code}`,
-  );
-  // Bounded, and bounded by the DEADLINE rather than by the loop guard above.
-  const maxCalls = Math.ceil(SOURCE_ACK_DEADLINE_MS / 2_000) + 3;
-  assert(
-    observed.length <= maxCalls,
-    `deadline took ${observed.length} acknowledgements, expected <= ${maxCalls}`,
+    observed[0] === "source_uploaded",
+    `first acknowledgement returned ${observed[0]}, not source_uploaded`,
   );
   assert(
-    h.destroys === 1,
-    `expected the orphaned Bunny asset to be destroyed once, got ${h.destroys}`,
+    h.row.failure_code === null,
+    `a fully transferred source was failed with ${h.row.failure_code}`,
+  );
+  assert(
+    h.row.tus_upload_offset === SOURCE_BYTES,
+    "the proven offset was not persisted",
+  );
+  // THE #3039 REGRESSION. This is the assertion the whole umbrella exists for.
+  assert(
+    h.destroys === 0,
+    `the endpoint destroyed a provider asset Bunny may still be encoding (${h.destroys} destroys)`,
   );
 });
 
-// The #2715 lag invariant, re-pinned in its exact form. The original assertion
-// was "zero writes"; #2967 supersedes that with the property it was actually
-// protecting — the lag path must never advance status, never fabricate a source
-// offset, never destroy provider work, and must not amplify writes across the
-// retry stream. 120 acknowledgements is the exact count measured on the
-// production job; a per-retry write would show up here as 120.
-Deno.test("#2967 the lag path writes AT MOST ONCE across the full 120-retry production stream", async () => {
-  const h = harness({ storageSize: 0 });
-  await withCompletedTusHead(() =>
-    withClock(Date.parse("2026-09-01T13:30:08.000Z"), async (advance) => {
-      for (let call = 0; call < 120; call += 1) {
+// [TEST-MOD-APPROVED #3040] TWO SUPERSEDED TESTS REPLACED BY ONE, named.
+//
+// (a) "#2967 the lag path writes AT MOST ONCE across the full 120-retry
+//     production stream" and
+// (b) "#2967 the acknowledgement clock starts when the TUS offsets match and is
+//     read back on later calls"
+//
+// both pinned the shape of a LAG PATH — a branch that answers an unchanged
+// canonical `source_uploading` while `storageSize` is zero, plus the
+// `provider_payload.source_ack` clock that bounded it. #3040 deletes that
+// branch outright: `storageSize` is a post-encode signal and was never
+// evidence about the transfer, so there is nothing to lag on and no clock to
+// keep. A 120-retry stream can no longer be produced at all.
+//
+// What (a) was really protecting — the acknowledgement must not fabricate a
+// source offset, must not amplify writes, and must not destroy provider work —
+// is pinned here in a strictly stronger form: EXACTLY ONE write, whose offset
+// is the one Bunny's HEAD proved, and zero destroys.
+Deno.test("#3040 acknowledgement is one write with the PROVEN offset, and never waits on encode state", async () => {
+  // Every Bunny API status that can co-exist with a completed transfer and a
+  // zero storageSize. Not one of them may hold the acknowledgement back.
+  //   0 Created · 1 Uploaded · 2 Processing · 3 Transcoding
+  for (const bunnyStatus of [0, 1, 2, 3]) {
+    const h = harness({ storageSize: 0 });
+    h.commitObject(0, bunnyStatus);
+    await withCompletedTusHead(() =>
+      withClock(Date.parse("2026-09-01T13:30:08.000Z"), async () => {
         const response = await handleEventCoverVideoSourceUploaded(
           request(),
           h.deps as never,
         );
         const body = await response.json();
-        if (body.status !== "source_uploading") break;
-        // Stay strictly inside the deadline so this measures the LAG path only,
-        // never the terminal transition.
-        advance(Math.floor(SOURCE_ACK_DEADLINE_MS / 240));
-      }
-    })
-  );
-  assert(
-    h.updates.length === 1,
-    `lag path amplified writes: ${h.updates.length} updates across 120 acknowledgements`,
-  );
-  // The one write touches provider bookkeeping and NOTHING canonical.
-  const [patch] = h.updates;
-  assert(
-    Object.keys(patch).length === 1 && "provider_payload" in patch,
-    `lag write touched more than provider_payload: ${Object.keys(patch).join(",")}`,
-  );
-  assert(
-    patch.status === undefined && patch.tus_upload_offset === undefined &&
-      patch.source_bytes === undefined && patch.failure_code === undefined,
-    "lag write mutated canonical source truth",
-  );
-  // Canonical truth is exactly what it was, and no provider work was deleted.
-  assert(
-    String(h.row.status) === "source_uploading",
-    `lag path moved status to ${h.row.status}`,
-  );
-  assert(h.row.tus_upload_offset === 0, "lag path fabricated a source offset");
-  assert(h.destroys === 0, "lag path deleted provider work");
-  assert(h.transitions.length === 0, "lag path transitioned the job");
+        assert(
+          body.status === "source_uploaded",
+          `bunny api status ${bunnyStatus} + storageSize 0 returned ${body.status} — encode state gated the transfer`,
+        );
+      })
+    );
+    assert(
+      h.updates.length === 1,
+      `bunny api status ${bunnyStatus}: ${h.updates.length} writes, expected exactly 1`,
+    );
+    const [patch] = h.updates;
+    assert(
+      patch.tus_upload_offset === SOURCE_BYTES,
+      "the acknowledgement did not persist the offset Bunny's own HEAD proved",
+    );
+    assert(
+      patch.status === "source_uploaded",
+      `the acknowledgement wrote status ${patch.status}`,
+    );
+    assert(
+      h.destroys === 0,
+      `bunny api status ${bunnyStatus}: provider work was destroyed`,
+    );
+    assert(
+      h.transitions.length === 0,
+      "a healthy acknowledgement used the failure transition RPC",
+    );
+    // No `source_ack` clock is written any more — there is no window to time.
+    const payload = h.row.provider_payload as Record<string, unknown>;
+    assert(
+      payload.source_ack === undefined,
+      "an acknowledgement clock was written for a deadline that no longer exists",
+    );
+  }
 });
 
-Deno.test("#2967 the acknowledgement clock starts when the TUS offsets match and is read back on later calls", async () => {
-  const h = harness({ storageSize: 0 });
-  await withCompletedTusHead(() =>
-    withClock(Date.parse("2026-09-01T13:30:08.000Z"), async (advance) => {
-      const first = await handleEventCoverVideoSourceUploaded(
-        request(),
-        h.deps as never,
-      );
-      assert(
-        (await first.json()).status === "source_uploading",
-        "first pass must stay canonical source_uploading",
-      );
-      const ack =
-        (h.row.provider_payload as Record<string, unknown>).source_ack as
-          | Record<string, unknown>
-          | undefined;
-      assert(
-        typeof ack?.tus_complete_at === "string",
-        "the first pending acknowledgement did not record the clock — it was a database no-op",
-      );
-      assert(
-        ack?.tus_offset === SOURCE_BYTES,
-        "the recorded clock did not carry the proven-complete offset",
-      );
-      const started = ack?.tus_complete_at;
-
-      advance(4_000);
-      const second = await handleEventCoverVideoSourceUploaded(
-        request(),
-        h.deps as never,
-      );
-      assert(
-        (await second.json()).status === "source_uploading",
-        "a 4s-old clock must still be pending",
-      );
-      const ackAgain =
-        (h.row.provider_payload as Record<string, unknown>).source_ack as
-          | Record<string, unknown>
-          | undefined;
-      assert(
-        ackAgain?.tus_complete_at === started,
-        "the clock was restarted on a later call — the deadline would never arrive",
-      );
-      assert(
-        String(h.row.status) === "source_uploading",
-        "a young clock must not fail the job",
-      );
-    })
-  );
-});
-
-Deno.test("#2967 a TUS resource that expired while still source_uploading is a DEFINITE death, failed immediately", async () => {
+// [TEST-MOD-APPROVED #3040] TWO SUPERSEDED ASSERTIONS, named precisely.
+//
+// (1) This test drove an expired lease with a COMPLETED TUS HEAD and expected
+//     `failed`. That is now wrong in the most dangerous direction available: a
+//     completed transfer is proof the bytes are on Bunny, so an expired lease
+//     is irrelevant and the job must be ACKNOWLEDGED, not killed. The expiry
+//     branch now sits AFTER the transfer proof and can only fire on a transfer
+//     that is genuinely incomplete — driven below with a partial HEAD.
+// (2) `h.destroys === 1` is invalidated outright. This endpoint destroys
+//     NOTHING, ever (#3040 invariant 1): it cannot see whether the provider is
+//     mid-encode. `event-cover-video-reaper` is the single owner of asset
+//     reclamation and re-reads provider truth before deleting.
+Deno.test("#3040 an expired TUS lease fails ONLY an incomplete transfer, and destroys nothing", async () => {
   const h = harness({
     storageSize: 0,
     job: { tus_expires_at: "2026-09-01T14:30:08.000Z" },
   });
-  await withCompletedTusHead(() =>
+  const realFetch = globalThis.fetch;
+  // A genuinely PARTIAL transfer: 512 of 1,819,005 bytes.
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(null, {
+        status: 200,
+        headers: {
+          "upload-offset": "512",
+          "upload-length": String(SOURCE_BYTES),
+        },
+      }),
+    )) as typeof fetch;
+  try {
     // One second past the production job's real expiry.
-    withClock(Date.parse("2026-09-01T14:30:09.000Z"), async () => {
+    await withClock(Date.parse("2026-09-01T14:30:09.000Z"), async () => {
       const response = await handleEventCoverVideoSourceUploaded(
         request(),
         h.deps as never,
       );
       const body = await response.json();
-      assert(body.status === "failed", `expired transport returned ${body.status}`);
+      assert(
+        body.status === "failed",
+        `expired transport with an incomplete transfer returned ${body.status}`,
+      );
       assert(
         String(h.row.failure_code) === "source_transport_expired",
         `expected source_transport_expired, got ${h.row.failure_code}`,
       );
-      assert(h.destroys === 1, "the dead Bunny asset was not destroyed");
-    })
-  );
+      assert(
+        h.destroys === 0,
+        "the acknowledgement endpoint destroyed a provider asset",
+      );
+    });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
-Deno.test("#2967 an expired TUS resource NEVER kills a job Bunny actually committed", async () => {
+// The #3039 regression in its exact production shape: the transfer completed,
+// Bunny is still encoding so `storageSize` is 0, and the one-hour TUS lease has
+// since expired because the user was away. Under the shipped code this job was
+// failed AND its asset deleted. It must now be acknowledged.
+Deno.test("#3040 an expired TUS lease NEVER kills a completed transfer, even with storageSize still zero", async () => {
   const h = harness({
-    storageSize: SOURCE_BYTES,
+    storageSize: 0,
     job: { tus_expires_at: "2026-09-01T14:30:08.000Z" },
   });
   await withCompletedTusHead(() =>
@@ -380,9 +405,13 @@ Deno.test("#2967 an expired TUS resource NEVER kills a job Bunny actually commit
       const body = await response.json();
       assert(
         body.status === "source_uploaded",
-        `a committed object with a stale transport returned ${body.status}`,
+        `a completed transfer with a stale lease returned ${body.status}`,
       );
-      assert(h.destroys === 0, "a committed upload must never be destroyed");
+      assert(h.destroys === 0, "a completed upload must never be destroyed");
+      assert(
+        h.row.failure_code === null,
+        `a completed transfer was failed with ${h.row.failure_code}`,
+      );
     })
   );
 });

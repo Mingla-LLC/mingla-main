@@ -221,7 +221,23 @@ Deno.test("#2715 source-upload CAS loss rereads and projects the canonical winne
   }
 });
 
-Deno.test("#2715 completed TUS with pending Bunny storage metadata stays retryable canonical truth", async () => {
+// [TEST-MOD-APPROVED #3040] SUPERSEDED ASSERTION, named precisely.
+//
+// This test asserted that a COMPLETED TUS transfer whose Bunny `storageSize` is
+// still 0 "stays retryable canonical truth" — i.e. remains `source_uploading`.
+// That is the #3039 defect stated as a requirement.
+//
+// `storageSize` only becomes non-zero when ENCODING finishes (production job
+// e055c562 reported storageSize = 14,808,154 together with bunny_status = 4
+// Finished at 21s), so this assertion made acknowledgement of a TRANSFER wait
+// for the whole ENCODE. #2967 then bounded that wait and destroyed the asset on
+// breach, deleting videos Bunny was still working on.
+//
+// The invariant #2715 actually owns — the acknowledgement must never fabricate
+// an offset it did not prove, and must never destroy provider work — is kept
+// and asserted below in a stronger form: the persisted offset must equal the
+// value Bunny's own HEAD returned.
+Deno.test("#3040 completed TUS advances the job even while Bunny storage metadata is still zero", async () => {
   const h = harness({ offset: 1024 });
   h.deps.bunnyGetVideo = () =>
     Promise.resolve({
@@ -251,22 +267,15 @@ Deno.test("#2715 completed TUS with pending Bunny storage metadata stays retryab
       h.deps as never,
     );
     const body = await response.json();
-    assert(response.status === 200, `provider registration lag returned ${response.status}`);
-    assert(body.status === "source_uploading", "canonical retryable status was not preserved");
-    // [TEST-MOD-APPROVED #2967] The original assertion was
-    // `h.updates.length === 0` — "storage metadata lag mutated source truth".
-    // #2967 supersedes it: the lag is now BOUNDED, and the bound needs an
-    // anchor, so the first pending pass records WHEN the TUS offsets matched.
-    // That write was the whole point (the production job's `updated_at` stayed
-    // frozen through 120 acknowledgements, which is why a permanent stall was
-    // indistinguishable from a two-second lag). The invariant #2715 actually
-    // owns — the lag must never advance status and must never fabricate a
-    // source offset — is asserted here instead, and still fails on revert.
+    assert(response.status === 200, `completed transfer returned ${response.status}`);
     assert(
-      h.updates.every((p) =>
-        p.status === undefined && p.tus_upload_offset === undefined
-      ),
-      "storage metadata lag mutated source truth",
+      body.status === "source_uploaded",
+      "a fully transferred source was held back by post-encode metadata",
+    );
+    assert(h.updates.length === 1, `expected one write, got ${h.updates.length}`);
+    assert(
+      h.updates.every((p) => p.tus_upload_offset === 1024),
+      "the acknowledgement persisted an offset Bunny's HEAD did not prove",
     );
   } finally {
     globalThis.fetch = old;
