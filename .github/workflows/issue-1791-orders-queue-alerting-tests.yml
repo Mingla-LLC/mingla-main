@@ -31,6 +31,8 @@ on:
       - ".github/scripts/strict-grep/issue-1791-pause-and-escalation-single-writer.mjs"
       - ".github/workflows/issue-1791-orders-queue-alerting-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/venue-order-escalation-sweep/**"
       - "supabase/functions/venue-order-guest-action/**"
@@ -58,6 +60,7 @@ concurrency:
 
 jobs:
   alerting-spine:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Alerting spine: rungs, collapse id, and the three absences"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -72,6 +75,7 @@ jobs:
           supabase/functions/_shared/__tests__/issue_1791_venue_order_alerting.test.ts
 
   single-writer-gate:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Pause + escalation single-writer gate (D-7a/D-7b/D-7c)"
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -86,6 +90,7 @@ jobs:
         run: node .github/scripts/strict-grep/issue-1791-pause-and-escalation-single-writer.mjs
 
   business-client:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Orders queue client logic + the notification triple's two client legs"
     runs-on: ubuntu-latest
     timeout-minutes: 15

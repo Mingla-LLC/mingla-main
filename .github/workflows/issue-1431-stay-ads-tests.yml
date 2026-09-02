@@ -17,6 +17,8 @@ on:
       # pattern above, so this only skips a baseline-ONLY change.
       - "!mingla-business/scripts/ci/bundle-baseline.json"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "app-mobile/**"
       - "mingla-admin/**"
@@ -40,6 +42,7 @@ concurrency:
 
 jobs:
   contracts:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -77,6 +80,7 @@ jobs:
           supabase/functions/admin-ad-campaign-sync/index.ts
 
   admin:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -100,6 +104,7 @@ jobs:
           src/lib/adRoi.js
 
   buyer-web:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -121,6 +126,7 @@ jobs:
       - run: npx expo export --platform web --output-dir /tmp/issue-1431-buyer-web
 
   consumer-native:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:

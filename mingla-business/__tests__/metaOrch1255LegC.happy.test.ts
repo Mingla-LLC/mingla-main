@@ -230,12 +230,13 @@ describe("T-C1 route half — /b/[brandSlug]/v/[venueSlug] anon route", () => {
   });
 });
 
-// ---- SC-11 SEO/bot half: vercel rewrite ------------------------------------
+// ---- SC-11 unified public route + retired-host compatibility ---------------
 
-describe("vercel bot rewrite for the venue page", () => {
-  test("/b/:brandSlug/v/:venueSlug UA-matched rewrite → venue OG handler", () => {
+describe("UA-independent venue discovery and Business compatibility", () => {
+  test("/b/:brandSlug/v/:venueSlug always resolves through Host's public handler", () => {
     const vercel = JSON.parse(read("mingla-business/vercel.json")) as {
       rewrites: Array<{ source: string; destination: string; has?: unknown }>;
+      redirects: Array<{ source: string; destination: string; permanent: boolean; has?: unknown }>;
     };
     const rule = vercel.rewrites.find(
       (r) => r.source === "/b/:brandSlug/v/:venueSlug",
@@ -247,7 +248,17 @@ describe("vercel bot rewrite for the venue page", () => {
     expect(rule?.destination).toBe(
       "/api/public-venue?brandSlug=:brandSlug&venueSlug=:venueSlug",
     );
-    expect(rule?.has).toBeDefined();
+    expect(rule?.has).toBeUndefined();
+
+    const compatibility = vercel.redirects.find(
+      (redirect) => redirect.source === "/b/:brandSlug/v/:venueSlug",
+    );
+    expect(compatibility).toEqual({
+      source: "/b/:brandSlug/v/:venueSlug",
+      destination: "https://host.usemingla.com/b/:brandSlug/v/:venueSlug",
+      permanent: true,
+      has: [{ type: "host", value: "business\\.usemingla\\.com" }],
+    });
   });
 });
 

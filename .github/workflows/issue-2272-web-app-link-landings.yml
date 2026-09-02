@@ -25,6 +25,8 @@ name: issue-2272-web-app-link-landings
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue_2272_paths
       # The four landings, and the shared page they all render.
       - "mingla-marketing/app/orders/**"
@@ -65,6 +67,7 @@ concurrency:
 
 jobs:
   model:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2272 Model — every declared app-link path resolves on the apex"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -96,6 +99,7 @@ jobs:
           scripts/issue-2272/native-intent-unaffected.deno.test.ts
 
   served:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2272 Served — the four paths really answer, per device"
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -124,7 +128,7 @@ jobs:
     # Deliberately NOT on pull_request or push. mingla-marketing deploys on
     # merge, so a PR run would be red for "not deployed yet", and the push run
     # races the deploy it is meant to check. Deploy, then dispatch this workflow.
-    if: github.event_name == 'workflow_dispatch'
+    if: ${{ (github.event.pull_request.draft != true) && (github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

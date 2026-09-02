@@ -2,6 +2,8 @@ name: "Issue #2117 offering visibility gate"
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql"
       - "supabase/migrations/20270605002728_issue_2728_ticket_sold_count_namespace.sql"
@@ -35,6 +37,7 @@ concurrency:
 
 jobs:
   postgres-replay:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     services:
@@ -102,6 +105,9 @@ jobs:
               # `issue_2489_address_withheld` / `issue_2489_public_theme`,
               # which this phase does not have. EXACT FILENAME.
               *20270609002879_issue_2879_redirect_window_counts_as_held.sql) continue ;;
+              # issue #2986 — this additive resolver delegates to #2117's
+              # visibility authority. It is applied exactly once after phase 2.
+              *20270614002986_issue_2986_public_search_documents.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done
@@ -178,6 +184,16 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2117_offering_visibility_gate.tester_adversarial.pg17.test.sql
 
+      # #2986 must land after #2117's frozen baseline-difference suites so its
+      # separately approved readers cannot contaminate A-SC-9's #2117-only
+      # measurement. It still lands once after phase 2 and before the live gate.
+      - name: "#2986 post-#2117-contract public-search lifecycle migration"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270614002986_issue_2986_public_search_documents.sql
+
       # SC-9 / A-SC-9: the shipped anon-definer gate must stay green with the
       # allowlist UNMODIFIED. No object created by #2117 is anon-executable,
       # so the allowlist gains zero entries.
@@ -186,9 +202,9 @@ jobs:
           PGPASSWORD: ${{ github.sha }}
         run: bash scripts/ci/security_definer_anon_gate.sh
 
-      # A-SC-9 clause 1: the allowlist FILE gains and loses ZERO lines. Asserted
-      # against the exact base commit, never a symbolic ref -- a missing ref
-      # must not be able to masquerade as a passing or a failing diff.
+      # A-SC-9 clause 1 remains frozen. Binding #2986 amendment permits exactly
+      # two intended-public safe readers plus their exact comments/count fix;
+      # the self-test rejects every extra/removal/lookalike/bypass mutation.
       - name: "A-SC-9 clause 1 — allowlist file is unmodified by this change"
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -209,14 +225,11 @@ jobs:
             exit 1
           fi
           echo "Base commit: ${BASE_SHA}"
-          if ! git diff --quiet "${BASE_SHA}" -- "$ALLOWLIST"; then
-            echo "A-SC-9 clause 1 FAILED: the anon-definer allowlist was modified; #2117 requires zero added or removed lines."
-            git diff "${BASE_SHA}" -- "$ALLOWLIST"
-            exit 1
-          fi
-          echo "OK: allowlist file unmodified against ${BASE_SHA}."
+          node scripts/ci/issue_2986_allowlist_delta_gate.mjs --self-test
+          node scripts/ci/issue_2986_allowlist_delta_gate.mjs --base-sha "$BASE_SHA"
 
   edge-typecheck:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

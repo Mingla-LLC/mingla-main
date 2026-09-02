@@ -16,6 +16,8 @@ on:
       # without this path a change to that action would not re-run it.
       - ".github/actions/migrated-postgres/**"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "mingla-business/src/components/venue/claim/ClaimStepBookings.tsx"
       - "mingla-business/src/components/venue/venueBookingSetupCopy.ts"
@@ -38,6 +40,7 @@ concurrency:
 
 jobs:
   contracts-and-client:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -75,6 +78,7 @@ jobs:
           src/utils/__tests__/sanitizeAuthoringError.issue1463.test.ts
 
   postgres-17-runtime:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     # #2148 — the `services:` block that used to live here is gone. A service

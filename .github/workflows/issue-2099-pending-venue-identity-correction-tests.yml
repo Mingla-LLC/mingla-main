@@ -5,6 +5,8 @@ name: issue-2099-pending-venue-identity-correction
 # tester-guard step is fail-closed and carries no bypass token.
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue2099Paths
       - "supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql"
       - "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql"
@@ -56,6 +58,7 @@ concurrency:
 
 jobs:
   issue-2099-web-contracts:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       # `fetch-depth: 0` so `origin/main` exists in the runner's checkout — the
@@ -196,6 +199,7 @@ jobs:
       - run: npm --prefix mingla-admin run build
 
   issue-2099-browser-geometry:
+    if: ${{ github.event.pull_request.draft != true }}
     # P1-A. The only #2099 gate with a LAYOUT ENGINE. Check H mounts under
     # `react-test-renderer`, which has no viewport, no scroll and no bounding
     # boxes — so it proved the control was PRESENT while the independent tester
@@ -222,6 +226,7 @@ jobs:
         run: npx playwright test -c playwright.issue2099.config.ts
 
   issue-2099-boot-payload-ceiling:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -310,6 +315,7 @@ jobs:
           '
 
   issue-2099-postgres-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

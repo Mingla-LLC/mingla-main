@@ -10,6 +10,8 @@ name: issue-2262-composer-responsive-layout
 # the strict-grep workflow instead.
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue2262Paths
       - "mingla-business/app/(tabs)/marketing/campaigns/compose.tsx"
       - "mingla-business/app/(tabs)/marketing/_layout.tsx"
@@ -54,6 +56,7 @@ concurrency:
 
 jobs:
   issue-2262-composer-layout:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       # `fetch-depth: 0` so `origin/main` exists in the runner's checkout — the

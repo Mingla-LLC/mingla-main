@@ -2,6 +2,8 @@ name: "#2107 Mandatory JS Update"
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
     paths:
       - "app-mobile/app/_layout.tsx"
@@ -36,6 +38,7 @@ concurrency:
 
 jobs:
   structural-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +55,7 @@ jobs:
           fi
 
   consumer-ota-gate:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -70,6 +74,7 @@ jobs:
           src/services/__tests__/issue_2107_ota_update_gate.tester_adversarial.test.ts
 
   host-ota-gate:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -88,6 +93,7 @@ jobs:
           src/services/__tests__/issue_2107_ota_update_gate.tester_adversarial.test.ts
 
   edge-ota-policy:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

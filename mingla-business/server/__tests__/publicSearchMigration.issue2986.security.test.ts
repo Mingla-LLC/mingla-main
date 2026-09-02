@@ -1,0 +1,238 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import { describe, expect, it } from "@jest/globals";
+
+const repoRoot = path.resolve(__dirname, "../../..");
+const migrationPath = path.join(repoRoot, "supabase/migrations/20270614002986_issue_2986_public_search_documents.sql");
+const migration = readFileSync(migrationPath, "utf8");
+const allowlist = readFileSync(path.join(repoRoot, "supabase/security/anon_executable_definer_allowlist.txt"), "utf8");
+const workflow = readFileSync(path.join(repoRoot, ".github/workflows/issue-2117-offering-visibility-gate-tests.yml"), "utf8");
+const fullSchemaWorkflow = readFileSync(path.join(repoRoot, ".github/workflows/supabase-migrations-and-stripe-deno.yml"), "utf8");
+const legacyPreview = readFileSync(path.join(repoRoot, "mingla-business/server/socialPreview.js"), "utf8");
+const platformUrl = readFileSync(path.join(repoRoot, "mingla-business/src/constants/platformUrl.ts"), "utf8");
+const config = JSON.parse(readFileSync(path.join(repoRoot, "mingla-business/vercel.json"), "utf8")) as {
+  redirects: Array<{ source: string; destination: string; permanent: boolean; has?: Array<{ type: string; value: string }> }>;
+  rewrites: Array<{ source: string; destination: string; has?: unknown }>;
+};
+
+const occurrences = (source: string, literal: string) => source.split(literal).length - 1;
+const functionBody = (name: string) => {
+  const start = migration.indexOf(`CREATE FUNCTION public.${name}`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const next = migration.indexOf("\nCREATE FUNCTION public.", start + 1);
+  return migration.slice(start, next < 0 ? migration.length : next);
+};
+
+describe("#2986 migration lifecycle and privacy boundary", () => {
+  it("creates one empty opt-in overlay with the exact seven-state lifecycle", () => {
+    const beforeMutationOwner = migration.slice(0, migration.indexOf("CREATE FUNCTION public.upsert_public_search_document"));
+    expect(migration).toContain("CREATE TABLE public.public_search_documents");
+    expect(migration).toContain("'draft','public_noindex','search_ready','stale','expired_archived','redirected','gone'");
+    expect(beforeMutationOwner).not.toContain("INSERT INTO public.public_search_documents");
+    expect(migration).toContain("migration must seed zero search documents");
+    expect(migration).toContain("public_search_documents_live_entity_uniq");
+    expect(migration).toContain("WHERE lifecycle_state <> 'redirected'");
+  });
+
+  it("forces RLS, denies ordinary table access and exposes exactly two anonymous definers", () => {
+    expect(migration).toContain("ALTER TABLE public.public_search_documents ENABLE ROW LEVEL SECURITY");
+    expect(migration).toContain("ALTER TABLE public.public_search_documents FORCE ROW LEVEL SECURITY");
+    expect(migration).toContain("REVOKE ALL ON TABLE public.public_search_documents FROM PUBLIC, anon, authenticated");
+    expect(migration).toContain("ALTER TABLE public.public_search_document_audit FORCE ROW LEVEL SECURITY");
+    expect(migration).toContain("REVOKE ALL ON TABLE public.public_search_document_audit FROM PUBLIC, anon, authenticated");
+    expect(migration.match(/GRANT EXECUTE ON FUNCTION public\.(resolve_public_search_document\(text\)|list_public_search_sitemap\(\)) TO anon, authenticated, service_role;/g)).toHaveLength(2);
+    expect(migration.match(/GRANT EXECUTE ON FUNCTION public\.issue_2489_gate_registry\(\)\s+TO anon, authenticated, service_role;/g)).toHaveLength(1);
+    expect(migration.match(/TO anon, authenticated, service_role;/g)).toHaveLength(3);
+    expect(migration).not.toMatch(/GRANT\s+(?:SELECT|INSERT|UPDATE|DELETE|ALL).*TO\s+(?:anon|authenticated)/i);
+  });
+
+  it("keeps the resolver exact-path, address-safe and subordinate to product visibility", () => {
+    const resolver = functionBody("resolve_public_search_document");
+    const source = functionBody("public_search_source_facts");
+    expect(resolver).toContain("public.public_search_path_kind(p_path)");
+    expect(resolver).toContain("public_noindex");
+    expect(resolver).toContain("dependency_failure");
+    expect(resolver).toContain("v_doc.entity_id=(v_facts->>'id')::uuid");
+    expect(source).toContain("public.pg_offering_visibility_gate(e.visibility,e.deleted_at,'direct')");
+    expect(source).toContain("public.issue_2489_address_withheld(e.theme)");
+    expect(source).not.toMatch(/contact_email|contact_phone|online_url|location_geo|\blat\b|\blng\b|organiser_contact|created_by/);
+  });
+
+  it("declares the new address-privacy carrier in #2489's exact registry", () => {
+    const sourceGrant = "GRANT EXECUTE ON FUNCTION public.public_search_source_facts(text,text) TO service_role;";
+    const registryStart = migration.indexOf("CREATE OR REPLACE FUNCTION public.issue_2489_gate_registry()", migration.indexOf(sourceGrant));
+    const registryEnd = migration.indexOf("$function$;", registryStart);
+    expect(registryStart).toBeGreaterThan(migration.indexOf(sourceGrant));
+    expect(registryEnd).toBeGreaterThan(registryStart);
+
+    const registry = migration.slice(registryStart, registryEnd);
+    const declared = [
+      ["issue_2489_public_theme", "function"],
+      ["business_public_events_view", "view"],
+      ["events_public_view", "view"],
+      ["pg_discover_business_events", "function"],
+      ["pg_public_brand_upcoming", "function"],
+      ["pg_public_event_by_slug", "function"],
+      ["pg_public_rsvp_by_slug", "function"],
+      ["pg_public_experience_by_slug", "function"],
+      ["pg_direct_event_checkout_bundle", "function"],
+      ["public_search_source_facts", "function"],
+    ] as const;
+    for (const [name, kind] of declared) {
+      expect(registry.match(new RegExp(`\\('${name}',\\s*'${kind}'\\)`, "g"))).toHaveLength(1);
+    }
+    expect(registry.match(/\('[a-z0-9_]+',\s*'(?:function|view)'\)/g)).toHaveLength(declared.length);
+    expect(registry).toContain("IMMUTABLE");
+    expect(registry).toContain("SET search_path = ''");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.issue_2489_gate_registry() FROM PUBLIC;");
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.issue_2489_gate_registry()\n  TO anon, authenticated, service_role;");
+  });
+
+  it("rejects alternate hosts, queries, fragments, encodings, traversal and redirect chains", () => {
+    const pathOwner = functionBody("public_search_path_kind");
+    const trigger = functionBody("tg_validate_public_search_document");
+    expect(pathOwner).toContain("p_path ~ '[?#%\\\\]' ");
+    expect(pathOwner).toContain("p_path ~ '//' ");
+    expect(pathOwner).toContain("p_path <> lower(p_path)");
+    expect(pathOwner).toContain("p_path !~ '^[\\x00-\\x7F]+$'");
+    expect(trigger).toContain("public_search_redirect_chain_or_cycle");
+    expect(trigger).toContain("NEW.redirect_target_path=NEW.canonical_path");
+    expect(trigger).toContain("d.lifecycle_state='redirected'");
+  });
+
+  it("makes search promotion privileged, evidence-complete, source-current and audited", () => {
+    const upsert = functionBody("upsert_public_search_document");
+    const validation = functionBody("public_search_validation_complete");
+    const readiness = functionBody("public_search_source_is_search_ready");
+    expect(upsert).toMatch(/BEGIN\s+-- Authorization is intentionally the first executable guard\.\s+IF auth\.role\(\) IS DISTINCT FROM 'service_role' AND NOT public\.is_admin_user\(\)/);
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.upsert_public_search_document");
+    expect(validation).toContain('"facts_verified":true');
+    expect(validation).toContain('"image_rights_verified":true');
+    expect(validation).toContain('"schema_verified":true');
+    expect(readiness).toContain("pg_offering_visibility_gate(e.visibility, e.deleted_at, 'listing')");
+    expect(migration).toContain("AFTER INSERT OR UPDATE OR DELETE ON public.public_search_documents");
+    expect(migration).toContain("before_row jsonb");
+    expect(migration).toContain("after_row jsonb");
+  });
+
+  it("sitemap enumeration is independently constrained to current validated non-test rows", () => {
+    const sitemap = functionBody("list_public_search_sitemap");
+    expect(sitemap).toContain("d.lifecycle_state='search_ready'");
+    expect(sitemap).toContain("d.is_test_record=false");
+    expect(sitemap).toContain("d.review_due_at > now()");
+    expect(sitemap).toContain("public.public_search_validation_complete");
+    expect(sitemap).toContain("public.public_search_source_is_search_ready");
+    expect(sitemap).toContain("public.public_search_source_facts(d.canonical_path,d.entity_kind)");
+    expect(sitemap).toContain("d.source_updated_at >=");
+    expect(sitemap).not.toMatch(/title|description|imageUrl|location/);
+  });
+});
+
+describe("#2986 exact intended-public amendment is closed and self-defending", () => {
+  it("registers exactly the two approved identities once", () => {
+    for (const signature of ["resolve_public_search_document(p_path text)", "list_public_search_sitemap()"]) {
+      expect(occurrences(allowlist, signature)).toBe(1);
+    }
+    expect(allowlist).toContain("# Signature count: 196 (intended-public 27");
+    expect(allowlist).toContain("# #2986: exact Host-relative path only;");
+    expect(allowlist).toContain("# #2986: enumerable only by design;");
+  });
+
+  it("runs the fail-on-forged self-test and preserves the live ORCH-1392 gate", () => {
+    expect(workflow.match(/run: bash scripts\/ci\/security_definer_anon_gate\.sh/g)).toHaveLength(1);
+    expect(workflow).toContain("node scripts/ci/issue_2986_allowlist_delta_gate.mjs --self-test");
+    expect(workflow).toContain('node scripts/ci/issue_2986_allowlist_delta_gate.mjs --base-sha "$BASE_SHA"');
+    expect(execFileSync(process.execPath, [path.join(repoRoot, "scripts/ci/issue_2986_allowlist_delta_gate.mjs"), "--self-test"], { encoding: "utf8" })).toContain("PASS");
+  });
+
+  it("registers only the two exact SQL files in the existing full-schema provider", () => {
+    for (const filename of [
+      "issue_2986_public_search_documents.implementor.happy.pg17.test.sql",
+      "issue_2986_public_search_documents.tester.adversarial.pg17.test.sql",
+    ]) {
+      const exact = `-f supabase/migrations/__tests__/${filename}`;
+      expect(occurrences(fullSchemaWorkflow, exact)).toBe(1);
+    }
+    expect(fullSchemaWorkflow).not.toMatch(/issue_2986[^\n]*\*/);
+  });
+});
+
+describe("#2986 Business retirement compatibility remains public-route-only", () => {
+  const publicSources = [
+    "/e/:brandSlug/:eventSlug",
+    "/t/:brandSlug/:tripSlug",
+    "/exp/:brandSlug/:experienceSlug",
+    "/b/:brandSlug/v/:venueSlug",
+    "/b/:brandSlug",
+  ];
+
+  it("has exactly five permanent host-conditioned path-preserving redirects", () => {
+    expect(config.redirects).toHaveLength(5);
+    expect(config.redirects.map((redirect) => redirect.source)).toEqual(publicSources);
+    for (const redirect of config.redirects) {
+      expect(redirect.permanent).toBe(true);
+      expect(redirect.has).toEqual([{ type: "host", value: "business\\.usemingla\\.com" }]);
+      expect(redirect.destination).toBe(`https://host.usemingla.com${redirect.source}`);
+      expect(redirect.destination).not.toContain("?");
+    }
+  });
+
+  it("does not redirect auth, pay, checkout, callback, API, OG, root or native-association paths", () => {
+    const sources = config.redirects.map((redirect) => redirect.source).join("\n");
+    expect(sources).not.toMatch(/auth|pay|checkout|callback|api|og|well-known/);
+    expect(sources).not.toContain("/(.*)");
+    expect(sources).not.toContain("/:path");
+  });
+
+  it("cannot resurrect the retired Business hostname through stale public URL configuration", () => {
+    expect(legacyPreview).toContain('CONFIGURED_PUBLIC_ORIGIN === "https://business.usemingla.com"');
+    expect(legacyPreview).toContain('? "https://host.usemingla.com"');
+    expect(platformUrl).toContain("RETIRED_BUSINESS_ORIGIN.test(CONFIGURED.trim())");
+    expect(platformUrl).toContain("? HOST_PUBLIC_ORIGIN");
+  });
+});
+
+describe("#2986 lifecycle rework keeps source truth authoritative", () => {
+  it("derives persistence but requires the exact current review token for promotion", () => {
+    const upsert = functionBody("upsert_public_search_document");
+    const trigger = functionBody("tg_validate_public_search_document");
+    const resolver = functionBody("resolve_public_search_document");
+    const sitemap = functionBody("list_public_search_sitemap");
+
+    expect(upsert).toContain("v_source := public.public_search_source_facts(p_canonical_path,p_entity_kind)");
+    expect(upsert).toContain("p_source_updated_at > clock_timestamp()");
+    expect(upsert).toContain("p_source_updated_at IS DISTINCT FROM v_derived_source_updated_at");
+    expect(upsert).not.toContain("p_source_updated_at > clock_timestamp()+interval");
+    expect(upsert).toContain("COALESCE(p_validation_checks,'{}'::jsonb),v_derived_source_updated_at");
+    expect(upsert).not.toContain("COALESCE(p_validation_checks,'{}'::jsonb),p_source_updated_at");
+    expect(upsert.indexOf("p_lifecycle_state='search_ready'")).toBeLessThan(
+      upsert.indexOf("p_source_updated_at IS DISTINCT FROM v_derived_source_updated_at"),
+    );
+    expect(trigger).toContain("NEW.source_updated_at IS DISTINCT FROM v_source_updated_at");
+    expect(resolver).toContain("v_doc.source_updated_at IS DISTINCT FROM (v_facts->>'sourceUpdatedAt')::timestamptz");
+    expect(sitemap).toContain("d.source_updated_at <=");
+  });
+
+  it("rejects elapsed offering inventory and disables its public action", () => {
+    const readiness = functionBody("public_search_source_is_search_ready");
+    const source = functionBody("public_search_source_facts");
+
+    expect(occurrences(readiness, "d.end_at > now()")).toBe(3);
+    expect(source).toContain("e.status NOT IN ('scheduled','live') OR ed.end_at IS NULL OR ed.end_at <= now()");
+  });
+
+  it("evaluates source privacy before archive, redirect or gone overlays", () => {
+    const resolver = functionBody("resolve_public_search_document");
+    const source = functionBody("public_search_source_facts");
+    const sourceGate = resolver.indexOf("IF v_source_state='draft' THEN");
+
+    expect(sourceGate).toBeGreaterThanOrEqual(0);
+    expect(sourceGate).toBeLessThan(resolver.indexOf("v_doc.lifecycle_state='redirected'"));
+    expect(sourceGate).toBeLessThan(resolver.indexOf("v_doc.lifecycle_state='expired_archived'"));
+    expect(resolver).toContain("v_kind NOT IN ('event','trip','experience')");
+    expect(resolver).toContain("v_facts->>'status' NOT IN ('ended','cancelled')");
+    expect(source).toContain("b.kind IS DISTINCT FROM 'physical' OR b.claim_status='verified'");
+  });
+});

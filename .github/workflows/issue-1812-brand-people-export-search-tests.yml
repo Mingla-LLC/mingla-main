@@ -11,6 +11,8 @@ on:
       # without this path a change to that action would not re-run it.
       - ".github/actions/migrated-postgres/**"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270313001812_issue_1812_brand_people_export_search_normalization.sql"
       - "supabase/migrations/__tests__/issue_1812_brand_people_export_search_normalization*.test.sql"
@@ -28,6 +30,7 @@ concurrency:
 
 jobs:
   issue-1812-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Issue 1812 export search contract (fresh PG17)"
     runs-on: ubuntu-latest
     timeout-minutes: 20

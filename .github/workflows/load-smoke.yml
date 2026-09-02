@@ -13,6 +13,8 @@ on:
       - "docs/load-test-fixtures.md"
       - ".github/workflows/load-smoke.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "scripts/load/**"
       - "docs/load-test-fixtures.md"
@@ -24,6 +26,7 @@ concurrency:
 
 jobs:
   validate-scripts:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Validate k6 scripts"
     runs-on: ubuntu-latest
     steps:
@@ -34,6 +37,7 @@ jobs:
       - run: node scripts/load/validate-k6-scripts.mjs
 
   k6-smoke:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "k6 smoke (optional)"
     runs-on: ubuntu-latest
     needs: validate-scripts

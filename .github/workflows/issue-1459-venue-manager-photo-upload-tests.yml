@@ -10,6 +10,8 @@ on:
       - "supabase/migrations/__tests__/issue_1459_venue_manager_photo_upload.*"
       - ".github/workflows/issue-1459-venue-manager-photo-upload-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "mingla-business/src/services/venueGalleryService.ts"
       - "mingla-business/src/services/__tests__/venueGalleryUpload.issue1459.test.ts"
@@ -26,6 +28,7 @@ concurrency:
 
 jobs:
   storage-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -39,6 +42,7 @@ jobs:
           supabase/migrations/__tests__/issue_1459_venue_manager_photo_upload.test.ts
 
   business-client:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:

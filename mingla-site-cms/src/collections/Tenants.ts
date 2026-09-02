@@ -1,5 +1,19 @@
-import type { CollectionConfig } from "payload";
+import type { Access, CollectionConfig } from "payload";
 import { noAccess } from "../lib/access";
+
+export const readSignedSessionTenant: Access = ({ req }) => {
+  const current = req.user as Record<string, unknown> | null;
+  if (
+    current?.collection !== "studio-users" ||
+    typeof current.rank !== "number" ||
+    current.rank < 20 ||
+    typeof current.tenantId !== "string" ||
+    current.tenantId.length === 0
+  ) {
+    return false;
+  }
+  return { id: { equals: current.tenantId } };
+};
 
 export const Tenants: CollectionConfig = {
   slug: "tenants",
@@ -7,7 +21,7 @@ export const Tenants: CollectionConfig = {
   access: {
     admin: () => false,
     create: noAccess,
-    read: noAccess,
+    read: readSignedSessionTenant,
     update: noAccess,
     delete: noAccess,
     readVersions: noAccess,

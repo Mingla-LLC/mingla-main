@@ -15,6 +15,8 @@ name: issue-2136-free-checkout-contract
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue_2136_paths
       - "supabase/migrations/20270417002136_issue_2136_free_checkout_finalize_contract.sql"
       - "supabase/migrations/__tests__/issue_2136_free_checkout_no_value_arm.tester.adversarial.test.sql"
@@ -49,6 +51,7 @@ concurrency:
 
 jobs:
   issue-2136-edge-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2136 Edge — free finalize branches on outcome, never on truthiness"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -72,6 +75,7 @@ jobs:
       - run: deno check supabase/functions/ticket-checkout-create/index.ts
 
   issue-2136-client-guard:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2136 Client — no raw TypeError, no confirmation without a ticket"
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -92,6 +96,7 @@ jobs:
         run: npx jest issue_2136 --runInBand
 
   issue-2136-postgres-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2136 PostgreSQL 17 — the no-value arm, executed (tester adversarial)"
     runs-on: ubuntu-latest
     timeout-minutes: 30

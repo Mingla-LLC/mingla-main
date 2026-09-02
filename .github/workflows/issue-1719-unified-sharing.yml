@@ -1,6 +1,8 @@
 name: Issue 1719 Unified Sharing
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "scripts/issue-1719/**"
       # Issue #2589 — the coverless fallback share card. Its proofs live here
@@ -44,6 +46,7 @@ concurrency:
 
 jobs:
   unified-sharing:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -108,6 +111,7 @@ jobs:
         working-directory: mingla-business
 
   postgres-17-adversarial:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     services:

@@ -2,6 +2,8 @@ name: Issue 1857 phone-country authority
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "packages/card-identity/**"
       - "packages/phone-input/**"
@@ -41,6 +43,7 @@ concurrency:
 
 jobs:
   issue-1857-phone-country-authority:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -77,6 +80,7 @@ jobs:
         run: test -s supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql
 
   issue-1857-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#1857 fresh PostgreSQL 17 combined RSVP boundary"
     runs-on: ubuntu-latest
     timeout-minutes: 25

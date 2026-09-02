@@ -39,6 +39,8 @@ on:
       - "supabase/functions/_shared/mapboxGeocode.ts"
       - ".github/workflows/issue-992-campaign-builder-google-snap-targeting-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "mingla-admin/src/**"
       - "supabase/functions/admin-ad-targeting-search/**"
@@ -54,6 +56,7 @@ concurrency:
 
 jobs:
   issue-992-admin-node-test:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "ISSUE-992: Google + Snap targeting mappers/payload (admin node:test)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -78,6 +81,7 @@ jobs:
           src/__tests__/issue992_google_snap_targeting_adversarial.test.js
 
   issue-992-edge-builders-deno-test:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "ISSUE-992: Google/Snap edge builders + resolvers (deno test)"
     runs-on: ubuntu-latest
     timeout-minutes: 10

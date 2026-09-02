@@ -83,6 +83,10 @@ orch-1386-tester-adversarial.yml f0d49800ed79ccf9a0dd51a0c6fef8cf236ad199da41a90
 // this file before being replaced.
 // [TEST-MOD-APPROVED #2851] The old d6ea… #2393 lock is re-banked solely for
 // its approved top-level concurrency bytes; both full-file lock proofs survive.
+// [TEST-MOD-APPROVED #3033] #3014 strengthened the existing #2062 adversarial
+// suite with exact Host-origin normalization mutants but left these tester-owned
+// byte locks on the prior pair. Re-bank those two values only: the paths,
+// lock-set cardinality, working-tree proof, and depth-one proof remain unchanged.
 const REFERENCE_SHA256 = locks(`
 .github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs fc65e60b8636d7dc23190e10e8b0372cf6f033dca4cf060fb3e67d5f0ce21e06
 .github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs a6dba7a4a109956b82acae0beb2eb6eb28bdc1c1522d5793452cbcc4885d3652
@@ -110,8 +114,8 @@ app-mobile/src/hooks/__tests__/issue_1661_parked_invalidation_fanout.adversarial
 mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_handoff.happy.test.mjs 48a7f8e61f3e7668d233a359bbe4d1540eb8642bd0c1349c85401acd36a73e1f
 packages/card-identity/__tests__/card_identity_isolation.test.mjs 7c12a6bb9e90662357992fa8a24142bc0caa8d8b61c9bb5c00d14ea4eaa8640e
 packages/card-identity/__tests__/card_identity_single_source.test.mjs 537507cbf17a718d1a75c644850b02e8b6bc0789255906c4ea74550a5f71eec4
-scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs a03d9052f03eeaefe686c66a3491f05d79deff1a851c57d21f47fa1afc9133b2
-scripts/ci/issue-2062-expo-config-node20.mjs edd8938c93367e76193c850206cae438a3f888a3bb6ffc7d5c6ad143cdb9384b
+scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs 95fead38028a1234c1bfb4a8eea2edc4d6779f5b9830a79068031b820e8547e8
+scripts/ci/issue-2062-expo-config-node20.mjs 4bfb80534dae14ccc480de2104fdb749f6737de04859d198bd272105d611c6bb
 scripts/issue-1615/curated-composition-terminal-ui.implementor.happy.test.mjs f1f3a94262faab8f998b27bccba420ed90085cfd6f9926334bd22408fce0d1a8
 scripts/issue-1615/curated-composition-terminal-ui.tester.adversarial.test.mjs 4d382fefd13bd483b711715005b602e4f4445b324a9804554458ef438bb99a39
 scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs 0cbacffe0dea33f5b69b318ae537422a53d869d039f5cc037d1331c19a1bce63

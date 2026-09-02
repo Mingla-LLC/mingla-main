@@ -427,6 +427,7 @@ export function audit(base = repoRoot) {
     ".github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs",
     ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs",
     ".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs",
+    "mingla-business/server/__tests__/publicSearchMigration.issue2986.security.test.ts",
     "scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs",
     "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs",
     "supabase/functions/__tests__/orch_1289_stop_footer_wire_preview_parity.tester.test.ts",

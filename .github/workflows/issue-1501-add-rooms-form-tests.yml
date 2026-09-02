@@ -24,6 +24,8 @@ name: Issue #1501 Add Rooms or Places
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     # #2885 AC-4 — a pull request whose ONLY changed file is the machine-written
     # boot-payload baseline cannot affect this suite. Those recording PRs were
     # starting 53 jobs each, ~15/day (~51,000 job-min/month). `paths-ignore`
@@ -39,6 +41,7 @@ concurrency:
 
 jobs:
   issue-1501-add-rooms-form:
+    if: ${{ github.event.pull_request.draft != true }}
     name: Add Rooms or Places (render proofs + gates)
     runs-on: ubuntu-latest
     timeout-minutes: 30

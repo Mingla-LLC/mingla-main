@@ -21,6 +21,8 @@ name: Tests Append-Only
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, Seth]
     # #2885 AC-4 — a pull request whose ONLY changed file is the machine-written
     # boot-payload baseline cannot affect this suite. Those recording PRs were
@@ -43,6 +45,7 @@ concurrency:
 
 jobs:
   append-only-check:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Test files: append-only"
     runs-on: ubuntu-latest
     steps:

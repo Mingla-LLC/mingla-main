@@ -49,6 +49,7 @@ import {
   requireAuthenticatedStudioRequest,
   studioMediaGrantRequest,
 } from "../lib/studioRequestAuth";
+import { ensureStudioUserShadow } from "../lib/studioUserShadow";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
   return sitesJsonResponse(data, status, headers);
@@ -147,6 +148,7 @@ async function exchange(req: PayloadRequest): Promise<Response> {
       String(result.site_id) !== siteIdHint ||
       String(result.brand_id) !== brandIdHint
     ) throw new Error("SESSION_EXPIRED");
+    await ensureStudioUserShadow(req, String(result.user_id));
     const session = await encodeSession({
       version: 1,
       site_id: String(result.site_id),
@@ -194,12 +196,21 @@ async function returnToMingla(req: PayloadRequest): Promise<Response> {
   try {
     const session = await sessionFromHeaders(req.headers);
     if (!session) throw new Error("SESSION_EXPIRED");
+    const headers = new Headers({
+      location: studioReturnLocation(session),
+      "cache-control": "no-store, private",
+    });
+    headers.append(
+      "set-cookie",
+      `${STUDIO_COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`,
+    );
+    headers.append(
+      "set-cookie",
+      `${STUDIO_CSRF_COOKIE}=; Path=/; Max-Age=0; Secure; SameSite=Lax`,
+    );
     return new Response(null, {
       status: 302,
-      headers: {
-        location: studioReturnLocation(session),
-        "cache-control": "no-store, private",
-      },
+      headers,
     });
   } catch (error) {
     return safeFailure(error);

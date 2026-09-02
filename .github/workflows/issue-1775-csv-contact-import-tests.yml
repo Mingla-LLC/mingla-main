@@ -19,6 +19,8 @@ on:
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-1775-csv-contact-import-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: *paths
 permissions:
   contents: read
@@ -28,6 +30,7 @@ concurrency:
 
 jobs:
   issue-1775-csv-contact-import:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:

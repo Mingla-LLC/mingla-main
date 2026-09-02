@@ -53,6 +53,8 @@ on:
       - "mingla-business/jest.issue1503.cfg.cjs"
       - ".github/workflows/issue-1503-stay-date-pickers-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "packages/brand-rendering/stayDateRules.ts"
       - "packages/brand-rendering/StayDateRangeField.tsx"
@@ -77,6 +79,7 @@ concurrency:
 
 jobs:
   stay-date-pickers:
+    if: ${{ github.event.pull_request.draft != true }}
     name: Stay date pickers (venue-local rules + web-resolved render proof)
     runs-on: ubuntu-latest
     timeout-minutes: 30

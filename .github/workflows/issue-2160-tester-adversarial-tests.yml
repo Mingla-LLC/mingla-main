@@ -26,6 +26,8 @@ name: issue-2160-tester-adversarial
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue_2160_adversarial_paths
       - "supabase/migrations/__tests__/issue_2160_money_admission_lock.tester.adversarial.test.sql"
       - "supabase/migrations/20270420002160_issue_2160_multiday_multiselect.sql"
@@ -55,6 +57,7 @@ concurrency:
 
 jobs:
   issue-2160-tester-adversarial-postgres:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2160 tester — capacity cannot be oversold, a pass admits only its days"
     runs-on: ubuntu-latest
     timeout-minutes: 30

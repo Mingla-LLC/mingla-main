@@ -210,11 +210,40 @@ function validatePlatformUrlSource(source) {
   const envRead = source.indexOf(
     "process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL",
   );
-  if (extraRead < 0 || envRead < 0 || extraRead > envRead) {
+  const selection = "const CONFIGURED = FROM_EXTRA ?? FROM_PROCESS_ENV;";
+  const selectionIndex = source.indexOf(selection);
+  if (
+    extraRead < 0 ||
+    envRead < 0 ||
+    selectionIndex < 0 ||
+    extraRead > envRead ||
+    envRead > selectionIndex
+  ) {
     fail("platformUrl.ts must read Expo extra before process.env");
   }
-  if (!source.includes("const RESOLVED = FROM_EXTRA ?? FROM_PROCESS_ENV;")) {
+  if (source.split(/\r?\n/).filter((line) => line === selection).length !== 1) {
     fail("platformUrl.ts fallback precedence drifted");
+  }
+  const hostOwner = 'const HOST_PUBLIC_ORIGIN = "https://host.usemingla.com";';
+  if (source.split(/\r?\n/).filter((line) => line === hostOwner).length !== 1) {
+    fail("platformUrl.ts Host replacement drifted");
+  }
+  const retiredMatcher =
+    "const RETIRED_BUSINESS_ORIGIN = /^https:\\/\\/business\\.usemingla\\.com\\/?$/i;";
+  if (source.split(/\r?\n/).filter((line) => line === retiredMatcher).length !== 1) {
+    fail("platformUrl.ts retired-origin matcher must remain exact");
+  }
+  const normalization = [
+    "const RESOLVED = CONFIGURED && RETIRED_BUSINESS_ORIGIN.test(CONFIGURED.trim())",
+    "  ? HOST_PUBLIC_ORIGIN",
+    "  : CONFIGURED;",
+  ].join("\n");
+  const normalizationIndex = source.indexOf(normalization);
+  if (normalizationIndex <= selectionIndex) {
+    fail("platformUrl.ts must normalize the selected exact retired origin to Host");
+  }
+  if (!source.includes("if (!RESOLVED || RESOLVED.length === 0) {")) {
+    fail("platformUrl.ts must fail loudly when configuration is missing or empty");
   }
   if (
     !source.includes(
@@ -425,8 +454,64 @@ function runSelfTest() {
   expectFailure("platformUrl precedence drift", () =>
     validatePlatformUrlSource(
       platformUrlSource.replace(
-        "const RESOLVED = FROM_EXTRA ?? FROM_PROCESS_ENV;",
-        "const RESOLVED = FROM_PROCESS_ENV ?? FROM_EXTRA;",
+        "const CONFIGURED = FROM_EXTRA ?? FROM_PROCESS_ENV;",
+        "const CONFIGURED = FROM_PROCESS_ENV ?? FROM_EXTRA;",
+      ),
+    ),
+  );
+  expectFailure("platformUrl retired-origin normalization removed", () =>
+    validatePlatformUrlSource(
+      platformUrlSource.replace(
+        "const RESOLVED = CONFIGURED && RETIRED_BUSINESS_ORIGIN.test(CONFIGURED.trim())\n  ? HOST_PUBLIC_ORIGIN\n  : CONFIGURED;",
+        "const RESOLVED = CONFIGURED;",
+      ),
+    ),
+  );
+  expectFailure("platformUrl retired-origin matcher broadened", () =>
+    validatePlatformUrlSource(
+      platformUrlSource.replace(
+        "const RETIRED_BUSINESS_ORIGIN = /^https:\\/\\/business\\.usemingla\\.com\\/?$/i;",
+        "const RETIRED_BUSINESS_ORIGIN = /^https:\\/\\/business\\.usemingla\\.com/i;",
+      ),
+    ),
+  );
+  expectFailure("platformUrl retired-origin matcher removed", () =>
+    validatePlatformUrlSource(
+      platformUrlSource.replace(
+        "const RETIRED_BUSINESS_ORIGIN = /^https:\\/\\/business\\.usemingla\\.com\\/?$/i;\n",
+        "",
+      ),
+    ),
+  );
+  expectFailure("platformUrl Host replacement changed", () =>
+    validatePlatformUrlSource(
+      platformUrlSource.replace(
+        'const HOST_PUBLIC_ORIGIN = "https://host.usemingla.com";',
+        'const HOST_PUBLIC_ORIGIN = "https://business.usemingla.com";',
+      ),
+    ),
+  );
+  expectFailure("platformUrl unconditional Host fallback", () =>
+    validatePlatformUrlSource(
+      platformUrlSource.replace(
+        "const RESOLVED = CONFIGURED && RETIRED_BUSINESS_ORIGIN.test(CONFIGURED.trim())\n  ? HOST_PUBLIC_ORIGIN\n  : CONFIGURED;",
+        "const RESOLVED = CONFIGURED ?? HOST_PUBLIC_ORIGIN;",
+      ),
+    ),
+  );
+  expectFailure("platformUrl fail-loud behavior removed", () =>
+    validatePlatformUrlSource(
+      platformUrlSource.replace(
+        "if (!RESOLVED || RESOLVED.length === 0) {",
+        "if (false) {",
+      ),
+    ),
+  );
+  expectFailure("platformUrl export drift", () =>
+    validatePlatformUrlSource(
+      platformUrlSource.replace(
+        "export const MINGLA_BUSINESS_WEB_URL: string = RESOLVED;",
+        "export const MINGLA_BUSINESS_WEB_URL: string = HOST_PUBLIC_ORIGIN;",
       ),
     ),
   );

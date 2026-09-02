@@ -26,6 +26,8 @@ name: issue-2337-free-409-honest-copy
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue_2337_paths
       # The mapper, its call sites, and the wrapper that carries the refusal.
       - "mingla-business/src/services/checkoutErrorCopy.ts"
@@ -63,6 +65,7 @@ concurrency:
 
 jobs:
   issue-2337-edge-to-copy:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2337 Edge -> copy — every free-rail 409, executed, mapped to honest copy"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -88,6 +91,7 @@ jobs:
       - run: deno check supabase/functions/ticket-checkout-create/index.ts
 
   issue-2337-client-copy:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2337 Client — the token decides the sentence, never the status"
     runs-on: ubuntu-latest
     timeout-minutes: 12

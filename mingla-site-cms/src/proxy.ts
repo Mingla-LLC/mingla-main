@@ -7,6 +7,25 @@ import {
 } from "./lib/session";
 import { cmsConfig } from "./lib/config";
 
+const PAGES_ROUTE = "/admin/collections/pages";
+
+function isPathOrDescendant(pathname: string, route: string): boolean {
+  return pathname === route || pathname.startsWith(`${route}/`);
+}
+
+export function strippedStudioDestination(pathname: string): string | null {
+  if (pathname === "/admin" || pathname === "/admin/") return PAGES_ROUTE;
+  if (isPathOrDescendant(pathname, "/admin/collections/media")) {
+    return "/studio/media";
+  }
+  if (
+    isPathOrDescendant(pathname, "/admin/account") ||
+    isPathOrDescendant(pathname, "/admin/collections/tenants") ||
+    isPathOrDescendant(pathname, "/admin/collections/studio-users")
+  ) return PAGES_ROUTE;
+  return null;
+}
+
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const csrf = request.cookies.get(STUDIO_CSRF_COOKIE)?.value;
   const requestHeaders = new Headers(request.headers);
@@ -30,6 +49,12 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(new URL("/mingla/session-expired", request.url));
   }
   if (!session) return response;
+  const strippedDestination = strippedStudioDestination(
+    request.nextUrl.pathname,
+  );
+  if (strippedDestination) {
+    return NextResponse.redirect(new URL(strippedDestination, request.url));
+  }
   const now = Math.floor(Date.now() / 1000);
   const refreshedIdle = Math.min(session.absolute_expires_at, now + 30 * 60);
   if (refreshedIdle <= session.idle_expires_at + 60) return response;

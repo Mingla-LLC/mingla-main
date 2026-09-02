@@ -52,6 +52,8 @@ on:
       - "app-mobile/src/hooks/__tests__/useAuthSimple.transientSignInFailure.adversarial.issue1875.test.ts"
       - ".github/workflows/issue-1875-google-signin-transient-failure-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "app-mobile/src/hooks/useAuthSimple.ts"
       - "app-mobile/src/i18n/locales/en/auth.json"
@@ -65,6 +67,7 @@ concurrency:
 
 jobs:
   issue-1875-consumer-node-test:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#1875 CONS: transient sign-in failures retry and never leak raw errors (fails-on-revert)"
     runs-on: ubuntu-latest
     timeout-minutes: 15

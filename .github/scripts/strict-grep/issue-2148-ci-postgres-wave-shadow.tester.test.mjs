@@ -64,6 +64,15 @@ const PARTIAL_REFERENCE_DELTAS = [{
     "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
   ],
 }, {
+  // [TEST-MOD-APPROVED #3033] Independently mirror #2986's reviewed
+  // reference-file delta on the frozen #2117 provider. The historical provider
+  // seal stays c0813…; removing or widening either exact reference remains RED.
+  workflow: "issue-2117-offering-visibility-gate-tests.yml",
+  referenceFiles: [
+    "mingla-business/server/__tests__/publicSearchMigration.issue2986.security.test.ts",
+    "scripts/ci/issue_2986_allowlist_delta_gate.mjs",
+  ],
+}, {
   // [TEST-MOD-APPROVED #2948] Independently mirror the two reviewed reference
   // deltas #2948 declares. `issue2948-deploy-invocation-shape.test.mjs` names
   // BOTH workflows and consumes BOTH: it executes deploy-functions.yml's own
@@ -84,6 +93,10 @@ const PARTIAL_REFERENCE_DELTAS = [{
     ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
     ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.self-test.mjs",
     ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs",
+    // [TEST-MOD-APPROVED #3033] #2986's security suite consumes this existing
+    // provider too. Normalize only that reviewed reference before reconstructing
+    // the historical seal; the live manifest keeps the full record.
+    "mingla-business/server/__tests__/publicSearchMigration.issue2986.security.test.ts",
     "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs",
   ],
 }];

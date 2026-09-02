@@ -2,6 +2,8 @@ name: Issue #1456 Edge deploy idempotency
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - '.github/workflows/deploy-functions.yml'
       - '.github/workflows/issue-1456-edge-deploy-idempotency.yml'
@@ -34,6 +36,7 @@ concurrency:
 
 jobs:
   exact-duplicate-only:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -39,6 +39,8 @@ on:
       - ".github/scripts/strict-grep/issue-1985-business-typecheck.mjs"
       - ".github/workflows/issue-1985-ari-task-state.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql"
@@ -85,6 +87,7 @@ concurrency:
 
 jobs:
   ari-task-state-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     services:
@@ -124,6 +127,7 @@ jobs:
             -f supabase/migrations/__tests__/issue_1985_message_role_authority.implementor.pg17.test.sql
 
   ari-task-state:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -21,6 +21,8 @@ name: issue-2347-wrong-day-pass
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue_2347_paths
       # The consumer calendar: the rule, its call site, and the two surfaces
       # that render what it produces.
@@ -53,6 +55,7 @@ concurrency:
 
 jobs:
   issue-2347-scan-level:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2347 the pass on a card scans on THAT card's day"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -97,6 +100,7 @@ jobs:
           app-mobile/src/services/__tests__/orch_1188_calendar_url_and_date.test.ts
 
   issue-2347-download-endpoint:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2347 the downloaded PDF names the day the guest bought"
     runs-on: ubuntu-latest
     timeout-minutes: 10

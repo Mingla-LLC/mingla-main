@@ -4,6 +4,67 @@ import test from "node:test";
 
 const read = (file) => fs.readFileSync(file, "utf8");
 
+const evaluateCommonJs = (file, resolveModule) => {
+  const module = { exports: {} };
+  const source = read(file);
+  const execute = new Function("require", "module", "exports", source);
+  execute(resolveModule, module, module.exports);
+  return module.exports;
+};
+
+const responseRecorder = () => ({
+  statusCode: 0,
+  headers: {},
+  body: "",
+  setHeader(name, value) { this.headers[name] = String(value); },
+  end(value = "") { this.body = String(value); },
+});
+
+const publicSearchWithResolution = (resolution) => evaluateCommonJs(
+  "mingla-business/server/publicSearchDocument.js",
+  (specifier) => {
+    if (specifier === "./supabaseRpc") {
+      return {
+        requestRpcJson: async () => {
+          if (resolution instanceof Error) throw resolution;
+          return resolution;
+        },
+      };
+    }
+    if (specifier === "./publicSearchBrowserRuntime") {
+      return { browserRuntimeScript: () => "" };
+    }
+    throw new Error(`unexpected module ${specifier}`);
+  },
+);
+
+const invokeExperience = async (resolution) => {
+  const shared = publicSearchWithResolution(resolution);
+  const response = responseRecorder();
+  await shared.handlePublicSearchDocument({
+    req: { method: "GET", url: "/exp/art-roost/collectors-preview" },
+    res: response,
+    kind: "experience",
+    slugs: ["art-roost", "collectors-preview"],
+  });
+  return response;
+};
+
+const visibleExperience = () => ({
+  valid: true,
+  kind: "experience",
+  state: "search_ready",
+  integrityOk: true,
+  facts: {
+    kind: "experience",
+    id: "experience-1",
+    title: "Collectors Preview",
+    brandName: "Art Roost",
+    brandSlug: "art-roost",
+    actionAvailable: false,
+  },
+});
+
 test("custom sharing remains confined to native public pages and management surfaces", () => {
   const helper = read(
     "mingla-business/src/utils/shareCanonicalPublicPageOnWeb.ts",
@@ -26,21 +87,56 @@ test("custom sharing remains confined to native public pages and management surf
   }
 });
 
-test("experience crawler lookup cannot return a non-experience sharing collision", () => {
-  const social = read("mingla-business/server/socialPreview.js");
-  const start = social.indexOf("const fetchPublicExperienceBySlug");
-  const end = social.indexOf("const eventDescription", start);
-  assert.ok(start >= 0 && end > start, "experience crawler reader must exist");
-  const reader = social.slice(start, end);
-  assert.match(reader, /event_type: "eq\.experience"/);
-  assert.match(reader, /brand_slug: `eq\.\$\{brandSlug\}`/);
-  assert.match(reader, /slug: `eq\.\$\{experienceSlug\}`/);
-  assert.match(reader, /limit: "1"/);
-
+test("experience handler delegates the exact slug tuple with no route-local authority", async () => {
   const handler = read("mingla-business/api/public-experience.js");
-  assert.match(handler, /renderNotFoundHtml\("Experience not found"\), 404/);
-  assert.match(handler, /renderExperienceHtml\(experience\)/);
-  assert.match(handler, /public experience preview could not load/);
+  assert.doesNotMatch(handler, /renderNotFoundHtml|renderExperienceHtml|socialPreview|user-agent/i);
+
+  const calls = [];
+  const loaded = evaluateCommonJs(
+    "mingla-business/api/public-experience.js",
+    (specifier) => {
+      assert.equal(specifier, "../server/publicSearchDocument");
+      return {
+        firstQueryValue: (value) => Array.isArray(value) ? value[0] : value,
+        handlePublicSearchDocument: async (input) => { calls.push(input); },
+      };
+    },
+  );
+  const req = {
+    query: {
+      brandSlug: ["art-roost", "ignored-brand"],
+      experienceSlug: ["collectors-preview", "ignored-experience"],
+    },
+  };
+  const res = {};
+  await loaded(req, res);
+  assert.deepEqual(calls, [{
+    req,
+    res,
+    kind: "experience",
+    slugs: ["art-roost", "collectors-preview"],
+  }]);
+});
+
+test("shared experience truth fails closed on kind collisions, invalid, missing, and error states", async () => {
+  const good = await invokeExperience(visibleExperience());
+  assert.equal(good.statusCode, 200);
+
+  const wrongResolutionKind = visibleExperience();
+  wrongResolutionKind.kind = "trip";
+  const wrongFactsKind = visibleExperience();
+  wrongFactsKind.facts.kind = "trip";
+  const invalid = visibleExperience();
+  invalid.valid = false;
+  const missingFacts = visibleExperience();
+  missingFacts.facts = null;
+
+  for (const resolution of [wrongResolutionKind, wrongFactsKind, invalid, missingFacts, null, new Error("upstream")]) {
+    const response = await invokeExperience(resolution);
+    assert.equal(response.statusCode, 503);
+    assert.match(response.body, /Temporarily unavailable/);
+    assert.equal(response.headers["x-robots-tag"], "noindex");
+  }
 });
 
 test("canonical and Explorer snippet URLs cannot be accidentally conflated", () => {

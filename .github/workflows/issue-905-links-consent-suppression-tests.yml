@@ -9,6 +9,8 @@ on:
       - "mingla-marketing/components/marketing/__tests__/consent-banner-links-suppression*.test.ts"
       - ".github/workflows/issue-905-links-consent-suppression-tests.yml"
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "mingla-marketing/lib/consent-banner-visibility.ts"
       - "mingla-marketing/components/marketing/consent-banner.tsx"
@@ -21,6 +23,7 @@ concurrency:
 
 jobs:
   marketing:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

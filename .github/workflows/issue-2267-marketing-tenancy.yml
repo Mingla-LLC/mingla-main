@@ -14,6 +14,8 @@ name: issue-2267-marketing-tenancy
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue_2267_paths
       # The policies, and the migration that shipped them.
       - "supabase/migrations/20270424002267_issue_2267_marketing_brand_tenancy_update_check.sql"
@@ -42,6 +44,7 @@ concurrency:
 
 jobs:
   issue-2267-policies:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2267 brand_id is constrained on UPDATE, not only on INSERT"
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -69,6 +72,7 @@ jobs:
             -f supabase/migrations/__tests__/issue_2267_marketing_brand_tenancy_update.happy.pg17.test.sql
 
   issue-2267-emission:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2267 the link href is escaped on emit and scheme-checked on parse"
     runs-on: ubuntu-latest
     timeout-minutes: 15

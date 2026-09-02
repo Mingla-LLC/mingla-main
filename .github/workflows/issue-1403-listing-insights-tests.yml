@@ -2,6 +2,8 @@ name: Issue #1403 Listing Insights
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     # #2885 AC-4 — a pull request whose ONLY changed file is the machine-written
     # boot-payload baseline cannot affect this suite. Those recording PRs were
     # starting 53 jobs each, ~15/day (~51,000 job-min/month). `paths-ignore`
@@ -17,6 +19,7 @@ concurrency:
 
 jobs:
   issue-1403-venue-rollup-pg17:
+    if: ${{ github.event.pull_request.draft != true }}
     name: Issue 1403 venue rollup proof (PG17)
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -60,6 +63,7 @@ jobs:
           -f supabase/migrations/__tests__/issue_1403_venue_reservation_rollup.tester.adversarial.test.sql
 
   issue-1403-listing-insights:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     defaults:

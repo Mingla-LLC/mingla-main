@@ -2,6 +2,8 @@ name: Docs Artifact Regression
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "README.md"
       - "AGENTS.md"
@@ -41,6 +43,7 @@ concurrency:
 
 jobs:
   docs-artifact-regression:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

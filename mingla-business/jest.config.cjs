@@ -179,7 +179,7 @@ module.exports = {
     "geminiActivitiesParser\\.contract\\.test\\.ts$", // stale source-text pin — quarantined per #1047, file retained
     "orch_1092_business_web_restoration_wave\\.test\\.ts$", // stale source-text pin — quarantined per #1047, file retained
 
-    // ---- INVARIANT_CONVERT (11) — each encoded a LOAD-BEARING rule; the rule is
+    // ---- INVARIANT_CONVERT (14) — each encoded a LOAD-BEARING rule; the rule is
     // now enforced by an ADDITIVE strict-grep gate in .github/scripts/strict-grep/
     // (registered in MANIFEST.json) that ACTUALLY RUNS in CI. The brittle jest pin
     // is quarantined ONLY because its invariant moved to a gate — enforcement is
@@ -335,6 +335,14 @@ module.exports = {
     //   So the money rules INSIDE it are enforced by nothing while this ledger reads as covered.
     //   That is exactly the file-level limitation stated in
     //   issue-1850-quarantine-invariant-handoff-complete.mjs, biting live. Same owner as above.
+    "privateHostRoutesNoindex\\.issue2986\\.implementor\\.test\\.ts$", // invariant -> issue-2986-public-search-structure.mjs
+    // moved: vercel.json
+    "privateHostRoutesNoindex\\.issue2986\\.tester\\.adversarial\\.test\\.ts$", // invariant -> issue-2986-public-search-structure.mjs
+    // moved: vercel.json
+    "publicSearchMigration\\.issue2986\\.security\\.test\\.ts$", // invariant -> issue-2986-public-search-structure.mjs
+    // moved: server/socialPreview.js, src/constants/platformUrl.ts, vercel.json
+    // dropped: scripts/ci/issue_2986_allowlist_delta_gate.mjs — #2986's live CI
+    //   allowlist gate remains its own successor owner; this structural guard does not duplicate it.
   ],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   // #1062 [biz-jest-residual-burndown] Wave 1 — B3a shared-harness (fix-once-

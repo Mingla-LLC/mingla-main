@@ -15,6 +15,8 @@ name: Web Build Check
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
     # #2885 AC-4 — a pull request whose ONLY changed file is the machine-written
     # boot-payload baseline cannot affect this suite. Those recording PRs were
@@ -35,6 +37,7 @@ concurrency:
 
 jobs:
   mingla-business-web-build:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "mingla-business: web build (expo export)"
     runs-on: ubuntu-latest
     steps:
@@ -199,6 +202,7 @@ jobs:
   # [WORKFLOW-MOD-APPROVED #2830] The approved two-app Sites foundation uses
   # this existing build lane; no new workflow or deployment is created here.
   mingla-site-cms-build:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "mingla-site-cms: test, build, audit"
     runs-on: ubuntu-latest
     defaults:
@@ -242,6 +246,7 @@ jobs:
         run: npm audit --audit-level=high
 
   mingla-sites-build:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "mingla-sites: test, build, isolation"
     runs-on: ubuntu-latest
     defaults:

@@ -125,13 +125,24 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // outlive a silent reversion of either authorized workflow change. The value
 // below was re-derived from disk after rebasing onto origin/main at ccfadd28c,
 // so #2947 and #3016 remain part of the combined authority as well.
+// [TEST-MOD-APPROVED #2881] Re-derived after #2881 draft-gated the PR-family lanes:
+// each gated workflow gained `types: [opened, synchronize, reopened,
+// ready_for_review]` and a draft condition on every job. Both are NON-CONCURRENCY
+// document changes, which is exactly what this digest absorbs. Named by issue, not
+// by filename, per the rule above. PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are
+// deliberately UNCHANGED: no workflow was added, removed or renamed. Concurrency is
+// untouched BY CONSTRUCTION -- #2881 never edits a `concurrency:` block. The
+// revert-sensitivity loop below is untouched and still red on reversion; the Sites
+// recovery lane stays exempt and byte-identical so that loop keeps its target.
 // [TEST-MOD-APPROVED #2967] The #1719 unified-sharing lane gained two `paths`
 // entries and two test steps for the bounded cover-video acknowledgement. That
 // lane is PR-family, so its non-concurrency document is inside this digest.
 // Every earlier re-derivation above is preserved, not replaced.
 // PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "312cb3ed71cbf49f5aafc575c88347eb3848ad0ae79d7f264146856730ba0548";
+  // [TEST-MOD-APPROVED #2986] The two approved search-validation commands
+  // advance non-concurrency semantics; the 124-workflow policy is unchanged.
+  "9f9357a107cf6489c4952ae9be9503a16224bdcda86e312203c3eae8fdf42c2e";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

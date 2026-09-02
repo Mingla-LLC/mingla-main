@@ -17,6 +17,8 @@ name: issue-2160-multiday-multiselect
 
 on:
   pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: &issue_2160_paths
       - "supabase/migrations/20270420002160_issue_2160_multiday_multiselect.sql"
       - "supabase/migrations/__tests__/issue_2160_*.test.sql"
@@ -74,6 +76,7 @@ concurrency:
 
 jobs:
   issue-2160-postgres-admission:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2160 PostgreSQL 17 — a pass admits BOTH chosen days and NEITHER other"
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -198,6 +201,7 @@ jobs:
           -f supabase/migrations/__tests__/issue_2136_free_checkout_no_value_arm.tester.adversarial.test.sql
 
   issue-2160-edge-contract:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2160/#2162 Edge — day-aware key, server anchor, chosen-day confirmation"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -239,6 +243,7 @@ jobs:
           app-mobile/src/services/__tests__/orch_1188_calendar_url_and_date.test.ts
 
   issue-2160-client:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2160 Client — multi-select, and single-date stays byte-identical"
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -268,6 +273,7 @@ jobs:
         run: npx jest issue_2160 --runInBand
 
   issue-2160-strict-grep:
+    if: ${{ github.event.pull_request.draft != true }}
     name: "#2160 Gates — day ladder, capacity aggregation, no direct occurrence read"
     runs-on: ubuntu-latest
     timeout-minutes: 5

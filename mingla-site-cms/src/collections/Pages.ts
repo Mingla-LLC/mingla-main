@@ -4,7 +4,12 @@ import type {
   CollectionConfig,
 } from "payload";
 import { restaurantBlocks } from "../blocks/restaurantBlocks";
-import { enforceLiveStudioWrite, tenantRead, tenantWrite } from "../lib/access";
+import {
+  enforceLiveStudioWrite,
+  tenantRead,
+  tenantVersionRead,
+  tenantWrite,
+} from "../lib/access";
 import { PAGE_ROLES, safeText } from "../lib/validation";
 import { assertReadyTenantMedia, requestTenant } from "../lib/tenantIntegrity";
 
@@ -89,7 +94,7 @@ export const Pages: CollectionConfig = {
     read: tenantRead,
     update: tenantWrite,
     delete: tenantWrite,
-    readVersions: tenantRead,
+    readVersions: tenantVersionRead,
     unlock: tenantWrite,
   },
   versions: { drafts: { autosave: false }, maxPerDoc: 50 },
