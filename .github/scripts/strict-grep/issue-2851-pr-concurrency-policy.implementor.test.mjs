@@ -139,6 +139,11 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // lane is PR-family, so its non-concurrency document is inside this digest.
 // Every earlier re-derivation above is preserved, not replaced.
 // PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED.
+// [TEST-MOD-APPROVED #3044] The pinned PR-family non-concurrency digest was
+// re-derived because this branch adds a test step to the migrations lane, which
+// is PR-family, so its non-concurrency document is inside this digest. Only the
+// digest literal changed; PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are
+// untouched and every revert-sensitivity assertion below is unchanged.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // [TEST-MOD-APPROVED #2986] The two approved search-validation commands
   // advance non-concurrency semantics; the 124-workflow policy is unchanged.
