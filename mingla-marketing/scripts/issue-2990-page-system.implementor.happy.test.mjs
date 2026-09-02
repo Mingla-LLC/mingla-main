@@ -128,6 +128,8 @@ function runSourceContract() {
   const layout = read('app/internal/page-system/layout.tsx')
   const shell = read('components/page-system/page-system-shell.tsx')
   const faqs = read('components/page-system/content-blocks.tsx')
+  const editorialHero = read('components/page-system/editorial-hero.tsx')
+  const hostMedia = read('components/page-system/host-hero-media.tsx')
   const planFit = read('components/page-system/plan-fit-check.tsx')
   const launchTimeline = read('components/page-system/launch-to-door-timeline.tsx')
   const content = [
@@ -179,6 +181,27 @@ function runSourceContract() {
   assert.doesNotMatch(pageSystemSources, /from ['"](?:framer-motion|recharts|chart\.js|d3|gsap)/)
   assert.doesNotMatch(pageSystemSources, /<canvas\b/)
   pass('native, route-scoped, reduced-motion and printable presentation')
+
+  assert.match(shell, /data-private-review-dock/)
+  assert.match(editorialHero, /data-hero-actions/)
+  assert.match(editorialHero, /data-hero-action="primary"/)
+  assert.match(editorialHero, /data-hero-action="secondary"/)
+  assert.match(pageSystemSources, /--page-review-dock-clearance:/)
+  assert.match(pageSystemSources, /padding:\s*120px 48px var\(--page-review-dock-clearance\)/)
+  assert.match(pageSystemSources, /@media \(max-width: 767px\)[\s\S]*padding:\s*96px 20px var\(--page-review-dock-clearance\)/)
+  assert.match(pageSystemSources, /@media \(max-height: 620px\)[\s\S]*\.ps-hero-visual \{ display: none; \}/)
+  assert.match(pageSystemSources, /\.ps-breadcrumbs a \{ min-width: 44px; min-height: 44px;/)
+  pass('persistent-dock clearance, compact-height hero and 44px breadcrumb targets')
+
+  for (const state of ['pending', 'loaded', 'failed']) assert(hostMedia.includes(state), `missing Host media state ${state}`)
+  assert.match(hostMedia, /onLoad=\{\(\) => setMediaState\('loaded'\)\}/)
+  assert.match(hostMedia, /onError=\{\(\) => setMediaState\('failed'\)\}/)
+  assert.match(hostMedia, /role="status" aria-live="polite" aria-atomic="true"/)
+  assert.match(hostMedia, /ps-host-media-fallback/)
+  assert.match(hostMedia, /Mingla Host event-planning illustration/)
+  assert.match(pageSystemSources, /data-media-state='loaded'[\s\S]*\.ps-host-concept-image \{ opacity: 1; \}/)
+  assert.match(pageSystemSources, /\.ps-host-concept-image \{[\s\S]*position: absolute;[\s\S]*opacity: 0;/)
+  pass('reserved Host media pending/load/error boundary and branded fallback')
 
   const cities = ['Lagos', 'Durham', 'Cary', 'Raleigh', 'New York City', 'Brussels', 'Paris', 'London', 'Fort Lauderdale', 'Washington DC']
   for (const city of cities) assert(content.includes(`'${city}'`), `missing city ${city}`)
@@ -319,6 +342,16 @@ async function runRuntimeContract() {
       assert.equal(browserFacts.jsonLdCount, 0, `${route.pathname} no JSON-LD`)
       assert.doesNotMatch(browser.body, /(?:research|raleigh[- /]+durham[- /]+cary) triangle/i)
       for (const phrase of route.mustContain) assert(browserFacts.main.includes(phrase), `${route.pathname} contains ${phrase}`)
+      assert(browser.body.includes('data-private-review-dock="true"') || browser.body.includes('data-private-review-dock=""'), `${route.pathname} persistent review dock marker`)
+      assert(browser.body.includes('data-hero-action="primary"'), `${route.pathname} primary hero action marker`)
+      if (route.pathname !== '/internal/page-system/city-lagos') {
+        assert(browser.body.includes('data-hero-action="secondary"'), `${route.pathname} secondary hero action marker`)
+      }
+      if (route.pathname === '/internal/page-system/host-event-promoter-guide') {
+        assert(browser.body.includes('data-media-state="pending"'), 'Host media has a server-visible pending state')
+        assert(browserFacts.main.includes('Make the event clear from launch to the door.'), 'Host media fallback is server rendered')
+        assert(browserFacts.main.includes('Loading the illustrative Mingla Host concept image.'), 'Host media pending status is accessible')
+      }
       const chunkReport = routeChunkReport(route)
       process.stdout.write(`ROUTE ${route.pathname} html=${Buffer.byteLength(browser.body)}B chunks=${chunkReport.chunks} raw-js=${chunkReport.rawBytes}B gzip-js=${chunkReport.gzipBytes}B\n`)
     }

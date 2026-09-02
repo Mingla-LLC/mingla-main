@@ -41,19 +41,21 @@ export function EditorialHero({
           </ol>
         </nav>
         {hostMark ? (
-          <div className="ps-host-identity" aria-label="Mingla Host">
-            <img src="/brand/mingla-business-logo.svg" alt="Mingla Host" width="82" height="82" />
+          <div className="ps-hero-brand-row">
+            <div className="ps-host-identity" aria-label="Mingla Host">
+              <img src="/brand/mingla-business-logo.svg" alt="Mingla Host" width="82" height="82" />
+            </div>
+            <p className="ps-eyebrow">{eyebrow}</p>
           </div>
-        ) : null}
-        <p className="ps-eyebrow">{eyebrow}</p>
+        ) : <p className="ps-eyebrow">{eyebrow}</p>}
         <h1 id="page-title">{title}</h1>
         <p className="ps-hero-lede">{lede}</p>
-        <div className="ps-hero-actions">
-          <a className="ps-button ps-button-primary" href={primary.href}>
+        <div className="ps-hero-actions" data-hero-actions>
+          <a className="ps-button ps-button-primary" href={primary.href} data-hero-action="primary">
             {primary.label}
           </a>
           {secondary ? (
-            <a className="ps-button ps-button-secondary" href={secondary.href}>
+            <a className="ps-button ps-button-secondary" href={secondary.href} data-hero-action="secondary">
               {secondary.label}
             </a>
           ) : null}

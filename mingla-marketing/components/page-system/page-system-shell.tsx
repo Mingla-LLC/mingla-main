@@ -41,7 +41,7 @@ export function PageSystemShell({
             <Link href="/terms-of-service">Terms</Link>
           </nav>
         </footer>
-        <aside className="ps-review-dock" aria-label="Private page-system review" data-print-hide>
+        <aside className="ps-review-dock" aria-label="Private page-system review" data-private-review-dock data-print-hide>
           <div className="ps-review-state">
             <strong>#2990 private review · noindex</strong>
             <span>Future route: {futurePath}</span>

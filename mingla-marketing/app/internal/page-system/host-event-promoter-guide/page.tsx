@@ -11,6 +11,7 @@ import {
   Sources,
 } from '@/components/page-system/content-blocks'
 import { EditorialHero } from '@/components/page-system/editorial-hero'
+import { HostHeroMedia } from '@/components/page-system/host-hero-media'
 import { LaunchToDoorTimeline } from '@/components/page-system/launch-to-door-timeline'
 import { PageSystemShell } from '@/components/page-system/page-system-shell'
 
@@ -20,25 +21,6 @@ export const metadata = publicNoindexMetadata('/internal/page-system/host-event-
   title: 'Mingla Host event-promotion guide review',
   description: content.description,
 })
-
-function HostGuideVisual() {
-  return (
-    <figure className="ps-host-hero-figure">
-      <div className="ps-host-image-frame">
-        <img
-          src="/marketing/host-icp/events-hall.jpg"
-          alt="A fictional event-hall scene used to illustrate an organiser preparing an experience"
-          width="1600"
-          height="1211"
-        />
-        <div className="ps-host-image-overlay" aria-hidden="true">
-          <span>page ready</span><span>action checked</span><span>door rehearsed</span>
-        </div>
-      </div>
-      <figcaption>Illustrative concept image — not a real event, customer or performance claim.</figcaption>
-    </figure>
-  )
-}
 
 function ChecklistCards({ title, items }: { readonly title: string; readonly items: readonly string[] }) {
   return (
@@ -59,7 +41,7 @@ export default function HostEventPromoterGuideReviewPage() {
         primary={{ label: 'Build the launch checklist', href: '#launch-checklist' }}
         secondary={{ label: 'Read the 60-second answer', href: '#answer' }}
         breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Guides' }, { label: 'Event promotion' }]}
-        visual={<HostGuideVisual />}
+        visual={<HostHeroMedia />}
         hostMark
       />
 
