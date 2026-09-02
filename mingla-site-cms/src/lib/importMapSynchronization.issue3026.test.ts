@@ -145,3 +145,18 @@ describe("#3026 Payload import-map synchronization", () => {
     expect(tsconfig.compilerOptions?.noEmit).toBe(true);
   });
 });
+
+describe("#3026 deployment build cannot bypass import-map generation", () => {
+  it("runs the canonical generator immediately before every Next production build", () => {
+    const packageManifest = JSON.parse(readFileSync("package.json", "utf8")) as {
+      scripts?: Record<string, unknown>;
+    };
+
+    expect(packageManifest.scripts?.["generate:importmap"]).toBe(
+      "payload generate:importmap",
+    );
+    expect(packageManifest.scripts?.build).toBe(
+      "npm run generate:importmap && next build",
+    );
+  });
+});
