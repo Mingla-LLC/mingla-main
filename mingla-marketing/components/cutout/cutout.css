@@ -1,0 +1,322 @@
+/* ---------------------------------------------------------------------------
+   #2902 — the Cutout design foundation, v2.
+
+   FAITHFUL port of AIgocy's actual design, with only colour and type changed.
+   The first pass took the template's grammar and lost its look; this one copies
+   the real recipes out of `assets/css/styles.css` and re-tints them.
+
+   THE SIGNATURE, and the thing the first pass missed entirely — every surface
+   in AIgocy is MOULDED, not flat. A card carries four shadows:
+
+       0 7.77px 16px  rgba(0,0,0,.059)              soft drop
+       0 3px    3px   rgba(0,0,0,.102)              contact shadow
+       0 -8px   0     rgba(0,0,0,.051)      inset   bottom band  ← the thickness
+       0 4px    0     rgba(255,255,255,.6)  inset   top highlight ← the light
+
+   That inset bottom band plus the inset top highlight is what makes every card
+   read as cut from a solid slab with real depth, rather than a rectangle with a
+   drop shadow. Buttons use the same trick with a harder bottom band. This is
+   the "cut-out card effect".
+
+   Colour mapping (AIgocy → Mingla):
+       --body      #EDECEC  → warm ground
+       neutral-100 #F4F4F5  → warm card
+       neutral-900 #18181B  → Mingla ink
+       --brand     #FD3A25  → Mingla warm #eb7825
+
+   Everything is scoped under [data-cutout] so it cannot leak onto the live site.
+--------------------------------------------------------------------------- */
+
+[data-cutout] {
+  --cut-ground: #ece7e0;      /* AIgocy --body, warmed */
+  --cut-shell: #f7f4ef;
+  --cut-card: #f6f3ee;        /* AIgocy --neutral-100, warmed */
+  --cut-card-raised: #fdfbf8;
+  --cut-card-sunken: #ece8e1;
+  --cut-ink: #14120f;         /* AIgocy --primary, warmed */
+  --cut-ink-900: #1c1a17;     /* AIgocy --neutral-900, warmed */
+  --cut-accent: #eb7825;
+  --cut-accent-deep: #c85f14;
+  --cut-accent-ink: #a8450e;
+
+  /* AIgocy radii: 32 on cards, 40 on shell / pricing / team. */
+  --cut-r-shell: 40px;
+  --cut-r-card: 32px;
+  --cut-r-lg: 40px;
+  --cut-r-media: 24px;
+  --cut-r-tile: 20px;
+
+  /* THE MOULDED CARD. Verbatim structure, warm-tinted. */
+  --cut-mould:
+    0 7.77px 16px 0 rgba(20, 18, 15, 0.06),
+    0 3px 3px 0 rgba(20, 18, 15, 0.10),
+    0 -8px 0 0 rgba(20, 18, 15, 0.05) inset,
+    0 4px 0 0 rgba(255, 255, 255, 0.72) inset;
+
+  --cut-mould-hover:
+    0 18px 34px 0 rgba(20, 18, 15, 0.10),
+    0 3px 3px 0 rgba(20, 18, 15, 0.10),
+    0 -8px 0 0 rgba(20, 18, 15, 0.05) inset,
+    0 4px 0 0 rgba(255, 255, 255, 0.8) inset;
+
+  /* Dark moulded surface — AIgocy .team-item. */
+  --cut-mould-dark:
+    0 7.77px 2.21px 0 rgba(0, 0, 0, 0.06),
+    0 3px 3px 0 rgba(0, 0, 0, 0.10),
+    0 -8px 0 0 #0d0c0a inset,
+    0 4px 0 0 rgba(255, 255, 255, 0.10) inset;
+
+  /* THE 3D BUTTON. AIgocy .tf-btn — inset top light, inset bottom dark, and a
+     six-step drop stack. This is most of why the template's buttons feel real. */
+  --cut-btn-dark-bg:
+    radial-gradient(62.56% 62.56% at 28.14% -10.42%, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0) 100%),
+    linear-gradient(0deg, #211f1c, #211f1c);
+  --cut-btn-dark-shadow:
+    0 -3px 0 0 #070605 inset,
+    0 1px 0 0 rgba(255, 255, 255, 0.30) inset,
+    0 2.77px 2.21px 0 rgba(0, 0, 0, 0.12),
+    0 6.65px 5.32px 0 rgba(0, 0, 0, 0.13),
+    0 12.52px 10.02px 0 rgba(0, 0, 0, 0.13),
+    0 22.34px 17.87px 0 rgba(0, 0, 0, 0.14),
+    0 41.78px 33.42px 0 rgba(0, 0, 0, 0.13);
+
+  --cut-btn-light-bg:
+    radial-gradient(62.56% 62.56% at 28.14% -10.42%, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 100%),
+    linear-gradient(0deg, #faf8f5, #faf8f5);
+  --cut-btn-light-shadow:
+    0 -3px 0 0 #e5e0d8 inset,
+    0 1px 0 0 rgba(255, 255, 255, 0.90) inset,
+    0 2.77px 2.21px 0 rgba(20, 18, 15, 0.10),
+    0 3px 3px 0 rgba(20, 18, 15, 0.10);
+
+  --cut-btn-brand-bg:
+    radial-gradient(62.56% 62.56% at 28.14% -10.42%, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 100%),
+    linear-gradient(180deg, #f0842f 0%, #e06a17 100%);
+  /* NO GLOW. The brand button is moulded exactly like every other surface:
+     an inset top highlight, an inset dark bottom band, and tight NEUTRAL
+     drops. The two wide orange spreads that used to sit here read as a halo,
+     which is the opposite of a clean cut-out. */
+  --cut-btn-brand-shadow:
+    0 -3px 0 0 #a8450e inset,
+    0 1px 0 0 rgba(255, 255, 255, 0.35) inset,
+    0 2.77px 2.21px 0 rgba(20, 18, 15, 0.14),
+    0 6.65px 5.32px 0 rgba(20, 18, 15, 0.12),
+    0 12px 20px 0 rgba(20, 18, 15, 0.10);
+
+  --cut-shadow-shell: 0 12px 60px rgba(20, 18, 15, 0.10);
+  --cut-hairline: rgba(20, 18, 15, 0.08);
+  --cut-body: rgba(20, 18, 15, 0.62);
+  --cut-muted: rgba(20, 18, 15, 0.42);
+}
+
+[data-cutout] [data-cut-band='dark'] {
+  --cut-ground: #14120f;
+  --cut-shell: #14120f;
+  --cut-card: #1c1a17;
+  --cut-card-raised: #232019;
+  --cut-card-sunken: rgba(255, 255, 255, 0.04);
+  --cut-ink: #ffffff;
+  --cut-accent-ink: var(--cut-accent);
+  --cut-hairline: rgba(255, 255, 255, 0.10);
+  --cut-body: rgba(255, 255, 255, 0.66);
+  --cut-muted: rgba(255, 255, 255, 0.44);
+  --cut-mould: var(--cut-mould-dark);
+  --cut-mould-hover:
+    0 18px 34px 0 rgba(0, 0, 0, 0.44),
+    0 3px 3px 0 rgba(0, 0, 0, 0.10),
+    0 -8px 0 0 #0d0c0a inset,
+    0 4px 0 0 rgba(255, 255, 255, 0.14) inset;
+  --cut-btn-light-bg:
+    radial-gradient(62.56% 62.56% at 28.14% -10.42%, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0) 100%),
+    linear-gradient(0deg, #262320, #262320);
+  --cut-btn-light-shadow:
+    0 -3px 0 0 #0d0c0a inset,
+    0 1px 0 0 rgba(255, 255, 255, 0.12) inset,
+    0 3px 3px 0 rgba(0, 0, 0, 0.24);
+}
+
+.cut-shell {
+  background: var(--cut-shell);
+  border-radius: var(--cut-r-shell);
+  box-shadow: var(--cut-shadow-shell);
+  overflow: clip;
+}
+
+@media (max-width: 640px) {
+  [data-cutout] {
+    --cut-r-shell: 28px;
+    --cut-r-card: 26px;
+    --cut-r-lg: 30px;
+    --cut-r-media: 20px;
+  }
+}
+
+.cut-card {
+  background: var(--cut-card);
+  border-radius: var(--cut-r-card);
+  box-shadow: var(--cut-mould);
+  transition: box-shadow 300ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cut-card-raised { background: var(--cut-card-raised); }
+.cut-card-interactive:hover {
+  box-shadow: var(--cut-mould-hover);
+  transform: translateY(-4px);
+}
+
+.cut-media {
+  border-radius: var(--cut-r-media);
+  overflow: hidden;
+  background: var(--cut-card-sunken);
+  /* The media window is SUNK into the card — inverse of the card's own light. */
+  box-shadow:
+    0 2px 0 0 rgba(255, 255, 255, 0.5),
+    0 -3px 8px 0 rgba(20, 18, 15, 0.06) inset;
+}
+
+.cut-tile {
+  background: var(--cut-btn-dark-bg);
+  border-radius: var(--cut-r-tile);
+  box-shadow: var(--cut-btn-dark-shadow);
+}
+
+/* Buttons — the moulded pill in three tints. */
+.cut-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), filter 200ms;
+}
+.cut-btn:hover { transform: translateY(-2px); filter: brightness(1.06); }
+.cut-btn:active { transform: translateY(0); filter: brightness(1); }
+.cut-btn-dark { background: var(--cut-btn-dark-bg); box-shadow: var(--cut-btn-dark-shadow); color: #fff; }
+.cut-btn-light { background: var(--cut-btn-light-bg); box-shadow: var(--cut-btn-light-shadow); color: var(--cut-ink); }
+.cut-btn-brand { background: var(--cut-btn-brand-bg); box-shadow: var(--cut-btn-brand-shadow); color: #fff; }
+
+/* Gradient headline fill — AIgocy .text-gradient-1, warmed.
+   ---------------------------------------------------------------------------
+   DESCENDER CLIPPING, and the real cause.
+   `background-clip: text` paints the gradient ONLY inside the element's
+   background box. Mochiy Pop One's descenders ("y", "g", "p") hang below the
+   line box, so they fell outside the painted area and were cut off in a clean
+   horizontal line. Raising line-height alone did NOT fix it — the paint box is
+   what matters, not the leading.
+   The fix is to grow the BACKGROUND BOX with padding-bottom, then pull the
+   layout back with an equal negative margin so vertical rhythm is unchanged.
+   --------------------------------------------------------------------------- */
+.cut-gradient-text,
+.cut-gradient-brand {
+  padding-bottom: 0.22em;
+  margin-bottom: -0.16em;
+}
+
+.cut-gradient-text {
+  background: linear-gradient(132deg, #3a352e 11%, #14120f 79%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+[data-cut-band='dark'] .cut-gradient-text {
+  background: linear-gradient(132deg, #ffffff 11%, #b9b2a6 79%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.cut-gradient-brand {
+  background: linear-gradient(180deg, #f0842f 0%, #d0620f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Display scale — AIgocy .text-display-2 is 96/96/-0.03em. */
+/* Leading only — the descender fix lives on the gradient spans above. */
+.cut-display {
+  font-size: clamp(2.5rem, 6.6vw, 5.6rem);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+}
+.cut-display-2 {
+  font-size: clamp(1.875rem, 4.2vw, 3.25rem);
+  line-height: 1.16;
+  letter-spacing: -0.03em;
+}
+
+/* The scroll cue — AIgocy .scroll-more: bottom-centred, top corners only. */
+.cut-scroll-more {
+  border-radius: 40px 40px 0 0;
+  background: var(--cut-card-sunken);
+}
+
+.cut-connector {
+  background: linear-gradient(90deg, transparent, var(--cut-hairline) 12%, var(--cut-hairline) 88%, transparent);
+}
+
+@keyframes cut-float-a { 0%,100% { transform: translate3d(0,0,0) rotate(-8deg); } 50% { transform: translate3d(5px,-7px,0) rotate(4deg); } }
+@keyframes cut-float-b { 0%,100% { transform: translate3d(0,0,0) rotate(10deg); } 50% { transform: translate3d(-8px,-6px,0) rotate(-6deg); } }
+@keyframes cut-float-c { 0%,100% { transform: translate3d(0,0,0) rotate(-3deg); } 50% { transform: translate3d(8px,10px,0) rotate(9deg); } }
+.cut-float-a { animation: cut-float-a 7s ease-in-out infinite; }
+.cut-float-b { animation: cut-float-b 9s ease-in-out infinite; }
+.cut-float-c { animation: cut-float-c 8s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cut-card, .cut-card-interactive:hover, .cut-btn, .cut-btn:hover {
+    transition: none;
+    transform: none;
+  }
+  .cut-float-a, .cut-float-b, .cut-float-c { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   #2902 — the Explorer deck, moulded.
+
+   The swiped cards belong to the shipped `HeroPlaceDeck`, which must not be
+   edited (the Explorer page has to stay identical to the live one). Each card
+   is the direct child of a `.group.absolute` StackCell, so the treatment is
+   applied by SCOPE instead: only inside `[data-cut-deck]`, and only to that
+   child.
+
+   `!important` is required and is not laziness — the card components set
+   `boxShadow` as an INLINE style, which no ordinary rule can beat.
+--------------------------------------------------------------------------- */
+[data-cut-deck] .group.absolute > * {
+  box-shadow:
+    0 18px 40px -12px rgba(0, 0, 0, 0.62),
+    0 3px 3px 0 rgba(0, 0, 0, 0.18),
+    0 -9px 0 0 rgba(0, 0, 0, 0.34) inset,
+    0 4px 0 0 rgba(255, 255, 255, 0.22) inset !important;
+}
+
+/* ---------------------------------------------------------------------------
+   #2902 — Explorer: room for the action between the headline and the cards.
+
+   Measured rather than assumed: the headline ends at y=295 and the DECK ROOT
+   (the visible top of the card area, not the first card) begins at y=311 —
+   16px of clearance on desktop, which no touch-sized button fits inside. My
+   earlier attempt measured `.group.absolute`, the card cell at y=376, and
+   concluded there was 81px. There was not; the cells sit inside a taller root.
+
+   Nudging the deck root down opens a real band without changing anything about
+   the hero itself: the deck has 77px of slack beneath it before the hero's own
+   pill row. `:has()` is used because the root has no class of its own.
+--------------------------------------------------------------------------- */
+/* Translation alone could not open enough room — 56px already ate most of the
+   77px of slack beneath the deck, and the result still read as cramped. Scaling
+   about the BOTTOM edge frees height from the top without pushing the deck into
+   the hero's own pill row, so the band opens to ~110px and the action gets a
+   real margin on both sides. The deck shrinks ~9%, which is not noticeable. */
+[data-cut-deck] div:has(> .group.absolute) {
+  transform: translateY(24px) scale(0.95);
+  transform-origin: center bottom;
+}
+@media (min-width: 768px) {
+  [data-cut-deck] div:has(> .group.absolute) {
+    transform: translateY(53px) scale(0.91);
+  }
+}
