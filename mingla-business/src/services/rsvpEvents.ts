@@ -11,6 +11,7 @@
 
 import { supabase } from "./supabase";
 import { parseRsvpErrorCode, type RsvpInvokeError } from "./rsvpErrorCodes";
+import { RsvpRpcError } from "./rsvpRpcFailure";
 import {
   eventFromPublishResponse,
   type PublishedBusinessEvent,
@@ -44,7 +45,14 @@ export const publishRsvpDraft = async (
     p_client_request_id: createRsvpRequestId(),
   });
 
-  if (error !== null) throw error;
+  // issue #3047 — `error` here is a PostgREST PLAIN OBJECT, not an Error. Thrown
+  // raw it reached the wizard's `error instanceof Error ? … : String(error)`
+  // reader as the literal "[object Object]", so no guard reason could ever
+  // match and the terminal 404 (PGRST202, this RPC absent from production) was
+  // indistinguishable from any other failure. RsvpRpcError preserves the exact
+  // message the guard matcher reads AND the code the terminal/transient split
+  // needs.
+  if (error !== null) throw new RsvpRpcError(error, "rsvp_publish_failed");
   const response = data as PublishRpcResponse | null;
   if (response === null) {
     throw new Error("RSVP publish did not return a durable event.");
@@ -86,7 +94,8 @@ export const updateLiveRsvp = async (
     p_reason: reason,
     p_client_request_id: createRsvpRequestId(),
   });
-  if (error !== null) throw error;
+  // issue #3047 — same PostgREST-plain-object hazard as publish above.
+  if (error !== null) throw new RsvpRpcError(error, "rsvp_update_failed");
   const graph = (data ?? {}) as { updateResult?: unknown };
   const res = (graph.updateResult ?? {}) as {
     ok?: boolean;

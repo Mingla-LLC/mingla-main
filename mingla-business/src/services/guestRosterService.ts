@@ -145,6 +145,15 @@ export async function setGuestRosterRsvpApproval(input: {
     p_expected_watermark: null,
     p_client_request_id: input.clientRequestId,
   });
-  if (error !== null) throw new GuestRosterError(error.message, error.message);
+  // issue #3047 — `error.code` is the PostgREST code (PGRST202 for the 404 this
+  // RPC returns in production today); `error.message` is prose. Passing the
+  // MESSAGE as the code made GuestRosterError.code unmatchable, so every caller
+  // fell through to one blanket sentence. Carry the real code, keep the message.
+  if (error !== null) {
+    throw new GuestRosterError(
+      error.code ?? "rsvp_guest_status_failed",
+      error.message,
+    );
+  }
   return asObject(data);
 }

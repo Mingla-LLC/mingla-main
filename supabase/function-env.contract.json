@@ -2274,10 +2274,7 @@
   "remediation": {
     "allowed_extra_live_names": [
       "ATTENDANCE_CLAIM_PEPPER",
-      "CHECKOUT_REVOCATION_EXECUTE",
-      "META_COMPETITOR_ACCESS_TOKEN",
-      "META_COMPETITOR_IG_USER_ID",
-      "RESEND_WEBHOOK_SECRET"
+      "CHECKOUT_REVOCATION_EXECUTE"
     ],
     "expires_after_merge_hours": 72,
     "issue": 2241,

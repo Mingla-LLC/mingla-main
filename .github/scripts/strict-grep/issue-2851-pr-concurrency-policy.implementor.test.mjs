@@ -139,6 +139,18 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // lane is PR-family, so its non-concurrency document is inside this digest.
 // Every earlier re-derivation above is preserved, not replaced.
 // PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED.
+// [TEST-MOD-APPROVED #3044] The pinned PR-family non-concurrency digest was
+// re-derived because this branch adds a test step to the migrations lane, which
+// is PR-family, so its non-concurrency document is inside this digest. Only the
+// digest literal changed; PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are
+// untouched and every revert-sensitivity assertion below is unchanged.
+// [TEST-MOD-APPROVED #3047] Digest re-derived: this branch adds a test step to a
+// PR-family workflow, moving that lane's non-concurrency document. Only the digest
+// literal changed; PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are untouched.
+// [TEST-MOD-APPROVED #3040] Digest re-derived: this branch adds paths entries and
+// test steps to a PR-family workflow, moving that lane's non-concurrency document.
+// Only the digest literal changed; PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256
+// are untouched and every revert-sensitivity assertion is unchanged.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // [TEST-MOD-APPROVED #2986] The two approved search-validation commands
   // advance non-concurrency semantics; the 124-workflow policy is unchanged.
@@ -181,7 +193,7 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // Every earlier re-derivation is preserved, not replaced.
   // [TEST-MOD-APPROVED #2979] The existing attendance lane gained only its
   // reviewed #2979 paths and executable proofs; identity and policy are intact.
-  "cffa7931d2a74a4b8ccd884941f7d187ec97800a449722587b6836de6993336f";
+  "5110fda17c8a3fc031079b7b6e33d2ea36384aa36694da1ff8cb438abddfcc77";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

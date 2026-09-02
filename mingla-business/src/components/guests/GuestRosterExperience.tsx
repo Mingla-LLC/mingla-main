@@ -38,6 +38,10 @@ import {
   previewGuestRosterAction,
   setGuestRosterRsvpApproval,
 } from "../../services/guestRosterService";
+import {
+  isRetryableRsvpRpcFailure,
+  rsvpRpcFailureCopy,
+} from "../../services/rsvpRpcFailure";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { GlassCard } from "../ui/GlassCard";
@@ -363,7 +367,18 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
       await setGuestRosterRsvpApproval({ eventId, rosterKey: selected.rosterKey, decision, clientRequestId: createGuestRosterRequestId() });
       setActionMessage(decision === "approve" ? "RSVP approved." : "RSVP denied.");
       setSelected(null); query.refreshFromFirstPage();
-    } catch { setActionMessage("The RSVP changed before this action. Refresh and try again."); query.refreshFromFirstPage(); }
+    } catch (error) {
+      // issue #3047 — this catch discarded the error entirely and asserted a
+      // cause it had not checked: "The RSVP changed before this action." For the
+      // TERMINAL 404 business_set_rsvp_guest_status returns in production today
+      // that is simply false, and it invited an unbounded retry against a
+      // function the server does not have. Read the real failure; only refetch
+      // when a refetch could actually change the outcome.
+      setActionMessage(
+        rsvpRpcFailureCopy(error, decision === "approve" ? "approve this RSVP" : "decline this RSVP"),
+      );
+      if (isRetryableRsvpRpcFailure(error)) query.refreshFromFirstPage();
+    }
     finally { setActionPending(false); }
   }, [eventId, query, selected]);
 

@@ -20,6 +20,13 @@ import {
 } from './lib/site'
 
 const CAREERS_PREFIX = '/careers'
+// A file in public/ is host-agnostic: /brand/mingla-wordmark.svg is the same
+// byte-for-byte file on every host. The careers rewrite prefixed it anyway, so
+// on career.usemingla.com it resolved to /careers/brand/mingla-wordmark.svg,
+// which does not exist -- that is why the careers logo 404'd in both the header
+// and the footer. Any path whose last segment carries an extension is a file,
+// never a careers route (/careers, /careers/roles/<slug>, /careers/.../apply).
+const PUBLIC_FILE = /\.[^/]+$/
 const INTERNAL_SHARE_PREFIX = '/api/internal-share-proxy/'
 const INTERNAL_PROXY_HEADER = 'x-mingla-internal-share-route'
 const EXACT_SHARE_OWNER_PATHS = new Set(['/api/content-share-analytics'])
@@ -83,6 +90,10 @@ export function middleware(req: NextRequest) {
   if (isCareersHost(host)) {
     // Already under the internal prefix → pass through (avoid double-rewrite).
     if (pathname === CAREERS_PREFIX || pathname.startsWith(`${CAREERS_PREFIX}/`)) {
+      return NextResponse.next({ request: { headers: requestHeaders } })
+    }
+    // Static files serve from public/ on every host, unprefixed.
+    if (PUBLIC_FILE.test(pathname)) {
       return NextResponse.next({ request: { headers: requestHeaders } })
     }
     const url = req.nextUrl.clone()

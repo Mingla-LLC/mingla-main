@@ -11,6 +11,7 @@
 
 import { supabase } from "./supabase";
 import { createGuestRosterRequestId } from "./guestRosterService";
+import { RsvpRpcError } from "./rsvpRpcFailure";
 
 export type RsvpStatusValue = "going" | "not_going" | "waitlisted" | "maybe";
 export type RsvpApprovalValue = "pending" | "approved" | "denied";
@@ -112,7 +113,8 @@ export const listRsvpGuests = async (eventId: string): Promise<RsvpGuest[]> => {
   const { data, error } = await supabase.rpc("host_list_rsvp_guests", {
     p_event_id: eventId,
   });
-  if (error !== null) throw error;
+  // issue #3047 — see the note on setRsvpStatus below.
+  if (error !== null) throw new RsvpRpcError(error, "rsvp_guest_list_failed");
   const rows = (data ?? []) as RsvpGuestRow[];
   return rows.map(rowToGuest);
 };
@@ -139,7 +141,13 @@ export const setRsvpStatus = async (
     p_expected_watermark: null,
     p_client_request_id: createGuestRosterRequestId(),
   });
-  if (error !== null) throw error;
+  // issue #3047 — a PostgREST failure is a PLAIN OBJECT, not an Error. Thrown
+  // raw, React Query hands the mutation's onError a value whose `.message` no
+  // `instanceof Error` reader can see, so approve/deny could only ever produce
+  // a generic "Try again." — including for the TERMINAL 404 this RPC returns
+  // in production today, where retrying can never succeed. RsvpRpcError keeps
+  // the message and carries the code that separates terminal from transient.
+  if (error !== null) throw new RsvpRpcError(error, "rsvp_guest_status_failed");
   const res = (data ?? {}) as {
     appliedCount?: number;
     pendingRemaining?: number;
@@ -172,7 +180,8 @@ export const bulkApproveRsvps = async (
     p_expected_watermark: null,
     p_client_request_id: createGuestRosterRequestId(),
   });
-  if (error !== null) throw error;
+  // issue #3047 — same PostgREST-plain-object hazard as setRsvpStatus above.
+  if (error !== null) throw new RsvpRpcError(error, "rsvp_bulk_approve_failed");
   const res = (data ?? {}) as {
     appliedCount?: number;
     skippedForCapacity?: number;

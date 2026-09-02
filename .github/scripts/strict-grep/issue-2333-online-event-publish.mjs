@@ -40,13 +40,18 @@ const sqlCode = (s) => s.replace(/--[^\n]*/g, "");
 const tsCode = (s) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-// The SECOND live copy of the S4b class bug. RsvpCreatorWizard.tsx:672 carries the same
-// "Could not save this publish. Try again." fallback, and it is OUTSIDE the #2333 SPEC
-// allowlist — fixing it here would be an unapproved scope widening. It is pinned by
-// EXACT COUNT instead of ignored: the debt cannot grow, and a third copy fails this gate.
-// Registered as a discovery on #2333 for the orchestrator to dispatch.
+// The SECOND live copy of the S4b class bug used to live in RsvpCreatorWizard.tsx, pinned
+// by EXACT COUNT rather than ignored, and registered as a discovery on #2333 for the
+// orchestrator to dispatch. That dispatch was issue #3047, and it PAID the debt: the RSVP
+// publish failure path no longer toasts "Could not save this publish. Try again." — it
+// keeps the confirm dialog open and renders the real reason in its errorMessage slot,
+// terminal-aware (a 404 from a missing RPC is never presented as retryable).
+//
+// The allowlist is therefore EMPTY, which makes this assertion strictly stronger than it
+// was: any file in mingla-business/src that reintroduces the string fails the gate. Do not
+// re-add an entry here to make a red run green — fix the copy instead.
 const RETRY_LIE = "Could not save this publish. Try again.";
-const KNOWN_RETRY_LIE_FILES = ["mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx"];
+const KNOWN_RETRY_LIE_FILES = [];
 
 export function check(sources) {
   const failures = [];
