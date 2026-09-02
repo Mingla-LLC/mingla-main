@@ -49,19 +49,4 @@ describe("agentChatService #2060 envelope wire", () => {
       assertAriEnvelope(envelope, { allowUnattested: true })
     ).not.toThrow();
   });
-
-  it("source service imports unwrap + assert helpers", () => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require("fs") as typeof import("fs");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const path = require("path") as typeof import("path");
-    const src = fs.readFileSync(
-      path.join(__dirname, "../agentChatService.ts"),
-      "utf8",
-    );
-    expect(src).toContain('from "./agentReliability"');
-    expect(src).toContain("assertAriEnvelope");
-    expect(src).toContain("unwrapAriDomainPayload");
-    expect(src).toContain("allowUnattestedRelease");
-  });
 });

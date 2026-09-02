@@ -21,12 +21,8 @@ const FILES = {
   digest: "docs/contracts/ari-certification-digest-v1.json",
   certifier: "scripts/ari/certify-capabilities.mjs",
   migration: "supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql",
-<<<<<<< HEAD
   currentMigration: "supabase/migrations/20270609002830_issue_2830_mingla_sites_foundation.sql",
-=======
-  currentMigration: "supabase/migrations/20270521001978_issue_1978_ari_venue_listings_certification.sql",
-  setDigestMigration: "supabase/migrations/20270529002060_issue_2060_ari_cert_requirements_set_digest.sql",
->>>>>>> 8b6decb29 (Replace the dual hardcoded digest literals with private.ari_cert_requirements_set_digest_v1() so begin_run stamps and finalize_run rechecks a content hash of ordered (capability_id, evidence_mode) rows. Same-count swaps now fail closed; the #2592 parity gate requires both halves call the helper.)
+  setDigestMigration: "supabase/migrations/20270610002060_issue_2060_ari_cert_requirements_set_digest_post_2830.sql",
   invariants: "docs/INVARIANT_REGISTRY.md",
   rollback: "docs/runbooks/ARI_RELIABILITY_ROLLBACK.md",
   workflow: ".github/workflows/issue-2060-ari-reliability.yml",
