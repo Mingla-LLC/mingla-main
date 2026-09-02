@@ -225,7 +225,7 @@ export function violations(files) {
       "verifyJwtPostures",
       "runGovernedBundleDeployment",
       "verifyRemoteJwtPostures",
-      "buildImportClosure",
+      "buildRuntimeImportClosure",
       '"ls-remote"',
       "assertLiveNameParity",
     ],
@@ -364,7 +364,7 @@ function fixture() {
       },
     }),
     coordinator:
-      'generateKeyPairSync("ed25519") randomBytes(32) receipt_replay_rejected RECEIPT_TTL_MS = 15 * 60 * 1000 verifyDownloadedFunctionSources verifyJwtPostures runGovernedBundleDeployment verifyRemoteJwtPostures buildImportClosure "ls-remote" assertLiveNameParity',
+      'generateKeyPairSync("ed25519") randomBytes(32) receipt_replay_rejected RECEIPT_TTL_MS = 15 * 60 * 1000 verifyDownloadedFunctionSources verifyJwtPostures runGovernedBundleDeployment verifyRemoteJwtPostures buildRuntimeImportClosure "ls-remote" assertLiveNameParity',
     cta:
       'claimPhase === "unavailable" Your tickets are confirmed. You can open the app and sign in with your checkout email or phone. name="externalLink" size={18} width: "100%" minHeight: 48 borderRadius: radius.md opacity: 0.94 opacity: 0.88 transitionDuration: reducedMotion ? "0ms" : "150ms" accessibilityLiveRegion="polite" role="status"',
     deploy:

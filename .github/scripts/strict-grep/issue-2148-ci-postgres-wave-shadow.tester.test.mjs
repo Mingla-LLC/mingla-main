@@ -63,6 +63,13 @@ const PARTIAL_REFERENCE_DELTAS = [{
     "mingla-business/scripts/ci/issue-2979-attendance-export-pipeline.tester.test.mjs",
   ],
 }, {
+  // [TEST-MOD-APPROVED #3060] The no-current-buyer closure guard is consumed
+  // by the existing attendance provider. Normalize only this reviewed
+  // reference so the frozen provider seal remains unchanged and any removal
+  // or widening still fails the independent mutation proof below.
+  workflow: "issue-871-attendance-entitlement-tests.yml",
+  referenceFiles: [".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs"],
+}, {
   workflow: "issue-1486-dormant-render-suites.yml",
   referenceFiles: [".github/scripts/strict-grep/issue-2774-public-hero-accessibility.mjs"],
 }, {

@@ -151,6 +151,9 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // test steps to a PR-family workflow, moving that lane's non-concurrency document.
 // Only the digest literal changed; PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256
 // are untouched and every revert-sensitivity assertion is unchanged.
+// [TEST-MOD-APPROVED #3040] Digest re-derived: this branch adds paths entries and
+// test steps to a PR-family workflow, moving that lane's non-concurrency document.
+// Only the digest literal changed; the counts and identity digest are untouched.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // [TEST-MOD-APPROVED #2986] The two approved search-validation commands
   // advance non-concurrency semantics; the 124-workflow policy is unchanged.
@@ -158,6 +161,10 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // the Ari reliability and Ari brand-management lanes. Both are PR-family, so
   // their non-concurrency documents live inside this digest, exactly as the
   // #2967 re-derivation above.
+  // [TEST-MOD-APPROVED #3060] The existing attendance PR-family lane gained
+  // only #3060's bounded paths and executable closure proofs. The workflow
+  // identity, PR-family count and concurrency policy remain unchanged; the
+  // three distinct contract legs are independently revert-sensitive below.
   //
   // WHAT WAS VERIFIED BEFORE RE-DERIVING, because that is the review this
   // digest exists to force:
@@ -193,7 +200,7 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // Every earlier re-derivation is preserved, not replaced.
   // [TEST-MOD-APPROVED #2979] The existing attendance lane gained only its
   // reviewed #2979 paths and executable proofs; identity and policy are intact.
-  "5110fda17c8a3fc031079b7b6e33d2ea36384aa36694da1ff8cb438abddfcc77";
+  "31f2ae5a8004eb3fc0a49d729fad7c773866b542b1098d7dffe7e3ef0e75bed1";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -426,6 +433,15 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       '      - "supabase/functions/_shared/governedAdSecret.ts"\n'],
     [liveWorkflow("issue", "871", "attendance", "entitlement", "tests"),
       "          node .github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs\n"],
+    // [TEST-MOD-APPROVED #3060] The migration trigger, static guard and SQL
+    // contract are separate closure legs. Reverting any one must invalidate
+    // the reviewed non-concurrency authority digest.
+    [liveWorkflow("issue", "871", "attendance", "entitlement", "tests"),
+      '      - "supabase/migrations/20270614003060_issue_3060_attendance_noncustomer_closure.sql"\n'],
+    [liveWorkflow("issue", "871", "attendance", "entitlement", "tests"),
+      "          node .github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs\n"],
+    [liveWorkflow("issue", "871", "attendance", "entitlement", "tests"),
+      "            -f supabase/migrations/__tests__/issue_3060_attendance_noncustomer_closure.tester.adversarial.test.sql\n"],
     // [TEST-MOD-APPROVED #2879] The two filtered-replay skip entries this work
     // added. Each must independently move the digest, or the re-pin above
     // would be accepting a change nothing proves.
