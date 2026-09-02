@@ -38,18 +38,25 @@
  * against what the gate asserts about it.
  *
  * That is not hypothetical, and it is MEASURED rather than reasoned. The method:
- * strip one entry's ledger, re-run, record what reddens; repeat for all eleven live
- * hand-offs. The eleven fall into exactly three buckets.
+ * strip one entry's ledger, re-run, record what reddens; repeat for every live
+ * hand-off. #1850 originally measured eleven; #3025 adds three exact #2986
+ * hand-offs, so the current fourteen fall into exactly three buckets.
  *
+ * [TEST-MOD-APPROVED #3025] These lists are the current-corpus assertion that
+ * T-7 independently re-measures; the historical eleven-entry audit above stays
+ * historical, while all three new hand-offs are classified from real behavior.
  *   MEASURED-CATCHES: metaOrch1255R2, PaymentPlanEditor, orch_0893a_hydration_gate,
  *     orch_1165_keyboard_toolbar_mount_coverage, venueIntelligence,
- *     home.orch_0974.test, home.orch_0974.adversarial
+ *     home.orch_0974.test, home.orch_0974.adversarial,
+ *     publicSearchMigration.issue2986.security
  *   MEASURED-INVERSION-ONLY: venueAdsDrivenTile
- *   MEASURED-MISSES: liveEventStore-v4-v5-migrator, rsvp, orch_0911_trip_confirm_loading_state
+ *   MEASURED-MISSES: liveEventStore-v4-v5-migrator, rsvp, orch_0911_trip_confirm_loading_state,
+ *     privateHostRoutesNoindex.issue2986.implementor,
+ *     privateHostRoutesNoindex.issue2986.tester.adversarial
  *
- * CATCHES are the seven the ⊆ rule reddens on. INVERSION-ONLY is the one where ⊆ is
+ * CATCHES are the eight the ⊆ rule reddens on. INVERSION-ONLY is the one where ⊆ is
  * silent — the named gate does read the file — and R4 reddens instead, so the gate
- * as a whole still sees it. MISSES are the three nothing here reddens on at all:
+ * as a whole still sees it. MISSES are the five nothing here reddens on at all:
  * those are the blind spots, and they are the only ones.
  *
  * THE FLAGSHIP BLIND SPOT IS `rsvp/[id]/preview` — one file, fully covered, and
@@ -57,7 +64,7 @@
  * the ticket renderer" rule survived the hand-off; every positive-mount, migration,
  * guard and UX-state rule is unguarded, and this gate is silent about all of it,
  * because the named gate does read the file. If you are looking for what this
- * mechanism cannot see, look there first, then at the other two named above.
+ * mechanism cannot see, look there first, then at the other four named above.
  *
  * CORRECTION OF THE RECORD (#1850 TEST, P2-4). This paragraph previously offered
  * `PaymentPlanEditor` as its one concrete example of a case the gate would NOT
@@ -68,8 +75,9 @@
  * (`orderInstallmentsService.ts`, `useOrderInstallments.ts`) — which a file-level
  * rule sees perfectly well. Only the residue INSIDE `PaymentPlanEditor.tsx` is
  * invisible here. The count of five was right at that backfill; #2794 later made
- * both Home drops explicit and named their RecentRow successor, leaving the three
- * genuinely missed hand-offs listed above.
+ * both Home drops explicit and named their RecentRow successor, leaving three
+ * historical misses. #3025 adds the two same-target #2986 private-route hand-offs,
+ * producing the five current misses listed above.
  *
  * The lesson is the one this whole issue is about: a documented limitation is an
  * assertion, and it needs evidence like any other. `T-7` of the happy-path suite
@@ -117,7 +125,7 @@
  *
  * VACUITY — every one of these is exit 2, never a quiet pass:
  *   V-MARKER     the #1047 block marker is gone, so nothing was parsed.
- *   V-ENTRIES    fewer than 8 annotated entries parsed (today: 11).
+ *   V-ENTRIES    fewer than 8 annotated entries parsed (current live corpus: 14).
  *   V-TESTS      an entry's pattern matches NO test file on disk.
  *   V-UNREADABLE a named gate or quarantined test could not be read.
  *   V-TARGETS    a test that calls readFileSync yields ZERO extracted targets —
@@ -147,7 +155,7 @@ const IS_MAIN =
 
 /** The block this gate reads. Shared with orch-1047-quarantine-list-is-source-pins-only.mjs. */
 const BLOCK_MARKER = "#1047 [business-jest-suite-audit] — Part 1 quarantine";
-/** Today the block carries 11 annotated entries. Well below that, the parse broke. */
+/** [TEST-MOD-APPROVED #3025] Current block: 14 entries; MIN_ENTRIES remains a fail-closed floor. */
 const MIN_ENTRIES = 8;
 /** A drop reason shorter than this is not a reason. */
 const MIN_REASON = 20;
@@ -164,7 +172,7 @@ const stripComments = (s) =>
 //
 // Both sides name their targets as string literals, but neither side always
 // writes a whole path in one literal. A literal-only extractor returns ZERO for
-// six of the eleven live pairs (measured), because they compose the path from
+// nine of the fourteen live pairs (measured), because they compose the path from
 // segments: `join(__dirname, "..", "liveEventStore.ts")`, or bind a root const
 // and join onto it. Zero targets would make ⊆ vacuously true, so the composition
 // has to be followed. V-TARGETS is the backstop if it ever stops working.
@@ -315,7 +323,7 @@ export function extractTargets(source, selfDir, roots) {
   }
 
   // 1b. Bind every one-argument READER HELPER — `const read = (rel) => …join(ROOT, rel)…`
-  //     or its `function` spelling. Six of the eleven live pairs route every path
+  //     or its `function` spelling. Nine of the fourteen live pairs route every path
   //     through one of these, so without this step the extractor sees a helper it
   //     cannot follow and reports zero targets for the file it is judging.
   //     The parameter is bound to a sentinel and the resolved path is split on it,

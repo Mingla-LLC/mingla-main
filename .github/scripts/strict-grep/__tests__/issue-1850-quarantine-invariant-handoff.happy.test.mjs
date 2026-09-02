@@ -9,7 +9,7 @@
  * input, and reads the real exit code.
  *
  * What it pins:
- *   T-1  the ledger gate is GREEN on the tree, and the eleven hand-offs reconcile.
+ *   T-1  the ledger gate is GREEN on the tree, and all 14 live hand-offs reconcile.
  *   T-2  removing #1850's own ledger turns it RED and names every dark file —
  *        i.e. the gate really decides `17 ⊄ 6`, it does not merely run.
  *   T-3  an EMPTY scan exits 2. A gate that finds nothing must never be green.
@@ -131,7 +131,12 @@ test("T-1 the ledger gate is green on the tree, as CI runs it", () => {
   // check rather than add one.
   const r = spawnSync(process.execPath, [LEDGER_GATE], { cwd: REPO, encoding: "utf8" });
   assert.equal(r.status, 0, `expected exit 0\n${r.stdout}${r.stderr}`);
-  assert.match(r.stdout, /11 invariant hand-offs reconcile/);
+  // [TEST-MOD-APPROVED #3025] The output count must equal the parsed real
+  // ledger, so an additive hand-off cannot leave a stale typed count green.
+  const parsed = ledger.parseLedger(CONFIG);
+  assert.equal(parsed.error, undefined, `parseLedger failed: ${parsed.error}`);
+  assert.equal(parsed.entries.length, 14, "#3025 must expose exactly 14 live hand-offs");
+  assert.match(r.stdout, new RegExp(`\\b${parsed.entries.length} invariant hand-offs reconcile\\b`));
 });
 
 // ── T-2 ────────────────────────────────────────────────────────────────────
