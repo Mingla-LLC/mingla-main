@@ -17570,13 +17570,14 @@
       "providerWorkflow": ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "b7664cdb962dcd5ca68b19cdb1d8c5d5915adde1958144f058cdc82efeda5f37",
+        "sourceSha256": "e5169b4e150af60002b3a0aa26db87462783e8533de99c57be61e9383cc48a73",
         "triggers": [
           "pull_request",
           "push",
           "workflow_dispatch"
         ],
         "pathScope": [
+          ".github/scripts/ci-batch/validate-manifest-v2.mjs",
           ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
           "mingla-admin/src/__tests__/issue2099_pending_identity_correction.test.js",
           "mingla-admin/src/components/claims/PendingVenueIdentityCorrectionPanel.jsx",
@@ -17600,6 +17601,9 @@
           "mingla-business/src/services/pendingVenueIdentityCorrectionService.web.ts",
           "mingla-business/src/services/venueListingsService.ts",
           "supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql",
+          "supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql",
+          "supabase/migrations/20270606002725_issue_2725_competitor_intelligence.sql",
+          "supabase/migrations/20270606002726_issue_2725_amendment_8_budget.sql",
           "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql",
           "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.concurrent.test.sh",
           "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql",

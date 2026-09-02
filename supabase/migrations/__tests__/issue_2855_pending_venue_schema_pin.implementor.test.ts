@@ -8,6 +8,21 @@
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+// [TEST-MOD-APPROVED #2648] The #2855 provider declaration is now judged against
+// the registry the validator ACTUALLY exports, not against a substring of its
+// source text. Text and semantics can diverge — a declaration can be present in
+// the bytes and shadowed, duplicated, or filtered out of the exported array —
+// and only the exported value decides what provider discovery subtracts.
+import {
+  PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL,
+  PROVIDERS_ADDED_SINCE_SEAL,
+} from "../../../.github/scripts/ci-batch/validate-manifest-v2.mjs";
+
+interface SealDeclaration {
+  readonly issue: number;
+  readonly workflow: string;
+  readonly referenceFiles: readonly string[];
+}
 
 const ORIGINAL_PATH =
   "supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql";
@@ -35,10 +50,40 @@ const NEW_HASH =
   "52f4624c994529d2e63b8f70b79a3fcfe28f3ff90dafe300bc45439e37cd2921";
 const ORIGINAL_SHA256 =
   "8d35452b0237115640d4fcbc9dbc05c12b25ffa1b57a706c85cfc698df0c2bbe";
-const VALIDATOR_BEFORE_AMENDMENT_SHA256 =
-  "0d800e8969068c146957e130e74702cfffadb13284233ff16507dc9468af6e49";
-const VALIDATOR_AFTER_PROVIDER_ONLY_REMOVAL_SHA256 =
-  "e867484eced566bdd86b1fca43e1a36ca8154875f6926161973647bc9a40bcf1";
+// [TEST-MOD-APPROVED #2648] RE-DERIVED, NOT RE-PINNED. This pin is the sha256 of
+// the ONE declaration #2855 owns, canonicalised from the validator's exported
+// value. It replaces two sha256 digests of the WHOLE of
+// .github/scripts/ci-batch/validate-manifest-v2.mjs — a shared CI file #2099 and
+// #2855 do not own — which could not survive contact with the repository:
+//
+//   93d2f49 #2860  0d800e89…   (the value that was VALIDATOR_BEFORE_AMENDMENT_SHA256)
+//   13dd625 #2850  e867484e…   hand-re-banked here; the last green run of this lane
+//   016a513 #1772  ff053ce4…
+//   d7eabd8 #2241  89958478…
+//   8995ad6 #2948  11c3f3b9…
+//   057dc2f #2898  775fcfb3…   the value CI reported on 2026-09-02
+//   2537af8 #3014  edd1b397…
+//
+// Six values in three days, from five unrelated issues, each legitimately
+// declaring itself into the registries this file exists to carry. #2855's own
+// declaration count was exactly 1 at every one of those commits — nothing this
+// assertion guards ever moved. A whole-file digest over an actively-edited shared
+// file is not a control; it is a merge tax that had already been hand-re-banked
+// once (#2850) and is indistinguishable from a silencing paste (#2648).
+//
+// NOT WEAKER. Everything the old digest protected FOR #2855 is retained and
+// tightened below: exact-once ownership is now asserted across the validator's
+// whole exported surface rather than by one substring count; the reference-file
+// set is deep-equalled rather than matched as text; the frozen provider seal is
+// still pinned; the #2582 Phase 3B fragments are still exact-once. The single
+// property given up is detection of INERT byte drift in a file this issue does
+// not own. Its semantic half is enforced repo-wide and on every pull request by
+// validate-manifest-v2.mjs itself, which reconstructs provider discovery by
+// subtracting declared additions BY EXACT CONTENT, NEVER BY NAME, against
+// LOCKED_PROVIDER_DISCOVERY_SHA256 (validate-manifest-v2.mjs:2404). A deleted,
+// widened, or narrowed #2855 declaration still reds there as well as here.
+const ISSUE_2855_DECLARATION_SHA256 =
+  "d23d2eece82ff8554bd1459e44c0e4144970f4712d5e0626790eb1d5c14a2212";
 const FROZEN_PROVIDER_SEAL =
   "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f";
 const PROVIDER_DELTA = `  Object.freeze({
@@ -146,13 +191,14 @@ function reconstructValidatorBeforeAmendments(source: string): string {
   return reconstructed;
 }
 
+// [TEST-MOD-APPROVED #2648] The whole-file digest is gone; every remaining clause
+// is intrinsic to what #2855 owns, so a foreign issue declaring itself into this
+// shared file can no longer red this lane while #2855's own declaration is intact.
 function assertComposedValidatorProvenance(source: string): void {
-  const reconstructed = reconstructValidatorBeforeAmendments(source);
-  assert.equal(
-    createHash("sha256").update(reconstructed).digest("hex"),
-    VALIDATOR_BEFORE_AMENDMENT_SHA256,
-    "validator drifted outside the approved #2855 and #2582 declarations",
-  );
+  // Structural: the exact nine-line #2855 block appears exactly once, and the
+  // #2582 Phase 3B 40/0 fragments are present exactly once with the retired 37/3
+  // pair absent. Unchanged from the form this replaces.
+  reconstructValidatorBeforeAmendments(source);
   const seal = source.match(
     /const LOCKED_PROVIDER_DISCOVERY_SHA256 = "([0-9a-f]{64})";/,
   );
@@ -167,6 +213,52 @@ function assertComposedValidatorProvenance(source: string): void {
     1,
     "#2855 may add only one validator declaration",
   );
+  // Exact-once ownership across the WHOLE file, not just the declaration blocks:
+  // no other line anywhere may name a #2855 reference file. The two that may are
+  // the two inside #2855's own block.
+  assert.equal(
+    count(source, "issue_2855_pending_venue_schema_pin."),
+    2,
+    "a #2855 reference file is named outside #2855's own validator declaration",
+  );
+}
+
+// The semantic half, and the reason the source-text digest is not missed: this
+// reads the value provider discovery actually subtracts, which a substring match
+// cannot see.
+function issue2855Declaration(): SealDeclaration {
+  const declarations: readonly SealDeclaration[] = [
+    ...(PROVIDERS_ADDED_SINCE_SEAL as readonly SealDeclaration[]),
+    ...(PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL as readonly SealDeclaration[]),
+  ];
+  const owned = declarations.filter((entry) => entry.issue === 2855);
+  assert.equal(
+    owned.length,
+    1,
+    "#2855 must own exactly one declaration across the validator's exported registries",
+  );
+  const foreign = declarations.filter((entry) =>
+    entry.issue !== 2855 &&
+    entry.referenceFiles.some((file) =>
+      file.includes("issue_2855_pending_venue_schema_pin.")
+    )
+  );
+  assert.deepEqual(
+    foreign,
+    [],
+    "no declaration other than #2855's may name a #2855 reference file",
+  );
+  return owned[0];
+}
+
+// Canonicalised so the pin moves ONLY when #2855's own record moves — never when
+// a sibling declaration is added, reordered, or reworded elsewhere in the file.
+function canonicalDeclaration(declaration: SealDeclaration): string {
+  return JSON.stringify({
+    issue: declaration.issue,
+    workflow: declaration.workflow,
+    referenceFiles: [...declaration.referenceFiles].sort(),
+  });
 }
 
 function functionBlock(
@@ -492,19 +584,44 @@ Deno.test("#2855 SC-4 classifier is exact-path product scope", () => {
 });
 
 Deno.test("#2855 records only its reviewed provider-reference delta", () => {
+  // [TEST-MOD-APPROVED #2648] The two whole-file digests of
+  // validate-manifest-v2.mjs are replaced by a pin on the ONE record #2855 owns,
+  // read from the validator's exported registry. Rationale and the six-values-in-
+  // three-days evidence are on ISSUE_2855_DECLARATION_SHA256 above.
+  const declaration = issue2855Declaration();
   assert.equal(
-    createHash("sha256").update(validator.replace(PROVIDER_DELTA, "")).digest(
-      "hex",
-    ),
-    VALIDATOR_AFTER_PROVIDER_ONLY_REMOVAL_SHA256,
-    "the pre-composition one-delta reconstruction must remain the proven merge-head failure",
+    declaration.workflow,
+    "issue-2099-pending-venue-identity-correction-tests.yml",
+    "#2855's declaration must be attached to the #2099 lane",
   );
-  assert.notEqual(
-    VALIDATOR_AFTER_PROVIDER_ONLY_REMOVAL_SHA256,
-    VALIDATOR_BEFORE_AMENDMENT_SHA256,
-    "the old one-delta reconstruction must stay red against the original base",
+  assert.deepEqual(
+    [...declaration.referenceFiles].sort(),
+    [
+      "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
+      "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
+    ],
+    "#2855's reviewed reference-file set drifted",
+  );
+  assert.equal(
+    createHash("sha256").update(canonicalDeclaration(declaration)).digest("hex"),
+    ISSUE_2855_DECLARATION_SHA256,
+    "#2855's reviewed provider-reference delta drifted from the approved record",
   );
   assertComposedValidatorProvenance(validator);
+
+  // The whole-file digest could see a #2855 declaration deleted outright. So can
+  // this, on both the text and the semantic side.
+  assert.throws(
+    () => assertComposedValidatorProvenance(validator.replace(PROVIDER_DELTA, "")),
+    "deleting the #2855 declaration must fail exact-once ownership",
+  );
+  assert.throws(
+    () =>
+      assertComposedValidatorProvenance(
+        validator.replace(PROVIDER_DELTA, `${PROVIDER_DELTA}${PROVIDER_DELTA}`),
+      ),
+    "a duplicated #2855 declaration must fail exact-once ownership",
+  );
 
   const missingProviderDelta = validator.replace(
     "issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
@@ -542,9 +659,17 @@ Deno.test("#2855 records only its reviewed provider-reference delta", () => {
       ),
     "a retired 37/3 fragment in live validator bytes must fail",
   );
+  // [TEST-MOD-APPROVED #2648] The former `// foreign drift` control asserted that
+  // ANY appended byte reds this lane. That is precisely the property being
+  // retired: five unrelated issues exercised it in three days and it blocked
+  // merges rather than catching anything. Replaced with the drift that IS #2855's
+  // to catch — a foreign declaration reaching for a #2855 reference file.
   assert.throws(
-    () => assertComposedValidatorProvenance(`${validator}\n// foreign drift`),
-    "foreign validator drift must remain visible after reconstruction",
+    () =>
+      assertComposedValidatorProvenance(
+        `${validator}\n// "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts"`,
+      ),
+    "a #2855 reference file named outside #2855's own declaration must fail",
   );
   assert.throws(
     () =>
@@ -632,5 +757,61 @@ Deno.test("#2855 host-composes the tester fragment into the real outer SQL fixtu
   assert.ok(
     sqlTest.includes(NEW_HASH),
     "main SQL fixture still expects the stale hash",
+  );
+});
+
+// [#2648] The invisibility half of the 2026-09-02 red.
+//
+// This lane is paths-gated. On 2026-08-30 it consumed nine files and its `paths:`
+// filter listed only three of them, so the file that decided whether it passed —
+// .github/scripts/ci-batch/validate-manifest-v2.mjs — could not fire it. Five
+// merges broke this job; none of them ran it; it sat red on main for three days
+// and was carried past on #2887 as a proven-inherited failure.
+//
+// A digest can be re-derived. A gate nobody runs cannot be. So the coupling is
+// made self-enforcing: every file this guard READS must be a file that TRIGGERS
+// the lane. Adding a new Deno.readTextFile above without adding its path to the
+// workflow fails here, in the same commit, instead of years later on main.
+//
+// Deliberately intrinsic — it compares two files in the checkout and consults no
+// merge base, because CI checks this repository out shallow elsewhere and a
+// base-dependent assertion fails there for the wrong reason.
+const FILES_THIS_GUARD_READS = [
+  ORIGINAL_PATH,
+  FORWARD_PATH,
+  COVER_VIDEO_PATH,
+  COMPETITOR_PATH,
+  BUDGET_PATH,
+  SQL_TEST_PATH,
+  TESTER_PATH,
+  WORKFLOW_PATH,
+  VALIDATOR_PATH,
+] as const;
+
+Deno.test("#2648 every file this guard reads can also fire the lane that runs it", () => {
+  const anchor = "paths: &issue2099Paths";
+  const start = workflow.indexOf(anchor);
+  assert.notEqual(start, -1, "the shared #2099 paths anchor is missing");
+  const end = workflow.indexOf("\n  push:", start);
+  assert.notEqual(end, -1, "the push trigger that reuses the anchor is missing");
+  const declared = [...workflow.slice(start, end).matchAll(/^\s+- "([^"]+)"$/gm)]
+    .map((match) => match[1]);
+  assert.ok(declared.length > 0, "the #2099 paths anchor declares nothing");
+
+  const missing = FILES_THIS_GUARD_READS.filter((file) =>
+    !declared.includes(file)
+  );
+  assert.deepEqual(
+    missing,
+    [],
+    "this guard reads a file that cannot trigger the lane, so a change to it can red main invisibly",
+  );
+
+  // The push trigger must reuse the SAME anchor. A second, hand-maintained copy
+  // of the list is how the two halves drift apart while both look present.
+  assert.match(
+    workflow.slice(end),
+    /push:\n\s+branches: \[main\]\n\s+paths: \*issue2099Paths/,
+    "push to main must reuse the pull_request paths anchor, never a second copy",
   );
 });
