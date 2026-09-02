@@ -5,27 +5,19 @@
 // the client <LinksExperience/> which holds the accessible tabs, CTAs, analytics,
 // and socials. All link/tab data lives in lib/links-config.ts (extensible, §5).
 
-import type { Metadata } from 'next'
 import { LinksExperience } from '@/components/marketing/links-experience'
 import { sanitizeLinksSrc } from '@/lib/links-src'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
 // Shipped default tagline (see the ORCH-1317 report for the alternates). It's the
 // canonical brand line, so /links reads consistently with the rest of the site.
 const LINKS_TAGLINE = 'Find a vibe, not a venue.'
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/links', {
   title: 'Get Mingla',
   description:
     'Mingla is the experiences app for date nights, things to do, and your city’s hidden gems. Get the app, or if you run a venue, event, or trip, get started on the web.',
-  alternates: { canonical: '/links' },
-  openGraph: {
-    title: 'Get Mingla',
-    description:
-      'The experiences app for date nights, things to do, and your city’s hidden gems.',
-    url: '/links',
-    type: 'website',
-  },
-}
+})
 
 // ORCH-1399 [links-src-tracking-getapp-stack] — `?src=` SOURCE TRACKING.
 //
@@ -38,7 +30,7 @@ export const metadata: Metadata = {
 //  - the value is present in the FIRST PAINT — no client-only flicker / hydration risk
 //  - it stays a pure function, testable with the repo's plain tsc+node pattern
 // Reading searchParams opts this route into dynamic rendering — correct and intended.
-// `alternates.canonical: '/links'` above means `?src=` variants do NOT fragment SEO.
+// The route is explicitly public-noindex, so `?src=` variants cannot fragment search.
 //
 // `src` is UNTRUSTED INPUT that reaches an OUTBOUND URL. It is sanitised HERE, once,
 // at the boundary — never passed raw. Next hands repeated params (`?src=a&src=b`) as

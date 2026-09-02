@@ -71,7 +71,7 @@ export function OrganiserHero() {
             initial={reduced ? false : { opacity: 0, y: 12, filter: 'blur(8px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             transition={{ duration: 0.72, delay: reduced ? 0 : 0.1, ease: EASE }}
-            className="max-w-[15ch] font-display text-[clamp(2.75rem,7vw,5.75rem)] leading-[1.02] tracking-[-0.035em] text-ink"
+            className="search-primary-answer max-w-[15ch] font-display text-[clamp(2.75rem,7vw,5.75rem)] leading-[1.02] tracking-[-0.035em] text-ink"
           >
             Your place deserves to be found.
           </motion.h1>
@@ -80,7 +80,7 @@ export function OrganiserHero() {
             initial={reduced ? false : { opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: reduced ? 0 : 0.35, ease: EASE }}
-            className="mt-6 max-w-2xl text-base font-semibold leading-relaxed text-ink/68 sm:text-lg md:text-xl"
+            className="search-primary-answer mt-6 max-w-2xl text-base font-semibold leading-relaxed text-ink/68 sm:text-lg md:text-xl"
           >
             Create what makes your place, event, trip or experience worth showing up
             for. Mingla helps the right people discover it, book it and arrive.

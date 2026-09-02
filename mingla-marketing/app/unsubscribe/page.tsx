@@ -1,13 +1,13 @@
-import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { UnsubscribeForm } from './UnsubscribeForm'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/unsubscribe', {
   title: 'Unsubscribe',
   description:
     'Opt out of Mingla marketing messages by email or text. No login required — your request is honored immediately.',
-}
+})
 
 export default function UnsubscribePage() {
   return (

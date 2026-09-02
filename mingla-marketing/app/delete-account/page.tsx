@@ -1,11 +1,11 @@
-import type { Metadata } from 'next'
 import Link from 'next/link'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/delete-account', {
   title: 'Delete your account',
   description:
     'Instructions for deleting your Mingla account and contacting support for exceptional requests.',
-}
+})
 
 export default function DeleteAccountPage() {
   return (

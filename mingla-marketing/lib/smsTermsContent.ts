@@ -44,7 +44,7 @@ export const SMS_TERMS_SECTIONS = [
     paragraphs: [
       'You can cancel the SMS program at any time. Reply STOP to any text message from the program to stop receiving further texts. We also honor QUIT, END, CANCEL, UNSUBSCRIBE, REVOKE, and OPT OUT.',
       'After you send a STOP message, you will receive one final message confirming that you have been unsubscribed. After that, you will no longer receive SMS messages from that program. Opting out of marketing texts does not stop transactional or account messages that are required to deliver what you booked.',
-      'You can also opt out of all marketing messages — by email and text — at https://www.usemingla.com/unsubscribe, or adjust your notification preferences in the Mingla app at any time.',
+      'You can also opt out of all marketing messages — by email and text — at https://usemingla.com/unsubscribe, or adjust your notification preferences in the Mingla app at any time.',
     ],
   },
   {
@@ -75,7 +75,7 @@ export const SMS_TERMS_SECTIONS = [
       address: '700 Corporate Center Dr, Raleigh, NC 27607, USA',
       email: 'support@usemingla.com',
       phone: '+1 888-250-5351',
-      website: 'https://www.usemingla.com',
+      website: 'https://usemingla.com',
     },
   },
 ] as const
