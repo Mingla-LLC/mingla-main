@@ -52,7 +52,7 @@ const VENUE_COLS = 8
 const VENUE_TOTAL = 24
 const VENUE_BOOKED = 18
 
-function VenueFigure() {
+export function VenueFigure() {
   const reduced = useReducedMotion()
   return (
     <Figure headline={`${VENUE_BOOKED} of ${VENUE_TOTAL} tables`} sub="Tonight · the 8pm sitting">
@@ -104,7 +104,7 @@ const AUDIENCES = [
   { label: 'Never heard of you', pct: 100 },
 ] as const
 
-function MarketingFigure() {
+export function MarketingFigure() {
   const reduced = useReducedMotion()
   return (
     <div className="flex h-full flex-col justify-center">
