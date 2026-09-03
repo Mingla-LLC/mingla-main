@@ -92,4 +92,37 @@ describe("#2830 the brand's own look", () => {
     expect(css).toContain(".js-reveal .reveal { opacity: 0;");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
   });
+
+  it("a brand's font choice reaches the page", () => {
+    const serif = {
+      site_settings: { display_name: "x", typography: "editorial-serif" },
+    } as unknown as RestaurantArtifact;
+    const out = siteThemeCss(serif) ?? "";
+    expect(out).toContain("Playfair Display");
+    // A serif set in caps reads as shouting, so the pairing turns it off.
+    expect(out).toContain("--display-case:none");
+  });
+
+  it("the condensed pairing keeps the uppercase register", () => {
+    const condensed = {
+      site_settings: { display_name: "x", typography: "condensed-display" },
+    } as unknown as RestaurantArtifact;
+    const out = siteThemeCss(condensed) ?? "";
+    expect(out).toContain("Oswald");
+    expect(out).toContain("--display-case:uppercase");
+  });
+
+  it("REFUSES a font that is not one of the offered pairings", () => {
+    const evil = {
+      site_settings: {
+        display_name: "x",
+        typography: "'; } body { display:none } :root { --x:'",
+      },
+    } as unknown as RestaurantArtifact;
+    expect(siteThemeCss(evil)).toBeNull();
+  });
+
+  it("the stylesheet sets the heading case from the pairing, not itself", () => {
+    expect(css).toContain("text-transform: var(--display-case)");
+  });
 });
