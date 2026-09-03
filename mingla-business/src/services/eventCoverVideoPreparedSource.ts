@@ -16,6 +16,29 @@ const allowed = new Map<string, PreparedEventCoverVideoSource["extension"]>([
   ["video/webm", "webm"],
 ]);
 
+// Issue #3073 — mirrors the native guard's error so the shared hook can import
+// ONE symbol regardless of platform. Web reads the blob through `fetch` and the
+// browser's own decoder, which is a different failure surface from the native
+// trim editor, so nothing throws this here today; the type exists so the hook's
+// `instanceof` branch is not silently unreachable on web.
+export class EventCoverVideoSourceHasNoVideoTrackError extends Error {
+  constructor() {
+    super("The trimmed clip has no video track.");
+    this.name = "EventCoverVideoSourceHasNoVideoTrackError";
+  }
+}
+
+// A NAME check, not `instanceof`. Several suites mock this module partially, so
+// the class can be `undefined` at runtime in a test — and `x instanceof
+// undefined` THROWS, taking down the whole suite rather than failing one
+// assertion. Same shape the repo already uses for PostgREST errors, which
+// arrive as plain objects.
+export const isEventCoverVideoSourceHasNoVideoTrackError = (
+  error: unknown,
+): boolean =>
+  error !== null && typeof error === "object" &&
+  (error as { name?: unknown }).name === "EventCoverVideoSourceHasNoVideoTrackError";
+
 export const prepareEventCoverVideoSource = async (input: {
   uri: string;
   bytes: number;

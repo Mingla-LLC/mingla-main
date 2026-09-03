@@ -26,6 +26,14 @@ import { eventDraftKeys } from "./useServerDraftEvents";
 import { upcomingKeys } from "./upcomingKeys";
 
 const idleStage: EventCoverVideoUploadStage = { phase: "idle", percent: 0 };
+// Issue #3074 — "Reconnecting to your video…" must be a PHASE, never a resting
+// place. Observed on 2026-09-03 sitting there for 39 minutes against a job that
+// had been terminally `failed` for 39 minutes: the resume path took a branch
+// that never reached a settle, and nothing else was watching. The #2974 comment
+// in the catch below documents an EARLIER trigger for the same stall, which is
+// the argument for a deadline rather than a third per-trigger patch — whatever
+// the branch, the sheet lands on the job's canonical status.
+const REATTACH_DEADLINE_MS = 12_000;
 export type EventCoverVideoUploadFile = {
   uri: string; fileName?: string | null; mimeType?: string | null;
   bytes: number; durationMs: number; trimStartMs?: number; trimEndMs?: number;
@@ -54,8 +62,39 @@ const terminalCodes = new Set([
   "event_not_ready", "forbidden", "malformed_response", "not_found",
   "operation_conflict", "provider_not_configured", "source_ack_deadline_exceeded",
   "source_ack_timeout", "source_mismatch", "source_over_cap",
-  "source_transport_expired", "validation_error",
+  "source_transport_expired", "source_video_track_missing", "validation_error",
 ]);
+// Issue #3075 — one live transfer per operation, module-scoped so it spans hook
+// instances. A JOIN was the obvious shape and it is wrong: a remount would await
+// the ORIGINAL transfer, so a wedged one — an interrupted acknowledgement, say —
+// would block the remount from ever making progress, which is exactly what
+// #2715's adversarial remount test catches. Supersede instead: the newest owner
+// aborts the previous transfer for the same operation and takes over.
+const activeUploadControllers = new Map<string, AbortController>();
+
+const claimUploadSlot = (key: string, controller: AbortController): void => {
+  const previous = activeUploadControllers.get(key);
+  if (previous !== undefined && previous !== controller) previous.abort();
+  activeUploadControllers.set(key, controller);
+};
+
+const releaseUploadSlot = (key: string, controller: AbortController): void => {
+  if (activeUploadControllers.get(key) === controller) {
+    activeUploadControllers.delete(key);
+  }
+};
+
+// Slots are keyed `${persistenceKey}:${operationId}`; a cancel knows only the
+// target it is cancelling for, not the operation id.
+const abortActiveTransfersFor = (persistenceKeyPrefix: string): void => {
+  for (const [key, controller] of activeUploadControllers) {
+    if (key.startsWith(`${persistenceKeyPrefix}:`)) {
+      controller.abort();
+      activeUploadControllers.delete(key);
+    }
+  }
+};
+
 const isTerminalUploadError = (error: unknown): boolean =>
   error instanceof EventCoverVideoProcessingError && terminalCodes.has(error.code);
 const UUID_PATTERN =
@@ -94,7 +133,29 @@ const ACK_POLL_INTERVAL_MS = 2_000;
 // inside the reaper's 12h stall deadline so the server always owns the real
 // verdict.
 export const EVENT_COVER_VIDEO_WATCH_DEADLINE_MS = 600_000;
-const safeUploadError = (error: unknown): Error => error instanceof EventCoverVideoProcessingError
+// issue #3073 — `prepareEventCoverVideoSource` refuses a source whose ISO-BMFF
+// handler boxes carry no video track (the trim editor can return an audio-only
+// MP4). Translating it HERE, at the single point every start-path error already
+// funnels through, keeps the prepare call itself a plain direct call — which is
+// what ORCH-1308 gate D reads to prove the source is prepared before allocation.
+// Matched by NAME, and defined right here rather than imported. Several suites
+// mock `../services/eventCoverVideoPreparedSource` partially, so a newly
+// imported symbol is `undefined` at runtime in those tests — and calling it (or
+// using it as an `instanceof` right-hand side) THROWS, taking the whole suite
+// down instead of failing one assertion. Owning the predicate locally means no
+// mock can reach it. Same reasoning as the repo's PostgREST error checks, which
+// duck-type because those errors arrive as plain objects.
+const isMissingVideoTrackError = (error: unknown): boolean =>
+  error !== null && typeof error === "object" &&
+  (error as { name?: unknown }).name === "EventCoverVideoSourceHasNoVideoTrackError";
+
+const safeUploadError = (error: unknown): Error =>
+  isMissingVideoTrackError(error)
+  ? new EventCoverVideoProcessingError(
+    "source_video_track_missing",
+    "That clip came back without any video. Trim it again, or pick a different video.",
+  )
+  : error instanceof EventCoverVideoProcessingError
   ? error
   : error instanceof Error && "code" in error && error.code === "unauthenticated"
   ? Object.assign(new Error("Finishing sign-in. Try again in a moment."), { code: "unauthenticated" })
@@ -146,6 +207,12 @@ export function useEventCoverVideoUpload(
   const delegatedGenerationRef = useRef<number | null>(null);
   const userIdRef = useRef<string | null>(null);
   const [stage, setStage] = useState<EventCoverVideoUploadStage>(idleStage);
+  // issue #3074 — the deadline below must judge the CURRENT phase, not a flag
+  // set optimistically when a branch was entered. The 39-minute stall was a
+  // resume that DID hand off to real work (`uploadPrepared`) and then never
+  // settled, so "we delegated" is not evidence the spinner is gone.
+  const stageRef = useRef<EventCoverVideoUploadStage>(idleStage);
+  stageRef.current = stage;
   const [status, setStatus] = useState<EventCoverVideoStatus | null>(null);
   const [processedUrl, setProcessedUrl] = useState<string | null>(null);
   const [processedPosterUrl, setProcessedPosterUrl] = useState<string | null>(null);
@@ -206,6 +273,28 @@ export function useEventCoverVideoUpload(
       setStage({ phase: "ack_pending", percent: 0 });
     } else if (["source_uploaded", "processing_queued", "processing"].includes(next.status)) {
       setStage({ phase: "processing", percent: next.progressKind === "determinate" ? next.progressPercent : null });
+    } else if (["failed", "cancelled", "superseded"].includes(next.status)) {
+      // issue #3074 — a terminal NON-success used to set `status` and leave the
+      // STAGE untouched, so a sheet that was mid-"Reconnecting to your video…"
+      // learned the job had failed and went on rendering the spinner anyway.
+      // Measured in the field: 39 minutes on the spinner against a job that had
+      // been `failed` for 39 minutes. Every other terminal outcome above moves
+      // the stage; this branch is the one that did not.
+      //
+      // `cancelled` and `superseded` are not the host's problem — a superseding
+      // upload owns the sheet now, and a cancel was deliberate — so they return
+      // the sheet to idle rather than shouting an error at it. Only `failed`
+      // becomes an error card, carrying the provider's own failure code so the
+      // picker can name it and offer the job code.
+      setStage(next.status === "failed"
+        ? {
+          phase: "error",
+          percent: 0,
+          code: next.failureCode ?? "video_upload_failed",
+          message: next.failureMessage
+            ?? "We couldn't finish this video. Choose another video, or try again.",
+        }
+        : idleStage);
     }
   }, [invalidate, target]);
 
@@ -308,6 +397,8 @@ export function useEventCoverVideoUpload(
     userIdRef.current = userId;
     let generation = generationRef.current;
     let abort = new AbortController();
+    // issue #3075 — see `signal:` on the upload call below.
+    const transferAbort = new AbortController();
     const trimStartMs = persisted?.trimStartMs ?? 0;
     const trimEndMs = persisted?.trimEndMs ?? prepared.durationMs;
     const provisionalKey = replacementPersistenceKey;
@@ -412,11 +503,18 @@ export function useEventCoverVideoUpload(
     setStage({ phase: "uploading", percent: 0 });
     const upload = (): Promise<unknown> => uploadEventCoverVideoSource({
       bytes: prepared.bytes, fileName: prepared.fileName, jobId: acceptedIntent.jobId,
-      mimeType: prepared.mimeType, uri: prepared.uri, upload: acceptedIntent.upload, signal: abort.signal,
+      mimeType: prepared.mimeType, uri: prepared.uri, upload: acceptedIntent.upload,
+      // issue #3075 — the TRANSFER runs on its own controller, deliberately not
+      // the one unmount aborts. Unmount must end this instance's WATCH (a
+      // subscription nobody is reading any more) without stopping the bytes.
+      signal: transferAbort.signal,
       onProgress: (progress) => {
         if (generationRef.current === generation) setStage({ phase: "uploading", percent: progress.percent });
       },
     });
+    // issue #3075 — one live transfer per operation, however many sheets mount.
+    const uploadSlotKey = `${persistenceKey}:${operationId}`;
+    claimUploadSlot(uploadSlotKey, transferAbort);
     try {
       await upload();
     } catch (uploadError) {
@@ -432,6 +530,8 @@ export function useEventCoverVideoUpload(
       }
       acceptedIntent = refreshedIntent;
       await upload();
+    } finally {
+      releaseUploadSlot(uploadSlotKey, transferAbort);
     }
     setStage({ phase: "ack_pending", percent: 0 });
     // issue #2967 — this loop used to be `while (status === "source_uploading")`
@@ -584,6 +684,42 @@ export function useEventCoverVideoUpload(
     abortRef.current?.abort();
     abortRef.current = abort;
     setStage({ phase: "reattaching", percent: 0 });
+    // issue #3074 — the deadline. The ONLY thing that disarms it is the sheet
+    // actually leaving the spinner: if any later phase is showing when this
+    // fires, the resume is visibly working and is left alone. A resume that is
+    // still on "Reconnecting to your video…" gets overridden by the truth,
+    // whichever branch it is stuck in — including a delegated upload that never
+    // settles, which is the branch the 39-minute stall was in.
+    const reattachDeadline = setTimeout(() => {
+      if (stageRef.current.phase !== "reattaching") return;
+      if (generationRef.current !== generation) return;
+      void (async () => {
+        try {
+          const jobId = jobIdRef.current ?? persisted?.jobId ?? null;
+          const canonical = jobId !== null
+            ? await fetchEventCoverVideoStatus(jobId, abort.signal)
+            : await fetchEventCoverVideoStatusByTarget({
+              target: exactTarget.serverTarget, eventId: exactTarget.eventId, brandId,
+              venueId: exactTarget.venueId, draftOwnerKey: exactTarget.draftOwnerKey,
+              signal: abort.signal,
+            });
+          if (stageRef.current.phase !== "reattaching") return;
+          if (generationRef.current !== generation) return;
+          if (canonical === null) {
+            setStage(idleStage);
+            return;
+          }
+          jobIdRef.current = canonical.jobId;
+          await settleCanonical(canonical, abort.signal);
+        } catch {
+          // A failed truth-fetch must still leave the sheet actionable.
+          if (stageRef.current.phase === "reattaching" && generationRef.current === generation) setStage(idleStage);
+        }
+      })();
+    }, REATTACH_DEADLINE_MS);
+    // Only the error path disarms the timer outright — every success path is
+    // already covered by the phase check inside it.
+    const leaveReattaching = (): void => { clearTimeout(reattachDeadline); };
     try {
       const userId = await currentUserId();
       userIdRef.current = userId;
@@ -679,6 +815,8 @@ export function useEventCoverVideoUpload(
       const settled = await settleCanonical(recovered, abort.signal);
       if (!settled.isTerminal) await watch(recovered.jobId, abort.signal, generation);
     } catch (caught) {
+      // issue #3074 — whatever the outcome, the spinner is over.
+      leaveReattaching();
       // issue #2974 — this guard used to read `abort.signal.aborted` on the
       // controller resume created. When resume delegates to `uploadPrepared`,
       // that function installs its OWN controller and aborts this one first, so
@@ -722,7 +860,17 @@ export function useEventCoverVideoUpload(
     });
     return () => {
       clearPreparationProjection();
+      // issue #3075 — bumping the generation is what makes this instance stop
+      // WRITING (every setStage/progress callback is generation-guarded), and
+      // that is all unmount should do. It used to abort the controller too,
+      // which killed the transfer itself. The bytes must keep moving: the job
+      // is already durable server-side and locally persisted, and
+      // `runSingleFlightUpload` stops a remounted sheet from starting a second
+      // transfer for the same operation. Explicit cancel, a superseding upload,
+      // and SIGNED_OUT still abort — see `abortRef` at those call sites.
       generationRef.current += 1;
+      // Ends this instance's WATCH. The transfer runs on its own controller and
+      // is deliberately left alone — see issue #3075 above.
       abortRef.current?.abort();
       subscription.unsubscribe();
     };
@@ -739,9 +887,14 @@ export function useEventCoverVideoUpload(
     project(next);
     if (next.status === "applied" && userIdRef.current) await cleanupPersisted(userIdRef.current);
   }, [cleanupPersisted, project, status]);
+  // issue #3075 — an explicit cancel is the one gesture that DOES stop the
+  // transfer, so it aborts the operation's slot as well as this instance's
+  // watch. Unmount is not a cancel.
   const cancel = useCallback(async (): Promise<void> => {
     generationRef.current += 1;
     abortRef.current?.abort();
+    abortActiveTransfersFor(persistenceKey);
+    abortActiveTransfersFor(replacementPersistenceKey);
     if (!jobIdRef.current) {
       if (userIdRef.current) await cleanupPersisted(userIdRef.current);
       setLocalPreviewUri(null);

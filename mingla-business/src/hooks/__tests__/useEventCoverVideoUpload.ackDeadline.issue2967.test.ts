@@ -470,4 +470,109 @@ describe("#2974 a 4xx is never a spinner", () => {
     expect(deletePreparedEventCoverVideoSource).toHaveBeenCalled();
     expect(renderHook().stage).toMatchObject({ phase: "error" });
   });
+
+  // ---------------------------------------------------------------------------
+  // Issue #3074 — "Reconnecting to your video…" is a phase, never a resting
+  // place. Field observation 2026-09-03: the sheet sat on it for 39 minutes
+  // against a job that had been terminally `failed` for 39 minutes. The #2974
+  // note in the hook's catch documents an EARLIER trigger for the same stall,
+  // which is why the fix is a deadline rather than a third per-trigger patch:
+  // whatever branch the resume takes, the sheet lands on the job's real status.
+  // ---------------------------------------------------------------------------
+  test("issue #3074 — a resume that never settles lands on the job's canonical status, not on the spinner", async () => {
+    // This describe block runs on real timers; the deadline is a setTimeout, so
+    // fake them for the length of this test only.
+    jest.useFakeTimers();
+    mockPersistedJobs.set(`event:${SERVER_EVENT_ID}`, {
+      userId: "user-3074",
+      key: `event:${SERVER_EVENT_ID}`,
+      jobId: "job-3074",
+      clientOperationId: "33333333-3333-4333-8333-333333333333",
+      sourceUri: "file:///prepared-3074.mp4",
+      sourceFingerprint: `${"b".repeat(64)}:161210`,
+      sourceBytes: 161_210,
+      sourceDurationMs: 15_000,
+      sourceFileName: "cover.mp4",
+      sourceMimeType: "video/mp4",
+      sourceExtension: "mp4",
+      sourceSha256: "b".repeat(64),
+      trimStartMs: 0,
+      trimEndMs: 15_000,
+      sourceAcknowledged: true,
+    });
+    // The wedge: the resume's own status read never answers, so nothing ever
+    // moves the sheet off the spinner. The deadline's read is a fresh request
+    // and it does answer — which is the whole point of going back for the truth
+    // instead of waiting on a request that is never coming back.
+    let statusCalls = 0;
+    fetchEventCoverVideoStatus.mockImplementation((() => {
+      statusCalls += 1;
+      if (statusCalls === 1) return new Promise(() => {});
+      return Promise.resolve(
+        status({
+          status: "failed",
+          isTerminal: true,
+          failureCode: "source_identity_mismatch",
+        }),
+      );
+    }) as never);
+
+    renderHook();
+    await mockFlushEffects();
+    for (let micro = 0; micro < 20; micro += 1) await Promise.resolve();
+    // Before the deadline the spinner is legitimate — the resume is still working.
+    expect(renderHook().stage).toMatchObject({ phase: "reattaching" });
+
+    jest.advanceTimersByTime(12_000);
+    for (let round = 0; round < 6; round += 1) {
+      for (let micro = 0; micro < 40; micro += 1) await Promise.resolve();
+      jest.advanceTimersByTime(1_000);
+    }
+
+    const after = renderHook();
+    // The 39-minute symptom, pinned: the sheet must not still be reconnecting.
+    expect(after.stage).not.toMatchObject({ phase: "reattaching" });
+    expect(statusCalls).toBeGreaterThanOrEqual(2);
+    jest.useRealTimers();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Issue #3075 — "Close — keep working" must actually keep working. The
+  // unmount cleanup aborted the in-flight controller, so closing the sheet
+  // froze the transfer (measured: 0 of 3,213,373 bytes, unchanged for 2m30s)
+  // and only reopening it resumed. Unmount may stop this instance WRITING; it
+  // may not stop the bytes.
+  // ---------------------------------------------------------------------------
+  test("issue #3075 — unmounting the sheet does not abort the in-flight transfer", async () => {
+    let uploadSignal: AbortSignal | null = null;
+    uploadEventCoverVideoSource.mockImplementation((({ signal }: { signal: AbortSignal }) => {
+      uploadSignal = signal;
+      return new Promise(() => {});
+    }) as never);
+    createEventCoverVideoUploadIntent.mockResolvedValue({
+      jobId: "job-3075",
+      upload: { fields: {}, url: "https://upload.example.com", protocol: "tus" },
+    } as never);
+
+    const hook = renderHook();
+    // Mount for real: this is what registers the cleanup that used to kill the
+    // transfer. Without it the assertion below is unfalsifiable — there is no
+    // cleanup to run, and the test passes whether or not the abort is there.
+    await mockFlushEffects();
+    for (let micro = 0; micro < 20; micro += 1) await Promise.resolve();
+    expect(mockEffectCleanups.length).toBeGreaterThan(0);
+
+    void hook.start(uploadFile);
+    for (let micro = 0; micro < 30; micro += 1) await Promise.resolve();
+    expect(uploadSignal).not.toBeNull();
+    const signal = uploadSignal as unknown as AbortSignal;
+    expect(signal.aborted).toBe(false);
+
+    // Close the sheet.
+    mockEffectCleanups.splice(0).forEach((cleanup) => cleanup());
+    for (let micro = 0; micro < 10; micro += 1) await Promise.resolve();
+
+    // The bytes must still be moving.
+    expect(signal.aborted).toBe(false);
+  });
 });
