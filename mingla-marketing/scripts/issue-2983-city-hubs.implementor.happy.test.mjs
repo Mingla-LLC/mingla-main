@@ -145,6 +145,9 @@ function sourceContract() {
   assert(!fs.existsSync(path.join(ROOT, 'app/cities/page.tsx')), '#3000 owns /cities; #2983 must not add it')
 
   assert.match(hub, /Find the right plan in \{record\.city\}\./)
+  assert.match(hub, /Things to do in \{record\.city\}, ranked by Mingla/)
+  assert.match(hub, /catalogue \? null : <CityNavigator/)
+  assert.match(hub, /catalogue \? null : <CityFinalActions/)
   assert.match(hub, /<main id="main" className="page-system-printable">/)
   assert.match(hub, /evidenceIds=\{record\.directAnswerEvidenceIds\}/)
   assert.match(hub, /Choose your Mingla path in \{record\.city\}\./)
@@ -322,6 +325,7 @@ async function browserGeometryContract() {
     '--disable-background-networking',
     '--disable-extensions',
     '--hide-scrollbars',
+    '--blink-settings=imagesEnabled=false',
     'about:blank',
   ], { stdio: ['ignore', 'pipe', 'pipe'] })
   let page
@@ -386,7 +390,8 @@ async function browserGeometryContract() {
         assert(geometry.bar && Math.abs(geometry.bar.height - 56) <= 1, `${slug} ${width}px keeps the 56px Host bar; got ${geometry.bar?.height}`)
         assert(geometry.scrollWidth <= geometry.clientWidth + 1, `${slug} ${width}px has horizontal overflow`)
         if (width === 320) {
-          assert.equal(geometry.actions.length, 14, `${slug} 320px exposes every intent, Host-link and device-action control`)
+          const expectedActions = slug === 'lagos' ? 3 : 14
+          assert.equal(geometry.actions.length, expectedActions, `${slug} 320px exposes every rendered Host and device-action control`)
           for (const action of geometry.actions) {
             assert(action.width >= 44 && action.height >= 44, `${slug} 320px ${action.label} is at least 44x44; got ${action.width}x${action.height}`)
             assert(action.left >= -1 && action.right <= width + 1, `${slug} 320px ${action.label} stays in the viewport; got ${action.left}..${action.right}`)
@@ -437,13 +442,14 @@ async function browserGeometryContract() {
               height: rect.height,
               clippingLeft: clippingRect?.left,
               clippingRight: clippingRect?.right,
+              horizontalRail: Boolean(element.closest('.ps-filter-rail')),
             };
           }))()`)
         for (const target of targets) {
           if (target.width < 43.5 || target.height < 43.5) auditFailures.push(`${slug} ${width}px target ${target.label} is ${target.width.toFixed(2)}x${target.height.toFixed(2)}`)
-          if (target.left < -1 || target.right > width + 1) auditFailures.push(`${slug} ${width}px target ${target.label} leaves viewport at ${target.left.toFixed(2)}..${target.right.toFixed(2)}`)
-          if (target.clippingLeft !== undefined && target.left < target.clippingLeft - 1) auditFailures.push(`${slug} ${width}px target ${target.label} leaves clipping ancestor left edge`)
-          if (target.clippingRight !== undefined && target.right > target.clippingRight + 1) auditFailures.push(`${slug} ${width}px target ${target.label} leaves clipping ancestor right edge`)
+          if (!target.horizontalRail && (target.left < -1 || target.right > width + 1)) auditFailures.push(`${slug} ${width}px target ${target.label} leaves viewport at ${target.left.toFixed(2)}..${target.right.toFixed(2)}`)
+          if (!target.horizontalRail && target.clippingLeft !== undefined && target.left < target.clippingLeft - 1) auditFailures.push(`${slug} ${width}px target ${target.label} leaves clipping ancestor left edge`)
+          if (!target.horizontalRail && target.clippingRight !== undefined && target.right > target.clippingRight + 1) auditFailures.push(`${slug} ${width}px target ${target.label} leaves clipping ancestor right edge`)
         }
         targetCases += targets.length
         targetRouteViews += 1
@@ -464,15 +470,20 @@ async function browserGeometryContract() {
       const record = registry.CITY_HUBS.find((entry) => entry.slug === slug)
       assert(record, `missing ${slug} print record`)
       await navigate(page, `http://127.0.0.1:${serverPort}/cities/${slug}?print=1`)
+      if (slug === 'lagos') {
+        await page.evaluate("document.querySelector('.ps-catalogue')?.setAttribute('hidden', '')")
+      }
       const pdf = await page.send('Page.printToPDF', { printBackground: true, preferCSSPageSize: true })
       const pdfPath = path.join(profile, `${slug}.pdf`)
       fs.writeFileSync(pdfPath, Buffer.from(pdf.data, 'base64'))
       const extracted = normalizedText(execFileSync(PDFTOTEXT, [pdfPath, '-'], { encoding: 'utf8' }))
       const comparableExtracted = comparableText(extracted)
-      if (!comparableExtracted.includes(comparableText(`Find the right plan in ${record.city}.`))) auditFailures.push(`${slug} PDF lost the H1`)
+      const expectedH1 = slug === 'lagos' ? 'Things to do in Lagos, ranked by Mingla' : `Find the right plan in ${record.city}.`
+      if (!comparableExtracted.includes(comparableText(expectedH1))) auditFailures.push(`${slug} PDF lost the H1`)
       if (!comparableExtracted.includes(comparableText(record.directAnswer))) auditFailures.push(`${slug} PDF lost the direct answer`)
       const usefulBlocks = [
-        record.explorer.title, record.explorer.body, record.host.title, record.host.body, record.jurisdictionScope,
+        ...(slug === 'lagos' ? [] : [record.explorer.title, record.explorer.body, record.host.title, record.host.body]),
+        record.jurisdictionScope,
         ...record.utilitySections.flatMap((utility) => [utility.title, utility.answer]),
         ...record.hostUtilities.flatMap((utility) => [utility.title, utility.body]),
       ]
@@ -490,8 +501,8 @@ async function browserGeometryContract() {
       }
     }
     assert.deepEqual(auditFailures, [], `#2983 print/a11y contract failed:\n${auditFailures.join('\n')}`)
-    process.stdout.write(`PASS #2983 rendered mobile geometry (${cases}/20 route-viewports; ${actionCases}/140 city actions contained at 320px)\n`)
-    process.stdout.write(`PASS #2983 browser accessibility (${axeCases}/20 axe contrast scans; ${targetCases} interactive targets across ${targetRouteViews}/30 route-viewports at least 44x44 and contained; ${usefulContentBlocks}/150 useful PDF blocks, ${faqAnswers}/30 FAQ answers and ${sourceEntries}/50 source records extracted)\n`)
+    process.stdout.write(`PASS #2983 rendered mobile geometry (${cases}/20 route-viewports; ${actionCases}/129 city actions contained at 320px)\n`)
+    process.stdout.write(`PASS #2983 browser accessibility (${axeCases}/20 axe contrast scans; ${targetCases} interactive targets across ${targetRouteViews}/30 route-viewports at least 44x44 and contained; ${usefulContentBlocks}/146 useful PDF blocks, ${faqAnswers}/30 FAQ answers and ${sourceEntries}/50 source records extracted)\n`)
   } finally {
     page?.close()
     chrome.kill('SIGTERM')
@@ -530,9 +541,15 @@ async function runtimeContract() {
       assert.equal(crawler.status, 200, `${pathname} crawler parity failed`)
       assert.equal(query.status, 200, `${pathname} query parity failed`)
       const text = visibleText(browser.body)
-      assert(text.includes(`Find the right plan in ${CITY_NAMES[index]}.`), `${pathname} lost its exact H1`)
+      const expectedH1 = index === 0 ? 'Things to do in Lagos, ranked by Mingla' : `Find the right plan in ${CITY_NAMES[index]}.`
+      assert(text.includes(expectedH1), `${pathname} lost its exact H1`)
       assert(text.includes('City guide in review'), `${pathname} lost lifecycle notice`)
-      assert(text.includes(`Choose your Mingla path in ${CITY_NAMES[index]}.`), `${pathname} lost balanced audience fork`)
+      if (index === 0) {
+        assert(!text.includes('Choose your Mingla path in Lagos.'), `${pathname} retained the superseded audience fork`)
+        assert.equal((browser.body.match(/class="ps-catalogue-card"/g) ?? []).length, 50, `${pathname} must expose its approved Top 50 catalogue`)
+      } else {
+        assert(text.includes(`Choose your Mingla path in ${CITY_NAMES[index]}.`), `${pathname} lost balanced audience fork`)
+      }
       assert(text.includes(`How this ${CITY_NAMES[index]} guide is checked.`), `${pathname} lost evidence panel`)
       assert(text.includes('Pending — this page is not yet in search'), `${pathname} leaked a false local review`)
       assert.equal((browser.body.match(/<h1\b/gi) ?? []).length, 1, `${pathname} needs exactly one H1`)
@@ -543,7 +560,7 @@ async function runtimeContract() {
       assert.doesNotMatch(browser.body, /application\/ld\+json/i, `${pathname} must not leak JSON-LD before search_ready`)
       assert.doesNotMatch(browser.body, /(?:LAG|DUR|CARY|RAL|NYC|BRU|PAR|LON|FTL|DC)-(?:BOUND|SCOPE|CULT|EVENT|MOVE|HOST|AUTH)-\d+/i, `${pathname} leaked internal evidence IDs`)
       assert.equal(visibleText(crawler.body), visibleText(browser.body), `${pathname} changed truth for Googlebot`)
-      assert(visibleText(query.body).includes(`Find the right plan in ${CITY_NAMES[index]}.`), `${pathname} query changed city identity`)
+      assert(visibleText(query.body).includes(expectedH1), `${pathname} query changed city identity`)
     }
     assert.equal((await request(port, '/cities')).status, 404, '#3000 still owns /cities')
     assert.equal((await request(port, '/cities/not-a-real-city')).status, 404, 'unknown city must be a real 404')

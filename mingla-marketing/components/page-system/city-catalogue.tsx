@@ -9,6 +9,8 @@ import { ExplorerCatalogueCard } from './explorer-catalogue-card'
 type CatalogueType = 'places' | 'plans'
 
 interface CityCatalogueProps {
+  readonly cityName: string
+  readonly cityPath: string
   readonly places: readonly CataloguePlace[]
   readonly plans: readonly CataloguePlan[]
   readonly initialType: CatalogueType
@@ -16,8 +18,6 @@ interface CityCatalogueProps {
   readonly initialIntents: readonly string[]
   readonly initialDetail: string | null
 }
-
-const CITY_PATH = '/internal/page-system/city-lagos'
 
 function orderedUnique<T extends string>(values: readonly T[]): readonly T[] {
   return [...new Set(values)]
@@ -27,14 +27,14 @@ function planIntent(plan: CataloguePlan): string {
   return plan.generatedCardId.replace('lagos-editorial-', '')
 }
 
-function catalogueHref(type: CatalogueType, categories: readonly ExplorerCategorySlug[], intents: readonly string[], detail?: string): string {
+function catalogueHref(cityPath: string, type: CatalogueType, categories: readonly ExplorerCategorySlug[], intents: readonly string[], detail?: string): string {
   const query = new URLSearchParams({ type })
   const uniqueCategories = orderedUnique(categories)
   const uniqueIntents = orderedUnique(intents)
   if (type === 'places' && uniqueCategories.length > 0) query.set('categories', uniqueCategories.join(','))
   if (type === 'plans' && uniqueIntents.length > 0) query.set('intents', uniqueIntents.join(','))
   if (detail) query.set('detail', detail)
-  return `${CITY_PATH}?${query.toString()}`
+  return `${cityPath}?${query.toString()}`
 }
 
 function interleavePlaces(places: readonly CataloguePlace[], categories: readonly ExplorerCategorySlug[]): readonly CataloguePlace[] {
@@ -51,7 +51,7 @@ function interleavePlaces(places: readonly CataloguePlace[], categories: readonl
   return result
 }
 
-export function CityCatalogue({ places, plans, initialType, initialCategories, initialIntents, initialDetail }: CityCatalogueProps) {
+export function CityCatalogue({ cityName, cityPath, places, plans, initialType, initialCategories, initialIntents, initialDetail }: CityCatalogueProps) {
   const [type, setType] = useState<CatalogueType>(initialType)
   const [categories, setCategories] = useState<readonly ExplorerCategorySlug[]>(orderedUnique(initialCategories))
   const [intents, setIntents] = useState<readonly string[]>(orderedUnique(initialIntents))
@@ -64,7 +64,7 @@ export function CityCatalogue({ places, plans, initialType, initialCategories, i
     [intents, plans],
   )
   const visibleItems = type === 'places' ? visiblePlaces : visiblePlans
-  const backHref = catalogueHref(type, categories, intents)
+  const backHref = catalogueHref(cityPath, type, categories, intents)
   const selectedItem = detail?.startsWith('place:')
     ? places.find((place) => `place:${place.placePoolId}` === detail)
     : detail?.startsWith('plan:')
@@ -72,7 +72,7 @@ export function CityCatalogue({ places, plans, initialType, initialCategories, i
       : undefined
 
   useEffect(() => {
-    function onPopState() {
+    function syncFromLocation() {
       const query = new URLSearchParams(window.location.search)
       const nextType = query.get('type') === 'plans' ? 'plans' : 'places'
       const nextCategories = orderedUnique((query.get('categories')?.split(',') ?? [])
@@ -87,8 +87,9 @@ export function CityCatalogue({ places, plans, initialType, initialCategories, i
         window.requestAnimationFrame(() => openerRef.current?.focus())
       }
     }
-    window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
+    syncFromLocation()
+    window.addEventListener('popstate', syncFromLocation)
+    return () => window.removeEventListener('popstate', syncFromLocation)
   }, [plans])
 
   function navigate(nextHref: string, next: { type?: CatalogueType; categories?: readonly ExplorerCategorySlug[]; intents?: readonly string[]; detail?: string | null }) {
@@ -142,7 +143,7 @@ export function CityCatalogue({ places, plans, initialType, initialCategories, i
       <div className="ps-catalogue-controls" data-print-hide>
         <div className="ps-type-toggle" aria-label="Choose catalogue type">
           {(['places', 'plans'] as const).map((candidate) => {
-            const href = catalogueHref(candidate, [], [])
+            const href = catalogueHref(cityPath, candidate, [], [])
             return (
               <a
                 key={candidate}
@@ -161,11 +162,11 @@ export function CityCatalogue({ places, plans, initialType, initialCategories, i
 
         <div className="ps-filter-rail" aria-label={type === 'places' ? 'Filter places by category' : 'Filter plans by intent'}>
           <a
-            href={catalogueHref(type, [], [])}
+            href={catalogueHref(cityPath, type, [], [])}
             aria-current={(type === 'places' ? categories.length : intents.length) === 0 ? 'true' : undefined}
             onClick={(event) => {
               event.preventDefault()
-              navigate(catalogueHref(type, [], []), type === 'places' ? { categories: [], detail: null } : { intents: [], detail: null })
+              navigate(catalogueHref(cityPath, type, [], []), type === 'places' ? { categories: [], detail: null } : { intents: [], detail: null })
             }}
           >
             {type === 'places' ? 'All 10' : 'All plans'}
@@ -177,20 +178,20 @@ export function CityCatalogue({ places, plans, initialType, initialCategories, i
               : selected
                 ? categories.filter((candidate) => candidate !== category.slug)
                 : [...categories, category.slug]
-            const href = catalogueHref(type, next, [])
+            const href = catalogueHref(cityPath, type, next, [])
             return <a key={category.slug} href={href} aria-pressed={selected} onClick={(event) => { event.preventDefault(); toggleCategory(category.slug, href) }}>{category.label}</a>
           }) : plans.map((plan) => {
             const intent = planIntent(plan)
             const selected = intents.includes(intent)
             const next = intents.length === 0 ? [intent] : selected ? intents.filter((candidate) => candidate !== intent) : [...intents, intent]
-            const href = catalogueHref(type, [], next)
+            const href = catalogueHref(cityPath, type, [], next)
             return <a key={intent} href={href} aria-pressed={selected} onClick={(event) => { event.preventDefault(); toggleIntent(intent, href) }}>{plan.intentLabel}</a>
           })}
         </div>
       </div>
 
       <header className="ps-catalogue-result-heading">
-        <div><p className="ps-eyebrow">{type === 'places' ? 'Explorer-ranked places' : 'Mingla ready-made plans'}</p><h2 id="catalogue-results-heading">{type === 'places' ? `${visiblePlaces.length} Lagos places` : `${visiblePlans.length} Lagos plans`}</h2></div>
+        <div><p className="ps-eyebrow">{type === 'places' ? 'Explorer-ranked places' : 'Mingla ready-made plans'}</p><h2 id="catalogue-results-heading">{type === 'places' ? `${visiblePlaces.length} ${cityName} places` : `${visiblePlans.length} ${cityName} plans`}</h2></div>
         <p aria-live="polite" aria-atomic="true">{type === 'places' ? 'Each category keeps its own score order.' : 'Plans are shown as curated compositions, not ranked against places.'}</p>
       </header>
 
@@ -198,19 +199,19 @@ export function CityCatalogue({ places, plans, initialType, initialCategories, i
         <div className="ps-catalogue-grid">
           {visibleItems.map((item, index) => {
             const detailValue = item.kind === 'place' ? `place:${item.placePoolId}` : `plan:${item.generatedCardId}`
-            const href = catalogueHref(type, categories, intents, detailValue)
-            return <ExplorerCatalogueCard key={detailValue} item={item} href={href} featured={index < 4} onOpen={openDetail} appCtaLocation="page_system_city_place_card" />
+            const href = catalogueHref(cityPath, type, categories, intents, detailValue)
+            return <ExplorerCatalogueCard key={detailValue} item={item} cityName={cityName} href={href} featured={index < 4} onOpen={openDetail} appCtaLocation="page_system_city_place_card" />
           })}
         </div>
       ) : (
         <div className="ps-catalogue-empty" role="status">
-          <h3>{type === 'places' ? 'No Lagos places are ready in this category yet.' : 'No ready-made Lagos plans came back this time.'}</h3>
+          <h3>{type === 'places' ? `No ${cityName} places are ready in this category yet.` : `No ready-made ${cityName} plans came back this time.`}</h3>
           <p>{type === 'places' ? 'Try another category.' : 'Try another plan intent.'}</p>
         </div>
       )}
 
-      {detail ? selectedItem ? <CatalogueDetail item={selectedItem} backHref={backHref} onClose={closeDetail} /> : (
-        <aside className="ps-detail-missing" role="alert"><h2>That pick is no longer available.</h2><a href={backHref} onClick={(event) => { event.preventDefault(); closeDetail() }}>Back to Lagos picks</a></aside>
+      {detail ? selectedItem ? <CatalogueDetail item={selectedItem} cityName={cityName} backHref={backHref} onClose={closeDetail} /> : (
+        <aside className="ps-detail-missing" role="alert"><h2>That pick is no longer available.</h2><a href={backHref} onClick={(event) => { event.preventDefault(); closeDetail() }}>Back to {cityName} picks</a></aside>
       ) : null}
     </section>
   )

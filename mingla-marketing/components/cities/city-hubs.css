@@ -65,6 +65,7 @@
 }
 .city-hero h1 { max-width: 14ch; margin: 20px 0 0; font-size: clamp(2.5rem, 5.2vw, 4.75rem); line-height: 1.05; }
 .city-direct-answer { max-width: 68ch; margin: 24px 0 0; color: var(--cut-body); font-size: 18px; line-height: 29px; font-weight: 600; }
+.city-catalogue-summary { max-width: 62ch; margin: 18px 0 0; color: var(--cut-ink); font-size: 18px; line-height: 28px; font-weight: 800; }
 .city-coverage { margin: 20px 0 0; color: var(--cut-muted); font: 700 12px/18px var(--font-inter), sans-serif; }
 .city-hero-actions { margin-top: 32px; display: flex; flex-wrap: wrap; gap: 12px; }
 .city-hero-actions > * { min-width: 196px; }

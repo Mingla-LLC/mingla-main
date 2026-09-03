@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { CityHub } from '@/components/cities/city-hub'
 import { CITY_HUBS, cityHubForSlug } from '@/content/cities/registry'
+import { getLagosCatalogueSnapshot } from '@/lib/page-system/city-catalogue.server'
 import { cityHubMetadata } from '@/lib/search/metadata'
 import { cityHubStructuredData, serializeCityHubStructuredData } from '@/lib/search/city-schema'
 
@@ -27,6 +28,7 @@ export default async function CityHubPage({ params }: CityHubPageProps) {
   const record = cityHubForSlug(city)
   if (!record) notFound()
   const structuredData = cityHubStructuredData(record)
+  const catalogue = city === 'lagos' ? getLagosCatalogueSnapshot('/cities/lagos') : null
   return (
     <>
       {structuredData ? (
@@ -35,7 +37,16 @@ export default async function CityHubPage({ params }: CityHubPageProps) {
           dangerouslySetInnerHTML={{ __html: serializeCityHubStructuredData(structuredData) }}
         />
       ) : null}
-      <CityHub record={record} />
+      <CityHub
+        record={record}
+        catalogue={catalogue ? {
+          ...catalogue,
+          initialType: 'places',
+          initialCategories: [],
+          initialIntents: [],
+          initialDetail: null,
+        } : undefined}
+      />
     </>
   )
 }
