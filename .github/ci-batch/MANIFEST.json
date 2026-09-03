@@ -15177,15 +15177,17 @@
       "providerWorkflow": ".github/workflows/issue-1774-people-page-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5ed753f810ae300924cd51867933de8859046cb79d6f935863a19b4e271ddcd7",
+        "sourceSha256": "d3192d5f39deb7ccf544230ee85ea1f9983abc51efa744b3d5505465a5b6a900",
         "triggers": [
           "pull_request",
           "push"
         ],
         "pathScope": [
           ".github/scripts/strict-grep/.orch-0891-bundle-baseline.json",
+          ".github/scripts/strict-grep/MANIFEST.json",
           ".github/scripts/strict-grep/__tests__/issue-1774-people-page.tester.test.mjs",
           ".github/scripts/strict-grep/issue-1774-people-page.mjs",
+          ".github/scripts/strict-grep/issue-1776-marketing-edge-rank-boundary.mjs",
           ".github/scripts/strict-grep/issue-2024-people-page-layout.mjs",
           ".github/scripts/strict-grep/orch-0891-marketing-performance-budget.mjs",
           ".github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs",
@@ -15201,9 +15203,13 @@
           "mingla-business/src/hooks/marketing/**",
           "mingla-business/src/hooks/useContactImport.ts",
           "mingla-business/src/lib/search/registry.ts",
+          "mingla-business/src/services/brandBookExportService.ts",
           "mingla-business/src/services/peopleService.ts",
           "mingla-business/src/types/people.ts",
+          "mingla-business/src/utils/permissionGates.ts",
           "scripts/audit/marketing-grade-a-contract.mjs",
+          "supabase/functions/brand-people-export/**",
+          "supabase/functions/marketing-*/**",
           "supabase/migrations/20270329001774_issue_1774_people_page.sql",
           "supabase/migrations/20270330001774_issue_1774_qualify_people_digest.sql",
           "supabase/migrations/__tests__/issue_1774_people_digest_qualification.test.sql",

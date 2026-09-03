@@ -31,6 +31,9 @@ export const MIN_RANK = {
   REMOVE_TEAM_MEMBER: BRAND_ROLE_RANK.brand_admin, // 50
   REVOKE_INVITATION: BRAND_ROLE_RANK.brand_admin, // 50
   VIEW_AUDIT_LOG: BRAND_ROLE_RANK.brand_admin, // 50
+  // #1776 — brand-owned contact-book export. The edge/RPC repeats this gate;
+  // this client threshold exists only to make the UI truthful before the tap.
+  EXPORT_BRAND_BOOK: BRAND_ROLE_RANK.brand_admin, // 50
   // #2830 — Website workspace read/access floor shared with Core.
   WEBSITE_WORKSPACE: 20, // marketing_manager; exact Core mirror
   // 13b expansion targets (defined now for forward-compat; not used in 13a):
