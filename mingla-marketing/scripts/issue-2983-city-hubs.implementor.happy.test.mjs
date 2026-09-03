@@ -167,6 +167,9 @@ function sourceContract() {
   assert.match(css, /top: calc\(var\(--city-host-bar-height\) \+ 12px\)/)
   assert.match(css, /\.page-system-root\.city-hub-root\[data-host-acquisition='true'\] \.ps-nav/)
   assert.match(css, /@media \(max-width: 767px\)/)
+  assert.match(css, /@media \(max-width: 359px\)/)
+  assert.match(css, /\.city-intent-list > li,[\s\S]*\.city-host-links > li \{ width: 100%; min-width: 0; max-width: 100%; \}/)
+  assert.match(css, /\.city-hub-root \.cut-btn \{[\s\S]*white-space: normal;[\s\S]*overflow: visible;/)
   assert.match(css, /@media \(min-width: 520px\) and \(max-width: 999px\)/)
   assert.match(css, /grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/)
   assert.match(css, /@media \(hover: hover\) and \(pointer: fine\)/)
@@ -312,6 +315,7 @@ async function browserGeometryContract() {
     await waitFor(async () => (await fetch(`http://127.0.0.1:${debugPort}/json/version`)).ok, 'Chrome did not start')
     page = await createPage(debugPort)
     let cases = 0
+    let actionCases = 0
     for (const width of [390, 320]) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height: width === 390 ? 844 : 480, deviceScaleFactor: 1, mobile: true })
       for (const slug of CITY_SLUGS) {
@@ -322,9 +326,38 @@ async function browserGeometryContract() {
           const triggerRect = trigger?.getBoundingClientRect();
           const barRect = bar?.getBoundingClientRect();
           const hit = triggerRect ? document.elementFromPoint(triggerRect.left + triggerRect.width / 2, triggerRect.top + triggerRect.height / 2) : null;
+          const actionSelector = '.city-intent-list a, .city-host-links a, .city-hero-actions .cut-btn, .city-card-action, .city-section-action .cut-btn, .city-final-action-buttons .cut-btn';
+          const actions = [...document.querySelectorAll(actionSelector)].map((action) => {
+            const rect = action.getBoundingClientRect();
+            const container = action.closest('li, .city-hero-actions, .city-final-action-buttons, .city-section-action, .city-audience-card');
+            const containerRect = container?.getBoundingClientRect();
+            let clippingAncestor = action.parentElement;
+            while (clippingAncestor && clippingAncestor !== document.documentElement) {
+              const overflow = getComputedStyle(clippingAncestor);
+              if ([overflow.overflowX, overflow.overflowY].some((value) => ['hidden', 'clip', 'auto', 'scroll'].includes(value))) break;
+              clippingAncestor = clippingAncestor.parentElement;
+            }
+            const clippingRect = clippingAncestor?.getBoundingClientRect();
+            const style = getComputedStyle(action);
+            return {
+              label: action.textContent.trim(),
+              left: rect.left,
+              right: rect.right,
+              width: rect.width,
+              height: rect.height,
+              containerLeft: containerRect?.left,
+              containerRight: containerRect?.right,
+              clippingLeft: clippingRect?.left,
+              clippingRight: clippingRect?.right,
+              clippedText: action.scrollWidth > action.clientWidth + 1 || action.scrollHeight > action.clientHeight + 1,
+              textOverflow: style.textOverflow,
+              whiteSpace: style.whiteSpace,
+            };
+          });
           return {
             trigger: triggerRect ? { left: triggerRect.left, right: triggerRect.right, width: triggerRect.width, height: triggerRect.height } : null,
             bar: barRect ? { left: barRect.left, right: barRect.right, height: barRect.height } : null,
+            actions,
             hit: Boolean(trigger && hit && (trigger === hit || trigger.contains(hit))),
             clientWidth: document.documentElement.clientWidth,
             scrollWidth: document.documentElement.scrollWidth,
@@ -336,10 +369,25 @@ async function browserGeometryContract() {
         assert(geometry.hit, `${slug} ${width}px Start hosting center is not obstructed`)
         assert(geometry.bar && Math.abs(geometry.bar.height - 56) <= 1, `${slug} ${width}px keeps the 56px Host bar; got ${geometry.bar?.height}`)
         assert(geometry.scrollWidth <= geometry.clientWidth + 1, `${slug} ${width}px has horizontal overflow`)
+        if (width === 320) {
+          assert.equal(geometry.actions.length, 14, `${slug} 320px exposes every intent, Host-link and device-action control`)
+          for (const action of geometry.actions) {
+            assert(action.width >= 44 && action.height >= 44, `${slug} 320px ${action.label} is at least 44x44; got ${action.width}x${action.height}`)
+            assert(action.left >= -1 && action.right <= width + 1, `${slug} 320px ${action.label} stays in the viewport; got ${action.left}..${action.right}`)
+            assert(action.containerLeft === undefined || action.left >= action.containerLeft - 1, `${slug} 320px ${action.label} stays inside its container left edge`)
+            assert(action.containerRight === undefined || action.right <= action.containerRight + 1, `${slug} 320px ${action.label} stays inside its container right edge; got ${action.right} > ${action.containerRight}`)
+            assert(action.clippingLeft === undefined || action.left >= action.clippingLeft - 1, `${slug} 320px ${action.label} stays inside its nearest clipping ancestor left edge`)
+            assert(action.clippingRight === undefined || action.right <= action.clippingRight + 1, `${slug} 320px ${action.label} stays inside its nearest clipping ancestor right edge; got ${action.right} > ${action.clippingRight}`)
+            assert.equal(action.clippedText, false, `${slug} 320px ${action.label} text is not clipped`)
+            assert.notEqual(action.textOverflow, 'ellipsis', `${slug} 320px ${action.label} is not ellipsized`)
+            assert.notEqual(action.whiteSpace, 'nowrap', `${slug} 320px ${action.label} permits natural wrapping`)
+          }
+          actionCases += geometry.actions.length
+        }
         cases += 1
       }
     }
-    process.stdout.write(`PASS #2983 rendered mobile Start hosting geometry (${cases}/20 at 390px and 320px)\n`)
+    process.stdout.write(`PASS #2983 rendered mobile geometry (${cases}/20 route-viewports; ${actionCases}/140 city actions contained at 320px)\n`)
   } finally {
     page?.close()
     chrome.kill('SIGTERM')
