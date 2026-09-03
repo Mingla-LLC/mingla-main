@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { RestaurantV1 } from "../components/RestaurantV1";
 import { loadPublication, normalizePublicHost } from "../lib/publication";
+import { homePage } from "../lib/pageRouting";
 
 export const dynamic = "force-dynamic";
 
@@ -31,5 +32,7 @@ export default async function HomePage() {
     publication = await currentPublication();
   } catch { notFound(); }
   const { artifact, resolution } = publication;
-  return <div data-publication-id={resolution.publication_id} data-artifact-digest={resolution.artifact_digest}><RestaurantV1 artifact={artifact} /></div>;
+  const page = homePage(artifact);
+  if (!page) notFound();
+  return <div data-publication-id={resolution.publication_id} data-artifact-digest={resolution.artifact_digest} data-page="home"><RestaurantV1 artifact={artifact} page={page} /></div>;
 }

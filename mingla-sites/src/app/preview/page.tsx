@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { RestaurantV1 } from "../../components/RestaurantV1";
+import { homePage } from "../../lib/pageRouting";
 import {
   loadPreviewArtifact,
   parsePreviewArtifactKey,
@@ -41,7 +42,7 @@ export default async function PreviewPage({
       <p className="preview-banner" role="status">
         Private preview — not live. Publishing is always a separate confirmation.
       </p>
-      <RestaurantV1 artifact={artifact} />
+      <RestaurantV1 artifact={artifact} page={homePage(artifact) ?? undefined} />
     </div>
   );
 }
