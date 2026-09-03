@@ -112,6 +112,10 @@ function sourceContract() {
     'jurisdiction_contract_mismatch', 'boundary_version_invalid', 'content_contract_mismatch',
   ]) assert(registry.includes(`'${reason}'`), `missing fail-closed reason ${reason}`)
   assert.match(registry, /APPROVED_CITY_CONTENT_FINGERPRINTS/)
+  assert.match(registry, /directAnswer: \[normalizedContent\(record\.directAnswer\), \[\.\.\.record\.directAnswerEvidenceIds\]\]/)
+  assert.equal((registry.match(/\.\.\.evidenceIds/g) ?? []).length, 3, 'utility, Host utility and FAQ mappings must be fingerprinted')
+  assert.match(registry, /record\.explorer\.evidenceIds/)
+  assert.match(registry, /record\.host\.evidenceIds/)
   assert.match(registry, /CITY_JURISDICTIONS/)
   assert.match(registry, /boundaryEvidenceIds/)
   assert.equal((registry.match(/directAnswerEvidenceIds:/g) ?? []).length, 11, 'type plus all ten direct answers need evidence IDs')
@@ -425,6 +429,11 @@ if (SELF_TEST) {
     ['expired record review', 'source_review_invalid', (record) => { record.nextReviewAt = '2020-01-01' }],
     ['claim without live evidence', 'claim_evidence_not_live', (record) => { record.utilitySections[0].evidenceIds = ['MISSING-EVIDENCE'] }],
     ['direct answer without evidence', 'claim_evidence_missing', (record) => { record.directAnswerEvidenceIds = [] }],
+    ['direct answer unrelated live-ID swap', 'content_contract_mismatch', (record) => { record.directAnswerEvidenceIds = ['DUR-BOUND-01'] }],
+    ['utility unrelated live-ID swap', 'content_contract_mismatch', (record) => { record.utilitySections[0].evidenceIds = ['DUR-BOUND-01'] }],
+    ['live evidence-ID reorder', 'content_contract_mismatch', (record) => { record.utilitySections[2].evidenceIds = [...record.utilitySections[2].evidenceIds].reverse() }],
+    ['unrelated live evidence-ID addition', 'content_contract_mismatch', (record) => { record.utilitySections[0].evidenceIds = [...record.utilitySections[0].evidenceIds, 'DUR-BOUND-01'] }],
+    ['approved live evidence-ID removal', 'content_contract_mismatch', (record) => { record.utilitySections[2].evidenceIds = record.utilitySections[2].evidenceIds.slice(0, -1) }],
     ['duplicated FAQ substitution', 'faq_content_duplicate', (record) => { record.faqs = [clone(record.faqs[0]), clone(record.faqs[0]), clone(record.faqs[0])] }],
     ['substituted direct answer', 'content_contract_mismatch', (record) => { record.directAnswer = registry.CITY_HUBS.find((city) => city.slug === 'cary-nc').directAnswer }],
     ['incomplete reviewer', 'reviewer_identity_incomplete', (record) => { record.localReview.name = '   ' }],
