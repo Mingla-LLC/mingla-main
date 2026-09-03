@@ -1666,7 +1666,9 @@
         "mingla-business/src/utils/__tests__/issue1996BusinessWebShare.tester.adversarial.test.ts",
         "mingla-business/src/utils/__tests__/issue1996BusinessWebShare.publicIsolation.tester.test.ts",
         "mingla-marketing/lib/content-share-readiness.ts",
-        ".github/workflows/issue-1996-business-desktop-sharing-tests.yml"
+        ".github/workflows/issue-1996-business-desktop-sharing-tests.yml",
+        "mingla-business/src/components/ui/__tests__/issue_1719_share_same_turn.happy.test.tsx",
+        "mingla-business/src/utils/__tests__/sharePublicUrl.test.ts"
       ],
       "steps": [
         {
@@ -2038,7 +2040,8 @@
         "supabase/migrations/**",
         "mingla-business/app/**",
         "mingla-business/src/**",
-        ".github/workflows/production-readiness-audit.yml"
+        ".github/workflows/production-readiness-audit.yml",
+        "scripts/load/validate-k6-scripts.mjs"
       ],
       "steps": [
         {
@@ -2347,7 +2350,11 @@
         "docs/INVARIANT_REGISTRY.md",
         ".github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs",
         ".github/scripts/strict-grep/MANIFEST.json",
-        ".github/workflows/issue-2399-multiday-picker-ticket-box.yml"
+        ".github/workflows/issue-2399-multiday-picker-ticket-box.yml",
+        "mingla-business/src/components/event/__tests__/PublicEventPage.issue2101.test.tsx",
+        "mingla-business/src/components/event/__tests__/issue_2135_multidate_public_day_picker.test.tsx",
+        "mingla-business/src/components/event/__tests__/issue_2209_public_page_shows_the_days.test.tsx",
+        "mingla-business/src/utils/__tests__/issue_2160_roster_and_wizard.test.tsx"
       ],
       "steps": [
         {
@@ -2823,7 +2830,9 @@
         "app-mobile/src/contexts/CoachMarkContext.tsx",
         "app-mobile/src/contexts/__tests__/issue-1516-coach-mark-grammar-and-blast-radius.tester-adversarial.test.tsx",
         "app-mobile/src/contexts/__tests__/issue-1516-coach-mark-single-process.test.tsx",
-        "supabase/migrations/20270210001516_issue_1516_normalize_coach_mark_step_grammar.sql"
+        "supabase/migrations/20270210001516_issue_1516_normalize_coach_mark_step_grammar.sql",
+        "app-mobile/src/components/__tests__/orch-1029-coach-mark-fixes.test.tsx",
+        "app-mobile/src/contexts/__tests__/orch-1029-coach-mark-adversarial.test.tsx"
       ],
       "steps": [
         {
@@ -3981,7 +3990,8 @@
         "app-mobile/src/hooks/useFriends.ts",
         "app-mobile/src/hooks/useFriendsQuery.ts",
         "app-mobile/src/utils/navTabHaptics.ts",
-        "app-mobile/src/utils/profileLocationFreshness.ts"
+        "app-mobile/src/utils/profileLocationFreshness.ts",
+        "app-mobile/src/components/__tests__/issue-1638-tab-switch-scheduling.test.mjs"
       ],
       "steps": [
         {
@@ -8486,7 +8496,8 @@
         "supabase/functions/venue-reservation-confirm/**",
         "supabase/functions/_shared/__tests__/issue_1326_ng_reservation_finalize.test.ts",
         "supabase/functions/_shared/__tests__/issue_1326_confirm_paystack.test.ts",
-        ".github/workflows/issue-1326-ng-reservation-finalize-tests.yml"
+        ".github/workflows/issue-1326-ng-reservation-finalize-tests.yml",
+        "supabase/functions/_shared/__tests__/_importmap.test.json"
       ],
       "triggerContract": {
         "push": {
@@ -9816,7 +9827,15 @@
         "mingla-admin/src/components/layout/AppShell.jsx",
         "mingla-admin/src/components/ui/Card.jsx",
         "mingla-admin/src/components/campaign-builder/StepLane.jsx",
-        ".github/workflows/issue-1950-app-readiness-tests.yml"
+        ".github/workflows/issue-1950-app-readiness-tests.yml",
+        "mingla-admin/src/__tests__/fixtures/issue1950Readiness.js",
+        "mingla-admin/src/__tests__/issue1928_app_identity_focus_rework.test.js",
+        "mingla-admin/src/__tests__/issue1928_app_identity_readiness.test.js",
+        "mingla-admin/src/__tests__/issue1950_app_readiness.adversarial.tester.test.js",
+        "mingla-admin/src/__tests__/issue1950_app_readiness.test.js",
+        "mingla-admin/src/__tests__/issue1950_app_readiness_gate.test.js",
+        "mingla-admin/src/lib/featureFlags.js",
+        "supabase/functions/_shared/__tests__/issue1950_app_readiness.test.ts"
       ],
       "triggerContract": {
         "push": null,
@@ -10579,7 +10598,11 @@
         ".github/scripts/strict-grep/issue-2230-consumer-carries-occurrences.mjs",
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/workflows/issue-2230-consumer-multiday-tests.yml",
-        "docs/INVARIANT_REGISTRY.md"
+        "docs/INVARIANT_REGISTRY.md",
+        ".github/scripts/strict-grep/orch-1138-experience-checkout-byte-identical.mjs",
+        "app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source.test.ts",
+        "app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source.tester_adversarial.test.ts",
+        "app-mobile/src/services/__tests__/issue_2160_calendar_per_day_entries.test.ts"
       ],
       "triggerContract": {
         "push": {
@@ -11085,7 +11108,8 @@
         "mingla-business/app/account/__tests__/issue_2321_*",
         "mingla-business/src/hooks/useAccountDeletion.ts",
         ".github/scripts/strict-grep/issue-2321-retained-auth-cannot-claim-deleted.mjs",
-        ".github/workflows/issue-2321-account-deletion-tests.yml"
+        ".github/workflows/issue-2321-account-deletion-tests.yml",
+        "app-mobile/scripts/ci/orch-1240-dual-account-deletion-check.mjs"
       ],
       "triggerContract": {
         "push": {

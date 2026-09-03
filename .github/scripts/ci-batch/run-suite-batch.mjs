@@ -273,7 +273,16 @@ export function detectTier2Escapes(manifest, results, { env = process.env, root 
     if (!suite) continue;
     const patterns = suiteOriginPatterns(suite);
     if (patterns.some((pattern) => changedPaths.some((file) => pathMatches(pattern, file)))) continue;
-    blindSpots.push({ id, uncoveredPaths: changedPaths });
+    // [#2882 P3] §12 promised the FILE, not the diff. When a changed file is one
+    // this suite actually executes, that file IS the escapee and can be named
+    // outright — the operator gets the exact originPaths entry to add. When no
+    // changed file is executed by the suite, the escapee is some dependency it
+    // reads rather than runs and causality is genuinely unknown, so the diff is
+    // offered as candidates and LABELLED as candidates. Naming a guess as a
+    // finding would be the same dishonesty this whole change exists to remove.
+    const executed = new Set([...(suite.expectedFiles || []), ...(suite.conditionalExpectedFiles || [])]);
+    const escaped = changedPaths.filter((file) => executed.has(file));
+    blindSpots.push({ id, escapedPaths: escaped.length ? escaped : changedPaths, certain: escaped.length > 0 });
   }
   return { checked: failedIds.length, blindSpots };
 }
@@ -286,8 +295,14 @@ export function renderTier2EscapeAnnotations(escapes) {
       + `could not derive this push's diff (${escapes.unavailable}); ${escapes.checked} failing suite(s) went unchecked`);
   }
   for (const spot of escapes.blindSpots) {
-    lines.push(`::error title=originPaths blind spot::${spot.id} failed on main but this diff would not have `
-      + `selected it at PR time; its originPaths does not cover ${spot.uncoveredPaths.join(", ")}`);
+    const shown = spot.escapedPaths.slice(0, 5).join(", ");
+    const more = spot.escapedPaths.length > 5 ? ` (+${spot.escapedPaths.length - 5} more)` : "";
+    lines.push(spot.certain
+      ? `::error title=originPaths blind spot::${spot.id} failed on main but this diff would not have `
+        + `selected it at PR time; it EXECUTES ${shown}${more}, which its originPaths does not cover — add that path`
+      : `::error title=originPaths blind spot::${spot.id} failed on main but this diff would not have `
+        + `selected it at PR time; its originPaths covers none of the ${spot.escapedPaths.length} changed `
+        + `file(s), and it executes none of them either, so the escaping dependency is one of: ${shown}${more}`);
   }
   return lines;
 }

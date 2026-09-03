@@ -210,3 +210,97 @@ test("#2882 every registered suite carries routing data that parses and resolves
     }
   }
 });
+
+// ---------------------------------------------------------------------------
+// SC-8, rewritten because the original could not fail.
+//
+// As specified, SC-8 compared lane reachability on `push: main` before and
+// after this change. On `push` selection is the IDENTITY FUNCTION — every suite
+// runs either way — so the two sets were equal by construction and the
+// criterion was satisfied unconditionally. It could never have gone red, which
+// makes it an instance of exactly the bug class #2113 exists to eliminate, and
+// it is the criterion that should have caught the defect below.
+//
+// The replacement asserts the property SC-8 was reaching for and states it in a
+// form that CAN fail: a suite must watch every tracked file it executes.
+// Otherwise editing a test does not run the suite that runs that test — and a
+// test-only pull request is the shape this program's own regression gate
+// mandates on every close.
+//
+// The exemption is BY WAVE and is enumerated below, not pattern-matched.
+// ---------------------------------------------------------------------------
+const SC8_EXEMPT_WAVE = "phase3b-postgres-wave";
+
+
+/**
+ * Phase 3B routes on `originPaths` too, but its entries are pinned to equal the
+ * union of a `triggerContract` that is itself hashed into
+ * `shadowContract.triggerSha256` and into LOCKED_PHASE3B_CONTRACT_SHA256
+ * (`issue-2148-ci-postgres-wave-shadow.tester.test.mjs:149,184`). Widening one
+ * moves three sealed digests, so the five suites still failing this property in
+ * that wave are a PRE-EXISTING defect this change neither introduced nor can
+ * repair without a separate, reviewed seal movement. Measured on origin/main:
+ * the same five fail there. Recorded here so the carve-out is visible in the
+ * assertion rather than absent from it.
+ */
+function unwatchedExecutedPairs(value, tracked, { includeExemptWave = false } = {}) {
+  const trackedSet = tracked instanceof Set ? tracked : new Set(tracked);
+  const pairs = [];
+  for (const suite of value.suites) {
+    if (!includeExemptWave && suite.migrationWave === SC8_EXEMPT_WAVE) continue;
+    const patterns = suiteOriginPatterns(suite);
+    const executed = [...new Set([...(suite.expectedFiles || []), ...(suite.conditionalExpectedFiles || [])])]
+      .filter((file) => trackedSet.has(file));
+    for (const file of executed) {
+      if (!patterns.some((pattern) => pathMatches(pattern, file))) pairs.push(`${suite.id} :: ${file}`);
+    }
+  }
+  return pairs;
+}
+
+function trackedFileSet() {
+  return new Set(execFileSync("git", ["ls-files", "-z"], { cwd: REPO_ROOT, maxBuffer: 1 << 28 })
+    .toString("utf8").split("\0").filter(Boolean));
+}
+
+test("#2882 SC-8: every routed suite watches every tracked file it executes", () => {
+  const pairs = unwatchedExecutedPairs(manifest, trackedFileSet());
+  assert.deepEqual(pairs, [],
+    `${pairs.length} suite/file pair(s) execute a tracked file the suite does not watch — `
+    + `editing that file would not run the suite that runs it:\n  ${pairs.join("\n  ")}`);
+});
+
+test("#2882 SC-8 IS FALSIFIABLE — it fails on a deliberately broken registry", () => {
+  // Non-vacuity proof. Take a suite that currently passes, delete the one
+  // pattern covering a file it executes, and require the check to report that
+  // exact pair. A criterion that cannot be made to fail is not a criterion.
+  const tracked = trackedFileSet();
+  assert.deepEqual(unwatchedExecutedPairs(manifest, tracked), [], "precondition: the real registry passes");
+
+  const broken = structuredClone(manifest);
+  const suite = broken.suites.find((candidate) => candidate.id === "issue-1282-google-bespoke-copy-tests");
+  const victim = "mingla-admin/src/__tests__/issue1002_multi_destination.test.js";
+  assert.ok(suite.expectedFiles.includes(victim), "fixture drifted: the suite must execute the victim file");
+  const covering = suite.originPaths.filter((pattern) => pathMatches(pattern, victim));
+  assert.ok(covering.length > 0, "fixture drifted: something must cover the victim today");
+  suite.originPaths = suite.originPaths.filter((pattern) => !covering.includes(pattern));
+
+  const pairs = unwatchedExecutedPairs(broken, tracked);
+  assert.ok(pairs.includes(`issue-1282-google-bespoke-copy-tests :: ${victim}`),
+    `the check did not catch a suite that stopped watching a file it executes; got ${JSON.stringify(pairs)}`);
+  // ...and the real registry is still clean, i.e. the mutation was in-memory.
+  assert.deepEqual(unwatchedExecutedPairs(manifest, tracked), []);
+});
+
+test("#2882 SC-8's exemption is enumerated and cannot quietly grow", () => {
+  // The carve-out is a WAVE, so pin the wave's membership. If someone moves a
+  // suite into phase3b, this fails rather than silently exempting it.
+  const exempt = manifest.suites.filter((suite) => suite.migrationWave === SC8_EXEMPT_WAVE).map((suite) => suite.id);
+  assert.equal(exempt.length, 12, `the exempt wave must hold exactly 12 suites, got ${exempt.length}: ${exempt.join(", ")}`);
+  // And the exemption is load-bearing, not decorative: including it changes the
+  // answer today. That keeps the carve-out honest — if phase3b is ever repaired
+  // this assertion fails and the exemption can be deleted.
+  const withExempt = unwatchedExecutedPairs(manifest, trackedFileSet(), { includeExemptWave: true });
+  assert.ok(withExempt.length > 0,
+    "the exempt wave no longer fails the property — delete SC8_EXEMPT_WAVE and this test");
+});
