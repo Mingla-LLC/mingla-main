@@ -1,17 +1,28 @@
 'use client'
 
 import { useEffect, type ReactNode } from 'react'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import {
+  captureMarketing,
+  posthogOptIn,
+  subscribeMarketingConsent,
+} from '@/components/marketing/posthog-provider'
 import { DeviceCta, type CutoutSurface } from '@/components/cutout/device-cta'
 import { HOST_DESTINATIONS } from '@/components/page-system/city-host-acquisition-bar'
 import { ArrowUpRight } from 'lucide-react'
+import type { CityHubAnalyticsEvent, CityHubDestinationType } from '@/lib/city-hub-analytics'
 
 interface CityAnalyticsIdentity {
   readonly citySlug: string
   readonly countryCode: string
 }
 
-function cityProperties(identity: CityAnalyticsIdentity, destinationType: string) {
+const CITY_TRACKED_LINK_EVENTS = [
+  'city_hub_host_action',
+  'city_hub_inventory_action',
+  'city_hub_switch_city',
+] as const satisfies readonly Exclude<CityHubAnalyticsEvent, 'city_hub_view' | 'city_hub_explorer_action'>[]
+
+function cityProperties(identity: CityAnalyticsIdentity, destinationType: CityHubDestinationType) {
   return {
     city_slug: identity.citySlug,
     country_code: identity.countryCode,
@@ -22,7 +33,18 @@ function cityProperties(identity: CityAnalyticsIdentity, destinationType: string
 
 export function CityHubImpression(identity: CityAnalyticsIdentity) {
   useEffect(() => {
-    captureMarketing('city_hub_view', cityProperties(identity, 'city_hub'))
+    let active = true
+    const capture = (): void => {
+      void posthogOptIn().then(() => {
+        if (active) captureMarketing('city_hub_view', cityProperties(identity, 'city_hub'))
+      })
+    }
+    capture()
+    const unsubscribe = subscribeMarketingConsent(capture)
+    return () => {
+      active = false
+      unsubscribe()
+    }
   }, [identity.citySlug, identity.countryCode])
   return null
 }
@@ -66,8 +88,8 @@ export function CityTrackedLink({
   children,
   ...identity
 }: CityAnalyticsIdentity & {
-  readonly event: 'city_hub_host_action' | 'city_hub_inventory_action' | 'city_hub_switch_city'
-  readonly destinationType: string
+  readonly event: (typeof CITY_TRACKED_LINK_EVENTS)[number]
+  readonly destinationType: CityHubDestinationType
   readonly children: ReactNode
 }) {
   return (
