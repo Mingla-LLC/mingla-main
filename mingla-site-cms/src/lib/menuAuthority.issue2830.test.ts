@@ -20,9 +20,18 @@ const read = (relative: string) =>
 const blocks = read("src/blocks/restaurantBlocks.ts");
 const builder = read("src/lib/artifactBuilder.ts");
 const gateway = read("src/lib/gateway.ts");
-const migration = read(
+const migrationSource = read(
   "../supabase/migrations/20270617002830_issue_2830_brand_site_menu_projection.sql",
 );
+/*
+ * SQL with its comments stripped. FIVE separate assertions in this issue have
+ * now flagged a word inside a comment and reported a defect that was not there
+ * -- including, twice, a comment written specifically to explain the bug the
+ * assertion guards. Every check below reads the executable statements only.
+ */
+const migration = migrationSource
+  .replace(/--[^\n]*/g, "")
+  .replace(/\/\*[\s\S]*?\*\//g, "");
 const callback = read("../supabase/functions/brand-site-cms-callback/index.ts");
 
 describe("#2830 the menu belongs to Mingla", () => {
@@ -133,10 +142,21 @@ describe("#2830 the menu belongs to Mingla", () => {
     expect(builder).toContain('page.role === "home"');
   });
 
+  it("never aggregates a uuid -- Postgres has no min(uuid)", () => {
+    // The function was created successfully and threw on EVERY call. The
+    // migration applied, the typecheck passed, the tests passed; only calling
+    // it against real data found it. This pins the shape that cannot be
+    // written wrong the same way twice.
+    expect(migration).not.toMatch(/\bmin\s*\(\s*vl\.id\s*\)/i);
+    expect(migration).not.toMatch(/\b(min|max)\s*\([a-z_]*\.?id\s*\)/i);
+    expect(migration).toContain("SELECT count(*) INTO v_count");
+    expect(migration).toContain("LIMIT 1");
+  });
+
   it("ordering resolves ONE verified venue, and never guesses", () => {
     expect(migration).toContain("brand_site_orderable_venue");
     expect(migration).toContain("claim_status = 'verified'");
-    expect(migration).toContain("IF v_count = 1 THEN");
+    expect(migration).toContain("IF v_count <> 1 THEN");
     expect(migration).toContain("RETURN NULL;");
   });
 
