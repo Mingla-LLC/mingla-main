@@ -12696,9 +12696,10 @@
         "rationale": "MEASURED by tracing every gate this lane runs: its wiring gate, the auth-ready gate, the source-pin audit and the quarantine audit read mingla-business/app and mingla-business/src in full, and the typecheck delta typechecks the whole business graph, which tsconfig paths resolves into packages/. The PG17 job replays the entire migration history and then runs three .test.sql files under supabase/migrations/__tests__, so every migration is an input, as is the composite action that restores the migrated cluster. The manifest parity and ratchet-frontier steps read .github/ci-batch/MANIFEST.json and parse every workflow."
       },
       "workflowMetadata": {
-        "sourceSha256": "8f7930cd0d318652ddd10da26bcb4f6d1c2e429199a007796090439c8b1e717b",
+        "sourceSha256": "2b049491dc1b8c752f71ea067124d9784783e6a5311dd888487ccb0e9ced1791",
         "triggers": [
           "pull_request",
+          "push",
           "workflow_dispatch"
         ],
         "pathScope": [
@@ -12799,9 +12800,10 @@
         "rationale": "MEASURED: the deno steps check three edge functions and test one of them, and deno check follows their imports into supabase/functions/_shared (entrySource.ts was read). The wiring gate reads the consumer venue route under app-mobile/app/b, and the node --test step runs a consumer capture test that imports two services under app-mobile/src/services. The PG17 job replays every migration before running this issue's .test.sql proof. The business half runs a jest render config, the auth-ready gate and a web export over the business graph."
       },
       "workflowMetadata": {
-        "sourceSha256": "e888725438660d5db0b9231c0dfa6fa081b75c5a7d91ac97ec3b1f98efbe94f4",
+        "sourceSha256": "8cee469273a12db5f680a4248f7d6be7b653fc3dab391268ebef488fa545bdd2",
         "triggers": [
           "pull_request",
+          "push",
           "workflow_dispatch"
         ],
         "pathScope": [
@@ -13568,9 +13570,10 @@
         "rationale": "MEASURED: the desktop-gate gate walks mingla-business/app and mingla-business/src in full (2,297 src and 228 app files read on one run) and additionally reads the Mingla-host strict-grep workflow, because it asserts its own registration there. The render proofs, the venue suite contracts and the web export cover the same business graph plus the packages/ tree that tsconfig maps @mingla/* into."
       },
       "workflowMetadata": {
-        "sourceSha256": "50baacb1b5e03eae8bf2825f2250c7e88b412abc87bc4571fa7f4ff304550fc0",
+        "sourceSha256": "b81fec4d9c1053b9e71abf36ef0f9c65dfa261d1f5115179c519387f2c41361e",
         "triggers": [
           "pull_request",
+          "push",
           "workflow_dispatch"
         ],
         "pathScope": [
@@ -13719,9 +13722,10 @@
         "rationale": "MEASURED: same walked business graph as #1484, plus 135 files under packages/offering-rendering and 51 under packages/brand-rendering read on one run through the lucide-shim and desktop-gate gates. The desktop-gate gate reads the Mingla-host strict-grep workflow to assert its own registration. Three jest configs, the stay/venue contract suites and a web export with the boot-payload budget all run over that graph."
       },
       "workflowMetadata": {
-        "sourceSha256": "22461cb40102f2a47c29cf04533cb4d543b53efaff9cfbfe78702f2d20081139",
+        "sourceSha256": "78806ecc2c5361cea6a5edaabb396622ec6f6cb507111db4877ad3078c12232f",
         "triggers": [
           "pull_request",
+          "push",
           "workflow_dispatch"
         ],
         "pathScope": [
@@ -13978,9 +13982,10 @@
         "rationale": "MEASURED: the keyboard-plumbing gate reads 1,360 .ts/.tsx files across mingla-business and packages, and the lane re-runs the #1484 and #1501 render proofs on top of its own, so its inputs are a superset of theirs. The desktop-gate gate reads the Mingla-host strict-grep workflow to assert its own registration."
       },
       "workflowMetadata": {
-        "sourceSha256": "da57da51112ba0fe2f38985f12fc7dd691b0499cf8a13a9ec0d2c3d36b379f83",
+        "sourceSha256": "d07fbbefe5a06c94bd33efe40132e0da6e62a53bcc7d70882f1818e81ef65564",
         "triggers": [
           "pull_request",
+          "push",
           "workflow_dispatch"
         ],
         "pathScope": [
@@ -20017,9 +20022,10 @@
         "rationale": "MEASURED: the analytics service, hooks, cache and events under test live in mingla-business/src, the home tile and analytics route in mingla-business/app, and the home-lock-pane and last-seven-days gates assert against app/(tabs)/home.tsx directly. The typecheck delta covers the whole business graph. The currency-fallback gate holds an explicit file list that reaches outside the business tree: it reads _business-query.ts under the discover-merged-events edge function, QuantityRow.tsx under packages/offering-rendering, and exactly two app-mobile components, which are named literally here because that gate names them literally."
       },
       "workflowMetadata": {
-        "sourceSha256": "f6ac56741d090d14f0dd24fc0975b8cd201d7d02f1b0e3bc21f00ea073098e0c",
+        "sourceSha256": "66be61db28fa625a95b4e87fc186f689531ae3f01ee9fadfb8e43912fbdb7150",
         "triggers": [
           "pull_request",
+          "push",
           "workflow_dispatch"
         ],
         "pathScope": [

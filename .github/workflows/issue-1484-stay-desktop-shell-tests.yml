@@ -25,6 +25,17 @@ on:
     # and this workflow runs exactly as it always did.
     paths-ignore:
       - "mingla-business/scripts/ci/bundle-baseline.json"
+  # [#3072] The backstop, and the thing that makes PR-time routing safe to do at
+  # all. Routing changes WHEN this lane runs on a pull request, never WHETHER it
+  # runs -- the same contract #2882 gave the 85 batched suites, which route on a
+  # pull request and run in full on merge. Selection is the identity function on
+  # a push event, so every job below runs here with no routing and no `paths`
+  # filter of any kind. Without this, an `originPaths` list that turns out to be
+  # incomplete would mean a change got NO coverage ever, instead of a slow catch
+  # on `main`; #3079 is the standing evidence that incompleteness is a live risk,
+  # not a hypothetical one.
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:

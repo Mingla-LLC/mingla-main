@@ -22,6 +22,10 @@ import { execFileSync } from "node:child_process";
 import test from "node:test";
 
 import { compileOriginPattern, parseOriginPattern } from "../select-phase3b-suites.mjs";
+// The router's own event model, imported from the batch runner that owns it:
+// subtest 13 must assert against the REAL "a push is not routed" rule, not a
+// second copy of it living in this file.
+import { routingContext } from "../run-suite-batch.mjs";
 import {
   MANIFEST_PATH,
   ROOT,
@@ -194,4 +198,74 @@ test("11. an unregistered lane is refused rather than defaulting to a route", ()
   assert.throws(() => routedProvider(manifest, "#999999"), /expected exactly one routed live provider/);
   const duplicated = { legacyOrigins: [...manifest.legacyOrigins, routedProvider(manifest, "#874")] };
   assert.throws(() => routedProvider(duplicated, "#874"), /found 2/);
+});
+
+// ---------------------------------------------------------------------------
+// [#3072] THE BACKSTOP.
+//
+// These two are worth more than the rest of the suite. PR-time routing is only
+// safe because it changes WHEN a lane runs, never WHETHER it runs: #2882 could
+// route the 85 batched suites precisely because ci-batch still runs all 85 on
+// `push: main`. These six had no push trigger at all, so routing them without
+// adding one would have turned an incomplete `originPaths` from a slow catch on
+// main into a permanent, silent, total absence of coverage. #3079 is the
+// standing evidence that `originPaths` incompleteness is a live risk.
+//
+// The absence of this assertion is what created that gap, so it is asserted
+// against the REAL registry and the REAL workflow source, not a replica.
+// ---------------------------------------------------------------------------
+
+test("12. every one of the six runs on a push to main, so routing can never remove coverage outright", () => {
+  for (const ownerIssue of LANES) {
+    const provider = routedProvider(manifest, ownerIssue);
+
+    // Semantic half: `triggers` is re-derived from the workflow on disk by
+    // validate-manifest-v2.mjs, so asserting the registry IS asserting the
+    // workflow, independently of how the trigger block is formatted.
+    assert.ok(
+      provider.workflowMetadata.triggers.includes("push"),
+      `${ownerIssue}: must declare a push trigger, or PR-time routing removes coverage instead of deferring it`,
+    );
+
+    // Scope half: the push must be on main, and must carry NO path filter --
+    // a paths-gated backstop is a sampling scheme, not a backstop.
+    const source = fs.readFileSync(path.join(ROOT, provider.providerWorkflow), "utf8");
+    const block = source.match(/\n {2}push:\n((?: {4}\S[^\n]*\n)+)/);
+    assert.ok(block, `${ownerIssue}: push trigger must be declared in the workflow source`);
+    assert.equal(
+      block[1].trim(),
+      "branches: [main]",
+      `${ownerIssue}: the push backstop must be main-only and unfiltered by paths`,
+    );
+  }
+});
+
+test("13. a change routing SKIPS on a pull request is still executed by the push-to-main run", () => {
+  // The exact diffs subtest 6 proves are skipped at PR time. Each must run in
+  // full on push. This is the assertion whose absence created the gap: it ties
+  // the router's own identity-function behaviour to the trigger that exercises
+  // it, so removing either half turns this red.
+  const skippedAtPrTime = [["REPORTS.md"], ["docs/MINGLA_ENGINEERING_HANDBOOK.md"], [BASELINE]];
+
+  // The router treats a push as unroutable-by-design, not as an empty diff.
+  const pushContext = routingContext({ env: { GITHUB_EVENT_NAME: "push" }, root: ROOT });
+  assert.equal(pushContext.mode, "full", "a push event must not be routed at all");
+
+  for (const changed of skippedAtPrTime) {
+    for (const ownerIssue of LANES) {
+      const provider = routedProvider(manifest, ownerIssue);
+      const patterns = providerOriginPatterns(provider);
+
+      assert.equal(
+        decideSelection(provider, patterns, routed(changed)).selected,
+        false,
+        `${ownerIssue}: precondition -- ${changed.join(",")} is skipped at PR time`,
+      );
+      assert.equal(
+        decideSelection(provider, patterns, pushContext).selected,
+        true,
+        `${ownerIssue}: ${changed.join(",")} skipped the pull request, so the push to main MUST run it`,
+      );
+    }
+  }
 });
