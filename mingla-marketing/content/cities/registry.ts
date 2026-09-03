@@ -523,16 +523,16 @@ export interface CityHubReadinessContext {
 }
 
 const APPROVED_CITY_CONTENT_FINGERPRINTS: Readonly<Record<CityHubSlug, string>> = {
-  lagos: 'v1-81591429',
-  'durham-nc': 'v1-cf2c5d60',
-  'cary-nc': 'v1-c4106a48',
-  'raleigh-nc': 'v1-f44f0f9a',
-  'new-york-city': 'v1-7d0228d0',
-  brussels: 'v1-bebf2417',
-  paris: 'v1-c71957b2',
-  london: 'v1-98cc5377',
-  'fort-lauderdale': 'v1-526d5197',
-  'washington-dc': 'v1-56a866a9',
+  lagos: 'v2-e55e9465',
+  'durham-nc': 'v2-4e879c17',
+  'cary-nc': 'v2-dc941bd5',
+  'raleigh-nc': 'v2-611d15a0',
+  'new-york-city': 'v2-7cd78814',
+  brussels: 'v2-60f3e8d3',
+  paris: 'v2-330afea3',
+  london: 'v2-736957d1',
+  'fort-lauderdale': 'v2-db7ea8b7',
+  'washington-dc': 'v2-0f87c316',
 }
 
 function normalizedContent(value: string): string {
@@ -541,12 +541,18 @@ function normalizedContent(value: string): string {
 
 function contentFingerprintPayload(record: CityHubRecord): string {
   return JSON.stringify({
-    directAnswer: normalizedContent(record.directAnswer),
-    utilitySections: record.utilitySections.map(({ title, answer }) => [normalizedContent(title), normalizedContent(answer)]),
-    explorer: [normalizedContent(record.explorer.title), normalizedContent(record.explorer.body)],
-    host: [normalizedContent(record.host.title), normalizedContent(record.host.body)],
-    hostUtilities: record.hostUtilities.map(({ title, body }) => [normalizedContent(title), normalizedContent(body)]),
-    faqs: record.faqs.map(({ question, answer }) => [normalizedContent(question), normalizedContent(answer)]),
+    directAnswer: [normalizedContent(record.directAnswer), [...record.directAnswerEvidenceIds]],
+    utilitySections: record.utilitySections.map(({ title, answer, evidenceIds }) => [
+      normalizedContent(title), normalizedContent(answer), [...evidenceIds],
+    ]),
+    explorer: [normalizedContent(record.explorer.title), normalizedContent(record.explorer.body), [...record.explorer.evidenceIds]],
+    host: [normalizedContent(record.host.title), normalizedContent(record.host.body), [...record.host.evidenceIds]],
+    hostUtilities: record.hostUtilities.map(({ title, body, evidenceIds }) => [
+      normalizedContent(title), normalizedContent(body), [...evidenceIds],
+    ]),
+    faqs: record.faqs.map(({ question, answer, evidenceIds }) => [
+      normalizedContent(question), normalizedContent(answer), [...evidenceIds],
+    ]),
   })
 }
 
@@ -556,7 +562,7 @@ export function cityHubContentFingerprint(record: CityHubRecord): string {
     hash ^= character.codePointAt(0) ?? 0
     hash = Math.imul(hash, 0x01000193)
   }
-  return `v1-${(hash >>> 0).toString(16).padStart(8, '0')}`
+  return `v2-${(hash >>> 0).toString(16).padStart(8, '0')}`
 }
 
 function isIsoDate(value: unknown): value is `${number}-${number}-${number}` {
