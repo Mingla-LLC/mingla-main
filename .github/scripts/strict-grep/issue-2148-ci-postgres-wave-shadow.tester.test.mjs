@@ -28,7 +28,19 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 const manifest = () => JSON.parse(read(".github/ci-batch/MANIFEST.json"));
 const sha = (value) => crypto.createHash("sha256").update(typeof value === "string" || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest("hex");
-const EXPECTED_BATCH_EVENTS = ["pull_request", "push", "workflow_dispatch"];
+// [TEST-MOD-APPROVED #3078] WIDENED from three events to four: `schedule` joins
+// the set. #2882 defined three CI tiers but delivered two — a pull request runs
+// the suites its diff invalidates, a push to `main` runs all 85, and the full
+// corpus runs nightly. The nightly had no trigger, so #2882's AC-1 was formally
+// amended to two tiers and the third was split out to #3078, which adds it.
+//
+// This is a WIDENING, not a weakening. It stays a set EQUALITY: a fifth event
+// still turns this red, so adding one remains a deliberate act with a review
+// attached. That property is the entire reason the set is pinned here rather
+// than folded into a digest, and moving to a subset check would have deleted
+// the only thing this assertion does. #2882's spec named none of the three
+// sites that hold this pin, which is how the nightly became its own issue.
+const EXPECTED_BATCH_EVENTS = ["pull_request", "push", "schedule", "workflow_dispatch"];
 const RUBY_EVENT_NAMES = String.raw`
 require "yaml"; require "json"
 doc = YAML.safe_load(STDIN.read, aliases: true) || {}
@@ -42,7 +54,7 @@ events = case raw
 STDOUT.write(JSON.generate(events.sort))`;
 const batchEventNames = (source) => JSON.parse(execFileSync("ruby", ["-e", RUBY_EVENT_NAMES], { input: source, encoding: "utf8" }));
 const assertBatchTriggerBoundary = (source) => assert.deepEqual(
-  batchEventNames(source), EXPECTED_BATCH_EVENTS, "ci-batch top-level event set must remain pull_request/push/workflow_dispatch",
+  batchEventNames(source), EXPECTED_BATCH_EVENTS, "ci-batch top-level event set must remain pull_request/push/schedule/workflow_dispatch",
 );
 const assertTargetTriggerMutantFails = (source) => {
   const mutant = source.replace(/^  pull_request:\s*$/m, "  pull_request_target:");

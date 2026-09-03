@@ -25,6 +25,34 @@ on:
   pull_request:
   push:
     branches: [main]
+  # #3078 tier 3 — the full corpus, nightly.
+  #
+  # #2882 defined three tiers and delivered two: a pull request runs the suites
+  # its diff invalidates (median 2 of 85), a push to `main` runs all 85, and the
+  # full corpus runs nightly. Only the third one's TRIGGER was missing —
+  # selection is already the identity function on every non-pull_request event
+  # (`ROUTED_EVENTS` in run-suite-batch.mjs holds pull_request and
+  # pull_request_target and nothing else), so a scheduled run takes mode "full"
+  # and executes every registered suite. No routing changes here.
+  #
+  # Nothing is gated on this path either. #3076 lets a job skip its setup when
+  # its class routes to zero suites, but that decision is derived from the SAME
+  # selection: on a schedule every candidate is selected, so `runPrimarySetup`
+  # is unconditionally true and no scheduled job can skip the setup it then
+  # needs. A nightly that skipped setup and then ran 85 suites would fail in a
+  # confusing way; it cannot reach that state even in principle.
+  #
+  # WHY THIS IS NOT REDUNDANT WITH THE PUSH TIER. Tier 2 proves `main` at the
+  # instant of each merge, so it can only ever see failures a commit caused. It
+  # is blind to a suite that goes red WITHOUT a diff — an expiring credential, a
+  # pinned upstream that yanks a version, a date-rolling fixture. Those surface
+  # with no commit to blame, and until now nothing in this repository was
+  # looking for them.
+  #
+  # 03:17 UTC, deliberately off the hour: the scheduler queues heavily at :00
+  # and delays runs that ask for it.
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       suite:
@@ -339,6 +367,11 @@ jobs:
       # #3076 rides on it for the same reason and one more: this step is ungated,
       # so the proof that a zero-selection class still reports runs precisely on
       # the jobs that skipped their setup.
+      # #3078 rides on it for a third reason: tier 3 is a trigger, not a
+      # behaviour, so deleting it reds nothing else in the tree — every routing
+      # test would go on proving that a scheduled event WOULD run the full
+      # corpus while no scheduled event ever happened again. Being ungated,
+      # this step also executes on the nightly itself.
       - name: Batch runner self-test (proves a vanished suite fails the run)
         if: always()
         run: >-
@@ -347,6 +380,7 @@ jobs:
           .github/scripts/ci-batch/__tests__/issue-2882-origin-paths-routing.implementor.test.mjs
           .github/scripts/ci-batch/__tests__/issue-2882-routing-cannot-select-silently.tester.test.mjs
           .github/scripts/ci-batch/__tests__/issue-3076-zero-selection-skips-setup.implementor.test.mjs
+          .github/scripts/ci-batch/__tests__/issue-3078-nightly-full-corpus.implementor.test.mjs
 
       - name: Run the ${{ matrix.class }} suites
         if: always()

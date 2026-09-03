@@ -546,7 +546,22 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     d259a32221eb5d0929bb5645e3402b3dbca900dfc948ba993c33bfc92a247b5d — the
   //     value pinned immediately above — proving nothing else in the tree
   //     drifted into this digest.
-  "404b2394f5466ac714c63145b3e6d478041e027e60e9e795575267f867832379";
+  // [TEST-MOD-APPROVED #3078] Digest re-derived. #3078 adds the nightly
+  // full-corpus trigger — a `schedule` event on the batch lane, which is
+  // PR-family and therefore lives inside this digest. It moves the digest
+  // twice over: once through the sorted event list, once through the `on:`
+  // mapping retained in the non-concurrency document. Only the digest literal
+  // changed. PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are untouched
+  // and were re-verified unmoved, because adding an event to a lane that was
+  // ALREADY PR-family moves neither a count nor an identity.
+  //
+  // THE DELTA IS EXACTLY THIS CHANGE, executed rather than asserted: restoring
+  // that one lane to its origin/main bytes, with the previous value
+  // 404b2394f5466ac714c63145b3e6d478041e027e60e9e795575267f867832379 still
+  // pinned here, makes ALL ELEVEN subtests pass again — so nothing else in the
+  // tree drifted into this digest. Note the value is sensitive to the exact
+  // cron text, so a rebase that changes it must re-derive rather than reuse.
+  "a0456192c6fc8cadd7695992b844eb34e91eb691922e4372219bcef556d11e7e";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
