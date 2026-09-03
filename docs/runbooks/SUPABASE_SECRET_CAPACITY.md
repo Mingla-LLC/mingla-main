@@ -142,11 +142,27 @@ Normal deployment of any of the eight bundle-dependent functions must use the sa
 the complete authoritative object(s) supplied in the same process: `--ad-input <0600-path>` for
 an AD reader and/or `--delivery-input <0600-path>` for the checkout delivery reader, alongside
 the explicit `--function`, `--project-ref`, and `--merged-commit` arguments. Before its first
-apply or deploy, that route requires exact value-blind live-name parity with the 88-name manifest.
+apply or deploy, that route requires value-blind live-name parity: every one of the 88 declared
+names must be live, and the ONLY extra names tolerated are the approved two-name migration band
+(founder-approved 2026-09-02). Any other live name fails `unexpected:`; any absent declared name
+fails `missing:`. Normal mode tolerates the band, it does not require it, so parity passes at 90,
+89 and the 88-name target alike — it must still be able to pass at its own end state. Remediation
+mode is unchanged and still requires the band and exactly 90.
 It then applies the complete object, creates and consumes the protected in-memory receipt, runs
 the later function-readiness preflight, deploys only the selected functions with `--use-api`, and
 verifies source/JWT parity. A receipt file, receipt CLI argument, receipt environment variable,
 or second process is never accepted.
+
+Because normal mode no longer refuses the deploy while the band is live, the risk that refusal was
+holding — a function passing while it silently reads the OLD standalone copy, with the gap
+surfacing only when that copy is deleted — is now WATCHED rather than assumed away. Every deploy
+route whose normal-mode parity was relaxed ends with
+`scripts/secrets/postdeploy-governed-fallback-watch.mjs`, which reads the deployed functions' logs
+over a bounded window and FAILS the deploy job on any `governed_ad_legacy_fallback` or
+`governed_ad_bundle_invalid`. It is the automated form of the manual "stop on any fallback or
+invalid-bundle diagnostic" instruction below, and it fails closed on every way of not observing —
+absent credential, empty window, unreadable response — so a zero is only ever reported alongside
+its denominator.
 
 Before the production invocation, all of these sources must exist and be independently attested:
 
