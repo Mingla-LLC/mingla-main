@@ -323,7 +323,62 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     47dfe3df8b53eb8638295f2ee4b02707b5a445a26bc8018b92bb639f114ecff5, proving
   //     nothing else in the tree drifted into this digest.
   // Every earlier re-derivation is preserved, not replaced.
-  "b3c2fbb773c96901aa4b353c879ec6537fed784997cd43dea0c7e88e900910ac";
+  //
+  // [TEST-MOD-APPROVED #2099] Re-derived again, and this one differs in KIND
+  // from every note above it. WHAT MOVED: the #2099 pending-venue
+  // identity-correction lane gained FOUR `paths:` ENTRIES under its existing
+  // filter anchor — the three frozen sibling migrations whose venue foreign
+  // keys that lane's guard asserts, and the ci-batch manifest validator. The
+  // lane is named here by ISSUE, never by its `.y`+`ml` path, for the reason
+  // #3081 and #2882 both record above: a workflow FILENAME written into a
+  // tracked file is counted by `discoverWorkflowProviders()` as an external
+  // provider reference and moves the frozen #2148 provider seal.
+  //
+  // WHY the entries were added: the #2648 coupling test inside the #2855
+  // pending-venue schema-pin guard fails when a file that guard READS is
+  // absent from the filter of the lane that RUNS it. Those four inputs decide
+  // whether the lane passes but could not fire it, so five merges reddened the
+  // job without ever running it. The coupling is now enforced, not remembered.
+  //
+  // HONEST DIFFERENCE FROM THE NOTES ABOVE: each of those says "no `paths:`
+  // entry is added". THIS ONE ADDS FOUR, deliberately, and that is precisely
+  // the semantic delta being pinned. What is NOT added is a `paths:` or
+  // `paths-ignore:` KEY, and no trigger EVENT changed — so PR-family
+  // membership is untouched even though the non-concurrency document moves.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING, running #3081's checklist:
+  //   - the change is PURELY ADDITIVE: `git diff origin/main...HEAD --
+  //     .github/workflows/` is "1 file changed, 25 insertions(+)", ZERO
+  //     deletions. Of those 25 lines, 21 are comments (invisible to this
+  //     digest, which hashes the PARSED document) and 4 are the real path
+  //     entries.
+  //   - grepping added AND removed lines for `concurrency`, `group:` and
+  //     `cancel-in-progress` returns ZERO, and the lane's `concurrency:` block
+  //     is byte-identical to origin/main — diffed, not eyeballed.
+  //   - the workflow file count is 131 on BOTH sides and the workflow diff is a
+  //     single `M`: nothing added, removed or renamed.
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED. This was
+  //     not assumed from the shape of the diff: subtests 1 and 4 PASS at 124
+  //     PR-family / seven non-PR against the changed tree. A new lane would
+  //     legitimately move PR_FAMILY_COUNT and would need its own justification;
+  //     this is a modification of an existing lane, so it does not.
+  //   - the policy audit still reports zero errors, and every revert-
+  //     sensitivity subtest (5-10) still passes, so the concurrency assertions
+  //     are intact and still go red on reversion. 10 of 11 subtests passed
+  //     before this re-pin; only subtest 2 was red.
+  //   - CONTAMINATION CHECKED FIRST, per the #3081 lesson: the branch's added
+  //     lines in NON-workflow files were grepped for `.y`+`ml` literals before
+  //     anything was re-pinned. There is one hit, in the #2855 pin guard — but
+  //     that same file ALREADY names that same lane on origin/main, so the
+  //     provider set is unchanged and the frozen seal does not move. That is
+  //     why exactly two gates were red here and not the nine #3081 saw.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring the one changed lane to its
+  //     origin/main bytes makes ALL ELEVEN subtests pass again at
+  //     b3c2fbb773c96901aa4b353c879ec6537fed784997cd43dea0c7e88e900910ac — the
+  //     value this branch replaces, pinned by #2882 on top of #3081 — proving
+  //     nothing else in the tree drifted into this digest.
+  // Every earlier re-derivation is preserved, not replaced.
+  "7a7bd68531625d03e57b58f0addecf7fecd85bd688233f0ffdfb83169a670040";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
