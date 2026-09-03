@@ -876,6 +876,12 @@ function parseArgs(argv) {
     else if (value === "--delivery-input") {
       args.deliveryPath = argv[++index];
     }
+    // #2830 — MINGLA_SITES_SECURITY_JSON, the bundle the four brand-site-*
+    // functions declare. It had no input flag, so those functions could not be
+    // deployed through any sanctioned lane.
+    else if (value === "--sites-input") {
+      args.sitesPath = argv[++index];
+    }
     else if (value === "--delivery-v3-input") {
       args.deliveryV3Path = argv[++index];
     } else if (value === "--delivery-v4-input") {
@@ -883,9 +889,8 @@ function parseArgs(argv) {
     } else throw new ReconciliationError("argument_invalid", [value]);
   }
   if (
-    [args.adPath, args.deliveryV3Path, args.deliveryV4Path].filter((path) =>
-      path === "-"
-    ).length > 1
+    [args.adPath, args.deliveryPath, args.sitesPath, args.deliveryV3Path,
+      args.deliveryV4Path].filter((path) => path === "-").length > 1
   ) {
     throw new ReconciliationError("stdin_may_supply_only_one_bundle");
   }
@@ -903,6 +908,11 @@ function main() {
       if (args.deliveryPath !== undefined) {
         bundleInputs.MINGLA_DELIVERY_FLAGS_JSON = loadSecureBundleInput(
           args.deliveryPath,
+        );
+      }
+      if (args.sitesPath !== undefined) {
+        bundleInputs.MINGLA_SITES_SECURITY_JSON = loadSecureBundleInput(
+          args.sitesPath,
         );
       }
       const result = runGovernedBundleDeployment({
