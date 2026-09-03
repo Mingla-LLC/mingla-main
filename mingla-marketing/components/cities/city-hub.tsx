@@ -13,7 +13,18 @@ import {
 import { CutoutCard, CutoutFooter, CutoutSection, CutoutShell } from '@/components/cutout'
 import { PageSystemNav } from '@/components/page-system/page-system-nav'
 import { CityHostAcquisitionBar } from '@/components/page-system/city-host-acquisition-bar'
+import { CityCatalogue } from '@/components/page-system/city-catalogue'
+import type { CataloguePlace, CataloguePlan, ExplorerCategorySlug } from '@/content/page-system/shared'
 import { CityDeviceAction, CityHostCreationLinks, CityHubImpression, CityTrackedLink } from './city-actions'
+
+export interface CityHubCatalogue {
+  readonly places: readonly CataloguePlace[]
+  readonly plans: readonly CataloguePlan[]
+  readonly initialType: 'places' | 'plans'
+  readonly initialCategories: readonly ExplorerCategorySlug[]
+  readonly initialIntents: readonly string[]
+  readonly initialDetail: string | null
+}
 
 function formatDate(date: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, {
@@ -62,7 +73,7 @@ function CityLifecycleNotice({ record }: { readonly record: CityHubRecord }) {
   )
 }
 
-function CityHero({ record }: { readonly record: CityHubRecord }) {
+function CityHero({ record, catalogueCount }: { readonly record: CityHubRecord; readonly catalogueCount?: number }) {
   const reviewed = formatDate(record.sourcesCheckedAt, record.locale)
   return (
     <section className="city-hero" aria-labelledby="city-hub-title">
@@ -70,7 +81,8 @@ function CityHero({ record }: { readonly record: CityHubRecord }) {
         <ol><li><Link href="/">Home</Link></li><li aria-hidden="true">/</li><li aria-current="page">{record.city}</li></ol>
       </nav>
       <p className="city-eyebrow">Mingla in {record.city}, {record.country}</p>
-      <h1 id="city-hub-title">Find the right plan in {record.city}.</h1>
+      <h1 id="city-hub-title">{catalogueCount ? <>Things to do in {record.city}, ranked by Mingla</> : <>Find the right plan in {record.city}.</>}</h1>
+      {catalogueCount ? <p className="city-catalogue-summary">Browse {catalogueCount} real picks across all ten Explorer categories, or open a ready-made plan.</p> : null}
       <p className="city-direct-answer">{record.directAnswer}</p>
       <EvidenceLinks record={record} evidenceIds={record.directAnswerEvidenceIds} />
       <p className="city-coverage">
@@ -281,7 +293,7 @@ export function RootCityGrid({ surface }: { readonly surface: 'explorer' | 'host
   )
 }
 
-export function CityHub({ record }: { readonly record: CityHubRecord }) {
+export function CityHub({ record, catalogue }: { readonly record: CityHubRecord; readonly catalogue?: CityHubCatalogue }) {
   return (
     <div className="page-system-root city-hub-root" data-host-acquisition="true">
       <CutoutShell>
@@ -290,14 +302,25 @@ export function CityHub({ record }: { readonly record: CityHubRecord }) {
         <PageSystemNav surface="explorer" />
         <CityLifecycleNotice record={record} />
         <main id="main" className="page-system-printable">
-          <CityHero record={record} />
-          <CityAudienceFork record={record} />
+          <CityHero record={record} catalogueCount={catalogue?.places.length} />
+          {catalogue ? (
+            <CityCatalogue
+              cityName={record.city}
+              cityPath={cityHubPath(record)}
+              places={catalogue.places}
+              plans={catalogue.plans}
+              initialType={catalogue.initialType}
+              initialCategories={catalogue.initialCategories}
+              initialIntents={catalogue.initialIntents}
+              initialDetail={catalogue.initialDetail}
+            />
+          ) : <CityAudienceFork record={record} />}
           <CityUtilityGrid record={record} />
           <CityHostUtility record={record} />
           <CityFaq record={record} />
           <CityEvidencePanel record={record} />
-          <CityNavigator record={record} />
-          <CityFinalActions record={record} />
+          {catalogue ? null : <CityNavigator record={record} />}
+          {catalogue ? null : <CityFinalActions record={record} />}
         </main>
         <CutoutFooter surface="explorer" />
       </CutoutShell>

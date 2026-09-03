@@ -104,6 +104,7 @@ function sourceContract() {
     /capture_pageleave: cityHub \? false : true/,
     /autocapture: cityHub \? false : true/,
     /disable_session_recording: cityHub \? true : false/,
+    /maskAllInputs: true/,
     /person_profiles: cityHub \? 'never' : 'identified_only'/,
     /before_send: routeAwarePostHogBeforeSend/,
     /send_page_view: false/,

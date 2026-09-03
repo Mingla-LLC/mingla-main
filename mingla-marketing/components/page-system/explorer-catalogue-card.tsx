@@ -7,6 +7,7 @@ import type { CataloguePlace, CataloguePlan } from '@/content/page-system/shared
 
 interface ExplorerCatalogueCardProps {
   readonly item: CataloguePlace | CataloguePlan
+  readonly cityName?: string
   readonly href?: string
   readonly featured?: boolean
   readonly onOpen?: (href: string, opener: HTMLAnchorElement) => void
@@ -17,7 +18,7 @@ function scoreLabel(score: number): string {
   return Number.isInteger(score) ? score.toFixed(0) : score.toFixed(1)
 }
 
-export function ExplorerCatalogueCard({ item, href = item.detailHref, featured = false, onOpen, appCtaLocation }: ExplorerCatalogueCardProps) {
+export function ExplorerCatalogueCard({ item, cityName = 'Lagos', href = item.detailHref, featured = false, onOpen, appCtaLocation }: ExplorerCatalogueCardProps) {
   const [imageFailed, setImageFailed] = useState(false)
   const isPlace = item.kind === 'place'
   const action = isPlace ? 'View place' : 'View plan'
@@ -51,7 +52,7 @@ export function ExplorerCatalogueCard({ item, href = item.detailHref, featured =
           {!imageFailed && photo ? (
             <img
               src={photo}
-              alt={isPlace ? `${item.name}, in the Explorer Lagos pool` : `${item.title}, a Mingla Lagos plan`}
+              alt={isPlace ? `${item.name}, in the Explorer ${cityName} pool` : `${item.title}, a Mingla ${cityName} plan`}
               width="720"
               height="900"
               loading={featured ? 'eager' : 'lazy'}

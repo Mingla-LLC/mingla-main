@@ -344,7 +344,8 @@ async function runtimeContract() {
       for (const node of document.querySelectorAll('a[href], button:not([disabled]), summary')) {
         if (!visible(node)) continue;
         const rect = node.getBoundingClientRect();
-        if (rect.width < 44 || rect.height < 44 || rect.left < -0.5 || rect.right > innerWidth + 0.5) {
+        const horizontalRail = Boolean(node.closest('.ps-filter-rail'));
+        if (rect.width < 44 || rect.height < 44 || (!horizontalRail && (rect.left < -0.5 || rect.right > innerWidth + 0.5))) {
           failures.push({ tag: node.tagName, name: node.getAttribute('aria-label') || node.textContent.trim().slice(0, 80), x: rect.x, width: rect.width, height: rect.height });
         }
       }
