@@ -149,7 +149,7 @@ function sourceContract() {
   assert.match(hub, /catalogue \? null : <CityNavigator/)
   assert.match(hub, /catalogue \? null : <CityFinalActions/)
   assert.match(hub, /<main id="main" className="page-system-printable">/)
-  assert.match(hub, /evidenceIds=\{record\.directAnswerEvidenceIds\}/)
+  assert.match(hub, /function EvidenceLinks\(\{[\s\S]*className="city-claim-sources"/)
   assert.match(hub, /Choose your Mingla path in \{record\.city\}\./)
   assert.match(hub, /record\.utilitySections\.map/)
   assert.match(hub, /record\.hostUtilities\.map/)
