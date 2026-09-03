@@ -2,6 +2,12 @@
 import Link from "next/link";
 import { Fragment } from "react";
 import type { RestaurantArtifact, RestaurantBlock } from "../contracts/artifact";
+import {
+  hrefForPage,
+  homePage,
+  navigablePages,
+  type ArtifactPage,
+} from "../lib/pageRouting";
 import { isCanonicalMinglaHref, isSafeHref } from "../contracts/artifact";
 import { ConsentControl } from "./ConsentControl";
 import { SiteRuntimeClient } from "./SiteRuntimeClient";
@@ -47,16 +53,33 @@ function Block({ block, context, primaryHeading = false }: { block: RestaurantBl
   }
 }
 
-export function RestaurantV1({ artifact }: { artifact: RestaurantArtifact }) {
-  const home = artifact.pages.find((page) => page.role === "home");
-  if (!home) return null;
+/**
+ * #2830 — renders ONE page.
+ *
+ * It used to concatenate every enabled page into a single document and link
+ * between them with anchors, so Home and Visit were literally the same page.
+ * That is why the hours block appeared three times on the live Gogi site, and
+ * why "5 pages" was never true. The artifact has always modelled real pages —
+ * slug, title, nav order, per-page SEO — and only the renderer collapsed them.
+ */
+export function RestaurantV1({
+  artifact,
+  page,
+}: {
+  artifact: RestaurantArtifact;
+  page?: ArtifactPage;
+}) {
+  const home = homePage(artifact);
+  const current = page ?? home;
+  if (!current) return null;
+  const isHome = current.role === "home";
   const context = { siteId: artifact.site_id, brandId: artifact.brand_id, publicationId: artifact.publication_id };
-  const enabledPages = artifact.pages.filter((page) => page.enabled).sort((a, b) => a.nav_order - b.nav_order);
-  const primaryHeroIndex = home.blocks.findIndex((block) => block.type === "hero");
-  const hoursLocation = firstBlock(home.blocks, "hours_location");
-  const reservation = firstBlock(home.blocks, "venue_reservation");
-  const menu = firstBlock(home.blocks, "menu_link");
-  const contact = firstBlock(home.blocks, "contact_handoff");
+  const navPages = navigablePages(artifact);
+  const primaryHeroIndex = current.blocks.findIndex((block) => block.type === "hero");
+  const hoursLocation = firstBlock(current.blocks, "hours_location");
+  const reservation = firstBlock(current.blocks, "venue_reservation");
+  const menu = firstBlock(current.blocks, "menu_link");
+  const contact = firstBlock(current.blocks, "contact_handoff");
   const primaryAction = reservation?.type === "venue_reservation"
     ? { href: reservation.url, label: "Reserve", kind: "reservation" as const }
     : menu?.type === "menu_link"
@@ -71,5 +94,5 @@ export function RestaurantV1({ artifact }: { artifact: RestaurantArtifact }) {
   const contactLink = contact?.type === "contact_handoff"
     ? { href: contact.href, label: text(contact.label, "Contact") }
     : artifact.footer.links?.[0];
-  return <><SiteRuntimeClient context={context} /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand">{artifact.site_settings.display_name}</Link><nav aria-label="Main navigation">{enabledPages.map((page) => <a key={page.role} href={page.role === "home" ? "/" : `/#${page.role}`}>{page.nav_label}</a>)}</nav>{primaryAction ? <SafeLink href={primaryAction.href} context={context} ctaKind={primaryAction.kind} className="header-action">{primaryAction.label}</SafeLink> : null}</header><main id="main">{primaryHeroIndex < 0 ? <h1 className="sr-only">{artifact.site_settings.display_name}</h1> : null}{enabledPages.map((page) => <div className="page-content" id={page.role === "home" ? undefined : page.role} key={page.role} aria-labelledby={page.role === "home" ? undefined : `page-${page.role}-title`}>{page.role !== "home" ? <h2 className="sr-only" id={`page-${page.role}-title`}>{page.title}</h2> : null}{page.blocks.map((block, index) => <Fragment key={`${block.type}-${index}`}><Block block={block} context={context} primaryHeading={page.role === "home" && index === primaryHeroIndex} />{page.role === "home" && index === primaryHeroIndex ? <aside className="fact-rail" aria-label="Restaurant facts"><dl><div><dt>Visit</dt><dd>{address || "See restaurant details"}</dd></div><div><dt>Hours</dt><dd>{hours ? `${text(hours.day)} ${text(hours.value)}` : "See current opening hours"}</dd></div><div><dt>Contact</dt><dd>{contactLink && isSafeHref(contactLink.href) ? <SafeLink href={contactLink.href} context={context} ctaKind="contact">{contactLink.label}</SafeLink> : "Contact the restaurant"}</dd></div></dl></aside> : null}</Fragment>)}</div>)}</main><footer className="footer"><div><strong>{artifact.site_settings.display_name}</strong>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}<p>{artifact.footer.legal_text}</p></div><nav aria-label="Footer navigation">{enabledPages.map((page) => <a key={page.role} href={page.role === "home" ? "/" : `/#${page.role}`}>{page.nav_label}</a>)}</nav><div>{artifact.footer.links?.map((link) => <SafeLink key={link.href} href={link.href}>{link.label}</SafeLink>)}</div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></>;
+  return <><SiteRuntimeClient context={context} /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand">{artifact.site_settings.display_name}</Link><nav aria-label="Main navigation">{navPages.map((navPage) => <Link key={navPage.role} href={hrefForPage(navPage)} aria-current={navPage.role === current.role ? "page" : undefined}>{navPage.nav_label}</Link>)}</nav>{primaryAction ? <SafeLink href={primaryAction.href} context={context} ctaKind={primaryAction.kind} className="header-action">{primaryAction.label}</SafeLink> : null}</header><main id="main">{primaryHeroIndex < 0 ? <h1 className="page-title">{current.title}</h1> : null}<div className="page-content">{current.blocks.map((block, index) => <Fragment key={`${block.type}-${index}`}><Block block={block} context={context} primaryHeading={index === primaryHeroIndex} />{isHome && index === primaryHeroIndex ? <aside className="fact-rail" aria-label="Restaurant facts"><dl><div><dt>Visit</dt><dd>{address || "See restaurant details"}</dd></div><div><dt>Hours</dt><dd>{hours ? `${text(hours.day)} ${text(hours.value)}` : "See current opening hours"}</dd></div><div><dt>Contact</dt><dd>{contactLink && isSafeHref(contactLink.href) ? <SafeLink href={contactLink.href} context={context} ctaKind="contact">{contactLink.label}</SafeLink> : "Contact the restaurant"}</dd></div></dl></aside> : null}</Fragment>)}</div></main><footer className="footer"><div><strong>{artifact.site_settings.display_name}</strong>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}<p>{artifact.footer.legal_text}</p></div><nav aria-label="Footer navigation">{navPages.map((navPage) => <Link key={navPage.role} href={hrefForPage(navPage)}>{navPage.nav_label}</Link>)}</nav><div>{artifact.footer.links?.map((link) => <SafeLink key={link.href} href={link.href}>{link.label}</SafeLink>)}</div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></>;
 }
