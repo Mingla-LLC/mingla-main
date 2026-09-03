@@ -40,6 +40,11 @@ export const ADJUDICATOR = "scripts/ci/main-health.mjs";
 export const SELF_TEST_RUN = `node ${ADJUDICATOR} --self-test`;
 export const PREGATE_RUN = `node ${ADJUDICATOR} pregate`;
 export const ALERT_RUN = `node ${ADJUDICATOR} alert`;
+// #2881's canonical draft condition — the ONLY job-level condition this gate
+// permits on the pre-merge check. #2881 requires every job of a draft-gated
+// workflow to carry it; #2909 requires that nothing else ever conditions this
+// check away. Both hold: exactly this string, or none at all.
+export const PREGATE_DRAFT_IF = "${{ github.event.pull_request.draft != true }}";
 export const ALERT_IF =
   "always() && github.event_name == 'push' && github.ref == 'refs/heads/main'";
 export const REQUIRED_ALERT_ENV = Object.freeze([
@@ -134,7 +139,9 @@ export function auditWiring(sources) {
     if (!job) {
       errors.push(`${PREGATE_HOST_NAME}: job "${PREGATE_JOB}" is missing; nothing asks whether main is healthy`);
     } else {
-      if (job.if != null) errors.push(`${PREGATE_JOB}: must carry no job-level if; a condition here is how the check stops running`);
+      if (job.if != null && String(job.if).trim() !== PREGATE_DRAFT_IF) {
+        errors.push(`${PREGATE_JOB}: the only permitted job-level if is #2881's canonical draft condition; any other condition is how the check stops running`);
+      }
       if (permissionPairs(job.permissions) !== JSON.stringify([["actions", "read"], ["contents", "read"]])) {
         errors.push(`${PREGATE_JOB}: permissions must be JOB-level and exactly {actions: read, contents: read}`);
       }
@@ -240,9 +247,20 @@ export function runSelfTest() {
       `job "${PREGATE_JOB}" is missing`,
     ],
     [
+      // Anchored INSIDE the job block on purpose. A sibling job carries the
+      // identical draft condition earlier in the same file, so a bare replace()
+      // would mutate the wrong job and the mutant would prove nothing; and
+      // INSERTING a second `if:` proves nothing either, because YAML resolves a
+      // duplicate key to the LAST one and the mutation is silently inert.
       "the pre-merge job is conditioned off",
-      withJob(sources, PREGATE_HOST_NAME, (s) => s.replace(`  ${PREGATE_JOB}:\n`, `  ${PREGATE_JOB}:\n    if: false\n`)),
-      "must carry no job-level if",
+      withJob(sources, PREGATE_HOST_NAME, (s) => {
+        const key = `  ${PREGATE_JOB}:\n`;
+        const at = s.indexOf(key);
+        assert.ok(at >= 0, "fixture must contain the pre-merge job");
+        const cut = at + key.length;
+        return s.slice(0, cut) + s.slice(cut).replace(`    if: ${PREGATE_DRAFT_IF}\n`, "    if: false\n");
+      }),
+      "only permitted job-level if",
     ],
     [
       "the pre-merge enforcement step is removed",

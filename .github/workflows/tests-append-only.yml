@@ -166,6 +166,13 @@ jobs:
   # workflow-level `permissions:` key, so the sibling job inherits the
   # repository default; adding one at workflow level would move its token too.
   main-health-pregate:
+    # issue #2881 — every job of a draft-gated workflow carries the draft
+    # condition, this one included. Opting out would leave one job running on
+    # every draft push while the rest skip, which is the fan-out #2881 removed.
+    # Safe here because this workflow already declares `ready_for_review` in its
+    # trigger types, so the check re-fires and executes against the SHA that
+    # actually merges rather than merging on a `skipped` conclusion.
+    if: ${{ github.event.pull_request.draft != true }}
     name: "Pre-merge: main is green"
     runs-on: ubuntu-latest
     timeout-minutes: 5

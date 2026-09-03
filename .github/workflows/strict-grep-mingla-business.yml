@@ -102,26 +102,46 @@ on:
       # this entry exists only so editing the adjudicator itself re-runs the
       # suite that hosts it. Do NOT widen to all of scripts/**.
       - "scripts/ci/main-health.mjs"
-      # #2885 AC-4 — the machine-written baseline sits under a broad pattern
-      # above, so a one-file recording PR matched this filter and ran the whole
-      # suite. LAST on purpose: any other changed file still matches a positive
-      # pattern above, so this only skips a baseline-ONLY change.
-      - "!mingla-business/scripts/ci/bundle-baseline.json"
-      # issue #2909 — CATCH-ALL, PUSH-SIDE ONLY, and deliberately the LAST
-      # entry so it wins over every exclusion above it. The red-`main` alert
-      # lives in this workflow, so `main` can only be reported red when this
-      # workflow runs. MEASURED, not assumed: over the last 40 `main` commits,
-      # SEVEN (17.5%) matched none of the positive patterns above -- root-level
+      # issue #2909 — CATCH-ALL, PUSH-SIDE ONLY. The red-`main` alert lives in
+      # this workflow, so `main` can only be reported red when this workflow
+      # runs. MEASURED, not assumed: over 40 consecutive `main` commits, SEVEN
+      # (17.5%) matched none of the positive patterns above -- root-level
       # REPORTS.md/COMMS.md (every CLOSE appends REPORTS.md) and the whole
-      # mingla-site-cms tree -- and an eighth was a baseline-only commit the
-      # exclusion above skipped. On those eight a red `main` alerted NOBODY.
-      # An alert that fires on five commits in six is not an alert, it is a
-      # sampling scheme, and it is worse than none because it manufactures
-      # confidence. This buys POST-MERGE coverage only: the pull_request list
-      # above is deliberately NOT given a catch-all, so no PR minutes are added.
-      # Removing this entry re-opens the exact hole, so the #2909 wiring gate
-      # asserts it is present and goes RED if it is ever taken away.
+      # mingla-site-cms tree. On those a red `main` alerted NOBODY, which from
+      # outside is indistinguishable from a green one. An alert that fires on
+      # five commits in six is not an alert, it is a sampling scheme, and it is
+      # worse than none because it manufactures confidence. This buys
+      # POST-MERGE coverage only: the pull_request list above is deliberately
+      # NOT given a catch-all, so no PR minutes are added. Removing this entry
+      # re-opens the hole, so the #2909 wiring gate asserts it is present.
       - "**"
+      # #2885 AC-4 — the baseline exclusion, and it must stay AFTER the
+      # catch-all above. GitHub resolves the LAST matching pattern, so with the
+      # catch-all last this negative was overridden and baseline-only merges
+      # started this whole suite on `main` -- reviving exactly the fan-out AC-4
+      # removed (~53 jobs per recording change, ~15/day, ~51,000 job-min per
+      # month). The #2524 auto-merge guard caught that on the merge side.
+      #
+      # THE RESIDUAL, stated rather than buried: a commit touching ONLY the
+      # machine-written baseline now does NOT start this workflow, so the
+      # red-`main` alert does not fire for that one commit. Measured coverage
+      # is therefore 39/40, not 40/40, and the missed commit is 5692d0358
+      # ("Record business-web boot payload growth").
+      #
+      # WHY THAT IS THE RIGHT TRADE, and it is a trade, not a free win:
+      #   - the commit is MACHINE-WRITTEN and touches no product code, so it
+      #     cannot introduce a red that a human change had not already caused;
+      #   - `main` is still MEASURED on that commit by the workflows that carry
+      #     no paths filter at all -- the ratchet itself and the CI batch lane
+      #     -- so what is lost is the ALERT for one commit, not the checking;
+      #   - the exposure is exactly one commit deep and self-clearing: the next
+      #     commit that touches anything else matches the catch-all and
+      #     re-evaluates the whole branch, red included;
+      #   - against that, ~51,000 job-min a month is a measured, recurring cost.
+      # One commit of alert latency on a machine-written no-op is worth less
+      # than that, so the exclusion wins. If a baseline-only commit ever DOES
+      # need to alert, the fix is a cheap always-on host, not deleting this line.
+      - "!mingla-business/scripts/ci/bundle-baseline.json"
 concurrency:
   group: ci-strict-grep-mingla-business-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
