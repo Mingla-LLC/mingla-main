@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { isPrimarySuite, isMigratedSuite, suiteCommandFingerprint } from "./validate-manifest-v2.mjs";
+import { isPrimarySuite, isMigratedSuite, suiteCommandFingerprint, suiteOriginPatterns } from "./validate-manifest-v2.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, "../../..");
@@ -36,12 +36,34 @@ export function parseOriginPattern(value) {
   throw new Error(`unsupported origin wildcard: ${value}`);
 }
 
+/**
+ * [#2882] The three comparisons, compiled ONCE per pattern.
+ *
+ * `pathMatches` re-parsed both sides on every call, which is fine for a diff of
+ * a few files and catastrophic for a liveness sweep: 747 patterns against 9,015
+ * tracked files is 6.7 MILLION `parseOriginPattern(candidate)` calls, each of
+ * which spreads the string into a character array to count `*`. That took the
+ * validator from 0.23s to 32.9s and, multiplied across the 18 class-A gates that
+ * load it, took class A from 407s to 916s — past its 890s kill.
+ *
+ * This is the SAME matcher, not a second one: `pathMatches` is now defined in
+ * terms of it, so the grammar has exactly one implementation and the callers
+ * that match one path keep byte-identical behaviour. A caller matching MANY
+ * paths against one pattern compiles once and pays the per-candidate cost only.
+ */
+export function compileOriginPattern(pattern) {
+  const parsed = parseOriginPattern(pattern);
+  if (parsed.mode === "literal-v1") return (candidate) => candidate === parsed.value;
+  if (parsed.mode === "descendants-v1") {
+    const prefix = `${parsed.value}/`;
+    return (candidate) => candidate.startsWith(prefix);
+  }
+  return (candidate) => candidate.startsWith(parsed.value) && !candidate.slice(parsed.value.length).includes("/");
+}
+
 export function pathMatches(pattern, candidate) {
   parseOriginPattern(candidate); // changed paths obey the same repository-relative safety grammar
-  const parsed = parseOriginPattern(pattern);
-  if (parsed.mode === "literal-v1") return candidate === parsed.value;
-  if (parsed.mode === "descendants-v1") return candidate.startsWith(`${parsed.value}/`);
-  return candidate.startsWith(parsed.value) && !candidate.slice(parsed.value.length).includes("/");
+  return compileOriginPattern(pattern)(candidate);
 }
 
 export function parseNulPaths(buffer) {
@@ -191,6 +213,75 @@ function setupEvidenceIsExact(report, authority, executionClass) {
     && report?.toolExposureFingerprint === authority.toolExposureFingerprint && exposureRecordsValid;
 }
 
+/**
+ * [#2882] Which primary suites this host was DUE to run.
+ *
+ * A report carrying no `routing` block is a pre-#2882 or unrouted run and the
+ * answer is unchanged: everything the host owns. `mode: "full"` — push, schedule,
+ * workflow_dispatch — is the same answer said explicitly.
+ */
+export function expectedRoutedPrimaryIds(ownedPrimary, routing) {
+  if (!routing || routing.mode !== "routed") return ownedPrimary.map((suite) => suite.id);
+  const changedPaths = Array.isArray(routing.changedPaths) ? routing.changedPaths : [];
+  try {
+    return ownedPrimary
+      .filter((suite) => suiteOriginPatterns(suite).some((pattern) => changedPaths.some((file) => pathMatches(pattern, file))))
+      .map((suite) => suite.id);
+  } catch {
+    // A registry too broken to route from should already have failed the build
+    // in the validator, but the reconcile step runs `if: always()` and so can
+    // still reach here. Fall back to OWNERSHIP — the larger expectation — so a
+    // routed run that skipped anything goes red. The named reason is pushed by
+    // reconcilePrimaryRouting; a stack trace here would say less and hide it.
+    return ownedPrimary.map((suite) => suite.id);
+  }
+}
+
+export function changedPathDigest(changedPaths) {
+  return sha256(Buffer.concat([...changedPaths].sort(byteSort).map((value) => Buffer.from(`${value}\0`, "utf8"))));
+}
+
+/**
+ * [#2882] Every way the routing block itself could be a lie, refused.
+ *
+ * The selector already derived and SEALED this pull request's changed-path list
+ * in a separate step before any suite ran. When that document is trustworthy
+ * (`mode: "selected"`), the runner's independently derived list must agree with
+ * it byte for byte — two derivations, one answer, or red.
+ */
+function reconcilePrimaryRouting(ownedPrimary, decision, primary) {
+  const errors = [];
+  const routing = primary?.routing;
+  if (routing === undefined || routing === null) return errors;
+  if (!["routed", "full"].includes(routing.mode)) return [`primary-routing-mode-invalid: ${routing.mode}`];
+  if (routing.registry !== undefined && !Number.isInteger(routing.registry)) errors.push("primary-routing-denominator-invalid");
+  if (routing.mode === "full") {
+    if (Array.isArray(routing.classSelectedSuiteIds)
+        && JSON.stringify(routing.classSelectedSuiteIds) !== JSON.stringify(ownedPrimary.map((suite) => suite.id))) {
+      errors.push("primary-routing-full-mode-selected-a-subset");
+    }
+    return errors;
+  }
+  const changedPaths = routing.changedPaths;
+  // F4 restated at reconcile time: an empty diff on a routed event is "could not
+  // observe", never "observed nothing".
+  if (!Array.isArray(changedPaths) || changedPaths.length === 0) return [...errors, "primary-routing-empty-diff"];
+  for (const value of changedPaths) {
+    try { parseOriginPattern(value); } catch (error) { return [...errors, `primary-routing-path-unsafe: ${error.message}`]; }
+  }
+  for (const suite of ownedPrimary) {
+    try { suiteOriginPatterns(suite); }
+    catch (error) { return [...errors, `primary-routing-registry-unreadable: ${error.message}`]; }
+  }
+  const recomputed = expectedRoutedPrimaryIds(ownedPrimary, routing);
+  if (JSON.stringify(routing.classSelectedSuiteIds) !== JSON.stringify(recomputed)) errors.push("primary-routing-mismatch");
+  if (routing.changedPathSha256 !== changedPathDigest(changedPaths)) errors.push("primary-routing-digest-mismatch");
+  if (decision?.mode === "selected" && decision.changedPathSha256 !== changedPathDigest(changedPaths)) {
+    errors.push("primary-routing-diff-disagrees-with-selector");
+  }
+  return errors;
+}
+
 export function reconcilePhase3bReports(manifest, host, rawDecision, primary, secondary = null) {
   const errors = []; let decision = null;
   try { decision = validateDecision(manifest, rawDecision, host); }
@@ -203,7 +294,19 @@ export function reconcilePhase3bReports(manifest, host, rawDecision, primary, se
   // hosts died on `primary-identity-mismatch`. The fix is not a second
   // hard-coded name — it is to ask the registry which lane a suite belongs to.
   const migratedIds = new Set(manifest.suites.filter(isMigratedSuite).map((suite) => suite.id));
-  const expectedPrimaryIds = manifest.suites.filter((suite) => suite.class === host && isPrimarySuite(suite)).map((suite) => suite.id);
+  // [#2882] The primary lane now ROUTES on `originPaths` for pull-request events,
+  // so "what this host owns" and "what this host was due to run" stopped being
+  // the same list. Reconciling against ownership alone made every routed run red
+  // with `primary-identity-mismatch` — reproduced before this line was written.
+  //
+  // The report does NOT get to declare its own expectation. It supplies only the
+  // changed-path list; the selection is recomputed HERE from the registry, and a
+  // disagreement is red. That keeps the identity-and-order guarantee exactly as
+  // strong as it was: the routed set is derived twice, independently, and both
+  // derivations must agree before any suite is allowed to be absent.
+  const ownedPrimary = manifest.suites.filter((suite) => suite.class === host && isPrimarySuite(suite));
+  errors.push(...reconcilePrimaryRouting(ownedPrimary, decision, primary));
+  const expectedPrimaryIds = expectedRoutedPrimaryIds(ownedPrimary, primary?.routing);
   const primaryIds = Array.isArray(primary?.results) ? primary.results.map((result) => result.id) : [];
   // Any migrated suite appearing in the primary report is a wrong-lane duplicate,
   // whichever wave it belongs to — not only a Phase 3B one.

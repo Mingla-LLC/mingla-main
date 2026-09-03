@@ -259,7 +259,71 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     cb761e15c76eb0b50caa06a2d1291b7351e861a27d98e25917e637dd5c57f8b0 — the value
   //     pinned above — proving nothing else in the tree drifted into this digest.
   // Every earlier re-derivation is preserved, not replaced.
-  "47dfe3df8b53eb8638295f2ee4b02707b5a445a26bc8018b92bb639f114ecff5";
+  //
+  // [TEST-MOD-APPROVED #2882 — TESTER] Re-derived once more, for the same
+  // structural reason as the re-derivation immediately above and by the same
+  // review. WHAT MOVED: the batch lane's self-test step now also runs #2882's
+  // TESTER adversarial suite
+  // (`.github/scripts/ci-batch/__tests__/issue-2882-routing-cannot-select-silently.tester.test.mjs`)
+  // alongside the batch-runner self-test and the implementor's happy path. That
+  // lane is PR-family, so its non-concurrency document moves; there is no way to
+  // execute a router regression test on the pull requests that change the router
+  // without touching it, because that lane is the only always-on one that runs
+  // on a `.github/scripts/ci-batch/**`-only diff.
+  //
+  // WHY IT IS SAFE, re-verified independently rather than inherited:
+  //   - the ONLY change to the lane is one added filename on an existing
+  //     `run:` continuation — no step added, removed or renamed, no `uses:`, no
+  //     install command, no job key change;
+  //   - the `concurrency:` block is byte-for-byte IDENTICAL to origin/main —
+  //     diffed, not assumed;
+  //   - the `on:` trigger block is byte-for-byte IDENTICAL to origin/main, so
+  //     PR-family membership cannot have changed;
+  //   - PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED: the
+  //     count-and-classification assertion still passes and only the
+  //     non-concurrency document digest moved.
+  //
+  // NOTE FOR REVIEW: the tester's standing authorisation on #2882 named
+  // `assertPhase2Locks` in the node-wave-shadow file. THIS seal was not named,
+  // and is moved here only because wiring the tester's own regression test into
+  // CI mechanically moves it. Flagged on the issue for ratification rather than
+  // moved quietly.
+  //
+  // [TEST-MOD-APPROVED #2882] Re-derived once more, after rebasing
+  // onto #3081. Both closes touched a different PR-family lane in the same window:
+  // #3081 added two steps to the migrations-and-Deno lane, #2882 adds the routing
+  // regression suite, the tester's adversarial suite and one routed-selection step to
+  // the CI batch lane. All three notes above are preserved, not merged or summarised,
+  // per this file's own rule.
+  //
+  // The value below is NEITHER side's constant. After the rebase the tree carries
+  // BOTH lane changes, so the correct digest is a third value neither branch had
+  // computed; taking either existing literal would be a stale pin that merely looked
+  // deliberate. It was re-derived fresh from the merged tree.
+  //
+  // The batch lane is named here by ISSUE, never by its path, for exactly the reason
+  // #3081 records above: a workflow filename written into a tracked file is counted by
+  // `discoverWorkflowProviders()` as an external provider reference and moves the
+  // frozen #2148 provider seal. This branch hit that too, from a comment in a
+  // different file, and fixed it the same way — by not naming the file.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING, running #3081's checklist:
+  //   - the `on:` and `concurrency:` blocks of the changed lane are byte-identical to
+  //     origin/main, verified by diff rather than by eye; no `group:` or
+  //     `cancel-in-progress:` value is touched;
+  //   - no `paths:` or `paths-ignore:` entry is added anywhere;
+  //   - the workflow file count is unchanged on both sides and the workflow diff is a
+  //     single `M` — nothing added, removed or renamed;
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED; only the
+  //     non-concurrency semantic assertion moved;
+  //   - the policy audit still reports zero errors at 124 PR-family workflows, and the
+  //     revert-sensitivity subtests still pass;
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring the CI batch lane to its
+  //     origin/main bytes makes subtest 2 pass again at #3081's
+  //     47dfe3df8b53eb8638295f2ee4b02707b5a445a26bc8018b92bb639f114ecff5, proving
+  //     nothing else in the tree drifted into this digest.
+  // Every earlier re-derivation is preserved, not replaced.
+  "b3c2fbb773c96901aa4b353c879ec6537fed784997cd43dea0c7e88e900910ac";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

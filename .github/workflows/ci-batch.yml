@@ -247,6 +247,17 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # #2882. The selection, printed once per job with its denominator, before
+      # the job spends anything. Four of sixteen sampled commits on main select
+      # ZERO suites — a legitimate outcome that must never be indistinguishable
+      # from a router that silently did nothing, so the count is always printed
+      # beside the registry size it was drawn from. On push and workflow_dispatch
+      # the mode is `full` and every registered suite runs, exactly as before.
+      # This step also fails the job in seconds when the changed-path list cannot
+      # be derived, rather than after fourteen hosts have finished installing.
+      - name: Print the routed suite selection with its denominator
+        timeout-minutes: 2
+        run: node .github/scripts/ci-batch/run-suite-batch.mjs --route-preview "${{ matrix.class }}"
       - name: Select Phase 3B suites from complete local Git history
         id: phase3b-select
         timeout-minutes: 2
@@ -290,9 +301,17 @@ jobs:
       # The runner's own guarantees are load-bearing: it is the only thing standing
       # between "one job for many suites" and "one green lie". Prove it still bites
       # BEFORE trusting it to report on anything.
+      # #2882 rides on the same step rather than adding one: routing decides
+      # WHICH suites this job runs, so the proof that routing is correct belongs
+      # exactly where the proof that the runner is honest already lives — before
+      # either is trusted to report on anything.
       - name: Batch runner self-test (proves a vanished suite fails the run)
         if: always()
-        run: node --test .github/scripts/ci-batch/__tests__/run-suite-batch.test.mjs
+        run: >-
+          node --test
+          .github/scripts/ci-batch/__tests__/run-suite-batch.test.mjs
+          .github/scripts/ci-batch/__tests__/issue-2882-origin-paths-routing.implementor.test.mjs
+          .github/scripts/ci-batch/__tests__/issue-2882-routing-cannot-select-silently.tester.test.mjs
 
       - name: Run the ${{ matrix.class }} suites
         if: always()

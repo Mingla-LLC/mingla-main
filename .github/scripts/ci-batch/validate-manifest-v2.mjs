@@ -9,6 +9,15 @@ import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+// [#2882] The ONE origin-pattern grammar. `select-phase3b-suites.mjs` has owned
+// it since #2148 and its self-test already pins the contract that separates it
+// from fnmatch and from GitHub's own filter syntax. A second matcher with
+// different semantics is how a derived inventory gets published wrong twice, so
+// routing, Phase 3B selection and this validator all bind to the same two
+// functions. The import is circular (that module imports this one) and is safe:
+// every binding either side reads is a hoisted function declaration, and neither
+// module body touches the other's exports at evaluation time.
+import { compileOriginPattern, parseOriginPattern } from "./select-phase3b-suites.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_ROOT = path.resolve(HERE, "../../..");
@@ -470,6 +479,27 @@ const REVIEWED_SPLIT_PATHS = Object.freeze([
   `app-mobile/${STALE_CONFIG_ROOT}`,
   `mingla-business/${STALE_CONFIG_ROOT}`,
 ]);
+// [#2882] `originPaths` stopped being provenance the moment a pull request began
+// ROUTING on it. Three assertions turn the field from a comment into a contract.
+//
+// The two exemptions below are ENUMERATED, never pattern-matched, so the list
+// cannot quietly grow:
+//
+//   1. `.github/workflows/` provenance. A suite folded into the batch keeps the
+//      path of the wrapper that was deleted by design; ci-batch.yml's own header
+//      records that intent. 80 such patterns match no tracked file and must not.
+//   2. STALE_PROVENANCE_ALLOWLIST — the four sealed #994 split-text entries.
+//      `validateManifestTextRepresentations` requires EXACTLY six object-typed
+//      representations and hard-codes their extension, so they cannot be
+//      repaired without breaking their own seal. Both suites already carry the
+//      live `app.config.js` sibling, so nothing is unwatched behind them.
+const STALE_PROVENANCE_ALLOWLIST = Object.freeze([
+  Object.freeze({ suite: "issue-994-ota-env-resolution-app-mobile", pattern: REVIEWED_SPLIT_PATHS[0], issue: "#994" }),
+  Object.freeze({ suite: "issue-994-ota-env-resolution-app-mobile", pattern: REVIEWED_SPLIT_PATHS[1], issue: "#994" }),
+  Object.freeze({ suite: "issue-994-ota-env-resolution-mingla-business", pattern: REVIEWED_SPLIT_PATHS[0], issue: "#994" }),
+  Object.freeze({ suite: "issue-994-ota-env-resolution-mingla-business", pattern: REVIEWED_SPLIT_PATHS[1], issue: "#994" }),
+]);
+const WORKFLOW_PROVENANCE_PREFIX = ".github/workflows/";
 
 function fail(errors, message) {
   errors.push(message);
@@ -534,6 +564,132 @@ export function validateManifestTextRepresentations(rawManifest) {
   }
   const originPaths = decoded.legacyOrigins?.find((item) => item.stem === "issue-994-ota-env-resolution" && item.extension === "yml")?.workflowMetadata?.pathScope || [];
   for (const required of expected) if (!originPaths.includes(required)) fail(errors, `issue-994 workflow metadata lost decoded path provenance`);
+  return errors;
+}
+
+/**
+ * [#2882 F1/F2] The two shape assertions, taken on the RAW registry.
+ *
+ * They run over EVERY suite, not just the class a given job executes, so a
+ * broken entry cannot hide inside a class this run did not touch.
+ *
+ * F1 is the load-bearing one. A pull request now runs the suites its diff
+ * invalidates, so a suite whose `originPaths` is absent or empty routes to
+ * nothing and would never run again — and it would report nothing while doing
+ * it, which is this repository's recorded failure mode rather than a new one.
+ * That must be red, not quiet.
+ *
+ * F2 refuses to guess at an entry it does not recognise. Silently SKIPPING a
+ * non-string entry under-selects, which is the same failure wearing a different
+ * hat; coercing one (`String(entry)` → `[object Object]`) invents a pattern that
+ * matches nothing. Both are fail-open. Throwing is the only fail-closed reading.
+ */
+export function decodeEntry(entry, where) {
+  if (typeof entry === "string") return entry;
+  if (Boolean(entry) && typeof entry === "object" && !Array.isArray(entry)
+      && entry.encoding === REVIEWED_TEXT_ENCODING && strings(entry.parts) && entry.parts.length > 0) {
+    return entry.parts.join("");
+  }
+  throw new Error(`${where} is neither a path nor a reviewed concat-v1 representation`);
+}
+
+/**
+ * [#2882 F1/F2] The ONE reader of a suite's routing patterns.
+ *
+ * `decodeManifestTextRepresentations` also decodes concat-v1, but only for the
+ * two hard-coded `issue-994-*` suite ids. A concat-v1 entry added anywhere else
+ * would reach a matcher as an unhandled object, so routing decodes
+ * independently and refuses anything it does not recognise.
+ */
+export function suiteOriginPatterns(suite) {
+  const entries = suite.originPaths;
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new Error(`originPaths is empty for ${suite.id}: a suite that routes to nothing would never run`);
+  }
+  return entries.map((entry, index) => decodeEntry(entry, `${suite.id}: originPaths[${index}]`));
+}
+
+export function validateOriginPathShapes(rawManifest) {
+  const errors = [];
+  for (const suite of rawManifest.suites || []) {
+    if (!Array.isArray(suite.originPaths) || suite.originPaths.length === 0) {
+      fail(errors, `originPaths is empty for ${suite.id}: a suite that routes to nothing would never run`);
+      continue;
+    }
+    // Per ENTRY, not per suite: the runner may stop at the first malformed entry,
+    // but a validator that named one of four defects would send an operator back
+    // round the loop three more times.
+    for (const [index, entry] of suite.originPaths.entries()) {
+      try {
+        decodeEntry(entry, `${suite.id}: originPaths[${index}]`);
+      } catch (error) {
+        fail(errors, error.message);
+      }
+    }
+  }
+  return errors;
+}
+
+/**
+ * [#2882 §6d] Pattern liveness — the repair the router exposes rather than
+ * creates.
+ *
+ * `expectedFiles` has been checked for existence since #2435; `originPaths`
+ * never was, because it was provenance nobody read. Routing reads it, so a
+ * pattern that matches no tracked file is now a suite that silently stops being
+ * selected for the change it exists to catch. Six such patterns were live on
+ * `main` when this landed, including a brace glob (`{api,server}`) that Actions
+ * does not support either, leaving 38 real files unwatched.
+ *
+ * Every pattern must also PARSE. An unparseable pattern would throw inside the
+ * router at selection time, in a job that has already started, rather than here.
+ */
+export function validateOriginPathLiveness(decodedManifest, tracked) {
+  const errors = [];
+  const exempt = new Set(STALE_PROVENANCE_ALLOWLIST.map((item) => `${item.suite}\0${item.pattern}`));
+  // Every candidate obeys the repository-relative safety grammar, checked ONCE
+  // here instead of once per (pattern, file) pair. `pathMatches` validates its
+  // candidate on every call, which is correct for matching one path and is what
+  // made the naive sweep 6.7M validations deep; the guarantee is identical,
+  // the work is linear in the tree rather than in tree x registry.
+  for (const file of tracked) parseOriginPattern(file);
+  const trackedSet = new Set(tracked);
+  // Bucket by first path segment so a `prefix/**` or `prefix*` pattern scans its
+  // own subtree instead of the whole tree. Literals never scan at all.
+  const bySegment = new Map();
+  for (const file of tracked) {
+    const segment = file.slice(0, file.indexOf("/") + 1 || file.length);
+    let bucket = bySegment.get(segment);
+    if (!bucket) bySegment.set(segment, bucket = []);
+    bucket.push(file);
+  }
+  const candidatesFor = (pattern) => {
+    const cut = pattern.indexOf("/");
+    if (cut < 0) return tracked;                       // a bare filename can live anywhere
+    return bySegment.get(pattern.slice(0, cut + 1)) || [];
+  };
+  for (const suite of decodedManifest.suites || []) {
+    for (const pattern of suite.originPaths || []) {
+      if (typeof pattern !== "string") continue; // F2 already named this one
+      if (pattern.startsWith(WORKFLOW_PROVENANCE_PREFIX)) continue;
+      if (exempt.has(`${suite.id}\0${pattern}`)) continue;
+      let parsed = null;
+      let matches = null;
+      try {
+        parsed = parseOriginPattern(pattern);
+        matches = compileOriginPattern(pattern);
+      } catch (error) {
+        fail(errors, `${suite.id}: originPaths pattern does not parse: ${pattern} (${error.message})`);
+        continue;
+      }
+      // Liveness asks EXISTENCE, not a count, so stop at the first hit. A
+      // literal answers from the index without touching the tree at all.
+      const live = parsed.mode === "literal-v1"
+        ? trackedSet.has(parsed.value)
+        : candidatesFor(pattern).some(matches);
+      if (!live) fail(errors, `${suite.id}: originPaths pattern matches no tracked file: ${pattern}`);
+    }
+  }
   return errors;
 }
 
@@ -1472,6 +1628,11 @@ export function validateRegistry(
   const errors = [];
   errors.push(...validateManifestTextRepresentations(rawManifest));
   const manifest = decodeManifestTextRepresentations(rawManifest);
+  // [#2882 F1/F2/§6d] Routing data is now execution data. These three run before
+  // anything else reads `originPaths`, and they run over every suite in the
+  // registry rather than the class in hand.
+  errors.push(...validateOriginPathShapes(rawManifest));
+  errors.push(...validateOriginPathLiveness(manifest, trackedFiles(root)));
   const workflowSources = Object.fromEntries(fs
     .readdirSync(path.join(root, ".github/workflows"), { withFileTypes: true })
     .filter((entry) => entry.isFile() && /\.ya?ml$/.test(entry.name))

@@ -746,7 +746,7 @@
         "mingla-admin/src/lib/openExternal.js",
         "mingla-admin/src/components/campaign-builder/AdPreview.jsx",
         "mingla-admin/src/pages/CareersPage.jsx",
-        "mingla-admin/src/lib/__tests__/openExternal*.test.js",
+        "mingla-admin/src/lib/__tests__/openExternal*",
         ".github/workflows/issue-903-open-external-admin-tests.yml"
       ],
       "steps": [
@@ -1494,7 +1494,22 @@
       "id": "issue-1532-tester-adversarial",
       "class": "business-node20-4",
       "origin": ".github/workflows/issue-1532-tester-adversarial.yml",
-      "originPaths": [],
+      "originPaths": [
+        "mingla-business/jest.issue1532.gesture-handler-stub.cjs",
+        "mingla-business/jest.issue1532.safearea-stub.cjs",
+        "mingla-business/jest.issue1532.tester.cjs",
+        "mingla-business/jest.orch1118.babel.cjs",
+        "mingla-business/jest.orch1147r2.blur-stub.cjs",
+        "mingla-business/jest.orch1147r2.haptics-stub.cjs",
+        "mingla-business/src/components/stay/**",
+        "mingla-business/src/components/venue/VenueMenuModule.tsx",
+        "mingla-business/src/hooks/useBrandDiscoveryCurrency.ts",
+        "mingla-business/src/hooks/useResponsiveLayout.ts",
+        "mingla-business/src/hooks/useStayInventory.ts",
+        "mingla-business/src/services/stayInventoryService.ts",
+        "mingla-business/src/services/stayMediaService.ts",
+        "mingla-business/src/wrappers/SmartScrollView.tsx"
+      ],
       "steps": [
         {
           "name": "Stay editor guard reachability (tester adversarial)",
@@ -1651,7 +1666,9 @@
         "mingla-business/src/utils/__tests__/issue1996BusinessWebShare.tester.adversarial.test.ts",
         "mingla-business/src/utils/__tests__/issue1996BusinessWebShare.publicIsolation.tester.test.ts",
         "mingla-marketing/lib/content-share-readiness.ts",
-        ".github/workflows/issue-1996-business-desktop-sharing-tests.yml"
+        ".github/workflows/issue-1996-business-desktop-sharing-tests.yml",
+        "mingla-business/src/components/ui/__tests__/issue_1719_share_same_turn.happy.test.tsx",
+        "mingla-business/src/utils/__tests__/sharePublicUrl.test.ts"
       ],
       "steps": [
         {
@@ -1720,8 +1737,7 @@
       "class": "business-node20-3",
       "origin": ".github/workflows/issue-948-w2-bank-route-web-tests.yml",
       "originPaths": [
-        "mingla-business/app/brand/**/connect.tsx",
-        "mingla-business/app/brand/**/connect.web.tsx",
+        "mingla-business/app/brand/**",
         "mingla-business/src/components/brand/BrandBankConnectBody.web.tsx",
         "mingla-business/src/components/brand/BrandOnboardView.tsx",
         "mingla-business/src/components/brand/BrandStripeCountryPicker.tsx",
@@ -2024,7 +2040,8 @@
         "supabase/migrations/**",
         "mingla-business/app/**",
         "mingla-business/src/**",
-        ".github/workflows/production-readiness-audit.yml"
+        ".github/workflows/production-readiness-audit.yml",
+        "scripts/load/validate-k6-scripts.mjs"
       ],
       "steps": [
         {
@@ -2261,7 +2278,7 @@
         "app-mobile/src/components/OnboardingFlow.tsx",
         "app-mobile/src/components/PostExperienceModal.tsx",
         "app-mobile/app.json",
-        "app-mobile/src/components/__tests__/issue_2322_ios_picker_theming*.test.mjs"
+        "app-mobile/src/components/__tests__/issue_2322_ios_picker_theming*"
       ],
       "steps": [
         {
@@ -2333,7 +2350,11 @@
         "docs/INVARIANT_REGISTRY.md",
         ".github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs",
         ".github/scripts/strict-grep/MANIFEST.json",
-        ".github/workflows/issue-2399-multiday-picker-ticket-box.yml"
+        ".github/workflows/issue-2399-multiday-picker-ticket-box.yml",
+        "mingla-business/src/components/event/__tests__/PublicEventPage.issue2101.test.tsx",
+        "mingla-business/src/components/event/__tests__/issue_2135_multidate_public_day_picker.test.tsx",
+        "mingla-business/src/components/event/__tests__/issue_2209_public_page_shows_the_days.test.tsx",
+        "mingla-business/src/utils/__tests__/issue_2160_roster_and_wizard.test.tsx"
       ],
       "steps": [
         {
@@ -2521,7 +2542,7 @@
       "originPaths": [
         ".github/workflows/issue-1322-admin-sentry-tests.yml",
         "mingla-admin/scripts/ci/require-sentry-dsn-on-prod.mjs",
-        "mingla-admin/src/__tests__/issue1322_admin_sentry*.js",
+        "mingla-admin/src/__tests__/issue1322_admin_sentry*",
         "mingla-admin/src/components/ErrorBoundary.jsx",
         "mingla-admin/src/diagnostics/sentry.js",
         "mingla-admin/src/main.jsx"
@@ -2703,7 +2724,7 @@
         ".github/workflows/bundle-baseline-ratchet.yml",
         ".github/workflows/issue-1509-boot-budget-tests.yml",
         "mingla-business/scripts/ci/**",
-        "mingla-business/scripts/ci/__tests__/issue1509_*.mjs",
+        "mingla-business/scripts/ci/__tests__/issue1509_*",
         "mingla-business/scripts/ci/bundle-attribute.mjs",
         "mingla-business/scripts/ci/bundle-baseline-update.mjs",
         "mingla-business/scripts/ci/bundle-baseline.json",
@@ -2809,7 +2830,9 @@
         "app-mobile/src/contexts/CoachMarkContext.tsx",
         "app-mobile/src/contexts/__tests__/issue-1516-coach-mark-grammar-and-blast-radius.tester-adversarial.test.tsx",
         "app-mobile/src/contexts/__tests__/issue-1516-coach-mark-single-process.test.tsx",
-        "supabase/migrations/20270210001516_issue_1516_normalize_coach_mark_step_grammar.sql"
+        "supabase/migrations/20270210001516_issue_1516_normalize_coach_mark_step_grammar.sql",
+        "app-mobile/src/components/__tests__/orch-1029-coach-mark-fixes.test.tsx",
+        "app-mobile/src/contexts/__tests__/orch-1029-coach-mark-adversarial.test.tsx"
       ],
       "steps": [
         {
@@ -3165,7 +3188,7 @@
         "app-mobile/src/components/deckCardPlate.tsx",
         "app-mobile/src/components/expandedCard/**",
         "app-mobile/src/hooks/useVisits.ts",
-        "app-mobile/src/i18n/locales/*/expanded_details.json",
+        "app-mobile/src/i18n/locales/**",
         "app-mobile/src/services/busynessService.ts",
         "app-mobile/src/services/messagingService.ts",
         "app-mobile/src/services/visitService.ts",
@@ -3410,7 +3433,8 @@
       "origin": ".github/workflows/issue-1615-public-share-surfaces.yml",
       "originVariant": "default",
       "originPaths": [
-        "**/.well-known/**",
+        "mingla-business/public/.well-known/**",
+        "mingla-marketing/public/.well-known/**",
         ".github/workflows/issue-1615-public-share-surfaces.yml",
         "app-mobile/app.json",
         "app-mobile/app/p/**",
@@ -3418,12 +3442,14 @@
         "app-mobile/src/components/ShareModal.tsx",
         "app-mobile/src/services/**",
         "mingla-business/app/**",
-        "mingla-business/package*.json",
+        "mingla-business/package.json",
+        "mingla-business/package-lock.json",
         "mingla-business/src/components/**",
         "mingla-business/src/constants/publicUrls.ts",
         "mingla-business/tsconfig.json",
         "mingla-business/vercel.json",
-        "mingla-business/{api,server}/**",
+        "mingla-business/api/**",
+        "mingla-business/server/**",
         "mingla-marketing/app/api/content-share-analytics/**",
         "mingla-marketing/app/api/internal-share-proxy/**",
         "mingla-marketing/lib/shared-card-proxy.ts",
@@ -3438,7 +3464,7 @@
         "supabase/functions/_shared/contentShare.ts",
         "supabase/functions/_shared/contentShareService.ts",
         "supabase/functions/shared-card/**",
-        "supabase/migrations/*1615*"
+        "supabase/migrations/**"
       ],
       "steps": [
         {
@@ -3964,7 +3990,8 @@
         "app-mobile/src/hooks/useFriends.ts",
         "app-mobile/src/hooks/useFriendsQuery.ts",
         "app-mobile/src/utils/navTabHaptics.ts",
-        "app-mobile/src/utils/profileLocationFreshness.ts"
+        "app-mobile/src/utils/profileLocationFreshness.ts",
+        "app-mobile/src/components/__tests__/issue-1638-tab-switch-scheduling.test.mjs"
       ],
       "steps": [
         {
@@ -4157,7 +4184,7 @@
         "app-mobile/package.json",
         "app-mobile/scripts/ci/issue-1639-orch1016-fixc-guard.mjs",
         "app-mobile/src/components/PersonHolidayView.tsx",
-        "app-mobile/src/components/__tests__/issue-1639-profile-cards-batch*.test.tsx",
+        "app-mobile/src/components/__tests__/issue-1639-profile-cards-batch*",
         "app-mobile/src/components/profile/ViewFriendProfileScreen.tsx",
         "app-mobile/src/constants/holidays.ts",
         "app-mobile/src/hooks/queryKeys.ts",
@@ -4833,7 +4860,7 @@
         ".github/scripts/strict-grep/issue-1960-share-art-isolation.mjs",
         ".github/workflows/issue-1960-share-art-isolation.yml",
         "app-mobile/app/s/[code].tsx",
-        "mingla-business/api/og-*.js",
+        "mingla-business/api/og-*",
         "mingla-business/app/b/[brandSlug]/index.tsx",
         "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
         "mingla-business/app/t/[brandSlug]/[tripSlug].tsx",
@@ -5187,7 +5214,7 @@
         ".github/workflows/bundle-baseline-provenance-guard.yml",
         ".github/workflows/bundle-baseline-ratchet.yml",
         ".github/workflows/issue-2058-bundle-baseline-handoff-tests.yml",
-        "mingla-business/scripts/ci/__tests__/issue2058_*.mjs",
+        "mingla-business/scripts/ci/__tests__/issue2058_*",
         "mingla-business/scripts/ci/bundle-baseline-pr-handoff.mjs"
       ],
       "steps": [
@@ -8207,7 +8234,7 @@
         "supabase/functions/ticket-checkout-create/**",
         "supabase/functions/rsvp-contribution-create/**",
         "supabase/functions/venue-reservation-create/**",
-        "supabase/functions/*/issue_1178_ng_split*.test.ts",
+        "supabase/functions/**",
         ".github/workflows/issue-1178-ng-split-removal-tests.yml"
       ],
       "triggerContract": {
@@ -8469,7 +8496,8 @@
         "supabase/functions/venue-reservation-confirm/**",
         "supabase/functions/_shared/__tests__/issue_1326_ng_reservation_finalize.test.ts",
         "supabase/functions/_shared/__tests__/issue_1326_confirm_paystack.test.ts",
-        ".github/workflows/issue-1326-ng-reservation-finalize-tests.yml"
+        ".github/workflows/issue-1326-ng-reservation-finalize-tests.yml",
+        "supabase/functions/_shared/__tests__/_importmap.test.json"
       ],
       "triggerContract": {
         "push": {
@@ -9785,7 +9813,7 @@
       "origin": ".github/workflows/issue-1950-app-readiness-tests.yml",
       "originVariant": "default",
       "originPaths": [
-        "supabase/migrations/**1950**",
+        "supabase/migrations/**",
         "supabase/functions/admin-ad-app-readiness/**",
         "supabase/functions/admin-ad-app-readiness-event/**",
         "supabase/functions/_shared/adAppReadiness.ts",
@@ -9799,7 +9827,15 @@
         "mingla-admin/src/components/layout/AppShell.jsx",
         "mingla-admin/src/components/ui/Card.jsx",
         "mingla-admin/src/components/campaign-builder/StepLane.jsx",
-        ".github/workflows/issue-1950-app-readiness-tests.yml"
+        ".github/workflows/issue-1950-app-readiness-tests.yml",
+        "mingla-admin/src/__tests__/fixtures/issue1950Readiness.js",
+        "mingla-admin/src/__tests__/issue1928_app_identity_focus_rework.test.js",
+        "mingla-admin/src/__tests__/issue1928_app_identity_readiness.test.js",
+        "mingla-admin/src/__tests__/issue1950_app_readiness.adversarial.tester.test.js",
+        "mingla-admin/src/__tests__/issue1950_app_readiness.test.js",
+        "mingla-admin/src/__tests__/issue1950_app_readiness_gate.test.js",
+        "mingla-admin/src/lib/featureFlags.js",
+        "supabase/functions/_shared/__tests__/issue1950_app_readiness.test.ts"
       ],
       "triggerContract": {
         "push": null,
@@ -10562,7 +10598,11 @@
         ".github/scripts/strict-grep/issue-2230-consumer-carries-occurrences.mjs",
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/workflows/issue-2230-consumer-multiday-tests.yml",
-        "docs/INVARIANT_REGISTRY.md"
+        "docs/INVARIANT_REGISTRY.md",
+        ".github/scripts/strict-grep/orch-1138-experience-checkout-byte-identical.mjs",
+        "app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source.test.ts",
+        "app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source.tester_adversarial.test.ts",
+        "app-mobile/src/services/__tests__/issue_2160_calendar_per_day_entries.test.ts"
       ],
       "triggerContract": {
         "push": {
@@ -11063,12 +11103,13 @@
         "supabase/functions/_shared/__tests__/issue_2321_*",
         "app-mobile/src/components/profile/AccountSettings.tsx",
         "app-mobile/src/components/profile/__tests__/issue_2321_*",
-        "app-mobile/src/i18n/locales/*/settings.json",
+        "app-mobile/src/i18n/locales/**",
         "mingla-business/app/account/delete.tsx",
         "mingla-business/app/account/__tests__/issue_2321_*",
         "mingla-business/src/hooks/useAccountDeletion.ts",
         ".github/scripts/strict-grep/issue-2321-retained-auth-cannot-claim-deleted.mjs",
-        ".github/workflows/issue-2321-account-deletion-tests.yml"
+        ".github/workflows/issue-2321-account-deletion-tests.yml",
+        "app-mobile/scripts/ci/orch-1240-dual-account-deletion-check.mjs"
       ],
       "triggerContract": {
         "push": {
