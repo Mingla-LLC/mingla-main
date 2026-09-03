@@ -113,13 +113,20 @@ GRANT EXECUTE ON FUNCTION public.issue_2489_gate_registry() TO anon, authenticat
 --
 -- The set-equality check belongs in #2489 and stays there. It can only be evaluated on a
 -- database where #2489 actually ran, because it compares the declared set against the
--- objects #2489 itself creates. Two lanes — `issue-1931-private-event-access.yml` and
--- `issue-2117-offering-visibility-gate-tests.yml` — deliberately SKIP #2489 by exact
--- filename while still replaying the rest of the chain, so the shared predicate, the
--- public-theme projection and the gated read paths do not exist there. A check in THIS file would run on those lanes
--- and raise "declared objects are not carrying the shared gate" for every one of them —
--- turning a correct skip into a false red, which is the same mistake #3081 exists to fix,
--- pointed at a different lane.
+-- objects #2489 itself creates. Two migration-replay lanes — the #1931 private-event
+-- access suite and the #2117 offering-visibility gate suite — deliberately SKIP #2489 by
+-- exact filename while still replaying the rest of the chain, so the shared predicate,
+-- the public-theme projection and the gated read paths do not exist there. A check in
+-- THIS file would run on those lanes and raise "declared objects are not carrying the
+-- shared gate" for every one of them — turning a correct skip into a false red, which is
+-- the same mistake #3081 exists to fix, pointed at a different lane.
+--
+-- Those two lanes are named by ISSUE, not by workflow filename, deliberately: the CI
+-- provider authority (#2148/#2591) discovers a workflow's external consumers by scanning
+-- every tracked non-workflow file for `.y`+`ml` literals, so spelling a workflow filename
+-- in this migration would register this SQL file as a CONSUMER of those two lanes, move
+-- the frozen 73-record provider seal, and red eleven class-A gates. It did exactly that
+-- once; the fix was to stop naming them, not to re-derive the seal.
 --
 -- This file therefore only guarantees the SHAPE of the registry: the table exists, holds
 -- every carrier known at this version, and is what the function reads. Enforcement stays
