@@ -933,3 +933,34 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
   pointer-events: none;
 }
 .hero > div { z-index: 2; }
+
+/* #2830 — reels and the team. gogi's own site runs both; the reels ARE the
+   content, because the captions are their words and the footage is their room. */
+.video-feature { display: grid; gap: 1rem; }
+.video-caption { max-width: 62ch; color: var(--muted); margin: 0; }
+.reel-poster, .reel-video {
+  width: 100%; aspect-ratio: 9 / 16; max-height: 70vh; border-radius: 14px;
+  background: var(--panel) center / cover no-repeat; border: 1px solid var(--line);
+  display: block;
+}
+@media (min-width: 720px) { .reel-poster, .reel-video { aspect-ratio: 16 / 9; } }
+.reel-poster { position: relative; cursor: pointer; padding: 0; }
+.reel-play {
+  position: absolute; inset: 50% auto auto 50%; translate: -50% -50%;
+  display: grid; place-items: center; width: 72px; height: 72px; border-radius: 999px;
+  background: var(--gold); color: var(--ink); font-size: 26px; line-height: 1;
+}
+.team-grid {
+  list-style: none; margin: 1.5rem 0 0; padding: 0;
+  display: grid; gap: 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+}
+.team-grid li { display: grid; gap: 0.4rem; justify-items: start; }
+.team-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; }
+.team-initial {
+  display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: 12px;
+  background: var(--panel-raised); color: var(--gold);
+  font-family: var(--display); font-size: 2.5rem;
+}
+.team-grid strong { font-weight: 600; }
+.team-grid span:not(.team-initial) { color: var(--muted); font-size: 0.85rem; }

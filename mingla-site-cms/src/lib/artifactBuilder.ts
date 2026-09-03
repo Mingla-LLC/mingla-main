@@ -369,6 +369,32 @@ export async function buildPublicationArtifact(
             url: resolved.checkout_url,
           };
         }
+        case "video_feature": {
+          const video = renderVideo(raw.video);
+          // A video block whose file is not ready is dropped rather than
+          // published as a heading over an empty frame.
+          if (!video) return null;
+          return {
+            type: "video_feature",
+            heading: raw.heading ?? null,
+            caption: raw.caption ?? null,
+            video_url: video,
+            poster_url: renderMedia(raw.poster, "").url,
+          };
+        }
+        case "team":
+          return {
+            type: "team",
+            heading: raw.heading ?? null,
+            caption: raw.caption ?? null,
+            members: (raw.members || []).map((row: AnyDoc) => ({
+              name: row.name,
+              role: row.role ?? null,
+              // A person can be published by name alone.
+              media_url: row.media ? renderMedia(row.media, "").url : null,
+              alt: row.alt ?? null,
+            })),
+          };
         case "menu_board": {
           /*
            * NO MINGLA MENU MEANS NO MENU. The block is dropped, and because a

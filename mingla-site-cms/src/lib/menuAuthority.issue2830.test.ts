@@ -27,9 +27,12 @@ const callback = read("../supabase/functions/brand-site-cms-callback/index.ts");
 
 describe("#2830 the menu belongs to Mingla", () => {
   it("the Payload block carries presentation ONLY -- no items, no prices", () => {
+    // Slice to the NEXT block, whatever it is. Naming a specific neighbour
+    // broke the moment new blocks were inserted between them, and the failure
+    // looked like the menu block had grown fields it had not.
     const block = blocks.slice(blocks.indexOf('slug: "menu_board"'));
-    const end = block.indexOf("slug: \"gallery\"");
-    const menuBlock = block.slice(0, end);
+    const next = block.indexOf('slug: "', 'slug: "menu_board"'.length);
+    const menuBlock = next === -1 ? block : block.slice(0, next);
     expect(menuBlock).toContain('short("heading"');
     expect(menuBlock).toContain('name: "note"');
     /*
