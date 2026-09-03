@@ -43,6 +43,52 @@ export class ServerDraftLifecycleError extends Error {
   }
 }
 
+// Issue #3065 — the RSVP and event draft RPCs both guard writes with an
+// optimistic `clientRevision`, and BOTH used to wedge permanently the moment a
+// client's counter and the server's diverged: nothing here resynced, the
+// counter is persisted in Zustand, and the wizard's `clientRevisionRef` is
+// monotonic, so the same losing revision was resent forever. The server half
+// of the fix (migration 20270617003065) makes the guard reject only a writer
+// that is BEHIND the stored revision. This is the client half: a conflict now
+// pulls the authoritative server draft back so the store — and therefore the
+// wizard's monotonic ref — adopts the server's revision, and the NEXT edit
+// saves. It is a reconcile, never a force-write: if another device really did
+// move ahead, its content is what lands in the store.
+export class DraftRevisionConflictError extends Error {
+  draftId: string;
+  serverDraft: DraftEvent | null;
+
+  constructor(draftId: string, serverDraft: DraftEvent | null) {
+    super(`Draft revision conflict: ${draftId}`);
+    this.name = "DraftRevisionConflictError";
+    this.draftId = draftId;
+    this.serverDraft = serverDraft;
+  }
+}
+
+export const isDraftRevisionConflictError = (
+  error: unknown,
+): error is DraftRevisionConflictError =>
+  error instanceof DraftRevisionConflictError ||
+  (error !== null &&
+    typeof error === "object" &&
+    (error as { name?: unknown }).name === "DraftRevisionConflictError" &&
+    typeof (error as { draftId?: unknown }).draftId === "string");
+
+// Both draft RPCs raise these, and PostgREST hands them back as PLAIN OBJECTS
+// (not Error instances), so match on the shape rather than `instanceof`.
+const REVISION_CONFLICT_SIGNALS = [
+  "rsvp_revision_conflict",
+  "stale_client_revision",
+];
+
+const isRevisionConflictResponse = (error: unknown): boolean => {
+  if (error === null || typeof error !== "object") return false;
+  const message = (error as { message?: unknown }).message;
+  if (typeof message !== "string") return false;
+  return REVISION_CONFLICT_SIGNALS.some((signal) => message.includes(signal));
+};
+
 export const isServerDraftLifecycleError = (
   error: unknown,
 ): error is ServerDraftLifecycleError =>
@@ -309,6 +355,23 @@ const fetchExistingDraftSaveContext = async (
   };
 };
 
+// Issue #3065 — turn a revision conflict into a RECONCILE. Pulls the
+// authoritative server draft so the caller can adopt it; a fetch failure
+// degrades to a conflict with no draft rather than masking the conflict.
+const toRevisionConflictError = async (
+  error: unknown,
+  draftId: string,
+): Promise<unknown> => {
+  if (!isRevisionConflictResponse(error)) return error;
+  let serverDraft: DraftEvent | null = null;
+  try {
+    serverDraft = await fetchDraftById(draftId);
+  } catch {
+    serverDraft = null;
+  }
+  return new DraftRevisionConflictError(draftId, serverDraft);
+};
+
 export const autosaveServerDraft = async (
   draft: DraftEvent,
 ): Promise<DraftEvent> => {
@@ -331,7 +394,7 @@ export const autosaveServerDraft = async (
       p_reason: null,
       p_client_request_id: createRsvpRequestId(),
     });
-    if (error !== null) throw error;
+    if (error !== null) throw await toRevisionConflictError(error, draft.id);
     return eventFromRsvpGraph(data, "autosaveServerDraft");
   }
 
@@ -345,7 +408,7 @@ export const autosaveServerDraft = async (
     p_client_revision: draft.clientRevision ?? 0,
   });
 
-  if (error !== null) throw error;
+  if (error !== null) throw await toRevisionConflictError(error, draft.id);
   if (data === null) {
     throw new ServerDraftLifecycleError("draft_not_editable", draft.id);
   }

@@ -13,6 +13,7 @@ import {
   discardServerDraft,
   fetchDraftById,
   fetchDraftsForBrand,
+  isDraftRevisionConflictError,
   isServerDraftLifecycleError,
 } from "../services/eventDrafts";
 import {
@@ -296,6 +297,32 @@ export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
       setLastSavedAt(new Date().toISOString());
     },
     onError: (error, draft) => {
+      // Issue #3065 — a revision conflict is a RECONCILE, not a failure. The
+      // service has already pulled the authoritative server draft; adopting it
+      // moves the store (and the wizard's monotonic clientRevisionRef) onto the
+      // server's revision so the NEXT edit saves. Before this, the counters
+      // could never reconverge: the losing revision was resent forever, which
+      // is how one wedged device put 3,400+ failing statements a minute into
+      // production. Deliberately NOT routed through logMutationError — there is
+      // nothing for the user to do and nothing broken once we have resynced.
+      if (isDraftRevisionConflictError(error)) {
+        const serverDraft = error.serverDraft;
+        if (serverDraft !== null) {
+          upsertServerDraft(serverDraft);
+          queryClient.setQueryData(
+            eventDraftKeys.detail(serverDraft.id),
+            serverDraft,
+          );
+        }
+        if (__DEV__) {
+          console.info("[useServerDraftAutosave] Revision resynced:", {
+            draftId: error.draftId,
+            serverRevision: serverDraft?.clientRevision ?? null,
+            attemptedRevision: draft.clientRevision ?? 0,
+          });
+        }
+        return;
+      }
       if (isServerDraftLifecycleError(error)) {
         if (!isLocalOnlyDraftId(draft.id)) {
           deleteDraft(draft.id);
@@ -347,6 +374,7 @@ export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
       isSaving: mutation.isPending,
       hasError:
         mutation.isError &&
+        !isDraftRevisionConflictError(mutation.error) &&
         !isServerDraftLifecycleError(mutation.error) &&
         !isBusinessAuthNotReadyError(mutation.error),
       lastSavedAt,
