@@ -18,6 +18,8 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-03 — A red `main` now blocks merges instead of letting them land blind, and emails a human when it happens; the check itself runs on 39 of the last 40 `main` commits, up from 32 (#2909, PR #3101)
+- 2026-09-03 — The bundle-baseline job stopped failing on every `main` commit: it asked GitHub for one branch's pull requests instead of scanning the repository's entire 2,008-pull history, which had just crossed a 2,000-record safety cap (#3096, PR #3099)
 - 2026-09-03 — Brand admins can export only the contact details their selected brand was given from People on iOS, Android, and web, with logged preparation and expiring downloads while Mingla-only circle data stays private (#1776, PR #3090)
 - 2026-09-03 — Pull requests now run only the test suites their change can actually affect, cutting a typical run from all 85 suites to about 2 while every suite still runs in full on merge to main; 46 broken routing entries were repaired along the way, including 24 suites that were not watching the very test files they run (#2882, PR #3082)
 - 2026-09-03 — Re-running database migrations no longer aborts partway: the list of objects required to carry the address-privacy gate is now append-only data instead of code an older migration could silently revert, and the gate itself is unchanged (#3081, PR #3088)
