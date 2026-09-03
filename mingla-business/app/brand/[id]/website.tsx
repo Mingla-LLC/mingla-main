@@ -507,9 +507,9 @@ export default function BrandWebsiteRoute(): React.ReactElement {
           void openWebsiteUrl(`https://${hostname}`);
         }}
         onOpenAri={() =>
-          router.push(
-            `/(tabs)/ari?brandId=${safeBrandId}&sitesIntent=edit` as never,
-          )
+          // #2830 — the split view, not the full-screen Ari tab: editing a
+          // website without seeing it is what made every change a guess.
+          router.push(`/brand/${safeBrandId}/website/ari` as never)
         }
         onValidatePublish={() => {
           setValidationFailure(null);
