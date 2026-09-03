@@ -22,6 +22,24 @@ const SHA256 = /^[0-9a-f]{64}$/;
 // Content authority: Engineering Blueprint/somethingelse/content/gogi-lagos/
 // INGEST_BRIEF.md, captured 2026-08-27. Keep this object factual and free of
 // the demo's payment, WhatsApp, reservation, endorsement, and provider copy.
+/*
+ * #2830 — gögi's own words, and only their own words.
+ *
+ * Every line below is quoted from something gögi published: their Instagram
+ * bio, their captions, their storefront signage, or their own website. The
+ * sourcing lives in `INGEST_BRIEF.md`, the fact ledger built for this pilot,
+ * and the rule that produced it is the one that matters here: gögi is a
+ * prospect, so NOTHING on this site may be invented. Not a tagline, not an
+ * "about us" paragraph, not a review quote.
+ *
+ * Two consequences visible in the copy:
+ *   - Contact is phone and Instagram only, because they publish no email.
+ *   - Nothing claims they take bookings, because nothing says they do.
+ *
+ * The address is 69, not 66: their own post `DcgdnbaM_YB` and the
+ * Eat.Drink.Lagos review both say 69, and one of those two is the business
+ * itself. A web summary said 66 and is not used.
+ */
 export const GOGI_SEED_COPY = Object.freeze({
   displayName: "gögi",
   heading: "Where Lagos Comes to Eat",
@@ -30,12 +48,41 @@ export const GOGI_SEED_COPY = Object.freeze({
   address: "69 Admiralty Way, Lekki Phase 1, Lagos",
   phoneDisplay: "0912 711 7528",
   phoneHref: "tel:+2349127117528",
+  instagram: "https://www.instagram.com/gogilagos/",
   hoursSummary: "Open 24 hours, 7 days",
   colors: Object.freeze({
     background: "#1c1c1e",
     foreground: "#f0eee9",
     accent: "#cda052",
   }),
+  // Verbatim, each from a caption of theirs. Quoted, never paraphrased.
+  voice: Object.freeze({
+    comeAsYouAre:
+      "A place where you can show up exactly as you are. No pretending, no pressure. Just good food, good energy and good people.",
+    findGogi:
+      "In your 20s, (or 30s) there will be a space you become a regular. It's very important you find gögi.",
+    cravings:
+      "At gögi, we understand. Some cravings simply don't respect boundaries.",
+    coconutRice:
+      "Coconut rice, but make it gögi. Rich, fragrant, and loaded with flavour — the kind of bowl that needs no introduction.",
+    team: "Not to be dramatic, but we won a lottery with our team.",
+    friday:
+      "Your Friday needs better decisions. Start with gögi. Finish wherever the night takes you.",
+  }),
+  // Their own captions for their own people. Real names are published nowhere,
+  // so nicknames are all this site claims.
+  team: Object.freeze([
+    "Mr slice it all",
+    "Bad boy fresh",
+    "Mr cook half eat half",
+    "Madam Chief chef",
+    "Meat police",
+    "Stir fry bobo",
+    "Mix engineer",
+    "Fling stone",
+    "Scoopy doo",
+    "Fake chef",
+  ]),
 });
 
 export class SeedError extends Error {
@@ -173,72 +220,165 @@ function hours() {
   ].map((day) => ({ day, value: "Open 24 hours" }));
 }
 
-export function seedDocuments({ heroMediaId, homeId, contactId, tenantId }) {
+/*
+ * #2830 — gögi's site, as gögi's site.
+ *
+ * This seeded TWO pages with three blocks and one photograph, which is why the
+ * live pilot looked nothing like the real thing. The renderer was never the
+ * limit; the content was. It now seeds the five pages their own site has —
+ * home, about, menu, gallery, visit — from the fact ledger above.
+ *
+ * MEDIA DEGRADES, IT DOES NOT FABRICATE. `media` maps a slot name to an
+ * uploaded id. A block whose image or video has not been uploaded yet is
+ * OMITTED, and a page left with no blocks is disabled, so the navigation never
+ * offers a page that turns out to be empty. The seed can therefore run today
+ * with one hero photograph and grow as the rest of their library is uploaded,
+ * without ever publishing a placeholder.
+ */
+export function seedDocuments(
+  { heroMediaId, homeId, contactId, tenantId, aboutId, menuId, galleryId, media = {} },
+) {
+  const asset = (slot) => media[slot] ?? null;
+  const drop = (blocks) => blocks.filter(Boolean);
+
+  const homeBlocks = drop([
+    {
+      blockType: "hero",
+      heading: GOGI_SEED_COPY.heading,
+      subheading: GOGI_SEED_COPY.description,
+      media: heroMediaId,
+      ...(asset("heroVideo") ? { video: asset("heroVideo") } : {}),
+      ctas: [
+        { label: "See the menu", href: "/menu" },
+        { label: "Find us", href: "/contact" },
+      ],
+    },
+    {
+      blockType: "rich_text",
+      heading: "Come as you are",
+      paragraphs: [
+        { text: GOGI_SEED_COPY.voice.comeAsYouAre },
+        { text: GOGI_SEED_COPY.voice.cravings },
+      ],
+    },
+    asset("reelFoodHouse") && asset("reelFoodHousePoster")
+      ? {
+        blockType: "video_feature",
+        heading: "Day or night, open for a bite",
+        caption: GOGI_SEED_COPY.voice.friday,
+        video: asset("reelFoodHouse"),
+        poster: asset("reelFoodHousePoster"),
+      }
+      : null,
+    {
+      blockType: "hours_location",
+      heading: "Open day and night",
+      address: GOGI_SEED_COPY.address,
+      hours: hours(),
+    },
+    {
+      blockType: "contact_handoff",
+      heading: "Call gögi",
+      body: GOGI_SEED_COPY.hoursSummary,
+      label: `Call ${GOGI_SEED_COPY.phoneDisplay}`,
+      href: GOGI_SEED_COPY.phoneHref,
+    },
+  ]);
+
+  const aboutBlocks = drop([
+    {
+      blockType: "rich_text",
+      heading: "Find gögi",
+      paragraphs: [
+        { text: GOGI_SEED_COPY.voice.findGogi },
+        { text: GOGI_SEED_COPY.voice.comeAsYouAre },
+      ],
+    },
+    {
+      blockType: "team",
+      heading: "The team",
+      caption: GOGI_SEED_COPY.voice.team,
+      // Their own captions for their own people. No portraits: those exist
+      // only as moments in a reel, and cropping a stranger out of footage to
+      // fill a grid is not something this seed will do.
+      members: GOGI_SEED_COPY.team.map((name) => ({ name })),
+    },
+  ]);
+
+  // The menu page carries no items of its own — Mingla owns them, and the
+  // block is dropped at build time when Mingla has none, which disables this
+  // page and removes it from the navigation.
+  const menuBlocks = drop([
+    {
+      blockType: "menu_board",
+      heading: "The menu",
+      note: `${GOGI_SEED_COPY.hoursSummary}.`,
+    },
+  ]);
+
+  const galleryImages = ["gallery1", "gallery2", "gallery3", "gallery4", "gallery5", "gallery6"]
+    .map((slot) => asset(slot))
+    .filter(Boolean)
+    .map((id) => ({ media: id, alt: "" }));
+  const galleryBlocks = drop([
+    galleryImages.length
+      ? { blockType: "gallery", heading: "In the room", images: galleryImages }
+      : null,
+  ]);
+
+  const contactBlocks = drop([
+    {
+      blockType: "hours_location",
+      heading: "Visit gögi",
+      address: GOGI_SEED_COPY.address,
+      hours: hours(),
+    },
+    {
+      blockType: "contact_handoff",
+      // No email anywhere in their published material, so contact is the phone
+      // and Instagram. The gap in the ledger becomes the shape of the page.
+      heading: "Call gögi",
+      body: GOGI_SEED_COPY.hoursSummary,
+      label: GOGI_SEED_COPY.phoneDisplay,
+      href: GOGI_SEED_COPY.phoneHref,
+    },
+  ]);
+
+  const page = (id, role, title, navLabel, navOrder, blocks, seo) => ({
+    tenant: tenantId,
+    role,
+    title,
+    // A page with nothing on it is not published, and so never appears in the
+    // navigation or the sitemap.
+    enabled: blocks.length > 0,
+    nav_label: navLabel,
+    nav_order: navOrder,
+    blocks,
+    seo,
+    _id: id,
+  });
+
   return {
-    home: {
-      tenant: tenantId,
-      role: "home",
-      title: "Home",
-      enabled: true,
-      nav_label: "Home",
-      nav_order: 0,
-      blocks: [
-        {
-          blockType: "hero",
-          heading: GOGI_SEED_COPY.heading,
-          subheading: GOGI_SEED_COPY.description,
-          media: heroMediaId,
-          ctas: [
-            { label: "Visit us", href: "/contact" },
-            { label: `Call ${GOGI_SEED_COPY.phoneDisplay}`, href: GOGI_SEED_COPY.phoneHref },
-          ],
-        },
-        {
-          blockType: "hours_location",
-          heading: "Open day and night",
-          address: GOGI_SEED_COPY.address,
-          hours: hours(),
-        },
-        {
-          blockType: "contact_handoff",
-          heading: "Come as you are",
-          body: GOGI_SEED_COPY.hoursSummary,
-          label: `Call ${GOGI_SEED_COPY.phoneDisplay}`,
-          href: GOGI_SEED_COPY.phoneHref,
-        },
-      ],
-      seo: {
-        title: "gögi — Where Lagos Comes to Eat",
-        description: GOGI_SEED_COPY.description,
-      },
-    },
-    contact: {
-      tenant: tenantId,
-      role: "contact",
-      title: "Visit gögi",
-      enabled: true,
-      nav_label: "Visit",
-      nav_order: 1,
-      blocks: [
-        {
-          blockType: "hours_location",
-          heading: "Visit gögi",
-          address: GOGI_SEED_COPY.address,
-          hours: hours(),
-        },
-        {
-          blockType: "contact_handoff",
-          heading: "Call gögi",
-          body: GOGI_SEED_COPY.hoursSummary,
-          label: GOGI_SEED_COPY.phoneDisplay,
-          href: GOGI_SEED_COPY.phoneHref,
-        },
-      ],
-      seo: {
-        title: "Visit gögi in Lekki Phase 1",
-        description: `${GOGI_SEED_COPY.address}. ${GOGI_SEED_COPY.hoursSummary}.`,
-      },
-    },
+    home: page(homeId, "home", "Home", "Home", 0, homeBlocks, {
+      title: "gögi — Where Lagos Comes to Eat",
+      description: GOGI_SEED_COPY.description,
+    }),
+    about: page(aboutId, "about", "About gögi", "About", 1, aboutBlocks, {
+      title: "About gögi — a 24/7 food house in Lekki",
+      description: GOGI_SEED_COPY.voice.comeAsYouAre,
+    }),
+    menu: page(menuId, "menu", "Menu", "Menu", 2, menuBlocks, {
+      title: "The gögi menu",
+      description: `The full gögi menu. ${GOGI_SEED_COPY.hoursSummary}.`,
+    }),
+    gallery: page(galleryId, "gallery", "Gallery", "Gallery", 3, galleryBlocks, {
+      title: "Inside gögi",
+      description: `Inside gögi at ${GOGI_SEED_COPY.address}.`,
+    }),
+    contact: page(contactId, "contact", "Visit gögi", "Visit", 4, contactBlocks, {
+      title: "Visit gögi in Lekki Phase 1",
+      description: `${GOGI_SEED_COPY.address}. ${GOGI_SEED_COPY.hoursSummary}.`,
+    }),
     settings: {
       tenant: tenantId,
       display_name: GOGI_SEED_COPY.displayName,
@@ -246,23 +386,26 @@ export function seedDocuments({ heroMediaId, homeId, contactId, tenantId }) {
       background_color: GOGI_SEED_COPY.colors.background,
       foreground_color: GOGI_SEED_COPY.colors.foreground,
       accent_color: GOGI_SEED_COPY.colors.accent,
-      typography: "modern-sans",
+      // Their own register: condensed uppercase display, as their site uses.
+      typography: "condensed-display",
       canonical_url: CANONICAL_URL,
       seo_title: "gögi — Where Lagos Comes to Eat",
       seo_description: GOGI_SEED_COPY.description,
       social_image: heroMediaId,
       analytics_consent_mode: "optional",
     },
-    navigation: { tenant: tenantId, pages: [homeId, contactId] },
+    navigation: {
+      tenant: tenantId,
+      pages: [homeId, aboutId, menuId, galleryId, contactId].filter(Boolean),
+    },
     footer: {
       tenant: tenantId,
       address: GOGI_SEED_COPY.address,
       hours_summary: GOGI_SEED_COPY.hoursSummary,
       legal_text: "Gogi Lagos Ltd",
       links: [
-        { label: "Home", href: "/" },
-        { label: "Visit", href: "/contact" },
         { label: `Call ${GOGI_SEED_COPY.phoneDisplay}`, href: GOGI_SEED_COPY.phoneHref },
+        { label: "Instagram", href: GOGI_SEED_COPY.instagram },
       ],
     },
   };

@@ -12,6 +12,7 @@ import { isCanonicalMinglaHref, isSafeHref } from "../contracts/artifact";
 import { ConsentControl } from "./ConsentControl";
 import { MenuCart, type CartItem } from "./MenuCart";
 import { HeroVideo } from "./HeroVideo";
+import { ReelVideo } from "./ReelVideo";
 import { RevealOnScroll } from "./RevealOnScroll";
 import { SiteTheme } from "./SiteTheme";
 import { SiteRuntimeClient } from "./SiteRuntimeClient";
@@ -116,6 +117,10 @@ function Block({ block, context, primaryHeading = false }: { block: RestaurantBl
       }
       return <section className="menu-board"><h2>{text(block.heading, "Menu")}</h2>{block.note ? <p className="menu-note">{text(block.note)}</p> : null}{sections.map((section, sectionIndex) => <div className="menu-section" key={`${text(section.name)}-${sectionIndex}`}><h3>{text(section.name)}</h3>{section.description ? <p className="menu-section-note">{text(section.description)}</p> : null}<ul className="menu-list">{items(section.items).map((item, itemIndex) => { const price = formatMenuPrice(item.price_minor, item.currency); return <li className="menu-row" key={`${text(item.name)}-${itemIndex}`}><div className="menu-row-head"><span className="menu-item-name">{text(item.name)}</span><span className="menu-leader" aria-hidden="true" />{price ? <span className="menu-price">{price}</span> : null}</div>{item.description ? <p className="menu-item-note">{text(item.description)}</p> : null}</li>; })}</ul></div>)}</section>;
     }
+    case "video_feature":
+      return <section className="video-feature"><Eyebrow label="In motion" heading={block.heading} /><h2>{text(block.heading)}</h2>{block.caption ? <p className="video-caption">{text(block.caption)}</p> : null}<ReelVideo src={text(block.video_url)} poster={text(block.poster_url)} label={text(block.heading, "Video")} /></section>;
+    case "team":
+      return <section className="team"><Eyebrow label="The team" heading={block.heading} /><h2>{text(block.heading, "The team")}</h2>{block.caption ? <p>{text(block.caption)}</p> : null}<ul className="team-grid">{items(block.members).map((member, index) => <li key={`${text(member.name)}-${index}`}>{isSafeHref(member.media_url) ? <img src={text(member.media_url)} alt={text(member.alt)} width={480} height={480} loading="lazy" /> : <span className="team-initial" aria-hidden="true">{text(member.name).slice(0, 1)}</span>}<strong>{text(member.name)}</strong>{member.role ? <span>{text(member.role)}</span> : null}</li>)}</ul></section>;
     case "gallery": return <section className="editorial-gallery"><Eyebrow label="In the room" heading={text(block.heading, "Gallery")} /><h2>{text(block.heading, "Gallery")}</h2><div className="gallery">{items(block.images).slice(0, 12).map((image, index) => isSafeHref(image.url) ? <img key={index} src={text(image.url)} alt={text(image.alt)} width={640} height={640} /> : null)}</div></section>;
     case "hours_location": return <section className="feature"><div><Eyebrow label="Visit" heading={text(block.heading, "Hours & location")} /><h2>{text(block.heading, "Hours & location")}</h2><p>{text(block.address)}</p><SafeLink href={block.map_url}>Open map</SafeLink></div><div className="hours">{items(block.hours).map((row, index) => <p key={index}><strong>{text(row.day)}</strong><span>{text(row.value)}</span></p>)}</div></section>;
     case "testimonials": return <section><h2>{text(block.heading, "What guests say")}</h2><div className="grid">{items(block.items).slice(0, 8).map((item, index) => <blockquote className="tile" key={index}>“{text(item.quote)}”<footer>{text(item.name)}</footer></blockquote>)}</div></section>;

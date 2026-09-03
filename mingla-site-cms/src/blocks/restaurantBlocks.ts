@@ -210,6 +210,67 @@ export const restaurantBlocks: Block[] = [
     ],
   },
   {
+    slug: "video_feature",
+    labels: { singular: "Video", plural: "Videos" },
+    fields: [
+      short("heading", "Heading", false, 120),
+      short("caption", "Caption", false, 600),
+      {
+        name: "video",
+        label: "Video",
+        type: "relationship",
+        relationTo: "media",
+        required: true,
+        filterOptions: ({ req }) => {
+          const tenantId = (req.user as { tenantId?: string })?.tenantId;
+          return tenantId
+            ? {
+              tenant: { equals: tenantId },
+              state: { equals: "READY" },
+              detected_mime: { equals: "video/mp4" },
+            }
+            : false;
+        },
+      },
+      // Required, like the hero's: a video that has not arrived must still
+      // leave something on the page.
+      { ...readyMedia("poster", "Poster image") },
+    ],
+  },
+  {
+    slug: "team",
+    labels: { singular: "Team", plural: "Teams" },
+    fields: [
+      short("heading", "Heading", false, 120),
+      short("caption", "Caption", false, 600),
+      {
+        name: "members",
+        type: "array",
+        minRows: 1,
+        maxRows: 24,
+        fields: [
+          short("name", "Name", true, 80),
+          short("role", "Role", false, 80),
+          // Optional on purpose: a person can be published by name alone.
+          {
+            name: "media",
+            label: "Portrait",
+            type: "relationship",
+            relationTo: "media",
+            required: false,
+            filterOptions: ({ req }) => {
+              const tenantId = (req.user as { tenantId?: string })?.tenantId;
+              return tenantId
+                ? { tenant: { equals: tenantId }, state: { equals: "READY" } }
+                : false;
+            },
+          },
+          accessibleAlt(),
+        ],
+      },
+    ],
+  },
+  {
     slug: "gallery",
     labels: { singular: "Gallery", plural: "Galleries" },
     fields: [

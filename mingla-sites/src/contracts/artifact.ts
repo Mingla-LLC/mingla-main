@@ -18,6 +18,7 @@ export type MediaReference = {
 export type RestaurantBlock = {
   type: "hero" | "rich_text" | "media_feature" | "cta" | "offering_grid" |
     "venue_reservation" | "menu_link" | "menu_board" | "gallery" | "hours_location" |
+    "video_feature" | "team" |
     "testimonials" | "faq" | "contact_handoff" | "divider" | "spacer";
   [key: string]: unknown;
 };
@@ -199,6 +200,8 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
     menu_link: ["type", "heading", "label", "href"],
     menu_board: ["type", "heading", "note", "venue_id", "sections"],
     gallery: ["type", "heading", "images"],
+    video_feature: ["type", "heading", "caption", "video_url", "poster_url"],
+    team: ["type", "heading", "caption", "members"],
     hours_location: ["type", "heading", "address", "map_url", "hours"],
     testimonials: ["type", "heading", "items"],
     faq: ["type", "heading", "items"],
@@ -292,6 +295,34 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
             (item.currency == null ||
               (typeof item.currency === "string" &&
                 /^[A-Z]{3}$/.test(item.currency)))));
+      break;
+    /*
+     * #2830 — a short film with a still under it. gogi's own site runs their
+     * Instagram reels this way, and the reels ARE the content: the captions are
+     * their words and the footage is their room.
+     *
+     * The poster is required for the same reason it is on the hero: a video
+     * that has not arrived must still leave something on the page.
+     */
+    case "video_feature":
+      valid = boundedText(block.heading, 120) &&
+        boundedText(block.caption, 600) &&
+        isSafeHref(block.video_url) &&
+        isSafeHref(block.poster_url);
+      break;
+    /*
+     * The people. gogi published ten nicknames for their team and no real
+     * names, so `name` is what they chose to publish and a portrait is
+     * OPTIONAL — several of them exist only as a moment in a reel.
+     */
+    case "team":
+      valid = boundedText(block.heading, 120) &&
+        boundedText(block.caption, 600) &&
+        exactRows(block.members, 1, 24, ["name", "role", "media_url", "alt"], (row) =>
+          boundedText(row.name, 80, true) &&
+          boundedText(row.role, 80) &&
+          (row.media_url == null || isSafeHref(row.media_url)) &&
+          boundedText(row.alt, 240));
       break;
     case "gallery":
       valid = boundedText(block.heading, 120) && Array.isArray(block.images) &&
