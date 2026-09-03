@@ -252,6 +252,34 @@ export async function buildPublicationArtifact(
       (section) => (section.items as AnyDoc[]).length > 0,
     );
   })();
+  /*
+   * #2830 — a video's public URL. It carries no width because there are no
+   * renditions: there is no ffmpeg here, so the file is served exactly as the
+   * brand uploaded it. `renderMedia` cannot be reused — it demands a rendition
+   * manifest with widths and would throw on every video.
+   */
+  const videoReference = (record: AnyDoc) => {
+    const master = record.rendition_manifest?.master;
+    return {
+      id: String(record.id),
+      url: `https://gogi.sites.usemingla.com/media/${record.id}/video.mp4`,
+      alt: "",
+      // A video carries no rendered dimensions here; the poster supplies the
+      // layout box. Zero is the honest value, not a guessed 1920x1080.
+      width: 0,
+      height: 0,
+      integrity: String(master?.digest),
+      object_key: String(master?.key),
+    };
+  };
+  const isVideoRecord = (record: AnyDoc | undefined) =>
+    !!record && record.state === "READY" &&
+    record.detected_mime === "video/mp4";
+  const renderVideo = (mediaId: unknown): string | null => {
+    const record = media.get(id(mediaId));
+    if (!isVideoRecord(record)) return null;
+    return videoReference(record as AnyDoc).url;
+  };
   const renderMedia = (mediaId: unknown, alt = "") => {
     const record = media.get(id(mediaId));
     if (!record || record.state !== "READY" || !record.rendition_manifest)
@@ -282,6 +310,8 @@ export async function buildPublicationArtifact(
             heading: raw.heading,
             subheading: raw.subheading,
             media_url: renderMedia(raw.media, "").url,
+            // Optional, and never a replacement for the still above.
+            video_url: raw.video ? renderVideo(raw.video) : null,
             ctas: (raw.ctas || []).map((row: AnyDoc) => ({
               label: row.label,
               href: row.href,
@@ -502,7 +532,11 @@ export async function buildPublicationArtifact(
           : undefined,
       },
     },
-    media: [...media.values()].map((item) => renderMedia(item.id, "")),
+    // Videos take the video shape; everything else goes through the rendition
+    // path. A video handed to renderMedia throws, because it has no widths.
+    media: [...media.values()].map((item) =>
+      isVideoRecord(item) ? videoReference(item) : renderMedia(item.id, "")
+    ),
     commercial_references: commercial.map((item) => ({
       kind: item.kind,
       id: item.id,

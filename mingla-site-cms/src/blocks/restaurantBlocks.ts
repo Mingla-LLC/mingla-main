@@ -68,7 +68,31 @@ export const restaurantBlocks: Block[] = [
     fields: [
       short("heading", "Heading", true, 120),
       short("subheading", "Subheading", false, 300),
+      // The still image. REQUIRED even when a video is chosen: it is the
+      // poster, and it is what a visitor sees on a slow connection, with data
+      // saver on, or when they have asked for reduced motion.
       readyMedia(),
+      {
+        name: "video",
+        label: "Background video",
+        type: "relationship",
+        relationTo: "media",
+        required: false,
+        filterOptions: ({ req }) => {
+          const tenantId = (req.user as { tenantId?: string })?.tenantId;
+          return tenantId
+            ? {
+              tenant: { equals: tenantId },
+              state: { equals: "READY" },
+              detected_mime: { equals: "video/mp4" },
+            }
+            : false;
+        },
+        admin: {
+          description:
+            "Optional. Plays silently behind the heading. The image above is still required — it shows first, and it is what people who ask for reduced motion see.",
+        },
+      },
       { name: "ctas", type: "array", maxRows: 2, fields: ctaFields },
     ],
   },

@@ -28,7 +28,7 @@ export const Media: CollectionConfig = {
   labels: { singular: "Image", plural: "Media" },
   admin: { useAsTitle: "original_filename_safe", hideAPIURL: true },
   upload: {
-    mimeTypes: ["image/jpeg", "image/png", "image/webp"],
+    mimeTypes: ["image/jpeg", "image/png", "image/webp", "video/mp4"],
     filesRequiredOnCreate: false,
   },
   hooks: {
@@ -64,7 +64,7 @@ export const Media: CollectionConfig = {
       name: "declared_mime",
       type: "select",
       required: true,
-      options: ["image/jpeg", "image/png", "image/webp"],
+      options: ["image/jpeg", "image/png", "image/webp", "video/mp4"],
     },
     { name: "detected_mime", type: "text", admin: { readOnly: true }, access: systemFieldAccess },
     { name: "bytes", type: "number", admin: { readOnly: true }, access: systemFieldAccess },

@@ -11,6 +11,7 @@ import {
 import { isCanonicalMinglaHref, isSafeHref } from "../contracts/artifact";
 import { ConsentControl } from "./ConsentControl";
 import { MenuCart, type CartItem } from "./MenuCart";
+import { HeroVideo } from "./HeroVideo";
 import { RevealOnScroll } from "./RevealOnScroll";
 import { SiteTheme } from "./SiteTheme";
 import { SiteRuntimeClient } from "./SiteRuntimeClient";
@@ -62,7 +63,7 @@ function Block({ block, context, primaryHeading = false }: { block: RestaurantBl
   switch (block.type) {
     case "hero": {
       const Heading = primaryHeading ? "h1" : "h2";
-      return <section className="hero" style={isSafeHref(block.media_url) ? { backgroundImage: `linear-gradient(90deg,rgba(8,6,4,.82),rgba(8,6,4,.18)),url(${JSON.stringify(block.media_url).slice(1, -1)})` } : undefined}><div><Heading>{text(block.heading, "Welcome")}</Heading>{block.subheading ? <p>{text(block.subheading)}</p> : null}<div className="hero-actions">{items(block.ctas).slice(0, 2).map((cta, index) => <SafeLink key={index} href={cta.href} context={context} className={index ? "button ghost" : "button accent"}>{text(cta.label, "Learn more")}</SafeLink>)}</div></div></section>;
+      return <section className="hero" style={isSafeHref(block.media_url) ? { backgroundImage: `linear-gradient(90deg,rgba(8,6,4,.82),rgba(8,6,4,.18)),url(${JSON.stringify(block.media_url).slice(1, -1)})` } : undefined}>{isSafeHref(block.video_url) && isSafeHref(block.media_url) ? <HeroVideo src={text(block.video_url)} poster={text(block.media_url)} /> : null}<div><Heading>{text(block.heading, "Welcome")}</Heading>{block.subheading ? <p>{text(block.subheading)}</p> : null}<div className="hero-actions">{items(block.ctas).slice(0, 2).map((cta, index) => <SafeLink key={index} href={cta.href} context={context} className={index ? "button ghost" : "button accent"}>{text(cta.label, "Learn more")}</SafeLink>)}</div></div></section>;
     }
     case "rich_text": return <section className="prose editorial-prose"><h2>{text(block.heading)}</h2>{items(block.paragraphs).map((paragraph, index) => <p key={index}>{text(paragraph.text)}</p>)}</section>;
     case "media_feature": return <section className="feature editorial-feature"><div className="editorial-media">{isSafeHref(block.media_url) ? <img src={text(block.media_url)} alt={text(block.alt)} width={960} height={720} /> : null}</div><div><p className="eyebrow">Our story</p><h2>{text(block.heading)}</h2><p>{text(block.caption)}</p></div></section>;

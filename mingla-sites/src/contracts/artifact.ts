@@ -144,21 +144,44 @@ function assertMediaReference(value: unknown, siteId: string): void {
       )) ||
     !boundedText(value.alt, 240) ||
     !Number.isInteger(value.width) ||
-    Number(value.width) < 1 ||
     !Number.isInteger(value.height) ||
-    Number(value.height) < 1 ||
     typeof value.integrity !== "string" ||
     !DIGEST.test(value.integrity) ||
     typeof value.object_key !== "string" ||
-    !value.object_key.startsWith(`approved/${siteId}/${value.id}/`) ||
-    !value.object_key.endsWith(".webp")
+    !value.object_key.startsWith(`approved/${siteId}/${value.id}/`)
+  ) throw new Error("ARTIFACT_MEDIA_MISMATCH");
+  /*
+   * #2830 — an image and a video are different objects with different rules,
+   * and the difference is load-bearing rather than cosmetic.
+   *
+   * An IMAGE is a webp rendition and must declare real pixel dimensions: the
+   * layout reserves that box, and a zero there is a page that reflows under
+   * the reader.
+   *
+   * A VIDEO is stored as uploaded — there is no ffmpeg in this pipeline, so no
+   * renditions and no probed dimensions. Its box comes from the poster it sits
+   * behind, so it declares 0x0 deliberately rather than carrying an invented
+   * 1920x1080. What is NOT relaxed is the digest or the tenant-scoped key: a
+   * video is integrity-checked on serve exactly like every image.
+   */
+  const isVideo = value.object_key.endsWith(".mp4");
+  if (isVideo) {
+    if (
+      !value.url.endsWith("/video.mp4") ||
+      Number(value.width) !== 0 || Number(value.height) !== 0
+    ) throw new Error("ARTIFACT_MEDIA_MISMATCH");
+    return;
+  }
+  if (
+    !value.object_key.endsWith(".webp") ||
+    Number(value.width) < 1 || Number(value.height) < 1
   ) throw new Error("ARTIFACT_MEDIA_MISMATCH");
 }
 
 function assertRestaurantBlock(block: JsonObject, siteId: string): void {
   const type = String(block.type);
   const definitions: Record<string, readonly string[]> = {
-    hero: ["type", "heading", "subheading", "media_url", "ctas"],
+    hero: ["type", "heading", "subheading", "media_url", "video_url", "ctas"],
     rich_text: ["type", "heading", "paragraphs"],
     media_feature: [
       "type",
@@ -190,7 +213,10 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
     case "hero":
       valid = boundedText(block.heading, 120, true) &&
         boundedText(block.subheading, 300) &&
+        // The still is REQUIRED and the video is not: the video is an
+        // enhancement over the poster, never a replacement for it.
         isSafeHref(block.media_url) &&
+        (block.video_url == null || isSafeHref(block.video_url)) &&
         exactRows(block.ctas, 0, 2, ["label", "href"], (row) =>
           boundedText(row.label, 80, true) && isSafeHref(row.href));
       break;

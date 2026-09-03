@@ -777,3 +777,25 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
   .js-reveal .reveal { opacity: 1; transform: none; transition: none; }
   html { scroll-behavior: auto; }
 }
+
+/* #2830 — the hero video sits UNDER the copy and OVER the poster. The poster
+   is the section's background image and is always painted, so the heading is
+   legible before a byte of video arrives and stays legible if none does. */
+.hero-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(90deg, rgba(8, 6, 4, 0.82), rgba(8, 6, 4, 0.18));
+  pointer-events: none;
+}
+.hero > div { z-index: 2; }
