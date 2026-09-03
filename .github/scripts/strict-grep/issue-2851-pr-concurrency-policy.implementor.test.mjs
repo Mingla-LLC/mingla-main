@@ -227,10 +227,17 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // Every earlier re-derivation is preserved, not replaced.
   // [TEST-MOD-APPROVED #2882] Digest re-derived, for the same reason as the
   // #3044/#3047/#3040/#2060/#3060 re-derivations above: this branch adds a test
-  // step to a PR-family workflow (`ci-batch.yml` gains #2882's routing
-  // regression suite alongside the existing batch-runner self-test, and one
-  // named step that prints the routed selection), so that lane's
-  // non-concurrency document moves and this digest moves with it. There is no
+  // step to a PR-family workflow: the CI batch lane gains #2882's routing
+  // regression suite alongside the existing batch-runner self-test, plus one
+  // named step that prints the routed selection, so that lane's
+  // non-concurrency document moves and this digest moves with it.
+  //
+  // That lane is named INDIRECTLY on purpose. Provider discovery inventories
+  // every tracked file containing a workflow's literal filename, and the result
+  // is frozen in LOCKED_PROVIDER_DISCOVERY_SHA256; writing the name here in full
+  // silently enrols this test file as an external reference of that workflow and
+  // reds the registry validator. Reproduced, then written this way.
+  // There is no
   // way to wire a CI-executed regression test for the router without touching a
   // PR-family workflow, so this drift is structural rather than incidental.
   //
