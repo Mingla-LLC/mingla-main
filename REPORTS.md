@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-03 — Unrelated pull requests no longer fail Mingla Studio's production-only preview build or require production database secrets in Preview; Vercel now skips the CMS unless a governed deployment is requested (#3083, ops)
 - 2026-09-03 — Mingla's marketing page system now has an approved, reusable city catalogue, Explorer guide, Host guide, responsive audience menu, and device-aware app journeys ready for the ten-city search rollout (#2990, PR #3064)
 - 2026-09-02 — Operators can close the confirmed no-current-buyer attendance recovery set without contacting anyone, while preserving every ticket and audit record and refusing any changed or active-buyer state (#3060, PR #3062)
 - 2026-09-02 — Production source verification now recognizes TypeScript files erased from Supabase runtime bundles while continuing to require every executable dependency to match reviewed source exactly (#3054, PR #3057)
