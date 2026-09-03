@@ -509,7 +509,63 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     d02b7d66c14da550b7ba5b4773a6ea7f193cfeef65fdbf0765bd4b6a3c107730 --
   //     the value pinned immediately above -- so nothing else drifted in.
   // Every earlier re-derivation is preserved, not replaced.
-  "d259a32221eb5d0929bb5645e3402b3dbca900dfc948ba993c33bfc92a247b5d";
+  //
+  // [TEST-MOD-APPROVED #3072] Re-derived again. WHAT MOVED: #3072 gives the six
+  // per-issue lanes that ci-batch does NOT execute the same path routing every
+  // registered suite got from #2882. Each of those six gains ONE new job -- a
+  // five-minute `route` job that reads the lane's `originPaths` out of the
+  // ci-batch registry and matches the pull request's diff against them -- and
+  // each of their EXISTING jobs moves from #2881's canonical standalone draft
+  // condition to #2881's canonical COMPOSED form, gaining `needs`. The batch
+  // lane gains one test path on an existing step. All seven are PR-family, so
+  // their non-concurrency documents are inside this digest and it MUST move.
+  // Each lane is named here by ISSUE, never by its `.y`+`ml` path, for the
+  // reason #3081, #2882, #2099 and #2909 all record above: a workflow FILENAME
+  // written into a tracked file is counted by `discoverWorkflowProviders()` as
+  // an external provider reference and moves the frozen #2148 provider seal.
+  //
+  // HONEST DIFFERENCE FROM EVERY NOTE ABOVE: this change is NOT purely
+  // additive. Eight lines are DELETED -- the eight job-level draft conditions,
+  // each replaced in place by the composed form that carries the routing
+  // conjunct. That is the whole semantic delta on the existing jobs, and it is
+  // stated rather than glossed, because "227 insertions, 8 deletions" would
+  // otherwise read as an additive diff that it is not.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING, running #3081's checklist:
+  //   - CONTAMINATION CHECKED FIRST, per the #3081 lesson: every ADDED line in
+  //     this branch's non-workflow files, and both files it adds outright, were
+  //     grepped for a `.y`+`ml` literal. ZERO hits -- the router addresses lanes
+  //     by owner issue and reads wrapper paths out of the registry at runtime --
+  //     so the frozen provider seal does not move.
+  //   - the workflow diff is "7 files changed, 227 insertions(+), 8
+  //     deletions(-)", every entry `M`. Nothing added, removed or renamed, and
+  //     the workflow file count is 131 on BOTH sides.
+  //   - grepping added AND removed lines for `concurrency`, `group:` and
+  //     `cancel-in-progress` returns ZERO, and all seven lanes' `concurrency:`
+  //     blocks are byte-identical to origin/main -- diffed, not eyeballed.
+  //   - no trigger EVENT changed and no `paths:`/`paths-ignore:` KEY or ENTRY
+  //     was touched. #2885 AC-4's baseline exclusion is deliberately UNTOUCHED
+  //     on all six lanes: the registry's re-derived `pathScope` is still
+  //     exactly the one baseline file, so PR-family membership and the outer
+  //     filter are both unchanged.
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED. Not
+  //     assumed from the shape of the diff: subtests 1 and 4 PASS at 124
+  //     PR-family / seven non-PR against the changed tree.
+  //   - the policy audit still reports zero errors, and every revert-
+  //     sensitivity subtest (5-10) still passes, so the concurrency assertions
+  //     are intact and still go red on reversion. 10 of 11 subtests passed
+  //     before this re-pin; only subtest 2 was red.
+  //   - #2881 passes at 131 total / 124 PR-family / 115 draft-gated (253 jobs,
+  //     10 composed) / 9 always-on -- six more jobs and eight more composed
+  //     conditions than before, all canonical.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring all SEVEN lanes to their
+  //     origin/main bytes makes ALL ELEVEN subtests pass again at
+  //     d259a32221eb5d0929bb5645e3402b3dbca900dfc948ba993c33bfc92a247b5d --
+  //     the value pinned immediately above -- proving nothing else in the tree
+  //     drifted into this digest. The re-derived value below is stable across
+  //     two consecutive runs.
+  // Every earlier re-derivation is preserved, not replaced.
+  "d4e5b8ae8bd8cb86bf7467f51a274c1c8e9875298924e35781a1ce675b478a08";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

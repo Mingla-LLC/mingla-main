@@ -305,6 +305,12 @@ jobs:
       # WHICH suites this job runs, so the proof that routing is correct belongs
       # exactly where the proof that the runner is honest already lives — before
       # either is trusted to report on anything.
+      # #3072 rides here for the same reason and one more: it routes the six
+      # live-provider lanes ci-batch does NOT execute, using this same registry
+      # and this same origin-pattern grammar. Its proof that #2885 AC-4's
+      # baseline exclusion still holds must run on every pull request, not only
+      # on the ones that touch those six lanes — that assertion is the one most
+      # likely to be broken silently by something else.
       - name: Batch runner self-test (proves a vanished suite fails the run)
         if: always()
         run: >-
@@ -312,6 +318,7 @@ jobs:
           .github/scripts/ci-batch/__tests__/run-suite-batch.test.mjs
           .github/scripts/ci-batch/__tests__/issue-2882-origin-paths-routing.implementor.test.mjs
           .github/scripts/ci-batch/__tests__/issue-2882-routing-cannot-select-silently.tester.test.mjs
+          .github/scripts/ci-batch/__tests__/issue-3072-live-provider-routing.implementor.test.mjs
 
       - name: Run the ${{ matrix.class }} suites
         if: always()
