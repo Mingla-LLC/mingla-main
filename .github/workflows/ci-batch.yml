@@ -255,7 +255,12 @@ jobs:
       # the mode is `full` and every registered suite runs, exactly as before.
       # This step also fails the job in seconds when the changed-path list cannot
       # be derived, rather than after fourteen hosts have finished installing.
+      # #3076 rides on this step rather than adding one. It already computes the
+      # selection before the job spends anything; it now also publishes that
+      # decision as two step outputs so the setup steps below can decline to run
+      # for a class that will execute nothing. The printed line is unchanged.
       - name: Print the routed suite selection with its denominator
+        id: route
         timeout-minutes: 2
         run: node .github/scripts/ci-batch/run-suite-batch.mjs --route-preview "${{ matrix.class }}"
       - name: Select Phase 3B suites from complete local Git history
@@ -284,8 +289,25 @@ jobs:
           name: phase3b-selection-${{ matrix.class }}
           path: ${{ runner.temp }}/phase3b-decision-${{ matrix.class }}.json
           if-no-files-found: error
+      # #3076. This runtime is skipped only when the job has NO work of any kind:
+      # no primary suite, no Phase 3C suite, and no Phase 3B suite. The three
+      # clauses are the exact negations of the three run-blocks' own conditions,
+      # so this step cannot be skipped out from under a block that still runs.
+      #
+      # It is deliberately NOT gated on the primary selection alone. This is the
+      # one step here that also serves the other two waves: it restores the npm
+      # cache their `npm ci` draws on, so skipping it for a job whose Phase 3B or
+      # Phase 3C work still runs would trade 5.6s of setup for an uncached
+      # install — a saving that costs more than it saves.
+      #
+      # When it IS skipped, everything downstream runs on the runner image's own
+      # Node. That is already true of the three steps ABOVE it, which have always
+      # run pre-setup — and the remaining consumers are the batch runner
+      # self-test and a `--run` with an empty selection. ubuntu-24.04 ships Node
+      # 22, which three matrix classes already pin, so the fallback is a version
+      # these suites demonstrably pass under rather than an untested one.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        if: always()
+        if: always() && !(steps.route.outputs.runPrimarySetup == 'false' && (matrix.tertiaryClass == '' || steps.route.outputs.runPhase3cSetup == 'false') && (matrix.secondaryClass == '' || (steps.phase3b-decision.outputs.runSecondary == 'false' && steps.phase3b-select.outcome == 'success' && steps.phase3b-decision.outcome == 'success')))
         with:
           node-version: ${{ matrix.node }}
           cache: ${{ matrix.cache }}
@@ -294,8 +316,17 @@ jobs:
       # Setup is selected only from the reviewed typed profile registry. The runner
       # executes each exact argv capability once, then writes non-forgeable evidence
       # before any assertion suite is admitted.
+      #
+      # #3076: and it is not executed at all when this class routes to zero
+      # suites, which is 13 of 14 classes on the median pull request. Gated on an
+      # explicit `false` only — every other value, including the empty string a
+      # missing or failed routing step leaves behind, still installs. The
+      # `Run the <class> suites` step below is NOT gated: it still runs, still
+      # prints `selected 0 of 85`, and still uploads its artifact, so a class
+      # that skipped setup reports a green zero rather than vanishing. A skipped
+      # step must never become a skipped lane.
       - name: Execute and record one typed shard setup
-        if: always()
+        if: always() && steps.route.outputs.runPrimarySetup != 'false'
         run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.class }}"
 
       # The runner's own guarantees are load-bearing: it is the only thing standing
@@ -305,6 +336,9 @@ jobs:
       # WHICH suites this job runs, so the proof that routing is correct belongs
       # exactly where the proof that the runner is honest already lives — before
       # either is trusted to report on anything.
+      # #3076 rides on it for the same reason and one more: this step is ungated,
+      # so the proof that a zero-selection class still reports runs precisely on
+      # the jobs that skipped their setup.
       - name: Batch runner self-test (proves a vanished suite fails the run)
         if: always()
         run: >-
@@ -312,6 +346,7 @@ jobs:
           .github/scripts/ci-batch/__tests__/run-suite-batch.test.mjs
           .github/scripts/ci-batch/__tests__/issue-2882-origin-paths-routing.implementor.test.mjs
           .github/scripts/ci-batch/__tests__/issue-2882-routing-cannot-select-silently.tester.test.mjs
+          .github/scripts/ci-batch/__tests__/issue-3076-zero-selection-skips-setup.implementor.test.mjs
 
       - name: Run the ${{ matrix.class }} suites
         if: always()
@@ -404,8 +439,15 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ matrix.tertiaryNode }}
+      # #3076. Phase 3C has no selection protocol of its own — a host runs every
+      # suite the registry assigns it — but #2882's routing still applies to that
+      # assigned set, so a host can be assigned suites and invalidated by none of
+      # them. `runPhase3cSetup` is that answer, computed from the SAME context the
+      # run step re-derives below and printed with its own denominator. The run
+      # step keeps its original condition and still executes, still prints, and
+      # still uploads its artifact on a zero.
       - name: Execute one typed Phase 3C setup
-        if: always() && matrix.tertiaryClass != ''
+        if: always() && matrix.tertiaryClass != '' && steps.route.outputs.runPhase3cSetup != 'false'
         timeout-minutes: 5
         run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.tertiaryClass }}"
       - name: Run assigned Phase 3C suites with exact attribution
