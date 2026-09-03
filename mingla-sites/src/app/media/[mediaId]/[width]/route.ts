@@ -11,7 +11,10 @@ export async function GET(
 ) {
   try {
     const { mediaId, width } = await context.params;
-    if (!/^[0-9a-f-]{36}$/i.test(mediaId) || !/^(320|640|960|1440|1920)\.webp$/.test(width)) throw new Error();
+    // #2830 — one media door. `video.mp4` joins the width renditions rather than
+    // getting its own route, so lookup, tenancy and headers stay in one place.
+    const isVideo = width === "video.mp4";
+    if (!/^[0-9a-f-]{36}$/i.test(mediaId) || (!isVideo && !/^(320|640|960|1440|1920)\.webp$/.test(width))) throw new Error();
     const incoming = await headers();
     const host = normalizePublicHost(incoming.get("x-forwarded-host") || incoming.get("host"));
     const { artifact } = await loadPublication(host);
@@ -21,7 +24,7 @@ export async function GET(
     if (
       !reference ||
       !reference.object_key.startsWith(`approved/${artifact.site_id}/${mediaId}/`) ||
-      !reference.object_key.endsWith(".webp")
+      !reference.object_key.endsWith(isVideo ? ".mp4" : ".webp")
     ) throw new Error();
     const config = runtimeConfig();
     const object = await readPrivateObject(
@@ -34,7 +37,7 @@ export async function GET(
     if (await sha256(bytes) !== reference.integrity) throw new Error();
     return new NextResponse(Buffer.from(bytes), {
       headers: {
-        "content-type": "image/webp",
+        "content-type": isVideo ? "video/mp4" : "image/webp",
         "cache-control": "public, max-age=31536000, immutable",
         "content-digest": `sha-256=:${Buffer.from(reference.integrity, "hex").toString("base64")}:`,
         "x-content-type-options": "nosniff",

@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Linking, Platform } from "react-native";
-import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Platform } from "react-native";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { BrandWebsiteView } from "../../../src/components/sites/BrandWebsiteView";
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
+import { TopBar } from "../../../src/components/ui/TopBar";
 import { canvas } from "../../../src/constants/designSystem";
 import { isFeatureEnabled } from "../../../src/config/featureFlags";
 import { useAuth } from "../../../src/context/AuthContext";
@@ -22,6 +23,7 @@ import {
   useValidateBrandSiteDraft,
 } from "../../../src/hooks/useBrandSite";
 import { useNetInfoSafe } from "../../../src/lib/netinfoSafe";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import {
   BrandSitesError,
   canResetFailedPublicationOperation,
@@ -44,6 +46,7 @@ import type {
   BrandSiteDraftValidation,
   BrandSiteVersion,
 } from "../../../src/sites/contracts";
+import { openWebsiteUrl } from "../../../src/sites/websiteExternalOpen";
 import {
   deriveBusinessWebsiteState,
   type StudioReturnResult,
@@ -93,6 +96,8 @@ export default function BrandWebsiteRoute(): React.ReactElement {
   const studioResult = safeStudioResult(params.studioResult);
   const { user } = useAuth();
   const network = useNetInfoSafe();
+  // I-DESKTOP-GATE-VIA-HOOK: the shell never gates itself; the route does.
+  const { isWideDesktop } = useResponsiveLayout();
   const offline =
     network?.isConnected === false || network?.isInternetReachable === false;
   const role = useCurrentBrandRole(safeBrandId || null);
@@ -270,6 +275,22 @@ export default function BrandWebsiteRoute(): React.ReactElement {
     refetchSite,
   ]);
 
+  /**
+   * #2830 — Website was the ONLY brand sub-screen with no visible way back.
+   * It set `title` / `headerBackTitle` on a `Stack.Screen`, but the root
+   * layout renders `<Stack screenOptions={{ headerShown: false }} />`, so that
+   * header can never draw and the options have been inert since it shipped.
+   * The swipe gesture was the only exit. Same `TopBar` + same `canGoBack`
+   * fallback as Team, Blasts, Audit log and Brand home.
+   */
+  const handleBack = useCallback((): void => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace(`/brand/${safeBrandId}` as never);
+  }, [router, safeBrandId]);
+
   const openStudio = useCallback(async () => {
     try {
       setNotice(null);
@@ -277,7 +298,7 @@ export default function BrandWebsiteRoute(): React.ReactElement {
       const surface = studioReturnSurface(Platform.OS);
       const url = studioExchangeUrl(exchange, surface, safeBrandId);
       await openStudioHandoff(url, surface, {
-        openWeb: Linking.openURL,
+        openWeb: openWebsiteUrl,
         openNative: WebBrowser.openAuthSessionAsync,
       });
       await refetchSite();
@@ -292,7 +313,7 @@ export default function BrandWebsiteRoute(): React.ReactElement {
       const surface = studioReturnSurface(Platform.OS);
       const grant = await preview.mutateAsync(surface);
       await openStudioHandoff(grant.preview_url, surface, {
-        openWeb: Linking.openURL,
+        openWeb: openWebsiteUrl,
         openNative: WebBrowser.openAuthSessionAsync,
       });
     } catch (error) {
@@ -384,18 +405,24 @@ export default function BrandWebsiteRoute(): React.ReactElement {
   if (role.isLoading || websiteAvailable !== true) {
     return (
       <SafeScreen style={{ backgroundColor: canvas.discover }}>
-        {null}
+        <TopBar
+          leftKind="back"
+          title="Website"
+          onBack={handleBack}
+          rightSlot={null}
+        />
       </SafeScreen>
     );
   }
 
   return (
     <SafeScreen style={{ backgroundColor: canvas.discover }}>
-      <Stack.Screen options={{ title: "Website", headerBackTitle: "Brand" }} />
+      <TopBar leftKind="back" title="Website" onBack={handleBack} rightSlot={null} />
       <BrandWebsiteView
         brandName={brand.data?.displayName ?? "Brand"}
         site={site.data ?? null}
         rank={role.rank}
+        isWideDesktop={isWideDesktop}
         journeyState={journeyState}
         panel={panel}
         notice={notice}
@@ -477,12 +504,12 @@ export default function BrandWebsiteRoute(): React.ReactElement {
           void openPreview();
         }}
         onViewLive={(hostname) => {
-          void Linking.openURL(`https://${hostname}`);
+          void openWebsiteUrl(`https://${hostname}`);
         }}
         onOpenAri={() =>
-          router.push(
-            `/(tabs)/ari?brandId=${safeBrandId}&sitesIntent=edit` as never,
-          )
+          // #2830 — the split view, not the full-screen Ari tab: editing a
+          // website without seeing it is what made every change a guess.
+          router.push(`/brand/${safeBrandId}/website/ari` as never)
         }
         onValidatePublish={() => {
           setValidationFailure(null);

@@ -186,20 +186,100 @@ export async function buildPublicationArtifact(
     for (const block of page.blocks || [])
       for (const row of block.offering_ids || [])
         if (row.offering_id) offeringIds.add(String(row.offering_id));
+  // #2830 — does any page show the menu? Only then do we read one.
+  let wantsMenu = false;
+  for (const page of pagesResult.docs as AnyDoc[])
+    for (const block of page.blocks || [])
+      if (block.blockType === "menu_board") wantsMenu = true;
   let commercial: AnyDoc[] = [];
-  if (offeringIds.size) {
+  let menuRows: AnyDoc[] = [];
+  let menuVenueId: string | null = null;
+  if (offeringIds.size || wantsMenu) {
     const projection = await readCoreProjection(
       `/internal/v1/sites/${input.tenant.core_site_id}/projection`,
       input.tenant.core_site_id,
       input.operationId,
       [...offeringIds],
+      wantsMenu,
     );
     commercial = Array.isArray(projection.offerings)
       ? (projection.offerings as AnyDoc[])
       : [];
     if (commercial.length !== offeringIds.size)
       throw new Error("VALIDATION_FAILED");
+    menuRows = Array.isArray(projection.menu)
+      ? (projection.menu as AnyDoc[])
+      : [];
+    menuVenueId = typeof projection.menu_venue_id === "string"
+      ? projection.menu_venue_id
+      : null;
   }
+  /*
+   * Group Mingla's flat rows into the sections the renderer draws. The order is
+   * Mingla's own (menu sort, then item sort), never re-sorted here — a brand
+   * that arranged its menu in the app must see that arrangement on its site.
+   *
+   * A price stays NULL when Mingla has none, and currency travels per row.
+   * Neither is defaulted: "price on request" is a real thing on gogi's printed
+   * menu, and inventing a 0 or a currency on a restaurant's own menu is a live
+   * commercial lie, not a cosmetic default.
+   */
+  const menuSections = (() => {
+    const sections = new Map<string, AnyDoc>();
+    for (const row of menuRows) {
+      const key = String(row.menu_id);
+      let section = sections.get(key);
+      if (!section) {
+        section = {
+          name: String(row.menu_name ?? ""),
+          description: row.menu_description ?? null,
+          items: [] as AnyDoc[],
+        };
+        sections.set(key, section);
+      }
+      (section.items as AnyDoc[]).push({
+        // The Mingla menu-item id. The cart sends THIS and a quantity, never a
+        // price — the order is priced by Mingla, so a browser cannot name its
+        // own price.
+        id: String(row.item_id),
+        name: String(row.item_name ?? ""),
+        description: row.item_description ?? null,
+        price_minor: typeof row.price_cents === "number" ? row.price_cents : null,
+        currency: typeof row.currency === "string" ? row.currency : null,
+      });
+    }
+    return [...sections.values()].filter(
+      (section) => (section.items as AnyDoc[]).length > 0,
+    );
+  })();
+  /*
+   * #2830 — a video's public URL. It carries no width because there are no
+   * renditions: there is no ffmpeg here, so the file is served exactly as the
+   * brand uploaded it. `renderMedia` cannot be reused — it demands a rendition
+   * manifest with widths and would throw on every video.
+   */
+  const videoReference = (record: AnyDoc) => {
+    const master = record.rendition_manifest?.master;
+    return {
+      id: String(record.id),
+      url: `https://gogi.sites.usemingla.com/media/${record.id}/video.mp4`,
+      alt: "",
+      // A video carries no rendered dimensions here; the poster supplies the
+      // layout box. Zero is the honest value, not a guessed 1920x1080.
+      width: 0,
+      height: 0,
+      integrity: String(master?.digest),
+      object_key: String(master?.key),
+    };
+  };
+  const isVideoRecord = (record: AnyDoc | undefined) =>
+    !!record && record.state === "READY" &&
+    record.detected_mime === "video/mp4";
+  const renderVideo = (mediaId: unknown): string | null => {
+    const record = media.get(id(mediaId));
+    if (!isVideoRecord(record)) return null;
+    return videoReference(record as AnyDoc).url;
+  };
   const renderMedia = (mediaId: unknown, alt = "") => {
     const record = media.get(id(mediaId));
     if (!record || record.state !== "READY" || !record.rendition_manifest)
@@ -230,6 +310,8 @@ export async function buildPublicationArtifact(
             heading: raw.heading,
             subheading: raw.subheading,
             media_url: renderMedia(raw.media, "").url,
+            // Optional, and never a replacement for the still above.
+            video_url: raw.video ? renderVideo(raw.video) : null,
             ctas: (raw.ctas || []).map((row: AnyDoc) => ({
               label: row.label,
               href: row.href,
@@ -285,6 +367,52 @@ export async function buildPublicationArtifact(
             heading: raw.heading,
             body: raw.body,
             url: resolved.checkout_url,
+          };
+        }
+        case "video_feature": {
+          const video = renderVideo(raw.video);
+          // A video block whose file is not ready is dropped rather than
+          // published as a heading over an empty frame.
+          if (!video) return null;
+          return {
+            type: "video_feature",
+            heading: raw.heading ?? null,
+            caption: raw.caption ?? null,
+            video_url: video,
+            poster_url: renderMedia(raw.poster, "").url,
+          };
+        }
+        case "team":
+          return {
+            type: "team",
+            heading: raw.heading ?? null,
+            caption: raw.caption ?? null,
+            members: (raw.members || []).map((row: AnyDoc) => ({
+              name: row.name,
+              role: row.role ?? null,
+              // A person can be published by name alone.
+              media_url: row.media ? renderMedia(row.media, "").url : null,
+              alt: row.alt ?? null,
+            })),
+          };
+        case "menu_board": {
+          /*
+           * NO MINGLA MENU MEANS NO MENU. The block is dropped, and because a
+           * page whose blocks all drop is itself dropped below, the Menu tab
+           * disappears from the navigation and the sitemap too. A restaurant
+           * website with a Menu link that opens an empty page is worse than one
+           * with no Menu link at all.
+           */
+          if (!menuSections.length) return null;
+          return {
+            type: "menu_board",
+            heading: raw.heading ?? null,
+            note: raw.note ?? null,
+            // NULL venue = show the menu, no cart. The brand has no verified
+            // venue, or more than one, and Mingla will not guess which kitchen
+            // a website order belongs to.
+            venue_id: menuVenueId,
+            sections: menuSections,
           };
         }
         case "menu_link":
@@ -357,16 +485,34 @@ export async function buildPublicationArtifact(
     source_revision_id: input.sourceRevisionId,
     source_digest: input.sourceDigest,
     generated_at: input.generatedAt,
-    pages: (pagesResult.docs as AnyDoc[]).map((page) => ({
-      role: page.role,
-      slug: page.slug,
-      title: page.title,
-      enabled: page.enabled,
-      nav_label: page.nav_label,
-      nav_order: page.nav_order,
-      blocks: blocks(page.blocks || []),
-      seo: page.seo,
-    })),
+    pages: (pagesResult.docs as AnyDoc[]).map((page) => {
+      const rendered = blocks(page.blocks || []);
+      /*
+       * #2830 — A PAGE WITH NOTHING ON IT IS NOT A PAGE.
+       *
+       * The Menu page is the case that forced this: its only block is the menu,
+       * and the menu is dropped when Mingla has none. Left `enabled`, the site
+       * would publish a Menu tab in the navigation and the sitemap that opens
+       * a page with a heading and nothing under it. A restaurant website with
+       * an empty Menu link is worse than one with no Menu link.
+       *
+       * Home is exempt: a site must have a homepage, and an empty one is a
+       * publish-time problem to surface, not a page to silently remove.
+       */
+      const enabled = page.role === "home"
+        ? page.enabled
+        : page.enabled === true && rendered.length > 0;
+      return {
+        role: page.role,
+        slug: page.slug,
+        title: page.title,
+        enabled,
+        nav_label: page.nav_label,
+        nav_order: page.nav_order,
+        blocks: rendered,
+        seo: page.seo,
+      };
+    }),
     navigation: {
       page_roles: ((navigationResult.docs[0] as AnyDoc)?.pages || [])
         .map((page: unknown) => pageRoles.get(id(page)))
@@ -412,7 +558,11 @@ export async function buildPublicationArtifact(
           : undefined,
       },
     },
-    media: [...media.values()].map((item) => renderMedia(item.id, "")),
+    // Videos take the video shape; everything else goes through the rendition
+    // path. A video handed to renderMedia throws, because it has no widths.
+    media: [...media.values()].map((item) =>
+      isVideoRecord(item) ? videoReference(item) : renderMedia(item.id, "")
+    ),
     commercial_references: commercial.map((item) => ({
       kind: item.kind,
       id: item.id,

@@ -37,7 +37,23 @@ describe("#2830 Restaurant Website v1 visual and accessibility contract", () => 
     expect(styles).toContain("font-size: 100%");
     expect(styles).not.toContain("user-scalable=no");
     expect(renderer).toContain('alt={text(block.alt)}');
-    expect(renderer).toContain('primaryHeading={page.role === "home"');
+    /*
+     * [TEST-MOD-APPROVED #2830] — SUPERSEDED ASSERTION, named explicitly:
+     *   'primaryHeading={page.role === "home"'
+     *
+     * That expressed "exactly one h1 in this document" back when the renderer
+     * concatenated EVERY page into one document, so only the home hero could
+     * be the h1. Pages are now real routes, one page per document, and the
+     * correct guarantee is the SAME invariant restated: each rendered page has
+     * exactly one h1, which is its own hero. A Menu page whose only heading was
+     * an h2 would be the accessibility regression, not the fix.
+     *
+     * The invariant is pinned harder than before: the two assertions below fix
+     * both that the hero is the h1 AND that nothing else can claim it.
+     */
+    expect(renderer).toContain("primaryHeading={index === primaryHeroIndex}");
+    expect(renderer).toContain('<h1 className="page-title">{current.title}</h1>');
+    expect(renderer).toContain("const Heading = primaryHeading ? \"h1\" : \"h2\";");
     expect(renderer).toContain('className="skip"');
   });
 

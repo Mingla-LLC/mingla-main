@@ -1,3 +1,5 @@
+import { isFontPairing, type FontPairing } from "./fontPairings";
+
 export const RENDERER_KEY = "restaurant-website-v1" as const;
 export const ARTIFACT_SCHEMA_VERSION = 1 as const;
 
@@ -15,7 +17,8 @@ export type MediaReference = {
 
 export type RestaurantBlock = {
   type: "hero" | "rich_text" | "media_feature" | "cta" | "offering_grid" |
-    "venue_reservation" | "menu_link" | "gallery" | "hours_location" |
+    "venue_reservation" | "menu_link" | "menu_board" | "gallery" | "hours_location" |
+    "video_feature" | "team" |
     "testimonials" | "faq" | "contact_handoff" | "divider" | "spacer";
   [key: string]: unknown;
 };
@@ -47,7 +50,7 @@ export type RestaurantArtifact = {
     short_description?: string;
     logo?: MediaReference;
     colors?: { background?: string; foreground?: string; accent?: string };
-    typography?: "modern-sans" | "editorial-serif";
+    typography?: FontPairing;
     seo?: { title?: string; description?: string; canonical_url: string; social_image?: MediaReference };
   };
   media: MediaReference[];
@@ -144,21 +147,44 @@ function assertMediaReference(value: unknown, siteId: string): void {
       )) ||
     !boundedText(value.alt, 240) ||
     !Number.isInteger(value.width) ||
-    Number(value.width) < 1 ||
     !Number.isInteger(value.height) ||
-    Number(value.height) < 1 ||
     typeof value.integrity !== "string" ||
     !DIGEST.test(value.integrity) ||
     typeof value.object_key !== "string" ||
-    !value.object_key.startsWith(`approved/${siteId}/${value.id}/`) ||
-    !value.object_key.endsWith(".webp")
+    !value.object_key.startsWith(`approved/${siteId}/${value.id}/`)
+  ) throw new Error("ARTIFACT_MEDIA_MISMATCH");
+  /*
+   * #2830 — an image and a video are different objects with different rules,
+   * and the difference is load-bearing rather than cosmetic.
+   *
+   * An IMAGE is a webp rendition and must declare real pixel dimensions: the
+   * layout reserves that box, and a zero there is a page that reflows under
+   * the reader.
+   *
+   * A VIDEO is stored as uploaded — there is no ffmpeg in this pipeline, so no
+   * renditions and no probed dimensions. Its box comes from the poster it sits
+   * behind, so it declares 0x0 deliberately rather than carrying an invented
+   * 1920x1080. What is NOT relaxed is the digest or the tenant-scoped key: a
+   * video is integrity-checked on serve exactly like every image.
+   */
+  const isVideo = value.object_key.endsWith(".mp4");
+  if (isVideo) {
+    if (
+      !value.url.endsWith("/video.mp4") ||
+      Number(value.width) !== 0 || Number(value.height) !== 0
+    ) throw new Error("ARTIFACT_MEDIA_MISMATCH");
+    return;
+  }
+  if (
+    !value.object_key.endsWith(".webp") ||
+    Number(value.width) < 1 || Number(value.height) < 1
   ) throw new Error("ARTIFACT_MEDIA_MISMATCH");
 }
 
 function assertRestaurantBlock(block: JsonObject, siteId: string): void {
   const type = String(block.type);
   const definitions: Record<string, readonly string[]> = {
-    hero: ["type", "heading", "subheading", "media_url", "ctas"],
+    hero: ["type", "heading", "subheading", "media_url", "video_url", "ctas"],
     rich_text: ["type", "heading", "paragraphs"],
     media_feature: [
       "type",
@@ -172,7 +198,10 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
     offering_grid: ["type", "heading", "offerings"],
     venue_reservation: ["type", "heading", "body", "url"],
     menu_link: ["type", "heading", "label", "href"],
+    menu_board: ["type", "heading", "note", "venue_id", "sections"],
     gallery: ["type", "heading", "images"],
+    video_feature: ["type", "heading", "caption", "video_url", "poster_url"],
+    team: ["type", "heading", "caption", "members"],
     hours_location: ["type", "heading", "address", "map_url", "hours"],
     testimonials: ["type", "heading", "items"],
     faq: ["type", "heading", "items"],
@@ -189,7 +218,10 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
     case "hero":
       valid = boundedText(block.heading, 120, true) &&
         boundedText(block.subheading, 300) &&
+        // The still is REQUIRED and the video is not: the video is an
+        // enhancement over the poster, never a replacement for it.
         isSafeHref(block.media_url) &&
+        (block.video_url == null || isSafeHref(block.video_url)) &&
         exactRows(block.ctas, 0, 2, ["label", "href"], (row) =>
           boundedText(row.label, 80, true) && isSafeHref(row.href));
       break;
@@ -230,6 +262,67 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
     case "menu_link":
       valid = boundedText(block.heading, 120) &&
         boundedText(block.label, 80, true) && isSafeHref(block.href);
+      break;
+    /*
+     * #2830 — the real menu, owned by Mingla.
+     *
+     * `menu_link` only ever pointed at a PDF. This carries the actual items,
+     * projected from Mingla's own `menus` / `menu_items` at publish time, so
+     * the website and the app cannot disagree about what a restaurant sells.
+     *
+     * PRICE IS DELIBERATELY NULLABLE AND SEPARATE FROM CURRENCY. Mingla stores
+     * price in MINOR units with NULL meaning "price on request"; a menu that
+     * renders a missing price as 0, or guesses a currency, is fabricated data
+     * (Constitution rule 9) and, for a restaurant, a live commercial lie. Both
+     * must be present for a number to be shown, and the renderer enforces it.
+     */
+    case "menu_board":
+      valid = boundedText(block.heading, 120) &&
+        boundedText(block.note, 300) &&
+        (block.venue_id == null || (typeof block.venue_id === "string" && UUID.test(block.venue_id))) &&
+        exactRows(block.sections, 1, 20, ["name", "description", "items"], (section) =>
+          boundedText(section.name, 120, true) &&
+          boundedText(section.description, 500) &&
+          exactRows(section.items, 1, 120, ["id", "name", "description", "price_minor", "currency"], (item) =>
+            (typeof item.id === "string" && UUID.test(item.id)) &&
+            boundedText(item.name, 160, true) &&
+            boundedText(item.description, 600) &&
+            (item.price_minor == null ||
+              (typeof item.price_minor === "number" &&
+                Number.isInteger(item.price_minor) &&
+                item.price_minor >= 0 &&
+                item.price_minor <= 100_000_000)) &&
+            (item.currency == null ||
+              (typeof item.currency === "string" &&
+                /^[A-Z]{3}$/.test(item.currency)))));
+      break;
+    /*
+     * #2830 — a short film with a still under it. gogi's own site runs their
+     * Instagram reels this way, and the reels ARE the content: the captions are
+     * their words and the footage is their room.
+     *
+     * The poster is required for the same reason it is on the hero: a video
+     * that has not arrived must still leave something on the page.
+     */
+    case "video_feature":
+      valid = boundedText(block.heading, 120) &&
+        boundedText(block.caption, 600) &&
+        isSafeHref(block.video_url) &&
+        isSafeHref(block.poster_url);
+      break;
+    /*
+     * The people. gogi published ten nicknames for their team and no real
+     * names, so `name` is what they chose to publish and a portrait is
+     * OPTIONAL — several of them exist only as a moment in a reel.
+     */
+    case "team":
+      valid = boundedText(block.heading, 120) &&
+        boundedText(block.caption, 600) &&
+        exactRows(block.members, 1, 24, ["name", "role", "media_url", "alt"], (row) =>
+          boundedText(row.name, 80, true) &&
+          boundedText(row.role, 80) &&
+          (row.media_url == null || isSafeHref(row.media_url)) &&
+          boundedText(row.alt, 240));
       break;
     case "gallery":
       valid = boundedText(block.heading, 120) && Array.isArray(block.images) &&
@@ -385,9 +478,9 @@ export function assertRestaurantArtifact(value: unknown): asserts value is Resta
   ) throw new Error("ARTIFACT_SETTINGS_MISMATCH");
   if (
     value.site_settings.typography != null &&
-    !["modern-sans", "editorial-serif"].includes(
-      String(value.site_settings.typography),
-    )
+    // Reads the SHARED list, so the editor's options and what the page will
+    // accept cannot drift apart.
+    !isFontPairing(value.site_settings.typography)
   ) throw new Error("ARTIFACT_SETTINGS_MISMATCH");
   if (
     !plainObject(value.site_settings.seo) ||

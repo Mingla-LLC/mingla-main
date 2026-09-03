@@ -68,7 +68,31 @@ export const restaurantBlocks: Block[] = [
     fields: [
       short("heading", "Heading", true, 120),
       short("subheading", "Subheading", false, 300),
+      // The still image. REQUIRED even when a video is chosen: it is the
+      // poster, and it is what a visitor sees on a slow connection, with data
+      // saver on, or when they have asked for reduced motion.
       readyMedia(),
+      {
+        name: "video",
+        label: "Background video",
+        type: "relationship",
+        relationTo: "media",
+        required: false,
+        filterOptions: ({ req }) => {
+          const tenantId = (req.user as { tenantId?: string })?.tenantId;
+          return tenantId
+            ? {
+              tenant: { equals: tenantId },
+              state: { equals: "READY" },
+              detected_mime: { equals: "video/mp4" },
+            }
+            : false;
+        },
+        admin: {
+          description:
+            "Optional. Plays silently behind the heading. The image above is still required — it shows first, and it is what people who ask for reduced motion see.",
+        },
+      },
       { name: "ctas", type: "array", maxRows: 2, fields: ctaFields },
     ],
   },
@@ -153,6 +177,97 @@ export const restaurantBlocks: Block[] = [
       short("heading", "Heading", false, 120),
       short("label", "Label", true, 80),
       link(),
+    ],
+  },
+  {
+    /*
+     * #2830 — the real menu.
+     *
+     * DELIBERATELY HOLDS NO ITEMS. Mingla owns menus and prices; #2829 is
+     * explicit that it stays the authority for them. If a brand could type
+     * items here, the website and the app would drift and a customer would
+     * read one price on the site and pay another in the app. So this block
+     * carries only presentation, and the items are projected from Mingla at
+     * publish time.
+     */
+    slug: "menu_board",
+    labels: { singular: "Menu", plural: "Menus" },
+    fields: [
+      short("heading", "Heading", false, 120),
+      {
+        name: "note",
+        label: "Note",
+        type: "text",
+        required: false,
+        maxLength: 300,
+        validate: (value: unknown) =>
+          value == null ? true : safeText(value, 300),
+        admin: {
+          description:
+            "Optional line above the menu, for example service times. Items and prices come from your Mingla menu.",
+        },
+      } satisfies Field,
+    ],
+  },
+  {
+    slug: "video_feature",
+    labels: { singular: "Video", plural: "Videos" },
+    fields: [
+      short("heading", "Heading", false, 120),
+      short("caption", "Caption", false, 600),
+      {
+        name: "video",
+        label: "Video",
+        type: "relationship",
+        relationTo: "media",
+        required: true,
+        filterOptions: ({ req }) => {
+          const tenantId = (req.user as { tenantId?: string })?.tenantId;
+          return tenantId
+            ? {
+              tenant: { equals: tenantId },
+              state: { equals: "READY" },
+              detected_mime: { equals: "video/mp4" },
+            }
+            : false;
+        },
+      },
+      // Required, like the hero's: a video that has not arrived must still
+      // leave something on the page.
+      { ...readyMedia("poster", "Poster image") },
+    ],
+  },
+  {
+    slug: "team",
+    labels: { singular: "Team", plural: "Teams" },
+    fields: [
+      short("heading", "Heading", false, 120),
+      short("caption", "Caption", false, 600),
+      {
+        name: "members",
+        type: "array",
+        minRows: 1,
+        maxRows: 24,
+        fields: [
+          short("name", "Name", true, 80),
+          short("role", "Role", false, 80),
+          // Optional on purpose: a person can be published by name alone.
+          {
+            name: "media",
+            label: "Portrait",
+            type: "relationship",
+            relationTo: "media",
+            required: false,
+            filterOptions: ({ req }) => {
+              const tenantId = (req.user as { tenantId?: string })?.tenantId;
+              return tenantId
+                ? { tenant: { equals: tenantId }, state: { equals: "READY" } }
+                : false;
+            },
+          },
+          accessibleAlt(),
+        ],
+      },
     ],
   },
   {

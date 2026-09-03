@@ -22,11 +22,13 @@ import {
   Text,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Menu, Settings } from "lucide-react-native";
 
 import {
+  accent,
   canvas,
   ariPalette,
   ariThread,
@@ -132,8 +134,45 @@ const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({
   );
 };
 
-export const AriChatScreen: React.FC = () => {
+export interface AriChatScreenProps {
+  /**
+   * #2830 — render inside a host that already owns the page chrome.
+   *
+   * The Website workspace puts Ari in the right-hand column of a split view
+   * beside a live draft preview. In that position the screen must NOT pad for
+   * the device notch (its container already did) and must NOT draw its own
+   * "Ari" title bar (the workspace names the page). Everything else — the
+   * conversation, the composer, tool proposals, the drawer — is identical, so
+   * the split view and the tab cannot drift into two different Aris.
+   */
+  embedded?: boolean;
+}
+
+export const AriChatScreen: React.FC<AriChatScreenProps> = ({
+  embedded = false,
+}) => {
   const router = useRouter();
+  /*
+   * #2830 — the Website split view is a MODE of this screen, not a second
+   * screen. A separate route importing this module gave it a second consumer,
+   * and Metro hoists anything shared between two chunks into the boot payload
+   * every Business user downloads: a measured 133KB for people who may never
+   * open Ari. Rendering the draft beside the conversation here keeps one
+   * consumer and the same two-column layout.
+   */
+  const { isWideDesktop } = useResponsiveLayout();
+  const sitesParams = useLocalSearchParams<{
+    sitesIntent?: string | string[];
+    brandId?: string | string[];
+  }>();
+  const sitesIntent = Array.isArray(sitesParams.sitesIntent)
+    ? sitesParams.sitesIntent[0]
+    : sitesParams.sitesIntent;
+  const sitesBrandId = Array.isArray(sitesParams.brandId)
+    ? sitesParams.brandId[0]
+    : sitesParams.brandId;
+  const websiteSplit = sitesIntent === "edit" &&
+    typeof sitesBrandId === "string" && sitesBrandId.length > 0;
   const insets = useSafeAreaInsets();
   const online = useShareNetworkState();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -448,9 +487,39 @@ export const AriChatScreen: React.FC = () => {
   };
 
   return (
-    <View style={[styles.host, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
+    <View
+      style={[
+        styles.host,
+        { paddingTop: embedded ? 0 : insets.top },
+        // #2830 — draft LEFT, conversation RIGHT, on wide desktop only. At
+        // 390pt a split column gives neither half enough room, so the phone
+        // keeps the full-width conversation it already had.
+        websiteSplit && isWideDesktop ? styles.websiteSplitHost : null,
+      ]}
+    >
+      {websiteSplit && isWideDesktop ? (
+        <View style={styles.websiteDraftPane} testID="ari-website-draft">
+          <Text style={styles.websiteDraftLabel}>Draft</Text>
+          <Text style={styles.websiteDraftBody}>
+            Ari edits this website. Open a private preview from the Website
+            workspace to see the exact draft, then publish there — publishing
+            stays a separate, deliberate step.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() =>
+              router.push(`/brand/${sitesBrandId}/website` as never)}
+            style={styles.websiteDraftAction}
+          >
+            <Text style={styles.websiteDraftActionLabel}>
+              Back to the Website workspace
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {/* Header — the embedding host owns the page title, so it is dropped
+          there rather than stacking two headers in one column. */}
+      <View style={[styles.header, embedded ? styles.headerEmbedded : null]}>
         <Pressable
           onPress={() => setDrawerOpen(true)}
           style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
@@ -674,6 +743,35 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
     backgroundColor: canvas.discover,
+  },
+  websiteSplitHost: { flexDirection: "row", gap: spacing.lg, padding: spacing.md },
+  websiteDraftPane: {
+    flex: 1.2,
+    minWidth: 0,
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+    justifyContent: "center",
+  },
+  websiteDraftLabel: {
+    ...typography.micro,
+    color: accent.warm,
+    textTransform: "uppercase",
+  },
+  websiteDraftBody: { ...typography.body, color: textTokens.secondary },
+  websiteDraftAction: {
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  websiteDraftActionLabel: {
+    ...typography.buttonMd,
+    color: accent.warm,
+  },
+  headerEmbedded: {
+    display: "none",
   },
   header: {
     flexDirection: "row",

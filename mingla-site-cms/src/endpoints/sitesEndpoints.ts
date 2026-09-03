@@ -1558,6 +1558,18 @@ function escapeHtml(value: unknown): string {
   );
 }
 
+/**
+ * #2830 — marks a stored artifact as a PREVIEW rather than a publication.
+ *
+ * Preview artifacts are written by the same builder, to the same bucket, under
+ * the same `publications/<site>/<publicationId>/<digest>.json` shape — that
+ * sameness is the point, because it is what makes preview and published
+ * identical by construction. This prefix is what still tells them apart, so a
+ * reaper can find and expire preview objects, and so the public runtime can
+ * refuse to serve a real publication through the preview route.
+ */
+export const PREVIEW_PUBLICATION_PREFIX = "preview-";
+
 async function previewDraft(req: PayloadRequest): Promise<Response> {
   try {
     const url = new URL(req.url || "http://local");
@@ -1634,35 +1646,60 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
       currentDigest !== grant.source_digest
     )
       throw new Error("REVISION_CONFLICT");
-    const blocks = Array.isArray(home.blocks) ? home.blocks : [];
-    const hero = blocks.find(
-      (block: Record<string, unknown>) => block.blockType === "hero",
-    ) as Record<string, unknown> | undefined;
-    const visit = blocks.find(
-      (block: Record<string, unknown>) => block.blockType === "hours_location",
-    ) as Record<string, unknown> | undefined;
-    const content = blocks
-      .filter(
-        (block: Record<string, unknown>) =>
-          block.blockType !== "hero" && block.blockType !== "hours_location",
-      )
-      .map((block: Record<string, unknown>) => {
-        const heading = block.heading
-          ? `<h2>${escapeHtml(block.heading)}</h2>`
-          : "";
-        const body = block.body || block.caption || block.address;
-        return `<section data-block="${escapeHtml(block.blockType)}">${heading}${body ? `<p>${escapeHtml(body)}</p>` : ""}</section>`;
-      })
-      .join("");
-    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Private preview — not live</title><style>:root{--ink:#101013;--panel:#17171a;--gold:#cda052;--ivory:#f0eee9;--muted:#a7a39a}*{box-sizing:border-box}body{min-width:320px;margin:0;overflow-x:hidden;background:var(--ink);color:var(--ivory);font:16px/1.6 Arial,sans-serif}header{height:72px;display:flex;align-items:center;padding:0 max(20px,calc((100vw - 1200px)/2));border-bottom:1px solid rgba(205,160,82,.3);font-weight:800;text-transform:uppercase}main{margin:auto}.hero{min-height:clamp(640px,88svh,900px);display:grid;align-items:end;padding:8vw max(20px,calc((100vw - 1200px)/2));background:var(--panel)}section{width:min(100%,1200px);margin:auto;padding:clamp(5rem,9vw,9rem) max(20px,4vw)}h1,h2{font-family:Impact,'Arial Narrow',sans-serif;text-transform:uppercase;letter-spacing:-.04em}h1{max-width:900px;margin:0;font-size:clamp(3.6rem,10vw,8.5rem);line-height:.86}h2{font-size:clamp(2.5rem,7vw,5.5rem);line-height:.92}.fact-rail{width:min(100%,1200px);display:grid;grid-template-columns:repeat(3,1fr);padding:0;background:var(--panel);border-block:1px solid rgba(205,160,82,.3)}.fact-rail div{padding:24px;border-right:1px solid rgba(205,160,82,.3)}.fact-rail strong{display:block;color:var(--gold);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase}.non-live{position:sticky;top:0;z-index:3;padding:10px;text-align:center;color:var(--ink);background:#dfb262;font-weight:800}@media(max-width:767px){header{height:64px;padding:0 16px}.hero{min-height:max(560px,76svh);padding:5rem 20px 4rem}.fact-rail{grid-template-columns:1fr}.fact-rail div{border-right:0;border-bottom:1px solid rgba(205,160,82,.3)}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}</style></head><body><aside class="non-live"><strong>Private preview — not live</strong></aside><header>${escapeHtml(settings.docs[0].display_name || home.title)}</header><main><section class="hero"><div><p style="color:#cda052;text-transform:uppercase;letter-spacing:.16em">Restaurant Website v1</p><h1>${escapeHtml(hero?.heading || home.title)}</h1><p>${escapeHtml(hero?.subheading || "")}</p></div></section><aside class="fact-rail" aria-label="Restaurant facts"><div><strong>Visit</strong>${escapeHtml(visit?.address || "See restaurant details")}</div><div><strong>Hours</strong>See current opening hours</div><div><strong>Contact</strong>Contact the restaurant</div></aside>${content}</main></body></html>`;
-    return new Response(html, {
-      status: 200,
+    /*
+     * #2830 — THE CMS NO LONGER RENDERS. It used to build its own HTML here,
+     * which meant Mingla shipped TWO renderers: this one, and RestaurantV1 in
+     * the public runtime. They diverged badly — this one special-cased hero and
+     * hours and then emitted a heading plus one paragraph for EVERY other block
+     * type, so it dropped images, galleries, CTAs, offering grids, menu links,
+     * FAQs and testimonials, and used a different typeface. A brand owner
+     * previewed one website, approved it, and published a different one. That
+     * defeats the whole point of a review step, and it violated one-owner-per-
+     * truth.
+     *
+     * Now: build the artifact with the SAME builder publication uses, store it
+     * as the SAME kind of object at a `preview-` prefixed publication id, and
+     * redirect to the public runtime, which renders it with the SAME
+     * RestaurantV1 component and the SAME stylesheet. Preview equals published
+     * by construction rather than by two implementations agreeing.
+     *
+     * The unguessable key in the redirect is the capability, exactly as the
+     * signed token in the incoming URL already was — this changes no trust
+     * boundary and introduces no new secret. Everything above still applies:
+     * the grant is decoded and scoped, and the revision/digest conflict check
+     * has already refused a draft that moved since the grant was minted.
+     */
+    const tenant = await req.payload.findByID({
+      collection: "tenants",
+      id: grant.tenant_id,
+      overrideAccess: true,
+      depth: 0,
+    });
+    if (
+      String(tenant.core_site_id) !== grant.site_id ||
+      String(tenant.core_brand_id) !== grant.brand_id
+    ) throw new Error("FORBIDDEN");
+    const previewNonce = crypto.randomUUID().replace(/-/g, "");
+    const built = await buildPublicationArtifact(req, {
+      tenant,
+      operationId: grant.nonce,
+      publicationId: `${PREVIEW_PUBLICATION_PREFIX}${previewNonce}`,
+      sourceRevisionId: grant.source_revision,
+      sourceDigest: grant.source_digest,
+      generatedAt: new Date().toISOString(),
+    });
+    const target = new URL(
+      "/preview",
+      cmsConfig().publicRuntimeOrigin,
+    );
+    target.searchParams.set("k", built.artifactKey);
+    return new Response(null, {
+      status: 302,
       headers: {
-        "content-type": "text/html; charset=utf-8",
+        location: target.toString(),
         "cache-control": "no-store, private",
         "x-robots-tag": "noindex, nofollow",
-        "content-security-policy":
-          `default-src 'none'; style-src 'unsafe-inline'; img-src https:; frame-ancestors 'self' ${MINGLA_BUSINESS_ORIGIN}; base-uri 'none'; form-action 'none'`,
+        "referrer-policy": "no-referrer",
       },
     });
   } catch (error) {

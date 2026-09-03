@@ -1,4 +1,134 @@
+
+/* ── #2830 self-hosted webfonts ───────────────────────────────────────────
+   Served from this site's own origin. The runtime CSP is `default-src 'self'`
+   with no font host, so a Google Fonts stylesheet fails silently and falls
+   back — which is what was happening. Relaxing the CSP was the alternative and
+   is worse: a third-party request on every customer's site, on a product whose
+   analytics are consent-gated.
+
+   `font-display: swap` on purpose: text is readable in the fallback face
+   immediately and reflows once, rather than a restaurant's headline being
+   invisible while 20KB arrives on a Lagos connection. */
+@font-face {
+  font-family: "Oswald";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/oswald-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Oswald";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/oswald-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Oswald";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/oswald-600-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Oswald";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/oswald-600-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/playfair-display-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/playfair-display-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/playfair-display-700-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/playfair-display-700-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-600-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-600-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-800-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-800-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
 :root {
+  /*
+   * #2830 — DEFAULTS, not law. These were gogi's palette hardcoded into the
+   * shared runtime, which meant every brand published through Mingla Sites
+   * rendered in one customer's colours. `SiteTheme` now overrides them per
+   * site from `site_settings.colors`; what remains here is the fallback for a
+   * brand that has set none.
+   */
   --ink: #101013;
   --panel: #17171a;
   --panel-raised: #1c1c1e;
@@ -6,7 +136,21 @@
   --gold-hover: #dfb262;
   --ivory: #f0eee9;
   --muted: #a7a39a;
-  --line: rgba(205, 160, 82, 0.3);
+  --line: color-mix(in srgb, var(--gold) 30%, transparent);
+
+  /*
+   * Condensed uppercase display over a humanist body — the register gogi's own
+   * site uses. It names real families rather than loading webfonts: the
+   * runtime's CSP is `default-src 'self'` with no font host, so a Google Fonts
+   * link would silently fail and fall back anyway. Self-hosting the exact
+   * faces is the honest fix and is not done here.
+   */
+  --display: "Oswald", "Arial Narrow", "Helvetica Neue Condensed",
+    "Liberation Sans Narrow", system-ui, sans-serif;
+  --body: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --display-case: uppercase;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
   color-scheme: dark;
 }
 
@@ -25,8 +169,7 @@ body {
   overflow-x: hidden;
   background: var(--ink);
   color: var(--ivory);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
+  font-family: var(--body);
   font-size: 100%;
   line-height: 1.55;
 }
@@ -80,7 +223,9 @@ a {
 
 .brand {
   color: var(--ivory);
-  font-family: "Arial Narrow", "Roboto Condensed", sans-serif;
+  /* #2830 — was a hardcoded stack. It out-specified the brand's chosen face,
+     so a font picked in Studio changed nothing here. */
+  font-family: var(--display);
   font-size: 1.2rem;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -144,7 +289,13 @@ a {
 main h2,
 .tile h3,
 .footer strong {
-  font-family: "Arial Narrow", "Roboto Condensed", Impact, sans-serif;
+  /* #2830 — same fix, and this one carried the headings. `.hero h1`, `main h2`
+     and `.tile h3` are more specific than any bare `h1, h2, h3` rule, so the
+     hardcoded stack won on every heading on the site and the whole font choice
+     was invisible. Caught by MEASURING the rendered width against Oswald's,
+     not by reading the file: the declared list and the used face are different
+     things and only one of them is visible. */
+  font-family: var(--display);
   font-stretch: condensed;
   text-wrap: balance;
 }
@@ -268,7 +419,9 @@ main h2 {
 .prose p {
   max-width: 760px;
   color: var(--muted);
-  font-family: Georgia, "Times New Roman", serif;
+  /* #2830 — third instance of the same bug: a hardcoded face that ignored the
+     brand's choice. A brand picking "Modern sans" still got Georgia here. */
+  font-family: var(--body);
   font-size: clamp(1.08rem, 2vw, 1.35rem);
   line-height: 1.75;
 }
@@ -601,3 +754,213 @@ summary {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* #2830 — the private-preview banner. Sticky and always visible: a preview
+   that scrolls its own "not live" warning off screen is how someone publishes
+   by accident. Only the /preview route renders this element. */
+.preview-banner {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 10px 16px;
+  text-align: center;
+  font-weight: 700;
+  color: #1b1508;
+  background: #dcb877;
+}
+
+/* #2830 — the menu board. Dotted-leader rows, the same device gogi's own
+   printed menu uses, so the page reads as theirs rather than as a table. */
+.menu-board { display: grid; gap: 2.5rem; }
+.menu-note { color: var(--muted, rgba(255,255,255,.66)); margin: 0; }
+.menu-section { display: grid; gap: 1rem; }
+.menu-section-note { margin: 0; color: var(--muted, rgba(255,255,255,.66)); }
+.menu-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
+.menu-row { display: grid; gap: 0.25rem; }
+.menu-row-head { display: flex; align-items: baseline; gap: 0.75rem; }
+.menu-item-name { font-weight: 600; }
+/* The leader is decorative and aria-hidden: a screen reader hears
+   "Coconut rice, 8,500 naira", never a run of dots. */
+.menu-leader {
+  flex: 1 1 auto;
+  min-width: 1.5rem;
+  align-self: flex-end;
+  margin-bottom: 0.3em;
+  border-bottom: 1px dotted currentColor;
+  opacity: 0.4;
+}
+.menu-price { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.menu-item-note { margin: 0; font-size: 0.9em; opacity: 0.75; max-width: 60ch; }
+@media (max-width: 520px) {
+  .menu-row-head { flex-wrap: wrap; }
+  .menu-leader { min-width: 1rem; }
+}
+
+/* #2830 — the ordering menu. Filters, search, a plus per item and a drawer,
+   matching what gogi's own menu page already does. */
+.menu-toolbar { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: center;
+  justify-content: space-between; margin-bottom: 1.75rem; }
+.filters { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.filter { font: inherit; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em;
+  padding: 0.4rem 0.9rem; border-radius: 999px; cursor: pointer;
+  border: 1px solid currentColor; background: transparent; color: inherit; opacity: 0.7; }
+.filter[aria-pressed="true"] { opacity: 1; background: currentColor; }
+.filter[aria-pressed="true"] { color: var(--accent, #cda052); }
+.filter[aria-pressed="true"] > * { color: #101013; }
+.menu-search input { font: inherit; font-size: 0.85rem; padding: 0.45rem 0.8rem;
+  border-radius: 999px; border: 1px solid currentColor; background: transparent;
+  color: inherit; min-width: 12rem; }
+.menu-qty { display: inline-flex; align-items: center; gap: 0.4rem; margin-left: 0.5rem; }
+.menu-qty button { font: inherit; font-size: 1rem; line-height: 1; width: 2rem; height: 2rem;
+  min-width: 44px; min-height: 44px; border-radius: 999px; cursor: pointer;
+  border: 1px solid currentColor; background: transparent; color: inherit; }
+.menu-qty output { font-variant-numeric: tabular-nums; min-width: 1.25rem; text-align: center; }
+.menu-empty { opacity: 0.7; }
+.cart-btn { position: sticky; bottom: 1rem; margin-top: 2rem; font: inherit; font-weight: 700;
+  display: inline-flex; align-items: center; gap: 0.6rem; padding: 0.8rem 1.4rem;
+  border-radius: 999px; border: 0; cursor: pointer; min-height: 44px;
+  background: var(--accent, #cda052); color: #101013; }
+.cart-count { display: inline-grid; place-items: center; min-width: 1.5rem; height: 1.5rem;
+  border-radius: 999px; background: #101013; color: #f0eee9; font-size: 0.8rem; }
+.cart-drawer { position: fixed; inset: auto 0 0 0; z-index: 60; max-height: 80vh; overflow: auto;
+  padding: 1rem 1.25rem 1.5rem; border-top: 1px solid rgba(240,238,233,.2);
+  background: #17171a; color: #f0eee9; }
+@media (min-width: 720px) { .cart-drawer { inset: 0 0 0 auto; width: min(28rem, 100%); border-top: 0;
+  border-left: 1px solid rgba(240,238,233,.2); max-height: none; } }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  margin-bottom: 1rem; }
+.drawer-head button { font: inherit; background: transparent; border: 0; color: inherit;
+  cursor: pointer; min-height: 44px; }
+.drawer-line { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.5rem 0; border-bottom: 1px solid rgba(240,238,233,.12); }
+.drawer-line button { font: inherit; min-width: 44px; min-height: 44px; border-radius: 999px;
+  border: 1px solid currentColor; background: transparent; color: inherit; cursor: pointer; }
+.drawer-warn { margin: 0.75rem 0 0; font-weight: 600; }
+.drawer-foot { margin-top: 1.25rem; }
+.totals { display: flex; justify-content: space-between; font-weight: 700; font-size: 1.1rem; }
+.drawer-note { margin: 0.4rem 0 0; font-size: 0.8rem; opacity: 0.7; }
+
+/* ── #2830 visual parity ──────────────────────────────────────────────────
+   The register gogi's own site uses: condensed uppercase display set tight,
+   an eyebrow-then-rule section rhythm, and a full-bleed hero. Every value
+   here reads a custom property, so a brand with a different palette gets its
+   own look rather than gogi's. */
+h1, h2, h3, .brand {
+  font-family: var(--display);
+  /* a serif or a humanist sans set in caps reads as shouting; the pairing
+     decides, not the stylesheet */
+  text-transform: var(--display-case);
+  letter-spacing: -0.02em;
+  line-height: 0.94;
+  text-wrap: balance;
+}
+h1 { font-size: clamp(2.75rem, 8vw, 6rem); margin: 0 0 1rem; }
+h2 { font-size: clamp(2rem, 5vw, 3.75rem); margin: 0 0 1rem; }
+h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
+.page-title { margin-block: 3rem 1rem; }
+
+.eyebrow {
+  font-family: var(--body);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin: 0 0 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+/* the rule that follows an eyebrow — the section rhythm, not decoration */
+.eyebrow::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--line);
+}
+
+.hero {
+  position: relative;
+  min-height: clamp(30rem, 82svh, 52rem);
+  display: grid;
+  align-items: end;
+  padding: clamp(2rem, 8vw, 6rem) max(20px, calc((100% - 1200px) / 2));
+  background-size: cover;
+  background-position: center;
+  background-color: var(--panel);
+}
+.hero > div { position: relative; max-width: 60ch; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
+.button {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  font-weight: 700; font-size: 0.95rem; min-height: 44px;
+  padding: 0.75rem 1.5rem; border-radius: 999px; text-decoration: none;
+}
+.button.accent { background: var(--gold); color: var(--ink); }
+.button.ghost { border: 1px solid currentColor; color: var(--ivory); }
+
+/* #2830 — scroll reveal. Opt-in per element, off entirely under
+   prefers-reduced-motion, and NEVER hides content when JavaScript does not
+   run: the initial state is visible and the observer only animates. */
+.reveal { opacity: 1; }
+.js-reveal .reveal { opacity: 0; transform: translateY(26px);
+  transition: opacity .7s var(--ease), transform .7s var(--ease); }
+.js-reveal .reveal.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .js-reveal .reveal { opacity: 1; transform: none; transition: none; }
+  html { scroll-behavior: auto; }
+}
+
+/* #2830 — the hero video sits UNDER the copy and OVER the poster. The poster
+   is the section's background image and is always painted, so the heading is
+   legible before a byte of video arrives and stays legible if none does. */
+.hero-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(90deg, rgba(8, 6, 4, 0.82), rgba(8, 6, 4, 0.18));
+  pointer-events: none;
+}
+.hero > div { z-index: 2; }
+
+/* #2830 — reels and the team. gogi's own site runs both; the reels ARE the
+   content, because the captions are their words and the footage is their room. */
+.video-feature { display: grid; gap: 1rem; }
+.video-caption { max-width: 62ch; color: var(--muted); margin: 0; }
+.reel-poster, .reel-video {
+  width: 100%; aspect-ratio: 9 / 16; max-height: 70vh; border-radius: 14px;
+  background: var(--panel) center / cover no-repeat; border: 1px solid var(--line);
+  display: block;
+}
+@media (min-width: 720px) { .reel-poster, .reel-video { aspect-ratio: 16 / 9; } }
+.reel-poster { position: relative; cursor: pointer; padding: 0; }
+.reel-play {
+  position: absolute; inset: 50% auto auto 50%; translate: -50% -50%;
+  display: grid; place-items: center; width: 72px; height: 72px; border-radius: 999px;
+  background: var(--gold); color: var(--ink); font-size: 26px; line-height: 1;
+}
+.team-grid {
+  list-style: none; margin: 1.5rem 0 0; padding: 0;
+  display: grid; gap: 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+}
+.team-grid li { display: grid; gap: 0.4rem; justify-items: start; }
+.team-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; }
+.team-initial {
+  display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: 12px;
+  background: var(--panel-raised); color: var(--gold);
+  font-family: var(--display); font-size: 2.5rem;
+}
+.team-grid strong { font-weight: 600; }
+.team-grid span:not(.team-initial) { color: var(--muted); font-size: 0.85rem; }

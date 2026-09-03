@@ -6,6 +6,7 @@ import {
   tenantWrite,
 } from "../lib/access";
 import { boundedColor, safeText, safeUrl } from "../lib/validation";
+import { FONT_PAIRINGS, FONT_PAIRING_KEYS } from "../lib/fontPairings";
 import {
   assertReadyTenantMedia,
   singletonPerTenant,
@@ -61,14 +62,51 @@ export const SiteSettings: CollectionConfig = {
         return tenantId ? { tenant: { equals: tenantId }, state: { equals: "READY" } } : false;
       },
     },
-    { name: "background_color", type: "text", validate: boundedColor },
-    { name: "foreground_color", type: "text", validate: boundedColor },
-    { name: "accent_color", type: "text", validate: boundedColor },
+    /*
+     * #2830 — the brand's own look. These fields already existed and were read
+     * by nobody: the runtime stylesheet hardcoded the pilot customer's palette,
+     * so a brand could set a colour here and see no change. They now drive the
+     * published site.
+     */
+    {
+      name: "background_color",
+      label: "Background colour",
+      type: "text",
+      validate: boundedColor,
+      admin: { description: "Six-digit hex, for example #101013." },
+    },
+    {
+      name: "foreground_color",
+      label: "Text colour",
+      type: "text",
+      validate: boundedColor,
+      admin: { description: "Six-digit hex, for example #f0eee9." },
+    },
+    {
+      name: "accent_color",
+      label: "Accent colour",
+      type: "text",
+      validate: boundedColor,
+      admin: {
+        description:
+          "Six-digit hex. Used for buttons, links and section rules, for example #cda052.",
+      },
+    },
     {
       name: "typography",
+      label: "Fonts",
       type: "select",
-      defaultValue: "editorial-serif",
-      options: ["modern-sans", "editorial-serif"],
+      defaultValue: "condensed-display",
+      // Options come from the shared pairing list so the editor can never offer
+      // a font the published site does not serve.
+      options: FONT_PAIRING_KEYS.map((value) => ({
+        value,
+        label: FONT_PAIRINGS[value].label,
+      })),
+      admin: {
+        description:
+          "Both faces are served from your own website, so nothing is requested from another company.",
+      },
     },
     {
       name: "canonical_url",

@@ -19,6 +19,15 @@ export interface BrandSiteOverview {
   created_at: string;
   updated_at: string;
   brand_site_hosts: BrandSiteHost[];
+  /**
+   * #2830 — Mingla's menu has changed since this website was published.
+   *
+   * The site carries a baked copy of the menu, so a price or availability
+   * change in the app does not reach it until someone republishes. Core
+   * compares the menu now against the menu as published and reports it here.
+   * Absent on older payloads, so treat undefined as "no signal", never as true.
+   */
+  menu_changed_since_publish?: boolean;
   latest_provision_operation?: Pick<
     BrandSiteOperation,
     | "operation_id"

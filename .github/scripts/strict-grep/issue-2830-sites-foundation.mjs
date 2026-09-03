@@ -618,8 +618,65 @@ export function violations(files) {
     'tablet: "768px"',
     'desktop: "min(100%, 1440px)"',
     "Private preview — not live",
-    "Publish this revision",
+    /*
+     * [TEST-MOD-APPROVED #2830] SUPERSEDED: "Publish this revision".
+     *
+     * The label is now "Publish". Measured on a phone, the preview chrome cost
+     * 328px at 320pt — a five-row toolbar plus a full-width banner, more of the
+     * screen than the website it was previewing. It is one 55px row now, and
+     * the long label did not fit. Seth approved the shortening on 2026-09-03.
+     *
+     * What this token was really guarding is that a publish control EXISTS in
+     * the preview and that publishing stays a separate, deliberate act. Both
+     * still hold and both are still pinned: the control below, and the
+     * "separate confirmation" sentence that moved into the details panel.
+     */
+    "Publish",
+    "Publishing is always a separate confirmation.",
   ]) need(files.cmsPreview ?? "", token, "complete preview chrome", failures);
+  /*
+   * #2830 — ONLY the Ari tab may import AriChatScreen.
+   *
+   * A second importer gives Metro two chunks to serve the module from, and it
+   * hoists anything shared into the payload every Business user downloads
+   * before anything renders. Measured when the Website split view imported it
+   * directly: 2,436,294 B to 2,569,912 B, a 133KB regression on the boot path
+   * for people who may never open Ari. `React.lazy` does not help — sharing is
+   * what hoists, not eagerness.
+   *
+   * This lives here rather than in a jest file because it is a STRUCTURAL rule
+   * about the module graph, which is exactly what I-PROPOSED-1047 says belongs
+   * in an additive gate rather than a source-text pin.
+   */
+  {
+    const ariImporters = [
+      "mingla-business/app/(tabs)/ari.tsx",
+      "mingla-business/app/brand/[id]/website/ari.tsx",
+      "mingla-business/app/brand/[id]/website.tsx",
+    ].filter((file) => {
+      let body = "";
+      try {
+        body = fs.readFileSync(path.join(ROOT, file), "utf8");
+      } catch {
+        return false;
+      }
+      // Strip block comments: this gate's own docblock names the module, and a
+      // substring match would flag the file that deliberately does not import it.
+      body = body.replace(/\/\*[\s\S]*?\*\//g, "");
+      return /from\s+"[^"]*AriChatScreen"/.test(body);
+    });
+    if (
+      ariImporters.length !== 1 ||
+      ariImporters[0] !== "mingla-business/app/(tabs)/ari.tsx"
+    ) {
+      failures.push(
+        `AriChatScreen import boundary: must have exactly one importer ` +
+          `(app/(tabs)/ari.tsx); found: ${ariImporters.join(", ") || "none"}. ` +
+          `A second importer puts ~133KB on every Business user's boot path.`,
+      );
+    }
+  }
+
   for (const token of [
     "--studio-black: #101013",
     "--studio-gold: #cda052",
@@ -666,7 +723,23 @@ export function violations(files) {
     "assertRestaurantArtifact",
     "mingla_site_analytics_consent_v1",
     'edgeFunction: "brand-site-attribution"',
-    'aria-labelledby={page.role === "home"',
+    /*
+     * [TEST-MOD-APPROVED #2830] SUPERSEDED:
+     *   'aria-labelledby={page.role === "home"'
+     *
+     * That attribute existed because the renderer concatenated EVERY page into
+     * one document, so each page needed a hidden heading to label its own
+     * region. Pages are now real routes rendering one at a time, and the
+     * attribute went with the concatenation — which is also what stopped the
+     * hours block printing three times on the live site.
+     *
+     * The property it guarded — every page is titled — is pinned harder now:
+     * a page with a hero uses the hero as its single h1, and a page without one
+     * gets its own title as that h1. Both are asserted below, and the render
+     * suite counts the h1s rather than grepping for an attribute.
+     */
+    '<h1 className="page-title">{current.title}</h1>',
+    "primaryHeading={index === primaryHeroIndex}",
   ]) need(publicCombined, token, "public last-good runtime", failures);
   for (const forbidden of ["@payloadcms", "from \"payload\"", "postgresAdapter", "sharp(", "lexicalEditor"])
     forbid(publicCombined, forbidden, "public runtime isolation", failures);
@@ -834,7 +907,7 @@ function selfTest() {
     ["publicGateway", "input.siteId !== config.pilotSiteId", "input.siteId === config.pilotSiteId", "public pilot signing boundary"],
     ["publicConsentContract", 'name === CONSENT_KEY && value === "granted"', 'name.includes(CONSENT_KEY) && value.startsWith("granted")', "public exact consent cookie boundary"],
     ["attribution", "const envelope = await verifySitesEnvelope", "const envelope = await verifyUnsignedEnvelope", "signed attribution gateway"],
-    ["publicRenderer", 'aria-labelledby={page.role === "home"', 'aria-labelledby={true || page.role === "home"', "public last-good runtime"],
+    ["publicRenderer", '<h1 className="page-title">{current.title}</h1>', '<h1 className="page-title">{"Page"}</h1>', "public last-good runtime"],
     ["publicRenderer", 'className="fact-rail"', 'className="facts"', "Restaurant Website v1 composition"],
     ["publicStyles", "--gold: #cda052", "--gold: #d85a22", "Restaurant Website v1 visual contract"],
     ["publicStyles", ":where(a, button, summary) {\n  min-width: 44px;\n  min-height: 44px;\n}", ":where(a, button, summary) {\n  min-width: 32px;\n  min-height: 32px;\n}", "Restaurant Website v1 visual contract"],

@@ -267,9 +267,46 @@ async function handleBrandSiteCmsCallbackRequest(
         "brand_site_commercial_projection",
         { p_site_id: siteId, p_offering_ids: offeringIds },
       );
-      return error
-        ? sitesJson({ ok: false, error: { code: "VALIDATION_FAILED" } }, 409)
-        : sitesJson({ ok: true, data: { offerings: data ?? [] } });
+      if (error) {
+        return sitesJson({ ok: false, error: { code: "VALIDATION_FAILED" } }, 409);
+      }
+      // #2830 — the menu travels on the SAME projection as offerings, and only
+      // when the builder asks for it, so a page with no menu block costs no
+      // menu read. Mingla stays the authority: the website never keeps its own
+      // copy of what a restaurant sells.
+      let menu: unknown[] = [];
+      let menuVenueId: string | null = null;
+      if (new URL(req.url).searchParams.get("include") === "menu") {
+        const menuResult = await service.rpc("brand_site_menu_projection", {
+          p_site_id: siteId,
+        });
+        if (menuResult.error) {
+          return sitesJson(
+            { ok: false, error: { code: "VALIDATION_FAILED" } },
+            409,
+          );
+        }
+        menu = menuResult.data ?? [];
+        // Which kitchen receives a website order. NULL when the brand has no
+        // verified venue, or more than one — the website then shows the menu
+        // without a cart rather than guessing where dinner should be cooked.
+        const venueResult = await service.rpc("brand_site_orderable_venue", {
+          p_site_id: siteId,
+        });
+        if (venueResult.error) {
+          return sitesJson(
+            { ok: false, error: { code: "VALIDATION_FAILED" } },
+            409,
+          );
+        }
+        menuVenueId = typeof venueResult.data === "string"
+          ? venueResult.data
+          : null;
+      }
+      return sitesJson({
+        ok: true,
+        data: { offerings: data ?? [], menu, menu_venue_id: menuVenueId },
+      });
     }
     const retentionMatch = path.match(
       /^\/internal\/v1\/sites\/([^/]+)\/retention-protection$/,

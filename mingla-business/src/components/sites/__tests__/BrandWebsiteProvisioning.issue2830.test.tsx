@@ -42,6 +42,7 @@ describe("#2830 Website state 4", () => {
           brandName="Gogi"
           site={site}
           rank={50}
+      isWideDesktop={false}
           journeyState={4}
           panel="overview"
           notice={null}
@@ -102,7 +103,8 @@ describe("#2830 Website state 4", () => {
       act(() => {
         tree = create(
           <BrandWebsiteView
-            brandName="Gogi" site={site} rank={rank} isLoading={false}
+            brandName="Gogi" site={site} rank={rank}
+      isWideDesktop={false} isLoading={false}
             journeyState={4} panel="overview" notice={null}
             isError={false} isProvisioning={false} isOpeningStudio={false}
             isPreviewing={false} isPublishing={false} isRollingBack={false}
