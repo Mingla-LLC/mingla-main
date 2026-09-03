@@ -7,6 +7,7 @@ import { PostHogProvider } from '@/components/marketing/posthog-provider'
 import { ConsentBanner } from '@/components/marketing/consent-banner'
 import { requireRouteContract, type SearchReadyRouteContract } from '@/lib/search/route-registry'
 import { SITE_ORIGIN } from '@/lib/site'
+import { SkipLink } from '@/components/marketing/skip-link'
 
 // META-ORCH-1187 [Growth Analytics Hub] Phase 1 — LEG 1 (marketing web).
 // GA4 Measurement ID — public by design (web-only). Single shared stream.
@@ -90,12 +91,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <noscript>
           <style>{`.search-primary-answer{opacity:1!important;transform:none!important;filter:none!important}`}</style>
         </noscript>
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-coral-500 focus:px-4 focus:py-2 focus:text-white"
-        >
-          Skip to content
-        </a>
+        <SkipLink />
         {children}
         <ContentProtection />
         {/* META-ORCH-1187 — analytics (consent-gated). */}

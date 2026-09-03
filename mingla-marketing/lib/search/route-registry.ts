@@ -1,4 +1,5 @@
 import { canonicalMarketingUrl } from '../site'
+import { CITY_HUBS, cityHubPath } from '../../content/cities/registry'
 
 export const ROUTE_LIFECYCLE_STATES = [
   'draft',
@@ -213,6 +214,18 @@ const REDIRECTED_ROUTES = [
   },
 ] as const satisfies readonly RedirectedRouteContract[]
 
+// #2983 owns its ten city route contracts as a registry projection. Keep this
+// separate from the #2981 base arrays: one city content record controls route
+// identity and lifecycle without duplicating slugs in the search foundation.
+export const CITY_ROUTE_CONTRACTS: readonly RouteContract[] = CITY_HUBS.map((record) => ({
+  id: `city-hub-${record.slug}`,
+  match: { type: 'exact' as const, pathname: cityHubPath(record) },
+  lifecycle: record.lifecycle,
+  title: `Things to do in ${record.city} — Mingla city guide`,
+  description: record.directAnswer,
+  lastModified: record.sourcesCheckedAt,
+}))
+
 export const ROUTE_REGISTRY: readonly RouteContract[] = [
   ...SEARCH_READY_ROUTES,
   ...PUBLIC_NOINDEX_ROUTES.map(([pathname, id]) => ({
@@ -225,6 +238,7 @@ export const ROUTE_REGISTRY: readonly RouteContract[] = [
     match: { type: 'prefix' as const, pathname },
     lifecycle: 'public_noindex' as const,
   })),
+  ...CITY_ROUTE_CONTRACTS,
   ...REDIRECTED_ROUTES,
 ]
 

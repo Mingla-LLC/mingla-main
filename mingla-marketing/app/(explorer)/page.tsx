@@ -5,6 +5,8 @@ import { CutoutNav, CutoutShell, DeviceCta } from '@/components/cutout'
 import { MinglaEntityGraph } from '@/components/marketing/entity-graph'
 import { resolveCityKey } from '@/lib/city-decks'
 import { searchRouteMetadata } from '@/lib/search/metadata'
+import { RootCityGrid } from '@/components/cities/city-hub'
+import { allCityHubsSearchReady } from '@/content/cities/registry'
 
 // #2902 — Explorer home, on the Cutout design.
 //
@@ -42,15 +44,16 @@ export default async function ExplorerHomePage({ searchParams }: ExplorerHomePag
     longitude: headerList.get('x-vercel-ip-longitude'),
     country: headerList.get('x-vercel-ip-country'),
   })
+  const showCityLaunch = allCityHubsSearchReady()
 
   return (
-    <CutoutShell dark noScroll>
+    <CutoutShell dark noScroll={!showCityLaunch}>
       {/* `showAction={false}`: the Explorer action lives under the cards. */}
       <CutoutNav surface="explorer" homeHref="/" showAction={false} />
 
       <MinglaEntityGraph />
 
-      <div data-cut-deck className="relative h-full">
+      <div data-cut-deck className={showCityLaunch ? 'relative h-[100svh]' : 'relative h-full'}>
         <ExplorerHero cityKey={cityKey} />
 
         {/* Centred in the band between the headline and the deck. A single
@@ -80,6 +83,7 @@ export default async function ExplorerHomePage({ searchParams }: ExplorerHomePag
           </div>
         </div>
       </div>
+      {showCityLaunch ? <RootCityGrid surface="explorer" /> : null}
     </CutoutShell>
   )
 }
