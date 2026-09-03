@@ -61,7 +61,7 @@ export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
                 : 'Mingla helps you decide what to actually do — and get you there.'}
             </p>
             <div className="mt-7">
-              <DeviceCta surface={surface} location="footer" variant="primary" size="md" />
+              <DeviceCta surface={surface} location="footer" variant="primary" size="md" className="min-h-11" />
             </div>
           </div>
 
@@ -77,14 +77,14 @@ export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
                       {'external' in l && l.external ? (
                         <a
                           href={l.href}
-                          className="text-[0.9375rem] text-[var(--cut-body)] transition-colors hover:text-[var(--cut-ink)] focus-ring"
+                          className="inline-flex min-h-11 min-w-11 items-center text-[0.9375rem] text-[var(--cut-body)] transition-colors hover:text-[var(--cut-ink)] focus-ring"
                         >
                           {l.label}
                         </a>
                       ) : (
                         <Link
                           href={l.href}
-                          className="text-[0.9375rem] text-[var(--cut-body)] transition-colors hover:text-[var(--cut-ink)] focus-ring"
+                          className="inline-flex min-h-11 min-w-11 items-center text-[0.9375rem] text-[var(--cut-body)] transition-colors hover:text-[var(--cut-ink)] focus-ring"
                         >
                           {l.label}
                         </Link>
@@ -106,7 +106,7 @@ export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
           </p>
           <Link
             href={surface === 'host' ? '/' : '/host'}
-            className="text-[0.8125rem] font-semibold text-[var(--cut-accent)] underline-offset-2 hover:underline focus-ring"
+            className="inline-flex min-h-11 min-w-11 items-center text-[0.8125rem] font-semibold text-[var(--cut-accent)] underline-offset-2 hover:underline focus-ring"
           >
             {surface === 'host'
               ? 'Looking for the app? → Mingla for Explorers'
