@@ -26,11 +26,11 @@ export default async function LagosCityReviewPage({
   const detail = first(query.detail) ?? null
   const initialType = first(query.type) === 'plans' || detail?.startsWith('plan:') ? 'plans' : 'places'
   const requestedCategories = first(query.categories)?.split(',') ?? []
-  const initialCategories = requestedCategories.filter(
+  const initialCategories = [...new Set(requestedCategories.filter(
     (candidate): candidate is ExplorerCategorySlug => EXPLORER_CATEGORIES.some((category) => category.slug === candidate),
-  )
+  ))]
   const validIntents = new Set(snapshot.plans.map((plan) => plan.generatedCardId.replace('lagos-editorial-', '')))
-  const initialIntents = (first(query.intents)?.split(',') ?? []).filter((intent) => validIntents.has(intent))
+  const initialIntents = [...new Set((first(query.intents)?.split(',') ?? []).filter((intent) => validIntents.has(intent)))]
 
   return (
     <PageSystemShell currentPath={CURRENT_PATH} futurePath={FUTURE_PATH} audience="city" hostAcquisition>
@@ -38,12 +38,6 @@ export default async function LagosCityReviewPage({
         <p className="ps-eyebrow">Mingla Explorer · Lagos</p>
         <h1>Things to do in Lagos, ranked by Mingla</h1>
         <p>Browse 50 real picks across all ten Explorer categories, or open a ready-made plan.</p>
-        <div className="ps-city-proof" aria-label="Catalogue snapshot summary">
-          <span><strong>50</strong> real places</span>
-          <span><strong>10</strong> balanced categories</span>
-          <span><strong>{snapshot.plans.length}</strong> editorial plans</span>
-        </div>
-        <p className="ps-source-note">Private Explorer snapshot: scores captured 1 June 2026; place records reviewed 7 August 2026. The pool follows Mingla’s Lagos city assignment, so check each address before travelling.</p>
       </header>
 
       <CityCatalogue
@@ -54,6 +48,8 @@ export default async function LagosCityReviewPage({
         initialIntents={initialIntents}
         initialDetail={detail}
       />
+
+      <p className="ps-source-note ps-city-source-note">Private Explorer snapshot: scores captured 1 June 2026; place records reviewed 7 August 2026. The pool follows Mingla’s Lagos city assignment, so check each address before travelling.</p>
 
       <section className="ps-launch-cities" aria-labelledby="launch-cities-heading">
         <p className="ps-eyebrow">The city system scales</p>

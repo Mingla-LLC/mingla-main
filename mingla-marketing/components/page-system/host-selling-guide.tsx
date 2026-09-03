@@ -21,7 +21,7 @@ export function HostSellingGuide({ guide }: { readonly guide: HostGuideRecord })
       </header>
 
       <section className="ps-host-tips" aria-labelledby="host-tips-heading">
-        <header><p className="ps-eyebrow">Three things that make the event easier to sell</p><h2 id="host-tips-heading">Clear beats complicated.</h2></header>
+        <header><p className="ps-eyebrow">Three things that make the {guide.creationNoun} easier to sell</p><h2 id="host-tips-heading">Clear beats complicated.</h2></header>
         <ol>
           {guide.tips.map((tip, index) => (
             <li key={tip.title}><span>{index + 1}</span><h3>{tip.title}</h3><p>{tip.detail}</p></li>

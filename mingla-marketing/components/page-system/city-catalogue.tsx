@@ -19,21 +19,27 @@ interface CityCatalogueProps {
 
 const CITY_PATH = '/internal/page-system/city-lagos'
 
+function orderedUnique<T extends string>(values: readonly T[]): readonly T[] {
+  return [...new Set(values)]
+}
+
 function planIntent(plan: CataloguePlan): string {
   return plan.generatedCardId.replace('lagos-editorial-', '')
 }
 
 function catalogueHref(type: CatalogueType, categories: readonly ExplorerCategorySlug[], intents: readonly string[], detail?: string): string {
   const query = new URLSearchParams({ type })
-  if (type === 'places' && categories.length > 0) query.set('categories', categories.join(','))
-  if (type === 'plans' && intents.length > 0) query.set('intents', intents.join(','))
+  const uniqueCategories = orderedUnique(categories)
+  const uniqueIntents = orderedUnique(intents)
+  if (type === 'places' && uniqueCategories.length > 0) query.set('categories', uniqueCategories.join(','))
+  if (type === 'plans' && uniqueIntents.length > 0) query.set('intents', uniqueIntents.join(','))
   if (detail) query.set('detail', detail)
   return `${CITY_PATH}?${query.toString()}`
 }
 
 function interleavePlaces(places: readonly CataloguePlace[], categories: readonly ExplorerCategorySlug[]): readonly CataloguePlace[] {
   if (categories.length === 0) return places
-  const buckets = categories.map((category) => places
+  const buckets = orderedUnique(categories).map((category) => places
     .filter((place) => place.categorySlug === category)
     .sort((left, right) => right.signalScore - left.signalScore))
   const result: CataloguePlace[] = []
@@ -47,8 +53,8 @@ function interleavePlaces(places: readonly CataloguePlace[], categories: readonl
 
 export function CityCatalogue({ places, plans, initialType, initialCategories, initialIntents, initialDetail }: CityCatalogueProps) {
   const [type, setType] = useState<CatalogueType>(initialType)
-  const [categories, setCategories] = useState<readonly ExplorerCategorySlug[]>(initialCategories)
-  const [intents, setIntents] = useState<readonly string[]>(initialIntents)
+  const [categories, setCategories] = useState<readonly ExplorerCategorySlug[]>(orderedUnique(initialCategories))
+  const [intents, setIntents] = useState<readonly string[]>(orderedUnique(initialIntents))
   const [detail, setDetail] = useState(initialDetail)
   const openerRef = useRef<HTMLAnchorElement | null>(null)
 
@@ -69,10 +75,10 @@ export function CityCatalogue({ places, plans, initialType, initialCategories, i
     function onPopState() {
       const query = new URLSearchParams(window.location.search)
       const nextType = query.get('type') === 'plans' ? 'plans' : 'places'
-      const nextCategories = (query.get('categories')?.split(',') ?? [])
-        .filter((candidate): candidate is ExplorerCategorySlug => EXPLORER_CATEGORIES.some((category) => category.slug === candidate))
+      const nextCategories = orderedUnique((query.get('categories')?.split(',') ?? [])
+        .filter((candidate): candidate is ExplorerCategorySlug => EXPLORER_CATEGORIES.some((category) => category.slug === candidate)))
       const validIntents = new Set(plans.map(planIntent))
-      const nextIntents = (query.get('intents')?.split(',') ?? []).filter((intent) => validIntents.has(intent))
+      const nextIntents = orderedUnique((query.get('intents')?.split(',') ?? []).filter((intent) => validIntents.has(intent)))
       setType(nextType)
       setCategories(nextCategories)
       setIntents(nextIntents)
@@ -88,8 +94,8 @@ export function CityCatalogue({ places, plans, initialType, initialCategories, i
   function navigate(nextHref: string, next: { type?: CatalogueType; categories?: readonly ExplorerCategorySlug[]; intents?: readonly string[]; detail?: string | null }) {
     window.history.pushState({ ...window.history.state, pageSystemDetail: Boolean(next.detail) }, '', nextHref)
     if (next.type) setType(next.type)
-    if (next.categories) setCategories(next.categories)
-    if (next.intents) setIntents(next.intents)
+    if (next.categories) setCategories(orderedUnique(next.categories))
+    if (next.intents) setIntents(orderedUnique(next.intents))
     if ('detail' in next) setDetail(next.detail ?? null)
   }
 
