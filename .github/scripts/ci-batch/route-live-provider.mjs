@@ -32,8 +32,17 @@
 //
 // The one hard refusal is an EMPTY or ABSENT `originPaths` on a registered lane.
 // #2882 fails the build on that rather than letting a suite route to nothing, and
-// this file must not become the first exception, so it exits non-zero AND selects
-// the lane. Fail-closed on the registry, fail-safe on the observation.
+// this file must not become the first exception, so it exits NON-ZERO.
+//
+// Be precise about what that means, because the two failure modes differ and the
+// difference is easy to state wrongly. GitHub skips a job whose `needs` dependency
+// failed, so a non-zero exit here does NOT run the lane's tests — it fails the
+// route job, reds the run, and blocks the merge. That is #2882's own posture for a
+// registry that routes to nothing: nothing merges. The fail-SAFE path is the other
+// one — an observation this router could not make exits ZERO with `selected=true`,
+// so the route job succeeds and every dependent job runs in full. Fail-closed on
+// the registry (nothing merges), fail-safe on the observation (everything runs).
+// Neither path can produce a green run whose tests silently did not execute.
 //
 // Lanes are addressed by OWNER ISSUE, never by workflow filename: a workflow
 // filename literal in a tracked non-workflow file is counted by
@@ -153,8 +162,10 @@ export function main(argv = process.argv.slice(2), { env = process.env } = {}) {
     provider = routedProvider(manifest, ownerIssue);
     patterns = providerOriginPatterns(provider);
   } catch (error) {
-    // Fail-closed on the REGISTRY: the lane still runs, and the run is red, so an
-    // unregistered or empty-routing lane cannot quietly become permanently green.
+    // Fail-closed on the REGISTRY. This reds the route job, which skips every job
+    // that needs it and blocks the merge — an unregistered or empty-routing lane
+    // cannot quietly become permanently green. `selected=true` is still written so
+    // that a caller reading the output alone is never told to skip.
     console.error(`::error title=Live-provider routing registry::${error.message}`);
     writeOutput(true);
     return 1;
