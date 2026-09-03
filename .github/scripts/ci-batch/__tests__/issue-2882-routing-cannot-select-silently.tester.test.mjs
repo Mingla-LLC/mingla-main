@@ -345,28 +345,31 @@ function selfCoverageGapSuites(value, tracked, trackedSet) {
   return gaps;
 }
 
-// [#2882 tester finding P1-A] Suites that EXECUTE a tracked file their own
-// `originPaths` does not watch. Before this change ci-batch ran everything on
-// every pull request, so the gap was inert; routing gives it teeth, and a pull
-// request touching only such a file now skips the suite that reads it.
+// [#2882 tester finding P1-A — REPAIRED at c9db64df4, ratchet retained]
+// Suites that EXECUTE a tracked file their own `originPaths` does not watch.
+// Under pull-request routing a diff touching only such a file skips the suite
+// that reads it — and a test-only pull request is the shape this program's own
+// regression gate mandates on every close.
 //
-// Enumerated by suite id, never pattern-matched, so the set cannot quietly grow:
-// a NEW suite developing this gap reds this test. Shrinking is free — the
-// assertion is a subset, so repairing any of these needs no edit here.
-// Reported on #2882 with the full (suite, file) list; the repair is pure
-// widening of each suite's originPaths, exactly as §6a widened issue-1532's.
+// Nine suites were widened to close this; ALL of the eleven originally found
+// outside `phase3b-postgres-wave` are gone. The four below are pre-existing on
+// `origin/main` and are NOT introduced or worsened here: Phase 3B already
+// routed on `originPaths` before this change (`selectionDocument` in
+// select-phase3b-suites.mjs), so editing those files already did not run those
+// suites. Their `originPaths` are additionally pinned into a hashed
+// `triggerContract`, so widening them moves three further sealed digests.
+// Tracked as #3079.
+//
+// This detector derives "executes" from each suite's COMMANDS, independently of
+// the implementor's SC-8 check, which derives it from `expectedFiles`. Two
+// extractors, one answer. Enumerated by suite id so the set cannot quietly
+// grow: a NEW suite developing the gap reds. Shrinking is free — the assertion
+// is a subset, so repairing any of these needs no edit here.
 const KNOWN_SELF_COVERAGE_GAP_SUITES = Object.freeze([
   "issue-1022-theme-control-tests",
-  "issue-1326-ng-reservation-finalize-tests",
   "issue-1467-venue-submit-idempotency-tests",
   "issue-1685-venue-draft-multi-tests",
   "issue-1902-public-event-lifecycle-tests",
-  "issue-1950-app-readiness-tests",
-  "issue-1996-business-desktop-sharing-tests",
-  "issue-2230-consumer-multiday-tests",
-  "issue-2321-account-deletion-tests",
-  "issue-2399-multiday-picker-ticket-box",
-  "production-readiness-audit",
 ]);
 
 test("#2882 adversarial 11a: the self-coverage detector is not vacuous", () => {
