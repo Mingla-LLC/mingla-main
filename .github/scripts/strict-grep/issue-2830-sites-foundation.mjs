@@ -618,7 +618,21 @@ export function violations(files) {
     'tablet: "768px"',
     'desktop: "min(100%, 1440px)"',
     "Private preview — not live",
-    "Publish this revision",
+    /*
+     * [TEST-MOD-APPROVED #2830] SUPERSEDED: "Publish this revision".
+     *
+     * The label is now "Publish". Measured on a phone, the preview chrome cost
+     * 328px at 320pt — a five-row toolbar plus a full-width banner, more of the
+     * screen than the website it was previewing. It is one 55px row now, and
+     * the long label did not fit. Seth approved the shortening on 2026-09-03.
+     *
+     * What this token was really guarding is that a publish control EXISTS in
+     * the preview and that publishing stays a separate, deliberate act. Both
+     * still hold and both are still pinned: the control below, and the
+     * "separate confirmation" sentence that moved into the details panel.
+     */
+    "Publish",
+    "Publishing is always a separate confirmation.",
   ]) need(files.cmsPreview ?? "", token, "complete preview chrome", failures);
   for (const token of [
     "--studio-black: #101013",
@@ -666,7 +680,23 @@ export function violations(files) {
     "assertRestaurantArtifact",
     "mingla_site_analytics_consent_v1",
     'edgeFunction: "brand-site-attribution"',
-    'aria-labelledby={page.role === "home"',
+    /*
+     * [TEST-MOD-APPROVED #2830] SUPERSEDED:
+     *   'aria-labelledby={page.role === "home"'
+     *
+     * That attribute existed because the renderer concatenated EVERY page into
+     * one document, so each page needed a hidden heading to label its own
+     * region. Pages are now real routes rendering one at a time, and the
+     * attribute went with the concatenation — which is also what stopped the
+     * hours block printing three times on the live site.
+     *
+     * The property it guarded — every page is titled — is pinned harder now:
+     * a page with a hero uses the hero as its single h1, and a page without one
+     * gets its own title as that h1. Both are asserted below, and the render
+     * suite counts the h1s rather than grepping for an attribute.
+     */
+    '<h1 className="page-title">{current.title}</h1>',
+    "primaryHeading={index === primaryHeroIndex}",
   ]) need(publicCombined, token, "public last-good runtime", failures);
   for (const forbidden of ["@payloadcms", "from \"payload\"", "postgresAdapter", "sharp(", "lexicalEditor"])
     forbid(publicCombined, forbidden, "public runtime isolation", failures);
@@ -834,7 +864,7 @@ function selfTest() {
     ["publicGateway", "input.siteId !== config.pilotSiteId", "input.siteId === config.pilotSiteId", "public pilot signing boundary"],
     ["publicConsentContract", 'name === CONSENT_KEY && value === "granted"', 'name.includes(CONSENT_KEY) && value.startsWith("granted")', "public exact consent cookie boundary"],
     ["attribution", "const envelope = await verifySitesEnvelope", "const envelope = await verifyUnsignedEnvelope", "signed attribution gateway"],
-    ["publicRenderer", 'aria-labelledby={page.role === "home"', 'aria-labelledby={true || page.role === "home"', "public last-good runtime"],
+    ["publicRenderer", '<h1 className="page-title">{current.title}</h1>', '<h1 className="page-title">{"Page"}</h1>', "public last-good runtime"],
     ["publicRenderer", 'className="fact-rail"', 'className="facts"', "Restaurant Website v1 composition"],
     ["publicStyles", "--gold: #cda052", "--gold: #d85a22", "Restaurant Website v1 visual contract"],
     ["publicStyles", ":where(a, button, summary) {\n  min-width: 44px;\n  min-height: 44px;\n}", ":where(a, button, summary) {\n  min-width: 32px;\n  min-height: 32px;\n}", "Restaurant Website v1 visual contract"],

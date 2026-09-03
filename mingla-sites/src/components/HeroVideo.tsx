@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 /**
  * #2830 — the hero's background video.
@@ -19,31 +19,39 @@ import { useEffect, useRef, useState } from "react";
  * It is also SILENT and unmutable by design. A background loop nobody can turn
  * off must never make sound.
  */
+/*
+ * Subscribed rather than set-in-effect. `useSyncExternalStore` is the shape
+ * React wants for reading a live browser value: the earlier version called
+ * setState synchronously inside an effect, which the lint rule bans because it
+ * can cascade renders. It also gets the server case right for free — the
+ * server snapshot is `false`, so no video is ever server-rendered.
+ */
+function subscribeToMotionPreference(onChange: () => void): () => void {
+  const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+  query?.addEventListener?.("change", onChange);
+  return () => query?.removeEventListener?.("change", onChange);
+}
+
+function motionAllowed(): boolean {
+  const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+  if (!query || query.matches) return false;
+  // Respect Data Saver where the browser reports it: 4MB of decorative video
+  // is a real cost on a metered plan.
+  const connection = (navigator as unknown as {
+    connection?: { saveData?: boolean };
+  }).connection;
+  return connection?.saveData !== true;
+}
+
 export function HeroVideo({ src, poster }: { src: string; poster: string }) {
-  const [allowed, setAllowed] = useState(false);
-  const ref = useRef<HTMLVideoElement | null>(null);
-
-  useEffect(() => {
-    const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    if (!query || query.matches) return;
-    // Respect a Data Saver / metered connection where the browser reports one:
-    // 4MB of decorative video is a real cost on a metered plan.
-    const connection = (navigator as unknown as {
-      connection?: { saveData?: boolean };
-    }).connection;
-    if (connection?.saveData === true) return;
-    setAllowed(true);
-    const onChange = (event: MediaQueryListEvent) => {
-      if (event.matches) setAllowed(false);
-    };
-    query.addEventListener?.("change", onChange);
-    return () => query.removeEventListener?.("change", onChange);
-  }, []);
-
+  const allowed = useSyncExternalStore(
+    subscribeToMotionPreference,
+    motionAllowed,
+    () => false,
+  );
   if (!allowed) return null;
   return (
     <video
-      ref={ref}
       className="hero-video"
       src={src}
       poster={poster}

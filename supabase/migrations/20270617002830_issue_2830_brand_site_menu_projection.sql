@@ -190,7 +190,7 @@ BEGIN
   JOIN public.menus m ON m.id = mi.menu_id
   WHERE m.brand_id = v_brand_id AND mi.brand_id = v_brand_id;
 
-  RETURN encode(digest(v_payload, 'sha256'), 'hex');
+  RETURN encode(extensions.digest(v_payload, 'sha256'), 'hex');
 END;
 $$;
 

@@ -60,9 +60,16 @@ describe("#2830 hero video", () => {
   });
 
   it("mounts nothing at all for prefers-reduced-motion, not a paused video", () => {
+    // Asserts the RULE, not the shape of the code that implements it. An
+    // earlier version pinned two exact lines and broke the moment the
+    // component moved from set-state-in-effect to a subscription, even though
+    // the guarantee never changed.
     expect(hero).toContain('"(prefers-reduced-motion: reduce)"');
-    expect(hero).toContain("if (!query || query.matches) return;");
+    expect(hero).toContain("query.matches) return false");
     expect(hero).toContain("if (!allowed) return null;");
+    // The server never renders a video, so nothing autoplays before the
+    // client has had a chance to check the preference.
+    expect(hero).toContain("() => false,");
   });
 
   it("skips the download on a metered connection", () => {
