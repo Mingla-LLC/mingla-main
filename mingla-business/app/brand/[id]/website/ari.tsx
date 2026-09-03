@@ -1,3 +1,5 @@
+// orch-strict-grep-allow safearea-on-fullscreen-routes — Redirect-only route renders no visible surface before leaving.
+
 import React from "react";
 import { Redirect, useLocalSearchParams } from "expo-router";
 
