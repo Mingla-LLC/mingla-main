@@ -74,7 +74,6 @@ function CityLifecycleNotice({ record }: { readonly record: CityHubRecord }) {
 }
 
 function CityHero({ record, catalogueCount }: { readonly record: CityHubRecord; readonly catalogueCount?: number }) {
-  const reviewed = formatDate(record.sourcesCheckedAt, record.locale)
   return (
     <section className="city-hero" aria-labelledby="city-hub-title">
       <nav aria-label="Breadcrumb" className="city-breadcrumbs">
@@ -84,11 +83,6 @@ function CityHero({ record, catalogueCount }: { readonly record: CityHubRecord; 
       <h1 id="city-hub-title">{catalogueCount ? <>Things to do in {record.city}, ranked by Mingla</> : <>Find the right plan in {record.city}.</>}</h1>
       {catalogueCount ? <p className="city-catalogue-summary">Browse {catalogueCount} real picks across all ten Explorer categories, or open a ready-made plan.</p> : null}
       <p className="city-direct-answer">{record.directAnswer}</p>
-      <EvidenceLinks record={record} evidenceIds={record.directAnswerEvidenceIds} />
-      <p className="city-coverage">
-        Coverage: {record.scopeLabel} <span aria-hidden="true">·</span> Last reviewed{' '}
-        <time dateTime={record.sourcesCheckedAt}>{reviewed}</time>
-      </p>
       <div className="city-hero-actions">
         <CityDeviceAction citySlug={record.slug} countryCode={record.countryCode} surface="explorer" label={`Explore ${record.city}`} location="city_hub_hero_explorer" variant="primary" />
         <CityDeviceAction citySlug={record.slug} countryCode={record.countryCode} surface="host" label={`Host in ${record.city}`} location="city_hub_hero_host" variant="ink" />
