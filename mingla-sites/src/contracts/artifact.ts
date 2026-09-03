@@ -172,7 +172,7 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
     offering_grid: ["type", "heading", "offerings"],
     venue_reservation: ["type", "heading", "body", "url"],
     menu_link: ["type", "heading", "label", "href"],
-    menu_board: ["type", "heading", "note", "sections"],
+    menu_board: ["type", "heading", "note", "venue_id", "sections"],
     gallery: ["type", "heading", "images"],
     hours_location: ["type", "heading", "address", "map_url", "hours"],
     testimonials: ["type", "heading", "items"],
@@ -248,10 +248,12 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
     case "menu_board":
       valid = boundedText(block.heading, 120) &&
         boundedText(block.note, 300) &&
+        (block.venue_id == null || (typeof block.venue_id === "string" && UUID.test(block.venue_id))) &&
         exactRows(block.sections, 1, 20, ["name", "description", "items"], (section) =>
           boundedText(section.name, 120, true) &&
           boundedText(section.description, 500) &&
-          exactRows(section.items, 1, 120, ["name", "description", "price_minor", "currency"], (item) =>
+          exactRows(section.items, 1, 120, ["id", "name", "description", "price_minor", "currency"], (item) =>
+            (typeof item.id === "string" && UUID.test(item.id)) &&
             boundedText(item.name, 160, true) &&
             boundedText(item.description, 600) &&
             (item.price_minor == null ||

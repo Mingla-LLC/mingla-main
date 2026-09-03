@@ -200,9 +200,47 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
       if (receiptError) {
         return sitesFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503);
       }
+      /*
+       * #2830 — is the live website behind Mingla's menu?
+       *
+       * The published site carries a baked copy of the menu, so a price or an
+       * availability change in the app does not reach it until someone
+       * republishes. Rather than leave that to be discovered by a customer,
+       * compare the menu as it is NOW with the menu as it was AT PUBLISH and
+       * tell the brand.
+       *
+       * Fails OPEN and quiet: if either side cannot be read we say nothing,
+       * because a false "your website is out of date" badge that will not clear
+       * is worse than no badge.
+       */
+      let menuChangedSincePublish = false;
+      if (data.active_publication_id) {
+        const [current, published] = await Promise.all([
+          db.service.rpc("brand_site_menu_fingerprint", { p_site_id: data.id }),
+          db.service
+            .from("brand_site_publications")
+            .select("menu_fingerprint")
+            .eq("id", data.active_publication_id)
+            .maybeSingle(),
+        ]);
+        const currentDigest = typeof current.data === "string"
+          ? current.data
+          : null;
+        const publishedDigest =
+          typeof published.data?.menu_fingerprint === "string"
+            ? published.data.menu_fingerprint
+            : null;
+        menuChangedSincePublish = currentDigest !== null &&
+          publishedDigest !== null &&
+          currentDigest !== publishedDigest;
+      }
       return sitesJson({
         ok: true,
-        data: { ...data, latest_provision_operation: receipt ?? null },
+        data: {
+          ...data,
+          latest_provision_operation: receipt ?? null,
+          menu_changed_since_publish: menuChangedSincePublish,
+        },
       });
     }
 

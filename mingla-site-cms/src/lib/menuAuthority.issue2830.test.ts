@@ -101,4 +101,34 @@ describe("#2830 the menu belongs to Mingla", () => {
   it("an empty menu drops the block instead of publishing a bare heading", () => {
     expect(builder).toContain("if (!menuSections.length) return null;");
   });
+
+  it("no Mingla menu means no Menu TAB, not an empty page", () => {
+    // The block drops when there are no items, and a non-home page whose
+    // blocks all dropped disables itself -- so the tab leaves the navigation
+    // and the sitemap with it.
+    expect(builder).toContain("if (!menuSections.length) return null;");
+    expect(builder).toContain(
+      'page.role === "home"\n        ? page.enabled\n        : page.enabled === true && rendered.length > 0',
+    );
+  });
+
+  it("the home page is never auto-removed", () => {
+    expect(builder).toContain('page.role === "home"');
+  });
+
+  it("ordering resolves ONE verified venue, and never guesses", () => {
+    expect(migration).toContain("brand_site_orderable_venue");
+    expect(migration).toContain("claim_status = 'verified'");
+    expect(migration).toContain("IF v_count = 1 THEN");
+    expect(migration).toContain("RETURN NULL;");
+  });
+
+  it("the venue reaches the artifact so the cart knows where to send an order", () => {
+    expect(builder).toContain("venue_id: menuVenueId");
+    expect(callback).toContain("brand_site_orderable_venue");
+  });
+
+  it("each item carries its Mingla id, which is what the cart orders by", () => {
+    expect(builder).toContain("id: String(row.item_id)");
+  });
 });

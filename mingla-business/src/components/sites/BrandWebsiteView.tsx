@@ -589,6 +589,30 @@ export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = (props) => {
             <Text style={styles.meta}>
               Last checked {new Date(props.site.updated_at).toLocaleString()}
             </Text>
+            {/*
+              #2830 — the published website carries a baked copy of the menu, so
+              a price or availability change in Mingla does not reach it until
+              somebody republishes. Say so plainly rather than letting a
+              customer find the old price. Undefined means "no signal", never
+              true: a badge that cannot clear is worse than no badge.
+            */}
+            {props.site.menu_changed_since_publish === true ? (
+              <View style={styles.menuStale} testID="website-menu-stale">
+                <Text style={styles.menuStaleTitle}>
+                  Your menu changed in Mingla
+                </Text>
+                <Text style={styles.body}>
+                  Your website still shows the menu as it was when you last
+                  published. Publish again to bring it up to date.
+                </Text>
+                <Button
+                  label="Review and publish"
+                  onPress={() => props.onSetPanel("publish_review")}
+                  variant="secondary"
+                  fullWidth
+                />
+              </View>
+            ) : null}
             <View style={styles.actionStack}>
               <Button
                 label="Open Mingla Studio"
@@ -890,6 +914,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.md,
     padding: spacing.lg,
+  },
+  menuStale: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: semantic.warningTint,
+    backgroundColor: semantic.warningTint,
+  },
+  menuStaleTitle: {
+    ...typography.bodyLg,
+    color: textTokens.primary,
+    fontWeight: "600",
   },
   previewEmpty: {
     flex: 1,
