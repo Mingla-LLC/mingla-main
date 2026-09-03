@@ -123,7 +123,31 @@ scripts/issue-1880/expanded-share-handoff.tester.adversarial.test.mjs 707fefb893
 .github/workflows/issue-2393-valid-marketing-test-fixtures.yml 466ad276405d0719a0d91c7dab4398192085784cc473b791d68895c154eab12e
 `);
 
-const PHASE2_SUITES_SHA256 = "1c289e7014d7f52808636371c806d9fc05d94e4dfd1644f64840ded1df1f1702";
+// [TEST-MOD-APPROVED #2882] Digest re-derived. #2882 makes a pull request run
+// the suites its diff invalidates, which turns `originPaths` from provenance
+// nobody read into execution data, and repairs the entries that were dead: 16
+// patterns that did not parse, a brace glob that matched nothing, and one suite
+// whose `originPaths` was `[]` and which could therefore never be selected.
+// Four of those repairs land inside `suites.slice(0, 23)`, so this digest moves.
+//
+// WHAT WAS VERIFIED BEFORE RE-DERIVING, because that is the review this digest
+// exists to force — this seal is named for EXECUTION and CONTAINMENT staying
+// byte-for-byte protected, and none of that changed:
+//   - inside the sealed slice, `originPaths` is the ONLY key that differs, on
+//     exactly four suites: issue-903-open-external-admin-tests [1],
+//     issue-1532-tester-adversarial [11], issue-948-w2-bank-route-web-tests [14]
+//     and issue-2322-ios-picker-theming-tests [21];
+//   - a digest over those same 23 suites restricted to id/class/cwd/isolation/
+//     timeoutSeconds/steps/setupProfile/runtime/envNames/expectedFiles/origin is
+//     UNCHANGED, so no command, cwd, timeout, runtime, isolation or expected-file
+//     contract moved;
+//   - PHASE2_COMMANDS_SHA256 is UNCHANGED — the capability registry is untouched;
+//   - suite identity and ORDER inside the slice are unchanged, so nothing was
+//     added, removed or reordered;
+//   - every replacement pattern is a SUPERSET of the one it replaces over the
+//     tracked tree, verified file-by-file: the repair can only widen what a
+//     suite wakes on, never narrow it.
+const PHASE2_SUITES_SHA256 = "e1d71de5691d7bd246b48ab2939994ee7e1020a4db7703298bc8a6518a5fd811";
 const PHASE2_COMMANDS_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
 const PROVIDER_REF_COUNTS_SHA256 = "394b2a8ad3c984b0c4278f8e4a469f34f25b936fdf1fc346eebb1f4fa8ecd5b6";
 

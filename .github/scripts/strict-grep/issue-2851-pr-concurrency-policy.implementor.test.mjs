@@ -225,7 +225,28 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //   - the policy audit itself still reports zero errors at 124 PR-family
   //     workflows — the sibling test above, which passes.
   // Every earlier re-derivation is preserved, not replaced.
-  "cb761e15c76eb0b50caa06a2d1291b7351e861a27d98e25917e637dd5c57f8b0";
+  // [TEST-MOD-APPROVED #2882] Digest re-derived, for the same reason as the
+  // #3044/#3047/#3040/#2060/#3060 re-derivations above: this branch adds a test
+  // step to a PR-family workflow (`ci-batch.yml` gains #2882's routing
+  // regression suite alongside the existing batch-runner self-test, and one
+  // named step that prints the routed selection), so that lane's
+  // non-concurrency document moves and this digest moves with it. There is no
+  // way to wire a CI-executed regression test for the router without touching a
+  // PR-family workflow, so this drift is structural rather than incidental.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING:
+  //   - NO `concurrency:` block, `group:` or `cancel-in-progress:` value is
+  //     touched — diffed byte-for-byte against origin/main and IDENTICAL;
+  //   - the `on:` trigger block is IDENTICAL to origin/main: #2882 adds no
+  //     trigger, no `paths:`, no `paths-ignore:` and no `schedule:`, so the
+  //     PR-family membership of this lane cannot have changed;
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED — the
+  //     workflow diff is a single `M`, nothing added, removed or renamed, and
+  //     neither the count nor the identity assertion reported drift; only the
+  //     non-concurrency semantic assertion did;
+  //   - the policy audit itself still reports zero errors at 124 PR-family
+  //     workflows — the sibling test above, which passes.
+  "e15a2738948373f825eb5cdc2646ca1d71801b60ddad5b85fe7bbb737f2afa19";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
