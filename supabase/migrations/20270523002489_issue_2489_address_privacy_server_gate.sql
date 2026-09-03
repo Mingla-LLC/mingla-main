@@ -179,12 +179,22 @@ CREATE TABLE IF NOT EXISTS public.issue_2489_gate_carriers (
   object_kind text NOT NULL CHECK (object_kind IN ('function', 'view'))
 );
 
--- A new table in `public` inherits anon/authenticated grants by default privilege, and
--- every table in this schema must carry RLS (#1860). No policy is defined: the only
--- legitimate readers are the migration applier and the fixtures, both of which run as
--- the owner. The set is compared by the owner, so it is never read through RLS.
+-- A new table in `public` inherits default-privilege grants for anon, authenticated AND
+-- service_role, and every table in this schema must carry RLS (#1860).
+--
+-- service_role IS NAMED IN THE REVOKE DELIBERATELY. Leaving it out does not leave it
+-- read-only — it leaves the inherited `arwdDxtm` untouched and makes the GRANT SELECT
+-- below a NO-OP, so any service-key holder could INSERT, UPDATE, DELETE or TRUNCATE the
+-- carrier map; service_role also has rolbypassrls, so RLS would not stop it either. The
+-- SQL text read correctly and the catalog disagreed: verified by reading relacl back
+-- from a live apply, not from this file.
+--
+-- After the revoke, service_role holds SELECT and nothing else. No policy is defined:
+-- every WRITER is the migration applier or a fixture, and both run as the owner, so the
+-- set is never written or compared through RLS.
 ALTER TABLE public.issue_2489_gate_carriers ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.issue_2489_gate_carriers FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.issue_2489_gate_carriers
+  FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT ON TABLE public.issue_2489_gate_carriers TO service_role;
 
 COMMENT ON TABLE public.issue_2489_gate_carriers IS
