@@ -331,7 +331,72 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // below must move this digest. The value was derived from the combined tree
   // after rebasing onto #2882, so it deliberately differs from both branches'
   // pre-rebase values.
-  "ffde6bace3093d203dda909eb61c87751209a0864e11c9e75c4e797dcfa52822";
+  //
+  // [TEST-MOD-APPROVED #2099] Re-derived again, and this one differs in KIND
+  // from every note above it. WHAT MOVED: the #2099 pending-venue
+  // identity-correction lane gained FOUR `paths:` ENTRIES under its existing
+  // filter anchor — the three frozen sibling migrations whose venue foreign
+  // keys that lane's guard asserts, and the ci-batch manifest validator. The
+  // lane is named here by ISSUE, never by its `.y`+`ml` path, for the reason
+  // #3081 and #2882 both record above: a workflow FILENAME written into a
+  // tracked file is counted by `discoverWorkflowProviders()` as an external
+  // provider reference and moves the frozen #2148 provider seal.
+  //
+  // WHY the entries were added: the #2648 coupling test inside the #2855
+  // pending-venue schema-pin guard fails when a file that guard READS is
+  // absent from the filter of the lane that RUNS it. Those four inputs decide
+  // whether the lane passes but could not fire it, so five merges reddened the
+  // job without ever running it. The coupling is now enforced, not remembered.
+  //
+  // REBASED A SECOND TIME, onto #1776 (merged as #3090), which moved this same
+  // constant while this branch was in review — the fifth move in one day. Its
+  // note is preserved immediately above, not merged or summarised. The value
+  // below is NEITHER side's: #1776 computed its digest on a tree without the
+  // #2099 path entries, and this branch computed 7a7bd685... on a tree without
+  // #1776's People-lane entries. The merged tree carries BOTH, so the correct
+  // digest is a sixth value neither branch had computed. Taking either existing
+  // literal would be a stale pin that merely looked deliberate. It was
+  // re-derived fresh from the merged tree, exactly as #2882 records doing above.
+  //
+  // HONEST DIFFERENCE FROM THE NOTES ABOVE: each of those says "no `paths:`
+  // entry is added". THIS ONE ADDS FOUR, deliberately, and that is precisely
+  // the semantic delta being pinned. What is NOT added is a `paths:` or
+  // `paths-ignore:` KEY, and no trigger EVENT changed — so PR-family
+  // membership is untouched even though the non-concurrency document moves.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING, running #3081's checklist:
+  //   - the change is PURELY ADDITIVE: `git diff origin/main...HEAD --
+  //     .github/workflows/` is "1 file changed, 25 insertions(+)", ZERO
+  //     deletions. Of those 25 lines, 21 are comments (invisible to this
+  //     digest, which hashes the PARSED document) and 4 are the real path
+  //     entries.
+  //   - grepping added AND removed lines for `concurrency`, `group:` and
+  //     `cancel-in-progress` returns ZERO, and the lane's `concurrency:` block
+  //     is byte-identical to origin/main — diffed, not eyeballed.
+  //   - the workflow file count is 131 on BOTH sides and the workflow diff is a
+  //     single `M`: nothing added, removed or renamed.
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED. This was
+  //     not assumed from the shape of the diff: subtests 1 and 4 PASS at 124
+  //     PR-family / seven non-PR against the changed tree. A new lane would
+  //     legitimately move PR_FAMILY_COUNT and would need its own justification;
+  //     this is a modification of an existing lane, so it does not.
+  //   - the policy audit still reports zero errors, and every revert-
+  //     sensitivity subtest (5-10) still passes, so the concurrency assertions
+  //     are intact and still go red on reversion. 10 of 11 subtests passed
+  //     before this re-pin; only subtest 2 was red.
+  //   - CONTAMINATION CHECKED FIRST, per the #3081 lesson: the branch's added
+  //     lines in NON-workflow files were grepped for `.y`+`ml` literals before
+  //     anything was re-pinned. There is one hit, in the #2855 pin guard — but
+  //     that same file ALREADY names that same lane on origin/main, so the
+  //     provider set is unchanged and the frozen seal does not move. That is
+  //     why exactly two gates were red here and not the nine #3081 saw.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring the one changed lane to its
+  //     origin/main bytes makes ALL ELEVEN subtests pass again at
+  //     ffde6bace3093d203dda909eb61c87751209a0864e11c9e75c4e797dcfa52822 — the
+  //     value this branch replaces, pinned by #1776 immediately above — proving
+  //     nothing else in the tree drifted into this digest.
+  // Every earlier re-derivation is preserved, not replaced.
+  "9ae7abf406523c46716dbf5ce71a893fbb9277b412533ec522e6544b9d3394c1";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
