@@ -26,6 +26,10 @@ const TONE: Record<Provenance, string> = {
 }
 
 export function ProvenanceChip({ kind, className, variant = 'default' }: ProvenanceChipProps) {
+  // Keep illustrative provenance in code and data without turning it into
+  // visitor-facing disclosure chrome.
+  if (kind === 'illustrative') return null
+
   return (
     <span
       title={PROVENANCE_DETAIL[kind]}

@@ -28,11 +28,11 @@
 node_modules/
 
 # Non-Vercel codebases — mobile, backend, scripts, docs, archives.
-app-mobile/
-backend/
-oauth-redirect/
-scripts/
-supabase/
-tests/
-Mingla_Artifacts/
-Mingla_Roadmap/
+/app-mobile/
+/backend/
+/oauth-redirect/
+/scripts/
+/supabase/
+/tests/
+/Mingla_Artifacts/
+/Mingla_Roadmap/

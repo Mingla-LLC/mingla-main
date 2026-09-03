@@ -48,6 +48,9 @@ const PUBLIC_NOINDEX = [
   '/tools/trips/report',
   '/tools/pricing/report',
   '/internal/charts',
+  '/internal/page-system/city-lagos',
+  '/internal/page-system/explorer-event-guide',
+  '/internal/page-system/host-event-promoter-guide',
 ]
 
 const PUBLIC_NOINDEX_FAMILIES = ['/orders', '/chat', '/board', '/invite']
@@ -67,6 +70,9 @@ const SEARCH_PAGE_FILES = new Map([
 
 const NOINDEX_PAGE_FILES = new Map([
   ['/internal/charts', 'mingla-marketing/app/internal/charts/page.tsx'],
+  ['/internal/page-system/city-lagos', 'mingla-marketing/app/internal/page-system/city-lagos/page.tsx'],
+  ['/internal/page-system/explorer-event-guide', 'mingla-marketing/app/internal/page-system/explorer-event-guide/page.tsx'],
+  ['/internal/page-system/host-event-promoter-guide', 'mingla-marketing/app/internal/page-system/host-event-promoter-guide/page.tsx'],
   ['/links', 'mingla-marketing/app/links/page.tsx'],
   ['/download', 'mingla-marketing/app/download/page.tsx'],
   ['/host/download', 'mingla-marketing/app/host/download/page.tsx'],

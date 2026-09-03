@@ -66,8 +66,16 @@ interface DeviceCtaProps {
   size?: 'md' | 'lg'
   /** Override the label. Defaults are surface-correct and device-correct. */
   label?: ReactNode
+  /** Optional label used only on iOS and Android. `label` still overrides both. */
+  phoneLabel?: ReactNode
+  /** Optional label used only on desktop/unknown. `label` still overrides both. */
+  desktopLabel?: ReactNode
   className?: string
   withArrow?: boolean
+  /** Lets a containing modal pause its own focus trap while the QR dialog owns focus. */
+  onDialogOpenChange?: (open: boolean) => void
+  /** Dismisses containing navigation only when this CTA leaves the page. */
+  onExternalActivate?: () => void
 }
 
 const SIZES = {
@@ -93,8 +101,12 @@ export function DeviceCta({
   variant = 'primary',
   size = 'lg',
   label,
+  phoneLabel,
+  desktopLabel,
   className,
   withArrow = false,
+  onDialogOpenChange,
+  onExternalActivate,
 }: DeviceCtaProps) {
   const [platform, setPlatform] = useState<Platform>('other')
   const [qrOpen, setQrOpen] = useState(false)
@@ -139,6 +151,7 @@ export function DeviceCta({
   // Only HOST has a web app. Explorer on desktop opens a QR panel to install
   // the app, so "Use Mingla Web" there promised something that does not exist.
   const defaultText = !onPhone && surface === 'host' ? 'Use Mingla Web' : 'Use Mingla'
+  const text = label ?? (onPhone ? phoneLabel : desktopLabel) ?? defaultText
 
   const marks =
     platform === 'ios' ? (
@@ -154,14 +167,13 @@ export function DeviceCta({
     const target = resolveBusinessAppTarget(platform, attribution)
     const canInstall = target.canInstall && target.installHref !== null
     const href = canInstall ? (target.installHref as string) : target.webHref
-    const text = label ?? defaultText
-
     return (
       <a
         href={href}
         target="_blank"
         rel="noopener"
         onClick={() => {
+          onExternalActivate?.()
           const live = detectClientPlatform()
           const t = resolveBusinessAppTarget(live, attribution)
           captureMarketing('get_the_app_clicked', {
@@ -185,8 +197,6 @@ export function DeviceCta({
     platform,
     siteAttribution(campaignFor('explorer', location)),
   )
-  const text = label ?? defaultText
-
   // Phone: a real anchor to the attributed OneLink. It navigates, so it must be
   // an <a> — and it carries no aria-haspopup, because it can never open a dialog.
   if (target.canInstall && target.installHref !== null) {
@@ -196,6 +206,7 @@ export function DeviceCta({
         target="_blank"
         rel="noopener"
         onClick={() => {
+          onExternalActivate?.()
           const live = detectClientPlatform()
           captureMarketing('get_the_app_clicked', {
             platform: live,
@@ -228,6 +239,7 @@ export function DeviceCta({
             location,
           })
           setQrOpen(true)
+          onDialogOpenChange?.(true)
         }}
         className={classes}
       >
@@ -235,7 +247,13 @@ export function DeviceCta({
         {marks}
         {arrow}
       </button>
-      <AppQrPanel open={qrOpen} onClose={() => setQrOpen(false)} />
+      <AppQrPanel
+        open={qrOpen}
+        onClose={() => {
+          setQrOpen(false)
+          onDialogOpenChange?.(false)
+        }}
+      />
     </>
   )
 }

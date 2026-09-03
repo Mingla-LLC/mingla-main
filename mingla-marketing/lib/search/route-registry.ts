@@ -160,6 +160,12 @@ const PUBLIC_NOINDEX_ROUTES = [
   // Internal engineering surface: the chart bank. Public but never indexed --
   // it documents how the site is built, not what Mingla offers.
   ['/internal/charts', 'internal-chart-bank'],
+  // #2990 review-only page-system fixtures. These exact paths are deliberately
+  // separate from the future city and guide routes, so review cannot publish
+  // or canonicalise production content by accident.
+  ['/internal/page-system/city-lagos', 'page-system-city-lagos'],
+  ['/internal/page-system/explorer-event-guide', 'page-system-explorer-event-guide'],
+  ['/internal/page-system/host-event-promoter-guide', 'page-system-host-event-promoter-guide'],
 ] as const
 
 const PUBLIC_NOINDEX_FAMILIES = [
