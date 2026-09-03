@@ -107,4 +107,37 @@ describe("#2830 rendered page structure", () => {
       expect(html).not.toContain("Restaurant Website v1");
     }
   });
+
+  it("an eyebrow never echoes the heading beneath it", () => {
+    // Found by looking at the page: the live render said "VISIT / VISIT" and
+    // "IN THE ROOM / IN THE ROOM", because a restaurant naming its hours
+    // section "Visit" is the obvious choice and it is also the label.
+    const html = renderToStaticMarkup(
+      <RestaurantV1 artifact={artifact} page={homePage(artifact)!} />,
+    );
+    // Assert the PAIR, not a global count: the fact rail legitimately says
+    // "Visit" as well, and counting every occurrence flagged that too.
+    expect(html).not.toMatch(
+      /<p class="eyebrow">([^<]+)<\/p><h2>\1<\/h2>/i,
+    );
+    expect(html).not.toContain('class="eyebrow">Visit<');
+    expect(html).toContain("<h2>Visit</h2>");
+  });
+
+  it("keeps the eyebrow when it says something the heading does not", () => {
+    const different = JSON.parse(JSON.stringify(artifact));
+    const home = different.pages.find(
+      (page: { role: string }) => page.role === "home",
+    );
+    home.blocks = [
+      { type: "hours_location", heading: "Find us", address: "69 Admiralty Way",
+        map_url: "https://maps.example/x",
+        hours: [{ day: "Monday", value: "Open 24 hours" }] },
+    ];
+    const html = renderToStaticMarkup(
+      <RestaurantV1 artifact={different} page={different.pages.find((p: {role:string}) => p.role === "home")} />,
+    );
+    expect(html).toContain('class="eyebrow">Visit<');
+    expect(html).toContain("Find us");
+  });
 });

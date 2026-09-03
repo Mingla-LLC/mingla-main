@@ -125,4 +125,38 @@ describe("#2830 the brand's own look", () => {
   it("the stylesheet sets the heading case from the pairing, not itself", () => {
     expect(css).toContain("text-transform: var(--display-case)");
   });
+
+  it("NO rule hardcodes a display stack, at any specificity", () => {
+    /*
+     * The bug this pins: `.hero h1`, `main h2`, `.tile h3` and `.brand` each
+     * hardcoded "Arial Narrow", "Roboto Condensed", Impact. Those selectors are
+     * more specific than any bare `h1, h2, h3` rule, so they won on every
+     * heading on the site and a font chosen in Studio changed nothing visible.
+     *
+     * It was found by MEASURING the rendered width against Oswald's, not by
+     * reading the stylesheet — the declared list and the face actually used are
+     * different things, and only one of them is on the page.
+     */
+    const families = [...css.matchAll(/font-family:\s*([^;]+);/g)].map((m) =>
+      m[1].trim()
+    );
+    const hardcoded = families.filter(
+      (value) =>
+        !value.startsWith("var(--") &&
+        !value.startsWith('"Oswald"') &&
+        !value.startsWith('"Plus Jakarta Sans"') &&
+        !value.startsWith('"Playfair Display"'),
+    );
+    // The only literal families left are the @font-face declarations
+    // themselves, which must name a real family.
+    expect(hardcoded).toEqual([]);
+  });
+
+  it("every heading selector defers to the brand's face", () => {
+    for (const selector of [".hero h1", "main h2", ".tile h3", ".brand"]) {
+      const index = css.indexOf(selector);
+      expect(index).toBeGreaterThan(-1);
+    }
+    expect(css).not.toContain('"Roboto Condensed"');
+  });
 });

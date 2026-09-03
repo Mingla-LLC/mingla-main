@@ -59,6 +59,26 @@ function formatMenuPrice(minor: unknown, currency: unknown): string | null {
   }
 }
 
+
+/**
+ * #2830 — an eyebrow that would only echo the heading is not rendered.
+ *
+ * Each section carries a fixed category label above its heading — the
+ * eyebrow-then-rule rhythm the design uses. The headings underneath are the
+ * BRAND'S OWN WORDS, and a restaurant naming its hours section "Visit" or its
+ * gallery "In the room" is not a coincidence: those are the obvious names, and
+ * they are the same words the label uses. The live page rendered "VISIT / VISIT"
+ * and "IN THE ROOM / IN THE ROOM".
+ *
+ * Found by looking at the page rather than by reading the code, which is the
+ * only way this kind of duplication ever shows up.
+ */
+function Eyebrow({ label, heading }: { label: string; heading: unknown }) {
+  const written = typeof heading === "string" ? heading.trim().toLowerCase() : "";
+  if (written === label.trim().toLowerCase()) return null;
+  return <p className="eyebrow">{label}</p>;
+}
+
 function Block({ block, context, primaryHeading = false }: { block: RestaurantBlock; context: SiteEventContext; primaryHeading?: boolean }) {
   switch (block.type) {
     case "hero": {
@@ -66,9 +86,9 @@ function Block({ block, context, primaryHeading = false }: { block: RestaurantBl
       return <section className="hero" style={isSafeHref(block.media_url) ? { backgroundImage: `linear-gradient(90deg,rgba(8,6,4,.82),rgba(8,6,4,.18)),url(${JSON.stringify(block.media_url).slice(1, -1)})` } : undefined}>{isSafeHref(block.video_url) && isSafeHref(block.media_url) ? <HeroVideo src={text(block.video_url)} poster={text(block.media_url)} /> : null}<div><Heading>{text(block.heading, "Welcome")}</Heading>{block.subheading ? <p>{text(block.subheading)}</p> : null}<div className="hero-actions">{items(block.ctas).slice(0, 2).map((cta, index) => <SafeLink key={index} href={cta.href} context={context} className={index ? "button ghost" : "button accent"}>{text(cta.label, "Learn more")}</SafeLink>)}</div></div></section>;
     }
     case "rich_text": return <section className="prose editorial-prose"><h2>{text(block.heading)}</h2>{items(block.paragraphs).map((paragraph, index) => <p key={index}>{text(paragraph.text)}</p>)}</section>;
-    case "media_feature": return <section className="feature editorial-feature"><div className="editorial-media">{isSafeHref(block.media_url) ? <img src={text(block.media_url)} alt={text(block.alt)} width={960} height={720} /> : null}</div><div><p className="eyebrow">Our story</p><h2>{text(block.heading)}</h2><p>{text(block.caption)}</p></div></section>;
+    case "media_feature": return <section className="feature editorial-feature"><div className="editorial-media">{isSafeHref(block.media_url) ? <img src={text(block.media_url)} alt={text(block.alt)} width={960} height={720} /> : null}</div><div><Eyebrow label="Our story" heading={block.heading} /><h2>{text(block.heading)}</h2><p>{text(block.caption)}</p></div></section>;
     case "cta": return <section className="cta"><h2>{text(block.heading)}</h2><p>{text(block.body)}</p><SafeLink href={block.href} context={context} className="button accent">{text(block.label, "Continue")}</SafeLink></section>;
-    case "offering_grid": return <section className="editorial-grid"><p className="eyebrow">Book with Mingla</p><h2>{text(block.heading, "Experiences")}</h2><div className="grid">{items(block.offerings).map((offering, index) => <article className="tile" key={text(offering.id, String(index))}><h3>{text(offering.label, "Experience")}</h3><p>{text(offering.summary)}</p><SafeLink href={offering.url} context={context} ctaKind="offering" offeringId={text(offering.id)}>View on Mingla</SafeLink></article>)}</div></section>;
+    case "offering_grid": return <section className="editorial-grid"><Eyebrow label="Book with Mingla" heading={text(block.heading, "Experiences")} /><h2>{text(block.heading, "Experiences")}</h2><div className="grid">{items(block.offerings).map((offering, index) => <article className="tile" key={text(offering.id, String(index))}><h3>{text(offering.label, "Experience")}</h3><p>{text(offering.summary)}</p><SafeLink href={offering.url} context={context} ctaKind="offering" offeringId={text(offering.id)}>View on Mingla</SafeLink></article>)}</div></section>;
     case "venue_reservation": return <section className="cta"><h2>{text(block.heading, "Make a reservation")}</h2><p>{text(block.body)}</p><SafeLink href={block.url} context={context} ctaKind="reservation" className="button accent">Continue with Mingla</SafeLink></section>;
     case "menu_link": return <section className="menu-link"><h2>{text(block.heading, "Explore the menu")}</h2><SafeLink href={block.href} context={context} ctaKind="menu" className="button accent">{text(block.label, "View menu")}</SafeLink></section>;
     case "menu_board": {
@@ -96,8 +116,8 @@ function Block({ block, context, primaryHeading = false }: { block: RestaurantBl
       }
       return <section className="menu-board"><h2>{text(block.heading, "Menu")}</h2>{block.note ? <p className="menu-note">{text(block.note)}</p> : null}{sections.map((section, sectionIndex) => <div className="menu-section" key={`${text(section.name)}-${sectionIndex}`}><h3>{text(section.name)}</h3>{section.description ? <p className="menu-section-note">{text(section.description)}</p> : null}<ul className="menu-list">{items(section.items).map((item, itemIndex) => { const price = formatMenuPrice(item.price_minor, item.currency); return <li className="menu-row" key={`${text(item.name)}-${itemIndex}`}><div className="menu-row-head"><span className="menu-item-name">{text(item.name)}</span><span className="menu-leader" aria-hidden="true" />{price ? <span className="menu-price">{price}</span> : null}</div>{item.description ? <p className="menu-item-note">{text(item.description)}</p> : null}</li>; })}</ul></div>)}</section>;
     }
-    case "gallery": return <section className="editorial-gallery"><p className="eyebrow">In the room</p><h2>{text(block.heading, "Gallery")}</h2><div className="gallery">{items(block.images).slice(0, 12).map((image, index) => isSafeHref(image.url) ? <img key={index} src={text(image.url)} alt={text(image.alt)} width={640} height={640} /> : null)}</div></section>;
-    case "hours_location": return <section className="feature"><div><p className="eyebrow">Visit</p><h2>{text(block.heading, "Hours & location")}</h2><p>{text(block.address)}</p><SafeLink href={block.map_url}>Open map</SafeLink></div><div className="hours">{items(block.hours).map((row, index) => <p key={index}><strong>{text(row.day)}</strong><span>{text(row.value)}</span></p>)}</div></section>;
+    case "gallery": return <section className="editorial-gallery"><Eyebrow label="In the room" heading={text(block.heading, "Gallery")} /><h2>{text(block.heading, "Gallery")}</h2><div className="gallery">{items(block.images).slice(0, 12).map((image, index) => isSafeHref(image.url) ? <img key={index} src={text(image.url)} alt={text(image.alt)} width={640} height={640} /> : null)}</div></section>;
+    case "hours_location": return <section className="feature"><div><Eyebrow label="Visit" heading={text(block.heading, "Hours & location")} /><h2>{text(block.heading, "Hours & location")}</h2><p>{text(block.address)}</p><SafeLink href={block.map_url}>Open map</SafeLink></div><div className="hours">{items(block.hours).map((row, index) => <p key={index}><strong>{text(row.day)}</strong><span>{text(row.value)}</span></p>)}</div></section>;
     case "testimonials": return <section><h2>{text(block.heading, "What guests say")}</h2><div className="grid">{items(block.items).slice(0, 8).map((item, index) => <blockquote className="tile" key={index}>“{text(item.quote)}”<footer>{text(item.name)}</footer></blockquote>)}</div></section>;
     case "faq": return <section><h2>{text(block.heading, "Questions")}</h2>{items(block.items).slice(0, 12).map((item, index) => <details key={index}><summary>{text(item.question)}</summary><p>{text(item.answer)}</p></details>)}</section>;
     case "contact_handoff": return <section className="cta"><h2>{text(block.heading, "Get in touch")}</h2><p>{text(block.body)}</p><SafeLink href={block.href} context={context} ctaKind="contact" className="button accent">{text(block.label, "Contact")}</SafeLink></section>;
