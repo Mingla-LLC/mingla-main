@@ -22,6 +22,22 @@ on:
   # not a hypothetical one.
   push:
     branches: [main]
+    # #2885 AC-4 again, on this side too. The backstop above must catch an
+    # incomplete `originPaths` on a HUMAN merge; it must not resurrect the
+    # fan-out AC-4 removed. Without this exclusion a commit touching ONLY the
+    # machine-written baseline starts all six lanes on `main` -- ~53 jobs per
+    # recording change, ~15/day, ~51,000 job-min per month -- which the #2524
+    # auto-merge guard catches by enumerating exactly which workflows such a
+    # merge starts. Same trade the red-`main` alert landed on this morning.
+    #
+    # THE RESIDUAL, stated rather than buried: a baseline-only merge does not
+    # run this lane on `main`. That commit changes one recorded boot-payload
+    # number and nothing this lane reads -- proven, not assumed: the router was
+    # RUN against the real baseline-only commit 5692d0358 and reports
+    # `selected=false` here, and no gate this lane executes reads that file
+    # (traced: it is stat-ed while walking `scripts/ci`, never opened).
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
   workflow_dispatch:
 
 concurrency:

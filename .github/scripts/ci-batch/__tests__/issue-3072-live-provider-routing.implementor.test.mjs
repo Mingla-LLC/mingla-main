@@ -52,7 +52,7 @@ const trackedFiles = () =>
 const routed = (changedPaths) => ({ mode: "routed", eventName: "pull_request", changedPaths });
 
 /**
- * [#3072] Does this lane's WORKFLOW declare an unfiltered push to main?
+ * [#3072] The shape of this lane's `push:` trigger, read from the WORKFLOW.
  *
  * Reads the workflow SOURCE, not the registry's `triggers`. The registry is
  * re-derived by validate-manifest-v2.mjs, so it is the right thing to assert for
@@ -60,11 +60,58 @@ const routed = (changedPaths) => ({ mode: "routed", eventName: "pull_request", c
  * the registry stale, and an assertion reading the registry would stay green
  * through exactly the reversion it exists to catch. The wrapper path comes from
  * the registry at runtime so that no workflow filename literal appears here.
+ *
+ * Returns the block's semantics, not a boolean, because "a push trigger exists"
+ * is NOT the property that matters. Two different mistakes both leave a push
+ * trigger standing and both destroy the point of it:
+ *   - widening `paths-ignore` re-opens the ~51,000 job-min baseline fan-out that
+ *     #2885 AC-4 removed and the #2524 auto-merge guard enumerates;
+ *   - adding a positive `paths:` filter turns the backstop into a sampling
+ *     scheme, which is what it exists to not be.
+ * Both must turn this suite red, so both are asserted rather than the presence
+ * of the key.
  */
-const declaresPushToMain = (provider) => {
+const pushTriggerShape = (provider) => {
   const source = fs.readFileSync(path.join(ROOT, provider.providerWorkflow), "utf8");
-  const block = source.match(/\n {2}push:\n((?: {4}\S[^\n]*\n)+)/);
-  return Boolean(block) && block[1].trim() === "branches: [main]";
+  const at = source.indexOf("\n  push:\n");
+  if (at === -1) return null;
+  const body = [];
+  for (const line of source.slice(at + "\n  push:\n".length).split("\n")) {
+    if (line.trim() === "") { body.push(line); continue; }
+    if (!line.startsWith("    ")) break;          // dedent ends the block
+    if (line.trim().startsWith("#")) continue;    // comments carry no semantics
+    body.push(line);
+  }
+  const text = body.join("\n");
+  const listOf = (key) => {
+    // `\\s*` would cross the newline and swallow the first list entry, making an
+    // itemised `paths-ignore:` look EMPTY. Horizontal space only.
+    const m = text.match(new RegExp(`^ {4}${key}:[ \\t]*(.*)$`, "m"));
+    if (!m) return null;
+    if (m[1].trim().startsWith("[")) {
+      return m[1].trim().replace(/^\[|\]$/g, "").split(",").map((v) => v.trim()).filter(Boolean);
+    }
+    const items = [];
+    for (const line of text.slice(text.indexOf(m[0]) + m[0].length).split("\n")) {
+      const entry = line.match(/^ {6}- (.*)$/);
+      if (!entry) { if (line.trim() === "") continue; break; }
+      items.push(entry[1].trim().replace(/^"|"$/g, ""));
+    }
+    return items;
+  };
+  return { branches: listOf("branches"), pathsIgnore: listOf("paths-ignore"), positivePaths: listOf("paths") };
+};
+
+/**
+ * [#3072] The backstop is present AND still shaped the way it has to be:
+ * main-only, excluding exactly the one machine-written file, nothing else.
+ */
+const declaresBackstopPushToMain = (provider) => {
+  const shape = pushTriggerShape(provider);
+  return Boolean(shape)
+    && JSON.stringify(shape.branches) === JSON.stringify(["main"])
+    && JSON.stringify(shape.pathsIgnore) === JSON.stringify([BASELINE])
+    && shape.positivePaths === null;
 };
 
 const selects = (ownerIssue, changedPaths) => {
@@ -246,7 +293,7 @@ test("12. every one of the six runs on a push to main, so routing can never remo
     // Scope half: the push must be on main, and must carry NO path filter --
     // a paths-gated backstop is a sampling scheme, not a backstop.
     assert.ok(
-      declaresPushToMain(provider),
+      declaresBackstopPushToMain(provider),
       `${ownerIssue}: the push backstop must be declared in the workflow, main-only and unfiltered by paths`,
     );
   }
@@ -278,7 +325,7 @@ test("13. a change routing SKIPS on a pull request is still executed by the push
       // this subtest refuses to pass on the router's behaviour alone: deleting
       // the trigger must turn THIS test red, not only subtest 12.
       assert.ok(
-        declaresPushToMain(provider),
+        declaresBackstopPushToMain(provider),
         `${ownerIssue}: ${changed.join(",")} skipped the pull request and this lane's workflow declares NO `
           + "unfiltered push to main, so routing removed its coverage outright instead of deferring it",
       );
