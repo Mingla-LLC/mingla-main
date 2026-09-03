@@ -74,6 +74,8 @@ interface DeviceCtaProps {
   withArrow?: boolean
   /** Lets a containing modal pause its own focus trap while the QR dialog owns focus. */
   onDialogOpenChange?: (open: boolean) => void
+  /** Dismisses containing navigation only when this CTA leaves the page. */
+  onExternalActivate?: () => void
 }
 
 const SIZES = {
@@ -104,6 +106,7 @@ export function DeviceCta({
   className,
   withArrow = false,
   onDialogOpenChange,
+  onExternalActivate,
 }: DeviceCtaProps) {
   const [platform, setPlatform] = useState<Platform>('other')
   const [qrOpen, setQrOpen] = useState(false)
@@ -170,6 +173,7 @@ export function DeviceCta({
         target="_blank"
         rel="noopener"
         onClick={() => {
+          onExternalActivate?.()
           const live = detectClientPlatform()
           const t = resolveBusinessAppTarget(live, attribution)
           captureMarketing('get_the_app_clicked', {
@@ -202,6 +206,7 @@ export function DeviceCta({
         target="_blank"
         rel="noopener"
         onClick={() => {
+          onExternalActivate?.()
           const live = detectClientPlatform()
           captureMarketing('get_the_app_clicked', {
             platform: live,

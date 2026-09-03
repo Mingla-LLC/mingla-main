@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs --source-only && next build",
+    "build": "node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs --source-only && node scripts/issue-2990-audience-navigation.implementor.happy.test.mjs && next build",
     "postbuild": "node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs --built-only && node scripts/issue-2990-restructured-page-system.tester.adversarial.test.mjs",
     "start": "next start",
     "lint": "next lint",

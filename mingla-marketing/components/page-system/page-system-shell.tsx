@@ -28,7 +28,7 @@ export function PageSystemShell({
     <CutoutShell>
       <div className="page-system-root" data-page-system data-audience={audience} data-host-acquisition={hostAcquisition ? 'true' : undefined}>
         {hostAcquisition ? <CityHostAcquisitionBar /> : null}
-        <PageSystemNav />
+        <PageSystemNav surface={audience === 'host' ? 'host' : 'explorer'} />
         <main id="main" className="page-system-printable">
           {children}
         </main>

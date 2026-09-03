@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/cn'
@@ -34,15 +34,50 @@ interface SideMenuProps {
   title: string
   children: ReactNode
   side?: 'left' | 'right'
+  id?: string
+  /** A nested dialog temporarily owns Escape and focus containment. */
+  interactionSuspended?: boolean
 }
 
-export function SideMenu({ open, onClose, title, children, side = 'right' }: SideMenuProps) {
+export function SideMenu({
+  open,
+  onClose,
+  title,
+  children,
+  side = 'right',
+  id,
+  interactionSuspended = false,
+}: SideMenuProps) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const restoreFocusRef = useRef<HTMLElement | null>(null)
+  const wasOpenRef = useRef(false)
+  const generatedId = useId()
+  const panelId = id ?? `side-menu-${generatedId}`
+  const titleId = `${panelId}-title`
   const reduced = useMinglaReducedMotion()
+
+  // Capture the exact trigger and return to it after the menu closes.
+  useEffect(() => {
+    if (open) {
+      if (!wasOpenRef.current) {
+        restoreFocusRef.current = document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null
+      }
+      wasOpenRef.current = true
+      return
+    }
+    if (!wasOpenRef.current) return
+    wasOpenRef.current = false
+    const trigger = restoreFocusRef.current
+    restoreFocusRef.current = null
+    const timer = window.setTimeout(() => trigger?.focus(), 0)
+    return () => window.clearTimeout(timer)
+  }, [open])
 
   // Escape closes; focus is trapped inside the panel while it is open.
   useEffect(() => {
-    if (!open) return
+    if (!open || interactionSuspended) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose()
@@ -65,7 +100,7 @@ export function SideMenu({ open, onClose, title, children, side = 'right' }: Sid
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  }, [interactionSuspended, open, onClose])
 
   // Scroll lock, restored exactly to whatever it was before.
   useEffect(() => {
@@ -101,29 +136,35 @@ export function SideMenu({ open, onClose, title, children, side = 'right' }: Sid
           />
           <motion.div
             ref={panelRef}
+            id={panelId}
             role="dialog"
             aria-modal="true"
-            aria-label={title}
+            aria-labelledby={titleId}
             initial={reduced ? false : { x: side === 'right' ? '100%' : '-100%' }}
             animate={{ x: 0 }}
             exit={reduced ? { opacity: 0 } : { x: side === 'right' ? '100%' : '-100%' }}
             transition={{ type: 'spring', damping: 26, stiffness: 260 }}
             className={cn(
-              'fixed inset-y-0 z-[101] flex w-[82%] max-w-sm flex-col p-3',
+              'fixed inset-y-0 z-[101] flex w-[82vw] max-w-sm flex-col px-3',
               side === 'right' ? 'right-0' : 'left-0',
             )}
+            style={{
+              paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+              paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+            }}
           >
             <div className="cut-card flex h-full flex-col overflow-y-auto p-6">
               <div className="flex items-center justify-between gap-4">
-                <span className="text-[0.6875rem] font-bold uppercase tracking-[0.16em] text-[var(--cut-muted)]">
+                <span id={titleId} className="text-[0.6875rem] font-bold uppercase tracking-[0.16em] text-[var(--cut-muted)]">
                   {title}
                 </span>
                 <button
                   type="button"
                   onClick={onClose}
                   aria-label="Close menu"
-                  className="cut-btn cut-btn-light flex h-11 w-11 items-center justify-center rounded-full focus-ring"
+                  className="cut-btn cut-btn-light flex min-h-11 items-center justify-center gap-2 rounded-full px-4 focus-ring"
                 >
+                  <span>Close</span>
                   <X className="h-5 w-5" aria-hidden="true" />
                 </button>
               </div>
