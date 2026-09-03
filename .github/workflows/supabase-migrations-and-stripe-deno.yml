@@ -980,6 +980,32 @@ jobs:
           $PSQL -q -c "BEGIN; DELETE FROM public.issue_2489_gate_carriers WHERE object_name = 'issue_3081_probe_carrier'; DROP FUNCTION public.issue_3081_probe_carrier(jsonb); COMMIT;"
           echo "E OK — probe carrier removed; the migrated database is as found"
 
+      # Issue #3081 — TESTER ADVERSARIAL. Runs after the step above, on the same
+      # re-applied schema, and attacks four properties that fixture cannot see:
+      # the registry must GROW when a row is appended (it only ever tests removal);
+      # volatility must be STABLE and the function SECURITY INVOKER (it never reads
+      # pg_proc); an eleventh carrier must survive a verbatim replay of BOTH shipped
+      # seed statements (that property currently lives only in the step above, and a
+      # workflow step is not append-only); and anon/authenticated must NOT be able to
+      # reach the carrier map THROUGH the function they still hold EXECUTE on — the
+      # obvious "tidy-up" for that permission-denied is SECURITY DEFINER, which would
+      # publish the full address-privacy gate map to every anonymous caller.
+      #
+      # It also exercises the equality's VIEW arm, which no other suite in this issue
+      # has ever fired: every carrier staged anywhere else is a function.
+      #
+      # Self-contained: one transaction, ends in ROLLBACK, leaves no durable state.
+      # Fails-on-revert proven at origin/main 2bb26d372 (table absent) and under a
+      # surgical restore of the pre-#3081 IMMUTABLE VALUES registry with the table
+      # left in place, which trips A-1 by name.
+      - name: "Issue #3081 — tester adversarial: the declared set is append-only and the carrier map stays private"
+        env:
+          PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3081_gate_registry_append_only.tester.adversarial.pg17.test.sql
+
   deno-tests:
     if: ${{ github.event.pull_request.draft != true }}
     name: "Deno unit tests for Stripe shared modules"
