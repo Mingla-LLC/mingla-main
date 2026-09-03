@@ -38,6 +38,33 @@ export interface CityHostUtilityRecord {
   readonly evidenceIds: readonly string[]
 }
 
+export const CITY_HUB_SLUGS = [
+  'lagos',
+  'durham-nc',
+  'cary-nc',
+  'raleigh-nc',
+  'new-york-city',
+  'brussels',
+  'paris',
+  'london',
+  'fort-lauderdale',
+  'washington-dc',
+] as const
+
+export type CityHubSlug = (typeof CITY_HUB_SLUGS)[number]
+
+export interface CityJurisdictionContract {
+  readonly identity: string
+  readonly city: string
+  readonly countryCode: string
+  readonly scopeLabel: string
+  readonly scopeStatement: string
+  readonly placeSchemaType: 'City' | 'AdministrativeArea'
+  readonly boundaryKind: 'municipal_limits' | 'administrative_area' | 'borough_union' | 'arrondissement_union'
+  readonly boundaryVersion: `${number}-${number}-${number}`
+  readonly boundaryEvidenceIds: readonly [string, ...string[]]
+}
+
 export interface CityHubRecord {
   readonly slug: string
   readonly city: string
@@ -51,9 +78,11 @@ export interface CityHubRecord {
   readonly wasSearchReady: boolean
   readonly scopeLabel: string
   readonly jurisdictionScope: string
+  readonly jurisdiction: CityJurisdictionContract
   readonly scopeApproval: 'approved' | 'founder_pending'
   readonly placeSchemaType: 'City' | 'AdministrativeArea'
   readonly directAnswer: string
+  readonly directAnswerEvidenceIds: readonly [string, ...string[]]
   readonly utilityHeading: string
   readonly utilitySections: readonly [CityUtilityRecord, CityUtilityRecord, CityUtilityRecord]
   readonly explorer: CityAudienceEntry
@@ -80,6 +109,69 @@ export interface CityHubRecord {
 const CHECKED_AT = '2026-09-03' as const
 const NEXT_REVIEW_AT = '2027-03-02' as const
 
+export const CITY_JURISDICTIONS = {
+  lagos: {
+    identity: 'ng-lagos-state', city: 'Lagos', countryCode: 'NG', scopeLabel: 'Lagos State',
+    scopeStatement: 'Recommended editorial inclusion area: Lagos State. Founder approval and an authoritative boundary record are still required before indexing.',
+    placeSchemaType: 'AdministrativeArea', boundaryKind: 'administrative_area', boundaryVersion: CHECKED_AT,
+    boundaryEvidenceIds: ['LAG-SCOPE-01'],
+  },
+  'durham-nc': {
+    identity: 'us-nc-durham-municipal', city: 'Durham', countryCode: 'US', scopeLabel: 'City of Durham corporate limits',
+    scopeStatement: 'City of Durham corporate limits; Durham County and any combined regional identity are excluded.',
+    placeSchemaType: 'City', boundaryKind: 'municipal_limits', boundaryVersion: CHECKED_AT,
+    boundaryEvidenceIds: ['DUR-BOUND-01'],
+  },
+  'cary-nc': {
+    identity: 'us-nc-cary-municipal', city: 'Cary', countryCode: 'US', scopeLabel: 'Town of Cary corporate limits',
+    scopeStatement: 'Town of Cary corporate limits; Raleigh, Wake County and a combined regional identity are excluded.',
+    placeSchemaType: 'City', boundaryKind: 'municipal_limits', boundaryVersion: CHECKED_AT,
+    boundaryEvidenceIds: ['CARY-BOUND-01'],
+  },
+  'raleigh-nc': {
+    identity: 'us-nc-raleigh-municipal', city: 'Raleigh', countryCode: 'US', scopeLabel: 'Raleigh city limits',
+    scopeStatement: 'Current City of Raleigh corporate limits; the ETJ and the rest of Wake County are excluded unless a record is proven inside the city.',
+    placeSchemaType: 'City', boundaryKind: 'municipal_limits', boundaryVersion: CHECKED_AT,
+    boundaryEvidenceIds: ['RAL-BOUND-01'],
+  },
+  'new-york-city': {
+    identity: 'us-nyc-five-boroughs', city: 'New York City', countryCode: 'US', scopeLabel: 'New York City’s five boroughs',
+    scopeStatement: 'The five boroughs of New York City; the wider New York metropolitan area is excluded.',
+    placeSchemaType: 'City', boundaryKind: 'borough_union', boundaryVersion: CHECKED_AT,
+    boundaryEvidenceIds: ['NYC-BOUND-01'],
+  },
+  brussels: {
+    identity: 'be-brussels-capital-region', city: 'Brussels', countryCode: 'BE', scopeLabel: 'Brussels-Capital Region',
+    scopeStatement: 'Recommended editorial inclusion area: all 19 municipalities of the Brussels-Capital Region. Founder approval is still required before indexing.',
+    placeSchemaType: 'AdministrativeArea', boundaryKind: 'administrative_area', boundaryVersion: CHECKED_AT,
+    boundaryEvidenceIds: ['BRU-BOUND-01'],
+  },
+  paris: {
+    identity: 'fr-paris-arrondissements', city: 'Paris', countryCode: 'FR', scopeLabel: 'Ville de Paris',
+    scopeStatement: 'The Commune or Ville de Paris, represented by its 20 municipal arrondissements; the wider Île-de-France region is excluded.',
+    placeSchemaType: 'City', boundaryKind: 'arrondissement_union', boundaryVersion: CHECKED_AT,
+    boundaryEvidenceIds: ['PAR-BOUND-01'],
+  },
+  london: {
+    identity: 'gb-greater-london', city: 'London', countryCode: 'GB', scopeLabel: 'Greater London',
+    scopeStatement: 'Greater London: the 32 London boroughs plus the City of London; commuter towns and the wider travel-to-work region are excluded.',
+    placeSchemaType: 'AdministrativeArea', boundaryKind: 'administrative_area', boundaryVersion: CHECKED_AT,
+    boundaryEvidenceIds: ['LON-BOUND-01', 'LON-BOUND-02'],
+  },
+  'fort-lauderdale': {
+    identity: 'us-fl-fort-lauderdale-municipal', city: 'Fort Lauderdale', countryCode: 'US', scopeLabel: 'City of Fort Lauderdale municipal limits',
+    scopeStatement: 'City of Fort Lauderdale municipal boundary; Broward County and Greater Fort Lauderdale are excluded as city boundaries.',
+    placeSchemaType: 'City', boundaryKind: 'municipal_limits', boundaryVersion: CHECKED_AT,
+    boundaryEvidenceIds: ['FTL-BOUND-01'],
+  },
+  'washington-dc': {
+    identity: 'us-dc-district', city: 'Washington, DC', countryCode: 'US', scopeLabel: 'District of Columbia boundary',
+    scopeStatement: 'District of Columbia boundary; Maryland, Virginia and the wider DMV or metropolitan area are excluded.',
+    placeSchemaType: 'AdministrativeArea', boundaryKind: 'administrative_area', boundaryVersion: CHECKED_AT,
+    boundaryEvidenceIds: ['DC-BOUND-01'],
+  },
+} as const satisfies Record<CityHubSlug, CityJurisdictionContract>
+
 function source(
   id: string,
   publisher: string,
@@ -101,8 +193,9 @@ export const CITY_HUBS = [
     slug: 'lagos', city: 'Lagos', country: 'Nigeria', countryCode: 'NG', locale: 'en-NG', timezone: 'Africa/Lagos', currency: 'NGN', marketingDeckCenter: { lat: 6.6137395, lng: 3.3552568 },
     lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Lagos State',
     jurisdictionScope: 'Recommended editorial inclusion area: Lagos State. Founder approval and an authoritative boundary record are still required before indexing.',
+    jurisdiction: CITY_JURISDICTIONS.lagos,
     scopeApproval: 'founder_pending', placeSchemaType: 'AdministrativeArea',
-    directAnswer: 'Lagos plans work better when the outing and the journey are chosen together. Mingla helps you shape a culture stop, waterside day, food plan, music night or event only after its exact area, timing, entry and return route are clear—and helps Hosts publish those details in one place.',
+    directAnswer: 'Lagos plans work better when the outing and the journey are chosen together. Mingla helps you shape a culture stop, waterside day, food plan, music night or event only after its exact area, timing, entry and return route are clear—and helps Hosts publish those details in one place.', directAnswerEvidenceIds: ['LAG-SCOPE-01', 'LAG-MOVE-01', 'LAG-EVENT-01'],
     utilityHeading: 'Make the Lagos plan work from start to return.',
     utilitySections: [
       { title: 'Decide which Lagos you mean.', answer: '“Lagos” can hide a long journey. Start with the exact locality and address, then keep every stop inside the launch boundary shown on this page. A state, transport network or venue label is not a substitute for a meeting point.', evidenceIds: ['LAG-SCOPE-01'] },
@@ -130,8 +223,8 @@ export const CITY_HUBS = [
   },
   {
     slug: 'durham-nc', city: 'Durham', country: 'United States', countryCode: 'US', locale: 'en-US', timezone: 'America/New_York', currency: 'USD',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'City of Durham corporate limits', jurisdictionScope: 'City of Durham corporate limits; Durham County and any combined regional identity are excluded.', scopeApproval: 'approved', placeSchemaType: 'City',
-    directAnswer: 'Durham gives you several different kinds of day without leaving its own identity behind: performance, sport, campus culture, public art and parks. Mingla helps you choose the occasion first, verify the current event and journey, and turn the pieces into a plan your people can actually use.',
+    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'City of Durham corporate limits', jurisdictionScope: 'City of Durham corporate limits; Durham County and any combined regional identity are excluded.', jurisdiction: CITY_JURISDICTIONS['durham-nc'], scopeApproval: 'approved', placeSchemaType: 'City',
+    directAnswer: 'Durham gives you several different kinds of day without leaving its own identity behind: performance, sport, campus culture, public art and parks. Mingla helps you choose the occasion first, verify the current event and journey, and turn the pieces into a plan your people can actually use.', directAnswerEvidenceIds: ['DUR-CULT-01', 'DUR-MOVE-01', 'DUR-EVENT-01'],
     utilityHeading: 'Build a Bull City day around a real anchor.',
     utilitySections: [
       { title: 'Choose the Durham anchor before the category.', answer: 'The City’s own visitor page points to Durham Performing Arts Center, Durham Bulls Athletic Park, the Nasher Museum at Duke, city parks and annual festivals. Start with the kind of day—show, game, museum, festival or park—then verify the named institution’s current details.', evidenceIds: ['DUR-CULT-01'] },
@@ -159,8 +252,8 @@ export const CITY_HUBS = [
   },
   {
     slug: 'cary-nc', city: 'Cary', country: 'United States', countryCode: 'US', locale: 'en-US', timezone: 'America/New_York', currency: 'USD',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Town of Cary corporate limits', jurisdictionScope: 'Town of Cary corporate limits; Raleigh, Wake County and a combined regional identity are excluded.', scopeApproval: 'approved', placeSchemaType: 'City',
-    directAnswer: 'Cary is strongest as its own town plan: a downtown park, town arts spaces, greenways, classes, concerts and community events that can fit an easy afternoon or evening. Mingla helps you choose the pace, confirm the Town or venue details, and share a plan without turning Cary into “near Raleigh.”',
+    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Town of Cary corporate limits', jurisdictionScope: 'Town of Cary corporate limits; Raleigh, Wake County and a combined regional identity are excluded.', jurisdiction: CITY_JURISDICTIONS['cary-nc'], scopeApproval: 'approved', placeSchemaType: 'City',
+    directAnswer: 'Cary is strongest as its own town plan: a downtown park, town arts spaces, greenways, classes, concerts and community events that can fit an easy afternoon or evening. Mingla helps you choose the pace, confirm the Town or venue details, and share a plan without turning Cary into “near Raleigh.”', directAnswerEvidenceIds: ['CARY-CULT-01', 'CARY-EVENT-01', 'CARY-MOVE-01'],
     utilityHeading: 'Use Cary’s own places, pace and practical details.',
     utilitySections: [
       { title: 'Start with Cary’s town-run places.', answer: 'Downtown Cary Park, Cary Arts Center, The Cary Theater, Page-Walker Arts & History Center, Bond Park and the Town’s cultural programmes create distinct starting points for a park day, class, film, performance or festival. Check the owning facility for current details.', evidenceIds: ['CARY-CULT-01', 'CARY-CULT-02'] },
@@ -188,8 +281,8 @@ export const CITY_HUBS = [
   },
   {
     slug: 'raleigh-nc', city: 'Raleigh', country: 'United States', countryCode: 'US', locale: 'en-US', timezone: 'America/New_York', currency: 'USD', marketingDeckCenter: { lat: 35.7795897, lng: -78.6381787 },
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Raleigh city limits', jurisdictionScope: 'Current City of Raleigh corporate limits; the ETJ and the rest of Wake County are excluded unless a record is proven inside the city.', scopeApproval: 'approved', placeSchemaType: 'City',
-    directAnswer: 'Raleigh can move from a downtown square or gallery to a greenway, museum, park programme or live performance, but the useful plan is the one that names the exact place and journey. Mingla keeps Raleigh’s City sources, current event facts and the group’s next action together.',
+    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Raleigh city limits', jurisdictionScope: 'Current City of Raleigh corporate limits; the ETJ and the rest of Wake County are excluded unless a record is proven inside the city.', jurisdiction: CITY_JURISDICTIONS['raleigh-nc'], scopeApproval: 'approved', placeSchemaType: 'City',
+    directAnswer: 'Raleigh can move from a downtown square or gallery to a greenway, museum, park programme or live performance, but the useful plan is the one that names the exact place and journey. Mingla keeps Raleigh’s City sources, current event facts and the group’s next action together.', directAnswerEvidenceIds: ['RAL-CULT-01', 'RAL-EVENT-01', 'RAL-MOVE-01'],
     utilityHeading: 'Connect Raleigh culture to City limits and live facts.',
     utilitySections: [
       { title: 'Build from Raleigh’s public culture network.', answer: 'Raleigh Arts connects City calendars, galleries, public art and performing-arts venues; Moore Square and Dix Park publish their own programmes. Choose one anchor, then verify the facility’s current page instead of promising a permanent schedule.', evidenceIds: ['RAL-CULT-01', 'RAL-CULT-02', 'RAL-CULT-03'] },
@@ -219,8 +312,8 @@ export const CITY_HUBS = [
   },
   {
     slug: 'new-york-city', city: 'New York City', country: 'United States', countryCode: 'US', locale: 'en-US', timezone: 'America/New_York', currency: 'USD',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'New York City’s five boroughs', jurisdictionScope: 'The five boroughs of New York City; the wider New York metropolitan area is excluded.', scopeApproval: 'approved', placeSchemaType: 'City',
-    directAnswer: 'In New York City, the borough and the journey are part of the plan. Mingla helps you choose the occasion, keep the venue in one of the five boroughs, check live event and MTA information, and share a plan that says more than “somewhere downtown.”',
+    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'New York City’s five boroughs', jurisdictionScope: 'The five boroughs of New York City; the wider New York metropolitan area is excluded.', jurisdiction: CITY_JURISDICTIONS['new-york-city'], scopeApproval: 'approved', placeSchemaType: 'City',
+    directAnswer: 'In New York City, the borough and the journey are part of the plan. Mingla helps you choose the occasion, keep the venue in one of the five boroughs, check live event and MTA information, and share a plan that says more than “somewhere downtown.”', directAnswerEvidenceIds: ['NYC-BOUND-01', 'NYC-EVENT-01', 'NYC-MOVE-01'],
     utilityHeading: 'Make the borough and journey part of the New York plan.',
     utilitySections: [
       { title: 'Start with the borough, then narrow the neighbourhood.', answer: 'New York City is one city across the Bronx, Brooklyn, Manhattan, Queens and Staten Island. Every place and event record must carry a borough, exact address and five-borough boundary result.', evidenceIds: ['NYC-BOUND-01'] },
@@ -247,8 +340,8 @@ export const CITY_HUBS = [
   },
   {
     slug: 'brussels', city: 'Brussels', country: 'Belgium', countryCode: 'BE', locale: 'en-BE', timezone: 'Europe/Brussels', currency: 'EUR',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Brussels-Capital Region', jurisdictionScope: 'Recommended editorial inclusion area: all 19 municipalities of the Brussels-Capital Region. Founder approval is still required before indexing.', scopeApproval: 'founder_pending', placeSchemaType: 'AdministrativeArea',
-    directAnswer: 'Brussels plans cross municipal and language boundaries, so the useful details are the municipality, exact venue, local name and transport stop—not “central Brussels.” Mingla helps Explorers keep those pieces together and helps Hosts publish an experience in language people can recognise and act on.',
+    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Brussels-Capital Region', jurisdictionScope: 'Recommended editorial inclusion area: all 19 municipalities of the Brussels-Capital Region. Founder approval is still required before indexing.', jurisdiction: CITY_JURISDICTIONS.brussels, scopeApproval: 'founder_pending', placeSchemaType: 'AdministrativeArea',
+    directAnswer: 'Brussels plans cross municipal and language boundaries, so the useful details are the municipality, exact venue, local name and transport stop—not “central Brussels.” Mingla helps Explorers keep those pieces together and helps Hosts publish an experience in language people can recognise and act on.', directAnswerEvidenceIds: ['BRU-BOUND-01', 'BRU-MOVE-01', 'BRU-EVENT-02'],
     utilityHeading: 'Keep the Brussels municipality, language and journey together.',
     utilitySections: [
       { title: 'Name the municipality.', answer: 'The Brussels-Capital Region contains 19 municipalities, including the City of Brussels. Every record needs the selected region or municipality scope, exact address and containment result instead of relying on a Brussels postal label.', evidenceIds: ['BRU-BOUND-01'] },
@@ -277,8 +370,8 @@ export const CITY_HUBS = [
   },
   {
     slug: 'paris', city: 'Paris', country: 'France', countryCode: 'FR', locale: 'en-FR', timezone: 'Europe/Paris', currency: 'EUR',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Ville de Paris', jurisdictionScope: 'The Commune or Ville de Paris, represented by its 20 municipal arrondissements; the wider Île-de-France region is excluded.', scopeApproval: 'approved', placeSchemaType: 'City',
-    directAnswer: 'Paris plans become manageable when the arrondissement, meeting point and last journey are decided with the activity. Mingla helps you turn a municipal event, exhibition, class, performance or local outing into one shareable plan while keeping regional transport information clearly separate from the city boundary.',
+    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Ville de Paris', jurisdictionScope: 'The Commune or Ville de Paris, represented by its 20 municipal arrondissements; the wider Île-de-France region is excluded.', jurisdiction: CITY_JURISDICTIONS.paris, scopeApproval: 'approved', placeSchemaType: 'City',
+    directAnswer: 'Paris plans become manageable when the arrondissement, meeting point and last journey are decided with the activity. Mingla helps you turn a municipal event, exhibition, class, performance or local outing into one shareable plan while keeping regional transport information clearly separate from the city boundary.', directAnswerEvidenceIds: ['PAR-BOUND-01', 'PAR-EVENT-01', 'PAR-MOVE-01'],
     utilityHeading: 'Build the Paris plan from arrondissement to last journey.',
     utilitySections: [
       { title: 'Use the arrondissement as part of the answer.', answer: 'Paris is divided into 20 municipal arrondissements. Every named stop needs its arrondissement and exact address so “Paris” does not hide where the plan actually happens.', evidenceIds: ['PAR-BOUND-01'] },
@@ -306,8 +399,8 @@ export const CITY_HUBS = [
   },
   {
     slug: 'london', city: 'London', country: 'United Kingdom', countryCode: 'GB', locale: 'en-GB', timezone: 'Europe/London', currency: 'GBP',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Greater London', jurisdictionScope: 'Greater London: the 32 London boroughs plus the City of London; commuter towns and the wider travel-to-work region are excluded.', scopeApproval: 'approved', placeSchemaType: 'AdministrativeArea',
-    directAnswer: 'London is too large for “somewhere central” to be a plan. Mingla helps you choose the borough and area, check the actual venue and TfL journey, and keep the occasion, timing and join action in one place for everyone coming.',
+    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Greater London', jurisdictionScope: 'Greater London: the 32 London boroughs plus the City of London; commuter towns and the wider travel-to-work region are excluded.', jurisdiction: CITY_JURISDICTIONS.london, scopeApproval: 'approved', placeSchemaType: 'AdministrativeArea',
+    directAnswer: 'London is too large for “somewhere central” to be a plan. Mingla helps you choose the borough and area, check the actual venue and TfL journey, and keep the occasion, timing and join action in one place for everyone coming.', directAnswerEvidenceIds: ['LON-BOUND-01', 'LON-MOVE-01', 'LON-EVENT-01'],
     utilityHeading: 'Choose the London people can actually reach.',
     utilitySections: [
       { title: 'Name the borough and area.', answer: 'Greater London has 32 boroughs plus the City of London Corporation. Each record needs its borough, exact address and Greater London boundary result; the City of London is one local authority, not a synonym for all London.', evidenceIds: ['LON-BOUND-01', 'LON-BOUND-02'] },
@@ -335,8 +428,8 @@ export const CITY_HUBS = [
   },
   {
     slug: 'fort-lauderdale', city: 'Fort Lauderdale', country: 'United States', countryCode: 'US', locale: 'en-US', timezone: 'America/New_York', currency: 'USD',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'City of Fort Lauderdale municipal limits', jurisdictionScope: 'City of Fort Lauderdale municipal boundary; Broward County and Greater Fort Lauderdale are excluded as city boundaries.', scopeApproval: 'approved', placeSchemaType: 'City',
-    directAnswer: 'Fort Lauderdale plans often need the place and the event impact checked together: exact city location, waterfront or street access, parking or road effects, and the real organiser action. Mingla helps Explorers keep those practical details with the outing and helps Hosts explain what changes around the event.',
+    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'City of Fort Lauderdale municipal limits', jurisdictionScope: 'City of Fort Lauderdale municipal boundary; Broward County and Greater Fort Lauderdale are excluded as city boundaries.', jurisdiction: CITY_JURISDICTIONS['fort-lauderdale'], scopeApproval: 'approved', placeSchemaType: 'City',
+    directAnswer: 'Fort Lauderdale plans often need the place and the event impact checked together: exact city location, waterfront or street access, parking or road effects, and the real organiser action. Mingla helps Explorers keep those practical details with the outing and helps Hosts explain what changes around the event.', directAnswerEvidenceIds: ['FTL-BOUND-01', 'FTL-EVENT-01'],
     utilityHeading: 'Plan the Fort Lauderdale outing and its edges.',
     utilitySections: [
       { title: 'Keep the city separate from the destination region.', answer: 'Visit Lauderdale is Broward County’s tourism agency and accepts events across the county. A “Greater Fort Lauderdale” listing must pass the City of Fort Lauderdale municipal-boundary check before it becomes city inventory.', evidenceIds: ['FTL-BOUND-01', 'FTL-EVENT-02'] },
@@ -363,8 +456,8 @@ export const CITY_HUBS = [
   },
   {
     slug: 'washington-dc', city: 'Washington, DC', country: 'United States', countryCode: 'US', locale: 'en-US', timezone: 'America/New_York', currency: 'USD', marketingDeckCenter: { lat: 38.9072873, lng: -77.0369274 },
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'District of Columbia boundary', jurisdictionScope: 'District of Columbia boundary; Maryland, Virginia and the wider DMV or metropolitan area are excluded.', scopeApproval: 'approved', placeSchemaType: 'AdministrativeArea',
-    directAnswer: 'Washington, DC is more useful when the plan names the neighbourhood and institution, not only the monument or the Metro stop. Mingla helps you connect a District event, museum, performance, tour, restaurant or gathering with its real entry details and regional journey without turning the DMV into one city.',
+    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'District of Columbia boundary', jurisdictionScope: 'District of Columbia boundary; Maryland, Virginia and the wider DMV or metropolitan area are excluded.', jurisdiction: CITY_JURISDICTIONS['washington-dc'], scopeApproval: 'approved', placeSchemaType: 'AdministrativeArea',
+    directAnswer: 'Washington, DC is more useful when the plan names the neighbourhood and institution, not only the monument or the Metro stop. Mingla helps you connect a District event, museum, performance, tour, restaurant or gathering with its real entry details and regional journey without turning the DMV into one city.', directAnswerEvidenceIds: ['DC-BOUND-01', 'DC-EVENT-01', 'DC-MOVE-01'],
     utilityHeading: 'Connect the District place, institution and regional journey.',
     utilitySections: [
       { title: 'Keep DC inside the District.', answer: 'Every named place needs an address and District-boundary result. A WMATA route or “Washington area” label does not make a Maryland or Virginia stop part of this city hub.', evidenceIds: ['DC-BOUND-01', 'DC-MOVE-01'] },
@@ -392,25 +485,269 @@ export const CITY_HUBS = [
   },
 ] as const satisfies readonly CityHubRecord[]
 
-export type CityHubSlug = (typeof CITY_HUBS)[number]['slug']
+export type CityHubReadinessReasonCode =
+  | 'lifecycle_not_search_ready'
+  | 'scope_approval_pending'
+  | 'identity_contract_missing'
+  | 'identity_contract_mismatch'
+  | 'jurisdiction_contract_mismatch'
+  | 'boundary_version_invalid'
+  | 'boundary_evidence_missing'
+  | 'content_contract_mismatch'
+  | 'direct_answer_missing'
+  | 'faq_count_invalid'
+  | 'faq_content_duplicate'
+  | 'local_review_pending'
+  | 'reviewer_identity_incomplete'
+  | 'review_date_invalid'
+  | 'source_review_invalid'
+  | 'source_id_missing'
+  | 'source_id_duplicate'
+  | 'source_url_invalid'
+  | 'source_unverified'
+  | 'source_expired'
+  | 'claim_content_missing'
+  | 'claim_evidence_missing'
+  | 'claim_evidence_not_live'
+  | 'media_rights_invalid'
+  | 'media_expired'
+  | 'inventory_not_ready'
+
+export interface CityHubReadinessReason {
+  readonly code: CityHubReadinessReasonCode
+  readonly path: string
+}
+
+export interface CityHubReadinessContext {
+  readonly asOf: `${number}-${number}-${number}`
+}
+
+const APPROVED_CITY_CONTENT_FINGERPRINTS: Readonly<Record<CityHubSlug, string>> = {
+  lagos: 'v1-81591429',
+  'durham-nc': 'v1-cf2c5d60',
+  'cary-nc': 'v1-c4106a48',
+  'raleigh-nc': 'v1-f44f0f9a',
+  'new-york-city': 'v1-7d0228d0',
+  brussels: 'v1-bebf2417',
+  paris: 'v1-c71957b2',
+  london: 'v1-98cc5377',
+  'fort-lauderdale': 'v1-526d5197',
+  'washington-dc': 'v1-56a866a9',
+}
+
+function normalizedContent(value: string): string {
+  return value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLocaleLowerCase('en-US')
+}
+
+function contentFingerprintPayload(record: CityHubRecord): string {
+  return JSON.stringify({
+    directAnswer: normalizedContent(record.directAnswer),
+    utilitySections: record.utilitySections.map(({ title, answer }) => [normalizedContent(title), normalizedContent(answer)]),
+    explorer: [normalizedContent(record.explorer.title), normalizedContent(record.explorer.body)],
+    host: [normalizedContent(record.host.title), normalizedContent(record.host.body)],
+    hostUtilities: record.hostUtilities.map(({ title, body }) => [normalizedContent(title), normalizedContent(body)]),
+    faqs: record.faqs.map(({ question, answer }) => [normalizedContent(question), normalizedContent(answer)]),
+  })
+}
+
+export function cityHubContentFingerprint(record: CityHubRecord): string {
+  let hash = 0x811c9dc5
+  for (const character of contentFingerprintPayload(record)) {
+    hash ^= character.codePointAt(0) ?? 0
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return `v1-${(hash >>> 0).toString(16).padStart(8, '0')}`
+}
+
+function isIsoDate(value: unknown): value is `${number}-${number}-${number}` {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value
+}
+
+function isCurrentOn(value: unknown, asOf: string): boolean {
+  return isIsoDate(value) && value >= asOf
+}
+
+function isVerifiedBy(value: unknown, asOf: string): boolean {
+  return isIsoDate(value) && value <= asOf
+}
+
+function isPublicHttpUrl(value: unknown): boolean {
+  if (typeof value !== 'string' || value.trim() !== value || value.length === 0) return false
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'https:' || url.protocol === 'http:') && url.hostname.length > 0
+  } catch {
+    return false
+  }
+}
+
+function isStableInventoryHref(value: unknown): boolean {
+  if (isPublicHttpUrl(value)) return true
+  return typeof value === 'string' && /^\/(?!\/)(?!.*(?:[?#]|\.\.))(?:[a-z0-9-]+\/?)+$/i.test(value)
+}
+
+function currentUtcDate(): `${number}-${number}-${number}` {
+  return new Date().toISOString().slice(0, 10) as `${number}-${number}-${number}`
+}
+
+function sameStringArray(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
+export function cityHubReadinessReasons(
+  record: CityHubRecord,
+  context: CityHubReadinessContext,
+): readonly CityHubReadinessReason[] {
+  const reasons: CityHubReadinessReason[] = []
+  const add = (code: CityHubReadinessReasonCode, path: string) => reasons.push({ code, path })
+  const asOf = context.asOf
+
+  if (!isIsoDate(asOf)) add('source_review_invalid', 'context.asOf')
+  if (record.lifecycle !== 'search_ready') add('lifecycle_not_search_ready', 'lifecycle')
+  if (record.scopeApproval !== 'approved') add('scope_approval_pending', 'scopeApproval')
+
+  const slug = CITY_HUB_SLUGS.find((candidate) => candidate === record.slug)
+  const expectedJurisdiction = slug ? CITY_JURISDICTIONS[slug] : null
+  if (!slug || !expectedJurisdiction) {
+    add('identity_contract_missing', 'slug')
+  } else {
+    if (
+      record.city !== expectedJurisdiction.city ||
+      record.countryCode !== expectedJurisdiction.countryCode ||
+      record.scopeLabel !== expectedJurisdiction.scopeLabel ||
+      record.placeSchemaType !== expectedJurisdiction.placeSchemaType
+    ) add('identity_contract_mismatch', 'identity')
+
+    const actualJurisdiction = record.jurisdiction
+    if (
+      !actualJurisdiction ||
+      actualJurisdiction.identity !== expectedJurisdiction.identity ||
+      actualJurisdiction.city !== expectedJurisdiction.city ||
+      actualJurisdiction.countryCode !== expectedJurisdiction.countryCode ||
+      actualJurisdiction.scopeLabel !== expectedJurisdiction.scopeLabel ||
+      actualJurisdiction.scopeStatement !== expectedJurisdiction.scopeStatement ||
+      actualJurisdiction.placeSchemaType !== expectedJurisdiction.placeSchemaType ||
+      actualJurisdiction.boundaryKind !== expectedJurisdiction.boundaryKind ||
+      !sameStringArray(actualJurisdiction.boundaryEvidenceIds, expectedJurisdiction.boundaryEvidenceIds) ||
+      record.jurisdictionScope !== expectedJurisdiction.scopeStatement
+    ) add('jurisdiction_contract_mismatch', 'jurisdiction')
+
+    if (!actualJurisdiction || !isVerifiedBy(actualJurisdiction.boundaryVersion, asOf)) {
+      add('boundary_version_invalid', 'jurisdiction.boundaryVersion')
+    }
+    if (APPROVED_CITY_CONTENT_FINGERPRINTS[slug] !== cityHubContentFingerprint(record)) {
+      add('content_contract_mismatch', 'content')
+    }
+  }
+
+  if (!normalizedContent(record.directAnswer)) add('direct_answer_missing', 'directAnswer')
+  if (record.faqs.length !== 3) add('faq_count_invalid', 'faqs')
+  const faqQuestions = record.faqs.map((faq) => normalizedContent(faq.question))
+  const faqAnswers = record.faqs.map((faq) => normalizedContent(faq.answer))
+  if (
+    faqQuestions.some((value) => !value) || faqAnswers.some((value) => !value) ||
+    new Set(faqQuestions).size !== faqQuestions.length ||
+    new Set(faqAnswers).size !== faqAnswers.length
+  ) add('faq_content_duplicate', 'faqs')
+
+  if (record.localReview.status !== 'reviewed') {
+    add('local_review_pending', 'localReview.status')
+  } else {
+    if (!record.localReview.name.trim() || !record.localReview.relationship.trim()) {
+      add('reviewer_identity_incomplete', 'localReview')
+    }
+    if (
+      !isVerifiedBy(record.localReview.reviewedAt, asOf) ||
+      record.localReview.reviewedAt < record.sourcesCheckedAt
+    ) add('review_date_invalid', 'localReview.reviewedAt')
+  }
+
+  if (
+    !isVerifiedBy(record.sourcesCheckedAt, asOf) ||
+    !isCurrentOn(record.nextReviewAt, asOf)
+  ) add('source_review_invalid', 'sources')
+
+  const sourceIds = new Set<string>()
+  const liveSourceIds = new Set<string>()
+  for (const [index, entry] of record.sources.entries()) {
+    const path = `sources.${index}`
+    const id = entry.id.trim()
+    if (!id) add('source_id_missing', `${path}.id`)
+    else if (sourceIds.has(id)) add('source_id_duplicate', `${path}.id`)
+    else sourceIds.add(id)
+
+    const urlValid = isPublicHttpUrl(entry.href)
+    if (!urlValid) add('source_url_invalid', `${path}.href`)
+    const verified = Boolean(entry.verifiedBy.trim()) &&
+      isVerifiedBy(entry.verifiedAt, asOf) &&
+      isVerifiedBy(entry.checkedAt, asOf) &&
+      entry.verifiedAt >= entry.checkedAt
+    if (!verified) add('source_unverified', path)
+    const current = isCurrentOn(entry.nextReviewAt, asOf) &&
+      isCurrentOn(entry.expiresAt, asOf) &&
+      entry.expiresAt >= entry.nextReviewAt
+    if (!current) add('source_expired', path)
+    if (id && urlValid && verified && current) liveSourceIds.add(id)
+  }
+  const latestCheckedAt = record.sources.map((entry) => entry.checkedAt).sort().at(-1)
+  const earliestNextReviewAt = record.sources.map((entry) => entry.nextReviewAt).sort().at(0)
+  if (
+    latestCheckedAt !== record.sourcesCheckedAt ||
+    earliestNextReviewAt !== record.nextReviewAt
+  ) add('source_review_invalid', 'sources')
+
+  const boundaryIds = record.jurisdiction?.boundaryEvidenceIds ?? []
+  if (boundaryIds.length === 0 || boundaryIds.some((id) => !liveSourceIds.has(id))) {
+    add('boundary_evidence_missing', 'jurisdiction.boundaryEvidenceIds')
+  }
+
+  const claims: readonly Readonly<{ text: string; evidenceIds: readonly string[]; path: string }>[] = [
+    { text: record.directAnswer, evidenceIds: record.directAnswerEvidenceIds, path: 'directAnswer' },
+    ...record.utilitySections.map((claim, index) => ({ text: `${claim.title} ${claim.answer}`, evidenceIds: claim.evidenceIds, path: `utilitySections.${index}` })),
+    { text: `${record.explorer.title} ${record.explorer.body}`, evidenceIds: record.explorer.evidenceIds, path: 'explorer' },
+    { text: `${record.host.title} ${record.host.body}`, evidenceIds: record.host.evidenceIds, path: 'host' },
+    ...record.hostUtilities.map((claim, index) => ({ text: `${claim.title} ${claim.body}`, evidenceIds: claim.evidenceIds, path: `hostUtilities.${index}` })),
+    ...record.faqs.map((claim, index) => ({ text: `${claim.question} ${claim.answer}`, evidenceIds: claim.evidenceIds, path: `faqs.${index}` })),
+  ]
+  for (const claim of claims) {
+    if (!normalizedContent(claim.text)) add('claim_content_missing', claim.path)
+    if (claim.evidenceIds.length === 0) add('claim_evidence_missing', `${claim.path}.evidenceIds`)
+    else if (claim.evidenceIds.some((id) => !liveSourceIds.has(id))) add('claim_evidence_not_live', `${claim.path}.evidenceIds`)
+  }
+
+  for (const [index, item] of record.media.entries()) {
+    if (!item.commercialRights || !item.src.trim() || !item.alt.trim() || !item.owner.trim()) {
+      add('media_rights_invalid', `media.${index}`)
+    }
+    if (!isCurrentOn(item.expiresAt, asOf)) add('media_expired', `media.${index}.expiresAt`)
+  }
+  for (const [index, item] of record.inventory.entries()) {
+    if (item.lifecycle !== 'search_ready' || !isStableInventoryHref(item.href)) add('inventory_not_ready', `inventory.${index}`)
+  }
+
+  return reasons
+}
 
 export function cityHubForSlug(slug: string): CityHubRecord | null {
   return CITY_HUBS.find((record) => record.slug === slug) ?? null
 }
 
-export function isCityHubSearchReady(record: CityHubRecord): boolean {
-  if (record.lifecycle !== 'search_ready') return false
-  if (record.scopeApproval !== 'approved' || record.localReview.status !== 'reviewed') return false
-  if (record.utilitySections.length !== 3 || record.hostUtilities.length !== 2 || record.faqs.length !== 3) return false
-  if (record.media.some((item) => !item.commercialRights)) return false
-  if (record.inventory.some((item) => item.lifecycle !== 'search_ready')) return false
-  const evidenceIds = new Set(record.sources.map((entry) => entry.id))
-  return [...record.utilitySections, ...record.hostUtilities, record.explorer, record.host, ...record.faqs]
-    .every((claim) => claim.evidenceIds.length > 0 && claim.evidenceIds.every((id) => evidenceIds.has(id)))
+export function isCityHubSearchReady(
+  record: CityHubRecord,
+  context: CityHubReadinessContext = { asOf: currentUtcDate() },
+): boolean {
+  return cityHubReadinessReasons(record, context).length === 0
+}
+
+export function cityHubEffectiveLifecycle(record: CityHubRecord): RouteLifecycle {
+  if (record.lifecycle === 'search_ready' && !isCityHubSearchReady(record)) return 'public_noindex'
+  return record.lifecycle
 }
 
 export function allCityHubsSearchReady(): boolean {
-  return CITY_HUBS.length === 10 && CITY_HUBS.every(isCityHubSearchReady)
+  return CITY_HUBS.length === 10 && CITY_HUBS.every((record) => isCityHubSearchReady(record))
 }
 
 export function cityHubPath(record: Pick<CityHubRecord, 'slug'>): `/cities/${string}` {

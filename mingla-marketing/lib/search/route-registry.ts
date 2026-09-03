@@ -1,5 +1,9 @@
 import { canonicalMarketingUrl } from '../site'
-import { CITY_HUBS, cityHubPath } from '../../content/cities/registry'
+import {
+  CITY_HUBS,
+  cityHubEffectiveLifecycle,
+  cityHubPath,
+} from '../../content/cities/registry'
 
 export const ROUTE_LIFECYCLE_STATES = [
   'draft',
@@ -220,11 +224,11 @@ const REDIRECTED_ROUTES = [
 export const CITY_ROUTE_CONTRACTS: readonly RouteContract[] = CITY_HUBS.map((record) => ({
   id: `city-hub-${record.slug}`,
   match: { type: 'exact' as const, pathname: cityHubPath(record) },
-  lifecycle: record.lifecycle,
+  lifecycle: cityHubEffectiveLifecycle(record),
   title: `Things to do in ${record.city} — Mingla city guide`,
   description: record.directAnswer,
   lastModified: record.sourcesCheckedAt,
-}))
+} as RouteContract))
 
 export const ROUTE_REGISTRY: readonly RouteContract[] = [
   ...SEARCH_READY_ROUTES,
@@ -279,6 +283,13 @@ export function routeContractForPath(pathname: string): RouteContract | null {
     (contract) => contract.match.type === 'exact' && matches(contract, pathname),
   )
   return exact ?? ROUTE_REGISTRY.find((contract) => matches(contract, pathname)) ?? null
+}
+
+export function isCityHubCaseVariantPath(pathname: string): boolean {
+  const candidate = normalizePathname(pathname)
+  return CITY_ROUTE_CONTRACTS.some(({ match }) => (
+    candidate !== match.pathname && candidate.toLocaleLowerCase('en-US') === match.pathname.toLocaleLowerCase('en-US')
+  ))
 }
 
 export function requireRouteContract(

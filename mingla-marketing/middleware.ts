@@ -11,7 +11,10 @@
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { routeContractForPath } from './lib/search/route-registry'
+import {
+  isCityHubCaseVariantPath,
+  routeContractForPath,
+} from './lib/search/route-registry'
 import {
   CAREERS_HOST,
   SITE_HOST,
@@ -109,6 +112,17 @@ export function middleware(req: NextRequest) {
     const url = req.nextUrl.clone()
     url.pathname = internalPath
     return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+  }
+
+  // #2983 — reject case variants before the case-insensitive macOS filesystem
+  // can serve a lowercase prerender on the first cold request. City identities
+  // are registered as exact paths; an unknown casing is a stable 404, never a
+  // redirect or a cache-state-dependent alias.
+  if (isCityHubCaseVariantPath(pathname)) {
+    return new NextResponse('Not Found', {
+      status: 404,
+      headers: { 'content-type': 'text/plain; charset=utf-8' },
+    })
   }
 
   // issue #2981 — exact www only. Careers and public share routes were handled

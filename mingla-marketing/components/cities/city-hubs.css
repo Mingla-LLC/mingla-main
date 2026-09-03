@@ -149,6 +149,7 @@
   .city-hub-root { --city-host-bar-height: calc(56px + env(safe-area-inset-top)); }
   .city-hub-root .ps-host-acquisition,
   .city-hub-root .ps-host-acquisition-inner { min-height: 56px; }
+  .city-hub-root .ps-host-acquisition-trigger { min-width: 44px; min-height: 44px; }
   .city-hub-root .ps-nav { padding-inline: 20px; }
   .city-hub-root .ps-logo-link { min-width: 132px; }
   .city-hub-root .city-section { padding-block: 64px; }

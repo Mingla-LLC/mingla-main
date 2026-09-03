@@ -9,6 +9,8 @@ interface CityHubPageProps {
   readonly params: Promise<{ city: string }>
 }
 
+export const dynamicParams = false
+
 export function generateStaticParams() {
   return CITY_HUBS.map((record) => ({ city: record.slug }))
 }
