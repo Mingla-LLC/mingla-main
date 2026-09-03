@@ -396,7 +396,120 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     value this branch replaces, pinned by #1776 immediately above — proving
   //     nothing else in the tree drifted into this digest.
   // Every earlier re-derivation is preserved, not replaced.
-  "9ae7abf406523c46716dbf5ce71a893fbb9277b412533ec522e6544b9d3394c1";
+  //
+  // [TEST-MOD-APPROVED #2909] Re-derived after a 44-commit rebase. WHAT MOVED:
+  // #2909 adds ONE job to each of two PR-family lanes -- the always-on
+  // append-only lane gains the pre-merge "is `main` green" check, and the
+  // Mingla-host strict-grep lane gains the post-push red-`main` alert. Both
+  // lanes are PR-family, so their non-concurrency documents are inside this
+  // digest and it MUST move. Each lane is named here by ISSUE and by role,
+  // never by its `.y`+`ml` path, for the reason #3081, #2882 and #2099 all record
+  // above: a workflow FILENAME written into a tracked file is counted by
+  // `discoverWorkflowProviders()` as an external provider reference and moves
+  // the frozen #2148 provider seal.
+  //
+  // The value below is NEITHER this branch's original pin NOR origin/main's.
+  // The branch sat unmerged while this constant moved FIVE times in one day
+  // (#3065, #3081, #3082, #3094, #3090), so every literal the branch carried
+  // was stale on arrival; taking any of them would have been a stale pin that
+  // merely looked deliberate. It was re-derived fresh from the rebased tree.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING, running #3081's checklist:
+  //   - CONTAMINATION CHECKED FIRST, per the #3081 lesson: every ADDED line in
+  //     this branch's non-workflow files was grepped for a `.y`+`ml` literal. ZERO
+  //     hits, so the frozen provider seal does not move.
+  //   - the change is PURELY ADDITIVE: the two workflow diffs are "95
+  //     insertions(+), 0 deletions" and "44 insertions(+), 0 deletions", both
+  //     `M`. Nothing was added, removed or renamed, and the workflow file count
+  //     is 131 on BOTH sides.
+  //   - grepping added AND removed lines for `concurrency`, `group:` and
+  //     `cancel-in-progress` returns ZERO, and both lanes' `concurrency:`
+  //     blocks are byte-identical to origin/main -- diffed, not eyeballed.
+  //   - HONEST DIFFERENCE FROM MOST NOTES ABOVE: this change DOES add `paths:`
+  //     entries, to both lanes, deliberately -- that is part of the semantic
+  //     delta being pinned. What is NOT added is a `paths:`/`paths-ignore:` KEY,
+  //     and no trigger EVENT changed: both lanes declare `pull_request` and
+  //     `push` on both sides, so PR-family membership is untouched.
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED. This was
+  //     not assumed from the shape of the diff: subtests 1 and 4 PASS at 124
+  //     PR-family and seven non-PR against the changed tree.
+  //   - the policy audit still reports zero errors, and every revert-
+  //     sensitivity subtest (5-10) still passes, so the concurrency assertions
+  //     are intact and still go red on reversion. 10 of 11 subtests passed
+  //     before this re-pin; only subtest 2 was red.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring BOTH lanes to their
+  //     origin/main bytes makes ALL ELEVEN subtests pass again at
+  //     9ae7abf406523c46716dbf5ce71a893fbb9277b412533ec522e6544b9d3394c1 --
+  //     the value pinned by #2099 immediately above -- proving nothing else in
+  //     the tree drifted into this digest. The re-derived value below is stable
+  //     across two consecutive runs.
+  //
+  // TRACKED AS #3095, which argues this pin should not exist at all. Until that
+  // lands it is re-derived properly rather than left stale.
+  // Every earlier re-derivation is preserved, not replaced.
+  //
+  // [TEST-MOD-APPROVED #2909] SECOND MOVE, same branch, recorded rather than
+  // folded into the note above. Review found the alert was hosted on a
+  // paths-gated push trigger, so it could only report `main` red on commits
+  // matching its globs: MEASURED at 32 of 40 consecutive `main` commits: the
+  // other eight -- root REPORTS.md/COMMS.md, the mingla-site-cms tree, and one
+  // baseline-only commit -- would have alerted nobody. An alert that fires on
+  // four commits in five is a sampling scheme, so a `**` catch-all was appended
+  // LAST to that lane's PUSH paths only. Re-measured after the change: 40/40.
+  //
+  // WHY THIS DIGEST MOVES AGAIN: the catch-all is one added `paths:` entry on a
+  // PR-family lane, so its non-concurrency document moves. The pull_request
+  // list is deliberately untouched, so no PR minutes are added.
+  //
+  // WHAT WAS VERIFIED, same checklist:
+  //   - the workflow-glob assertion that pins this lane's triggers is
+  //     UNTOUCHED: I-2148-CI-TOPOLOGY-BOUNDED requires `.github/workflows/**`
+  //     to appear exactly twice in the trigger block, once per event. The
+  //     existing list is preserved in full and only appended to, so that count
+  //     is still exactly 2 and that suite passes 6/6.
+  //   - no `concurrency:`, `group:` or `cancel-in-progress:` line is added or
+  //     removed, and no trigger EVENT changed, so PR-family membership and
+  //     PR_FAMILY_IDENTITY_SHA256 are untouched -- subtests 1 and 4 pass at
+  //     124/seven against the changed tree.
+  //   - THE DELTA IS EXACTLY THIS ONE LINE: removing only the `**` entry makes
+  //     ALL ELEVEN subtests pass again at
+  //     0a79741a37768afce2b363b43050480f0fd22e1b5e2182b13301a5d4d29f8640 --
+  //     the value pinned immediately above -- so nothing else drifted in.
+  // Every earlier re-derivation is preserved, not replaced.
+  //
+  // [TEST-MOD-APPROVED #2909] THIRD move, and the only one forced by review
+  // rather than chosen. Two guards went red on the catch-all above and BOTH
+  // were right; the fix accommodates them instead of weakening either.
+  //   - #2885 AC-4 / the #2524 auto-merge guards: GitHub resolves the LAST
+  //     matching paths pattern, so a catch-all placed after the baseline
+  //     negative OVERRODE it, and baseline-only merges started that whole
+  //     suite on `main` -- reviving the fan-out AC-4 removed (~51,000 job-min
+  //     a month). The negative now goes last. Measured coverage drops from
+  //     40/40 to 39/40, the one miss being a machine-written baseline-only
+  //     commit; that number is reported as 39/40 rather than rounded up.
+  //   - #2881: the pre-merge job carried no draft condition and would have run
+  //     on every draft push while its siblings skipped. It now carries #2881's
+  //     canonical condition, and the #2909 wiring gate was RELAXED to permit
+  //     exactly that one string and nothing else, so neither invariant loses.
+  //
+  // Both edits are non-concurrency document changes on PR-family lanes, which
+  // is what this digest absorbs.
+  //
+  // WHAT WAS VERIFIED, same checklist:
+  //   - no `concurrency:`, `group:` or `cancel-in-progress:` line is added or
+  //     removed, and no trigger EVENT changed; the paths REORDER adds and
+  //     removes no entry, it only changes their order.
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED: subtests
+  //     1 and 4 pass at 124 PR-family / seven non-PR against the changed tree.
+  //   - I-2148-CI-TOPOLOGY-BOUNDED still passes 6/6 -- the workflow glob still
+  //     appears exactly twice in the trigger block -- and #2881 passes at
+  //     131 total / 124 PR-family / 115 draft-gated / 9 always-on.
+  //   - THE DELTA IS EXACTLY THESE TWO EDITS: restoring both lanes to their
+  //     pre-review bytes makes ALL ELEVEN subtests pass again at
+  //     d02b7d66c14da550b7ba5b4773a6ea7f193cfeef65fdbf0765bd4b6a3c107730 --
+  //     the value pinned immediately above -- so nothing else drifted in.
+  // Every earlier re-derivation is preserved, not replaced.
+  "d259a32221eb5d0929bb5645e3402b3dbca900dfc948ba993c33bfc92a247b5d";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

@@ -15,10 +15,10 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 639,
-  "selfTestWiredFloor": 409,
+  "expectedStrictGrepMjsFiles": 640,
+  "selfTestWiredFloor": 410,
   "unenforcedCap": 2,
-  "fixtureCap": 10,
+  "fixtureCap": 9,
   "capableUnwiredCap": 23,
   "externalGateDirs": [
     "app-mobile/scripts/ci",
@@ -1825,12 +1825,13 @@
     {
       "script": ".github/scripts/strict-grep/i-proposed-1224-business-route-adversarial.test.mjs",
       "kind": "file",
-      "enforcement": "fixture",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "capable-unwired",
-      "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-1224-business-route.mjs",
@@ -4962,6 +4963,18 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-2774-public-hero-accessibility.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2909-main-health-wiring.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",
