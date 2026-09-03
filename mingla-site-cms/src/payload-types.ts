@@ -357,7 +357,7 @@ export interface Media {
   tenant?: (string | null) | Tenant;
   state: 'UPLOADING' | 'QUARANTINED' | 'PROCESSING' | 'READY' | 'REJECTED' | 'RETRYABLE_FAILED' | 'TOMBSTONED';
   original_filename_safe: string;
-  declared_mime: 'image/jpeg' | 'image/png' | 'image/webp';
+  declared_mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'video/mp4';
   detected_mime?: string | null;
   bytes?: number | null;
   checksum?: string | null;

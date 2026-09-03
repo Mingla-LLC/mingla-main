@@ -69,8 +69,22 @@ describe("#2830 the menu belongs to Mingla", () => {
     expect(builder).toContain(
       'currency: typeof row.currency === "string" ? row.currency : null',
     );
-    expect(migration).not.toMatch(/COALESCE\s*\(\s*mi\.price_cents/i);
-    expect(migration).not.toMatch(/COALESCE\s*\(\s*mi\.currency/i);
+    /*
+     * Scoped to the PROJECTION, which is what feeds the website. The
+     * fingerprint function further down deliberately coalesces a NULL price to
+     * the literal 'null' so the digest is stable -- that is a hash input, not a
+     * price anyone reads, and a file-wide ban flagged it. The rule is "the menu
+     * the website renders never carries a defaulted price", so assert it where
+     * that menu is built.
+     */
+    const projection = migration.slice(
+      migration.indexOf("FUNCTION public.brand_site_menu_projection"),
+      migration.indexOf("FUNCTION public.brand_site_orderable_venue"),
+    );
+    expect(projection.length).toBeGreaterThan(200);
+    expect(projection).not.toMatch(/COALESCE\s*\(\s*mi\.price_cents/i);
+    expect(projection).not.toMatch(/COALESCE\s*\(\s*mi\.currency/i);
+    expect(projection).toContain("mi.price_cents,");
   });
 
   it("Mingla's own ordering survives to the website", () => {

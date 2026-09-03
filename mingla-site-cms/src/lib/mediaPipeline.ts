@@ -14,6 +14,26 @@ import { studioMediaGrantRequest } from "./studioRequestAuth";
 const ACCEPTED = new Set(["image/jpeg", "image/png", "image/webp"]);
 const WIDTHS = [320, 640, 960, 1440, 1920] as const;
 const MAX_BYTES = 20 * 1024 * 1024;
+
+/**
+ * #2830 — the `ftyp` brands a browser will actually play as `video/mp4`.
+ *
+ * Deliberately a short allowlist rather than "any ftyp": the box is shared by
+ * the whole ISO base-media family, which includes containers no browser plays
+ * and some it should not be handed at all. A hero video that silently fails to
+ * start is indistinguishable from a broken website.
+ */
+const MP4_BRANDS = new Set([
+  "isom",
+  "iso2",
+  "iso5",
+  "iso6",
+  "mp41",
+  "mp42",
+  "avc1",
+  "M4V ",
+  "dash",
+]);
 const MAX_PIXELS = 40_000_000;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -160,10 +180,42 @@ function detectedMime(bytes: Uint8Array): string | null {
     Buffer.from(bytes.slice(8, 12)).toString("ascii") === "WEBP"
   )
     return "image/webp";
+  /*
+   * #2830 — MP4. An ISO base-media file declares itself with an `ftyp` box:
+   * a 4-byte big-endian size, then the literal "ftyp", then a brand. This is
+   * checked the same way the image formats are — by reading the bytes, not by
+   * trusting the upload's declared type or its filename.
+   */
+  if (
+    bytes.length >= 12 &&
+    Buffer.from(bytes.slice(4, 8)).toString("ascii") === "ftyp"
+  ) {
+    const brand = Buffer.from(bytes.slice(8, 12)).toString("ascii");
+    if (MP4_BRANDS.has(brand)) return "video/mp4";
+  }
   return null;
 }
 
 function hasExactContainerBoundary(bytes: Uint8Array, mime: string): boolean {
+  if (mime === "video/mp4") {
+    /*
+     * An MP4 is a sequence of top-level boxes. Walk them from the start: if
+     * the sizes tile the file exactly, nothing is appended past the end, which
+     * is the same property the image checks establish. A zero or absurd size
+     * ends the walk rather than looping.
+     */
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let offset = 0;
+    while (offset + 8 <= bytes.length) {
+      const size = view.getUint32(offset, false);
+      // `1` means a 64-bit size follows, `0` means "to end of file". Both are
+      // legal but neither is produced by the encoders we accept, so refuse
+      // rather than guess at the layout.
+      if (size < 8) return false;
+      offset += size;
+    }
+    return offset === bytes.length;
+  }
   if (mime === "image/jpeg") {
     return (
       bytes.length >= 2 &&
@@ -211,7 +263,7 @@ export async function createUploadGrant(
   )
     throw new Error("MEDIA_REJECTED");
   const declaredMime = input.content_type as
-    "image/jpeg" | "image/png" | "image/webp";
+    "image/jpeg" | "image/png" | "image/webp" | "video/mp4";
   const previousGrantContext = req.context.minglaMediaGrant;
   req.context.minglaMediaGrant = true;
   try {
@@ -315,6 +367,64 @@ async function reject(
   throw new Error("MEDIA_REJECTED");
 }
 
+
+async function processApprovedVideo(
+  req: PayloadRequest,
+  media: { id: string | number },
+  checksum: string,
+  source: Uint8Array,
+  quarantineKey: string,
+) {
+  await req.payload.update({
+    collection: "media",
+    id: media.id,
+    overrideAccess: false,
+    req,
+    data: { state: "PROCESSING", detected_mime: "video/mp4", checksum },
+  });
+  const siteId = (req.user as unknown as { siteId: string }).siteId;
+  const key =
+    `approved/${siteId}/${media.id}/${checksum}/master.mp4`;
+  const digest = await sha256(source);
+  // Deterministic key recorded BEFORE the first write, same as the image path,
+  // so a failure leaves a durable cleanup manifest rather than an orphan.
+  await req.payload.update({
+    collection: "media",
+    id: media.id,
+    overrideAccess: false,
+    req,
+    data: {
+      approved_master_key: key,
+      rendition_manifest: {
+        version: 1,
+        master: { key, digest, bytes: source.byteLength },
+        // No widths: a video is served as stored. An empty list is the honest
+        // record of that, rather than five fabricated entries pointing at one
+        // file.
+        renditions: [],
+      },
+    },
+  });
+  try {
+    await writeObject(cmsConfig().approvedBucket, key, source, "video/mp4");
+    const stored = await readObject(cmsConfig().approvedBucket, key);
+    if (
+      stored.byteLength !== source.byteLength ||
+      (await sha256(stored)) !== digest
+    ) throw new Error("STORAGE_UNAVAILABLE");
+    return await req.payload.update({
+      collection: "media",
+      id: media.id,
+      overrideAccess: false,
+      req,
+      data: { state: "READY", quarantine_key: null, quarantine_delete_by: null },
+    });
+  } catch (error) {
+    void quarantineKey;
+    throw error;
+  }
+}
+
 async function processUpload(
   req: PayloadRequest,
   mediaId: string,
@@ -348,6 +458,24 @@ async function processUpload(
     !hasExactContainerBoundary(source, mime)
   )
     return reject(req, media.id, key, "MIME_MISMATCH");
+  /*
+   * #2830 — VIDEO TAKES ITS OWN PATH, and takes it early.
+   *
+   * Everything below this point is `sharp`: decode, re-encode to webp, strip
+   * metadata, and cut five width renditions. None of that applies to an MP4,
+   * and handing one to sharp fails as DECODE_FAILED, which is why video was
+   * simply unsupported rather than merely absent from the allowlist.
+   *
+   * A video is stored ONCE, verified by digest on readback exactly as the
+   * image outputs are, and carries no rendition manifest. What it does NOT get
+   * is transcoding or poster extraction — there is no ffmpeg here — so a video
+   * hero requires the brand to supply a poster image alongside it. That is
+   * enforced where the block is built, not left for a customer to discover as
+   * a black rectangle on a slow connection.
+   */
+  if (mime === "video/mp4") {
+    return processApprovedVideo(req, media, checksum, source, key);
+  }
   let metadata: Metadata;
   try {
     metadata = await sharp(source, { limitInputPixels: MAX_PIXELS }).metadata();
