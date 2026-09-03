@@ -175,13 +175,6 @@ export function LagosPlanLab() {
                 Venue names and photos are real place-pool records.
               </span>
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <ProvenanceChip kind="illustrative" />
-              <span className="text-xs leading-relaxed text-white/45">
-                The {plan.illustrativePriceRange} / {plan.illustrativeDuration} estimate is an
-                example, not a quote or a booking.
-              </span>
-            </div>
           </div>
           <CardStage>
             <AnimatePresence mode="wait">

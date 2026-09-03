@@ -160,7 +160,7 @@ function RunningTheater({
   )
 }
 
-export function EventPredictorExperience() {
+export function EventPredictorExperience({ embedded = false }: { readonly embedded?: boolean } = {}) {
   const [phase, setPhase] = useState<Phase>('intake')
 
   const [title, setTitle] = useState('')
@@ -294,7 +294,7 @@ export function EventPredictorExperience() {
   // ── REPORT ──────────────────────────────────────────────────────────────
   if (phase === 'report' && report && runId) {
     return (
-      <div className="px-4 py-10 sm:px-6 md:px-10 md:py-16 [padding-left:max(1rem,env(safe-area-inset-left))] [padding-right:max(1rem,env(safe-area-inset-right))]">
+      <div className={embedded ? 'p-0' : 'px-4 py-10 sm:px-6 md:px-10 md:py-16 [padding-left:max(1rem,env(safe-area-inset-left))] [padding-right:max(1rem,env(safe-area-inset-right))]'}>
         <div className="mx-auto max-w-3xl">
           <button
             type="button"
@@ -316,7 +316,7 @@ export function EventPredictorExperience() {
   // ── RUNNING ─────────────────────────────────────────────────────────────
   if (phase === 'running') {
     return (
-      <div className="px-6 py-16 md:px-10 md:py-24 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]">
+      <div className={embedded ? 'p-0' : 'px-6 py-16 md:px-10 md:py-24 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]'}>
         <div className="mx-auto max-w-xl">
           <RunningTheater
             key={attempt}
@@ -335,14 +335,16 @@ export function EventPredictorExperience() {
 
   // ── INTAKE ──────────────────────────────────────────────────────────────
   return (
-    <div className="px-6 py-14 md:px-10 md:py-20 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]">
+    <div className={embedded ? 'p-0' : 'px-6 py-14 md:px-10 md:py-20 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]'}>
       <div className="mx-auto max-w-2xl">
         <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm">
           Event Turnout Predictor
         </span>
-        <h1 className="mt-4 font-display text-4xl leading-[1.08] tracking-[-0.02em] text-white md:text-5xl">
-          How many people will actually show up?
-        </h1>
+        {embedded ? (
+          <h3 className="mt-4 font-display text-4xl leading-[1.08] tracking-[-0.02em] text-white md:text-5xl">How many people will actually show up?</h3>
+        ) : (
+          <h1 className="mt-4 font-display text-4xl leading-[1.08] tracking-[-0.02em] text-white md:text-5xl">How many people will actually show up?</h1>
+        )}
         <p className="mt-4 max-w-xl text-base leading-relaxed text-white/72 md:text-lg">
           Get a real turnout forecast — and see exactly what your promo budget can
           buy. Free, grounded in live research on your date, city and competition.

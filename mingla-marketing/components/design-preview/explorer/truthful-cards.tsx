@@ -141,7 +141,7 @@ export function TruthfulPlanCard({ plan, eager = false }: { plan: LagosPlan; eag
   return (
     <div
       role="img"
-      aria-label={`${plan.title}. A ${plan.stops.length}-stop Mingla plan: ${spoken}. Example cost ${plan.illustrativePriceRange}, roughly ${plan.illustrativeDuration}; both figures are illustrative.`}
+      aria-label={`${plan.title}. A ${plan.stops.length}-stop Mingla plan: ${spoken}. Estimated cost ${plan.illustrativePriceRange}, estimated duration ${plan.illustrativeDuration}.`}
       style={SHELL}
       className="flex flex-col overflow-hidden bg-[#1a1a2e]"
     >

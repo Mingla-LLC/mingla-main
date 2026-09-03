@@ -1,10 +1,10 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { Compass, Info, MapPin, Menu, Newspaper, Store } from 'lucide-react'
+import { Menu } from 'lucide-react'
 import { SideMenu } from '@/components/ui/side-menu'
 import { DeviceCta, type CutoutSurface } from './device-cta'
+import { AudienceMenuContent } from './audience-menu-content'
 
 // ---------------------------------------------------------------
 // #2902 — Cutout nav. No bar, no dock.
@@ -22,11 +22,6 @@ import { DeviceCta, type CutoutSurface } from './device-cta'
 // across it. The horizontal inset matches for the same reason.
 // ---------------------------------------------------------------
 
-const LINKS = [
-  { href: '/', label: 'Explorer', Icon: Compass },
-  { href: '/host', label: 'Host', Icon: Store },
-]
-
 interface CutoutNavProps {
   surface: CutoutSurface
   homeHref: string
@@ -34,9 +29,9 @@ interface CutoutNavProps {
   showAction?: boolean
 }
 
-export function CutoutNav({ surface, homeHref, showAction = true }: CutoutNavProps) {
-  const pathname = usePathname()
+export function CutoutNav({ surface, showAction = true }: CutoutNavProps) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [childDialogOpen, setChildDialogOpen] = useState(false)
 
   return (
     <>
@@ -83,7 +78,9 @@ export function CutoutNav({ surface, homeHref, showAction = true }: CutoutNavPro
               type="button"
               onClick={() => setMenuOpen(true)}
               aria-label="Open menu"
+              aria-haspopup="dialog"
               aria-expanded={menuOpen}
+              aria-controls="cutout-audience-menu"
               className="cut-btn cut-btn-light flex h-12 w-12 items-center justify-center rounded-full focus-ring"
             >
               <Menu className="h-5 w-5" aria-hidden="true" />
@@ -92,37 +89,18 @@ export function CutoutNav({ surface, homeHref, showAction = true }: CutoutNavPro
         </div>
       </div>
 
-      <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} title="Menu">
-        <nav aria-label="Primary" className="flex flex-col gap-1.5">
-          {LINKS.map(({ href, label, Icon }) => {
-            const active = pathname === href || pathname.startsWith(`${href}/`)
-            return (
-              <Link
-                key={href}
-                href={href}
-                aria-current={active ? 'page' : undefined}
-                onClick={() => setMenuOpen(false)}
-                className={
-                  active
-                    ? 'cut-btn cut-btn-brand flex min-h-14 items-center gap-3.5 rounded-2xl px-5 font-display text-base text-white focus-ring'
-                    : 'flex min-h-14 items-center gap-3.5 rounded-2xl px-5 font-display text-base text-[var(--cut-ink)] transition-colors hover:bg-[var(--cut-card-sunken)] focus-ring'
-                }
-              >
-                <Icon className="h-5 w-5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
-                {label}
-              </Link>
-            )
-          })}
-        </nav>
-        <div className="mt-auto pt-8">
-          <DeviceCta
-            surface={surface}
-            location="side_menu"
-            variant="primary"
-            size="lg"
-            className="w-full"
-          />
-        </div>
+      <SideMenu
+        id="cutout-audience-menu"
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        title="Menu"
+        interactionSuspended={childDialogOpen}
+      >
+        <AudienceMenuContent
+          surface={surface}
+          onDismiss={() => setMenuOpen(false)}
+          onChildDialogOpenChange={setChildDialogOpen}
+        />
       </SideMenu>
     </>
   )

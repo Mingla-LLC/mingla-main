@@ -225,34 +225,41 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //   - the policy audit itself still reports zero errors at 124 PR-family
   //     workflows — the sibling test above, which passes.
   // Every earlier re-derivation is preserved, not replaced.
-  // [TEST-MOD-APPROVED #2882] Digest re-derived, for the same reason as the
-  // #3044/#3047/#3040/#2060/#3060 re-derivations above: this branch adds a test
-  // step to a PR-family workflow: the CI batch lane gains #2882's routing
-  // regression suite alongside the existing batch-runner self-test, plus one
-  // named step that prints the routed selection, so that lane's
-  // non-concurrency document moves and this digest moves with it.
   //
-  // That lane is named INDIRECTLY on purpose. Provider discovery inventories
-  // every tracked file containing a workflow's literal filename, and the result
-  // is frozen in LOCKED_PROVIDER_DISCOVERY_SHA256; writing the name here in full
-  // silently enrols this test file as an external reference of that workflow and
-  // reds the registry validator. Reproduced, then written this way.
-  // There is no
-  // way to wire a CI-executed regression test for the router without touching a
-  // PR-family workflow, so this drift is structural rather than incidental.
+  // [TEST-MOD-APPROVED #3081] Re-derived again, for the same shape as #3065 above.
+  // #3081 added TWO steps (plus their comments) to the existing migrations-and-Deno
+  // lane — an implementor step and a tester step — so a migration regression suite runs
+  // against the fresh-PG17 database that lane already builds. It is wired into that
+  // EXISTING lane rather than given its own workflow because I-2148-CI-TOPOLOGY-BOUNDED
+  // bans a new issue-*.yml lane. That lane is PR-family, so its non-concurrency document
+  // is inside this digest. It is named here by ISSUE, never by its `.y`+`ml` path,
+  // because a workflow FILENAME written in this file is counted by
+  // `discoverWorkflowProviders()` as an external provider reference and moves the frozen
+  // #2148 provider seal. #3081 learned that the expensive way: a workflow filename in a
+  // MIGRATION COMMENT reddened eight class-A gates, and the fix was to stop naming them
+  // rather than to re-derive the seal — so this is the ONLY constant #3081 moves.
   //
   // WHAT WAS VERIFIED BEFORE RE-DERIVING:
-  //   - NO `concurrency:` block, `group:` or `cancel-in-progress:` value is
-  //     touched — diffed byte-for-byte against origin/main and IDENTICAL;
-  //   - the `on:` trigger block is IDENTICAL to origin/main: #2882 adds no
-  //     trigger, no `paths:`, no `paths-ignore:` and no `schedule:`, so the
-  //     PR-family membership of this lane cannot have changed;
-  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED — the
-  //     workflow diff is a single `M`, nothing added, removed or renamed, and
-  //     neither the count nor the identity assertion reported drift; only the
-  //     non-concurrency semantic assertion did;
-  //   - the policy audit itself still reports zero errors at 124 PR-family
-  //     workflows — the sibling test above, which passes.
+  //   - the change is PURELY ADDITIVE: `git diff origin/main...HEAD --
+  //     .github/workflows/` is "1 file changed, 98 insertions(+)", zero deletions, and
+  //     grepping added AND removed lines for `concurrency`, `group:` and
+  //     `cancel-in-progress` returns ZERO. No concurrency block, group expression or
+  //     cancellation value is touched. The `on:` and `concurrency:` blocks of the
+  //     changed lane are byte-identical to origin/main (verified by diff, not by eye).
+  //   - no `paths:` or `paths-ignore:` entry is added — the lane already scopes
+  //     `supabase/migrations/**`, which is where both new fixtures live.
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED: the workflow file
+  //     count is 131 on both sides, the diff is a single `M`, and no workflow was added,
+  //     removed or renamed. Subtests 1 and 4 pass at 124 PR-family / seven non-PR.
+  //   - the policy audit itself still reports zero errors, and every revert-sensitivity
+  //     subtest (5-10) still passes, so the concurrency assertions are intact and still
+  //     go red on reversion.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring the one changed lane to its
+  //     origin/main bytes makes subtest 2 pass again at
+  //     cb761e15c76eb0b50caa06a2d1291b7351e861a27d98e25917e637dd5c57f8b0 — the value
+  //     pinned above — proving nothing else in the tree drifted into this digest.
+  // Every earlier re-derivation is preserved, not replaced.
+  //
   // [TEST-MOD-APPROVED #2882 — TESTER] Re-derived once more, for the same
   // structural reason as the re-derivation immediately above and by the same
   // review. WHAT MOVED: the batch lane's self-test step now also runs #2882's
@@ -281,7 +288,42 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // and is moved here only because wiring the tester's own regression test into
   // CI mechanically moves it. Flagged on the issue for ratification rather than
   // moved quietly.
-  "f98e05c8ef23efa2668f7aed948603e3fe50335c76964dfd0a30b854efcfcd73";
+  //
+  // [TEST-MOD-APPROVED #2882] Re-derived once more, after rebasing
+  // onto #3081. Both closes touched a different PR-family lane in the same window:
+  // #3081 added two steps to the migrations-and-Deno lane, #2882 adds the routing
+  // regression suite, the tester's adversarial suite and one routed-selection step to
+  // the CI batch lane. All three notes above are preserved, not merged or summarised,
+  // per this file's own rule.
+  //
+  // The value below is NEITHER side's constant. After the rebase the tree carries
+  // BOTH lane changes, so the correct digest is a third value neither branch had
+  // computed; taking either existing literal would be a stale pin that merely looked
+  // deliberate. It was re-derived fresh from the merged tree.
+  //
+  // The batch lane is named here by ISSUE, never by its path, for exactly the reason
+  // #3081 records above: a workflow filename written into a tracked file is counted by
+  // `discoverWorkflowProviders()` as an external provider reference and moves the
+  // frozen #2148 provider seal. This branch hit that too, from a comment in a
+  // different file, and fixed it the same way — by not naming the file.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING, running #3081's checklist:
+  //   - the `on:` and `concurrency:` blocks of the changed lane are byte-identical to
+  //     origin/main, verified by diff rather than by eye; no `group:` or
+  //     `cancel-in-progress:` value is touched;
+  //   - no `paths:` or `paths-ignore:` entry is added anywhere;
+  //   - the workflow file count is unchanged on both sides and the workflow diff is a
+  //     single `M` — nothing added, removed or renamed;
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED; only the
+  //     non-concurrency semantic assertion moved;
+  //   - the policy audit still reports zero errors at 124 PR-family workflows, and the
+  //     revert-sensitivity subtests still pass;
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring the CI batch lane to its
+  //     origin/main bytes makes subtest 2 pass again at #3081's
+  //     47dfe3df8b53eb8638295f2ee4b02707b5a445a26bc8018b92bb639f114ecff5, proving
+  //     nothing else in the tree drifted into this digest.
+  // Every earlier re-derivation is preserved, not replaced.
+  "b3c2fbb773c96901aa4b353c879ec6537fed784997cd43dea0c7e88e900910ac";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

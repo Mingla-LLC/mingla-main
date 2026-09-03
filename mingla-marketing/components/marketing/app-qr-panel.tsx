@@ -8,7 +8,8 @@
 // body-scroll-lock + AnimatePresence/reduced-motion) mirror the deleted explorer
 // lead modal so nothing regresses.
 
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import { AppStoreBadges } from '@/components/ui/app-store-badges'
@@ -27,12 +28,19 @@ export function AppQrPanel({ open, onClose }: AppQrPanelProps) {
   const reduced = useMinglaReducedMotion()
   const panelRef = useRef<HTMLDivElement>(null)
   const headingId = useId()
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null)
   // The element focused when the panel opened — restored on close.
   const restoreFocusRef = useRef<HTMLElement | null>(null)
 
+  // Keep SSR and the first hydrated render identical, then place the overlay at
+  // document level so transformed cards cannot trap it in a lower stacking context.
+  useEffect(() => {
+    setPortalHost(document.body)
+  }, [])
+
   // ── Capture the trigger + restore focus to it on close ──────────────────────
   useEffect(() => {
-    if (open) {
+    if (open && portalHost) {
       restoreFocusRef.current =
         (document.activeElement as HTMLElement | null) ?? null
       return
@@ -41,7 +49,7 @@ export function AppQrPanel({ open, onClose }: AppQrPanelProps) {
     const el = restoreFocusRef.current
     if (el && typeof el.focus === 'function') el.focus()
     restoreFocusRef.current = null
-  }, [open])
+  }, [open, portalHost])
 
   // ── ESC closes ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -65,7 +73,7 @@ export function AppQrPanel({ open, onClose }: AppQrPanelProps) {
 
   // ── Move focus into the panel on open (Close button) ─────────────────────────
   useEffect(() => {
-    if (!open) return
+    if (!open || !portalHost) return
     const panel = panelRef.current
     if (!panel) return
     const id = window.setTimeout(
@@ -76,7 +84,7 @@ export function AppQrPanel({ open, onClose }: AppQrPanelProps) {
       reduced ? 0 : 60,
     )
     return () => window.clearTimeout(id)
-  }, [open, reduced])
+  }, [open, portalHost, reduced])
 
   // ── Focus trap: keep Tab / Shift+Tab within the panel ────────────────────────
   useEffect(() => {
@@ -117,7 +125,9 @@ export function AppQrPanel({ open, onClose }: AppQrPanelProps) {
         transition: { type: 'spring' as const, stiffness: 240, damping: 28 },
       }
 
-  return (
+  if (!portalHost) return null
+
+  return createPortal(
     <AnimatePresence>
       {open ? (
         <motion.div
@@ -130,7 +140,7 @@ export function AppQrPanel({ open, onClose }: AppQrPanelProps) {
           role="dialog"
           aria-modal="true"
           aria-labelledby={headingId}
-          className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+          className="fixed inset-0 z-[200] flex items-center justify-center px-4"
           style={{
             background: 'rgba(8,9,12,0.55)',
             backdropFilter: 'blur(12px)',
@@ -192,6 +202,7 @@ export function AppQrPanel({ open, onClose }: AppQrPanelProps) {
           </motion.div>
         </motion.div>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    portalHost,
   )
 }
