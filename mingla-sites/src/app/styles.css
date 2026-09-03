@@ -601,3 +601,18 @@ summary {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* #2830 — the private-preview banner. Sticky and always visible: a preview
+   that scrolls its own "not live" warning off screen is how someone publishes
+   by accident. Only the /preview route renders this element. */
+.preview-banner {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 10px 16px;
+  text-align: center;
+  font-weight: 700;
+  color: #1b1508;
+  background: #dcb877;
+}
