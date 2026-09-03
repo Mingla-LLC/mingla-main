@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -39,6 +40,7 @@ import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
+import { canPerformAction, gateCaptionFor } from "../../utils/permissionGates";
 import {
   ensureBrandBuyersAudience,
   ensureEventBuyersAudience,
@@ -79,6 +81,10 @@ const loadAddPersonSheet = async () => {
   const module = await import("./AddPersonSheet");
   return { default: module.AddPersonSheet };
 };
+const loadBrandBookExportSheet = async () => {
+  const module = await import("./BrandBookExportSheet");
+  return { default: module.BrandBookExportSheet };
+};
 
 // A few older render harnesses predate Expo Router search params. Select the
 // stable hook once at module load so production always uses Expo Router while
@@ -107,15 +113,11 @@ function PeoplePageSkeleton({
   isWideDesktop: boolean;
   width: number;
 }): React.ReactElement {
-  const actionColumns = width > 0 && width < 352 ? 1 : isWideDesktop ? 3 : 2;
+  const actionColumns = width > 0 && width < 352 ? 1 : isWideDesktop ? 4 : 2;
   const actionCell = {
     flexBasis: actionColumns === 1 ? "100%" : actionColumns === 2 ? "48%" : 0,
     flexGrow: 1,
     minWidth: 0,
-  } as const;
-  const lastActionCell = {
-    ...actionCell,
-    flexBasis: actionColumns === 2 ? "100%" : actionCell.flexBasis,
   } as const;
   return (
     <ScrollView
@@ -142,11 +144,28 @@ function PeoplePageSkeleton({
               ))}
             </View>
             <View style={styles.skeletonActions}>
-              {[0, 1, 2].map((action) => (
-                <View key={action} style={action === 2 ? lastActionCell : actionCell}>
-                  <Skeleton width="100%" height={44} radius="full" />
-                </View>
-              ))}
+              <View style={actionCell}>
+                <Button label="Add" leadingIcon="plus" fullWidth disabled onPress={() => undefined} />
+              </View>
+              <View style={actionCell}>
+                <Button label="Import" leadingIcon="upload" variant="secondary" fullWidth disabled onPress={() => undefined} />
+              </View>
+              <View style={actionCell}>
+                <Button
+                  label="Export"
+                  leadingIcon="download"
+                  variant="ghost"
+                  fullWidth
+                  disabled
+                  accessibilityLabel="Export brand contact book"
+                  style={styles.exportAction}
+                  testID="people-export-book-loading"
+                  onPress={() => undefined}
+                />
+              </View>
+              <View style={actionCell}>
+                <Button label="See all" trailingIcon="chevR" variant="secondary" fullWidth disabled onPress={() => undefined} />
+              </View>
             </View>
           </View>
         </View>
@@ -178,20 +197,17 @@ export function PeoplePage(): React.ReactElement {
   const openBrandSwitcher = useMarketingBrandSwitcher();
   const { isWideDesktop, width } = useResponsiveLayout();
   const fabOffset = useStickyFooterOffset();
-  const actionColumns = width > 0 && width < 352 ? 1 : isWideDesktop ? 3 : 2;
+  const actionColumns = width > 0 && width < 352 ? 1 : isWideDesktop ? 4 : 2;
   const regularActionCell = {
     flexBasis: actionColumns === 1 ? "100%" : actionColumns === 2 ? "48%" : 0,
-    flexGrow: 1,
-    minWidth: 0,
-  } as const;
-  const seeAllActionCell = {
-    flexBasis: actionColumns === 1 || actionColumns === 2 ? "100%" : 0,
     flexGrow: 1,
     minWidth: 0,
   } as const;
   const roleResolved = !role.isLoading && !role.isError;
   const authorized =
     isAuthReady && user !== null && roleResolved && role.accepted && role.rank >= 20;
+  const exportAuthorized =
+    authorized && canPerformAction(role.rank, "EXPORT_BRAND_BOOK");
   const book = useBrandPeople(
     brand?.id ?? null,
     null,
@@ -241,6 +257,8 @@ export function PeoplePage(): React.ReactElement {
   const [groupsOpen, setGroupsOpen] = React.useState(false);
   const [createGroupOpen, setCreateGroupOpen] = React.useState(false);
   const [addOpen, setAddOpen] = React.useState(false);
+  const [exportOpen, setExportOpen] = React.useState(false);
+  const [exportMounted, setExportMounted] = React.useState(false);
   const [conflictOpen, setConflictOpen] = React.useState(false);
   const [conflictsResolved, setConflictsResolved] = React.useState(0);
   const [creatingKey, setCreatingKey] = React.useState<string | null>(null);
@@ -249,7 +267,8 @@ export function PeoplePage(): React.ReactElement {
     kind: "success" | "error";
   } | null>(null);
   const consumedReviewSignalRef = React.useRef(false);
-  const modalOpen = bookOpen || groupsOpen || addOpen || conflictOpen || createGroupOpen;
+  const exportButtonRef = React.useRef<React.ElementRef<typeof Pressable> | null>(null);
+  const modalOpen = bookOpen || groupsOpen || addOpen || exportOpen || conflictOpen || createGroupOpen;
 
   React.useEffect(() => {
     capturePeople("people_page_viewed", { surface: "page" });
@@ -262,6 +281,10 @@ export function PeoplePage(): React.ReactElement {
     setCreateGroupOpen(false);
     setBookSearch("");
   }, [brand?.id, isAuthReady, role.accepted, role.rank]);
+  React.useEffect(() => {
+    setExportOpen(false);
+    setExportMounted(false);
+  }, [brand?.id, isAuthReady]);
   React.useEffect(() => {
     if (book.kind==="forbidden"||sheetBook.kind==="forbidden") {
       setBookOpen(false);
@@ -388,6 +411,12 @@ export function PeoplePage(): React.ReactElement {
   const openNewCampaign = React.useCallback((): void => {
     router.push("/marketing/campaigns/compose" as never);
   }, [router]);
+  const closeExport = React.useCallback((): void => {
+    setExportOpen(false);
+    if (Platform.OS === "web") {
+      setTimeout(() => exportButtonRef.current?.focus?.(), 0);
+    }
+  }, []);
 
   if (brand === null) {
     return (
@@ -579,7 +608,25 @@ export function PeoplePage(): React.ReactElement {
                       />
                     )}
                   </View>
-                  <View style={seeAllActionCell}>
+                  <View style={regularActionCell}>
+                    <Button
+                      ref={exportButtonRef}
+                      label="Export"
+                      leadingIcon="download"
+                      variant="ghost"
+                      fullWidth
+                      accessibilityLabel="Export brand contact book"
+                      style={styles.exportAction}
+                      testID="people-export-book"
+                      disabled={!exportAuthorized || book.bookTotal === null}
+                      onPress={() => {
+                        capturePeople("people_book_export_opened", { surface: "page" });
+                        setExportMounted(true);
+                        setExportOpen(true);
+                      }}
+                    />
+                  </View>
+                  <View style={regularActionCell}>
                     <Button
                       label="See all"
                       trailingIcon="chevR"
@@ -593,6 +640,16 @@ export function PeoplePage(): React.ReactElement {
                     />
                   </View>
                 </View>
+                {!exportAuthorized ? (
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    maxFontSizeMultiplier={2}
+                    style={styles.permissionCaption}
+                    testID="people-export-permission-caption"
+                  >
+                    {gateCaptionFor("EXPORT_BRAND_BOOK")}
+                  </Text>
+                ) : null}
               </PeopleBlock>
             </View>
             <View
@@ -743,6 +800,30 @@ export function PeoplePage(): React.ReactElement {
           }
         }}
       />
+      {exportMounted ? (
+        <RetryableLazyErrorBoundary
+          loader={loadBrandBookExportSheet}
+          accessibilityLiveRegion="polite"
+          loadingLabel="Opening export…"
+          componentProps={{
+            visible: exportOpen,
+            onClose: closeExport,
+            brandId: brand.id,
+            contactCount: book.bookTotal,
+            online,
+            authorized: exportAuthorized,
+            permissionCaption: gateCaptionFor("EXPORT_BRAND_BOOK"),
+            onDownloaded: () => setToast({ message: "Download started.", kind: "success" }),
+            onAuthRequired: () => {
+              setExportOpen(false);
+              router.replace("/auth" as never);
+            },
+            onPermissionDenied: () => {
+              void role.refetch();
+            },
+          }}
+        />
+      ) : null}
       {addOpen ? <RetryableLazyErrorBoundary loader={loadAddPersonSheet} accessibilityLiveRegion="polite" loadingLabel="Opening Add person…" componentProps={{ visible: true, onClose: () => setAddOpen(false), brandId: brand.id, online, authorized, onCompleted: addDone }} /> : null}
       <View style={styles.toast}>
         <Toast
@@ -827,6 +908,12 @@ const styles = StyleSheet.create({
     minHeight: 64,
     alignItems: "center",
   },
+  exportAction: {
+    backgroundColor: glass.tint.profileElevated,
+    borderColor: accent.warm,
+    borderRadius: radius.full,
+    borderWidth: 1,
+  },
   createGroupRow: { alignItems: "flex-end" },
   emptyGroup: { alignItems: "center", gap: spacing.sm },
   skeletonSurface: {
@@ -871,6 +958,11 @@ const styles = StyleSheet.create({
   status: {
     ...typography.bodySm,
     color: text.tertiary,
+  },
+  permissionCaption: {
+    ...typography.caption,
+    color: text.tertiary,
+    marginTop: spacing.xs,
   },
   fab: {
     position: "absolute",

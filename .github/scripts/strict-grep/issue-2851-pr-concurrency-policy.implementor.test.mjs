@@ -324,6 +324,14 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     nothing else in the tree drifted into this digest.
   // Every earlier re-derivation is preserved, not replaced.
   //
+  // [TEST-MOD-APPROVED #1776] Re-derived after #1776 added only the
+  // selected-brand export paths, strict guard, and executable rendered/service
+  // tests to the existing People PR-family lane. The workflow count, identity,
+  // and concurrency block are unchanged; removing each #1776 semantic unit
+  // below must move this digest. The value was derived from the combined tree
+  // after rebasing onto #2882, so it deliberately differs from both branches'
+  // pre-rebase values.
+  //
   // [TEST-MOD-APPROVED #2099] Re-derived again, and this one differs in KIND
   // from every note above it. WHAT MOVED: the #2099 pending-venue
   // identity-correction lane gained FOUR `paths:` ENTRIES under its existing
@@ -339,6 +347,16 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // absent from the filter of the lane that RUNS it. Those four inputs decide
   // whether the lane passes but could not fire it, so five merges reddened the
   // job without ever running it. The coupling is now enforced, not remembered.
+  //
+  // REBASED A SECOND TIME, onto #1776 (merged as #3090), which moved this same
+  // constant while this branch was in review — the fifth move in one day. Its
+  // note is preserved immediately above, not merged or summarised. The value
+  // below is NEITHER side's: #1776 computed its digest on a tree without the
+  // #2099 path entries, and this branch computed 7a7bd685... on a tree without
+  // #1776's People-lane entries. The merged tree carries BOTH, so the correct
+  // digest is a sixth value neither branch had computed. Taking either existing
+  // literal would be a stale pin that merely looked deliberate. It was
+  // re-derived fresh from the merged tree, exactly as #2882 records doing above.
   //
   // HONEST DIFFERENCE FROM THE NOTES ABOVE: each of those says "no `paths:`
   // entry is added". THIS ONE ADDS FOUR, deliberately, and that is precisely
@@ -374,11 +392,11 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     why exactly two gates were red here and not the nine #3081 saw.
   //   - THE DELTA IS EXACTLY THIS CHANGE: restoring the one changed lane to its
   //     origin/main bytes makes ALL ELEVEN subtests pass again at
-  //     b3c2fbb773c96901aa4b353c879ec6537fed784997cd43dea0c7e88e900910ac — the
-  //     value this branch replaces, pinned by #2882 on top of #3081 — proving
+  //     ffde6bace3093d203dda909eb61c87751209a0864e11c9e75c4e797dcfa52822 — the
+  //     value this branch replaces, pinned by #1776 immediately above — proving
   //     nothing else in the tree drifted into this digest.
   // Every earlier re-derivation is preserved, not replaced.
-  "7a7bd68531625d03e57b58f0addecf7fecd85bd688233f0ffdfb83169a670040";
+  "9ae7abf406523c46716dbf5ce71a893fbb9277b412533ec522e6544b9d3394c1";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -660,6 +678,34 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "          supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2947_sweep_expiry_filter.test.ts\n"],
     [liveWorkflow("issue", "2079", "paystack", "late", "refund", "identity", "tests"),
       "          supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2947_sweep_limit_boundary.tester_adversarial.test.ts\n"],
+    // [TEST-MOD-APPROVED #1776] Every trigger, guard invocation, and executable
+    // service/rendered test added to the existing People lane is independently
+    // revert-sensitive. This proves the re-bank cannot conceal a lost export
+    // coverage leg while leaving workflow identity and concurrency untouched.
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      '      - "mingla-business/src/services/brandBookExportService.ts"\n'],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      '      - "mingla-business/src/utils/permissionGates.ts"\n'],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      '      - "supabase/functions/brand-people-export/**"\n'],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      '      - "supabase/functions/marketing-*/**"\n'],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      '      - ".github/scripts/strict-grep/issue-1776-marketing-edge-rank-boundary.mjs"\n'],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      '      - ".github/scripts/strict-grep/MANIFEST.json"\n'],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      ["          node .github/scripts/strict-grep/issue-1776-marketing-edge-rank-boundary.mjs --self", "-test\n"].join("")],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      "          node .github/scripts/strict-grep/issue-1776-marketing-edge-rank-boundary.mjs\n"],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      "            src/services/__tests__/brandBookExportService.issue1776.test.ts \\\n"],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      "            src/components/people/__tests__/BrandBookExportSheet.issue1776.happy.test.tsx \\\n"],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      "            src/components/people/__tests__/BrandBookExportSheet.issue1776.tester.adversarial.test.tsx \\\n"],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      "            src/components/people/__tests__/PeoplePage.issue1776.happy.test.tsx \\\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);

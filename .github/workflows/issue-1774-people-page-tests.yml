@@ -16,7 +16,11 @@ on:
       - "mingla-business/src/hooks/useContactImport.ts"
       - "mingla-business/src/lib/search/registry.ts"
       - "mingla-business/src/services/peopleService.ts"
+      - "mingla-business/src/services/brandBookExportService.ts"
       - "mingla-business/src/types/people.ts"
+      - "mingla-business/src/utils/permissionGates.ts"
+      - "supabase/functions/brand-people-export/**"
+      - "supabase/functions/marketing-*/**"
       - "supabase/migrations/20270329001774_issue_1774_people_page.sql"
       - "supabase/migrations/20270330001774_issue_1774_qualify_people_digest.sql"
       - "supabase/migrations/__tests__/issue_1774_people_page.test.sql"
@@ -24,6 +28,8 @@ on:
       - "supabase/migrations/__tests__/issue_1774_people_page.tester.adversarial.test.sql"
       - ".github/scripts/strict-grep/issue-1774-people-page.mjs"
       - ".github/scripts/strict-grep/issue-2024-people-page-layout.mjs"
+      - ".github/scripts/strict-grep/issue-1776-marketing-edge-rank-boundary.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/scripts/strict-grep/__tests__/issue-1774-people-page.tester.test.mjs"
       - ".github/scripts/strict-grep/orch-0891-marketing-performance-budget.mjs"
       - ".github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs"
@@ -72,17 +78,23 @@ jobs:
           node .github/scripts/strict-grep/issue-1774-people-page.mjs
           node .github/scripts/strict-grep/issue-2024-people-page-layout.mjs --self-test
           node .github/scripts/strict-grep/issue-2024-people-page-layout.mjs
+          node .github/scripts/strict-grep/issue-1776-marketing-edge-rank-boundary.mjs --self-test
+          node .github/scripts/strict-grep/issue-1776-marketing-edge-rank-boundary.mjs
           node .github/scripts/strict-grep/__tests__/issue-1774-people-page.tester.test.mjs
           node scripts/audit/marketing-grade-a-contract.mjs
           cd mingla-business
           npx jest --runInBand --runTestsByPath \
             src/services/__tests__/peopleService.issue1774.test.ts \
+            src/services/__tests__/brandBookExportService.issue1776.test.ts \
             src/hooks/marketing/__tests__/useBrandPeople.issue1774.behavior.test.tsx \
             src/components/people/__tests__/PeoplePage.issue1774.happy.test.tsx \
             src/components/people/__tests__/PeoplePage.issue1774.behavior.test.tsx \
             src/components/people/__tests__/PeoplePage.issue1774.tester.adversarial.test.tsx \
             src/components/people/__tests__/PeoplePage.issue2024.happy.test.tsx \
             src/components/people/__tests__/PeoplePage.issue2024.tester.adversarial.test.tsx \
+            src/components/people/__tests__/BrandBookExportSheet.issue1776.happy.test.tsx \
+            src/components/people/__tests__/BrandBookExportSheet.issue1776.tester.adversarial.test.tsx \
+            src/components/people/__tests__/PeoplePage.issue1776.happy.test.tsx \
             src/components/people/__tests__/PeopleSheets.issue1774.behavior.test.ts \
             src/components/people/__tests__/AddPersonSheet.issue1774.behavior.test.tsx \
             src/components/people/__tests__/PersonDetailView.issue1774.behavior.test.tsx \

@@ -18,6 +18,9 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-03 — Brand admins can export only the contact details their selected brand was given from People on iOS, Android, and web, with logged preparation and expiring downloads while Mingla-only circle data stays private (#1776, PR #3090)
+- 2026-09-03 — Pull requests now run only the test suites their change can actually affect, cutting a typical run from all 85 suites to about 2 while every suite still runs in full on merge to main; 46 broken routing entries were repaired along the way, including 24 suites that were not watching the very test files they run (#2882, PR #3082)
+- 2026-09-03 — Re-running database migrations no longer aborts partway: the list of objects required to carry the address-privacy gate is now append-only data instead of code an older migration could silently revert, and the gate itself is unchanged (#3081, PR #3088)
 - 2026-09-03 — Unrelated pull requests no longer fail Mingla Studio's production-only preview build or require production database secrets in Preview; Vercel now skips the CMS unless a governed deployment is requested (#3083, ops)
 - 2026-09-03 — Mingla's marketing page system now has an approved, reusable city catalogue, Explorer guide, Host guide, responsive audience menu, and device-aware app journeys ready for the ten-city search rollout (#2990, PR #3064)
 - 2026-09-02 — Operators can close the confirmed no-current-buyer attendance recovery set without contacting anyone, while preserving every ticket and audit record and refusing any changed or active-buyer state (#3060, PR #3062)
