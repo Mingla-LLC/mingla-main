@@ -179,6 +179,35 @@
   .city-grid { grid-template-columns: 1fr; }
 }
 
+@media (max-width: 359px) {
+  .city-intent-list > li,
+  .city-host-links > li { width: 100%; min-width: 0; max-width: 100%; }
+  .city-intent-list a,
+  .city-host-links a {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    border-radius: 18px;
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .city-hub-root .cut-btn {
+    width: 100%;
+    height: auto;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 52px;
+    padding-block: 10px 12px;
+    text-align: center;
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+  }
+}
+
 @media (hover: hover) and (pointer: fine) {
   .city-hub-root .cut-card-interactive:hover,
   .city-hub-root .cut-btn:hover { transform: translateY(-2px); }
