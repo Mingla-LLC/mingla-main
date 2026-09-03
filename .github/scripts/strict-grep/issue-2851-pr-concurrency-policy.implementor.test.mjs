@@ -396,7 +396,58 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     value this branch replaces, pinned by #1776 immediately above — proving
   //     nothing else in the tree drifted into this digest.
   // Every earlier re-derivation is preserved, not replaced.
-  "9ae7abf406523c46716dbf5ce71a893fbb9277b412533ec522e6544b9d3394c1";
+  //
+  // [TEST-MOD-APPROVED #2909] Re-derived after a 44-commit rebase. WHAT MOVED:
+  // #2909 adds ONE job to each of two PR-family lanes -- the always-on
+  // append-only lane gains the pre-merge "is `main` green" check, and the
+  // Mingla-host strict-grep lane gains the post-push red-`main` alert. Both
+  // lanes are PR-family, so their non-concurrency documents are inside this
+  // digest and it MUST move. Each lane is named here by ISSUE and by role,
+  // never by its `.y`+`ml` path, for the reason #3081, #2882 and #2099 all record
+  // above: a workflow FILENAME written into a tracked file is counted by
+  // `discoverWorkflowProviders()` as an external provider reference and moves
+  // the frozen #2148 provider seal.
+  //
+  // The value below is NEITHER this branch's original pin NOR origin/main's.
+  // The branch sat unmerged while this constant moved FIVE times in one day
+  // (#3065, #3081, #3082, #3094, #3090), so every literal the branch carried
+  // was stale on arrival; taking any of them would have been a stale pin that
+  // merely looked deliberate. It was re-derived fresh from the rebased tree.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING, running #3081's checklist:
+  //   - CONTAMINATION CHECKED FIRST, per the #3081 lesson: every ADDED line in
+  //     this branch's non-workflow files was grepped for a `.y`+`ml` literal. ZERO
+  //     hits, so the frozen provider seal does not move.
+  //   - the change is PURELY ADDITIVE: the two workflow diffs are "95
+  //     insertions(+), 0 deletions" and "44 insertions(+), 0 deletions", both
+  //     `M`. Nothing was added, removed or renamed, and the workflow file count
+  //     is 131 on BOTH sides.
+  //   - grepping added AND removed lines for `concurrency`, `group:` and
+  //     `cancel-in-progress` returns ZERO, and both lanes' `concurrency:`
+  //     blocks are byte-identical to origin/main -- diffed, not eyeballed.
+  //   - HONEST DIFFERENCE FROM MOST NOTES ABOVE: this change DOES add `paths:`
+  //     entries, to both lanes, deliberately -- that is part of the semantic
+  //     delta being pinned. What is NOT added is a `paths:`/`paths-ignore:` KEY,
+  //     and no trigger EVENT changed: both lanes declare `pull_request` and
+  //     `push` on both sides, so PR-family membership is untouched.
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED. This was
+  //     not assumed from the shape of the diff: subtests 1 and 4 PASS at 124
+  //     PR-family and seven non-PR against the changed tree.
+  //   - the policy audit still reports zero errors, and every revert-
+  //     sensitivity subtest (5-10) still passes, so the concurrency assertions
+  //     are intact and still go red on reversion. 10 of 11 subtests passed
+  //     before this re-pin; only subtest 2 was red.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring BOTH lanes to their
+  //     origin/main bytes makes ALL ELEVEN subtests pass again at
+  //     9ae7abf406523c46716dbf5ce71a893fbb9277b412533ec522e6544b9d3394c1 --
+  //     the value pinned by #2099 immediately above -- proving nothing else in
+  //     the tree drifted into this digest. The re-derived value below is stable
+  //     across two consecutive runs.
+  //
+  // TRACKED AS #3095, which argues this pin should not exist at all. Until that
+  // lands it is re-derived properly rather than left stale.
+  // Every earlier re-derivation is preserved, not replaced.
+  "0a79741a37768afce2b363b43050480f0fd22e1b5e2182b13301a5d4d29f8640";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
