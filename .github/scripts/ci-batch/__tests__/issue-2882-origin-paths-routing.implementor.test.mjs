@@ -17,7 +17,7 @@ import {
   REPO_ROOT, loadManifest, expectedPrimarySuites,
   routingContext, selectSuites, renderRoutingLine, routingReport, ROUTED_EVENTS,
 } from "../run-suite-batch.mjs";
-import { suiteOriginPatterns } from "../validate-manifest-v2.mjs";
+import { suiteOriginPatterns, validateOriginPathLiveness } from "../validate-manifest-v2.mjs";
 import { pathMatches } from "../select-phase3b-suites.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -303,4 +303,58 @@ test("#2882 SC-8's exemption is enumerated and cannot quietly grow", () => {
   const withExempt = unwatchedExecutedPairs(manifest, trackedFileSet(), { includeExemptWave: true });
   assert.ok(withExempt.length > 0,
     "the exempt wave no longer fails the property — delete SC8_EXEMPT_WAVE and this test");
+});
+
+// ---------------------------------------------------------------------------
+// The liveness scan is INDEXED, not naive. Same answer, same strictness, less
+// work — proven here rather than asserted.
+//
+// The naive form asked `pathMatches(pattern, file)` for every (pattern, file)
+// pair: 747 patterns against 9,015 tracked files is 6.7M calls, each of which
+// re-validates the candidate by spreading it into a character array to count
+// `*`. That took the validator from ~10s to ~33s and, across the 18 class-A
+// gates that load it, took class A past its 890s kill.
+// ---------------------------------------------------------------------------
+test("#2882 the indexed liveness scan agrees with a naive pathMatches sweep", () => {
+  const tracked = [...trackedFileSet()];
+  // A fixture covering every branch of the grammar, live and dead, plus the
+  // shapes the index treats specially: a literal (answered from a Set), a
+  // descendants glob and a terminal-prefix glob (answered from a first-segment
+  // bucket), and a bare filename with no `/` at all (no bucket applies, so the
+  // index must fall back to the whole tree rather than silently matching none).
+  const fixtures = [
+    "mingla-business/package.json",
+    "mingla-business/this-file-does-not-exist.json",
+    "mingla-business/src/components/stay/**",
+    "mingla-business/no-such-directory-at-all/**",
+    "mingla-business/scripts/ci/__tests__/issue1509_*",
+    "mingla-business/scripts/ci/__tests__/no_such_prefix_*",
+    "AGENTS.md",
+    "NoSuchRootFile.md",
+  ];
+  const suites = fixtures.map((pattern, index) => ({
+    ...manifest.suites.find((candidate) => candidate.class === "node20-noinstall"),
+    id: `issue-2882-liveness-fixture-${index}`,
+    originPaths: [pattern],
+  }));
+
+  const naiveDead = fixtures.filter((pattern) => !tracked.some((file) => pathMatches(pattern, file)));
+  const indexed = validateOriginPathLiveness({ suites }, tracked)
+    .map((message) => message.slice(message.lastIndexOf(": ") + 2));
+
+  assert.deepEqual(indexed.sort(), naiveDead.sort(),
+    "the indexed scan and the naive sweep disagree about which patterns are dead");
+  // The fixture must actually exercise both outcomes, or this proves nothing.
+  assert.equal(naiveDead.length, 4, `expected 4 dead fixtures, got ${naiveDead.length}: ${naiveDead.join(", ")}`);
+  assert.equal(fixtures.length - naiveDead.length, 4, "expected 4 live fixtures");
+});
+
+test("#2882 the indexed liveness scan still validates every candidate path", () => {
+  // pathMatches() validates its candidate on every call; the indexed scan hoists
+  // that to one pass over the tree. The GUARANTEE must survive the hoist: an
+  // unsafe path in the candidate set still throws rather than being matched.
+  assert.throws(() => validateOriginPathLiveness(
+    { suites: [{ id: "x", originPaths: ["a/**"] }] },
+    ["a/b.ts", "../escaping/path.ts"],
+  ), /unsafe origin path/);
 });

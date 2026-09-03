@@ -36,12 +36,34 @@ export function parseOriginPattern(value) {
   throw new Error(`unsupported origin wildcard: ${value}`);
 }
 
+/**
+ * [#2882] The three comparisons, compiled ONCE per pattern.
+ *
+ * `pathMatches` re-parsed both sides on every call, which is fine for a diff of
+ * a few files and catastrophic for a liveness sweep: 747 patterns against 9,015
+ * tracked files is 6.7 MILLION `parseOriginPattern(candidate)` calls, each of
+ * which spreads the string into a character array to count `*`. That took the
+ * validator from 0.23s to 32.9s and, multiplied across the 18 class-A gates that
+ * load it, took class A from 407s to 916s — past its 890s kill.
+ *
+ * This is the SAME matcher, not a second one: `pathMatches` is now defined in
+ * terms of it, so the grammar has exactly one implementation and the callers
+ * that match one path keep byte-identical behaviour. A caller matching MANY
+ * paths against one pattern compiles once and pays the per-candidate cost only.
+ */
+export function compileOriginPattern(pattern) {
+  const parsed = parseOriginPattern(pattern);
+  if (parsed.mode === "literal-v1") return (candidate) => candidate === parsed.value;
+  if (parsed.mode === "descendants-v1") {
+    const prefix = `${parsed.value}/`;
+    return (candidate) => candidate.startsWith(prefix);
+  }
+  return (candidate) => candidate.startsWith(parsed.value) && !candidate.slice(parsed.value.length).includes("/");
+}
+
 export function pathMatches(pattern, candidate) {
   parseOriginPattern(candidate); // changed paths obey the same repository-relative safety grammar
-  const parsed = parseOriginPattern(pattern);
-  if (parsed.mode === "literal-v1") return candidate === parsed.value;
-  if (parsed.mode === "descendants-v1") return candidate.startsWith(`${parsed.value}/`);
-  return candidate.startsWith(parsed.value) && !candidate.slice(parsed.value.length).includes("/");
+  return compileOriginPattern(pattern)(candidate);
 }
 
 export function parseNulPaths(buffer) {

@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 // functions. The import is circular (that module imports this one) and is safe:
 // every binding either side reads is a hoisted function declaration, and neither
 // module body touches the other's exports at evaluation time.
-import { parseOriginPattern, pathMatches } from "./select-phase3b-suites.mjs";
+import { compileOriginPattern, parseOriginPattern } from "./select-phase3b-suites.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_ROOT = path.resolve(HERE, "../../..");
@@ -647,22 +647,47 @@ export function validateOriginPathShapes(rawManifest) {
 export function validateOriginPathLiveness(decodedManifest, tracked) {
   const errors = [];
   const exempt = new Set(STALE_PROVENANCE_ALLOWLIST.map((item) => `${item.suite}\0${item.pattern}`));
+  // Every candidate obeys the repository-relative safety grammar, checked ONCE
+  // here instead of once per (pattern, file) pair. `pathMatches` validates its
+  // candidate on every call, which is correct for matching one path and is what
+  // made the naive sweep 6.7M validations deep; the guarantee is identical,
+  // the work is linear in the tree rather than in tree x registry.
+  for (const file of tracked) parseOriginPattern(file);
+  const trackedSet = new Set(tracked);
+  // Bucket by first path segment so a `prefix/**` or `prefix*` pattern scans its
+  // own subtree instead of the whole tree. Literals never scan at all.
+  const bySegment = new Map();
+  for (const file of tracked) {
+    const segment = file.slice(0, file.indexOf("/") + 1 || file.length);
+    let bucket = bySegment.get(segment);
+    if (!bucket) bySegment.set(segment, bucket = []);
+    bucket.push(file);
+  }
+  const candidatesFor = (pattern) => {
+    const cut = pattern.indexOf("/");
+    if (cut < 0) return tracked;                       // a bare filename can live anywhere
+    return bySegment.get(pattern.slice(0, cut + 1)) || [];
+  };
   for (const suite of decodedManifest.suites || []) {
     for (const pattern of suite.originPaths || []) {
       if (typeof pattern !== "string") continue; // F2 already named this one
       if (pattern.startsWith(WORKFLOW_PROVENANCE_PREFIX)) continue;
       if (exempt.has(`${suite.id}\0${pattern}`)) continue;
       let parsed = null;
+      let matches = null;
       try {
         parsed = parseOriginPattern(pattern);
+        matches = compileOriginPattern(pattern);
       } catch (error) {
         fail(errors, `${suite.id}: originPaths pattern does not parse: ${pattern} (${error.message})`);
         continue;
       }
-      void parsed;
-      if (!tracked.some((file) => pathMatches(pattern, file))) {
-        fail(errors, `${suite.id}: originPaths pattern matches no tracked file: ${pattern}`);
-      }
+      // Liveness asks EXISTENCE, not a count, so stop at the first hit. A
+      // literal answers from the index without touching the tree at all.
+      const live = parsed.mode === "literal-v1"
+        ? trackedSet.has(parsed.value)
+        : candidatesFor(pattern).some(matches);
+      if (!live) fail(errors, `${suite.id}: originPaths pattern matches no tracked file: ${pattern}`);
     }
   }
   return errors;
