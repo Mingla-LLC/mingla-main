@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Fragment, type ReactNode } from 'react'
+import { Fragment } from 'react'
 import { LAUNCH_CITIES, REVIEW_STATUS, type FaqEntry, type SourceEntry } from '@/content/page-system/shared'
 
 export function SectionIntro({
@@ -132,27 +132,6 @@ export function SemanticFlow({
       </ol>
       <p>{conclusion}</p>
     </article>
-  )
-}
-
-export function DemoDisclosure({
-  title = 'Illustrative product demo',
-  description,
-  children,
-}: {
-  readonly title?: string
-  readonly description: string
-  readonly children: ReactNode
-}) {
-  return (
-    <section className="ps-section ps-demo-section" aria-labelledby="demo-heading">
-      <div className="ps-demo-disclosure">
-        <p className="ps-eyebrow">{title}</p>
-        <h2 id="demo-heading">See the method without mistaking fiction for fact.</h2>
-        <p>{description}</p>
-      </div>
-      {children}
-    </section>
   )
 }
 

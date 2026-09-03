@@ -212,10 +212,6 @@ export function HostSellThroughChart() {
         </motion.div>
       </AnimatePresence>
 
-      <p className="mt-5 text-[11px] leading-relaxed text-text-muted">
-        Every figure in this panel is invented to demonstrate the surface. Mingla does not publish
-        average sell-through, and this is not a benchmark or a projection.
-      </p>
     </ChartEntrance>
   )
 }

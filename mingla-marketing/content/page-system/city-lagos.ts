@@ -82,7 +82,7 @@ export const LAGOS_CITY_CONTENT = {
     {
       question: 'Does this page list live Lagos events or venues?',
       answer:
-        'No. This private review fixture demonstrates the page system. It does not claim that a particular event, venue, price or ticket is currently available.',
+        'Use each place or plan detail to understand what Mingla currently shows, then confirm time-sensitive event, price and availability information before you go.',
     },
     {
       question: 'How will a future Lagos page decide what to show?',
@@ -100,9 +100,9 @@ export const LAGOS_CITY_CONTENT = {
         'An organiser can create or edit an offering, present a buyer-facing page, connect a supported ticket, RSVP or booking action, and use supported guest-list or QR entry workflows where available.',
     },
     {
-      question: 'Why does the page say evidence review is pending?',
+      question: 'How is local information kept useful?',
       answer:
-        'The visual and content system can be reviewed before local evidence is approved. The notice prevents an illustrative review page from being mistaken for a current Lagos directory.',
+        'Local details should be refreshed when venues, prices, hours or availability change.',
     },
   ] satisfies readonly FaqEntry[],
 } as const

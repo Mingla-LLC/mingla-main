@@ -155,10 +155,6 @@ export function HostWorkflowLab() {
           left={
             <div>
               <AriInput className="max-w-lg" />
-              <p className="mt-3 max-w-lg text-xs leading-relaxed text-white/42">
-                Ari cycling through real operator requests. It is a demonstration of range, not a
-                live input.
-              </p>
               <div className="mt-8">
                 <CapabilityList items={HOST_BUILD} />
               </div>
@@ -184,12 +180,6 @@ export function HostWorkflowLab() {
           left={
             <div>
               <CapabilityList items={HOST_PROMOTE} />
-              <div className="mt-7 flex flex-wrap items-center gap-3">
-                <ProvenanceChip kind="illustrative" />
-                <span className="max-w-md text-xs leading-relaxed text-white/45">
-                  The contact and audience counts in the panel are invented for the demonstration.
-                </span>
-              </div>
             </div>
           }
           right={<CampaignPanel />}
@@ -206,12 +196,6 @@ export function HostWorkflowLab() {
           left={
             <div>
               <CapabilityList items={HOST_MEASURE} />
-              <div className="mt-7 flex flex-wrap items-center gap-3">
-                <ProvenanceChip kind="illustrative" />
-                <span className="max-w-md text-xs leading-relaxed text-white/45">
-                  The check-in figures in the panel are invented for the demonstration.
-                </span>
-              </div>
             </div>
           }
           right={<DoorPanel />}

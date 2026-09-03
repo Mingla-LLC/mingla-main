@@ -79,7 +79,6 @@ export interface HostGuideRecord {
   readonly heroMedia: {
     readonly src: string
     readonly alt: string
-    readonly caption: string
   }
   readonly creationNoun: string
   readonly hostUrl: string

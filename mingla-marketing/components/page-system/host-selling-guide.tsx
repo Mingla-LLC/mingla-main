@@ -1,4 +1,5 @@
 import type { HostGuideRecord } from '@/content/page-system/shared'
+import { DeviceCta } from '@/components/cutout'
 import { GrowthToolEmbed } from './growth-tool-embed'
 
 export function HostSellingGuide({ guide }: { readonly guide: HostGuideRecord }) {
@@ -12,11 +13,20 @@ export function HostSellingGuide({ guide }: { readonly guide: HostGuideRecord })
           </div>
           <h1>{guide.title}</h1>
           <p>{guide.subhead}</p>
-          <a href="#host-guide-tool" className="ps-primary-action">Try the {guide.toolLabel}</a>
+          <div className="ps-host-guide-actions">
+            <a href="#host-guide-tool" className="ps-primary-action">Try the {guide.toolLabel}</a>
+            <DeviceCta
+              surface="host"
+              location="page_system_host_guide_hero_app"
+              phoneLabel="Download the Host app"
+              desktopLabel="Use Mingla Host on web"
+              variant="ink"
+              className="ps-host-guide-app-action"
+            />
+          </div>
         </div>
         <figure className="ps-host-guide-photo">
           <img src={guide.heroMedia.src} alt={guide.heroMedia.alt} width="1600" height="1211" />
-          <figcaption>{guide.heroMedia.caption}</figcaption>
         </figure>
       </header>
 

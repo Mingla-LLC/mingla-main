@@ -16,7 +16,6 @@ export const HOST_GUIDE_FAMILY: Record<HostGuideKind, HostGuideRecord> = {
     heroMedia: {
       src: '/marketing/host-icp/events-hall.jpg',
       alt: 'An event hall prepared for guests',
-      caption: 'Illustrative concept image — not a real event or customer.',
     },
     creationNoun: 'event',
     hostUrl: 'https://host.usemingla.com/event/create',
@@ -38,7 +37,6 @@ export const HOST_GUIDE_FAMILY: Record<HostGuideKind, HostGuideRecord> = {
     heroMedia: {
       src: '/marketing/host-icp/tours-trail.jpg',
       alt: 'Travellers walking together on an outdoor trail',
-      caption: 'Illustrative trip-planning image — not a customer or booking result.',
     },
     creationNoun: 'trip',
     hostUrl: 'https://host.usemingla.com/trip/create',
@@ -60,7 +58,6 @@ export const HOST_GUIDE_FAMILY: Record<HostGuideKind, HostGuideRecord> = {
     heroMedia: {
       src: '/marketing/host-icp/venues-space.jpg',
       alt: 'A venue arranged for a hosted gathering',
-      caption: 'Illustrative venue image — not a customer or booking result.',
     },
     creationNoun: 'venue',
     hostUrl: 'https://host.usemingla.com/venue/create',
@@ -82,7 +79,6 @@ export const HOST_GUIDE_FAMILY: Record<HostGuideKind, HostGuideRecord> = {
     heroMedia: {
       src: '/marketing/host-icp/creators-popup.jpg',
       alt: 'An independent host preparing a pop-up experience',
-      caption: 'Illustrative experience image — not a customer or sales result.',
     },
     creationNoun: 'experience',
     hostUrl: 'https://host.usemingla.com/experience/create',

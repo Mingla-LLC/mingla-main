@@ -1,4 +1,5 @@
 import type { CataloguePlace } from '@/content/page-system/shared'
+import { DeviceCta } from '@/components/cutout'
 import { LAGOS_EDITORIAL_SECTIONS, LAGOS_QUICK_FACTS } from '@/content/page-system/lagos-editorial'
 import { ExplorerCatalogueCard } from './explorer-catalogue-card'
 
@@ -68,7 +69,7 @@ export function CityEditorialGuide({ places }: { readonly places: readonly Catal
             {LAGOS_QUICK_FACTS.map((fact) => (
               <article key={fact.href}>
                 <p>{fact.fact}</p>
-                <a href={fact.href} target="_blank" rel="noreferrer">{fact.source} · checked {fact.checkedAt}</a>
+                <a href={fact.href} target="_blank" rel="noreferrer">{fact.source}</a>
               </article>
             ))}
           </div>
@@ -76,9 +77,15 @@ export function CityEditorialGuide({ places }: { readonly places: readonly Catal
 
         <section className="ps-guide-conversion" aria-labelledby="guide-conversion-heading">
           <p className="ps-eyebrow">Keep exploring</p>
-          <h2 id="guide-conversion-heading">See all 50 Lagos picks.</h2>
-          <p>Switch between real places and ready-made plans in the private city catalogue.</p>
-          <a href={CITY_PATH} className="ps-primary-action">See all Lagos picks</a>
+          <h2 id="guide-conversion-heading">Explore more of Lagos</h2>
+          <p>Find more places, build a plan and bring the group together in Mingla.</p>
+          <DeviceCta
+            surface="explorer"
+            location="page_system_explorer_guide_conversion"
+            label="Download the Explorer app"
+            variant="quiet"
+            className="ps-guide-conversion-cta"
+          />
         </section>
       </div>
     </>

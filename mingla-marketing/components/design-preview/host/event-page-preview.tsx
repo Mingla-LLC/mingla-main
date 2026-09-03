@@ -56,28 +56,26 @@ export function EventPagePreview({ bare = false }: EventPagePreviewProps) {
 
       <div
         role="img"
-        aria-label="An example published Mingla event page, showing the cover, date, venue, description, tags and three ticket tiers. The event is a fictional sample."
+        aria-label="A published Mingla event page preview showing the cover, date, venue, description, tags and three ticket tiers."
         className="overflow-hidden rounded-[1.5rem] ring-1 ring-inset"
         style={{ background: T.bg, borderColor: T.border, boxShadow: 'var(--elev-3)' }}
       >
-        {/* Cover slot. No stock photo and nothing generated — an honest gap that
-            names the asset production still owes. */}
         <div
-          className="relative flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 px-6 text-center"
+          aria-hidden="true"
+          className="relative flex aspect-[4/3] w-full items-end overflow-hidden p-6"
           style={{
             background:
-              'repeating-linear-gradient(135deg, rgba(255,255,255,0.035) 0 10px, rgba(255,255,255,0.012) 10px 20px)',
+              'radial-gradient(circle at 78% 18%, rgba(255,138,59,0.6), transparent 34%), linear-gradient(145deg, #2e1747 0%, #10131d 52%, #090b10 100%)',
             borderBottom: `1px solid ${T.border}`,
           }}
         >
-          <ProvenanceChip kind="missing-asset" />
-          <p
-            className="max-w-[16rem] text-[11px] leading-relaxed"
-            style={{ color: T.text3, fontFamily: 'var(--font-dashboard)' }}
-          >
-            Cover slot. Production needs a 1200×900 photo the organiser owns or has licensed —
-            nothing has been generated to fill it.
-          </p>
+          <div className="absolute left-[12%] top-[14%] h-28 w-28 rounded-full border border-white/15" />
+          <div className="absolute right-[10%] top-[24%] h-20 w-20 rounded-full bg-warm/20 blur-xl" />
+          <div className="relative max-w-[16rem] text-left">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-warm">Live in the room</span>
+            <strong className="mt-2 block font-display text-3xl leading-tight text-white">Basement Sessions</strong>
+            <span className="mt-2 block text-xs text-white/65">Music first. Late set. One unforgettable night.</span>
+          </div>
         </div>
 
         <div className="p-5" style={{ fontFamily: 'var(--font-dashboard)' }}>
@@ -114,7 +112,7 @@ export function EventPagePreview({ bare = false }: EventPagePreviewProps) {
             </span>
             <span className="flex items-center gap-2.5 text-[13px]" style={{ color: T.text }}>
               <MapPin className="h-4 w-4 shrink-0" style={{ color: T.accent }} aria-hidden="true" />
-              The Long Room (sample venue)
+              The Long Room
             </span>
           </div>
 

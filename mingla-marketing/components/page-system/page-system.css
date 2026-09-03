@@ -857,8 +857,8 @@
 .ps-guide-hero-photo, .ps-host-guide-photo { position: relative; margin: 0; overflow: hidden; border-radius: 40px; background: var(--page-obsidian); box-shadow: 0 30px 70px rgba(20,18,15,.2); }
 .ps-guide-hero-photo { min-height: 480px; aspect-ratio: 4 / 3; }
 .ps-guide-hero-photo img, .ps-host-guide-photo img { width: 100%; height: 100%; position: absolute; inset: 0; object-fit: cover; }
-.ps-guide-hero-photo::after, .ps-host-guide-photo::after { content: ''; position: absolute; inset: 40% 0 0; background: linear-gradient(transparent, rgba(5,5,7,.9)); }
-.ps-guide-hero-photo figcaption, .ps-host-guide-photo figcaption { position: absolute; z-index: 2; inset: auto 22px 22px; color: white; }
+.ps-guide-hero-photo::after { content: ''; position: absolute; inset: 40% 0 0; background: linear-gradient(transparent, rgba(5,5,7,.9)); }
+.ps-guide-hero-photo figcaption { position: absolute; z-index: 2; inset: auto 22px 22px; color: white; }
 .ps-guide-hero-photo figcaption span, .ps-guide-hero-photo figcaption strong { display: block; }
 .ps-guide-hero-photo figcaption span { color: var(--page-orange); font-size: 11px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
 .ps-guide-hero-photo figcaption strong { margin-top: 6px; font: 400 1.45rem/1.2 var(--font-mochiy), sans-serif; }
@@ -875,11 +875,14 @@
 .ps-guide-conversion p, .ps-host-conversion p { max-width: 620px; color: rgba(255,255,255,.76); line-height: 1.55; }
 .ps-guide-conversion .ps-eyebrow, .ps-host-conversion .ps-eyebrow { color: white; }
 .ps-guide-conversion .ps-primary-action, .ps-host-conversion .ps-primary-action { color: var(--page-ink); background: white; }
+.page-system-root .ps-guide-conversion-cta { width: fit-content; margin-top: 30px; }
 
 .ps-host-lockup { margin-bottom: 22px; display: flex; align-items: center; gap: 13px; color: var(--page-action-bg); font-size: 12px; font-weight: 900; letter-spacing: .13em; text-transform: uppercase; }
 .ps-host-lockup img { width: 58px; height: 58px; border-radius: 17px; }
+.ps-host-guide-actions { width: min(100%, 390px); margin-top: 30px; display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+.ps-host-guide-actions .ps-primary-action { width: 100%; margin-top: 0; }
+.page-system-root .ps-host-guide-app-action { width: 100%; justify-content: center; }
 .ps-host-guide-photo { min-height: 600px; }
-.ps-host-guide-photo figcaption { max-width: 330px; color: rgba(255,255,255,.78); font-size: 12px; line-height: 1.45; }
 .ps-growth-tool { max-width: 1040px; margin-block: 74px; padding-inline: 40px; border-radius: 42px; color: white; background: var(--page-obsidian); }
 .ps-growth-tool-frame { overflow: hidden; padding: clamp(72px,8vw,96px) clamp(16px,3vw,36px) clamp(32px,5vw,52px); border: 1px solid rgba(255,255,255,.11); border-radius: 28px; background: rgba(255,255,255,.025); }
 .ps-tool-limitation { margin: 18px 0 0; color: rgba(255,255,255,.56); font-size: 12px; line-height: 1.55; }
@@ -937,6 +940,8 @@
   .ps-guide-conversion, .ps-host-conversion, .ps-growth-tool { margin-block: 36px; border-radius: 0; }
   .ps-growth-tool { padding-inline: 24px; }
   .ps-growth-tool-frame { padding: 64px 16px 36px; }
+  .page-system-root .ps-guide-conversion-cta { width: 100%; }
+  .ps-host-guide-actions { width: 100%; }
   .ps-host-conversion { align-items: flex-start; flex-direction: column; }
   .ps-host-conversion .ps-primary-action { width: 100%; }
 }

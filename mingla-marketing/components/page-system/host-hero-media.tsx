@@ -5,9 +5,9 @@ import { useEffect, useRef, useState } from 'react'
 type MediaState = 'pending' | 'loaded' | 'failed'
 
 const STATUS_COPY: Record<MediaState, string> = {
-  pending: 'Loading the illustrative Mingla Host concept image.',
-  loaded: 'The illustrative Mingla Host concept image loaded.',
-  failed: 'The concept image could not load. A branded Mingla Host fallback is shown.',
+  pending: 'Loading the Mingla Host preview image.',
+  loaded: 'The Mingla Host preview image loaded.',
+  failed: 'The image could not load. A branded Mingla Host fallback is shown.',
 }
 
 export function HostHeroMedia() {
@@ -30,7 +30,7 @@ export function HostHeroMedia() {
         <div
           className="ps-host-media-fallback"
           role="img"
-          aria-label="Mingla Host event-planning illustration"
+          aria-label="Mingla Host event-planning preview"
           aria-hidden={mediaState !== 'failed'}
         >
           <img src="/brand/mingla-business-logo.svg" alt="" width="82" height="82" />
@@ -45,7 +45,7 @@ export function HostHeroMedia() {
           ref={imageRef}
           className="ps-host-concept-image"
           src="/marketing/host-icp/events-hall.jpg"
-          alt="A fictional event-hall scene used to illustrate an organiser preparing an experience"
+          alt="An event hall prepared for guests"
           width="1600"
           height="1211"
           draggable="false"
@@ -60,7 +60,6 @@ export function HostHeroMedia() {
           {STATUS_COPY[mediaState]}
         </span>
       </div>
-      <figcaption>Illustrative concept image — not a real event, customer or performance claim.</figcaption>
     </figure>
   )
 }
