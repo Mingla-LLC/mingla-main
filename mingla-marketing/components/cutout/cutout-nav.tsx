@@ -1,5 +1,5 @@
 'use client'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { Menu } from 'lucide-react'
 import { SideMenu } from '@/components/ui/side-menu'
@@ -32,7 +32,6 @@ interface CutoutNavProps {
 export function CutoutNav({ surface, showAction = true }: CutoutNavProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [childDialogOpen, setChildDialogOpen] = useState(false)
-  const menuButtonRef = useRef<HTMLButtonElement>(null)
 
   return (
     <>
@@ -76,7 +75,6 @@ export function CutoutNav({ surface, showAction = true }: CutoutNavProps) {
             ) : null}
 
             <button
-              ref={menuButtonRef}
               type="button"
               onClick={() => setMenuOpen(true)}
               aria-label="Open menu"

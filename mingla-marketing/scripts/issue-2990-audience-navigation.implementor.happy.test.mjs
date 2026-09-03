@@ -87,3 +87,15 @@ assert(packageJson.scripts.build.includes(`${guardCommand} && next build`),
 process.stdout.write('PASS private routes and build-time regression enforcement remain intact\n')
 
 process.stdout.write('PASS issue #2990 audience navigation implementor happy-path guard\n')
+
+assert.match(sideMenu, /reduced \? 0 : 60/)
+assert.match(sideMenu, /h-11 w-11 items-center justify-center rounded-full/)
+assert.doesNotMatch(sideMenu, /<span>Close<\/span>|min-h-11[^\n]*px-4/)
+assert.doesNotMatch(cutoutNav, /useRef|menuButtonRef|ref=\{menuButtonRef\}/)
+assert.doesNotMatch(pageSystemNav, /useRef|menuButtonRef|ref=\{menuButtonRef\}/)
+assert.match(audienceMenu, /!text-\[var\(--cut-ink\)\]/)
+assert.doesNotMatch(audienceMenu, /#14120f/)
+process.stdout.write('PASS reviewed close control, motion timing, focus ownership and token contract\n')
+assert.match(sideMenu, /aria-label="Close menu"[\s\S]*<X className="h-5 w-5" aria-hidden="true"/)
+assert.match(sideMenu, /\}, \[open, reduced\]\)/)
+process.stdout.write('PASS circular close semantics and reduced-motion dependency remain pinned\n')

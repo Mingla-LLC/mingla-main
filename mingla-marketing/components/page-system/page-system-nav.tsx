@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { Menu } from 'lucide-react'
 import { AudienceMenuContent } from '@/components/cutout/audience-menu-content'
 import { type CutoutSurface } from '@/components/cutout/device-cta'
@@ -10,7 +10,6 @@ import { SideMenu } from '@/components/ui/side-menu'
 export function PageSystemNav({ surface }: { readonly surface: CutoutSurface }) {
   const [open, setOpen] = useState(false)
   const [childDialogOpen, setChildDialogOpen] = useState(false)
-  const menuButtonRef = useRef<HTMLButtonElement>(null)
 
   return (
     <>
@@ -21,7 +20,6 @@ export function PageSystemNav({ surface }: { readonly surface: CutoutSurface }) 
           </Link>
 
           <button
-            ref={menuButtonRef}
             type="button"
             className="ps-menu-button"
             aria-label="Open menu"

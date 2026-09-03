@@ -117,9 +117,9 @@ export function SideMenu({
     if (!open) return
     const id = window.setTimeout(() => {
       panelRef.current?.querySelector<HTMLElement>('a[href], button')?.focus()
-    }, 60)
+    }, reduced ? 0 : 60)
     return () => window.clearTimeout(id)
-  }, [open])
+  }, [open, reduced])
 
   return (
     <AnimatePresence>
@@ -162,9 +162,8 @@ export function SideMenu({
                   type="button"
                   onClick={onClose}
                   aria-label="Close menu"
-                  className="cut-btn cut-btn-light flex min-h-11 items-center justify-center gap-2 rounded-full px-4 focus-ring"
+                  className="cut-btn cut-btn-light flex h-11 w-11 items-center justify-center rounded-full focus-ring"
                 >
-                  <span>Close</span>
                   <X className="h-5 w-5" aria-hidden="true" />
                 </button>
               </div>

@@ -70,7 +70,7 @@ export function AudienceMenuContent({
           label="Explore Your City"
           variant="primary"
           size="lg"
-          className="w-full justify-center !text-[#14120f]"
+          className="w-full justify-center !text-[var(--cut-ink)]"
           onExternalActivate={onDismiss}
           onDialogOpenChange={onChildDialogOpenChange}
         />
