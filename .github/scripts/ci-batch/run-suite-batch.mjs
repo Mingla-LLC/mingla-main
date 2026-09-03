@@ -307,6 +307,57 @@ export function renderTier2EscapeAnnotations(escapes) {
   return lines;
 }
 
+/**
+ * [#3076] The routing decision, published to the workflow as step outputs.
+ *
+ * #2882 stopped a class from RUNNING suites the diff does not invalidate, but
+ * the job still installed dependencies and stood up Phase 3C setup first — 7.9
+ * job-min per pull request spent getting ready to execute nothing. These two
+ * outputs let the workflow skip exactly those steps.
+ *
+ * The polarity is the whole safety argument, so it is stated rather than
+ * implied: the workflow gates on `!= 'false'`, so the ONLY value that skips
+ * anything is an explicit `false` written by a routing decision that actually
+ * completed. An unset `GITHUB_OUTPUT`, a step that died before emitting, a
+ * renamed key, a `full`-mode run — every one of them yields the empty string,
+ * which is not `'false'`, so setup RUNS. A gate that fails open is the only
+ * kind this repository can afford: its whole recorded failure history is
+ * absence of signal reading as confirmation, and a gate that skipped work on a
+ * missing signal would be that bug with a budget attached.
+ *
+ * Shape follows `select-phase3b-suites.mjs:456`, which publishes `runSecondary`
+ * for the Phase 3B steps the same way.
+ */
+export function emitRouteOutputs(values, env = process.env, appendFile = fs.appendFileSync) {
+  if (!env.GITHUB_OUTPUT) return values;
+  appendFile(env.GITHUB_OUTPUT, Object.entries(values).map(([key, value]) => `${key}=${value}\n`).join(""));
+  return values;
+}
+
+/**
+ * [#3076] What this job would actually execute, decided once, before it spends.
+ *
+ * Both answers are derived from the SAME `context` the run steps will re-derive
+ * later, and both are printed with their denominator by `routeOrFail` — a
+ * skipped setup is therefore always accompanied by the visible sentence that
+ * explains it. On `push` and `schedule` the mode is `full`, every candidate is
+ * selected, and both answers are unconditionally `true`: gating cannot reach a
+ * non-pull-request event even in principle.
+ */
+export function previewRouteDecision(manifest, klass, candidates, options = {}) {
+  const { context, selection } = routeOrFail(manifest, klass, candidates, options);
+  const owned3c = phase3cOwnedForHost(manifest, klass);
+  // A host owning no Phase 3C suites never runs the Phase 3C setup step at all
+  // (`matrix.tertiaryClass != ''` already governs that), so it publishes false
+  // without pretending to have routed a wave it does not host.
+  const phase3c = owned3c.length ? selectSuites(manifest, owned3c, context) : null;
+  if (phase3c) console.log(renderRoutingLine(`phase3c:${klass}`, context, phase3c));
+  return emitRouteOutputs({
+    runPrimarySetup: selection.suites.length > 0,
+    runPhase3cSetup: phase3c ? phase3c.suites.length > 0 : false,
+  }, options.env ?? process.env);
+}
+
 export function routeOrFail(manifest, klass, candidates, options = {}) {
   let context;
   try {
@@ -1129,8 +1180,12 @@ function selectedPhase3bSuites(manifest, hostClass, documentPath, failSafeClass)
  * Phase 3C host runs every suite the registry assigns to it, so there is no
  * decision document to forge, defer, or fail safe over.
  */
+export function phase3cOwnedForHost(manifest, hostClass) {
+  return manifest.suites.filter((suite) => suite.migrationWave === PHASE3C_WAVE && suite.hostClass === hostClass);
+}
+
 export function phase3cSuitesForHost(manifest, hostClass) {
-  const owned = manifest.suites.filter((suite) => suite.migrationWave === PHASE3C_WAVE && suite.hostClass === hostClass);
+  const owned = phase3cOwnedForHost(manifest, hostClass);
   if (!manifest.classes.includes(hostClass) || !owned.length) throw new Error(`unreviewed Phase 3C host ${hostClass}`);
   return owned;
 }
@@ -1292,7 +1347,9 @@ async function main() {
     const previewClass = process.argv[3];
     const previewCandidates = expectedPrimarySuites(manifest, previewClass);
     if (!previewClass || previewCandidates.length === 0) throw new Error(`no suites registered for class "${previewClass || "<empty>"}"`);
-    routeOrFail(manifest, previewClass, previewCandidates);
+    // [#3076] Same call, same printed line, now also publishing what this job
+    // will execute so the setup steps can decline to run for nothing.
+    previewRouteDecision(manifest, previewClass, previewCandidates);
     return;
   }
   const klass = process.argv[2] === "--run" ? process.argv[3] : process.argv[2];

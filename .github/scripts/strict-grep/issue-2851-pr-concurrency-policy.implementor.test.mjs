@@ -509,7 +509,44 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     d02b7d66c14da550b7ba5b4773a6ea7f193cfeef65fdbf0765bd4b6a3c107730 --
   //     the value pinned immediately above -- so nothing else drifted in.
   // Every earlier re-derivation is preserved, not replaced.
-  "d259a32221eb5d0929bb5645e3402b3dbca900dfc948ba993c33bfc92a247b5d";
+  //
+  // [TEST-MOD-APPROVED #3076] Re-derived again. #3076 added an `id:` to one
+  // existing step of the per-issue batch lane and an `if:` to three others, so
+  // that a class routing to zero suites stops installing dependencies and
+  // standing up Phase 3C setup for work it will not do. That lane is PR-family,
+  // so its non-concurrency document is inside this digest, exactly as every
+  // re-derivation above. It is named here the way they all name their lanes —
+  // never by its workflow filename, because such a literal written in this file
+  // is counted by `discoverWorkflowProviders()` as an external provider
+  // reference and moves the frozen #2148 provider seal.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING:
+  //   - the change touches ONE workflow: `git diff origin/main -- .github/workflows/`
+  //     is "1 file changed, 45 insertions(+), 3 deletions(-)", and the three
+  //     deletions are the three `if:` lines being rewritten in place, not
+  //     removals of anything.
+  //   - grepping added AND removed lines for `concurrency`, `group:` and
+  //     `cancel-in-progress` returns ZERO matches, and the lane's `on:` and
+  //     `concurrency:` blocks are byte-identical to origin/main (verified by
+  //     diff, not by eye). No trigger EVENT changed.
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED: no workflow
+  //     was added, removed or renamed, and subtests 1 and 4 pass at 124
+  //     PR-family / seven non-PR against the changed tree.
+  //   - I-2148-CI-TOPOLOGY-BOUNDED passes: "0 added workflow(s) in
+  //     origin/main..HEAD", authority canonical. The #2851 policy audit itself
+  //     still reports zero errors at 131 total / 124 PR-family / 123 standard
+  //     PR / 1 PR-target / 123 normal / 1 exception.
+  //   - the frozen provider seal is intact: nothing #3076 adds to a tracked
+  //     non-workflow file contains a `.ya?ml` literal, checked by grepping the
+  //     added lines of the whole diff.
+  //   - every revert-sensitivity subtest (5-10) still passes, so the concurrency
+  //     assertions are intact and still go red on reversion.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring that one lane to its
+  //     origin/main bytes makes ALL ELEVEN subtests pass again at
+  //     d259a32221eb5d0929bb5645e3402b3dbca900dfc948ba993c33bfc92a247b5d — the
+  //     value pinned immediately above — proving nothing else in the tree
+  //     drifted into this digest.
+  "404b2394f5466ac714c63145b3e6d478041e027e60e9e795575267f867832379";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
