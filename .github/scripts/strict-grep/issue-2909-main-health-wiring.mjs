@@ -151,6 +151,24 @@ export function auditWiring(sources) {
   // ---- the red-main alert -------------------------------------------------
   const alertHost = hostByName(documents, ALERT_HOST_NAME, errors);
   if (alertHost) {
+    // COVERAGE, the mirror of the pregate's paths rule above. The alert can
+    // only report `main` red on a commit whose push actually STARTS this
+    // workflow, so a positive push `paths:` filter without a catch-all is not a
+    // narrower alert -- it is a SAMPLING SCHEME, and it looks exactly like a
+    // healthy `main` from the outside. MEASURED: seven of the last forty `main`
+    // commits (17.5%) matched none of this host's globs, and an eighth was
+    // excluded by its baseline rule; on all eight a red `main` reached nobody.
+    // That is the #2909 incident's own failure mode, which is why removing the
+    // catch-all must turn THIS gate red rather than quietly reopening it.
+    const alertOn = events(alertHost);
+    if (!Object.hasOwn(alertOn, "push")) {
+      errors.push(`${ALERT_HOST_NAME}: the red-main alert must be hosted on a workflow that runs on push, or it can never observe a merged commit`);
+    } else {
+      const pushPaths = alertOn.push?.paths;
+      if (Array.isArray(pushPaths) && pushPaths.length && !pushPaths.includes("**")) {
+        errors.push(`${ALERT_HOST_NAME}: host's push paths filter has no "**" catch-all, so a main commit matching none of its globs alerts nobody`);
+      }
+    }
     const job = alertHost.jobs?.[ALERT_JOB];
     if (!job) {
       errors.push(`${ALERT_HOST_NAME}: job "${ALERT_JOB}" is missing; a red main reaches nobody`);
@@ -265,6 +283,11 @@ export function runSelfTest() {
       "the API key is unthreaded",
       withJob(sources, ALERT_HOST_NAME, (s) => s.replace(/^ +RESEND_API_KEY: .*\n/m, "")),
       "RESEND_API_KEY must be threaded",
+    ],
+    [
+      "the alert host's push coverage is narrowed back to a globbed subset",
+      withJob(sources, ALERT_HOST_NAME, (s) => s.replace(/^ +- "\*\*"\n/m, "")),
+      'has no "**" catch-all',
     ],
     [
       "the run's own verdict is replaced by a constant",

@@ -107,6 +107,21 @@ on:
       # suite. LAST on purpose: any other changed file still matches a positive
       # pattern above, so this only skips a baseline-ONLY change.
       - "!mingla-business/scripts/ci/bundle-baseline.json"
+      # issue #2909 — CATCH-ALL, PUSH-SIDE ONLY, and deliberately the LAST
+      # entry so it wins over every exclusion above it. The red-`main` alert
+      # lives in this workflow, so `main` can only be reported red when this
+      # workflow runs. MEASURED, not assumed: over the last 40 `main` commits,
+      # SEVEN (17.5%) matched none of the positive patterns above -- root-level
+      # REPORTS.md/COMMS.md (every CLOSE appends REPORTS.md) and the whole
+      # mingla-site-cms tree -- and an eighth was a baseline-only commit the
+      # exclusion above skipped. On those eight a red `main` alerted NOBODY.
+      # An alert that fires on five commits in six is not an alert, it is a
+      # sampling scheme, and it is worse than none because it manufactures
+      # confidence. This buys POST-MERGE coverage only: the pull_request list
+      # above is deliberately NOT given a catch-all, so no PR minutes are added.
+      # Removing this entry re-opens the exact hole, so the #2909 wiring gate
+      # asserts it is present and goes RED if it is ever taken away.
+      - "**"
 concurrency:
   group: ci-strict-grep-mingla-business-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
