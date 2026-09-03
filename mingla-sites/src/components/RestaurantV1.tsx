@@ -10,6 +10,7 @@ import {
 } from "../lib/pageRouting";
 import { isCanonicalMinglaHref, isSafeHref } from "../contracts/artifact";
 import { ConsentControl } from "./ConsentControl";
+import { MenuCart, type CartItem } from "./MenuCart";
 import { SiteRuntimeClient } from "./SiteRuntimeClient";
 import { TrackedLink } from "./TrackedLink";
 import type { SiteEventContext } from "../lib/clientAnalytics";
@@ -69,6 +70,27 @@ function Block({ block, context, primaryHeading = false }: { block: RestaurantBl
     case "menu_link": return <section className="menu-link"><h2>{text(block.heading, "Explore the menu")}</h2><SafeLink href={block.href} context={context} ctaKind="menu" className="button accent">{text(block.label, "View menu")}</SafeLink></section>;
     case "menu_board": {
       const sections = items(block.sections);
+      const orderable = typeof block.venue_id === "string";
+      /*
+       * ORDERING IS ON only when the published site names one verified venue.
+       * With no venue — or more than one — Mingla will not guess which kitchen
+       * a website order belongs to, so the menu is shown and the cart is not.
+       * A menu you cannot order from is a disappointment; an order cooked in
+       * the wrong building is a refund and someone's ruined night.
+       */
+      if (orderable) {
+        const cartItems: CartItem[] = sections.flatMap((section) =>
+          items(section.items).map((item) => ({
+            id: text(item.id),
+            name: text(item.name),
+            price_minor: typeof item.price_minor === "number" ? item.price_minor : null,
+            currency: typeof item.currency === "string" ? item.currency : null,
+            description: item.description == null ? null : text(item.description),
+            section: text(section.name),
+          })),
+        );
+        return <section className="menu-board"><h2>{text(block.heading, "Menu")}</h2>{block.note ? <p className="menu-note">{text(block.note)}</p> : null}<MenuCart items={cartItems} /></section>;
+      }
       return <section className="menu-board"><h2>{text(block.heading, "Menu")}</h2>{block.note ? <p className="menu-note">{text(block.note)}</p> : null}{sections.map((section, sectionIndex) => <div className="menu-section" key={`${text(section.name)}-${sectionIndex}`}><h3>{text(section.name)}</h3>{section.description ? <p className="menu-section-note">{text(section.description)}</p> : null}<ul className="menu-list">{items(section.items).map((item, itemIndex) => { const price = formatMenuPrice(item.price_minor, item.currency); return <li className="menu-row" key={`${text(item.name)}-${itemIndex}`}><div className="menu-row-head"><span className="menu-item-name">{text(item.name)}</span><span className="menu-leader" aria-hidden="true" />{price ? <span className="menu-price">{price}</span> : null}</div>{item.description ? <p className="menu-item-note">{text(item.description)}</p> : null}</li>; })}</ul></div>)}</section>;
     }
     case "gallery": return <section className="editorial-gallery"><p className="eyebrow">In the room</p><h2>{text(block.heading, "Gallery")}</h2><div className="gallery">{items(block.images).slice(0, 12).map((image, index) => isSafeHref(image.url) ? <img key={index} src={text(image.url)} alt={text(image.alt)} width={640} height={640} /> : null)}</div></section>;

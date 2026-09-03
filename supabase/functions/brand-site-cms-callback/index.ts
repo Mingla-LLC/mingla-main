@@ -275,6 +275,7 @@ async function handleBrandSiteCmsCallbackRequest(
       // menu read. Mingla stays the authority: the website never keeps its own
       // copy of what a restaurant sells.
       let menu: unknown[] = [];
+      let menuVenueId: string | null = null;
       if (new URL(req.url).searchParams.get("include") === "menu") {
         const menuResult = await service.rpc("brand_site_menu_projection", {
           p_site_id: siteId,
@@ -286,10 +287,25 @@ async function handleBrandSiteCmsCallbackRequest(
           );
         }
         menu = menuResult.data ?? [];
+        // Which kitchen receives a website order. NULL when the brand has no
+        // verified venue, or more than one — the website then shows the menu
+        // without a cart rather than guessing where dinner should be cooked.
+        const venueResult = await service.rpc("brand_site_orderable_venue", {
+          p_site_id: siteId,
+        });
+        if (venueResult.error) {
+          return sitesJson(
+            { ok: false, error: { code: "VALIDATION_FAILED" } },
+            409,
+          );
+        }
+        menuVenueId = typeof venueResult.data === "string"
+          ? venueResult.data
+          : null;
       }
       return sitesJson({
         ok: true,
-        data: { offerings: data ?? [], menu },
+        data: { offerings: data ?? [], menu, menu_venue_id: menuVenueId },
       });
     }
     const retentionMatch = path.match(

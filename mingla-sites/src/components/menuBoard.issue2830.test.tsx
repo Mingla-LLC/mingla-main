@@ -15,18 +15,24 @@ import type { RestaurantArtifact } from "../contracts/artifact";
  * when none is recorded. On a restaurant's own menu that is not a cosmetic
  * default, it is a live commercial lie.
  */
+const VENUE = "55555555-6666-4777-8888-999999999999";
+const ID = (n: number) =>
+  `aaaaaaaa-bbbb-4ccc-8ddd-${String(n).padStart(12, "0")}`;
+
 const menuBlock = {
   type: "menu_board",
   heading: "The menu",
   note: "Served all day, every day.",
+  // null venue = menu shown, no cart. Mingla will not guess which kitchen.
+  venue_id: null,
   sections: [
     {
       name: "Rice",
       description: "From the pot",
       items: [
-        { name: "Coconut rice", description: "with grilled chicken", price_minor: 850000, currency: "NGN" },
-        { name: "Market price fish", description: null, price_minor: null, currency: null },
-        { name: "Jollof", description: null, price_minor: 700000, currency: "NGN" },
+        { id: ID(1), name: "Coconut rice", description: "with grilled chicken", price_minor: 850000, currency: "NGN" },
+        { id: ID(2), name: "Market price fish", description: null, price_minor: null, currency: null },
+        { id: ID(3), name: "Jollof", description: null, price_minor: 700000, currency: "NGN" },
       ],
     },
   ],
@@ -107,12 +113,13 @@ describe("#2830 the real menu", () => {
           blocks: [
             {
               ...menuBlock,
+              venue_id: null,
               sections: [
                 {
                   name: "Rice",
                   description: null,
                   items: [
-                    { name: "Jollof", description: null, price_minor: 700000, currency: null },
+                    { id: ID(3), name: "Jollof", description: null, price_minor: 700000, currency: null },
                   ],
                 },
               ],
@@ -141,5 +148,35 @@ describe("#2830 the real menu", () => {
     const badCurrency = JSON.parse(JSON.stringify(artifact));
     badCurrency.pages[0].blocks[0].sections[0].items[0].currency = "naira";
     expect(() => assertRestaurantArtifact(badCurrency)).toThrow();
+  });
+
+  it("shows the menu WITHOUT a cart when no venue can serve it", () => {
+    const out = html();
+    expect(out).toContain("Coconut rice");
+    expect(out).not.toContain("menu-order");
+    expect(out).not.toContain("Add Coconut rice to your order");
+  });
+
+  it("mounts the cart when the published site names one verified venue", () => {
+    const orderable = JSON.parse(JSON.stringify(artifact));
+    orderable.pages[0].blocks[0].venue_id = VENUE;
+    const out = renderToStaticMarkup(
+      <RestaurantV1 artifact={orderable} page={orderable.pages[0]} />,
+    );
+    expect(out).toContain("menu-order");
+    expect(out).toContain("Add Coconut rice to your order");
+    expect(out).toContain("Search the menu");
+  });
+
+  it("the validator refuses an item with no Mingla id", () => {
+    const bad = JSON.parse(JSON.stringify(artifact));
+    delete bad.pages[0].blocks[0].sections[0].items[0].id;
+    expect(() => assertRestaurantArtifact(bad)).toThrow();
+  });
+
+  it("the validator refuses a venue that is not a uuid", () => {
+    const bad = JSON.parse(JSON.stringify(artifact));
+    bad.pages[0].blocks[0].venue_id = "gogi";
+    expect(() => assertRestaurantArtifact(bad)).toThrow();
   });
 });

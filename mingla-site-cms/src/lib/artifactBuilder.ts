@@ -193,6 +193,7 @@ export async function buildPublicationArtifact(
       if (block.blockType === "menu_board") wantsMenu = true;
   let commercial: AnyDoc[] = [];
   let menuRows: AnyDoc[] = [];
+  let menuVenueId: string | null = null;
   if (offeringIds.size || wantsMenu) {
     const projection = await readCoreProjection(
       `/internal/v1/sites/${input.tenant.core_site_id}/projection`,
@@ -209,6 +210,9 @@ export async function buildPublicationArtifact(
     menuRows = Array.isArray(projection.menu)
       ? (projection.menu as AnyDoc[])
       : [];
+    menuVenueId = typeof projection.menu_venue_id === "string"
+      ? projection.menu_venue_id
+      : null;
   }
   /*
    * Group Mingla's flat rows into the sections the renderer draws. The order is
@@ -234,6 +238,10 @@ export async function buildPublicationArtifact(
         sections.set(key, section);
       }
       (section.items as AnyDoc[]).push({
+        // The Mingla menu-item id. The cart sends THIS and a quantity, never a
+        // price — the order is priced by Mingla, so a browser cannot name its
+        // own price.
+        id: String(row.item_id),
         name: String(row.item_name ?? ""),
         description: row.item_description ?? null,
         price_minor: typeof row.price_cents === "number" ? row.price_cents : null,
@@ -332,13 +340,22 @@ export async function buildPublicationArtifact(
           };
         }
         case "menu_board": {
-          // A menu block with nothing behind it is dropped rather than
-          // published as an empty "Menu" heading on a restaurant's website.
+          /*
+           * NO MINGLA MENU MEANS NO MENU. The block is dropped, and because a
+           * page whose blocks all drop is itself dropped below, the Menu tab
+           * disappears from the navigation and the sitemap too. A restaurant
+           * website with a Menu link that opens an empty page is worse than one
+           * with no Menu link at all.
+           */
           if (!menuSections.length) return null;
           return {
             type: "menu_board",
             heading: raw.heading ?? null,
             note: raw.note ?? null,
+            // NULL venue = show the menu, no cart. The brand has no verified
+            // venue, or more than one, and Mingla will not guess which kitchen
+            // a website order belongs to.
+            venue_id: menuVenueId,
             sections: menuSections,
           };
         }
@@ -412,16 +429,34 @@ export async function buildPublicationArtifact(
     source_revision_id: input.sourceRevisionId,
     source_digest: input.sourceDigest,
     generated_at: input.generatedAt,
-    pages: (pagesResult.docs as AnyDoc[]).map((page) => ({
-      role: page.role,
-      slug: page.slug,
-      title: page.title,
-      enabled: page.enabled,
-      nav_label: page.nav_label,
-      nav_order: page.nav_order,
-      blocks: blocks(page.blocks || []),
-      seo: page.seo,
-    })),
+    pages: (pagesResult.docs as AnyDoc[]).map((page) => {
+      const rendered = blocks(page.blocks || []);
+      /*
+       * #2830 — A PAGE WITH NOTHING ON IT IS NOT A PAGE.
+       *
+       * The Menu page is the case that forced this: its only block is the menu,
+       * and the menu is dropped when Mingla has none. Left `enabled`, the site
+       * would publish a Menu tab in the navigation and the sitemap that opens
+       * a page with a heading and nothing under it. A restaurant website with
+       * an empty Menu link is worse than one with no Menu link.
+       *
+       * Home is exempt: a site must have a homepage, and an empty one is a
+       * publish-time problem to surface, not a page to silently remove.
+       */
+      const enabled = page.role === "home"
+        ? page.enabled
+        : page.enabled === true && rendered.length > 0;
+      return {
+        role: page.role,
+        slug: page.slug,
+        title: page.title,
+        enabled,
+        nav_label: page.nav_label,
+        nav_order: page.nav_order,
+        blocks: rendered,
+        seo: page.seo,
+      };
+    }),
     navigation: {
       page_roles: ((navigationResult.docs[0] as AnyDoc)?.pages || [])
         .map((page: unknown) => pageRoles.get(id(page)))

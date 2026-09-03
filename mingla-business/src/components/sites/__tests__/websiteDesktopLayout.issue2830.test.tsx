@@ -146,4 +146,27 @@ describe("#2830 Website workspace desktop layout", () => {
     expect(ids).not.toContain("website-preview-pane");
     expect(ids).toContain("website-overview");
   });
+
+  it("prompts a republish when Mingla's menu moved ahead of the website", () => {
+    const stale = {
+      ...base,
+      site: { ...site, menu_changed_since_publish: true },
+    };
+    expect(testIds(<BrandWebsiteView {...stale} isWideDesktop={false} />))
+      .toContain("website-menu-stale");
+  });
+
+  it("stays silent when the website is current", () => {
+    expect(testIds(<BrandWebsiteView {...base} isWideDesktop={false} />))
+      .not.toContain("website-menu-stale");
+  });
+
+  it("treats an ABSENT signal as silence, never as stale", () => {
+    // An older Core payload has no such field. A badge that cannot clear is
+    // worse than no badge.
+    const older = { ...base, site: { ...site } };
+    delete (older.site as Record<string, unknown>).menu_changed_since_publish;
+    expect(testIds(<BrandWebsiteView {...older} isWideDesktop={false} />))
+      .not.toContain("website-menu-stale");
+  });
 });
