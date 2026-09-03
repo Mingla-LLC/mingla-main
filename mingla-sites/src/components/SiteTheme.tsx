@@ -1,4 +1,5 @@
 import type { RestaurantArtifact } from "../contracts/artifact";
+import { FONT_PAIRINGS, isFontPairing } from "../contracts/fontPairings";
 
 const HEX = /^#[0-9a-f]{6}$/i;
 
@@ -35,9 +36,18 @@ export function siteThemeCss(artifact: RestaurantArtifact): string | null {
   set("--ivory", colors?.foreground);
   set("--gold", colors?.accent);
 
-  if (typography === "editorial-serif") {
-    declarations.push('--display:var(--font-serif)');
-    declarations.push('--body:var(--font-serif-body)');
+  /*
+   * The brand's type choice. Only a pairing from the shared list can apply —
+   * these values are interpolated into a <style> element like the colours, so
+   * an unknown or hand-written string must never reach it.
+   */
+  if (isFontPairing(typography)) {
+    const pairing = FONT_PAIRINGS[typography];
+    declarations.push(`--display:${pairing.display}`);
+    declarations.push(`--body:${pairing.body}`);
+    declarations.push(
+      `--display-case:${pairing.uppercaseHeadings ? "uppercase" : "none"}`,
+    );
   }
   if (declarations.length === 0) return null;
   return `:root{${declarations.join(";")}}`;

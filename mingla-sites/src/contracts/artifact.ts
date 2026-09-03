@@ -1,3 +1,5 @@
+import { isFontPairing, type FontPairing } from "./fontPairings";
+
 export const RENDERER_KEY = "restaurant-website-v1" as const;
 export const ARTIFACT_SCHEMA_VERSION = 1 as const;
 
@@ -47,7 +49,7 @@ export type RestaurantArtifact = {
     short_description?: string;
     logo?: MediaReference;
     colors?: { background?: string; foreground?: string; accent?: string };
-    typography?: "modern-sans" | "editorial-serif";
+    typography?: FontPairing;
     seo?: { title?: string; description?: string; canonical_url: string; social_image?: MediaReference };
   };
   media: MediaReference[];
@@ -445,9 +447,9 @@ export function assertRestaurantArtifact(value: unknown): asserts value is Resta
   ) throw new Error("ARTIFACT_SETTINGS_MISMATCH");
   if (
     value.site_settings.typography != null &&
-    !["modern-sans", "editorial-serif"].includes(
-      String(value.site_settings.typography),
-    )
+    // Reads the SHARED list, so the editor's options and what the page will
+    // accept cannot drift apart.
+    !isFontPairing(value.site_settings.typography)
   ) throw new Error("ARTIFACT_SETTINGS_MISMATCH");
   if (
     !plainObject(value.site_settings.seo) ||
