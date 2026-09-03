@@ -1830,7 +1830,7 @@
       "modes": [
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "capable-unwired",
       "jobKeys": []
     },
     {
