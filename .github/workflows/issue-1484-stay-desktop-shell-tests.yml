@@ -32,8 +32,43 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
-  issue-1484-stay-desktop-shell:
+  route:
+    # [#3072] The routing decision, taken before this lane spends anything.
+    #
+    # The `paths-ignore` above is #2885 AC-4 and is UNTOUCHED: a pull request whose
+    # ONLY changed file is the machine-written boot-payload baseline still never
+    # reaches this workflow at all. That filter stopped the recording PRs; it was
+    # never able to route human changes, and it still does not.
+    #
+    # This job is the second filter and the one that reads the registry.
+    # `.github/ci-batch/MANIFEST.json` records this lane's `originPaths` — derived
+    # from the files this lane's own gates, tests, typecheck and exports actually
+    # READ, not from its name — and the script below matches the pull request's
+    # diff against them using #2882's single origin-pattern grammar. No glob is
+    # written into this file: widening the route means editing the registry, where
+    # the fail-closed emptiness gate and the pattern-liveness gate can see it.
+    #
+    # On push, schedule and workflow_dispatch the selection is the identity
+    # function and every job below runs in full, exactly as before. If the router
+    # cannot see the diff it also selects, and says so in an annotation: this lane
+    # can be run needlessly, never skipped silently.
     if: ${{ github.event.pull_request.draft != true }}
+    name: Route (issue 1484)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.decide.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Decide whether this pull request can affect this lane
+        id: decide
+        run: node .github/scripts/ci-batch/route-live-provider.mjs --issue 1484
+
+  issue-1484-stay-desktop-shell:
+    if: ${{ (github.event.pull_request.draft != true) && (needs.route.outputs.selected == 'true') }}
+    needs: [route]
     name: Stay desktop shell (render proof + gates)
     runs-on: ubuntu-latest
     timeout-minutes: 30
