@@ -225,7 +225,41 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //   - the policy audit itself still reports zero errors at 124 PR-family
   //     workflows — the sibling test above, which passes.
   // Every earlier re-derivation is preserved, not replaced.
-  "cb761e15c76eb0b50caa06a2d1291b7351e861a27d98e25917e637dd5c57f8b0";
+  //
+  // [TEST-MOD-APPROVED #3081] Re-derived again, for the same shape as #3065 above.
+  // #3081 added TWO steps (plus their comments) to the existing migrations-and-Deno
+  // lane — an implementor step and a tester step — so a migration regression suite runs
+  // against the fresh-PG17 database that lane already builds. It is wired into that
+  // EXISTING lane rather than given its own workflow because I-2148-CI-TOPOLOGY-BOUNDED
+  // bans a new issue-*.yml lane. That lane is PR-family, so its non-concurrency document
+  // is inside this digest. It is named here by ISSUE, never by its `.y`+`ml` path,
+  // because a workflow FILENAME written in this file is counted by
+  // `discoverWorkflowProviders()` as an external provider reference and moves the frozen
+  // #2148 provider seal. #3081 learned that the expensive way: a workflow filename in a
+  // MIGRATION COMMENT reddened eight class-A gates, and the fix was to stop naming them
+  // rather than to re-derive the seal — so this is the ONLY constant #3081 moves.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING:
+  //   - the change is PURELY ADDITIVE: `git diff origin/main...HEAD --
+  //     .github/workflows/` is "1 file changed, 98 insertions(+)", zero deletions, and
+  //     grepping added AND removed lines for `concurrency`, `group:` and
+  //     `cancel-in-progress` returns ZERO. No concurrency block, group expression or
+  //     cancellation value is touched. The `on:` and `concurrency:` blocks of the
+  //     changed lane are byte-identical to origin/main (verified by diff, not by eye).
+  //   - no `paths:` or `paths-ignore:` entry is added — the lane already scopes
+  //     `supabase/migrations/**`, which is where both new fixtures live.
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED: the workflow file
+  //     count is 131 on both sides, the diff is a single `M`, and no workflow was added,
+  //     removed or renamed. Subtests 1 and 4 pass at 124 PR-family / seven non-PR.
+  //   - the policy audit itself still reports zero errors, and every revert-sensitivity
+  //     subtest (5-10) still passes, so the concurrency assertions are intact and still
+  //     go red on reversion.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring the one changed lane to its
+  //     origin/main bytes makes subtest 2 pass again at
+  //     cb761e15c76eb0b50caa06a2d1291b7351e861a27d98e25917e637dd5c57f8b0 — the value
+  //     pinned above — proving nothing else in the tree drifted into this digest.
+  // Every earlier re-derivation is preserved, not replaced.
+  "47dfe3df8b53eb8638295f2ee4b02707b5a445a26bc8018b92bb639f114ecff5";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
