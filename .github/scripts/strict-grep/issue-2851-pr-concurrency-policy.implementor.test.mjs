@@ -323,7 +323,15 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     47dfe3df8b53eb8638295f2ee4b02707b5a445a26bc8018b92bb639f114ecff5, proving
   //     nothing else in the tree drifted into this digest.
   // Every earlier re-derivation is preserved, not replaced.
-  "b3c2fbb773c96901aa4b353c879ec6537fed784997cd43dea0c7e88e900910ac";
+  //
+  // [TEST-MOD-APPROVED #1776] Re-derived after #1776 added only the
+  // selected-brand export paths, strict guard, and executable rendered/service
+  // tests to the existing People PR-family lane. The workflow count, identity,
+  // and concurrency block are unchanged; removing each #1776 semantic unit
+  // below must move this digest. The value was derived from the combined tree
+  // after rebasing onto #2882, so it deliberately differs from both branches'
+  // pre-rebase values.
+  "ffde6bace3093d203dda909eb61c87751209a0864e11c9e75c4e797dcfa52822";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -605,6 +613,34 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "          supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2947_sweep_expiry_filter.test.ts\n"],
     [liveWorkflow("issue", "2079", "paystack", "late", "refund", "identity", "tests"),
       "          supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2947_sweep_limit_boundary.tester_adversarial.test.ts\n"],
+    // [TEST-MOD-APPROVED #1776] Every trigger, guard invocation, and executable
+    // service/rendered test added to the existing People lane is independently
+    // revert-sensitive. This proves the re-bank cannot conceal a lost export
+    // coverage leg while leaving workflow identity and concurrency untouched.
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      '      - "mingla-business/src/services/brandBookExportService.ts"\n'],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      '      - "mingla-business/src/utils/permissionGates.ts"\n'],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      '      - "supabase/functions/brand-people-export/**"\n'],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      '      - "supabase/functions/marketing-*/**"\n'],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      '      - ".github/scripts/strict-grep/issue-1776-marketing-edge-rank-boundary.mjs"\n'],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      '      - ".github/scripts/strict-grep/MANIFEST.json"\n'],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      ["          node .github/scripts/strict-grep/issue-1776-marketing-edge-rank-boundary.mjs --self", "-test\n"].join("")],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      "          node .github/scripts/strict-grep/issue-1776-marketing-edge-rank-boundary.mjs\n"],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      "            src/services/__tests__/brandBookExportService.issue1776.test.ts \\\n"],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      "            src/components/people/__tests__/BrandBookExportSheet.issue1776.happy.test.tsx \\\n"],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      "            src/components/people/__tests__/BrandBookExportSheet.issue1776.tester.adversarial.test.tsx \\\n"],
+    [liveWorkflow("issue", "1774", "people", "page", "tests"),
+      "            src/components/people/__tests__/PeoplePage.issue1776.happy.test.tsx \\\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
