@@ -3,6 +3,7 @@ import { ArrowUpRight, Compass, MapPinned, Store } from 'lucide-react'
 import {
   CITY_HUBS,
   allCityHubsSearchReady,
+  cityHubEffectiveLifecycle,
   cityHubPath,
   isCityHubSearchReady,
   type CityHubRecord,
@@ -46,10 +47,11 @@ function EvidenceLinks({
 }
 
 function CityLifecycleNotice({ record }: { readonly record: CityHubRecord }) {
-  if (record.lifecycle === 'search_ready') return null
-  const content = record.lifecycle === 'public_noindex'
+  const lifecycle = cityHubEffectiveLifecycle(record)
+  if (lifecycle === 'search_ready') return null
+  const content = lifecycle === 'public_noindex'
     ? ['City guide in review', 'Local details are being verified; some sections may be withheld.']
-    : record.lifecycle === 'stale'
+    : lifecycle === 'stale'
       ? ['This city guide is being refreshed.', 'Current details are being checked before this guide returns to search.']
       : ['This city guide is no longer actively updated.', 'Current events and availability are not shown.']
   return (
@@ -69,6 +71,7 @@ function CityHero({ record }: { readonly record: CityHubRecord }) {
       <p className="city-eyebrow">Mingla in {record.city}, {record.country}</p>
       <h1 id="city-hub-title">Find the right plan in {record.city}.</h1>
       <p className="city-direct-answer">{record.directAnswer}</p>
+      <EvidenceLinks record={record} evidenceIds={record.directAnswerEvidenceIds} />
       <p className="city-coverage">
         Coverage: {record.scopeLabel} <span aria-hidden="true">·</span> Last reviewed{' '}
         <time dateTime={record.sourcesCheckedAt}>{reviewed}</time>
