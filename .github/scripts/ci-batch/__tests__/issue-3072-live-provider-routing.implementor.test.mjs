@@ -261,6 +261,15 @@ test("13. a change routing SKIPS on a pull request is still executed by the push
         false,
         `${ownerIssue}: precondition -- ${changed.join(",")} is skipped at PR time`,
       );
+      // BOTH halves, in the one assertion. "Selection is the identity function
+      // on push" is worth nothing if no push event ever reaches this lane, so
+      // this subtest refuses to pass on the router's behaviour alone: deleting
+      // the trigger must turn THIS test red, not only subtest 12.
+      assert.ok(
+        provider.workflowMetadata.triggers.includes("push"),
+        `${ownerIssue}: ${changed.join(",")} skipped the pull request and this lane has NO push trigger, `
+          + "so routing removed its coverage outright instead of deferring it to main",
+      );
       assert.equal(
         decideSelection(provider, patterns, pushContext).selected,
         true,
