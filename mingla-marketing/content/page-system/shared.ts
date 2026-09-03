@@ -1,3 +1,5 @@
+import { CITY_HUBS } from '@/content/cities/registry'
+
 export const PAGE_SYSTEM_PATHS = [
   '/internal/page-system/city-lagos',
   '/internal/page-system/explorer-event-guide',
@@ -97,18 +99,8 @@ export interface SourceEntry {
   readonly href: string
 }
 
-export const LAUNCH_CITIES = [
-  'Lagos',
-  'Durham',
-  'Cary',
-  'Raleigh',
-  'New York City',
-  'Brussels',
-  'Paris',
-  'London',
-  'Fort Lauderdale',
-  'Washington DC',
-] as const
+/** #2990 compatibility projection; #2983 owns the canonical city identities. */
+export const LAUNCH_CITIES = CITY_HUBS.map((record) => record.city)
 
 export const REVIEW_STATUS = {
   label: 'Evidence review pending',

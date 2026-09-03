@@ -76,6 +76,10 @@ interface DeviceCtaProps {
   onDialogOpenChange?: (open: boolean) => void
   /** Dismisses containing navigation only when this CTA leaves the page. */
   onExternalActivate?: () => void
+  /** Optional closed destination callback for a containing consent-gated event. */
+  onActivate?: (destinationType: 'explorer_download' | 'explorer_qr' | 'host_download' | 'host_web') => void
+  /** City hubs emit their stricter closed analytics contract through onActivate. */
+  captureDefaultAnalytics?: boolean
 }
 
 const SIZES = {
@@ -107,12 +111,16 @@ export function DeviceCta({
   withArrow = false,
   onDialogOpenChange,
   onExternalActivate,
+  onActivate,
+  captureDefaultAnalytics = true,
 }: DeviceCtaProps) {
   const [platform, setPlatform] = useState<Platform>('other')
+  const [hydrated, setHydrated] = useState(false)
   const [qrOpen, setQrOpen] = useState(false)
 
   useEffect(() => {
     setPlatform(detectClientPlatform())
+    setHydrated(true)
   }, [])
 
   const classes = cn(classesFor(variant, size), className)
@@ -176,14 +184,34 @@ export function DeviceCta({
           onExternalActivate?.()
           const live = detectClientPlatform()
           const t = resolveBusinessAppTarget(live, attribution)
-          captureMarketing('get_the_app_clicked', {
-            action: t.canInstall ? 'download' : 'use_web',
-            platform: live,
-            store: t.canInstall ? t.installStore : 'business_web',
-            surface: 'organiser',
-            location,
-          })
+          onActivate?.(t.canInstall ? 'host_download' : 'host_web')
+          if (captureDefaultAnalytics) {
+            captureMarketing('get_the_app_clicked', {
+              action: t.canInstall ? 'download' : 'use_web',
+              platform: live,
+              store: t.canInstall ? t.installStore : 'business_web',
+              surface: 'organiser',
+              location,
+            })
+          }
         }}
+        className={classes}
+      >
+        {text}
+        {marks}
+        {arrow}
+      </a>
+    )
+  }
+
+  // Progressive enhancement: crawlers, no-JavaScript visitors and the first
+  // hydrated frame receive a real route. Once mounted, desktop can replace it
+  // with the QR dialog while phones receive the attributed OneLink below.
+  if (!hydrated) {
+    return (
+      <a
+        href="/download"
+        onClick={() => onActivate?.('explorer_download')}
         className={classes}
       >
         {text}
@@ -208,11 +236,14 @@ export function DeviceCta({
         onClick={() => {
           onExternalActivate?.()
           const live = detectClientPlatform()
-          captureMarketing('get_the_app_clicked', {
-            platform: live,
-            store: live === 'ios' ? 'app_store' : 'play',
-            location,
-          })
+          onActivate?.('explorer_download')
+          if (captureDefaultAnalytics) {
+            captureMarketing('get_the_app_clicked', {
+              platform: live,
+              store: live === 'ios' ? 'app_store' : 'play',
+              location,
+            })
+          }
         }}
         className={classes}
       >
@@ -233,11 +264,14 @@ export function DeviceCta({
         aria-haspopup="dialog"
         aria-expanded={qrOpen}
         onClick={() => {
-          captureMarketing('get_the_app_clicked', {
-            platform: 'other',
-            store: 'qr_panel',
-            location,
-          })
+          onActivate?.('explorer_qr')
+          if (captureDefaultAnalytics) {
+            captureMarketing('get_the_app_clicked', {
+              platform: 'other',
+              store: 'qr_panel',
+              location,
+            })
+          }
           setQrOpen(true)
           onDialogOpenChange?.(true)
         }}

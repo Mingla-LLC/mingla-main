@@ -16,6 +16,8 @@ import { HostFigure } from '@/components/ui/host-figures'
 import { ICP_CARDS } from '@/lib/design-preview/icp-cards'
 import { ExpandingCards, type CardItem } from '@/components/ui/expanding-cards'
 import { ScrollVelocityRow } from '@/components/ui/scroll-velocity-text'
+import { RootCityGrid } from '@/components/cities/city-hub'
+import { allCityHubsSearchReady } from '@/content/cities/registry'
 
 // #2902 — Mingla Host, on AIgocy's design, telling Seth's story:
 // "Mingla gives you all the tools to be a successful host."
@@ -37,6 +39,7 @@ const ICP_ICONS: Record<string, React.ReactNode> = {
 }
 
 export default function CutoutHostPage() {
+  const showCityLaunch = allCityHubsSearchReady()
   return (
     <CutoutShell>
       <CutoutNav surface="host" homeHref="/host" />
@@ -182,6 +185,7 @@ export default function CutoutHostPage() {
         </div>
       </CutoutSection>
 
+      {showCityLaunch ? <RootCityGrid surface="host" /> : null}
       <CutoutFooter surface="host" />
       {/* preview-banner-clearance */}
       <div aria-hidden="true" className="h-14" />
