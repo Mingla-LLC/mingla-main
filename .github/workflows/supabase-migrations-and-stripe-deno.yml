@@ -422,6 +422,15 @@ jobs:
           # jest suite issue_3044_rsvp_draft_rpc_deploy_reachable.test.ts.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3044_rsvp_draft_graph_deploy_reachable.test.sql
+          # Issue #3065 — the two draft-autosave RPCs must share ONE clientRevision
+          # rule. They did not: the event owner wanted the NEW revision and the
+          # RSVP owner wanted the one the server already held, so the RSVP owner
+          # rejected every call the wizard ever sent. Production proof: zero
+          # operation='update' receipts for all time, and 3,400-4,900
+          # rsvp_revision_conflict per minute from one wedged device. Behavioural
+          # on BOTH owners, because the failure was the DIFFERENCE between them.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3065_draft_revision_contract.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
