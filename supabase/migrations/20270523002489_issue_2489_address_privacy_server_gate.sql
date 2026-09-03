@@ -153,33 +153,77 @@ GRANT EXECUTE ON FUNCTION public.issue_2489_public_theme(jsonb)
 -- undeclared object that starts referencing it fails too, because a gate spreading by
 -- copy-paste into somewhere nobody reasoned about is its own defect.
 --
--- Keep this body free of the shared symbol names outside the string literals below:
--- discovery reads bodies, and comments are part of a body.
+-- Keep the REGISTRY FUNCTION BODY free of the shared symbol names: discovery reads
+-- bodies, and comments are part of a body. The names now live as table DATA, which
+-- pg_proc.prosrc never sees, so this constraint is satisfied structurally.
+--
+-- ── #3081 — WHY THE DECLARED SET IS A TABLE AND NOT A VALUES LIST ──────────────────
+-- This function was a hardcoded VALUES list, re-emitted by every migration that added
+-- a carrier. That made the registry REVERTIBLE BY AN OLDER FILE: re-applying THIS
+-- migration ran a CREATE OR REPLACE that discarded every extension a LATER migration
+-- had made, and the check below — which lives ~1,500 lines further down in this same
+-- file — then compared the rewound list against a catalog that still held the newer
+-- carrier and raised. #2986 added `public_search_source_facts` exactly as instructed
+-- and still turned main red on 2026-09-02, because the `#2333` lane re-applies this
+-- file alone as its last step and NOTHING re-applies #2986 after it.
+--
+-- A table fixes the property rather than the symptom: the declared set is APPEND-ONLY
+-- and no re-apply, in any order, partial or full, can shrink it. A future migration
+-- adding the eleventh carrier writes ONE `INSERT … ON CONFLICT DO NOTHING` and is
+-- immune to this whole class — it does not have to know this issue ever existed.
+-- REMOVING a carrier stays deliberate and loud: the removing migration must DELETE its
+-- row in the same change, or the check below fails with "declared … not carrying".
 -- =====================================================================================
+CREATE TABLE IF NOT EXISTS public.issue_2489_gate_carriers (
+  object_name text PRIMARY KEY,
+  object_kind text NOT NULL CHECK (object_kind IN ('function', 'view'))
+);
+
+-- A new table in `public` inherits anon/authenticated grants by default privilege, and
+-- every table in this schema must carry RLS (#1860). No policy is defined: the only
+-- legitimate readers are the migration applier and the fixtures, both of which run as
+-- the owner. The set is compared by the owner, so it is never read through RLS.
+ALTER TABLE public.issue_2489_gate_carriers ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.issue_2489_gate_carriers FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.issue_2489_gate_carriers TO service_role;
+
+COMMENT ON TABLE public.issue_2489_gate_carriers IS
+  '#2489 — the pinned set of objects required to carry the shared address-privacy '
+  'gate, held as APPEND-ONLY DATA (#3081). Adding a gated object means INSERTing it '
+  'here, ON CONFLICT DO NOTHING, in the same change that adds the object. Never '
+  're-emit this set as a VALUES list from a function: that is what let an older '
+  'migration revert a newer one''s extension on replay.';
+
+INSERT INTO public.issue_2489_gate_carriers (object_name, object_kind) VALUES
+  ('issue_2489_public_theme',          'function'),
+  ('business_public_events_view',      'view'),
+  ('events_public_view',               'view'),
+  ('pg_discover_business_events',      'function'),
+  ('pg_public_brand_upcoming',         'function'),
+  ('pg_public_event_by_slug',          'function'),
+  ('pg_public_rsvp_by_slug',           'function'),
+  ('pg_public_experience_by_slug',     'function'),
+  ('pg_direct_event_checkout_bundle',  'function')
+ON CONFLICT (object_name) DO NOTHING;
+
+-- STABLE, not IMMUTABLE: the declared set is now read from a table.
 CREATE OR REPLACE FUNCTION public.issue_2489_gate_registry()
 RETURNS TABLE (object_name text, object_kind text)
 LANGUAGE sql
-IMMUTABLE
+STABLE
 SET search_path = ''
 AS $function$
-  SELECT * FROM (VALUES
-    ('issue_2489_public_theme',          'function'),
-    ('business_public_events_view',      'view'),
-    ('events_public_view',               'view'),
-    ('pg_discover_business_events',      'function'),
-    ('pg_public_brand_upcoming',         'function'),
-    ('pg_public_event_by_slug',          'function'),
-    ('pg_public_rsvp_by_slug',           'function'),
-    ('pg_public_experience_by_slug',     'function'),
-    ('pg_direct_event_checkout_bundle',  'function')
-  ) AS t(object_name, object_kind)
+  SELECT r.object_name, r.object_kind FROM public.issue_2489_gate_carriers r
 $function$;
 
 COMMENT ON FUNCTION public.issue_2489_gate_registry() IS
   '#2489 — the pinned set of objects required to carry the shared address-privacy '
   'gate. Compared for SET EQUALITY, in both directions, against what the catalog '
   'actually references, at the end of a true-order full-chain replay. Adding a gated '
-  'object means adding it here in the same change.';
+  'object means INSERTing it into public.issue_2489_gate_carriers in the same change '
+  '(#3081); this function is a READER of that table and must never be re-emitted as a '
+  'hardcoded list. Meaningful only to a reader that can see the table (owner or '
+  'service_role); the fixture''s non-vacuity assertion pins that.';
 
 REVOKE ALL ON FUNCTION public.issue_2489_gate_registry() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.issue_2489_gate_registry() TO anon, authenticated, service_role;

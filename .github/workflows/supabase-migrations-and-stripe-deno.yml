@@ -908,6 +908,78 @@ jobs:
       - name: "Issue #2589 — one host corpus, every allowlist owner"
         run: node --experimental-strip-types --test scripts/issue-2589/share-media-hosts.corpus.test.mjs
 
+      # Issue #3081 — THE #2489 GATE REGISTRY SURVIVES A REPLAY. Runs LAST in this job
+      # deliberately: it re-applies migrations and stages a probe object, so it must not
+      # perturb the schema any earlier fixture in this job reads. It restores what it
+      # stages (step E), leaving the migrated database exactly as it found it.
+      #
+      # WHAT BROKE. `public.issue_2489_gate_registry()` was a hardcoded VALUES list that
+      # two migrations re-emitted — nine entries in #2489, ten in #2986, which added
+      # `public_search_source_facts`. #2489 ALSO carries the apply-time set-equality
+      # check, ~1,500 lines after its own registry definition. So re-applying #2489
+      # REWOUND the declared set to nine and compared it against a catalog that still
+      # held the tenth carrier:
+      #
+      #   ERROR:  #2489: undeclared objects are carrying the shared gate: public_search_source_facts
+      #
+      # main was red from 2026-09-02 20:22 and every merge in the repository was blocked.
+      # The gate was RIGHT — an undeclared object really was carrying it at that instant.
+      # The defect was that the declared set could be REVERTED BY AN OLDER FILE. #3081
+      # makes it append-only DATA (`public.issue_2489_gate_carriers`); a CREATE OR REPLACE
+      # can revert code, nothing reverts a row.
+      #
+      # Mutants that must turn this RED: (a) restoring #2489's hardcoded VALUES registry;
+      # (b) deleting 20270618003081_issue_3081_gate_registry_replay_safe.sql; (c) any
+      # change that lets a re-apply drop a row a later migration added.
+      - name: "Issue #3081 — the #2489 gate registry survives a mid-chain re-apply and a future carrier"
+        env:
+          PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          PSQL="psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1"
+          GATE=supabase/migrations/20270523002489_issue_2489_address_privacy_server_gate.sql
+
+          # A — THE EXACT PARTIAL RE-APPLY THAT REDDENED main. `#2333`'s replay-safety
+          #     step ends by applying #2489 ALONE, and nothing re-applies #2986 after
+          #     it, so a declared set living in #2489's body could never be restored.
+          #     This single line is the whole bug: pre-#3081 it raised
+          #     "undeclared objects are carrying the shared gate: public_search_source_facts".
+          #
+          #     WHY NOT "APPLY THE WHOLE CHAIN TWICE". Because the chain is not replay-
+          #     safe and never has been: measured on supabase/postgres:17.4.1.075, a
+          #     second full pass fails on 130 UNRELATED migrations (CREATE TABLE without
+          #     IF NOT EXISTS, repeated ADD COLUMN / ADD CONSTRAINT). That is a
+          #     pre-existing property of the tree, not something #3081 introduced or can
+          #     fix, and asserting it here would red this lane for 130 reasons that have
+          #     nothing to do with the gate. The re-apply below is the operation the
+          #     repository ACTUALLY performs, and the one that broke.
+          $PSQL -q -f "$GATE"
+          echo "A OK — #2489 re-applied alone, mid-chain, without raising"
+
+          # B — the new terminal migration is itself idempotent, so a lane that replays
+          #     it (or a snapshot top-up that applies it twice) cannot break the shape.
+          $PSQL -q -f supabase/migrations/20270618003081_issue_3081_gate_registry_replay_safe.sql
+          echo "B OK — #3081 is idempotent"
+
+          # C — the state it arrived in is the RIGHT state, not merely a surviving one.
+          $PSQL -f supabase/migrations/__tests__/issue_3081_gate_registry_replay.implementor.happy.test.sql
+
+          # D — THE PROPERTY THAT ACTUALLY MATTERS: THE ELEVENTH CARRIER. A future
+          #     migration adds a gated object and declares it the way the contract says —
+          #     one INSERT, no function re-emission — having never heard of #3081. That
+          #     carrier must survive the same mid-chain re-apply. Under the old design
+          #     the re-apply below discarded it; that is the trap this issue disarms.
+          $PSQL -q -c "CREATE FUNCTION public.issue_3081_probe_carrier(p_theme jsonb) RETURNS boolean LANGUAGE sql STABLE SET search_path = '' AS \$fn\$ SELECT public.issue_2489_address_withheld(p_theme) \$fn\$;"
+          $PSQL -q -c "INSERT INTO public.issue_2489_gate_carriers (object_name, object_kind) VALUES ('issue_3081_probe_carrier', 'function') ON CONFLICT (object_name) DO NOTHING;"
+          $PSQL -q -f "$GATE"
+          $PSQL -q -c "DO \$d\$ BEGIN IF (SELECT count(*) FROM public.issue_2489_gate_registry() WHERE object_name = 'issue_3081_probe_carrier') <> 1 THEN RAISE EXCEPTION '#3081: re-applying #2489 discarded a later migration''s carrier — the replay trap is still armed'; END IF; END \$d\$;"
+          echo "D OK — an eleventh carrier declared by a future migration survives the re-apply"
+
+          # E — leave the migrated database exactly as found, in ONE transaction so the
+          #     registry never momentarily declares an object that no longer exists.
+          $PSQL -q -c "BEGIN; DELETE FROM public.issue_2489_gate_carriers WHERE object_name = 'issue_3081_probe_carrier'; DROP FUNCTION public.issue_3081_probe_carrier(jsonb); COMMIT;"
+          echo "E OK — probe carrier removed; the migrated database is as found"
+
   deno-tests:
     if: ${{ github.event.pull_request.draft != true }}
     name: "Deno unit tests for Stripe shared modules"
