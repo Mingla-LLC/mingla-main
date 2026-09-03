@@ -20,21 +20,7 @@ export function HostSellingGuide({ guide }: { readonly guide: HostGuideRecord })
         </figure>
       </header>
 
-      <section className="ps-host-tips" aria-labelledby="host-tips-heading">
-        <header><p className="ps-eyebrow">Three things that make the {guide.creationNoun} easier to sell</p><h2 id="host-tips-heading">Clear beats complicated.</h2></header>
-        <ol>
-          {guide.tips.map((tip, index) => (
-            <li key={tip.title}><span>{index + 1}</span><h3>{tip.title}</h3><p>{tip.detail}</p></li>
-          ))}
-        </ol>
-      </section>
-
-      <section id="host-guide-tool" className="ps-growth-tool" aria-labelledby="growth-tool-heading">
-        <header>
-          <p className="ps-eyebrow">Live Mingla growth tool</p>
-          <h2 id="growth-tool-heading">Pressure-test the plan with the {guide.toolLabel}.</h2>
-          <p>This is the same working tool available on Mingla’s public tools page, embedded here so the guide stays practical.</p>
-        </header>
+      <section id="host-guide-tool" className="ps-growth-tool" aria-label={`${guide.toolLabel} embedded tool`}>
         <div className="ps-growth-tool-frame"><GrowthToolEmbed tool={guide.toolKey} /></div>
         <p className="ps-tool-limitation">{guide.limitation}</p>
       </section>

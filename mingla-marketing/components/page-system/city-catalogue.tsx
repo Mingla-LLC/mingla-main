@@ -199,7 +199,7 @@ export function CityCatalogue({ places, plans, initialType, initialCategories, i
           {visibleItems.map((item, index) => {
             const detailValue = item.kind === 'place' ? `place:${item.placePoolId}` : `plan:${item.generatedCardId}`
             const href = catalogueHref(type, categories, intents, detailValue)
-            return <ExplorerCatalogueCard key={detailValue} item={item} href={href} featured={index < 4} onOpen={openDetail} />
+            return <ExplorerCatalogueCard key={detailValue} item={item} href={href} featured={index < 4} onOpen={openDetail} appCtaLocation="page_system_city_place_card" />
           })}
         </div>
       ) : (

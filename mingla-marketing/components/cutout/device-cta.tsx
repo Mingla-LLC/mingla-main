@@ -68,6 +68,8 @@ interface DeviceCtaProps {
   label?: ReactNode
   className?: string
   withArrow?: boolean
+  /** Lets a containing modal pause its own focus trap while the QR dialog owns focus. */
+  onDialogOpenChange?: (open: boolean) => void
 }
 
 const SIZES = {
@@ -95,6 +97,7 @@ export function DeviceCta({
   label,
   className,
   withArrow = false,
+  onDialogOpenChange,
 }: DeviceCtaProps) {
   const [platform, setPlatform] = useState<Platform>('other')
   const [qrOpen, setQrOpen] = useState(false)
@@ -228,6 +231,7 @@ export function DeviceCta({
             location,
           })
           setQrOpen(true)
+          onDialogOpenChange?.(true)
         }}
         className={classes}
       >
@@ -235,7 +239,13 @@ export function DeviceCta({
         {marks}
         {arrow}
       </button>
-      <AppQrPanel open={qrOpen} onClose={() => setQrOpen(false)} />
+      <AppQrPanel
+        open={qrOpen}
+        onClose={() => {
+          setQrOpen(false)
+          onDialogOpenChange?.(false)
+        }}
+      />
     </>
   )
 }

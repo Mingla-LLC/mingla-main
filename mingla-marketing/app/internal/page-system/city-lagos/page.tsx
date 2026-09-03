@@ -1,6 +1,6 @@
 import { CityCatalogue } from '@/components/page-system/city-catalogue'
 import { PageSystemShell } from '@/components/page-system/page-system-shell'
-import { EXPLORER_CATEGORIES, LAUNCH_CITIES, type ExplorerCategorySlug } from '@/content/page-system/shared'
+import { EXPLORER_CATEGORIES, type ExplorerCategorySlug } from '@/content/page-system/shared'
 import { getLagosCatalogueSnapshot } from '@/lib/page-system/city-catalogue.server'
 import { publicNoindexMetadata } from '@/lib/search/metadata'
 
@@ -48,14 +48,6 @@ export default async function LagosCityReviewPage({
         initialIntents={initialIntents}
         initialDetail={detail}
       />
-
-      <p className="ps-source-note ps-city-source-note">Private Explorer snapshot: scores captured 1 June 2026; place records reviewed 7 August 2026. The pool follows Mingla’s Lagos city assignment, so check each address before travelling.</p>
-
-      <section className="ps-launch-cities" aria-labelledby="launch-cities-heading">
-        <p className="ps-eyebrow">The city system scales</p>
-        <h2 id="launch-cities-heading">Next launch cities</h2>
-        <p>{LAUNCH_CITIES.join(' · ')}</p>
-      </section>
     </PageSystemShell>
   )
 }

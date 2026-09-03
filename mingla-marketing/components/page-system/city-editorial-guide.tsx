@@ -55,6 +55,7 @@ export function CityEditorialGuide({ places }: { readonly places: readonly Catal
                   item={place}
                   featured={index === 0}
                   href={`${CITY_PATH}?type=places&detail=place:${place.placePoolId}`}
+                  appCtaLocation="page_system_explorer_guide_place_card"
                 />
               ))}
             </div>

@@ -23,6 +23,7 @@ const read = (relativePath) => fs.readFileSync(path.join(ROOT, relativePath), 'u
 const pass = (label) => { passed += 1; process.stdout.write(`PASS ${label}\n`) }
 const decode = (value) => value.replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#x27;|&#39;/gi, "'").replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
 const text = (html) => decode(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
+const cssRule = (css, selector) => css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`, 'm'))?.[1] ?? ''
 
 function sourceContract() {
   const data = read('lib/page-system/city-catalogue.server.ts')
@@ -47,6 +48,8 @@ function sourceContract() {
   const card = read('components/page-system/explorer-catalogue-card.tsx')
   const detail = read('components/page-system/catalogue-detail.tsx')
   const hostBar = read('components/page-system/city-host-acquisition-bar.tsx')
+  const deviceCta = read('components/cutout/device-cta.tsx')
+  const qrPanel = read('components/marketing/app-qr-panel.tsx')
   assert.match(cityPage, /<CityCatalogue/)
   assert.match(cityPage, /publicNoindexMetadata\('\/internal\/page-system\/city-lagos'/)
   assert.match(cityPage, /hostAcquisition/)
@@ -60,6 +63,16 @@ function sourceContract() {
   assert.match(card, /Mingla score/)
   assert.match(card, /View place/)
   assert.match(card, /View plan/)
+  assert.match(card, /<article/)
+  assert.match(card, /<DeviceCta[\s\S]*surface="explorer"[\s\S]*label="Get the app"/)
+  assert.match(card, /page_system_city_place_card/)
+  assert.match(card, /page_system_explorer_guide_place_card/)
+  assert.match(detail, /page_system_catalogue_detail_place/)
+  assert.match(detail, /page_system_catalogue_detail_plan/)
+  assert.match(detail, /childDialogOpenRef\.current/)
+  assert.match(deviceCta, /onDialogOpenChange\?: \(open: boolean\) => void/)
+  assert.match(qrPanel, /z-\[200\]/)
+  assert.doesNotMatch(cityPage, /Private Explorer snapshot|The city system scales|Next launch cities/)
   for (const suffix of ['event/create', 'trip/create', 'experience/create', 'venue/create']) {
     assert(hostBar.includes(`https://host.usemingla.com/${suffix}`), `missing exact Host route ${suffix}`)
   }
@@ -94,6 +107,8 @@ function sourceContract() {
   assert.match(hostGuide, /guide\.heroMedia\.src/)
   assert.match(hostGuide, /guide\.creationNoun/)
   assert.match(hostGuide, /GrowthToolEmbed/)
+  assert.doesNotMatch(hostGuide, /ps-host-tips|Three things that make|Clear beats complicated/)
+  assert.doesNotMatch(hostGuide, /Live Mingla growth tool|Pressure-test the plan|same working tool available/)
   for (const file of [
     'app/tools/events/EventPredictorExperience.tsx',
     'app/tools/trips/TripQuoterExperience.tsx',
@@ -117,7 +132,16 @@ function sourceContract() {
   assert.match(css, /@media \(max-width: 639px\)[\s\S]*grid-template-columns: 1fr/)
   assert.match(css, /@media \(max-width: 899px\)[\s\S]*repeat\(2/)
   assert.match(css, /@media \(max-width: 1199px\)[\s\S]*repeat\(3/)
-  assert.match(css, /min-height: 420px/)
+  assert.match(css, /--page-host-bar-height: calc\(48px \+ env\(safe-area-inset-top\)\)/)
+  assert.match(css, /--page-host-bar-height: calc\(52px \+ env\(safe-area-inset-top\)\)/)
+  assert.match(cssRule(css, ".page-system-root[data-host-acquisition='true'] .ps-catalogue-controls"), /top: var\(--page-host-bar-height\)/)
+  assert.doesNotMatch(cssRule(css, '.ps-catalogue-card'), /min-height|flex:/)
+  assert.doesNotMatch(cssRule(css, '.ps-catalogue-photo'), /min-height|flex:/)
+  assert.doesNotMatch(cssRule(css, '.ps-catalogue-plate'), /min-height|flex:/)
+  assert.doesNotMatch(cssRule(css, '.ps-catalogue-facts'), /min-height|flex:/)
+  assert.match(cssRule(css, '.ps-catalogue-photo'), /aspect-ratio: 4 \/ 3/)
+  assert.match(cssRule(css, '.ps-catalogue-action'), /min-height: 44px/)
+  assert.match(cssRule(css, '.ps-growth-tool-frame'), /padding: clamp\(72px,8vw,96px\)/)
   assert.doesNotMatch(allRenderedSources, /PlanFitCheck|LaunchToDoorTimeline|AudienceFork|fictional choices/i)
   for (const city of ['Lagos', 'Durham', 'Cary', 'Raleigh', 'New York City', 'Brussels', 'Paris', 'London', 'Fort Lauderdale', 'Washington DC']) {
     assert(shell.includes('LAUNCH_CITIES') || cityPage.includes(city), `city system must retain ${city}`)
@@ -190,10 +214,12 @@ async function builtContract() {
     }
 
     const city = pageFacts((await request(port, ROUTES[0][0])).body)
-    const placeCards = [...city.main.matchAll(/<a\b[^>]*class=["'][^"']*ps-catalogue-card[^"']*["'][^>]*data-kind=["']place["'][^>]*>/gi)]
+    const placeCards = [...city.main.matchAll(/<article\b(?=[^>]*class=["'][^"']*ps-catalogue-card[^"']*["'])(?=[^>]*data-kind=["']place["'])[^>]*>/gi)]
     assert.equal(placeCards.length, 50, 'default city response must render exactly 50 place cards')
     assert.match(text(city.main), /50 Lagos places/)
     assert.match(city.main, /aria-describedby=["']ai-meaning-/)
+    assert.equal((city.main.match(/>Get the app</g) ?? []).length, 50, 'every default place card must render the device-aware Explorer CTA')
+    assert.doesNotMatch(text(city.main), /Private Explorer snapshot|The city system scales|Next launch cities/)
 
     const detailPath = '/internal/page-system/city-lagos?type=places&detail=place%3Aba952a16-1b52-4f23-ba4c-3aa8741d8a33'
     const directDetail = pageFacts((await request(port, detailPath)).body)
@@ -201,21 +227,27 @@ async function builtContract() {
     assert.match(text(directDetail.main), /Lekki Conservation Centre/)
     assert.match(text(directDetail.main), /Back to Lagos picks/)
     assert.match(directDetail.main, /href=["']\/internal\/page-system\/city-lagos\?type=places["']/)
+    assert.equal((directDetail.main.match(/>Get the app</g) ?? []).length, 51, 'place detail must add its own Explorer CTA after the 50 card CTAs')
 
     const plans = pageFacts((await request(port, '/internal/page-system/city-lagos?type=plans')).body)
-    const planCards = [...plans.main.matchAll(/<a\b[^>]*class=["'][^"']*ps-catalogue-card[^"']*["'][^>]*data-kind=["']plan["'][^>]*>/gi)]
+    const planCards = [...plans.main.matchAll(/<article\b(?=[^>]*class=["'][^"']*ps-catalogue-card[^"']*["'])(?=[^>]*data-kind=["']plan["'])[^>]*>/gi)]
     assert.equal(planCards.length, 6, 'plan view must render the six captured editorial plans')
     assert.doesNotMatch(text(plans.main), /Plan match|plan score/i)
 
+    const planDetail = pageFacts((await request(port, '/internal/page-system/city-lagos?detail=plan%3Alagos-editorial-romantic')).body)
+    assert.match(planDetail.main, /data-catalogue-detail/)
+    assert.equal((planDetail.main.match(/>Get the app</g) ?? []).length, 1, 'expanded plan detail must render the device-aware Explorer CTA')
+
     const guide = pageFacts((await request(port, ROUTES[1][0])).body)
-    const guideCards = [...guide.main.matchAll(/<a\b[^>]*class=["'][^"']*ps-catalogue-card[^"']*["'][^>]*data-kind=["']place["'][^>]*>/gi)]
-    const guideHrefs = guideCards.map((match) => match[0].match(/href=["']([^"']+)/i)?.[1])
+    const guideCards = [...guide.main.matchAll(/<article\b(?=[^>]*class=["'][^"']*ps-catalogue-card[^"']*["'])(?=[^>]*data-kind=["']place["'])[^>]*>/gi)]
+    const guideHrefs = [...guide.main.matchAll(/<a\b(?=[^>]*class=["'][^"']*ps-catalogue-detail-link[^"']*["'])(?=[^>]*data-kind=["']place["'])(?=[^>]*href=["']([^"']+)["'])[^>]*>/gi)].map((match) => match[1])
     assert.equal(guideCards.length, 12, 'Explorer guide must render three picks per section')
     assert.equal(new Set(guideHrefs).size, 12, 'Explorer guide picks must not repeat')
+    assert.equal((guide.main.match(/>Get the app</g) ?? []).length, 12, 'every Explorer guide place card must render the device-aware Explorer CTA')
     for (const id of ['party', 'date', 'hangout', 'culture']) assert.match(guide.main, new RegExp(`id=["']${id}["']`))
 
     const host = pageFacts((await request(port, ROUTES[2][0])).body)
-    assert.equal((host.main.match(/<li\b/g) ?? []).length, 3, 'Host guide must render exactly three selling tips')
+    assert.doesNotMatch(text(host.main), /Three things that make|Clear beats complicated|Live Mingla growth tool|Pressure-test the plan/)
     assert.match(text(host.main), /Event Turnout Predictor/)
     assert.match(text(host.main), /A forecast or audit is guidance, not a guarantee/)
     pass('built SSR, noindex, balanced cards, no-JS details and guide contracts')

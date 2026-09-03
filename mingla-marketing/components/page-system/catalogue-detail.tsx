@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type MouseEvent } from 'react'
 import { ArrowLeft, Sparkles, Star, X } from 'lucide-react'
+import { DeviceCta } from '@/components/cutout'
 import type { CataloguePlace, CataloguePlan } from '@/content/page-system/shared'
 
 interface CatalogueDetailProps {
@@ -16,6 +17,7 @@ function scoreLabel(score: number): string {
 
 export function CatalogueDetail({ item, backHref, onClose }: CatalogueDetailProps) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const childDialogOpenRef = useRef(false)
   const isPlace = item.kind === 'place'
 
   useEffect(() => {
@@ -24,6 +26,7 @@ export function CatalogueDetail({ item, backHref, onClose }: CatalogueDetailProp
     panelRef.current?.focus()
 
     function onKeyDown(event: KeyboardEvent) {
+      if (childDialogOpenRef.current) return
       if (event.key === 'Escape') {
         event.preventDefault()
         onClose()
@@ -109,6 +112,15 @@ export function CatalogueDetail({ item, backHref, onClose }: CatalogueDetailProp
               <p className="ps-source-note">Editorial plan snapshot captured {new Date(item.generatedAt).toLocaleDateString('en-US', { dateStyle: 'long', timeZone: 'UTC' })}. Live availability and opening hours are not implied.</p>
             </>
           )}
+          <div className="ps-detail-app-cta">
+            <DeviceCta
+              surface="explorer"
+              location={isPlace ? 'page_system_catalogue_detail_place' : 'page_system_catalogue_detail_plan'}
+              label="Get the app"
+              size="md"
+              onDialogOpenChange={(open) => { childDialogOpenRef.current = open }}
+            />
+          </div>
           <a href={backHref} className="ps-back-link" onClick={close}><ArrowLeft aria-hidden="true" size={17} />Back to Lagos picks</a>
         </div>
       </div>

@@ -13,13 +13,17 @@ const read = (relativePath) => fs.readFileSync(path.join(ROOT, relativePath), 'u
 const decode = (value) => value.replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#x27;|&#39;/gi, "'").replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
 const visibleText = (html) => decode(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
 const mainHtml = (html) => html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ?? ''
-const cardTags = (html, kind) => [...html.matchAll(new RegExp(`<a\\b[^>]*class=["'][^"']*ps-catalogue-card[^"']*["'][^>]*data-kind=["']${kind}["'][^>]*>`, 'gi'))]
+const cardTags = (html, kind) => [...html.matchAll(new RegExp(`<article\\b(?=[^>]*class=["'][^"']*ps-catalogue-card[^"']*["'])(?=[^>]*data-kind=["']${kind}["'])[^>]*>`, 'gi'))]
 
 function sourceContract() {
   const page = read('app/internal/page-system/city-lagos/page.tsx')
   const catalogue = read('components/page-system/city-catalogue.tsx')
+  const card = read('components/page-system/explorer-catalogue-card.tsx')
+  const detail = read('components/page-system/catalogue-detail.tsx')
   const hostBar = read('components/page-system/city-host-acquisition-bar.tsx')
+  const hostGuide = read('components/page-system/host-selling-guide.tsx')
   const hostFamily = read('content/page-system/host-guide-family.ts')
+  const css = read('components/page-system/page-system.css')
   const packageJson = JSON.parse(read('package.json'))
 
   assert.match(page, /requestedCategories\.filter\([\s\S]*EXPLORER_CATEGORIES\.some/,
@@ -29,6 +33,23 @@ function sourceContract() {
   assert.match(catalogue, /That pick is no longer available\./,
     'stale or malformed detail URLs must fail closed with a useful message')
   assert.match(catalogue, /role="alert"/)
+  assert.doesNotMatch(page, /Private Explorer snapshot|The city system scales|Next launch cities/)
+  assert.match(card, /<article/)
+  assert.match(card, /<DeviceCta[\s\S]*label="Get the app"/)
+  assert.match(detail, /page_system_catalogue_detail_place/)
+  assert.match(detail, /page_system_catalogue_detail_plan/)
+  assert.match(detail, /childDialogOpenRef\.current/)
+  assert.doesNotMatch(hostGuide, /ps-host-tips|Three things that make|Clear beats complicated/)
+  assert.doesNotMatch(hostGuide, /Live Mingla growth tool|Pressure-test the plan/)
+  assert.match(hostGuide, /GrowthToolEmbed/)
+  assert.match(css, /--page-host-bar-height: calc\(48px \+ env\(safe-area-inset-top\)\)/)
+  assert.match(css, /--page-host-bar-height: calc\(52px \+ env\(safe-area-inset-top\)\)/)
+  assert.match(css, /\.page-system-root\[data-host-acquisition='true'\] \.ps-catalogue-controls \{ top: var\(--page-host-bar-height\); \}/)
+  for (const selector of ['.ps-catalogue-card', '.ps-catalogue-photo', '.ps-catalogue-plate', '.ps-catalogue-facts']) {
+    assert.doesNotMatch(cssRule(css, selector), /min-height|flex:/, `${selector} must remain content-driven rather than fixed or stretched`)
+  }
+  assert.match(cssRule(css, '.ps-catalogue-photo'), /aspect-ratio: 4 \/ 3/)
+  assert.match(cssRule(css, '.ps-growth-tool-frame'), /padding: clamp\(72px,8vw,96px\)/)
 
   const exactDestinations = [...hostBar.matchAll(/href: '(https:\/\/host\.usemingla\.com\/[^']+)'/g)].map((match) => match[1])
   assert.deepEqual(exactDestinations, [
@@ -152,6 +173,7 @@ async function runtimeContract() {
     assert.match(planMain, /data-catalogue-detail/)
     assert.match(visibleText(planMain), /Romantic/)
     assert.doesNotMatch(visibleText(planMain), /plan (?:rank|score)|match score/i)
+    assert.equal((planMain.match(/>Get the app</g) ?? []).length, 1, 'expanded plans must expose the device-aware Explorer CTA')
 
     const injectedResponse = await request(port, '/internal/page-system/city-lagos?detail=place%3A%3Cscript%3Ealert(1)%3C%2Fscript%3E')
     assert.equal(injectedResponse.status, 200)
