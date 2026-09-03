@@ -201,9 +201,18 @@ function setupEvidenceIsExact(report, authority, executionClass) {
 export function expectedRoutedPrimaryIds(ownedPrimary, routing) {
   if (!routing || routing.mode !== "routed") return ownedPrimary.map((suite) => suite.id);
   const changedPaths = Array.isArray(routing.changedPaths) ? routing.changedPaths : [];
-  return ownedPrimary
-    .filter((suite) => suiteOriginPatterns(suite).some((pattern) => changedPaths.some((file) => pathMatches(pattern, file))))
-    .map((suite) => suite.id);
+  try {
+    return ownedPrimary
+      .filter((suite) => suiteOriginPatterns(suite).some((pattern) => changedPaths.some((file) => pathMatches(pattern, file))))
+      .map((suite) => suite.id);
+  } catch {
+    // A registry too broken to route from should already have failed the build
+    // in the validator, but the reconcile step runs `if: always()` and so can
+    // still reach here. Fall back to OWNERSHIP — the larger expectation — so a
+    // routed run that skipped anything goes red. The named reason is pushed by
+    // reconcilePrimaryRouting; a stack trace here would say less and hide it.
+    return ownedPrimary.map((suite) => suite.id);
+  }
 }
 
 export function changedPathDigest(changedPaths) {
@@ -237,6 +246,10 @@ function reconcilePrimaryRouting(ownedPrimary, decision, primary) {
   if (!Array.isArray(changedPaths) || changedPaths.length === 0) return [...errors, "primary-routing-empty-diff"];
   for (const value of changedPaths) {
     try { parseOriginPattern(value); } catch (error) { return [...errors, `primary-routing-path-unsafe: ${error.message}`]; }
+  }
+  for (const suite of ownedPrimary) {
+    try { suiteOriginPatterns(suite); }
+    catch (error) { return [...errors, `primary-routing-registry-unreadable: ${error.message}`]; }
   }
   const recomputed = expectedRoutedPrimaryIds(ownedPrimary, routing);
   if (JSON.stringify(routing.classSelectedSuiteIds) !== JSON.stringify(recomputed)) errors.push("primary-routing-mismatch");
