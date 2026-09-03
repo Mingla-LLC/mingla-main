@@ -636,7 +636,36 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     tree drifted into this digest. The value below is stable across two
   //     consecutive runs.
   // Every earlier re-derivation is preserved, not replaced.
-  "5b0519023a2d8237eddc0bdc29a14bda3eb41e5cbd84d2dd75a9502d8960b7a5";
+  // [TEST-MOD-APPROVED #3078] Digest re-derived. #3078 adds the nightly
+  // full-corpus trigger — a `schedule` event on the batch lane, which is
+  // PR-family and therefore lives inside this digest. It moves the digest
+  // twice over: once through the sorted event list, once through the `on:`
+  // mapping retained in the non-concurrency document. Only the digest literal
+  // changed. PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are untouched
+  // and were re-verified unmoved, because adding an event to a lane that was
+  // ALREADY PR-family moves neither a count nor an identity.
+  //
+  // REBASED ONTO #3072. This note previously pinned
+  // a0456192c6fc8cadd7695992b844eb34e91eb691922e4372219bcef556d11e7e, computed
+  // when the value immediately above was #3076's 404b2394... That tree no
+  // longer exists: #3072 landed seven lanes into this digest and moved it to
+  // 5b0519023a..., so the old pin would have been a stale value that merely
+  // looked deliberate. Re-derived fresh from the rebased tree rather than
+  // reused — as the note below this one already warned was mandatory, the
+  // value is sensitive to the exact cron text.
+  //
+  // THE DELTA IS EXACTLY THIS CHANGE, executed rather than asserted: restoring
+  // that one lane to its origin/main bytes, with the value
+  // 5b0519023a2d8237eddc0bdc29a14bda3eb41e5cbd84d2dd75a9502d8960b7a5 pinned
+  // immediately above, recomputes that value exactly — so nothing else in the
+  // tree, and nothing #3072 brought with it, drifted into this digest. The
+  // sorted event list for the batch lane goes from
+  // ["pull_request","push","workflow_dispatch"] to
+  // ["pull_request","push","schedule","workflow_dispatch"], which is the whole
+  // semantic delta. Note the value is sensitive to the exact cron text, so a
+  // rebase that changes it must re-derive rather than reuse.
+  // Every earlier re-derivation is preserved, not replaced.
+  "b2c64f32eb89689e294a420dad8263c5fbefc21e6c86400b489d8910ef0861bf";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
