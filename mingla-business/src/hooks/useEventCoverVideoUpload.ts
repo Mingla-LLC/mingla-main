@@ -10,8 +10,7 @@ import {
   uploadEventCoverVideoSource, waitForEventCoverVideoReady,
 } from "../services/eventCoverVideoProcessingService";
 import {
-  deletePreparedEventCoverVideoSource, EventCoverVideoSourceHasNoVideoTrackError,
-  prepareEventCoverVideoSource,
+  deletePreparedEventCoverVideoSource, prepareEventCoverVideoSource,
   type PreparedEventCoverVideoSource,
 } from "../services/eventCoverVideoPreparedSource";
 import {
@@ -65,58 +64,35 @@ const terminalCodes = new Set([
   "source_ack_timeout", "source_mismatch", "source_over_cap",
   "source_transport_expired", "source_video_track_missing", "validation_error",
 ]);
-// Issue #3073 — the trim editor can hand back an MP4 with an audio track and no
-// video track. `prepareEventCoverVideoSource` detects it while it is already
-// reading the file for its hash; this translates that into the picker's own
-// terminal-error vocabulary so the host is told in ONE round trip, instead of
-// uploading a picture-less file and meeting the provider's
-// `source_identity_mismatch` a minute later — a true statement about the hashes
-// and a useless one about the cause.
-const prepareSourceOrExplainMissingVideo = async (input: {
-  uri: string; bytes: number; durationMs: number;
-  fileName?: string | null; mimeType?: string | null; operationId: string;
-}): Promise<PreparedEventCoverVideoSource> => {
-  try {
-    return await prepareEventCoverVideoSource(input);
-  } catch (prepareError) {
-    if (prepareError instanceof EventCoverVideoSourceHasNoVideoTrackError) {
-      throw new EventCoverVideoProcessingError(
-        "source_video_track_missing",
-        "That clip came back without any video. Trim it again, or pick a different video.",
-      );
-    }
-    throw prepareError;
+// Issue #3075 — one live transfer per operation, module-scoped so it spans hook
+// instances. A JOIN was the obvious shape and it is wrong: a remount would await
+// the ORIGINAL transfer, so a wedged one — an interrupted acknowledgement, say —
+// would block the remount from ever making progress, which is exactly what
+// #2715's adversarial remount test catches. Supersede instead: the newest owner
+// aborts the previous transfer for the same operation and takes over.
+const activeUploadControllers = new Map<string, AbortController>();
+
+const claimUploadSlot = (key: string, controller: AbortController): void => {
+  const previous = activeUploadControllers.get(key);
+  if (previous !== undefined && previous !== controller) previous.abort();
+  activeUploadControllers.set(key, controller);
+};
+
+const releaseUploadSlot = (key: string, controller: AbortController): void => {
+  if (activeUploadControllers.get(key) === controller) {
+    activeUploadControllers.delete(key);
   }
 };
 
-// Issue #3075 — the transfer must outlive the sheet.
-//
-// The button says "Close — keep working". It did not: the unmount cleanup below
-// aborted the in-flight controller, so closing the sheet froze the upload at
-// whatever offset it had reached (measured: 0 bytes of 3,213,373, unchanged for
-// 2m30s) and reopening the sheet was the only thing that resumed it. Killing the
-// app had the same effect for 6m30s. No bytes were ever lost — but a host who
-// closed the sheet and published shipped an event with no cover, and nothing
-// anywhere in the wizard said an upload was pending.
-//
-// Letting the transfer run past unmount needs a single-flight guard, or a
-// reopened sheet starts a SECOND transfer for the same job and the two race on
-// the same TUS offset (the loser gets a 409 and surfaces
-// `transport_integrity_failed`). Keyed per operation, module-scoped so it spans
-// hook instances, and self-cleaning so a finished operation cannot pin memory.
-const inFlightUploads = new Map<string, Promise<void>>();
-
-const runSingleFlightUpload = (
-  key: string,
-  run: () => Promise<void>,
-): Promise<void> => {
-  const existing = inFlightUploads.get(key);
-  if (existing !== undefined) return existing;
-  const started = run().finally(() => {
-    if (inFlightUploads.get(key) === started) inFlightUploads.delete(key);
-  });
-  inFlightUploads.set(key, started);
-  return started;
+// Slots are keyed `${persistenceKey}:${operationId}`; a cancel knows only the
+// target it is cancelling for, not the operation id.
+const abortActiveTransfersFor = (persistenceKeyPrefix: string): void => {
+  for (const [key, controller] of activeUploadControllers) {
+    if (key.startsWith(`${persistenceKeyPrefix}:`)) {
+      controller.abort();
+      activeUploadControllers.delete(key);
+    }
+  }
 };
 
 const isTerminalUploadError = (error: unknown): boolean =>
@@ -157,7 +133,29 @@ const ACK_POLL_INTERVAL_MS = 2_000;
 // inside the reaper's 12h stall deadline so the server always owns the real
 // verdict.
 export const EVENT_COVER_VIDEO_WATCH_DEADLINE_MS = 600_000;
-const safeUploadError = (error: unknown): Error => error instanceof EventCoverVideoProcessingError
+// issue #3073 — `prepareEventCoverVideoSource` refuses a source whose ISO-BMFF
+// handler boxes carry no video track (the trim editor can return an audio-only
+// MP4). Translating it HERE, at the single point every start-path error already
+// funnels through, keeps the prepare call itself a plain direct call — which is
+// what ORCH-1308 gate D reads to prove the source is prepared before allocation.
+// Matched by NAME, and defined right here rather than imported. Several suites
+// mock `../services/eventCoverVideoPreparedSource` partially, so a newly
+// imported symbol is `undefined` at runtime in those tests — and calling it (or
+// using it as an `instanceof` right-hand side) THROWS, taking the whole suite
+// down instead of failing one assertion. Owning the predicate locally means no
+// mock can reach it. Same reasoning as the repo's PostgREST error checks, which
+// duck-type because those errors arrive as plain objects.
+const isMissingVideoTrackError = (error: unknown): boolean =>
+  error !== null && typeof error === "object" &&
+  (error as { name?: unknown }).name === "EventCoverVideoSourceHasNoVideoTrackError";
+
+const safeUploadError = (error: unknown): Error =>
+  isMissingVideoTrackError(error)
+  ? new EventCoverVideoProcessingError(
+    "source_video_track_missing",
+    "That clip came back without any video. Trim it again, or pick a different video.",
+  )
+  : error instanceof EventCoverVideoProcessingError
   ? error
   : error instanceof Error && "code" in error && error.code === "unauthenticated"
   ? Object.assign(new Error("Finishing sign-in. Try again in a moment."), { code: "unauthenticated" })
@@ -399,6 +397,8 @@ export function useEventCoverVideoUpload(
     userIdRef.current = userId;
     let generation = generationRef.current;
     let abort = new AbortController();
+    // issue #3075 — see `signal:` on the upload call below.
+    const transferAbort = new AbortController();
     const trimStartMs = persisted?.trimStartMs ?? 0;
     const trimEndMs = persisted?.trimEndMs ?? prepared.durationMs;
     const provisionalKey = replacementPersistenceKey;
@@ -503,16 +503,20 @@ export function useEventCoverVideoUpload(
     setStage({ phase: "uploading", percent: 0 });
     const upload = (): Promise<unknown> => uploadEventCoverVideoSource({
       bytes: prepared.bytes, fileName: prepared.fileName, jobId: acceptedIntent.jobId,
-      mimeType: prepared.mimeType, uri: prepared.uri, upload: acceptedIntent.upload, signal: abort.signal,
+      mimeType: prepared.mimeType, uri: prepared.uri, upload: acceptedIntent.upload,
+      // issue #3075 — the TRANSFER runs on its own controller, deliberately not
+      // the one unmount aborts. Unmount must end this instance's WATCH (a
+      // subscription nobody is reading any more) without stopping the bytes.
+      signal: transferAbort.signal,
       onProgress: (progress) => {
         if (generationRef.current === generation) setStage({ phase: "uploading", percent: progress.percent });
       },
     });
+    // issue #3075 — one live transfer per operation, however many sheets mount.
+    const uploadSlotKey = `${persistenceKey}:${operationId}`;
+    claimUploadSlot(uploadSlotKey, transferAbort);
     try {
-      // issue #3075 — one transfer per operation, however many sheets mount.
-      await runSingleFlightUpload(`${persistenceKey}:${operationId}`, async () => {
-        await upload();
-      });
+      await upload();
     } catch (uploadError) {
       const expired = uploadError instanceof EventCoverVideoProcessingError &&
         ["tus_head_http_404", "tus_head_http_410"].includes(uploadError.edgeDetail ?? "");
@@ -525,9 +529,9 @@ export function useEventCoverVideoUpload(
         );
       }
       acceptedIntent = refreshedIntent;
-      await runSingleFlightUpload(`${persistenceKey}:${operationId}:retry`, async () => {
-        await upload();
-      });
+      await upload();
+    } finally {
+      releaseUploadSlot(uploadSlotKey, transferAbort);
     }
     setStage({ phase: "ack_pending", percent: 0 });
     // issue #2967 — this loop used to be `while (status === "source_uploading")`
@@ -620,7 +624,7 @@ export function useEventCoverVideoUpload(
           if (!replacing) projectPreparation({ phase: "compressing", percent: progress.percent });
         },
       });
-      prepared = await prepareSourceOrExplainMissingVideo({
+      prepared = await prepareEventCoverVideoSource({
         uri: compressed.uri, bytes: compressed.bytes, durationMs: compressed.durationMs,
         fileName: compressed.wasCompressed ? `${operationId}.mp4` : file.fileName,
         mimeType: compressed.wasCompressed ? "video/mp4" : file.mimeType, operationId,
@@ -865,6 +869,9 @@ export function useEventCoverVideoUpload(
       // transfer for the same operation. Explicit cancel, a superseding upload,
       // and SIGNED_OUT still abort — see `abortRef` at those call sites.
       generationRef.current += 1;
+      // Ends this instance's WATCH. The transfer runs on its own controller and
+      // is deliberately left alone — see issue #3075 above.
+      abortRef.current?.abort();
       subscription.unsubscribe();
     };
   }, [clearPreparationProjection, resume]);
@@ -880,9 +887,14 @@ export function useEventCoverVideoUpload(
     project(next);
     if (next.status === "applied" && userIdRef.current) await cleanupPersisted(userIdRef.current);
   }, [cleanupPersisted, project, status]);
+  // issue #3075 — an explicit cancel is the one gesture that DOES stop the
+  // transfer, so it aborts the operation's slot as well as this instance's
+  // watch. Unmount is not a cancel.
   const cancel = useCallback(async (): Promise<void> => {
     generationRef.current += 1;
     abortRef.current?.abort();
+    abortActiveTransfersFor(persistenceKey);
+    abortActiveTransfersFor(replacementPersistenceKey);
     if (!jobIdRef.current) {
       if (userIdRef.current) await cleanupPersisted(userIdRef.current);
       setLocalPreviewUri(null);

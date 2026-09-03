@@ -28,6 +28,17 @@ export class EventCoverVideoSourceHasNoVideoTrackError extends Error {
   }
 }
 
+// A NAME check, not `instanceof`. Several suites mock this module partially, so
+// the class can be `undefined` at runtime in a test — and `x instanceof
+// undefined` THROWS, taking down the whole suite rather than failing one
+// assertion. Same shape the repo already uses for PostgREST errors, which
+// arrive as plain objects.
+export const isEventCoverVideoSourceHasNoVideoTrackError = (
+  error: unknown,
+): boolean =>
+  error !== null && typeof error === "object" &&
+  (error as { name?: unknown }).name === "EventCoverVideoSourceHasNoVideoTrackError";
+
 export const prepareEventCoverVideoSource = async (input: {
   uri: string;
   bytes: number;
