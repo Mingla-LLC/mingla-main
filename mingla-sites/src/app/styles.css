@@ -149,8 +149,6 @@
     "Liberation Sans Narrow", system-ui, sans-serif;
   --body: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", sans-serif;
-  --font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  --font-serif-body: Charter, Georgia, "Times New Roman", serif;
   --display-case: uppercase;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   color-scheme: dark;
@@ -225,7 +223,9 @@ a {
 
 .brand {
   color: var(--ivory);
-  font-family: "Arial Narrow", "Roboto Condensed", sans-serif;
+  /* #2830 — was a hardcoded stack. It out-specified the brand's chosen face,
+     so a font picked in Studio changed nothing here. */
+  font-family: var(--display);
   font-size: 1.2rem;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -289,7 +289,13 @@ a {
 main h2,
 .tile h3,
 .footer strong {
-  font-family: "Arial Narrow", "Roboto Condensed", Impact, sans-serif;
+  /* #2830 — same fix, and this one carried the headings. `.hero h1`, `main h2`
+     and `.tile h3` are more specific than any bare `h1, h2, h3` rule, so the
+     hardcoded stack won on every heading on the site and the whole font choice
+     was invisible. Caught by MEASURING the rendered width against Oswald's,
+     not by reading the file: the declared list and the used face are different
+     things and only one of them is visible. */
+  font-family: var(--display);
   font-stretch: condensed;
   text-wrap: balance;
 }
@@ -413,7 +419,9 @@ main h2 {
 .prose p {
   max-width: 760px;
   color: var(--muted);
-  font-family: Georgia, "Times New Roman", serif;
+  /* #2830 — third instance of the same bug: a hardcoded face that ignored the
+     brand's choice. A brand picking "Modern sans" still got Georgia here. */
+  font-family: var(--body);
   font-size: clamp(1.08rem, 2vw, 1.35rem);
   line-height: 1.75;
 }
