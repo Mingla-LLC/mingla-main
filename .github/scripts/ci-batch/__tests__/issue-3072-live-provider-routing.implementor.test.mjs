@@ -51,6 +51,22 @@ const trackedFiles = () =>
 
 const routed = (changedPaths) => ({ mode: "routed", eventName: "pull_request", changedPaths });
 
+/**
+ * [#3072] Does this lane's WORKFLOW declare an unfiltered push to main?
+ *
+ * Reads the workflow SOURCE, not the registry's `triggers`. The registry is
+ * re-derived by validate-manifest-v2.mjs, so it is the right thing to assert for
+ * shape -- but a revert that deletes the trigger from the workflow alone leaves
+ * the registry stale, and an assertion reading the registry would stay green
+ * through exactly the reversion it exists to catch. The wrapper path comes from
+ * the registry at runtime so that no workflow filename literal appears here.
+ */
+const declaresPushToMain = (provider) => {
+  const source = fs.readFileSync(path.join(ROOT, provider.providerWorkflow), "utf8");
+  const block = source.match(/\n {2}push:\n((?: {4}\S[^\n]*\n)+)/);
+  return Boolean(block) && block[1].trim() === "branches: [main]";
+};
+
 const selects = (ownerIssue, changedPaths) => {
   const provider = routedProvider(manifest, ownerIssue);
   return decideSelection(provider, providerOriginPatterns(provider), routed(changedPaths)).selected;
@@ -229,13 +245,9 @@ test("12. every one of the six runs on a push to main, so routing can never remo
 
     // Scope half: the push must be on main, and must carry NO path filter --
     // a paths-gated backstop is a sampling scheme, not a backstop.
-    const source = fs.readFileSync(path.join(ROOT, provider.providerWorkflow), "utf8");
-    const block = source.match(/\n {2}push:\n((?: {4}\S[^\n]*\n)+)/);
-    assert.ok(block, `${ownerIssue}: push trigger must be declared in the workflow source`);
-    assert.equal(
-      block[1].trim(),
-      "branches: [main]",
-      `${ownerIssue}: the push backstop must be main-only and unfiltered by paths`,
+    assert.ok(
+      declaresPushToMain(provider),
+      `${ownerIssue}: the push backstop must be declared in the workflow, main-only and unfiltered by paths`,
     );
   }
 });
@@ -266,9 +278,9 @@ test("13. a change routing SKIPS on a pull request is still executed by the push
       // this subtest refuses to pass on the router's behaviour alone: deleting
       // the trigger must turn THIS test red, not only subtest 12.
       assert.ok(
-        provider.workflowMetadata.triggers.includes("push"),
-        `${ownerIssue}: ${changed.join(",")} skipped the pull request and this lane has NO push trigger, `
-          + "so routing removed its coverage outright instead of deferring it to main",
+        declaresPushToMain(provider),
+        `${ownerIssue}: ${changed.join(",")} skipped the pull request and this lane's workflow declares NO `
+          + "unfiltered push to main, so routing removed its coverage outright instead of deferring it",
       );
       assert.equal(
         decideSelection(provider, patterns, pushContext).selected,
