@@ -132,7 +132,23 @@ const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({
   );
 };
 
-export const AriChatScreen: React.FC = () => {
+export interface AriChatScreenProps {
+  /**
+   * #2830 — render inside a host that already owns the page chrome.
+   *
+   * The Website workspace puts Ari in the right-hand column of a split view
+   * beside a live draft preview. In that position the screen must NOT pad for
+   * the device notch (its container already did) and must NOT draw its own
+   * "Ari" title bar (the workspace names the page). Everything else — the
+   * conversation, the composer, tool proposals, the drawer — is identical, so
+   * the split view and the tab cannot drift into two different Aris.
+   */
+  embedded?: boolean;
+}
+
+export const AriChatScreen: React.FC<AriChatScreenProps> = ({
+  embedded = false,
+}) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const online = useShareNetworkState();
@@ -448,9 +464,10 @@ export const AriChatScreen: React.FC = () => {
   };
 
   return (
-    <View style={[styles.host, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
+    <View style={[styles.host, { paddingTop: embedded ? 0 : insets.top }]}>
+      {/* Header — the embedding host owns the page title, so it is dropped
+          there rather than stacking two headers in one column. */}
+      <View style={[styles.header, embedded ? styles.headerEmbedded : null]}>
         <Pressable
           onPress={() => setDrawerOpen(true)}
           style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
@@ -674,6 +691,9 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
     backgroundColor: canvas.discover,
+  },
+  headerEmbedded: {
+    display: "none",
   },
   header: {
     flexDirection: "row",
