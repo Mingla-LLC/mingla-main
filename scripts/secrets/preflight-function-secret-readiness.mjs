@@ -137,22 +137,36 @@ export function assertLiveNameParity({
     manifest.secrets.map((record) => record.name),
   );
   const remediation = contract.remediation;
-  const expectedLive = mode === "issue-2241-remediation"
-    ? sortedUnique([...manifestNames, ...remediation.allowed_extra_live_names])
+  const bandNames = sortedUnique(remediation.allowed_extra_live_names);
+  // #2241, founder-approved 2026-09-02. BOTH modes accept the approved
+  // two-name migration band; only remediation REQUIRES it (and, below,
+  // exactly 90). Normal mode used to expect the 88 declared names alone, so
+  // every normal deploy was refused for a migration state the policy
+  // explicitly permits — that is what pinned production on one revision.
+  // Requiring the band here instead would be the mirror bug: the documented
+  // removal order in docs/runbooks/SUPABASE_SECRET_CAPACITY.md takes live to
+  // 89 and then to the exact 88-name target, and a check that cannot pass at
+  // its own target state is the #2113 shape. So the band is TOLERATED, never
+  // demanded. The comparison stays exact in both directions: a DECLARED name
+  // that is absent still fails `missing:`, and any name outside
+  // manifest+band still fails `unexpected:`.
+  const requiredLive = mode === "issue-2241-remediation"
+    ? sortedUnique([...manifestNames, ...bandNames])
     : manifestNames;
+  const acceptedLive = sortedUnique([...manifestNames, ...bandNames]);
 
   if (projectRef !== remediation.production_ref) {
     throw new ReadinessError("wrong_project", [projectRef]);
   }
-  if (!exactSet(liveUserManaged, expectedLive)) {
-    const live = new Set(liveUserManaged);
-    const expected = new Set(expectedLive);
-    const missing = expectedLive.filter((name) => !live.has(name)).map((name) =>
-      `missing:${name}`
-    );
-    const unexpected = liveUserManaged
-      .filter((name) => !expected.has(name))
-      .map((name) => `unexpected:${name}`);
+  const live = new Set(liveUserManaged);
+  const accepted = new Set(acceptedLive);
+  const missing = requiredLive.filter((name) => !live.has(name)).map((name) =>
+    `missing:${name}`
+  );
+  const unexpected = liveUserManaged
+    .filter((name) => !accepted.has(name))
+    .map((name) => `unexpected:${name}`);
+  if (missing.length > 0 || unexpected.length > 0) {
     throw new ReadinessError("live_name_set_mismatch", [
       ...missing,
       ...unexpected,

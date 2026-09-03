@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const PATHS = {
   audit: "scripts/secrets/audit-function-secret-contract.mjs",
+  bandTest: "scripts/secrets/issue_2241_normal_band_parity.test.mjs",
   claimFunction: "supabase/functions/attendance-claim-link/index.ts",
   componentTest:
     "mingla-business/src/components/checkout/__tests__/issue2241DownloadMinglaCta.render.test.tsx",
@@ -26,6 +27,7 @@ const PATHS = {
     "mingla-business/src/services/__tests__/issue2241AttendanceClaimUnavailable.behavior.test.ts",
   setter: "scripts/secrets/set-governed-secret-bundle.mjs",
   test: "scripts/secrets/issue_2241_secret_readiness.test.mjs",
+  watch: "scripts/secrets/postdeploy-governed-fallback-watch.mjs",
   workflow: ".github/workflows/supabase-secret-budget.yml",
 };
 
@@ -197,8 +199,46 @@ export function violations(files) {
       "remediation_requires_exact_90",
       "remediation_function_set_mismatch",
       "assertLiveNameParity",
+      // #2241: normal mode ACCEPTS the approved band without REQUIRING it.
+      // `requiredLive` is mode-dependent; `acceptedLive` never is. Collapsing
+      // the two back into one set is the revert this pins.
+      "const acceptedLive = sortedUnique([...manifestNames, ...bandNames]);",
+      'const requiredLive = mode === "issue-2241-remediation"',
     ],
     "preflight",
+    failures,
+  );
+  // #2241 replacement observation. The normal-mode strictness that refused a
+  // deploy while the migration band was live is relaxed, so the risk it held —
+  // a function passing while it silently reads the OLD standalone copy — must
+  // be WATCHED. A relaxation with no replacement observation is the #2113
+  // shape, and a watch that cannot fail is the same shape wearing a check's
+  // clothes: `log_window_empty` is what keeps an unobserved window from
+  // reading as clean.
+  requireTokens(
+    files.watch,
+    [
+      "governed_ad_legacy_fallback",
+      "governed_ad_bundle_invalid",
+      "governed_ad_fallback_observed",
+      "log_window_empty",
+      "watch_access_token_missing",
+      "analytics/endpoints/logs",
+    ],
+    "fallback-watch",
+    failures,
+  );
+  requireTokens(
+    files.bandTest,
+    [
+      "normal mode accepts the approved migration band",
+      "normal mode still rejects any name outside the band",
+      "normal mode still rejects a missing declared name",
+      "remediation mode still REQUIRES the band and exactly 90",
+      "every relaxed deploy route runs the fallback watch",
+      "the watch fails closed on every way of not observing",
+    ],
+    "band-parity-test",
     failures,
   );
   requireTokens(
@@ -241,6 +281,7 @@ export function violations(files) {
       "reconcile-governed-secrets.mjs",
       "--normal-governed-deploy",
       "--delivery-input",
+      "postdeploy-governed-fallback-watch.mjs",
     ],
     "deploy",
     failures,
@@ -337,6 +378,8 @@ function fixture() {
   return {
     audit:
       "findCallBoundaryArguments dynamic_call_expression_undeclared dynamic_call_expression_unused dynamic_import_not_static callArgumentsAt tokenizeSyntax decodeIdentifierEscape invalid_identifier_escape skipRegexLiteral parseModuleLinkage buildGovernedBindingPlan parameterDefaultReceiver IDENTIFIER_REFERENCE_SITE computed_namespace_member consumedMemberPositions unrecognized_deno_env_access indirect_deno_env_get dynamic_getter_reference_undeclared allowed_identifier_references",
+    bandTest:
+      "normal mode accepts the approved migration band normal mode still rejects any name outside the band normal mode still rejects a missing declared name remediation mode still REQUIRES the band and exactly 90 every relaxed deploy route runs the fallback watch the watch fails closed on every way of not observing",
     claimFunction:
       'resolveAttendanceClaimPepperRing; issue_order_attendance_claim_proof_v2; p_generation: pepperRing.current.generation; p_allow_retry_rotation: true; json(503; "claim_link_temporarily_unavailable"',
     componentTest:
@@ -368,7 +411,7 @@ function fixture() {
     cta:
       'claimPhase === "unavailable" Your tickets are confirmed. You can open the app and sign in with your checkout email or phone. name="externalLink" size={18} width: "100%" minHeight: 48 borderRadius: radius.md opacity: 0.94 opacity: 0.88 transitionDuration: reducedMotion ? "0ms" : "150ms" accessibilityLiveRegion="polite" role="status"',
     deploy:
-      "explicit --function selection required; deploy-all is forbidden preflight-function-secret-readiness.mjs --use-api reconcile-governed-secrets.mjs --normal-governed-deploy --delivery-input",
+      "explicit --function selection required; deploy-all is forbidden preflight-function-secret-readiness.mjs --use-api reconcile-governed-secrets.mjs --normal-governed-deploy --delivery-input postdeploy-governed-fallback-watch.mjs",
     hook: '| "unavailable" code === "configuration"',
     hookTest: 'real 503 → service → hook → CTA node.props.role === "status"',
     icon: '| "externalLink" externalLink: () =>',
@@ -391,7 +434,7 @@ function fixture() {
       ],
     }),
     preflight:
-      "live_name_set_mismatch in_memory_receipt_authority_required remediation_requires_exact_90 remediation_function_set_mismatch assertLiveNameParity",
+      'live_name_set_mismatch in_memory_receipt_authority_required remediation_requires_exact_90 remediation_function_set_mismatch assertLiveNameParity const acceptedLive = sortedUnique([...manifestNames, ...bandNames]); const requiredLive = mode === "issue-2241-remediation"',
     resolver:
       "AD_CONVERSION_TOKENS governed_ad_bundle_invalid governed_ad_legacy_fallback legacyName !== LEGACY_NAMES[field]",
     service:
@@ -401,6 +444,8 @@ function fixture() {
       '"/dev/stdin" existing_field_omitted previous_pair_incomplete bundle_oversized serializeDotenvAssignment encoded += "\\\\$"',
     test:
       "unclassified imported environment read fails closed signed receipt replay is rejected configuration failures never render retry approved dynamic getter rejects a new literal caller godotenv v1.5.1 quoted transport round-trips metacharacters normal bundle-reader deploy is executable in one process computed getter arguments require exact expression ownership dynamic import closure accepts only static literals live-name drift causes zero normal or remediation mutations equivalent Deno env call syntax is always classified indirect Deno env access and getter mutation fail closed configured getter aliases and indirect references fail closed an imported configured getter alias cannot disappear direct optional and parenthesized getters preserve ownership regex lookalikes are not executable env or getter reads escaped governed identifiers cannot bypass classification invalid identifier escapes fail closed only in code every static import and re-export getter form stays governed unsupported governed import syntax fails closed approved getter handoffs are site-bound and propagate one exact getter handoff site and its receiving calls pass namespace bracket getters cannot disappear computed namespace getter keys fail closed namespace dot bracket optional and grouped calls are equivalent",
+    watch:
+      "governed_ad_legacy_fallback governed_ad_bundle_invalid governed_ad_fallback_observed log_window_empty watch_access_token_missing analytics/endpoints/logs",
     workflow:
       "required live-audit credential is missing exit 1 audit-function-secret-contract.mjs issue_2241_*.test.mjs issue-2241-secret-readiness.mjs --self-test scripts/deploy-supabase-functions.sh issue2241*.test.ts?(x)",
   };
@@ -423,6 +468,26 @@ function selfTest() {
     ["componentTest", "all seven phases", "buyer-component-test"],
     ["componentTest", "navigationsAfter", "buyer-component-test"],
     ["preflight", "remediation_requires_exact_90", "preflight"],
+    ["preflight", "const acceptedLive", "preflight"],
+    [
+      "preflight",
+      'const requiredLive = mode === "issue-2241-remediation"',
+      "preflight",
+    ],
+    ["watch", "governed_ad_legacy_fallback", "fallback-watch"],
+    ["watch", "log_window_empty", "fallback-watch"],
+    ["watch", "watch_access_token_missing", "fallback-watch"],
+    ["deploy", "postdeploy-governed-fallback-watch.mjs", "deploy"],
+    [
+      "bandTest",
+      "normal mode accepts the approved migration band",
+      "band-parity-test",
+    ],
+    [
+      "bandTest",
+      "every relaxed deploy route runs the fallback watch",
+      "band-parity-test",
+    ],
     ["setter", "existing_field_omitted", "setter"],
     ["coordinator", "receipt_replay_rejected", "coordinator"],
     ["coordinator", "assertLiveNameParity", "coordinator"],
@@ -444,10 +509,12 @@ function selfTest() {
     }
   }
   const manifest = JSON.parse(clean.manifest);
-  for (const secrets of [
-    manifest.secrets.slice(1),
-    [...manifest.secrets, { name: "UNAPPROVED_EXTRA" }],
-  ]) {
+  for (
+    const secrets of [
+      manifest.secrets.slice(1),
+      [...manifest.secrets, { name: "UNAPPROVED_EXTRA" }],
+    ]
+  ) {
     const broken = { ...clean, manifest: JSON.stringify({ secrets }) };
     if (
       !violations(broken).some((failure) =>
@@ -456,7 +523,9 @@ function selfTest() {
     ) throw new Error("manifest cardinality reversion not caught");
   }
   console.log(
-    `issue-2241 secret-readiness self-test PASS (${cases.length + 2} reversions)`,
+    `issue-2241 secret-readiness self-test PASS (${
+      cases.length + 2
+    } reversions)`,
   );
 }
 

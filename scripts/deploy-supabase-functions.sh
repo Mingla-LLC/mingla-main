@@ -75,10 +75,17 @@ fi
 [[ -n "$merged_commit" ]] || { echo "FAIL deploy: --merged-commit is required" >&2; exit 2; }
 
 if [[ "$governed_bundle_deploy" == true ]]; then
-  exec node "${repo_root}/scripts/secrets/reconcile-governed-secrets.mjs" \
+  # Not `exec`: #2241 relaxed this route's NORMAL-mode live-name parity so a
+  # deploy is no longer refused for the approved migration band, and the
+  # post-deploy fallback watch below is that relaxation's replacement
+  # observation. `exec` would replace this shell and make it unreachable.
+  node "${repo_root}/scripts/secrets/reconcile-governed-secrets.mjs" \
     --normal-governed-deploy \
     --project-ref "$project_ref" \
     "${coordinator_args[@]}"
+  node "${repo_root}/scripts/secrets/postdeploy-governed-fallback-watch.mjs" \
+    --project-ref "$project_ref"
+  exit 0
 fi
 
 preflight_args=(
@@ -104,3 +111,13 @@ for function_name in "${functions[@]}"; do
   fi
   echo "PASS deployed ${function_name}"
 done
+
+# #2241 replacement observation. Normal-mode live-name parity now ACCEPTS the
+# approved two-name migration band instead of refusing the deploy, so the risk
+# that strictness was holding — a function passing while it silently reads the
+# OLD standalone copy — is watched rather than assumed away. The resolver emits
+# `governed_ad_legacy_fallback` / `governed_ad_bundle_invalid` exactly when that
+# happens; observing either fails this deploy job. It fails closed: no
+# credential, no traffic, or an unreadable response is a failure, not a skip.
+node "${repo_root}/scripts/secrets/postdeploy-governed-fallback-watch.mjs" \
+  --project-ref "$project_ref"
