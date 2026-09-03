@@ -123,6 +123,7 @@ export async function requestBrandBookExport(input: {
   const { data, error } = await supabase.functions.invoke<unknown>("brand-people-export", {
     body: {
       scope: "brand_book",
+      brandId: input.brandId,
       filter: "all",
       search: null,
       sort: "name_asc",
