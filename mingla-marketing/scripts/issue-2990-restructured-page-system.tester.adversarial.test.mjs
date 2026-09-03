@@ -49,6 +49,47 @@ function sourceContract() {
   process.stdout.write('PASS adversarial source query, stale-link, Host-route and guard-wiring contracts\n')
 }
 
+function cssRule(css, selector) {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`, 'm'))?.[1] ?? ''
+}
+
+function layoutContractIssues({ cityPage, css }) {
+  const issues = []
+  const catalogueIndex = cityPage.indexOf('<CityCatalogue')
+  const auxiliaryHeroIndexes = [cityPage.indexOf('className="ps-city-proof"'), cityPage.indexOf('className="ps-source-note"')]
+    .filter((index) => index >= 0)
+  if (auxiliaryHeroIndexes.some((index) => index < catalogueIndex)) {
+    issues.push('auxiliary proof/source content still precedes the catalogue in the opening viewport')
+  }
+  if (/position:\s*fixed/.test(cssRule(css, '.ps-nav'))) {
+    issues.push('the city navigation is still fixed instead of scrolling away below the Host bar')
+  }
+  if (/position:\s*fixed/.test(cssRule(css, '.ps-review-dock'))) {
+    issues.push('the private review dock is still a fixed overlay that can cover controls, cards, dialogs and sheets')
+  }
+  return issues
+}
+
+function layoutContract() {
+  const knownBad = layoutContractIssues({
+    cityPage: '<header><div className="ps-city-proof"/><p className="ps-source-note"/></header><CityCatalogue/>',
+    css: '.ps-nav { position: fixed; } .ps-review-dock { position: fixed; }',
+  })
+  assert.equal(knownBad.length, 3, 'layout oracle must reject the measured pre-fix opening and overlay structure')
+  assert.deepEqual(layoutContractIssues({
+    cityPage: '<header><h1>Lagos</h1></header><CityCatalogue/><div className="ps-city-proof"/>',
+    css: '.ps-nav { position: static; } .ps-review-dock { position: relative; }',
+  }), [], 'layout oracle must accept catalogue-first flow with non-overlaying review chrome')
+
+  const issues = layoutContractIssues({
+    cityPage: read('app/internal/page-system/city-lagos/page.tsx'),
+    css: read('components/page-system/page-system.css'),
+  })
+  assert.deepEqual(issues, [], `catalogue-first and unobstructed-review layout contract failed:\n- ${issues.join('\n- ')}`)
+  process.stdout.write('PASS catalogue-first opening viewport and non-obstructing review-dock contract\n')
+}
+
 async function availablePort() {
   const server = net.createServer()
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
@@ -126,5 +167,6 @@ async function runtimeContract() {
 }
 
 sourceContract()
+layoutContract()
 await runtimeContract()
 process.stdout.write('PASS issue #2990 tester adversarial regression guard\n')
