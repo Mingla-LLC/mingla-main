@@ -447,7 +447,36 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // TRACKED AS #3095, which argues this pin should not exist at all. Until that
   // lands it is re-derived properly rather than left stale.
   // Every earlier re-derivation is preserved, not replaced.
-  "0a79741a37768afce2b363b43050480f0fd22e1b5e2182b13301a5d4d29f8640";
+  //
+  // [TEST-MOD-APPROVED #2909] SECOND MOVE, same branch, recorded rather than
+  // folded into the note above. Review found the alert was hosted on a
+  // paths-gated push trigger, so it could only report `main` red on commits
+  // matching its globs: MEASURED at 32 of 40 consecutive `main` commits: the
+  // other eight -- root REPORTS.md/COMMS.md, the mingla-site-cms tree, and one
+  // baseline-only commit -- would have alerted nobody. An alert that fires on
+  // four commits in five is a sampling scheme, so a `**` catch-all was appended
+  // LAST to that lane's PUSH paths only. Re-measured after the change: 40/40.
+  //
+  // WHY THIS DIGEST MOVES AGAIN: the catch-all is one added `paths:` entry on a
+  // PR-family lane, so its non-concurrency document moves. The pull_request
+  // list is deliberately untouched, so no PR minutes are added.
+  //
+  // WHAT WAS VERIFIED, same checklist:
+  //   - the workflow-glob assertion that pins this lane's triggers is
+  //     UNTOUCHED: I-2148-CI-TOPOLOGY-BOUNDED requires `.github/workflows/**`
+  //     to appear exactly twice in the trigger block, once per event. The
+  //     existing list is preserved in full and only appended to, so that count
+  //     is still exactly 2 and that suite passes 6/6.
+  //   - no `concurrency:`, `group:` or `cancel-in-progress:` line is added or
+  //     removed, and no trigger EVENT changed, so PR-family membership and
+  //     PR_FAMILY_IDENTITY_SHA256 are untouched -- subtests 1 and 4 pass at
+  //     124/seven against the changed tree.
+  //   - THE DELTA IS EXACTLY THIS ONE LINE: removing only the `**` entry makes
+  //     ALL ELEVEN subtests pass again at
+  //     0a79741a37768afce2b363b43050480f0fd22e1b5e2182b13301a5d4d29f8640 --
+  //     the value pinned immediately above -- so nothing else drifted in.
+  // Every earlier re-derivation is preserved, not replaced.
+  "d02b7d66c14da550b7ba5b4773a6ea7f193cfeef65fdbf0765bd4b6a3c107730";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
