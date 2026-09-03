@@ -30,7 +30,7 @@ function sourceContract() {
   assert.match(hub, /catalogue \? null : <CityNavigator/)
   assert.match(hub, /catalogue \? null : <CityFinalActions/)
   assert.match(packageJson.scripts.build, /issue-2983-lagos-catalogue-transfer\.tester\.adversarial\.test\.mjs --source-only/)
-  assert.match(packageJson.scripts.build, /issue-2983-lagos-catalogue-transfer\.tester\.adversarial\.test\.mjs --built-only/)
+  assert.doesNotMatch(packageJson.scripts.build, /issue-2983-lagos-catalogue-transfer\.tester\.adversarial\.test\.mjs --built-only/, 'browser runtime must not be required inside Chrome-less deployment builds')
   process.stdout.write('PASS #2983 tester source guard: static city family and URL-owned public catalogue\n')
 }
 
