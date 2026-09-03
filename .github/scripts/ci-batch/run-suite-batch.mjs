@@ -10,8 +10,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { decodeManifestTextRepresentations, isMigratedSuite, isPrimarySuite, suiteCommandFingerprint } from "./validate-manifest-v2.mjs";
-import { validateDecision } from "./select-phase3b-suites.mjs";
+import { decodeManifestTextRepresentations, isMigratedSuite, isPrimarySuite, suiteCommandFingerprint, suiteOriginPatterns } from "./validate-manifest-v2.mjs";
+import { changedPathDigest, deriveChangedPaths, pathMatches, validateDecision } from "./select-phase3b-suites.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
@@ -114,6 +114,138 @@ export function runSuites(suites, opts = {}) {
     console.log(`${code === 0 ? "PASS" : "FAIL"}  ${String(seconds).padStart(4)}s  ${suite.id}${reason ? `  (${reason})` : ""}`);
   }
   return results;
+}
+
+// ---------------------------------------------------------------------------
+// [#2882] Pull-request suite routing.
+//
+// ci-batch runs all 85 registered suites on every pull request and is 53% of the
+// CI bill. `originPaths` already records, per suite, which source changes
+// invalidate it. On a pull request the runner now executes the suites the diff
+// invalidates; on `push: main`, `schedule` and `workflow_dispatch` selection is
+// the identity function and all 85 still run. Nothing is deleted or weakened —
+// only WHEN a suite runs changes, never WHETHER it exists.
+//
+// Every count printed below is DERIVED from the registry, never typed.
+// `validate-manifest-v2.mjs:51-62` records why: two literals that must agree is
+// how a number lands where two sides had said different things and merged clean.
+// ---------------------------------------------------------------------------
+export const ROUTED_EVENTS = new Set(["pull_request", "pull_request_target"]);
+
+/**
+ * [#2882 F3/F4] The changed-path list, or a refusal.
+ *
+ * The two failures here are the load-bearing ones. This repository's recorded
+ * failure mode is absence of signal reading as confirmation, and a router is the
+ * purest form of that bug: if it cannot see the diff it selects nothing, every
+ * suite skips, and the run reports green having tested nothing.
+ *
+ * So: a derivation that fails is a FAILURE (F3), and an empty diff on a
+ * pull request is "could not observe" (F4), never "observed zero". Neither is
+ * ever read as "no files changed".
+ */
+export function routingContext({ env = process.env, root = REPO_ROOT, readFile = fs.readFileSync } = {}) {
+  const eventName = env.GITHUB_EVENT_NAME || "";
+  if (!ROUTED_EVENTS.has(eventName)) return { eventName: eventName || "local", mode: "full" };
+  let source;
+  try {
+    if (!env.GITHUB_EVENT_PATH) throw new Error("GITHUB_EVENT_PATH is not set");
+    source = deriveChangedPaths({ root, eventName: "pull_request", event: JSON.parse(readFile(env.GITHUB_EVENT_PATH, "utf8")) });
+  } catch (error) {
+    throw new Error(`changed-path derivation failed: ${error.message}`);
+  }
+  if (!source.changedPaths.length) {
+    // Deliberately does NOT interpolate the event name. `GITHUB_EVENT_NAME` is
+    // outside the child environment allowlist, so `redactText` treats its value
+    // as sensitive by boundary and would replace it with [REDACTED] in the
+    // GitHub annotation — turning the one line an operator sees into a sentence
+    // missing its subject.
+    throw new Error("routed event produced no changed paths: could not observe, not observed zero");
+  }
+  return { eventName, mode: "routed", changedPaths: source.changedPaths, baseSha: source.baseSha, headSha: source.headSha };
+}
+
+/**
+ * [#2882] The selection itself.
+ *
+ * F1 and F2 are asserted across EVERY registered suite on every run — including
+ * `full` mode and including classes this job will not execute — so a registry
+ * entry that routes to nothing cannot hide in a class nobody ran today.
+ * F5 rides along: `pathMatches` parses under the ONE reviewed grammar and an
+ * unsupported pattern throws rather than being caught and skipped.
+ */
+export function selectSuites(manifest, candidates, context) {
+  const patterns = new Map(manifest.suites.map((suite) => [suite.id, suiteOriginPatterns(suite)]));
+  const registry = manifest.suites.length;
+  if (context.mode !== "routed") {
+    return { mode: "full", registry, candidates: candidates.length, selectedSuiteIds: manifest.suites.map((suite) => suite.id), suites: candidates, reasons: new Map() };
+  }
+  const reasons = new Map();
+  const invalidated = (suite) => {
+    for (const pattern of patterns.get(suite.id)) {
+      const hit = context.changedPaths.find((file) => pathMatches(pattern, file));
+      if (hit) { reasons.set(suite.id, pattern); return true; }
+    }
+    return false;
+  };
+  const selectedSuiteIds = manifest.suites.filter(invalidated).map((suite) => suite.id);
+  return { mode: "routed", registry, candidates: candidates.length, selectedSuiteIds, suites: candidates.filter((suite) => reasons.has(suite.id)), reasons };
+}
+
+export function routingReport(context, selection) {
+  return {
+    mode: selection.mode,
+    eventName: context.eventName,
+    registry: selection.registry,
+    changedPathCount: selection.mode === "routed" ? context.changedPaths.length : null,
+    changedPaths: selection.mode === "routed" ? context.changedPaths : null,
+    changedPathSha256: selection.mode === "routed" ? changedPathDigest(context.changedPaths) : null,
+    selectedSuiteIds: selection.selectedSuiteIds,
+    classSelectedSuiteIds: selection.suites.map((suite) => suite.id),
+  };
+}
+
+/**
+ * [#2882 §8] The selection, always printed beside its denominator.
+ *
+ * Four of sixteen sampled commits on `main` select ZERO suites. That is a
+ * legitimate outcome — and it is indistinguishable, in a log, from a router that
+ * silently did nothing. So a zero is printed as an event with its denominator
+ * and an explicit sentence, never as a silence. Shape follows
+ * `scripts/secrets/postdeploy-governed-fallback-watch.mjs`.
+ */
+export function renderRoutingLine(klass, context, selection) {
+  const changed = selection.mode === "routed" ? String(context.changedPaths.length) : "n/a";
+  const lines = [`PASS ci-batch-route class=${klass} event=${context.eventName} mode=${selection.mode} `
+    + `changed=${changed} registry=${selection.registry} selected=${selection.selectedSuiteIds.length} of ${selection.registry} `
+    + `class_selected=${selection.suites.length} of ${selection.candidates}`];
+  for (const suite of selection.suites) {
+    const reason = selection.reasons.get(suite.id);
+    lines.push(`  + ${suite.id}${reason ? `          (${reason})` : ""}`);
+  }
+  if (!selection.suites.length) {
+    lines.push(selection.selectedSuiteIds.length
+      ? "  (no suite in this class is invalidated by this diff; other classes have work)"
+      : "  (no registered suite is invalidated by this diff)");
+  }
+  return lines.join("\n");
+}
+
+export function renderRoutingFailure(reason, detail) {
+  return `FAIL ci-batch-route ${reason}\n- ${detail}`;
+}
+
+export function routeOrFail(manifest, klass, candidates, options = {}) {
+  let context;
+  try {
+    context = routingContext(options);
+  } catch (error) {
+    console.error(renderRoutingFailure("changed_paths_underivable", error.message));
+    throw error;
+  }
+  const selection = selectSuites(manifest, candidates, context);
+  console.log(renderRoutingLine(klass, context, selection));
+  return { context, selection };
 }
 
 export function verdict(expected, results) {
@@ -956,21 +1088,32 @@ async function runPhase3cHost(manifest, hostClass) {
   // misleading red on top of the real one. The artifact must always exist and
   // must say what went wrong.
   const started = Date.now(); let evidence = null; let results = []; let suites = [];
+  // [#2882] `routed` separates the two ways this host can end up with no suites.
+  // A host that never RESOLVED is a failure and must emit a red report; a host
+  // that resolved and whose registered suites are simply not invalidated by this
+  // pull request is a legitimate green with zero work. Before routing those were
+  // the same state, so they need distinguishing before either is acted on.
+  let routed = false; let context = null; let selection = null;
   try {
-    suites = phase3cSuitesForHost(manifest, hostClass);
-    const classes = [...new Set(suites.map((suite) => suite.executionClass))];
-    if (classes.length !== 1) throw new Error(`${hostClass}: assigned suites span unreviewed Phase 3C classes`);
-    const evidencePath = setupEvidencePath(manifest, classes[0]); evidence = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
-    const { profile } = validateSetupEvidence(manifest, classes[0], evidence);
-    results = await runSuitesV2(suites, { profile, commandCapabilities: manifest.commandCapabilities,
-      leafCapabilities: manifest.phase3cLeafCapabilities, graceMs: manifest.runnerContract.timeoutGraceSeconds * 1_000 });
-    fs.rmSync(evidencePath, { force: true });
+    const owned = phase3cSuitesForHost(manifest, hostClass);
+    ({ context, selection } = routeOrFail(manifest, `phase3c:${hostClass}`, owned));
+    suites = selection.suites; routed = true;
+    if (suites.length) {
+      const classes = [...new Set(suites.map((suite) => suite.executionClass))];
+      if (classes.length !== 1) throw new Error(`${hostClass}: assigned suites span unreviewed Phase 3C classes`);
+      const evidencePath = setupEvidencePath(manifest, classes[0]); evidence = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
+      const { profile } = validateSetupEvidence(manifest, classes[0], evidence);
+      results = await runSuitesV2(suites, { profile, commandCapabilities: manifest.commandCapabilities,
+        leafCapabilities: manifest.phase3cLeafCapabilities, graceMs: manifest.runnerContract.timeoutGraceSeconds * 1_000 });
+      fs.rmSync(evidencePath, { force: true });
+    }
   } catch (error) {
     results = suites.map((suite) => missingPhase3bResult(suite, error.message));
-    if (!suites.length) {
+    if (!routed || (!suites.length && !results.length)) {
       // Nothing resolved: still emit an honest, failing report rather than no file.
       const report = buildShardReport(`phase3c:${hostClass}`, [], [], null, Date.now() - started);
       report.ok = false; report.code = 2; report.hostResolutionError = error.message;
+      if (context && selection) report.routing = routingReport(context, selection);
       emitted = true; process.removeListener("exit", guard);
       writeReport(manifest, report, REPO_ROOT, "suite-results-phase3c.json");
       process.exitCode = 2;
@@ -979,7 +1122,7 @@ async function runPhase3cHost(manifest, hostClass) {
   }
   emitted = true;
   process.removeListener("exit", guard);
-  return emitPhase3cReport(manifest, hostClass, suites, results, evidence, started);
+  return emitPhase3cReport(manifest, hostClass, suites, results, evidence, started, context, selection);
 }
 
 /**
@@ -990,8 +1133,9 @@ async function runPhase3cHost(manifest, hostClass) {
  * upload failed with `if-no-files-found: error`. That stacked a second,
  * misleading red on top of the real one and hid which host actually broke.
  */
-function emitPhase3cReport(manifest, hostClass, suites, results, evidence, started) {
+function emitPhase3cReport(manifest, hostClass, suites, results, evidence, started, context = null, selection = null) {
   const report = buildShardReport(`phase3c:${hostClass}`, suites, results, evidence, Date.now() - started);
+  if (context && selection) report.routing = routingReport(context, selection);
   report.expectedOuterIds = suites.flatMap((suite) => suite.steps.map((step) => step.commandId));
   report.executedOuterIds = results.flatMap((result) => {
     const suite = suites.find((candidate) => candidate.id === result.id);
@@ -1068,9 +1212,38 @@ async function main() {
   if (process.argv[2] === "--run-phase3c-host") {
     return runPhase3cHost(manifest, process.argv[3]);
   }
+  // [#2882] Print the decision BEFORE the job spends anything on setup, so an
+  // operator reading a job that did almost nothing can see why, and so an
+  // underivable diff (F3) or an unobservable one (F4) reds the run in seconds
+  // rather than after fourteen hosts have finished installing.
+  if (process.argv[2] === "--route-preview") {
+    const previewClass = process.argv[3];
+    const previewCandidates = expectedPrimarySuites(manifest, previewClass);
+    if (!previewClass || previewCandidates.length === 0) throw new Error(`no suites registered for class "${previewClass || "<empty>"}"`);
+    routeOrFail(manifest, previewClass, previewCandidates);
+    return;
+  }
   const klass = process.argv[2] === "--run" ? process.argv[3] : process.argv[2];
-  const suites = expectedPrimarySuites(manifest, klass);
-  if (!klass || suites.length === 0) throw new Error(`no suites registered for class "${klass || "<empty>"}"`);
+  const candidates = expectedPrimarySuites(manifest, klass);
+  // An UNREGISTERED class is still a hard error. Routing changes which of a
+  // class's registered suites run today; it never makes an unknown class legal.
+  if (!klass || candidates.length === 0) throw new Error(`no suites registered for class "${klass || "<empty>"}"`);
+  let context; let selection;
+  try {
+    ({ context, selection } = routeOrFail(manifest, klass, candidates));
+  } catch (error) {
+    // [#2882 F3/F4] A router that cannot see the diff must not leave the upload
+    // step to report "no files were found" — that stacks a misleading red on top
+    // of the real one and hides which job actually broke. Same reasoning as the
+    // Phase 3C exit guard: the artifact always exists and always says what went
+    // wrong.
+    const report = buildShardReport(klass, [], [], null, 0);
+    report.ok = false; report.code = 2; report.routingError = error.message;
+    writeReport(manifest, report);
+    process.exitCode = 2;
+    return;
+  }
+  const suites = selection.suites;
   const started = Date.now();
   let evidence;
   let results;
@@ -1088,6 +1261,11 @@ async function main() {
       timeoutSeconds: suite.timeoutSeconds, expected: suite.steps.length, executed: 0, allowedCleanup: [] }));
   }
   const report = buildShardReport(klass, suites, results, evidence, Date.now() - started);
+  // The artifact carries the evidence, not just the console. `verdict()`'s
+  // executed === expected identity-and-order check is preserved verbatim on the
+  // ROUTED set — `buildShardReport` already received `suites`, which is now the
+  // selection — and the reconciler re-derives that selection independently.
+  report.routing = routingReport(context, selection);
   writeReport(manifest, report);
   process.exitCode = report.code;
 }
