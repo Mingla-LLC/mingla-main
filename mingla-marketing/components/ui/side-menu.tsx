@@ -143,7 +143,7 @@ export function SideMenu({
             initial={reduced ? false : { x: side === 'right' ? '100%' : '-100%' }}
             animate={{ x: 0 }}
             exit={reduced ? { opacity: 0 } : { x: side === 'right' ? '100%' : '-100%' }}
-            transition={{ type: 'spring', damping: 26, stiffness: 260 }}
+            transition={reduced ? { duration: 0 } : { type: 'spring', damping: 26, stiffness: 260 }}
             className={cn(
               'fixed inset-y-0 z-[101] flex w-[82vw] max-w-sm flex-col px-3',
               side === 'right' ? 'right-0' : 'left-0',
