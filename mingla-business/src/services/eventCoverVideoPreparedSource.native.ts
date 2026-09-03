@@ -21,6 +21,78 @@ class Sha256 {
   digest():string { const bits=this.total*8; this.pending.push(0x80); while(this.pending.length%64!==56)this.pending.push(0); for(let i=7;i>=0;i--)this.pending.push(Math.floor(bits/2**(i*8))&255); while(this.pending.length)this.block(this.pending.splice(0,64)); return this.h.map(v=>(v>>>0).toString(16).padStart(8,"0")).join(""); }
 }
 
+// Issue #3073 — a "cover video" with no picture must never reach the provider.
+//
+// The trim editor can hand back an MP4 that carries ONLY an audio track. It is
+// a well-formed file — `moov` at the front, correct duration, correct byte
+// count — so every size and hash check upstream passes, and the first thing
+// that notices is Bunny, which cannot probe it (`length: 0`, `storageSize: 0`,
+// no resolution ladder) and answers with an `originalHash` over something other
+// than what we sent. The webhook then fails the job `source_identity_mismatch`,
+// which is a true statement about the hashes and a useless one about the cause.
+// Observed on the iOS Simulator 2026-09-03: three consecutive trims produced
+// 15s/161KB files whose ffprobe stream list was one AAC track and nothing else.
+//
+// This scans the ISO-BMFF handler boxes while the file is already being read
+// for its hash, so it costs no extra I/O.
+//
+// `hdlr` layout (ISO/IEC 14496-12 §8.4.3), offsets from the start of the type
+// field: [type 'hdlr' :4][version+flags :4][pre_defined :4][handler_type :4].
+// So the handler type sits 12 bytes past the tag — 'vide' for a video track,
+// 'soun' for audio.
+//
+// DELIBERATELY BIASED TOWARDS LETTING THE UPLOAD THROUGH: a false negative
+// blocks a host's perfectly good video, which is worse than the status quo. We
+// only report "no video" when we positively parsed at least one handler and
+// none of them was a video handler. An unparseable container reports `null` and
+// the upload proceeds exactly as it does today.
+const HDLR_TAG = [0x68, 0x64, 0x6c, 0x72]; // 'hdlr'
+const VIDEO_HANDLER = [0x76, 0x69, 0x64, 0x65]; // 'vide'
+// A handler_type ends 16 bytes past the tag start, so a 15-byte tail is the
+// most that can be needed to finish a match that straddles two chunks.
+const HDLR_CARRY_BYTES = 15;
+
+const matchesAt = (bytes: Uint8Array, index: number, pattern: number[]): boolean => {
+  if (index < 0 || index + pattern.length > bytes.length) return false;
+  for (let offset = 0; offset < pattern.length; offset += 1) {
+    if (bytes[index + offset] !== pattern[offset]) return false;
+  }
+  return true;
+};
+
+export class VideoTrackScan {
+  private carry: Uint8Array = new Uint8Array(0);
+  private handlersSeen = 0;
+  private videoHandlersSeen = 0;
+
+  update(chunk: Uint8Array): void {
+    const window = new Uint8Array(this.carry.length + chunk.length);
+    window.set(this.carry, 0);
+    window.set(chunk, this.carry.length);
+    for (let index = 0; index + 16 <= window.length; index += 1) {
+      if (!matchesAt(window, index, HDLR_TAG)) continue;
+      this.handlersSeen += 1;
+      if (matchesAt(window, index + 12, VIDEO_HANDLER)) this.videoHandlersSeen += 1;
+    }
+    this.carry = window.length <= HDLR_CARRY_BYTES
+      ? window
+      : window.slice(window.length - HDLR_CARRY_BYTES);
+  }
+
+  // null = could not tell (no handler box parsed); true/false = confident.
+  hasVideoTrack(): boolean | null {
+    if (this.handlersSeen === 0) return null;
+    return this.videoHandlersSeen > 0;
+  }
+}
+
+export class EventCoverVideoSourceHasNoVideoTrackError extends Error {
+  constructor() {
+    super("The trimmed clip has no video track.");
+    this.name = "EventCoverVideoSourceHasNoVideoTrackError";
+  }
+}
+
 export const prepareEventCoverVideoSource = async (input: {
   uri:string; bytes:number; durationMs:number; fileName?:string|null; mimeType?:string|null; operationId:string;
 }):Promise<PreparedEventCoverVideoSource> => {
@@ -31,9 +103,13 @@ export const prepareEventCoverVideoSource = async (input: {
   if(typeof base!=="string")throw new Error("video_storage_unavailable");
   const destination=`${base}event-cover-${input.operationId}.${extension}`;
   if(input.uri!==destination){try{await FileSystem.deleteAsync(destination,{idempotent:true});}catch{} await FileSystem.copyAsync({from:input.uri,to:destination});}
-  const {File}=await import("expo-file-system"); const file=new File(destination); const handle=file.open(); const sha=new Sha256(); let size=0;
-  try { while(true){const chunk=handle.readBytes(1024*1024);if(chunk.length===0)break;sha.update(chunk);size+=chunk.length;} } finally { handle.close(); }
-  if(size<=0||size!==input.bytes)throw new Error("video_source_size_changed"); const sha256=sha.digest();
+  const {File}=await import("expo-file-system"); const file=new File(destination); const handle=file.open(); const sha=new Sha256(); const trackScan=new VideoTrackScan(); let size=0;
+  try { while(true){const chunk=handle.readBytes(1024*1024);if(chunk.length===0)break;sha.update(chunk);trackScan.update(chunk);size+=chunk.length;} } finally { handle.close(); }
+  if(size<=0||size!==input.bytes)throw new Error("video_source_size_changed");
+  // issue #3073 — refuse a picture-less "video" here rather than discovering it
+  // three round trips later as an identity mismatch.
+  if(trackScan.hasVideoTrack()===false)throw new EventCoverVideoSourceHasNoVideoTrackError();
+  const sha256=sha.digest();
   return {uri:destination,bytes:size,durationMs:input.durationMs,fileName:input.fileName!,mimeType,extension,sha256,fingerprint:`${sha256}:${size}`};
 };
 

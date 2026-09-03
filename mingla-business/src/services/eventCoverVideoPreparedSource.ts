@@ -16,6 +16,18 @@ const allowed = new Map<string, PreparedEventCoverVideoSource["extension"]>([
   ["video/webm", "webm"],
 ]);
 
+// Issue #3073 — mirrors the native guard's error so the shared hook can import
+// ONE symbol regardless of platform. Web reads the blob through `fetch` and the
+// browser's own decoder, which is a different failure surface from the native
+// trim editor, so nothing throws this here today; the type exists so the hook's
+// `instanceof` branch is not silently unreachable on web.
+export class EventCoverVideoSourceHasNoVideoTrackError extends Error {
+  constructor() {
+    super("The trimmed clip has no video track.");
+    this.name = "EventCoverVideoSourceHasNoVideoTrackError";
+  }
+}
+
 export const prepareEventCoverVideoSource = async (input: {
   uri: string;
   bytes: number;

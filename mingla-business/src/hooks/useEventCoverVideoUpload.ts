@@ -10,7 +10,8 @@ import {
   uploadEventCoverVideoSource, waitForEventCoverVideoReady,
 } from "../services/eventCoverVideoProcessingService";
 import {
-  deletePreparedEventCoverVideoSource, prepareEventCoverVideoSource,
+  deletePreparedEventCoverVideoSource, EventCoverVideoSourceHasNoVideoTrackError,
+  prepareEventCoverVideoSource,
   type PreparedEventCoverVideoSource,
 } from "../services/eventCoverVideoPreparedSource";
 import {
@@ -26,6 +27,14 @@ import { eventDraftKeys } from "./useServerDraftEvents";
 import { upcomingKeys } from "./upcomingKeys";
 
 const idleStage: EventCoverVideoUploadStage = { phase: "idle", percent: 0 };
+// Issue #3074 — "Reconnecting to your video…" must be a PHASE, never a resting
+// place. Observed on 2026-09-03 sitting there for 39 minutes against a job that
+// had been terminally `failed` for 39 minutes: the resume path took a branch
+// that never reached a settle, and nothing else was watching. The #2974 comment
+// in the catch below documents an EARLIER trigger for the same stall, which is
+// the argument for a deadline rather than a third per-trigger patch — whatever
+// the branch, the sheet lands on the job's canonical status.
+const REATTACH_DEADLINE_MS = 12_000;
 export type EventCoverVideoUploadFile = {
   uri: string; fileName?: string | null; mimeType?: string | null;
   bytes: number; durationMs: number; trimStartMs?: number; trimEndMs?: number;
@@ -54,8 +63,62 @@ const terminalCodes = new Set([
   "event_not_ready", "forbidden", "malformed_response", "not_found",
   "operation_conflict", "provider_not_configured", "source_ack_deadline_exceeded",
   "source_ack_timeout", "source_mismatch", "source_over_cap",
-  "source_transport_expired", "validation_error",
+  "source_transport_expired", "source_video_track_missing", "validation_error",
 ]);
+// Issue #3073 — the trim editor can hand back an MP4 with an audio track and no
+// video track. `prepareEventCoverVideoSource` detects it while it is already
+// reading the file for its hash; this translates that into the picker's own
+// terminal-error vocabulary so the host is told in ONE round trip, instead of
+// uploading a picture-less file and meeting the provider's
+// `source_identity_mismatch` a minute later — a true statement about the hashes
+// and a useless one about the cause.
+const prepareSourceOrExplainMissingVideo = async (input: {
+  uri: string; bytes: number; durationMs: number;
+  fileName?: string | null; mimeType?: string | null; operationId: string;
+}): Promise<PreparedEventCoverVideoSource> => {
+  try {
+    return await prepareEventCoverVideoSource(input);
+  } catch (prepareError) {
+    if (prepareError instanceof EventCoverVideoSourceHasNoVideoTrackError) {
+      throw new EventCoverVideoProcessingError(
+        "source_video_track_missing",
+        "That clip came back without any video. Trim it again, or pick a different video.",
+      );
+    }
+    throw prepareError;
+  }
+};
+
+// Issue #3075 — the transfer must outlive the sheet.
+//
+// The button says "Close — keep working". It did not: the unmount cleanup below
+// aborted the in-flight controller, so closing the sheet froze the upload at
+// whatever offset it had reached (measured: 0 bytes of 3,213,373, unchanged for
+// 2m30s) and reopening the sheet was the only thing that resumed it. Killing the
+// app had the same effect for 6m30s. No bytes were ever lost — but a host who
+// closed the sheet and published shipped an event with no cover, and nothing
+// anywhere in the wizard said an upload was pending.
+//
+// Letting the transfer run past unmount needs a single-flight guard, or a
+// reopened sheet starts a SECOND transfer for the same job and the two race on
+// the same TUS offset (the loser gets a 409 and surfaces
+// `transport_integrity_failed`). Keyed per operation, module-scoped so it spans
+// hook instances, and self-cleaning so a finished operation cannot pin memory.
+const inFlightUploads = new Map<string, Promise<void>>();
+
+const runSingleFlightUpload = (
+  key: string,
+  run: () => Promise<void>,
+): Promise<void> => {
+  const existing = inFlightUploads.get(key);
+  if (existing !== undefined) return existing;
+  const started = run().finally(() => {
+    if (inFlightUploads.get(key) === started) inFlightUploads.delete(key);
+  });
+  inFlightUploads.set(key, started);
+  return started;
+};
+
 const isTerminalUploadError = (error: unknown): boolean =>
   error instanceof EventCoverVideoProcessingError && terminalCodes.has(error.code);
 const UUID_PATTERN =
@@ -146,6 +209,12 @@ export function useEventCoverVideoUpload(
   const delegatedGenerationRef = useRef<number | null>(null);
   const userIdRef = useRef<string | null>(null);
   const [stage, setStage] = useState<EventCoverVideoUploadStage>(idleStage);
+  // issue #3074 — the deadline below must judge the CURRENT phase, not a flag
+  // set optimistically when a branch was entered. The 39-minute stall was a
+  // resume that DID hand off to real work (`uploadPrepared`) and then never
+  // settled, so "we delegated" is not evidence the spinner is gone.
+  const stageRef = useRef<EventCoverVideoUploadStage>(idleStage);
+  stageRef.current = stage;
   const [status, setStatus] = useState<EventCoverVideoStatus | null>(null);
   const [processedUrl, setProcessedUrl] = useState<string | null>(null);
   const [processedPosterUrl, setProcessedPosterUrl] = useState<string | null>(null);
@@ -206,6 +275,28 @@ export function useEventCoverVideoUpload(
       setStage({ phase: "ack_pending", percent: 0 });
     } else if (["source_uploaded", "processing_queued", "processing"].includes(next.status)) {
       setStage({ phase: "processing", percent: next.progressKind === "determinate" ? next.progressPercent : null });
+    } else if (["failed", "cancelled", "superseded"].includes(next.status)) {
+      // issue #3074 — a terminal NON-success used to set `status` and leave the
+      // STAGE untouched, so a sheet that was mid-"Reconnecting to your video…"
+      // learned the job had failed and went on rendering the spinner anyway.
+      // Measured in the field: 39 minutes on the spinner against a job that had
+      // been `failed` for 39 minutes. Every other terminal outcome above moves
+      // the stage; this branch is the one that did not.
+      //
+      // `cancelled` and `superseded` are not the host's problem — a superseding
+      // upload owns the sheet now, and a cancel was deliberate — so they return
+      // the sheet to idle rather than shouting an error at it. Only `failed`
+      // becomes an error card, carrying the provider's own failure code so the
+      // picker can name it and offer the job code.
+      setStage(next.status === "failed"
+        ? {
+          phase: "error",
+          percent: 0,
+          code: next.failureCode ?? "video_upload_failed",
+          message: next.failureMessage
+            ?? "We couldn't finish this video. Choose another video, or try again.",
+        }
+        : idleStage);
     }
   }, [invalidate, target]);
 
@@ -418,7 +509,10 @@ export function useEventCoverVideoUpload(
       },
     });
     try {
-      await upload();
+      // issue #3075 — one transfer per operation, however many sheets mount.
+      await runSingleFlightUpload(`${persistenceKey}:${operationId}`, async () => {
+        await upload();
+      });
     } catch (uploadError) {
       const expired = uploadError instanceof EventCoverVideoProcessingError &&
         ["tus_head_http_404", "tus_head_http_410"].includes(uploadError.edgeDetail ?? "");
@@ -431,7 +525,9 @@ export function useEventCoverVideoUpload(
         );
       }
       acceptedIntent = refreshedIntent;
-      await upload();
+      await runSingleFlightUpload(`${persistenceKey}:${operationId}:retry`, async () => {
+        await upload();
+      });
     }
     setStage({ phase: "ack_pending", percent: 0 });
     // issue #2967 — this loop used to be `while (status === "source_uploading")`
@@ -524,7 +620,7 @@ export function useEventCoverVideoUpload(
           if (!replacing) projectPreparation({ phase: "compressing", percent: progress.percent });
         },
       });
-      prepared = await prepareEventCoverVideoSource({
+      prepared = await prepareSourceOrExplainMissingVideo({
         uri: compressed.uri, bytes: compressed.bytes, durationMs: compressed.durationMs,
         fileName: compressed.wasCompressed ? `${operationId}.mp4` : file.fileName,
         mimeType: compressed.wasCompressed ? "video/mp4" : file.mimeType, operationId,
@@ -584,6 +680,42 @@ export function useEventCoverVideoUpload(
     abortRef.current?.abort();
     abortRef.current = abort;
     setStage({ phase: "reattaching", percent: 0 });
+    // issue #3074 — the deadline. The ONLY thing that disarms it is the sheet
+    // actually leaving the spinner: if any later phase is showing when this
+    // fires, the resume is visibly working and is left alone. A resume that is
+    // still on "Reconnecting to your video…" gets overridden by the truth,
+    // whichever branch it is stuck in — including a delegated upload that never
+    // settles, which is the branch the 39-minute stall was in.
+    const reattachDeadline = setTimeout(() => {
+      if (stageRef.current.phase !== "reattaching") return;
+      if (generationRef.current !== generation) return;
+      void (async () => {
+        try {
+          const jobId = jobIdRef.current ?? persisted?.jobId ?? null;
+          const canonical = jobId !== null
+            ? await fetchEventCoverVideoStatus(jobId, abort.signal)
+            : await fetchEventCoverVideoStatusByTarget({
+              target: exactTarget.serverTarget, eventId: exactTarget.eventId, brandId,
+              venueId: exactTarget.venueId, draftOwnerKey: exactTarget.draftOwnerKey,
+              signal: abort.signal,
+            });
+          if (stageRef.current.phase !== "reattaching") return;
+          if (generationRef.current !== generation) return;
+          if (canonical === null) {
+            setStage(idleStage);
+            return;
+          }
+          jobIdRef.current = canonical.jobId;
+          await settleCanonical(canonical, abort.signal);
+        } catch {
+          // A failed truth-fetch must still leave the sheet actionable.
+          if (stageRef.current.phase === "reattaching" && generationRef.current === generation) setStage(idleStage);
+        }
+      })();
+    }, REATTACH_DEADLINE_MS);
+    // Only the error path disarms the timer outright — every success path is
+    // already covered by the phase check inside it.
+    const leaveReattaching = (): void => { clearTimeout(reattachDeadline); };
     try {
       const userId = await currentUserId();
       userIdRef.current = userId;
@@ -679,6 +811,8 @@ export function useEventCoverVideoUpload(
       const settled = await settleCanonical(recovered, abort.signal);
       if (!settled.isTerminal) await watch(recovered.jobId, abort.signal, generation);
     } catch (caught) {
+      // issue #3074 — whatever the outcome, the spinner is over.
+      leaveReattaching();
       // issue #2974 — this guard used to read `abort.signal.aborted` on the
       // controller resume created. When resume delegates to `uploadPrepared`,
       // that function installs its OWN controller and aborts this one first, so
@@ -722,8 +856,15 @@ export function useEventCoverVideoUpload(
     });
     return () => {
       clearPreparationProjection();
+      // issue #3075 — bumping the generation is what makes this instance stop
+      // WRITING (every setStage/progress callback is generation-guarded), and
+      // that is all unmount should do. It used to abort the controller too,
+      // which killed the transfer itself. The bytes must keep moving: the job
+      // is already durable server-side and locally persisted, and
+      // `runSingleFlightUpload` stops a remounted sheet from starting a second
+      // transfer for the same operation. Explicit cancel, a superseding upload,
+      // and SIGNED_OUT still abort — see `abortRef` at those call sites.
       generationRef.current += 1;
-      abortRef.current?.abort();
       subscription.unsubscribe();
     };
   }, [clearPreparationProjection, resume]);
