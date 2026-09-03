@@ -38,7 +38,7 @@ function sourceContract() {
   const testerName = 'issue-2983-city-release.tester.adversarial.test.mjs'
 
   assert.match(pkg.scripts.build, new RegExp(`${testerName.replaceAll('.', '\\.') } --source-only`))
-  assert.match(pkg.scripts.build, new RegExp(`${testerName.replaceAll('.', '\\.') } --built-only`))
+  assert.doesNotMatch(pkg.scripts.build, new RegExp(`${testerName.replaceAll('.', '\\.') } --built-only`))
   assert.equal(
     pkg.scripts['test:city-analytics'],
     'node scripts/issue-2983-city-analytics-privacy.implementor.happy.test.mjs --built-only',

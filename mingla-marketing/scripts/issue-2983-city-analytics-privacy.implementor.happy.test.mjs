@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
 import net from 'node:net'
@@ -11,8 +11,11 @@ import ts from 'typescript'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const SCRIPT = fileURLToPath(import.meta.url)
 const SOURCE_ONLY = process.argv.includes('--source-only')
 const BUILT_ONLY = process.argv.includes('--built-only')
+const ARTIFACT_ONLY = process.argv.includes('--artifact-only')
+const PORTABILITY_SELF_TEST = process.argv.includes('--portability-self-test')
 const CHROME = process.env.CHROME_BIN || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const CANARIES = [
   'never_send',
@@ -114,9 +117,59 @@ function sourceContract() {
   assert.match(actions, /subscribeMarketingConsent\(capture\)/)
   for (const event of CITY_EVENTS) assert.match(`${actions}\n${read('lib/city-hub-analytics.ts')}`, new RegExp(`['"]${event}['"]`))
   assert.match(packageJson.scripts.build, /issue-2983-city-analytics-privacy\.implementor\.happy\.test\.mjs --source-only/)
-  assert.match(packageJson.scripts.build, /issue-2983-city-analytics-privacy\.implementor\.happy\.test\.mjs --built-only/)
+  assert.match(packageJson.scripts.build, /issue-2983-city-analytics-privacy\.implementor\.happy\.test\.mjs --artifact-only/)
+  assert.doesNotMatch(packageJson.scripts.build, /issue-2983-city-analytics-privacy\.implementor\.happy\.test\.mjs --built-only/)
   assert.equal(packageJson.scripts['test:city-analytics'], 'node scripts/issue-2983-city-analytics-privacy.implementor.happy.test.mjs --built-only')
+  assert.equal(packageJson.scripts['test:city-analytics:artifact'], 'node scripts/issue-2983-city-analytics-privacy.implementor.happy.test.mjs --artifact-only')
+  assert.equal(packageJson.scripts['test:city-analytics:portability'], 'node scripts/issue-2983-city-analytics-privacy.implementor.happy.test.mjs --portability-self-test')
   process.stdout.write('PASS #2983 city analytics privacy source contract\n')
+}
+
+function artifactContract() {
+  const nextRoot = path.join(ROOT, '.next')
+  assert(fs.existsSync(path.join(nextRoot, 'BUILD_ID')), 'run next build before #2983 city analytics artifact proof')
+  const manifest = JSON.parse(fs.readFileSync(path.join(nextRoot, 'app-build-manifest.json'), 'utf8'))
+  const rootLayoutFiles = manifest.pages?.['/layout']?.filter((entry) => entry.endsWith('.js')) ?? []
+  assert(rootLayoutFiles.length > 0, 'compiled root layout chunks missing from app build manifest')
+  const rootLayoutBundle = rootLayoutFiles
+    .map((relative) => fs.readFileSync(path.join(nextRoot, relative), 'utf8'))
+    .join('\n')
+  for (const token of [
+    ...CITY_EVENTS,
+    'city_hub_anonymous',
+    'city_slug',
+    'country_code',
+    'destination_type',
+    'send_page_view',
+    'page_referrer',
+    'capture_pageview',
+    'capture_pageleave',
+    'autocapture',
+    'disable_session_recording',
+    'person_profiles',
+    'mingla_consent_v1',
+  ]) assert(rootLayoutBundle.includes(token), `compiled root analytics owner missing ${token}`)
+
+  const cityOutput = path.join(nextRoot, 'server', 'app', 'cities')
+  const cityHtmlFiles = fs.readdirSync(cityOutput).filter((entry) => entry.endsWith('.html')).sort()
+  assert.equal(cityHtmlFiles.length, 10, 'browserless proof expected all ten compiled city HTML artifacts')
+  for (const cityHtmlFile of cityHtmlFiles) {
+    const html = fs.readFileSync(path.join(cityOutput, cityHtmlFile), 'utf8')
+    assert(!/googletagmanager\.com|google-analytics\.com|posthog\.com/.test(html), `${cityHtmlFile} eagerly renders an analytics vendor`)
+  }
+  process.stdout.write('PASS #2983 browserless compiled analytics artifact (root owner present; 10/10 city HTML files vendor-dark)\n')
+}
+
+function portabilitySelfTest() {
+  const missingChrome = path.join(os.tmpdir(), 'mingla-2983-intentionally-missing-chrome')
+  const env = { ...process.env, CHROME_BIN: missingChrome }
+  const artifact = spawnSync(process.execPath, [SCRIPT, '--artifact-only'], { cwd: ROOT, env, encoding: 'utf8' })
+  assert.equal(artifact.status, 0, `browserless artifact mode required Chrome:\n${artifact.stdout}${artifact.stderr}`)
+  assert.match(artifact.stdout, /PASS #2983 browserless compiled analytics artifact/)
+  const browser = spawnSync(process.execPath, [SCRIPT, '--built-only'], { cwd: ROOT, env, encoding: 'utf8' })
+  assert.notEqual(browser.status, 0, 'full browser mode silently passed without Chrome')
+  assert.match(`${browser.stdout}${browser.stderr}`, /Chrome executable not found/)
+  process.stdout.write('PASS #2983 analytics portability split (artifact mode browserless; full browser mode fails closed without Chrome)\n')
 }
 
 function availablePort() {
@@ -510,6 +563,16 @@ async function runtimeContract() {
   }
 }
 
-if (!BUILT_ONLY) sourceContract()
-if (!SOURCE_ONLY) await runtimeContract()
-if (!SOURCE_ONLY) process.exit(0)
+const selectedModes = [SOURCE_ONLY, BUILT_ONLY, ARTIFACT_ONLY, PORTABILITY_SELF_TEST].filter(Boolean).length
+assert(selectedModes <= 1, 'choose only one #2983 analytics guard mode')
+if (PORTABILITY_SELF_TEST) {
+  portabilitySelfTest()
+} else if (SOURCE_ONLY) {
+  sourceContract()
+} else if (ARTIFACT_ONLY) {
+  artifactContract()
+} else {
+  if (!BUILT_ONLY) sourceContract()
+  await runtimeContract()
+  process.exit(0)
+}
