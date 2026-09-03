@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ArrowUpRight, Compass, MapPinned, Store } from 'lucide-react'
+import { Fragment } from 'react'
 import {
   CITY_HUBS,
   allCityHubsSearchReady,
@@ -169,10 +170,17 @@ function CityFaq({ record }: { readonly record: CityHubRecord }) {
       <div className="city-section-heading"><p className="city-eyebrow">Useful before you go</p><h2>{record.city} questions, answered.</h2></div>
       <div className="city-faq-list">
         {record.faqs.map((faq) => (
-          <details key={faq.question} className="city-faq-item">
-            <summary>{faq.question}</summary>
-            <div><p>{faq.answer}</p><EvidenceLinks record={record} evidenceIds={faq.evidenceIds} /></div>
-          </details>
+          <Fragment key={faq.question}>
+            <details className="city-faq-item">
+              <summary>{faq.question}</summary>
+              <div><p>{faq.answer}</p><EvidenceLinks record={record} evidenceIds={faq.evidenceIds} /></div>
+            </details>
+            <article className="city-faq-print-answer" aria-hidden="true">
+              <h3>{faq.question}</h3>
+              <p>{faq.answer}</p>
+              <EvidenceLinks record={record} evidenceIds={faq.evidenceIds} />
+            </article>
+          </Fragment>
         ))}
       </div>
     </CutoutSection>
@@ -281,7 +289,7 @@ export function CityHub({ record }: { readonly record: CityHubRecord }) {
         <CityHostAcquisitionBar city={record.city} citySlug={record.slug} countryCode={record.countryCode} />
         <PageSystemNav surface="explorer" />
         <CityLifecycleNotice record={record} />
-        <main id="main">
+        <main id="main" className="page-system-printable">
           <CityHero record={record} />
           <CityAudienceFork record={record} />
           <CityUtilityGrid record={record} />

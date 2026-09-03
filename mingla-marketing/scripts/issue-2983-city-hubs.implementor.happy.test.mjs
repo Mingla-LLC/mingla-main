@@ -2,6 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
 import net from 'node:net'
@@ -16,6 +17,7 @@ const BUILT_ONLY = process.argv.includes('--built-only')
 const SELF_TEST = process.argv.includes('--self-test')
 const BROWSER_MODE = process.argv.includes('--browser')
 const CHROME = process.env.CHROME_BIN || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+const PDFTOTEXT = process.env.PDFTOTEXT_BIN || '/opt/homebrew/bin/pdftotext'
 const CITY_SLUGS = [
   'lagos', 'durham-nc', 'cary-nc', 'raleigh-nc', 'new-york-city',
   'brussels', 'paris', 'london', 'fort-lauderdale', 'washington-dc',
@@ -31,6 +33,8 @@ const CASE_VARIANTS = [
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
 const decode = (value) => value.replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#x27;|&#39;/gi, "'").replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
 const visibleText = (html) => decode(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').replace(/\s+([.,!?])/g, '$1').trim()
+const normalizedText = (value) => value.replace(/\s+/g, ' ').trim()
+const comparableText = (value) => normalizedText(value).normalize('NFKD').replace(/[-\u2010-\u2015]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').toLocaleLowerCase('en').trim()
 
 function loadRegistryModule(source = read('content/cities/registry.ts')) {
   const javascript = ts.transpileModule(source, {
@@ -85,6 +89,7 @@ function sourceContract() {
   const deviceCta = read('components/cutout/device-cta.tsx')
   const hostBar = read('components/page-system/city-host-acquisition-bar.tsx')
   const css = read('components/cities/city-hubs.css')
+  const footer = read('components/cutout/footer.tsx')
   const explorerRoot = read('app/(explorer)/page.tsx')
   const hostRoot = read('app/host/page.tsx')
   const packageJson = JSON.parse(read('package.json'))
@@ -140,11 +145,13 @@ function sourceContract() {
   assert(!fs.existsSync(path.join(ROOT, 'app/cities/page.tsx')), '#3000 owns /cities; #2983 must not add it')
 
   assert.match(hub, /Find the right plan in \{record\.city\}\./)
+  assert.match(hub, /<main id="main" className="page-system-printable">/)
   assert.match(hub, /evidenceIds=\{record\.directAnswerEvidenceIds\}/)
   assert.match(hub, /Choose your Mingla path in \{record\.city\}\./)
   assert.match(hub, /record\.utilitySections\.map/)
   assert.match(hub, /record\.hostUtilities\.map/)
-  assert.match(hub, /<details key=\{faq\.question\}/)
+  assert.match(hub, /<details className="city-faq-item">/)
+  assert.match(hub, /className="city-faq-print-answer" aria-hidden="true"/)
   assert.match(hub, /How this \{record\.city\} guide is checked\./)
   assert.match(hub, /Pending — this page is not yet in search/)
   assert.match(hub, /record\.sources\.map/)
@@ -174,6 +181,13 @@ function sourceContract() {
   assert.match(css, /grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/)
   assert.match(css, /@media \(hover: hover\) and \(pointer: fine\)/)
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/)
+  assert.match(css, /--city-muted-light:/)
+  assert.match(css, /--city-muted-dark:/)
+  assert.match(css, /\.city-breadcrumbs a \{[^}]*min-width: 44px;/)
+  assert.match(css, /\.city-claim-sources a \{[^}]*min-width: 44px;/)
+  assert.match(css, /@media print \{[\s\S]*\.city-faq-item \{ display: none !important; \}[\s\S]*\.city-hub-root \.city-faq-print-answer \{[\s\S]*display: block !important;/)
+  assert.match(footer, /size="md" className="min-h-11"/)
+  assert.equal((footer.match(/inline-flex min-h-11 min-w-11 items-center/g) ?? []).length, 3)
 
   assert.match(explorerRoot, /showCityLaunch = allCityHubsSearchReady\(\)/)
   assert.match(explorerRoot, /<RootCityGrid surface="explorer"/)
@@ -289,6 +303,7 @@ async function navigate(page, url) {
 
 async function browserGeometryContract() {
   assert(fs.existsSync(CHROME), `Chrome executable not found at ${CHROME}`)
+  assert(fs.existsSync(PDFTOTEXT), `pdftotext executable not found at ${PDFTOTEXT}`)
   const serverPort = await availablePort()
   const debugPort = await availablePort()
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'mingla-2983-chrome-'))
@@ -314,6 +329,7 @@ async function browserGeometryContract() {
     await waitFor(async () => (await request(serverPort, '/robots.txt')).status === 200, 'Next server did not start')
     await waitFor(async () => (await fetch(`http://127.0.0.1:${debugPort}/json/version`)).ok, 'Chrome did not start')
     page = await createPage(debugPort)
+    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: read('node_modules/axe-core/axe.min.js') })
     let cases = 0
     let actionCases = 0
     for (const width of [390, 320]) {
@@ -387,7 +403,95 @@ async function browserGeometryContract() {
         cases += 1
       }
     }
+    const auditFailures = []
+    let targetCases = 0
+    let targetRouteViews = 0
+    let axeCases = 0
+    for (const width of [320, 390, 1440]) {
+      await page.send('Emulation.setDeviceMetricsOverride', { width, height: width === 320 ? 800 : width === 390 ? 844 : 900, deviceScaleFactor: 1, mobile: width < 768 })
+      for (const slug of CITY_SLUGS) {
+        await navigate(page, `http://127.0.0.1:${serverPort}/cities/${slug}?audit=${width}`)
+        await waitFor(() => page.evaluate('Boolean(window.axe)'), `axe did not load for ${slug} at ${width}px`)
+        const targets = await page.evaluate(`(() => [...document.querySelectorAll('.city-hub-root a[href], .city-hub-root button:not([disabled]), .city-hub-root summary')]
+          .filter((element) => {
+            const closed = element.closest('details:not([open])');
+            if (closed && element !== closed.querySelector(':scope > summary')) return false;
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return !element.hidden && style.display !== 'none' && style.visibility !== 'hidden' && style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
+          })
+          .map((element) => {
+            const rect = element.getBoundingClientRect();
+            let clippingAncestor = element.parentElement;
+            while (clippingAncestor && clippingAncestor !== document.documentElement) {
+              const overflow = getComputedStyle(clippingAncestor);
+              if ([overflow.overflowX, overflow.overflowY].some((value) => ['hidden', 'clip', 'auto', 'scroll'].includes(value))) break;
+              clippingAncestor = clippingAncestor.parentElement;
+            }
+            const clippingRect = clippingAncestor?.getBoundingClientRect();
+            return {
+              label: (element.getAttribute('aria-label') || element.textContent || element.tagName).trim(),
+              left: rect.left,
+              right: rect.right,
+              width: rect.width,
+              height: rect.height,
+              clippingLeft: clippingRect?.left,
+              clippingRight: clippingRect?.right,
+            };
+          }))()`)
+        for (const target of targets) {
+          if (target.width < 43.5 || target.height < 43.5) auditFailures.push(`${slug} ${width}px target ${target.label} is ${target.width.toFixed(2)}x${target.height.toFixed(2)}`)
+          if (target.left < -1 || target.right > width + 1) auditFailures.push(`${slug} ${width}px target ${target.label} leaves viewport at ${target.left.toFixed(2)}..${target.right.toFixed(2)}`)
+          if (target.clippingLeft !== undefined && target.left < target.clippingLeft - 1) auditFailures.push(`${slug} ${width}px target ${target.label} leaves clipping ancestor left edge`)
+          if (target.clippingRight !== undefined && target.right > target.clippingRight + 1) auditFailures.push(`${slug} ${width}px target ${target.label} leaves clipping ancestor right edge`)
+        }
+        targetCases += targets.length
+        targetRouteViews += 1
+        if (width !== 320) {
+          const contrast = await page.evaluate(`axe.run(document.querySelector('.city-hub-root'), { runOnly: { type: 'rule', values: ['color-contrast'] }, resultTypes: ['violations'] }).then((result) => result.violations.map((violation) => ({ id: violation.id, targets: violation.nodes.map((node) => node.target.join(' ')) })))`)
+          if (contrast.length) auditFailures.push(`${slug} ${width}px axe ${JSON.stringify(contrast)}`)
+          axeCases += 1
+        }
+      }
+    }
+
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
+    const registry = loadRegistryModule()
+    let faqAnswers = 0
+    let sourceEntries = 0
+    let usefulContentBlocks = 0
+    for (const slug of CITY_SLUGS) {
+      const record = registry.CITY_HUBS.find((entry) => entry.slug === slug)
+      assert(record, `missing ${slug} print record`)
+      await navigate(page, `http://127.0.0.1:${serverPort}/cities/${slug}?print=1`)
+      const pdf = await page.send('Page.printToPDF', { printBackground: true, preferCSSPageSize: true })
+      const pdfPath = path.join(profile, `${slug}.pdf`)
+      fs.writeFileSync(pdfPath, Buffer.from(pdf.data, 'base64'))
+      const extracted = normalizedText(execFileSync(PDFTOTEXT, [pdfPath, '-'], { encoding: 'utf8' }))
+      const comparableExtracted = comparableText(extracted)
+      if (!comparableExtracted.includes(comparableText(`Find the right plan in ${record.city}.`))) auditFailures.push(`${slug} PDF lost the H1`)
+      if (!comparableExtracted.includes(comparableText(record.directAnswer))) auditFailures.push(`${slug} PDF lost the direct answer`)
+      const usefulBlocks = [
+        record.explorer.title, record.explorer.body, record.host.title, record.host.body, record.jurisdictionScope,
+        ...record.utilitySections.flatMap((utility) => [utility.title, utility.answer]),
+        ...record.hostUtilities.flatMap((utility) => [utility.title, utility.body]),
+      ]
+      for (const block of usefulBlocks) {
+        if (!comparableExtracted.includes(comparableText(block))) auditFailures.push(`${slug} PDF lost useful content: ${block}`)
+        else usefulContentBlocks += 1
+      }
+      for (const source of record.sources) {
+        if (!comparableExtracted.includes(comparableText(source.publisher)) || !comparableExtracted.includes(comparableText(source.title))) auditFailures.push(`${slug} PDF lost source: ${source.publisher} — ${source.title}`)
+        else sourceEntries += 1
+      }
+      for (const faq of record.faqs) {
+        if (!comparableExtracted.includes(comparableText(faq.answer))) auditFailures.push(`${slug} PDF lost FAQ answer: ${faq.question}`)
+        else faqAnswers += 1
+      }
+    }
+    assert.deepEqual(auditFailures, [], `#2983 print/a11y contract failed:\n${auditFailures.join('\n')}`)
     process.stdout.write(`PASS #2983 rendered mobile geometry (${cases}/20 route-viewports; ${actionCases}/140 city actions contained at 320px)\n`)
+    process.stdout.write(`PASS #2983 browser accessibility (${axeCases}/20 axe contrast scans; ${targetCases} interactive targets across ${targetRouteViews}/30 route-viewports at least 44x44 and contained; ${usefulContentBlocks}/150 useful PDF blocks, ${faqAnswers}/30 FAQ answers and ${sourceEntries}/50 source records extracted)\n`)
   } finally {
     page?.close()
     chrome.kill('SIGTERM')
@@ -512,4 +616,5 @@ if (SELF_TEST) {
   if (!BUILT_ONLY) sourceContract()
   if (!SOURCE_ONLY) await runtimeContract()
   if (BROWSER_MODE) await browserGeometryContract()
+  if (BROWSER_MODE) process.exit(0)
 }
