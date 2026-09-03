@@ -10,4 +10,3 @@ export function GrowthToolEmbed({ tool }: { readonly tool: HostGuideKind }) {
   if (tool === 'venue') return <GraderExperience embedded />
   return <PricingAuditExperience embedded />
 }
-
