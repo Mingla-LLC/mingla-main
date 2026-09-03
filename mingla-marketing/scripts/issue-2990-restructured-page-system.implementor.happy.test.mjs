@@ -71,6 +71,9 @@ function sourceContract() {
   assert.match(detail, /page_system_catalogue_detail_plan/)
   assert.match(detail, /childDialogOpenRef\.current/)
   assert.match(deviceCta, /onDialogOpenChange\?: \(open: boolean\) => void/)
+  assert.match(qrPanel, /import \{ createPortal \} from 'react-dom'/)
+  assert.match(qrPanel, /setPortalHost\(document\.body\)/)
+  assert.match(qrPanel, /return createPortal\([\s\S]*portalHost/)
   assert.match(qrPanel, /z-\[200\]/)
   assert.doesNotMatch(cityPage, /Private Explorer snapshot|The city system scales|Next launch cities/)
   for (const suffix of ['event/create', 'trip/create', 'experience/create', 'venue/create']) {
