@@ -253,7 +253,35 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     non-concurrency semantic assertion did;
   //   - the policy audit itself still reports zero errors at 124 PR-family
   //     workflows — the sibling test above, which passes.
-  "e15a2738948373f825eb5cdc2646ca1d71801b60ddad5b85fe7bbb737f2afa19";
+  // [TEST-MOD-APPROVED #2882 — TESTER] Re-derived once more, for the same
+  // structural reason as the re-derivation immediately above and by the same
+  // review. WHAT MOVED: the batch lane's self-test step now also runs #2882's
+  // TESTER adversarial suite
+  // (`.github/scripts/ci-batch/__tests__/issue-2882-routing-cannot-select-silently.tester.test.mjs`)
+  // alongside the batch-runner self-test and the implementor's happy path. That
+  // lane is PR-family, so its non-concurrency document moves; there is no way to
+  // execute a router regression test on the pull requests that change the router
+  // without touching it, because that lane is the only always-on one that runs
+  // on a `.github/scripts/ci-batch/**`-only diff.
+  //
+  // WHY IT IS SAFE, re-verified independently rather than inherited:
+  //   - the ONLY change to the lane is one added filename on an existing
+  //     `run:` continuation — no step added, removed or renamed, no `uses:`, no
+  //     install command, no job key change;
+  //   - the `concurrency:` block is byte-for-byte IDENTICAL to origin/main —
+  //     diffed, not assumed;
+  //   - the `on:` trigger block is byte-for-byte IDENTICAL to origin/main, so
+  //     PR-family membership cannot have changed;
+  //   - PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED: the
+  //     count-and-classification assertion still passes and only the
+  //     non-concurrency document digest moved.
+  //
+  // NOTE FOR REVIEW: the tester's standing authorisation on #2882 named
+  // `assertPhase2Locks` in the node-wave-shadow file. THIS seal was not named,
+  // and is moved here only because wiring the tester's own regression test into
+  // CI mechanically moves it. Flagged on the issue for ratification rather than
+  // moved quietly.
+  "f98e05c8ef23efa2668f7aed948603e3fe50335c76964dfd0a30b854efcfcd73";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

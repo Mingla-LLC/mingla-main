@@ -311,6 +311,7 @@ jobs:
           node --test
           .github/scripts/ci-batch/__tests__/run-suite-batch.test.mjs
           .github/scripts/ci-batch/__tests__/issue-2882-origin-paths-routing.implementor.test.mjs
+          .github/scripts/ci-batch/__tests__/issue-2882-routing-cannot-select-silently.tester.test.mjs
 
       - name: Run the ${{ matrix.class }} suites
         if: always()
