@@ -186,20 +186,64 @@ export async function buildPublicationArtifact(
     for (const block of page.blocks || [])
       for (const row of block.offering_ids || [])
         if (row.offering_id) offeringIds.add(String(row.offering_id));
+  // #2830 — does any page show the menu? Only then do we read one.
+  let wantsMenu = false;
+  for (const page of pagesResult.docs as AnyDoc[])
+    for (const block of page.blocks || [])
+      if (block.blockType === "menu_board") wantsMenu = true;
   let commercial: AnyDoc[] = [];
-  if (offeringIds.size) {
+  let menuRows: AnyDoc[] = [];
+  if (offeringIds.size || wantsMenu) {
     const projection = await readCoreProjection(
       `/internal/v1/sites/${input.tenant.core_site_id}/projection`,
       input.tenant.core_site_id,
       input.operationId,
       [...offeringIds],
+      wantsMenu,
     );
     commercial = Array.isArray(projection.offerings)
       ? (projection.offerings as AnyDoc[])
       : [];
     if (commercial.length !== offeringIds.size)
       throw new Error("VALIDATION_FAILED");
+    menuRows = Array.isArray(projection.menu)
+      ? (projection.menu as AnyDoc[])
+      : [];
   }
+  /*
+   * Group Mingla's flat rows into the sections the renderer draws. The order is
+   * Mingla's own (menu sort, then item sort), never re-sorted here — a brand
+   * that arranged its menu in the app must see that arrangement on its site.
+   *
+   * A price stays NULL when Mingla has none, and currency travels per row.
+   * Neither is defaulted: "price on request" is a real thing on gogi's printed
+   * menu, and inventing a 0 or a currency on a restaurant's own menu is a live
+   * commercial lie, not a cosmetic default.
+   */
+  const menuSections = (() => {
+    const sections = new Map<string, AnyDoc>();
+    for (const row of menuRows) {
+      const key = String(row.menu_id);
+      let section = sections.get(key);
+      if (!section) {
+        section = {
+          name: String(row.menu_name ?? ""),
+          description: row.menu_description ?? null,
+          items: [] as AnyDoc[],
+        };
+        sections.set(key, section);
+      }
+      (section.items as AnyDoc[]).push({
+        name: String(row.item_name ?? ""),
+        description: row.item_description ?? null,
+        price_minor: typeof row.price_cents === "number" ? row.price_cents : null,
+        currency: typeof row.currency === "string" ? row.currency : null,
+      });
+    }
+    return [...sections.values()].filter(
+      (section) => (section.items as AnyDoc[]).length > 0,
+    );
+  })();
   const renderMedia = (mediaId: unknown, alt = "") => {
     const record = media.get(id(mediaId));
     if (!record || record.state !== "READY" || !record.rendition_manifest)
@@ -285,6 +329,17 @@ export async function buildPublicationArtifact(
             heading: raw.heading,
             body: raw.body,
             url: resolved.checkout_url,
+          };
+        }
+        case "menu_board": {
+          // A menu block with nothing behind it is dropped rather than
+          // published as an empty "Menu" heading on a restaurant's website.
+          if (!menuSections.length) return null;
+          return {
+            type: "menu_board",
+            heading: raw.heading ?? null,
+            note: raw.note ?? null,
+            sections: menuSections,
           };
         }
         case "menu_link":

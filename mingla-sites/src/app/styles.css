@@ -616,3 +616,30 @@ summary {
   color: #1b1508;
   background: #dcb877;
 }
+
+/* #2830 — the menu board. Dotted-leader rows, the same device gogi's own
+   printed menu uses, so the page reads as theirs rather than as a table. */
+.menu-board { display: grid; gap: 2.5rem; }
+.menu-note { color: var(--muted, rgba(255,255,255,.66)); margin: 0; }
+.menu-section { display: grid; gap: 1rem; }
+.menu-section-note { margin: 0; color: var(--muted, rgba(255,255,255,.66)); }
+.menu-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
+.menu-row { display: grid; gap: 0.25rem; }
+.menu-row-head { display: flex; align-items: baseline; gap: 0.75rem; }
+.menu-item-name { font-weight: 600; }
+/* The leader is decorative and aria-hidden: a screen reader hears
+   "Coconut rice, 8,500 naira", never a run of dots. */
+.menu-leader {
+  flex: 1 1 auto;
+  min-width: 1.5rem;
+  align-self: flex-end;
+  margin-bottom: 0.3em;
+  border-bottom: 1px dotted currentColor;
+  opacity: 0.4;
+}
+.menu-price { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.menu-item-note { margin: 0; font-size: 0.9em; opacity: 0.75; max-width: 60ch; }
+@media (max-width: 520px) {
+  .menu-row-head { flex-wrap: wrap; }
+  .menu-leader { min-width: 1rem; }
+}

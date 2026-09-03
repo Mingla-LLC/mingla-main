@@ -125,7 +125,22 @@ describe("#3026 Payload import-map synchronization", () => {
     const generated = semanticBindings(await freshGeneratedMap());
     expect([...checked.keys()].sort()).toEqual(expectedKeys);
     expect([...checked.entries()].sort()).toEqual([...generated.entries()].sort());
-  });
+    /*
+     * #2830 — EXPLICIT TIMEOUT, and why it is not a weakened check.
+     *
+     * This test SHELLS OUT to the Payload import-map generator on every run.
+     * That takes ~2.3s alone and over 10s when the suite runs it alongside the
+     * other 19 files, against a 5s default that was never sized for a
+     * subprocess. It began failing when #2830 added one block to the config —
+     * but the ASSERTION still passes, and the checked-in map is byte-identical,
+     * because the new block ships no custom component and so adds no binding.
+     *
+     * What is raised is the budget for work the test always did, not the
+     * strictness of what it proves: every expectation above is unchanged. The
+     * alternative — leaving a 5s cap on a 10s subprocess — is a test that fails
+     * for reasons that have nothing to do with the thing it guards.
+     */
+  }, 60_000);
 
   it("preserves the Payload server-action boundary and canonical map import", () => {
     const layout = readFileSync(layoutPath, "utf8");

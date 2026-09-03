@@ -189,6 +189,9 @@ export async function readCoreProjection(
   siteId: string,
   operationId: string,
   offeringIds: string[],
+  // #2830 — ask for the menu only when a page actually shows one, so a site
+  // without a menu block costs no menu read.
+  includeMenu = false,
 ): Promise<Record<string, unknown>> {
   const body = "";
   const envelope = await signCmsRequest({
@@ -200,6 +203,7 @@ export async function readCoreProjection(
   });
   const query = new URLSearchParams();
   for (const id of offeringIds) query.append("offering_id", id);
+  if (includeMenu) query.set("include", "menu");
   const response = await fetch(
     `${cmsConfig().coreBaseUrl}/functions/v1/brand-site-cms-callback${path}?${query}`,
     {

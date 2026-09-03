@@ -31,6 +31,30 @@ function SafeLink({ href, children, className, context, ctaKind = "checkout", of
   return <a href={href} className={className} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined}>{children}{external ? <span className="sr-only"> (opens in a new tab)</span> : null}</a>;
 }
 
+
+/**
+ * #2830 — format a menu price, or render NOTHING.
+ *
+ * Mingla stores price in MINOR units and allows NULL, which means "price on
+ * request" — gogi's own printed menu has items like that. Rendering a missing
+ * price as 0, or picking a currency when none is recorded, would be fabricated
+ * data on a real restaurant's real menu. Both parts must be present, or the
+ * row simply carries no number.
+ */
+function formatMenuPrice(minor: unknown, currency: unknown): string | null {
+  if (typeof minor !== "number" || !Number.isFinite(minor)) return null;
+  if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) return null;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: minor % 100 === 0 ? 0 : 2,
+    }).format(minor / 100);
+  } catch {
+    return null;
+  }
+}
+
 function Block({ block, context, primaryHeading = false }: { block: RestaurantBlock; context: SiteEventContext; primaryHeading?: boolean }) {
   switch (block.type) {
     case "hero": {
@@ -43,6 +67,10 @@ function Block({ block, context, primaryHeading = false }: { block: RestaurantBl
     case "offering_grid": return <section className="editorial-grid"><p className="eyebrow">Book with Mingla</p><h2>{text(block.heading, "Experiences")}</h2><div className="grid">{items(block.offerings).map((offering, index) => <article className="tile" key={text(offering.id, String(index))}><h3>{text(offering.label, "Experience")}</h3><p>{text(offering.summary)}</p><SafeLink href={offering.url} context={context} ctaKind="offering" offeringId={text(offering.id)}>View on Mingla</SafeLink></article>)}</div></section>;
     case "venue_reservation": return <section className="cta"><h2>{text(block.heading, "Make a reservation")}</h2><p>{text(block.body)}</p><SafeLink href={block.url} context={context} ctaKind="reservation" className="button accent">Continue with Mingla</SafeLink></section>;
     case "menu_link": return <section className="menu-link"><h2>{text(block.heading, "Explore the menu")}</h2><SafeLink href={block.href} context={context} ctaKind="menu" className="button accent">{text(block.label, "View menu")}</SafeLink></section>;
+    case "menu_board": {
+      const sections = items(block.sections);
+      return <section className="menu-board"><h2>{text(block.heading, "Menu")}</h2>{block.note ? <p className="menu-note">{text(block.note)}</p> : null}{sections.map((section, sectionIndex) => <div className="menu-section" key={`${text(section.name)}-${sectionIndex}`}><h3>{text(section.name)}</h3>{section.description ? <p className="menu-section-note">{text(section.description)}</p> : null}<ul className="menu-list">{items(section.items).map((item, itemIndex) => { const price = formatMenuPrice(item.price_minor, item.currency); return <li className="menu-row" key={`${text(item.name)}-${itemIndex}`}><div className="menu-row-head"><span className="menu-item-name">{text(item.name)}</span><span className="menu-leader" aria-hidden="true" />{price ? <span className="menu-price">{price}</span> : null}</div>{item.description ? <p className="menu-item-note">{text(item.description)}</p> : null}</li>; })}</ul></div>)}</section>;
+    }
     case "gallery": return <section className="editorial-gallery"><p className="eyebrow">In the room</p><h2>{text(block.heading, "Gallery")}</h2><div className="gallery">{items(block.images).slice(0, 12).map((image, index) => isSafeHref(image.url) ? <img key={index} src={text(image.url)} alt={text(image.alt)} width={640} height={640} /> : null)}</div></section>;
     case "hours_location": return <section className="feature"><div><p className="eyebrow">Visit</p><h2>{text(block.heading, "Hours & location")}</h2><p>{text(block.address)}</p><SafeLink href={block.map_url}>Open map</SafeLink></div><div className="hours">{items(block.hours).map((row, index) => <p key={index}><strong>{text(row.day)}</strong><span>{text(row.value)}</span></p>)}</div></section>;
     case "testimonials": return <section><h2>{text(block.heading, "What guests say")}</h2><div className="grid">{items(block.items).slice(0, 8).map((item, index) => <blockquote className="tile" key={index}>“{text(item.quote)}”<footer>{text(item.name)}</footer></blockquote>)}</div></section>;
