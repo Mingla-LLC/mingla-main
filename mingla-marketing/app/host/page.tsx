@@ -111,7 +111,7 @@ export default function CutoutHostPage() {
             </CutoutHeading>
           </CutReveal>
 
-          <BentoGrid className="mt-14">
+          <BentoGrid className="mt-14 lg:auto-rows-[15.5rem] xl:auto-rows-[14rem]">
             {HOST_BENTO.map((card) => (
               <BentoGridItem key={card.id} tone={card.tone} className={card.span}>
                 <div>
@@ -158,7 +158,7 @@ export default function CutoutHostPage() {
 
                 {/* The brand tile's chips are gone — the demo inside it says
                     all three things better than a label row could. */}
-                <div className={cn('mt-6 flex flex-wrap gap-2', (card.tone === 'brand' || card.id === 'brain') && 'hidden')}>
+                <div className={cn('mt-6 flex flex-wrap gap-2', card.id === 'trips' && 'mt-7 sm:mt-6', (card.tone === 'brand' || card.id === 'brain') && 'hidden')}>
                   {card.points.map((p) => (
                     <span
                       key={p}
