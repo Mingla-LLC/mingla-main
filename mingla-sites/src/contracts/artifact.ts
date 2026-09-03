@@ -15,7 +15,7 @@ export type MediaReference = {
 
 export type RestaurantBlock = {
   type: "hero" | "rich_text" | "media_feature" | "cta" | "offering_grid" |
-    "venue_reservation" | "menu_link" | "gallery" | "hours_location" |
+    "venue_reservation" | "menu_link" | "menu_board" | "gallery" | "hours_location" |
     "testimonials" | "faq" | "contact_handoff" | "divider" | "spacer";
   [key: string]: unknown;
 };
@@ -172,6 +172,7 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
     offering_grid: ["type", "heading", "offerings"],
     venue_reservation: ["type", "heading", "body", "url"],
     menu_link: ["type", "heading", "label", "href"],
+    menu_board: ["type", "heading", "note", "sections"],
     gallery: ["type", "heading", "images"],
     hours_location: ["type", "heading", "address", "map_url", "hours"],
     testimonials: ["type", "heading", "items"],
@@ -230,6 +231,37 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
     case "menu_link":
       valid = boundedText(block.heading, 120) &&
         boundedText(block.label, 80, true) && isSafeHref(block.href);
+      break;
+    /*
+     * #2830 — the real menu, owned by Mingla.
+     *
+     * `menu_link` only ever pointed at a PDF. This carries the actual items,
+     * projected from Mingla's own `menus` / `menu_items` at publish time, so
+     * the website and the app cannot disagree about what a restaurant sells.
+     *
+     * PRICE IS DELIBERATELY NULLABLE AND SEPARATE FROM CURRENCY. Mingla stores
+     * price in MINOR units with NULL meaning "price on request"; a menu that
+     * renders a missing price as 0, or guesses a currency, is fabricated data
+     * (Constitution rule 9) and, for a restaurant, a live commercial lie. Both
+     * must be present for a number to be shown, and the renderer enforces it.
+     */
+    case "menu_board":
+      valid = boundedText(block.heading, 120) &&
+        boundedText(block.note, 300) &&
+        exactRows(block.sections, 1, 20, ["name", "description", "items"], (section) =>
+          boundedText(section.name, 120, true) &&
+          boundedText(section.description, 500) &&
+          exactRows(section.items, 1, 120, ["name", "description", "price_minor", "currency"], (item) =>
+            boundedText(item.name, 160, true) &&
+            boundedText(item.description, 600) &&
+            (item.price_minor == null ||
+              (typeof item.price_minor === "number" &&
+                Number.isInteger(item.price_minor) &&
+                item.price_minor >= 0 &&
+                item.price_minor <= 100_000_000)) &&
+            (item.currency == null ||
+              (typeof item.currency === "string" &&
+                /^[A-Z]{3}$/.test(item.currency)))));
       break;
     case "gallery":
       valid = boundedText(block.heading, 120) && Array.isArray(block.images) &&

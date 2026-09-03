@@ -156,6 +156,36 @@ export const restaurantBlocks: Block[] = [
     ],
   },
   {
+    /*
+     * #2830 — the real menu.
+     *
+     * DELIBERATELY HOLDS NO ITEMS. Mingla owns menus and prices; #2829 is
+     * explicit that it stays the authority for them. If a brand could type
+     * items here, the website and the app would drift and a customer would
+     * read one price on the site and pay another in the app. So this block
+     * carries only presentation, and the items are projected from Mingla at
+     * publish time.
+     */
+    slug: "menu_board",
+    labels: { singular: "Menu", plural: "Menus" },
+    fields: [
+      short("heading", "Heading", false, 120),
+      {
+        name: "note",
+        label: "Note",
+        type: "text",
+        required: false,
+        maxLength: 300,
+        validate: (value: unknown) =>
+          value == null ? true : safeText(value, 300),
+        admin: {
+          description:
+            "Optional line above the menu, for example service times. Items and prices come from your Mingla menu.",
+        },
+      } satisfies Field,
+    ],
+  },
+  {
     slug: "gallery",
     labels: { singular: "Gallery", plural: "Galleries" },
     fields: [
