@@ -200,6 +200,27 @@ export default function EventEditRoute(): React.ReactElement {
   // #1022 A/F-7 — set when an autosave is requested while a d_* promotion
   // is in flight; flushed once the server id resolves.
   const pendingPostPromotionSaveRef = React.useRef<boolean>(false);
+  // issue #3040 — the in-flight d_*→server promotion started by the autosave
+  // promotion handler below, so the Cover step can await the SAME one.
+  //
+  // DO NOT name that handler in any comment ABOVE its definition. ORCH-0893's
+  // adversarial branch-ORDER contract locates it with a bare
+  // `source.indexOf("handleAutosave" + "Draft")` over the WHOLE file and slices
+  // from the first hit. A mention up here wins that search, drags the slice ~350
+  // lines earlier, and swallows an unrelated `if (!isAuthReady)` — so the
+  // contract compares landmarks that are not in the handler at all and reports a
+  // reordering that never happened. The five real branch-order invariants are
+  // untouched; only the anchor moves.
+  const promotionPromiseRef = React.useRef<Promise<DraftEvent> | null>(null);
+  // Read through a CALL, never the ref directly: assigning `null` immediately
+  // before invoking that handler narrows `promotionPromiseRef.current` to
+  // `null`, and control-flow analysis cannot see the synchronous reassignment
+  // that happens inside it. Reading the property directly therefore types the
+  // result `never` after the null-check.
+  const takePromotionPromise = React.useCallback(
+    (): Promise<DraftEvent> | null => promotionPromiseRef.current,
+    [],
+  );
   const staleRecoveryDraftIdRef = React.useRef<string | null>(null);
   // Issue #976 (D-1, ported from the RSVP route + re-keyed) — retain the last
   // resolved draft so a d_*→server swap does NOT flash the `draft===null`
@@ -540,6 +561,7 @@ export default function EventEditRoute(): React.ReactElement {
   // `migratingLegacyIdRef` keeps this route's promotion state for the D-1
   // retained-draft guard; the registry dedupes concurrent promotions globally
   // (per d_* id across ALL surfaces — loop, routes, previews).
+  //
   const handleAutosaveDraft = React.useCallback(
     (incoming: DraftEvent): void => {
       if (!incoming.id.startsWith("d_")) {
@@ -557,11 +579,16 @@ export default function EventEditRoute(): React.ReactElement {
       }
       if (!isAuthReady) return;
       migratingLegacyIdRef.current = incoming.id;
-      void promoteLegacyDraftOnce({
+      // issue #3040 — hold the single-flight promise so the Cover step's
+      // `handleRequireServerDraft` can join THIS promotion instead of starting
+      // a second one of its own.
+      const promotion = promoteLegacyDraftOnce({
         queryClient,
         brandId: incoming.brandId,
         draftId: incoming.id,
-      })
+      });
+      promotionPromiseRef.current = promotion;
+      void promotion
         .then((merged) => {
           if (user !== null) {
             promoteBusinessRecentDraft({
@@ -583,6 +610,15 @@ export default function EventEditRoute(): React.ReactElement {
           // drops mid-type. setParams updates the focused route's params without
           // a screen replace, so the input keeps focus AND the URL/route params
           // land on the server id immediately (resume/kill lands on the real id).
+          //
+          // issue #3040 — this reconcile is deliberately INLINE here rather than
+          // extracted into a helper. I-PROPOSED-1355-DRAFT-PROMOTION-NO-REMOUNT
+          // is enforced by scanning THIS callback for `setPromotedServerId(` and
+          // `router.setParams(`, and that structural pin is the point: behind an
+          // indirection, a future edit could swap in a screen-replacing
+          // navigation and the gate would never see it. There is still exactly
+          // ONE promotion site — `handleRequireServerDraft` below drives this
+          // handler rather than promoting on its own.
           setPromotedServerId(merged.id);
           // #1022 A/F-7 — flush the edit that landed during promotion, now
           // that a server row exists. Read the draft FRESH from the store so
@@ -631,6 +667,65 @@ export default function EventEditRoute(): React.ReactElement {
       queryClient,
       router,
       user,
+    ],
+  );
+
+  // issue #3040 — the Cover step's server-row precondition.
+  //
+  // The cover-video pipeline binds to a SERVER `events` row: a `d_*` id is a
+  // hard 400 `event_id_invalid_uuid` at `event-cover-video-upload-intent` and
+  // creates ZERO job rows. Reaching the Cover step is the exact moment that row
+  // stops being optional, so the step asks for it here and RENDERS the outcome
+  // — it never assumes the debounced autosave already landed (that save
+  // silently no-ops when auth is not ready, when an insert fails, or when the
+  // resolve handler unmounts).
+  //
+  // It does NOT promote on its own. It DRIVES `handleAutosaveDraft` — the one
+  // site that performs the ORCH-1355 in-place reconcile — and then joins the
+  // very same single-flight promise that handler started (`promoteLegacyDraftOnce`
+  // returns the identical promise to concurrent callers, per id) to learn the
+  // resulting uuid. One promotion, one reconcile, two triggers.
+  //
+  // Resolves with the server uuid. REJECTS with a real error the step turns
+  // into a visible, retryable message. It never resolves a `d_*` id, so the
+  // picker can never open against an id the server will refuse.
+  const handleRequireServerDraft = React.useCallback(
+    async (): Promise<string> => {
+      const current = useDraftEventStore.getState().getDraft(
+        effectiveDraftId as string,
+      ) ?? lastResolvedDraftRef.current;
+      if (current === null) {
+        throw new Error("This event is still loading. Try again in a moment.");
+      }
+      if (!current.id.startsWith("d_")) return current.id;
+      if (!isAuthReady) {
+        throw new Error("Finishing sign-in. Try again in a moment.");
+      }
+      promotionPromiseRef.current = null;
+      handleAutosaveDraft(current);
+      const promotion = takePromotionPromise();
+      if (promotion === null) {
+        // The handler declined to promote (not dirty, or a promotion for this
+        // id is already in flight from an earlier keystroke and this call
+        // arrived inside that window). Join the registry directly — it is
+        // single-flight per id, so this can never mint a second row, and the
+        // in-flight promotion still owns the reconcile.
+        const merged = await promoteLegacyDraftOnce({
+          queryClient,
+          brandId: current.brandId,
+          draftId: current.id,
+        });
+        return merged.id;
+      }
+      const merged = await promotion;
+      return merged.id;
+    },
+    [
+      effectiveDraftId,
+      handleAutosaveDraft,
+      isAuthReady,
+      queryClient,
+      takePromotionPromise,
     ],
   );
 
@@ -780,6 +875,7 @@ export default function EventEditRoute(): React.ReactElement {
       onOpenPreview={handleOpenPreview}
       onOpenPaymentOnboarding={handleOpenPaymentOnboarding}
       onAutosaveDraft={handleAutosaveDraft}
+      onRequireServerDraft={handleRequireServerDraft}
       onDiscardServerDraft={handleDiscardDraft}
       onPublishDraft={async (draftToPublish) => {
         const published = await publishServerDraft.publishDraft(draftToPublish);

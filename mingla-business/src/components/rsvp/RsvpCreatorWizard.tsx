@@ -186,6 +186,8 @@ export interface RsvpCreatorWizardProps {
    *  the provider-neutral payments onboarding. */
   onOpenStripeOnboard?: () => void;
   onAutosaveDraft?: (draft: DraftEvent) => void;
+  /** issue #3040 — see EventCreatorWizard. Route-owned server-row resolver. */
+  onRequireServerDraft?: () => Promise<string>;
   onDiscardServerDraft?: (draft: DraftEvent) => Promise<void>;
   onPublishDraft?: (draft: DraftEvent) => Promise<PublishedEventSlug>;
   serverSaveState?: {
@@ -209,6 +211,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   onOpenPreview,
   onOpenStripeOnboard,
   onAutosaveDraft,
+  onRequireServerDraft,
   onDiscardServerDraft,
   onPublishDraft,
   serverSaveState,
@@ -758,6 +761,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       onShowToast: handleShowToast,
       scrollToBottom,
       coverMediaEventId: liveDraft.id,
+      onRequireServerDraft,
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: setCoverVideoProcessing,
@@ -992,7 +996,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
                 ? "Saving..."
                 : serverSaveState.lastSavedAt !== null
                   ? "Saved"
-                  : "Server draft"}
+                  // issue #3040 — see EventCreatorWizard: this branch means
+                  // NOTHING has been written to `events` yet, so "Server draft"
+                  // stated the opposite of the truth.
+                  : "Not saved yet"}
           </Text>
         ) : null}
       </View>
