@@ -634,6 +634,49 @@ export function violations(files) {
     "Publish",
     "Publishing is always a separate confirmation.",
   ]) need(files.cmsPreview ?? "", token, "complete preview chrome", failures);
+  /*
+   * #2830 — ONLY the Ari tab may import AriChatScreen.
+   *
+   * A second importer gives Metro two chunks to serve the module from, and it
+   * hoists anything shared into the payload every Business user downloads
+   * before anything renders. Measured when the Website split view imported it
+   * directly: 2,436,294 B to 2,569,912 B, a 133KB regression on the boot path
+   * for people who may never open Ari. `React.lazy` does not help — sharing is
+   * what hoists, not eagerness.
+   *
+   * This lives here rather than in a jest file because it is a STRUCTURAL rule
+   * about the module graph, which is exactly what I-PROPOSED-1047 says belongs
+   * in an additive gate rather than a source-text pin.
+   */
+  {
+    const ariImporters = [
+      "mingla-business/app/(tabs)/ari.tsx",
+      "mingla-business/app/brand/[id]/website/ari.tsx",
+      "mingla-business/app/brand/[id]/website.tsx",
+    ].filter((file) => {
+      let body = "";
+      try {
+        body = fs.readFileSync(path.join(ROOT, file), "utf8");
+      } catch {
+        return false;
+      }
+      // Strip block comments: this gate's own docblock names the module, and a
+      // substring match would flag the file that deliberately does not import it.
+      body = body.replace(/\/\*[\s\S]*?\*\//g, "");
+      return /from\s+"[^"]*AriChatScreen"/.test(body);
+    });
+    if (
+      ariImporters.length !== 1 ||
+      ariImporters[0] !== "mingla-business/app/(tabs)/ari.tsx"
+    ) {
+      failures.push(
+        `AriChatScreen import boundary: must have exactly one importer ` +
+          `(app/(tabs)/ari.tsx); found: ${ariImporters.join(", ") || "none"}. ` +
+          `A second importer puts ~133KB on every Business user's boot path.`,
+      );
+    }
+  }
+
   for (const token of [
     "--studio-black: #101013",
     "--studio-gold: #cda052",

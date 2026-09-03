@@ -14,10 +14,11 @@
  *     is spent and a blocker may refuse whatever the feature string says. A
  *     refusal must degrade to a same-tab navigation, never a dead tap.
  *
- * Also pins that the route file itself holds no second, un-owned opener.
+ * The "no second opener in the route" rule moved to the #2830 strict-grep gate:
+ * I-PROPOSED-1047 is right that a source-text pin in a jest file rots on every
+ * refactor, and a structural rule about the module graph belongs in an additive
+ * gate. This file keeps only what it can actually EXERCISE.
  */
-import fs from "fs";
-import path from "path";
 import { openExternal } from "../../services/guestFunnelLink";
 
 const URL_UNDER_TEST = "https://studio.sites.usemingla.com/preview?token=t";
@@ -65,13 +66,4 @@ describe("#2830 window.open boundary", () => {
     expect(w.assigned).toEqual([URL_UNDER_TEST]);
   });
 
-  it("the Website route owns no opener of its own", () => {
-    const route = fs.readFileSync(
-      path.resolve(__dirname, "../../../app/brand/[id]/website.tsx"),
-      "utf8",
-    );
-    expect(route).not.toMatch(/Linking\.openURL/);
-    expect(route).not.toMatch(/window\.open\(/);
-    expect(route).toContain("openWebsiteUrl");
-  });
 });
