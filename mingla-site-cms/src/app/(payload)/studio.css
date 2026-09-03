@@ -460,12 +460,67 @@ button:disabled {
   font-size: 0.75rem;
 }
 
-.studio-preview-banner {
-  padding: 10px 16px;
-  text-align: center;
-  color: var(--studio-black);
-  background: var(--studio-gold-hover);
-  font-weight: 750;
+/* #2830 — `.studio-preview-banner` is DELETED, not hidden. Its guarantee is
+   carried by `.studio-preview-pill`, which is always visible rather than a
+   block that scrolls away, and keeps the same role="status". */
+.studio-preview-pill {
+  margin: 0;
+  flex: none;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--studio-gold-hover);
+  background: rgba(205, 160, 82, 0.18);
+  border: 1px solid rgba(205, 160, 82, 0.45);
+}
+
+.studio-preview-spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.studio-icon-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(240, 238, 233, 0.4);
+  background: transparent;
+  color: var(--studio-parchment, #f0eee9);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.studio-icon-button:hover {
+  border-color: rgba(240, 238, 233, 0.7);
+}
+
+.studio-preview-details-refresh {
+  border: 1px solid rgba(240, 238, 233, 0.4);
+  background: transparent;
+  color: var(--studio-parchment, #f0eee9);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.studio-preview-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: rgba(240, 238, 233, 0.6);
+  border-bottom: 1px solid rgba(240, 238, 233, 0.16);
 }
 
 .studio-preview-canvas {
@@ -496,14 +551,12 @@ button:disabled {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .studio-preview-toolbar {
-    align-items: stretch;
-    flex-wrap: wrap;
-  }
-
-  .studio-preview-meta {
-    order: 3;
-    flex-basis: 100%;
+  /* #2830 — the toolbar stays ONE row at every width. It previously wrapped
+     here and forced the meta onto a row of its own, which cost four rows of a
+     phone screen before the website appeared. Details moved behind the "..."
+     control; the "not live" guarantee moved into the always-visible pill. */
+  .studio-preview-switcher button[data-viewport="tablet"] {
+    display: none;
   }
 }
 
@@ -531,8 +584,60 @@ button:disabled {
     flex-direction: column;
   }
 
+  /* #2830 — the row must still hold at 320pt WITHOUT losing information.
+     Measured, not guessed: labelled toggles + a separate details control do
+     not fit. So the width toggles go icon-only (their aria-labels carry the
+     name), the "..." control is dropped, and the pill ITSELF becomes the
+     details toggle — one control doing two jobs rather than a hidden one. */
+  .studio-preview-toolbar {
+    gap: 8px;
+    padding: 5px 10px;
+    /* the base rule's 56px floor is a desktop number; it alone made the row
+       57px tall on a phone before any content did. */
+    min-height: 44px;
+  }
+
+  /* Refresh moves INTO the details panel at phone width — measured: with it in
+     the row, 320pt overflows by 18px. Nothing becomes unreachable; the panel
+     is one tap on the pill. */
+  .studio-preview-toolbar > .studio-icon-button[aria-label="Refresh preview"] {
+    display: none;
+  }
+
+  .studio-icon-button {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+
+  .studio-preview-details-toggle {
+    display: none;
+  }
+
   .studio-preview-switcher button {
-    padding: 0 10px;
+    padding: 0;
+    width: 30px;
+    overflow: hidden;
+    text-indent: -9999px;
+    position: relative;
+  }
+
+  .studio-preview-switcher button::after {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-indent: 0;
+    font-size: 13px;
+  }
+
+  .studio-preview-switcher button[data-viewport="mobile"]::after {
+    content: "\25AF";
+  }
+
+  .studio-preview-switcher button[data-viewport="desktop"]::after {
+    content: "\25AD";
   }
 }
 

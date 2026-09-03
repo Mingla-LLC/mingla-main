@@ -22,6 +22,21 @@ describe("#2830 stripped Studio and preview contract", () => {
     expect(nav).not.toContain('["Media", "/admin/collections/media"]');
   });
 
+  /*
+   * [TEST-MOD-APPROVED #2830] — Seth approved "one row only, remove the
+   * banner" on 2026-09-03 after measuring the shipped chrome on a phone.
+   *
+   * ASSERTIONS THIS SUPERSEDES, named explicitly:
+   *   - "Private preview — not live"  → the full-width `.studio-preview-banner`
+   *     is DELETED. The guarantee is not: it moves to the always-visible
+   *     "Not live" pill, which keeps role="status" and, unlike a banner, cannot
+   *     be scrolled past. The new assertions below pin the pill.
+   *   - "Publish this revision"       → label shortened to "Publish". The
+   *     destination and the separate-confirmation contract are unchanged.
+   *
+   * Every other control survives; "Close", "Refresh", "Revision" and "Expires"
+   * are still present, now as accessible names and details-panel content.
+   */
   it("includes complete preview chrome with fixed responsive widths", () => {
     const preview = read("src/components/PreviewChrome.tsx");
     expect(preview).toContain('mobile: "320px"');
@@ -32,9 +47,36 @@ describe("#2830 stripped Studio and preview contract", () => {
       "Refresh",
       "Revision",
       "Expires",
-      "Private preview — not live",
-      "Publish this revision",
+      "Not live",
+      "Publish",
     ]) expect(preview).toContain(control);
+  });
+
+  it("keeps the preview chrome to ONE row and keeps nothing unreachable", () => {
+    const preview = read("src/components/PreviewChrome.tsx");
+    const css = read("src/app/(payload)/studio.css");
+
+    // The banner is gone as an ELEMENT, not merely hidden.
+    expect(preview).not.toContain('className="studio-preview-banner"');
+    expect(css).not.toMatch(/^\.studio-preview-banner\s*\{/m);
+
+    // Its guarantee survives, and is announced.
+    expect(preview).toContain('className="studio-preview-pill"');
+    expect(preview).toContain('<span role="status">Not live</span>');
+    expect(preview).toContain("Publishing is always a separate confirmation.");
+
+    // The wrap rules that produced four rows on a phone are gone.
+    expect(css).not.toMatch(/\.studio-preview-toolbar\s*\{[^}]*flex-wrap:\s*wrap/);
+    expect(css).not.toMatch(/\.studio-preview-meta\s*\{[^}]*flex-basis:\s*100%/);
+
+    // Nothing the row drops becomes unreachable: refresh, revision and expiry
+    // all live in the details panel the pill opens.
+    expect(preview).toContain("studio-preview-details-refresh");
+    expect(preview).toContain("detailsOpen");
+    expect(preview).toMatch(/aria-expanded=\{detailsOpen\}/);
+
+    // The third leak of the internal template name — screen-reader only.
+    expect(preview).not.toContain("Restaurant Website v1");
   });
 
   it("owns the executable grant, exact PUT, completion, poll and READY path", () => {
