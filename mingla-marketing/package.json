@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs --source-only && node scripts/issue-2990-audience-navigation.tester.adversarial.test.mjs && node scripts/issue-2983-city-hubs.implementor.happy.test.mjs --source-only && node scripts/issue-2983-city-analytics-privacy.implementor.happy.test.mjs --source-only && node scripts/issue-2983-city-release.tester.adversarial.test.mjs --source-only && node scripts/issue-2990-audience-navigation.implementor.happy.test.mjs && next build && node scripts/issue-2983-city-hubs.implementor.happy.test.mjs --built-only && node scripts/issue-2983-city-analytics-privacy.implementor.happy.test.mjs --built-only && node scripts/issue-2983-city-release.tester.adversarial.test.mjs --built-only",
+    "build": "node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs --source-only && node scripts/issue-2990-audience-navigation.tester.adversarial.test.mjs && node scripts/issue-2983-city-hubs.implementor.happy.test.mjs --source-only && node scripts/issue-2983-city-analytics-privacy.implementor.happy.test.mjs --source-only && node scripts/issue-2983-city-release.tester.adversarial.test.mjs --source-only && node scripts/issue-2990-audience-navigation.implementor.happy.test.mjs && next build && node scripts/issue-2983-city-hubs.implementor.happy.test.mjs --built-only && node scripts/issue-2983-city-analytics-privacy.implementor.happy.test.mjs --artifact-only",
     "postbuild": "node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs --built-only && node scripts/issue-2990-restructured-page-system.tester.adversarial.test.mjs",
     "start": "next start",
     "lint": "next lint",
@@ -14,6 +14,8 @@
     "test:city-hubs": "node scripts/issue-2983-city-hubs.implementor.happy.test.mjs",
     "test:city-hubs:browser": "node scripts/issue-2983-city-hubs.implementor.happy.test.mjs --built-only --browser",
     "test:city-analytics": "node scripts/issue-2983-city-analytics-privacy.implementor.happy.test.mjs --built-only",
+    "test:city-analytics:artifact": "node scripts/issue-2983-city-analytics-privacy.implementor.happy.test.mjs --artifact-only",
+    "test:city-analytics:portability": "node scripts/issue-2983-city-analytics-privacy.implementor.happy.test.mjs --portability-self-test",
     "test:city-release": "node scripts/issue-2983-city-release.tester.adversarial.test.mjs --built-only",
     "posttest:page-system": "node scripts/issue-2990-audience-navigation.tester.adversarial.test.mjs",
     "test:orch-1130": "node ../.github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs --self-test && node ../.github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs"
