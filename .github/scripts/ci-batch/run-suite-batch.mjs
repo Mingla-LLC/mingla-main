@@ -235,6 +235,63 @@ export function renderRoutingFailure(reason, detail) {
   return `FAIL ci-batch-route ${reason}\n- ${detail}`;
 }
 
+/**
+ * [#2882 §12 layer 2] The tier-2 escape detector.
+ *
+ * Routing's real risk is not a wrong match, it is a MISSING pattern: a suite
+ * quietly stops running for the changes it exists to catch, and nothing says so.
+ *
+ * On `push: main` every suite runs. In that same run, recompute what a pull
+ * request would have selected for this merge's diff and cross-reference it
+ * against which suites actually FAILED. A suite that failed here but would not
+ * have been selected at PR time is an `originPaths` blind spot, and the run
+ * names it together with the files that escaped — an operator gets the repair,
+ * not just an alarm. It cannot produce a false positive: it only speaks when a
+ * suite has genuinely failed.
+ *
+ * Its limit, stated rather than papered over: this detects only HARMFUL
+ * incompleteness. A suite whose `originPaths` is incomplete but which still
+ * passes on main surfaces nowhere. Nothing in this design proves `originPaths`
+ * complete and nothing here claims to.
+ */
+export function detectTier2Escapes(manifest, results, { env = process.env, root = REPO_ROOT, readFile = fs.readFileSync } = {}) {
+  if ((env.GITHUB_EVENT_NAME || "") !== "push") return null;
+  const failedIds = results.filter((result) => !result.ok).map((result) => result.id);
+  if (!failedIds.length) return { checked: 0, blindSpots: [] };
+  let changedPaths;
+  try {
+    if (!env.GITHUB_EVENT_PATH) throw new Error("GITHUB_EVENT_PATH is not set");
+    ({ changedPaths } = deriveChangedPaths({ root, eventName: "push", event: JSON.parse(readFile(env.GITHUB_EVENT_PATH, "utf8")) }));
+  } catch (error) {
+    // The detector going blind must NEVER weaken tier 2 — every suite already
+    // ran. Say that it could not look; do not let the silence read as "clean".
+    return { checked: failedIds.length, blindSpots: [], unavailable: error.message };
+  }
+  const blindSpots = [];
+  for (const id of failedIds) {
+    const suite = manifest.suites.find((candidate) => candidate.id === id);
+    if (!suite) continue;
+    const patterns = suiteOriginPatterns(suite);
+    if (patterns.some((pattern) => changedPaths.some((file) => pathMatches(pattern, file)))) continue;
+    blindSpots.push({ id, uncoveredPaths: changedPaths });
+  }
+  return { checked: failedIds.length, blindSpots };
+}
+
+export function renderTier2EscapeAnnotations(escapes) {
+  if (!escapes) return [];
+  const lines = [];
+  if (escapes.unavailable) {
+    lines.push("::warning title=originPaths blind-spot detector unavailable::"
+      + `could not derive this push's diff (${escapes.unavailable}); ${escapes.checked} failing suite(s) went unchecked`);
+  }
+  for (const spot of escapes.blindSpots) {
+    lines.push(`::error title=originPaths blind spot::${spot.id} failed on main but this diff would not have `
+      + `selected it at PR time; its originPaths does not cover ${spot.uncoveredPaths.join(", ")}`);
+  }
+  return lines;
+}
+
 export function routeOrFail(manifest, klass, candidates, options = {}) {
   let context;
   try {
@@ -1266,6 +1323,13 @@ async function main() {
   // ROUTED set — `buildShardReport` already received `suites`, which is now the
   // selection — and the reconciler re-derives that selection independently.
   report.routing = routingReport(context, selection);
+  // [#2882 §12 layer 2] Tier 2 is where an originPaths blind spot becomes
+  // visible: everything ran, so a failure here that PR-time routing would have
+  // skipped names its own gap. Annotation only — the suite failure already
+  // fails the run, and a detector must never be able to red a green one.
+  const escapes = detectTier2Escapes(manifest, results);
+  if (escapes) report.routing.tier2Escapes = escapes;
+  for (const line of renderTier2EscapeAnnotations(escapes)) console.error(line);
   writeReport(manifest, report);
   process.exitCode = report.code;
 }
