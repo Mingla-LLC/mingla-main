@@ -182,7 +182,28 @@ export function makeRestAdapter({ token, owner, repo, fetchImpl = fetch }) {
     createRef: async (branch, sha) =>
       request("POST", "/git/refs", { ref: `refs/heads/${branch}`, sha }),
     deleteRef: async (branch) => request("DELETE", `/git/refs/heads/${encodeRef(branch)}`),
-    listPulls: async (state = "open") => paged(`/pulls?state=${encodeURIComponent(state)}`),
+    /**
+     * Pull requests in this repository, optionally narrowed by GitHub to the
+     * ones whose head is exactly `headBranch` on this repository's owner.
+     *
+     * #3096: every `state: "all"` caller below wanted the pulls for one
+     * `bundle-baseline/<sha>` branch and got there by enumerating the whole
+     * pull-request history and filtering it down. That walk failed closed on
+     * PAGINATION_LIMIT the moment the repository crossed 2,000 pull requests,
+     * which it did silently. `head=<owner>:<branch>` asks GitHub the question
+     * the filter was already asking, so the exposure is removed rather than
+     * deferred to a larger cap that the next threshold would cross just as
+     * quietly. Callers keep their own `.filter()`: this narrows by head owner
+     * and ref, and the caller still pins the exact head repository. `state` is
+     * unchanged, so closed predecessors — the ones reconciliation exists to
+     * find — are still returned. The 20-page cap is untouched and still guards
+     * this reader and every other one.
+     */
+    listPulls: async (state = "open", { headBranch = null } = {}) =>
+      paged(
+        `/pulls?state=${encodeURIComponent(state)}` +
+        (headBranch === null ? "" : `&head=${encodeURIComponent(`${owner}:${headBranch}`)}`),
+      ),
     getPull: async (number) => request("GET", `/pulls/${number}`),
     getPullFiles: async (number) => paged(`/pulls/${number}/files`),
     createPull: async ({ title, body, branch }) =>
@@ -193,6 +214,10 @@ export function makeRestAdapter({ token, owner, repo, fetchImpl = fetch }) {
     compare: async (base, head) =>
       request("GET", `/compare/${assertSha(base, "base SHA")}...${assertSha(head, "head SHA")}`),
   };
+}
+
+function managedBranchName(ref) {
+  return ref?.ref?.replace(/^refs\/heads\//, "") ?? "";
 }
 
 function pullHeadBranch(pull) {
@@ -381,10 +406,17 @@ async function reconcilePredecessors(api, {
   // all-main run therefore reconciles fully proven strict-ancestor refs too.
   // Seven-character legacy refs remain quarantined for the separately reviewed,
   // enumerated rollout cleanup and are never automatically treated as current.
-  const allPulls = await api.listPulls("all");
   const managedRefs = await api.listManagedRefs();
+  // One snapshot, taken before the loop exactly as the whole-history read was,
+  // but assembled from one targeted query per reserved ref (#3096).
+  const pullsByBranch = new Map();
   for (const ref of managedRefs) {
-    const branch = ref?.ref?.replace(/^refs\/heads\//, "") ?? "";
+    const managedBranch = managedBranchName(ref);
+    if (managedBranch === "" || pullsByBranch.has(managedBranch)) continue;
+    pullsByBranch.set(managedBranch, await api.listPulls("all", { headBranch: managedBranch }));
+  }
+  for (const ref of managedRefs) {
+    const branch = managedBranchName(ref);
     if (branch === `${BRANCH_PREFIX}${sourceSha}` || log.deleted.includes(branch)) continue;
     if (LEGACY_BRANCH_RE.test(branch)) {
       log.untouched.push({ branch, reason: "quarantined-legacy-ref" });
@@ -393,7 +425,7 @@ async function reconcilePredecessors(api, {
     if (!BRANCH_RE.test(branch)) {
       throw new HandoffError("COLLISION", `Malformed reserved ref ${branch} was left untouched.`);
     }
-    const matchingPulls = allPulls.filter((pull) =>
+    const matchingPulls = (pullsByBranch.get(branch) ?? []).filter((pull) =>
       pullHeadRepo(pull) === api.fullName && pullHeadBranch(pull) === branch);
     if (matchingPulls.length > 1 || matchingPulls.some((pull) => pull.state === "open")) {
       throw new HandoffError("COLLISION", `Unexpected PR state for reserved predecessor ref ${branch}.`);
@@ -413,7 +445,7 @@ async function reconcilePredecessors(api, {
     const beforeDelete = await assertLiveSource(api, sourceSha, `before orphan delete ${branch}`);
     log.mainReads.push(beforeDelete);
     if (!beforeDelete.current) return { stale: true, liveMain: beforeDelete.liveMain };
-    const latestMatchingPulls = (await api.listPulls("all")).filter((pull) =>
+    const latestMatchingPulls = (await api.listPulls("all", { headBranch: branch })).filter((pull) =>
       pullHeadRepo(pull) === api.fullName && pullHeadBranch(pull) === branch);
     if (
       latestMatchingPulls.length !== matchingPulls.length ||
@@ -490,8 +522,7 @@ export async function runHandoff(api, options) {
   log.mainReads.push(firstRead);
   if (!firstRead.current) return { ...log, state: "SUPERSEDED" };
 
-  const allPulls = await api.listPulls("all");
-  const exactPulls = allPulls.filter((pull) =>
+  const exactPulls = (await api.listPulls("all", { headBranch: branch })).filter((pull) =>
     pullHeadRepo(pull) === api.fullName && pullHeadBranch(pull) === branch);
   const exactOpen = exactPulls.filter((pull) => pull.state === "open");
   const exactClosed = exactPulls.filter((pull) => pull.state === "closed");
@@ -553,7 +584,7 @@ export async function runHandoff(api, options) {
       expectedAppSlug,
       expectedSourceSha: sourceSha,
     });
-    const latestExactPulls = (await api.listPulls("all")).filter((pull) =>
+    const latestExactPulls = (await api.listPulls("all", { headBranch: branch })).filter((pull) =>
       pullHeadRepo(pull) === api.fullName && pullHeadBranch(pull) === branch);
     if (latestExactPulls.length !== 0) {
       throw new HandoffError(
