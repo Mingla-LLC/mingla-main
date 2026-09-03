@@ -476,7 +476,40 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     0a79741a37768afce2b363b43050480f0fd22e1b5e2182b13301a5d4d29f8640 --
   //     the value pinned immediately above -- so nothing else drifted in.
   // Every earlier re-derivation is preserved, not replaced.
-  "d02b7d66c14da550b7ba5b4773a6ea7f193cfeef65fdbf0765bd4b6a3c107730";
+  //
+  // [TEST-MOD-APPROVED #2909] THIRD move, and the only one forced by review
+  // rather than chosen. Two guards went red on the catch-all above and BOTH
+  // were right; the fix accommodates them instead of weakening either.
+  //   - #2885 AC-4 / the #2524 auto-merge guards: GitHub resolves the LAST
+  //     matching paths pattern, so a catch-all placed after the baseline
+  //     negative OVERRODE it, and baseline-only merges started that whole
+  //     suite on `main` -- reviving the fan-out AC-4 removed (~51,000 job-min
+  //     a month). The negative now goes last. Measured coverage drops from
+  //     40/40 to 39/40, the one miss being a machine-written baseline-only
+  //     commit; that number is reported as 39/40 rather than rounded up.
+  //   - #2881: the pre-merge job carried no draft condition and would have run
+  //     on every draft push while its siblings skipped. It now carries #2881's
+  //     canonical condition, and the #2909 wiring gate was RELAXED to permit
+  //     exactly that one string and nothing else, so neither invariant loses.
+  //
+  // Both edits are non-concurrency document changes on PR-family lanes, which
+  // is what this digest absorbs.
+  //
+  // WHAT WAS VERIFIED, same checklist:
+  //   - no `concurrency:`, `group:` or `cancel-in-progress:` line is added or
+  //     removed, and no trigger EVENT changed; the paths REORDER adds and
+  //     removes no entry, it only changes their order.
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED: subtests
+  //     1 and 4 pass at 124 PR-family / seven non-PR against the changed tree.
+  //   - I-2148-CI-TOPOLOGY-BOUNDED still passes 6/6 -- the workflow glob still
+  //     appears exactly twice in the trigger block -- and #2881 passes at
+  //     131 total / 124 PR-family / 115 draft-gated / 9 always-on.
+  //   - THE DELTA IS EXACTLY THESE TWO EDITS: restoring both lanes to their
+  //     pre-review bytes makes ALL ELEVEN subtests pass again at
+  //     d02b7d66c14da550b7ba5b4773a6ea7f193cfeef65fdbf0765bd4b6a3c107730 --
+  //     the value pinned immediately above -- so nothing else drifted in.
+  // Every earlier re-derivation is preserved, not replaced.
+  "d259a32221eb5d0929bb5645e3402b3dbca900dfc948ba993c33bfc92a247b5d";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
