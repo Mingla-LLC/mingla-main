@@ -16,9 +16,31 @@
  *              `main` turns this check red, so the repository's own
  *              all-checks-green rule refuses the merge instead of allowing it
  *              blind. This is the hole #2909 was opened for.
- *   alert    — "`main` just went red; tell a human." Run after a push to
- *              `main` and on a schedule. Sends ONE email naming the commit,
- *              the failing checks and who merged it.
+ *   alert    — "`main` just went red; tell a human." Runs after EVERY push to
+ *              `main`, and only after a push. Sends ONE email naming the
+ *              commit, the failing checks and who merged it.
+ *
+ * COVERAGE, and the limit of it. An earlier draft of this comment promised
+ * "and on a schedule". There is no schedule, and a comment describing a trigger
+ * the workflow does not have is exactly how the next person concludes coverage
+ * exists when it does not -- the same defect class as the alert itself. So:
+ *
+ *   WHAT IS COVERED. Every commit that lands on `main`. The host workflow's
+ *   push trigger carries a `**` catch-all, so no `main` commit can miss it.
+ *   That was NOT true when this was written: seven of forty consecutive `main`
+ *   commits (17.5%) matched none of the host's globs -- root `REPORTS.md` and
+ *   `COMMS.md`, which every CLOSE touches, and the whole `mingla-site-cms`
+ *   tree -- and an eighth was skipped by a baseline exclusion. On those eight,
+ *   a red `main` reached nobody, which is indistinguishable from a green one.
+ *
+ *   WHAT IS NOT. This reads a SNAPSHOT at the moment the host finishes. A
+ *   workflow SLOWER than the host has not reported yet, so its failure on this
+ *   commit is invisible here and is caught only on the next push. That is a
+ *   real residual gap and it is the 2026-09-01 incident's own shape -- the
+ *   longest-running gate was the one that failed. Closing it needs a periodic
+ *   sweep, which needs a trigger this branch is not authorised to add: every
+ *   available host is pinned by a tester-owned assertion. Tracked, not
+ *   forgotten, and deliberately NOT papered over with a comment.
  *
  * NAMING CONSTRAINT, load-bearing: this file may never contain a workflow
  * FILENAME. The frozen provider seal in
@@ -238,8 +260,8 @@ export function buildAlert(health, { repository, branch, recipient, sender }) {
  * "somebody thinks they are". So: a non-2xx or a thrown request escalates to a
  * GitHub issue comment AND a non-zero exit, and never returns quietly.
  */
-export async function sendAlert(message, { apiKey }) {
-  const response = await fetch("https://api.resend.com/emails", {
+export async function sendAlert(message, { apiKey, fetchImpl = fetch }) {
+  const response = await fetchImpl("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -269,6 +291,81 @@ export function escalate(reason, { repository, token, issue }) {
   api(`repos/${repository}/issues/${issue}/comments`, { token, method: "POST", body: { body } });
 }
 
+/**
+ * ALERT OUTCOMES — the distinction requirement 5 turns on.
+ *
+ * `nothing-to-send` and `not-attempted` BOTH deliver zero emails, and from the
+ * outside they are identical: an inbox with nothing in it. One means `main` is
+ * GREEN. The other means nobody is watching `main` at all. Collapsing them is
+ * precisely the defect this module exists to prevent -- a silent non-send that
+ * reads as health -- so they are distinct outcomes with distinct exit codes,
+ * and the fixture suite asserts they can never be confused.
+ */
+export const ALERT_OUTCOMES = Object.freeze({
+  NOTHING_TO_SEND: "nothing-to-send",
+  DELIVERED: "delivered",
+  NOT_ATTEMPTED: "not-attempted",
+  SEND_FAILED: "send-failed",
+});
+
+/**
+ * Decide and perform delivery. Extracted from `main()` deliberately: while this
+ * lived inside the CLI entrypoint NOTHING could reach it, so the one path whose
+ * silent failure is indistinguishable from health had zero test coverage. Every
+ * dependency is injectable so the fixture suite exercises it with no network,
+ * no token, and no email sent to anybody.
+ */
+export async function deliverAlert(health, {
+  repository = DEFAULT_REPOSITORY,
+  branch = DEFAULT_BRANCH,
+  token,
+  env = process.env,
+  send = sendAlert,
+  escalateWith = escalate,
+  logger = console,
+} = {}) {
+  if (health.healthy) {
+    logger.log("#2909 alert: nothing to send.");
+    return { outcome: ALERT_OUTCOMES.NOTHING_TO_SEND, exitCode: 0, escalated: false, sent: false, reason: "" };
+  }
+
+  const recipient = env.MINGLA_MAIN_RED_ALERT_TO || "";
+  const sender = env.MINGLA_MAIN_RED_ALERT_FROM || "Mingla CI <notifications@usemingla.com>";
+  const apiKey = env.RESEND_API_KEY || "";
+  const issue = env.MINGLA_MAIN_RED_ALERT_ISSUE || "2909";
+
+  // An escalation that itself fails must SAY SO. The previous form swallowed it
+  // with an empty catch, which is the same silent-failure shape one layer up.
+  const escalateNow = (reason) => {
+    logger.error(`::error::#2909 ${reason}`);
+    try {
+      escalateWith(reason, { repository, token, issue });
+      return true;
+    } catch (error) {
+      logger.error(`::error::#2909 escalation ALSO failed, nobody has been told: ${error.message}`);
+      return false;
+    }
+  };
+
+  const misconfigured = [];
+  if (!recipient) misconfigured.push("MINGLA_MAIN_RED_ALERT_TO is empty");
+  if (!apiKey) misconfigured.push("RESEND_API_KEY is empty");
+  if (misconfigured.length) {
+    const reason = `alert not attempted: ${misconfigured.join("; ")}`;
+    return { outcome: ALERT_OUTCOMES.NOT_ATTEMPTED, exitCode: 1, escalated: escalateNow(reason), sent: false, reason };
+  }
+
+  const message = buildAlert(health, { repository, branch, recipient, sender });
+  try {
+    const result = await send(message, { apiKey });
+    logger.log(`#2909 alert delivered: resend id ${result.id || "(none)"} status ${result.status}`);
+    return { outcome: ALERT_OUTCOMES.DELIVERED, exitCode: 0, escalated: false, sent: true, reason: "" };
+  } catch (error) {
+    const reason = `send failed: ${error.message}`;
+    return { outcome: ALERT_OUTCOMES.SEND_FAILED, exitCode: 1, escalated: escalateNow(reason), sent: false, reason };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // self-test — pure fixtures, no network, no token
 // ---------------------------------------------------------------------------
@@ -277,7 +374,7 @@ function assertOk(condition, label) {
   if (!condition) throw new Error(`self-test FAILED: ${label}`);
 }
 
-export function runSelfTest() {
+export async function runSelfTest() {
   let assertions = 0;
   const run = (over) => ({
     workflow_id: 1,
@@ -395,6 +492,78 @@ export function runSelfTest() {
   assertOk(renderReport(many, { repository: "r", branch: "main" }).includes("RED"), "red report");
   assertions += 2;
 
+  // ---- DELIVERY: the path whose silent failure looks exactly like health ----
+  // Every dependency is injected. No network, no token, and no email reaches a
+  // human. Until this block existed, sendAlert and escalate had ZERO coverage.
+  const recorder = (result) => {
+    const calls = [];
+    return { calls, fn: (...args) => { calls.push(args); return result; } };
+  };
+  const quiet = { log() {}, error() {} };
+  const CONFIGURED = { MINGLA_MAIN_RED_ALERT_TO: "someone@example.invalid", RESEND_API_KEY: "re_test_key" };
+  const redHealth = evaluateHealth([run({ workflow_id: 3, name: "Slow", conclusion: "failure" })]);
+
+  // A green branch sends nothing and escalates nothing.
+  const okSend = recorder({ status: 200, id: "re_1" });
+  const okEsc = recorder(undefined);
+  const healthy = await deliverAlert(green, { env: CONFIGURED, send: okSend.fn, escalateWith: okEsc.fn, logger: quiet });
+  assertOk(healthy.outcome === ALERT_OUTCOMES.NOTHING_TO_SEND, "a green branch must report nothing-to-send");
+  assertOk(healthy.exitCode === 0 && !healthy.sent && !healthy.escalated, "a green branch must not send, escalate or fail");
+  assertOk(okSend.calls.length === 0, "a green branch must not touch the transport at all");
+  assertions += 3;
+
+  // A red branch, fully configured, sends exactly one email and does not escalate.
+  const send1 = recorder({ status: 200, id: "re_abc" });
+  const esc1 = recorder(undefined);
+  const delivered = await deliverAlert(redHealth, { env: CONFIGURED, send: send1.fn, escalateWith: esc1.fn, logger: quiet });
+  assertOk(delivered.outcome === ALERT_OUTCOMES.DELIVERED && delivered.sent, "a configured red branch must deliver");
+  assertOk(delivered.exitCode === 0, "a delivered alert must not fail the job");
+  assertOk(send1.calls.length === 1, "ONE alert per event, never one per failing job");
+  assertOk(esc1.calls.length === 0, "a successful send must not escalate");
+  assertions += 4;
+
+  // THE ASSERTION WHOSE ABSENCE CREATED THE GAP: a run that SENDS NOTHING must
+  // be distinguishable from a run that had NOTHING TO SEND. Both deliver zero
+  // emails; only one of them means the branch is healthy.
+  const send2 = recorder({ status: 200, id: "re_2" });
+  const esc2 = recorder(undefined);
+  const unsent = await deliverAlert(redHealth, { env: {}, send: send2.fn, escalateWith: esc2.fn, logger: quiet });
+  assertOk(unsent.outcome === ALERT_OUTCOMES.NOT_ATTEMPTED, "an unconfigured red branch must report not-attempted");
+  assertOk(send2.calls.length === 0, "an unconfigured alert must not pretend to have sent");
+  assertOk(esc2.calls.length === 1 && unsent.escalated, "an unsent alert must escalate to a human-visible record");
+  assertOk(unsent.exitCode === 1, "an unsent alert must fail its job");
+  assertOk(healthy.sent === false && unsent.sent === false, "both of these send exactly zero emails");
+  assertOk(healthy.outcome !== unsent.outcome, "zero-sent-because-green must NEVER equal zero-sent-because-broken");
+  assertOk(healthy.exitCode !== unsent.exitCode, "...and the two must differ in exit code, which is what CI reads");
+  assertions += 7;
+
+  // A provider rejection escalates, carries the status, and fails the job.
+  const esc3 = recorder(undefined);
+  const rejecting = async () => { throw new Error("resend responded 401: unauthorized"); };
+  const failed = await deliverAlert(redHealth, { env: CONFIGURED, send: rejecting, escalateWith: esc3.fn, logger: quiet });
+  assertOk(failed.outcome === ALERT_OUTCOMES.SEND_FAILED && !failed.sent, "a rejected send must report send-failed");
+  assertOk(failed.exitCode === 1 && failed.escalated && esc3.calls.length === 1, "a rejected send must escalate and fail");
+  assertOk(failed.reason.includes("401"), "the escalation must carry the provider's status, not a generic message");
+  assertions += 3;
+
+  // An escalation that ALSO fails must admit it rather than report success.
+  const exploding = () => { throw new Error("gh unavailable"); };
+  const doubleFault = await deliverAlert(redHealth, { env: {}, send: send2.fn, escalateWith: exploding, logger: quiet });
+  assertOk(doubleFault.exitCode === 1, "a failed escalation must still fail the job");
+  assertOk(doubleFault.escalated === false, "a failed escalation must NOT be reported as escalated");
+  assertions += 2;
+
+  // sendAlert itself, against a fake transport: non-2xx throws with the
+  // provider's status and body; 2xx surfaces the id.
+  let thrown = "";
+  try {
+    await sendAlert({}, { apiKey: "k", fetchImpl: async () => ({ ok: false, status: 401, text: async () => "unauthorized" }) });
+  } catch (error) { thrown = error.message; }
+  assertOk(thrown.includes("401") && thrown.includes("unauthorized"), "a non-2xx must throw carrying the status and body");
+  const accepted = await sendAlert({}, { apiKey: "k", fetchImpl: async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ id: "re_xyz" }) }) });
+  assertOk(accepted.status === 200 && accepted.id === "re_xyz", "a 2xx must surface the provider's message id");
+  assertions += 2;
+
   return assertions;
 }
 
@@ -411,7 +580,7 @@ async function main() {
   const argv = process.argv.slice(2);
   const selfTestFlag = ["--self", "test"].join("-");
   if (argv.includes(selfTestFlag)) {
-    const assertions = runSelfTest();
+    const assertions = await runSelfTest();
     console.log(`#2909 main-health self-test: PASS (${assertions} assertions)`);
     return;
   }
@@ -449,36 +618,8 @@ async function main() {
   }
 
   // command === "alert"
-  if (health.healthy) {
-    console.log("#2909 alert: nothing to send.");
-    return;
-  }
-  const recipient = process.env.MINGLA_MAIN_RED_ALERT_TO || "";
-  const sender = process.env.MINGLA_MAIN_RED_ALERT_FROM || "Mingla CI <notifications@usemingla.com>";
-  const apiKey = process.env.RESEND_API_KEY || "";
-  const ledgerIssue = process.env.MINGLA_MAIN_RED_ALERT_ISSUE || "2909";
-
-  const misconfigured = [];
-  if (!recipient) misconfigured.push("MINGLA_MAIN_RED_ALERT_TO is empty");
-  if (!apiKey) misconfigured.push("RESEND_API_KEY is empty");
-  if (misconfigured.length) {
-    const reason = `alert not attempted: ${misconfigured.join("; ")}`;
-    console.error(`::error::#2909 ${reason}`);
-    try { escalate(reason, { repository, token, issue: ledgerIssue }); } catch { /* the exit code below is the floor */ }
-    process.exitCode = 1;
-    return;
-  }
-
-  const message = buildAlert(health, { repository, branch, recipient, sender });
-  try {
-    const result = await sendAlert(message, { apiKey });
-    console.log(`#2909 alert delivered: resend id ${result.id || "(none)"} status ${result.status}`);
-  } catch (error) {
-    const reason = `send failed: ${error.message}`;
-    console.error(`::error::#2909 ${reason}`);
-    try { escalate(reason, { repository, token, issue: ledgerIssue }); } catch { /* the exit code below is the floor */ }
-    process.exitCode = 1;
-  }
+  const result = await deliverAlert(health, { repository, branch, token });
+  process.exitCode = result.exitCode;
 }
 
 const invokedDirectly = process.argv[1] && process.argv[1].endsWith("main-health.mjs");
