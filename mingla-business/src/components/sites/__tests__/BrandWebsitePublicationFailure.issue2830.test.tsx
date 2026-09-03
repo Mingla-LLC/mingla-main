@@ -63,7 +63,8 @@ function renderFailure(
   act(() => {
     tree = create(
       <BrandWebsiteView
-        brandName="Gogi" site={site} rank={50} journeyState={
+        brandName="Gogi" site={site} rank={50}
+      isWideDesktop={false} journeyState={
           receipt.status === "failed" ? 28 : 14
         }
         panel="overview" notice={null} isLoading={false} isError={false}

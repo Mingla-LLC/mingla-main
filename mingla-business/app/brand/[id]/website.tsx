@@ -23,6 +23,7 @@ import {
   useValidateBrandSiteDraft,
 } from "../../../src/hooks/useBrandSite";
 import { useNetInfoSafe } from "../../../src/lib/netinfoSafe";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import {
   BrandSitesError,
   canResetFailedPublicationOperation,
@@ -95,6 +96,8 @@ export default function BrandWebsiteRoute(): React.ReactElement {
   const studioResult = safeStudioResult(params.studioResult);
   const { user } = useAuth();
   const network = useNetInfoSafe();
+  // I-DESKTOP-GATE-VIA-HOOK: the shell never gates itself; the route does.
+  const { isWideDesktop } = useResponsiveLayout();
   const offline =
     network?.isConnected === false || network?.isInternetReachable === false;
   const role = useCurrentBrandRole(safeBrandId || null);
@@ -419,6 +422,7 @@ export default function BrandWebsiteRoute(): React.ReactElement {
         brandName={brand.data?.displayName ?? "Brand"}
         site={site.data ?? null}
         rank={role.rank}
+        isWideDesktop={isWideDesktop}
         journeyState={journeyState}
         panel={panel}
         notice={notice}

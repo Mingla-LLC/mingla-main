@@ -7,11 +7,14 @@ import {
   View,
 } from "react-native";
 import { Button } from "../ui/Button";
+import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
+import type { SuiteDesktopModule } from "../suite/SuiteDesktopShell";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import {
   accent,
   glass,
+  radius,
   semantic,
   spacing,
   text as textTokens,
@@ -36,6 +39,7 @@ interface BrandWebsiteViewProps {
   brandName: string;
   site: BrandSiteOverview | null;
   rank: number;
+  isWideDesktop: boolean;
   journeyState: WebsiteJourneyState;
   panel: WebsiteWorkspacePanel;
   notice: WorkspaceNotice;
@@ -85,6 +89,97 @@ const siteStatusCopy: Record<BrandSiteOverview["status"], string> = {
     "Public delivery is paused. Your verified publication is preserved.",
   error:
     "Publishing needs attention. Your last verified website remains safe.",
+};
+
+/*
+ * #2830 — the desktop rail. Keys are the customer-visible sections; each maps
+ * onto an existing `WebsiteWorkspacePanel`, so the rail navigates what the
+ * workspace already models rather than introducing a second state machine.
+ *
+ * (The #2830 leak guard greps this file for internal-state vocabulary and
+ * matches COMMENTS as well as rendered strings, so the phrasing here is
+ * deliberate. The guard is right to be blunt; nothing customer-visible carries
+ * a state number.)
+ *
+ * `setup_review` and `rollback_review` are deliberately ABSENT: they are
+ * confirmation steps reached from inside a section, not destinations. Selecting
+ * a rail entry while one is open returns to that section's own panel, which is
+ * the behaviour you want from a nav — it cancels, it does not trap.
+ */
+const WEBSITE_RAIL: readonly SuiteDesktopModule[] = [
+  { key: "overview", label: "Overview" },
+  { key: "publish", label: "Publishing" },
+  { key: "versions", label: "Versions" },
+  { key: "analytics", label: "Analytics" },
+  { key: "address", label: "Address" },
+];
+
+function railKeyForPanel(panel: WebsiteWorkspacePanel): string {
+  if (panel === "publish_review") return "publish";
+  if (panel === "versions" || panel === "rollback_review") return "versions";
+  if (panel === "analytics") return "analytics";
+  if (panel === "address") return "address";
+  return "overview";
+}
+
+function panelForRailKey(key: string): WebsiteWorkspacePanel {
+  if (key === "publish") return "publish_review";
+  if (key === "versions") return "versions";
+  if (key === "analytics") return "analytics";
+  if (key === "address") return "address";
+  return "overview";
+}
+
+/**
+ * #2830 — the draft, beside the controls.
+ *
+ * IT SHOWS THE DRAFT, NOT THE LIVE SITE, and that is a constraint rather than a
+ * preference: every published page sends `frame-ancestors 'none'`, because a
+ * customer's live site carrying checkout CTAs must not be framable. Only the
+ * private preview route opts Business web in. Framing the live site would have
+ * meant making every published Mingla site clickjackable to save one click.
+ *
+ * The preview is minted ON DEMAND rather than on page load. A preview is a real
+ * server operation that writes a real artifact, so minting one every time
+ * somebody opens the workspace would be a cost with no reader.
+ */
+const SitePreviewPane: React.FC<{ props: BrandWebsiteViewProps }> = ({
+  props,
+}) => {
+  if (props.site === null) {
+    return (
+      <View style={styles.previewEmpty} testID="website-preview-pane-empty">
+        <Text style={styles.helper}>
+          Your website preview appears here once the draft exists.
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.previewFrame} testID="website-preview-pane">
+      <View style={styles.previewBar}>
+        <Text style={styles.previewLabel}>
+          {props.site.status === "published" ? "Live" : "Draft"}
+        </Text>
+        <Text style={styles.helper} numberOfLines={1}>
+          Previews open in a private, short-lived window.
+        </Text>
+      </View>
+      <View style={styles.previewBody}>
+        <Text style={styles.body}>
+          See the exact draft Mingla would publish, rendered by the same engine
+          that serves your live website.
+        </Text>
+        <Button
+          label="Open private preview"
+          loading={props.isPreviewing}
+          onPress={props.onPreview}
+          leadingIcon="eye"
+          fullWidth
+        />
+      </View>
+    </View>
+  );
 };
 
 const PanelCard: React.FC<{
@@ -165,8 +260,8 @@ export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = (props) => {
     props.publicationOperation?.status !== "succeeded" &&
     props.publicationOperation?.status !== "failed";
 
-  return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+  const body = (
+    <>
       <View style={styles.headingRow}>
         <View style={styles.headingIcon}>
           <Icon name="globe" size={22} color={accent.warm} />
@@ -624,7 +719,50 @@ export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = (props) => {
           />
         </PanelCard>
       ) : null}
-    </ScrollView>
+    </>
+  );
+
+  /*
+   * #2830 — DESKTOP. The workspace previously rendered this single phone column
+   * at every width, so a 1900px monitor got four full-width pills and no sight
+   * of the website. Wide desktop now uses `SuiteDesktopShell`, the SAME rail and
+   * workspace the Venue and Stay suites already ship, rather than a third
+   * layout system, and puts the draft beside the controls.
+   *
+   * The shell is desktop-only by contract and never gates itself
+   * (I-DESKTOP-GATE-VIA-HOOK) — the caller passes `isWideDesktop` from
+   * `useResponsiveLayout`. Mobile is deliberately BYTE-IDENTICAL to what
+   * shipped: at 390pt a full-width stack is the right answer, and the phone was
+   * never the thing that was wrong.
+   */
+  if (props.isWideDesktop) {
+    return (
+      <SuiteDesktopShell
+        modules={WEBSITE_RAIL}
+        activeModule={railKeyForPanel(props.panel)}
+        onSelect={(key) => props.onSetPanel(panelForRailKey(key))}
+        workspaceSelfScrolls
+        scrollBottomPad={0}
+        railTestIdPrefix="website-rail-"
+        testID="website-desktop-shell"
+      >
+        <View style={styles.desktopColumns}>
+          <View style={styles.previewColumn}>
+            <SitePreviewPane props={props} />
+          </View>
+          <ScrollView
+            style={styles.panelColumn}
+            contentContainerStyle={styles.panelScroll}
+          >
+            {body}
+          </ScrollView>
+        </View>
+      </SuiteDesktopShell>
+    );
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.scroll}>{body}</ScrollView>
   );
 };
 
@@ -716,6 +854,52 @@ const WorkspaceNavigation: React.FC<{ props: BrandWebsiteViewProps }> = ({
 };
 
 const styles = StyleSheet.create({
+  desktopColumns: {
+    flex: 1,
+    flexDirection: "row",
+    gap: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  previewColumn: { flex: 1.25, minWidth: 0 },
+  panelColumn: { flex: 1, minWidth: 0 },
+  panelScroll: { gap: spacing.md, paddingBottom: spacing.xxl },
+  previewFrame: {
+    flex: 1,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+    overflow: "hidden",
+  },
+  previewBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: glass.border.profileBase,
+  },
+  previewLabel: {
+    ...typography.micro,
+    color: accent.warm,
+    textTransform: "uppercase",
+  },
+  previewBody: {
+    flex: 1,
+    justifyContent: "center",
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  previewEmpty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+  },
   scroll: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xxl },
   centered: {
     flex: 1,
