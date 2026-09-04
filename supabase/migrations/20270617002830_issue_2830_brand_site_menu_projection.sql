@@ -114,16 +114,27 @@ BEGIN
   SELECT brand_id INTO STRICT v_brand_id
   FROM public.brand_sites WHERE id = p_site_id;
 
-  SELECT count(*), min(vl.id)
-    INTO v_count, v_venue_id
+  -- Counting and selecting are DELIBERATELY separate statements. The first
+  -- version wrote `min(vl.id)` over a uuid column, and Postgres has no
+  -- min(uuid): the function was created successfully and threw on every call.
+  -- Nothing caught it -- not the migration apply, not a typecheck, not a test.
+  -- Only calling it against real data did.
+  SELECT count(*) INTO v_count
   FROM public.venue_listings vl
   WHERE vl.brand_id = v_brand_id
     AND vl.claim_status = 'verified';
 
-  IF v_count = 1 THEN
-    RETURN v_venue_id;
+  IF v_count <> 1 THEN
+    RETURN NULL;
   END IF;
-  RETURN NULL;
+
+  SELECT vl.id INTO v_venue_id
+  FROM public.venue_listings vl
+  WHERE vl.brand_id = v_brand_id
+    AND vl.claim_status = 'verified'
+  LIMIT 1;
+
+  RETURN v_venue_id;
 END;
 $$;
 
