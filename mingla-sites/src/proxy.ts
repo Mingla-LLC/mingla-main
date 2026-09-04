@@ -1,18 +1,40 @@
-import { NextRequest, NextResponse } from "next/server";
-import { loadPublication, normalizePublicHost } from "./lib/publication";
+import { NextResponse, type NextRequest } from "next/server";
 
-export async function proxy(request: NextRequest) {
-  try {
-    const host = normalizePublicHost(request.headers.get("x-forwarded-host") || request.headers.get("host"));
-    const { resolution } = await loadPublication(host);
-    const response = NextResponse.next();
-    response.headers.set("x-mingla-publication-id", resolution.publication_id);
-    response.headers.set("x-mingla-artifact-digest", resolution.artifact_digest);
-    response.headers.set("cache-control", "public, max-age=30, stale-if-error=300");
-    return response;
-  } catch {
-    return new NextResponse(null, { status: 404, headers: { "cache-control": "no-store" } });
-  }
+import { buildCsp } from "./lib/csp";
+
+/*
+ * A fresh nonce per request, which is why every page in this app is
+ * force-dynamic: Next.js can only stamp a nonce onto its bootstrap scripts
+ * while it is rendering a real request.
+ */
+export function proxy(request: NextRequest) {
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const csp = buildCsp({
+    nonce,
+    pathname: request.nextUrl.pathname,
+    dev: process.env.NODE_ENV === "development",
+  });
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  // Next.js reads the nonce back out of this header to stamp its own scripts.
+  requestHeaders.set("Content-Security-Policy", csp);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy", csp);
+  return response;
 }
 
-export const config = { matcher: ["/"] };
+export const config = {
+  matcher: [
+    {
+      // Everything except API routes and static assets. /preview is included
+      // on purpose: the draft has to be interactive too.
+      source: "/((?!api|_next/static|_next/image|favicon.ico).*)",
+      missing: [
+        { type: "header", key: "next-router-prefetch" },
+        { type: "header", key: "purpose", value: "prefetch" },
+      ],
+    },
+  ],
+};
