@@ -8,7 +8,13 @@
  * on 2026-09-04. Their content, their brand, seeded into their Mingla site.
  */
 export const MEDIA_SLOTS = Object.freeze({
-  heroImage: "assets/img/food/coconut-rice-hero.jpg",
+  /*
+   * The hero STILL is not listed here. The seed uploads it itself, under its
+   * own content-addressed name, because classifySnapshot identifies the hero by
+   * filename. Listing it here too would upload the same bytes a second time
+   * under a second name and leave two identical rows in the media library.
+   * Pass it as --hero-image instead.
+   */
   heroVideo: "assets/video/hero-food.mp4",
 
   reelFoodHouse: "assets/video/reel-24-7-food-house.mp4",
