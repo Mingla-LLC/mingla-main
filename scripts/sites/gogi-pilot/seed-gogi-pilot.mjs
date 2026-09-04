@@ -285,6 +285,17 @@ export function seedDocuments(
     },
   ]);
 
+  const reel = (videoSlot, posterSlot, heading, caption) =>
+    asset(videoSlot) && asset(posterSlot)
+      ? {
+        blockType: "video_feature",
+        heading,
+        caption,
+        video: asset(videoSlot),
+        poster: asset(posterSlot),
+      }
+      : null;
+
   const aboutBlocks = drop([
     {
       blockType: "rich_text",
@@ -298,11 +309,26 @@ export function seedDocuments(
       blockType: "team",
       heading: "The team",
       caption: GOGI_SEED_COPY.voice.team,
-      // Their own captions for their own people. No portraits: those exist
-      // only as moments in a reel, and cropping a stranger out of footage to
-      // fill a grid is not something this seed will do.
-      members: GOGI_SEED_COPY.team.map((name) => ({ name })),
+      /*
+       * Their own nicknames for their own people, now with their own
+       * portraits. This block previously carried names only, on the reasoning
+       * that the faces existed solely as moments in a reel and cropping a
+       * stranger out of footage was not something to do automatically. gögi
+       * publish a proper portrait for all ten, so that reasoning no longer
+       * applies. A missing portrait still degrades to an initial rather than
+       * a gap.
+       */
+      members: GOGI_SEED_COPY.team.map((name) => {
+        const portrait = asset(`team:${name}`);
+        return portrait ? { name, media: portrait, alt: name } : { name };
+      }),
     },
+    reel(
+      "reelMeetTheTeam",
+      "reelMeetTheTeamPoster",
+      "Meet the team",
+      GOGI_SEED_COPY.voice.team,
+    ),
   ]);
 
   // The menu page carries no items of its own — Mingla owns them, and the
@@ -314,9 +340,18 @@ export function seedDocuments(
       heading: "The menu",
       note: `${GOGI_SEED_COPY.hoursSummary}.`,
     },
+    reel(
+      "reelCoconutRice",
+      "reelCoconutRicePoster",
+      "Coconut rice, but make it gögi",
+      GOGI_SEED_COPY.voice.coconutRice,
+    ),
   ]);
 
-  const galleryImages = ["gallery1", "gallery2", "gallery3", "gallery4", "gallery5", "gallery6"]
+  // The artifact contract accepts at most 12 gallery images, so this asks for
+  // exactly 12. A 13th would not be trimmed, it would fail validation at
+  // publish time.
+  const galleryImages = Array.from({ length: 12 }, (unused, index) => `gallery${index + 1}`)
     .map((slot) => asset(slot))
     .filter(Boolean)
     .map((id) => ({ media: id, alt: "" }));
@@ -324,6 +359,24 @@ export function seedDocuments(
     galleryImages.length
       ? { blockType: "gallery", heading: "In the room", images: galleryImages }
       : null,
+    reel(
+      "reelPregameFriday",
+      "reelPregameFridayPoster",
+      "Your Friday needs better decisions",
+      GOGI_SEED_COPY.voice.friday,
+    ),
+    reel(
+      "reelLateNightCravings",
+      "reelLateNightCravingsPoster",
+      "Some cravings don't respect boundaries",
+      GOGI_SEED_COPY.voice.cravings,
+    ),
+    reel(
+      "reelOutsideGogi",
+      "reelOutsideGogiPoster",
+      "Find gögi",
+      GOGI_SEED_COPY.voice.findGogi,
+    ),
   ]);
 
   const contactBlocks = drop([
@@ -560,7 +613,7 @@ export function deterministicHeroFilename(expectedSha256, mime) {
 }
 
 export function classifySnapshot(snapshot, input) {
-  const { tenantId, heroFilename } = input;
+  const { tenantId, heroFilename, media: mediaSlots = {} } = input;
   const pages = Array.isArray(snapshot.pages) ? snapshot.pages : [];
   const settings = Array.isArray(snapshot.settings) ? snapshot.settings : [];
   const navigation = Array.isArray(snapshot.navigation) ? snapshot.navigation : [];
@@ -611,6 +664,7 @@ export function classifySnapshot(snapshot, input) {
   // comparison needs a real media id.
   const shape = seedDocuments({
     ...documentIds,
+    media: mediaSlots,
     heroMediaId: heroMediaId ?? "pending-hero-media",
   });
   const expected = heroMediaId ? shape : null;
@@ -701,6 +755,7 @@ function parseArgs(argv) {
     "--hero-image",
     "--hero-sha256",
     "--source",
+    "--media-manifest",
   ]);
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -726,6 +781,7 @@ function parseArgs(argv) {
     heroImage: values["--hero-image"],
     heroSha256: values["--hero-sha256"],
     source: values["--source"],
+    mediaManifest: values["--media-manifest"],
     apply: values.apply === true,
   };
 }
@@ -745,6 +801,10 @@ export function validateOptions(raw) {
       "MISSING_HERO_SHA256",
     ).toLowerCase(),
     source: requiredString(raw.source, "MISSING_SOURCE"),
+    // Optional: without it the seed still runs and simply omits every block
+    // that needs media, which is how the pilot shipped before the upload
+    // existed.
+    mediaManifest: raw.mediaManifest ? resolve(raw.mediaManifest) : null,
     apply: raw.apply === true,
   };
   if (![options.siteId, options.brandId, options.tenantId, options.configuredBy].every((id) => UUID.test(id))) {
@@ -796,6 +856,33 @@ function detectImage(bytes) {
     return "image/webp";
   }
   fail("UNSUPPORTED_HERO_IMAGE");
+}
+
+/*
+ * The manifest is written by upload-gogi-media.mjs: slot -> media id. Every
+ * value must be a real id, because a block that references a non-existent
+ * media row publishes an artifact whose images 404.
+ */
+export async function loadMediaManifest(path) {
+  let raw;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch {
+    fail("MEDIA_MANIFEST_MISSING");
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    fail("MEDIA_MANIFEST_INVALID");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    fail("MEDIA_MANIFEST_INVALID");
+  }
+  for (const value of Object.values(parsed)) {
+    if (typeof value !== "string" || !UUID.test(value)) fail("MEDIA_MANIFEST_INVALID");
+  }
+  return parsed;
 }
 
 export async function inspectHero(path, expectedSha256) {
@@ -977,7 +1064,11 @@ export class CmsSeedClient {
     return this.mutateCollection("PATCH", "site-settings", String(document.id), data);
   }
 
-  async uploadHero(hero) {
+  uploadHero(hero) {
+    return this.uploadAsset(hero);
+  }
+
+  async uploadAsset(hero) {
     const grantEnvelope = await this.request("/api/mingla/media/upload-grants", {
       method: "POST",
       headers: this.headers(true),
@@ -1046,11 +1137,12 @@ export class CmsSeedClient {
   }
 }
 
-export async function reconcileSeed(client, options, hero) {
+export async function reconcileSeed(client, options, hero, media = {}) {
   let snapshot = await client.readState();
   let plan = classifySnapshot(snapshot, {
     tenantId: options.tenantId,
     heroFilename: hero.filename,
+    media,
   });
   if (!options.apply || plan.state === "seeded") {
     return {
@@ -1067,12 +1159,14 @@ export async function reconcileSeed(client, options, hero) {
     plan = classifySnapshot(snapshot, {
       tenantId: options.tenantId,
       heroFilename: hero.filename,
+      media,
     });
     if (plan.heroMediaId !== heroMediaId) fail("MEDIA_READBACK_MISMATCH");
   }
   const documents = { ...plan.pages };
   const idsOf = () => ({
     heroMediaId,
+    media,
     tenantId: options.tenantId,
     homeId: String(documents.home.id),
     aboutId: documents.about ? String(documents.about.id) : "pending-about",
@@ -1115,6 +1209,7 @@ export async function reconcileSeed(client, options, hero) {
   const finalPlan = classifySnapshot(finalSnapshot, {
     tenantId: options.tenantId,
     heroFilename: hero.filename,
+    media,
   });
   if (finalPlan.state !== "seeded") fail("SEED_READBACK_MISMATCH");
   return { mode: "apply", state: "seeded", actions: [], changed: true };
@@ -1132,7 +1227,10 @@ export async function run(argv, environment = process.env, dependencies = {}) {
     ...credentials,
     fetchImpl: dependencies.fetchImpl ?? fetch,
   });
-  const result = await reconcileSeed(client, options, hero);
+  const media = options.mediaManifest
+    ? await loadMediaManifest(options.mediaManifest)
+    : {};
+  const result = await reconcileSeed(client, options, hero, media);
   return {
     ok: true,
     ...result,
