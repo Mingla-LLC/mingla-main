@@ -372,6 +372,11 @@ jobs:
       # test would go on proving that a scheduled event WOULD run the full
       # corpus while no scheduled event ever happened again. Being ungated,
       # this step also executes on the nightly itself.
+      # #3078's SECOND file rides on it for a fourth reason, and the ungated
+      # placement is the point: it proves a red nightly can still reach a human.
+      # That proof has to execute on the nightly run itself, because the run
+      # that would go unreported is exactly the one whose reporting path nobody
+      # else exercises.
       - name: Batch runner self-test (proves a vanished suite fails the run)
         if: always()
         run: >-
@@ -381,6 +386,7 @@ jobs:
           .github/scripts/ci-batch/__tests__/issue-2882-routing-cannot-select-silently.tester.test.mjs
           .github/scripts/ci-batch/__tests__/issue-3076-zero-selection-skips-setup.implementor.test.mjs
           .github/scripts/ci-batch/__tests__/issue-3078-nightly-full-corpus.implementor.test.mjs
+          .github/scripts/ci-batch/__tests__/issue-3078-scheduled-red-reaches-a-human.implementor.test.mjs
 
       - name: Run the ${{ matrix.class }} suites
         if: always()

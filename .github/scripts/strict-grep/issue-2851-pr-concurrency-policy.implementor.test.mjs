@@ -561,7 +561,34 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // pinned here, makes ALL ELEVEN subtests pass again — so nothing else in the
   // tree drifted into this digest. Note the value is sensitive to the exact
   // cron text, so a rebase that changes it must re-derive rather than reuse.
-  "a0456192c6fc8cadd7695992b844eb34e91eb691922e4372219bcef556d11e7e";
+  //
+  // [TEST-MOD-APPROVED #3078] Re-derived a SECOND time on this branch. The
+  // first #3078 re-derivation absorbed the nightly `schedule` trigger itself;
+  // this one absorbs the step registration that makes the nightly's failure
+  // REPORTABLE — one additional test path on the batch lane's ungated runner
+  // self-test step, plus its comment. That lane is PR-family, so its
+  // non-concurrency document is inside this digest, exactly as every
+  // re-derivation above. Named by issue, never by `.yml` path, because a
+  // workflow FILENAME written in this file is counted by
+  // `discoverWorkflowProviders()` as an external provider reference and moves
+  // the frozen #2148 provider seal.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING:
+  //   - the change is PURELY ADDITIVE — `git diff` over the workflow tree is
+  //     `1 file changed, 6 insertions(+)`, and grepping added AND removed lines
+  //     for `concurrency`, `group:` and `cancel-in-progress` returns ZERO. No
+  //     concurrency block, group expression or cancellation value is touched;
+  //   - PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED, so
+  //     no workflow was added, removed or renamed — I-2148-CI-TOPOLOGY-BOUNDED
+  //     stays green and no new lane was introduced;
+  //   - THE DELTA IS EXACTLY THIS CHANGE, executed rather than asserted:
+  //     restoring that one lane to its pre-change bytes reproduces the previous
+  //     value a0456192c6fc8cadd7695992b844eb34e91eb691922e4372219bcef556d11e7e
+  //     exactly, so nothing else in the tree drifted into this digest;
+  //   - the sibling policy audit still reports zero errors at 124 PR-family
+  //     workflows.
+  // Every earlier re-derivation is preserved, not replaced.
+  "820dc060d8d1d8df297ee9ae3df1f56ccca25abb6478ca0108a7b2e41e303383";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

@@ -21,9 +21,10 @@
  *              commit, the failing checks and who merged it.
  *
  * COVERAGE, and the limit of it. An earlier draft of this comment promised
- * "and on a schedule". There is no schedule, and a comment describing a trigger
- * the workflow does not have is exactly how the next person concludes coverage
- * exists when it does not -- the same defect class as the alert itself. So:
+ * "and on a schedule" while no schedule existed, and a comment describing a
+ * trigger the workflow does not have is exactly how the next person concludes
+ * coverage exists when it does not -- the same defect class as the alert
+ * itself. #3078 built the missing tier, so the claim is now earned. Precisely:
  *
  *   WHAT IS COVERED. Every commit that lands on `main`. The host workflow's
  *   push trigger carries a `**` catch-all, so no `main` commit can miss it.
@@ -32,15 +33,36 @@
  *   `COMMS.md`, which every CLOSE touches, and the whole `mingla-site-cms`
  *   tree -- and an eighth was skipped by a baseline exclusion. On those eight,
  *   a red `main` reached nobody, which is indistinguishable from a green one.
+ *   RE-MEASURED at #3078 over the forty `main` commits ending 31b8b50e1:
+ *   39 of 40. The one miss is a baseline-ONLY commit, which the trailing
+ *   negative excludes deliberately. The catch-all is doing its job.
  *
- *   WHAT IS NOT. This reads a SNAPSHOT at the moment the host finishes. A
+ *   ...AND, since #3078, every SCHEDULED run on `main`. Nine cron lanes run on
+ *   this branch, the nightly full corpus among them, and not one of their
+ *   failures could be seen from here before: the snapshot asked the API for
+ *   `event=push` and nothing else, so a red nightly reached nobody on the night
+ *   AND was still invisible on every push that followed it, forever. See
+ *   ADMITTED_RUN_EVENTS below for why that set is enumerated rather than
+ *   simply unfiltered.
+ *
+ *   WHAT IS NOT, and this is the honest half. A scheduled failure is not
+ *   alerted ON the night. The alert job lives in a workflow triggered by
+ *   `pull_request` and `push` only, so nothing runs it at 03:17; the nightly's
+ *   red is picked up by the NEXT push to `main`, which the `**` catch-all
+ *   guarantees will start it. The latency is therefore "until the next merge"
+ *   rather than "never" -- a real improvement on a failure nobody could ever
+ *   see, and a real remaining gap, stated as one. Closing it needs a scheduled
+ *   trigger on the alert host, which is a far larger change than it looks:
+ *   that host runs a dozen heavy jobs, the org is capped at 20 concurrent
+ *   jobs, and a nightly copy of it would contend for that cap with the very
+ *   corpus run it exists to report on.
+ *
+ *   WHAT IS ALSO NOT. This reads a SNAPSHOT at the moment the host finishes. A
  *   workflow SLOWER than the host has not reported yet, so its failure on this
  *   commit is invisible here and is caught only on the next push. That is a
  *   real residual gap and it is the 2026-09-01 incident's own shape -- the
- *   longest-running gate was the one that failed. Closing it needs a periodic
- *   sweep, which needs a trigger this branch is not authorised to add: every
- *   available host is pinned by a tester-owned assertion. Tracked, not
- *   forgotten, and deliberately NOT papered over with a comment.
+ *   longest-running gate was the one that failed. Tracked, not forgotten, and
+ *   deliberately NOT papered over with a comment.
  *
  * NAMING CONSTRAINT, load-bearing: this file may never contain a workflow
  * FILENAME. The frozen provider seal in
@@ -125,6 +147,10 @@ export function evaluateHealth(runs) {
     .map((run) => ({
       workflow: run.name ?? "(unnamed workflow)",
       conclusion: run.conclusion,
+      // #3078 — WHICH TRIGGER produced this verdict. Load-bearing for the
+      // report below: a scheduled failure has no merger, and saying one merged
+      // it would be fabricated attribution.
+      event: run.event ?? "",
       sha: run.head_sha ?? "",
       shortSha: String(run.head_sha ?? "").slice(0, 9),
       title: (run.display_title ?? run.head_commit?.message ?? "").split("\n")[0],
@@ -155,7 +181,64 @@ function api(path, { token, method = "GET", body } = {}) {
   return out.trim() ? JSON.parse(out) : {};
 }
 
-/** ONE snapshot request. Not a loop, not a watch. */
+/**
+ * The run types admitted into the `main` verdict, ENUMERATED on purpose.
+ *
+ * The runs API accepts exactly ONE `event=` value per request, so admitting a
+ * second run type is a real design decision with exactly two shapes: merge N
+ * explicit queries, or drop the filter and take whatever the API returns.
+ *
+ * DROPPING IT WAS REJECTED, and not on taste. `workflow_dispatch` is the run
+ * type dropping the filter would also admit, and the batch lane's suite job
+ * carries `if: github.event_name != 'workflow_dispatch'` -- so a dispatched run
+ * SKIPS all 85 suites and still completes GREEN, having executed nothing.
+ * `latestCompletedPerWorkflow` keeps the newest completed run per workflow, so
+ * that vacuous green would supersede a genuine red nightly and erase it: an
+ * operator running one bounded operational suite would silently clear a real
+ * failure, and the branch would read green because nothing had been measured.
+ * Enumerating the admitted events keeps the set of run types that can colour
+ * `main` a decision this repository made, not a default the API chose.
+ *
+ *   `push`     -- every commit that lands on `main`.
+ *   `schedule` -- the nightly full corpus and the eight other cron lanes on
+ *                this branch. Their failures were invisible here until #3078:
+ *                the snapshot asked for `event=push` and nothing else, so a red
+ *                nightly reached nobody on the night AND stayed unseen on every
+ *                push after it. That is the #2909 defect exactly, wearing a
+ *                different trigger.
+ */
+export const ADMITTED_RUN_EVENTS = Object.freeze(["push", "schedule"]);
+
+/**
+ * The query string for each admitted event. Exported so the fixture suite can
+ * assert the SET with no network call: a filter that silently drops an event
+ * produces an empty inbox, and an empty inbox is what health looks like (#2113).
+ */
+export function branchRunsQueries({ branch = DEFAULT_BRANCH, perPage = 100 } = {}) {
+  return ADMITTED_RUN_EVENTS.map((event) =>
+    [
+      `branch=${encodeURIComponent(branch)}`,
+      `event=${event}`,
+      "exclude_pull_requests=true",
+      `per_page=${perPage}`,
+    ].join("&"),
+  );
+}
+
+/**
+ * ONE snapshot request PER ADMITTED EVENT -- two today. Still not a loop and
+ * still not a watch: the request count is the length of a frozen list, not a
+ * function of how much history exists, so this cannot grow into a polling loop
+ * against the shared API wallet.
+ *
+ * WINDOW, stated rather than assumed. Each request returns at most one page.
+ * The scheduled page is the narrow one: a 15-minute cron lane on this branch
+ * emits ~96 runs a day by itself, so the scheduled window is on the order of a
+ * day where the push window is weeks. That is comfortably wider than the gap
+ * between a nightly and the next push to `main`, which is when this is read --
+ * but it IS a bound, and a bound nobody wrote down is how the next person
+ * assumes there is none.
+ */
 export function fetchBranchRuns({
   repository = DEFAULT_REPOSITORY,
   branch = DEFAULT_BRANCH,
@@ -166,14 +249,22 @@ export function fetchBranchRuns({
   // the in-flight ones are what let the report say "a newer verdict is on its
   // way", which is the difference between an engineer acting on this and
   // dismissing it as stale.
-  const query = [
-    `branch=${encodeURIComponent(branch)}`,
-    "event=push",
-    "exclude_pull_requests=true",
-    `per_page=${perPage}`,
-  ].join("&");
-  const payload = api(`repos/${repository}/actions/runs?${query}`, { token });
-  return payload.workflow_runs ?? [];
+  const merged = [];
+  const seen = new Set();
+  for (const query of branchRunsQueries({ branch, perPage })) {
+    const payload = api(`repos/${repository}/actions/runs?${query}`, { token });
+    for (const run of payload.workflow_runs ?? []) {
+      // De-duplicated by run id. The two pages are disjoint by construction
+      // today -- a run has one event -- but a merge that DOUBLE-COUNTS would
+      // silently corrupt the newest-per-workflow collapse, so it is closed here
+      // rather than left resting on a property of the API.
+      const id = run?.id ?? `${run?.name}:${run?.run_started_at}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      merged.push(run);
+    }
+  }
+  return merged;
 }
 
 /**
@@ -228,7 +319,16 @@ export function renderReport(health, { repository, branch }) {
   ];
   for (const entry of health.red) {
     lines.push(`  ${entry.workflow} — ${entry.conclusion}`);
-    lines.push(`    commit ${entry.shortSha} "${entry.title}" merged by ${entry.actor}`);
+    if (entry.event === "schedule") {
+      // #3078 — a scheduled run has no merger. Printing "merged by <actor>"
+      // here would blame whoever GitHub happens to attribute the cron to for a
+      // failure that arrived with NO COMMIT AT ALL, and the reader would go
+      // revert an innocent change. Catching what no diff caused is the entire
+      // point of the nightly tier, so the line has to say that out loud.
+      lines.push(`    scheduled run at commit ${entry.shortSha} "${entry.title}" — no commit caused this`);
+    } else {
+      lines.push(`    commit ${entry.shortSha} "${entry.title}" merged by ${entry.actor}`);
+    }
     lines.push(`    ${entry.url}`);
     if (entry.pendingSha && entry.pendingSha !== entry.shortSha) {
       lines.push(`    (a newer run of this workflow, at ${entry.pendingSha}, has not finished yet)`);
@@ -405,6 +505,46 @@ export async function runSelfTest() {
     run({ workflow_id: 7, conclusion: "success", run_started_at: "2026-09-01T05:00:00Z" }),
   ]);
   assertOk(!regressed.healthy, "a newer red run must supersede an older green one");
+  assertions += 1;
+
+  // #3078 — THE ADMITTED EVENT SET. The runs API takes exactly one `event=`
+  // per request, so the query SET is the design decision, and a set that
+  // silently loses an event produces an empty inbox that looks like health.
+  const queries = branchRunsQueries({ branch: "main", perPage: 100 });
+  assertOk(queries.length === ADMITTED_RUN_EVENTS.length, "one query per admitted run event, or a run type is read twice or not at all");
+  assertOk(queries.some((q) => q.includes("event=push")), "push runs must stay admitted — this is #2909's own guarantee");
+  assertOk(queries.some((q) => q.includes("event=schedule")), "scheduled runs must be admitted, or a red nightly reaches nobody, ever");
+  assertOk(
+    !queries.some((q) => q.includes("event=workflow_dispatch")),
+    "workflow_dispatch must NOT be admitted: a dispatched batch run skips every suite and still completes green, and would supersede a red nightly",
+  );
+  assertOk(
+    queries.every((q) => q.includes("exclude_pull_requests=true") && q.includes("branch=main")),
+    "every admitted query stays branch-scoped and pull-request-free",
+  );
+  assertions += 5;
+
+  // #3078 — a scheduled red must colour the branch AND be reported as
+  // scheduled. Attributing it to whoever GitHub names on the cron would send
+  // the reader to revert an innocent commit for a failure no diff caused.
+  const nightly = evaluateHealth([
+    run({ workflow_id: 42, name: "Nightly corpus", conclusion: "failure", event: "schedule", actor: { login: "github-actions" } }),
+  ]);
+  assertOk(!nightly.healthy, "a failed scheduled run must colour the branch red");
+  const nightlyReport = renderReport(nightly, { repository: "r", branch: "main" });
+  assertOk(!nightlyReport.includes("merged by"), "a scheduled red must not claim anybody merged it");
+  assertOk(nightlyReport.includes("scheduled run"), "a scheduled red must say on its face that a schedule produced it");
+  assertions += 3;
+
+  // ...and a pushed red KEEPS its attribution. Making both vague would satisfy
+  // the assertion above while destroying the thing that makes them different.
+  const pushedRed = evaluateHealth([
+    run({ workflow_id: 43, conclusion: "failure", event: "push", actor: { login: "seth" } }),
+  ]);
+  assertOk(
+    renderReport(pushedRed, { repository: "r", branch: "main" }).includes("merged by seth"),
+    "a pushed red must still name who merged it",
+  );
   assertions += 1;
 
   // cancelled is NOT red. A superseded concurrency generation is not a failure.
