@@ -355,30 +355,48 @@ export function seedDocuments(
     nav_order: navOrder,
     blocks,
     seo,
-    _id: id,
   });
 
+  const homePage = page(homeId, "home", "Home", "Home", 0, homeBlocks, {
+    title: "gögi — Where Lagos Comes to Eat",
+    description: GOGI_SEED_COPY.description,
+  });
+  const aboutPage = page(aboutId, "about", "About gögi", "About", 1, aboutBlocks, {
+    title: "About gögi — a 24/7 food house in Lekki",
+    description: GOGI_SEED_COPY.voice.comeAsYouAre,
+  });
+  const menuPage = page(menuId, "menu", "Menu", "Menu", 2, menuBlocks, {
+    title: "The gögi menu",
+    description: `The full gögi menu. ${GOGI_SEED_COPY.hoursSummary}.`,
+  });
+  const galleryPage = page(galleryId, "gallery", "Gallery", "Gallery", 3, galleryBlocks, {
+    title: "Inside gögi",
+    description: `Inside gögi at ${GOGI_SEED_COPY.address}.`,
+  });
+  const contactPage = page(contactId, "contact", "Visit gögi", "Visit", 4, contactBlocks, {
+    title: "Visit gögi in Lekki Phase 1",
+    description: `${GOGI_SEED_COPY.address}. ${GOGI_SEED_COPY.hoursSummary}.`,
+  });
+
+  // Navigation lists a page only once it has an id AND something on it. An
+  // unpublished page is not routable, so listing it would render a nav link
+  // that 404s.
+  const navigationPages = [
+    [homeId, homePage],
+    [aboutId, aboutPage],
+    [menuId, menuPage],
+    [galleryId, galleryPage],
+    [contactId, contactPage],
+  ]
+    .filter(([id, document]) => Boolean(id) && document.enabled)
+    .map(([id]) => id);
+
   return {
-    home: page(homeId, "home", "Home", "Home", 0, homeBlocks, {
-      title: "gögi — Where Lagos Comes to Eat",
-      description: GOGI_SEED_COPY.description,
-    }),
-    about: page(aboutId, "about", "About gögi", "About", 1, aboutBlocks, {
-      title: "About gögi — a 24/7 food house in Lekki",
-      description: GOGI_SEED_COPY.voice.comeAsYouAre,
-    }),
-    menu: page(menuId, "menu", "Menu", "Menu", 2, menuBlocks, {
-      title: "The gögi menu",
-      description: `The full gögi menu. ${GOGI_SEED_COPY.hoursSummary}.`,
-    }),
-    gallery: page(galleryId, "gallery", "Gallery", "Gallery", 3, galleryBlocks, {
-      title: "Inside gögi",
-      description: `Inside gögi at ${GOGI_SEED_COPY.address}.`,
-    }),
-    contact: page(contactId, "contact", "Visit gögi", "Visit", 4, contactBlocks, {
-      title: "Visit gögi in Lekki Phase 1",
-      description: `${GOGI_SEED_COPY.address}. ${GOGI_SEED_COPY.hoursSummary}.`,
-    }),
+    home: homePage,
+    about: aboutPage,
+    menu: menuPage,
+    gallery: galleryPage,
+    contact: contactPage,
     settings: {
       tenant: tenantId,
       display_name: GOGI_SEED_COPY.displayName,
@@ -394,10 +412,7 @@ export function seedDocuments(
       social_image: heroMediaId,
       analytics_consent_mode: "optional",
     },
-    navigation: {
-      tenant: tenantId,
-      pages: [homeId, aboutId, menuId, galleryId, contactId].filter(Boolean),
-    },
+    navigation: { tenant: tenantId, pages: navigationPages },
     footer: {
       tenant: tenantId,
       address: GOGI_SEED_COPY.address,
@@ -430,6 +445,110 @@ function baselineHome() {
   };
 }
 
+export const SEED_PAGE_ROLES = ["home", "about", "menu", "gallery", "contact"];
+
+// The exact documents the FIRST version of this seed wrote, frozen. It is read
+// to recognise our own earlier output as ours, and is never written. Without
+// it the live pilot -- which that version seeded -- matches neither the
+// untouched baseline nor the current target, so the seed reads it as somebody
+// else's content and refuses to touch anything.
+//
+// Do not "fix" this to track the current copy. It is a historical record.
+export function priorSeedDocuments({ heroMediaId, homeId, contactId, tenantId }) {
+  return {
+    home: {
+      tenant: tenantId,
+      role: "home",
+      title: "Home",
+      enabled: true,
+      nav_label: "Home",
+      nav_order: 0,
+      blocks: [
+        {
+          blockType: "hero",
+          heading: GOGI_SEED_COPY.heading,
+          subheading: GOGI_SEED_COPY.description,
+          media: heroMediaId,
+          ctas: [
+            { label: "Visit us", href: "/contact" },
+            { label: `Call ${GOGI_SEED_COPY.phoneDisplay}`, href: GOGI_SEED_COPY.phoneHref },
+          ],
+        },
+        {
+          blockType: "hours_location",
+          heading: "Open day and night",
+          address: GOGI_SEED_COPY.address,
+          hours: hours(),
+        },
+        {
+          blockType: "contact_handoff",
+          heading: "Come as you are",
+          body: GOGI_SEED_COPY.hoursSummary,
+          label: `Call ${GOGI_SEED_COPY.phoneDisplay}`,
+          href: GOGI_SEED_COPY.phoneHref,
+        },
+      ],
+      seo: {
+        title: "gögi — Where Lagos Comes to Eat",
+        description: GOGI_SEED_COPY.description,
+      },
+    },
+    contact: {
+      tenant: tenantId,
+      role: "contact",
+      title: "Visit gögi",
+      enabled: true,
+      nav_label: "Visit",
+      nav_order: 1,
+      blocks: [
+        {
+          blockType: "hours_location",
+          heading: "Visit gögi",
+          address: GOGI_SEED_COPY.address,
+          hours: hours(),
+        },
+        {
+          blockType: "contact_handoff",
+          heading: "Call gögi",
+          body: GOGI_SEED_COPY.hoursSummary,
+          label: GOGI_SEED_COPY.phoneDisplay,
+          href: GOGI_SEED_COPY.phoneHref,
+        },
+      ],
+      seo: {
+        title: "Visit gögi in Lekki Phase 1",
+        description: `${GOGI_SEED_COPY.address}. ${GOGI_SEED_COPY.hoursSummary}.`,
+      },
+    },
+    settings: {
+      tenant: tenantId,
+      display_name: GOGI_SEED_COPY.displayName,
+      short_description: GOGI_SEED_COPY.description,
+      background_color: GOGI_SEED_COPY.colors.background,
+      foreground_color: GOGI_SEED_COPY.colors.foreground,
+      accent_color: GOGI_SEED_COPY.colors.accent,
+      typography: "modern-sans",
+      canonical_url: CANONICAL_URL,
+      seo_title: "gögi — Where Lagos Comes to Eat",
+      seo_description: GOGI_SEED_COPY.description,
+      social_image: heroMediaId,
+      analytics_consent_mode: "optional",
+    },
+    navigation: { tenant: tenantId, pages: [homeId, contactId] },
+    footer: {
+      tenant: tenantId,
+      address: GOGI_SEED_COPY.address,
+      hours_summary: GOGI_SEED_COPY.hoursSummary,
+      legal_text: "Gogi Lagos Ltd",
+      links: [
+        { label: "Home", href: "/" },
+        { label: "Visit", href: "/contact" },
+        { label: `Call ${GOGI_SEED_COPY.phoneDisplay}`, href: GOGI_SEED_COPY.phoneHref },
+      ],
+    },
+  };
+}
+
 export function deterministicHeroFilename(expectedSha256, mime) {
   const extension = {
     "image/jpeg": "jpg",
@@ -456,14 +575,17 @@ export function classifySnapshot(snapshot, input) {
   if (settings.length !== 1 || navigation.length !== 1 || footer.length !== 1) {
     fail("PROVISIONING_BASELINE_MISSING");
   }
-  const unexpectedPage = pages.find(
-    (page) => page.role !== "home" && page.role !== "contact",
-  );
-  const home = pages.find((page) => page.role === "home");
-  const contact = pages.find((page) => page.role === "contact") ?? null;
-  if (!home || unexpectedPage || pages.filter((page) => page.role === "home").length !== 1) {
-    fail("EXISTING_NON_SEED_CONTENT");
+  const unexpectedPage = pages.find((page) => !SEED_PAGE_ROLES.includes(page.role));
+  const byRole = new Map();
+  for (const page of pages) {
+    // Two pages claiming one role is not a state this seed can reconcile: it
+    // cannot tell which one it wrote.
+    if (byRole.has(page.role)) fail("EXISTING_NON_SEED_CONTENT");
+    byRole.set(page.role, page);
   }
+  const home = byRole.get("home");
+  const contact = byRole.get("contact") ?? null;
+  if (!home || unexpectedPage) fail("EXISTING_NON_SEED_CONTENT");
   const matchingMedia = media.filter((item) => item.filename === heroFilename);
   if (matchingMedia.length > 1) fail("DUPLICATE_SEED_MEDIA");
   if (matchingMedia.length === 1 && matchingMedia[0].state !== "READY") {
@@ -472,61 +594,95 @@ export function classifySnapshot(snapshot, input) {
   const heroMediaId = matchingMedia.length === 1
     ? requiredString(String(matchingMedia[0].id || ""), "INVALID_MEDIA_RESPONSE")
     : null;
-  const expected = heroMediaId
-    ? seedDocuments({
-        heroMediaId,
-        homeId: String(home.id),
-        contactId: contact ? String(contact.id) : "pending-contact",
-        tenantId,
-      })
-    : null;
-  const homeState = equal(projectPage(home), baselineHome())
-    ? "baseline"
-    : expected && equal(projectPage(home), projectPage(expected.home))
-      ? "target"
-      : "invalid";
-  const contactState = contact === null
-    ? "baseline"
-    : expected && equal(projectPage(contact), projectPage(expected.contact))
-      ? "target"
-      : "invalid";
-  const navigationState = equal(projectNavigation(navigation[0]), { pages: [] })
-    ? "baseline"
-    : expected && contact &&
-        equal(projectNavigation(navigation[0]), projectNavigation(expected.navigation))
-      ? "target"
-      : "invalid";
-  const footerState = equal(projectFooter(footer[0]), {})
-    ? "baseline"
-    : expected && equal(projectFooter(footer[0]), projectFooter(expected.footer))
-      ? "target"
-      : "invalid";
-  const settingsState = equal(projectSettings(settings[0]), baselineSettings())
-    ? "baseline"
-    : expected && equal(projectSettings(settings[0]), projectSettings(expected.settings))
-      ? "target"
-      : "invalid";
-  const states = {
-    media: heroMediaId ? "target" : "baseline",
-    home: homeState,
-    contact: contactState,
-    navigation: navigationState,
-    footer: footerState,
-    settings: settingsState,
+  const documentIds = {
+    heroMediaId,
+    tenantId,
+    homeId: String(home.id),
+    // A role with no document yet gets a placeholder that cannot collide with
+    // a real Payload id, so a navigation built from it can never accidentally
+    // compare equal to one built from real ids.
+    aboutId: byRole.has("about") ? String(byRole.get("about").id) : "pending-about",
+    menuId: byRole.has("menu") ? String(byRole.get("menu").id) : "pending-menu",
+    galleryId: byRole.has("gallery") ? String(byRole.get("gallery").id) : "pending-gallery",
+    contactId: contact ? String(contact.id) : "pending-contact",
   };
+  // Which pages belong on the site does not depend on whether the hero has been
+  // uploaded yet, so the shape is always computable. Only the equality
+  // comparison needs a real media id.
+  const shape = seedDocuments({
+    ...documentIds,
+    heroMediaId: heroMediaId ?? "pending-hero-media",
+  });
+  const expected = heroMediaId ? shape : null;
+  const prior = heroMediaId ? priorSeedDocuments(documentIds) : null;
+
+  // Four states, and only "invalid" refuses. "absent" is a page we have not
+  // written yet; "prior_seed" is a page an earlier version of this seed wrote
+  // and this version supersedes.
+  const pageState = (role) => {
+    const document = byRole.get(role);
+    if (!document) return "absent";
+    const projected = projectPage(document);
+    if (expected && equal(projected, projectPage(expected[role]))) return "target";
+    if (prior?.[role] && equal(projected, projectPage(prior[role]))) return "prior_seed";
+    if (role === "home" && equal(projected, baselineHome())) return "baseline";
+    return "invalid";
+  };
+  const documentState = (key, document, project, baselineValue) => {
+    const projected = project(document);
+    if (expected && equal(projected, project(expected[key]))) return "target";
+    if (prior && equal(projected, project(prior[key]))) return "prior_seed";
+    if (equal(projected, baselineValue)) return "baseline";
+    return "invalid";
+  };
+
+  const states = { media: heroMediaId ? "target" : "baseline" };
+  for (const role of SEED_PAGE_ROLES) states[role] = pageState(role);
+  states.navigation = documentState(
+    "navigation",
+    navigation[0],
+    projectNavigation,
+    { pages: [] },
+  );
+  states.footer = documentState("footer", footer[0], projectFooter, {});
+  states.settings = documentState(
+    "settings",
+    settings[0],
+    projectSettings,
+    baselineSettings(),
+  );
   if (Object.values(states).includes("invalid")) fail("EXISTING_NON_SEED_CONTENT");
+
   const actions = [];
   if (states.media === "baseline") actions.push("upload_hero_through_private_pipeline");
-  if (states.home === "baseline") actions.push("update_home_draft");
-  if (states.contact === "baseline") actions.push("create_contact_draft");
-  if (states.navigation === "baseline") actions.push("update_navigation_draft");
-  if (states.footer === "baseline") actions.push("update_footer_draft");
-  if (states.settings === "baseline") actions.push("update_site_settings_draft");
+  for (const role of SEED_PAGE_ROLES) {
+    // A page with nothing on it is never created. An empty draft the brand did
+    // not ask for is clutter in their Studio, and it is indistinguishable from
+    // one they emptied themselves.
+    const wanted = shape[role].enabled;
+    if (states[role] === "absent") {
+      if (wanted) actions.push(`create_${role}_draft`);
+    } else if (states[role] === "baseline" || states[role] === "prior_seed") {
+      actions.push(`update_${role}_draft`);
+    }
+  }
+  for (const key of ["navigation", "footer"]) {
+    if (states[key] === "baseline" || states[key] === "prior_seed") {
+      actions.push(`update_${key}_draft`);
+    }
+  }
+  if (states.settings === "baseline" || states.settings === "prior_seed") {
+    actions.push("update_site_settings_draft");
+  }
+
   return {
     state: actions.length === 0 ? "seeded" : "reconcilable",
     actions,
     states,
     heroMediaId,
+    pages: Object.fromEntries(
+      SEED_PAGE_ROLES.map((role) => [role, byRole.get(role) ?? null]),
+    ),
     home,
     contact,
     settings: settings[0],
@@ -798,14 +954,14 @@ export class CmsSeedClient {
     return document;
   }
 
-  updateHome(document, data) {
+  updatePage(document, data) {
     return this.mutateCollection("PATCH", "pages", String(document.id), {
       ...data,
       revision: document.revision,
     });
   }
 
-  createContact(data) {
+  createPage(data) {
     return this.mutateCollection("POST", "pages", null, data);
   }
 
@@ -914,34 +1070,45 @@ export async function reconcileSeed(client, options, hero) {
     });
     if (plan.heroMediaId !== heroMediaId) fail("MEDIA_READBACK_MISMATCH");
   }
-  let home = plan.home;
-  let contact = plan.contact;
-  let target = seedDocuments({
+  const documents = { ...plan.pages };
+  const idsOf = () => ({
     heroMediaId,
-    homeId: String(home.id),
-    contactId: contact ? String(contact.id) : "pending-contact",
     tenantId: options.tenantId,
+    homeId: String(documents.home.id),
+    aboutId: documents.about ? String(documents.about.id) : "pending-about",
+    menuId: documents.menu ? String(documents.menu.id) : "pending-menu",
+    galleryId: documents.gallery ? String(documents.gallery.id) : "pending-gallery",
+    contactId: documents.contact ? String(documents.contact.id) : "pending-contact",
   });
-  if (plan.states.home === "baseline") {
-    home = await client.updateHome(home, target.home);
+  let target = seedDocuments(idsOf());
+
+  for (const role of SEED_PAGE_ROLES) {
+    const state = plan.states[role];
+    const desired = target[role];
+    if (state === "absent") {
+      if (!desired.enabled) continue;
+      documents[role] = await client.createPage(desired);
+    } else if (state === "baseline" || state === "prior_seed") {
+      documents[role] = await client.updatePage(documents[role], desired);
+    }
   }
-  if (plan.states.contact === "baseline") {
-    contact = await client.createContact(target.contact);
+  // Every page this seed says belongs on the site has to exist and carry a real
+  // id before the navigation is written, or the navigation names pages that
+  // were never created -- which is exactly how this shipped with two pages.
+  for (const role of SEED_PAGE_ROLES) {
+    if (target[role].enabled && !documents[role]?.id) fail("PAGE_READBACK_MISSING");
   }
-  if (!contact?.id) fail("CONTACT_READBACK_MISSING");
-  target = seedDocuments({
-    heroMediaId,
-    homeId: String(home.id),
-    contactId: String(contact.id),
-    tenantId: options.tenantId,
-  });
-  if (plan.states.navigation === "baseline") {
+
+  // Re-derive once the ids are real: the navigation is built from them.
+  target = seedDocuments(idsOf());
+  const needsWrite = (state) => state === "baseline" || state === "prior_seed";
+  if (needsWrite(plan.states.navigation)) {
     await client.updateNavigation(plan.navigation, target.navigation);
   }
-  if (plan.states.footer === "baseline") {
+  if (needsWrite(plan.states.footer)) {
     await client.updateFooter(plan.footer, target.footer);
   }
-  if (plan.states.settings === "baseline") {
+  if (needsWrite(plan.states.settings)) {
     await client.updateSettings(plan.settings, target.settings);
   }
   const finalSnapshot = await client.readState();

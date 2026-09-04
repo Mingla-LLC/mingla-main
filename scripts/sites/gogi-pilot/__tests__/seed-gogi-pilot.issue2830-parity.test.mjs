@@ -27,7 +27,11 @@ test("seeds the five pages gögi's own site has", () => {
     roles.map((role) => docs[role].nav_label),
     ["Home", "About", "Menu", "Gallery", "Visit"],
   );
-  assert.equal(docs.navigation.pages.length, 5);
+  // Four, not five: Gallery has no blocks until media is uploaded, and the
+  // test below pins that an empty page is not published. Listing it here would
+  // be a navigation link to a page the runtime will not route.
+  assert.equal(docs.navigation.pages.length, 4);
+  assert.equal(docs.navigation.pages.includes(ids.galleryId), false);
 });
 
 test("a page with no blocks is NOT published", () => {
