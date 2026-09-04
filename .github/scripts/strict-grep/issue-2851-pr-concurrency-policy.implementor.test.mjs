@@ -665,7 +665,46 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // semantic delta. Note the value is sensitive to the exact cron text, so a
   // rebase that changes it must re-derive rather than reuse.
   // Every earlier re-derivation is preserved, not replaced.
-  "b2c64f32eb89689e294a420dad8263c5fbefc21e6c86400b489d8910ef0861bf";
+  //
+  // [TEST-MOD-APPROVED #3078] Re-derived a SECOND time on this branch. The
+  // first #3078 re-derivation absorbed the nightly `schedule` trigger itself;
+  // this one absorbs the step registration that makes the nightly's failure
+  // REPORTABLE — one additional test path on the batch lane's ungated runner
+  // self-test step, plus its comment. That lane is PR-family, so its
+  // non-concurrency document is inside this digest, exactly as every
+  // re-derivation above. Named by issue, never by `.y`+`ml` path, because a
+  // workflow FILENAME written in this file is counted by
+  // `discoverWorkflowProviders()` as an external provider reference and moves
+  // the frozen #2148 provider seal.
+  //
+  // ALSO REBASED ONTO #3072, for the reason the note above gives: this pin was
+  // 820dc060d8d1d8df297ee9ae3df1f56ccca25abb6478ca0108a7b2e41e303383 on a tree
+  // that predates #3072's seven lanes and no longer exists. Re-derived fresh,
+  // not carried over.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING:
+  //   - the change is PURELY ADDITIVE — `git diff` over the workflow tree is
+  //     `1 file changed, 6 insertions(+)`, zero deletions, and grepping added
+  //     AND removed lines for `concurrency`, `group:` and `cancel-in-progress`
+  //     returns ZERO. No concurrency block, group expression or cancellation
+  //     value is touched;
+  //   - PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED, so
+  //     no workflow was added, removed or renamed — I-2148-CI-TOPOLOGY-BOUNDED
+  //     stays green and no new lane was introduced. Re-verified by execution at
+  //     131 total workflows / 124 PR-family, not inferred from the diff shape;
+  //   - THE DELTA IS EXACTLY THIS CHANGE, executed rather than asserted:
+  //     restoring that one lane to its pre-change bytes reproduces the value
+  //     b2c64f32eb89689e294a420dad8263c5fbefc21e6c86400b489d8910ef0861bf
+  //     pinned immediately above, and restoring it all the way to its
+  //     origin/main bytes reproduces
+  //     5b0519023a2d8237eddc0bdc29a14bda3eb41e5cbd84d2dd75a9502d8960b7a5 —
+  //     both exactly, so neither #3072 nor anything else in the tree drifted
+  //     into this digest. The value below is stable across two consecutive
+  //     runs;
+  //   - the sibling policy audit still reports zero errors at 124 PR-family
+  //     workflows.
+  // Every earlier re-derivation is preserved, not replaced.
+  "2bcd0c3620e02c056372d0672c81227dc3a95c419a418af61bbe8da628bbda39";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
