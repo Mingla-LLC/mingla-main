@@ -24,6 +24,11 @@ const SITE_ID = "00000000-0000-4000-8000-000000000101";
 const TENANT_ID = "00000000-0000-4000-8000-000000000102";
 const HOME_ID = "00000000-0000-4000-8000-000000000103";
 const CONTACT_ID = "00000000-0000-4000-8000-000000000104";
+const ABOUT_ID = "00000000-0000-4000-8000-000000000109";
+const MENU_ID = "00000000-0000-4000-8000-000000000110";
+// Payload gives every created document its own id. A fake that returns one id
+// for every create cannot model a multi-page seed.
+const CREATED_PAGE_IDS = { about: ABOUT_ID, menu: MENU_ID, contact: CONTACT_ID };
 const MEDIA_ID = "00000000-0000-4000-8000-000000000105";
 const SETTINGS_ID = "00000000-0000-4000-8000-000000000106";
 const NAVIGATION_ID = "00000000-0000-4000-8000-000000000107";
@@ -98,8 +103,8 @@ class FakeClient {
     return MEDIA_ID;
   }
 
-  async updateHome(document, data) {
-    this.calls.push("home");
+  async updatePage(document, data) {
+    this.calls.push(document.role);
     const updated = { ...document, ...clone(data), id: document.id, revision: document.revision + 1 };
     this.snapshot.pages = this.snapshot.pages.map((page) =>
       page.id === document.id ? updated : page,
@@ -107,9 +112,11 @@ class FakeClient {
     return clone(updated);
   }
 
-  async createContact(data) {
-    this.calls.push("contact");
-    const created = { ...clone(data), id: CONTACT_ID, revision: 1 };
+  async createPage(data) {
+    this.calls.push(data.role);
+    const id = CREATED_PAGE_IDS[data.role];
+    assert.ok(id, `fake client has no id for role ${data.role}`);
+    const created = { ...clone(data), id, revision: 1 };
     this.snapshot.pages.push(created);
     return clone(created);
   }
@@ -231,6 +238,8 @@ test("dry-run is read-only and reports the exact pending actions", async () => {
   assert.deepEqual(result.actions, [
     "upload_hero_through_private_pipeline",
     "update_home_draft",
+    "create_about_draft",
+    "create_menu_draft",
     "create_contact_draft",
     "update_navigation_draft",
     "update_footer_draft",
@@ -253,6 +262,8 @@ test("apply uses every real boundary once and a successful rerun writes nothing"
     "upload",
     "read",
     "home",
+    "about",
+    "menu",
     "contact",
     "navigation",
     "footer",
@@ -271,6 +282,8 @@ test("apply uses every real boundary once and a successful rerun writes nothing"
   const target = seedDocuments({
     heroMediaId: MEDIA_ID,
     homeId: HOME_ID,
+    aboutId: ABOUT_ID,
+    menuId: MENU_ID,
     contactId: CONTACT_ID,
     tenantId: TENANT_ID,
   });

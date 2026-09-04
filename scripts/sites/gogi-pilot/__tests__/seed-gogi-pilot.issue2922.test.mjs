@@ -70,6 +70,8 @@ test("#2922 accepts the production Payload baseline without hidden renderer meta
   assert.deepEqual(plan.actions, [
     "upload_hero_through_private_pipeline",
     "update_home_draft",
+    "create_about_draft",
+    "create_menu_draft",
     "create_contact_draft",
     "update_navigation_draft",
     "update_footer_draft",

@@ -10,6 +10,8 @@ import {
 const TENANT_ID = "00000000-0000-4000-8000-000000000501";
 const HOME_ID = "00000000-0000-4000-8000-000000000502";
 const CONTACT_ID = "00000000-0000-4000-8000-000000000503";
+const ABOUT_ID = "00000000-0000-4000-8000-000000000505";
+const MENU_ID = "00000000-0000-4000-8000-000000000506";
 const MEDIA_ID = "00000000-0000-4000-8000-000000000504";
 const HERO_DIGEST = "b".repeat(64);
 const HERO_FILENAME = deterministicHeroFilename(HERO_DIGEST, "image/jpeg");
@@ -29,11 +31,17 @@ function targetSnapshot() {
     heroMediaId: MEDIA_ID,
     homeId: HOME_ID,
     contactId: CONTACT_ID,
+    aboutId: ABOUT_ID,
+    menuId: MENU_ID,
     tenantId: TENANT_ID,
   });
   return {
+    // Gallery is absent on purpose: with no media it has no blocks, so the seed
+    // never creates it.
     pages: [
       { id: HOME_ID, ...reverseObjectKeys(target.home) },
+      { id: ABOUT_ID, ...reverseObjectKeys(target.about) },
+      { id: MENU_ID, ...reverseObjectKeys(target.menu) },
       { id: CONTACT_ID, ...reverseObjectKeys(target.contact) },
     ],
     settings: [{ id: "settings-1", ...reverseObjectKeys(target.settings) }],
@@ -57,6 +65,9 @@ test("#2939 accepts Payload key ordering when every canonical value is unchanged
   assert.deepEqual(plan.states, {
     media: "target",
     home: "target",
+    about: "target",
+    menu: "target",
+    gallery: "absent",
     contact: "target",
     navigation: "target",
     footer: "target",
