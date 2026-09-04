@@ -214,9 +214,16 @@ export function parseDispatchSelection(raw, { deployable } = {}) {
  * `preflight-function-secret-readiness.mjs`, whose CLI entry supplies NO
  * receipts, so any selected function carrying `required_bundle_fields` dies on
  * `bundle_receipt_missing_or_ambiguous` — after the preflight has already
- * reached production to list secrets. Naming them here fails the run BEFORE it
- * touches production and says which lane owns them. This does not relax the
- * guard; it refuses earlier and louder.
+ * reached production to list secrets. Naming them here keeps them out of the
+ * selection BEFORE it touches production and says which lane owns them.
+ *
+ * #3113 changed WHERE that refusal lands, never how strict it is. Until #3113 a
+ * governed function in the selection killed the workflow, which red `main` every
+ * time a governed function changed and blocked every merge in the repository for
+ * a lane behaving exactly as designed — the governed lane (#2241) deploys these,
+ * so this lane was never going to. Now `partitionGovernedSelection` subtracts
+ * them from the deploy set and `governedLaneNotice` reports it loudly. They are
+ * still never deployed here.
  */
 export function governedBundleFunctions(selected, { root = REPO_ROOT, contract = null } = {}) {
   const source = contract ??
@@ -225,6 +232,144 @@ export function governedBundleFunctions(selected, { root = REPO_ROOT, contract =
   return selected
     .filter((name) => Object.keys(functions[name]?.required_bundle_fields ?? {}).length > 0)
     .sort();
+}
+
+/**
+ * Issue #3113 — split a selection into what this lane may deploy and what it
+ * structurally may not.
+ *
+ * `governedBundleFunctions` above answers "which of these are governed". This
+ * answers "so what does this lane actually deploy", and it is the ONLY place
+ * that decides. The governed half is REMOVED from the deploy set here and is
+ * never written to the selection file or the step outputs, so the guarantee the
+ * pre-#3113 hard failure provided — a governed function is never deployed by the
+ * normal lane — is unchanged in strength and merely enforced by subtraction
+ * instead of by killing the run.
+ */
+export function partitionGovernedSelection(selected, { root = REPO_ROOT, contract = null } = {}) {
+  const governed = governedBundleFunctions(selected, { root, contract });
+  const blocked = new Set(governed);
+  return { deploy: selected.filter((name) => !blocked.has(name)), governed };
+}
+
+export const GOVERNED_NOTICE_CODE = "governed_bundle_lane_required";
+export const GOVERNED_CLEAR_CODE = "governed_bundle_lane_not_required";
+
+/** GitHub's workflow-command escaping. A raw newline would truncate the annotation. */
+function escapeAnnotation(value) {
+  return String(value).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+}
+
+/**
+ * Issue #3113 — the lane's verdict on governed functions, as text.
+ *
+ * This is emitted on EVERY run, governed or not, because the failure mode this
+ * function exists to prevent is not a wrong answer, it is NO answer. #2113's
+ * bug class is a check that reports success without checking, and turning the
+ * pre-#3113 red into a pass is exactly the shape that produces one. So:
+ *
+ *   - the clear case and the skipped case are DIFFERENT codes, not the same
+ *     line with a different number, and both carry the denominator
+ *     `<governed> of <selected>`;
+ *   - the skipped case names every function, one per line, and repeats the
+ *     names inside a `::warning::` annotation so the run page shows it without
+ *     anyone opening the log;
+ *   - the skipped case states, in the notice itself, that this run has NOT
+ *     established whether those functions are already deployed. It cannot:
+ *     the only source of a live function version is a production read behind a
+ *     credential this step deliberately does not carry. Saying "deployed by the
+ *     governed lane" here would be an assumption printed as a fact.
+ *
+ * Throws `governed_notice_incomplete` if the text it produced fails to name a
+ * governed function. The caller treats that as the pre-#3113 hard failure, so
+ * the notice cannot degrade into silence — the worst case is the red we started
+ * with, never a quiet skip.
+ */
+export function formatGovernedNotice({ selected = [], governed = [], deploy = [], reason = "" } = {}) {
+  const total = selected.length;
+  const lines = [];
+  let annotation = null;
+  let summary = null;
+
+  if (governed.length === 0) {
+    lines.push(
+      `PASS select: ${GOVERNED_CLEAR_CODE} — 0 of ${total} selected function(s) ` +
+        "declare required_bundle_fields; this lane deploys all of them",
+    );
+    return { code: GOVERNED_CLEAR_CODE, lines, annotation, summary };
+  }
+
+  lines.push(
+    `NOTICE select: ${GOVERNED_NOTICE_CODE} — ${governed.length} of ${total} ` +
+      `selected function(s) are NOT deployed by this lane (${reason})`,
+  );
+  for (const name of governed) lines.push(`- ${name}`);
+  lines.push(
+    "- these functions declare required_bundle_fields, and the normal deploy lane " +
+      "supplies no bundle receipts, so preflight-function-secret-readiness.mjs would " +
+      "fail with bundle_receipt_missing_or_ambiguous AFTER reaching production. They " +
+      "are deployed by the governed lane instead: scripts/deploy-supabase-functions.sh " +
+      "with the governed bundle inputs (--ad-input / --delivery-input) per #2241.",
+  );
+  lines.push(
+    "- this run has NOT established whether they are already deployed, and does not " +
+      "assume it. The only source of a live function version is a production read " +
+      "behind a credential this step does not carry. Read it before assuming: " +
+      "GET https://api.supabase.com/v1/projects/<ref>/functions",
+  );
+  lines.push(
+    `NOTICE select: ${deploy.length} of ${total} selected function(s) remain for this ` +
+      "lane to deploy",
+  );
+
+  annotation =
+    `::warning title=Governed edge functions were not deployed by this lane::` +
+    escapeAnnotation(
+      `${governed.length} of ${total} selected function(s) need the #2241 governed ` +
+        `bundle lane and were skipped here: ${governed.join(", ")}. ` +
+        "Deployment of these is NOT verified by this run.",
+    );
+
+  summary = [
+    "### Governed edge functions were not deployed by this lane",
+    "",
+    `${governed.length} of ${total} selected function(s) declare ` +
+      "`required_bundle_fields` and are deployed by the #2241 governed lane " +
+      "(`--ad-input` / `--delivery-input`), not here:",
+    "",
+    ...governed.map((name) => `- \`${name}\``),
+    "",
+    `${deploy.length} of ${total} selected function(s) remain for this lane to deploy.`,
+    "",
+    "This run has NOT established whether the skipped functions are already " +
+      "deployed. Read the live versions before assuming: " +
+      "`GET https://api.supabase.com/v1/projects/<ref>/functions`",
+    "",
+  ].join("\n");
+
+  return { code: GOVERNED_NOTICE_CODE, lines, annotation, summary };
+}
+
+/**
+ * `formatGovernedNotice` with its own output CHECKED before anyone can print it.
+ *
+ * The formatter is injectable for exactly one reason: without it this guard is
+ * unfalsifiable. The real formatter names every governed function by
+ * construction, so no input can make the check fire, and a check no input can
+ * fail is the #2113 bug class wearing the uniform of a safety net. Passing a
+ * formatter that drops the names is how the throwing branch is proven to exist.
+ */
+export function governedLaneNotice(input = {}, { format = formatGovernedNotice } = {}) {
+  const governed = input.governed ?? [];
+  const notice = format(input);
+  if (governed.length === 0) return notice;
+  const text = [...(notice.lines ?? []), notice.annotation ?? "", notice.summary ?? ""].join("\n");
+  const unnamed = governed.filter((name) => !text.includes(name));
+  if (unnamed.length > 0) throw new SelectionError("governed_notice_incomplete", unnamed);
+  if ((notice.lines ?? []).length === 0) {
+    throw new SelectionError("governed_notice_incomplete", ["(empty notice)"]);
+  }
+  return notice;
 }
 
 function gitChangedPaths(base, head, { root = REPO_ROOT, spawn = spawnSync } = {}) {
@@ -254,6 +399,7 @@ export function selectForEvent(env, {
   const event = env.MINGLA_DEPLOY_EVENT ?? "";
   if (event === "workflow_dispatch") {
     return {
+      event,
       reason: "explicit dispatch selection",
       functions: parseDispatchSelection(env.MINGLA_DEPLOY_DISPATCH_FUNCTIONS, {
         deployable: allowed,
@@ -270,7 +416,7 @@ export function selectForEvent(env, {
   }
   const changed = gitChangedPaths(base, head, { root, spawn });
   const mapped = functionsForChangedPaths(changed, { root, deployable: allowed, reverse });
-  return { reason: `push ${base.slice(0, 9)}..${head.slice(0, 9)}`, ...mapped };
+  return { event, reason: `push ${base.slice(0, 9)}..${head.slice(0, 9)}`, ...mapped };
 }
 
 // ---------------------------------------------------------------------------
@@ -424,6 +570,134 @@ export function runSelfTest() {
     "every governed function is a deployable directory",
   );
 
+  // ---- #3113: a governed function is subtracted, never deployed, never silent.
+  const mixed = {
+    functions: {
+      alpha: { required_bundle_fields: {} },
+      beta: { required_bundle_fields: { AD_CONVERSION_TOKENS: ["X"] } },
+      gamma: { required_bundle_fields: {} },
+    },
+  };
+
+  const mixedSplit = partitionGovernedSelection(["alpha", "beta", "gamma"], { contract: mixed });
+  checks += assertOk(
+    JSON.stringify(mixedSplit.deploy) === '["alpha","gamma"]',
+    "a mixed selection still deploys the ungoverned functions",
+  );
+  checks += assertOk(
+    JSON.stringify(mixedSplit.governed) === '["beta"]' &&
+      !mixedSplit.deploy.includes("beta"),
+    "the governed function is subtracted from the deploy set",
+  );
+
+  const onlySplit = partitionGovernedSelection(["beta"], { contract: mixed });
+  checks += assertOk(
+    onlySplit.deploy.length === 0 && JSON.stringify(onlySplit.governed) === '["beta"]',
+    "a governed-only selection leaves this lane nothing to deploy",
+  );
+
+  // Every governed function in the real contract is subtracted from a selection
+  // of the real deployable set. This is the guarantee the pre-#3113 hard failure
+  // provided, asserted against the repository rather than a fixture.
+  const everySplit = partitionGovernedSelection([...realDeployable].sort(), {
+    contract: realContract,
+  });
+  checks += assertOk(
+    realGoverned.every((name) => !everySplit.deploy.includes(name)),
+    "no governed function in the real contract can reach this lane's deploy set",
+  );
+  checks += assertOk(
+    everySplit.deploy.length + everySplit.governed.length === realDeployable.size,
+    "the partition is total: nothing is invented and nothing is lost",
+  );
+
+  // The two verdicts are DIFFERENT text, both carry a denominator, and the
+  // skipped one names its functions. A notice that cannot be told apart from
+  // "all clear" is the silence #3113 exists to prevent.
+  const clear = governedLaneNotice({ selected: ["alpha", "gamma"], governed: [], deploy: ["alpha", "gamma"] });
+  const skipped = governedLaneNotice({
+    selected: ["alpha", "beta", "gamma"],
+    governed: ["beta"],
+    deploy: ["alpha", "gamma"],
+    reason: "push aaaaaaaaa..bbbbbbbbb",
+  });
+  checks += assertOk(clear.code === GOVERNED_CLEAR_CODE, "the clear verdict has its own code");
+  checks += assertOk(skipped.code === GOVERNED_NOTICE_CODE, "the skipped verdict has its own code");
+  checks += assertOk(
+    clear.lines.join("\n") !== skipped.lines.join("\n"),
+    "the two verdicts are distinguishable in the output",
+  );
+  checks += assertOk(
+    clear.lines.join("\n").includes("0 of 2"),
+    "the clear verdict carries a denominator",
+  );
+  checks += assertOk(
+    skipped.lines.join("\n").includes("1 of 3") &&
+      skipped.lines.join("\n").includes("2 of 3"),
+    "the skipped verdict carries both denominators",
+  );
+  checks += assertOk(
+    skipped.lines.some((line) => line.includes("beta")),
+    "the skipped verdict names the function it skipped",
+  );
+  checks += assertOk(
+    skipped.lines.length > 0 && skipped.annotation !== null && skipped.summary !== null,
+    "the skipped verdict is never empty and reaches the run page, not only the log",
+  );
+  checks += assertOk(
+    skipped.annotation.startsWith("::warning") && skipped.annotation.includes("beta"),
+    "the annotation names the skipped function",
+  );
+  checks += assertOk(
+    !skipped.annotation.includes("\n"),
+    "a raw newline would truncate the annotation",
+  );
+  checks += assertOk(
+    /NOT established/.test(skipped.lines.join("\n")),
+    "the notice states that deployment is not established rather than implying coverage",
+  );
+  checks += assertOk(
+    clear.annotation === null && clear.summary === null,
+    "the clear verdict raises no annotation",
+  );
+
+  // The anti-silence guard, proven by EXECUTING its throwing branch. A formatter
+  // that drops the names is the exact regression a future edit could introduce;
+  // the guard must refuse it rather than print an unnamed skip.
+  let noticeCode = null;
+  try {
+    governedLaneNotice({ selected: ["alpha", "beta"], governed: ["beta"], deploy: ["alpha"] }, {
+      format: () => ({ code: GOVERNED_NOTICE_CODE, lines: ["NOTICE select: 1 of 2"], annotation: null, summary: null }),
+    });
+  } catch (error) {
+    noticeCode = error.code;
+  }
+  checks += assertOk(
+    noticeCode === "governed_notice_incomplete",
+    "a notice that does not name a skipped function is refused",
+  );
+
+  let emptyCode = null;
+  try {
+    governedLaneNotice({ selected: ["beta"], governed: ["beta"], deploy: [] }, {
+      format: () => ({ code: GOVERNED_NOTICE_CODE, lines: [], annotation: "beta", summary: "beta" }),
+    });
+  } catch (error) {
+    emptyCode = error.code;
+  }
+  checks += assertOk(
+    emptyCode === "governed_notice_incomplete",
+    "an empty notice is refused even when the names appear elsewhere",
+  );
+
+  // The real formatter passes its own guard — the guard is not merely throwable,
+  // it is satisfied by production output.
+  checks += assertOk(
+    governedLaneNotice({ selected: ["alpha", "beta"], governed: ["beta"], deploy: ["alpha"] })
+      .code === GOVERNED_NOTICE_CODE,
+    "the real notice satisfies the anti-silence guard",
+  );
+
   console.log(`select-changed-edge-functions self-test: PASS (${checks} assertions)`);
   return checks;
 }
@@ -459,11 +733,20 @@ function main() {
     console.log(`NOTE select: ${name} changed but has no index.ts entrypoint; not deployable`);
   }
 
-  const governed = selection.functions.length > 0
-    ? governedBundleFunctions(selection.functions)
-    : [];
-  if (governed.length > 0) {
-    console.error("FAIL select: governed_bundle_lane_required");
+  // #3113 — the governed half is SUBTRACTED from the deploy set here. Everything
+  // downstream (the selection file, the step outputs, the deploy step) reads
+  // `deploy`, never `selection.functions`, so a governed function has no path to
+  // this lane's `--function` arguments at all.
+  const { deploy, governed } = partitionGovernedSelection(selection.functions);
+
+  // An explicit `workflow_dispatch` list is NOT converted to a notice. A push is
+  // the repository telling the lane what changed, and the lane skipping what it
+  // structurally cannot ship carries no action for anyone — that is the whole of
+  // #3113. A dispatch is a HUMAN naming a function they want deployed, and the
+  // honest answer to "deploy this one" is a refusal they can read, not a pass
+  // with a note. "Explicit means explicit" cuts both ways.
+  if (governed.length > 0 && selection.event === "workflow_dispatch") {
+    console.error(`FAIL select: ${GOVERNED_NOTICE_CODE}`);
     for (const name of governed) console.error(`- ${name}`);
     console.error(
       "- these functions declare required_bundle_fields, and the normal deploy lane " +
@@ -476,26 +759,63 @@ function main() {
     return;
   }
 
+  // The notice is emitted on EVERY run, with a denominator, and the two verdicts
+  // carry different codes. If it cannot be built, or it fails to name a function
+  // it is skipping, we fall back to the pre-#3113 hard failure rather than let a
+  // skipped deploy pass quietly — a red is recoverable, silence is not.
+  let notice;
+  try {
+    notice = governedLaneNotice({
+      selected: selection.functions,
+      governed,
+      deploy,
+      reason: selection.reason,
+    });
+  } catch (error) {
+    console.error(`FAIL select: ${error?.code ?? "governed_notice_unavailable"}`);
+    for (const name of governed) console.error(`- ${name}`);
+    console.error(
+      "- the governed-lane notice could not be produced, so this run cannot report " +
+        "which functions it is skipping. Failing rather than skipping silently.",
+    );
+    process.exitCode = 1;
+    return;
+  }
+  for (const line of notice.lines) console.log(line);
+  if (notice.annotation) console.log(notice.annotation);
+  if (notice.summary && process.env.GITHUB_STEP_SUMMARY) {
+    writeFileSync(process.env.GITHUB_STEP_SUMMARY, notice.summary, {
+      encoding: "utf8",
+      flag: "a",
+    });
+  }
+
   const listPath = process.env.MINGLA_DEPLOY_SELECTION_PATH ??
     (process.env.RUNNER_TEMP ? join(process.env.RUNNER_TEMP, "edge-deploy-functions") : null);
   if (listPath) {
-    writeFileSync(listPath, `${selection.functions.join("\n")}\n`, "utf8");
+    writeFileSync(listPath, `${deploy.join("\n")}\n`, "utf8");
   }
   if (process.env.GITHUB_OUTPUT) {
     writeFileSync(
       process.env.GITHUB_OUTPUT,
-      `count=${selection.functions.length}\nfunctions=${selection.functions.join(" ")}\n`,
+      `count=${deploy.length}\nfunctions=${deploy.join(" ")}\n` +
+        `governed_count=${governed.length}\ngoverned=${governed.join(" ")}\n`,
       { encoding: "utf8", flag: "a" },
     );
   }
-  if (selection.functions.length === 0) {
-    console.log(`PASS select: no edge-function bundle changed (${selection.reason}); nothing to deploy`);
+  if (deploy.length === 0) {
+    console.log(
+      governed.length > 0
+        ? `PASS select: nothing for this lane to deploy (${selection.reason}); ` +
+          `${governed.length} governed function(s) named above need the #2241 governed lane`
+        : `PASS select: no edge-function bundle changed (${selection.reason}); nothing to deploy`,
+    );
     return;
   }
   console.log(
-    `PASS select: ${selection.functions.length} function(s) to deploy (${selection.reason})`,
+    `PASS select: ${deploy.length} function(s) to deploy (${selection.reason})`,
   );
-  for (const name of selection.functions) console.log(`- ${name}`);
+  for (const name of deploy) console.log(`- ${name}`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
