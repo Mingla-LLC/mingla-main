@@ -33,6 +33,33 @@ on:
     # and this workflow runs exactly as it always did.
     paths-ignore:
       - "mingla-business/scripts/ci/bundle-baseline.json"
+  # [#3072] The backstop, and the thing that makes PR-time routing safe to do at
+  # all. Routing changes WHEN this lane runs on a pull request, never WHETHER it
+  # runs -- the same contract #2882 gave the 85 batched suites, which route on a
+  # pull request and run in full on merge. Selection is the identity function on
+  # a push event, so every job below runs here with no routing and no `paths`
+  # filter of any kind. Without this, an `originPaths` list that turns out to be
+  # incomplete would mean a change got NO coverage ever, instead of a slow catch
+  # on `main`; #3079 is the standing evidence that incompleteness is a live risk,
+  # not a hypothetical one.
+  push:
+    branches: [main]
+    # #2885 AC-4 again, on this side too. The backstop above must catch an
+    # incomplete `originPaths` on a HUMAN merge; it must not resurrect the
+    # fan-out AC-4 removed. Without this exclusion a commit touching ONLY the
+    # machine-written baseline starts all six lanes on `main` -- ~53 jobs per
+    # recording change, ~15/day, ~51,000 job-min per month -- which the #2524
+    # auto-merge guard catches by enumerating exactly which workflows such a
+    # merge starts. Same trade the red-`main` alert landed on this morning.
+    #
+    # THE RESIDUAL, stated rather than buried: a baseline-only merge does not
+    # run this lane on `main`. That commit changes one recorded boot-payload
+    # number and nothing this lane reads -- proven, not assumed: the router was
+    # RUN against the real baseline-only commit 5692d0358 and reports
+    # `selected=false` here, and no gate this lane executes reads that file
+    # (traced: it is stat-ed while walking `scripts/ci`, never opened).
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
   workflow_dispatch:
 
 concurrency:
@@ -40,8 +67,43 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
-  issue-1501-add-rooms-form:
+  route:
+    # [#3072] The routing decision, taken before this lane spends anything.
+    #
+    # The `paths-ignore` above is #2885 AC-4 and is UNTOUCHED: a pull request whose
+    # ONLY changed file is the machine-written boot-payload baseline still never
+    # reaches this workflow at all. That filter stopped the recording PRs; it was
+    # never able to route human changes, and it still does not.
+    #
+    # This job is the second filter and the one that reads the registry.
+    # `.github/ci-batch/MANIFEST.json` records this lane's `originPaths` — derived
+    # from the files this lane's own gates, tests, typecheck and exports actually
+    # READ, not from its name — and the script below matches the pull request's
+    # diff against them using #2882's single origin-pattern grammar. No glob is
+    # written into this file: widening the route means editing the registry, where
+    # the fail-closed emptiness gate and the pattern-liveness gate can see it.
+    #
+    # On push, schedule and workflow_dispatch the selection is the identity
+    # function and every job below runs in full, exactly as before. If the router
+    # cannot see the diff it also selects, and says so in an annotation: this lane
+    # can be run needlessly, never skipped silently.
     if: ${{ github.event.pull_request.draft != true }}
+    name: Route (issue 1501)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      selected: ${{ steps.decide.outputs.selected }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Decide whether this pull request can affect this lane
+        id: decide
+        run: node .github/scripts/ci-batch/route-live-provider.mjs --issue 1501
+
+  issue-1501-add-rooms-form:
+    if: ${{ (github.event.pull_request.draft != true) && (needs.route.outputs.selected == 'true') }}
+    needs: [route]
     name: Add Rooms or Places (render proofs + gates)
     runs-on: ubuntu-latest
     timeout-minutes: 30
