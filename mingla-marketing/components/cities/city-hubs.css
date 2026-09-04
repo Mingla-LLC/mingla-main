@@ -1,4 +1,5 @@
 .city-hub-root {
+  position: relative;
   --city-host-bar-height: calc(52px + env(safe-area-inset-top));
   --page-host-bar-height: var(--city-host-bar-height);
   --city-muted-light: rgba(20, 18, 15, .64);
@@ -6,6 +7,7 @@
   background: var(--cut-ground);
 }
 
+.city-hub-root > [data-cutout] > .cut-shell { position: static; }
 .city-hub-root [data-cutout] { --cut-muted: var(--city-muted-light); }
 .city-hub-root [data-cutout] [data-cut-band='dark'] { --cut-muted: var(--city-muted-dark); }
 
@@ -13,7 +15,7 @@
 .city-hub-root .ps-host-acquisition-inner { min-height: 52px; }
 .city-hub-root .ps-host-acquisition-desktop a { min-height: 44px; }
 .page-system-root.city-hub-root[data-host-acquisition='true'] .ps-nav {
-  position: fixed;
+  position: absolute;
   inset: auto 0 auto;
   top: calc(var(--city-host-bar-height) + 12px);
   z-index: 80;
