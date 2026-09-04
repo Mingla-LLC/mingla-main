@@ -35,6 +35,19 @@ while [[ "$#" -gt 0 ]]; do
       remediation=true
       shift
       ;;
+    --sites-input)
+      # #2830 — MINGLA_SITES_SECURITY_JSON was the only governed bundle with no
+      # input flag. All four brand-site-* functions declare it in
+      # required_bundle_fields, so the normal lane refuses them
+      # (governed_bundle_lane_required) and the governed lane had no way to
+      # supply them: they were deployable through NO sanctioned path, and every
+      # change to them reddened main. This closes that, mirroring --ad-input
+      # and --delivery-input rather than inventing a sites-only escape.
+      [[ "$#" -ge 2 && -n "$2" ]] || { echo "FAIL deploy: $1 requires a secure input path" >&2; exit 2; }
+      coordinator_args+=("$1" "$2")
+      governed_bundle_deploy=true
+      shift 2
+      ;;
     --ad-input|--delivery-input)
       [[ "$#" -ge 2 && -n "$2" ]] || { echo "FAIL deploy: $1 requires a secure input path" >&2; exit 2; }
       coordinator_args+=("$1" "$2")
