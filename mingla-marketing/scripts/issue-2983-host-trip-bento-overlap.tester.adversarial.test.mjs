@@ -32,7 +32,17 @@ const VIEWPORTS = [
   { width: 1440, height: 900 },
 ]
 const CHIP_LABELS = ['Group chat', 'Instalments', 'Itineraries']
+const PROFILE_CLEANUP_POLICY = Object.freeze({
+  recursive: true,
+  force: true,
+  maxRetries: 8,
+  retryDelay: 100,
+})
 const read = (relativePath) => fs.readFileSync(path.join(ROOT, relativePath), 'utf8')
+
+function removeBrowserProfile(profile, remove = fs.rmSync) {
+  return remove(profile, PROFILE_CLEANUP_POLICY)
+}
 
 function sourceContract() {
   const packageJson = JSON.parse(read('package.json'))
@@ -49,6 +59,20 @@ function sourceContract() {
     'the named Host Trips gate must run both independent regression guards',
   )
   assert.equal(VIEWPORTS.map(({ width }) => width).join(','), '320,390,768,1024,1117,1280,1440')
+  const cleanupCalls = []
+  removeBrowserProfile('/tmp/mingla-2983-cleanup-policy-proof', (target, options) => {
+    cleanupCalls.push({ target, options })
+  })
+  assert.deepEqual(cleanupCalls, [{
+    target: '/tmp/mingla-2983-cleanup-policy-proof',
+    options: { recursive: true, force: true, maxRetries: 8, retryDelay: 100 },
+  }], 'browser profile cleanup must use the exact bounded retry policy')
+  const persistentCleanupError = new Error('persistent cleanup failure')
+  assert.throws(
+    () => removeBrowserProfile('/tmp/mingla-2983-cleanup-failure-proof', () => { throw persistentCleanupError }),
+    (error) => error === persistentCleanupError,
+    'persistent browser profile cleanup errors must remain fatal',
+  )
   process.stdout.write('PASS #2983 tester source guard: CI-wired seven-width real-browser contract\n')
 }
 
@@ -361,7 +385,7 @@ async function runtimeContract() {
   } finally {
     page?.close()
     await Promise.allSettled([stopChild(chrome), stopChild(server)])
-    fs.rmSync(profile, { recursive: true, force: true })
+    removeBrowserProfile(profile)
     if (server && server.exitCode && server.exitCode !== 0 && server.signalCode !== 'SIGTERM') {
       process.stderr.write(serverOutput)
     }
