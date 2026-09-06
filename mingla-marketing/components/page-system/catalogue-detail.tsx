@@ -7,6 +7,7 @@ import type { CataloguePlace, CataloguePlan } from '@/content/page-system/shared
 
 interface CatalogueDetailProps {
   readonly item: CataloguePlace | CataloguePlan
+  readonly cityName: string
   readonly backHref: string
   readonly onClose: () => void
 }
@@ -15,10 +16,11 @@ function scoreLabel(score: number): string {
   return Number.isInteger(score) ? score.toFixed(0) : score.toFixed(1)
 }
 
-export function CatalogueDetail({ item, backHref, onClose }: CatalogueDetailProps) {
+export function CatalogueDetail({ item, cityName, backHref, onClose }: CatalogueDetailProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const childDialogOpenRef = useRef(false)
   const isPlace = item.kind === 'place'
+  const backLabel = cityName === 'Lagos' ? 'Back to Lagos picks' : `Back to ${cityName} picks`
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -60,7 +62,7 @@ export function CatalogueDetail({ item, backHref, onClose }: CatalogueDetailProp
 
   return (
     <div className="ps-detail-layer" data-catalogue-detail>
-      <a href={backHref} className="ps-detail-backdrop" aria-label="Back to Lagos picks" onClick={close} />
+      <a href={backHref} className="ps-detail-backdrop" aria-label={backLabel} onClick={close} />
       <div
         ref={panelRef}
         className="ps-detail-panel"
@@ -78,7 +80,7 @@ export function CatalogueDetail({ item, backHref, onClose }: CatalogueDetailProp
 
         <div className="ps-detail-gallery" data-count={Math.min(item.photoUrls.length, 3)}>
           {item.photoUrls.slice(0, 3).map((photo, index) => (
-            <img key={photo} src={photo} alt={index === 0 ? `${isPlace ? `${item.name}, in the Explorer Lagos pool` : `${item.title}, a Mingla Lagos plan`}` : ''} width="900" height="700" />
+            <img key={photo} src={photo} alt={index === 0 ? `${isPlace ? `${item.name}, in the Explorer ${cityName} pool` : `${item.title}, a Mingla ${cityName} plan`}` : ''} width="900" height="700" />
           ))}
         </div>
 
@@ -121,7 +123,7 @@ export function CatalogueDetail({ item, backHref, onClose }: CatalogueDetailProp
               onDialogOpenChange={(open) => { childDialogOpenRef.current = open }}
             />
           </div>
-          <a href={backHref} className="ps-back-link" onClick={close}><ArrowLeft aria-hidden="true" size={17} />Back to Lagos picks</a>
+          <a href={backHref} className="ps-back-link" onClick={close}><ArrowLeft aria-hidden="true" size={17} />{backLabel}</a>
         </div>
       </div>
     </div>

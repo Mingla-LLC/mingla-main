@@ -2,15 +2,24 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUpRight, X } from 'lucide-react'
+import { captureMarketing } from '@/components/marketing/posthog-provider'
 
-const HOST_DESTINATIONS = [
-  { label: 'Host an event', href: 'https://host.usemingla.com/event/create' },
-  { label: 'Host a trip', href: 'https://host.usemingla.com/trip/create' },
-  { label: 'Host an experience', href: 'https://host.usemingla.com/experience/create' },
-  { label: 'Add a venue', href: 'https://host.usemingla.com/venue/create' },
+export const HOST_DESTINATIONS = [
+  { label: 'Host an event', href: 'https://host.usemingla.com/event/create', destinationType: 'event' },
+  { label: 'Host a trip', href: 'https://host.usemingla.com/trip/create', destinationType: 'trip' },
+  { label: 'Host an experience', href: 'https://host.usemingla.com/experience/create', destinationType: 'experience' },
+  { label: 'Add a venue', href: 'https://host.usemingla.com/venue/create', destinationType: 'venue' },
 ] as const
 
-export function CityHostAcquisitionBar() {
+export function CityHostAcquisitionBar({
+  city = 'Lagos',
+  citySlug,
+  countryCode,
+}: {
+  readonly city?: string
+  readonly citySlug?: string
+  readonly countryCode?: string
+} = {}) {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
@@ -55,13 +64,23 @@ export function CityHostAcquisitionBar() {
     }
   }, [open])
 
+  const captureHostAction = (destinationType: string) => {
+    if (!citySlug || !countryCode) return
+    captureMarketing('city_hub_host_action', {
+      city_slug: citySlug,
+      country_code: countryCode,
+      page_family: 'city_hub',
+      destination_type: destinationType,
+    })
+  }
+
   return (
     <aside className="ps-host-acquisition" aria-label="Host on Mingla">
       <div className="ps-host-acquisition-inner">
-        <strong>Bring something to Lagos</strong>
+        <strong>Bring something to {city}</strong>
         <nav aria-label="Create with Mingla Host" className="ps-host-acquisition-desktop">
           {HOST_DESTINATIONS.map((destination) => (
-            <a key={destination.href} href={destination.href}>
+            <a key={destination.href} href={destination.href} onClick={() => captureHostAction(destination.destinationType)}>
               {destination.label}<ArrowUpRight aria-hidden="true" size={14} />
             </a>
           ))}
@@ -83,12 +102,12 @@ export function CityHostAcquisitionBar() {
           <button type="button" className="ps-host-sheet-backdrop" aria-label="Close hosting choices" onClick={() => setOpen(false)} />
           <div ref={sheetRef} id="host-acquisition-sheet" className="ps-host-sheet" role="dialog" aria-modal="true" aria-labelledby="host-sheet-title">
             <header>
-              <div><span>Mingla Host</span><h2 id="host-sheet-title">What are you bringing to Lagos?</h2></div>
+              <div><span>Mingla Host</span><h2 id="host-sheet-title">What are you bringing to {city}?</h2></div>
               <button type="button" aria-label="Close hosting choices" onClick={() => setOpen(false)}><X aria-hidden="true" size={20} /></button>
             </header>
             <nav aria-label="Hosting choices">
               {HOST_DESTINATIONS.map((destination) => (
-                <a key={destination.href} href={destination.href}>
+                <a key={destination.href} href={destination.href} onClick={() => captureHostAction(destination.destinationType)}>
                   <span>{destination.label}</span><ArrowUpRight aria-hidden="true" size={18} />
                 </a>
               ))}

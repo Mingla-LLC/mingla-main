@@ -3,8 +3,17 @@
 // marketing root. Vendor denied/opt-out modes can still initialize, persist,
 // load configuration, and transmit; explicit Mingla grant dominates loading.
 
-import { useEffect, useState, type ReactNode } from 'react'
+import Script from 'next/script'
+import { usePathname } from 'next/navigation'
+import { isValidElement, useEffect, useState, type ReactNode } from 'react'
+import type { CaptureResult } from 'posthog-js'
 import type { PostHog } from 'posthog-js'
+import { SITE_ORIGIN } from '@/lib/site'
+import {
+  cleanCityHubPathname,
+  isCityHubPathname,
+  sanitizeCityHubAnalytics,
+} from '@/lib/city-hub-analytics'
 
 const POSTHOG_HOST =
   process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com'
@@ -59,6 +68,12 @@ export function persistMarketingConsent(value: MarketingConsentValue): void {
   window.dispatchEvent(new Event(MARKETING_CONSENT_EVENT))
 }
 
+export function subscribeMarketingConsent(listener: () => void): () => void {
+  if (typeof window === 'undefined') return () => undefined
+  window.addEventListener(MARKETING_CONSENT_EVENT, listener)
+  return () => window.removeEventListener(MARKETING_CONSENT_EVENT, listener)
+}
+
 function initializeGrantedGa(): void {
   const target = window as unknown as GtagTarget
   target.dataLayer = target.dataLayer ?? []
@@ -79,6 +94,60 @@ function initializeGrantedGa(): void {
   })
 }
 
+function cityHubGaLocation(pathname: string): string | null {
+  const cleanPathname = cleanCityHubPathname(pathname)
+  return cleanPathname === null ? null : new URL(cleanPathname, SITE_ORIGIN).toString()
+}
+
+function sanitizeCityHubPostHogEvent(event: CaptureResult | null): CaptureResult | null {
+  if (event === null) return null
+  const sanitized = sanitizeCityHubAnalytics(event.event, event.properties)
+  const token = event.properties?.token
+  if (sanitized === null || typeof token !== 'string') return null
+  return {
+    ...event,
+    properties: {
+      token,
+      distinct_id: 'city_hub_anonymous',
+      ...sanitized.properties,
+    },
+  }
+}
+
+function postHogEventTouchesCityHub(event: CaptureResult | null): boolean {
+  if (typeof window !== 'undefined' && isCityHubPathname(window.location.pathname)) return true
+  const capturedUrl = event?.properties?.$current_url
+  if (typeof capturedUrl !== 'string') return false
+  try {
+    return isCityHubPathname(new URL(capturedUrl).pathname)
+  } catch {
+    return false
+  }
+}
+
+function routeAwarePostHogBeforeSend(event: CaptureResult | null): CaptureResult | null {
+  return postHogEventTouchesCityHub(event) ? sanitizeCityHubPostHogEvent(event) : event
+}
+
+function cityHubPostHogConfig(pathname: string): Partial<PostHog['config']> {
+  const cityHub = isCityHubPathname(pathname)
+  return {
+    capture_pageview: cityHub ? false : true,
+    capture_pageleave: cityHub ? false : true,
+    autocapture: cityHub ? false : true,
+    capture_exceptions: cityHub ? false : true,
+    disable_session_recording: cityHub ? true : false,
+    advanced_disable_flags: cityHub,
+    advanced_disable_feature_flags_on_first_load: cityHub,
+    request_batching: cityHub ? false : true,
+    disable_compression: cityHub,
+    person_profiles: cityHub ? 'never' : 'identified_only',
+    // This stays route-aware even when an already-booted SDK crosses a Next
+    // client boundary before the configuration effect can disable auto events.
+    before_send: routeAwarePostHogBeforeSend,
+  }
+}
+
 async function bootGrantedMarketingAnalytics(): Promise<void> {
   if (typeof window === 'undefined' || readMarketingConsent() !== 'granted') return
   initializeGrantedGa()
@@ -93,13 +162,8 @@ async function bootGrantedMarketingAnalytics(): Promise<void> {
       ui_host: POSTHOG_HOST,
       // Issue #2795: each public origin owns its own consent decision.
       cross_subdomain_cookie: false,
-      person_profiles: 'identified_only',
-      capture_pageview: true,
-      capture_pageleave: true,
+      ...cityHubPostHogConfig(window.location.pathname),
       opt_out_capturing_by_default: true,
-      autocapture: true,
-      capture_exceptions: true,
-      disable_session_recording: false,
       session_recording: {
         maskAllInputs: true,
         maskInputOptions: { password: true, email: true },
@@ -110,7 +174,7 @@ async function bootGrantedMarketingAnalytics(): Promise<void> {
     posthog.opt_in_capturing()
     // Init's automatic pageview was suppressed by opt-out-default; emit one
     // explicit post-grant pageview and never replay pre-grant activity.
-    posthog.capture('$pageview')
+    if (!isCityHubPathname(window.location.pathname)) posthog.capture('$pageview')
     posthogClient = posthog
   } catch (error) {
     console.warn('[marketing analytics] PostHog init failed (non-fatal):', error)
@@ -136,8 +200,26 @@ export function captureMarketing(
   event: string,
   properties?: Record<string, unknown>,
 ): void {
-  if (readMarketingConsent() !== 'granted' || posthogClient === null) return
+  if (readMarketingConsent() !== 'granted') return
   try {
+    if (isCityHubPathname(window.location.pathname)) {
+      const sanitized = sanitizeCityHubAnalytics(event, properties)
+      if (sanitized === null) return
+      posthogClient?.capture(sanitized.event, sanitized.properties, {
+        send_instantly: true,
+        transport: 'XHR',
+      })
+      const pageLocation = cityHubGaLocation(window.location.pathname)
+      if (pageLocation !== null) {
+        ;(window as unknown as GtagTarget).gtag?.('event', sanitized.event, {
+          ...sanitized.properties,
+          page_location: pageLocation,
+          page_referrer: '',
+        })
+      }
+      return
+    }
+    if (posthogClient === null) return
     posthogClient.capture(event, properties)
   } catch (error) {
     console.warn('[marketing analytics] capture failed (non-fatal):', error)
@@ -147,6 +229,7 @@ export function captureMarketing(
 export function captureMarketingConsentGrantOnce(): void {
   if (consentGrantCaptured || readMarketingConsent() !== 'granted') return
   consentGrantCaptured = true
+  if (isCityHubPathname(window.location.pathname)) return
   captureMarketing('consent_granted')
   ;(window as unknown as GtagTarget).gtag?.('event', 'consent_granted')
 }
@@ -155,7 +238,39 @@ interface PostHogProviderProps {
   children: ReactNode
 }
 
+function CityHubGoogleAnalytics({ gaId, pathname }: { readonly gaId: string; readonly pathname: string }) {
+  const pageLocation = cityHubGaLocation(pathname)
+
+  useEffect(() => {
+    if (pageLocation === null) return
+    ;(window as unknown as GtagTarget).gtag?.('config', gaId, {
+      send_page_view: false,
+      page_location: pageLocation,
+      page_referrer: '',
+    })
+  }, [gaId, pageLocation])
+
+  if (pageLocation === null || !/^G-[A-Z0-9-]+$/.test(gaId)) return null
+  const config = JSON.stringify({
+    send_page_view: false,
+    page_location: pageLocation,
+    page_referrer: '',
+  })
+  return (
+    <>
+      <Script
+        id="_next-ga-city-init"
+        dangerouslySetInnerHTML={{
+          __html: `window.dataLayer=window.dataLayer||[];window.gtag=window.gtag||function(){window.dataLayer.push(arguments)};window.gtag('js',new Date());window.gtag('config',${JSON.stringify(gaId)},${config});`,
+        }}
+      />
+      <Script id="_next-ga-city" src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaId)}`} />
+    </>
+  )
+}
+
 export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
+  const pathname = usePathname()
   const [enabled, setEnabled] = useState(false)
 
   useEffect(() => {
@@ -168,5 +283,14 @@ export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
     return () => window.removeEventListener(MARKETING_CONSENT_EVENT, resolveGrant)
   }, [])
 
+  useEffect(() => {
+    if (!enabled || posthogClient === null) return
+    posthogClient.set_config(cityHubPostHogConfig(pathname ?? ''))
+  }, [enabled, pathname])
+
+  if (enabled && isCityHubPathname(pathname)) {
+    const gaId = isValidElement<{ gaId?: unknown }>(children) ? children.props.gaId : null
+    return typeof gaId === 'string' ? <CityHubGoogleAnalytics gaId={gaId} pathname={pathname ?? ''} /> : null
+  }
   return enabled ? children : null
 }

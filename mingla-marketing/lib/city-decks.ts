@@ -25,6 +25,7 @@ import { RALEIGH_SHOWCASE_EVENTS } from '@/lib/raleigh-showcase-events'
 import { LAGOS_SHOWCASE_PLACES } from '@/lib/lagos-showcase-places'
 import { LAGOS_INTENT_PLANS } from '@/lib/lagos-intent-plans'
 import { LAGOS_SHOWCASE_EVENTS } from '@/lib/lagos-showcase-events'
+import { cityHubForSlug, type CityHubRecord } from '@/content/cities/registry'
 
 /** The three currently-seeded marketing cities. DC is the universal fallback. */
 export type CityKey = 'dc' | 'raleigh' | 'lagos'
@@ -39,24 +40,36 @@ export interface CityDeck {
   events: readonly ShowcaseEvent[]
 }
 
+function requireCityRecord(slug: string): CityHubRecord {
+  const record = cityHubForSlug(slug)
+  if (!record) throw new Error(`Missing city hub registry record for ${slug}`)
+  return record
+}
+
+const DECK_CITY_RECORDS: Record<CityKey, CityHubRecord> = {
+  dc: requireCityRecord('washington-dc'),
+  raleigh: requireCityRecord('raleigh-nc'),
+  lagos: requireCityRecord('lagos'),
+}
+
 export const CITY_DECKS: Record<CityKey, CityDeck> = {
   dc: {
     key: 'dc',
-    label: 'Washington DC',
+    label: DECK_CITY_RECORDS.dc.city,
     places: DC_SHOWCASE_PLACES,
     intents: DC_INTENT_PLANS,
     events: DC_SHOWCASE_EVENTS,
   },
   raleigh: {
     key: 'raleigh',
-    label: 'Raleigh',
+    label: DECK_CITY_RECORDS.raleigh.city,
     places: RALEIGH_SHOWCASE_PLACES,
     intents: RALEIGH_INTENT_PLANS,
     events: RALEIGH_SHOWCASE_EVENTS,
   },
   lagos: {
     key: 'lagos',
-    label: 'Lagos',
+    label: DECK_CITY_RECORDS.lagos.city,
     places: LAGOS_SHOWCASE_PLACES,
     intents: LAGOS_INTENT_PLANS,
     events: LAGOS_SHOWCASE_EVENTS,
@@ -67,11 +80,12 @@ export const CITY_DECKS: Record<CityKey, CityDeck> = {
 export const DEFAULT_CITY: CityKey = 'dc'
 
 /** City centers (lat, lng) for the haversine nearest-city pick. */
-const CITY_CENTERS: Record<CityKey, { lat: number; lng: number }> = {
-  dc: { lat: 38.9072873, lng: -77.0369274 },
-  raleigh: { lat: 35.7795897, lng: -78.6381787 },
-  lagos: { lat: 6.6137395, lng: 3.3552568 },
-}
+const CITY_CENTERS: Record<CityKey, { lat: number; lng: number }> = Object.fromEntries(
+  Object.entries(DECK_CITY_RECORDS).map(([key, record]) => {
+    if (!record.marketingDeckCenter) throw new Error(`Missing marketing deck center for ${record.slug}`)
+    return [key, record.marketingDeckCenter]
+  }),
+) as Record<CityKey, { lat: number; lng: number }>
 
 /**
  * Max distance (km) a visitor may be from the NEAREST seeded city center and

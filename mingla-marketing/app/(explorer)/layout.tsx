@@ -1,4 +1,5 @@
 import '@/components/cutout/cutout.css'
+import '@/components/cities/city-hubs.css'
 
 export default function ExplorerLayout({ children }: { children: React.ReactNode }) {
   return (

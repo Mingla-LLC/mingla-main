@@ -41,6 +41,8 @@ export default async function LagosCityReviewPage({
       </header>
 
       <CityCatalogue
+        cityName="Lagos"
+        cityPath={CURRENT_PATH}
         places={snapshot.places}
         plans={snapshot.plans}
         initialType={initialType}

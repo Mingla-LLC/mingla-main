@@ -98,7 +98,7 @@ const LAGOS_PLACE_SNAPSHOT: readonly PlaceSnapshotRow[] = [
   ['bc99d5c2-fb60-4cb6-9952-01469a47dabc', 'Funzia World', 'play', 163.8, true, 'ChIJzyjtDKz1OxARI0is2Q1qaXM/0.jpg', 4.4, 81, '12B Africa Ln, off Admiralty Rd, Lekki Phase 1, Lagos 101233, Nigeria'],
 ] as const
 
-function placeFromSnapshot(row: PlaceSnapshotRow): CataloguePlace {
+function placeFromSnapshot(row: PlaceSnapshotRow, cityPath: string): CataloguePlace {
   const [placePoolId, name, categorySlug, signalScore, aiBlended, photoPath, rating, reviewCount, address] = row
   const category = EXPLORER_CATEGORIES.find((candidate) => candidate.slug === categorySlug)
   if (!category) throw new Error(`Unknown Explorer category: ${categorySlug}`)
@@ -117,12 +117,12 @@ function placeFromSnapshot(row: PlaceSnapshotRow): CataloguePlace {
     address,
     scoredAt: SCORE_TIMESTAMPS[categorySlug],
     sourceUpdatedAt: SOURCE_UPDATED_AT,
-    detailHref: `${CITY_PATH}?type=places&detail=place:${placePoolId}`,
+    detailHref: `${cityPath}?type=places&detail=place:${placePoolId}`,
   }
 }
 
-export function getLagosRankedPlaces(): readonly CataloguePlace[] {
-  const rows = LAGOS_PLACE_SNAPSHOT.map(placeFromSnapshot)
+export function getLagosRankedPlaces(cityPath = CITY_PATH): readonly CataloguePlace[] {
+  const rows = LAGOS_PLACE_SNAPSHOT.map((row) => placeFromSnapshot(row, cityPath))
   if (rows.length !== 50 || new Set(rows.map((row) => row.placePoolId)).size !== 50) {
     throw new Error('The Lagos review snapshot must contain exactly 50 unique places')
   }
@@ -134,8 +134,8 @@ export function getLagosRankedPlaces(): readonly CataloguePlace[] {
   return rows
 }
 
-export function getLagosCuratedPlans(): readonly CataloguePlan[] {
-  const placesByName = new Map(getLagosRankedPlaces().map((place) => [place.name, place]))
+export function getLagosCuratedPlans(cityPath = CITY_PATH): readonly CataloguePlan[] {
+  const placesByName = new Map(getLagosRankedPlaces(cityPath).map((place) => [place.name, place]))
   return LAGOS_INTENT_PLANS.map((plan) => ({
     kind: 'plan' as const,
     generatedCardId: `lagos-editorial-${plan.id}`,
@@ -154,13 +154,13 @@ export function getLagosCuratedPlans(): readonly CataloguePlan[] {
     duration: null,
     price: null,
     generatedAt: '2026-09-02',
-    detailHref: `${CITY_PATH}?type=plans&detail=plan:lagos-editorial-${plan.id}`,
+    detailHref: `${cityPath}?type=plans&detail=plan:lagos-editorial-${plan.id}`,
   }))
 }
 
-export function getLagosCatalogueSnapshot(): {
+export function getLagosCatalogueSnapshot(cityPath = CITY_PATH): {
   readonly places: readonly CataloguePlace[]
   readonly plans: readonly CataloguePlan[]
 } {
-  return { places: getLagosRankedPlaces(), plans: getLagosCuratedPlans() }
+  return { places: getLagosRankedPlaces(cityPath), plans: getLagosCuratedPlans(cityPath) }
 }
