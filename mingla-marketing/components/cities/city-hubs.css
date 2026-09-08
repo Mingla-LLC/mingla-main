@@ -8,6 +8,7 @@
 }
 
 .city-hub-root > [data-cutout] > .cut-shell { position: static; }
+.city-hub-root > [data-cutout] > .cut-shell { display: flow-root; }
 .city-hub-root [data-cutout] { --cut-muted: var(--city-muted-light); }
 .city-hub-root [data-cutout] [data-cut-band='dark'] { --cut-muted: var(--city-muted-dark); }
 
