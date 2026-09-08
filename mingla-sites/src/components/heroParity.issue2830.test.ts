@@ -126,3 +126,21 @@ describe("#2830 whole-site parity, by measurement", () => {
     expect(has(/@media \(min-width: 720px\)[\s\S]{0,200}aspect-ratio:\s*16 \/ 9/)).toBe(false);
   });
 });
+
+/*
+ * #2830 — an eyebrow labels the section; it never speaks for the brand.
+ */
+describe("#2830 the renderer does not write copy for the brand", () => {
+  const renderer = fs.readFileSync(
+    path.resolve(process.cwd(), "src/components/RestaurantV1.tsx"),
+    "utf8",
+  ).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+
+  it("labels sections by what they are", () => {
+    // Comments stripped above: these strings appear in the note explaining
+    // exactly this, and a bare search would match my own explanation.
+    expect(renderer).not.toContain('label="In the room"');
+    expect(renderer).not.toContain('label="In motion"');
+    expect(renderer).toContain('label="Gallery"');
+  });
+});
