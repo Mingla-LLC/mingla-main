@@ -234,6 +234,21 @@ a {
   white-space: nowrap;
 }
 
+/*
+ * #2830 — the header navigation is a disclosure on phones.
+ *
+ * `display: contents` keeps the panel out of the layout entirely on desktop, so
+ * the inner nav sits in the header grid exactly as it did before this became a
+ * disclosure. Nothing about the desktop header moved.
+ */
+.nav-panel {
+  display: contents;
+}
+
+.nav-burger {
+  display: none;
+}
+
 .site-header nav {
   display: flex;
   justify-content: center;
@@ -250,6 +265,34 @@ a {
   align-items: center;
   text-decoration: none;
   white-space: nowrap;
+}
+
+.burger-bars {
+  display: block;
+  position: relative;
+  width: 20px;
+  height: 14px;
+}
+
+.burger-bars span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: currentColor;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.burger-bars span:nth-child(1) { top: 0; }
+.burger-bars span:nth-child(2) { top: 6px; }
+.burger-bars span:nth-child(3) { top: 12px; }
+
+.burger-bars.open span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.burger-bars.open span:nth-child(2) { opacity: 0; }
+.burger-bars.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .burger-bars span { transition: none; }
 }
 
 .header-action {
@@ -645,10 +688,65 @@ summary {
     padding: 0 16px;
   }
 
+  /*
+   * Was `display: none` with no control anywhere to reveal it, so a phone could
+   * reach no page but the one it landed on.
+   */
+  .nav-burger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-right: -8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ivory);
+    cursor: pointer;
+  }
+
+  .nav-panel {
+    display: block;
+    position: absolute;
+    top: 64px;
+    left: 0;
+    right: 0;
+    max-height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    /*
+     * Fully opaque, not near-opaque. At 0.98 the page behind stays legible
+     * through the panel and reads as a rendering fault rather than a menu.
+     */
+    background: var(--ink, #101013);
+    border-bottom: 1px solid rgba(240, 238, 233, 0.14);
+    transition: max-height 0.22s ease, visibility 0s linear 0.22s;
+  }
+
+  .nav-panel.open {
+    max-height: 70svh;
+    overflow-y: auto;
+    visibility: visible;
+    transition: max-height 0.24s ease, visibility 0s;
+  }
+
   .site-header nav {
-    order: 3;
-    grid-column: 1 / -1;
-    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 8px 0 12px;
+    overflow-x: visible;
+  }
+
+  .site-header nav a {
+    min-height: 52px;
+    padding: 0 20px;
+    font-size: 0.95rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nav-panel { transition: none; }
   }
 
   .page-content {

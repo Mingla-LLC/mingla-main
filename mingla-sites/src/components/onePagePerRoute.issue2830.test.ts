@@ -18,6 +18,9 @@ const read = (relative: string) =>
 
 const renderer = read("src/components/RestaurantV1.tsx");
 const sitemap = read("src/app/sitemap.ts");
+// Comments discuss these attributes by name, so assertions that look for an
+// attribute must not match the prose explaining it.
+const siteNav = read("src/components/SiteNav.tsx").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
 
 describe("#2830 one page per route", () => {
   it("renders the CURRENT page, not every page at once", () => {
@@ -33,7 +36,27 @@ describe("#2830 one page per route", () => {
   });
 
   it("marks the current page for assistive technology", () => {
-    expect(renderer).toContain('aria-current={navPage.role === current.role ? "page" : undefined}');
+    // The header nav became a disclosure component so phones have a way to
+    // reach any page at all. The marking survives the move: the renderer still
+    // computes which page is current, and SiteNav is what stamps aria-current.
+    expect(renderer).toContain("current: navPage.role === current.role");
+    expect(siteNav).toContain('aria-current={link.current ? "page" : undefined}');
+  });
+
+  it("the header navigation can be opened on a phone", () => {
+    // It used to be display:none with no control anywhere to reveal it.
+    const styles = read("src/app/styles.css");
+    expect(siteNav).toContain("aria-expanded={open}");
+    expect(siteNav).toContain("aria-controls={panelId}");
+    expect(styles).toContain(".nav-burger");
+    expect(styles).not.toMatch(/\.site-header nav \{[^}]*display: none/);
+  });
+
+  it("every navigation link is in the server-rendered HTML", () => {
+    // Crawlers and find-in-page must see the whole navigation whether the
+    // panel is open or shut, so the links are never conditionally rendered.
+    expect(siteNav).toContain("links.map((link)");
+    expect(siteNav).not.toMatch(/open\s*&&\s*links\.map/);
   });
 
   it("the fact rail belongs to the homepage only", () => {
