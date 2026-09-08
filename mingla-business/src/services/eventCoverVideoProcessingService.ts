@@ -486,7 +486,13 @@ const loadVideoCompressor = (): VideoCompressorModule | null => {
 // So: downscale to 1080p on the way in. A quarter of the pixels of 4K, well
 // above anything the delivery ladder serves, and a job a phone can actually
 // finish.
-const COMPRESSION_MAX_EDGE_PX = 1920;
+// #3134 — 1280, not 1920. Bunny's delivery ladder tops out at 720p in this
+// project (`play_720p.mp4` on every applied cover), so 1080p is a rung nobody
+// is served: it costs the phone a bigger encode and the host a bigger upload to
+// produce pixels the provider then discards. 1280 is exactly what gets
+// delivered, and four times the pixels of the 640 the library's `auto` mode
+// silently used — which is why a real device's cover came back 360x640.
+const COMPRESSION_MAX_EDGE_PX = 1280;
 // `auto` reports progress rarely enough that the sheet showed a bare spinner
 // with no percentage. This asks for an update every 1%, which also gives the
 // stall detector below a real signal to watch instead of silence.

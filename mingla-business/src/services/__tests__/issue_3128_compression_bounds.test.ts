@@ -164,9 +164,13 @@ describe("issue #3128 — local compression is bounded and honest", () => {
 
     const options = mockCompress.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(options.compressionMethod).toBe("manual");
-    // 1080p longest edge: a quarter of 4K's pixels, still above the delivery
-    // ladder's top rung.
-    expect(options.maxSize).toBe(1920);
+    // #3134 — 720p longest edge, not 1080p. Bunny's delivery ladder tops out at
+    // 720p in this project, so 1080p is a rung nobody is served: it costs the
+    // phone a bigger encode and the host a bigger upload for pixels the
+    // provider discards. This is also four times the pixels of the 640 the
+    // library's `auto` mode silently used, which is why a real device's cover
+    // came back 360x640.
+    expect(options.maxSize).toBe(1280);
     // And a real progress signal, so the sheet is not a bare spinner and the
     // stall detector has something to watch.
     expect(options.progressDivider).toBe(1);

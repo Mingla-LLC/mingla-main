@@ -537,6 +537,10 @@ export const handleReaper = async (
           bunnyGetVideo: deps.bunnyGetVideo,
           destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
           serviceRoleClient: deps.serviceRoleClient,
+          // #3134 — the reconciler is already a retry; it must not also sit
+          // through the webhook's identity re-poll. If the hash is not there
+          // yet, the next tick (now one minute away) asks again.
+          sleep: (): Promise<void> => Promise.resolve(),
         },
       );
       if (response.ok) reconciled += 1;

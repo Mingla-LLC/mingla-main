@@ -31,11 +31,29 @@ const logWebhook = (
   else console.log("[event-cover-video-webhook]", line);
 };
 
+// #3134 — how long the identity re-poll below is willing to wait for Bunny to
+// publish `originalHash`. Four attempts at 1.5s is ~6s of added latency in the
+// worst case, deliberately well inside a webhook client's patience: turning a
+// prompt 503 into a timeout would be strictly worse than the 503.
+const IDENTITY_REFETCH_ATTEMPTS = 4;
+const IDENTITY_REFETCH_DELAY_MS = 1_500;
+
 const defaultDeps = {
   bunnyGetVideo,
   destroyCoverVideoAsset,
   serviceRoleClient,
 };
+
+// #3134 — the identity re-poll's wait, injectable so a test can drive it
+// without spending real seconds. Deliberately OPTIONAL and kept out of
+// `defaultDeps`: every existing caller and test builds that object literally,
+// and a newly required key would break them all at type-check for no reason.
+type WebhookDeps = typeof defaultDeps & {
+  sleep?: (ms: number) => Promise<void>;
+};
+
+const realSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 // META-ORCH-1270 — auto-apply a ready event-target draft_auto job to its event.
 // Extracted so the Bunny finalize can reuse the SAME write path the Cloudinary
@@ -98,7 +116,7 @@ const mergeBunnyPayload = (
 export const handleBunnyWebhook = async (
   req: Request,
   rawBody: string,
-  deps: typeof defaultDeps,
+  deps: WebhookDeps,
 ): Promise<Response> => {
   const signatureHeader = req.headers.get("x-bunnystream-signature");
   // META-ORCH-1270 — Bunny's confirmed v1 signing envelope (docs.bunny.net/stream/webhooks).
@@ -316,7 +334,7 @@ export const handleBunnyWebhook = async (
     return jsonResponse({ ok: true, ignored: `status_${status}` });
   }
 
-  const video = await deps.bunnyGetVideo(videoGuid);
+  let video = await deps.bunnyGetVideo(videoGuid);
   if (!video.ok) {
     logWebhook("provider_unavailable", {
       jobId: existingJob.id,
@@ -328,10 +346,34 @@ export const handleBunnyWebhook = async (
       detail: video.reason,
     }, 503);
   }
+  // #3134 — Bunny populates `originalHash` a beat AFTER it reports Finished, so
+  // the first webhook for a healthy video routinely arrives before the hash we
+  // verify against exists. Answering 503 immediately is correct in principle —
+  // we will not publish an unverified asset — but it hands the job to Bunny's
+  // own retry backoff, and we have no say in when it comes back. Measured on a
+  // real device 2026-09-08: job 8d38ff2b uploaded at 17:06:15 and the webhook
+  // that finally stuck arrived at 17:37:45. The hash was still null at 17:09
+  // and 17:11.
+  //
+  // So ask again for a few seconds before giving up. The window is deliberately
+  // shorter than a webhook client's patience — this must never turn a fast 503
+  // into a timeout, which would be strictly worse — and the reconciler (now
+  // ticking every minute, migration 20270618003134) remains the backstop for
+  // the case where the hash really is not ready yet.
+  if (existingJob.source_sha256 && !video.video.originalHash) {
+    for (let attempt = 0; attempt < IDENTITY_REFETCH_ATTEMPTS; attempt += 1) {
+      await (deps.sleep ?? realSleep)(IDENTITY_REFETCH_DELAY_MS);
+      const refetched = await deps.bunnyGetVideo(videoGuid);
+      if (!refetched.ok) break;
+      video = refetched;
+      if (video.video.originalHash) break;
+    }
+  }
   if (existingJob.source_sha256 && !video.video.originalHash) {
     logWebhook("source_identity_pending", {
       jobId: existingJob.id,
       videoGuid,
+      refetchAttempts: IDENTITY_REFETCH_ATTEMPTS,
     }, "warn");
     return jsonResponse({ error: "source_identity_pending" }, 503);
   }
@@ -542,7 +584,7 @@ export const handleBunnyWebhook = async (
 
 export const handleEventCoverVideoWebhook = async (
   req: Request,
-  deps: typeof defaultDeps = defaultDeps,
+  deps: WebhookDeps = defaultDeps,
 ): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
