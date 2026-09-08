@@ -312,6 +312,30 @@ check("the alert is not conditioned away on any event", () => {
   );
 });
 
+// ---------------------------------------------------------------------------
+// 6. Issue #3113 — the governed-lane notice runs in THIS lane.
+// ---------------------------------------------------------------------------
+
+/**
+ * #3113 turned "a governed function is in the selection" from a workflow failure
+ * into a loud notice. That is the #2113 shape — a failure becoming a
+ * non-failure — so its fence must actually execute somewhere, and the only lane
+ * already path-triggered on `scripts/ci/select-changed-edge-functions.mjs` is
+ * this one. Spawning it here means a change to the selector cannot merge without
+ * the #3113 assertions running, without adding a lane
+ * (I-2148-CI-TOPOLOGY-BOUNDED) and without touching a workflow file (which would
+ * move the frozen #2148 provider seal).
+ */
+check("the #3113 governed-lane notice assertions pass", () => {
+  const result = spawnSync(
+    "node",
+    [join(repoRoot, "scripts/ci/issue3113-governed-lane-notice.test.mjs")],
+    { cwd: repoRoot, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /issue #3113 governed lane notice: PASS/);
+});
+
 if (failures > 0) {
   console.error(`\nissue #2948 deploy invocation shape: ${failures} FAILED`);
   process.exit(1);
