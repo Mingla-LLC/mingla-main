@@ -85,6 +85,7 @@ const terminalCodes = new Set([
   "operation_conflict", "provider_not_configured", "source_ack_deadline_exceeded",
   "source_ack_timeout", "source_mismatch", "source_over_cap",
   "source_transport_expired", "source_video_track_missing", "validation_error",
+  "video_compression_failed", "video_compression_stalled",
 ]);
 // Issue #3075 — one live transfer per operation, module-scoped so it spans hook
 // instances. A JOIN was the obvious shape and it is wrong: a remount would await
@@ -647,6 +648,10 @@ export function useEventCoverVideoUpload(
       if (!replacing) projectPreparation({ phase: "compressing", percent: null });
       const compressed = await compressVideoLocally({
         uri: file.uri, bytes: file.bytes, durationMs: file.durationMs,
+        // issue #3128 — if compressing stalls or fails and the original already
+        // fits the pipeline, upload it untouched rather than losing the cover
+        // to an optimisation the host never asked for.
+        maxUncompressedBytes: EVENT_COVER_SOURCE_MAX_BYTES,
         onProgress: (progress) => {
           if (!replacing) projectPreparation({ phase: "compressing", percent: progress.percent });
         },

@@ -456,10 +456,36 @@ const loadVideoCompressor = ():
   }
 };
 
+// Issue #3128 — the compressor used to be awaited with NOTHING guarding it: no
+// timeout, no abort, no progress requirement. Observed on a real iPhone,
+// production build, 2026-09-08: "Optimizing video…" for 19 minutes and then a
+// generic "We couldn't finish this video upload", with no job row ever created
+// — so nothing was ever uploaded and the word "upload" was a lie about which
+// step died.
+//
+// Two guards, and one change of posture.
+//
+// STALL, not total time. The window resets on every progress callback, so a
+// genuinely slow compression of a large 4K clip survives; one that has gone
+// quiet does not. A hard ceiling sits behind it for the case where progress
+// keeps arriving but the job never ends.
+//
+// PREFER SUCCEEDING. Compression is an optimisation, not a requirement. If the
+// original is already within the pipeline's size contract, a failed or stalled
+// compression falls back to uploading it untouched rather than failing the
+// host's cover for an optimisation they never asked for.
+//
+// NAME THE REAL CAUSE. When we do have to fail, the underlying error travels
+// with the message. The generic fallback in `safeUploadError` told us nothing
+// about why, on the one path where "why" is the whole question.
+const COMPRESSION_STALL_MS = 90_000;
+const COMPRESSION_CEILING_MS = 600_000;
+
 export const compressVideoLocally = async (input: {
   uri: string;
   bytes: number;
   durationMs: number;
+  maxUncompressedBytes?: number;
   onProgress?: (progress: CompressionProgress) => void;
 }): Promise<{
   uri: string;
@@ -468,30 +494,75 @@ export const compressVideoLocally = async (input: {
   wasCompressed: boolean;
 }> => {
   const compressor = loadVideoCompressor();
-  if (compressor === null || input.bytes < 5 * 1024 * 1024) {
-    return {
-      uri: input.uri,
-      bytes: input.bytes,
-      durationMs: input.durationMs,
-      wasCompressed: false,
-    };
-  }
-  const compressedUri = await compressor.compress(
-    input.uri,
-    { compressionMethod: "auto" },
-    (progress: number) => {
-      input.onProgress?.({
-        percent: clampPercent(progress * 100),
-        phase: "compressing",
-      });
-    },
-  );
-  return {
-    uri: compressedUri,
-    bytes: await statFileSize(compressedUri, input.bytes),
+  const untouched = {
+    uri: input.uri,
+    bytes: input.bytes,
     durationMs: input.durationMs,
-    wasCompressed: true,
+    wasCompressed: false,
   };
+  if (compressor === null || input.bytes < 5 * 1024 * 1024) return untouched;
+
+  const startedAt = Date.now();
+  let lastProgressAt = startedAt;
+  let settled = false;
+  let stallTimer: ReturnType<typeof setInterval> | null = null;
+
+  const deadline = new Promise<never>((_, reject) => {
+    stallTimer = setInterval(() => {
+      if (settled) return;
+      const now = Date.now();
+      const quietFor = now - lastProgressAt;
+      const ranFor = now - startedAt;
+      if (quietFor < COMPRESSION_STALL_MS && ranFor < COMPRESSION_CEILING_MS) return;
+      reject(
+        new EventCoverVideoProcessingError(
+          "video_compression_stalled",
+          quietFor >= COMPRESSION_STALL_MS
+            ? `Compressing stopped responding after ${Math.round(quietFor / 1000)}s.`
+            : `Compressing did not finish within ${Math.round(ranFor / 1000)}s.`,
+        ),
+      );
+    }, 5_000);
+  });
+
+  try {
+    const compressedUri = await Promise.race([
+      compressor.compress(
+        input.uri,
+        { compressionMethod: "auto" },
+        (progress: number) => {
+          lastProgressAt = Date.now();
+          input.onProgress?.({
+            percent: clampPercent(progress * 100),
+            phase: "compressing",
+          });
+        },
+      ),
+      deadline,
+    ]);
+    return {
+      uri: compressedUri,
+      bytes: await statFileSize(compressedUri, input.bytes),
+      durationMs: input.durationMs,
+      wasCompressed: true,
+    };
+  } catch (compressionError) {
+    // Compression is an optimisation. If the original already fits, ship it.
+    const fallbackCeiling = input.maxUncompressedBytes;
+    if (typeof fallbackCeiling === "number" && input.bytes <= fallbackCeiling) {
+      return untouched;
+    }
+    const detail = compressionError instanceof Error
+      ? compressionError.message
+      : String(compressionError);
+    throw new EventCoverVideoProcessingError(
+      "video_compression_failed",
+      `Your phone couldn\u2019t prepare this video (${detail}). Try a shorter clip, or record at a lower resolution.`,
+    );
+  } finally {
+    settled = true;
+    if (stallTimer !== null) clearInterval(stallTimer);
+  }
 };
 
 const edgeError = async (
