@@ -33,6 +33,8 @@ const VIEWPORTS = [
   { width: 1440, height: 900 },
 ]
 const CHIP_LABELS = ['Group chat', 'Instalments', 'Itineraries']
+const CHROME_START_TIMEOUT_MS = 20_000
+const CHILD_OUTPUT_TAIL_BYTES = 8 * 1024
 const BROWSER_CLOSE_ACK_TIMEOUT_MS = 2_000
 const CHILD_STOP_TIMEOUT_MS = 2_000
 const PROFILE_CLEANUP_POLICY = Object.freeze({
@@ -78,6 +80,11 @@ async function sourceContract() {
   )
   assert.equal(BROWSER_CLOSE_ACK_TIMEOUT_MS, 2_000, 'Browser.close acknowledgement must remain bounded at 2,000ms')
   assert.equal(CHILD_STOP_TIMEOUT_MS, 2_000, 'child termination waits must remain bounded at 2,000ms')
+  assert.equal(CHROME_START_TIMEOUT_MS, 20_000, 'Chrome startup must retain its 20,000ms ceiling')
+  assert.equal(CHILD_OUTPUT_TAIL_BYTES, 8 * 1024, 'Chrome output diagnostics must remain capped at 8KiB per stream')
+  const source = read(`scripts/${self}`)
+  assert.match(source, /await waitForChromeStart\(/, 'Chrome startup must use the diagnostic owner')
+  assert.doesNotMatch(source, /Chrome did not start'\)/, 'the old opaque Chrome-start predicate must not return')
 
   const lifecycle = []
   const listeners = new Map()
@@ -121,6 +128,82 @@ async function sourceContract() {
   fakeChild.emit('exit', 0, null)
   await stopping
   assert.equal(stopSettled, true, 'stopChild must resolve after the child emits terminal exit')
+
+  const fakeChrome = () => {
+    const child = new EventEmitter()
+    child.exitCode = null
+    child.signalCode = null
+    child.stdout = new EventEmitter()
+    child.stderr = new EventEmitter()
+    return child
+  }
+  const exitedChrome = fakeChrome()
+  const exitedDiagnostics = observeChrome(exitedChrome)
+  exitedChrome.stderr.emit('data', 'missing shared library')
+  exitedChrome.exitCode = 127
+  exitedChrome.emit('exit', 127, null)
+  await assert.rejects(
+    () => waitForChromeStart({ debugPort: 9222, chrome: exitedChrome, diagnostics: exitedDiagnostics, timeoutMs: 1 }),
+    /endpoint=http:\/\/127\.0\.0\.1:9222\/json\/version[\s\S]*exitCode=127[\s\S]*stderr=missing shared library/,
+    'an immediate Chrome exit must expose its terminal state and stderr tail',
+  )
+  const spawnErrorChrome = fakeChrome()
+  const spawnErrorDiagnostics = observeChrome(spawnErrorChrome)
+  spawnErrorChrome.emit('error', new Error('spawn EACCES'))
+  await assert.rejects(
+    () => waitForChromeStart({ debugPort: 9223, chrome: spawnErrorChrome, diagnostics: spawnErrorDiagnostics, timeoutMs: 1 }),
+    /spawnError=spawn EACCES[\s\S]*stdout=<empty>[\s\S]*stderr=<empty>/,
+    'a Chrome spawn error must fail fast with labeled empty tails',
+  )
+  const timeoutChrome = fakeChrome()
+  const timeoutDiagnostics = observeChrome(timeoutChrome)
+  timeoutChrome.stdout.emit('data', 'stdout tail')
+  timeoutChrome.stderr.emit('data', 'stderr tail')
+  await assert.rejects(
+    () => waitForChromeStart({ debugPort: 9224, chrome: timeoutChrome, diagnostics: timeoutDiagnostics, timeoutMs: 0 }),
+    /startup timed out[\s\S]*stdout=stdout tail[\s\S]*stderr=stderr tail/,
+    'a Chrome startup timeout must include both bounded output tails',
+  )
+  const capChrome = fakeChrome()
+  const capDiagnostics = observeChrome(capChrome)
+  capChrome.stdout.emit('data', Buffer.concat([Buffer.alloc(CHILD_OUTPUT_TAIL_BYTES, 65), Buffer.from('TAIL')]))
+  assert.equal(Buffer.byteLength(capDiagnostics.snapshot().stdout), CHILD_OUTPUT_TAIL_BYTES)
+  assert.equal(capDiagnostics.snapshot().stdout.endsWith('TAIL'), true, 'stdout diagnostics must retain the newest capped tail')
+  const readyChrome = fakeChrome()
+  const readyDiagnostics = observeChrome(readyChrome)
+  await waitForChromeStart({
+    debugPort: 9225,
+    chrome: readyChrome,
+    diagnostics: readyDiagnostics,
+    fetchVersion: async () => ({ ok: true }),
+    timeoutMs: 1,
+  })
+  assert.throws(
+    () => assert.match('Chrome did not start: fetch failed', /endpoint=/),
+    /endpoint/,
+    'the old generic startup error must fail the diagnostic contract',
+  )
+  const primaryFailure = new Error('primary runtime failure')
+  const successfulCloseCalls = []
+  const successfulClosePage = {
+    async closeBrowserGracefully() { successfulCloseCalls.push('graceful-close') },
+    close() { successfulCloseCalls.push('socket-close') },
+  }
+  assert.equal(
+    await retainPrimaryAfterCdpClose(primaryFailure, successfulClosePage),
+    primaryFailure,
+    'a successful graceful close must not overwrite an earlier runtime failure',
+  )
+  assert.deepEqual(successfulCloseCalls, ['graceful-close', 'socket-close'])
+  const failedClosePage = {
+    async closeBrowserGracefully() { throw new Error('graceful close failure') },
+    close() {},
+  }
+  assert.equal(
+    await retainPrimaryAfterCdpClose(primaryFailure, failedClosePage),
+    primaryFailure,
+    'an earlier runtime failure must outrank a graceful-close failure',
+  )
   process.stdout.write('PASS #2983 tester source guard: CI-wired seven-width real-browser contract\n')
 }
 
@@ -159,6 +242,78 @@ async function waitFor(check, message, timeoutMs = 20_000) {
     await new Promise((resolve) => setTimeout(resolve, 60))
   }
   throw new Error(`${message}${lastError ? `: ${lastError.message}` : ''}`)
+}
+
+function appendTail(tail, chunk) {
+  const combined = Buffer.concat([tail, Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))])
+  return combined.length > CHILD_OUTPUT_TAIL_BYTES ? combined.subarray(-CHILD_OUTPUT_TAIL_BYTES) : combined
+}
+
+function observeChrome(chrome) {
+  let stdout = Buffer.alloc(0)
+  let stderr = Buffer.alloc(0)
+  let spawnError
+  let exitCode = chrome.exitCode ?? null
+  let signalCode = chrome.signalCode ?? null
+  chrome.stdout?.on('data', (chunk) => { stdout = appendTail(stdout, chunk) })
+  chrome.stderr?.on('data', (chunk) => { stderr = appendTail(stderr, chunk) })
+  chrome.once('error', (error) => { spawnError = error })
+  chrome.once('exit', (code, signal) => {
+    exitCode = code
+    signalCode = signal
+  })
+  return {
+    snapshot() {
+      return {
+        stdout: stdout.length ? stdout.toString('utf8') : '<empty>',
+        stderr: stderr.length ? stderr.toString('utf8') : '<empty>',
+        spawnError,
+        exitCode: chrome.exitCode ?? exitCode,
+        signalCode: chrome.signalCode ?? signalCode,
+      }
+    },
+  }
+}
+
+function chromeStartupError({ endpoint, diagnostics, reason, lastError }) {
+  const state = diagnostics.snapshot()
+  return new Error(
+    `Chrome startup failed: ${reason}; endpoint=${endpoint}; exitCode=${state.exitCode ?? '<null>'}; `
+    + `signalCode=${state.signalCode ?? '<null>'}; spawnError=${state.spawnError?.message ?? '<none>'}; `
+    + `lastProbeError=${lastError?.message ?? '<none>'}; stdout=${state.stdout}; stderr=${state.stderr}`,
+  )
+}
+
+async function waitForChromeStart({
+  debugPort,
+  chrome,
+  diagnostics,
+  fetchVersion = fetch,
+  timeoutMs = CHROME_START_TIMEOUT_MS,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
+  const endpoint = `http://127.0.0.1:${debugPort}/json/version`
+  const deadline = Date.now() + timeoutMs
+  let lastError
+  while (Date.now() < deadline) {
+    const state = diagnostics.snapshot()
+    if (state.spawnError) throw chromeStartupError({ endpoint, diagnostics, reason: 'Chrome emitted a spawn error', lastError })
+    if (state.exitCode !== null || state.signalCode !== null) {
+      throw chromeStartupError({ endpoint, diagnostics, reason: 'Chrome exited before CDP became ready', lastError })
+    }
+    try {
+      if ((await fetchVersion(endpoint)).ok) return
+    } catch (error) {
+      lastError = error
+    }
+    await sleep(60)
+  }
+  const state = diagnostics.snapshot()
+  if (state.spawnError) throw chromeStartupError({ endpoint, diagnostics, reason: 'Chrome emitted a spawn error', lastError })
+  if (state.exitCode !== null || state.signalCode !== null) {
+    throw chromeStartupError({ endpoint, diagnostics, reason: 'Chrome exited before CDP became ready', lastError })
+  }
+  throw chromeStartupError({ endpoint, diagnostics, reason: 'startup timed out', lastError })
 }
 
 class CdpPage {
@@ -239,6 +394,11 @@ async function closeCdpBeforeSocket(page) {
     page.close()
   }
   return gracefulCloseError
+}
+
+async function retainPrimaryAfterCdpClose(primaryError, page) {
+  const closeError = await closeCdpBeforeSocket(page)
+  return primaryError ?? closeError
 }
 
 async function createPage(debugPort) {
@@ -424,12 +584,14 @@ async function runtimeContract() {
     '--disable-extensions',
     'about:blank',
   ], { stdio: ['ignore', 'pipe', 'pipe'] })
+  const chromeDiagnostics = observeChrome(chrome)
   let page
+  let primaryError
   try {
     if (serverPort) {
       await waitFor(async () => (await request(serverPort, '/robots.txt')) === 200, 'Next server did not start')
     }
-    await waitFor(async () => (await fetch(`http://127.0.0.1:${debugPort}/json/version`)).ok, 'Chrome did not start')
+    await waitForChromeStart({ debugPort, chrome, diagnostics: chromeDiagnostics })
     page = await createPage(debugPort)
     await page.send('Emulation.setEmulatedMedia', {
       media: 'screen',
@@ -487,10 +649,12 @@ async function runtimeContract() {
     }
     assert.deepEqual(failures, [], `Host Trips responsive contract failed:\n- ${failures.join('\n- ')}`)
     process.stdout.write(`PASS #2983 Host Trips real-browser geometry ${VIEWPORTS.length}/${VIEWPORTS.length} widths\n`)
+  } catch (error) {
+    primaryError = error
   } finally {
-    let teardownError
+    let teardownError = primaryError
     let chromeTerminal = false
-    if (page) teardownError = await closeCdpBeforeSocket(page)
+    if (page) teardownError = await retainPrimaryAfterCdpClose(teardownError, page)
     try {
       await stopChild(chrome)
       chromeTerminal = true
