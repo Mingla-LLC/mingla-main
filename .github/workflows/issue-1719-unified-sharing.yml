@@ -91,6 +91,13 @@ jobs:
           supabase/functions/event-cover-video-webhook/index.issue2905.silent200.test.ts
           supabase/functions/event-cover-video-webhook/__tests__/bunny-webhook.test.ts
           supabase/functions/event-cover-video-reaper/__tests__/
+      # #3134 — a healthy cover video must not wait on Bunny's retry backoff
+      # because its hash was a beat late. A real device spent 31 of its 32
+      # minutes between "bytes complete" and the webhook that finally stuck.
+      - name: "#3134 identity re-poll before the webhook gives up"
+        run: >-
+          deno test --allow-env --allow-read --allow-net --no-check
+          supabase/functions/event-cover-video-webhook/index.issue3134.identityRepoll.test.ts
       # #2967 + #2974 — the acknowledgement deadline, the TUS-expiry death, and
       # the client-side "a 4xx is never a spinner" rule. They live in this lane
       # because the CI origin registry is locked at 200 origins

@@ -17,6 +17,7 @@
 
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
+const mockPlatform = { OS: "ios" };
 const mockCompress = jest.fn<(...args: unknown[]) => Promise<string>>();
 const mockGetFileInfoAsync = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
@@ -31,13 +32,18 @@ jest.mock("react-native-compressor", () => ({
     activateBackgroundTask: () => mockActivateBackgroundTask(),
     deactivateBackgroundTask: () => mockDeactivateBackgroundTask(),
   },
-}), { virtual: true });
+}));
 
-jest.mock("react-native", () => ({ Platform: { OS: "ios" } }), { virtual: true });
+// Mocked WITHOUT `virtual`, matching the sibling cover-video suites: all three
+// modules are really installed, and a virtual mock of a real module resolved
+// differently under CI's full-suite run than it did locally — the compressor
+// module came back absent, `compressVideoLocally` returned the untouched file,
+// and the stall assertions saw a resolve instead of a throw.
+jest.mock("react-native", () => ({ Platform: mockPlatform }));
 
-jest.mock("../platformFileSystem", () => ({
+jest.mock("../../utils/platformFileSystem", () => ({
   getFileInfoAsync: (...args: unknown[]) => mockGetFileInfoAsync(...args),
-}), { virtual: true });
+}));
 
 import {
   compressVideoLocally,
@@ -51,6 +57,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.useRealTimers();
   mockGetFileInfoAsync.mockResolvedValue({ exists: true, size: 40_000_000 });
+  mockPlatform.OS = "ios";
   mockActivateBackgroundTask.mockResolvedValue(undefined);
   mockDeactivateBackgroundTask.mockResolvedValue(undefined);
 });
@@ -164,9 +171,13 @@ describe("issue #3128 — local compression is bounded and honest", () => {
 
     const options = mockCompress.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(options.compressionMethod).toBe("manual");
-    // 1080p longest edge: a quarter of 4K's pixels, still above the delivery
-    // ladder's top rung.
-    expect(options.maxSize).toBe(1920);
+    // #3134 — 720p longest edge, not 1080p. Bunny's delivery ladder tops out at
+    // 720p in this project, so 1080p is a rung nobody is served: it costs the
+    // phone a bigger encode and the host a bigger upload for pixels the
+    // provider discards. This is also four times the pixels of the 640 the
+    // library's `auto` mode silently used, which is why a real device's cover
+    // came back 360x640.
+    expect(options.maxSize).toBe(1280);
     // And a real progress signal, so the sheet is not a bare spinner and the
     // stall detector has something to watch.
     expect(options.progressDivider).toBe(1);

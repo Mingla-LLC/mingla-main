@@ -704,7 +704,31 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //   - the sibling policy audit still reports zero errors at 124 PR-family
   //     workflows.
   // Every earlier re-derivation is preserved, not replaced.
-  "2bcd0c3620e02c056372d0672c81227dc3a95c419a418af61bbe8da628bbda39";
+  //
+  // [TEST-MOD-APPROVED #3134] Re-derived again. #3134 added ONE deno test step
+  // (plus its comment) to the existing unified-sharing lane, so the cover-video
+  // webhook's new identity re-poll runs where every other cover-video edge
+  // contract already does. That lane is PR-family, so its non-concurrency
+  // document is inside this digest, exactly as every re-derivation above. It is
+  // named here the way they all name their lanes — never by its `.yml` path,
+  // because a workflow FILENAME written in this file is counted by
+  // `discoverWorkflowProviders()` as an external provider reference and moves
+  // the frozen #2148 provider seal.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING:
+  //   - the change is PURELY ADDITIVE: the workflow diff is 7 insertions and 0
+  //     deletions, and grepping added AND removed lines for `concurrency`,
+  //     `group:` and `cancel-in-progress` returns ZERO. No concurrency block,
+  //     group expression or cancellation value is touched, and no `paths:`
+  //     entry is added — the lane already scopes
+  //     `supabase/functions/event-cover-video-*/**`, where the new test lives.
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED: the diff is
+  //     a single `M`, no workflow added, removed or renamed, and the count
+  //     assertion (subtest 1) passes at 124 untouched.
+  //   - the policy audit itself still reports zero errors at 124 PR-family
+  //     workflows — the sibling test above, which passes.
+  // Every earlier re-derivation is preserved, not replaced.
+  "f9cfc0e528e98798833cae0cd47756d7c255fa56f1b299fdb18052db9893e83e";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
