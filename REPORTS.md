@@ -18,6 +18,8 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-08 — Six per-issue test lanes stopped running on every pull request: they now start only when a change touches something they actually read, taking a documentation-only pull request from about 25 minutes of CI to about 5, while a merge to main still runs all six in full so nothing loses coverage (#3072, PR #3110)
+- 2026-09-08 — A change to a governed edge function no longer turns main red: the automatic lane names the functions, says they need the governed deploy lane, and passes, instead of failing a build it was never going to complete (#3113, PR #3115)
 - 2026-09-03 — A red `main` now blocks merges instead of letting them land blind, and emails a human when it happens; the check itself runs on 39 of the last 40 `main` commits, up from 32 (#2909, PR #3101)
 - 2026-09-03 — The bundle-baseline job stopped failing on every `main` commit: it asked GitHub for one branch's pull requests instead of scanning the repository's entire 2,008-pull history, which had just crossed a 2,000-record safety cap (#3096, PR #3099)
 - 2026-09-03 — Brand admins can export only the contact details their selected brand was given from People on iOS, Android, and web, with logged preparation and expiring downloads while Mingla-only circle data stays private (#1776, PR #3090)
