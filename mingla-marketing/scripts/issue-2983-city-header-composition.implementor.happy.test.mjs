@@ -2,6 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
@@ -17,6 +18,9 @@ const SELECTOR = ".page-system-root.city-hub-root[data-host-acquisition='true'] 
 const SHELL_SELECTOR = '.city-hub-root > [data-cutout] > .cut-shell'
 const WIDTHS = [320, 390, 639, 640, 760, 767, 768, 1024, 1440]
 const SLUGS = ['lagos', 'durham-nc', 'cary-nc', 'raleigh-nc', 'new-york-city', 'brussels', 'paris', 'london', 'fort-lauderdale', 'washington-dc']
+const BROWSER_CLOSE_ACK_TIMEOUT_MS = 2_000
+const CHILD_STOP_TIMEOUT_MS = 2_000
+const PROFILE_CLEANUP_POLICY = Object.freeze({ recursive: true, force: true, maxRetries: 8, retryDelay: 100 })
 const CHROME = [
   process.env.CHROME_BIN,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -24,7 +28,11 @@ const CHROME = [
 ].filter(Boolean).find((candidate) => fs.existsSync(candidate))
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
 
-function sourceContract() {
+function removeBrowserProfile(profile, remove = fs.rmSync) {
+  return remove(profile, PROFILE_CLEANUP_POLICY)
+}
+
+async function sourceContract() {
   const css = read('components/cities/city-hubs.css').replace(/\/\*[\s\S]*?\*\//g, '')
   const nav = css.slice(css.indexOf(SELECTOR)).match(/\{([^}]+)\}/)?.[1] ?? ''
   assert.match(nav, /position:\s*absolute\s*;/, 'public-city navigation must scroll away naturally')
@@ -44,6 +52,79 @@ function sourceContract() {
   assert(scripts.build.includes(`node --experimental-websocket scripts/${SELF} --built-only`), 'built/browser guard must execute in the marketing build lane')
   assert(scripts.build.includes('node scripts/issue-2990-audience-navigation.implementor.happy.test.mjs && next build'), 'existing audience guard/build adjacency must remain intact')
   assert(!scripts.build.includes('NODE_OPTIONS'), 'WebSocket compatibility must not change every Node invocation')
+  assert.equal(BROWSER_CLOSE_ACK_TIMEOUT_MS, 2_000, 'Browser.close acknowledgement must remain bounded at 2,000ms')
+  assert.equal(CHILD_STOP_TIMEOUT_MS, 2_000, 'child termination waits must remain bounded at 2,000ms')
+  const cleanupCalls = []
+  removeBrowserProfile('/tmp/mingla-2983-city-header-policy-proof', (target, options) => cleanupCalls.push({ target, options }))
+  assert.deepEqual(cleanupCalls, [{
+    target: '/tmp/mingla-2983-city-header-policy-proof',
+    options: { recursive: true, force: true, maxRetries: 8, retryDelay: 100 },
+  }], 'browser profile cleanup must use the exact bounded retry policy')
+  const persistentCleanupError = new Error('persistent cleanup failure')
+  assert.throws(
+    () => removeBrowserProfile('/tmp/mingla-2983-city-header-cleanup-failure', () => { throw persistentCleanupError }),
+    (error) => error === persistentCleanupError,
+    'persistent browser profile cleanup errors must remain fatal',
+  )
+
+  const lifecycle = []
+  const listeners = new Map()
+  const socket = {
+    addEventListener(type, listener) { listeners.set(type, listener) },
+    send(payload) {
+      const request = JSON.parse(payload)
+      lifecycle.push(`send:${request.method}`)
+      queueMicrotask(() => listeners.get('message')?.({ data: JSON.stringify({ id: request.id, result: {} }) }))
+    },
+    close() { lifecycle.push('socket.close') },
+  }
+  const page = new Page('ws://city-header-lifecycle-proof', () => socket)
+  listeners.get('open')?.()
+  assert.equal(await closeCdpBeforeSocket(page), undefined)
+  assert.deepEqual(lifecycle, ['send:Browser.close', 'socket.close'], 'Browser.close must acknowledge before the CDP socket closes')
+
+  const fakeChild = () => {
+    const child = new EventEmitter()
+    child.exitCode = null
+    child.signalCode = null
+    child.kills = []
+    child.kill = (signal) => { child.kills.push(signal); return true }
+    return child
+  }
+  const heldChild = fakeChild()
+  let stopSettled = false
+  const stopping = stopChild(heldChild, { termTimeoutMs: 1, killTimeoutMs: 100 }).then(() => { stopSettled = true })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.deepEqual(heldChild.kills, ['SIGTERM', 'SIGKILL'], 'child fallback must escalate from SIGTERM to SIGKILL')
+  assert.equal(stopSettled, false, 'stopChild must wait for terminal exit after SIGKILL')
+  heldChild.exitCode = 0
+  heldChild.emit('exit', 0, null)
+  await stopping
+  const neverExits = fakeChild()
+  await assert.rejects(
+    () => stopChild(neverExits, { termTimeoutMs: 1, killTimeoutMs: 1 }),
+    /SIGKILL/,
+    'a child that never exits after SIGKILL must fail teardown',
+  )
+
+  const noAckChrome = fakeChild()
+  const noAckPage = { closeBrowserGracefully: async () => { throw new Error('Browser.close acknowledgement failed') }, close() {} }
+  const profileCalls = []
+  const teardown = teardownBrowser({
+    page: noAckPage,
+    chrome: noAckChrome,
+    server: { exitCode: 0, signalCode: null },
+    profile: '/tmp/mingla-2983-city-header-terminal-proof',
+    removeProfile: (target) => profileCalls.push(target),
+    childTimeouts: { termTimeoutMs: 1, killTimeoutMs: 100 },
+  })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.deepEqual(noAckChrome.kills, ['SIGTERM', 'SIGKILL'], 'a failed CDP acknowledgement must still stop the owned Chrome child')
+  assert.deepEqual(profileCalls, [], 'profile removal must wait for terminal Chrome exit')
+  noAckChrome.exitCode = 0
+  noAckChrome.emit('exit', 0, null)
+  await assert.rejects(() => teardown, /Browser\.close acknowledgement failed/)
+  assert.deepEqual(profileCalls, ['/tmp/mingla-2983-city-header-terminal-proof'])
   console.log('PASS #2983 city header source: root-owned scrolling nav and command-scoped Node20 compatibility')
 }
 
@@ -88,10 +169,10 @@ async function waitFor(check, label) {
 }
 
 class Page {
-  constructor(url) {
+  constructor(url, createSocket = (webSocketUrl) => new WebSocket(webSocketUrl)) {
     this.id = 0
     this.pending = new Map()
-    this.socket = new WebSocket(url)
+    this.socket = createSocket(url)
     this.ready = new Promise((resolve, reject) => {
       this.socket.addEventListener('open', resolve, { once: true })
       this.socket.addEventListener('error', reject, { once: true })
@@ -100,25 +181,40 @@ class Page {
       const message = JSON.parse(String(data))
       const pending = this.pending.get(message.id)
       if (!pending) return
-      clearTimeout(pending.timer)
-      this.pending.delete(message.id)
       if (message.error) pending.reject(new Error(message.error.message))
       else pending.resolve(message.result)
     })
   }
 
-  async send(method, params = {}) {
+  async sendBounded(method, params, timeoutMs) {
     await this.ready
     const id = ++this.id
-    const result = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+    return new Promise((resolve, reject) => {
+      const finish = (callback, value) => {
+        const pending = this.pending.get(id)
+        if (!pending) return
+        clearTimeout(pending.timer)
         this.pending.delete(id)
-        reject(new Error(`Chrome timed out: ${method}`))
-      }, 30_000)
-      this.pending.set(id, { resolve, reject, timer })
+        callback(value)
+      }
+      const timer = setTimeout(() => {
+        finish(reject, new Error(`Chrome timed out: ${method}`))
+      }, timeoutMs)
+      this.pending.set(id, {
+        resolve: (result) => finish(resolve, result),
+        reject: (error) => finish(reject, error),
+        timer,
+      })
+      try {
+        this.socket.send(JSON.stringify({ id, method, params }))
+      } catch (error) {
+        finish(reject, error)
+      }
     })
-    this.socket.send(JSON.stringify({ id, method, params }))
-    return result
+  }
+
+  async send(method, params = {}) {
+    return this.sendBounded(method, params, 30_000)
   }
 
   async evaluate(expression) {
@@ -127,7 +223,23 @@ class Page {
     return result.result.value
   }
 
+  async closeBrowserGracefully() {
+    return this.sendBounded('Browser.close', {}, BROWSER_CLOSE_ACK_TIMEOUT_MS)
+  }
+
   close() { this.socket.close() }
+}
+
+async function closeCdpBeforeSocket(page) {
+  let gracefulCloseError
+  try {
+    await page.closeBrowserGracefully()
+  } catch (error) {
+    gracefulCloseError = error
+  } finally {
+    page.close()
+  }
+  return gracefulCloseError
 }
 
 const settle = `(async () => {
@@ -165,13 +277,62 @@ function sameGeometry(actual, before, label) {
   assert.equal(actual.overflow, 0, `${label}: horizontal overflow`)
 }
 
-async function stopChild(child) {
-  if (!child || child.exitCode !== null || child.signalCode !== null) return
-  await new Promise((resolve) => {
-    const timer = setTimeout(() => { child.kill('SIGKILL'); resolve() }, 2_000)
-    child.once('exit', () => { clearTimeout(timer); resolve() })
-    child.kill('SIGTERM')
+function waitForChildExit(child, timeoutMs, message) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const onExit = () => {
+      clearTimeout(timer)
+      resolve()
+    }
+    const timer = setTimeout(() => {
+      child.removeListener('exit', onExit)
+      reject(new Error(message))
+    }, timeoutMs)
+    child.once('exit', onExit)
+    if (child.exitCode !== null || child.signalCode !== null) onExit()
   })
+}
+
+async function stopChild(child, {
+  termTimeoutMs = CHILD_STOP_TIMEOUT_MS,
+  killTimeoutMs = CHILD_STOP_TIMEOUT_MS,
+} = {}) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return
+  const afterTerm = waitForChildExit(child, termTimeoutMs, `child did not exit after SIGTERM within ${termTimeoutMs}ms`)
+  child.kill('SIGTERM')
+  try {
+    await afterTerm
+    return
+  } catch {
+    if (child.exitCode !== null || child.signalCode !== null) return
+  }
+  const afterKill = waitForChildExit(child, killTimeoutMs, `child did not exit after SIGKILL within ${killTimeoutMs}ms`)
+  child.kill('SIGKILL')
+  await afterKill
+}
+
+async function teardownBrowser({ page, chrome, server, profile, removeProfile = removeBrowserProfile, childTimeouts }) {
+  let teardownError = page ? await closeCdpBeforeSocket(page) : undefined
+  let chromeTerminal = false
+  try {
+    await stopChild(chrome, childTimeouts)
+    chromeTerminal = true
+  } catch (error) {
+    teardownError ??= error
+  }
+  try {
+    await stopChild(server, childTimeouts)
+  } catch (error) {
+    teardownError ??= error
+  }
+  if (chromeTerminal) {
+    try {
+      removeProfile(profile)
+    } catch (error) {
+      teardownError ??= error
+    }
+  }
+  if (teardownError) throw teardownError
 }
 
 async function browserContract() {
@@ -267,13 +428,11 @@ async function browserContract() {
     process.stderr.write(output)
     throw error
   } finally {
-    page?.close()
-    await Promise.all([stopChild(chrome), stopChild(server)])
-    fs.rmSync(profile, { recursive: true, force: true })
+    await teardownBrowser({ page, chrome, server, profile })
   }
 }
 
-if (!BUILT_ONLY) sourceContract()
+if (!BUILT_ONLY) await sourceContract()
 if (!SOURCE_ONLY) {
   artifactContract()
   await browserContract()
