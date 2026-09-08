@@ -67,8 +67,24 @@ describe("#2830 the server prices the order", () => {
   });
 
   it("the cart re-asks Mingla whenever the order changes", () => {
-    expect(cart).toContain("void reprice(");
+    /*
+     * Repricing is now DERIVED from the cart rather than fired from the click
+     * handler, which is what makes a cart restored from a previous visit show
+     * a real total instead of nothing. So the assertion is that the pricing
+     * request is keyed to the order lines, not that a particular function is
+     * called.
+     */
     expect(cart).toContain('mode: "preview"');
+    expect(cart).toContain("}, [lines]);");
+    expect(cart).toContain('body: JSON.stringify({ mode: "preview", lines })');
+  });
+
+  it("a stale price can never overwrite a newer one", () => {
+    // Two quick taps start two requests. Without this, a slow FIRST response
+    // can land after the second and show a total for a cart nobody has.
+    expect(cart).toContain("AbortController");
+    expect(cart).toContain("controller.abort()");
+    expect(cart).toContain("if (!live) return;");
   });
 
   it("an unavailable item is surfaced rather than silently ordered", () => {
