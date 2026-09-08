@@ -78,6 +78,24 @@ function formatMenuPrice(minor: unknown, currency: unknown): string | null {
  * Found by looking at the page rather than by reading the code, which is the
  * only way this kind of duplication ever shows up.
  */
+/*
+ * #2830 — the second half of a headline in the brand's accent colour.
+ *
+ * gogi's own hero reads "WHERE LAGOS" in ivory over "COMES TO EAT" in gold, and
+ * that two-tone split is most of what makes it look designed rather than
+ * typeset. The rule is generic — split at the word midpoint — so every brand
+ * gets the effect in ITS OWN accent, and nothing about gogi is hardcoded.
+ *
+ * Short headings are left alone: splitting "Our menu" into "Our" and "menu"
+ * would look like a mistake.
+ */
+export function splitHeadline(value: string): { lead: string; accent: string } {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 4) return { lead: value, accent: "" };
+  const at = Math.floor(words.length / 2);
+  return { lead: words.slice(0, at).join(" "), accent: words.slice(at).join(" ") };
+}
+
 function Eyebrow({ label, heading }: { label: string; heading: unknown }) {
   const written = typeof heading === "string" ? heading.trim().toLowerCase() : "";
   if (written === label.trim().toLowerCase()) return null;
@@ -88,7 +106,13 @@ function Block({ block, context, primaryHeading = false }: { block: RestaurantBl
   switch (block.type) {
     case "hero": {
       const Heading = primaryHeading ? "h1" : "h2";
-      return <section className="hero" style={isSafeHref(block.media_url) ? { backgroundImage: `linear-gradient(90deg,rgba(8,6,4,.82),rgba(8,6,4,.18)),url(${JSON.stringify(block.media_url).slice(1, -1)})` } : undefined}>{isSafeHref(block.video_url) && isSafeHref(block.media_url) ? <HeroVideo src={text(block.video_url)} poster={text(block.media_url)} /> : null}<div><Heading>{text(block.heading, "Welcome")}</Heading>{block.subheading ? <p>{text(block.subheading)}</p> : null}<div className="hero-actions">{items(block.ctas).slice(0, 2).map((cta, index) => <SafeLink key={index} href={cta.href} context={context} className={index ? "button ghost" : "button accent"}>{text(cta.label, "Learn more")}</SafeLink>)}</div></div></section>;
+      const headline = splitHeadline(text(block.heading, "Welcome"));
+      /*
+       * The scrim lives in CSS only. It used to be set here AND in `.hero::after`
+       * with the same 0.82 gradient, so it compounded to ~0.97 and buried the
+       * brand's own photography.
+       */
+      return <section className="hero" style={isSafeHref(block.media_url) ? { backgroundImage: `url(${JSON.stringify(block.media_url).slice(1, -1)})` } : undefined}>{isSafeHref(block.video_url) && isSafeHref(block.media_url) ? <HeroVideo src={text(block.video_url)} poster={text(block.media_url)} /> : null}<div><Heading>{headline.lead}{headline.accent ? <>{" "}<span className="accent-line">{headline.accent}</span></> : null}</Heading>{block.subheading ? <p>{text(block.subheading)}</p> : null}<div className="hero-actions">{items(block.ctas).slice(0, 2).map((cta, index) => <SafeLink key={index} href={cta.href} context={context} className={index ? "button ghost" : "button accent"}>{text(cta.label, "Learn more")}</SafeLink>)}</div></div>{primaryHeading ? <span className="hero-scroll" aria-hidden="true">Scroll</span> : null}</section>;
     }
     case "rich_text": return <section className="prose editorial-prose"><h2>{text(block.heading)}</h2>{items(block.paragraphs).map((paragraph, index) => <p key={index}>{text(paragraph.text)}</p>)}</section>;
     case "media_feature": return <section className="feature editorial-feature"><div className="editorial-media">{isSafeHref(block.media_url) ? <img src={text(block.media_url)} alt={text(block.alt)} width={960} height={720} /> : null}</div><div><Eyebrow label="Our story" heading={block.heading} /><h2>{text(block.heading)}</h2><p>{text(block.caption)}</p></div></section>;
@@ -184,8 +208,20 @@ export function RestaurantV1({
     (page.blocks ?? []).some(
       (block) => block.type === "menu_board" && typeof block.venue_id === "string",
     ));
+  /*
+   * #2830 — a site you can order from says so in the header, as gogi's does.
+   * Only when there IS an orderable menu, and only if the page has not already
+   * claimed the slot with a reservation or a menu link.
+   */
+  const headerAction = primaryAction ?? (orderablePage
+    ? {
+      href: hrefForPage(orderablePage as ArtifactPage),
+      label: "Order now",
+      kind: "menu" as const,
+    }
+    : null);
   const contactLink = contact?.type === "contact_handoff"
     ? { href: contact.href, label: text(contact.label, "Contact") }
     : artifact.footer.links?.[0];
-  return <CartScope siteId={artifact.site_id}><SiteTheme artifact={artifact} /><SiteRuntimeClient context={context} /><RevealOnScroll /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand">{artifact.site_settings.display_name}</Link><SiteNav links={navPages.map((navPage) => ({ role: navPage.role, label: String(navPage.nav_label ?? ""), href: hrefForPage(navPage), current: navPage.role === current.role }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.role === current.role} /> : null}{primaryAction ? <SafeLink href={primaryAction.href} context={context} ctaKind={primaryAction.kind} className="header-action">{primaryAction.label}</SafeLink> : null}</header><main id="main">{primaryHeroIndex < 0 ? <h1 className="page-title">{current.title}</h1> : null}<div className="page-content">{current.blocks.map((block, index) => <Fragment key={`${block.type}-${index}`}><Block block={block} context={context} primaryHeading={index === primaryHeroIndex} />{isHome && index === primaryHeroIndex ? <aside className="fact-rail" aria-label="Restaurant facts"><dl><div><dt>Visit</dt><dd>{address || "See restaurant details"}</dd></div><div><dt>Hours</dt><dd>{hours ? `${text(hours.day)} ${text(hours.value)}` : "See current opening hours"}</dd></div><div><dt>Contact</dt><dd>{contactLink && isSafeHref(contactLink.href) ? <SafeLink href={contactLink.href} context={context} ctaKind="contact">{contactLink.label}</SafeLink> : "Contact the restaurant"}</dd></div></dl></aside> : null}</Fragment>)}</div></main><footer className="footer"><div><strong>{artifact.site_settings.display_name}</strong>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}<p>{artifact.footer.legal_text}</p></div><nav aria-label="Footer navigation">{navPages.map((navPage) => <Link key={navPage.role} href={hrefForPage(navPage)}>{navPage.nav_label}</Link>)}</nav><div>{artifact.footer.links?.map((link) => <SafeLink key={link.href} href={link.href}>{link.label}</SafeLink>)}</div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
+  return <CartScope siteId={artifact.site_id}><SiteTheme artifact={artifact} /><SiteRuntimeClient context={context} /><RevealOnScroll /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand">{artifact.site_settings.display_name}</Link><SiteNav links={navPages.map((navPage) => ({ role: navPage.role, label: String(navPage.nav_label ?? ""), href: hrefForPage(navPage), current: navPage.role === current.role }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.role === current.role} /> : null}{headerAction ? <SafeLink href={headerAction.href} context={context} ctaKind={headerAction.kind} className="header-action accent">{headerAction.label}</SafeLink> : null}</header><main id="main">{primaryHeroIndex < 0 ? <h1 className="page-title">{current.title}</h1> : null}<div className="page-content">{current.blocks.map((block, index) => <Fragment key={`${block.type}-${index}`}><Block block={block} context={context} primaryHeading={index === primaryHeroIndex} />{isHome && index === primaryHeroIndex ? <aside className="fact-rail" aria-label="Restaurant facts"><dl><div><dt>Visit</dt><dd>{address || "See restaurant details"}</dd></div><div><dt>Hours</dt><dd>{hours ? `${text(hours.day)} ${text(hours.value)}` : "See current opening hours"}</dd></div><div><dt>Contact</dt><dd>{contactLink && isSafeHref(contactLink.href) ? <SafeLink href={contactLink.href} context={context} ctaKind="contact">{contactLink.label}</SafeLink> : "Contact the restaurant"}</dd></div></dl></aside> : null}</Fragment>)}</div></main><footer className="footer"><div><strong>{artifact.site_settings.display_name}</strong>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}<p>{artifact.footer.legal_text}</p></div><nav aria-label="Footer navigation">{navPages.map((navPage) => <Link key={navPage.role} href={hrefForPage(navPage)}>{navPage.nav_label}</Link>)}</nav><div>{artifact.footer.links?.map((link) => <SafeLink key={link.href} href={link.href}>{link.label}</SafeLink>)}</div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
 }

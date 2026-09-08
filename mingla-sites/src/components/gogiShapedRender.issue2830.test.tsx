@@ -1,4 +1,13 @@
 import { describe, it, expect } from "vitest";
+/*
+ * #2830 — the hero headline is rendered in two tones (its second half carries
+ * the brand accent), so the words are split across an inner <span>. Assert on
+ * the TEXT, not the raw markup: the heading a person reads is unchanged, and
+ * asserting on markup would forbid any future styling of it.
+ */
+const textOf = (html: string) =>
+  html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
 import { renderToStaticMarkup } from "react-dom/server";
 import fs from "node:fs";
 import path from "node:path";
@@ -62,7 +71,7 @@ describe("#2830 gogi-shaped render", () => {
     const menu = renderToStaticMarkup(
       <RestaurantV1 artifact={gogiShaped} page={pageForSlug(gogiShaped, "menu")!} />,
     );
-    expect(home).toContain("Where Lagos comes to eat");
+    expect(textOf(home)).toContain("Where Lagos comes to eat");
     expect(menu).toContain("Coconut rice");
     if (OUT) {
       fs.writeFileSync(path.join(OUT, "gogi-home.html"), page(home));

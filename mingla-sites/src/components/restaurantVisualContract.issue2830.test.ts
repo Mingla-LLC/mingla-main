@@ -24,7 +24,9 @@ describe("#2830 Restaurant Website v1 visual and accessibility contract", () => 
     expect(styles).toContain("min-width: 320px");
     expect(styles).toContain("height: 72px");
     expect(styles).toContain("height: 64px");
-    expect(styles).toContain("88svh");
+    // The hero fills the viewport, matching the reference design it was
+    // measured against. It was a band inside the viewport before.
+    expect(styles).toContain("min-height: 100svh");
     expect(styles).toContain("76svh");
     expect(styles).toContain("max-width: 1200px");
     expect(styles).toContain("@media (min-width: 768px) and (max-width: 1024px)");
