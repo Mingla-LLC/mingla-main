@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-08 — The complete test corpus now runs every night at 03:17 UTC regardless of what anyone changed, so a suite that no pull request happens to touch still gets exercised daily; a nightly failure is reported on the next merge rather than on the night, which is tracked as the remaining gap (#3078, PR #3123)
 - 2026-09-08 — Six per-issue test lanes stopped running on every pull request: they now start only when a change touches something they actually read, taking a documentation-only pull request from about 25 minutes of CI to about 5, while a merge to main still runs all six in full so nothing loses coverage (#3072, PR #3110)
 - 2026-09-08 — A change to a governed edge function no longer turns main red: the automatic lane names the functions, says they need the governed deploy lane, and passes, instead of failing a build it was never going to complete (#3113, PR #3115)
 - 2026-09-03 — A red `main` now blocks merges instead of letting them land blind, and emails a human when it happens; the check itself runs on 39 of the last 40 `main` commits, up from 32 (#2909, PR #3101)
