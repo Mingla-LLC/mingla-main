@@ -54,7 +54,14 @@ describe("#2830 Restaurant Website v1 visual and accessibility contract", () => 
      * both that the hero is the h1 AND that nothing else can claim it.
      */
     expect(renderer).toContain("primaryHeading={index === primaryHeroIndex}");
-    expect(renderer).toContain('<h1 className="page-title">{current.title}</h1>');
+    /*
+     * #2830 -- the bare .page-title became a header band with a breadcrumb, so
+     * the exact source string no longer exists. The INVARIANT it protected is
+     * unchanged and now asserted where it actually lives: a page with no hero
+     * still carries exactly one h1, and it is the page title.
+     */
+    expect(renderer).toContain('<header className="page-header"');
+    expect(renderer).toContain("<h1>{current.title}</h1>");
     expect(renderer).toContain("const Heading = primaryHeading ? \"h1\" : \"h2\";");
     expect(renderer).toContain('className="skip"');
   });

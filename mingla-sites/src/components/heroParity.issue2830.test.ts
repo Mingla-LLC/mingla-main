@@ -73,3 +73,49 @@ describe("#2830 hero parity, by measurement", () => {
     expect(has(/grid-template-columns:\s*auto minmax\(0, 1fr\) auto auto/)).toBe(true);
   });
 });
+
+/*
+ * #2830 — the parity work below the hero. Same approach: assert the measured
+ * value that must be present, and for a rule that was REPLACED, assert the
+ * reverted form is gone. Several of these guard defects that shipped and were
+ * only visible on screen.
+ */
+describe("#2830 whole-site parity, by measurement", () => {
+  it("section headings are subordinate to the page's h1", () => {
+    // 45.89px at a 1043px viewport = 4.4vw. It was 7vw — the hero's own scale
+    // — so every section heading matched the h1 and nothing read as beneath it.
+    expect(has(/font-size:\s*clamp\(1\.9rem, 4\.4vw, 3\.25rem\)/)).toBe(true);
+    expect(has(/font-size:\s*clamp\(2\.6rem, 7vw, 5\.8rem\)/)).toBe(false);
+  });
+
+  it("the eyebrow keeps the reference's tracking", () => {
+    expect(has(/letter-spacing:\s*0\.28em/)).toBe(true);
+  });
+
+  it("an eyebrow inside a feature is still gold", () => {
+    // `.feature p` (0,1,1) outranked `.eyebrow` (0,1,0) and greyed it out.
+    expect(has(/\.feature p:not\(\.eyebrow\)/)).toBe(true);
+  });
+
+  it("the selected menu filter is legible", () => {
+    // It was `background: currentColor` with `color: var(--accent)` and a `> *`
+    // rule that matched nothing, so the label was gold ON gold — invisible.
+    // Scoped to the rule itself: `background: currentColor` is used legitimately
+    // elsewhere, and a bare search also matches the comment explaining this.
+    const pressed = (styles.match(/\.filter\[aria-pressed="true"\]\s*\{[^}]*\}/g) ?? []).join("\n");
+    expect(pressed).not.toBe("");
+    expect(pressed).toContain("#101013");
+    expect(pressed).not.toContain("currentColor");
+  });
+
+  it("an inner page's title is inside a container", () => {
+    // It was a bare .page-title child of <main> with no padding, so "MENU" ran
+    // off the left edge of the screen at every width.
+    expect(has(/\.page-header\s*\{/)).toBe(true);
+    expect(has(/\.page-title\s*\{\s*margin-block/)).toBe(false);
+  });
+
+  it("vertical reels are never cropped to landscape", () => {
+    expect(has(/@media \(min-width: 720px\)[\s\S]{0,200}aspect-ratio:\s*16 \/ 9/)).toBe(false);
+  });
+});

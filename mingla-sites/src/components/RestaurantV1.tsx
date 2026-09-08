@@ -57,6 +57,13 @@ function formatMenuPrice(minor: unknown, currency: unknown): string | null {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
       currency,
+      /*
+       * #2830 -- "narrowSymbol" so a naira price reads "₦8,500" and not
+       * "NGN 8,500", which is what the brand's own menu shows. Inside the
+       * existing try: an environment without the ICU data for it throws, and
+       * the catch already falls back rather than showing nothing.
+       */
+      currencyDisplay: "narrowSymbol",
       maximumFractionDigits: minor % 100 === 0 ? 0 : 2,
     }).format(minor / 100);
   } catch {
@@ -224,10 +231,19 @@ export function RestaurantV1({
     ? { href: contact.href, label: text(contact.label, "Contact") }
     : artifact.footer.links?.[0];
   /*
+   * #2830 -- an inner page gets a header band, as every inner page on the
+   * reference does. Its backdrop is the brand's OWN hero photograph, not a
+   * stock image and not a guess: if the home page has no hero, the band simply
+   * renders flat.
+   */
+  const pageBackdrop = text(
+    firstBlock(homePage(artifact)?.blocks ?? [], "hero")?.media_url,
+  );
+  /*
    * #2830 -- the facts sit INSIDE the hero, at its foot, as they do on the
    * site this renders. They used to be a band below it, which pushed them off
    * a full-height hero entirely and read as a separate section.
    */
   const factRail = <aside className="fact-rail" aria-label="Restaurant facts"><dl><div><dt>Visit</dt><dd>{address || "See restaurant details"}</dd></div><div><dt>Hours</dt><dd>{hours ? `${text(hours.day)} ${text(hours.value)}` : "See current opening hours"}</dd></div><div><dt>Contact</dt><dd>{contactLink && isSafeHref(contactLink.href) ? <SafeLink href={contactLink.href} context={context} ctaKind="contact">{contactLink.label}</SafeLink> : "Contact the restaurant"}</dd></div></dl></aside>;
-  return <CartScope siteId={artifact.site_id}><SiteTheme artifact={artifact} /><SiteRuntimeClient context={context} /><RevealOnScroll /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand">{artifact.site_settings.display_name}</Link><SiteNav links={navPages.map((navPage) => ({ role: navPage.role, label: String(navPage.nav_label ?? ""), href: hrefForPage(navPage), current: navPage.role === current.role }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.role === current.role} /> : null}{headerAction ? <SafeLink href={headerAction.href} context={context} ctaKind={headerAction.kind} className="header-action accent">{headerAction.label}</SafeLink> : null}</header><main id="main">{primaryHeroIndex < 0 ? <h1 className="page-title">{current.title}</h1> : null}<div className="page-content">{current.blocks.map((block, index) => <Fragment key={`${block.type}-${index}`}><Block block={block} context={context} primaryHeading={index === primaryHeroIndex} facts={isHome && index === primaryHeroIndex ? factRail : undefined} /></Fragment>)}</div></main><footer className="footer"><div><strong>{artifact.site_settings.display_name}</strong>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}<p>{artifact.footer.legal_text}</p></div><nav aria-label="Footer navigation">{navPages.map((navPage) => <Link key={navPage.role} href={hrefForPage(navPage)}>{navPage.nav_label}</Link>)}</nav><div>{artifact.footer.links?.map((link) => <SafeLink key={link.href} href={link.href}>{link.label}</SafeLink>)}</div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
+  return <CartScope siteId={artifact.site_id}><SiteTheme artifact={artifact} /><SiteRuntimeClient context={context} /><RevealOnScroll /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand">{artifact.site_settings.display_name}</Link><SiteNav links={navPages.map((navPage) => ({ role: navPage.role, label: String(navPage.nav_label ?? ""), href: hrefForPage(navPage), current: navPage.role === current.role }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.role === current.role} /> : null}{headerAction ? <SafeLink href={headerAction.href} context={context} ctaKind={headerAction.kind} className="header-action accent">{headerAction.label}</SafeLink> : null}</header><main id="main">{primaryHeroIndex < 0 ? <header className="page-header" style={isSafeHref(pageBackdrop) ? { backgroundImage: `url(${JSON.stringify(pageBackdrop).slice(1, -1)})` } : undefined}><div><h1>{current.title}</h1><nav className="crumbs" aria-label="Breadcrumb"><Link href="/">Home</Link><span aria-hidden="true">/</span><span aria-current="page">{current.title}</span></nav></div></header> : null}<div className="page-content">{current.blocks.map((block, index) => <Fragment key={`${block.type}-${index}`}><Block block={block} context={context} primaryHeading={index === primaryHeroIndex} facts={isHome && index === primaryHeroIndex ? factRail : undefined} /></Fragment>)}</div></main><footer className="footer"><div><strong>{artifact.site_settings.display_name}</strong>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}<p>{artifact.footer.legal_text}</p></div><nav aria-label="Footer navigation">{navPages.map((navPage) => <Link key={navPage.role} href={hrefForPage(navPage)}>{navPage.nav_label}</Link>)}</nav><div>{artifact.footer.links?.map((link) => <SafeLink key={link.href} href={link.href}>{link.label}</SafeLink>)}</div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
 }

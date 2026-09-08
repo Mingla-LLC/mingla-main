@@ -118,3 +118,32 @@ describe("#2830 the hero carries the facts", () => {
     expect(textOf(html)).not.toContain("→");
   });
 });
+
+/*
+ * #2830 — the h1 invariant, asserted by RENDERING rather than by matching the
+ * component's source text. A page with no hero gets exactly one h1 and it is
+ * the page's title; the home page's h1 is the hero's headline.
+ */
+describe("#2830 exactly one h1 per page", () => {
+  const render = (slug?: string) => renderToStaticMarkup(
+    RestaurantV1({
+      artifact: gogiShaped as unknown as RestaurantArtifact,
+      page: slug
+        ? pageForSlug(gogiShaped as unknown as RestaurantArtifact, slug)!
+        : homePage(gogiShaped as unknown as RestaurantArtifact)!,
+    }) as never,
+  );
+
+  it("gives the home page one h1, and it is the hero's headline", () => {
+    const html = render();
+    expect(html.match(/<h1[\s>]/g)?.length).toBe(1);
+    expect(textOf(html.match(/<h1[\s\S]*?<\/h1>/)![0])).toContain("Where Lagos");
+  });
+
+  it("gives an inner page one h1, and it is the page title", () => {
+    const html = render("menu");
+    expect(html.match(/<h1[\s>]/g)?.length).toBe(1);
+    expect(html).toContain('class="page-header"');
+    expect(html).toContain('aria-label="Breadcrumb"');
+  });
+});

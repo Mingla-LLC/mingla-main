@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-import { sectionForHash } from "../lib/menuSections";
+import { menuSectionSlug, sectionForHash } from "../lib/menuSections";
 import { useCart } from "./CartScope";
 
 /**
@@ -36,6 +36,14 @@ type Priced = {
   error?: string;
 };
 
+/*
+ * The group a section belongs to: the part before an em/en dash, or the whole
+ * name when there is no separator ("DESSERT" is its own group).
+ */
+function groupOf(name: string): string {
+  return name.split(/\s+[\u2014\u2013-]\s+/)[0]?.trim() || name;
+}
+
 function money(minor: number | null | undefined, currency: string | null | undefined): string | null {
   if (typeof minor !== "number" || !Number.isFinite(minor)) return null;
   if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) return null;
@@ -43,6 +51,13 @@ function money(minor: number | null | undefined, currency: string | null | undef
     return new Intl.NumberFormat(undefined, {
       style: "currency",
       currency,
+      /*
+       * #2830 -- "narrowSymbol" so a naira price reads "₦8,500" and not
+       * "NGN 8,500", which is what the brand's own menu shows. Inside the
+       * existing try: an environment without the ICU data for it throws, and
+       * the catch already falls back rather than showing nothing.
+       */
+      currencyDisplay: "narrowSymbol",
       maximumFractionDigits: minor % 100 === 0 ? 0 : 2,
     }).format(minor / 100);
   } catch {
@@ -88,13 +103,32 @@ export function MenuCart({ items }: { items: CartItem[] }) {
   const [pricing, setPricing] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
 
-  const sections = useMemo(
-    () => ["all", ...Array.from(new Set(items.map((item) => item.section)))],
+  /*
+   * #2830 -- gogi's menu offers four filters (Everything / Food / Drinks /
+   * Dessert), not one per sub-section. Their section names carry the group as
+   * a prefix: "FOOD - Flat Burgers". Where grouping actually collapses
+   * something we filter by the group; where every name is already distinct it
+   * changes nothing, so a brand with flat section names is unaffected.
+   */
+  const names = useMemo(
+    () => Array.from(new Set(items.map((item) => item.section))),
     [items],
   );
+  const groups = useMemo(() => Array.from(new Set(names.map(groupOf))), [names]);
+  const grouped = groups.length > 1 && groups.length < names.length;
+  const sections = useMemo(
+    () => ["all", ...(grouped ? groups : names)],
+    [grouped, groups, names],
+  );
+  /*
+   * A link to one sub-section still works: it resolves against the full names
+   * and then selects that name's group. Without this, grouping would silently
+   * turn every existing #flat-burgers link into "show everything".
+   */
+  const fromHash = sectionForHash(hash, grouped ? [...sections, ...names] : sections);
   const section = override?.hash === hash
     ? override.value
-    : sectionForHash(hash, sections) ?? "all";
+    : (fromHash ? (grouped && fromHash !== "all" ? groupOf(fromHash) : fromHash) : "all");
   const setSection = useCallback(
     (value: string) => setOverride({ hash, value }),
     [hash],
@@ -103,12 +137,27 @@ export function MenuCart({ items }: { items: CartItem[] }) {
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return items.filter((item) =>
-      (section === "all" || item.section === section) &&
+      (section === "all" || (grouped ? groupOf(item.section) === section : item.section === section)) &&
       (needle === "" ||
         item.name.toLowerCase().includes(needle) ||
         (item.description ?? "").toLowerCase().includes(needle))
     );
-  }, [items, query, section]);
+  }, [grouped, items, query, section]);
+
+  /*
+   * #2830 -- the reference lists items UNDER their section heading rather than
+   * as one flat run, which is what makes a 48-item menu scannable. The groups
+   * are derived from what is on screen, so they follow the filter and search.
+   */
+  const visibleSections = useMemo(() => {
+    const order: string[] = [];
+    const bySection = new Map<string, CartItem[]>();
+    for (const item of visible) {
+      if (!bySection.has(item.section)) { order.push(item.section); bySection.set(item.section, []); }
+      bySection.get(item.section)!.push(item);
+    }
+    return order.map((name) => ({ name, rows: bySection.get(name)! }));
+  }, [visible]);
 
   const lines = useMemo(
     () =>
@@ -231,8 +280,11 @@ export function MenuCart({ items }: { items: CartItem[] }) {
         </div>
       </div>
 
+      {visibleSections.map(({ name, rows }) => (
+      <div className="menu-section" key={name}>
+      <h3 id={menuSectionSlug(name)}>{name}</h3>
       <ul className="menu-list">
-        {visible.map((item) => {
+        {rows.map((item) => {
           const price = money(item.price_minor, item.currency);
           const quantity = quantities[item.id] ?? 0;
           return (
@@ -255,8 +307,10 @@ export function MenuCart({ items }: { items: CartItem[] }) {
             </li>
           );
         })}
-        {visible.length === 0 ? <li className="menu-empty">Nothing matches that.</li> : null}
       </ul>
+      </div>
+      ))}
+      {visible.length === 0 ? <p className="menu-empty">Nothing matches that.</p> : null}
 
       {count > 0 ? (
         <button type="button" className="cart-btn" onClick={() => setOpen(true)}>

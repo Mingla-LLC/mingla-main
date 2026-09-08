@@ -562,9 +562,16 @@ main h2,
 
 main h2 {
   margin: 0.5rem 0 1.75rem;
-  font-size: clamp(2.6rem, 7vw, 5.8rem);
-  line-height: 0.92;
-  letter-spacing: -0.035em;
+  /*
+   * #2830 -- measured against the reference: 45.89px at a 1043px viewport,
+   * which is 4.4vw, with line-height 1.05 and letter-spacing OPENED slightly.
+   * It was 7vw -- the hero's own scale -- so every section heading rendered
+   * the same size as the page's h1 and nothing read as subordinate to it.
+   */
+  font-size: clamp(1.9rem, 4.4vw, 3.25rem);
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   text-transform: uppercase;
 }
 
@@ -602,8 +609,13 @@ main h2 {
   filter: saturate(0.9) contrast(1.05);
 }
 
-.feature p,
-.tile p {
+.feature p:not(.eyebrow),
+.tile p:not(.eyebrow) {
+  /*
+   * #2830 -- :not(.eyebrow) because an eyebrow IS a <p>, so this rule (0,1,1)
+   * outranked `.eyebrow` (0,1,0) and quietly greyed out the gold inside every
+   * feature and tile. Nobody chose that.
+   */
   color: var(--muted);
 }
 
@@ -1024,9 +1036,19 @@ summary {
 .filter { font: inherit; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em;
   padding: 0.4rem 0.9rem; border-radius: 999px; cursor: pointer;
   border: 1px solid currentColor; background: transparent; color: inherit; opacity: 0.7; }
-.filter[aria-pressed="true"] { opacity: 1; background: currentColor; }
-.filter[aria-pressed="true"] { color: var(--accent, #cda052); }
-.filter[aria-pressed="true"] > * { color: #101013; }
+/*
+ * #2830 -- the selected chip used `background: currentColor` with
+ * `color: var(--accent)`, and painted its label dark through `> *`. The label
+ * is a bare text node with no element to match, so the text stayed accent-
+ * coloured ON an accent-coloured pill: gold on gold. The selected filter was
+ * INVISIBLE on every menu on every site. Set both colours outright.
+ */
+.filter[aria-pressed="true"] {
+  opacity: 1;
+  background: var(--accent, #cda052);
+  border-color: var(--accent, #cda052);
+  color: #101013;
+}
 .menu-search input { font: inherit; font-size: 0.85rem; padding: 0.45rem 0.8rem;
   border-radius: 999px; border: 1px solid currentColor; background: transparent;
   color: inherit; min-width: 12rem; }
@@ -1082,13 +1104,65 @@ h1, h2, h3 {
 h1 { font-size: clamp(2.75rem, 8vw, 6rem); margin: 0 0 1rem; }
 h2 { font-size: clamp(2rem, 5vw, 3.75rem); margin: 0 0 1rem; }
 h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
-.page-title { margin-block: 3rem 1rem; }
+/*
+ * #2830 -- an inner page's header band. It replaces a bare .page-title that
+ * was a direct child of <main> with no container padding, so on the menu page
+ * the word "MENU" ran off the left edge of the screen at every width.
+ *
+ * Measured against the reference: 57.365px at 1043 wide (5.5vw), line-height
+ * 1.05, weight 600, centred; crumbs 0.18em tracking.
+ */
+.page-header {
+  position: relative;
+  isolation: isolate;
+  padding: clamp(4rem, 13vh, 8rem) max(20px, 4vw) clamp(2.5rem, 6vh, 4rem);
+  text-align: center;
+  background-size: cover;
+  background-position: center;
+}
+
+.page-header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(to top, rgba(8, 6, 4, 0.92), rgba(8, 6, 4, 0.62));
+}
+
+.page-header > div {
+  width: min(100%, 1200px);
+  margin: 0 auto;
+}
+
+.page-header h1 {
+  margin: 0;
+  font-size: clamp(2.1rem, 5.5vw, 4.2rem);
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.crumbs {
+  display: flex;
+  justify-content: center;
+  gap: 0.55rem;
+  margin-top: 0.9rem;
+  font-size: 0.74rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.crumbs a {
+  color: inherit;
+}
 
 .eyebrow {
   font-family: var(--body);
   font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  /* #2830 -- 3.23px on 11.52px against the reference, which is 0.28em. */
+  letter-spacing: 0.28em;
   text-transform: uppercase;
   color: var(--gold);
   margin: 0 0 0.6rem;
@@ -1185,7 +1259,15 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
   background: var(--panel) center / cover no-repeat; border: 1px solid var(--line);
   display: block;
 }
-@media (min-width: 720px) { .reel-poster, .reel-video { aspect-ratio: 16 / 9; } }
+/*
+ * #2830 -- these are vertical phone films. The desktop override used to flip
+ * them to 16/9, which CROPPED portrait footage into a landscape letterbox and
+ * cut the top and bottom off every reel. They stay portrait and are held to a
+ * card's width instead, which is how the reference shows them.
+ */
+@media (min-width: 720px) {
+  .reel-poster, .reel-video { max-width: 26rem; }
+}
 .reel-poster { position: relative; cursor: pointer; padding: 0; }
 .reel-play {
   position: absolute; inset: 50% auto auto 50%; translate: -50% -50%;
@@ -1241,4 +1323,29 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
 .hero-actions .button.accent::after {
   content: "\2192";
   margin-left: 0.6rem;
+}
+
+/*
+ * #2830 -- a menu section's heading, matching the reference: a small condensed
+ * caps label with the rule running out from it to the full width.
+ */
+.menu-order .menu-section + .menu-section {
+  margin-top: clamp(2rem, 4vh, 3rem);
+}
+
+.menu-order .menu-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.menu-order .menu-section h3::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--line);
 }
