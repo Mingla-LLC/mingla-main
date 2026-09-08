@@ -12680,10 +12680,26 @@
       "disposition": "database-special",
       "providerWorkflow": ".github/workflows/issue-1403-listing-insights-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
+      "routing": {
+        "ownerIssue": "#3072",
+        "originPaths": [
+          "mingla-business/app/**",
+          "mingla-business/src/**",
+          "mingla-business/*",
+          "packages/**",
+          ".github/scripts/strict-grep/**",
+          "supabase/migrations/**",
+          ".github/actions/migrated-postgres/**",
+          ".github/ci-batch/MANIFEST.json",
+          ".github/workflows/**"
+        ],
+        "rationale": "MEASURED by tracing every gate this lane runs: its wiring gate, the auth-ready gate, the source-pin audit and the quarantine audit read mingla-business/app and mingla-business/src in full, and the typecheck delta typechecks the whole business graph, which tsconfig paths resolves into packages/. The PG17 job replays the entire migration history and then runs three .test.sql files under supabase/migrations/__tests__, so every migration is an input, as is the composite action that restores the migrated cluster. The manifest parity and ratchet-frontier steps read .github/ci-batch/MANIFEST.json and parse every workflow."
+      },
       "workflowMetadata": {
-        "sourceSha256": "b3317f2f4a731fe377608bd32c332169695af03bf47756a34fc2df6089bbed86",
+        "sourceSha256": "e05be4e2aec640279ced4401356587a12b7132392d0fd607f2ccff98bfea017e",
         "triggers": [
           "pull_request",
+          "push",
           "workflow_dispatch"
         ],
         "pathScope": [
@@ -12691,7 +12707,8 @@
         ],
         "jobKeys": [
           "issue-1403-listing-insights",
-          "issue-1403-venue-rollup-pg17"
+          "issue-1403-venue-rollup-pg17",
+          "route"
         ],
         "runners": [
           "ubuntu-latest"
@@ -12763,10 +12780,30 @@
       "disposition": "database-special",
       "providerWorkflow": ".github/workflows/issue-1421-venue-organic-insights-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
+      "routing": {
+        "ownerIssue": "#3072",
+        "originPaths": [
+          "mingla-business/app/**",
+          "mingla-business/src/**",
+          "mingla-business/*",
+          "packages/**",
+          ".github/scripts/strict-grep/**",
+          "supabase/migrations/**",
+          ".github/actions/migrated-postgres/**",
+          "supabase/functions/_shared/**",
+          "supabase/functions/attribution-capture/**",
+          "supabase/functions/venue-organic-capture/**",
+          "supabase/functions/venue-reservation-create/**",
+          "app-mobile/app/b/**",
+          "app-mobile/src/services/**"
+        ],
+        "rationale": "MEASURED: the deno steps check three edge functions and test one of them, and deno check follows their imports into supabase/functions/_shared (entrySource.ts was read). The wiring gate reads the consumer venue route under app-mobile/app/b, and the node --test step runs a consumer capture test that imports two services under app-mobile/src/services. The PG17 job replays every migration before running this issue's .test.sql proof. The business half runs a jest render config, the auth-ready gate and a web export over the business graph."
+      },
       "workflowMetadata": {
-        "sourceSha256": "419e4362292965dc4201caf681f47d8d46a4a34d088a409f4712bbf0cf967202",
+        "sourceSha256": "7dd25a30da5f2760fb2581ad4e65a6581d48bcdb8f4c1c0a374fe72960414fbe",
         "triggers": [
           "pull_request",
+          "push",
           "workflow_dispatch"
         ],
         "pathScope": [
@@ -12774,7 +12811,8 @@
         ],
         "jobKeys": [
           "issue-1421-migration-pg17",
-          "issue-1421-venue-organic-insights"
+          "issue-1421-venue-organic-insights",
+          "route"
         ],
         "runners": [
           "ubuntu-latest"
@@ -13519,17 +13557,31 @@
       "disposition": "operational-excluded",
       "providerWorkflow": ".github/workflows/issue-1484-stay-desktop-shell-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
+      "routing": {
+        "ownerIssue": "#3072",
+        "originPaths": [
+          "mingla-business/app/**",
+          "mingla-business/src/**",
+          "mingla-business/*",
+          "packages/**",
+          ".github/scripts/strict-grep/**",
+          ".github/workflows/**"
+        ],
+        "rationale": "MEASURED: the desktop-gate gate walks mingla-business/app and mingla-business/src in full (2,297 src and 228 app files read on one run) and additionally reads the Mingla-host strict-grep workflow, because it asserts its own registration there. The render proofs, the venue suite contracts and the web export cover the same business graph plus the packages/ tree that tsconfig maps @mingla/* into."
+      },
       "workflowMetadata": {
-        "sourceSha256": "26ad9af43ce50b11e36fe12eba62194c209b7cf31518e988cf205f22f387f789",
+        "sourceSha256": "9817eb07ff72fb77e0fb99049a26198ac01933305cd2e22321965ad0f1bad735",
         "triggers": [
           "pull_request",
+          "push",
           "workflow_dispatch"
         ],
         "pathScope": [
           "mingla-business/scripts/ci/bundle-baseline.json"
         ],
         "jobKeys": [
-          "issue-1484-stay-desktop-shell"
+          "issue-1484-stay-desktop-shell",
+          "route"
         ],
         "runners": [
           "ubuntu-latest"
@@ -13657,17 +13709,31 @@
       "disposition": "operational-excluded",
       "providerWorkflow": ".github/workflows/issue-1501-add-rooms-form-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
+      "routing": {
+        "ownerIssue": "#3072",
+        "originPaths": [
+          "mingla-business/app/**",
+          "mingla-business/src/**",
+          "mingla-business/*",
+          "packages/**",
+          ".github/scripts/strict-grep/**",
+          ".github/workflows/**"
+        ],
+        "rationale": "MEASURED: same walked business graph as #1484, plus 135 files under packages/offering-rendering and 51 under packages/brand-rendering read on one run through the lucide-shim and desktop-gate gates. The desktop-gate gate reads the Mingla-host strict-grep workflow to assert its own registration. Three jest configs, the stay/venue contract suites and a web export with the boot-payload budget all run over that graph."
+      },
       "workflowMetadata": {
-        "sourceSha256": "ff1366d272e054eca1f8aa5210c51e087d5c49ba95fdac36808a18e7fb7875ee",
+        "sourceSha256": "cfdb09abc85019d78140d462ef855eb4f224814eb57e1c739c2458159bba9a4b",
         "triggers": [
           "pull_request",
+          "push",
           "workflow_dispatch"
         ],
         "pathScope": [
           "mingla-business/scripts/ci/bundle-baseline.json"
         ],
         "jobKeys": [
-          "issue-1501-add-rooms-form"
+          "issue-1501-add-rooms-form",
+          "route"
         ],
         "runners": [
           "ubuntu-latest"
@@ -13903,17 +13969,31 @@
       "disposition": "operational-excluded",
       "providerWorkflow": ".github/workflows/issue-1532-stay-manager-ux-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
+      "routing": {
+        "ownerIssue": "#3072",
+        "originPaths": [
+          "mingla-business/app/**",
+          "mingla-business/src/**",
+          "mingla-business/*",
+          "packages/**",
+          ".github/scripts/strict-grep/**",
+          ".github/workflows/**"
+        ],
+        "rationale": "MEASURED: the keyboard-plumbing gate reads 1,360 .ts/.tsx files across mingla-business and packages, and the lane re-runs the #1484 and #1501 render proofs on top of its own, so its inputs are a superset of theirs. The desktop-gate gate reads the Mingla-host strict-grep workflow to assert its own registration."
+      },
       "workflowMetadata": {
-        "sourceSha256": "479e8abdaca95250f32556002e46743f44c6f36d174a9bf8802911d0a1b39598",
+        "sourceSha256": "b79fe16a307a92c7017ebe3abdd1e7f64d9a349d13ff03598e842f3e05b51e99",
         "triggers": [
           "pull_request",
+          "push",
           "workflow_dispatch"
         ],
         "pathScope": [
           "mingla-business/scripts/ci/bundle-baseline.json"
         ],
         "jobKeys": [
-          "issue-1532-stay-manager-ux"
+          "issue-1532-stay-manager-ux",
+          "route"
         ],
         "runners": [
           "ubuntu-latest"
@@ -19927,17 +20007,33 @@
       "disposition": "operational-excluded",
       "providerWorkflow": ".github/workflows/issue-874-business-analytics-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
+      "routing": {
+        "ownerIssue": "#3072",
+        "originPaths": [
+          "mingla-business/app/**",
+          "mingla-business/src/**",
+          "mingla-business/*",
+          "packages/**",
+          ".github/scripts/strict-grep/**",
+          "supabase/functions/discover-merged-events/**",
+          "app-mobile/src/components/ConnectionsPage.tsx",
+          "app-mobile/src/components/expandedCard/TicketCartSheet.tsx"
+        ],
+        "rationale": "MEASURED: the analytics service, hooks, cache and events under test live in mingla-business/src, the home tile and analytics route in mingla-business/app, and the home-lock-pane and last-seven-days gates assert against app/(tabs)/home.tsx directly. The typecheck delta covers the whole business graph. The currency-fallback gate holds an explicit file list that reaches outside the business tree: it reads _business-query.ts under the discover-merged-events edge function, QuantityRow.tsx under packages/offering-rendering, and exactly two app-mobile components, which are named literally here because that gate names them literally."
+      },
       "workflowMetadata": {
-        "sourceSha256": "17a15c0103ada5443aaeba242573e8a78d04dcfb67e5923cf18e2062fc096df3",
+        "sourceSha256": "935d7b9688c964a445df0a0cbef7f5ad18f1859d4db6a545e106bb54e95d1fef",
         "triggers": [
           "pull_request",
+          "push",
           "workflow_dispatch"
         ],
         "pathScope": [
           "mingla-business/scripts/ci/bundle-baseline.json"
         ],
         "jobKeys": [
-          "issue-874-business-analytics"
+          "issue-874-business-analytics",
+          "route"
         ],
         "runners": [
           "ubuntu-latest"

@@ -546,7 +546,97 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     d259a32221eb5d0929bb5645e3402b3dbca900dfc948ba993c33bfc92a247b5d — the
   //     value pinned immediately above — proving nothing else in the tree
   //     drifted into this digest.
-  "404b2394f5466ac714c63145b3e6d478041e027e60e9e795575267f867832379";
+  // [TEST-MOD-APPROVED #3072] Re-derived again, from a tree rebased onto #3076.
+  // WHAT MOVED: #3072 gives the six per-issue lanes that ci-batch does NOT
+  // execute the same path routing every registered suite got from #2882. Each of
+  // the six gains ONE new job -- a five-minute `route` job that reads the lane's
+  // `originPaths` out of the ci-batch registry and matches the pull request's
+  // diff against them -- each of their EXISTING jobs moves from #2881's canonical
+  // standalone draft condition to #2881's canonical COMPOSED form gaining
+  // `needs`, and each gains a `push: branches: [main]` trigger carrying the SAME
+  // one-file `paths-ignore` its pull-request side already had. The batch lane
+  // gains one test path on an existing step. All seven are PR-family, so their
+  // non-concurrency documents are inside this digest and it MUST move. Each lane
+  // is named here by ISSUE, never by its `.y`+`ml` path, for the reason #3081,
+  // #2882, #2099, #2909 and #3076 all record above: a workflow FILENAME written
+  // into a tracked file is counted by `discoverWorkflowProviders()` as an
+  // external provider reference and moves the frozen #2148 provider seal.
+  //
+  // WHY THE PUSH TRIGGER IS PART OF THE SAME CHANGE, not a separate one: routing
+  // is only safe because it changes WHEN a lane runs, never WHETHER it runs.
+  // #2882 could route the 85 batched suites because ci-batch still runs all 85
+  // on `push: main`. These six had NO push trigger, so routing them without
+  // adding one would have turned an incomplete `originPaths` from a slow catch
+  // on main into a permanent silent absence of coverage. #3079 is the standing
+  // evidence that incompleteness is a live risk, not a hypothetical one.
+  //
+  // AND WHY THE PUSH TRIGGER CARRIES `paths-ignore`, which the first attempt did
+  // NOT and which the #2524 auto-merge guard caught: an unfiltered push trigger
+  // means a baseline-only merge starts all six lanes on `main`, reviving exactly
+  // the ~51,000 job-min/month fan-out #2885 AC-4 removed. That guard enumerates
+  // which workflows such a merge starts, and all six had appeared in the set.
+  // Excluding the one machine-written file on the push side satisfies both: a
+  // HUMAN merge runs all six in full, a baseline-only merge starts none. This is
+  // the same trade the red-`main` alert landed on this morning, and the residual
+  // is precisely one machine-written commit that changes a recorded boot-payload
+  // number and nothing these lanes read.
+  //
+  // HONEST DIFFERENCE FROM EVERY NOTE ABOVE: this change is NOT purely additive.
+  // Eight lines are DELETED -- the eight job-level draft conditions, each
+  // replaced in place by the composed form carrying the routing conjunct. That
+  // is the whole semantic delta on the existing jobs, stated rather than
+  // glossed, because "389 insertions, 8 deletions" would otherwise read as an
+  // additive diff that it is not. A trigger EVENT also changed, which most notes
+  // above explicitly disclaim: the six gain `push`. PR-family membership is
+  // still untouched, because they already declared `pull_request` and still do,
+  // and no `paths-ignore` ENTRY on the pull-request side was altered.
+  //
+  // REBASED TWICE. This branch pinned d4e5b8ae... before #3076 merged and
+  // 58f17807... before the push filter was added; both were computed on trees
+  // that no longer exist and taking either would be a stale pin that merely
+  // looked deliberate. Nor is main's 404b2394... correct, since it knows nothing
+  // of these seven lanes. The value below was re-derived fresh from the current
+  // merged tree.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING, running #3081's checklist:
+  //   - CONTAMINATION CHECKED FIRST, per the #3081 lesson: every ADDED line in
+  //     this branch's non-workflow files, and both files it adds outright, were
+  //     grepped for a `.y`+`ml` literal. ZERO hits -- the router addresses lanes
+  //     by owner issue and reads wrapper paths out of the registry at runtime --
+  //     so the frozen provider seal does not move.
+  //   - the workflow diff is "7 files changed, 389 insertions(+), 8
+  //     deletions(-)", every entry `M`. Nothing added, removed or renamed, and
+  //     the workflow file count is 131 on BOTH sides.
+  //   - grepping added AND removed lines for `concurrency`, `group:` and
+  //     `cancel-in-progress` returns ZERO, and all seven lanes' `concurrency:`
+  //     blocks are byte-identical to main -- diffed, not eyeballed. The six were
+  //     already event-safe (`github.run_id` fallback, event-conditional
+  //     cancellation), which is why gaining `push` needed no concurrency edit.
+  //   - #2885 AC-4 holds on BOTH sides, proven by execution rather than reading:
+  //     the six `paths-ignore` entry lists are byte-identical to main, the
+  //     registry's re-derived `pathScope` is still exactly the one baseline file
+  //     (the inspector uniqs it across triggers, so the push filter adds no
+  //     entry), the router was RUN against the real baseline-only commit
+  //     5692d0358 and all six report `selected=false`, and the #2524 auto-merge
+  //     guard passes 56/56 including "merging that baseline does not simply move
+  //     the fan-out onto main".
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED. Not assumed
+  //     from the shape of the diff: subtests 1 and 4 PASS at 124 PR-family /
+  //     seven non-PR against the changed tree.
+  //   - the policy audit still reports zero errors at 131 total / 124 PR-family
+  //     / 123 standard PR / 1 PR-target / 123 normal / 1 exception, and every
+  //     revert-sensitivity subtest (5-10) still passes. 10 of 11 subtests passed
+  //     before this re-pin; only subtest 2 was red.
+  //   - #2881 passes at 131 total / 124 PR-family / 115 draft-gated (253 jobs,
+  //     10 composed) / 9 always-on, and I-2148-CI-TOPOLOGY-BOUNDED is canonical.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: with all SEVEN lanes restored to their
+  //     main bytes the digest COMPUTES to
+  //     404b2394f5466ac714c63145b3e6d478041e027e60e9e795575267f867832379 -- the
+  //     value pinned by #3076 immediately above -- proving nothing else in the
+  //     tree drifted into this digest. The value below is stable across two
+  //     consecutive runs.
+  // Every earlier re-derivation is preserved, not replaced.
+  "5b0519023a2d8237eddc0bdc29a14bda3eb41e5cbd84d2dd75a9502d8960b7a5";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
