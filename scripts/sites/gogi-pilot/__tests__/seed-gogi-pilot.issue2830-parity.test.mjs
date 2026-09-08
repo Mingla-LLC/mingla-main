@@ -99,9 +99,17 @@ test("contact is phone and Instagram, because they publish no email", () => {
 
 test("every quoted line is one of theirs from the fact ledger", () => {
   const docs = seedDocuments(ids);
+  // rich_text now carries a Lexical `content` document, because that is the
+  // field the CMS actually has. The invariant is unchanged: every line of
+  // prose on the site must be one gogi themselves published.
   const prose = [...docs.home.blocks, ...docs.about.blocks]
     .filter((b) => b.blockType === "rich_text")
-    .flatMap((b) => b.paragraphs.map((p) => p.text));
+    .flatMap((b) =>
+      b.content.root.children.flatMap((paragraph) =>
+        paragraph.children.map((node) => node.text)
+      )
+    );
+  assert.ok(prose.length > 0, "no prose extracted — the shape changed again");
   for (const line of prose) {
     assert.ok(
       Object.values(GOGI_SEED_COPY.voice).includes(line),

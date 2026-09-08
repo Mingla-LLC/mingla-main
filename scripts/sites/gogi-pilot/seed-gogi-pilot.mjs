@@ -235,6 +235,47 @@ function hours() {
  * with one hero photograph and grow as the rest of their library is uploaded,
  * without ever publishing a placeholder.
  */
+/*
+ * #2830 — the CMS rich_text block stores its words in `content`, a Lexical
+ * document, NOT in a `paragraphs` array.
+ *
+ * The seed wrote `paragraphs`. Payload silently drops unknown fields, and
+ * `draft: true` skips the `required` check on `content`, so the block saved
+ * with NO text and nothing anywhere said so. The artifact then published
+ * `paragraphs: []`, which the artifact contract rejects, and the publish failed
+ * closed with ARTIFACT_BLOCK_CONTENT_MISMATCH.
+ *
+ * Two silent steps in a row: an ignored field, then a skipped validation.
+ */
+function lexical(texts) {
+  return {
+    root: {
+      type: "root",
+      format: "",
+      indent: 0,
+      version: 1,
+      direction: "ltr",
+      children: texts.map((text) => ({
+        type: "paragraph",
+        format: "",
+        indent: 0,
+        version: 1,
+        direction: "ltr",
+        textFormat: 0,
+        children: [{
+          type: "text",
+          text,
+          format: 0,
+          style: "",
+          mode: "normal",
+          detail: 0,
+          version: 1,
+        }],
+      })),
+    },
+  };
+}
+
 export function seedDocuments(
   { heroMediaId, homeId, contactId, tenantId, aboutId, menuId, galleryId, media = {} },
 ) {
@@ -256,10 +297,10 @@ export function seedDocuments(
     {
       blockType: "rich_text",
       heading: "Come as you are",
-      paragraphs: [
-        { text: GOGI_SEED_COPY.voice.comeAsYouAre },
-        { text: GOGI_SEED_COPY.voice.cravings },
-      ],
+      content: lexical([
+        GOGI_SEED_COPY.voice.comeAsYouAre,
+        GOGI_SEED_COPY.voice.cravings,
+      ]),
     },
     asset("reelFoodHouse") && asset("reelFoodHousePoster")
       ? {
@@ -300,10 +341,10 @@ export function seedDocuments(
     {
       blockType: "rich_text",
       heading: "Find gögi",
-      paragraphs: [
-        { text: GOGI_SEED_COPY.voice.findGogi },
-        { text: GOGI_SEED_COPY.voice.comeAsYouAre },
-      ],
+      content: lexical([
+        GOGI_SEED_COPY.voice.findGogi,
+        GOGI_SEED_COPY.voice.comeAsYouAre,
+      ]),
     },
     {
       blockType: "team",
