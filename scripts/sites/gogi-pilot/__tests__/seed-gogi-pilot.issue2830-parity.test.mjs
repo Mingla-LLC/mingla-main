@@ -99,9 +99,17 @@ test("contact is phone and Instagram, because they publish no email", () => {
 
 test("every quoted line is one of theirs from the fact ledger", () => {
   const docs = seedDocuments(ids);
+  // rich_text now carries a Lexical `content` document, because that is the
+  // field the CMS actually has. The invariant is unchanged: every line of
+  // prose on the site must be one gogi themselves published.
   const prose = [...docs.home.blocks, ...docs.about.blocks]
     .filter((b) => b.blockType === "rich_text")
-    .flatMap((b) => b.paragraphs.map((p) => p.text));
+    .flatMap((b) =>
+      b.content.root.children.flatMap((paragraph) =>
+        paragraph.children.map((node) => node.text)
+      )
+    );
+  assert.ok(prose.length > 0, "no prose extracted — the shape changed again");
   for (const line of prose) {
     assert.ok(
       Object.values(GOGI_SEED_COPY.voice).includes(line),
@@ -114,4 +122,64 @@ test("gögi's own register is applied", () => {
   const settings = seedDocuments(ids).settings;
   assert.equal(settings.typography, "condensed-display");
   assert.equal(settings.accent_color, "#cda052");
+});
+
+/*
+ * #2830 — the home page carries the sections gögi's own home page carries.
+ *
+ * The reels run is load-bearing in a way that is easy to break by accident:
+ * the renderer turns CONSECUTIVE video_feature blocks into one grid, so a
+ * block inserted between them silently becomes three full-width banners
+ * instead — the exact layout this replaced. That is asserted here, at the
+ * source of the ordering, because nothing downstream would complain.
+ */
+const everySlot = (extra = {}) => {
+  const media = {};
+  for (const slot of [
+    "heroVideo",
+    "foodSqCoconutRiceBowl", "foodSqWingsBoard", "foodSqStirFryPlate", "foodSqSmoothie",
+    "reelFoodHouse", "reelFoodHousePoster",
+    "reelPregameFriday", "reelPregameFridayPoster",
+    "reelLateNightCravings", "reelLateNightCravingsPoster",
+    "reelOutsideGogi", "reelOutsideGogiPoster",
+  ]) media[slot] = `id-${slot}`;
+  return { ...ids, media: { ...media, ...extra } };
+};
+
+test("#2830 the home page carries the food strip, the films and the people", () => {
+  const home = seedDocuments(everySlot()).home;
+  const types = home.blocks.map((block) => block.blockType);
+  assert.ok(types.includes("gallery"), "the what-people-order strip");
+  assert.ok(types.includes("team"), "the people");
+  assert.equal(types.filter((type) => type === "video_feature").length, 4);
+});
+
+test("#2830 the home reels stay CONSECUTIVE, so they render as one grid", () => {
+  const types = seedDocuments(everySlot()).home.blocks.map((b) => b.blockType);
+  const runs = [];
+  for (const type of types) {
+    const last = runs[runs.length - 1];
+    if (last && last.type === type) last.count += 1;
+    else runs.push({ type, count: 1 });
+  }
+  const reelRuns = runs.filter((run) => run.type === "video_feature");
+  // One lone feature, and one run of three. Not four separate banners.
+  assert.deepEqual(reelRuns.map((run) => run.count), [1, 3]);
+});
+
+test("#2830 the food strip is dropped rather than shown short", () => {
+  const partial = seedDocuments(everySlot({ foodSqWingsBoard: undefined }));
+  const strip = partial.home.blocks.find((block) => block.blockType === "gallery");
+  // Present, but only with the crops that actually uploaded — never a
+  // placeholder and never an empty block.
+  assert.ok(strip.images.length >= 1);
+  assert.ok(strip.images.every((image) => typeof image.media === "string"));
+});
+
+test("#2830 a home page with no media at all still publishes", () => {
+  const bare = seedDocuments({ ...ids, media: {} });
+  const types = bare.home.blocks.map((block) => block.blockType);
+  assert.ok(!types.includes("gallery"), "no empty strip");
+  assert.ok(!types.includes("video_feature"), "no reel without its film");
+  assert.ok(types.includes("hero") && types.includes("contact_handoff"));
 });

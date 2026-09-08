@@ -235,11 +235,74 @@ function hours() {
  * with one hero photograph and grow as the rest of their library is uploaded,
  * without ever publishing a placeholder.
  */
+/*
+ * #2830 — the CMS rich_text block stores its words in `content`, a Lexical
+ * document, NOT in a `paragraphs` array.
+ *
+ * The seed wrote `paragraphs`. Payload silently drops unknown fields, and
+ * `draft: true` skips the `required` check on `content`, so the block saved
+ * with NO text and nothing anywhere said so. The artifact then published
+ * `paragraphs: []`, which the artifact contract rejects, and the publish failed
+ * closed with ARTIFACT_BLOCK_CONTENT_MISMATCH.
+ *
+ * Two silent steps in a row: an ignored field, then a skipped validation.
+ */
+function lexical(texts) {
+  return {
+    root: {
+      type: "root",
+      format: "",
+      indent: 0,
+      version: 1,
+      direction: "ltr",
+      children: texts.map((text) => ({
+        type: "paragraph",
+        format: "",
+        indent: 0,
+        version: 1,
+        direction: "ltr",
+        textFormat: 0,
+        children: [{
+          type: "text",
+          text,
+          format: 0,
+          style: "",
+          mode: "normal",
+          detail: 0,
+          version: 1,
+        }],
+      })),
+    },
+  };
+}
+
 export function seedDocuments(
   { heroMediaId, homeId, contactId, tenantId, aboutId, menuId, galleryId, media = {} },
 ) {
   const asset = (slot) => media[slot] ?? null;
   const drop = (blocks) => blocks.filter(Boolean);
+
+  /*
+   * The four square dish crops gögi publish for their own "what people order"
+   * strip. Only the ones that actually uploaded are used.
+   */
+  const foodStrip = [
+    "foodSqCoconutRiceBowl",
+    "foodSqWingsBoard",
+    "foodSqStirFryPlate",
+    "foodSqSmoothie",
+  ].map((slot) => asset(slot)).filter(Boolean).map((id) => ({ media: id, alt: "" }));
+
+  const reel = (videoSlot, posterSlot, heading, caption) =>
+    asset(videoSlot) && asset(posterSlot)
+      ? {
+        blockType: "video_feature",
+        heading,
+        caption,
+        video: asset(videoSlot),
+        poster: asset(posterSlot),
+      }
+      : null;
 
   const homeBlocks = drop([
     {
@@ -256,10 +319,10 @@ export function seedDocuments(
     {
       blockType: "rich_text",
       heading: "Come as you are",
-      paragraphs: [
-        { text: GOGI_SEED_COPY.voice.comeAsYouAre },
-        { text: GOGI_SEED_COPY.voice.cravings },
-      ],
+      content: lexical([
+        GOGI_SEED_COPY.voice.comeAsYouAre,
+        GOGI_SEED_COPY.voice.cravings,
+      ]),
     },
     asset("reelFoodHouse") && asset("reelFoodHousePoster")
       ? {
@@ -276,6 +339,53 @@ export function seedDocuments(
       address: GOGI_SEED_COPY.address,
       hours: hours(),
     },
+    /*
+     * What people order. gögi's own home page carries a strip of dishes
+     * between the story and the films, and they publish square crops of
+     * exactly these four for it. If any one of them is missing from the
+     * upload, the block is dropped rather than shown short.
+     */
+    foodStrip.length
+      ? { blockType: "gallery", heading: "What people order", images: foodStrip }
+      : null,
+    /*
+     * The films. Three consecutive reels render as ONE grid, which is how
+     * their site shows them -- the same films that carry the gallery page,
+     * as on theirs. A single reel would render as a full-width feature
+     * instead, so this is deliberately a run.
+     */
+    reel(
+      "reelPregameFriday",
+      "reelPregameFridayPoster",
+      "Your Friday needs better decisions",
+      GOGI_SEED_COPY.voice.friday,
+    ),
+    reel(
+      "reelLateNightCravings",
+      "reelLateNightCravingsPoster",
+      "Some cravings don't respect boundaries",
+      GOGI_SEED_COPY.voice.cravings,
+    ),
+    reel(
+      "reelOutsideGogi",
+      "reelOutsideGogiPoster",
+      "Find gögi",
+      GOGI_SEED_COPY.voice.findGogi,
+    ),
+    /*
+     * The people, as on their home page. The about page carries the same
+     * block; a portrait that did not upload degrades to an initial rather
+     * than a gap.
+     */
+    {
+      blockType: "team",
+      heading: "Meet the team",
+      caption: GOGI_SEED_COPY.voice.team,
+      members: GOGI_SEED_COPY.team.map((name) => {
+        const portrait = asset(`team:${name}`);
+        return portrait ? { name, media: portrait, alt: name } : { name };
+      }),
+    },
     {
       blockType: "contact_handoff",
       heading: "Call gögi",
@@ -285,25 +395,14 @@ export function seedDocuments(
     },
   ]);
 
-  const reel = (videoSlot, posterSlot, heading, caption) =>
-    asset(videoSlot) && asset(posterSlot)
-      ? {
-        blockType: "video_feature",
-        heading,
-        caption,
-        video: asset(videoSlot),
-        poster: asset(posterSlot),
-      }
-      : null;
-
   const aboutBlocks = drop([
     {
       blockType: "rich_text",
       heading: "Find gögi",
-      paragraphs: [
-        { text: GOGI_SEED_COPY.voice.findGogi },
-        { text: GOGI_SEED_COPY.voice.comeAsYouAre },
-      ],
+      content: lexical([
+        GOGI_SEED_COPY.voice.findGogi,
+        GOGI_SEED_COPY.voice.comeAsYouAre,
+      ]),
     },
     {
       blockType: "team",
