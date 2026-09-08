@@ -486,21 +486,7 @@ main h2,
   display: block;
 }
 
-/* The status line above the headline, and the scroll cue below it. */
-.hero-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  align-self: start;
-  padding: 0.45rem 1rem;
-  border: 1px solid rgba(240, 238, 233, 0.22);
-  border-radius: 999px;
-  background: rgba(16, 16, 19, 0.6);
-  font-size: 0.72rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
+/* The scroll cue at the foot of the hero. */
 .hero-scroll {
   position: absolute;
   left: 50%;
@@ -1220,3 +1206,39 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
 }
 .team-grid strong { font-weight: 600; }
 .team-grid span:not(.team-initial) { color: var(--muted); font-size: 0.85rem; }
+
+/*
+ * #2830 -- inside the hero the rail is a hairline over the photograph, not the
+ * panel-coloured band it is elsewhere. Same markup, same meaning, so a site
+ * whose home page has no hero still gets the band.
+ */
+.hero .fact-rail {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  margin: clamp(1.5rem, 4vh, 3rem) 0 0;
+  padding: 0;
+  background: none;
+  border-bottom: 0;
+  border-top: 1px solid rgba(240, 238, 233, 0.18);
+}
+
+.hero .fact-rail dl > div {
+  padding: clamp(0.9rem, 2vh, 1.4rem) clamp(0.75rem, 2vw, 2rem) 0 0;
+  border-right: 0;
+}
+
+.hero .fact-rail dd {
+  font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+  font-weight: 600;
+}
+
+/*
+ * #2830 -- the primary hero action carries an arrow, as theirs does. Content,
+ * not markup, so it never reaches the accessible name: a screen reader still
+ * announces "See the menu", not "See the menu right arrow".
+ */
+.hero-actions .button.accent::after {
+  content: "\2192";
+  margin-left: 0.6rem;
+}

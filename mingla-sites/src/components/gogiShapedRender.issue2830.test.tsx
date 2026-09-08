@@ -79,3 +79,42 @@ describe("#2830 gogi-shaped render", () => {
     }
   });
 });
+
+/*
+ * #2830 — the facts belong INSIDE the hero, at its foot. They used to render
+ * as a sibling band below it, which on a full-height hero pushed them off the
+ * first screen entirely and read as an unrelated section.
+ *
+ * This RENDERS rather than reading the component as text. Every defect on this
+ * issue passed a source-reading test and failed on its first real execution.
+ */
+describe("#2830 the hero carries the facts", () => {
+  const html = renderToStaticMarkup(
+    RestaurantV1({ artifact: gogiShaped as unknown as RestaurantArtifact, page: homePage(gogiShaped as unknown as RestaurantArtifact)! }) as never,
+  );
+
+  it("puts the fact rail inside the hero section, not after it", () => {
+    const hero = html.match(/<section class="hero"[\s\S]*?<\/section>/);
+    expect(hero).not.toBeNull();
+    expect(hero![0]).toContain('class="fact-rail"');
+  });
+
+  it("still renders exactly one fact rail", () => {
+    expect(html.split('class="fact-rail"').length - 1).toBe(1);
+  });
+
+  it("keeps the facts' meaning in the markup, not in the styling", () => {
+    // A <dl> is what makes "Visit"/"Hours"/"Contact" label their values for a
+    // screen reader. Moving the rail must not have flattened it into divs.
+    const hero = html.match(/<section class="hero"[\s\S]*?<\/section>/)![0];
+    expect(hero).toContain("<dl>");
+    expect(hero).toContain("<dt>");
+    expect(hero).toContain("<dd>");
+  });
+
+  it("does not put the arrow in the button's accessible name", () => {
+    // The arrow is a ::after content rule. If it ever moves into the markup, a
+    // screen reader starts announcing "See the menu right arrow".
+    expect(textOf(html)).not.toContain("→");
+  });
+});
