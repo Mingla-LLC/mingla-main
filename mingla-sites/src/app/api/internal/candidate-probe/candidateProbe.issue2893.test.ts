@@ -29,6 +29,12 @@ describe("#2893 candidate probe integrity", () => {
     ]) expect(isFreshProbeTimestamp(value, NOW)).toBe(false);
   });
 
+  /*
+   * #2830 — verifyCandidateMedia now returns WHICH object failed and why,
+   * instead of a bare boolean. The invariant is unchanged and still asserted:
+   * matching bytes pass, replaced bytes are rejected, and the read goes to the
+   * private approved bucket. The rejection is simply no longer anonymous.
+   */
   it("fetches private approved media and rejects replaced bytes", async () => {
     const expected = new TextEncoder().encode("approved-image");
     const media = [{
@@ -44,14 +50,14 @@ describe("#2893 candidate probe integrity", () => {
     readPrivateObject.mockResolvedValueOnce(new Response(expected));
     await expect(
       verifyCandidateMedia(media, "sites-media-approved"),
-    ).resolves.toBe(true);
+    ).resolves.toEqual({ ok: true });
 
     readPrivateObject.mockResolvedValueOnce(
       new Response(new TextEncoder().encode("replaced-image")),
     );
     await expect(
       verifyCandidateMedia(media, "sites-media-approved"),
-    ).resolves.toBe(false);
+    ).resolves.toMatchObject({ ok: false, reason: "digest_mismatch" });
     expect(readPrivateObject).toHaveBeenLastCalledWith(
       "sites-media-approved",
       media[0].object_key,
