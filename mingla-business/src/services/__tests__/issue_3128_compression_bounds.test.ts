@@ -20,8 +20,17 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 const mockCompress = jest.fn<(...args: unknown[]) => Promise<string>>();
 const mockGetFileInfoAsync = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
+const mockCancelCompression = jest.fn();
+const mockActivateBackgroundTask = jest.fn<() => Promise<unknown>>();
+const mockDeactivateBackgroundTask = jest.fn<() => Promise<unknown>>();
+
 jest.mock("react-native-compressor", () => ({
-  Video: { compress: (...args: unknown[]) => mockCompress(...args) },
+  Video: {
+    compress: (...args: unknown[]) => mockCompress(...args),
+    cancelCompression: (...args: unknown[]) => mockCancelCompression(...args),
+    activateBackgroundTask: () => mockActivateBackgroundTask(),
+    deactivateBackgroundTask: () => mockDeactivateBackgroundTask(),
+  },
 }), { virtual: true });
 
 jest.mock("react-native", () => ({ Platform: { OS: "ios" } }), { virtual: true });
@@ -42,6 +51,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.useRealTimers();
   mockGetFileInfoAsync.mockResolvedValue({ exists: true, size: 40_000_000 });
+  mockActivateBackgroundTask.mockResolvedValue(undefined);
+  mockDeactivateBackgroundTask.mockResolvedValue(undefined);
 });
 
 describe("issue #3128 — local compression is bounded and honest", () => {
@@ -131,5 +142,72 @@ describe("issue #3128 — local compression is bounded and honest", () => {
 
     expect(outcome).toMatchObject({ wasCompressed: true, uri: "file:///compressed.mp4" });
     jest.useRealTimers();
+  });
+
+  // ---------------------------------------------------------------------------
+  // The reporter's clip was 4K, and that is the whole story of the 19-minute
+  // failure. The trim editor stream-copies (issue #1350), so a 15-second trim
+  // keeps 4K resolution AND the source bitrate; `compressionMethod: "auto"`
+  // then sizes its target from that source and tries to preserve 4K. Nothing
+  // downstream wants it — Bunny delivers a 720p-max ladder, so those pixels are
+  // thrown away twice.
+  // ---------------------------------------------------------------------------
+  test("T-3128-05 a 4K source is downscaled on the way in, not transcoded at 4K", async () => {
+    mockCompress.mockResolvedValue("file:///compressed.mp4");
+
+    await compressVideoLocally({
+      uri: "file:///4k.mp4",
+      bytes: BIG,
+      durationMs: 15_000,
+      maxUncompressedBytes: CAP,
+    });
+
+    const options = mockCompress.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(options.compressionMethod).toBe("manual");
+    // 1080p longest edge: a quarter of 4K's pixels, still above the delivery
+    // ladder's top rung.
+    expect(options.maxSize).toBe(1920);
+    // And a real progress signal, so the sheet is not a bare spinner and the
+    // stall detector has something to watch.
+    expect(options.progressDivider).toBe(1);
+  });
+
+  test("T-3128-06 a stalled compression is actually cancelled, not just abandoned", async () => {
+    jest.useFakeTimers();
+    mockCompress.mockImplementation((...args: unknown[]) => {
+      const options = args[1] as { getCancellationId?: (id: string) => void };
+      options.getCancellationId?.("cancel-me");
+      return new Promise<string>(() => {});
+    });
+
+    const settled = compressVideoLocally({
+      uri: "file:///huge.mp4",
+      bytes: BIG,
+      durationMs: 15_000,
+      maxUncompressedBytes: CAP,
+    }).then(() => null, (error: unknown) => error);
+
+    await jest.advanceTimersByTimeAsync(95_000);
+    await settled;
+
+    // Abandoning the promise would leave the native transcode running.
+    expect(mockCancelCompression).toHaveBeenCalledWith("cancel-me");
+    jest.useRealTimers();
+  });
+
+  test("T-3128-07 the background task is claimed and always released", async () => {
+    mockCompress.mockResolvedValue("file:///compressed.mp4");
+
+    await compressVideoLocally({
+      uri: "file:///4k.mp4",
+      bytes: BIG,
+      durationMs: 15_000,
+      maxUncompressedBytes: CAP,
+    });
+
+    // iOS suspends a backgrounded app mid-export; this is the library's own
+    // opt-out, and it must be released however the compression ends.
+    expect(mockActivateBackgroundTask).toHaveBeenCalled();
+    expect(mockDeactivateBackgroundTask).toHaveBeenCalled();
   });
 });
