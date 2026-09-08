@@ -34,6 +34,28 @@ const idleStage: EventCoverVideoUploadStage = { phase: "idle", percent: 0 };
 // the argument for a deadline rather than a third per-trigger patch — whatever
 // the branch, the sheet lands on the job's canonical status.
 const REATTACH_DEADLINE_MS = 12_000;
+
+// Issue #3119 — the 100 MB source cap used to be applied to the file the host
+// PICKED, one line before `compressVideoLocally` — the step whose whole job is
+// shrinking exactly that file. A normal iPhone clip was therefore refused with
+// "Choose a smaller video before uploading" before the app ever tried the thing
+// that would have made it small enough. Reported from a real device on the
+// production build 2026-09-08; the refusal is client-side, so no job row is
+// even created.
+//
+// Why 15 seconds does not already solve it: the trim editor is a keyframe
+// STREAM COPY (`enablePreciseTrimming: false`, issue #1350), which preserves
+// the source bitrate. Trimming 4K/60 iPhone footage to the duration cap leaves
+// it at or above 100 MB on its own, so obeying the length limit does not get a
+// host under the size limit.
+//
+// So the caps split in two. PICK_CEILING is a sanity bound on what a phone can
+// be asked to transcode at all — deliberately generous, because anything under
+// it is the compressor's problem, not the host's. SOURCE_MAX is the real
+// contract with the upload pipeline and is now checked against the COMPRESSED
+// result.
+const EVENT_COVER_PICK_CEILING_BYTES = 524_288_000; // 500 MB
+const EVENT_COVER_SOURCE_MAX_BYTES = 104_857_600; // 100 MB
 export type EventCoverVideoUploadFile = {
   uri: string; fileName?: string | null; mimeType?: string | null;
   bytes: number; durationMs: number; trimStartMs?: number; trimEndMs?: number;
@@ -615,7 +637,12 @@ export function useEventCoverVideoUpload(
       const valid = validateNativeTrimmedEventCoverVideo({
         uri: file.uri, duration: file.durationMs, fileSize: file.bytes,
         mimeType: file.mimeType, fileName: file.fileName,
-      }, { maxDurationMs: 15_000, maxSourceBytes: 104_857_600, allowWebm: Platform.OS === "web" });
+      }, {
+        maxDurationMs: 15_000,
+        // issue #3119 — the generous pick-time ceiling, NOT the pipeline cap.
+        maxSourceBytes: EVENT_COVER_PICK_CEILING_BYTES,
+        allowWebm: Platform.OS === "web",
+      });
       if (!valid.ok) throw new EventCoverVideoProcessingError(valid.code, valid.message);
       if (!replacing) projectPreparation({ phase: "compressing", percent: null });
       const compressed = await compressVideoLocally({
@@ -624,6 +651,17 @@ export function useEventCoverVideoUpload(
           if (!replacing) projectPreparation({ phase: "compressing", percent: progress.percent });
         },
       });
+      // issue #3119 — the pipeline cap belongs HERE, on what we are actually
+      // about to upload. Reaching this line means compression ran and the clip
+      // is still too big, which is a different sentence to the host than
+      // "choose a smaller video": there may not be a smaller one on the device,
+      // and shrinking it was our job, not theirs.
+      if (compressed.bytes > EVENT_COVER_SOURCE_MAX_BYTES) {
+        throw new EventCoverVideoProcessingError(
+          "video_file_too_large",
+          "This clip is still too big after compressing. Try a shorter clip, or record at a lower resolution.",
+        );
+      }
       prepared = await prepareEventCoverVideoSource({
         uri: compressed.uri, bytes: compressed.bytes, durationMs: compressed.durationMs,
         fileName: compressed.wasCompressed ? `${operationId}.mp4` : file.fileName,
