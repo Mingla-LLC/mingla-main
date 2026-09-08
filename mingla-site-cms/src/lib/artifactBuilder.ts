@@ -1,5 +1,6 @@
 import type { PayloadRequest } from "payload";
 import { cmsConfig } from "./config";
+import { emitCmsObservation } from "./observability";
 import { hmac, sha256 } from "./crypto";
 import { readCoreProjection } from "./gateway";
 import { readObject, writeObject } from "./objectStore";
@@ -618,17 +619,81 @@ export async function probePublicationCandidate(input: {
     config.candidateProbeSecret,
     `${timestamp}\n${nonce}\n${await sha256(body)}`,
   );
-  const response = await fetch(`${config.publicRuntimeOrigin}/api/internal/candidate-probe`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json", "x-mingla-probe-time": timestamp,
-      "x-mingla-probe-nonce": nonce, "x-mingla-probe-signature": signature,
-    },
-    body,
-    cache: "no-store",
-  });
+  /*
+   * #2830 — RECORD WHY THE PROBE REFUSED.
+   *
+   * The probe names its failing check (#3134), but that name travels in the
+   * response body and nothing here read it. A refused publish left
+   * `failure_code: PROBE_FAILED` in the job row and no way to tell a corrupt
+   * asset from a contract violation from a timeout. Narrowing one refusal on
+   * the Gogi pilot meant downloading the artifact from its private bucket and
+   * re-running all ten checks by hand.
+   *
+   * The latency is recorded too, because "every check passed locally" and
+   * "the probe never finished" look identical from the job row, and 55 assets
+   * including 22MB of video is a very different request from the single image
+   * this path was built against.
+   */
+  const startedAt = Date.now();
+  let response: Response;
+  try {
+    response = await fetch(`${config.publicRuntimeOrigin}/api/internal/candidate-probe`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json", "x-mingla-probe-time": timestamp,
+        "x-mingla-probe-nonce": nonce, "x-mingla-probe-signature": signature,
+      },
+      body,
+      cache: "no-store",
+    });
+  } catch (error) {
+    emitCmsObservation({
+      event: "mingla_sites_state",
+      metric: "publish.probe.unreachable",
+      request_id: crypto.randomUUID(),
+      operation_id: null,
+      site_id: input.siteId,
+      publication_id: input.publicationId,
+      direction: "core_to_cms",
+      route: "/api/internal/candidate-probe",
+      state_transition: "probe_started->probe_unreachable",
+      latency_ms: Date.now() - startedAt,
+      retry_count: 0,
+      safe_error_code: error instanceof Error ? error.name : "FETCH_FAILED",
+      status_code: null,
+      version: "sites-v1",
+    });
+    throw new Error("PROBE_FAILED");
+  }
+  const latencyMs = Date.now() - startedAt;
   const result = await response.json().catch(() => null);
-  if (!response.ok || !result?.ok || result.data?.observed_digest !== input.artifactDigest) {
+  const digestMatches = result?.data?.observed_digest === input.artifactDigest;
+  if (!response.ok || !result?.ok || !digestMatches) {
+    /*
+     * Three distinct refusals that used to be one word. `failed_check` and
+     * `detail` are the probe's own vocabulary; the digest case never reaches
+     * the probe's checks at all and has to be named here.
+     */
+    const reason = !response.ok || !result?.ok
+      ? [result?.failed_check, result?.detail].filter(Boolean).join(" ") ||
+        `http_${response.status}`
+      : "observed_digest_mismatch";
+    emitCmsObservation({
+      event: "mingla_sites_state",
+      metric: "publish.probe.refused",
+      request_id: crypto.randomUUID(),
+      operation_id: null,
+      site_id: input.siteId,
+      publication_id: input.publicationId,
+      direction: "core_to_cms",
+      route: "/api/internal/candidate-probe",
+      state_transition: "probe_started->probe_refused",
+      latency_ms: latencyMs,
+      retry_count: 0,
+      safe_error_code: String(reason).slice(0, 300),
+      status_code: response.status,
+      version: "sites-v1",
+    });
     throw new Error("PROBE_FAILED");
   }
   return result.data as Record<string, unknown>;
