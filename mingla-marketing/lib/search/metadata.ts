@@ -5,6 +5,9 @@ import {
   requireRouteContract,
   type SearchReadyRouteContract,
 } from '@/lib/search/route-registry'
+import type { CityHubRecord } from '@/content/cities/registry'
+import { cityHubEffectiveLifecycle, cityHubPath } from '@/content/cities/registry'
+import { canonicalMarketingUrl } from '@/lib/site'
 
 export interface PublicNoindexMetadataInput {
   readonly title: string
@@ -54,4 +57,29 @@ export function publicNoindexMetadata(
       ...(input.description ? { description: input.description } : {}),
     },
   }
+}
+
+export function cityHubMetadata(record: CityHubRecord): Metadata {
+  const pathname = cityHubPath(record)
+  const title = `Things to do in ${record.city} — Mingla city guide`
+  const lifecycle = cityHubEffectiveLifecycle(record)
+  if (lifecycle === 'search_ready') return searchRouteMetadata(pathname)
+
+  const metadata = publicNoindexMetadata(pathname, {
+    title,
+    description: record.directAnswer,
+    follow: true,
+  })
+  if (
+    (lifecycle === 'stale' || lifecycle === 'expired_archived') &&
+    record.wasSearchReady
+  ) {
+    const canonical = canonicalMarketingUrl(pathname)
+    return {
+      ...metadata,
+      alternates: { canonical: canonical },
+      openGraph: { ...metadata.openGraph, url: canonical },
+    }
+  }
+  return metadata
 }

@@ -728,7 +728,7 @@
 .ps-type-toggle a { min-height: 44px; padding: 0 20px; border-radius: 999px; display: grid; place-items: center; color: var(--page-ink); font-weight: 900; text-decoration: none; }
 .ps-type-toggle a[aria-current='page'] { color: white; background: var(--page-obsidian); }
 .ps-filter-rail { overflow-x: auto; padding-bottom: 2px; display: flex; gap: 7px; scrollbar-width: thin; }
-.ps-filter-rail a { flex: 0 0 auto; min-height: 42px; padding: 0 15px; border: 1px solid rgba(20,18,15,.11); border-radius: 999px; display: inline-flex; align-items: center; color: var(--page-ink); background: var(--page-raised); font-size: 13px; font-weight: 850; text-decoration: none; }
+.ps-filter-rail a { flex: 0 0 auto; min-height: 44px; padding: 0 15px; border: 1px solid rgba(20,18,15,.11); border-radius: 999px; display: inline-flex; align-items: center; color: var(--page-ink); background: var(--page-raised); font-size: 13px; font-weight: 850; text-decoration: none; }
 .ps-filter-rail a[aria-pressed='true'], .ps-filter-rail a[aria-current='true'] { color: white; border-color: var(--page-action-bg); background: var(--page-action-bg); }
 .ps-catalogue-result-heading { margin: 24px 0 16px; display: flex; align-items: end; justify-content: space-between; gap: 30px; }
 .ps-catalogue-result-heading h2,
