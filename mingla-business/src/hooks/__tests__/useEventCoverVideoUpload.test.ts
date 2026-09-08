@@ -1286,4 +1286,90 @@ describe("useEventCoverVideoUpload", () => {
     await started;
     jest.useRealTimers();
   });
+
+  // ---------------------------------------------------------------------------
+  // Issue #3119 — a normal iPhone clip was refused for being over 100 MB one
+  // line BEFORE `compressVideoLocally`, the step whose whole job is shrinking
+  // it. Reported from a real device on the production build 2026-09-08:
+  // "Choose a smaller video before uploading", no job row, nothing sent. The
+  // 15-second cap does not save the host either — the trim editor is a keyframe
+  // stream copy (issue #1350), so a trimmed 4K/60 clip keeps its bitrate and
+  // lands at or over 100 MB on its own.
+  // ---------------------------------------------------------------------------
+  test("issue #3119 — a 150 MB pick reaches the compressor instead of being refused", async () => {
+    mockCompressVideoLocally.mockResolvedValue({
+      bytes: 40_000_000,
+      durationMs: 15_000,
+      uri: "file:///compressed-3119.mp4",
+      wasCompressed: true,
+    });
+    mockCreateEventCoverVideoUploadIntent.mockResolvedValue({
+      jobId: "job-3119",
+      upload: { fields: {}, url: "https://upload.example.com" },
+    });
+
+    const hook = renderHook();
+    await hook.start({
+      bytes: 157_286_400, // 150 MB — over the old gate, under the new ceiling
+      durationMs: 15_000,
+      fileName: "iphone-4k.mp4",
+      mimeType: "video/mp4",
+      trimEndMs: 15_000,
+      trimStartMs: 0,
+      uri: "file:///iphone-4k.mp4",
+    });
+
+    // The whole bug: this used to never run.
+    expect(compressVideoLocally).toHaveBeenCalled();
+    // And once it has run, the clip is in range and the upload proceeds.
+    expect(createEventCoverVideoUploadIntent).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceBytes: 40_000_000 }),
+    );
+    expect(renderHook().stage).not.toMatchObject({ phase: "error" });
+  });
+
+  test("issue #3119 — still too big AFTER compressing says so, and does not blame the host's library", async () => {
+    mockCompressVideoLocally.mockResolvedValue({
+      bytes: 120_000_000, // compression helped, not enough
+      durationMs: 15_000,
+      uri: "file:///compressed-3119-big.mp4",
+      wasCompressed: true,
+    });
+
+    const hook = renderHook();
+    await hook.start({
+      bytes: 157_286_400,
+      durationMs: 15_000,
+      fileName: "iphone-4k.mp4",
+      mimeType: "video/mp4",
+      trimEndMs: 15_000,
+      trimStartMs: 0,
+      uri: "file:///iphone-4k.mp4",
+    });
+
+    expect(compressVideoLocally).toHaveBeenCalled();
+    // Nothing was sent, but the sentence is about OUR limit, not their library.
+    expect(createEventCoverVideoUploadIntent).not.toHaveBeenCalled();
+    const stage = renderHook().stage as { phase: string; message?: string };
+    expect(stage.phase).toBe("error");
+    expect(stage.message).toContain("after compressing");
+    expect(stage.message).not.toContain("Choose a smaller video");
+  });
+
+  test("issue #3119 — a genuinely absurd pick is still refused before the compressor", async () => {
+    const hook = renderHook();
+    await hook.start({
+      bytes: 629_145_600, // 600 MB, over the pick ceiling
+      durationMs: 15_000,
+      fileName: "enormous.mp4",
+      mimeType: "video/mp4",
+      trimEndMs: 15_000,
+      trimStartMs: 0,
+      uri: "file:///enormous.mp4",
+    });
+
+    // The ceiling still exists — we do not ask a phone to transcode anything.
+    expect(compressVideoLocally).not.toHaveBeenCalled();
+    expect(renderHook().stage).toMatchObject({ phase: "error" });
+  });
 });
