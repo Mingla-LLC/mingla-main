@@ -29,10 +29,29 @@ export type CartItem = {
   section: string;
 };
 
+/*
+ * #2830 — MINGLA'S OWN SHAPE, not one invented here.
+ *
+ * This used to expect `{ ok, total: { amount_minor, currency } }`. Mingla's
+ * venue-order rail answers `{ totalCents, currency, lines: [...] }` and carries
+ * no `ok` at all — so `!result?.ok` was ALWAYS true and every priced cart was
+ * reported as a pricing failure. The cart could never show a total, on any
+ * site, ever. Two shapes that were never introduced to each other.
+ *
+ * The route passes Mingla's answer through unchanged on purpose: Mingla is the
+ * authority on price. So the reader is what had to move.
+ */
 type Priced = {
-  ok: boolean;
-  total?: { amount_minor?: number; currency?: string };
-  lines?: { menuItemId: string; unavailable?: boolean; name?: string }[];
+  currency?: string;
+  subtotalCents?: number;
+  feesAndTaxCents?: number;
+  totalCents?: number;
+  lines?: {
+    menuItemId?: string;
+    itemNameAtOrder?: string;
+    lineTotalCents?: number;
+    unavailable?: boolean;
+  }[];
   error?: string;
 };
 
@@ -157,7 +176,8 @@ export function MenuCart({ items }: { items: CartItem[] }) {
         });
         const result = (await response.json()) as Priced;
         if (!live) return;
-        if (!response.ok || !result?.ok) {
+        // Mingla carries no `ok`; a refusal is a non-2xx with an `error` code.
+        if (!response.ok || typeof result?.totalCents !== "number") {
           setPriced(null);
           setFailed("We could not price this order just now. Nothing has been charged.");
           return;
@@ -200,7 +220,16 @@ export function MenuCart({ items }: { items: CartItem[] }) {
     shared?.keepOnly(items.map((item) => item.id));
   }, [shared, items]);
 
-  const total = money(priced?.total?.amount_minor, priced?.total?.currency);
+  const total = money(priced?.totalCents, priced?.currency);
+  /*
+   * ONE combined fees-and-tax line, never split into separate rows
+   * (feedback: cart shows a single "Fees & tax"). Hidden when it is zero
+   * rather than showing a confusing zero.
+   */
+  const feesAndTax = typeof priced?.feesAndTaxCents === "number" &&
+      priced.feesAndTaxCents > 0
+    ? money(priced.feesAndTaxCents, priced?.currency)
+    : null;
   const unavailable = (priced?.lines ?? []).filter((line) => line.unavailable);
 
   return (
@@ -283,13 +312,19 @@ export function MenuCart({ items }: { items: CartItem[] }) {
             })}
             {unavailable.length > 0 ? (
               <p className="drawer-warn" role="status">
-                {unavailable.map((line) => line.name).filter(Boolean).join(", ") || "An item"}
+                {unavailable.map((line) => line.itemNameAtOrder).filter(Boolean).join(", ") || "An item"}
                 {" "}is no longer available. Remove it to continue.
               </p>
             ) : null}
             {failed ? <p className="drawer-warn" role="status">{failed}</p> : null}
           </div>
           <div className="drawer-foot">
+            {feesAndTax ? (
+              <div className="totals subtotal-row">
+                <span>Fees &amp; tax</span>
+                <span>{feesAndTax}</span>
+              </div>
+            ) : null}
             <div className="totals">
               <span>Total</span>
               <span>{pricing ? "Checking…" : total ?? "—"}</span>
