@@ -17,6 +17,7 @@
 
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
+const mockPlatform = { OS: "ios" };
 const mockCompress = jest.fn<(...args: unknown[]) => Promise<string>>();
 const mockGetFileInfoAsync = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
@@ -31,13 +32,18 @@ jest.mock("react-native-compressor", () => ({
     activateBackgroundTask: () => mockActivateBackgroundTask(),
     deactivateBackgroundTask: () => mockDeactivateBackgroundTask(),
   },
-}), { virtual: true });
+}));
 
-jest.mock("react-native", () => ({ Platform: { OS: "ios" } }), { virtual: true });
+// Mocked WITHOUT `virtual`, matching the sibling cover-video suites: all three
+// modules are really installed, and a virtual mock of a real module resolved
+// differently under CI's full-suite run than it did locally — the compressor
+// module came back absent, `compressVideoLocally` returned the untouched file,
+// and the stall assertions saw a resolve instead of a throw.
+jest.mock("react-native", () => ({ Platform: mockPlatform }));
 
-jest.mock("../platformFileSystem", () => ({
+jest.mock("../../utils/platformFileSystem", () => ({
   getFileInfoAsync: (...args: unknown[]) => mockGetFileInfoAsync(...args),
-}), { virtual: true });
+}));
 
 import {
   compressVideoLocally,
@@ -51,6 +57,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.useRealTimers();
   mockGetFileInfoAsync.mockResolvedValue({ exists: true, size: 40_000_000 });
+  mockPlatform.OS = "ios";
   mockActivateBackgroundTask.mockResolvedValue(undefined);
   mockDeactivateBackgroundTask.mockResolvedValue(undefined);
 });
