@@ -54,7 +54,20 @@ function lexicalText(value: unknown): string[] {
       if (result.length > before) result.push("\n");
     }
   };
-  walk(value);
+  /*
+   * #2830 — Payload stores rich text as `{ root: { children: [...] } }`, so a
+   * walk that starts at the stored value finds neither `text` nor `children`
+   * on it and returns NOTHING. Every rich_text block published an empty
+   * `paragraphs: []`, the artifact contract requires at least one, and the
+   * publish failed closed with ARTIFACT_BLOCK_CONTENT_MISMATCH.
+   *
+   * That means no page carrying a rich_text block could EVER be published.
+   * It went unseen because the pilot had no rich_text block until now.
+   *
+   * `?? value` keeps a bare root node working, so a caller that already
+   * unwrapped is unaffected.
+   */
+  walk((value as AnyDoc)?.root ?? value);
   const paragraphs = result
     .join("")
     .split("\n")
