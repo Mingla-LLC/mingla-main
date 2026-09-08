@@ -2,6 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import http from 'node:http'
 import net from 'node:net'
@@ -32,6 +33,8 @@ const VIEWPORTS = [
   { width: 1440, height: 900 },
 ]
 const CHIP_LABELS = ['Group chat', 'Instalments', 'Itineraries']
+const BROWSER_CLOSE_ACK_TIMEOUT_MS = 2_000
+const CHILD_STOP_TIMEOUT_MS = 2_000
 const PROFILE_CLEANUP_POLICY = Object.freeze({
   recursive: true,
   force: true,
@@ -44,7 +47,7 @@ function removeBrowserProfile(profile, remove = fs.rmSync) {
   return remove(profile, PROFILE_CLEANUP_POLICY)
 }
 
-function sourceContract() {
+async function sourceContract() {
   const packageJson = JSON.parse(read('package.json'))
   const self = path.basename(fileURLToPath(import.meta.url))
 
@@ -73,6 +76,51 @@ function sourceContract() {
     (error) => error === persistentCleanupError,
     'persistent browser profile cleanup errors must remain fatal',
   )
+  assert.equal(BROWSER_CLOSE_ACK_TIMEOUT_MS, 2_000, 'Browser.close acknowledgement must remain bounded at 2,000ms')
+  assert.equal(CHILD_STOP_TIMEOUT_MS, 2_000, 'child termination waits must remain bounded at 2,000ms')
+
+  const lifecycle = []
+  const listeners = new Map()
+  const socket = {
+    addEventListener(type, listener) {
+      listeners.set(type, listener)
+    },
+    send(payload) {
+      const request = JSON.parse(payload)
+      lifecycle.push(`send:${request.method}`)
+      queueMicrotask(() => listeners.get('message')?.({ data: JSON.stringify({ id: request.id, result: {} }) }))
+    },
+    close() {
+      lifecycle.push('socket.close')
+    },
+  }
+  const page = new CdpPage('ws://lifecycle-proof', () => socket)
+  listeners.get('open')?.()
+  assert.equal(await closeCdpBeforeSocket(page), undefined)
+  assert.deepEqual(
+    lifecycle,
+    ['send:Browser.close', 'socket.close'],
+    'Browser.close must be acknowledged before the CDP socket closes',
+  )
+
+  const fakeChild = new EventEmitter()
+  fakeChild.exitCode = null
+  fakeChild.signalCode = null
+  fakeChild.kills = []
+  fakeChild.kill = (signal) => {
+    fakeChild.kills.push(signal)
+    return true
+  }
+  let stopSettled = false
+  const stopping = stopChild(fakeChild, { termTimeoutMs: 1, killTimeoutMs: 100 })
+    .then(() => { stopSettled = true })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.deepEqual(fakeChild.kills, ['SIGTERM', 'SIGKILL'], 'child fallback must escalate from SIGTERM to SIGKILL')
+  assert.equal(stopSettled, false, 'stopChild must wait for terminal exit after SIGKILL')
+  fakeChild.exitCode = 0
+  fakeChild.emit('exit', 0, null)
+  await stopping
+  assert.equal(stopSettled, true, 'stopChild must resolve after the child emits terminal exit')
   process.stdout.write('PASS #2983 tester source guard: CI-wired seven-width real-browser contract\n')
 }
 
@@ -114,10 +162,10 @@ async function waitFor(check, message, timeoutMs = 20_000) {
 }
 
 class CdpPage {
-  constructor(webSocketUrl) {
+  constructor(webSocketUrl, createSocket = (url) => new WebSocket(url)) {
     this.nextId = 1
     this.pending = new Map()
-    this.socket = new WebSocket(webSocketUrl)
+    this.socket = createSocket(webSocketUrl)
     this.ready = new Promise((resolve, reject) => {
       this.socket.addEventListener('open', resolve, { once: true })
       this.socket.addEventListener('error', reject, { once: true })
@@ -151,9 +199,46 @@ class CdpPage {
     return result.result.value
   }
 
+  async closeBrowserGracefully(timeoutMs = BROWSER_CLOSE_ACK_TIMEOUT_MS) {
+    await this.ready
+    const id = this.nextId++
+    return new Promise((resolve, reject) => {
+      const finish = (callback, value) => {
+        clearTimeout(timer)
+        this.pending.delete(id)
+        callback(value)
+      }
+      const timer = setTimeout(
+        () => finish(reject, new Error(`Browser.close did not acknowledge within ${timeoutMs}ms`)),
+        timeoutMs,
+      )
+      this.pending.set(id, {
+        resolve: (result) => finish(resolve, result),
+        reject: (error) => finish(reject, error),
+      })
+      try {
+        this.socket.send(JSON.stringify({ id, method: 'Browser.close', params: {} }))
+      } catch (error) {
+        finish(reject, error)
+      }
+    })
+  }
+
   close() {
     this.socket.close()
   }
+}
+
+async function closeCdpBeforeSocket(page) {
+  let gracefulCloseError
+  try {
+    await page.closeBrowserGracefully()
+  } catch (error) {
+    gracefulCloseError = error
+  } finally {
+    page.close()
+  }
+  return gracefulCloseError
 }
 
 async function createPage(debugPort) {
@@ -269,19 +354,39 @@ function assertGeometry(result, width) {
   assert.equal(result.figureOpacity, '1', `${width}px: Trips figure content was not fully visible`)
 }
 
-async function stopChild(child) {
-  if (!child || child.exitCode !== null || child.signalCode !== null) return
-  await new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL')
-      resolve()
-    }, 2_000)
-    child.once('exit', () => {
+function waitForChildExit(child, timeoutMs, message) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const onExit = () => {
       clearTimeout(timer)
+      child.removeListener('exit', onExit)
       resolve()
-    })
-    child.kill('SIGTERM')
+    }
+    const timer = setTimeout(() => {
+      child.removeListener('exit', onExit)
+      reject(new Error(message))
+    }, timeoutMs)
+    child.once('exit', onExit)
+    if (child.exitCode !== null || child.signalCode !== null) onExit()
   })
+}
+
+async function stopChild(child, {
+  termTimeoutMs = CHILD_STOP_TIMEOUT_MS,
+  killTimeoutMs = CHILD_STOP_TIMEOUT_MS,
+} = {}) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return
+  const afterTerm = waitForChildExit(child, termTimeoutMs, `child did not exit after SIGTERM within ${termTimeoutMs}ms`)
+  child.kill('SIGTERM')
+  try {
+    await afterTerm
+    return
+  } catch {
+    if (child.exitCode !== null || child.signalCode !== null) return
+  }
+  const afterKill = waitForChildExit(child, killTimeoutMs, `child did not exit after SIGKILL within ${killTimeoutMs}ms`)
+  child.kill('SIGKILL')
+  await afterKill
 }
 
 async function runtimeContract() {
@@ -383,14 +488,33 @@ async function runtimeContract() {
     assert.deepEqual(failures, [], `Host Trips responsive contract failed:\n- ${failures.join('\n- ')}`)
     process.stdout.write(`PASS #2983 Host Trips real-browser geometry ${VIEWPORTS.length}/${VIEWPORTS.length} widths\n`)
   } finally {
-    page?.close()
-    await Promise.allSettled([stopChild(chrome), stopChild(server)])
-    removeBrowserProfile(profile)
+    let teardownError
+    let chromeTerminal = false
+    if (page) teardownError = await closeCdpBeforeSocket(page)
+    try {
+      await stopChild(chrome)
+      chromeTerminal = true
+    } catch (error) {
+      teardownError ??= error
+    }
+    try {
+      await stopChild(server)
+    } catch (error) {
+      teardownError ??= error
+    }
+    if (chromeTerminal) {
+      try {
+        removeBrowserProfile(profile)
+      } catch (error) {
+        teardownError ??= error
+      }
+    }
     if (server && server.exitCode && server.exitCode !== 0 && server.signalCode !== 'SIGTERM') {
       process.stderr.write(serverOutput)
     }
+    if (teardownError) throw teardownError
   }
 }
 
-if (!BUILT_ONLY) sourceContract()
+if (!BUILT_ONLY) await sourceContract()
 if (!SOURCE_ONLY) await runtimeContract()
