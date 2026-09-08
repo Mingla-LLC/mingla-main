@@ -11,7 +11,22 @@ import {
 import { emitCmsObservation } from "./observability";
 import { studioMediaGrantRequest } from "./studioRequestAuth";
 
-const ACCEPTED = new Set(["image/jpeg", "image/png", "image/webp"]);
+/*
+ * #2830 — video/mp4 belongs here.
+ *
+ * Everything downstream already accepted it: the declared_mime column lists it,
+ * MP4_BRANDS sniffs it, the processing path writes it to the approved bucket,
+ * and the line below this gate casts content_type to a union that INCLUDES it.
+ * Only this set left it out, so every video upload was refused at the front
+ * door with "that image could not be accepted" while the whole pipeline behind
+ * it sat ready. A hero video could never have been uploaded through the product.
+ */
+const ACCEPTED = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "video/mp4",
+]);
 const WIDTHS = [320, 640, 960, 1440, 1920] as const;
 const MAX_BYTES = 20 * 1024 * 1024;
 
