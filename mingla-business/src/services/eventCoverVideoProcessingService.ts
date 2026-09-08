@@ -443,18 +443,54 @@ const statFileSize = async (
   return fallbackBytes;
 };
 
-const loadVideoCompressor = ():
-  | { compress: (uri: string, options: unknown, onProgress?: (progress: number) => void) => Promise<string> }
-  | null => {
+interface VideoCompressorModule {
+  compress: (
+    uri: string,
+    options: unknown,
+    onProgress?: (progress: number) => void,
+  ) => Promise<string>;
+  cancelCompression?: (cancellationId: string) => void;
+  activateBackgroundTask?: (onExpired?: (data: unknown) => void) => Promise<unknown>;
+  deactivateBackgroundTask?: () => Promise<unknown>;
+}
+
+const loadVideoCompressor = (): VideoCompressorModule | null => {
   if (Platform.OS === "web") return null;
   try {
-    // react-native-compressor Video.compress API:
-    // https://github.com/numandev1/react-native-compressor#compress-1
+    // react-native-compressor Video API. Option and method names below are read
+    // from the INSTALLED package's own types
+    // (node_modules/react-native-compressor/lib/typescript/src/Video/index.d.ts),
+    // not from the docs site — `maxSize`, `progressDivider`,
+    // `getCancellationId`, `cancelCompression`, `activateBackgroundTask` and
+    // `deactivateBackgroundTask` are all declared there.
     return require("react-native-compressor").Video ?? null;
   } catch {
     return null;
   }
 };
+
+// Issue #3128 follow-up — the reporter's clip was 4K, and that is the whole
+// story of the 19-minute failure.
+//
+// The trim editor is a keyframe STREAM COPY (`enablePreciseTrimming: false`,
+// issue #1350), so trimming to 15s preserves the source resolution AND bitrate:
+// the compressor was handed a full-bitrate 4K stream and asked to transcode it
+// on a phone. `compressionMethod: "auto"` sizes its target from that source, so
+// it tried to keep 4K — minutes of work, and on this device it never finished.
+//
+// Nothing downstream wants 4K. Bunny transcodes server-side and delivers a
+// 720p-max ladder (`play_720p.mp4` is what every applied cover here resolves
+// to), so every pixel above 1080p is spent to be thrown away twice — once by
+// the phone, once by the provider.
+//
+// So: downscale to 1080p on the way in. A quarter of the pixels of 4K, well
+// above anything the delivery ladder serves, and a job a phone can actually
+// finish.
+const COMPRESSION_MAX_EDGE_PX = 1920;
+// `auto` reports progress rarely enough that the sheet showed a bare spinner
+// with no percentage. This asks for an update every 1%, which also gives the
+// stall detector below a real signal to watch instead of silence.
+const COMPRESSION_PROGRESS_DIVIDER = 1;
 
 // Issue #3128 — the compressor used to be awaited with NOTHING guarding it: no
 // timeout, no abort, no progress requirement. Observed on a real iPhone,
@@ -525,11 +561,29 @@ export const compressVideoLocally = async (input: {
     }, 5_000);
   });
 
+  // The library owns a real cancellation handle; without it a stalled race
+  // abandons the promise while the native transcode keeps burning the battery.
+  let cancellationId: string | null = null;
+  // And it owns an explicit background task. iOS suspends a backgrounded app,
+  // which halts an AVFoundation export — the reporter switched apps to send a
+  // screenshot while this ran. Best effort: if the platform declines it, the
+  // stall detector below is still the backstop.
+  try {
+    await compressor.activateBackgroundTask?.();
+  } catch {
+    // Not fatal — compression simply stays foreground-only on this device.
+  }
+
   try {
     const compressedUri = await Promise.race([
       compressor.compress(
         input.uri,
-        { compressionMethod: "auto" },
+        {
+          compressionMethod: "manual",
+          maxSize: COMPRESSION_MAX_EDGE_PX,
+          progressDivider: COMPRESSION_PROGRESS_DIVIDER,
+          getCancellationId: (id: string) => { cancellationId = id; },
+        },
         (progress: number) => {
           lastProgressAt = Date.now();
           input.onProgress?.({
@@ -562,6 +616,14 @@ export const compressVideoLocally = async (input: {
   } finally {
     settled = true;
     if (stallTimer !== null) clearInterval(stallTimer);
+    if (cancellationId !== null) {
+      try { compressor.cancelCompression?.(cancellationId); } catch { /* best effort */ }
+    }
+    try {
+      await compressor.deactivateBackgroundTask?.();
+    } catch {
+      // Best effort: releasing the task must never mask the real outcome.
+    }
   }
 };
 
