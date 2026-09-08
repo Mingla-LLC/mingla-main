@@ -282,6 +282,28 @@ export function seedDocuments(
   const asset = (slot) => media[slot] ?? null;
   const drop = (blocks) => blocks.filter(Boolean);
 
+  /*
+   * The four square dish crops gögi publish for their own "what people order"
+   * strip. Only the ones that actually uploaded are used.
+   */
+  const foodStrip = [
+    "foodSqCoconutRiceBowl",
+    "foodSqWingsBoard",
+    "foodSqStirFryPlate",
+    "foodSqSmoothie",
+  ].map((slot) => asset(slot)).filter(Boolean).map((id) => ({ media: id, alt: "" }));
+
+  const reel = (videoSlot, posterSlot, heading, caption) =>
+    asset(videoSlot) && asset(posterSlot)
+      ? {
+        blockType: "video_feature",
+        heading,
+        caption,
+        video: asset(videoSlot),
+        poster: asset(posterSlot),
+      }
+      : null;
+
   const homeBlocks = drop([
     {
       blockType: "hero",
@@ -317,6 +339,53 @@ export function seedDocuments(
       address: GOGI_SEED_COPY.address,
       hours: hours(),
     },
+    /*
+     * What people order. gögi's own home page carries a strip of dishes
+     * between the story and the films, and they publish square crops of
+     * exactly these four for it. If any one of them is missing from the
+     * upload, the block is dropped rather than shown short.
+     */
+    foodStrip.length
+      ? { blockType: "gallery", heading: "What people order", images: foodStrip }
+      : null,
+    /*
+     * The films. Three consecutive reels render as ONE grid, which is how
+     * their site shows them -- the same films that carry the gallery page,
+     * as on theirs. A single reel would render as a full-width feature
+     * instead, so this is deliberately a run.
+     */
+    reel(
+      "reelPregameFriday",
+      "reelPregameFridayPoster",
+      "Your Friday needs better decisions",
+      GOGI_SEED_COPY.voice.friday,
+    ),
+    reel(
+      "reelLateNightCravings",
+      "reelLateNightCravingsPoster",
+      "Some cravings don't respect boundaries",
+      GOGI_SEED_COPY.voice.cravings,
+    ),
+    reel(
+      "reelOutsideGogi",
+      "reelOutsideGogiPoster",
+      "Find gögi",
+      GOGI_SEED_COPY.voice.findGogi,
+    ),
+    /*
+     * The people, as on their home page. The about page carries the same
+     * block; a portrait that did not upload degrades to an initial rather
+     * than a gap.
+     */
+    {
+      blockType: "team",
+      heading: "Meet the team",
+      caption: GOGI_SEED_COPY.voice.team,
+      members: GOGI_SEED_COPY.team.map((name) => {
+        const portrait = asset(`team:${name}`);
+        return portrait ? { name, media: portrait, alt: name } : { name };
+      }),
+    },
     {
       blockType: "contact_handoff",
       heading: "Call gögi",
@@ -325,17 +394,6 @@ export function seedDocuments(
       href: GOGI_SEED_COPY.phoneHref,
     },
   ]);
-
-  const reel = (videoSlot, posterSlot, heading, caption) =>
-    asset(videoSlot) && asset(posterSlot)
-      ? {
-        blockType: "video_feature",
-        heading,
-        caption,
-        video: asset(videoSlot),
-        poster: asset(posterSlot),
-      }
-      : null;
 
   const aboutBlocks = drop([
     {
