@@ -62,6 +62,13 @@ describe("#2830 hero parity, by measurement", () => {
     expect(has(/\.hero::after[\s\S]{0,220}linear-gradient\(to top/)).toBe(true);
   });
 
+  it("does not upper-case the brand's name in the footer either", () => {
+    // The header stopped shouting it; the footer went on doing so on every page.
+    const footer = (styles.match(/\.footer strong\s*\{[^}]*\}/g) ?? []).join("\n");
+    expect(footer).not.toBe("");
+    expect(footer).not.toContain("text-transform: uppercase");
+  });
+
   it("a brand's name is never upper-cased for it", () => {
     // "gogi" is deliberately lowercase; the heading rule was shouting it.
     expect(has(/h1,\s*h2,\s*h3,\s*\.brand\s*\{/)).toBe(false);

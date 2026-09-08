@@ -53,7 +53,12 @@ describe("#2830 Restaurant Website v1 visual and accessibility contract", () => 
      * The invariant is pinned harder than before: the two assertions below fix
      * both that the hero is the h1 AND that nothing else can claim it.
      */
-    expect(renderer).toContain("primaryHeading={index === primaryHeroIndex}");
+    /*
+     * #2830 -- reels are grouped before rendering, so the block index now comes
+     * from the group and this exact string is gone. The invariant is the same:
+     * only the primary hero is told it is the primary heading.
+     */
+    expect(renderer).toContain("primaryHeading={group.index === primaryHeroIndex}");
     /*
      * #2830 -- the bare .page-title became a header band with a breadcrumb, so
      * the exact source string no longer exists. The INVARIANT it protected is

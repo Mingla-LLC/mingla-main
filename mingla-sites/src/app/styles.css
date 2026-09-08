@@ -732,7 +732,11 @@ summary {
 
 .footer strong {
   font-size: clamp(2rem, 4vw, 4rem);
-  text-transform: uppercase;
+  /*
+   * #2830 -- no text-transform. This is the brand's NAME. The header stopped
+   * upper-casing it and the footer went on shouting "GOGI" at the bottom of
+   * every page, contradicting the header on the same screen.
+   */
 }
 
 .footer > nav,
@@ -1348,4 +1352,42 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
   flex: 1 1 auto;
   height: 1px;
   background: var(--line);
+}
+
+/*
+ * #2830 -- the reel grid, matching the reference: portrait cards laid out
+ * four-across on a wide screen and collapsing to two on a phone, each with its
+ * label under the film.
+ */
+.reel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: clamp(0.75rem, 2vw, 1.5rem);
+}
+
+.reel-grid .reel-card {
+  margin: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+/* Inside the grid the column already sets the width, so the single-reel cap
+   must not also apply or the cards stop filling their tracks. */
+.reel-grid .reel-poster,
+.reel-grid .reel-video {
+  max-width: none;
+  max-height: none;
+}
+
+.reel-grid figcaption {
+  font-family: var(--display);
+  font-size: 0.82rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ivory);
+}
+
+.reel-grid .reel-play {
+  width: 54px;
+  height: 54px;
 }

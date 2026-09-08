@@ -11,7 +11,7 @@ const textOf = (html: string) =>
 import { renderToStaticMarkup } from "react-dom/server";
 import fs from "node:fs";
 import path from "node:path";
-import { RestaurantV1 } from "./RestaurantV1";
+import { RestaurantV1, groupReels } from "./RestaurantV1";
 import { homePage, pageForSlug } from "../lib/pageRouting";
 import type { RestaurantArtifact } from "../contracts/artifact";
 
@@ -145,5 +145,50 @@ describe("#2830 exactly one h1 per page", () => {
     expect(html.match(/<h1[\s>]/g)?.length).toBe(1);
     expect(html).toContain('class="page-header"');
     expect(html).toContain('aria-label="Breadcrumb"');
+  });
+});
+
+/*
+ * #2830 — a run of reels renders as ONE grid, a lone reel as a feature.
+ * Asserted by rendering, and by calling groupReels directly, because the whole
+ * point is what the grouping does to real block lists.
+ */
+describe("#2830 reels group into a grid", () => {
+  const reel = (heading: string) => ({ type: "video_feature", heading, video_url: "/v.mp4", poster_url: "/p.webp" });
+
+  it("puts a run of reels in one grid", () => {
+    const groups = groupReels([reel("A"), reel("B"), reel("C")] as never);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.kind).toBe("reels");
+  });
+
+  it("leaves a lone reel as a full feature", () => {
+    const groups = groupReels([reel("A")] as never);
+    expect(groups[0]!.kind).toBe("block");
+  });
+
+  it("does not merge reels across an intervening block", () => {
+    // Two reels either side of a gallery are two separate features, not one
+    // grid that silently reorders the page.
+    const groups = groupReels([reel("A"), { type: "gallery", images: [] }, reel("B")] as never);
+    expect(groups.map((g) => g.kind)).toEqual(["block", "block", "block"]);
+  });
+
+  it("keeps every reel's own index, so the hero is still the hero", () => {
+    const groups = groupReels([{ type: "hero", heading: "H" }, reel("A"), reel("B")] as never);
+    expect(groups[0]!.kind === "block" && groups[0]!.index).toBe(0);
+  });
+
+  it("renders each reel as a labelled figure", () => {
+    const artifact = JSON.parse(JSON.stringify(gogiShaped));
+    const page = artifact.pages.find((p: { role: string }) => p.role === "gallery")
+      ?? artifact.pages[artifact.pages.length - 1];
+    page.blocks = [reel("Coconut rice"), reel("Meet the team")];
+    const html = renderToStaticMarkup(
+      RestaurantV1({ artifact, page } as never) as never,
+    );
+    expect(html.split('class="reel-grid"').length - 1).toBe(1);
+    expect(html.split("<figcaption>").length - 1).toBe(2);
+    expect(html).toContain("Coconut rice");
   });
 });
