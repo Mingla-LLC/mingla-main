@@ -1,6 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+
+import { sectionForHash } from "../lib/menuSections";
+import { useCart } from "./CartScope";
 
 /**
  * #2830 — the menu cart.
@@ -47,11 +50,40 @@ function money(minor: number | null | undefined, currency: string | null | undef
   }
 }
 
+function subscribeToHash(onChange: () => void): () => void {
+  window.addEventListener("hashchange", onChange);
+  return () => window.removeEventListener("hashchange", onChange);
+}
+
+const readHash = () => window.location.hash;
+// The server has no fragment; it renders the whole menu.
+const readServerHash = () => "";
+
 export function MenuCart({ items }: { items: CartItem[] }) {
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [open, setOpen] = useState(false);
+  /*
+   * The cart lives above this block now, so it survives walking to another page
+   * and back. A page rendered without the provider still works: it falls back
+   * to a cart that only exists while this block is mounted.
+   */
+  const shared = useCart();
+  const [localQuantities, setLocalQuantities] = useState<Record<string, number>>({});
+  const [localOpen, setLocalOpen] = useState(false);
+  const quantities = shared ? shared.quantities : localQuantities;
+  const open = shared ? shared.open : localOpen;
+  const setOpen = shared ? shared.setOpen : setLocalOpen;
   const [query, setQuery] = useState("");
-  const [section, setSection] = useState("all");
+  /*
+   * The chosen section is DERIVED, not stored, so /menu#rice-bowls lands on
+   * that part of the menu without a render-time read of location (which tears
+   * hydration) or an effect that sets state (which cascades renders). The
+   * server sees no fragment, so its first paint is "Everything" and the client
+   * corrects it.
+   *
+   * A click overrides the fragment, but only for the fragment it was made
+   * against -- following a new deep link takes precedence again.
+   */
+  const hash = useSyncExternalStore(subscribeToHash, readHash, readServerHash);
+  const [override, setOverride] = useState<{ hash: string; value: string } | null>(null);
   const [priced, setPriced] = useState<Priced | null>(null);
   const [pricing, setPricing] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -60,6 +92,14 @@ export function MenuCart({ items }: { items: CartItem[] }) {
     () => ["all", ...Array.from(new Set(items.map((item) => item.section)))],
     [items],
   );
+  const section = override?.hash === hash
+    ? override.value
+    : sectionForHash(hash, sections) ?? "all";
+  const setSection = useCallback(
+    (value: string) => setOverride({ hash, value }),
+    [hash],
+  );
+
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return items.filter((item) =>
@@ -79,51 +119,86 @@ export function MenuCart({ items }: { items: CartItem[] }) {
   );
   const count = lines.reduce((sum, line) => sum + line.quantity, 0);
 
-  const reprice = useCallback(async (next: typeof lines) => {
-    if (next.length === 0) {
+  /*
+   * Price the cart whenever it changes, wherever the change came from: this
+   * block, the header bag, or a cart restored from a previous visit. Deriving
+   * the repricing from the cart rather than from the click is what lets a
+   * restored cart show a real total instead of nothing.
+   *
+   * Cancellation matters here. Two quick taps start two requests, and without
+   * the guard a slow FIRST response can land after the second and show a total
+   * for a cart the person no longer has.
+   *
+   * The rule is disabled across this effect deliberately. This is the
+   * data-fetching case its own guidance allows: the effect synchronises an
+   * external system with React state and updates state from the response. The
+   * pricing flag has to be set before the request, not after it, and clearing a
+   * stale total when the cart empties has to happen immediately.
+   */
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (lines.length === 0) {
       setPriced(null);
       setFailed(null);
-      return;
+      setPricing(false);
+      return undefined;
     }
+    const controller = new AbortController();
+    let live = true;
     setPricing(true);
     setFailed(null);
-    try {
-      const response = await fetch("/api/order", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: "preview", lines: next }),
-      });
-      const result = (await response.json()) as Priced;
-      if (!response.ok || !result?.ok) {
+    void (async () => {
+      try {
+        const response = await fetch("/api/order", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode: "preview", lines }),
+          signal: controller.signal,
+        });
+        const result = (await response.json()) as Priced;
+        if (!live) return;
+        if (!response.ok || !result?.ok) {
+          setPriced(null);
+          setFailed("We could not price this order just now. Nothing has been charged.");
+          return;
+        }
+        setPriced(result);
+      } catch {
+        // An aborted request is a newer one taking over, not a failure.
+        if (!live) return;
         setPriced(null);
         setFailed("We could not price this order just now. Nothing has been charged.");
-        return;
+      } finally {
+        if (live) setPricing(false);
       }
-      setPriced(result);
-    } catch {
-      setPriced(null);
-      setFailed("We could not price this order just now. Nothing has been charged.");
-    } finally {
-      setPricing(false);
-    }
-  }, []);
+    })();
+    return () => {
+      live = false;
+      controller.abort();
+    };
+  }, [lines]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const change = useCallback(
     (id: string, delta: number) => {
-      setQuantities((current) => {
+      if (shared) {
+        shared.change(id, delta);
+        return;
+      }
+      setLocalQuantities((current) => {
         const quantity = Math.max(0, (current[id] ?? 0) + delta);
         const next = { ...current, [id]: quantity };
         if (quantity === 0) delete next[id];
-        void reprice(
-          Object.entries(next)
-            .filter(([, value]) => value > 0)
-            .map(([menuItemId, value]) => ({ menuItemId, quantity: value })),
-        );
         return next;
       });
     },
-    [reprice],
+    [shared],
   );
+
+  // A published menu changes. Anything no longer on it leaves the cart.
+  useEffect(() => {
+    shared?.keepOnly(items.map((item) => item.id));
+  }, [shared, items]);
 
   const total = money(priced?.total?.amount_minor, priced?.total?.currency);
   const unavailable = (priced?.lines ?? []).filter((line) => line.unavailable);
