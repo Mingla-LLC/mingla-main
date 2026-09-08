@@ -85,7 +85,16 @@ function safeFailure(error: unknown, returnUrl?: string) {
         code,
         message:
           code === "MEDIA_REJECTED"
-            ? "That image could not be accepted."
+            /*
+             * #2830 — say what is accepted, and do not call a video an image.
+             *
+             * This copy said "That image could not be accepted." for every
+             * rejection. Video uploads were refused with it while the pipeline
+             * behind the gate was fully capable of video, and the message sent
+             * whoever hit it looking for a problem with their picture. A
+             * rejection that names no requirement is a dead end.
+             */
+            ? "That file could not be accepted. Images must be JPEG, PNG or WebP, and video must be MP4, under 20MB."
             : "Website tools are temporarily unavailable.",
         retryable: [
           "MEDIA_PROCESSING",
