@@ -210,7 +210,23 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     if (ctx.settings.counter_pickup_enabled !== true) {
       return fail("counter_pickup_unavailable");
     }
-    if (buyerName.length < 2) return fail("buyer_name_required");
+    /*
+     * #2830 — a PRICE PREVIEW has no buyer yet, and does not need one.
+     *
+     * This gate ran before the `mode === "preview"` return below, so every
+     * counter-pickup preview failed with `buyer_name_required` — including the
+     * website cart, which asks for a price while the guest is still choosing
+     * and only collects a name at checkout. The result on gogi's live menu was
+     * "We could not price this order just now" on every single add.
+     *
+     * The requirement is unchanged for `create`: Gate 8 below still validates
+     * the full contact triple unconditionally before any order is written.
+     * Counter pickup being DISABLED still refuses a preview, because pricing an
+     * order that can never be placed would be a lie.
+     */
+    if (mode === "create" && buyerName.length < 2) {
+      return fail("buyer_name_required");
+    }
   }
 
   // ── Gates 4-6 — orderability, modifiers, single currency ─────────────────
