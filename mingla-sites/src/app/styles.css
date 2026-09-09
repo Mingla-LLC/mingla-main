@@ -1391,3 +1391,27 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
   width: 54px;
   height: 54px;
 }
+
+/*
+ * #2830 -- a short gallery is a STRIP, not a mosaic.
+ *
+ * `.gallery` is a deliberate editorial layout: a tall first image beside two
+ * columns of smaller ones. That reads well at twelve photos and badly at four,
+ * where it renders one big picture and three offcuts -- which is what gogi's
+ * "What people order" row looked like on the live site. Four dishes want four
+ * equal cards, as on the site this matches.
+ */
+.gallery-strip {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  grid-auto-rows: auto;
+}
+
+.gallery-strip img {
+  aspect-ratio: 1;
+  height: auto;
+}
+
+/* The mosaic's tall first cell must not survive into the strip. */
+.gallery-strip img:first-child {
+  grid-row: auto;
+}
