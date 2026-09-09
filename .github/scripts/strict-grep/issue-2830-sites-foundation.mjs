@@ -738,8 +738,9 @@ export function violations(files) {
      * gets its own title as that h1. Both are asserted below, and the render
      * suite counts the h1s rather than grepping for an attribute.
      */
-    '<h1 className="page-title">{current.title}</h1>',
-    "primaryHeading={index === primaryHeroIndex}",
+    '<header className="page-header"',
+    "<h1>{current.title}</h1>",
+    "primaryHeading={group.index === primaryHeroIndex}",
   ]) need(publicCombined, token, "public last-good runtime", failures);
   for (const forbidden of ["@payloadcms", "from \"payload\"", "postgresAdapter", "sharp(", "lexicalEditor"])
     forbid(publicCombined, forbidden, "public runtime isolation", failures);
@@ -748,7 +749,7 @@ export function violations(files) {
     "--gold: #cda052",
     "--gold-hover: #dfb262",
     "min-width: 320px",
-    "88svh",
+    "min-height: 100svh",
     "76svh",
     ":where(a, button, summary) {\n  min-width: 44px;\n  min-height: 44px;\n}",
     ".gallery {\n  display: grid;\n  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));",
@@ -907,7 +908,7 @@ function selfTest() {
     ["publicGateway", "input.siteId !== config.pilotSiteId", "input.siteId === config.pilotSiteId", "public pilot signing boundary"],
     ["publicConsentContract", 'name === CONSENT_KEY && value === "granted"', 'name.includes(CONSENT_KEY) && value.startsWith("granted")', "public exact consent cookie boundary"],
     ["attribution", "const envelope = await verifySitesEnvelope", "const envelope = await verifyUnsignedEnvelope", "signed attribution gateway"],
-    ["publicRenderer", '<h1 className="page-title">{current.title}</h1>', '<h1 className="page-title">{"Page"}</h1>', "public last-good runtime"],
+    ["publicRenderer", "<h1>{current.title}</h1>", '<h1>{"Page"}</h1>', "public last-good runtime"],
     ["publicRenderer", 'className="fact-rail"', 'className="facts"', "Restaurant Website v1 composition"],
     ["publicStyles", "--gold: #cda052", "--gold: #d85a22", "Restaurant Website v1 visual contract"],
     ["publicStyles", ":where(a, button, summary) {\n  min-width: 44px;\n  min-height: 44px;\n}", ":where(a, button, summary) {\n  min-width: 32px;\n  min-height: 32px;\n}", "Restaurant Website v1 visual contract"],
