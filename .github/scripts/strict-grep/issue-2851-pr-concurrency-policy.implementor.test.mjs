@@ -735,7 +735,21 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // concurrency policy are unchanged; only that lane's non-concurrency
   // document moved. The exact added target is independently removed in the
   // revert-sensitivity table below, so this re-pin cannot conceal its loss.
-  "ba7afb2a0994e102a5d743d1583395a6e42355cd99b0de05bf2105f77e950cc2";
+  //
+  // [TEST-MOD-APPROVED #3157] Re-derived again after #3157 added exactly one
+  // Deno test target to the existing `supabase-secret-budget` lane. Verified,
+  // not asserted:
+  //   - the workflow diff is a single `M` on
+  //     `.github/workflows/supabase-secret-budget.yml`; no workflow is added,
+  //     removed or renamed, so the inventory is the same set of files.
+  //   - grepping the added AND removed lines for `concurrency`, `group:` and
+  //     `cancel-in-progress` returns ZERO. The one added line is a test file
+  //     path inside an existing list of targets.
+  //   - PR_FAMILY_COUNT is unchanged at 124 and the policy audit still reports
+  //     zero errors — both sibling subtests pass at this commit; only this
+  //     content digest moved.
+  // Every earlier re-derivation above is preserved, not replaced.
+  "3666588c6212d7da808bea2e8089ec8e6a906b3792bd3af2e40db85335032167";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
