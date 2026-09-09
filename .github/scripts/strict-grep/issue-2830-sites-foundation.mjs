@@ -9,6 +9,13 @@ const PATHS = {
   migration: "supabase/migrations/20270609002830_issue_2830_mingla_sites_foundation.sql",
   liveMigration: "supabase/migrations/20270613002893_issue_2893_sites_readiness_activation.sql",
   liveSql: "supabase/migrations/__tests__/issue_2893_sites_readiness_activation.test.sql",
+  // #3157 — the post-pointer public reachability record and the pilot audit trail.
+  reachabilityMigration:
+    "supabase/migrations/20270620003157_issue_3157_public_reachability_and_pilot_audit.sql",
+  reachabilitySql:
+    "supabase/migrations/__tests__/issue_3157_publish_public_reachability.test.sql",
+  reachabilityDeno:
+    "supabase/functions/_shared/__tests__/issue_3157_publish_public_reachability.test.ts",
   deployWrapper: "scripts/ops/deploy-sites-edge-functions.sh",
   deployWrapperTest: "scripts/ops/__tests__/issue_2893_sites_edge_deploy_wrapper.test.mjs",
   security: "supabase/functions/_shared/sitesSecurity.ts",
@@ -257,6 +264,95 @@ export function violations(files) {
     "non-pilot availability leaked Website state",
     "readiness receipt was mutable",
   ]) need(liveSql, token, "Core live-readiness SQL regression", failures);
+
+  // #3157 — a publish certified itself green against a path the public could
+  // not reach, and the kill switch left no audit row. Both halves are pinned.
+  const reachability = files.reachabilityMigration ?? "";
+  for (const token of [
+    "CREATE OR REPLACE FUNCTION public.brand_site_record_public_reachability",
+    "ADD COLUMN public_checked_at timestamptz",
+    "ADD COLUMN public_status_code integer",
+    "ADD COLUMN public_reachable boolean",
+    "'publication.public_check'",
+    "'pilot.activated'",
+    "'pilot.deactivated'",
+    "'public_check'",
+    "'live_pointer_changed', false",
+    "TO service_role, postgres",
+  ]) need(reachability, token, "Sites public reachability record", failures);
+  for (const token of [
+    "active_publication_id =",
+    "last_successful_publication_id =",
+    "pilot_enabled = true",
+  ]) {
+    forbid(
+      reachability.match(
+        /CREATE OR REPLACE FUNCTION public\.brand_site_record_public_reachability\([\s\S]*?\n\$\$;/,
+      )?.[0] ?? "",
+      token,
+      "Sites public reachability surfaces without acting",
+      failures,
+    );
+  }
+  for (const routine of ["activate", "deactivate"]) {
+    const body = reachability.match(
+      new RegExp(
+        `CREATE OR REPLACE FUNCTION public\\.brand_site_${routine}_gogi_pilot\\([\\s\\S]*?\\n\\$\\$;`,
+      ),
+    )?.[0] ?? "";
+    for (const token of [
+      "INSERT INTO public.brand_site_audit_log(",
+      "'service_config', 'sites_v1'",
+      "auth.uid()",
+      "'hostname', p_hostname",
+    ]) {
+      need(body, token, `Gogi pilot ${routine} audit trail`, failures);
+    }
+  }
+
+  const reachabilitySql = files.reachabilitySql ?? "";
+  for (const token of [
+    "an unreachable public host rolled back live state",
+    "public check wrote no audit row",
+    "publication columns did not record the public 404",
+    "operation receipt did not carry the public check",
+    "activation wrote no audit row",
+    "deactivation wrote no audit row",
+    "a refused pilot call still wrote an audit row",
+    "the public check annotation was rewritable",
+    "public check accepted a different observation on one operation",
+  ]) need(reachabilitySql, token, "Sites public reachability SQL regression", failures);
+
+  const reachabilityDeno = files.reachabilityDeno ?? "";
+  for (const token of [
+    "the check did not request the public host",
+    "a 404 was reported reachable",
+    "a failed connection invented a status code",
+    "the publish is never failed by the check itself",
+  ]) need(reachabilityDeno, token, "Sites public reachability Deno regression", failures);
+
+  const reachabilityCallback = files.callback ?? "";
+  for (const token of [
+    "export async function observePublicHost",
+    "export async function recordPublicReachability",
+    'const publicCheck = await recordPublicReachability({',
+    "brand_site_record_public_reachability",
+    "publish.public_check.",
+  ]) need(reachabilityCallback, token, "Sites publish public check wiring", failures);
+  if (
+    reachabilityCallback.indexOf("brand_site_complete_publication") >
+      reachabilityCallback.indexOf("const publicCheck = await recordPublicReachability({")
+  ) {
+    failures.push(
+      "Sites publish public check wiring: the public check runs before the live pointer moves",
+    );
+  }
+  need(
+    files.secretWorkflow ?? "",
+    "issue_3157_publish_public_reachability.test.ts",
+    "Sites public reachability CI lane",
+    failures,
+  );
 
   const deployWrapper = files.deployWrapper ?? "";
   for (const token of [
@@ -921,6 +1017,14 @@ function selfTest() {
     ["secretWorkflow", "final 88-name bundled-authority state", "final state", "existing secret CI lane"],
     ["webWorkflow", "mingla-sites-build:", "mingla-sites-removed:", "existing build CI lane"],
     ["runbook", "restore drill older than 100 days", "restore drill older than one hundred days", "Sites operations runbook"],
+    ["reachabilityMigration", "ADD COLUMN public_reachable boolean", "ADD COLUMN public_observed boolean", "Sites public reachability record"],
+    ["reachabilityMigration", "'live_pointer_changed', false", "'live_pointer_changed', true", "Sites public reachability record"],
+    ["reachabilityMigration", "'pilot.activated', 'service_config', 'sites_v1'", "'pilot.activated', 'config', 'sites_v1'", "Gogi pilot activate audit trail"],
+    ["reachabilityMigration", "'pilot.deactivated', 'service_config', 'sites_v1'", "'pilot.deactivated', 'config', 'sites_v1'", "Gogi pilot deactivate audit trail"],
+    ["reachabilitySql", "an unreachable public host rolled back live state", "an unreachable public host did something", "Sites public reachability SQL regression"],
+    ["reachabilityDeno", "a 404 was reported reachable", "a 404 was mishandled", "Sites public reachability Deno regression"],
+    ["callback", "export async function recordPublicReachability", "async function recordPublicReachability", "Sites publish public check wiring"],
+    ["secretWorkflow", "issue_3157_publish_public_reachability.test.ts", "issue_3157_removed.test.ts", "Sites public reachability CI lane"],
   ];
   for (const [key, before, after, expected] of reversions) {
     const mutated = { ...clean, [key]: clean[key].replace(before, after) };
