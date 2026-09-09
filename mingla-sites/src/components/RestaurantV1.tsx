@@ -15,6 +15,8 @@ import { HeroVideo } from "./HeroVideo";
 import { ReelVideo } from "./ReelVideo";
 import { RevealOnScroll } from "./RevealOnScroll";
 import { HeaderScrollState } from "./HeaderScrollState";
+import { GalleryLightbox } from "./GalleryLightbox";
+import { MapEmbed } from "./MapEmbed";
 import { menuSectionSlug } from "../lib/menuSections";
 import { CartScope } from "./CartScope";
 import { HeaderCart } from "./HeaderCart";
@@ -26,6 +28,12 @@ import type { SiteEventContext } from "../lib/clientAnalytics";
 
 function text(value: unknown, fallback = ""): string { return typeof value === "string" ? value : fallback; }
 function items(value: unknown): Record<string, unknown>[] { return Array.isArray(value) ? value.filter((item) => item && typeof item === "object") : []; }
+/*
+ * #3149 -- a coordinate is a NUMBER or it is nothing. `Number(null)` is 0, and
+ * 0,0 is a real point in the Atlantic: coercing a missing latitude would draw
+ * a map of open ocean instead of drawing none.
+ */
+function coordinate(value: unknown): number { return typeof value === "number" ? value : Number.NaN; }
 
 function firstBlock(
   blocks: RestaurantBlock[],
@@ -164,11 +172,73 @@ function Block({ block, context, primaryHeading = false, facts }: { block: Resta
       return <section className="video-feature"><Eyebrow label={block.eyebrow} heading={block.heading} /><h2>{text(block.heading)}</h2>{block.caption ? <p className="video-caption">{text(block.caption)}</p> : null}<ReelVideo src={text(block.video_url)} poster={text(block.poster_url)} label={text(block.heading, "Video")} /></section>;
     case "team":
       return <section className="team"><Eyebrow label={block.eyebrow} heading={block.heading} /><h2>{text(block.heading, "The team")}</h2>{block.caption ? <p>{text(block.caption)}</p> : null}<ul className="team-grid">{items(block.members).map((member, index) => <li key={`${text(member.name)}-${index}`}>{isSafeHref(member.media_url) ? <img src={text(member.media_url)} alt={text(member.alt)} width={480} height={480} loading="lazy" /> : <span className="team-initial" aria-hidden="true">{text(member.name).slice(0, 1)}</span>}<strong>{text(member.name)}</strong>{member.role ? <span>{text(member.role)}</span> : null}</li>)}</ul></section>;
-    case "gallery": { const galleryImages = items(block.images).slice(0, 12); return <section className="editorial-gallery"><Eyebrow label={block.eyebrow} heading={text(block.heading, "Gallery")} /><h2>{text(block.heading, "Gallery")}</h2><div className={galleryImages.length <= 4 ? "gallery gallery-strip" : "gallery"}>{galleryImages.map((image, index) => isSafeHref(image.url) ? <img key={index} src={text(image.url)} alt={text(image.alt)} width={640} height={640} /> : null)}</div></section>; }
+    /*
+     * #3149 -- every photograph opens larger, as every one of theirs does.
+     *
+     * The grid moved into `GalleryLightbox` whole rather than gaining a
+     * wrapper around it: the anchor has to BE the grid item, or `.gallery`'s
+     * tall first cell lands on an element that is no longer laid out by the
+     * grid and the mosaic collapses. The class names are unchanged, so the
+     * strip/mosaic decision above still reaches the same CSS.
+     */
+    case "gallery": {
+      const galleryImages = items(block.images).slice(0, 12)
+        .filter((image) => isSafeHref(image.url))
+        .map((image) => ({ url: text(image.url), alt: text(image.alt) }));
+      return <section className="editorial-gallery"><Eyebrow label={block.eyebrow} heading={text(block.heading, "Gallery")} /><h2>{text(block.heading, "Gallery")}</h2><GalleryLightbox images={galleryImages} className={galleryImages.length <= 4 ? "gallery gallery-strip" : "gallery"} /></section>;
+    }
     case "hours_location": return <section className="feature"><div><Eyebrow label={block.eyebrow} heading={text(block.heading, "Hours & location")} /><h2>{text(block.heading, "Hours & location")}</h2><p>{text(block.address)}</p><SafeLink href={block.map_url}>Open map</SafeLink></div><div className="hours">{items(block.hours).map((row, index) => <p key={index}><strong>{text(row.day)}</strong><span>{text(row.value)}</span></p>)}</div></section>;
     case "testimonials": return <section><Eyebrow label={block.eyebrow} heading={text(block.heading, "What guests say")} /><h2>{text(block.heading, "What guests say")}</h2><div className="grid">{items(block.items).slice(0, 8).map((item, index) => <blockquote className="tile" key={index}>“{text(item.quote)}”<footer>{text(item.name)}</footer></blockquote>)}</div></section>;
     case "faq": return <section><Eyebrow label={block.eyebrow} heading={text(block.heading, "Questions")} /><h2>{text(block.heading, "Questions")}</h2>{items(block.items).slice(0, 12).map((item, index) => <details key={index}><summary>{text(item.question)}</summary><p>{text(item.answer)}</p></details>)}</section>;
     case "contact_handoff": return <section className="cta"><Eyebrow label={block.eyebrow} heading={text(block.heading, "Get in touch")} /><h2>{text(block.heading, "Get in touch")}</h2><p>{text(block.body)}</p><SafeLink href={block.href} context={context} ctaKind="contact" className="button accent">{text(block.label, "Contact")}</SafeLink></section>;
+    /*
+     * #3149 -- the ticker under the hero.
+     *
+     * The phrases are printed TWICE and the track is translated by half its
+     * width, which is what makes the loop seamless; a single run would snap
+     * back to the start in front of the reader. The second run is
+     * `aria-hidden`, so a screen reader hears each phrase once, and the
+     * stylesheet drops it entirely under `prefers-reduced-motion`, where the
+     * strip is a static line rather than an animation that never ends.
+     */
+    case "marquee": {
+      const phrases = items(block.phrases).map((phrase) => text(phrase.text)).filter(Boolean);
+      if (phrases.length < 2) return null;
+      const run = (hidden: boolean) => <span className="marquee-run" aria-hidden={hidden ? "true" : undefined}>{phrases.map((phrase, index) => <span className="marquee-phrase" key={index}>{phrase}</span>)}</span>;
+      return <div className="marquee"><div className="marquee-track">{run(false)}{run(true)}</div></div>;
+    }
+    /*
+     * #3149 -- figures with a line under each. A description list, because
+     * that is what a figure and its label are; the fact rail already uses the
+     * same pairing for the same reason.
+     */
+    case "stats": {
+      const rows = items(block.items);
+      if (!rows.length) return null;
+      const heading = text(block.heading).trim();
+      return <section className="stats"><Eyebrow label={block.eyebrow} heading={heading} />{heading ? <h2>{heading}</h2> : null}{block.body ? <p className="stats-lead">{text(block.body)}</p> : null}<dl className="stats-row">{rows.map((row, index) => <div key={index}><dt>{text(row.figure)}</dt>{row.label ? <dd>{text(row.label)}</dd> : null}</div>)}</dl></section>;
+    }
+    /*
+     * #3149 -- a line lifted out of the prose, against a gold bar. `figure`
+     * with a `figcaption` rather than a `<cite>` inside the quotation: the
+     * attribution names WHO SAID IT, and a cite element is for the title of a
+     * work, which this never is.
+     */
+    case "pull_quote": {
+      const quote = text(block.quote).trim();
+      if (!quote) return null;
+      return <figure className="pull-quote"><blockquote><p>{quote}</p></blockquote>{block.attribution ? <figcaption>{text(block.attribution)}</figcaption> : null}</figure>;
+    }
+    /*
+     * #3149 -- the map. NOTHING is requested from OpenStreetMap until a
+     * visitor presses the control inside `MapEmbed`; see the note there. The
+     * heading and the words around it are the brand's, and the coordinates are
+     * the contract's -- there is no address handed to anyone to resolve.
+     */
+    case "map_embed": {
+      const heading = text(block.heading).trim();
+      return <section className="map-embed"><Eyebrow label={block.eyebrow} heading={heading} />{heading ? <h2>{heading}</h2> : null}{block.body ? <p className="map-body">{text(block.body)}</p> : null}<MapEmbed latitude={coordinate(block.latitude)} longitude={coordinate(block.longitude)} label={text(block.place_label)} />{isSafeHref(block.directions_url) ? <SafeLink href={block.directions_url} className="button ghost map-directions">Directions</SafeLink> : null}</section>;
+    }
     case "divider": return <hr />;
     case "spacer": return <div className={`spacer ${["small", "medium", "large"].includes(text(block.size)) ? text(block.size) : "medium"}`} aria-hidden="true" />;
   }

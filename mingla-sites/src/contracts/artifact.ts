@@ -19,7 +19,11 @@ export type RestaurantBlock = {
   type: "hero" | "rich_text" | "media_feature" | "cta" | "offering_grid" |
     "venue_reservation" | "menu_link" | "menu_board" | "gallery" | "hours_location" |
     "video_feature" | "team" |
-    "testimonials" | "faq" | "contact_handoff" | "divider" | "spacer";
+    "testimonials" | "faq" | "contact_handoff" | "divider" | "spacer" |
+    // #3149 wave 3 — the four shapes the reference has and this had no way to
+    // carry: a scrolling strip of phrases, a row of figures, a pulled
+    // quotation, and a map of one place.
+    "marquee" | "stats" | "pull_quote" | "map_embed";
   [key: string]: unknown;
 };
 
@@ -243,6 +247,27 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
     contact_handoff: ["type", "eyebrow", "heading", "body", "label", "href"],
     divider: ["type"],
     spacer: ["type", "size"],
+    /*
+     * #3149 wave 3 — NO EYEBROW ON THESE TWO, on purpose.
+     *
+     * The eyebrow is the line printed ABOVE A HEADING. A marquee is a ticker
+     * and a pull-quote is a quotation; neither renders a heading, so an
+     * eyebrow on either would have nothing to sit above. `divider` and
+     * `spacer` are excluded for the same reason.
+     */
+    marquee: ["type", "phrases"],
+    pull_quote: ["type", "quote", "attribution"],
+    stats: ["type", "eyebrow", "heading", "body", "items"],
+    map_embed: [
+      "type",
+      "eyebrow",
+      "heading",
+      "body",
+      "latitude",
+      "longitude",
+      "place_label",
+      "directions_url",
+    ],
   };
   if (!definitions[type] || !hasOnlyKeys(block, definitions[type])) {
     throw new Error("ARTIFACT_BLOCK_TYPE_MISMATCH");
@@ -407,6 +432,60 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
       break;
     case "spacer":
       valid = ["small", "medium", "large"].includes(String(block.size));
+      break;
+    /*
+     * #3149 — the scrolling strip under the hero.
+     *
+     * At least TWO phrases, because the strip prints a separator between them
+     * and repeats to loop: one phrase is a sentence with a stray dot after it,
+     * not a ticker. The cap is what fits one revolution at a readable speed.
+     */
+    case "marquee":
+      valid = exactRows(block.phrases, 2, 12, ["text"], (row) =>
+        boundedText(row.text, 80, true));
+      break;
+    /*
+     * A quotation lifted out of the prose. The attribution is OPTIONAL and is
+     * never invented: gogi's own site cites "gögi, on Instagram" under theirs,
+     * and a quote whose source the brand did not publish simply carries none.
+     */
+    case "pull_quote":
+      valid = boundedText(block.quote, 600, true) &&
+        boundedText(block.attribution, 120);
+      break;
+    /*
+     * A row of figure-and-label pairs. `figure` is the large line and `label`
+     * the small one under it; the label is optional because a figure can stand
+     * alone. Both are plain strings rather than numbers — "Open 24 hours" is a
+     * figure on a restaurant's site and coercing it to a number would either
+     * drop it or print a zero.
+     */
+    case "stats":
+      valid = boundedText(block.heading, 120) &&
+        boundedText(block.body, 300) &&
+        exactRows(block.items, 1, 6, ["figure", "label"], (row) =>
+          boundedText(row.figure, 60, true) && boundedText(row.label, 240));
+      break;
+    /*
+     * #3149 — A MAP IS TWO NUMBERS, NEVER A NAME.
+     *
+     * Both coordinates are REQUIRED and no free-text query is carried. A map
+     * asked for a place by name resolves silently, and silently wrong — the
+     * recorded failure is a deep link that landed in a different country
+     * because the provider matched a street of the same name. A block that
+     * cannot say where it is does not publish.
+     */
+    case "map_embed":
+      valid = boundedText(block.heading, 120) &&
+        boundedText(block.body, 500) &&
+        boundedText(block.place_label, 200, true) &&
+        typeof block.latitude === "number" &&
+        Number.isFinite(block.latitude) &&
+        block.latitude >= -90 && block.latitude <= 90 &&
+        typeof block.longitude === "number" &&
+        Number.isFinite(block.longitude) &&
+        block.longitude >= -180 && block.longitude <= 180 &&
+        safeLink(block.directions_url);
       break;
   }
   if (!valid) throw new Error("ARTIFACT_BLOCK_CONTENT_MISMATCH");

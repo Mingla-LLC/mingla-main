@@ -69,6 +69,75 @@ export const GOGI_SEED_COPY = Object.freeze({
     friday:
       "Your Friday needs better decisions. Start with gögi. Finish wherever the night takes you.",
   }),
+  /*
+   * #3149 wave 3 — transcribed from gögi's OWN PUBLISHED WEBSITE, read
+   * 2026-09-09. `voice` above is their Instagram; this is the site, and it is
+   * quoted the same way: nothing here is written for them.
+   *
+   * What is deliberately NOT here:
+   *   - Their fourth "why people come back" card, "Simple payment / Transfer
+   *     to Moniepoint or Zenith and send proof of payment." Orders placed
+   *     through this site are paid through Mingla, so repeating their bank
+   *     flow would be an instruction that does not apply. Three of their four
+   *     survive, which is also why their lead line for that section — "Four
+   *     things that make gögi gögi." — is left out rather than edited to say
+   *     three.
+   *   - Any eyebrow for the map section. Theirs reads "Getting here", and the
+   *     hours block on the same page already carries exactly that line; the
+   *     map therefore carries none rather than printing it twice.
+   */
+  site: Object.freeze({
+    // The scrolling strip under their hero, in their order.
+    marquee: Object.freeze([
+      "24/7 food house",
+      "Come as you are",
+      "Day or night, open for a bite",
+      "69 Admiralty Way",
+      "Find gögi",
+    ]),
+    whyEyebrow: "Why people keep coming back",
+    whyHeading: "No closing time",
+    pillars: Object.freeze([
+      Object.freeze({
+        figure: "Open 24 hours",
+        label:
+          "Seven days a week, all year. There is no “sorry, we’re closed” at gögi.",
+      }),
+      Object.freeze({
+        figure: "Bowls that travel",
+        label:
+          "Jollof, fried, coconut and village rice — with plantain and salad, in a gögi bowl.",
+      }),
+      Object.freeze({
+        figure: "Pregame Fridays",
+        label:
+          "DJ on deck, drinks flowing, food landing. Start the night here, finish it anywhere.",
+      }),
+    ]),
+    // The <cite> under every blockquote on their site.
+    quoteSource: "gögi, on Instagram",
+    gettingHereHeading: "Admiralty Way",
+    gettingHereBody:
+      "gögi is on the main Admiralty Way strip in Lekki Phase 1. It is a small frontage — look for the 24/7 food house sign.",
+    /*
+     * COORDINATES, NOT AN ADDRESS TO RESOLVE. A map handed a place by name
+     * resolves silently and can resolve to a street of the same name in
+     * another country.
+     *
+     * gögi publish none: their own site's Restaurant structured data carries a
+     * postal address and no `geo`, and OpenStreetMap has no house number on
+     * Admiralty Way. This pair is what their own live Visit page points at
+     * today — Google's resolution of their own published address — and a
+     * reverse lookup against OpenStreetMap puts it on Admiralty Way, Lekki
+     * Phase 1. Two providers agreeing on the street is what is claimed, so
+     * `mapLabel` says the STREET and not a door number nobody has surveyed.
+     */
+    mapLatitude: 6.4471033,
+    mapLongitude: 3.4680182,
+    mapLabel: "Admiralty Way, Lekki Phase 1, Lagos",
+    mapDirectionsUrl:
+      "https://www.google.com/maps/dir/?api=1&destination=6.4471033,3.4680182",
+  }),
   // Their own captions for their own people. Real names are published nowhere,
   // so nicknames are all this site claims.
   team: Object.freeze([
@@ -323,6 +392,16 @@ export function seedDocuments(
         { label: "Find us", href: "/contact" },
       ],
     },
+    /*
+     * #3149 -- the ticker, DIRECTLY under the hero, exactly where theirs sits
+     * and in their order. Decorative on their site; here the first pass of it
+     * is readable to a screen reader and the repeat that makes the loop
+     * seamless is hidden from one.
+     */
+    {
+      blockType: "marquee",
+      phrases: GOGI_SEED_COPY.site.marquee.map((text) => ({ text })),
+    },
     {
       blockType: "rich_text",
       eyebrow: "The place",
@@ -331,6 +410,18 @@ export function seedDocuments(
         GOGI_SEED_COPY.voice.comeAsYouAre,
         GOGI_SEED_COPY.voice.cravings,
       ]),
+    },
+    /*
+     * #3149 -- "Why people keep coming back / No closing time", the section
+     * their home page runs after the story. Three of their four cards: the
+     * fourth explains their bank-transfer flow, which does not apply to an
+     * order placed through Mingla.
+     */
+    {
+      blockType: "stats",
+      eyebrow: GOGI_SEED_COPY.site.whyEyebrow,
+      heading: GOGI_SEED_COPY.site.whyHeading,
+      items: GOGI_SEED_COPY.site.pillars.map((pillar) => ({ ...pillar })),
     },
     asset("reelFoodHouse") && asset("reelFoodHousePoster")
       ? {
@@ -417,14 +508,26 @@ export function seedDocuments(
   ]);
 
   const aboutBlocks = drop([
+    /*
+     * #3149 -- "Find gögi" is now PULLED OUT as a quotation, immediately
+     * under this prose, which is the shape their own About page uses: writing,
+     * then the line itself in large type against a gold bar, cited.
+     *
+     * It is MOVED, not copied. It was the first paragraph here; printing it
+     * twice, three lines apart, would read as a mistake by whoever wrote the
+     * page. The other line theirs quotes -- "show up exactly as you are" -- is
+     * on the home page as prose and stays there.
+     */
     {
       blockType: "rich_text",
       eyebrow: "The idea",
       heading: "Find gögi",
-      content: lexical([
-        GOGI_SEED_COPY.voice.findGogi,
-        GOGI_SEED_COPY.voice.comeAsYouAre,
-      ]),
+      content: lexical([GOGI_SEED_COPY.voice.comeAsYouAre]),
+    },
+    {
+      blockType: "pull_quote",
+      quote: GOGI_SEED_COPY.voice.findGogi,
+      attribution: GOGI_SEED_COPY.site.quoteSource,
     },
     {
       blockType: "team",
@@ -516,6 +619,26 @@ export function seedDocuments(
       heading: "Visit gögi",
       address: GOGI_SEED_COPY.address,
       hours: hours(),
+    },
+    /*
+     * #3149 -- the map their Visit page has and this one did not.
+     *
+     * NO EYEBROW: theirs reads "Getting here" over this section, and the hours
+     * block directly above already carries that exact line. Printing it twice
+     * on one page is worse than printing it once, and inventing a second one
+     * is not on the table.
+     *
+     * Nothing is requested from a map provider until a visitor asks for the
+     * map -- see `MapEmbed` in the public runtime.
+     */
+    {
+      blockType: "map_embed",
+      heading: GOGI_SEED_COPY.site.gettingHereHeading,
+      body: GOGI_SEED_COPY.site.gettingHereBody,
+      latitude: GOGI_SEED_COPY.site.mapLatitude,
+      longitude: GOGI_SEED_COPY.site.mapLongitude,
+      place_label: GOGI_SEED_COPY.site.mapLabel,
+      directions_url: GOGI_SEED_COPY.site.mapDirectionsUrl,
     },
     {
       blockType: "contact_handoff",
