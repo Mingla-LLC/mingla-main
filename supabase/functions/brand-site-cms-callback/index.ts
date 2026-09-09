@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  normalizeSitesHost,
   requireSha256,
   requireUuid,
   sitesJson,
@@ -136,6 +137,164 @@ export function safePilotDeactivationReceipt(
     deactivated_at: new Date(deactivatedAt).toISOString(),
     last_good_preserved: true,
   };
+}
+
+/*
+ * #3157 — the publish probe cannot see "the site is unreachable".
+ *
+ * probePublicationCandidate runs inside the CMS, against the artifact, BEFORE
+ * the live pointer moves. On 2026-09-09 it recorded status_code 200 while
+ * https://gogi.sites.usemingla.com had been 404 on every route for over an
+ * hour, because the pilot flag was off and the resolver's join was empty. The
+ * one gate that exists to stop a broken publish is structurally blind to the
+ * failure mode that actually took the site down.
+ *
+ * So once brand_site_complete_publication has moved the pointer, Core makes
+ * ONE real HTTPS request to the site's real public hostname and records what
+ * came back. It records; it never rolls back. A transient network blip must
+ * not be able to un-publish a customer's website, and the publish callback
+ * must never fail because of this check — the pointer has already moved, and
+ * telling the CMS otherwise would split the two systems' view of the truth.
+ */
+const PUBLIC_CHECK_TIMEOUT_MS = 8_000;
+const PUBLIC_CHECK_MAX_BYTES = 262_144;
+const PUBLIC_CHECK_DIGEST_RE = /data-artifact-digest="([0-9a-f]{64})"/;
+
+export function extractPublishedArtifactDigest(html: string): string | null {
+  return PUBLIC_CHECK_DIGEST_RE.exec(html)?.[1] ?? null;
+}
+
+export interface PublicHostObservation {
+  status_code: number | null;
+  observed_digest: string | null;
+  reachable: boolean;
+}
+
+export async function observePublicHost(
+  hostname: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<PublicHostObservation> {
+  const host = normalizeSitesHost(hostname);
+  if (host === null) {
+    return { status_code: null, observed_digest: null, reachable: false };
+  }
+  try {
+    const response = await fetchImpl(`https://${host}/`, {
+      method: "GET",
+      redirect: "manual",
+      headers: {
+        accept: "text/html",
+        "cache-control": "no-cache",
+        "user-agent": "mingla-sites-publish-check/1 (+issue-3157)",
+      },
+      signal: AbortSignal.timeout(PUBLIC_CHECK_TIMEOUT_MS),
+    });
+    let body = "";
+    try {
+      body = (await response.text()).slice(0, PUBLIC_CHECK_MAX_BYTES);
+    } catch {
+      // A status with an unreadable body is still a real status.
+      body = "";
+    }
+    return {
+      status_code: response.status,
+      observed_digest: extractPublishedArtifactDigest(body),
+      reachable: response.status >= 200 && response.status < 300,
+    };
+  } catch {
+    // DNS, TLS, connect, timeout: no status at all. That IS the outage shape.
+    return { status_code: null, observed_digest: null, reachable: false };
+  }
+}
+
+export interface PublicCheckInput {
+  siteId: string;
+  operationId: string;
+  publicationId: string;
+}
+
+/*
+ * The check is expressed against three narrow ports so it can be exercised
+ * without a live database or a live website. Everything it does is: find the
+ * site's real public hostname, ask that hostname for the home page, and write
+ * down what came back.
+ */
+export interface PublicCheckPorts {
+  primaryHostname(siteId: string): Promise<string | null>;
+  observe(hostname: string): Promise<PublicHostObservation>;
+  record(args: {
+    siteId: string;
+    operationId: string;
+    publicationId: string;
+    observedAt: string;
+    statusCode: number | null;
+    observedDigest: string | null;
+    reachable: boolean;
+  }): Promise<{ ok: boolean; data: Record<string, unknown> | null }>;
+}
+
+function emitPublicCheckObservation(
+  input: PublicCheckInput,
+  metric: string,
+  statusCode: number | null,
+): void {
+  // #3157 — the 2026-09-09 outage was found by a human loading the site. An
+  // unreachable public host after a publish has to make a noise of its own.
+  console.info(JSON.stringify({
+    event: "mingla_sites_state",
+    metric: `publish.public_check.${metric}`,
+    request_id: crypto.randomUUID(),
+    operation_id: input.operationId,
+    site_id: input.siteId,
+    publication_id: input.publicationId,
+    direction: "cms_to_core",
+    route: "/internal/v1/sites/:site_id/publication-results",
+    state_transition: "publication_published->public_check_recorded",
+    latency_ms: 0,
+    retry_count: 0,
+    safe_error_code: metric === "reachable"
+      ? null
+      : "SERVICE_TEMPORARILY_UNAVAILABLE",
+    status_code: statusCode,
+    version: "sites-v1",
+  }));
+}
+
+export async function recordPublicReachability(
+  ports: PublicCheckPorts,
+  input: PublicCheckInput,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const hostname = await ports.primaryHostname(input.siteId);
+    if (hostname === null) {
+      emitPublicCheckObservation(input, "no_hostname", null);
+      return null;
+    }
+    const observation = await ports.observe(hostname);
+    const recorded = await ports.record({
+      siteId: input.siteId,
+      operationId: input.operationId,
+      publicationId: input.publicationId,
+      observedAt: new Date().toISOString(),
+      statusCode: observation.status_code,
+      observedDigest: observation.observed_digest,
+      reachable: observation.reachable,
+    });
+    emitPublicCheckObservation(
+      input,
+      !recorded.ok
+        ? "record_failed"
+        : observation.reachable
+        ? "reachable"
+        : "unreachable",
+      observation.status_code,
+    );
+    return recorded.ok ? recorded.data : null;
+  } catch {
+    // The pointer has already moved. This check reports; it never decides.
+    emitPublicCheckObservation(input, "record_failed", null);
+    return null;
+  }
 }
 
 async function handleBrandSiteCmsCallbackRequest(
@@ -449,12 +608,14 @@ async function handleBrandSiteCmsCallbackRequest(
     if (publicationMatch) {
       const siteId = requireUuid(publicationMatch[1]);
       if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
+      const publicationId = requireUuid(parsed.publication_id);
+      const operationId = requireUuid(envelope.operation_id);
       const { data, error } = await service.rpc(
         "brand_site_complete_publication",
         {
           p_site_id: siteId,
-          p_operation_id: requireUuid(envelope.operation_id),
-          p_publication_id: requireUuid(parsed.publication_id),
+          p_operation_id: operationId,
+          p_publication_id: publicationId,
           p_source_revision_id: String(parsed.source_revision_id ?? ""),
           p_source_digest: requireSha256(parsed.source_digest),
           p_artifact_key: String(parsed.artifact_key ?? ""),
@@ -469,7 +630,49 @@ async function handleBrandSiteCmsCallbackRequest(
           409,
         );
       }
-      return sitesJson({ ok: true, data });
+      // #3157 — the live pointer has now moved. Only from here can anything
+      // ask the public host what it actually serves.
+      const publicCheck = await recordPublicReachability({
+        primaryHostname: async (site) => {
+          const { data: host, error: hostError } = await service
+            .from("brand_site_hosts")
+            .select("hostname")
+            .eq("site_id", site)
+            .eq("is_primary", true)
+            .is("retired_at", null)
+            .order("created_at", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          return hostError || typeof host?.hostname !== "string"
+            ? null
+            : host.hostname;
+        },
+        observe: observePublicHost,
+        record: async (args) => {
+          const { data: recorded, error: recordError } = await service.rpc(
+            "brand_site_record_public_reachability",
+            {
+              p_site_id: args.siteId,
+              p_operation_id: args.operationId,
+              p_publication_id: args.publicationId,
+              p_observed_at: args.observedAt,
+              p_status_code: args.statusCode,
+              p_observed_digest: args.observedDigest,
+              p_reachable: args.reachable,
+            },
+          );
+          return {
+            ok: !recordError,
+            data: (recorded ?? null) as Record<string, unknown> | null,
+          };
+        },
+      }, { siteId, operationId, publicationId });
+      return sitesJson({
+        ok: true,
+        data: publicCheck === null
+          ? data
+          : { ...(data as Record<string, unknown>), public_check: publicCheck },
+      });
     }
     const authorizeMatch = path.match(
       /^\/internal\/v1\/sites\/([^/]+)\/authorize$/,
