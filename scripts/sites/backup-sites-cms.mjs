@@ -137,7 +137,14 @@ export function buildReferenceMap(inventory, siteId) {
   ) fail("DATABASE_SITE_SCOPE_MISMATCH");
   const tenantId = String(inventory.tenants[0].tenant_id);
   const references = new Map();
-  const add = (bucket, key, state, expectedDigest = null, expectedBytes = null) => {
+  const add = (
+    bucket,
+    key,
+    state,
+    expectedDigest = null,
+    expectedBytes = null,
+    optionalPresence = false,
+  ) => {
     if (key === null || key === undefined || key === "") return;
     if (typeof key !== "string") fail("DATABASE_INVENTORY_INVALID");
     if (expectedDigest !== null && !/^[0-9a-f]{64}$/.test(expectedDigest)) {
@@ -161,13 +168,23 @@ export function buildReferenceMap(inventory, siteId) {
         : state,
       expected_digest: expectedDigest,
       expected_bytes: expectedBytes,
+      optional_presence: previous
+        ? previous.optional_presence === true && optionalPresence
+        : optionalPresence,
     });
   };
   for (const media of inventory.media) {
     if (String(media.tenant_id) !== tenantId) fail("DATABASE_SITE_SCOPE_MISMATCH");
     const mediaId = requireUuid(String(media.media_id), "DATABASE_INVENTORY_INVALID");
     const state = String(media.state || "UNKNOWN").slice(0, 32);
-    add("sites-media-quarantine", media.quarantine_key, `media:${state}`);
+    add(
+      "sites-media-quarantine",
+      media.quarantine_key,
+      `media:${state}`,
+      null,
+      null,
+      state === "UPLOADING",
+    );
     const manifest = media.rendition_manifest;
     if (
       ["READY", "TOMBSTONED"].includes(state) &&
@@ -241,7 +258,10 @@ export function buildReferenceMap(inventory, siteId) {
 export function assertReferenceIntegrity(references, downloaded) {
   for (const [identity, reference] of references) {
     const object = downloaded.get(identity);
-    if (!object) fail("REFERENCED_OBJECT_MISSING");
+    if (!object) {
+      if (reference.optional_presence === true) continue;
+      fail("REFERENCED_OBJECT_MISSING");
+    }
     if (
       reference.expected_digest !== null &&
       object.sha256 !== reference.expected_digest

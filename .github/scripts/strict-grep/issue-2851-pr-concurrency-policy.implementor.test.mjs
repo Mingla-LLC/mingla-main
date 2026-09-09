@@ -728,7 +728,14 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //   - the policy audit itself still reports zero errors at 124 PR-family
   //     workflows — the sibling test above, which passes.
   // Every earlier re-derivation is preserved, not replaced.
-  "f9cfc0e528e98798833cae0cd47756d7c255fa56f1b299fdb18052db9893e83e";
+  //
+  // [TEST-MOD-APPROVED #3154] Re-derived again after #3154 added exactly one
+  // tester-owned contract target to the existing Sites recovery lane. The
+  // workflow inventory, PR-family count, identity digest, trigger events and
+  // concurrency policy are unchanged; only that lane's non-concurrency
+  // document moved. The exact added target is independently removed in the
+  // revert-sensitivity table below, so this re-pin cannot conceal its loss.
+  "ba7afb2a0994e102a5d743d1583395a6e42355cd99b0de05bf2105f77e950cc2";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -943,6 +950,11 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     // exact target must invalidate the non-concurrency authority digest.
     [liveWorkflow("supabase", "secret", "budget"),
       "          supabase/functions/_shared/__tests__/issue_3016_brand_site_control_cors_adversarial.test.ts\n"],
+    // [TEST-MOD-APPROVED #3154] The abandoned-upload-grant adversarial guard
+    // must remain executable in the existing mixed-event Sites recovery lane.
+    // Removing this exact target must invalidate the semantic authority digest.
+    [liveWorkflow("sites", "backup", "restore"),
+      "          scripts/sites/__tests__/issue_3154_abandoned_upload_grants.tester.adversarial.test.mjs\n"],
     [liveWorkflow("web", "build", "check"), '      SITES_DATABASE_POOL_MAX: "3"\n'],
     [liveWorkflow("web", "build", "check"), '      - "mingla-business/scripts/ci/bundle-baseline.json"\n'],
     // [TEST-MOD-APPROVED #2981] The complete CI step and both runtime proof

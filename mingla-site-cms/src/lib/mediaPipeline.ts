@@ -955,7 +955,14 @@ export async function runRetentionSweep(
         collection: "media",
         id: item.id,
         overrideAccess: true,
-        data: { quarantine_key: null, quarantine_delete_by: null },
+        data: item.state === "UPLOADING"
+          ? {
+            state: "REJECTED",
+            rejection_code: null,
+            quarantine_key: null,
+            quarantine_delete_by: null,
+          }
+          : { quarantine_key: null, quarantine_delete_by: null },
       });
     }
     if (
