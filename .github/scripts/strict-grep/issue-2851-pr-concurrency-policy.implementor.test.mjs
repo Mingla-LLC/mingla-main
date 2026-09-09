@@ -740,7 +740,7 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // Deno test target to the existing `supabase-secret-budget` lane. Verified,
   // not asserted:
   //   - the workflow diff is a single `M` on
-  //     `.github/workflows/supabase-secret-budget.yml`; no workflow is added,
+  //     the `supabase-secret-budget` lane; no workflow is added,
   //     removed or renamed, so the inventory is the same set of files.
   //   - grepping the added AND removed lines for `concurrency`, `group:` and
   //     `cancel-in-progress` returns ZERO. The one added line is a test file
