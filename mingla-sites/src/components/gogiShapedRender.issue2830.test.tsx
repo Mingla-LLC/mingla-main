@@ -192,3 +192,47 @@ describe("#2830 reels group into a grid", () => {
     expect(html).toContain("Coconut rice");
   });
 });
+
+/*
+ * #2830 — a short gallery is a strip, not a mosaic. `.gallery` puts a tall
+ * first image beside two columns of smaller ones, which reads well at twelve
+ * photos and badly at four: one big picture and three offcuts. That is exactly
+ * what gögi's "What people order" row looked like once it was live.
+ */
+describe("#2830 a short gallery lays out as a strip", () => {
+  const withGallery = (count: number) => {
+    const artifact = JSON.parse(JSON.stringify(gogiShaped));
+    const page = artifact.pages[artifact.pages.length - 1];
+    page.blocks = [{
+      type: "gallery",
+      heading: "What people order",
+      images: Array.from({ length: count }, (unused, index) => ({ url: `/m/${index}`, alt: "" })),
+    }];
+    return renderToStaticMarkup(RestaurantV1({ artifact, page } as never) as never);
+  };
+
+  it("uses the strip for four images", () => {
+    expect(withGallery(4)).toContain('class="gallery gallery-strip"');
+  });
+
+  it("keeps the mosaic for a full gallery", () => {
+    const html = withGallery(12);
+    expect(html).toContain('class="gallery"');
+    expect(html).not.toContain("gallery-strip");
+  });
+
+  it("switches at the boundary, not somewhere else", () => {
+    expect(withGallery(5)).not.toContain("gallery-strip");
+    expect(withGallery(1)).toContain("gallery-strip");
+  });
+
+  it("renders every image it was given", () => {
+    expect(withGallery(4).split("<img").length - 1).toBe(4);
+  });
+
+  it("neutralises the mosaic's tall first cell", () => {
+    // Without this the first dish still spans two rows and the strip is ragged.
+    const styles = fs.readFileSync(path.resolve(process.cwd(), "src/app/styles.css"), "utf8");
+    expect(/\.gallery-strip img:first-child\s*\{[^}]*grid-row:\s*auto/.test(styles)).toBe(true);
+  });
+});
