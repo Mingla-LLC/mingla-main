@@ -14,6 +14,25 @@ import { MINGLA_BUSINESS_ORIGIN } from "./origins";
  */
 export const PREVIEW_PATHNAME = "/preview";
 
+/*
+ * #3149 — the ONE third-party host a published site may frame.
+ *
+ * `frame-src` has no entry of its own here, so it falls back to `child-src`
+ * and then to `default-src 'self'` — which silently blocks every map embed. It
+ * is named explicitly, and named narrowly:
+ *
+ *   - OpenStreetMap, not Google Maps: the embed is a plain iframe with no
+ *     script of ours to load and no advertising identity behind the request.
+ *   - `frame-src` only. Nothing is added to `script-src`, `connect-src` or
+ *     `img-src`, so this host may be FRAMED and can do nothing else.
+ *   - The renderer contacts it only after a visitor presses "Show the map";
+ *     opening a page requests nothing from it. See `MapEmbed`.
+ *
+ * Widening this list is a decision about where every published customer site
+ * sends its visitors, not a styling change.
+ */
+export const MAP_FRAME_ORIGIN = "https://www.openstreetmap.org";
+
 export function frameAncestorsFor(pathname: string): string {
   /*
    * The private preview is the ONE route that may be framed, and only by
@@ -44,6 +63,7 @@ export function buildCsp(
     // a tightening. 'self' stays for CSP2 browsers that do not honour it.
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
     "connect-src 'self'",
+    `frame-src 'self' ${MAP_FRAME_ORIGIN}`,
     `frame-ancestors ${frameAncestorsFor(pathname)}`,
     "base-uri 'none'",
     "form-action 'self' https://usemingla.com https://www.usemingla.com",

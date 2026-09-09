@@ -92,6 +92,10 @@ const find = (page, blockType, heading) => {
  */
 const TRANSCRIBED = [
   ["home", "rich_text", "Come as you are", "The place"],
+  // #3149 wave 3 — their "Why people keep coming back / No closing time"
+  // section, added to the ledger as it was transcribed. Appended, never
+  // rewritten: this table only ever grows as more of their site is carried.
+  ["home", "stats", "No closing time", "Why people keep coming back"],
   ["home", "video_feature", "Day or night, open for a bite", "Admiralty Way"],
   ["home", "gallery", "What people order", "The menu"],
   ["home", "team", "Meet the team", "The kitchen"],

@@ -1575,3 +1575,369 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
 .gallery-strip img:first-child {
   grid-row: auto;
 }
+
+/* ── #3149 wave 3 ─────────────────────────────────────────────────────────
+   Four shapes the reference has and this stylesheet had no rules for, plus
+   the gallery's new anchor and the panel a photograph opens into.
+
+   Everything here is at the END of the file ON PURPOSE. `.hero`, `.button`
+   and `.gallery` are each declared twice in this stylesheet and the later
+   block wins, so a rule written next to its relatives would have been
+   overridden by an earlier-looking one further down. Anything that has to
+   beat an existing declaration is written here and measured, not read. */
+
+/*
+ * The ticker under the hero. Full-bleed by construction: it is a direct child
+ * of `.page-content`, which `.page-content > section` never constrains, so it
+ * runs edge to edge as the reference's does.
+ */
+.marquee {
+  border-block: 1px solid var(--line);
+  background: var(--panel);
+  padding: 1.1rem 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/*
+ * `width: max-content` matters. A flex track that is only as wide as its box
+ * would compress both runs to fit, and translating half of a compressed track
+ * does not land on the start of the second copy — the loop visibly jumps.
+ */
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee-slide 34s linear infinite;
+  will-change: transform;
+}
+
+.marquee-run {
+  display: flex;
+  align-items: center;
+}
+
+.marquee-phrase {
+  display: inline-flex;
+  align-items: center;
+  gap: 3rem;
+  padding-inline-end: 3rem;
+  font-family: var(--display);
+  font-size: 1.05rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The separator. Decorative, so it is generated rather than written into the
+   copy — a brand types phrases, never punctuation between them. */
+.marquee-phrase::after {
+  content: "\00b7";
+  color: var(--gold);
+  font-size: 1.6rem;
+  line-height: 0;
+}
+
+@keyframes marquee-slide {
+  from { transform: translateX(0); }
+  /* Exactly half: the two runs are identical, so half a revolution puts the
+     second copy where the first started and the seam is invisible. */
+  to { transform: translateX(-50%); }
+}
+
+/*
+ * A row of figures. `.cards` on the reference — same auto-fit track, same
+ * panel, same hairline.
+ */
+.stats-lead {
+  color: var(--muted);
+  margin: 0 0 2rem;
+  max-width: 62ch;
+}
+
+.stats-row {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  margin: 0;
+}
+
+.stats-row > div {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-media);
+  padding: 2.4rem 1.9rem;
+}
+
+.stats-row dt {
+  font-family: var(--display);
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  line-height: 1.1;
+  text-transform: var(--display-case);
+  color: var(--gold);
+}
+
+.stats-row dd {
+  margin: 0.7rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/*
+ * The pulled quotation. The gold bar down its left edge is the whole point of
+ * the shape, and it is a border rather than a pseudo-element so it grows with
+ * the quote.
+ */
+.pull-quote {
+  /* Longhands, not the `border-left` shorthand. A shorthand whose colour is a
+     custom property is stored verbatim and never split, which leaves
+     `border-left-color` reading as the inherited text colour to anything that
+     inspects the computed value — including the suite that guards this bar. */
+  border-left-style: solid;
+  border-left-width: 2px;
+  border-left-color: var(--gold);
+  padding-left: 1.5rem;
+  margin: 0 auto;
+  width: min(100%, 900px);
+}
+
+.page-content > .pull-quote {
+  padding-block: clamp(1rem, 3vw, 2.5rem);
+  padding-inline-end: max(20px, 4vw);
+  margin-inline: max(20px, 4vw);
+  width: auto;
+}
+
+.pull-quote blockquote {
+  margin: 0;
+}
+
+.pull-quote blockquote p {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(1.15rem, 2vw, 1.5rem);
+  line-height: 1.4;
+  color: var(--ivory);
+}
+
+.pull-quote figcaption {
+  margin-top: 0.7rem;
+  font-family: var(--body);
+  font-size: 0.74rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/*
+ * The map. Nothing here is loaded from anywhere until the visitor presses the
+ * control — the panel is the default state, not a placeholder for a failure.
+ */
+.map-body {
+  color: var(--muted);
+  max-width: 62ch;
+}
+
+.map-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-media);
+  background: var(--panel);
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  display: grid;
+  justify-items: start;
+  gap: 0.9rem;
+}
+
+.map-panel-place {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+  text-transform: var(--display-case);
+  color: var(--ivory);
+}
+
+.map-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  max-width: 48ch;
+}
+
+.map-frame {
+  display: grid;
+  gap: 1rem;
+  justify-items: start;
+}
+
+.map-frame iframe {
+  width: 100%;
+  height: 330px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-media);
+  display: block;
+}
+
+.map-directions {
+  margin-top: 1rem;
+  display: inline-flex;
+}
+
+/*
+ * #3149 — the gallery photograph is now an ANCHOR, and the anchor is the grid
+ * item. The two `img` rules above it survive untouched because they are pinned
+ * by the visual-contract suite, but they no longer describe a grid item: an
+ * `img` inside an `a` is not one, so `grid-row` on it does nothing at all. The
+ * mosaic's tall first cell has to be restated here, on the element that is.
+ */
+.gallery-item {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  line-height: 0;
+}
+
+.gallery > a:first-child {
+  grid-row: span 2;
+}
+
+.gallery-strip .gallery-item {
+  height: auto;
+}
+
+.gallery-strip > a:first-child {
+  grid-row: auto;
+}
+
+/*
+ * The panel a photograph opens into. Fixed to the viewport rather than to the
+ * section, so the page behind it cannot scroll into view around the edges.
+ */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: max(20px, 3vw);
+  background: rgba(8, 6, 4, 0.88);
+  animation: lightbox-in 160ms var(--ease);
+}
+
+.lightbox-panel {
+  position: relative;
+  display: grid;
+  gap: 1rem;
+  justify-items: center;
+  max-width: min(100%, 1100px);
+}
+
+.lightbox-panel img {
+  max-width: 100%;
+  /* Room for the close control above and the steps below on a short screen. */
+  max-height: 72svh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-media);
+}
+
+.lightbox-close {
+  justify-self: end;
+  font: inherit;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--ivory);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.lightbox-steps {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.lightbox-count {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.lightbox-alt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+  max-width: 62ch;
+}
+
+@keyframes lightbox-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 767px) {
+  /*
+   * The phone mosaic gives the first photograph the full width instead of a
+   * double-height cell. Restated on the anchor for the same reason as above,
+   * and AFTER the desktop rule so it wins where both match.
+   */
+  .gallery > a:first-child {
+    grid-column: span 2;
+    grid-row: auto;
+  }
+
+  .marquee-phrase {
+    font-size: 0.9rem;
+    gap: 2rem;
+    padding-inline-end: 2rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /*
+   * #3149 — REDUCED MOTION MEANS THE STRIP STOPS, NOT THAT IT DISAPPEARS.
+   *
+   * The blanket rule earlier in this file forces `animation-duration: 0.01ms`
+   * and one iteration with `!important`, which STOPS the loop but leaves the
+   * track wherever the animation put it. `animation: none` removes the
+   * animation outright and `transform: none` puts the track back at its
+   * start — without both, a reduced-motion visitor gets the strip parked
+   * half-way through, showing the duplicated copy.
+   *
+   * The duplicate exists only to make the loop seamless, so with no loop it
+   * is removed and the phrases print once, wrapping instead of scrolling.
+   */
+  .marquee {
+    white-space: normal;
+    overflow: visible;
+  }
+
+  .marquee-track {
+    animation: none;
+    transform: none;
+    width: auto;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .marquee-run {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .marquee-run + .marquee-run {
+    display: none;
+  }
+
+  .lightbox {
+    animation: none;
+  }
+}

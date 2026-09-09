@@ -402,6 +402,148 @@ export const restaurantBlocks: Block[] = [
       link(),
     ],
   },
+  /*
+   * #3149 wave 3 — the four things the reference site has that a page here
+   * could not hold at all. Each is a separate choice in Studio because each is
+   * a different piece of a restaurant's page, not a setting on another one.
+   */
+  {
+    slug: "marquee",
+    labels: { singular: "Scrolling strip", plural: "Scrolling strips" },
+    fields: [
+      {
+        name: "phrases",
+        label: "Phrases",
+        type: "array",
+        minRows: 2,
+        maxRows: 12,
+        required: true,
+        fields: [short("text", "Phrase", true, 80)],
+        admin: {
+          description:
+            "A strip of short lines that scrolls sideways across the page, each separated by a dot, repeating for as long as it is on screen. Two lines at least — for example “24/7 food house”, “Come as you are”. Visitors who have asked their device to reduce motion see them standing still.",
+        },
+      },
+    ],
+  },
+  {
+    slug: "stats",
+    labels: { singular: "Numbers row", plural: "Numbers rows" },
+    fields: [
+      eyebrow(),
+      short("heading", "Heading", false, 120),
+      short(
+        "body",
+        "Body",
+        false,
+        300,
+        "Optional. One line under the heading, before the figures.",
+      ),
+      {
+        name: "items",
+        label: "Figures",
+        type: "array",
+        minRows: 1,
+        maxRows: 6,
+        required: true,
+        fields: [
+          short(
+            "figure",
+            "Figure",
+            true,
+            60,
+            "The large line — a number, a time, or a few words. For example “Open 24 hours”.",
+          ),
+          short(
+            "label",
+            "Label",
+            false,
+            240,
+            "Optional. The smaller line printed under the figure.",
+          ),
+        ],
+        admin: {
+          description:
+            "A row of short figures with a line under each. Up to six.",
+        },
+      },
+    ],
+  },
+  {
+    slug: "pull_quote",
+    labels: { singular: "Pull quote", plural: "Pull quotes" },
+    fields: [
+      short(
+        "quote",
+        "Quote",
+        true,
+        600,
+        "A line worth pulling out of the surrounding writing. It is printed large, against a gold bar down its left edge.",
+      ),
+      short(
+        "attribution",
+        "Who said it",
+        false,
+        120,
+        "Optional — for example “gögi, on Instagram”. Leave it empty and the quote stands on its own.",
+      ),
+    ],
+  },
+  {
+    /*
+     * #3149 — COORDINATES, NEVER AN ADDRESS TO LOOK UP.
+     *
+     * Handing a map a place by name resolves silently and can resolve to the
+     * wrong country entirely; two numbers cannot. Both are required, and the
+     * public site draws nothing on the page until a visitor asks for the map,
+     * so opening the page contacts no map provider at all.
+     */
+    slug: "map_embed",
+    labels: { singular: "Map", plural: "Maps" },
+    fields: [
+      eyebrow(),
+      short("heading", "Heading", false, 120),
+      short(
+        "body",
+        "Body",
+        false,
+        500,
+        "Optional. What to tell someone who is on their way — the landmark to look for, which side of the street you are on.",
+      ),
+      {
+        name: "latitude",
+        label: "Latitude",
+        type: "number",
+        required: true,
+        min: -90,
+        max: 90,
+        admin: {
+          description:
+            "The first of the two numbers your maps app shows when you drop a pin on your door. Between -90 and 90.",
+        },
+      },
+      {
+        name: "longitude",
+        label: "Longitude",
+        type: "number",
+        required: true,
+        min: -180,
+        max: 180,
+        admin: {
+          description:
+            "The second of the two numbers. Between -180 and 180.",
+        },
+      },
+      short(
+        "place_label",
+        "What the map shows",
+        true,
+        200,
+        "Read out to anyone using a screen reader, and printed on the panel before the map loads. Say plainly what is being pointed at — the street, or the exact address if you are sure of it.",
+      ),
+      link("directions_url", "Directions link", false),
+    ],
+  },
   {
     slug: "divider",
     labels: { singular: "Divider", plural: "Dividers" },

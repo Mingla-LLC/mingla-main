@@ -4,6 +4,7 @@ import * as migration_20260908_152600_issue_2830_enum_values from './20260908_15
 import * as migration_20260908_152637_issue_2830_video_team_menu_blocks from './20260908_152637_issue_2830_video_team_menu_blocks';
 
 import * as migration_20260909_030000_issue_3149_block_eyebrow from './20260909_030000_issue_3149_block_eyebrow';
+import * as migration_20260909_180000_issue_3149_wave3_blocks from './20260909_180000_issue_3149_wave3_blocks';
 export const migrations = [
   {
     up: migration_20260830_122002_issue_2830_sites_foundation.up,
@@ -29,5 +30,10 @@ export const migrations = [
     up: migration_20260909_030000_issue_3149_block_eyebrow.up,
     down: migration_20260909_030000_issue_3149_block_eyebrow.down,
     name: '20260909_030000_issue_3149_block_eyebrow',
+  },
+  {
+    up: migration_20260909_180000_issue_3149_wave3_blocks.up,
+    down: migration_20260909_180000_issue_3149_wave3_blocks.down,
+    name: '20260909_180000_issue_3149_wave3_blocks',
   },
 ];

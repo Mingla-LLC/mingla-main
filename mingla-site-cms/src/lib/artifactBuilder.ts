@@ -511,6 +511,56 @@ export async function buildPublicationArtifact(
             label: raw.label,
             href: raw.href,
           };
+        /*
+         * #3149 wave 3. Every optional key goes through `optionalText`, so an
+         * emptied field is ABSENT from the published bytes rather than present
+         * as `""` — the same rule the eyebrow follows, and for the same
+         * reason: the artifact forbids unknown keys and its digest is taken
+         * over the serialised form, so an empty value would change the bytes
+         * of every artifact and make a republish look like a content change.
+         */
+        case "marquee":
+          return {
+            type: "marquee",
+            phrases: (raw.phrases || []).map((row: AnyDoc) => ({
+              text: row.text,
+            })),
+          };
+        case "stats":
+          return {
+            type: "stats",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.body, "body"),
+            items: (raw.items || []).map((row: AnyDoc) => ({
+              figure: row.figure,
+              ...optionalText(row.label, "label"),
+            })),
+          };
+        case "pull_quote":
+          return {
+            type: "pull_quote",
+            quote: raw.quote,
+            ...optionalText(raw.attribution, "attribution"),
+          };
+        case "map_embed":
+          return {
+            type: "map_embed",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.body, "body"),
+            /*
+             * PASSED THROUGH UNTOUCHED, never coerced. `Number(null)` is 0,
+             * and 0/0 is a real place in the Atlantic — a missing coordinate
+             * that arrived as a number would publish a map of open ocean
+             * instead of failing. Absent stays absent and the contract, which
+             * requires both, refuses the publish.
+             */
+            latitude: raw.latitude,
+            longitude: raw.longitude,
+            place_label: raw.place_label,
+            ...optionalText(raw.directions_url, "directions_url"),
+          };
         case "divider":
           return { type: "divider" };
         case "spacer":
