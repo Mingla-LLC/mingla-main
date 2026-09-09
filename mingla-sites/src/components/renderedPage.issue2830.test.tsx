@@ -139,14 +139,22 @@ describe("#2830 rendered page structure", () => {
       (page: { role: string }) => page.role === "home",
     );
     home.blocks = [
-      { type: "hours_location", heading: "Find us", address: "69 Admiralty Way",
+      /*
+       * #3149 -- this block used to carry NO eyebrow and the assertion below
+       * expected the renderer to invent "Visit" for it. The renderer no longer
+       * writes copy for a brand, so the eyebrow is supplied here. The property
+       * under test is unchanged: an eyebrow that says something the heading
+       * does not is kept.
+       */
+      { type: "hours_location", heading: "Find us", eyebrow: "Getting here",
+        address: "69 Admiralty Way",
         map_url: "https://maps.example/x",
         hours: [{ day: "Monday", value: "Open 24 hours" }] },
     ];
     const html = renderToStaticMarkup(
       <RestaurantV1 artifact={different} page={different.pages.find((p: {role:string}) => p.role === "home")} />,
     );
-    expect(html).toContain('class="eyebrow">Visit<');
+    expect(html).toContain('class="eyebrow">Getting here<');
     expect(html).toContain("Find us");
   });
 });

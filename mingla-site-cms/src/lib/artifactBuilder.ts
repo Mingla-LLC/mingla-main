@@ -315,8 +315,23 @@ export async function buildPublicationArtifact(
       object_key: String(rendition?.key),
     };
   };
+  /*
+   * #3149 — carry the brand's own eyebrow, or carry NOTHING.
+   *
+   * The artifact contract forbids unknown keys and the publication digest is
+   * taken over the serialised artifact, so an unset eyebrow must not surface
+   * as `""` or `null`: an empty string is a value the renderer would then have
+   * to second-guess, and either one changes the bytes of every artifact ever
+   * published, which would make a republish look like a content change.
+   * Absent means absent.
+   */
+  const optionalText = (value: unknown, key: string) => {
+    const trimmed = typeof value === "string" ? value.trim() : "";
+    return trimmed ? { [key]: trimmed } : {};
+  };
   const blocks = (source: AnyDoc[]) =>
     source.map((raw) => {
+      const eyebrow = optionalText(raw.eyebrow, "eyebrow");
       switch (raw.blockType) {
         case "hero":
           return {
@@ -334,12 +349,14 @@ export async function buildPublicationArtifact(
         case "rich_text":
           return {
             type: "rich_text",
+            ...eyebrow,
             heading: raw.heading,
             paragraphs: lexicalText(raw.content).map((text) => ({ text })),
           };
         case "media_feature":
           return {
             type: "media_feature",
+            ...eyebrow,
             media_url: renderMedia(raw.media, String(raw.alt || "")).url,
             alt: raw.alt,
             heading: raw.heading,
@@ -349,6 +366,7 @@ export async function buildPublicationArtifact(
         case "cta":
           return {
             type: "cta",
+            ...eyebrow,
             heading: raw.heading,
             body: raw.body,
             label: raw.label,
@@ -357,6 +375,7 @@ export async function buildPublicationArtifact(
         case "offering_grid":
           return {
             type: "offering_grid",
+            ...eyebrow,
             heading: raw.heading,
             offerings: (raw.offering_ids || []).map((row: AnyDoc) => {
               const resolved = commercial.find(
@@ -378,6 +397,7 @@ export async function buildPublicationArtifact(
           if (!resolved) throw new Error("VALIDATION_FAILED");
           return {
             type: "venue_reservation",
+            ...eyebrow,
             heading: raw.heading,
             body: raw.body,
             url: resolved.checkout_url,
@@ -390,6 +410,8 @@ export async function buildPublicationArtifact(
           if (!video) return null;
           return {
             type: "video_feature",
+            ...eyebrow,
+            ...optionalText(raw.group_heading, "group_heading"),
             heading: raw.heading ?? null,
             caption: raw.caption ?? null,
             video_url: video,
@@ -399,6 +421,7 @@ export async function buildPublicationArtifact(
         case "team":
           return {
             type: "team",
+            ...eyebrow,
             heading: raw.heading ?? null,
             caption: raw.caption ?? null,
             members: (raw.members || []).map((row: AnyDoc) => ({
@@ -420,6 +443,7 @@ export async function buildPublicationArtifact(
           if (!menuSections.length) return null;
           return {
             type: "menu_board",
+            ...eyebrow,
             heading: raw.heading ?? null,
             note: raw.note ?? null,
             // NULL venue = show the menu, no cart. The brand has no verified
@@ -432,6 +456,7 @@ export async function buildPublicationArtifact(
         case "menu_link":
           return {
             type: "menu_link",
+            ...eyebrow,
             heading: raw.heading,
             label: raw.label,
             href: raw.href,
@@ -439,6 +464,7 @@ export async function buildPublicationArtifact(
         case "gallery":
           return {
             type: "gallery",
+            ...eyebrow,
             heading: raw.heading,
             images: (raw.images || []).map((row: AnyDoc) =>
               renderMedia(row.media, String(row.alt || ""))
@@ -447,6 +473,7 @@ export async function buildPublicationArtifact(
         case "hours_location":
           return {
             type: "hours_location",
+            ...eyebrow,
             heading: raw.heading,
             address: raw.address,
             map_url: raw.map_url,
@@ -458,6 +485,7 @@ export async function buildPublicationArtifact(
         case "testimonials":
           return {
             type: "testimonials",
+            ...eyebrow,
             heading: raw.heading,
             items: (raw.items || []).map((row: AnyDoc) => ({
               name: row.name,
@@ -467,6 +495,7 @@ export async function buildPublicationArtifact(
         case "faq":
           return {
             type: "faq",
+            ...eyebrow,
             heading: raw.heading,
             items: (raw.items || []).map((row: AnyDoc) => ({
               question: row.question,
@@ -476,6 +505,7 @@ export async function buildPublicationArtifact(
         case "contact_handoff":
           return {
             type: "contact_handoff",
+            ...eyebrow,
             heading: raw.heading,
             body: raw.body,
             label: raw.label,

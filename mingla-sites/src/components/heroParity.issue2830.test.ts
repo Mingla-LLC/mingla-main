@@ -136,11 +136,20 @@ describe("#2830 the renderer does not write copy for the brand", () => {
     "utf8",
   ).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
 
-  it("labels sections by what they are", () => {
-    // Comments stripped above: these strings appear in the note explaining
-    // exactly this, and a bare search would match my own explanation.
+  it("hands the eyebrow NO label of its own", () => {
+    /*
+     * #3149 -- this asserted `label="Gallery"`, from the interim pass that
+     * replaced editorial labels ("In the room") with factual ones. Blocks now
+     * carry the brand's OWN eyebrow, so the renderer supplies no label at all
+     * and an eyebrow appears only when the brand wrote one. Asserting the
+     * absence of every literal is strictly stronger than pinning one of them.
+     *
+     * Comments are stripped above: these strings appear in the note explaining
+     * exactly this, and a bare search would match the explanation itself.
+     */
     expect(renderer).not.toContain('label="In the room"');
     expect(renderer).not.toContain('label="In motion"');
-    expect(renderer).toContain('label="Gallery"');
+    expect(renderer).not.toContain('label="Gallery"');
+    expect(renderer).not.toMatch(/<Eyebrow\s+label="/);
   });
 });

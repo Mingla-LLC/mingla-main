@@ -269,7 +269,17 @@ a {
   position: absolute;
   inset: 0;
   z-index: -1;
+  /*
+   * #3149 -- the panel is the brand's OWN surface at the reference's 92%, not
+   * a fixed near-black. A brand that overrides `--ink` to something lighter
+   * got a header panel darker than every surface beneath it.
+   *
+   * The plain rgba BELOW-then-ABOVE order is load-bearing: an engine without
+   * `color-mix()` drops the second declaration and keeps the first, so it
+   * still gets the measured #101013 at 0.92 rather than no background at all.
+   */
   background: rgba(16, 16, 19, 0.92);
+  background: color-mix(in srgb, var(--ink) 92%, transparent);
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   /* The hairline belongs to the panel, not to the header. Over the hero there
@@ -684,7 +694,10 @@ main h2 {
   max-width: 900px !important;
 }
 
-.prose p {
+/* #3149 -- :not(.eyebrow) for the same reason `.feature p` carries it: an
+   eyebrow IS a <p>, so this rule (0,1,1) outranks `.eyebrow` (0,1,0) and would
+   grey out the gold. `rich_text` now carries the brand's own eyebrow. */
+.prose p:not(.eyebrow) {
   max-width: 760px;
   color: var(--muted);
   /* #2830 — third instance of the same bug: a hardcoded face that ignored the
@@ -768,7 +781,10 @@ main h2 {
   border-bottom: 1px solid var(--line);
 }
 
-.cta p {
+/* #3149 -- as above. `cta`, `venue_reservation` and `contact_handoff` all
+   render inside `.cta`, and all three can now carry an eyebrow. Left
+   unexcluded this rule would also centre it and give it a 2rem gap. */
+.cta p:not(.eyebrow) {
   width: min(100%, 620px);
   margin: 0 auto 2rem;
   color: var(--muted);
@@ -1499,6 +1515,14 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
   gap: clamp(0.75rem, 2vw, 1.5rem);
+}
+
+/*
+ * #3149 -- the run's heading is a grid ITEM, so without this it would take the
+ * first film's column and the films would shuffle along by one.
+ */
+.reel-grid-head {
+  grid-column: 1 / -1;
 }
 
 .reel-grid .reel-card {

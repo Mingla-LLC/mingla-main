@@ -183,34 +183,80 @@ function assertMediaReference(value: unknown, siteId: string): void {
 
 function assertRestaurantBlock(block: JsonObject, siteId: string): void {
   const type = String(block.type);
+  /*
+   * #3149 — `eyebrow` is the small line ABOVE a section heading, and it is the
+   * BRAND'S OWN WORDS.
+   *
+   * The renderer used to supply one per block type ("Gallery", "Film",
+   * "Team"), because a block had nowhere to carry the brand's. gogi's own site
+   * writes every one of them — "The place", "The menu", "Straight from
+   * @gogilagos" — and a generic label in that slot is the single loudest way
+   * our render reads as a template rather than as their site.
+   *
+   * OPTIONAL EVERYWHERE, and absent means NO EYEBROW: nothing invents copy on
+   * a brand's behalf any more. It is NOT offered on `hero` (the headline is
+   * already two-tone and carries the page's one h1), nor on `divider` or
+   * `spacer`, which render no heading to sit above.
+   *
+   * `group_heading` is `video_feature` only: a RUN of reels renders as one
+   * grid, and this titles that grid. It cannot live on any other type because
+   * no other type groups.
+   */
   const definitions: Record<string, readonly string[]> = {
     hero: ["type", "heading", "subheading", "media_url", "video_url", "ctas"],
-    rich_text: ["type", "heading", "paragraphs"],
+    rich_text: ["type", "eyebrow", "heading", "paragraphs"],
     media_feature: [
       "type",
+      "eyebrow",
       "media_url",
       "alt",
       "heading",
       "caption",
       "alignment",
     ],
-    cta: ["type", "heading", "body", "label", "href"],
-    offering_grid: ["type", "heading", "offerings"],
-    venue_reservation: ["type", "heading", "body", "url"],
-    menu_link: ["type", "heading", "label", "href"],
-    menu_board: ["type", "heading", "note", "venue_id", "sections"],
-    gallery: ["type", "heading", "images"],
-    video_feature: ["type", "heading", "caption", "video_url", "poster_url"],
-    team: ["type", "heading", "caption", "members"],
-    hours_location: ["type", "heading", "address", "map_url", "hours"],
-    testimonials: ["type", "heading", "items"],
-    faq: ["type", "heading", "items"],
-    contact_handoff: ["type", "heading", "body", "label", "href"],
+    cta: ["type", "eyebrow", "heading", "body", "label", "href"],
+    offering_grid: ["type", "eyebrow", "heading", "offerings"],
+    venue_reservation: ["type", "eyebrow", "heading", "body", "url"],
+    menu_link: ["type", "eyebrow", "heading", "label", "href"],
+    menu_board: ["type", "eyebrow", "heading", "note", "venue_id", "sections"],
+    gallery: ["type", "eyebrow", "heading", "images"],
+    video_feature: [
+      "type",
+      "eyebrow",
+      "group_heading",
+      "heading",
+      "caption",
+      "video_url",
+      "poster_url",
+    ],
+    team: ["type", "eyebrow", "heading", "caption", "members"],
+    hours_location: [
+      "type",
+      "eyebrow",
+      "heading",
+      "address",
+      "map_url",
+      "hours",
+    ],
+    testimonials: ["type", "eyebrow", "heading", "items"],
+    faq: ["type", "eyebrow", "heading", "items"],
+    contact_handoff: ["type", "eyebrow", "heading", "body", "label", "href"],
     divider: ["type"],
     spacer: ["type", "size"],
   };
   if (!definitions[type] || !hasOnlyKeys(block, definitions[type])) {
     throw new Error("ARTIFACT_BLOCK_TYPE_MISMATCH");
+  }
+  /*
+   * Both get exactly the treatment `heading` gets — optional, bounded, and run
+   * through the same forbidden-markup screen. Checked once rather than in
+   * fifteen branches: the map above is what decides WHICH types may carry
+   * them, and a type that may not never reaches here with one set.
+   */
+  if (
+    !boundedText(block.eyebrow, 120) || !boundedText(block.group_heading, 120)
+  ) {
+    throw new Error("ARTIFACT_BLOCK_CONTENT_MISMATCH");
   }
   const safeLink = (value: unknown) => value == null || isSafeHref(value);
   let valid = false;

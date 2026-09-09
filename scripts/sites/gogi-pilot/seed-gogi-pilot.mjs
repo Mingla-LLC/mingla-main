@@ -293,10 +293,17 @@ export function seedDocuments(
     "foodSqSmoothie",
   ].map((slot) => asset(slot)).filter(Boolean).map((id) => ({ media: id, alt: "" }));
 
-  const reel = (videoSlot, posterSlot, heading, caption) =>
+  /*
+   * #3149 -- `extra` carries the eyebrow, and on the FIRST reel of a run the
+   * heading for the grid that run renders as. The same three films head the
+   * home run and the gallery run and the two runs are titled differently, so
+   * this cannot live on the film itself.
+   */
+  const reel = (videoSlot, posterSlot, heading, caption, extra = {}) =>
     asset(videoSlot) && asset(posterSlot)
       ? {
         blockType: "video_feature",
+        ...extra,
         heading,
         caption,
         video: asset(videoSlot),
@@ -318,6 +325,7 @@ export function seedDocuments(
     },
     {
       blockType: "rich_text",
+      eyebrow: "The place",
       heading: "Come as you are",
       content: lexical([
         GOGI_SEED_COPY.voice.comeAsYouAre,
@@ -327,6 +335,7 @@ export function seedDocuments(
     asset("reelFoodHouse") && asset("reelFoodHousePoster")
       ? {
         blockType: "video_feature",
+        eyebrow: "Admiralty Way",
         heading: "Day or night, open for a bite",
         caption: GOGI_SEED_COPY.voice.friday,
         video: asset("reelFoodHouse"),
@@ -346,7 +355,12 @@ export function seedDocuments(
      * upload, the block is dropped rather than shown short.
      */
     foodStrip.length
-      ? { blockType: "gallery", heading: "What people order", images: foodStrip }
+      ? {
+        blockType: "gallery",
+        eyebrow: "The menu",
+        heading: "What people order",
+        images: foodStrip,
+      }
       : null,
     /*
      * The films. Three consecutive reels render as ONE grid, which is how
@@ -359,6 +373,11 @@ export function seedDocuments(
       "reelPregameFridayPoster",
       "Your Friday needs better decisions",
       GOGI_SEED_COPY.voice.friday,
+      // First of the run, so it titles the grid the three films render as.
+      {
+        eyebrow: "Straight from @gogilagos",
+        group_heading: "The room, on any given night",
+      },
     ),
     reel(
       "reelLateNightCravings",
@@ -379,6 +398,7 @@ export function seedDocuments(
      */
     {
       blockType: "team",
+      eyebrow: "The kitchen",
       heading: "Meet the team",
       caption: GOGI_SEED_COPY.voice.team,
       members: GOGI_SEED_COPY.team.map((name) => {
@@ -388,6 +408,7 @@ export function seedDocuments(
     },
     {
       blockType: "contact_handoff",
+      eyebrow: "Come through",
       heading: "Call gögi",
       body: GOGI_SEED_COPY.hoursSummary,
       label: `Call ${GOGI_SEED_COPY.phoneDisplay}`,
@@ -398,6 +419,7 @@ export function seedDocuments(
   const aboutBlocks = drop([
     {
       blockType: "rich_text",
+      eyebrow: "The idea",
       heading: "Find gögi",
       content: lexical([
         GOGI_SEED_COPY.voice.findGogi,
@@ -406,6 +428,7 @@ export function seedDocuments(
     },
     {
       blockType: "team",
+      eyebrow: "The kitchen",
       heading: "The team",
       caption: GOGI_SEED_COPY.voice.team,
       /*
@@ -436,6 +459,7 @@ export function seedDocuments(
   const menuBlocks = drop([
     {
       blockType: "menu_board",
+      eyebrow: "Everything, with prices",
       heading: "The menu",
       note: `${GOGI_SEED_COPY.hoursSummary}.`,
     },
@@ -456,13 +480,20 @@ export function seedDocuments(
     .map((id) => ({ media: id, alt: "" }));
   const galleryBlocks = drop([
     galleryImages.length
-      ? { blockType: "gallery", heading: "In the room", images: galleryImages }
+      ? {
+        blockType: "gallery",
+        eyebrow: "Photos",
+        heading: "In the room",
+        images: galleryImages,
+      }
       : null,
     reel(
       "reelPregameFriday",
       "reelPregameFridayPoster",
       "Your Friday needs better decisions",
       GOGI_SEED_COPY.voice.friday,
+      // The same three films, a second time and under their own title.
+      { eyebrow: "Films", group_heading: "Six minutes of gögi" },
     ),
     reel(
       "reelLateNightCravings",
@@ -481,6 +512,7 @@ export function seedDocuments(
   const contactBlocks = drop([
     {
       blockType: "hours_location",
+      eyebrow: "Getting here",
       heading: "Visit gögi",
       address: GOGI_SEED_COPY.address,
       hours: hours(),
