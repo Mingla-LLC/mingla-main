@@ -72,10 +72,10 @@ test("#2922 accepts the production Payload baseline without hidden renderer meta
    *   "create_contact_draft",
    *   "update_navigation_draft",
    *
-   * The seed describes a sixth page, so a plan against the untouched
-   * production baseline reports a sixth create. This test is about what the
-   * planner does with a REAL Payload baseline full of explicit nulls, and that
-   * behaviour is unchanged — the plan grew by exactly the page that was added.
+   * The seed describes a booking page and no longer describes a Visit page, so
+   * a plan against the untouched production baseline creates the one and not
+   * the other. This test is about what the planner does with a REAL Payload
+   * baseline full of explicit nulls, and that behaviour is unchanged.
    *
    * SHARPENED: the assertion below is added so this keeps testing the thing it
    * is named for. A baseline of nulls must still classify as `baseline` rather
@@ -87,7 +87,6 @@ test("#2922 accepts the production Payload baseline without hidden renderer meta
     "update_home_draft",
     "create_about_draft",
     "create_menu_draft",
-    "create_contact_draft",
     "create_reservations_draft",
     "update_navigation_draft",
     "update_footer_draft",
@@ -97,6 +96,9 @@ test("#2922 accepts the production Payload baseline without hidden renderer meta
   for (const role of ["about", "menu", "gallery", "contact", "reservations"]) {
     assert.equal(plan.states[role], "absent", role);
   }
+  // Absent AND retired: the planner must not create a page the seed publishes
+  // disabled, however absent it is.
+  assert.equal(plan.actions.includes("create_contact_draft"), false);
 });
 
 test("#2922 never includes provisioning-owned renderer metadata in a seed mutation", () => {

@@ -245,16 +245,47 @@ test("#3149 wave 4 reservations is a real page, last in the navigation", () => {
   assert.ok(SEED_PAGE_ROLES.includes("reservations"));
   assert.equal(site.reservations.role, "reservations");
   assert.equal(site.reservations.enabled, true);
-  assert.equal(site.reservations.nav_order, 5);
+  assert.equal(site.reservations.nav_order, 4);
   assert.equal(site.reservations.nav_label, "Reservations");
-  // Every OTHER page keeps the position it already had, so adding this one
-  // does not reshuffle a live site's navigation.
+  // Home · Menu · About · Gallery · Reservations, which is the order the
+  // reference uses with a booking page at the end of it.
   assert.deepEqual(
-    ["home", "about", "menu", "gallery", "contact"].map((role) =>
+    ["home", "menu", "about", "gallery", "reservations"].map((role) =>
       site[role].nav_order
     ),
     [0, 1, 2, 3, 4],
   );
+  assert.deepEqual(
+    ["home", "menu", "about", "gallery", "reservations"].map((role) =>
+      site[role].nav_label
+    ),
+    ["Home", "Menu", "About", "Gallery", "Reservations"],
+  );
+});
+
+test("#3149 wave 4 the Visit page is retired, and takes nothing with it", () => {
+  const site = docs(EVERY_SLOT());
+  // Retired, not deleted: a role this seed no longer recognised would make a
+  // live site carrying one fail as somebody else's content.
+  assert.ok(SEED_PAGE_ROLES.includes("contact"));
+  assert.equal(site.contact.blocks.length, 0);
+  assert.equal(site.contact.enabled, false);
+  assert.equal(site.navigation.pages.includes("p-contact"), false);
+
+  // The map moved to the booking page rather than being dropped.
+  assert.equal(blocksOf(site.contact, "map_embed").length, 0);
+  const map = only(site.reservations, "map_embed");
+  assert.equal(map.latitude, GOGI_SEED_COPY.site.mapLatitude);
+  assert.equal(map.longitude, GOGI_SEED_COPY.site.mapLongitude);
+  assert.equal(map.place_label, GOGI_SEED_COPY.site.mapLabel);
+
+  // Everything else it carried still exists somewhere on the site.
+  const hours = only(site.reservations, "hours_location");
+  assert.equal(hours.address, GOGI_SEED_COPY.address);
+  assert.equal(hours.always_open, true);
+  assert.equal(only(site.home, "contact_handoff").href, GOGI_SEED_COPY.phoneHref);
+  assert.equal(site.footer.address, GOGI_SEED_COPY.address);
+  assert.equal(site.footer.hours_summary, GOGI_SEED_COPY.hoursSummary);
 });
 
 test("#3149 wave 4 the booking block names no destination of its own", () => {
@@ -292,12 +323,13 @@ test("#3149 wave 4 a caller that has not created the page does not link to it", 
   assert.equal(site.reservations.role, "reservations");
 });
 
-test("#3149 wave 4 the seeded site is six pages and lists them in order", () => {
+test("#3149 wave 4 the seeded site is five pages and lists them in order", () => {
   const site = docs(EVERY_SLOT());
+  // Six roles the seed knows; five it publishes. `contact` is retired.
   assert.equal(SEED_PAGE_ROLES.length, 6);
   assert.deepEqual(
     site.navigation.pages,
-    ["p-home", "p-about", "p-menu", "p-gallery", "p-contact", "p-reservations"],
+    ["p-home", "p-menu", "p-about", "p-gallery", "p-reservations"],
   );
 });
 

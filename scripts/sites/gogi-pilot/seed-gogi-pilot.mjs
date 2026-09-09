@@ -825,7 +825,30 @@ export function seedDocuments(
     ),
   ]);
 
-  const contactBlocks = drop([
+  /*
+   * #3149 wave 4 — THE VISIT PAGE IS RETIRED, and nothing it carried is lost.
+   *
+   * Its three blocks each had a home already or have one now:
+   *   - the MAP moves to the Reservations page below. Someone who has just
+   *     booked a table is exactly the person who needs to find the door.
+   *   - the HOURS block is dropped. It carried the address, the seven
+   *     identical "Open 24 hours" rows and the live-clock fields, and every
+   *     one of those is on the page it moved beside: the home page keeps its
+   *     own hours block, the Reservations page gains one, and the footer's
+   *     Find us column prints the address and the hours summary on every page
+   *     of the site. Nothing unique to this block existed.
+   *   - the "Call gögi" HANDOFF is dropped. The home page carries an identical
+   *     one — same heading, same body, same label, same tel: link — and the
+   *     footer now shows the number in its own column and as a round button.
+   *
+   * The page itself is kept in this map with NO BLOCKS, so it publishes
+   * disabled and leaves the navigation. It is not deleted from the seed's
+   * vocabulary: `SEED_PAGE_ROLES` still names it, because a live site HAS one
+   * and a role this seed did not recognise would be refused outright as
+   * somebody else's content.
+   */
+  const contactBlocks = [];
+  const retiredContactBlocks = drop([
     hoursLocation({ eyebrow: "Getting here", heading: "Visit gögi" }),
     /*
      * #3149 -- the map their Visit page has and this one did not.
@@ -857,6 +880,9 @@ export function seedDocuments(
       href: GOGI_SEED_COPY.phoneHref,
     },
   ]);
+  // Kept, unread, as the record of what the retired page held. Deleting it
+  // would make the note above unverifiable.
+  void retiredContactBlocks;
 
   /*
    * #3149 wave 4 — THE BOOKING PAGE, AND IT IS MINGLA'S BOOKING FLOW.
@@ -874,6 +900,35 @@ export function seedDocuments(
       body: GOGI_SEED_COPY.reservations.body,
     },
     hoursLocation({ heading: "When you can come" }),
+    /*
+     * #3149 wave 4 — the map, moved here from the retired Visit page.
+     *
+     * Book, then know when, then know where: someone who has just asked for a
+     * table is exactly the person who needs to find the door. It keeps the
+     * eyebrow it did not have — the hours block above still carries "Getting
+     * here" nowhere, so there is no line to print twice.
+     *
+     * Nothing is requested from a map provider by the visitor at all: the map
+     * that paints is served from this site's own origin.
+     */
+    {
+      blockType: "map_embed",
+      /*
+       * AND IT GETS THEIR EYEBROW BACK. Their own site prints "Getting here"
+       * over this section. On the retired Visit page the hours block directly
+       * above it already carried that exact line, so the map went without
+       * rather than printing it twice — a deliberate omission recorded in
+       * wave 3. Here the hours block carries no eyebrow, so there is nothing
+       * to collide with and their line can be shown where they show it.
+       */
+      eyebrow: "Getting here",
+      heading: GOGI_SEED_COPY.site.gettingHereHeading,
+      body: GOGI_SEED_COPY.site.gettingHereBody,
+      latitude: GOGI_SEED_COPY.site.mapLatitude,
+      longitude: GOGI_SEED_COPY.site.mapLongitude,
+      place_label: GOGI_SEED_COPY.site.mapLabel,
+      directions_url: GOGI_SEED_COPY.site.mapDirectionsUrl,
+    },
   ]);
 
   const page = (id, role, title, navLabel, navOrder, blocks, seo) => ({
@@ -893,11 +948,19 @@ export function seedDocuments(
     title: "gögi — Where Lagos Comes to Eat",
     description: GOGI_SEED_COPY.description,
   });
-  const aboutPage = page(aboutId, "about", "About gögi", "About", 1, aboutBlocks, {
+  /*
+   * #3149 wave 4 — Home · Menu · About · Gallery · Reservations.
+   *
+   * Menu and About swap: the reference orders its navigation that way, and the
+   * thing most visitors came for should not sit third. Visit is gone, and
+   * Reservations takes the last slot rather than Visit's — a booking is the
+   * step after browsing, not a page to open first.
+   */
+  const aboutPage = page(aboutId, "about", "About gögi", "About", 2, aboutBlocks, {
     title: "About gögi — a 24/7 food house in Lekki",
     description: GOGI_SEED_COPY.voice.comeAsYouAre,
   });
-  const menuPage = page(menuId, "menu", "Menu", "Menu", 2, menuBlocks, {
+  const menuPage = page(menuId, "menu", "Menu", "Menu", 1, menuBlocks, {
     title: "The gögi menu",
     description: `The full gögi menu. ${GOGI_SEED_COPY.hoursSummary}.`,
   });
@@ -905,7 +968,16 @@ export function seedDocuments(
     title: "Inside gögi",
     description: `Inside gögi at ${GOGI_SEED_COPY.address}.`,
   });
-  const contactPage = page(contactId, "contact", "Visit gögi", "Visit", 4, contactBlocks, {
+  /*
+   * RETIRED. No blocks, so `enabled` is false, so it is neither created on a
+   * fresh site nor listed in the navigation of an existing one. It keeps the
+   * last nav position so that retiring it moves no page that is still live.
+   *
+   * `/contact` does not 404 for the people who bookmarked it: the runtime
+   * redirects a retired role's slug to the page that replaced it — see
+   * `replacementForRetiredSlug`.
+   */
+  const contactPage = page(contactId, "contact", "Visit gögi", "Visit", 5, contactBlocks, {
     title: "Visit gögi in Lekki Phase 1",
     description: `${GOGI_SEED_COPY.address}. ${GOGI_SEED_COPY.hoursSummary}.`,
   });
@@ -923,7 +995,7 @@ export function seedDocuments(
     "reservations",
     GOGI_SEED_COPY.reservations.title,
     GOGI_SEED_COPY.reservations.navLabel,
-    5,
+    4,
     reservationsBlocks,
     {
       title: "Book a table at gögi",
@@ -934,13 +1006,14 @@ export function seedDocuments(
   // Navigation lists a page only once it has an id AND something on it. An
   // unpublished page is not routable, so listing it would render a nav link
   // that 404s.
+  // Listed in NAV ORDER, which is the order the navigation renders in.
   const navigationPages = [
     [homeId, homePage],
-    [aboutId, aboutPage],
     [menuId, menuPage],
+    [aboutId, aboutPage],
     [galleryId, galleryPage],
-    [contactId, contactPage],
     [reservationsId, reservationsPage],
+    [contactId, contactPage],
   ]
     .filter(([id, document]) => Boolean(id) && document.enabled)
     .map(([id]) => id);

@@ -23,7 +23,8 @@ import { RevealOnScroll } from "./RevealOnScroll";
 import { HeaderScrollState } from "./HeaderScrollState";
 import { GalleryLightbox } from "./GalleryLightbox";
 import { MapEmbed } from "./MapEmbed";
-import { menuSectionSlug } from "../lib/menuSections";
+import { menuSectionSlug, menuSubNameOf } from "../lib/menuSections";
+import { SocialGlyph, socialIconFor } from "./SocialIcon";
 import { CartScope } from "./CartScope";
 import { HeaderCart } from "./HeaderCart";
 import { SiteNav } from "./SiteNav";
@@ -460,6 +461,62 @@ function reelGridCta(first: RestaurantBlock): React.ReactNode {
   return <div className="reel-grid-cta"><SafeLink href={cta.href} className="button ghost">{cta.label}</SafeLink></div>;
 }
 
+/*
+ * #3149 wave 4 -- THE FOOTER'S MENU COLUMN, DERIVED FROM MINGLA.
+ *
+ * The reference lists its courses in the footer: Rice Bowls, Flat Burgers,
+ * Shawarmas, Cocktails. Those are not words to type here -- they are what the
+ * restaurant currently sells, and Mingla owns that. So they are read off the
+ * menu blocks the artifact already carries, which came from Mingla's own
+ * projection at publish time.
+ *
+ * The displayed name is the SUB-NAME. Mingla's sections carry their course as
+ * a prefix -- "FOOD - Rice Bowls" -- and a footer column reading
+ * "FOOD - Rice Bowls" looks like a database row rather than something to eat.
+ * Duplicates collapse: home's taster and the menu page's board project the
+ * same sections, so a naive list would print every course twice.
+ *
+ * A site whose menu Mingla has nothing for gets NO column at all rather than
+ * an empty heading.
+ */
+const FOOTER_MENU_LIMIT = 6;
+
+function footerMenuLinks(
+  artifact: RestaurantArtifact,
+  menuHref: string | null,
+): { label: string; href: string }[] {
+  if (!menuHref) return [];
+  const seen = new Map<string, string>();
+  for (const page of artifact.pages) {
+    if (page.enabled !== true) continue;
+    for (const block of page.blocks ?? []) {
+      if (block.type !== "menu_board" && block.type !== "menu_preview") continue;
+      for (const section of items(block.sections)) {
+        const name = menuSubNameOf(text(section.name)).trim();
+        if (!name) continue;
+        const slug = menuSectionSlug(name);
+        if (!slug || seen.has(slug)) continue;
+        seen.set(slug, name);
+      }
+    }
+  }
+  return [...seen.entries()]
+    .slice(0, FOOTER_MENU_LIMIT)
+    .map(([slug, label]) => ({ label, href: `${menuHref}#${slug}` }));
+}
+
+/*
+ * #3149 wave 4 -- MINGLA'S OWN CREDIT, and the one line in this footer that is
+ * not the brand's.
+ *
+ * It is written here rather than carried in the artifact on purpose: it
+ * belongs to every published site, it is not a brand's to edit or remove, and
+ * a field for it would be a field a brand could put anything into. The
+ * reference's own footer credits its builder in this spot; that is THEIR
+ * credit and is not copied.
+ */
+const MINGLA_CREDIT_HREF = "https://usemingla.com/host";
+
 export function RestaurantV1({
   artifact,
   page,
@@ -560,6 +617,37 @@ export function RestaurantV1({
     firstBlock(homePage(artifact)?.blocks ?? [], "hours_location");
   const liveZone = liveClockZone(siteHours);
   const openPill = liveZone ? <OpenNowPill timezone={liveZone} /> : null;
+  /*
+   * #3149 wave 4 -- the footer the reference has, in four columns.
+   *
+   * Every string in it is the brand's own content or Mingla's own data, and
+   * the ONE exception says so in its own comment: the credit at the bottom is
+   * Mingla's chrome and renders for every site.
+   *
+   *   1. The wordmark if one was uploaded, the brand's own short description,
+   *      and a round button per contact link -- the drawing chosen by where
+   *      the link GOES, so a brand that publishes no WhatsApp number gets no
+   *      WhatsApp button rather than an invented one.
+   *   2. The site's own navigation.
+   *   3. The courses Mingla says this restaurant currently sells.
+   *   4. The address, the phone and the hours, all from the footer contract.
+   *
+   * A column whose content the brand has not supplied is not printed. An empty
+   * heading over nothing is worse than three columns.
+   */
+  const menuHref = orderablePage ? hrefForPage(orderablePage as ArtifactPage) : null;
+  const menuLinks = footerMenuLinks(artifact, menuHref);
+  const contactLinks = (artifact.footer.links ?? []).filter((link) =>
+    isSafeHref(link.href)
+  );
+  const iconLinks = contactLinks
+    .map((link) => ({ link, icon: socialIconFor(String(link.href)) }))
+    .filter((row): row is { link: typeof row.link; icon: NonNullable<typeof row.icon> } =>
+      row.icon !== null
+    );
+  const phoneLink = contactLinks.find((link) => String(link.href).startsWith("tel:"));
+  const logo = artifact.site_settings.logo;
+  const footerColumns = <div className="footer-columns"><div className="footer-brand">{logo && isSafeHref(logo.url) ? <img src={logo.url} alt={artifact.site_settings.display_name} width={logo.width} height={logo.height} className="footer-wordmark" /> : <strong>{artifact.site_settings.display_name}</strong>}{artifact.site_settings.short_description ? <p>{artifact.site_settings.short_description}</p> : null}{iconLinks.length ? <ul className="footer-social">{iconLinks.map(({ link, icon }) => <li key={String(link.href)}><SafeLink href={link.href} className="social-button"><SocialGlyph name={icon} /><span className="sr-only">{link.label}</span></SafeLink></li>)}</ul> : null}</div><div><h2>Site</h2><nav aria-label="Footer navigation">{navPages.map((navPage) => <Link key={navPage.role} href={hrefForPage(navPage)}>{navPage.nav_label}</Link>)}</nav></div>{menuLinks.length ? <div><h2>Menu</h2><nav aria-label="Menu sections">{menuLinks.map((link) => <Link key={link.href} href={link.href}>{link.label}</Link>)}</nav></div> : null}<div className="footer-find"><h2>Find us</h2>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}{phoneLink ? <p><SafeLink href={phoneLink.href}>{phoneLink.label}</SafeLink></p> : null}{artifact.footer.hours_summary ? <p className="footer-hours">{artifact.footer.hours_summary}</p> : null}</div></div>;
   const factRail = <aside className="fact-rail" aria-label="Restaurant facts"><dl><div><dt>Visit</dt><dd>{address || "See restaurant details"}</dd></div><div><dt>Hours</dt><dd>{hours ? `${text(hours.day)} ${text(hours.value)}` : "See current opening hours"}</dd></div><div><dt>Contact</dt><dd>{contactLink && isSafeHref(contactLink.href) ? <SafeLink href={contactLink.href} context={context} ctaKind="contact">{contactLink.label}</SafeLink> : "Contact the restaurant"}</dd></div></dl></aside>;
-  return <CartScope siteId={artifact.site_id}><SiteTheme artifact={artifact} /><SiteRuntimeClient context={context} /><RevealOnScroll /><HeaderScrollState /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand">{artifact.site_settings.display_name}</Link><SiteNav links={navPages.map((navPage) => ({ role: navPage.role, label: String(navPage.nav_label ?? ""), href: hrefForPage(navPage), current: navPage.role === current.role }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.role === current.role} /> : null}{headerAction ? <SafeLink href={headerAction.href} context={context} ctaKind={headerAction.kind} className="header-action accent">{headerAction.label}</SafeLink> : null}</header><main id="main" className={contentStartsUnderHeader ? "header-offset" : undefined}>{primaryHeroIndex < 0 ? <header className="page-header" style={isSafeHref(pageBackdrop) ? { backgroundImage: `url(${JSON.stringify(pageBackdrop).slice(1, -1)})` } : undefined}><div>{openPill}<h1>{current.title}</h1><nav className="crumbs" aria-label="Breadcrumb"><Link href="/">Home</Link><span aria-hidden="true">/</span><span aria-current="page">{current.title}</span></nav></div></header> : null}<div className="page-content">{groupReels(current.blocks).map((group, groupIndex) => group.kind === "reels" ? <section className="reel-grid" key={`reels-${groupIndex}`}>{reelGridHeading(group.reels[0]!.block)}{group.reels.map(({ block, index }) => <figure className="reel-card" key={`${block.type}-${index}`}><ReelVideo src={text(block.video_url)} poster={text(block.poster_url)} label={text(block.heading, "Film")} /><figcaption>{text(block.heading)}</figcaption></figure>)}{reelGridCta(group.reels[0]!.block)}</section> : <Fragment key={`${group.block.type}-${group.index}`}><Block block={group.block} context={context} primaryHeading={group.index === primaryHeroIndex} facts={isHome && group.index === primaryHeroIndex ? factRail : undefined} pill={group.index === primaryHeroIndex ? openPill : undefined} /></Fragment>)}</div></main><footer className="footer"><div><strong>{artifact.site_settings.display_name}</strong>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}<p>{artifact.footer.legal_text}</p></div><nav aria-label="Footer navigation">{navPages.map((navPage) => <Link key={navPage.role} href={hrefForPage(navPage)}>{navPage.nav_label}</Link>)}</nav><div>{artifact.footer.links?.map((link) => <SafeLink key={link.href} href={link.href}>{link.label}</SafeLink>)}</div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
+  return <CartScope siteId={artifact.site_id}><SiteTheme artifact={artifact} /><SiteRuntimeClient context={context} /><RevealOnScroll /><HeaderScrollState /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand">{artifact.site_settings.display_name}</Link><SiteNav links={navPages.map((navPage) => ({ role: navPage.role, label: String(navPage.nav_label ?? ""), href: hrefForPage(navPage), current: navPage.role === current.role }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.role === current.role} /> : null}{headerAction ? <SafeLink href={headerAction.href} context={context} ctaKind={headerAction.kind} className="header-action accent">{headerAction.label}</SafeLink> : null}</header><main id="main" className={contentStartsUnderHeader ? "header-offset" : undefined}>{primaryHeroIndex < 0 ? <header className="page-header" style={isSafeHref(pageBackdrop) ? { backgroundImage: `url(${JSON.stringify(pageBackdrop).slice(1, -1)})` } : undefined}><div>{openPill}<h1>{current.title}</h1><nav className="crumbs" aria-label="Breadcrumb"><Link href="/">Home</Link><span aria-hidden="true">/</span><span aria-current="page">{current.title}</span></nav></div></header> : null}<div className="page-content">{groupReels(current.blocks).map((group, groupIndex) => group.kind === "reels" ? <section className="reel-grid" key={`reels-${groupIndex}`}>{reelGridHeading(group.reels[0]!.block)}{group.reels.map(({ block, index }) => <figure className="reel-card" key={`${block.type}-${index}`}><ReelVideo src={text(block.video_url)} poster={text(block.poster_url)} label={text(block.heading, "Film")} /><figcaption>{text(block.heading)}</figcaption></figure>)}{reelGridCta(group.reels[0]!.block)}</section> : <Fragment key={`${group.block.type}-${group.index}`}><Block block={group.block} context={context} primaryHeading={group.index === primaryHeroIndex} facts={isHome && group.index === primaryHeroIndex ? factRail : undefined} pill={group.index === primaryHeroIndex ? openPill : undefined} /></Fragment>)}</div></main><footer className="footer">{footerColumns}<div className="footer-bar"><p>{artifact.footer.legal_text}</p><a href={MINGLA_CREDIT_HREF} target="_blank" rel="noopener noreferrer" className="footer-credit">Powered by Mingla<span className="sr-only"> (opens in a new tab)</span></a></div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
 }

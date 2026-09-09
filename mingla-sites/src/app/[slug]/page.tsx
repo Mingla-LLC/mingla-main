@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { RestaurantV1 } from "../../components/RestaurantV1";
 import { loadPublication, normalizePublicHost } from "../../lib/publication";
-import { pageForSlug } from "../../lib/pageRouting";
+import {
+  hrefForPage,
+  pageForSlug,
+  replacementForRetiredSlug,
+} from "../../lib/pageRouting";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +65,25 @@ export default async function ArtifactPage({
   }
   const { artifact, resolution } = publication;
   const page = pageForSlug(artifact, slug);
+  /*
+   * #3149 wave 4 — A RETIRED PAGE'S URL STILL GOES SOMEWHERE.
+   *
+   * `/contact` has been live and linkable. Folding the Visit page into the
+   * Reservations page must not turn every bookmark and inbound link into a
+   * 404, so a slug the artifact no longer answers to is checked against the
+   * runtime's retired-role map before giving up.
+   *
+   * 308 rather than 302: the page is gone for good, and a permanent redirect
+   * is what tells a search engine to carry the old URL's standing over to the
+   * new one instead of indexing both.
+   *
+   * Outside the try/catch above on purpose — `permanentRedirect` signals by
+   * throwing, and a catch would swallow it into a 404.
+   */
+  if (!page) {
+    const replacement = replacementForRetiredSlug(artifact, slug);
+    if (replacement) permanentRedirect(hrefForPage(replacement));
+  }
   if (!page) notFound();
   return (
     <div

@@ -247,8 +247,21 @@ test("dry-run is read-only and reports the exact pending actions", async () => {
    *   "create_contact_draft",
    *   "update_navigation_draft",
    *
-   * The seed now describes a sixth page, so a dry-run against an unseeded site
-   * reports a sixth create. Nothing else in the plan moved.
+   * The seed now describes a booking page, so a dry-run against an unseeded
+   * site reports a create for it.
+   *
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4 — one entry removed:
+   *   "create_contact_draft",
+   *
+   * The Visit page is retired: it publishes with no blocks, so it is disabled,
+   * and the caller never creates a page it would not publish. That rule is
+   * older than this wave — "an empty draft the brand did not ask for is
+   * clutter in their Studio" — and this is the first time it has applied to a
+   * page being taken away rather than one not yet earned.
+   *
+   * SHARPENED: still an exact-order deepEqual over the whole plan, so a
+   * retired page that started being created again fails here, as does one
+   * created after the navigation that has to name it.
    *
    * SHARPENED: this is an exact-order deepEqual over the WHOLE plan, so the
    * new entry is pinned in its position — after contact, before the navigation
@@ -261,7 +274,6 @@ test("dry-run is read-only and reports the exact pending actions", async () => {
     "update_home_draft",
     "create_about_draft",
     "create_menu_draft",
-    "create_contact_draft",
     "create_reservations_draft",
     "update_navigation_draft",
     "update_footer_draft",
@@ -284,11 +296,15 @@ test("apply uses every real boundary once and a successful rerun writes nothing"
    *   "contact",
    *   "navigation",
    *
-   * SHARPENED for the same reason as the plan above: this is the record of
-   * every boundary the apply actually crossed, in order, and it now pins that
-   * the reservations page is WRITTEN BEFORE the navigation that has to name
-   * it. Without the sixth entry in this exact position the caller could create
-   * the page after the navigation and nothing here would notice.
+   * `"contact"` is gone from this list for the same reason it is gone from the
+   * plan above: a retired page is never created.
+   *
+   * SHARPENED for the same reason as the plan: this is the record of every
+   * boundary the apply actually crossed, in order, and it pins that the
+   * reservations page is WRITTEN BEFORE the navigation that has to name it.
+   * Without that entry in this exact position the caller could create the page
+   * after the navigation and nothing here would notice — which is precisely
+   * the defect this wave introduced and this suite caught.
    */
   assert.deepEqual(client.calls, [
     "read",
@@ -297,7 +313,6 @@ test("apply uses every real boundary once and a successful rerun writes nothing"
     "home",
     "about",
     "menu",
-    "contact",
     "reservations",
     "navigation",
     "footer",

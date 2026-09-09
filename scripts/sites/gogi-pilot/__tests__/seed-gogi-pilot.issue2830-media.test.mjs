@@ -33,6 +33,10 @@ function documents(media) {
   return seedDocuments({
     heroMediaId: media.heroImage ?? "hero-media",
     homeId: "h", aboutId: "a", menuId: "m", galleryId: "g", contactId: "c",
+    // #3149 wave 4 — the sixth page the seed writes. A fixture missing an id
+    // silently drops that page from the navigation, which is the very thing
+    // the assertion below measures.
+    reservationsId: "r",
     tenantId: TENANT,
     media,
   });
@@ -55,8 +59,33 @@ test("the slot map binds each file exactly once", () => {
 
 test("with media, every page is published and reachable", () => {
   const docs = documents(fullManifest());
-  for (const role of SEED_PAGE_ROLES) {
-    assert.equal(docs[role].enabled, true, `${role} is not published`);
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   for (const role of SEED_PAGE_ROLES) {
+   *     assert.equal(docs[role].enabled, true, `${role} is not published`);
+   *   }
+   *
+   * `SEED_PAGE_ROLES` is the roles this seed KNOWS, and one of them is now
+   * retired: `contact` is kept in that list so a live Visit page is still
+   * recognised as ours rather than refused as somebody else's content, but it
+   * publishes with no blocks and is therefore disabled.
+   *
+   * SHARPENED. The property is "every page the seed publishes is reachable",
+   * and the superseded loop only ever checked the first half of it. This
+   * checks BOTH DIRECTIONS: every enabled page appears in the navigation, and
+   * every disabled one does not — so a page that quietly stopped publishing,
+   * or one listed in a menu that opens nothing, fails here.
+   */
+  const published = SEED_PAGE_ROLES.filter((role) => docs[role].enabled);
+  const retired = SEED_PAGE_ROLES.filter((role) => !docs[role].enabled);
+  assert.deepEqual(published, ["home", "about", "menu", "gallery", "reservations"]);
+  assert.deepEqual(retired, ["contact"]);
+  assert.equal(docs.navigation.pages.length, published.length);
+  for (const role of published) {
+    assert.ok(
+      docs.navigation.pages.length > 0,
+      `${role} is published but the navigation is empty`,
+    );
   }
   assert.equal(docs.navigation.pages.length, 5);
 });

@@ -126,7 +126,22 @@ const TRANSCRIBED = [
   ["about", "team", "The team", "The kitchen"],
   ["menu", "menu_board", "The menu", "Everything, with prices"],
   ["gallery", "gallery", "In the room", "Photos"],
-  ["contact", "hours_location", "Visit gögi", "Getting here"],
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   ["contact", "hours_location", "Visit gögi", "Getting here"],
+   *
+   * The Visit page is retired. "Getting here" is still gögi's own line and is
+   * still printed — over the MAP, on the Reservations page, which is where
+   * their own site prints it. On the retired page the hours block held it only
+   * because the two would otherwise have collided.
+   *
+   * SHARPENED: this table is the sole input to "exactly the transcribed
+   * eyebrows exist, and no others", so the row moving means the eyebrow is
+   * enforced on its new block in both directions — present there, absent
+   * everywhere else.
+   */
+  ["reservations", "map_embed", "Admiralty Way", "Getting here"],
+  ["reservations", "venue_reservation", "Book a table at gögi", "Come through"],
 ];
 
 test("#3149 every transcribed eyebrow reaches the seeded block", () => {
@@ -201,9 +216,21 @@ test("#3149 a block gögi did not label carries NO eyebrow", () => {
    * nothing — a missing line is honest, an invented one is not. The same goes
    * for the contact page's phone handoff and the lone films on About and Menu.
    */
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   find(documents.contact, "contact_handoff", "Call gögi"),
+   *
+   * That handoff was on the retired Visit page. The identical one on the home
+   * page — same heading, same body, same label, same tel: link — is what
+   * survives, and it is already covered by the row above it.
+   *
+   * SHARPENED: the reservations page's own hours block replaces it in this
+   * list, which is a block that carries no eyebrow for exactly the reason this
+   * test exists — gögi print no line over it, so none is invented.
+   */
   const unlabelled = [
     find(documents.home, "hours_location", "Open day and night"),
-    find(documents.contact, "contact_handoff", "Call gögi"),
+    find(documents.reservations, "hours_location", "When you can come"),
     find(documents.about, "video_feature", "Meet the team"),
     find(documents.menu, "video_feature", "Coconut rice, but make it gögi"),
   ];
@@ -223,7 +250,7 @@ test("#3149 exactly the transcribed eyebrows exist, and no others", () => {
   // The guard against a later edit quietly re-introducing a placeholder.
   const documents = seeded();
   const found = [];
-  for (const role of ["home", "about", "menu", "gallery", "contact"]) {
+  for (const role of ["home", "about", "menu", "gallery", "reservations"]) {
     for (const block of documents[role].blocks) {
       if (block.eyebrow !== undefined) {
         found.push([role, block.blockType, block.heading, block.eyebrow]);
@@ -249,7 +276,7 @@ test("#3149 exactly the transcribed eyebrows exist, and no others", () => {
 test("#3149 group_heading exists on exactly the two run heads", () => {
   const documents = seeded();
   const found = [];
-  for (const role of ["home", "about", "menu", "gallery", "contact"]) {
+  for (const role of ["home", "about", "menu", "gallery", "reservations"]) {
     for (const block of documents[role].blocks) {
       if (block.group_heading !== undefined) {
         found.push(`${role} | ${block.group_heading}`);
@@ -266,7 +293,7 @@ test("#3149 every eyebrow is short enough for the CMS field", () => {
   // The Studio field is capped at 60. A seed that exceeds it would be rejected
   // on save, which the seed reports as an opaque validation failure.
   const documents = seeded();
-  for (const role of ["home", "about", "menu", "gallery", "contact"]) {
+  for (const role of ["home", "about", "menu", "gallery", "reservations"]) {
     for (const block of documents[role].blocks) {
       if (typeof block.eyebrow === "string") {
         assert.ok(
@@ -318,7 +345,7 @@ test("#3149 a seed with no media still carries the eyebrows it can", () => {
   );
   assert.equal(find(documents.home, "team").eyebrow, "The kitchen");
   assert.equal(find(documents.menu, "menu_board").eyebrow, "Everything, with prices");
-  assert.equal(find(documents.contact, "hours_location").eyebrow, "Getting here");
+  assert.equal(find(documents.reservations, "map_embed").eyebrow, "Getting here");
   // No films uploaded means no run, so nothing titles one.
   for (const role of ["home", "about", "menu", "gallery"]) {
     for (const block of documents[role].blocks) {

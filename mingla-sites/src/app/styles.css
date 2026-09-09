@@ -2358,3 +2358,165 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
     font-size: 1.15rem;
   }
 }
+
+/*
+ * #3149 wave 4 — THE FOOTER, rebuilt to the reference's four columns.
+ *
+ * At the end of the file for the reason the two blocks above it are: `.footer`
+ * is declared earlier with `grid-template-columns: 2fr 1fr 1fr` and a 44px
+ * `min-height` on its anchors, and those have to be beaten rather than edited
+ * in place — the earlier block is pinned by the visual-contract suite.
+ */
+.footer {
+  display: block;
+  padding-block-end: 0;
+}
+
+.footer-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
+  gap: clamp(2rem, 4vw, 3.5rem);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .footer-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .footer-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.footer-brand {
+  display: grid;
+  justify-items: start;
+  gap: 1rem;
+  max-width: 34ch;
+}
+
+/*
+ * (0,2,0), beating the earlier `.footer strong` (0,1,1): in a four-column
+ * footer the brand's name is a column heading, not a 4rem billboard that
+ * pushes the other three columns off a phone.
+ */
+.footer .footer-brand strong {
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  line-height: 1;
+}
+
+.footer-wordmark {
+  max-width: min(100%, 12rem);
+  height: auto;
+}
+
+.footer-brand p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.footer-social {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  gap: 0.7rem;
+}
+
+.footer .social-button {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-width: 2.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ivory);
+  background: color-mix(in srgb, var(--gold) 8%, transparent);
+  transition: background 160ms var(--ease), color 160ms var(--ease);
+}
+
+.footer .social-button:hover {
+  background: var(--gold);
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer .social-button { transition: none; }
+}
+
+.footer-columns h2 {
+  margin: 0 0 0.9rem;
+  font-family: var(--display);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.footer-columns nav {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+/*
+ * (0,2,1) against the earlier `.footer a` (0,1,1). A 44px target is right for
+ * a lone link and wrong for a stacked column of six, where it becomes a list
+ * with a finger-width of empty space between every row.
+ */
+.footer .footer-columns a {
+  min-height: 2.1rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.footer .footer-columns a:hover {
+  color: var(--ivory);
+}
+
+.footer-find p {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  max-width: 24ch;
+}
+
+/* The hours are the one line in this column that is a claim rather than a
+   detail, and the reference prints it in the accent. */
+.footer-hours {
+  color: var(--gold);
+}
+
+.footer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: clamp(2.5rem, 5vw, 4rem);
+  padding-block: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.footer-bar p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.footer .footer-credit {
+  color: var(--muted);
+  font-size: 0.82rem;
+  min-height: 2.1rem;
+}
+
+.footer .footer-credit:hover {
+  color: var(--gold);
+}

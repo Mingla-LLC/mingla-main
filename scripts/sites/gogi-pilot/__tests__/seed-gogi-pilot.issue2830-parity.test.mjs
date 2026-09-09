@@ -15,23 +15,46 @@ const ids = {
   menuId: "p-menu",
   galleryId: "p-gallery",
   contactId: "p-contact",
+  reservationsId: "p-reservations",
   tenantId: "t",
 };
 
-const roles = ["home", "about", "menu", "gallery", "contact"];
+/*
+ * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+ *   const roles = ["home", "about", "menu", "gallery", "contact"];
+ *
+ * The site is still five pages. Visit is retired and Reservations takes its
+ * place, and Menu and About swap so the navigation reads as the reference's
+ * does. This list is in NAV ORDER, which is what the assertion below checks.
+ */
+const roles = ["home", "menu", "about", "gallery", "reservations"];
 
 test("seeds the five pages gögi's own site has", () => {
   const docs = seedDocuments(ids);
   assert.deepEqual(roles.map((role) => docs[role].role), roles);
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   assert.deepEqual(
+   *     roles.map((role) => docs[role].nav_label),
+   *     ["Home", "About", "Menu", "Gallery", "Visit"],
+   *   );
+   *
+   * SHARPENED: the labels are still pinned exactly, and the ORDER they render
+   * in is now pinned too — `nav_order` is what the navigation sorts by, and a
+   * label list alone would pass even if every page claimed position 0.
+   */
   assert.deepEqual(
     roles.map((role) => docs[role].nav_label),
-    ["Home", "About", "Menu", "Gallery", "Visit"],
+    ["Home", "Menu", "About", "Gallery", "Reservations"],
   );
+  assert.deepEqual(roles.map((role) => docs[role].nav_order), [0, 1, 2, 3, 4]);
   // Four, not five: Gallery has no blocks until media is uploaded, and the
   // test below pins that an empty page is not published. Listing it here would
   // be a navigation link to a page the runtime will not route.
   assert.equal(docs.navigation.pages.length, 4);
   assert.equal(docs.navigation.pages.includes(ids.galleryId), false);
+  // And the retired page is not listed either, for the same reason.
+  assert.equal(docs.navigation.pages.includes(ids.contactId), false);
 });
 
 test("a page with no blocks is NOT published", () => {
