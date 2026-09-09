@@ -946,6 +946,135 @@ test("#2893 CMS rollout is bootstrap, isolated-role Payload migration, reconcili
   }), /INVALID_MIGRATOR_DATABASE_URL/);
 });
 
+test("#3154 only an absent UPLOADING quarantine object is optional", () => {
+  const quarantineKey = `quarantine/${SITE_ID}/${MEDIA_ID}/pending-upload`;
+  const identity = `sites-media-quarantine/${quarantineKey}`;
+  const uploading = buildReferenceMap({
+    tenants: [{ tenant_id: TENANT_ID, site_id: SITE_ID }],
+    media: [{
+      tenant_id: TENANT_ID,
+      media_id: MEDIA_ID,
+      state: "UPLOADING",
+      quarantine_key: quarantineKey,
+      approved_master_key: null,
+      rendition_manifest: null,
+    }],
+    publications: [],
+    counts: { tenants: 1, documents: 1 },
+  }, SITE_ID).references;
+
+  assert.deepEqual(uploading.get(identity), {
+    state: "media:UPLOADING",
+    expected_digest: null,
+    expected_bytes: null,
+    optional_presence: true,
+  });
+  assert.doesNotThrow(() => assertReferenceIntegrity(uploading, new Map()));
+
+  const presentUpload = new Map([[identity, {
+    bytes: 13,
+    sha256: sha256Bytes(Buffer.from("pending-upload")),
+  }]]);
+  assert.doesNotThrow(() => assertReferenceIntegrity(uploading, presentUpload));
+  assert.equal(uploading.get(identity)?.state, "media:UPLOADING");
+
+  for (const state of [
+    "QUARANTINED",
+    "PROCESSING",
+    "READY",
+    "REJECTED",
+    "RETRYABLE_FAILED",
+    "TOMBSTONED",
+  ]) {
+    const approvedKey = `approved/${SITE_ID}/${MEDIA_ID}/${DIGEST}/master.webp`;
+    const needsManifest = state === "READY" || state === "TOMBSTONED";
+    const references = buildReferenceMap({
+      tenants: [{ tenant_id: TENANT_ID, site_id: SITE_ID }],
+      media: [{
+        tenant_id: TENANT_ID,
+        media_id: MEDIA_ID,
+        state,
+        quarantine_key: quarantineKey,
+        approved_master_key: needsManifest ? approvedKey : null,
+        rendition_manifest: needsManifest
+          ? {
+            version: 1,
+            master: { key: approvedKey, digest: DIGEST, bytes: 5 },
+            renditions: [],
+          }
+          : null,
+      }],
+      publications: [],
+      counts: { tenants: 1, documents: 1 },
+    }, SITE_ID).references;
+    const quarantineReference = references.get(identity);
+    assert.equal(
+      quarantineReference?.optional_presence,
+      false,
+      `${state} quarantine must remain mandatory`,
+    );
+    assert.throws(
+      () => assertReferenceIntegrity(
+        new Map([[identity, quarantineReference]]),
+        new Map(),
+      ),
+      /REFERENCED_OBJECT_MISSING/,
+      `${state} missing quarantine object must fail closed`,
+    );
+  }
+
+  const approvedIdentity =
+    `sites-media-approved/approved/${SITE_ID}/${MEDIA_ID}/${DIGEST}/master.webp`;
+  const recoveryIdentity =
+    `sites-media-recovery/recovery/${TENANT_ID}/${SITE_ID}/${MEDIA_ID}/${DIGEST}/master.webp`;
+  const publicationDigest = "b".repeat(64);
+  const publicationKey =
+    `publications/${SITE_ID}/${PUBLICATION_ID}/${publicationDigest}.json`;
+  const publicationIdentity = `sites-publication-artifacts/${publicationKey}`;
+  const protectedReferences = buildReferenceMap({
+    tenants: [{ tenant_id: TENANT_ID, site_id: SITE_ID }],
+    media: [{
+      tenant_id: TENANT_ID,
+      media_id: MEDIA_ID,
+      state: "TOMBSTONED",
+      quarantine_key: null,
+      approved_master_key:
+        `approved/${SITE_ID}/${MEDIA_ID}/${DIGEST}/master.webp`,
+      rendition_manifest: {
+        version: 1,
+        master: {
+          key: `approved/${SITE_ID}/${MEDIA_ID}/${DIGEST}/master.webp`,
+          digest: DIGEST,
+          bytes: 5,
+        },
+        renditions: [],
+      },
+    }],
+    publications: [{
+      tenant_id: TENANT_ID,
+      status: "published",
+      artifact_key: publicationKey,
+      artifact_digest: publicationDigest,
+    }],
+    counts: { tenants: 1, documents: 2 },
+  }, SITE_ID).references;
+  for (const requiredIdentity of [
+    approvedIdentity,
+    recoveryIdentity,
+    publicationIdentity,
+  ]) {
+    const reference = protectedReferences.get(requiredIdentity);
+    assert.equal(reference?.optional_presence, false);
+    assert.throws(
+      () => assertReferenceIntegrity(
+        new Map([[requiredIdentity, reference]]),
+        new Map(),
+      ),
+      /REFERENCED_OBJECT_MISSING/,
+    );
+  }
+});
+
 test("#2893 bootstrap is value-blind and reconciles exact private bucket policy", () => {
   const sql = readFileSync(join(SITES_DIR, "bootstrap-sites-cms.sql"), "utf8");
   for (const bucket of SITES_BUCKETS) assert.match(sql, new RegExp(`'${bucket}'`, "g"));
