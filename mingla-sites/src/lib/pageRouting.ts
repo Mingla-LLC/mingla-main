@@ -15,6 +15,12 @@ export type ArtifactPage = RestaurantArtifact["pages"][number];
 export const RESERVED_SLUGS: readonly string[] = [
   "api",
   "media",
+  /*
+   * #3149 wave 4 — the static map's tile door. A restaurant calling a page
+   * "Map" is entirely plausible and it would have been swallowed silently, in
+   * exactly the way `preview` would have been.
+   */
+  "map",
   "preview",
   "robots.txt",
   "sitemap.xml",

@@ -1941,3 +1941,420 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
     animation: none;
   }
 }
+
+/* ── #3149 wave 4 ─────────────────────────────────────────────────────────
+   The map that paints, the live pill, the story composite, the menu taster,
+   the cards with drawings on them, and the film that runs full width.
+
+   At the END of the file for the reason the wave 3 block gives above it:
+   `.hero`, `.button` and `.gallery` are each declared twice in this stylesheet
+   and the LATER declaration wins, so anything that has to beat an
+   earlier-looking rule is written here — and measured rather than read. Three
+   rules below exist purely to win a specificity fight that is invisible in the
+   source, and each says so. */
+
+/*
+ * THE MAP, DRAWN. A clipped box with a fixed-size plane of 256px squares
+ * centred inside it, so the point the plane was planned around lands exactly
+ * at the middle of the box whatever width the column happens to be. The pin is
+ * therefore drawn at 50%/50% and never positioned per tile.
+ *
+ * The plane is deliberately NOT stretched to the box: a raster tile scaled up
+ * is a blurred street name, and a map whose street names cannot be read is a
+ * decorative grey rectangle.
+ */
+.map-static {
+  position: relative;
+  width: 100%;
+  /* `.map-panel` lays its children out with `justify-items: start`, which
+     would otherwise shrink this to its content — and its content is absolutely
+     positioned, so that is nothing at all. */
+  justify-self: stretch;
+  height: clamp(13.75rem, 30vw, 20.625rem);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-media);
+  /* What shows through where a square has not arrived, or past the edge of the
+     world at the poles. Never a broken-image icon over an address. */
+  background: var(--panel-raised);
+}
+
+.map-static-plane {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  display: block;
+}
+
+.map-static-plane img {
+  position: absolute;
+  display: block;
+  width: 256px;
+  height: 256px;
+  max-width: none;
+}
+
+.map-static-pin {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: var(--gold);
+  box-shadow:
+    0 0 0 0.28rem color-mix(in srgb, var(--gold) 32%, transparent),
+    0 2px 10px rgba(0, 0, 0, 0.55);
+}
+
+/*
+ * THE LIVE PILL. Printed only where the block declares an always-open venue
+ * AND names a timezone — see `hours_location` in the contract and `LocalClock`
+ * in the runtime. Nothing here decides whether anywhere is open.
+ */
+.open-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 1.4rem;
+  padding: 0.45rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
+  font-family: var(--display);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--ivory);
+}
+
+/*
+ * `.hero p:not(.eyebrow)` is (0,2,1) and sets a 1.25rem body size and a 620px
+ * cap — it would blow the pill up to the size of the hero's own subheading.
+ * These two match its specificity and win on order.
+ */
+.hero p.open-pill,
+.page-header p.open-pill {
+  max-width: none;
+  font-size: 0.76rem;
+  color: var(--ivory);
+}
+
+.page-header p.open-pill {
+  margin: 0 auto 1.1rem;
+}
+
+.open-pill-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--gold);
+  animation: open-pill-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes open-pill-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.local-clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+}
+
+.hours-live {
+  margin: 0.9rem 0 0;
+  border-top: 1px solid var(--line);
+  padding-top: 0.9rem;
+}
+
+.hours-now {
+  font-family: var(--display);
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/*
+ * THE STORY COMPOSITE. A circular crop with a badge on it, the quotation
+ * inline instead of banished to its own band, and a button onward.
+ */
+.editorial-media-circle {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+/*
+ * Ties `.feature img` on specificity (0,1,1) and wins by being written later,
+ * which is the whole reason this block sits at the end of the file. The crop
+ * is the point of the shape: a 14px radius on a square photograph is not a
+ * circle, and this rule losing would be invisible in the source.
+ */
+.editorial-media-circle img {
+  width: min(100%, 26rem);
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 999px;
+}
+
+.media-badge {
+  position: absolute;
+  right: 4%;
+  bottom: 6%;
+  display: grid;
+  justify-items: center;
+  gap: 0.1rem;
+  width: 6.6rem;
+  height: 6.6rem;
+  place-content: center;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--ink);
+  text-align: center;
+}
+
+.media-badge strong {
+  font-family: var(--display);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.media-badge span {
+  font-family: var(--body);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.feature-quote {
+  margin-top: 1.6rem;
+  width: auto;
+}
+
+.feature-cta {
+  margin-top: 1.6rem;
+}
+
+/*
+ * THE MENU TASTER. Real sections with real prices beside the photographs, and
+ * a button to the rest — the items are Mingla's own rows, shown short.
+ */
+.menu-preview-split {
+  display: grid;
+  gap: clamp(1.5rem, 4vw, 3rem);
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .menu-preview-split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.menu-preview-list {
+  display: grid;
+  gap: 2rem;
+  align-content: start;
+}
+
+.menu-preview-list .menu-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0 0 0.75rem;
+  font-family: var(--display);
+  font-size: 0.95rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.menu-preview-list .menu-section h3::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--line);
+}
+
+.menu-preview-cta {
+  justify-self: start;
+}
+
+.menu-preview-photos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.menu-preview-photos img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius-media);
+}
+
+/*
+ * THE CARDS. A drawing, a title, a sentence — and one of them ringed in gold
+ * when the brand says that is the one to look at.
+ */
+.stat-icon {
+  /* `display: block` and nothing else: the card's own layout is untouched, so
+     a figure that names no icon renders exactly the bytes it rendered
+     before. */
+  display: block;
+  color: var(--gold);
+  margin-bottom: 1.1rem;
+}
+
+.stat-body {
+  margin: 0.7rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/*
+ * Two classes, (0,2,0), against `.stats-row > div` at (0,1,1) — so the ring
+ * wins on specificity and not merely on being written later. That matters:
+ * the gold border IS the signal, and a card that silently lost it would look
+ * exactly like a card that was never meant to have one.
+ */
+.stats-row > .stat-highlight {
+  border-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 9%, var(--panel));
+}
+
+/*
+ * THE FILM, FULL WIDTH, WITH ITS WORDS ON IT.
+ *
+ * Both children occupy the SAME grid cell, and the copy is emitted second so
+ * it stacks on top. It takes no pointer events, which makes the whole frame
+ * the play control rather than only the round button in the middle of it.
+ */
+.video-feature {
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+.video-feature > * {
+  grid-area: 1 / 1;
+}
+
+/* (0,2,0), beating `.reel-poster, .reel-video` (0,1,0): a single film is a
+   band across the page here, not the portrait phone card a reel grid holds. */
+.video-feature .reel-poster,
+.video-feature .reel-video {
+  width: 100%;
+  max-width: none;
+  aspect-ratio: auto;
+  height: clamp(20rem, 58vh, 36rem);
+  max-height: none;
+  object-fit: cover;
+  border-radius: var(--radius-media);
+}
+
+.video-feature .reel-poster::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-media);
+  background:
+    linear-gradient(to top, rgba(8, 6, 4, 0.82) 0%, rgba(8, 6, 4, 0.3) 55%, rgba(8, 6, 4, 0.12) 100%);
+}
+
+/* The round control sits ABOVE the words rather than behind them, which is
+   the order the reference stacks them in. */
+.video-feature .reel-play {
+  z-index: 2;
+  inset-block-start: calc(50% - 7rem);
+}
+
+.video-feature-copy {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  justify-items: center;
+  width: min(100%, 46ch);
+  padding: 0 1.5rem;
+  margin-top: 3.5rem;
+  text-align: center;
+  /* The film underneath is the button. Without this the copy would swallow
+     every click that landed on a word. */
+  pointer-events: none;
+}
+
+.video-feature-copy h2 {
+  margin: 0 0 0.75rem;
+  max-width: 16ch;
+}
+
+.video-feature-copy .video-caption {
+  margin: 0;
+  color: rgba(240, 238, 233, 0.86);
+}
+
+/*
+ * ONE button under a run of films, and one under the team grid. Both span
+ * every column, because a grid item that did not would take a card's track and
+ * shuffle the cards along by one.
+ */
+.reel-grid-cta {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.team-cta {
+  margin-top: 2rem;
+}
+
+/*
+ * THE ROLE, ABOVE THE NAME, IN GOLD. `.team-grid span:not(.team-initial)` is
+ * (0,2,1) and greys this out; matching its specificity and winning on order is
+ * the only way the label reads as a label rather than as a second name.
+ */
+.team-grid span.team-role {
+  order: -1;
+  font-family: var(--display);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+/*
+ * The portrait is first in the source and must stay first on the page. `order`
+ * applies to grid items exactly as it does to flex ones, so the card's
+ * existing `display: grid` and its 0.4rem gap are left alone — a team block
+ * with no roles set renders precisely what it rendered before, because both of
+ * these rules need an element that only a role produces.
+ */
+.team-grid li img,
+.team-grid li .team-initial {
+  order: -2;
+}
+
+@media (max-width: 767px) {
+  .video-feature .reel-play {
+    inset-block-start: calc(50% - 5.5rem);
+  }
+
+  .video-feature-copy {
+    margin-top: 2.5rem;
+  }
+
+  .media-badge {
+    width: 5.2rem;
+    height: 5.2rem;
+  }
+
+  .media-badge strong {
+    font-size: 1.15rem;
+  }
+}

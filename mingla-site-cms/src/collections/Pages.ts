@@ -19,6 +19,7 @@ const roleSlug: Record<string, string> = {
   menu: "menu",
   gallery: "gallery",
   contact: "contact",
+  reservations: "reservations",
 };
 const enforcePage: CollectionBeforeChangeHook = async ({
   data,
@@ -129,7 +130,8 @@ export const Pages: CollectionConfig = {
       maxLength: 40,
       validate: (value: unknown) => safeText(value, 40),
     },
-    { name: "nav_order", type: "number", required: true, min: 0, max: 4 },
+    // #3149 wave 4 — six roles, so six positions: 0 through 5.
+    { name: "nav_order", type: "number", required: true, min: 0, max: 5 },
     {
       name: "revision",
       type: "number",

@@ -17,7 +17,8 @@ export type MediaReference = {
 
 export type RestaurantBlock = {
   type: "hero" | "rich_text" | "media_feature" | "cta" | "offering_grid" |
-    "venue_reservation" | "menu_link" | "menu_board" | "gallery" | "hours_location" |
+    "venue_reservation" | "menu_link" | "menu_board" | "menu_preview" |
+    "gallery" | "hours_location" |
     "video_feature" | "team" |
     "testimonials" | "faq" | "contact_handoff" | "divider" | "spacer" |
     // #3149 wave 3 — the four shapes the reference has and this had no way to
@@ -38,7 +39,13 @@ export type RestaurantArtifact = {
   source_digest: string;
   generated_at: string;
   pages: Array<{
-    role: "home" | "about" | "menu" | "gallery" | "contact";
+    /*
+     * #3149 wave 4 — `reservations` is the sixth and last role.
+     *
+     * A CLOSED union on purpose: a page role is a thing this renderer knows
+     * how to be, not a free label, and every cap below counts against it.
+     */
+    role: "home" | "about" | "menu" | "gallery" | "contact" | "reservations";
     slug: string;
     title: string;
     enabled: boolean;
@@ -103,6 +110,61 @@ function exactRows(
     value.every((row) =>
       plainObject(row) && hasOnlyKeys(row, keys) && validate(row)
     );
+}
+
+/*
+ * #3149 wave 4 — THE ICON IS A NAME FROM THIS LIST OR THERE IS NO ICON.
+ *
+ * The reference site draws its four cards with an icon font, pulling glyph
+ * names out of a third-party stylesheet. A published site here may not: an
+ * icon that arrives as markup is a script tag waiting to happen, and one that
+ * arrives as a URL is a third-party request on a page that makes none.
+ *
+ * So a figure names one of six drawings this runtime already ships, and any
+ * other value fails the publish rather than rendering a blank square. Widening
+ * this list means shipping the drawing first.
+ */
+export const STATS_ICONS = [
+  "clock",
+  "bowl",
+  "music",
+  "card",
+  "pin",
+  "phone",
+] as const;
+
+export type StatsIcon = (typeof STATS_ICONS)[number];
+
+export function isStatsIcon(value: unknown): value is StatsIcon {
+  return typeof value === "string" &&
+    (STATS_ICONS as readonly string[]).includes(value);
+}
+
+/*
+ * #3149 wave 4 — A CLOCK NEEDS A ZONE, AND THE ZONE IS AN IANA NAME.
+ *
+ * The live "open now, 22:03 in Lagos" line is a claim about a real moment in a
+ * real city. An offset would drift across a daylight-saving boundary and a
+ * display string ("WAT", "GMT+1") is not something a clock can be built from.
+ *
+ * Two checks, both needed. The shape test refuses anything that is not
+ * `Region/City` (so a bare "UTC" or a stray path never reaches the formatter),
+ * and then the platform is ASKED whether it knows the zone — `Intl` throws a
+ * RangeError on one it cannot resolve, and a zone the renderer cannot format
+ * would print the server's own time under a city's name, which is worse than
+ * printing nothing.
+ */
+export function isIanaTimeZone(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 60) return false;
+  if (!/^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+){1,2}$/.test(value)) {
+    return false;
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function isSafeHref(value: unknown): value is string {
@@ -209,6 +271,16 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
   const definitions: Record<string, readonly string[]> = {
     hero: ["type", "heading", "subheading", "media_url", "video_url", "ctas"],
     rich_text: ["type", "eyebrow", "heading", "paragraphs"],
+    /*
+     * #3149 wave 4 — this is the STORY section, and on the reference it is one
+     * composite: prose, the line worth quoting, a button onward, and a
+     * circular crop of a photograph with a badge on it. Ours rendered the
+     * prose and the quotation as two unrelated bands with no image between
+     * them.
+     *
+     * Every added key is OPTIONAL and every one of them absent is the block
+     * that shipped: an image feature with a heading and a caption.
+     */
     media_feature: [
       "type",
       "eyebrow",
@@ -217,23 +289,69 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
       "heading",
       "caption",
       "alignment",
+      "media_shape",
+      "badge_figure",
+      "badge_label",
+      "quote",
+      "quote_attribution",
+      "cta_label",
+      "cta_href",
     ],
     cta: ["type", "eyebrow", "heading", "body", "label", "href"],
     offering_grid: ["type", "eyebrow", "heading", "offerings"],
     venue_reservation: ["type", "eyebrow", "heading", "body", "url"],
     menu_link: ["type", "eyebrow", "heading", "label", "href"],
     menu_board: ["type", "eyebrow", "heading", "note", "venue_id", "sections"],
+    /*
+     * #3149 wave 4 — A TASTE OF THE MENU, AND A SEPARATE BLOCK BECAUSE IT IS A
+     * SEPARATE THING.
+     *
+     * `menu_board` is the menu: every section, and a cart. This is the few
+     * dishes a home page shows with a button to that page, beside a handful of
+     * photographs. It could have been three more settings on `menu_board`, and
+     * it deliberately is not: that block is pinned to presentation-only by the
+     * menu-authority suite, and "the menu" and "a taste of the menu" are two
+     * different pieces of a restaurant's page rather than one with a mode.
+     *
+     * IT HOLDS NO ITEMS OF ITS OWN — `sections` here is the SAME projection
+     * from Mingla that `menu_board` receives, shortened. There is no field a
+     * brand can type a dish or a price into, so the website still cannot
+     * disagree with the app about what is sold or what it costs.
+     */
+    menu_preview: [
+      "type",
+      "eyebrow",
+      "heading",
+      "note",
+      "sections",
+      "section_limit",
+      "item_limit",
+      "images",
+      "cta_label",
+      "cta_href",
+    ],
     gallery: ["type", "eyebrow", "heading", "images"],
     video_feature: [
       "type",
       "eyebrow",
       "group_heading",
+      "group_cta_label",
+      "group_cta_href",
       "heading",
       "caption",
       "video_url",
       "poster_url",
     ],
-    team: ["type", "eyebrow", "heading", "caption", "members"],
+    team: [
+      "type",
+      "eyebrow",
+      "heading",
+      "caption",
+      "members",
+      "preview_count",
+      "cta_label",
+      "cta_href",
+    ],
     hours_location: [
       "type",
       "eyebrow",
@@ -241,6 +359,8 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
       "address",
       "map_url",
       "hours",
+      "timezone",
+      "always_open",
     ],
     testimonials: ["type", "eyebrow", "heading", "items"],
     faq: ["type", "eyebrow", "heading", "items"],
@@ -306,7 +426,26 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
         boundedText(block.alt, 240, true) &&
         boundedText(block.heading, 120) &&
         boundedText(block.caption, 500) &&
-        ["left", "right"].includes(String(block.alignment));
+        ["left", "right"].includes(String(block.alignment)) &&
+        /*
+         * #3149 wave 4 — a CROP, not a filter. The only shapes offered are the
+         * rectangle this always drew and the circle the reference uses, and
+         * absent means rectangle, so nothing about an already-published block
+         * moves.
+         */
+        (block.media_shape == null ||
+          ["rectangle", "circle"].includes(String(block.media_shape))) &&
+        /*
+         * The badge is TWO short lines — "24/7" over "ALWAYS ON" — and it is
+         * printed only when the brand wrote the big one. A label with no
+         * figure would be a caption floating over a photograph.
+         */
+        boundedText(block.badge_figure, 24) &&
+        boundedText(block.badge_label, 40) &&
+        boundedText(block.quote, 600) &&
+        boundedText(block.quote_attribution, 120) &&
+        boundedText(block.cta_label, 80) &&
+        safeLink(block.cta_href);
       break;
     case "cta":
       valid = boundedText(block.heading, 120, true) &&
@@ -368,6 +507,52 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
                 /^[A-Z]{3}$/.test(item.currency)))));
       break;
     /*
+     * #3149 wave 4 — the taste of the menu. Same section shape as above, so
+     * the same rules about a price hold: it is nullable, its currency travels
+     * with it, and neither is ever defaulted.
+     *
+     * THE CAPS CAN ONLY EVER HIDE. Both are whole numbers, both bounded, and
+     * nothing here can add a row — the shortest path to a wrong price on a
+     * restaurant's own website is a second copy of the menu, and there is no
+     * way to write one.
+     */
+    case "menu_preview":
+      valid = boundedText(block.heading, 120) &&
+        boundedText(block.note, 300) &&
+        (block.section_limit == null ||
+          (typeof block.section_limit === "number" &&
+            Number.isInteger(block.section_limit) &&
+            block.section_limit >= 1 && block.section_limit <= 6)) &&
+        (block.item_limit == null ||
+          (typeof block.item_limit === "number" &&
+            Number.isInteger(block.item_limit) &&
+            block.item_limit >= 1 && block.item_limit <= 12)) &&
+        boundedText(block.cta_label, 80) && safeLink(block.cta_href) &&
+        (block.images == null ||
+          (Array.isArray(block.images) && block.images.length >= 1 &&
+            block.images.length <= 4)) &&
+        exactRows(block.sections, 1, 20, ["name", "description", "items"], (section) =>
+          boundedText(section.name, 120, true) &&
+          boundedText(section.description, 500) &&
+          exactRows(section.items, 1, 120, ["id", "name", "description", "price_minor", "currency"], (item) =>
+            (typeof item.id === "string" && UUID.test(item.id)) &&
+            boundedText(item.name, 160, true) &&
+            boundedText(item.description, 600) &&
+            (item.price_minor == null ||
+              (typeof item.price_minor === "number" &&
+                Number.isInteger(item.price_minor) &&
+                item.price_minor >= 0 &&
+                item.price_minor <= 100_000_000)) &&
+            (item.currency == null ||
+              (typeof item.currency === "string" &&
+                /^[A-Z]{3}$/.test(item.currency)))));
+      if (valid && Array.isArray(block.images)) {
+        for (const image of block.images as unknown[]) {
+          assertMediaReference(image, siteId);
+        }
+      }
+      break;
+    /*
      * #2830 — a short film with a still under it. gogi's own site runs their
      * Instagram reels this way, and the reels ARE the content: the captions are
      * their words and the footage is their room.
@@ -379,7 +564,11 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
       valid = boundedText(block.heading, 120) &&
         boundedText(block.caption, 600) &&
         isSafeHref(block.video_url) &&
-        isSafeHref(block.poster_url);
+        isSafeHref(block.poster_url) &&
+        // #3149 wave 4 — read off the FIRST film of a run, like the heading
+        // above it, because the button belongs to the grid and not to a film.
+        boundedText(block.group_cta_label, 80) &&
+        safeLink(block.group_cta_href);
       break;
     /*
      * The people. gogi published ten nicknames for their team and no real
@@ -389,6 +578,16 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
     case "team":
       valid = boundedText(block.heading, 120) &&
         boundedText(block.caption, 600) &&
+        /*
+         * #3149 wave 4 — how many of them are on the page, and where the rest
+         * are. The reference shows five of ten with a button under the grid;
+         * absent means every member is shown, which is what this always did.
+         */
+        (block.preview_count == null ||
+          (typeof block.preview_count === "number" &&
+            Number.isInteger(block.preview_count) &&
+            block.preview_count >= 1 && block.preview_count <= 24)) &&
+        boundedText(block.cta_label, 80) && safeLink(block.cta_href) &&
         exactRows(block.members, 1, 24, ["name", "role", "media_url", "alt"], (row) =>
           boundedText(row.name, 80, true) &&
           boundedText(row.role, 80) &&
@@ -404,9 +603,27 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
         }
       }
       break;
+    /*
+     * #3149 wave 4 — the two fields that make a LIVE open/closed claim
+     * possible without modelling opening hours.
+     *
+     * `hours` is and stays a list of DISPLAY STRINGS with no timezone: nothing
+     * can read "Open 24 hours" and know when the kitchen shuts. So the live
+     * pill is refused any inference from them. `always_open` is the brand
+     * saying, in a field, that there is no closing time, and `timezone` is the
+     * one thing a clock needs. A venue with ordinary hours sets neither and
+     * gets no pill at all until real opening hours are modelled.
+     *
+     * They are independent here on purpose — a half-filled Studio form must
+     * not fail a publish — and the renderer requires BOTH before it prints a
+     * word about whether anywhere is open.
+     */
     case "hours_location":
       valid = boundedText(block.heading, 120) &&
         boundedText(block.address, 300, true) && safeLink(block.map_url) &&
+        (block.timezone == null || isIanaTimeZone(block.timezone)) &&
+        (block.always_open == null ||
+          typeof block.always_open === "boolean") &&
         exactRows(block.hours, 1, 7, ["day", "value"], (row) =>
           boundedText(row.day, 20, true) && boundedText(row.value, 80, true));
       break;
@@ -460,11 +677,30 @@ function assertRestaurantBlock(block: JsonObject, siteId: string): void {
      * figure on a restaurant's site and coercing it to a number would either
      * drop it or print a zero.
      */
+    /*
+     * #3149 wave 4 — a figure now carries a SENTENCE, a named drawing, and a
+     * flag saying it is the one being pointed at. The reference's four cards
+     * are exactly that: icon, title, sentence, one of them ringed in gold.
+     *
+     * `icon` is a NAME FROM A CLOSED LIST, never markup and never a URL — see
+     * STATS_ICONS. All three are optional and all three absent is the row of
+     * bare figures this shipped as.
+     */
     case "stats":
       valid = boundedText(block.heading, 120) &&
         boundedText(block.body, 300) &&
-        exactRows(block.items, 1, 6, ["figure", "label"], (row) =>
-          boundedText(row.figure, 60, true) && boundedText(row.label, 240));
+        exactRows(
+          block.items,
+          1,
+          6,
+          ["figure", "label", "body", "icon", "highlight"],
+          (row) =>
+            boundedText(row.figure, 60, true) &&
+            boundedText(row.label, 240) &&
+            boundedText(row.body, 300) &&
+            (row.icon == null || isStatsIcon(row.icon)) &&
+            (row.highlight == null || typeof row.highlight === "boolean"),
+        );
       break;
     /*
      * #3149 — A MAP IS TWO NUMBERS, NEVER A NAME.
@@ -502,7 +738,14 @@ export function assertRestaurantArtifact(value: unknown): asserts value is Resta
     !boundedText(value.generated_at, 40, true) ||
     !Number.isFinite(Date.parse(String(value.generated_at)))
   ) throw new Error("ARTIFACT_DIGEST_MISMATCH");
-  if (!Array.isArray(value.pages) || value.pages.length < 1 || value.pages.length > 5) throw new Error("ARTIFACT_PAGES_MISMATCH");
+  /*
+   * #3149 wave 4 — SIX, because there are six roles.
+   *
+   * This cap and the role union are the same statement counted two ways: gogi
+   * already uses all five of the old roles, so a site that added the sixth
+   * would have failed here with ARTIFACT_PAGES_MISMATCH and no clue why.
+   */
+  if (!Array.isArray(value.pages) || value.pages.length < 1 || value.pages.length > 6) throw new Error("ARTIFACT_PAGES_MISMATCH");
   const roles = new Set<string>();
   for (const page of value.pages as JsonObject[]) {
     if (
@@ -517,7 +760,7 @@ export function assertRestaurantArtifact(value: unknown): asserts value is Resta
         "blocks",
         "seo",
       ]) ||
-      !["home", "about", "menu", "gallery", "contact"].includes(
+      !["home", "about", "menu", "gallery", "contact", "reservations"].includes(
         String(page.role),
       ) ||
       roles.has(String(page.role)) ||
@@ -526,7 +769,10 @@ export function assertRestaurantArtifact(value: unknown): asserts value is Resta
       typeof page.enabled !== "boolean" ||
       !boundedText(page.nav_label, 40, true) ||
       !Number.isInteger(page.nav_order) ||
-      Number(page.nav_order) < 0 || Number(page.nav_order) > 4
+      // Six roles means six positions, 0 through 5. Left at 4 the sixth page
+      // is unplaceable and the failure reads as a bad page rather than a
+      // stale bound.
+      Number(page.nav_order) < 0 || Number(page.nav_order) > 5
     ) throw new Error("ARTIFACT_PAGE_ROLE_MISMATCH");
     roles.add(String(page.role));
     if (!Array.isArray(page.blocks) || page.blocks.length > 40) throw new Error("ARTIFACT_BLOCKS_MISMATCH");
@@ -561,8 +807,15 @@ export function assertRestaurantArtifact(value: unknown): asserts value is Resta
         ["hero", "media_feature"].includes(String(block.type)) &&
         !mediaUrls.has(String(block.media_url))
       ) throw new Error("ARTIFACT_MEDIA_MISMATCH");
+      /*
+       * #3149 wave 4 — the menu preview's photographs are held to the SAME
+       * rule as the gallery's: every one has to be a media record this
+       * artifact already carries. A block that could name a stranger's image
+       * would be a way around the tenant-scoped media door.
+       */
       if (
-        block.type === "gallery" &&
+        ["gallery", "menu_preview"].includes(String(block.type)) &&
+        Array.isArray(block.images) &&
         (block.images as JsonObject[]).some((image) =>
           !mediaIds.has(String(image.id))
         )
@@ -637,7 +890,7 @@ export function assertRestaurantArtifact(value: unknown): asserts value is Resta
     !plainObject(value.navigation) ||
     !hasOnlyKeys(value.navigation, ["page_roles"]) ||
     !Array.isArray(value.navigation.page_roles) ||
-    value.navigation.page_roles.length > 5 ||
+    value.navigation.page_roles.length > 6 ||
     value.navigation.page_roles.some((role) => !roles.has(String(role)))
   ) throw new Error("ARTIFACT_NAVIGATION_MISMATCH");
   if (

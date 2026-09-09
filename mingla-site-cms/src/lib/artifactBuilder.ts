@@ -5,6 +5,13 @@ import { hmac, sha256 } from "./crypto";
 import { readCoreProjection } from "./gateway";
 import { readObject, writeObject } from "./objectStore";
 
+/*
+ * #3149 wave 4 — where Mingla's own guest-facing flows live. Named once so a
+ * published button can only ever be a canonical Mingla address; the public
+ * contract refuses anything that is not.
+ */
+const MINGLA_HOST_ORIGIN = "https://host.usemingla.com";
+
 // Payload documents are generated dynamically from the closed collection
 // schema; this private normalizer deliberately handles their heterogeneous
 // field values before emitting the strictly validated public artifact.
@@ -204,7 +211,19 @@ export async function buildPublicationArtifact(
   let wantsMenu = false;
   for (const page of pagesResult.docs as AnyDoc[])
     for (const block of page.blocks || [])
-      if (block.blockType === "menu_board") wantsMenu = true;
+      /*
+       * #3149 wave 4 — either block shows a menu, so either block is a reason
+       * to read one. Without the second slug a page carrying only the taster
+       * would project an empty menu and drop its own block.
+       *
+       * Written as two comparisons rather than an array membership test
+       * because the menu-authority suite pins this exact expression: it is how
+       * "the menu is read ONLY when a page actually shows one" is asserted,
+       * and that assertion must keep matching.
+       */
+      if (
+        block.blockType === "menu_board" || block.blockType === "menu_preview"
+      ) wantsMenu = true;
   let commercial: AnyDoc[] = [];
   let menuRows: AnyDoc[] = [];
   let menuVenueId: string | null = null;
@@ -329,6 +348,26 @@ export async function buildPublicationArtifact(
     const trimmed = typeof value === "string" ? value.trim() : "";
     return trimmed ? { [key]: trimmed } : {};
   };
+  /*
+   * #3149 wave 4 — the same "absent means absent" rule for the values that are
+   * not text.
+   *
+   * A Payload number field that was never filled in arrives as null, and a
+   * checkbox that was never ticked can arrive as null OR false depending on
+   * how the row was written. Publishing `preview_count: null` or
+   * `always_open: false` would put a key in the artifact that the contract
+   * accepts but the renderer must then second-guess, AND would change the
+   * bytes of every artifact ever published — which makes a republish look like
+   * a content change to anything comparing digests.
+   */
+  const optionalNumber = (value: unknown, key: string) =>
+    typeof value === "number" && Number.isFinite(value) ? { [key]: value } : {};
+  const optionalFlag = (value: unknown, key: string) =>
+    value === true ? { [key]: true } : {};
+  const optionalCta = (raw: AnyDoc) => ({
+    ...optionalText(raw.cta_label, "cta_label"),
+    ...optionalText(raw.cta_href, "cta_href"),
+  });
   const blocks = (source: AnyDoc[]) =>
     source.map((raw) => {
       const eyebrow = optionalText(raw.eyebrow, "eyebrow");
@@ -362,6 +401,14 @@ export async function buildPublicationArtifact(
             heading: raw.heading,
             caption: raw.caption,
             alignment: raw.alignment,
+            // #3149 wave 4 — the story composite. Each one absent unless the
+            // brand filled it in, so an untouched block publishes as before.
+            ...optionalText(raw.media_shape, "media_shape"),
+            ...optionalText(raw.badge_figure, "badge_figure"),
+            ...optionalText(raw.badge_label, "badge_label"),
+            ...optionalText(raw.quote, "quote"),
+            ...optionalText(raw.quote_attribution, "quote_attribution"),
+            ...optionalCta(raw),
           };
         case "cta":
           return {
@@ -390,19 +437,32 @@ export async function buildPublicationArtifact(
               };
             }),
           };
-        case "venue_reservation": {
-          const resolved = commercial.find(
-            (item) => item.id === raw.reservation_target_id,
-          );
-          if (!resolved) throw new Error("VALIDATION_FAILED");
+        /*
+         * #3149 wave 4 — THE BOOKING LINK IS DERIVED FROM THE BRAND.
+         *
+         * This resolved a "reservation target id" against the commercial
+         * projection, and it could not ever succeed: only `offering_grid` ids
+         * are sent to that projection, its own count check would have rejected
+         * an extra row, and the projection returns EVENTS with kind
+         * 'offering' — there is no reservation target in it at all. So every
+         * page carrying this block failed the publish closed. Confirmed by
+         * reading all three: the id gather, the count check, and
+         * `brand_site_commercial_projection` itself.
+         *
+         * Mingla already owns reservations — the policy, the cancellations,
+         * the attribution — and its booking page is addressed by BRAND. That
+         * address is computed here from the tenant's own brand id, so the
+         * button cannot drift out of step with the brand and there is no free
+         * text on the way to it.
+         */
+        case "venue_reservation":
           return {
             type: "venue_reservation",
             ...eyebrow,
             heading: raw.heading,
             body: raw.body,
-            url: resolved.checkout_url,
+            url: `${MINGLA_HOST_ORIGIN}/reserve/${input.tenant.core_brand_id}`,
           };
-        }
         case "video_feature": {
           const video = renderVideo(raw.video);
           // A video block whose file is not ready is dropped rather than
@@ -412,6 +472,8 @@ export async function buildPublicationArtifact(
             type: "video_feature",
             ...eyebrow,
             ...optionalText(raw.group_heading, "group_heading"),
+            ...optionalText(raw.group_cta_label, "group_cta_label"),
+            ...optionalText(raw.group_cta_href, "group_cta_href"),
             heading: raw.heading ?? null,
             caption: raw.caption ?? null,
             video_url: video,
@@ -424,6 +486,9 @@ export async function buildPublicationArtifact(
             ...eyebrow,
             heading: raw.heading ?? null,
             caption: raw.caption ?? null,
+            // #3149 wave 4 — how many are shown, and where the rest are.
+            ...optionalNumber(raw.preview_count, "preview_count"),
+            ...optionalCta(raw),
             members: (raw.members || []).map((row: AnyDoc) => ({
               name: row.name,
               role: row.role ?? null,
@@ -453,6 +518,36 @@ export async function buildPublicationArtifact(
             sections: menuSections,
           };
         }
+        /*
+         * #3149 wave 4 — the taste of the menu. The SAME projected sections
+         * `menu_board` receives, shortened by the caps below: nothing here can
+         * add a dish or a price, so the website still holds no copy of what
+         * the restaurant sells.
+         *
+         * Dropped on an empty menu for the same reason the board is — a
+         * heading promising "what people order" over nothing at all is worse
+         * than no section.
+         */
+        case "menu_preview": {
+          if (!menuSections.length) return null;
+          return {
+            type: "menu_preview",
+            ...eyebrow,
+            heading: raw.heading ?? null,
+            note: raw.note ?? null,
+            sections: menuSections,
+            ...optionalNumber(raw.section_limit, "section_limit"),
+            ...optionalNumber(raw.item_limit, "item_limit"),
+            ...((raw.images || []).length
+              ? {
+                images: (raw.images || []).map((row: AnyDoc) =>
+                  renderMedia(row.media, String(row.alt || ""))
+                ),
+              }
+              : {}),
+            ...optionalCta(raw),
+          };
+        }
         case "menu_link":
           return {
             type: "menu_link",
@@ -477,6 +572,14 @@ export async function buildPublicationArtifact(
             heading: raw.heading,
             address: raw.address,
             map_url: raw.map_url,
+            /*
+             * #3149 wave 4 — the two facts behind a live open/closed line, and
+             * NOTHING derived from the hours below them. An unticked box
+             * publishes no key at all rather than `always_open: false`, so a
+             * site that never made the claim carries no trace of it.
+             */
+            ...optionalFlag(raw.always_open, "always_open"),
+            ...optionalText(raw.timezone, "timezone"),
             hours: (raw.hours || []).map((row: AnyDoc) => ({
               day: row.day,
               value: row.value,
@@ -535,6 +638,10 @@ export async function buildPublicationArtifact(
             items: (raw.items || []).map((row: AnyDoc) => ({
               figure: row.figure,
               ...optionalText(row.label, "label"),
+              // #3149 wave 4 — the sentence, the named drawing, and the ring.
+              ...optionalText(row.body, "body"),
+              ...optionalText(row.icon, "icon"),
+              ...optionalFlag(row.highlight, "highlight"),
             })),
           };
         case "pull_quote":
@@ -580,7 +687,25 @@ export async function buildPublicationArtifact(
     source_digest: input.sourceDigest,
     generated_at: input.generatedAt,
     pages: (pagesResult.docs as AnyDoc[]).map((page) => {
-      const rendered = blocks(page.blocks || []);
+      /*
+       * #3149 wave 4 — A DROPPED BLOCK MUST LEAVE NOTHING BEHIND.
+       *
+       * Four cases above return `null` to drop a block: a video whose file is
+       * not ready, a menu with no items, and now a menu taster with none.
+       * Without this filter that `null` was PUBLISHED as a block, and the
+       * public contract rejects a non-object block outright — so "the block is
+       * dropped" actually meant "the entire site fails to publish with
+       * ARTIFACT_BLOCK_TYPE_MISMATCH", which is the opposite of what every
+       * comment around those returns promises.
+       *
+       * Proved by execution, not by reading: building a page of a hero plus a
+       * menu_board with no Mingla menu produced `["hero", null]`.
+       *
+       * It also makes the `rendered.length > 0` test below mean what it says.
+       * A page whose only block dropped counted ONE null and stayed enabled,
+       * so the "no Mingla menu means no Menu tab" rule never fired either.
+       */
+      const rendered = blocks(page.blocks || []).filter(Boolean);
       /*
        * #2830 — A PAGE WITH NOTHING ON IT IS NOT A PAGE.
        *

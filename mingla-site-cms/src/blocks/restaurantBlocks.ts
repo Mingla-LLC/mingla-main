@@ -9,7 +9,8 @@ import {
   UnorderedListFeature,
   lexicalEditor,
 } from "@payloadcms/richtext-lexical";
-import { safeText, safeUrl } from "../lib/validation";
+import { safeText, safeTimeZone, safeUrl } from "../lib/validation";
+import { statsIconOptions } from "../lib/statsIcons";
 
 /*
  * #3149 — `description` is built HERE rather than spread onto the result.
@@ -89,6 +90,29 @@ const eyebrow = (): Field =>
 
 const ctaFields: Field[] = [short("label", "Label", true, 80), link()];
 
+/*
+ * #3149 wave 4 — an OPTIONAL button, offered on four blocks that had no way to
+ * point anywhere: under a team grid, under a run of films, beside a menu
+ * taster, and at the foot of a story.
+ *
+ * Both halves are optional and the site prints the control only when BOTH are
+ * filled in. A label with no destination is a word that does nothing; a
+ * destination with no label is a link a screen reader cannot announce.
+ */
+const optionalCta = (
+  what: string,
+  where: string,
+): Field[] => [
+  short(
+    "cta_label",
+    "Button label",
+    false,
+    80,
+    `Optional. The words on the button ${where} — for example \u201c${what}\u201d. Leave both this and the link empty and no button is shown.`,
+  ),
+  link("cta_href", "Button link", false),
+];
+
 export const restaurantBlocks: Block[] = [
   {
     slug: "hero",
@@ -164,6 +188,58 @@ export const restaurantBlocks: Block[] = [
         defaultValue: "left",
         options: ["left", "right"],
       },
+      /*
+       * #3149 wave 4 — the STORY shape. An image feature is what a page uses
+       * to tell people what the place is, and everything below is what that
+       * section needs to stop reading like a caption under a photograph:
+       * a round crop, a badge on it, the line worth quoting, and a way on.
+       *
+       * Every one is optional, and with all of them empty this block saves and
+       * publishes exactly what it always did.
+       */
+      {
+        name: "media_shape",
+        label: "Picture shape",
+        type: "select",
+        required: false,
+        options: [
+          { value: "rectangle", label: "Rectangle — the usual" },
+          { value: "circle", label: "Circle — cropped round" },
+        ],
+        admin: {
+          description:
+            "Optional. A round crop suits a portrait or a single dish; leave it empty for the usual rectangle.",
+        },
+      } satisfies Field,
+      short(
+        "badge_figure",
+        "Badge — big line",
+        false,
+        24,
+        "Optional. A short badge printed on the picture, for example \u201c24/7\u201d. Leave it empty and no badge is shown.",
+      ),
+      short(
+        "badge_label",
+        "Badge — small line",
+        false,
+        40,
+        "Optional. The line under the badge\u2019s big one, for example \u201cALWAYS ON\u201d. Shown only when the big line is filled in.",
+      ),
+      short(
+        "quote",
+        "Quote",
+        false,
+        600,
+        "Optional. A line worth pulling out, printed large against a gold bar inside this section.",
+      ),
+      short(
+        "quote_attribution",
+        "Who said it",
+        false,
+        120,
+        "Optional \u2014 for example \u201cg\u00f6gi, on Instagram\u201d. Leave it empty and the quote stands on its own.",
+      ),
+      ...optionalCta("More about us", "at the foot of this section"),
     ],
   },
   {
@@ -200,7 +276,22 @@ export const restaurantBlocks: Block[] = [
       eyebrow(),
       short("heading", "Heading", true, 120),
       short("body", "Body", false, 500),
-      short("reservation_target_id", "Mingla reservation target ID", true, 80),
+      /*
+       * #3149 wave 4 — NO FIELD FOR THE DESTINATION, deliberately.
+       *
+       * This block used to demand a "Mingla reservation target ID", which
+       * could never resolve: the builder only ever asked Mingla about the ids
+       * on `offering_grid` blocks, and the commercial projection returns
+       * events, never a reservation target. Every page carrying this block
+       * failed to publish, with VALIDATION_FAILED and nothing naming the
+       * cause. That is a switch with nothing on the other end, and it is
+       * removed rather than papered over.
+       *
+       * The link is now DERIVED from the brand at publish time — Mingla's own
+       * booking page for this brand — so there is nothing to type, nothing to
+       * keep in step, and no way to point a "Book a table" button at a
+       * stranger.
+       */
     ],
   },
   {
@@ -245,6 +336,81 @@ export const restaurantBlocks: Block[] = [
     ],
   },
   {
+    /*
+     * #3149 wave 4 — A TASTE OF THE MENU, AND A BLOCK OF ITS OWN.
+     *
+     * `menu_board` above is THE menu: every section, with ordering. This is
+     * the handful of dishes a home page shows beside a few photographs, with a
+     * button through to that page.
+     *
+     * It could have been three more settings on `menu_board`. It deliberately
+     * is not: that block is pinned to presentation-only, and "the menu" and "a
+     * taste of the menu" are two different pieces of a restaurant's page
+     * rather than one piece with a mode.
+     *
+     * LIKE `menu_board`, IT HOLDS NO ITEMS. The dishes and prices are
+     * projected from Mingla at publish time and merely shortened here, so the
+     * website and the app cannot drift into quoting different prices.
+     */
+    slug: "menu_preview",
+    labels: { singular: "Menu taster", plural: "Menu tasters" },
+    fields: [
+      eyebrow(),
+      short("heading", "Heading", false, 120),
+      {
+        name: "note",
+        label: "Note",
+        type: "text",
+        required: false,
+        maxLength: 300,
+        validate: (value: unknown) =>
+          value == null ? true : safeText(value, 300),
+        admin: {
+          description:
+            "Optional line under the heading, for example the range of prices. The dishes themselves come from your Mingla menu.",
+        },
+      } satisfies Field,
+      {
+        name: "section_limit",
+        label: "Show only this many sections",
+        type: "number",
+        required: false,
+        min: 1,
+        max: 6,
+        admin: {
+          description:
+            "Optional. Leave it empty to show every section of your Mingla menu here — which is usually the whole menu, and probably not what a taster is for.",
+        },
+      } satisfies Field,
+      {
+        name: "item_limit",
+        label: "Show only this many items per section",
+        type: "number",
+        required: false,
+        min: 1,
+        max: 12,
+        admin: {
+          description:
+            "Optional. Leave it empty to show every item in the sections above.",
+        },
+      } satisfies Field,
+      {
+        name: "images",
+        label: "Photographs",
+        type: "array",
+        minRows: 1,
+        maxRows: 4,
+        required: false,
+        fields: [readyMedia(), accessibleAlt()],
+        admin: {
+          description:
+            "Optional. Up to four square photographs shown beside the dishes.",
+        },
+      } satisfies Field,
+      ...optionalCta("Full menu & ordering", "under the dishes"),
+    ],
+  },
+  {
     slug: "video_feature",
     labels: { singular: "Video", plural: "Videos" },
     fields: [
@@ -261,6 +427,20 @@ export const restaurantBlocks: Block[] = [
         120,
         "Optional, and only used on the FIRST of several videos placed one after another \u2014 they are shown together as a grid, and this is the heading printed above that grid. Leave it empty and the grid is printed with no heading.",
       ),
+      /*
+       * #3149 wave 4 — and one button under that grid, read off the same first
+       * video for the same reason: the button belongs to the run of films, not
+       * to any one of them, and four films each carrying it would print it
+       * four times.
+       */
+      short(
+        "group_cta_label",
+        "Group button label",
+        false,
+        80,
+        "Optional, and only used on the FIRST of several videos in a row. The words on the button printed under the grid \u2014 for example \u201cFollow @yourhandle\u201d.",
+      ),
+      link("group_cta_href", "Group button link", false),
       short("heading", "Heading", false, 120),
       short("caption", "Caption", false, 600),
       {
@@ -292,6 +472,26 @@ export const restaurantBlocks: Block[] = [
       eyebrow(),
       short("heading", "Heading", false, 120),
       short("caption", "Caption", false, 600),
+      /*
+       * #3149 wave 4 — show some of them, and point at the rest.
+       *
+       * Ten portraits is an entire screen. A home page shows a handful with a
+       * button through to the page that has everybody; leaving this empty
+       * shows every member, which is what this block always did.
+       */
+      {
+        name: "preview_count",
+        label: "Show only this many people",
+        type: "number",
+        required: false,
+        min: 1,
+        max: 24,
+        admin: {
+          description:
+            "Optional. Show only the first few of the people below, with a button to the page that has all of them. Leave it empty to show everybody.",
+        },
+      } satisfies Field,
+      ...optionalCta("All of them", "under the grid of people"),
       {
         name: "members",
         type: "array",
@@ -299,7 +499,13 @@ export const restaurantBlocks: Block[] = [
         maxRows: 24,
         fields: [
           short("name", "Name", true, 80),
-          short("role", "Role", false, 80),
+          short(
+            "role",
+            "Role",
+            false,
+            80,
+            "Optional. Printed above the name, in your accent colour \u2014 for example \u201cKitchen\u201d or \u201cBar\u201d.",
+          ),
           // Optional on purpose: a person can be published by name alone.
           {
             name: "media",
@@ -343,6 +549,49 @@ export const restaurantBlocks: Block[] = [
       short("heading", "Heading", false, 120),
       short("address", "Address", true, 300),
       link("map_url", "Map link", false),
+      /*
+       * #3149 wave 4 — THE TWO FIELDS BEHIND A LIVE "OPEN NOW".
+       *
+       * The hours below are your own words about your week, and no software
+       * can read "Open 24 hours" and work out when the kitchen shuts. So a
+       * site here never guesses: it prints a live open/closed line ONLY for a
+       * place that has said, here, that it never closes — and only when it
+       * also knows which clock to read.
+       *
+       * A place with ordinary opening hours leaves both empty and gets no such
+       * line, which is the honest outcome until real opening hours can be
+       * modelled.
+       */
+      {
+        name: "always_open",
+        label: "Open 24 hours, every day",
+        type: "checkbox",
+        required: false,
+        admin: {
+          description:
+            "Tick this ONLY if this place never closes. It is what allows your site to show a live \u201copen now\u201d line with the local time; without it, nothing about being open is claimed.",
+        },
+      } satisfies Field,
+      {
+        name: "timezone",
+        label: "Timezone",
+        type: "text",
+        required: false,
+        maxLength: 60,
+        /*
+         * Validated as a REAL zone rather than as text. An offset ("+1")
+         * drifts across a daylight-saving boundary and an abbreviation
+         * ("WAT") is not something a clock can be built from — both would
+         * surface as a wrong hour on a real restaurant's page. The public
+         * contract refuses them too; this is the message the editor sees
+         * first, while they can still fix it.
+         */
+        validate: safeTimeZone,
+        admin: {
+          description:
+            "The timezone this place is in, as a region and city \u2014 for example Africa/Lagos or Europe/London. Needed for the live local time; without it no time is shown.",
+        },
+      } satisfies Field,
       {
         name: "hours",
         type: "array",
@@ -461,6 +710,45 @@ export const restaurantBlocks: Block[] = [
             240,
             "Optional. The smaller line printed under the figure.",
           ),
+          /*
+           * #3149 wave 4 — a card, rather than a bare figure: a drawing above
+           * the title and a sentence under it, and one card that can be marked
+           * as the one to look at.
+           *
+           * The icon is a NAME FROM A CLOSED LIST that this site draws itself.
+           * It is deliberately not a file and not an address: an icon fetched
+           * from somewhere else is a request to a stranger on a page that
+           * makes none, and one that failed to arrive would leave a hole where
+           * the meaning was.
+           */
+          short(
+            "body",
+            "Body",
+            false,
+            300,
+            "Optional. A sentence under the figure, for example \u201cSeven days a week, all year.\u201d",
+          ),
+          {
+            name: "icon",
+            label: "Icon",
+            type: "select",
+            required: false,
+            options: statsIconOptions,
+            admin: {
+              description:
+                "Optional. A small drawing above the figure, in your accent colour.",
+            },
+          } satisfies Field,
+          {
+            name: "highlight",
+            label: "Mark this one out",
+            type: "checkbox",
+            required: false,
+            admin: {
+              description:
+                "Optional. Rings this card in your accent colour so it stands out from the others.",
+            },
+          } satisfies Field,
         ],
         admin: {
           description:
