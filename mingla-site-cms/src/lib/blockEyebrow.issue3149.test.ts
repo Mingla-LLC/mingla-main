@@ -270,7 +270,18 @@ describe("#3149 the Studio offers an eyebrow where a section has a heading", () 
       const found = sanitized.find((field) =>
         (field as { name?: string }).name === "eyebrow"
       ) as (Field & { admin?: { description?: string } }) | undefined;
-      if (!["hero", "divider", "spacer"].includes(block.slug)) {
+      /*
+       * #3149 wave 3 — the blocks that render NO heading, so there is no line
+       * for an eyebrow to sit above. `marquee` and `pull_quote` join `hero`,
+       * `divider` and `spacer` for that reason, not as an exemption.
+       *
+       * Deliberately hand-maintained rather than derived from the block
+       * definitions: deriving it would make this test agree with whatever the
+       * code does. Failing here when a new block type lands is the point — it
+       * forces a decision about whether that block speaks in the brand's voice.
+       */
+      const NO_HEADING = ["hero", "divider", "spacer", "marquee", "pull_quote"];
+      if (!NO_HEADING.includes(block.slug)) {
         expect(found, `${block.slug}`).toBeDefined();
         expect(found!.admin?.description ?? "").toContain("above");
       }
