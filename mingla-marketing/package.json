@@ -30,12 +30,12 @@
     "clsx": "^2.1.1",
     "framer-motion": "^11.15.0",
     "lucide-react": "^0.460.0",
-    "next": "^15.5.21",
+    "next": "^15.5.25",
     "posthog-js": "^1.205.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-qr-code": "^2.0.15",
-    "sharp": "0.35.3",
+    "sharp": "0.35.4",
     "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {
@@ -53,6 +53,6 @@
   "overrides": {
     "nanoid": "^3.3.18",
     "postcss": "^8.5.23",
-    "sharp": "0.35.3"
+    "sharp": "0.35.4"
   }
 }
