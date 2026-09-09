@@ -19,6 +19,12 @@ const read = (relative: string) =>
 
 const route = read("src/app/api/order/route.ts");
 const cart = read("src/components/MenuCart.tsx");
+/*
+ * Comments stripped. MenuCart's own comments quote the OLD shape by name to
+ * explain the defect, so a negative assertion over the raw file matches the
+ * explanation rather than the code. That has now bitten this issue five times.
+ */
+const cartCode = cart.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
 
 describe("#2830 the server prices the order", () => {
   it("the proxy forwards ONLY ids and quantities", () => {
@@ -60,10 +66,32 @@ describe("#2830 the server prices the order", () => {
   });
 
   it("the cart displays Mingla's total and never computes one", () => {
-    expect(cart).toContain("priced?.total?.amount_minor");
+    /*
+     * Reads `totalCents`, which is what Mingla's venue-order rail actually
+     * answers. This previously pinned `priced?.total?.amount_minor` — a shape
+     * that never existed on the wire. The cart therefore treated every priced
+     * response as a failure and could never show a total on any site, and this
+     * assertion passed throughout because it only ever read the source.
+     */
+    expect(cart).toContain("money(priced?.totalCents, priced?.currency)");
     // No client-side arithmetic over prices anywhere in the cart.
     expect(cart).not.toMatch(/price_minor\s*\*/);
     expect(cart).not.toMatch(/reduce\([^)]*price/);
+  });
+
+  it("reads the fields Mingla actually sends, not invented ones", () => {
+    // The seam that failed. Each of these appears in a real response body.
+    for (const field of ["totalCents", "currency", "feesAndTaxCents", "itemNameAtOrder"]) {
+      expect(cart).toContain(field);
+    }
+    // And none of the shape that never existed.
+    expect(cartCode).not.toContain("amount_minor");
+    expect(cartCode).not.toMatch(/result\?\.ok/);
+  });
+
+  it("shows fees and tax as ONE line, and only when there are any", () => {
+    expect(cart).toContain("Fees &amp; tax");
+    expect(cart).toContain("priced.feesAndTaxCents > 0");
   });
 
   it("the cart re-asks Mingla whenever the order changes", () => {
