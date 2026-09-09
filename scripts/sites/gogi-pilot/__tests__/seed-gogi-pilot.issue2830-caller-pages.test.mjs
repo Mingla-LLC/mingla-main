@@ -239,9 +239,37 @@ test("the site an earlier version of this seed wrote is reconcilable, not foreig
   assert.equal(plan.state, "reconcilable");
   assert.equal(plan.states.home, "prior_seed");
   assert.equal(plan.states.contact, "prior_seed");
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   assert.deepEqual(
+   *     plan.actions.filter((action) => action.startsWith("create_")),
+   *     ["create_about_draft", "create_menu_draft"],
+   *   );
+   *
+   * The site the FIRST version of this seed wrote had two pages. This version
+   * writes six, so reconciling that site now creates four rather than two.
+   * The property under test — an earlier seed's output is recognised as OURS
+   * and reconciled, not refused as somebody's content — is untouched, and the
+   * two `prior_seed` assertions above are what carry it.
+   *
+   * SHARPENED: the list is still an exact deepEqual in SEED_PAGE_ROLES order,
+   * so a page that went missing or arrived out of order still fails, and the
+   * assertion below pins that no page is created before home is recognised —
+   * which is what stops a reconcile writing a second homepage.
+   */
   assert.deepEqual(
     plan.actions.filter((action) => action.startsWith("create_")),
-    ["create_about_draft", "create_menu_draft"],
+    [
+      "create_about_draft",
+      "create_menu_draft",
+      "create_reservations_draft",
+    ],
+  );
+  assert.equal(plan.states.reservations, "absent");
+  assert.equal(
+    plan.actions.includes("create_home_draft"),
+    false,
+    "a prior seed's home page must be updated, never recreated",
   );
 });
 

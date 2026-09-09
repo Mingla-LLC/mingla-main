@@ -78,7 +78,29 @@ test("every published paragraph survives extraction the way the builder does it"
 });
 
 test("gögi's own words are the ones that survive", () => {
-  const home = docs().home.blocks.find((b) => b.blockType === "rich_text");
-  const first = home.content.root.children[0].children[0].text;
-  assert.match(first, /show up exactly as you are/);
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   const home = docs().home.blocks.find((b) => b.blockType === "rich_text");
+   *   const first = home.content.root.children[0].children[0].text;
+   *   assert.match(first, /show up exactly as you are/);
+   *
+   * The home page carries no `rich_text` at all now — its story is a
+   * `media_feature` composite, which is the shape their own page uses — so
+   * this read `undefined.content` and threw.
+   *
+   * SHARPENED, and deliberately broadened past the one block that moved: the
+   * point of this test is that gögi's OWN sentence reaches the seed, not that
+   * a particular block type holds it. It is now asserted across every page and
+   * every field, so the next time a block changes shape this keeps testing the
+   * thing it was written to test instead of breaking. The About page's
+   * surviving rich_text is pinned too, so the lexical path itself is still
+   * covered.
+   */
+  const serialised = JSON.stringify(docs());
+  assert.match(serialised, /show up exactly as you are/);
+  const about = docs().about.blocks.find((b) => b.blockType === "rich_text");
+  assert.match(
+    about.content.root.children[0].children[0].text,
+    /show up exactly as you are/,
+  );
 });

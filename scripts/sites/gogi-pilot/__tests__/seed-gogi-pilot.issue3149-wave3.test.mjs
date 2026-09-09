@@ -114,10 +114,30 @@ test("#3149 wave 3 the stats row carries THREE of their four cards", () => {
     "Bowls that travel",
     "Pregame Fridays",
   ]);
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   assert.equal(
+   *     stats.items[0].label,
+   *     "Seven days a week, all year. There is no “sorry, we’re closed” at gögi.",
+   *   );
+   *
+   * The sentence did not change; the field holding it did. On their site each
+   * of these is a CARD — icon, title, sentence — and `label` is the small line
+   * under a bare figure, which their cards do not have. The sentence moved to
+   * `body`, where wave 4 put it.
+   *
+   * SHARPENED: the same string is still pinned, AND `label` is now asserted
+   * ABSENT, so a later edit cannot quietly print the sentence twice by
+   * restoring the old field beside the new one.
+   */
   assert.equal(
-    stats.items[0].label,
+    stats.items[0].body,
     "Seven days a week, all year. There is no “sorry, we’re closed” at gögi.",
   );
+  assert.equal(stats.items[0].label, undefined);
+  // And the drawing that reads as their icon font's glyph, from the closed
+  // list this runtime can actually draw.
+  assert.equal(stats.items[0].icon, "clock");
 });
 
 test("#3149 wave 3 their bank-transfer card is DELIBERATELY absent", () => {
@@ -174,15 +194,33 @@ test("#3149 wave 3 the quotation follows the writing, as theirs does", () => {
 });
 
 test("#3149 wave 3 the home story keeps its own words untouched", () => {
-  // gögi's home page quotes "show up exactly as you are"; ours carries it as
-  // prose already, so no second copy is pulled out on that page.
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   const story = only(home, "rich_text");
+   *   assert.match(
+   *     story.content.root.children[0].children[0].text,
+   *     /show up exactly as you are/,
+   *   );
+   *
+   * The words are the same words. The home story is a `media_feature`
+   * composite now — their own shape: prose, the line pulled out beside it, a
+   * circular crop with a badge, and a button — so "show up exactly as you are"
+   * moved from the FIRST PARAGRAPH into the `quote` field, which is where
+   * their page has it.
+   *
+   * SHARPENED: the original pinned one line of prose. This pins the line, the
+   * source under it, the prose that is now their real heading and paragraph,
+   * and — still — that no separate `pull_quote` block appears on this page,
+   * because the quotation lives inside the section rather than as a second
+   * band under it.
+   */
   const home = seeded().home;
   assert.equal(home.blocks.some((b) => b.blockType === "pull_quote"), false);
-  const story = only(home, "rich_text");
-  assert.match(
-    story.content.root.children[0].children[0].text,
-    /show up exactly as you are/,
-  );
+  const story = only(home, "media_feature");
+  assert.match(story.quote, /show up exactly as you are/);
+  assert.equal(story.quote_attribution, "gögi, on Instagram");
+  assert.equal(story.heading, "A room that never closes");
+  assert.match(story.caption, /does not shut/);
 });
 
 test("#3149 wave 3 the Visit page carries a map with COORDINATES", () => {
@@ -314,7 +352,25 @@ test("#3149 wave 3 every new section stays inside the contract's limits", () => 
   assert.ok(stats.items.length >= 1 && stats.items.length <= 6);
   for (const row of stats.items) {
     assert.ok(row.figure.length <= 60, row.figure);
-    assert.ok(row.label.length <= 240, row.label);
+    /*
+     * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+     *   assert.ok(row.label.length <= 240, row.label);
+     *
+     * `label` is unset on every card now — the sentence lives in `body`, whose
+     * Studio field is capped at 300 rather than 240. Asserting a length on an
+     * undefined value throws rather than failing usefully.
+     *
+     * SHARPENED: BOTH fields are bounded, each against its own real cap, and
+     * whichever one a card happens to use is checked. A seed that exceeded
+     * either would be rejected on save as an opaque validation failure, which
+     * is the whole point of this test.
+     */
+    if (typeof row.label === "string") assert.ok(row.label.length <= 240, row.label);
+    if (typeof row.body === "string") assert.ok(row.body.length <= 300, row.body);
+    assert.ok(
+      typeof row.label === "string" || typeof row.body === "string",
+      `${row.figure} carries no line under it at all`,
+    );
   }
   assert.ok(only(documents.about, "pull_quote").quote.length <= 600);
   const map = only(documents.contact, "map_embed");

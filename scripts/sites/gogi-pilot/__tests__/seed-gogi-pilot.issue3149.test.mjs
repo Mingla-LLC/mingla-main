@@ -91,13 +91,35 @@ const find = (page, blockType, heading) => {
  * wrong one is.
  */
 const TRANSCRIBED = [
-  ["home", "rich_text", "Come as you are", "The place"],
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   ["home", "rich_text", "Come as you are", "The place"],
+   *   ["home", "gallery", "What people order", "The menu"],
+   *
+   * Neither eyebrow changed — "The place" and "The menu" are still gögi's own
+   * words over those two sections. What changed is the BLOCK UNDER each, and
+   * both rows now pin the new one:
+   *
+   *   - The story is a `media_feature` composite rather than prose alone, and
+   *     its heading is now their real one. Their page reads "A room that never
+   *     closes"; ours read "Come as you are", which is the line their page
+   *     QUOTES underneath rather than the heading. So this row got more
+   *     accurate, not less.
+   *   - "What people order" is a `menu_preview` carrying Mingla's real dishes
+   *     and prices, where it used to be four photographs and no price anywhere.
+   *
+   * SHARPENED: the table is the sole input to "exactly the transcribed
+   * eyebrows exist, and no others", so every row here is enforced in both
+   * directions. Two more rows are appended below for sections that carried no
+   * eyebrow at all before this wave.
+   */
+  ["home", "media_feature", "A room that never closes", "The place"],
   // #3149 wave 3 — their "Why people keep coming back / No closing time"
   // section, added to the ledger as it was transcribed. Appended, never
   // rewritten: this table only ever grows as more of their site is carried.
   ["home", "stats", "No closing time", "Why people keep coming back"],
   ["home", "video_feature", "Day or night, open for a bite", "Admiralty Way"],
-  ["home", "gallery", "What people order", "The menu"],
+  ["home", "menu_preview", "What people order", "The menu"],
   ["home", "team", "Meet the team", "The kitchen"],
   ["home", "contact_handoff", "Call gögi", "Come through"],
   ["about", "rich_text", "Find gögi", "The idea"],
@@ -266,7 +288,34 @@ test("#3149 a seed with no media still carries the eyebrows it can", () => {
    * that is actually live.
    */
   const documents = seeded({});
-  assert.equal(find(documents.home, "rich_text").eyebrow, "The place");
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   assert.equal(find(documents.home, "rich_text").eyebrow, "The place");
+   *
+   * The home story is a `media_feature` now. SHARPENED rather than moved: the
+   * block needs the hero photograph, so this also pins that it SURVIVES a seed
+   * with no other media — the exact shape that is live today — and the
+   * assertion below pins that it drops cleanly when even that is missing,
+   * rather than publishing a headless caption.
+   */
+  assert.equal(find(documents.home, "media_feature").eyebrow, "The place");
+  assert.equal(
+    find(documents.home, "media_feature").heading,
+    "A room that never closes",
+  );
+  assert.equal(
+    seedDocuments({
+      heroMediaId: null,
+      homeId: HOME_ID,
+      aboutId: ABOUT_ID,
+      menuId: MENU_ID,
+      galleryId: GALLERY_ID,
+      contactId: CONTACT_ID,
+      tenantId: TENANT_ID,
+      media: {},
+    }).home.blocks.filter((block) => block.blockType === "media_feature").length,
+    0,
+  );
   assert.equal(find(documents.home, "team").eyebrow, "The kitchen");
   assert.equal(find(documents.menu, "menu_board").eyebrow, "Everything, with prices");
   assert.equal(find(documents.contact, "hours_location").eyebrow, "Getting here");

@@ -78,7 +78,26 @@ test("the team is published by nickname, with no invented portraits", () => {
   // Real names are published nowhere and no portrait is claimed.
   for (const member of team.members) {
     assert.equal(member.media, undefined);
-    assert.equal(member.role, undefined);
+    /*
+     * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+     *   assert.equal(member.role, undefined);
+     *
+     * This meant "we did not make one up", at a time when gögi's roles were
+     * not carried. They publish one for all ten on their own About page —
+     * Kitchen, Bar or Prep — so an empty role is now the invention, not a
+     * filled one.
+     *
+     * SHARPENED rather than dropped. The rule the line encoded is unchanged
+     * and is enforced harder: a role must be a value gögi PUBLISHED, matched
+     * against the transcription ledger by name, and it must be one of their
+     * three words. Nothing can be typed here that they did not write. Real
+     * NAMES are still asserted absent above — that half never moved.
+     */
+    assert.equal(member.role, GOGI_SEED_COPY.teamRoles[member.name]);
+    assert.ok(
+      ["Kitchen", "Bar", "Prep"].includes(member.role),
+      `${member.name} carries a role gögi never published: ${member.role}`,
+    );
   }
 });
 
@@ -149,7 +168,23 @@ const everySlot = (extra = {}) => {
 test("#2830 the home page carries the food strip, the films and the people", () => {
   const home = seedDocuments(everySlot()).home;
   const types = home.blocks.map((block) => block.blockType);
-  assert.ok(types.includes("gallery"), "the what-people-order strip");
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   assert.ok(types.includes("gallery"), "the what-people-order strip");
+   *
+   * "What people order" was four photographs and no price anywhere. It is a
+   * `menu_preview` now: their real sections and real prices, projected from
+   * Mingla, with the photographs beside them.
+   *
+   * SHARPENED. The original only asked that SOMETHING stood there. This pins
+   * the block that must stand there, that a `gallery` no longer does — so the
+   * bare strip cannot come back unnoticed — and that the photographs survived
+   * the change rather than being dropped along with it.
+   */
+  assert.ok(types.includes("menu_preview"), "the what-people-order taster");
+  assert.equal(types.includes("gallery"), false, "the bare photo strip is gone");
+  const preview = home.blocks.find((block) => block.blockType === "menu_preview");
+  assert.equal(preview.images.length, 4, "their four dish crops");
   assert.ok(types.includes("team"), "the people");
   assert.equal(types.filter((type) => type === "video_feature").length, 4);
 });
@@ -169,11 +204,33 @@ test("#2830 the home reels stay CONSECUTIVE, so they render as one grid", () => 
 
 test("#2830 the food strip is dropped rather than shown short", () => {
   const partial = seedDocuments(everySlot({ foodSqWingsBoard: undefined }));
-  const strip = partial.home.blocks.find((block) => block.blockType === "gallery");
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   const strip = partial.home.blocks.find((block) => block.blockType === "gallery");
+   *
+   * Same rule, new block: the photographs hang off the `menu_preview` now.
+   *
+   * SHARPENED in a way that matters more than it used to. The dishes and
+   * prices come from MINGLA and the photographs come from gögi's uploads, so
+   * a missing upload must not take the prices off the page with it. That is
+   * asserted here for the first time — with three of four crops present, and
+   * again with NONE, where the block must survive carrying no images at all
+   * rather than disappearing.
+   */
+  const strip = partial.home.blocks.find(
+    (block) => block.blockType === "menu_preview",
+  );
   // Present, but only with the crops that actually uploaded — never a
   // placeholder and never an empty block.
   assert.ok(strip.images.length >= 1);
+  assert.equal(strip.images.length, 3);
   assert.ok(strip.images.every((image) => typeof image.media === "string"));
+  const none = seedDocuments(ids).home.blocks.find(
+    (block) => block.blockType === "menu_preview",
+  );
+  assert.ok(none, "the menu taster must outlive its photographs");
+  assert.equal(none.images, undefined);
+  assert.equal(none.section_limit, 2);
 });
 
 test("#2830 a home page with no media at all still publishes", () => {

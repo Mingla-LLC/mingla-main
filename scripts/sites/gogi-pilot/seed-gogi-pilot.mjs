@@ -1688,6 +1688,20 @@ export async function reconcileSeed(client, options, hero, media = {}) {
     menuId: documents.menu ? String(documents.menu.id) : "pending-menu",
     galleryId: documents.gallery ? String(documents.gallery.id) : "pending-gallery",
     contactId: documents.contact ? String(documents.contact.id) : "pending-contact",
+    /*
+     * #3149 wave 4 — the sixth page needs an id here for the same reason the
+     * other four do.
+     *
+     * Missing from this map, the reservations page is still CREATED (the loop
+     * below walks SEED_PAGE_ROLES) but the navigation re-derived from these
+     * ids never names it: a real page, reachable by URL, absent from every
+     * menu on the site. That is precisely the #2830 defect this function was
+     * written to end — "About and Menu were described but never created" —
+     * reappearing one role along, and the caller suite caught it.
+     */
+    reservationsId: documents.reservations
+      ? String(documents.reservations.id)
+      : "pending-reservations",
   });
   let target = seedDocuments(idsOf());
 
