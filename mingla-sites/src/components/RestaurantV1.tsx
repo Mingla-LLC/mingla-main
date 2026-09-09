@@ -57,6 +57,13 @@ function formatMenuPrice(minor: unknown, currency: unknown): string | null {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
       currency,
+      /*
+       * #2830 -- "narrowSymbol" so a naira price reads "₦8,500" and not
+       * "NGN 8,500", which is what the brand's own menu shows. Inside the
+       * existing try: an environment without the ICU data for it throws, and
+       * the catch already falls back rather than showing nothing.
+       */
+      currencyDisplay: "narrowSymbol",
       maximumFractionDigits: minor % 100 === 0 ? 0 : 2,
     }).format(minor / 100);
   } catch {
@@ -78,20 +85,59 @@ function formatMenuPrice(minor: unknown, currency: unknown): string | null {
  * Found by looking at the page rather than by reading the code, which is the
  * only way this kind of duplication ever shows up.
  */
+/*
+ * #2830 — the second half of a headline in the brand's accent colour.
+ *
+ * gogi's own hero reads "WHERE LAGOS" in ivory over "COMES TO EAT" in gold, and
+ * that two-tone split is most of what makes it look designed rather than
+ * typeset. The rule is generic — split at the word midpoint — so every brand
+ * gets the effect in ITS OWN accent, and nothing about gogi is hardcoded.
+ *
+ * Short headings are left alone: splitting "Our menu" into "Our" and "menu"
+ * would look like a mistake.
+ */
+export function splitHeadline(value: string): { lead: string; accent: string } {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 4) return { lead: value, accent: "" };
+  const at = Math.floor(words.length / 2);
+  return { lead: words.slice(0, at).join(" "), accent: words.slice(at).join(" ") };
+}
+
+/*
+ * #2830 -- an eyebrow names WHAT THE SECTION IS, and nothing more.
+ *
+ * These used to be editorial: a gallery was labelled "In the room" on every
+ * site. That reads as the brand's own voice, and it only ever looked right
+ * because gogi happen to head their gallery "In the room" -- which made the
+ * label vanish. Point the same block at a different heading and the page
+ * announces "IN THE ROOM" over "What people order": copy this brand never
+ * wrote, on their own website.
+ *
+ * The reference's eyebrows ARE editorial ("THE PLACE", "STRAIGHT FROM
+ * @GOGILAGOS") and they are the brand's words. Matching that properly needs an
+ * eyebrow field on the block, through the contract and the CMS. Until then a
+ * plain descriptor is true of every brand; invented voice is true of none.
+ */
 function Eyebrow({ label, heading }: { label: string; heading: unknown }) {
   const written = typeof heading === "string" ? heading.trim().toLowerCase() : "";
   if (written === label.trim().toLowerCase()) return null;
   return <p className="eyebrow">{label}</p>;
 }
 
-function Block({ block, context, primaryHeading = false }: { block: RestaurantBlock; context: SiteEventContext; primaryHeading?: boolean }) {
+function Block({ block, context, primaryHeading = false, facts }: { block: RestaurantBlock; context: SiteEventContext; primaryHeading?: boolean; facts?: React.ReactNode }) {
   switch (block.type) {
     case "hero": {
       const Heading = primaryHeading ? "h1" : "h2";
-      return <section className="hero" style={isSafeHref(block.media_url) ? { backgroundImage: `linear-gradient(90deg,rgba(8,6,4,.82),rgba(8,6,4,.18)),url(${JSON.stringify(block.media_url).slice(1, -1)})` } : undefined}>{isSafeHref(block.video_url) && isSafeHref(block.media_url) ? <HeroVideo src={text(block.video_url)} poster={text(block.media_url)} /> : null}<div><Heading>{text(block.heading, "Welcome")}</Heading>{block.subheading ? <p>{text(block.subheading)}</p> : null}<div className="hero-actions">{items(block.ctas).slice(0, 2).map((cta, index) => <SafeLink key={index} href={cta.href} context={context} className={index ? "button ghost" : "button accent"}>{text(cta.label, "Learn more")}</SafeLink>)}</div></div></section>;
+      const headline = splitHeadline(text(block.heading, "Welcome"));
+      /*
+       * The scrim lives in CSS only. It used to be set here AND in `.hero::after`
+       * with the same 0.82 gradient, so it compounded to ~0.97 and buried the
+       * brand's own photography.
+       */
+      return <section className="hero" style={isSafeHref(block.media_url) ? { backgroundImage: `url(${JSON.stringify(block.media_url).slice(1, -1)})` } : undefined}>{isSafeHref(block.video_url) && isSafeHref(block.media_url) ? <HeroVideo src={text(block.video_url)} poster={text(block.media_url)} /> : null}<div><Heading>{headline.lead}{headline.accent ? <>{" "}<span className="accent-line">{headline.accent}</span></> : null}</Heading>{block.subheading ? <p>{text(block.subheading)}</p> : null}<div className="hero-actions">{items(block.ctas).slice(0, 2).map((cta, index) => <SafeLink key={index} href={cta.href} context={context} className={index ? "button ghost" : "button accent"}>{text(cta.label, "Learn more")}</SafeLink>)}</div></div>{facts}{primaryHeading ? <span className="hero-scroll" aria-hidden="true">Scroll</span> : null}</section>;
     }
     case "rich_text": return <section className="prose editorial-prose"><h2>{text(block.heading)}</h2>{items(block.paragraphs).map((paragraph, index) => <p key={index}>{text(paragraph.text)}</p>)}</section>;
-    case "media_feature": return <section className="feature editorial-feature"><div className="editorial-media">{isSafeHref(block.media_url) ? <img src={text(block.media_url)} alt={text(block.alt)} width={960} height={720} /> : null}</div><div><Eyebrow label="Our story" heading={block.heading} /><h2>{text(block.heading)}</h2><p>{text(block.caption)}</p></div></section>;
+    case "media_feature": return <section className="feature editorial-feature"><div className="editorial-media">{isSafeHref(block.media_url) ? <img src={text(block.media_url)} alt={text(block.alt)} width={960} height={720} /> : null}</div><div><Eyebrow label="Story" heading={block.heading} /><h2>{text(block.heading)}</h2><p>{text(block.caption)}</p></div></section>;
     case "cta": return <section className="cta"><h2>{text(block.heading)}</h2><p>{text(block.body)}</p><SafeLink href={block.href} context={context} className="button accent">{text(block.label, "Continue")}</SafeLink></section>;
     case "offering_grid": return <section className="editorial-grid"><Eyebrow label="Book with Mingla" heading={text(block.heading, "Experiences")} /><h2>{text(block.heading, "Experiences")}</h2><div className="grid">{items(block.offerings).map((offering, index) => <article className="tile" key={text(offering.id, String(index))}><h3>{text(offering.label, "Experience")}</h3><p>{text(offering.summary)}</p><SafeLink href={offering.url} context={context} ctaKind="offering" offeringId={text(offering.id)}>View on Mingla</SafeLink></article>)}</div></section>;
     case "venue_reservation": return <section className="cta"><h2>{text(block.heading, "Make a reservation")}</h2><p>{text(block.body)}</p><SafeLink href={block.url} context={context} ctaKind="reservation" className="button accent">Continue with Mingla</SafeLink></section>;
@@ -122,10 +168,10 @@ function Block({ block, context, primaryHeading = false }: { block: RestaurantBl
       return <section className="menu-board"><h2>{text(block.heading, "Menu")}</h2>{block.note ? <p className="menu-note">{text(block.note)}</p> : null}{sections.map((section, sectionIndex) => <div className="menu-section" id={menuSectionSlug(text(section.name))} key={`${text(section.name)}-${sectionIndex}`}><h3>{text(section.name)}</h3>{section.description ? <p className="menu-section-note">{text(section.description)}</p> : null}<ul className="menu-list">{items(section.items).map((item, itemIndex) => { const price = formatMenuPrice(item.price_minor, item.currency); return <li className="menu-row" key={`${text(item.name)}-${itemIndex}`}><div className="menu-row-head"><span className="menu-item-name">{text(item.name)}</span><span className="menu-leader" aria-hidden="true" />{price ? <span className="menu-price">{price}</span> : null}</div>{item.description ? <p className="menu-item-note">{text(item.description)}</p> : null}</li>; })}</ul></div>)}</section>;
     }
     case "video_feature":
-      return <section className="video-feature"><Eyebrow label="In motion" heading={block.heading} /><h2>{text(block.heading)}</h2>{block.caption ? <p className="video-caption">{text(block.caption)}</p> : null}<ReelVideo src={text(block.video_url)} poster={text(block.poster_url)} label={text(block.heading, "Video")} /></section>;
+      return <section className="video-feature"><Eyebrow label="Film" heading={block.heading} /><h2>{text(block.heading)}</h2>{block.caption ? <p className="video-caption">{text(block.caption)}</p> : null}<ReelVideo src={text(block.video_url)} poster={text(block.poster_url)} label={text(block.heading, "Video")} /></section>;
     case "team":
-      return <section className="team"><Eyebrow label="The team" heading={block.heading} /><h2>{text(block.heading, "The team")}</h2>{block.caption ? <p>{text(block.caption)}</p> : null}<ul className="team-grid">{items(block.members).map((member, index) => <li key={`${text(member.name)}-${index}`}>{isSafeHref(member.media_url) ? <img src={text(member.media_url)} alt={text(member.alt)} width={480} height={480} loading="lazy" /> : <span className="team-initial" aria-hidden="true">{text(member.name).slice(0, 1)}</span>}<strong>{text(member.name)}</strong>{member.role ? <span>{text(member.role)}</span> : null}</li>)}</ul></section>;
-    case "gallery": return <section className="editorial-gallery"><Eyebrow label="In the room" heading={text(block.heading, "Gallery")} /><h2>{text(block.heading, "Gallery")}</h2><div className="gallery">{items(block.images).slice(0, 12).map((image, index) => isSafeHref(image.url) ? <img key={index} src={text(image.url)} alt={text(image.alt)} width={640} height={640} /> : null)}</div></section>;
+      return <section className="team"><Eyebrow label="Team" heading={block.heading} /><h2>{text(block.heading, "The team")}</h2>{block.caption ? <p>{text(block.caption)}</p> : null}<ul className="team-grid">{items(block.members).map((member, index) => <li key={`${text(member.name)}-${index}`}>{isSafeHref(member.media_url) ? <img src={text(member.media_url)} alt={text(member.alt)} width={480} height={480} loading="lazy" /> : <span className="team-initial" aria-hidden="true">{text(member.name).slice(0, 1)}</span>}<strong>{text(member.name)}</strong>{member.role ? <span>{text(member.role)}</span> : null}</li>)}</ul></section>;
+    case "gallery": return <section className="editorial-gallery"><Eyebrow label="Gallery" heading={text(block.heading, "Gallery")} /><h2>{text(block.heading, "Gallery")}</h2><div className="gallery">{items(block.images).slice(0, 12).map((image, index) => isSafeHref(image.url) ? <img key={index} src={text(image.url)} alt={text(image.alt)} width={640} height={640} /> : null)}</div></section>;
     case "hours_location": return <section className="feature"><div><Eyebrow label="Visit" heading={text(block.heading, "Hours & location")} /><h2>{text(block.heading, "Hours & location")}</h2><p>{text(block.address)}</p><SafeLink href={block.map_url}>Open map</SafeLink></div><div className="hours">{items(block.hours).map((row, index) => <p key={index}><strong>{text(row.day)}</strong><span>{text(row.value)}</span></p>)}</div></section>;
     case "testimonials": return <section><h2>{text(block.heading, "What guests say")}</h2><div className="grid">{items(block.items).slice(0, 8).map((item, index) => <blockquote className="tile" key={index}>“{text(item.quote)}”<footer>{text(item.name)}</footer></blockquote>)}</div></section>;
     case "faq": return <section><h2>{text(block.heading, "Questions")}</h2>{items(block.items).slice(0, 12).map((item, index) => <details key={index}><summary>{text(item.question)}</summary><p>{text(item.answer)}</p></details>)}</section>;
@@ -144,6 +190,36 @@ function Block({ block, context, primaryHeading = false }: { block: RestaurantBl
  * why "5 pages" was never true. The artifact has always modelled real pages —
  * slug, title, nav order, per-page SEO — and only the renderer collapsed them.
  */
+/*
+ * #2830 -- a run of reels is one grid, not a stack of full-width sections.
+ * gogi's gallery shows six films four-across; ours rendered each as its own
+ * banner, so the page was six screens of one video each. A LONE reel is still
+ * a feature -- a single card floating in a grid would look like a mistake.
+ */
+type RenderGroup =
+  | { kind: "block"; block: RestaurantBlock; index: number }
+  | { kind: "reels"; reels: { block: RestaurantBlock; index: number }[] };
+
+export function groupReels(blocks: RestaurantBlock[]): RenderGroup[] {
+  const groups: RenderGroup[] = [];
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index]!;
+    if (block.type !== "video_feature") {
+      groups.push({ kind: "block", block, index });
+      continue;
+    }
+    const reels: { block: RestaurantBlock; index: number }[] = [];
+    while (index < blocks.length && blocks[index]!.type === "video_feature") {
+      reels.push({ block: blocks[index]!, index });
+      index += 1;
+    }
+    index -= 1;
+    if (reels.length > 1) groups.push({ kind: "reels", reels });
+    else groups.push({ kind: "block", block: reels[0]!.block, index: reels[0]!.index });
+  }
+  return groups;
+}
+
 export function RestaurantV1({
   artifact,
   page,
@@ -184,8 +260,35 @@ export function RestaurantV1({
     (page.blocks ?? []).some(
       (block) => block.type === "menu_board" && typeof block.venue_id === "string",
     ));
+  /*
+   * #2830 — a site you can order from says so in the header, as gogi's does.
+   * Only when there IS an orderable menu, and only if the page has not already
+   * claimed the slot with a reservation or a menu link.
+   */
+  const headerAction = primaryAction ?? (orderablePage
+    ? {
+      href: hrefForPage(orderablePage as ArtifactPage),
+      label: "Order now",
+      kind: "menu" as const,
+    }
+    : null);
   const contactLink = contact?.type === "contact_handoff"
     ? { href: contact.href, label: text(contact.label, "Contact") }
     : artifact.footer.links?.[0];
-  return <CartScope siteId={artifact.site_id}><SiteTheme artifact={artifact} /><SiteRuntimeClient context={context} /><RevealOnScroll /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand">{artifact.site_settings.display_name}</Link><SiteNav links={navPages.map((navPage) => ({ role: navPage.role, label: String(navPage.nav_label ?? ""), href: hrefForPage(navPage), current: navPage.role === current.role }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.role === current.role} /> : null}{primaryAction ? <SafeLink href={primaryAction.href} context={context} ctaKind={primaryAction.kind} className="header-action">{primaryAction.label}</SafeLink> : null}</header><main id="main">{primaryHeroIndex < 0 ? <h1 className="page-title">{current.title}</h1> : null}<div className="page-content">{current.blocks.map((block, index) => <Fragment key={`${block.type}-${index}`}><Block block={block} context={context} primaryHeading={index === primaryHeroIndex} />{isHome && index === primaryHeroIndex ? <aside className="fact-rail" aria-label="Restaurant facts"><dl><div><dt>Visit</dt><dd>{address || "See restaurant details"}</dd></div><div><dt>Hours</dt><dd>{hours ? `${text(hours.day)} ${text(hours.value)}` : "See current opening hours"}</dd></div><div><dt>Contact</dt><dd>{contactLink && isSafeHref(contactLink.href) ? <SafeLink href={contactLink.href} context={context} ctaKind="contact">{contactLink.label}</SafeLink> : "Contact the restaurant"}</dd></div></dl></aside> : null}</Fragment>)}</div></main><footer className="footer"><div><strong>{artifact.site_settings.display_name}</strong>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}<p>{artifact.footer.legal_text}</p></div><nav aria-label="Footer navigation">{navPages.map((navPage) => <Link key={navPage.role} href={hrefForPage(navPage)}>{navPage.nav_label}</Link>)}</nav><div>{artifact.footer.links?.map((link) => <SafeLink key={link.href} href={link.href}>{link.label}</SafeLink>)}</div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
+  /*
+   * #2830 -- an inner page gets a header band, as every inner page on the
+   * reference does. Its backdrop is the brand's OWN hero photograph, not a
+   * stock image and not a guess: if the home page has no hero, the band simply
+   * renders flat.
+   */
+  const pageBackdrop = text(
+    firstBlock(homePage(artifact)?.blocks ?? [], "hero")?.media_url,
+  );
+  /*
+   * #2830 -- the facts sit INSIDE the hero, at its foot, as they do on the
+   * site this renders. They used to be a band below it, which pushed them off
+   * a full-height hero entirely and read as a separate section.
+   */
+  const factRail = <aside className="fact-rail" aria-label="Restaurant facts"><dl><div><dt>Visit</dt><dd>{address || "See restaurant details"}</dd></div><div><dt>Hours</dt><dd>{hours ? `${text(hours.day)} ${text(hours.value)}` : "See current opening hours"}</dd></div><div><dt>Contact</dt><dd>{contactLink && isSafeHref(contactLink.href) ? <SafeLink href={contactLink.href} context={context} ctaKind="contact">{contactLink.label}</SafeLink> : "Contact the restaurant"}</dd></div></dl></aside>;
+  return <CartScope siteId={artifact.site_id}><SiteTheme artifact={artifact} /><SiteRuntimeClient context={context} /><RevealOnScroll /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand">{artifact.site_settings.display_name}</Link><SiteNav links={navPages.map((navPage) => ({ role: navPage.role, label: String(navPage.nav_label ?? ""), href: hrefForPage(navPage), current: navPage.role === current.role }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.role === current.role} /> : null}{headerAction ? <SafeLink href={headerAction.href} context={context} ctaKind={headerAction.kind} className="header-action accent">{headerAction.label}</SafeLink> : null}</header><main id="main">{primaryHeroIndex < 0 ? <header className="page-header" style={isSafeHref(pageBackdrop) ? { backgroundImage: `url(${JSON.stringify(pageBackdrop).slice(1, -1)})` } : undefined}><div><h1>{current.title}</h1><nav className="crumbs" aria-label="Breadcrumb"><Link href="/">Home</Link><span aria-hidden="true">/</span><span aria-current="page">{current.title}</span></nav></div></header> : null}<div className="page-content">{groupReels(current.blocks).map((group, groupIndex) => group.kind === "reels" ? <section className="reel-grid" key={`reels-${groupIndex}`}>{group.reels.map(({ block, index }) => <figure className="reel-card" key={`${block.type}-${index}`}><ReelVideo src={text(block.video_url)} poster={text(block.poster_url)} label={text(block.heading, "Film")} /><figcaption>{text(block.heading)}</figcaption></figure>)}</section> : <Fragment key={`${group.block.type}-${group.index}`}><Block block={group.block} context={context} primaryHeading={group.index === primaryHeroIndex} facts={isHome && group.index === primaryHeroIndex ? factRail : undefined} /></Fragment>)}</div></main><footer className="footer"><div><strong>{artifact.site_settings.display_name}</strong>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}<p>{artifact.footer.legal_text}</p></div><nav aria-label="Footer navigation">{navPages.map((navPage) => <Link key={navPage.role} href={hrefForPage(navPage)}>{navPage.nav_label}</Link>)}</nav><div>{artifact.footer.links?.map((link) => <SafeLink key={link.href} href={link.href}>{link.label}</SafeLink>)}</div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
 }

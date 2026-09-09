@@ -1,4 +1,13 @@
 import { describe, expect, it } from "vitest";
+/*
+ * #2830 — the hero headline is rendered in two tones (its second half carries
+ * the brand accent), so the words are split across an inner <span>. Assert on
+ * the TEXT, not the raw markup: the heading a person reads is unchanged, and
+ * asserting on markup would forbid any future styling of it.
+ */
+const textOf = (html: string) =>
+  html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
 import { renderToStaticMarkup } from "react-dom/server";
 import fs from "node:fs";
 import path from "node:path";
@@ -50,7 +59,7 @@ describe("#2830 hero video", () => {
     const out = html();
     expect(out).toContain("background-image");
     expect(out).toContain("1440.webp");
-    expect(out).toContain("Where Lagos comes to eat");
+    expect(textOf(out)).toContain("Where Lagos comes to eat");
   });
 
   it("does NOT mount a video during server render", () => {

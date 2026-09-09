@@ -1,8 +1,17 @@
 import { describe, it, expect } from "vitest";
+/*
+ * #2830 — the hero headline is rendered in two tones (its second half carries
+ * the brand accent), so the words are split across an inner <span>. Assert on
+ * the TEXT, not the raw markup: the heading a person reads is unchanged, and
+ * asserting on markup would forbid any future styling of it.
+ */
+const textOf = (html: string) =>
+  html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
 import { renderToStaticMarkup } from "react-dom/server";
 import fs from "node:fs";
 import path from "node:path";
-import { RestaurantV1 } from "./RestaurantV1";
+import { RestaurantV1, groupReels } from "./RestaurantV1";
 import { homePage, pageForSlug } from "../lib/pageRouting";
 import type { RestaurantArtifact } from "../contracts/artifact";
 
@@ -62,11 +71,124 @@ describe("#2830 gogi-shaped render", () => {
     const menu = renderToStaticMarkup(
       <RestaurantV1 artifact={gogiShaped} page={pageForSlug(gogiShaped, "menu")!} />,
     );
-    expect(home).toContain("Where Lagos comes to eat");
+    expect(textOf(home)).toContain("Where Lagos comes to eat");
     expect(menu).toContain("Coconut rice");
     if (OUT) {
       fs.writeFileSync(path.join(OUT, "gogi-home.html"), page(home));
       fs.writeFileSync(path.join(OUT, "gogi-menu.html"), page(menu));
     }
+  });
+});
+
+/*
+ * #2830 — the facts belong INSIDE the hero, at its foot. They used to render
+ * as a sibling band below it, which on a full-height hero pushed them off the
+ * first screen entirely and read as an unrelated section.
+ *
+ * This RENDERS rather than reading the component as text. Every defect on this
+ * issue passed a source-reading test and failed on its first real execution.
+ */
+describe("#2830 the hero carries the facts", () => {
+  const html = renderToStaticMarkup(
+    RestaurantV1({ artifact: gogiShaped as unknown as RestaurantArtifact, page: homePage(gogiShaped as unknown as RestaurantArtifact)! }) as never,
+  );
+
+  it("puts the fact rail inside the hero section, not after it", () => {
+    const hero = html.match(/<section class="hero"[\s\S]*?<\/section>/);
+    expect(hero).not.toBeNull();
+    expect(hero![0]).toContain('class="fact-rail"');
+  });
+
+  it("still renders exactly one fact rail", () => {
+    expect(html.split('class="fact-rail"').length - 1).toBe(1);
+  });
+
+  it("keeps the facts' meaning in the markup, not in the styling", () => {
+    // A <dl> is what makes "Visit"/"Hours"/"Contact" label their values for a
+    // screen reader. Moving the rail must not have flattened it into divs.
+    const hero = html.match(/<section class="hero"[\s\S]*?<\/section>/)![0];
+    expect(hero).toContain("<dl>");
+    expect(hero).toContain("<dt>");
+    expect(hero).toContain("<dd>");
+  });
+
+  it("does not put the arrow in the button's accessible name", () => {
+    // The arrow is a ::after content rule. If it ever moves into the markup, a
+    // screen reader starts announcing "See the menu right arrow".
+    expect(textOf(html)).not.toContain("→");
+  });
+});
+
+/*
+ * #2830 — the h1 invariant, asserted by RENDERING rather than by matching the
+ * component's source text. A page with no hero gets exactly one h1 and it is
+ * the page's title; the home page's h1 is the hero's headline.
+ */
+describe("#2830 exactly one h1 per page", () => {
+  const render = (slug?: string) => renderToStaticMarkup(
+    RestaurantV1({
+      artifact: gogiShaped as unknown as RestaurantArtifact,
+      page: slug
+        ? pageForSlug(gogiShaped as unknown as RestaurantArtifact, slug)!
+        : homePage(gogiShaped as unknown as RestaurantArtifact)!,
+    }) as never,
+  );
+
+  it("gives the home page one h1, and it is the hero's headline", () => {
+    const html = render();
+    expect(html.match(/<h1[\s>]/g)?.length).toBe(1);
+    expect(textOf(html.match(/<h1[\s\S]*?<\/h1>/)![0])).toContain("Where Lagos");
+  });
+
+  it("gives an inner page one h1, and it is the page title", () => {
+    const html = render("menu");
+    expect(html.match(/<h1[\s>]/g)?.length).toBe(1);
+    expect(html).toContain('class="page-header"');
+    expect(html).toContain('aria-label="Breadcrumb"');
+  });
+});
+
+/*
+ * #2830 — a run of reels renders as ONE grid, a lone reel as a feature.
+ * Asserted by rendering, and by calling groupReels directly, because the whole
+ * point is what the grouping does to real block lists.
+ */
+describe("#2830 reels group into a grid", () => {
+  const reel = (heading: string) => ({ type: "video_feature", heading, video_url: "/v.mp4", poster_url: "/p.webp" });
+
+  it("puts a run of reels in one grid", () => {
+    const groups = groupReels([reel("A"), reel("B"), reel("C")] as never);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.kind).toBe("reels");
+  });
+
+  it("leaves a lone reel as a full feature", () => {
+    const groups = groupReels([reel("A")] as never);
+    expect(groups[0]!.kind).toBe("block");
+  });
+
+  it("does not merge reels across an intervening block", () => {
+    // Two reels either side of a gallery are two separate features, not one
+    // grid that silently reorders the page.
+    const groups = groupReels([reel("A"), { type: "gallery", images: [] }, reel("B")] as never);
+    expect(groups.map((g) => g.kind)).toEqual(["block", "block", "block"]);
+  });
+
+  it("keeps every reel's own index, so the hero is still the hero", () => {
+    const groups = groupReels([{ type: "hero", heading: "H" }, reel("A"), reel("B")] as never);
+    expect(groups[0]!.kind === "block" && groups[0]!.index).toBe(0);
+  });
+
+  it("renders each reel as a labelled figure", () => {
+    const artifact = JSON.parse(JSON.stringify(gogiShaped));
+    const page = artifact.pages.find((p: { role: string }) => p.role === "gallery")
+      ?? artifact.pages[artifact.pages.length - 1];
+    page.blocks = [reel("Coconut rice"), reel("Meet the team")];
+    const html = renderToStaticMarkup(
+      RestaurantV1({ artifact, page } as never) as never,
+    );
+    expect(html.split('class="reel-grid"').length - 1).toBe(1);
+    expect(html.split("<figcaption>").length - 1).toBe(2);
+    expect(html).toContain("Coconut rice");
   });
 });

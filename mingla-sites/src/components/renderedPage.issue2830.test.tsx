@@ -1,4 +1,13 @@
 import { describe, expect, it } from "vitest";
+/*
+ * #2830 — the hero headline is rendered in two tones (its second half carries
+ * the brand accent), so the words are split across an inner <span>. Assert on
+ * the TEXT, not the raw markup: the heading a person reads is unchanged, and
+ * asserting on markup would forbid any future styling of it.
+ */
+const textOf = (html: string) =>
+  html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
 import { renderToStaticMarkup } from "react-dom/server";
 import { RestaurantV1 } from "./RestaurantV1";
 import type { RestaurantArtifact } from "../contracts/artifact";
@@ -54,7 +63,7 @@ describe("#2830 rendered page structure", () => {
       <RestaurantV1 artifact={artifact} page={homePage(artifact)!} />,
     );
     expect(countTag(html, "h1")).toBe(1);
-    expect(html).toContain("Where Lagos comes to eat");
+    expect(textOf(html)).toContain("Where Lagos comes to eat");
   });
 
   it("a page with NO hero still has exactly one h1 -- its own title", () => {
@@ -75,7 +84,7 @@ describe("#2830 rendered page structure", () => {
     // The live site showed home's hours on every "page" because every page was
     // the same document. The Menu page must not carry them.
     expect(html).not.toContain("Open 24 hours");
-    expect(html).not.toContain("Where Lagos comes to eat");
+    expect(textOf(html)).not.toContain("Where Lagos comes to eat");
   });
 
   it("navigation links to real paths and marks the current page", () => {

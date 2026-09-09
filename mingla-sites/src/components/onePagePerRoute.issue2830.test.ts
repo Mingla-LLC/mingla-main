@@ -25,7 +25,14 @@ const siteNav = read("src/components/SiteNav.tsx").replace(/\/\*[\s\S]*?\*\/|\/\
 describe("#2830 one page per route", () => {
   it("renders the CURRENT page, not every page at once", () => {
     expect(renderer).toContain("page?: ArtifactPage");
-    expect(renderer).toContain("current.blocks.map");
+    /*
+     * #2830 -- the blocks are grouped first (a run of reels becomes one grid),
+     * so this reads `groupReels(current.blocks)`. What matters is unchanged and
+     * is what this asserts: the source of blocks is the CURRENT page, and no
+     * other page's blocks are reachable from here.
+     */
+    expect(renderer).toContain("groupReels(current.blocks)");
+    expect(renderer).not.toContain("artifact.pages.map");
     expect(renderer).not.toContain("enabledPages.map((page) =>");
   });
 
@@ -60,7 +67,8 @@ describe("#2830 one page per route", () => {
   });
 
   it("the fact rail belongs to the homepage only", () => {
-    expect(renderer).toContain("isHome && index === primaryHeroIndex");
+    // #2830 -- same condition, now carried on the group.
+    expect(renderer).toContain("isHome && group.index === primaryHeroIndex");
   });
 
   it("the sitemap lists real pages instead of one hardcoded URL", () => {

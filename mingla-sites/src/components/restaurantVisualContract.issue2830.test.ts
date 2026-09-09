@@ -24,7 +24,9 @@ describe("#2830 Restaurant Website v1 visual and accessibility contract", () => 
     expect(styles).toContain("min-width: 320px");
     expect(styles).toContain("height: 72px");
     expect(styles).toContain("height: 64px");
-    expect(styles).toContain("88svh");
+    // The hero fills the viewport, matching the reference design it was
+    // measured against. It was a band inside the viewport before.
+    expect(styles).toContain("min-height: 100svh");
     expect(styles).toContain("76svh");
     expect(styles).toContain("max-width: 1200px");
     expect(styles).toContain("@media (min-width: 768px) and (max-width: 1024px)");
@@ -51,8 +53,20 @@ describe("#2830 Restaurant Website v1 visual and accessibility contract", () => 
      * The invariant is pinned harder than before: the two assertions below fix
      * both that the hero is the h1 AND that nothing else can claim it.
      */
-    expect(renderer).toContain("primaryHeading={index === primaryHeroIndex}");
-    expect(renderer).toContain('<h1 className="page-title">{current.title}</h1>');
+    /*
+     * #2830 -- reels are grouped before rendering, so the block index now comes
+     * from the group and this exact string is gone. The invariant is the same:
+     * only the primary hero is told it is the primary heading.
+     */
+    expect(renderer).toContain("primaryHeading={group.index === primaryHeroIndex}");
+    /*
+     * #2830 -- the bare .page-title became a header band with a breadcrumb, so
+     * the exact source string no longer exists. The INVARIANT it protected is
+     * unchanged and now asserted where it actually lives: a page with no hero
+     * still carries exactly one h1, and it is the page title.
+     */
+    expect(renderer).toContain('<header className="page-header"');
+    expect(renderer).toContain("<h1>{current.title}</h1>");
     expect(renderer).toContain("const Heading = primaryHeading ? \"h1\" : \"h2\";");
     expect(renderer).toContain('className="skip"');
   });

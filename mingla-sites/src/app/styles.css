@@ -212,7 +212,12 @@ a {
   z-index: 10;
   height: 72px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  /*
+   * #2830 — brand | nav | cart | action. It was three columns while the header
+   * carries four children, so the order CTA wrapped onto a second row and the
+   * header grew a line it should not have.
+   */
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: clamp(1rem, 3vw, 3rem);
   padding: 0 max(20px, calc((100vw - 1200px) / 2));
@@ -230,7 +235,14 @@ a {
   font-weight: 800;
   letter-spacing: 0.02em;
   text-decoration: none;
-  text-transform: uppercase;
+  /*
+   * #2830 — the brand's name, as the brand wrote it.
+   *
+   * This forced uppercase, so "gogi" — a name that is deliberately lowercase,
+   * and is set lowercase everywhere they use it — was shouted as GOGI in their
+   * own header. A wordmark is not a heading; upper-casing one is a factual
+   * change to somebody's name.
+   */
   white-space: nowrap;
 }
 
@@ -346,7 +358,11 @@ a {
 }
 
 .hero {
-  min-height: clamp(640px, 88svh, 900px);
+  /*
+   * #2830 — a full viewport, as gogi's own site does. Measured on theirs at
+   * 1043x847: the hero is exactly the viewport height, not a band inside it.
+   */
+  min-height: 100svh;
   display: grid;
   align-items: end;
   padding: clamp(5rem, 11vw, 9rem) max(20px, calc((100vw - 1200px) / 2));
@@ -377,9 +393,14 @@ main h2,
 .hero h1,
 .hero h2 {
   margin: 0.35rem 0 1.25rem;
-  font-size: clamp(3.6rem, 10vw, 8.5rem);
-  line-height: 0.86;
-  letter-spacing: -0.045em;
+  /*
+   * #2830 — measured against the reference: 73px at a 1043px viewport, which
+   * is 7vw. It was 10vw, so the headline ran ~40% larger than the design it is
+   * meant to match and crowded everything under it.
+   */
+  font-size: clamp(2.75rem, 7vw, 5.6rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
   text-transform: uppercase;
 }
 
@@ -406,14 +427,30 @@ main h2,
   margin-top: 1.75rem;
 }
 
+/*
+ * #2830 — measured from gogi's own buttons: fully rounded, 700 weight,
+ * 13px uppercase with wide tracking, and generous padding. The square 48px
+ * box read as a form control next to theirs.
+ */
 .button {
   min-height: 48px;
   display: inline-flex;
   align-items: center;
-  padding: 0.72rem 1.25rem;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 1.05rem 2.1rem;
   border: 1px solid transparent;
-  font-weight: 800;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
   text-decoration: none;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button { transition: none; }
 }
 
 .button.accent,
@@ -429,7 +466,52 @@ main h2,
 
 .button.ghost {
   color: var(--ivory);
-  border-color: rgba(240, 238, 233, 0.6);
+  /* Theirs is a hairline at 0.22, not a solid outline. */
+  border-color: rgba(240, 238, 233, 0.22);
+  background: transparent;
+}
+
+.button.ghost:hover {
+  border-color: rgba(240, 238, 233, 0.5);
+}
+
+/*
+ * #2830 — the second line of the headline in the brand's accent, which is what
+ * makes their hero read as designed rather than typeset. It uses --accent, so
+ * every brand gets its own colour, not gogi's.
+ */
+.hero h1 .accent-line,
+.hero h2 .accent-line {
+  color: var(--gold);
+  display: block;
+}
+
+/* The scroll cue at the foot of the hero. */
+.hero-scroll {
+  position: absolute;
+  left: 50%;
+  bottom: 1.4rem;
+  transform: translateX(-50%);
+  z-index: 2;
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* The header CTA, matching the hero's primary button at a smaller scale. */
+.header-action {
+  border-radius: 999px;
+  font-size: 0.78rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+/* #2830 — the current page is marked, as on theirs. */
+.site-header nav a[aria-current="page"] {
+  color: var(--ivory);
+  box-shadow: inset 0 -2px 0 var(--gold);
 }
 
 .fact-rail {
@@ -480,9 +562,16 @@ main h2,
 
 main h2 {
   margin: 0.5rem 0 1.75rem;
-  font-size: clamp(2.6rem, 7vw, 5.8rem);
-  line-height: 0.92;
-  letter-spacing: -0.035em;
+  /*
+   * #2830 -- measured against the reference: 45.89px at a 1043px viewport,
+   * which is 4.4vw, with line-height 1.05 and letter-spacing OPENED slightly.
+   * It was 7vw -- the hero's own scale -- so every section heading rendered
+   * the same size as the page's h1 and nothing read as subordinate to it.
+   */
+  font-size: clamp(1.9rem, 4.4vw, 3.25rem);
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   text-transform: uppercase;
 }
 
@@ -520,8 +609,13 @@ main h2 {
   filter: saturate(0.9) contrast(1.05);
 }
 
-.feature p,
-.tile p {
+.feature p:not(.eyebrow),
+.tile p:not(.eyebrow) {
+  /*
+   * #2830 -- :not(.eyebrow) because an eyebrow IS a <p>, so this rule (0,1,1)
+   * outranked `.eyebrow` (0,1,0) and quietly greyed out the gold inside every
+   * feature and tile. Nobody chose that.
+   */
   color: var(--muted);
 }
 
@@ -638,7 +732,11 @@ summary {
 
 .footer strong {
   font-size: clamp(2rem, 4vw, 4rem);
-  text-transform: uppercase;
+  /*
+   * #2830 -- no text-transform. This is the brand's NAME. The header stopped
+   * upper-casing it and the footer went on shouting "GOGI" at the bottom of
+   * every page, contradicting the header on the same screen.
+   */
 }
 
 .footer > nav,
@@ -715,8 +813,16 @@ summary {
 @media (max-width: 767px) {
   .site-header {
     height: 64px;
-    grid-template-columns: minmax(0, 1fr) auto;
-    padding: 0 16px;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  /* No room for an order CTA beside a burger and a bag on a phone. The menu
+     page and the bag both reach ordering, so the CTA steps aside rather than
+     wrapping the header onto a second line. */
+  .site-header .header-action {
+    display: none;
   }
 
   /*
@@ -934,9 +1040,19 @@ summary {
 .filter { font: inherit; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em;
   padding: 0.4rem 0.9rem; border-radius: 999px; cursor: pointer;
   border: 1px solid currentColor; background: transparent; color: inherit; opacity: 0.7; }
-.filter[aria-pressed="true"] { opacity: 1; background: currentColor; }
-.filter[aria-pressed="true"] { color: var(--accent, #cda052); }
-.filter[aria-pressed="true"] > * { color: #101013; }
+/*
+ * #2830 -- the selected chip used `background: currentColor` with
+ * `color: var(--accent)`, and painted its label dark through `> *`. The label
+ * is a bare text node with no element to match, so the text stayed accent-
+ * coloured ON an accent-coloured pill: gold on gold. The selected filter was
+ * INVISIBLE on every menu on every site. Set both colours outright.
+ */
+.filter[aria-pressed="true"] {
+  opacity: 1;
+  background: var(--accent, #cda052);
+  border-color: var(--accent, #cda052);
+  color: #101013;
+}
 .menu-search input { font: inherit; font-size: 0.85rem; padding: 0.45rem 0.8rem;
   border-radius: 999px; border: 1px solid currentColor; background: transparent;
   color: inherit; min-width: 12rem; }
@@ -975,7 +1091,12 @@ summary {
    an eyebrow-then-rule section rhythm, and a full-bleed hero. Every value
    here reads a custom property, so a brand with a different palette gets its
    own look rather than gogi's. */
-h1, h2, h3, .brand {
+/*
+ * #2830 — `.brand` no longer takes the heading case. A wordmark is not a
+ * heading: "gogi" is deliberately lowercase and was being shouted as GOGI in
+ * the brand's own header. Upper-casing a name is a change to the name.
+ */
+h1, h2, h3 {
   font-family: var(--display);
   /* a serif or a humanist sans set in caps reads as shouting; the pairing
      decides, not the stylesheet */
@@ -987,13 +1108,65 @@ h1, h2, h3, .brand {
 h1 { font-size: clamp(2.75rem, 8vw, 6rem); margin: 0 0 1rem; }
 h2 { font-size: clamp(2rem, 5vw, 3.75rem); margin: 0 0 1rem; }
 h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
-.page-title { margin-block: 3rem 1rem; }
+/*
+ * #2830 -- an inner page's header band. It replaces a bare .page-title that
+ * was a direct child of <main> with no container padding, so on the menu page
+ * the word "MENU" ran off the left edge of the screen at every width.
+ *
+ * Measured against the reference: 57.365px at 1043 wide (5.5vw), line-height
+ * 1.05, weight 600, centred; crumbs 0.18em tracking.
+ */
+.page-header {
+  position: relative;
+  isolation: isolate;
+  padding: clamp(4rem, 13vh, 8rem) max(20px, 4vw) clamp(2.5rem, 6vh, 4rem);
+  text-align: center;
+  background-size: cover;
+  background-position: center;
+}
+
+.page-header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(to top, rgba(8, 6, 4, 0.92), rgba(8, 6, 4, 0.62));
+}
+
+.page-header > div {
+  width: min(100%, 1200px);
+  margin: 0 auto;
+}
+
+.page-header h1 {
+  margin: 0;
+  font-size: clamp(2.1rem, 5.5vw, 4.2rem);
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.crumbs {
+  display: flex;
+  justify-content: center;
+  gap: 0.55rem;
+  margin-top: 0.9rem;
+  font-size: 0.74rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.crumbs a {
+  color: inherit;
+}
 
 .eyebrow {
   font-family: var(--body);
   font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  /* #2830 -- 3.23px on 11.52px against the reference, which is 0.28em. */
+  letter-spacing: 0.28em;
   text-transform: uppercase;
   color: var(--gold);
   margin: 0 0 0.6rem;
@@ -1011,7 +1184,9 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
 
 .hero {
   position: relative;
-  min-height: clamp(30rem, 82svh, 52rem);
+  /* Full viewport, as the reference does. NOTE: an earlier `.hero` block sets
+     this too; this later one wins, so both must agree or the edit is invisible. */
+  min-height: 100svh;
   display: grid;
   align-items: end;
   padding: clamp(2rem, 8vw, 6rem) max(20px, calc((100% - 1200px) / 2));
@@ -1021,13 +1196,17 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
 }
 .hero > div { position: relative; max-width: 60ch; }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
+/* Measured from the reference: 700 weight, ~13px uppercase with wide tracking,
+   16.8/33.6 padding, fully rounded. This block OVERRIDES the earlier `.button`,
+   so the two must stay in step. */
 .button {
-  display: inline-flex; align-items: center; gap: 0.5rem;
-  font-weight: 700; font-size: 0.95rem; min-height: 44px;
-  padding: 0.75rem 1.5rem; border-radius: 999px; text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem;
+  font-weight: 700; font-size: 0.82rem; min-height: 48px;
+  letter-spacing: 0.09em; text-transform: uppercase;
+  padding: 1.05rem 2.1rem; border-radius: 999px; text-decoration: none;
 }
 .button.accent { background: var(--gold); color: var(--ink); }
-.button.ghost { border: 1px solid currentColor; color: var(--ivory); }
+.button.ghost { border: 1px solid rgba(240, 238, 233, 0.22); color: var(--ivory); background: transparent; }
 
 /* #2830 — scroll reveal. Opt-in per element, off entirely under
    prefers-reduced-motion, and NEVER hides content when JavaScript does not
@@ -1053,12 +1232,24 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
   z-index: 0;
   pointer-events: none;
 }
+/*
+ * #2830 — ONE scrim, not two.
+ *
+ * The same 0.82 gradient was applied inline on the section AND again here, so
+ * it compounded to roughly 0.97 and buried the photography the brand chose.
+ * Their own site plays the video at full strength and darkens only enough to
+ * hold the text.
+ *
+ * Bottom-weighted rather than left-weighted: the copy sits at the bottom, and
+ * a left-to-right wash dims the image while doing least for the words on it.
+ */
 .hero::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: linear-gradient(90deg, rgba(8, 6, 4, 0.82), rgba(8, 6, 4, 0.18));
+  background:
+    linear-gradient(to top, rgba(8, 6, 4, 0.86) 0%, rgba(8, 6, 4, 0.45) 42%, rgba(8, 6, 4, 0.12) 78%);
   pointer-events: none;
 }
 .hero > div { z-index: 2; }
@@ -1072,7 +1263,15 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
   background: var(--panel) center / cover no-repeat; border: 1px solid var(--line);
   display: block;
 }
-@media (min-width: 720px) { .reel-poster, .reel-video { aspect-ratio: 16 / 9; } }
+/*
+ * #2830 -- these are vertical phone films. The desktop override used to flip
+ * them to 16/9, which CROPPED portrait footage into a landscape letterbox and
+ * cut the top and bottom off every reel. They stay portrait and are held to a
+ * card's width instead, which is how the reference shows them.
+ */
+@media (min-width: 720px) {
+  .reel-poster, .reel-video { max-width: 26rem; }
+}
 .reel-poster { position: relative; cursor: pointer; padding: 0; }
 .reel-play {
   position: absolute; inset: 50% auto auto 50%; translate: -50% -50%;
@@ -1093,3 +1292,102 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
 }
 .team-grid strong { font-weight: 600; }
 .team-grid span:not(.team-initial) { color: var(--muted); font-size: 0.85rem; }
+
+/*
+ * #2830 -- inside the hero the rail is a hairline over the photograph, not the
+ * panel-coloured band it is elsewhere. Same markup, same meaning, so a site
+ * whose home page has no hero still gets the band.
+ */
+.hero .fact-rail {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  margin: clamp(1.5rem, 4vh, 3rem) 0 0;
+  padding: 0;
+  background: none;
+  border-bottom: 0;
+  border-top: 1px solid rgba(240, 238, 233, 0.18);
+}
+
+.hero .fact-rail dl > div {
+  padding: clamp(0.9rem, 2vh, 1.4rem) clamp(0.75rem, 2vw, 2rem) 0 0;
+  border-right: 0;
+}
+
+.hero .fact-rail dd {
+  font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+  font-weight: 600;
+}
+
+/*
+ * #2830 -- the primary hero action carries an arrow, as theirs does. Content,
+ * not markup, so it never reaches the accessible name: a screen reader still
+ * announces "See the menu", not "See the menu right arrow".
+ */
+.hero-actions .button.accent::after {
+  content: "\2192";
+  margin-left: 0.6rem;
+}
+
+/*
+ * #2830 -- a menu section's heading, matching the reference: a small condensed
+ * caps label with the rule running out from it to the full width.
+ */
+.menu-order .menu-section + .menu-section {
+  margin-top: clamp(2rem, 4vh, 3rem);
+}
+
+.menu-order .menu-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.menu-order .menu-section h3::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--line);
+}
+
+/*
+ * #2830 -- the reel grid, matching the reference: portrait cards laid out
+ * four-across on a wide screen and collapsing to two on a phone, each with its
+ * label under the film.
+ */
+.reel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: clamp(0.75rem, 2vw, 1.5rem);
+}
+
+.reel-grid .reel-card {
+  margin: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+/* Inside the grid the column already sets the width, so the single-reel cap
+   must not also apply or the cards stop filling their tracks. */
+.reel-grid .reel-poster,
+.reel-grid .reel-video {
+  max-width: none;
+  max-height: none;
+}
+
+.reel-grid figcaption {
+  font-family: var(--display);
+  font-size: 0.82rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ivory);
+}
+
+.reel-grid .reel-play {
+  width: 54px;
+  height: 54px;
+}
