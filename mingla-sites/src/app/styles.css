@@ -151,6 +151,26 @@
     "Segoe UI", sans-serif;
   --display-case: uppercase;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /*
+   * #3149 — the site chrome, MEASURED on the brand's own site.
+   *
+   * The header is transparent over the hero at 85px and settles to an opaque
+   * 72px once the page has moved. Both are tokens because three separate
+   * rules have to agree on them — the header itself, the clearance an inner
+   * page needs to sit below it, and the anchor scroll-margin — and a header
+   * height that disagrees with its own offset is an overlap nobody sees in a
+   * diff.
+   */
+  --header-height: 85px;
+  --header-height-stuck: 72px;
+
+  /*
+   * #3149 — one radius for section imagery, as the reference has (its `--r`).
+   * Gallery pictures rendered with square corners against a design where
+   * every photograph is rounded.
+   */
+  --radius-media: 14px;
   color-scheme: dark;
 }
 
@@ -206,11 +226,30 @@ a {
   top: 1rem;
 }
 
+/*
+ * #3149 — fixed, and transparent until the page moves.
+ *
+ * It was `position: sticky`, permanently opaque and permanently hairlined, so
+ * it sat as a solid bar ON TOP of a hero built to run a full viewport: the
+ * hero started 72px down the page and lost the top 72px of the brand's own
+ * photograph to a bar that had nothing to be legible against yet. The
+ * reference is fixed, transparent over the hero, and fades an opaque panel in
+ * on scroll.
+ *
+ * THE PANEL LIVES ON ::before, NOT ON THE HEADER. `backdrop-filter` makes an
+ * element the containing block for its `position: fixed` descendants, so a
+ * blur on the header itself would re-root anything fixed inside it — the
+ * reference carries the same note, for the same reason, after the same bug.
+ * A pseudo-element has no descendants, so nothing can be captured by it.
+ */
 .site-header {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  inset: 0 0 auto 0;
   z-index: 10;
-  height: 72px;
+  /* ::before paints at z-index -1; isolate so it can never fall behind the
+     page instead of behind the header's own contents. */
+  isolation: isolate;
+  height: var(--header-height);
   display: grid;
   /*
    * #2830 — brand | nav | cart | action. It was three columns while the header
@@ -221,9 +260,50 @@ a {
   align-items: center;
   gap: clamp(1rem, 3vw, 3rem);
   padding: 0 max(20px, calc((100vw - 1200px) / 2));
-  background: rgba(16, 16, 19, 0.94);
-  border-bottom: 1px solid rgba(240, 238, 233, 0.14);
+  background: transparent;
+  transition: height 0.32s var(--ease);
+}
+
+.site-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(16, 16, 19, 0.92);
+  -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
+  /* The hairline belongs to the panel, not to the header. Over the hero there
+     is nothing for it to divide, and the reference draws none there. */
+  border-bottom: 1px solid rgba(240, 238, 233, 0.14);
+  opacity: 0;
+  transition: opacity 0.32s var(--ease);
+}
+
+/* Added by `HeaderScrollState` past 40px of scroll — the reference's own
+   threshold. */
+.site-header.stuck {
+  height: var(--header-height-stuck);
+}
+
+.site-header.stuck::before {
+  opacity: 1;
+}
+
+/*
+ * An open disclosure panel is opaque. A transparent header above it would
+ * leave the brand and the burger floating on the photograph while the menu
+ * directly beneath them is solid, which reads as a rendering fault. The header
+ * comes with the panel.
+ */
+.site-header:has(.nav-panel.open)::before {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-header,
+  .site-header::before {
+    transition: none;
+  }
 }
 
 .brand {
@@ -353,8 +433,33 @@ a {
   background: var(--gold-hover);
 }
 
+/*
+ * #3149 — an anchor jump has always scrolled, so the header it lands under is
+ * the SHRUNKEN one. Token, not a literal, so it cannot drift from the height
+ * it is compensating for.
+ */
 .page-content {
-  scroll-margin-top: 72px;
+  scroll-margin-top: var(--header-height-stuck);
+}
+
+/*
+ * #3149 — the fixed header is out of flow, and three page shapes reach this
+ * renderer:
+ *
+ *   hero first      the hero WANTS to run under the transparent header — it is
+ *                   a full viewport and the header is meant to sit on the
+ *                   photograph. No offset.
+ *   no hero at all  `.page-header` renders first and carries its own clearance
+ *                   in its top padding, so its backdrop still reaches the top
+ *                   of the screen and shows through the transparent header.
+ *   hero further    everything before the hero would start underneath the
+ *   down the page   header, so main is pushed down by exactly its height.
+ *
+ * Only the third case gets this class, and the renderer — which is the only
+ * thing that knows the block order — decides.
+ */
+main.header-offset {
+  padding-top: var(--header-height);
 }
 
 .hero {
@@ -607,6 +712,8 @@ main h2 {
   aspect-ratio: 4 / 3;
   object-fit: cover;
   filter: saturate(0.9) contrast(1.05);
+  /* #3149 — same radius as every other piece of section imagery. */
+  border-radius: var(--radius-media);
 }
 
 .feature p:not(.eyebrow),
@@ -682,6 +789,9 @@ main h2 {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* #3149 — square corners against a reference where every photograph in a
+     section is rounded. */
+  border-radius: var(--radius-media);
 }
 
 .gallery img:first-child {
@@ -811,8 +921,19 @@ summary {
 }
 
 @media (max-width: 767px) {
+  /*
+   * #3149 — a phone gets ONE header height, not two. 85px of chrome is a
+   * seventh of the screen, and the disclosure panel is pinned to the header's
+   * foot, so a header that changed height would leave the open menu detached
+   * from it. Overriding the TOKENS rather than `height` keeps `.page-header`,
+   * the anchor scroll-margin and `.nav-panel { top }` in step with it.
+   */
+  :root {
+    --header-height: 64px;
+    --header-height-stuck: 64px;
+  }
+
   .site-header {
-    height: 64px;
     grid-template-columns: auto minmax(0, 1fr) auto auto;
     gap: 8px;
     padding: 0 12px;
@@ -846,7 +967,9 @@ summary {
   .nav-panel {
     display: block;
     position: absolute;
-    top: 64px;
+    /* #3149 — the panel hangs off the header's foot; read the height rather
+       than restate it, or a header resize silently detaches the menu. */
+    top: var(--header-height);
     left: 0;
     right: 0;
     max-height: 0;
@@ -887,7 +1010,7 @@ summary {
   }
 
   .page-content {
-    scroll-margin-top: 64px;
+    scroll-margin-top: var(--header-height-stuck);
   }
 
   .hero {
@@ -1119,7 +1242,17 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
 .page-header {
   position: relative;
   isolation: isolate;
-  padding: clamp(4rem, 13vh, 8rem) max(20px, 4vw) clamp(2.5rem, 6vh, 4rem);
+  /*
+   * #3149 — the band runs to the top of the screen, under the transparent
+   * header, exactly as the hero does. Its TITLE must still clear the header,
+   * so the header's own height is added to the top padding rather than the
+   * band being pushed down and leaving a bare strip above it. Without this the
+   * 4rem floor put "MENU" 21px behind the header.
+   */
+  padding:
+    calc(var(--header-height) + clamp(2.5rem, 7vh, 4.5rem))
+    max(20px, 4vw)
+    clamp(2.5rem, 6vh, 4rem);
   text-align: center;
   background-size: cover;
   background-position: center;
@@ -1284,9 +1417,12 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
   grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
 }
 .team-grid li { display: grid; gap: 0.4rem; justify-items: start; }
-.team-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; }
+/* #3149 — was 12px beside a 14px gallery and 14px reels, which is a difference
+   you see and cannot name. The reference rounds team portraits with the same
+   token as everything else. */
+.team-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-media); }
 .team-initial {
-  display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: 12px;
+  display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: var(--radius-media);
   background: var(--panel-raised); color: var(--gold);
   font-family: var(--display); font-size: 2.5rem;
 }

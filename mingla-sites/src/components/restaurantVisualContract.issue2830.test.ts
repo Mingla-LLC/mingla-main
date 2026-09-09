@@ -22,8 +22,21 @@ describe("#2830 Restaurant Website v1 visual and accessibility contract", () => 
 
   it("locks the responsive header, hero and editorial widths across 320–1440", () => {
     expect(styles).toContain("min-width: 320px");
-    expect(styles).toContain("height: 72px");
-    expect(styles).toContain("height: 64px");
+    /*
+     * #3149 -- these two asserted the literal strings `height: 72px` and
+     * `height: 64px`. The header's heights became tokens, and BOTH assertions
+     * kept passing while testing nothing about the header: `height: 72px` now
+     * matches ONLY `.reel-play` (a 72x72 round play button) and `height: 64px`
+     * matches ONLY as a substring of the custom property `--header-height`.
+     * A test named "locks the responsive header" was locking a button.
+     *
+     * Now: the tokens exist at both breakpoints AND the header consumes them.
+     */
+    expect(styles).toContain("--header-height: 85px");
+    expect(styles).toContain("--header-height-stuck: 72px");
+    expect(styles).toContain("--header-height: 64px");
+    expect(styles).toMatch(/\.site-header\s*\{[^}]*height:\s*var\(--header-height\)/);
+    expect(styles).toMatch(/\.site-header\.stuck\s*\{[^}]*height:\s*var\(--header-height-stuck\)/);
     // The hero fills the viewport, matching the reference design it was
     // measured against. It was a band inside the viewport before.
     expect(styles).toContain("min-height: 100svh");
