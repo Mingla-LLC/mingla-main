@@ -11,11 +11,20 @@ import {
 } from "@payloadcms/richtext-lexical";
 import { safeText, safeUrl } from "../lib/validation";
 
+/*
+ * #3149 — `description` is built HERE rather than spread onto the result.
+ *
+ * `{ ...short(...), admin }` widens the returned value to the whole Payload
+ * `Field` union and stops type-checking: TypeScript can no longer tell which
+ * member it is, and every field in the file starts resolving as a
+ * `collapsible`. Building it inside keeps the literal contextually typed.
+ */
 const short = (
   name: string,
   label: string,
   required = false,
   max = 200,
+  description?: string,
 ): Field => ({
   name,
   label,
@@ -24,6 +33,7 @@ const short = (
   maxLength: max,
   validate: (value: unknown) =>
     value == null && !required ? true : safeText(value, max),
+  admin: description ? { description } : undefined,
 });
 const link = (name = "href", label = "Link", required = true): Field => ({
   name,
@@ -59,6 +69,24 @@ const accessibleAlt = (): Field => ({
       "Describe meaningful images. Leave empty only when the image is decorative.",
   },
 });
+/*
+ * #3149 — the small line above a heading, in the brand's own words.
+ *
+ * The published website used to print a fixed word here — "Gallery", "Film",
+ * "Team" — because a block had nowhere to carry the brand's own. That is
+ * Mingla writing copy for a restaurant on the restaurant's own website. This
+ * is the field that makes it theirs, and leaving it empty now means the line
+ * simply is not printed.
+ */
+const eyebrow = (): Field =>
+  short(
+    "eyebrow",
+    "Eyebrow",
+    false,
+    60,
+    "Optional. The small line printed above this section\u2019s heading, in your words \u2014 for example \u201cThe place\u201d above \u201cCome as you are\u201d. Leave it empty and no line is printed.",
+  );
+
 const ctaFields: Field[] = [short("label", "Label", true, 80), link()];
 
 export const restaurantBlocks: Block[] = [
@@ -100,6 +128,7 @@ export const restaurantBlocks: Block[] = [
     slug: "rich_text",
     labels: { singular: "Rich text", plural: "Rich text" },
     fields: [
+      eyebrow(),
       short("heading", "Heading", false, 120),
       {
         name: "content",
@@ -123,6 +152,7 @@ export const restaurantBlocks: Block[] = [
     slug: "media_feature",
     labels: { singular: "Image feature", plural: "Image features" },
     fields: [
+      eyebrow(),
       readyMedia(),
       accessibleAlt(),
       short("heading", "Heading", false, 120),
@@ -140,6 +170,7 @@ export const restaurantBlocks: Block[] = [
     slug: "cta",
     labels: { singular: "Call to action", plural: "Calls to action" },
     fields: [
+      eyebrow(),
       short("heading", "Heading", true, 120),
       short("body", "Body", false, 500),
       ...ctaFields,
@@ -149,6 +180,7 @@ export const restaurantBlocks: Block[] = [
     slug: "offering_grid",
     labels: { singular: "Mingla experiences", plural: "Mingla experiences" },
     fields: [
+      eyebrow(),
       short("heading", "Heading", false, 120),
       {
         name: "offering_ids",
@@ -165,6 +197,7 @@ export const restaurantBlocks: Block[] = [
     slug: "venue_reservation",
     labels: { singular: "Reservation", plural: "Reservations" },
     fields: [
+      eyebrow(),
       short("heading", "Heading", true, 120),
       short("body", "Body", false, 500),
       short("reservation_target_id", "Mingla reservation target ID", true, 80),
@@ -174,6 +207,7 @@ export const restaurantBlocks: Block[] = [
     slug: "menu_link",
     labels: { singular: "Menu link", plural: "Menu links" },
     fields: [
+      eyebrow(),
       short("heading", "Heading", false, 120),
       short("label", "Label", true, 80),
       link(),
@@ -193,6 +227,7 @@ export const restaurantBlocks: Block[] = [
     slug: "menu_board",
     labels: { singular: "Menu", plural: "Menus" },
     fields: [
+      eyebrow(),
       short("heading", "Heading", false, 120),
       {
         name: "note",
@@ -213,6 +248,19 @@ export const restaurantBlocks: Block[] = [
     slug: "video_feature",
     labels: { singular: "Video", plural: "Videos" },
     fields: [
+      eyebrow(),
+      /*
+       * #3149 — several videos in a row are published as ONE grid of films,
+       * not as a stack of full-width sections. This titles that grid, and it
+       * is read off the FIRST video in the run.
+       */
+      short(
+        "group_heading",
+        "Group heading",
+        false,
+        120,
+        "Optional, and only used on the FIRST of several videos placed one after another \u2014 they are shown together as a grid, and this is the heading printed above that grid. Leave it empty and the grid is printed with no heading.",
+      ),
       short("heading", "Heading", false, 120),
       short("caption", "Caption", false, 600),
       {
@@ -241,6 +289,7 @@ export const restaurantBlocks: Block[] = [
     slug: "team",
     labels: { singular: "Team", plural: "Teams" },
     fields: [
+      eyebrow(),
       short("heading", "Heading", false, 120),
       short("caption", "Caption", false, 600),
       {
@@ -274,6 +323,7 @@ export const restaurantBlocks: Block[] = [
     slug: "gallery",
     labels: { singular: "Gallery", plural: "Galleries" },
     fields: [
+      eyebrow(),
       short("heading", "Heading", false, 120),
       {
         name: "images",
@@ -289,6 +339,7 @@ export const restaurantBlocks: Block[] = [
     slug: "hours_location",
     labels: { singular: "Hours and location", plural: "Hours and locations" },
     fields: [
+      eyebrow(),
       short("heading", "Heading", false, 120),
       short("address", "Address", true, 300),
       link("map_url", "Map link", false),
@@ -308,6 +359,7 @@ export const restaurantBlocks: Block[] = [
     slug: "testimonials",
     labels: { singular: "Testimonials", plural: "Testimonials" },
     fields: [
+      eyebrow(),
       short("heading", "Heading", false, 120),
       {
         name: "items",
@@ -325,6 +377,7 @@ export const restaurantBlocks: Block[] = [
     slug: "faq",
     labels: { singular: "Questions", plural: "Questions" },
     fields: [
+      eyebrow(),
       short("heading", "Heading", false, 120),
       {
         name: "items",
@@ -342,6 +395,7 @@ export const restaurantBlocks: Block[] = [
     slug: "contact_handoff",
     labels: { singular: "Contact", plural: "Contact" },
     fields: [
+      eyebrow(),
       short("heading", "Heading", true, 120),
       short("body", "Body", false, 500),
       short("label", "Label", true, 80),
