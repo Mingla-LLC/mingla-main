@@ -2345,10 +2345,10 @@ export function validateRegistry(
     fail(errors, "#1902 typed Jest 29.7.0 exposure contract drifted");
   }
   const packageAuthorities = {
-    "app-mobile/package.json": "2e167f8c716e80e9baf53dd2b2ba14833afd3a3da48f19718442672bbd0ce6a2",
-    "app-mobile/package-lock.json": "80d18eae58c8e0a81c7e858730caaaae7294e767a27b078ffae2c6d2a2786624",
+    "app-mobile/package.json": "89b2d535fba9a12823b44a89b44854ba5e16b9a81aae24b66b0189296f994ab9",
+    "app-mobile/package-lock.json": "c66a57bebba18941e980061a79d0e39cf482a1c39ffc3427aede7ca615ac2dca",
     "mingla-business/package.json": "61ddd3137b3cc5542f9d58b28edd0a4f1cd6479a9212d99b8067025a03547601",
-    "mingla-business/package-lock.json": "6725babece1c8c2aab52d3d66dae35de0a45088e4a240560d7f4eb8317ee6513",
+    "mingla-business/package-lock.json": "b1100bc40a3ec59739a2559ed0f88f3b6b0d6bc6700d1553cd2dd19059ee18dc",
   };
   for (const [relative, expected] of Object.entries(packageAuthorities)) {
     const actual = crypto.createHash("sha256").update(fs.readFileSync(path.join(root, relative))).digest("hex");
