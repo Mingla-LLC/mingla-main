@@ -47,13 +47,15 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // current registry/authorization/ledger census (108→120). All remain
   // caller-bound at marketing-manager rank through the existing brand resource
   // adapter.
+  // [TEST-MOD-APPROVED #1980] update_campaign_draft + delete_campaign_draft +
+  // get_growth_tool_report; 120→123.
   assert(
-    AGENT_TOOLS.length === 120,
-    `expected 120 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 123,
+    `expected 123 tools, got ${AGENT_TOOLS.length}`,
   );
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 120, "duplicate tool");
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 123, "duplicate tool");
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 120,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 123,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -105,7 +107,8 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   // [TEST-MOD-APPROVED #1976] 87 -> 90: balances + partner links + splits.
   // [TEST-MOD-APPROVED #1981] 90 -> 92: charge_now + send_reminder.
   // [TEST-MOD-APPROVED #2830] 108→120 with the closed Website tool surface.
-  assert(rows.length === 120, `expected 120 ledger rows, got ${rows.length}`);
+  // [TEST-MOD-APPROVED #1980] 120→123 with draft mutate + growth report read.
+  assert(rows.length === 123, `expected 123 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===

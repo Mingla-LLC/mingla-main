@@ -137,7 +137,8 @@ Deno.test("#1976 implementor: payout + tax tools are finance-gated read-only", (
 });
 
 Deno.test("#1976 implementor: prompt v16 advertises enriched payout/tax copy", () => {
-  assertEquals(PROMPT_VERSION, "v16");
+  // [TEST-MOD-APPROVED #1980] prompt version advanced for marketing/growth tools.
+  assertEquals(PROMPT_VERSION, "v17");
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assert(
     prompt.includes(

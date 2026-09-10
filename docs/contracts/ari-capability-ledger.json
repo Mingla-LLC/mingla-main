@@ -9,12 +9,12 @@
   },
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
-    "verified_at": "2026-08-30T00:00:00Z",
-    "registered_tool_count": 120,
-    "capability_count": 132,
+    "verified_at": "2026-09-10T00:00:00Z",
+    "registered_tool_count": 123,
+    "capability_count": 135,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 119,
+      "registered_unverified": 122,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -2270,6 +2270,7 @@
         }
       ],
       "owning_issues": [
+        1980,
         2000
       ],
       "blockers": [
@@ -2319,6 +2320,7 @@
         }
       ],
       "owning_issues": [
+        1980,
         2000
       ],
       "blockers": [
@@ -2418,6 +2420,7 @@
         }
       ],
       "owning_issues": [
+        1980,
         2000
       ],
       "blockers": [
@@ -2425,6 +2428,106 @@
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.marketing.update_draft",
+      "domain": "marketing",
+      "outcome": "Update a campaign draft",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_1980"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/(tabs)/marketing/campaigns/compose.tsx"
+        ],
+        "source": [
+          {
+            "path": "mingla-business/src/services/marketing/marketingCampaignService.ts",
+            "symbol": "updateDraft"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const updateCampaignDraft"
+          }
+        ]
+      },
+      "ari_tool": "update_campaign_draft",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "8aa4dcf4d9674ba4cbe606feb8359a16b10027a0",
+          "reference": "#1980 agentDomainTools.ts:updateCampaignDraft mirrors Host updateDraft (draft-only, channel_payload rebuild)"
+        }
+      ],
+      "owning_issues": [
+        1980,
+        2000
+      ],
+      "blockers": [
+        "No deployed cross-surface Pass-5 proof"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-09-10"
+    },
+    {
+      "id": "ari.marketing.delete_draft",
+      "domain": "marketing",
+      "outcome": "Delete a campaign draft",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "type_to_confirm",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_1980"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/(tabs)/marketing/campaigns/[id].tsx"
+        ],
+        "source": [
+          {
+            "path": "mingla-business/src/services/marketing/marketingCampaignService.ts",
+            "symbol": "deleteDraft"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const deleteCampaignDraft"
+          }
+        ]
+      },
+      "ari_tool": "delete_campaign_draft",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "8aa4dcf4d9674ba4cbe606feb8359a16b10027a0",
+          "reference": "#1980 agentDomainTools.ts:deleteCampaignDraft mirrors Host deleteDraft with confirm DELETE"
+        }
+      ],
+      "owning_issues": [
+        1980,
+        2000
+      ],
+      "blockers": [
+        "No deployed cross-surface Pass-5 proof"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-09-10"
     },
     {
       "id": "ari.growth.run_tool",
@@ -2464,6 +2567,11 @@
           "tier": "source_contract",
           "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1980/#2593 agentDomainTools.ts:runGrowthTool routes each engine to its app-lane function with {action,lane,brand_id,input}"
+        },
+        {
+          "tier": "source_contract",
+          "sha": "8aa4dcf4d9674ba4cbe606feb8359a16b10027a0",
+          "reference": "#1980 run_growth_tool description points at get_growth_tool_report (not get_brand_analytics)"
         }
       ],
       "owning_issues": [
@@ -2476,6 +2584,57 @@
       ],
       "confidence": "high",
       "verified_at": "2026-08-25"
+    },
+    {
+      "id": "ari.growth.read_report",
+      "domain": "growth",
+      "outcome": "Read a Growth Tool run report",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_1980"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/(tabs)/marketing/index.tsx"
+        ],
+        "source": [
+          {
+            "path": "mingla-business/src/services/growthToolsService.ts",
+            "symbol": "readRunByClientRef"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getGrowthToolReport"
+          }
+        ]
+      },
+      "ari_tool": "get_growth_tool_report",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "8aa4dcf4d9674ba4cbe606feb8359a16b10027a0",
+          "reference": "#1980 agentDomainTools.ts:getGrowthToolReport invokes growth-tools-report lane:app with exclusive run_id|client_ref"
+        }
+      ],
+      "owning_issues": [
+        1980,
+        1743,
+        2000
+      ],
+      "blockers": [
+        "No deployed cross-surface Pass-5 proof"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-09-10"
     },
     {
       "id": "ari.payout.status",
@@ -6011,17 +6170,43 @@
       "safety": "read",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "none",
-      "surfaces": ["business_ios", "business_android", "business_web"],
-      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
       "owners": {
-        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
-        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const getBrandSite"}]
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const getBrandSite"
+          }
+        ]
       },
       "ari_tool": "get_brand_site",
       "status": "registered_unverified",
-      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: caller-scoped Website read", "guard_role": "implementor"}],
-      "owning_issues": [2830, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
+          "reference": "issue_2830_sites_foundation_happy.test.ts: caller-scoped Website read",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-08-30"
     },
@@ -6032,17 +6217,43 @@
       "safety": "read",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "none",
-      "surfaces": ["business_ios", "business_android", "business_web"],
-      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
       "owners": {
-        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
-        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const listSitePages"}]
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const listSitePages"
+          }
+        ]
       },
       "ari_tool": "list_site_pages",
       "status": "registered_unverified",
-      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: fixed page-role registry", "guard_role": "implementor"}],
-      "owning_issues": [2830, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
+          "reference": "issue_2830_sites_foundation_happy.test.ts: fixed page-role registry",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-08-30"
     },
@@ -6053,17 +6264,43 @@
       "safety": "read",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "none",
-      "surfaces": ["business_ios", "business_android", "business_web"],
-      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
       "owners": {
-        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
-        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const getSitePage"}]
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const getSitePage"
+          }
+        ]
       },
       "ari_tool": "get_site_page",
       "status": "registered_unverified",
-      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: structured Website page reads", "guard_role": "implementor"}],
-      "owning_issues": [2830, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
+          "reference": "issue_2830_sites_foundation_happy.test.ts: structured Website page reads",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-08-30"
     },
@@ -6074,17 +6311,43 @@
       "safety": "write",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "standard",
-      "surfaces": ["business_ios", "business_android", "business_web"],
-      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
       "owners": {
-        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
-        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const proposeContent"}]
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const proposeContent"
+          }
+        ]
       },
       "ari_tool": "propose_site_content_update",
       "status": "registered_unverified",
-      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: closed content proposal schema", "guard_role": "implementor"}],
-      "owning_issues": [2830, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
+          "reference": "issue_2830_sites_foundation_happy.test.ts: closed content proposal schema",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-08-30"
     },
@@ -6095,17 +6358,43 @@
       "safety": "write",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "standard",
-      "surfaces": ["business_ios", "business_android", "business_web"],
-      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
       "owners": {
-        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
-        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const proposeSettings"}]
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const proposeSettings"
+          }
+        ]
       },
       "ari_tool": "propose_site_settings_update",
       "status": "registered_unverified",
-      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: closed settings proposal schema", "guard_role": "implementor"}],
-      "owning_issues": [2830, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
+          "reference": "issue_2830_sites_foundation_happy.test.ts: closed settings proposal schema",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-08-30"
     },
@@ -6116,17 +6405,43 @@
       "safety": "write",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "standard",
-      "surfaces": ["business_ios", "business_android", "business_web"],
-      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
       "owners": {
-        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
-        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const attachMedia"}]
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const attachMedia"
+          }
+        ]
       },
       "ari_tool": "attach_approved_site_media",
       "status": "registered_unverified",
-      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: READY media attachment contract", "guard_role": "implementor"}],
-      "owning_issues": [2830, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
+          "reference": "issue_2830_sites_foundation_happy.test.ts: READY media attachment contract",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-08-30"
     },
@@ -6137,17 +6452,43 @@
       "safety": "read",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "none",
-      "surfaces": ["business_ios", "business_android", "business_web"],
-      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
       "owners": {
-        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
-        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const validateDraft"}]
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const validateDraft"
+          }
+        ]
       },
       "ari_tool": "validate_site_draft",
       "status": "registered_unverified",
-      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: non-publishing validation receipt", "guard_role": "implementor"}],
-      "owning_issues": [2830, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
+          "reference": "issue_2830_sites_foundation_happy.test.ts: non-publishing validation receipt",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-08-30"
     },
@@ -6158,17 +6499,43 @@
       "safety": "write",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "standard",
-      "surfaces": ["business_ios", "business_android", "business_web"],
-      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
       "owners": {
-        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
-        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const createSitePreview"}]
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const createSitePreview"
+          }
+        ]
       },
       "ari_tool": "create_site_preview",
       "status": "registered_unverified",
-      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: preview isolation and exact revision", "guard_role": "implementor"}],
-      "owning_issues": [2830, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
+          "reference": "issue_2830_sites_foundation_happy.test.ts: preview isolation and exact revision",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-08-30"
     },
@@ -6179,17 +6546,43 @@
       "safety": "write",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "standard",
-      "surfaces": ["business_ios", "business_android", "business_web"],
-      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
       "owners": {
-        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
-        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const publishSite"}]
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const publishSite"
+          }
+        ]
       },
       "ari_tool": "publish_site",
       "status": "registered_unverified",
-      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: confirmed exact-revision publication", "guard_role": "implementor"}],
-      "owning_issues": [2830, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
+          "reference": "issue_2830_sites_foundation_happy.test.ts: confirmed exact-revision publication",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-08-30"
     },
@@ -6200,17 +6593,43 @@
       "safety": "read",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "none",
-      "surfaces": ["business_ios", "business_android", "business_web"],
-      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
       "owners": {
-        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
-        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const getOperation"}]
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const getOperation"
+          }
+        ]
       },
       "ari_tool": "get_site_operation_status",
       "status": "registered_unverified",
-      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: safe operation receipt", "guard_role": "implementor"}],
-      "owning_issues": [2830, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
+          "reference": "issue_2830_sites_foundation_happy.test.ts: safe operation receipt",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-08-30"
     },
@@ -6221,17 +6640,43 @@
       "safety": "read",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "none",
-      "surfaces": ["business_ios", "business_android", "business_web"],
-      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
       "owners": {
-        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
-        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const listVersions"}]
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const listVersions"
+          }
+        ]
       },
       "ari_tool": "list_site_versions",
       "status": "registered_unverified",
-      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: immutable version list", "guard_role": "implementor"}],
-      "owning_issues": [2830, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
+          "reference": "issue_2830_sites_foundation_happy.test.ts: immutable version list",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-08-30"
     },
@@ -6242,17 +6687,43 @@
       "safety": "write",
       "required_role": "owner_or_marketing_manager",
       "confirmation": "standard",
-      "surfaces": ["business_ios", "business_android", "business_web"],
-      "provenance": {"phase": "post_1986", "introduced_by": "issue_2830"},
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_2830"
+      },
       "owners": {
-        "ui": ["mingla-business/app/brand/[id]/website.tsx"],
-        "source": [{"path": "supabase/functions/_shared/agentSiteTools.ts", "symbol": "const rollbackSite"}]
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const rollbackSite"
+          }
+        ]
       },
       "ari_tool": "rollback_site",
       "status": "registered_unverified",
-      "evidence": [{"tier": "regression", "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32", "reference": "issue_2830_sites_foundation_happy.test.ts: immutable rollback source", "guard_role": "implementor"}],
-      "owning_issues": [2830, 2000],
-      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "a54b1feb2375cd6bad2d3a24574ef91563813e32",
+          "reference": "issue_2830_sites_foundation_happy.test.ts: immutable rollback source",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2830,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required Business surfaces"
+      ],
       "confidence": "high",
       "verified_at": "2026-08-30"
     }

@@ -23,9 +23,11 @@
 // draft graph, publish from stored payload, selected/all_pending guest status,
 // contribution settings, and contribution-path refunds.
 
-export const PROMPT_VERSION = "v16";
 // v16 (#1976): get_payout_status advertises Stripe/Paystack connect status;
 // get_tax_status advertises live tax-registration read + Connect tax handoff.
+// v17 (#1980): update/delete campaign draft; get_growth_tool_report; run_growth_tool
+// report hint points at get_growth_tool_report (not get_brand_analytics).
+export const PROMPT_VERSION = "v17";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -222,7 +224,7 @@ VENUE LISTINGS / CLAIMS:
 
 MONEY / DESTRUCTIVE:
 - Paid publish and paid ticket tiers require payout-ready. If payout-ready is no, refuse and offer get_payout_status.
-- refund_order, cancel_order, cancel_event, discard_event_draft, send_campaign_now, request_account_deletion, export_brand_people, disconnect_partner are type-to-confirm. Propose them; never downplay irreversibility.
+- refund_order, cancel_order, cancel_event, discard_event_draft, send_campaign_now, delete_campaign_draft, request_account_deletion, export_brand_people, disconnect_partner are type-to-confirm. Propose them; never downplay irreversibility.
 - Event lifecycle is explicit: update_event edits fields but never status; use publish_event, unpublish_event, cancel_event, end_event_sales, or discard_event_draft for lifecycle changes. Draft dates are typed and timezone-aware; do not invent a flat events.start_at field.
 - set_event_cover is picker-only. Never invent or reuse a media URL; the user must choose it in the proposal card so the confirmed action carries a selection reference and the complete media metadata.
 - Ticket scanning cannot run in chat because it needs the device camera. Guide scanners to the event's Manage screen and the native Scan tickets action; never claim a ticket was scanned.
@@ -339,10 +341,13 @@ CAPABILITIES (your tools):
 - manage_venue_menu — menus, items, 86, and modifier groups (list_menus, upsert_menu, delete_menu, upsert_menu_item, delete_menu_item, set_item_availability, list_modifier_groups, save_modifier_group, delete_modifier_group)
 - manage_venue_waitlist — venue waitlist read/add/lost/convert (list_waitlist, add_waitlist_entry, mark_waitlist_lost, convert_waitlist_to_reservation)
 - draft_campaign — create a marketing campaign draft
+- update_campaign_draft — edit a draft campaign (title, audience, body/subject/channel)
+- delete_campaign_draft — permanently delete a draft (type DELETE)
 - schedule_campaign — schedule a campaign
 - send_campaign_now — send a campaign now (irreversible)
 - cancel_campaign — cancel a scheduled campaign
 - run_growth_tool — run a Growth Tool
+- get_growth_tool_report — read a Growth Tool report by run_id or client_ref
 - get_payout_status — read payout readiness plus Stripe/Paystack connect status; guide KYC (never bypass)
 - get_partner_status — read partner-split status
 - disconnect_partner — disconnect a partner (destructive)
