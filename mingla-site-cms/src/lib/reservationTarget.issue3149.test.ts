@@ -19,9 +19,12 @@
  * Payload and a configurable projection. Nothing reads the builder as text —
  * reading it as text is what let the cancel-page link ship in the first place.
  *
- * fails-on-revert verified at 4b8be05f4 (`url` restored to
- * `${MINGLA_HOST_ORIGIN}/reserve/${input.tenant.core_brand_id}` and the
- * fail-closed guard removed): 9 of the 11 tests here fail.
+ * fails-on-revert verified at db7e04a38 (`url` restored to
+ * `${MINGLA_HOST_ORIGIN}/reserve/${input.tenant.core_brand_id}`, the fail-closed
+ * guard and the `wantsVenue` read removed): 14 of the 16 tests here fail. The
+ * two that still pass are the ones that must — the brand's own copy travels
+ * either way, and a page with no reservation block asks for no venue either
+ * way.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import path from "node:path";

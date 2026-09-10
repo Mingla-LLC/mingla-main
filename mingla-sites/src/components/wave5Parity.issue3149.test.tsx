@@ -140,9 +140,9 @@ const TEAM = {
 /* ──────────────────────────────────────────────────────────────────────────
  * FIX 1 — an <img> that declares an aspect ratio must also declare a height.
  *
- * fails-on-revert verified at 4b8be05f4 (`height: auto` removed from both
- * `.menu-preview-photos img` and `.team-grid img`): both cases below fail with
- * the computed height reading "" instead of "auto".
+ * fails-on-revert verified at db7e04a38 (all five fixes reverted, these tests
+ * kept): all 3 tests in this group fail, each with the computed height reading
+ * "" instead of "auto".
  *
  * The renderer emits `<img width="640" height="640">` and `<img width="480"
  * height="480">`. Those attributes are presentational hints the UA maps to real
@@ -213,11 +213,12 @@ describe("#3149 wave 5 an aspect ratio only works if a height is given back", ()
 /* ──────────────────────────────────────────────────────────────────────────
  * FIX 2 — the films own the grid, and nothing in it spans every track.
  *
- * fails-on-revert verified at 4b8be05f4 (`.reel-grid` restored to the auto-fit
- * grid, `.reel-grid-films` removed from renderer and stylesheet, the head's
- * `grid-column: 1 / -1` restored): the spanning-child test fails naming
- * `reel-grid-head` and `reel-grid-cta`, and the ownership test fails with the
- * films container absent.
+ * fails-on-revert verified at db7e04a38 (all five fixes reverted, these tests
+ * kept): 5 of the 7 tests in this group fail — the spanning-child test naming
+ * `reel-grid-head` and `reel-grid-cta`, the rest with the films container
+ * absent. Two still pass, both correctly: a lone reel never went through the
+ * grid at all, and `.reel-grid .reel-card` matches with or without a wrapper
+ * between them — which is exactly why that one is worth keeping.
  *
  * Measured live BEFORE the fix at a 1440px viewport: 3 films laid out in FOUR
  * 253.203px columns, with the heading and the button each 1085px wide because
@@ -322,10 +323,11 @@ describe("#3149 wave 5 the reel grid holds films and nothing else", () => {
 /* ──────────────────────────────────────────────────────────────────────────
  * FIX 4 — the count badge must not cover the bag it counts.
  *
- * fails-on-revert verified at 4b8be05f4 (both `.cart-count` rules unscoped and
- * the badge back at top:4px/right:2px, 24px): the occlusion test fails with a
- * badge bottom of 28px against a glyph top of 12px, and the pill test fails
- * with `position: absolute`.
+ * fails-on-revert verified at db7e04a38 (all five fixes reverted, these tests
+ * kept): 5 of the 6 tests in this group fail — each occlusion case with a badge
+ * bottom of 28px against a glyph top of 12px, and both collision tests with the
+ * pill reading `position: absolute`. The 44px tap-target test still passes,
+ * correctly: the button itself was never the defect.
  *
  * Measured live BEFORE the fix at a 1440px viewport: button 44x44 at (1107,21),
  * glyph 20x20 at (1119,33), badge 24x24 at (1125,25) — a 14x16 intersection,
@@ -428,9 +430,10 @@ describe("#3149 wave 5 the cart badge sits on the corner, not on the glyph", () 
 /* ──────────────────────────────────────────────────────────────────────────
  * FIX 5 — the breadcrumbs sit on one line.
  *
- * fails-on-revert verified at 4b8be05f4 (`align-items: center` removed from
- * `.crumbs`): the alignment test fails with the computed value reading
- * "normal".
+ * fails-on-revert verified at db7e04a38 (all five fixes reverted, these tests
+ * kept): the alignment test fails with the computed value reading "normal".
+ * The align-self test still passes, correctly: no child ever opted out — the
+ * container was the whole defect.
  *
  * Measured live BEFORE the fix at a 1440px viewport: `.crumbs` was
  * `display: flex` with `align-items: normal`, so all three children were
