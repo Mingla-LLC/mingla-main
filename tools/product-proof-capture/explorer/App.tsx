@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { LogBox, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -15,11 +15,18 @@ import { sampleParticipants, sampleRsvpRow, sampleSavedCard } from "./fixtures";
 type Scene = "saved" | "collaboration" | "rsvp";
 const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnMount: false, refetchOnWindowFocus: false, staleTime: Infinity }, mutations: { retry: false } } });
 
+// A pre-existing forwardRef warning from a transitively imported component is
+// irrelevant to these read-only scenes but otherwise obscures the proof image.
+LogBox.ignoreLogs(["forwardRef render functions accept exactly two parameters"]);
+
+const sceneControlLabel = (scene: Scene): string =>
+  scene === "rsvp" ? "Open RSVP sample pass" : `Show ${scene} sample`;
+
 export default function App() {
   const [scene, setScene] = useState<Scene>("saved");
   return <GestureHandlerRootView style={styles.flex}><SafeAreaProvider><QueryClientProvider client={client}><ToastProvider><UnifiedShareProvider><SafeAreaView style={styles.safe}>
     <View accessibilityLabel={CAPTURE_SENTINEL} style={styles.header}><Text style={styles.kicker}>MINGLA • SAMPLE PLAN</Text><Text style={styles.title}>{scene === "saved" ? "Saved for later" : scene === "collaboration" ? "Plan together" : "Your RSVP pass"}</Text></View>
-    <View style={styles.tabs}>{(["saved","collaboration","rsvp"] as Scene[]).map(item => <Pressable key={item} accessibilityRole="button" accessibilityLabel={`Show ${item} sample`} onPress={() => setScene(item)} style={[styles.tab, scene===item && styles.tabActive]}><Text style={[styles.tabText, scene===item && styles.tabTextActive]}>{item === "rsvp" ? "RSVP" : item[0].toUpperCase()+item.slice(1)}</Text></Pressable>)}</View>
+    <View style={styles.tabs}>{(["saved","collaboration","rsvp"] as Scene[]).map(item => <Pressable key={item} testID={`mingla-capture-scene-${item}`} accessibilityRole="button" accessibilityLabel={sceneControlLabel(item)} accessibilityState={{ selected: scene === item }} onPress={() => setScene(item)} style={[styles.tab, scene===item && styles.tabActive]}><Text style={[styles.tabText, scene===item && styles.tabTextActive]}>{item === "rsvp" ? "RSVP" : item[0].toUpperCase()+item.slice(1)}</Text></Pressable>)}</View>
     <View style={styles.body}>
       {scene === "saved" ? <SavedTab savedCards={[sampleSavedCard]} calendarEntries={[]} onScheduleFromSaved={() => { throw new Error("capture_harness_blocked_mutation"); }} onPurchaseFromSaved={() => { throw new Error("capture_harness_blocked_checkout"); }} onShareCard={() => { throw new Error("capture_harness_blocked_share"); }} accountPreferences={{currency:"USD",measurementSystem:"Imperial"}} /> : null}
       {scene === "collaboration" ? <BoardDiscussionTab sessionId="sample-session-3176" participants={sampleParticipants as never} savedCards={[{id:sampleSavedCard.id,card_data:sampleSavedCard}]} /> : null}

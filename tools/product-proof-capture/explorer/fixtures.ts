@@ -49,7 +49,7 @@ export const sampleRsvpRow = {
   status: "going",
   approvalStatus: "approved",
   plusGuestNames: [],
-  displayName: "Sample Explorer",
+  displayName: "Sample pass · QR not valid",
   coverMediaUrl: null,
   eventId: "sample-event-3176",
   eventTitle: "Sample rooftop listening session",

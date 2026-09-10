@@ -69,7 +69,7 @@ export const toastManager = { show: () => undefined, success: () => undefined, e
 export const postHogService = { capture: () => undefined };
 export const weatherService = { getWeatherForecast: async () => null };
 export const busynessService = { getVenueBusyness: async () => null };
-export async function fetchRsvpPartyPasses() { return [{ entityType: "primary", entityId: EXPLORER_FIXTURE_IDS.rsvp, displayName: "Sample Explorer", qrCode: "mingla-demo://not-valid/sample-rsvp-3176", pdfFetchRef: EXPLORER_FIXTURE_IDS.rsvp }]; }
+export async function fetchRsvpPartyPasses() { return [{ entityType: "primary", entityId: EXPLORER_FIXTURE_IDS.rsvp, displayName: "Sample pass · QR not valid", qrCode: "mingla-demo://not-valid/sample-rsvp-3176", pdfFetchRef: EXPLORER_FIXTURE_IDS.rsvp }]; }
 export async function fetchRsvpPassPdf() { throw new Error("capture_harness_blocked_pdf"); }
 export async function submitDeckRsvp() { throw new Error("capture_harness_blocked_mutation"); }
 export function openMapsTarget() { throw new Error("capture_harness_blocked_external_link"); }
