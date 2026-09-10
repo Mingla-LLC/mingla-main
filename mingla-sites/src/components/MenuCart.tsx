@@ -448,7 +448,19 @@ export function MenuCart({ items, context }: { items: CartItem[]; context: SiteE
       next.phone = "Please give a phone number with its country code, like +234 801 234 5678.";
     }
     setFieldErrors(next);
-    if (Object.keys(next).length > 0) return;
+    if (Object.keys(next).length > 0) {
+      /*
+       * Move focus to the first field that needs fixing. Without this a screen
+       * reader user presses "Check out with Mingla" and hears NOTHING: the
+       * error appears in the page, correctly associated with its input by
+       * aria-describedby, and nothing ever reads it out because focus never
+       * goes near it. Landing on the field announces the label and the reason
+       * together, which is the whole point of having written the reason.
+       */
+      const first = next.name ? "name" : next.email ? "email" : "phone";
+      document.getElementById(`${fieldId}-${first}`)?.focus();
+      return;
+    }
 
     setPlacing(true);
     setFailed(null);
@@ -559,7 +571,7 @@ export function MenuCart({ items, context }: { items: CartItem[]; context: SiteE
     } finally {
       setPlacing(false);
     }
-  }, [buyerEmail, buyerName, buyerPhone, context, lines, placing, shared]);
+  }, [buyerEmail, buyerName, buyerPhone, context, fieldId, lines, placing, shared]);
 
   return (
     <div className="menu-order">

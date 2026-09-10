@@ -12,7 +12,7 @@
  * Every one of these runs the component. None of them reads its source.
  *
  * fails-on-revert verified at b8050c655 — with `MenuCart.tsx`, `RestaurantV1.tsx`
- * and `api/order/route.ts` restored to origin/main, all 15 tests here fail.
+ * and `api/order/route.ts` restored to origin/main, all 16 tests here fail.
  */
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -234,6 +234,30 @@ describe("#3149 the checkout, under attack", () => {
     expect(created()).toHaveLength(0);
     expect(calls.slice(before)).toHaveLength(0);
     expect(text()).toContain("country code");
+  });
+
+  it("puts the guest ON the field that needs fixing, so it is read out", async () => {
+    /*
+     * Without this a screen-reader user presses the button and hears nothing:
+     * the error is rendered and correctly associated, and focus never goes
+     * near it. Asserted through document.activeElement, not through markup.
+     */
+    await openDrawer();
+    await fillBuyer({ name: "A" });
+    await submit();
+    const name = host.querySelector<HTMLInputElement>('input[name="name"]')!;
+    expect(document.activeElement).toBe(name);
+    expect(name.getAttribute("aria-describedby")).toBe(
+      host.querySelector(".checkout-error")!.id,
+    );
+
+    // Fix the name, and the next refusal moves on to the next field.
+    await type("name", "Ada Nwosu");
+    await type("email", "not-an-address");
+    await submit();
+    expect(document.activeElement).toBe(
+      host.querySelector<HTMLInputElement>('input[name="email"]'),
+    );
   });
 
   it("the browser NEVER names a price, a total or a currency", async () => {
