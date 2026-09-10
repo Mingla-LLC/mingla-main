@@ -337,6 +337,28 @@ a {
 }
 
 /*
+ * #3149 wave 5 — the brand's own wordmark, when it has uploaded one.
+ *
+ * BOTH dimensions are declared, deliberately. This <img> carries `width` and
+ * `height` attributes from the media manifest, and those are presentational
+ * hints the UA maps to real declarations — the same mechanism that rendered a
+ * 640px-tall menu photo in a 251px column earlier in this wave. Setting only a
+ * height would leave the attribute's width to win and squash the mark. `width:
+ * auto` against a fixed height is what makes the attributes do their proper job
+ * instead: they supply the intrinsic ratio the width is computed from.
+ *
+ * The reference sets its header mark 34px tall; it scales down on narrow
+ * screens so a long wordmark cannot push the navigation off the row.
+ */
+.brand-wordmark {
+  display: block;
+  height: clamp(24px, 2.4vw, 34px);
+  width: auto;
+  max-width: min(100%, 12rem);
+  object-fit: contain;
+}
+
+/*
  * #2830 — the header navigation is a disclosure on phones.
  *
  * `display: contents` keeps the panel out of the layout entirely on desktop, so
@@ -695,10 +717,35 @@ main h2,
   font-size: clamp(0.9rem, 1.5vw, 1.05rem);
 }
 
+/*
+ * #3149 wave 5 — THE SECTION IS FULL-BLEED; ITS CONTENT IS WHAT IS CAPPED.
+ *
+ * This capped the SECTION BOX at 1200px, so a section's own background — the
+ * hero photograph, the dark bands, the video — stopped at 1200px and left bare
+ * page down both sides: 120px each at a 1440 viewport, 360px at 1920. The site
+ * read as cut off, which is exactly what it was.
+ *
+ * The reference does the opposite and it is worth stating precisely, because it
+ * is the shape being matched: every one of its sections is x=0 and the full
+ * viewport wide with no padding, and a `.wrap` INSIDE each one is
+ * `min(100% - 40px, 1200px)`, centred. Background edge to edge, content in a
+ * column.
+ *
+ * Ours has no `.wrap` element and does not need one — the same geometry comes
+ * from padding on the section itself, so no markup changes and no other rule
+ * has to learn a new box. The third term is what centres the content: once the
+ * box is the full width, `(100% - 1200px) / 2` IS the gutter that leaves a
+ * 1200px column in the middle. It only wins past ~1440, so every narrower
+ * viewport keeps the gutter it has today.
+ *
+ * NOT a `max-width` on the section, and not `width: min(...)` again: both cap
+ * the box, and the box is the thing that has to reach the edges.
+ */
 .page-content > section {
-  width: min(100%, 1200px);
+  width: 100%;
   margin: 0 auto;
-  padding: clamp(5rem, 9vw, 9rem) max(20px, 4vw);
+  padding-block: clamp(5rem, 9vw, 9rem);
+  padding-inline: max(20px, 4vw, calc((100% - 1200px) / 2));
 }
 
 main h2 {
@@ -796,11 +843,17 @@ main h2 {
   color: var(--muted);
 }
 
+/*
+ * #3149 wave 5 — four `!important`s lived here and all of them are gone.
+ *
+ * They were not a style choice: this section had to reach the page edges, the
+ * base `.page-content > section` rule capped it at 1200px, and `!important` was
+ * the only way past. That the one section anybody explicitly wanted full-bleed
+ * needed four overrides to get there is the clearest evidence the cap was on
+ * the wrong box. Now that the base rule is full-bleed and centres its content
+ * by padding, `.cta` inherits precisely what it was forcing.
+ */
 .cta {
-  width: 100% !important;
-  max-width: none !important;
-  padding-left: max(20px, calc((100vw - 1200px) / 2)) !important;
-  padding-right: max(20px, calc((100vw - 1200px) / 2)) !important;
   text-align: center;
   background: var(--panel-raised);
   border-top: 1px solid var(--line);
@@ -1134,9 +1187,16 @@ summary {
 }
 
 @media (min-width: 1440px) {
+  /*
+   * #3149 wave 5 — `.page-content > section` was in this list and is not any
+   * more. These two cap an INNER element, which is right and is left alone; the
+   * section is the outer box and capping it is what stopped every background at
+   * 1200px. Its content is held to 1200 by padding instead, at every width,
+   * which is also why this rule was redundant: the base rule's
+   * `width: min(100%, 1200px)` was already capping the box below 1440.
+   */
   .hero > div,
-  .fact-rail,
-  .page-content > section {
+  .fact-rail {
     max-width: 1200px;
   }
 }

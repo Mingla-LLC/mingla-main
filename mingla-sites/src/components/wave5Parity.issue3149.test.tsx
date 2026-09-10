@@ -468,3 +468,205 @@ describe("#3149 wave 5 the breadcrumb reads as one line", () => {
     expect(optedOut).toEqual([]);
   });
 });
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * FIX 6 — the section reaches the page edges; its CONTENT is what is capped.
+ *
+ * fails-on-revert verified at 43a2f0c73 (all seven fixes reverted, these tests
+ * kept): all 4 tests in this group fail — three on the section geometry, one on
+ * `.cta` still carrying the `!important` overrides.
+ *
+ * `.page-content > section` set `width: min(100%, 1200px)`, capping the SECTION
+ * BOX, so each section's own background — the hero photograph, the dark bands,
+ * the video — stopped at 1200px and left bare page down both sides. Measured
+ * live BEFORE the fix: every section x=120 w=1200 at a 1440 viewport (120px bare
+ * each side) and x=360 w=1200 at 1920 (360px bare each side). The `@media
+ * (min-width: 1440px) { max-width: 1200px }` on the same selector was redundant
+ * — the base rule was already capping the box at every width, including 1280,
+ * where the section sat at x=40.
+ *
+ * Measured live AFTER, against the reference at the same widths:
+ *
+ *   viewport  ours (section x/width, content)   reference (section, wrap)
+ *   1920      0 / 1920, 1200                    0 / 1920, 1200
+ *   1440      0 / 1440, 1200                    0 / 1440, 1200
+ *   1280      0 / 1280, 1178                    0 / 1280, 1200
+ *   768       0 /  768,  707  (unchanged)       0 /  768,  728
+ *
+ * `document.scrollWidth` equals the viewport at all four, so nothing overflows.
+ * The 1280 and 768 content widths keep OUR 4vw gutter rather than adopting the
+ * reference's flat 20px — the defect being fixed is the section box, and
+ * re-cutting every gutter is a separate decision.
+ *
+ * jsdom has no layout, so what is asserted here is the CASCADE that produces
+ * that geometry — which declaration wins on the real box — and the numbers above
+ * are the real-browser proof of what the cascade then does.
+ * ────────────────────────────────────────────────────────────────────────── */
+describe("#3149 wave 5 a section is full-bleed and holds its content to a column", () => {
+  const SECTION = `<div class="page-content"><section class="feature"></section></div>`;
+
+  it("does not cap the section box", () => {
+    mount(SECTION);
+    const style = getComputedStyle(document.querySelector("section")!);
+    // Was `min(100%, 1200px)` — the cap that stopped every background.
+    expect(style.width).toBe("100%");
+    expect(style.maxWidth).not.toBe("1200px");
+  });
+
+  it("centres the content with padding instead", () => {
+    /*
+     * The third term is the mechanism: once the box is the full width,
+     * `(100% - 1200px) / 2` IS the gutter that leaves a 1200px column in the
+     * middle. It only wins past ~1440, which is why narrower viewports keep the
+     * gutter they have today.
+     */
+    mount(SECTION);
+    const style = getComputedStyle(document.querySelector("section")!);
+    expect(style.paddingInline).toContain("(100% - 1200px) / 2");
+    expect(style.paddingInline).toContain("20px");
+  });
+
+  it("the 1440 media query no longer re-caps the box", () => {
+    /*
+     * Read off the CSSOM rather than the file text: what matters is the rule
+     * list a browser ends up with, and this stylesheet declares several
+     * selectors more than once.
+     */
+    mount(SECTION);
+    const sheet = document.styleSheets[0] as CSSStyleSheet;
+    const wide = [...sheet.cssRules]
+      .filter((rule): rule is CSSMediaRule => rule.constructor.name === "CSSMediaRule")
+      .filter((rule) => (rule.conditionText || "").includes("1440"));
+    expect(wide.length).toBeGreaterThan(0);
+    for (const rule of wide) {
+      for (const inner of [...rule.cssRules] as CSSStyleRule[]) {
+        expect(inner.selectorText).not.toContain(".page-content > section");
+      }
+    }
+  });
+
+  it("`.cta` no longer needs !important to reach the edges", () => {
+    /*
+     * That the ONE section anybody explicitly wanted full-bleed had to override
+     * `width`, `max-width` and both paddings with `!important` is the clearest
+     * evidence the cap was on the wrong box. It now inherits what it was forcing.
+     */
+    mount(`<div class="page-content"><section class="cta"></section></div>`);
+    const style = getComputedStyle(document.querySelector(".cta")!);
+    expect(style.width).toBe("100%");
+    expect(style.maxWidth).not.toBe("1200px");
+    const sheet = document.styleSheets[0] as CSSStyleSheet;
+    const ctaRules = [...sheet.cssRules]
+      .filter((rule): rule is CSSStyleRule => rule.constructor.name === "CSSStyleRule")
+      .filter((rule) => rule.selectorText === ".cta");
+    expect(ctaRules.length).toBeGreaterThan(0);
+    for (const rule of ctaRules) {
+      expect(rule.style.getPropertyPriority("width")).toBe("");
+      expect(rule.style.getPropertyPriority("max-width")).toBe("");
+      expect(rule.style.getPropertyPriority("padding-left")).toBe("");
+      expect(rule.style.getPropertyPriority("padding-right")).toBe("");
+    }
+  });
+});
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * FIX 7 — the brand's wordmark, which was built and never called.
+ *
+ * fails-on-revert verified at 43a2f0c73 (all seven fixes reverted, these tests
+ * kept): 3 of the 5 tests in this group fail. The two that still pass are the
+ * fallback cases, correctly — a site with no logo rendered its name as text
+ * before this change and must go on doing exactly that.
+ *
+ * The whole pipeline already existed: a `logo` upload field in Studio since
+ * #2830, `renderMedia` projecting it into the artifact, and the public contract
+ * validating it against the media manifest. The FOOTER read it. The header did
+ * not — it typeset `display_name` no matter what — so a brand that uploaded its
+ * wordmark saw its name set in Oswald in its own header.
+ *
+ * Measured: ours rendered `<a class="brand">gögi</a>`, 44x44, Oswald 19.2px.
+ * The reference renders `<a class="brand" href="/" aria-label="gögi home"><img
+ * src="…/gogi-wordmark-white.png" alt="gögi"></a>`, 58x34.
+ *
+ * This is the "built but never called" shape that has cost this repo several
+ * issues, and the only thing that catches it is asserting the rendered OUTPUT.
+ * ────────────────────────────────────────────────────────────────────────── */
+describe("#3149 wave 5 the header prints the wordmark when there is one", () => {
+  const LOGO = {
+    id: MEDIA[0]!.id,
+    url: MEDIA[0]!.url,
+    alt: "",
+    width: 580,
+    height: 340,
+    integrity: MEDIA[0]!.integrity,
+    object_key: MEDIA[0]!.object_key,
+  };
+
+  const withLogo = (logo: unknown) => {
+    const artifact = artifactOf([]) as unknown as {
+      site_settings: Record<string, unknown>;
+    };
+    if (logo !== undefined) artifact.site_settings.logo = logo;
+    return renderToStaticMarkup(
+      <RestaurantV1
+        artifact={artifact as unknown as RestaurantArtifact}
+        page={(artifact as unknown as RestaurantArtifact).pages[0]!}
+      />,
+    );
+  };
+
+  const header = (html: string): string =>
+    html.match(/<header class="site-header">([\s\S]*?)<\/header>/)![1]!;
+
+  it("renders an img inside .brand, not the typeset name", () => {
+    const head = header(withLogo(LOGO));
+    expect(head).toContain('class="brand-wordmark"');
+    expect(head).toContain(`src="${LOGO.url}"`);
+    // The mark is INSIDE the link, and the link is still the link home.
+    expect(head).toMatch(
+      /<a class="brand"[^>]*href="\/"[^>]*>|<a[^>]*href="\/"[^>]*class="brand"[^>]*>/,
+    );
+    const brand = head.match(/<a[^>]*class="brand"[\s\S]*?<\/a>/)![0]!;
+    expect(brand).toContain("<img");
+    expect(brand).not.toContain(">gögi<");
+  });
+
+  it("names the link for a screen reader, and the image for its alt", () => {
+    const brand = header(withLogo(LOGO)).match(/<a[^>]*class="brand"[\s\S]*?<\/a>/)![0]!;
+    expect(brand).toContain('aria-label="gögi home"');
+    expect(brand).toContain('alt="gögi"');
+  });
+
+  it("carries the manifest's own dimensions, so the box is reserved", () => {
+    /*
+     * And the stylesheet declares BOTH width and height for it — the attributes
+     * below are exactly the presentational hints that squashed the menu photos
+     * earlier in this wave, and a rule that set only a height would let the
+     * width attribute win.
+     */
+    const brand = header(withLogo(LOGO)).match(/<a[^>]*class="brand"[\s\S]*?<\/a>/)![0]!;
+    expect(brand).toContain('width="580"');
+    expect(brand).toContain('height="340"');
+    mount(`<a class="brand"><img class="brand-wordmark" width="580" height="340"></a>`);
+    const style = getComputedStyle(document.querySelector(".brand-wordmark")!);
+    expect(style.width).toBe("auto");
+    expect(style.height).not.toBe("");
+  });
+
+  it("falls back to the typeset name when there is NO logo", () => {
+    // Every already-published site without one renders exactly what it did.
+    const head = header(withLogo(undefined));
+    expect(head).not.toContain("brand-wordmark");
+    expect(head).not.toContain("<img");
+    expect(head).toContain(">gögi</a>");
+  });
+
+  it("falls back rather than breaking when the logo url is unusable", () => {
+    /*
+     * A logo whose URL does not pass the same gate the footer applies degrades
+     * to the name. It must never publish an empty box where a brand's name was.
+     */
+    const head = header(withLogo({ ...LOGO, url: "javascript:alert(1)" }));
+    expect(head).not.toContain("brand-wordmark");
+    expect(head).toContain(">gögi</a>");
+  });
+});
