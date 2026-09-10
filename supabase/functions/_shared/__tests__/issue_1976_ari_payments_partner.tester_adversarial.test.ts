@@ -178,6 +178,43 @@ Deno.test("#1976 tester: get_tax_status maps hasActiveRegistration and never cla
   assert(String(missing.guide).includes("/connect-tax-registrations"));
 });
 
+Deno.test("#1976 tester: tax edge outage returns unavailable and still guides", async () => {
+  const result = await domainTool("get_tax_status").executor(
+    { brand_id: BRAND },
+    clientWith({
+      invokeError: () => ({ message: "upstream_timeout" }),
+    }) as never,
+    USER,
+  );
+  assertEquals(result.has_active_registration, null);
+  assertEquals(result.unavailable, true);
+  assert(String(result.guide).includes("/connect-tax-registrations"));
+});
+
+Deno.test("#1976 tester: partial provider booleans stay null instead of false", async () => {
+  const result = await domainTool("get_payout_status").executor(
+    { brand_id: BRAND },
+    clientWith({
+      canCollect: false,
+      invoke: (name) => {
+        if (name === "brand-stripe-refresh-status") {
+          return { status: "restricted", requirements: { disabled_reason: "x" } };
+        }
+        if (name === "brand-paystack-onboard") {
+          return { account_number_masked: "••••6789" };
+        }
+        return null;
+      },
+    }) as never,
+    USER,
+  );
+  assertEquals(result.stripe.charges_enabled, null);
+  assertEquals(result.stripe.payouts_enabled, null);
+  assertEquals(result.paystack.connected, null);
+  assertEquals(result.paystack.is_verified, null);
+  assertEquals(result.paystack.recipient_connected, null);
+});
+
 Deno.test("#1976 tester: disconnect_partner rejects missing confirm_phrase", async () => {
   const error = await assertRejects(
     () =>

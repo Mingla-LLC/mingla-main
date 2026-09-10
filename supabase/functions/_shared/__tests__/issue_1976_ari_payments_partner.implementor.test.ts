@@ -265,6 +265,47 @@ Deno.test("#1976 implementor: get_tax_status reads brand-tax-registrations-list"
   assert(String(result.guide).includes("connect-tax-registrations"));
 });
 
+Deno.test("#1976 implementor: get_tax_status stays available when the tax edge fails", async () => {
+  const tool = domainTool("get_tax_status");
+  const result = await tool.executor(
+    { brand_id: BRAND },
+    brandScopeClient({
+      invoke: () => {
+        throw new ToolError("EDGE_FAILED", "brand-tax-registrations-list: boom");
+      },
+    }) as never,
+    USER,
+  );
+  assertEquals(result.has_active_registration, null);
+  assertEquals(result.unavailable, true);
+  assert(String(result.guide).includes("connect-tax-registrations"));
+});
+
+Deno.test("#1976 implementor: missing Stripe/Paystack booleans stay null", async () => {
+  const tool = domainTool("get_payout_status");
+  const result = await tool.executor(
+    { brand_id: BRAND },
+    brandScopeClient({
+      canCollect: true,
+      invoke: (name) => {
+        if (name === "brand-stripe-refresh-status") {
+          return { status: "onboarding" };
+        }
+        if (name === "brand-paystack-onboard") {
+          return { settlement_bank: "Access Bank" };
+        }
+        return null;
+      },
+    }) as never,
+    USER,
+  );
+  assertEquals(result.stripe.charges_enabled, null);
+  assertEquals(result.stripe.payouts_enabled, null);
+  assertEquals(result.paystack.connected, null);
+  assertEquals(result.paystack.is_verified, null);
+  assertEquals(result.paystack.recipient_connected, null);
+});
+
 Deno.test("#1976 implementor: disconnect_partner requires DISCONNECT confirm phrase", async () => {
   const tool = domainTool("disconnect_partner");
   assertEquals(tool.parameters.properties.confirm_phrase.enum, ["DISCONNECT"]);

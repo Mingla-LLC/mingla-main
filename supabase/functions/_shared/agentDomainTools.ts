@@ -3189,6 +3189,10 @@ const runGrowthTool = writeTool(
 // ----------------------------------------------------------------------------
 
 /** #1976 — PII-minimised Stripe connect status (Host: brand-stripe-refresh-status). */
+function nullableBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 function minimiseStripeConnectStatus(
   raw: Record<string, unknown> | null,
 ): Record<string, unknown> {
@@ -3207,8 +3211,8 @@ function minimiseStripeConnectStatus(
       0;
   return {
     status: typeof raw.status === "string" ? raw.status : null,
-    charges_enabled: raw.charges_enabled === true,
-    payouts_enabled: raw.payouts_enabled === true,
+    charges_enabled: nullableBoolean(raw.charges_enabled),
+    payouts_enabled: nullableBoolean(raw.payouts_enabled),
     has_disabled_reason: hasDisabledReason,
   };
 }
@@ -3224,16 +3228,16 @@ function minimisePaystackConnectStatus(
     };
   }
   return {
-    connected: raw.connected === true,
-    is_verified: raw.is_verified === true,
-    active: typeof raw.active === "boolean" ? raw.active : null,
+    connected: nullableBoolean(raw.connected),
+    is_verified: nullableBoolean(raw.is_verified),
+    active: nullableBoolean(raw.active),
     settlement_bank: typeof raw.settlement_bank === "string"
       ? raw.settlement_bank
       : null,
     account_number_masked: typeof raw.account_number_masked === "string"
       ? raw.account_number_masked
       : null,
-    recipient_connected: raw.recipient_connected === true,
+    recipient_connected: nullableBoolean(raw.recipient_connected),
   };
 }
 
@@ -3456,20 +3460,34 @@ const getTaxStatus = writeTool(
     await requireBrand(args, client, userId);
     // #1976 — same probe Host uses (useBrandTaxRegistration). Read-only;
     // registration completion stays a guided handoff to Connect tax.
-    const raw = await invokeFn<Record<string, unknown>>(
-      client,
-      "brand-tax-registrations-list",
-      { brand_id: args.brand_id },
-    );
-    const hasActiveRegistration = raw?.hasActiveRegistration === true;
-    const reason = typeof raw?.reason === "string" ? raw.reason : null;
+    // Edge outages must not erase guidance — return unavailable + still hand
+    // the operator to /connect-tax-registrations.
+    let hasActiveRegistration: boolean | null = null;
+    let reason: string | null = null;
+    let unavailable = false;
+    try {
+      const raw = await invokeFn<Record<string, unknown>>(
+        client,
+        "brand-tax-registrations-list",
+        { brand_id: args.brand_id },
+      );
+      hasActiveRegistration = nullableBoolean(raw?.hasActiveRegistration);
+      reason = typeof raw?.reason === "string" ? raw.reason : null;
+    } catch (error) {
+      unavailable = true;
+      reason = error instanceof ToolError
+        ? error.message
+        : "Tax registration status could not be loaded.";
+    }
+    const guide = hasActiveRegistration === true
+      ? "An active tax registration is on file. Open Brand → Tax / Connect tax to review details; Ari cannot edit tax registrations in chat."
+      : "Open Brand → Tax / Connect tax (/connect-tax-registrations) to register or review. Ari cannot complete hosted tax onboarding in chat.";
     return {
       brand_id: args.brand_id,
       has_active_registration: hasActiveRegistration,
       reason,
-      guide: hasActiveRegistration
-        ? "An active tax registration is on file. Open Brand → Tax / Connect tax to review details; Ari cannot edit tax registrations in chat."
-        : "Open Brand → Tax / Connect tax (/connect-tax-registrations) to register. Ari cannot complete hosted tax onboarding in chat.",
+      ...(unavailable ? { unavailable: true } : {}),
+      guide,
     };
   },
 );
