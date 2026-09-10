@@ -15,6 +15,12 @@ export type ArtifactPage = RestaurantArtifact["pages"][number];
 export const RESERVED_SLUGS: readonly string[] = [
   "api",
   "media",
+  /*
+   * #3149 wave 4 — the static map's tile door. A restaurant calling a page
+   * "Map" is entirely plausible and it would have been swallowed silently, in
+   * exactly the way `preview` would have been.
+   */
+  "map",
   "preview",
   "robots.txt",
   "sitemap.xml",
@@ -42,6 +48,49 @@ export function navigablePages(artifact: RestaurantArtifact): ArtifactPage[] {
 /** Home lives at "/", every other page at "/<slug>". */
 export function hrefForPage(page: ArtifactPage): string {
   return page.role === "home" ? "/" : `/${page.slug}`;
+}
+
+/**
+ * #3149 wave 4 — WHERE A RETIRED PAGE'S URL GOES.
+ *
+ * A published page's URL outlives the page. `/contact` has been live and
+ * linkable, and a brand that folds its Visit page into a Reservations page
+ * should not turn that link into a 404 for everyone who bookmarked it, shared
+ * it, or linked to it.
+ *
+ * This is a map of RUNTIME ROLES, not of one brand's decision: it says which
+ * role now carries what another role used to, and it only ever fires when the
+ * old role is genuinely ABSENT from the artifact and the new one is present
+ * and routable. A site that still has both keeps both — nothing is redirected
+ * out from under a live page.
+ *
+ * Deliberately narrow. There is no fallback to the homepage: sending someone
+ * who asked for a specific page to the front door is worse than telling them
+ * the page is gone, and it hides the mistake from whoever removed it.
+ */
+export const RETIRED_ROLE_REPLACEMENTS: Readonly<Record<string, readonly string[]>> = {
+  contact: ["reservations"],
+};
+
+/**
+ * The page a retired slug should send a visitor to, or null to 404 as before.
+ */
+export function replacementForRetiredSlug(
+  artifact: RestaurantArtifact,
+  slug: string,
+): ArtifactPage | null {
+  if (!isRoutableSlug(slug)) return null;
+  const live = navigablePages(artifact);
+  // Only when nothing on the site actually answers to this slug already.
+  if (live.some((page) => page.role !== "home" && page.slug === slug)) return null;
+  const replacements = RETIRED_ROLE_REPLACEMENTS[slug];
+  if (!replacements) return null;
+  if (artifact.pages.some((page) => page.role === slug && page.enabled)) return null;
+  for (const role of replacements) {
+    const replacement = live.find((page) => page.role === role);
+    if (replacement) return replacement;
+  }
+  return null;
 }
 
 /** Resolve an incoming path segment to a page, or null when nothing matches. */

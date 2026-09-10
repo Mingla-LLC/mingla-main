@@ -114,10 +114,30 @@ test("#3149 wave 3 the stats row carries THREE of their four cards", () => {
     "Bowls that travel",
     "Pregame Fridays",
   ]);
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   assert.equal(
+   *     stats.items[0].label,
+   *     "Seven days a week, all year. There is no “sorry, we’re closed” at gögi.",
+   *   );
+   *
+   * The sentence did not change; the field holding it did. On their site each
+   * of these is a CARD — icon, title, sentence — and `label` is the small line
+   * under a bare figure, which their cards do not have. The sentence moved to
+   * `body`, where wave 4 put it.
+   *
+   * SHARPENED: the same string is still pinned, AND `label` is now asserted
+   * ABSENT, so a later edit cannot quietly print the sentence twice by
+   * restoring the old field beside the new one.
+   */
   assert.equal(
-    stats.items[0].label,
+    stats.items[0].body,
     "Seven days a week, all year. There is no “sorry, we’re closed” at gögi.",
   );
+  assert.equal(stats.items[0].label, undefined);
+  // And the drawing that reads as their icon font's glyph, from the closed
+  // list this runtime can actually draw.
+  assert.equal(stats.items[0].icon, "clock");
 });
 
 test("#3149 wave 3 their bank-transfer card is DELIBERATELY absent", () => {
@@ -174,19 +194,73 @@ test("#3149 wave 3 the quotation follows the writing, as theirs does", () => {
 });
 
 test("#3149 wave 3 the home story keeps its own words untouched", () => {
-  // gögi's home page quotes "show up exactly as you are"; ours carries it as
-  // prose already, so no second copy is pulled out on that page.
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   const story = only(home, "rich_text");
+   *   assert.match(
+   *     story.content.root.children[0].children[0].text,
+   *     /show up exactly as you are/,
+   *   );
+   *
+   * The words are the same words. The home story is a `media_feature`
+   * composite now — their own shape: prose, the line pulled out beside it, a
+   * circular crop with a badge, and a button — so "show up exactly as you are"
+   * moved from the FIRST PARAGRAPH into the `quote` field, which is where
+   * their page has it.
+   *
+   * SHARPENED: the original pinned one line of prose. This pins the line, the
+   * source under it, the prose that is now their real heading and paragraph,
+   * and — still — that no separate `pull_quote` block appears on this page,
+   * because the quotation lives inside the section rather than as a second
+   * band under it.
+   */
   const home = seeded().home;
   assert.equal(home.blocks.some((b) => b.blockType === "pull_quote"), false);
-  const story = only(home, "rich_text");
-  assert.match(
-    story.content.root.children[0].children[0].text,
-    /show up exactly as you are/,
+  const story = only(home, "media_feature");
+  assert.match(story.quote, /show up exactly as you are/);
+  assert.equal(story.quote_attribution, "gögi, on Instagram");
+  assert.equal(story.heading, "A room that never closes");
+  assert.match(story.caption, /does not shut/);
+});
+
+/*
+ * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4 — the map's PAGE, in nine
+ * assertions across this file. Each read `seeded().contact` or
+ * `documents.contact`; they now read the reservations page:
+ *
+ *   const map = only(seeded()[MAP_PAGE], "map_embed");            (x4)
+ *   const contact = seeded()[MAP_PAGE];
+ *   const types = seeded()[MAP_PAGE].blocks.map((block) => block.blockType);
+ *   assert.equal(only(documents[MAP_PAGE], "map_embed").heading, "Admiralty Way");
+ *   only(documents[MAP_PAGE], "map_embed").place_label,
+ *   const map = only(documents[MAP_PAGE], "map_embed");
+ *
+ * The Visit page is retired and its map moved to the Reservations page —
+ * someone who has just asked for a table is exactly the person who needs to
+ * find the door. Not one assertion ABOUT the map changed: the coordinates, the
+ * refusal to carry a place name, the sourcing of its words, its absent eyebrow
+ * and its position relative to the hours block are all still pinned, on the
+ * page that now holds it.
+ *
+ * SHARPENED: `MAP_PAGE` is named once here, so the page the map lives on is a
+ * single fact rather than nine copies of one, and the retired page is asserted
+ * to carry NO map — which is what would catch the map being duplicated onto
+ * both pages instead of moved.
+ */
+const MAP_PAGE = "reservations";
+
+test("#3149 wave 4 the retired Visit page carries no map of its own", () => {
+  const site = seeded();
+  assert.equal(
+    site.contact.blocks.filter((block) => block.blockType === "map_embed").length,
+    0,
   );
+  assert.equal(site.contact.blocks.length, 0);
+  assert.equal(site.contact.enabled, false);
 });
 
 test("#3149 wave 3 the Visit page carries a map with COORDINATES", () => {
-  const map = only(seeded().contact, "map_embed");
+  const map = only(seeded()[MAP_PAGE], "map_embed");
   assert.equal(typeof map.latitude, "number");
   assert.equal(typeof map.longitude, "number");
   assert.equal(map.latitude, 6.4471033);
@@ -202,13 +276,13 @@ test("#3149 wave 3 the map says the STREET, which is what is sourced", () => {
    * number on Admiralty Way. The label therefore names the street rather than
    * a door number nobody has surveyed.
    */
-  const map = only(seeded().contact, "map_embed");
+  const map = only(seeded()[MAP_PAGE], "map_embed");
   assert.equal(map.place_label, "Admiralty Way, Lekki Phase 1, Lagos");
   assert.ok(!map.place_label.startsWith("69"));
 });
 
 test("#3149 wave 3 the map hands no place NAME to anything", () => {
-  const map = only(seeded().contact, "map_embed");
+  const map = only(seeded()[MAP_PAGE], "map_embed");
   for (const key of ["query", "address", "search", "embed_url"]) {
     assert.equal(key in map, false, `${key} must not be seeded`);
   }
@@ -219,7 +293,7 @@ test("#3149 wave 3 the map hands no place NAME to anything", () => {
 });
 
 test("#3149 wave 3 the map's words are theirs", () => {
-  const map = only(seeded().contact, "map_embed");
+  const map = only(seeded()[MAP_PAGE], "map_embed");
   assert.equal(map.heading, "Admiralty Way");
   assert.equal(
     map.body,
@@ -233,17 +307,52 @@ test("#3149 wave 3 the map carries NO eyebrow — the page already has that line
    * it already carries exactly that. Printing it twice on one page is worse
    * than printing it once, and a second one would have to be invented.
    */
-  const contact = seeded().contact;
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   assert.equal(map.eyebrow, undefined);
+   *   assert.equal(only(contact, "hours_location").eyebrow, "Getting here");
+   *
+   * The RULE is unchanged and is what this test is named for: a page never
+   * prints the same eyebrow twice, and a second one is never invented to fill
+   * a gap. What changed is which block on the page holds gögi's "Getting here".
+   *
+   * On the retired Visit page the hours block carried it, so the map went
+   * without. On the Reservations page the hours block carries none, so the
+   * line goes back over the map — which is where their own site prints it. The
+   * omission was always a collision, never a judgement that the map should be
+   * unlabelled.
+   *
+   * SHARPENED: the no-duplicate check below is the real assertion and is
+   * untouched, and the map's eyebrow is now pinned to their exact words rather
+   * than merely pinned as absent.
+   */
+  const contact = seeded()[MAP_PAGE];
   const map = only(contact, "map_embed");
-  assert.equal(map.eyebrow, undefined);
-  assert.equal(only(contact, "hours_location").eyebrow, "Getting here");
+  assert.equal(map.eyebrow, "Getting here");
+  assert.equal(only(contact, "hours_location").eyebrow, undefined);
   const eyebrows = contact.blocks.map((block) => block.eyebrow).filter(Boolean);
   assert.equal(new Set(eyebrows).size, eyebrows.length, "an eyebrow twice");
 });
 
 test("#3149 wave 3 the map sits between the hours and the phone number", () => {
-  const types = seeded().contact.blocks.map((block) => block.blockType);
-  assert.deepEqual(types, ["hours_location", "map_embed", "contact_handoff"]);
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   assert.deepEqual(types, ["hours_location", "map_embed", "contact_handoff"]);
+   *
+   * A different page, so a different run of blocks. The ORDERING PROPERTY is
+   * the same one and is why this test exists: the map comes after the hours,
+   * because "when" is what someone reads before "where".
+   *
+   * SHARPENED: the page now reads book, then when, then where — and the
+   * assertion pins all three in order, so a block inserted between the
+   * booking control and the practical detail under it would fail here.
+   */
+  const types = seeded()[MAP_PAGE].blocks.map((block) => block.blockType);
+  assert.deepEqual(types, ["venue_reservation", "hours_location", "map_embed"]);
+  assert.ok(
+    types.indexOf("map_embed") > types.indexOf("hours_location"),
+    "when comes before where",
+  );
 });
 
 test("#3149 wave 3 the home run of three films is still ONE run", () => {
@@ -275,7 +384,7 @@ test("#3149 wave 3 the copy-free sections survive a seed with NO media", () => {
   assert.ok(only(documents.home, "marquee").phrases.length === 5);
   assert.equal(only(documents.home, "stats").heading, "No closing time");
   assert.equal(only(documents.about, "pull_quote").attribution, "gögi, on Instagram");
-  assert.equal(only(documents.contact, "map_embed").heading, "Admiralty Way");
+  assert.equal(only(documents[MAP_PAGE], "map_embed").heading, "Admiralty Way");
 });
 
 test("#3149 wave 3 the gallery page is still empty without photographs", () => {
@@ -300,7 +409,7 @@ test("#3149 wave 3 the new copy is quoted from the ledger, not inlined", () => {
     GOGI_SEED_COPY.site.pillars.map((pillar) => ({ ...pillar })),
   );
   assert.equal(
-    only(documents.contact, "map_embed").place_label,
+    only(documents[MAP_PAGE], "map_embed").place_label,
     GOGI_SEED_COPY.site.mapLabel,
   );
 });
@@ -314,10 +423,28 @@ test("#3149 wave 3 every new section stays inside the contract's limits", () => 
   assert.ok(stats.items.length >= 1 && stats.items.length <= 6);
   for (const row of stats.items) {
     assert.ok(row.figure.length <= 60, row.figure);
-    assert.ok(row.label.length <= 240, row.label);
+    /*
+     * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+     *   assert.ok(row.label.length <= 240, row.label);
+     *
+     * `label` is unset on every card now — the sentence lives in `body`, whose
+     * Studio field is capped at 300 rather than 240. Asserting a length on an
+     * undefined value throws rather than failing usefully.
+     *
+     * SHARPENED: BOTH fields are bounded, each against its own real cap, and
+     * whichever one a card happens to use is checked. A seed that exceeded
+     * either would be rejected on save as an opaque validation failure, which
+     * is the whole point of this test.
+     */
+    if (typeof row.label === "string") assert.ok(row.label.length <= 240, row.label);
+    if (typeof row.body === "string") assert.ok(row.body.length <= 300, row.body);
+    assert.ok(
+      typeof row.label === "string" || typeof row.body === "string",
+      `${row.figure} carries no line under it at all`,
+    );
   }
   assert.ok(only(documents.about, "pull_quote").quote.length <= 600);
-  const map = only(documents.contact, "map_embed");
+  const map = only(documents[MAP_PAGE], "map_embed");
   assert.ok(map.place_label.length <= 200);
   assert.ok(map.body.length <= 500);
   assert.ok(map.directions_url.startsWith("https://"));

@@ -50,6 +50,16 @@ export const GOGI_SEED_COPY = Object.freeze({
   phoneHref: "tel:+2349127117528",
   instagram: "https://www.instagram.com/gogilagos/",
   hoursSummary: "Open 24 hours, 7 days",
+  /*
+   * #3149 wave 4 — the ONE fact that makes a live "open now" line honest.
+   *
+   * `hours` above is a list of display strings and nothing can read a
+   * schedule out of them. These two say, explicitly, that gögi never closes
+   * and which clock to read — and the renderer prints no open/closed claim
+   * without both. Lagos keeps a single offset all year, so the zone is the
+   * whole of it.
+   */
+  timezone: "Africa/Lagos",
   colors: Object.freeze({
     background: "#1c1c1e",
     foreground: "#f0eee9",
@@ -97,21 +107,79 @@ export const GOGI_SEED_COPY = Object.freeze({
     ]),
     whyEyebrow: "Why people keep coming back",
     whyHeading: "No closing time",
+    /*
+     * #3149 wave 4 — more of their own site, transcribed 2026-09-09.
+     *
+     * `whyLead` is the line under that heading. It says FOUR and only three of
+     * their four cards are carried here, so it is deliberately NOT used: the
+     * fourth explains their bank-transfer flow, which is not how an order
+     * placed through this site is paid. Editing their sentence to say three
+     * would be writing copy for them; carrying it unedited would be a count
+     * the page contradicts. It is recorded so the decision is visible, and
+     * left unread.
+     */
+    whyLead: "Four things that make gögi gögi.",
+    /*
+     * Their home page's story section — the prose, and the button under it.
+     * The quotation beside it is `voice.comeAsYouAre`, which their own page
+     * pulls out in exactly this spot.
+     */
+    storyEyebrow: "The place",
+    storyHeading: "A room that never closes",
+    storyBody:
+      "gögi sits at 69 Admiralty Way in Lekki Phase 1 and does not shut. Breakfast at 6am, rice bowls at midday, wings at 2am — the kitchen is on whenever you turn up.",
+    storyCta: "More about gögi",
+    /*
+     * The badge printed on the circular crop beside it. Two lines, theirs.
+     */
+    badgeFigure: "24/7",
+    badgeLabel: "ALWAYS ON",
+    // Their own alt text for that photograph.
+    storyAlt: "A gögi bowl of coconut rice topped with wings and fish",
+    // Their menu section's heading, lead line and button.
+    menuEyebrow: "The menu",
+    menuHeading: "What people order",
+    menuLead:
+      "The full list runs from shawarma at ₦5,000 to a Medallion burger at ₦15,000.",
+    menuCta: "Full menu & ordering",
+    // The button under their run of reels.
+    reelsCta: "Follow @gogilagos",
+    // The button under the five people their home page shows.
+    teamCta: "All ten of them",
+    /*
+     * #3149 wave 4 — the sentence moved from `label` to `body`, and each card
+     * gained a drawing.
+     *
+     * On their site each of these is a CARD: an icon, a title, a sentence.
+     * `label` is the small line under a bare figure and was the only place the
+     * sentence could go before there was a body; it now sits where it belongs,
+     * and `label` is left unset because their cards have no such line.
+     *
+     * The icon names are OURS, not theirs — they are the closed-list keys this
+     * runtime draws, chosen to mean what their icon font's glyph meant
+     * (a clock, a bowl, a record). `highlight` is on the first card because
+     * "no closing time" is the claim the whole section is built around, and it
+     * is the one their design rings.
+     */
     pillars: Object.freeze([
       Object.freeze({
         figure: "Open 24 hours",
-        label:
+        body:
           "Seven days a week, all year. There is no “sorry, we’re closed” at gögi.",
+        icon: "clock",
+        highlight: true,
       }),
       Object.freeze({
         figure: "Bowls that travel",
-        label:
+        body:
           "Jollof, fried, coconut and village rice — with plantain and salad, in a gögi bowl.",
+        icon: "bowl",
       }),
       Object.freeze({
         figure: "Pregame Fridays",
-        label:
+        body:
           "DJ on deck, drinks flowing, food landing. Start the night here, finish it anywhere.",
+        icon: "music",
       }),
     ]),
     // The <cite> under every blockquote on their site.
@@ -138,8 +206,61 @@ export const GOGI_SEED_COPY = Object.freeze({
     mapDirectionsUrl:
       "https://www.google.com/maps/dir/?api=1&destination=6.4471033,3.4680182",
   }),
+  /*
+   * #3149 wave 4 — RESERVATIONS GO THROUGH MINGLA.
+   *
+   * Their own site takes a table request through a WhatsApp form. That is not
+   * built here and will not be: Mingla already owns reservations for this
+   * venue — the bookings, the 24-hour cancellation policy, the attribution —
+   * and a form that messaged a phone would route every booking around all of
+   * it.
+   *
+   * The one sentence carried is theirs, from their own "Get a table" section,
+   * and it is true whichever way a booking is taken. The rest of their
+   * paragraph describes the WhatsApp reply and is deliberately left out rather
+   * than reworded, because rewording it would be writing copy for them.
+   *
+   * The heading and the nav label are plainly factual rather than transcribed:
+   * "Get a table" is their name for a different mechanism.
+   */
+  reservations: Object.freeze({
+    navLabel: "Reservations",
+    title: "Reservations",
+    heading: "Book a table at gögi",
+    body: "gögi is walk-in and always open — you never need a booking.",
+  }),
   // Their own captions for their own people. Real names are published nowhere,
   // so nicknames are all this site claims.
+  /*
+   * #3149 wave 4 — the role beside each nickname, transcribed from gögi's own
+   * About page (read 2026-09-09), where all ten are listed with one of three
+   * words above each name. Nothing here is assigned by us: a person whose role
+   * they never published would simply carry none.
+   */
+  teamRoles: Object.freeze({
+    "Mr slice it all": "Kitchen",
+    "Bad boy fresh": "Kitchen",
+    "Mr cook half eat half": "Kitchen",
+    "Madam Chief chef": "Kitchen",
+    "Meat police": "Prep",
+    "Stir fry bobo": "Kitchen",
+    "Mix engineer": "Bar",
+    "Fling stone": "Prep",
+    "Scoopy doo": "Kitchen",
+    "Fake chef": "Kitchen",
+  }),
+  /*
+   * The five their HOME page shows, in their order, before the "all ten of
+   * them" button. The About page shows all ten in the order of `team` below;
+   * both orders are theirs, and this is why the home block lists these first.
+   */
+  homeTeamOrder: Object.freeze([
+    "Madam Chief chef",
+    "Mr slice it all",
+    "Stir fry bobo",
+    "Mix engineer",
+    "Scoopy doo",
+  ]),
   team: Object.freeze([
     "Mr slice it all",
     "Bad boy fresh",
@@ -277,6 +398,22 @@ function projectFooter(footer) {
   });
 }
 
+/*
+ * #3149 wave 4 — the two fields the live "open now" line needs, alongside the
+ * same seven display strings. Both are required before anything about being
+ * open is printed, and neither is inferred from the strings.
+ */
+function hoursLocation(extra = {}) {
+  return {
+    blockType: "hours_location",
+    ...extra,
+    address: GOGI_SEED_COPY.address,
+    always_open: true,
+    timezone: GOGI_SEED_COPY.timezone,
+    hours: hours(),
+  };
+}
+
 function hours() {
   return [
     "Monday",
@@ -346,6 +483,775 @@ function lexical(texts) {
 }
 
 export function seedDocuments(
+  {
+    heroMediaId,
+    homeId,
+    contactId,
+    tenantId,
+    aboutId,
+    menuId,
+    galleryId,
+    reservationsId,
+    media = {},
+  },
+) {
+  const asset = (slot) => media[slot] ?? null;
+  const drop = (blocks) => blocks.filter(Boolean);
+
+  /*
+   * The four square dish crops gögi publish for their own "what people order"
+   * strip. Only the ones that actually uploaded are used.
+   */
+  const foodStrip = [
+    "foodSqCoconutRiceBowl",
+    "foodSqWingsBoard",
+    "foodSqStirFryPlate",
+    "foodSqSmoothie",
+  ].map((slot) => asset(slot)).filter(Boolean).map((id) => ({ media: id, alt: "" }));
+
+  /*
+   * #3149 -- `extra` carries the eyebrow, and on the FIRST reel of a run the
+   * heading for the grid that run renders as. The same three films head the
+   * home run and the gallery run and the two runs are titled differently, so
+   * this cannot live on the film itself.
+   */
+  /*
+   * #3149 wave 4 — a person, with the role gögi published for them.
+   *
+   * `role` has been in the block since #2830 and the seed never set it, so ten
+   * people appeared as ten nicknames with no idea who did what. A nickname
+   * with no published role would carry none rather than one we chose.
+   */
+  const member = (name) => {
+    const portrait = asset(`team:${name}`);
+    const role = GOGI_SEED_COPY.teamRoles[name];
+    return {
+      name,
+      ...(role ? { role } : {}),
+      ...(portrait ? { media: portrait, alt: name } : {}),
+    };
+  };
+
+  const reel = (videoSlot, posterSlot, heading, caption, extra = {}) =>
+    asset(videoSlot) && asset(posterSlot)
+      ? {
+        blockType: "video_feature",
+        ...extra,
+        heading,
+        caption,
+        video: asset(videoSlot),
+        poster: asset(posterSlot),
+      }
+      : null;
+
+  const homeBlocks = drop([
+    {
+      blockType: "hero",
+      heading: GOGI_SEED_COPY.heading,
+      subheading: GOGI_SEED_COPY.description,
+      media: heroMediaId,
+      ...(asset("heroVideo") ? { video: asset("heroVideo") } : {}),
+      ctas: [
+        { label: "See the menu", href: "/menu" },
+        { label: "Find us", href: "/contact" },
+      ],
+    },
+    /*
+     * #3149 -- the ticker, DIRECTLY under the hero, exactly where theirs sits
+     * and in their order. Decorative on their site; here the first pass of it
+     * is readable to a screen reader and the repeat that makes the loop
+     * seamless is hidden from one.
+     */
+    {
+      blockType: "marquee",
+      phrases: GOGI_SEED_COPY.site.marquee.map((text) => ({ text })),
+    },
+    /*
+     * #3149 wave 4 -- their STORY section, as ONE thing.
+     *
+     * This was prose alone: a heading, two paragraphs, no picture, and the
+     * quotation nowhere. Theirs pairs the writing with a circular crop
+     * carrying a 24/7 badge, pulls the line out beside it, and puts a button
+     * under it. Every word is transcribed from their published home page.
+     *
+     * `voice.cravings` is NOT lost -- it is the caption of the film further
+     * down this page, which is where their own site uses it.
+     *
+     * If the hero photograph has not been uploaded there is no picture to
+     * crop, so the block is dropped rather than published as a headless
+     * caption.
+     */
+    heroMediaId
+      ? {
+        blockType: "media_feature",
+        eyebrow: GOGI_SEED_COPY.site.storyEyebrow,
+        heading: GOGI_SEED_COPY.site.storyHeading,
+        caption: GOGI_SEED_COPY.site.storyBody,
+        media: heroMediaId,
+        alt: GOGI_SEED_COPY.site.storyAlt,
+        alignment: "right",
+        media_shape: "circle",
+        badge_figure: GOGI_SEED_COPY.site.badgeFigure,
+        badge_label: GOGI_SEED_COPY.site.badgeLabel,
+        quote: GOGI_SEED_COPY.voice.comeAsYouAre,
+        quote_attribution: GOGI_SEED_COPY.site.quoteSource,
+        cta_label: GOGI_SEED_COPY.site.storyCta,
+        cta_href: "/about",
+      }
+      : null,
+    /*
+     * #3149 -- "Why people keep coming back / No closing time", the section
+     * their home page runs after the story. Three of their four cards: the
+     * fourth explains their bank-transfer flow, which does not apply to an
+     * order placed through Mingla.
+     */
+    {
+      blockType: "stats",
+      eyebrow: GOGI_SEED_COPY.site.whyEyebrow,
+      heading: GOGI_SEED_COPY.site.whyHeading,
+      items: GOGI_SEED_COPY.site.pillars.map((pillar) => ({ ...pillar })),
+    },
+    asset("reelFoodHouse") && asset("reelFoodHousePoster")
+      ? {
+        blockType: "video_feature",
+        eyebrow: "Admiralty Way",
+        heading: "Day or night, open for a bite",
+        caption: GOGI_SEED_COPY.voice.friday,
+        video: asset("reelFoodHouse"),
+        poster: asset("reelFoodHousePoster"),
+      }
+      : null,
+    hoursLocation({ heading: "Open day and night" }),
+    /*
+     * What people order. gögi's own home page carries a strip of dishes
+     * between the story and the films, and they publish square crops of
+     * exactly these four for it. If any one of them is missing from the
+     * upload, the block is dropped rather than shown short.
+     */
+    /*
+     * #3149 wave 4 -- "What people order" is now A TASTE OF THE REAL MENU.
+     *
+     * It was four photographs and no prices, under a heading that promised
+     * what people order. Theirs shows real sections with real prices beside
+     * the photographs and a button to the rest, and so does this -- from
+     * MINGLA'S OWN MENU, projected at publish time. Nothing about what gögi
+     * sells or what it costs is typed here or stored here.
+     *
+     * The block is dropped when Mingla has no menu, and the photographs are
+     * whichever of their four squares have uploaded.
+     */
+    {
+      blockType: "menu_preview",
+      eyebrow: GOGI_SEED_COPY.site.menuEyebrow,
+      heading: GOGI_SEED_COPY.site.menuHeading,
+      note: GOGI_SEED_COPY.site.menuLead,
+      section_limit: 2,
+      item_limit: 4,
+      ...(foodStrip.length ? { images: foodStrip } : {}),
+      cta_label: GOGI_SEED_COPY.site.menuCta,
+      cta_href: "/menu",
+    },
+    /*
+     * The films. Three consecutive reels render as ONE grid, which is how
+     * their site shows them -- the same films that carry the gallery page,
+     * as on theirs. A single reel would render as a full-width feature
+     * instead, so this is deliberately a run.
+     */
+    reel(
+      "reelPregameFriday",
+      "reelPregameFridayPoster",
+      "Your Friday needs better decisions",
+      GOGI_SEED_COPY.voice.friday,
+      // First of the run, so it titles the grid the three films render as.
+      {
+        eyebrow: "Straight from @gogilagos",
+        group_heading: "The room, on any given night",
+        // #3149 wave 4 -- the button under their grid, read off the first film
+        // because it belongs to the run and not to any one reel.
+        group_cta_label: GOGI_SEED_COPY.site.reelsCta,
+        group_cta_href: GOGI_SEED_COPY.instagram,
+      },
+    ),
+    reel(
+      "reelLateNightCravings",
+      "reelLateNightCravingsPoster",
+      "Some cravings don't respect boundaries",
+      GOGI_SEED_COPY.voice.cravings,
+    ),
+    reel(
+      "reelOutsideGogi",
+      "reelOutsideGogiPoster",
+      "Find gögi",
+      GOGI_SEED_COPY.voice.findGogi,
+    ),
+    /*
+     * The people, as on their home page. The about page carries the same
+     * block; a portrait that did not upload degrades to an initial rather
+     * than a gap.
+     */
+    /*
+     * #3149 wave 4 -- five of them here, all ten a click away.
+     *
+     * The block still carries EVERY person, so nothing is lost; the page shows
+     * the first five and prints a button to the page that has the rest, which
+     * is what their own home page does. The five are theirs and in their
+     * order -- their About page lists all ten in a different order, and that
+     * is the order the About block below keeps.
+     */
+    {
+      blockType: "team",
+      eyebrow: "The kitchen",
+      heading: "Meet the team",
+      caption: GOGI_SEED_COPY.voice.team,
+      preview_count: GOGI_SEED_COPY.homeTeamOrder.length,
+      cta_label: GOGI_SEED_COPY.site.teamCta,
+      cta_href: "/about",
+      members: [
+        ...GOGI_SEED_COPY.homeTeamOrder,
+        ...GOGI_SEED_COPY.team.filter(
+          (name) => !GOGI_SEED_COPY.homeTeamOrder.includes(name),
+        ),
+      ].map(member),
+    },
+    {
+      blockType: "contact_handoff",
+      eyebrow: "Come through",
+      heading: "Call gögi",
+      body: GOGI_SEED_COPY.hoursSummary,
+      label: `Call ${GOGI_SEED_COPY.phoneDisplay}`,
+      href: GOGI_SEED_COPY.phoneHref,
+    },
+  ]);
+
+  const aboutBlocks = drop([
+    /*
+     * #3149 -- "Find gögi" is now PULLED OUT as a quotation, immediately
+     * under this prose, which is the shape their own About page uses: writing,
+     * then the line itself in large type against a gold bar, cited.
+     *
+     * It is MOVED, not copied. It was the first paragraph here; printing it
+     * twice, three lines apart, would read as a mistake by whoever wrote the
+     * page. The other line theirs quotes -- "show up exactly as you are" -- is
+     * on the home page as prose and stays there.
+     */
+    {
+      blockType: "rich_text",
+      eyebrow: "The idea",
+      heading: "Find gögi",
+      content: lexical([GOGI_SEED_COPY.voice.comeAsYouAre]),
+    },
+    {
+      blockType: "pull_quote",
+      quote: GOGI_SEED_COPY.voice.findGogi,
+      attribution: GOGI_SEED_COPY.site.quoteSource,
+    },
+    {
+      blockType: "team",
+      eyebrow: "The kitchen",
+      heading: "The team",
+      caption: GOGI_SEED_COPY.voice.team,
+      /*
+       * Their own nicknames for their own people, now with their own
+       * portraits. This block previously carried names only, on the reasoning
+       * that the faces existed solely as moments in a reel and cropping a
+       * stranger out of footage was not something to do automatically. gögi
+       * publish a proper portrait for all ten, so that reasoning no longer
+       * applies. A missing portrait still degrades to an initial rather than
+       * a gap.
+       */
+      members: GOGI_SEED_COPY.team.map(member),
+    },
+    reel(
+      "reelMeetTheTeam",
+      "reelMeetTheTeamPoster",
+      "Meet the team",
+      GOGI_SEED_COPY.voice.team,
+    ),
+  ]);
+
+  // The menu page carries no items of its own — Mingla owns them, and the
+  // block is dropped at build time when Mingla has none, which disables this
+  // page and removes it from the navigation.
+  const menuBlocks = drop([
+    {
+      blockType: "menu_board",
+      eyebrow: "Everything, with prices",
+      heading: "The menu",
+      note: `${GOGI_SEED_COPY.hoursSummary}.`,
+    },
+    reel(
+      "reelCoconutRice",
+      "reelCoconutRicePoster",
+      "Coconut rice, but make it gögi",
+      GOGI_SEED_COPY.voice.coconutRice,
+    ),
+  ]);
+
+  // The artifact contract accepts at most 12 gallery images, so this asks for
+  // exactly 12. A 13th would not be trimmed, it would fail validation at
+  // publish time.
+  const galleryImages = Array.from({ length: 12 }, (unused, index) => `gallery${index + 1}`)
+    .map((slot) => asset(slot))
+    .filter(Boolean)
+    .map((id) => ({ media: id, alt: "" }));
+  const galleryBlocks = drop([
+    galleryImages.length
+      ? {
+        blockType: "gallery",
+        eyebrow: "Photos",
+        heading: "In the room",
+        images: galleryImages,
+      }
+      : null,
+    reel(
+      "reelPregameFriday",
+      "reelPregameFridayPoster",
+      "Your Friday needs better decisions",
+      GOGI_SEED_COPY.voice.friday,
+      // The same three films, a second time and under their own title.
+      { eyebrow: "Films", group_heading: "Six minutes of gögi" },
+    ),
+    reel(
+      "reelLateNightCravings",
+      "reelLateNightCravingsPoster",
+      "Some cravings don't respect boundaries",
+      GOGI_SEED_COPY.voice.cravings,
+    ),
+    reel(
+      "reelOutsideGogi",
+      "reelOutsideGogiPoster",
+      "Find gögi",
+      GOGI_SEED_COPY.voice.findGogi,
+    ),
+  ]);
+
+  /*
+   * #3149 wave 4 — THE VISIT PAGE IS RETIRED, and nothing it carried is lost.
+   *
+   * Its three blocks each had a home already or have one now:
+   *   - the MAP moves to the Reservations page below. Someone who has just
+   *     booked a table is exactly the person who needs to find the door.
+   *   - the HOURS block is dropped. It carried the address, the seven
+   *     identical "Open 24 hours" rows and the live-clock fields, and every
+   *     one of those is on the page it moved beside: the home page keeps its
+   *     own hours block, the Reservations page gains one, and the footer's
+   *     Find us column prints the address and the hours summary on every page
+   *     of the site. Nothing unique to this block existed.
+   *   - the "Call gögi" HANDOFF is dropped. The home page carries an identical
+   *     one — same heading, same body, same label, same tel: link — and the
+   *     footer now shows the number in its own column and as a round button.
+   *
+   * The page itself is kept in this map with NO BLOCKS, so it publishes
+   * disabled and leaves the navigation. It is not deleted from the seed's
+   * vocabulary: `SEED_PAGE_ROLES` still names it, because a live site HAS one
+   * and a role this seed did not recognise would be refused outright as
+   * somebody else's content.
+   */
+  const contactBlocks = [];
+  const retiredContactBlocks = drop([
+    hoursLocation({ eyebrow: "Getting here", heading: "Visit gögi" }),
+    /*
+     * #3149 -- the map their Visit page has and this one did not.
+     *
+     * NO EYEBROW: theirs reads "Getting here" over this section, and the hours
+     * block directly above already carries that exact line. Printing it twice
+     * on one page is worse than printing it once, and inventing a second one
+     * is not on the table.
+     *
+     * Nothing is requested from a map provider until a visitor asks for the
+     * map -- see `MapEmbed` in the public runtime.
+     */
+    {
+      blockType: "map_embed",
+      heading: GOGI_SEED_COPY.site.gettingHereHeading,
+      body: GOGI_SEED_COPY.site.gettingHereBody,
+      latitude: GOGI_SEED_COPY.site.mapLatitude,
+      longitude: GOGI_SEED_COPY.site.mapLongitude,
+      place_label: GOGI_SEED_COPY.site.mapLabel,
+      directions_url: GOGI_SEED_COPY.site.mapDirectionsUrl,
+    },
+    {
+      blockType: "contact_handoff",
+      // No email anywhere in their published material, so contact is the phone
+      // and Instagram. The gap in the ledger becomes the shape of the page.
+      heading: "Call gögi",
+      body: GOGI_SEED_COPY.hoursSummary,
+      label: GOGI_SEED_COPY.phoneDisplay,
+      href: GOGI_SEED_COPY.phoneHref,
+    },
+  ]);
+  // Kept, unread, as the record of what the retired page held. Deleting it
+  // would make the note above unverifiable.
+  void retiredContactBlocks;
+
+  /*
+   * #3149 wave 4 — THE BOOKING PAGE, AND IT IS MINGLA'S BOOKING FLOW.
+   *
+   * The block carries no destination of its own: the publisher derives it from
+   * the brand, so this page can only ever point at Mingla's own reservation
+   * page for gögi. That is where the venue's real availability, its 24-hour
+   * cancellation policy and its attribution already live.
+   */
+  const reservationsBlocks = drop([
+    {
+      blockType: "venue_reservation",
+      eyebrow: "Come through",
+      heading: GOGI_SEED_COPY.reservations.heading,
+      body: GOGI_SEED_COPY.reservations.body,
+    },
+    hoursLocation({ heading: "When you can come" }),
+    /*
+     * #3149 wave 4 — the map, moved here from the retired Visit page.
+     *
+     * Book, then know when, then know where: someone who has just asked for a
+     * table is exactly the person who needs to find the door. It keeps the
+     * eyebrow it did not have — the hours block above still carries "Getting
+     * here" nowhere, so there is no line to print twice.
+     *
+     * Nothing is requested from a map provider by the visitor at all: the map
+     * that paints is served from this site's own origin.
+     */
+    {
+      blockType: "map_embed",
+      /*
+       * AND IT GETS THEIR EYEBROW BACK. Their own site prints "Getting here"
+       * over this section. On the retired Visit page the hours block directly
+       * above it already carried that exact line, so the map went without
+       * rather than printing it twice — a deliberate omission recorded in
+       * wave 3. Here the hours block carries no eyebrow, so there is nothing
+       * to collide with and their line can be shown where they show it.
+       */
+      eyebrow: "Getting here",
+      heading: GOGI_SEED_COPY.site.gettingHereHeading,
+      body: GOGI_SEED_COPY.site.gettingHereBody,
+      latitude: GOGI_SEED_COPY.site.mapLatitude,
+      longitude: GOGI_SEED_COPY.site.mapLongitude,
+      place_label: GOGI_SEED_COPY.site.mapLabel,
+      directions_url: GOGI_SEED_COPY.site.mapDirectionsUrl,
+    },
+  ]);
+
+  const page = (id, role, title, navLabel, navOrder, blocks, seo) => ({
+    tenant: tenantId,
+    role,
+    title,
+    // A page with nothing on it is not published, and so never appears in the
+    // navigation or the sitemap.
+    enabled: blocks.length > 0,
+    nav_label: navLabel,
+    nav_order: navOrder,
+    blocks,
+    seo,
+  });
+
+  const homePage = page(homeId, "home", "Home", "Home", 0, homeBlocks, {
+    title: "gögi — Where Lagos Comes to Eat",
+    description: GOGI_SEED_COPY.description,
+  });
+  /*
+   * #3149 wave 4 — Home · Menu · About · Gallery · Reservations.
+   *
+   * Menu and About swap: the reference orders its navigation that way, and the
+   * thing most visitors came for should not sit third. Visit is gone, and
+   * Reservations takes the last slot rather than Visit's — a booking is the
+   * step after browsing, not a page to open first.
+   */
+  const aboutPage = page(aboutId, "about", "About gögi", "About", 2, aboutBlocks, {
+    title: "About gögi — a 24/7 food house in Lekki",
+    description: GOGI_SEED_COPY.voice.comeAsYouAre,
+  });
+  const menuPage = page(menuId, "menu", "Menu", "Menu", 1, menuBlocks, {
+    title: "The gögi menu",
+    description: `The full gögi menu. ${GOGI_SEED_COPY.hoursSummary}.`,
+  });
+  const galleryPage = page(galleryId, "gallery", "Gallery", "Gallery", 3, galleryBlocks, {
+    title: "Inside gögi",
+    description: `Inside gögi at ${GOGI_SEED_COPY.address}.`,
+  });
+  /*
+   * RETIRED. No blocks, so `enabled` is false, so it is neither created on a
+   * fresh site nor listed in the navigation of an existing one. It keeps the
+   * last nav position so that retiring it moves no page that is still live.
+   *
+   * `/contact` does not 404 for the people who bookmarked it: the runtime
+   * redirects a retired role's slug to the page that replaced it — see
+   * `replacementForRetiredSlug`.
+   */
+  const contactPage = page(contactId, "contact", "Visit gögi", "Visit", 5, contactBlocks, {
+    title: "Visit gögi in Lekki Phase 1",
+    description: `${GOGI_SEED_COPY.address}. ${GOGI_SEED_COPY.hoursSummary}.`,
+  });
+  /*
+   * LAST in the navigation, at position 5.
+   *
+   * Two reasons, and the second is the stronger one. Booking is the step AFTER
+   * deciding to come, so it belongs next to Visit rather than among the pages
+   * someone is still browsing. And putting it last moves NO existing page:
+   * every other nav_order is exactly what it already was, so a live site's
+   * navigation does not silently reshuffle for a page that was merely added.
+   */
+  const reservationsPage = page(
+    reservationsId,
+    "reservations",
+    GOGI_SEED_COPY.reservations.title,
+    GOGI_SEED_COPY.reservations.navLabel,
+    4,
+    reservationsBlocks,
+    {
+      title: "Book a table at gögi",
+      description: `${GOGI_SEED_COPY.reservations.body} ${GOGI_SEED_COPY.address}.`,
+    },
+  );
+
+  // Navigation lists a page only once it has an id AND something on it. An
+  // unpublished page is not routable, so listing it would render a nav link
+  // that 404s.
+  // Listed in NAV ORDER, which is the order the navigation renders in.
+  const navigationPages = [
+    [homeId, homePage],
+    [menuId, menuPage],
+    [aboutId, aboutPage],
+    [galleryId, galleryPage],
+    [reservationsId, reservationsPage],
+    [contactId, contactPage],
+  ]
+    .filter(([id, document]) => Boolean(id) && document.enabled)
+    .map(([id]) => id);
+
+  return {
+    home: homePage,
+    about: aboutPage,
+    menu: menuPage,
+    gallery: galleryPage,
+    contact: contactPage,
+    reservations: reservationsPage,
+    settings: {
+      tenant: tenantId,
+      display_name: GOGI_SEED_COPY.displayName,
+      short_description: GOGI_SEED_COPY.description,
+      background_color: GOGI_SEED_COPY.colors.background,
+      foreground_color: GOGI_SEED_COPY.colors.foreground,
+      accent_color: GOGI_SEED_COPY.colors.accent,
+      // Their own register: condensed uppercase display, as their site uses.
+      typography: "condensed-display",
+      canonical_url: CANONICAL_URL,
+      seo_title: "gögi — Where Lagos Comes to Eat",
+      seo_description: GOGI_SEED_COPY.description,
+      social_image: heroMediaId,
+      analytics_consent_mode: "optional",
+    },
+    navigation: { tenant: tenantId, pages: navigationPages },
+    footer: {
+      tenant: tenantId,
+      address: GOGI_SEED_COPY.address,
+      hours_summary: GOGI_SEED_COPY.hoursSummary,
+      legal_text: "Gogi Lagos Ltd",
+      links: [
+        { label: `Call ${GOGI_SEED_COPY.phoneDisplay}`, href: GOGI_SEED_COPY.phoneHref },
+        { label: "Instagram", href: GOGI_SEED_COPY.instagram },
+      ],
+    },
+  };
+}
+
+function baselineSettings() {
+  return {
+    display_name: "Gogi Restaurant",
+    typography: "editorial-serif",
+    canonical_url: CANONICAL_URL,
+    analytics_consent_mode: "optional",
+  };
+}
+
+function baselineHome() {
+  return {
+    role: "home",
+    title: "Home",
+    enabled: true,
+    nav_label: "Home",
+    nav_order: 0,
+  };
+}
+
+export const SEED_PAGE_ROLES = [
+  "home",
+  "about",
+  "menu",
+  "gallery",
+  "contact",
+  // #3149 wave 4 — the sixth. Everything that reconciles the live site against
+  // this seed iterates THIS list, so a role missing from it is a page the
+  // caller never creates.
+  "reservations",
+];
+
+// The exact documents the FIRST version of this seed wrote, frozen. It is read
+// to recognise our own earlier output as ours, and is never written. Without
+// it the live pilot -- which that version seeded -- matches neither the
+// untouched baseline nor the current target, so the seed reads it as somebody
+// else's content and refuses to touch anything.
+//
+// Do not "fix" this to track the current copy. It is a historical record.
+export function priorSeedDocuments({ heroMediaId, homeId, contactId, tenantId }) {
+  return {
+    home: {
+      tenant: tenantId,
+      role: "home",
+      title: "Home",
+      enabled: true,
+      nav_label: "Home",
+      nav_order: 0,
+      blocks: [
+        {
+          blockType: "hero",
+          heading: GOGI_SEED_COPY.heading,
+          subheading: GOGI_SEED_COPY.description,
+          media: heroMediaId,
+          ctas: [
+            { label: "Visit us", href: "/contact" },
+            { label: `Call ${GOGI_SEED_COPY.phoneDisplay}`, href: GOGI_SEED_COPY.phoneHref },
+          ],
+        },
+        {
+          blockType: "hours_location",
+          heading: "Open day and night",
+          address: GOGI_SEED_COPY.address,
+          hours: hours(),
+        },
+        {
+          blockType: "contact_handoff",
+          heading: "Come as you are",
+          body: GOGI_SEED_COPY.hoursSummary,
+          label: `Call ${GOGI_SEED_COPY.phoneDisplay}`,
+          href: GOGI_SEED_COPY.phoneHref,
+        },
+      ],
+      seo: {
+        title: "gögi — Where Lagos Comes to Eat",
+        description: GOGI_SEED_COPY.description,
+      },
+    },
+    contact: {
+      tenant: tenantId,
+      role: "contact",
+      title: "Visit gögi",
+      enabled: true,
+      nav_label: "Visit",
+      nav_order: 1,
+      blocks: [
+        {
+          blockType: "hours_location",
+          heading: "Visit gögi",
+          address: GOGI_SEED_COPY.address,
+          hours: hours(),
+        },
+        {
+          blockType: "contact_handoff",
+          heading: "Call gögi",
+          body: GOGI_SEED_COPY.hoursSummary,
+          label: GOGI_SEED_COPY.phoneDisplay,
+          href: GOGI_SEED_COPY.phoneHref,
+        },
+      ],
+      seo: {
+        title: "Visit gögi in Lekki Phase 1",
+        description: `${GOGI_SEED_COPY.address}. ${GOGI_SEED_COPY.hoursSummary}.`,
+      },
+    },
+    settings: {
+      tenant: tenantId,
+      display_name: GOGI_SEED_COPY.displayName,
+      short_description: GOGI_SEED_COPY.description,
+      background_color: GOGI_SEED_COPY.colors.background,
+      foreground_color: GOGI_SEED_COPY.colors.foreground,
+      accent_color: GOGI_SEED_COPY.colors.accent,
+      typography: "modern-sans",
+      canonical_url: CANONICAL_URL,
+      seo_title: "gögi — Where Lagos Comes to Eat",
+      seo_description: GOGI_SEED_COPY.description,
+      social_image: heroMediaId,
+      analytics_consent_mode: "optional",
+    },
+    navigation: { tenant: tenantId, pages: [homeId, contactId] },
+    footer: {
+      tenant: tenantId,
+      address: GOGI_SEED_COPY.address,
+      hours_summary: GOGI_SEED_COPY.hoursSummary,
+      legal_text: "Gogi Lagos Ltd",
+      links: [
+        { label: "Home", href: "/" },
+        { label: "Visit", href: "/contact" },
+        { label: `Call ${GOGI_SEED_COPY.phoneDisplay}`, href: GOGI_SEED_COPY.phoneHref },
+      ],
+    },
+  };
+}
+
+
+/*
+ * #3149 wave 4 — THE WAVE 3 OUTPUT, FROZEN. A SECOND entry in the prior
+ * ledger; the first-version one above is untouched.
+ *
+ * WHY THIS EXISTS. Waves 2 and 3 were not applied by running this seed. Their
+ * content was computed with `seedDocuments` and then written into the live
+ * drafts through the Studio REST API — wave 2 merged eyebrow values in, wave 3
+ * spliced in the marquee, stats, pull-quote and map blocks. The bytes are what
+ * this seed would have written; the transport was not this seed, so nothing
+ * recorded that it shipped.
+ *
+ * The live pages therefore hold the WAVE 3 TARGET. Wave 4 moves the target, so
+ * without this entry `classifySnapshot` matches them against neither the new
+ * target nor the first version, calls them somebody else's content, and
+ * refuses to touch anything — measured before this was added: home, about,
+ * menu, contact and the navigation all classified `invalid` and the republish
+ * could not happen at all.
+ *
+ * The header on `priorSeedDocuments` says not to "fix" it to track the current
+ * copy. That warning is about never chasing the TARGET — a ledger that moved
+ * with the seed would accept anything and this guard would stop guarding.
+ * Recording a state that actually shipped is the opposite of that: it is what
+ * the ledger is FOR, and every entry is frozen the moment it is written.
+ *
+ * HOW IT WAS DERIVED — not hand-written from a diff. This is
+ * `git show origin/main:scripts/sites/gogi-pilot/seed-gogi-pilot.mjs`'s own
+ * `seedDocuments`, copied verbatim, with exactly two changes:
+ *
+ *   1. renamed from `seedDocuments`;
+ *   2. its one `GOGI_SEED_COPY.site.pillars` reads `WAVE_3_PILLARS` below.
+ *
+ * The second is the one thing that could have made this silently wrong.
+ * `site.pillars` is the ONLY value in the copy ledger whose SHAPE wave 4
+ * changed — the card sentence moved from `label` to `body` and gained an icon
+ * — so a frozen record reading the LIVE pillars would have described wave 4's
+ * cards, and the home page would still have been refused. Every other
+ * `GOGI_SEED_COPY` field this function reads is unchanged between the two
+ * waves (wave 4's additions are additive), so those are read live and cannot
+ * drift. The values below are extracted verbatim from that same file rather
+ * than retyped, and `priorLedgerWave3.issue3149` re-derives them from
+ * `origin/main` at test time and fails if they ever differ.
+ *
+ * `hours()` and `lexical()` are shared with the current seed and were verified
+ * byte-identical between the two waves before this was written.
+ */
+const WAVE_3_PILLARS = Object.freeze([
+  Object.freeze({
+    figure: "Open 24 hours",
+    label:
+      "Seven days a week, all year. There is no “sorry, we’re closed” at gögi.",
+  }),
+  Object.freeze({
+    figure: "Bowls that travel",
+    label:
+      "Jollof, fried, coconut and village rice — with plantain and salad, in a gögi bowl.",
+  }),
+  Object.freeze({
+    figure: "Pregame Fridays",
+    label:
+      "DJ on deck, drinks flowing, food landing. Start the night here, finish it anywhere.",
+  }),
+]);
+
+export function priorSeedDocumentsWave3(
   { heroMediaId, homeId, contactId, tenantId, aboutId, menuId, galleryId, media = {} },
 ) {
   const asset = (slot) => media[slot] ?? null;
@@ -421,7 +1327,7 @@ export function seedDocuments(
       blockType: "stats",
       eyebrow: GOGI_SEED_COPY.site.whyEyebrow,
       heading: GOGI_SEED_COPY.site.whyHeading,
-      items: GOGI_SEED_COPY.site.pillars.map((pillar) => ({ ...pillar })),
+      items: WAVE_3_PILLARS.map((pillar) => ({ ...pillar })),
     },
     asset("reelFoodHouse") && asset("reelFoodHousePoster")
       ? {
@@ -733,128 +1639,24 @@ export function seedDocuments(
   };
 }
 
-function baselineSettings() {
-  return {
-    display_name: "Gogi Restaurant",
-    typography: "editorial-serif",
-    canonical_url: CANONICAL_URL,
-    analytics_consent_mode: "optional",
-  };
-}
-
-function baselineHome() {
-  return {
-    role: "home",
-    title: "Home",
-    enabled: true,
-    nav_label: "Home",
-    nav_order: 0,
-  };
-}
-
-export const SEED_PAGE_ROLES = ["home", "about", "menu", "gallery", "contact"];
-
-// The exact documents the FIRST version of this seed wrote, frozen. It is read
-// to recognise our own earlier output as ours, and is never written. Without
-// it the live pilot -- which that version seeded -- matches neither the
-// untouched baseline nor the current target, so the seed reads it as somebody
-// else's content and refuses to touch anything.
-//
-// Do not "fix" this to track the current copy. It is a historical record.
-export function priorSeedDocuments({ heroMediaId, homeId, contactId, tenantId }) {
-  return {
-    home: {
-      tenant: tenantId,
-      role: "home",
-      title: "Home",
-      enabled: true,
-      nav_label: "Home",
-      nav_order: 0,
-      blocks: [
-        {
-          blockType: "hero",
-          heading: GOGI_SEED_COPY.heading,
-          subheading: GOGI_SEED_COPY.description,
-          media: heroMediaId,
-          ctas: [
-            { label: "Visit us", href: "/contact" },
-            { label: `Call ${GOGI_SEED_COPY.phoneDisplay}`, href: GOGI_SEED_COPY.phoneHref },
-          ],
-        },
-        {
-          blockType: "hours_location",
-          heading: "Open day and night",
-          address: GOGI_SEED_COPY.address,
-          hours: hours(),
-        },
-        {
-          blockType: "contact_handoff",
-          heading: "Come as you are",
-          body: GOGI_SEED_COPY.hoursSummary,
-          label: `Call ${GOGI_SEED_COPY.phoneDisplay}`,
-          href: GOGI_SEED_COPY.phoneHref,
-        },
-      ],
-      seo: {
-        title: "gögi — Where Lagos Comes to Eat",
-        description: GOGI_SEED_COPY.description,
-      },
-    },
-    contact: {
-      tenant: tenantId,
-      role: "contact",
-      title: "Visit gögi",
-      enabled: true,
-      nav_label: "Visit",
-      nav_order: 1,
-      blocks: [
-        {
-          blockType: "hours_location",
-          heading: "Visit gögi",
-          address: GOGI_SEED_COPY.address,
-          hours: hours(),
-        },
-        {
-          blockType: "contact_handoff",
-          heading: "Call gögi",
-          body: GOGI_SEED_COPY.hoursSummary,
-          label: GOGI_SEED_COPY.phoneDisplay,
-          href: GOGI_SEED_COPY.phoneHref,
-        },
-      ],
-      seo: {
-        title: "Visit gögi in Lekki Phase 1",
-        description: `${GOGI_SEED_COPY.address}. ${GOGI_SEED_COPY.hoursSummary}.`,
-      },
-    },
-    settings: {
-      tenant: tenantId,
-      display_name: GOGI_SEED_COPY.displayName,
-      short_description: GOGI_SEED_COPY.description,
-      background_color: GOGI_SEED_COPY.colors.background,
-      foreground_color: GOGI_SEED_COPY.colors.foreground,
-      accent_color: GOGI_SEED_COPY.colors.accent,
-      typography: "modern-sans",
-      canonical_url: CANONICAL_URL,
-      seo_title: "gögi — Where Lagos Comes to Eat",
-      seo_description: GOGI_SEED_COPY.description,
-      social_image: heroMediaId,
-      analytics_consent_mode: "optional",
-    },
-    navigation: { tenant: tenantId, pages: [homeId, contactId] },
-    footer: {
-      tenant: tenantId,
-      address: GOGI_SEED_COPY.address,
-      hours_summary: GOGI_SEED_COPY.hoursSummary,
-      legal_text: "Gogi Lagos Ltd",
-      links: [
-        { label: "Home", href: "/" },
-        { label: "Visit", href: "/contact" },
-        { label: `Call ${GOGI_SEED_COPY.phoneDisplay}`, href: GOGI_SEED_COPY.phoneHref },
-      ],
-    },
-  };
-}
+/*
+ * #3149 wave 4 — EVERY STATE THIS SEED HAS SHIPPED, oldest first.
+ *
+ * `classifySnapshot` walks this list: a live document matching ANY entry is
+ * ours to supersede, and one matching none is somebody else's content and is
+ * refused. A list rather than a single record because there is now more than
+ * one shipped state, and recording the newer one must not displace the older —
+ * a site still sitting on the first version has to stay reconcilable.
+ *
+ * APPEND ONLY, and each entry frozen when written. This list may never be made
+ * to include the CURRENT target: an entry that moved with the seed would match
+ * everything, and the refusal that stops this overwriting a brand's own edits
+ * would quietly stop happening.
+ */
+export const PRIOR_SEED_LEDGER = Object.freeze([
+  priorSeedDocuments,
+  priorSeedDocumentsWave3,
+]);
 
 export function deterministicHeroFilename(expectedSha256, mime) {
   const extension = {
@@ -912,6 +1714,9 @@ export function classifySnapshot(snapshot, input) {
     menuId: byRole.has("menu") ? String(byRole.get("menu").id) : "pending-menu",
     galleryId: byRole.has("gallery") ? String(byRole.get("gallery").id) : "pending-gallery",
     contactId: contact ? String(contact.id) : "pending-contact",
+    reservationsId: byRole.has("reservations")
+      ? String(byRole.get("reservations").id)
+      : "pending-reservations",
   };
   // Which pages belong on the site does not depend on whether the hero has been
   // uploaded yet, so the shape is always computable. Only the equality
@@ -922,7 +1727,17 @@ export function classifySnapshot(snapshot, input) {
     heroMediaId: heroMediaId ?? "pending-hero-media",
   });
   const expected = heroMediaId ? shape : null;
-  const prior = heroMediaId ? priorSeedDocuments(documentIds) : null;
+  /*
+   * #3149 wave 4 — EVERY recorded state, not just the first one. The live
+   * pilot holds wave 3's output, which shipped through the Studio API rather
+   * than through this seed; without the second entry every page on it reads as
+   * somebody else's content and the republish is refused outright.
+   */
+  const priors = heroMediaId
+    ? PRIOR_SEED_LEDGER.map((record) =>
+      record({ ...documentIds, media: mediaSlots })
+    )
+    : [];
 
   // Four states, and only "invalid" refuses. "absent" is a page we have not
   // written yet; "prior_seed" is a page an earlier version of this seed wrote
@@ -932,14 +1747,20 @@ export function classifySnapshot(snapshot, input) {
     if (!document) return "absent";
     const projected = projectPage(document);
     if (expected && equal(projected, projectPage(expected[role]))) return "target";
-    if (prior?.[role] && equal(projected, projectPage(prior[role]))) return "prior_seed";
+    if (
+      priors.some((prior) =>
+        prior?.[role] && equal(projected, projectPage(prior[role]))
+      )
+    ) return "prior_seed";
     if (role === "home" && equal(projected, baselineHome())) return "baseline";
     return "invalid";
   };
   const documentState = (key, document, project, baselineValue) => {
     const projected = project(document);
     if (expected && equal(projected, project(expected[key]))) return "target";
-    if (prior && equal(projected, project(prior[key]))) return "prior_seed";
+    if (
+      priors.some((prior) => prior?.[key] && equal(projected, project(prior[key])))
+    ) return "prior_seed";
     if (equal(projected, baselineValue)) return "baseline";
     return "invalid";
   };
@@ -1427,6 +2248,20 @@ export async function reconcileSeed(client, options, hero, media = {}) {
     menuId: documents.menu ? String(documents.menu.id) : "pending-menu",
     galleryId: documents.gallery ? String(documents.gallery.id) : "pending-gallery",
     contactId: documents.contact ? String(documents.contact.id) : "pending-contact",
+    /*
+     * #3149 wave 4 — the sixth page needs an id here for the same reason the
+     * other four do.
+     *
+     * Missing from this map, the reservations page is still CREATED (the loop
+     * below walks SEED_PAGE_ROLES) but the navigation re-derived from these
+     * ids never names it: a real page, reachable by URL, absent from every
+     * menu on the site. That is precisely the #2830 defect this function was
+     * written to end — "About and Menu were described but never created" —
+     * reappearing one role along, and the caller suite caught it.
+     */
+    reservationsId: documents.reservations
+      ? String(documents.reservations.id)
+      : "pending-reservations",
   });
   let target = seedDocuments(idsOf());
 

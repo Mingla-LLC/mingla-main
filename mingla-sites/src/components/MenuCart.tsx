@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-import { menuSectionSlug, sectionForHash } from "../lib/menuSections";
+import { menuGroupOf, menuSectionSlug, sectionForHash } from "../lib/menuSections";
 import { useCart } from "./CartScope";
 
 /**
@@ -54,14 +54,6 @@ type Priced = {
   }[];
   error?: string;
 };
-
-/*
- * The group a section belongs to: the part before an em/en dash, or the whole
- * name when there is no separator ("DESSERT" is its own group).
- */
-function groupOf(name: string): string {
-  return name.split(/\s+[\u2014\u2013-]\s+/)[0]?.trim() || name;
-}
 
 function money(minor: number | null | undefined, currency: string | null | undefined): string | null {
   if (typeof minor !== "number" || !Number.isFinite(minor)) return null;
@@ -133,7 +125,7 @@ export function MenuCart({ items }: { items: CartItem[] }) {
     () => Array.from(new Set(items.map((item) => item.section))),
     [items],
   );
-  const groups = useMemo(() => Array.from(new Set(names.map(groupOf))), [names]);
+  const groups = useMemo(() => Array.from(new Set(names.map(menuGroupOf))), [names]);
   const grouped = groups.length > 1 && groups.length < names.length;
   const sections = useMemo(
     () => ["all", ...(grouped ? groups : names)],
@@ -147,7 +139,7 @@ export function MenuCart({ items }: { items: CartItem[] }) {
   const fromHash = sectionForHash(hash, grouped ? [...sections, ...names] : sections);
   const section = override?.hash === hash
     ? override.value
-    : (fromHash ? (grouped && fromHash !== "all" ? groupOf(fromHash) : fromHash) : "all");
+    : (fromHash ? (grouped && fromHash !== "all" ? menuGroupOf(fromHash) : fromHash) : "all");
   const setSection = useCallback(
     (value: string) => setOverride({ hash, value }),
     [hash],
@@ -156,7 +148,7 @@ export function MenuCart({ items }: { items: CartItem[] }) {
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return items.filter((item) =>
-      (section === "all" || (grouped ? groupOf(item.section) === section : item.section === section)) &&
+      (section === "all" || (grouped ? menuGroupOf(item.section) === section : item.section === section)) &&
       (needle === "" ||
         item.name.toLowerCase().includes(needle) ||
         (item.description ?? "").toLowerCase().includes(needle))

@@ -140,7 +140,28 @@ describe("#3149 the stats row is figures with labels", () => {
 
   it("refuses a key the renderer does not read", () => {
     refuses({ ...STATS, icon: "clock" });
-    refuses({ type: "stats", items: [{ figure: "24/7", icon: "clock" }] });
+    /*
+     * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+     *   refuses({ type: "stats", items: [{ figure: "24/7", icon: "clock" }] });
+     *
+     * A FIGURE now carries an icon, because the reference's four cards each
+     * have one and this had no way to hold it. The BLOCK still does not —
+     * asserted on the line above — because an icon belongs to a card and not
+     * to the row of them.
+     *
+     * The property this line was protecting is not dropped, it is sharpened:
+     * the value is no longer free text. Only names from the contract's closed
+     * list are accepted, so an icon can never arrive as markup or as a URL,
+     * and the two assertions below are what now enforce it.
+     */
+    refuses({ type: "stats", items: [{ figure: "24/7", icon: "fa-clock" }] });
+    refuses({ type: "stats", items: [{ figure: "24/7", icon: "" }] });
+  });
+
+  it("accepts a figure with an icon named from the closed list", () => {
+    expect(
+      accepts({ type: "stats", items: [{ figure: "24/7", icon: "clock" }] }),
+    ).toBe(true);
   });
 });
 

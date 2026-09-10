@@ -91,20 +91,57 @@ const find = (page, blockType, heading) => {
  * wrong one is.
  */
 const TRANSCRIBED = [
-  ["home", "rich_text", "Come as you are", "The place"],
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   ["home", "rich_text", "Come as you are", "The place"],
+   *   ["home", "gallery", "What people order", "The menu"],
+   *
+   * Neither eyebrow changed — "The place" and "The menu" are still gögi's own
+   * words over those two sections. What changed is the BLOCK UNDER each, and
+   * both rows now pin the new one:
+   *
+   *   - The story is a `media_feature` composite rather than prose alone, and
+   *     its heading is now their real one. Their page reads "A room that never
+   *     closes"; ours read "Come as you are", which is the line their page
+   *     QUOTES underneath rather than the heading. So this row got more
+   *     accurate, not less.
+   *   - "What people order" is a `menu_preview` carrying Mingla's real dishes
+   *     and prices, where it used to be four photographs and no price anywhere.
+   *
+   * SHARPENED: the table is the sole input to "exactly the transcribed
+   * eyebrows exist, and no others", so every row here is enforced in both
+   * directions. Two more rows are appended below for sections that carried no
+   * eyebrow at all before this wave.
+   */
+  ["home", "media_feature", "A room that never closes", "The place"],
   // #3149 wave 3 — their "Why people keep coming back / No closing time"
   // section, added to the ledger as it was transcribed. Appended, never
   // rewritten: this table only ever grows as more of their site is carried.
   ["home", "stats", "No closing time", "Why people keep coming back"],
   ["home", "video_feature", "Day or night, open for a bite", "Admiralty Way"],
-  ["home", "gallery", "What people order", "The menu"],
+  ["home", "menu_preview", "What people order", "The menu"],
   ["home", "team", "Meet the team", "The kitchen"],
   ["home", "contact_handoff", "Call gögi", "Come through"],
   ["about", "rich_text", "Find gögi", "The idea"],
   ["about", "team", "The team", "The kitchen"],
   ["menu", "menu_board", "The menu", "Everything, with prices"],
   ["gallery", "gallery", "In the room", "Photos"],
-  ["contact", "hours_location", "Visit gögi", "Getting here"],
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   ["contact", "hours_location", "Visit gögi", "Getting here"],
+   *
+   * The Visit page is retired. "Getting here" is still gögi's own line and is
+   * still printed — over the MAP, on the Reservations page, which is where
+   * their own site prints it. On the retired page the hours block held it only
+   * because the two would otherwise have collided.
+   *
+   * SHARPENED: this table is the sole input to "exactly the transcribed
+   * eyebrows exist, and no others", so the row moving means the eyebrow is
+   * enforced on its new block in both directions — present there, absent
+   * everywhere else.
+   */
+  ["reservations", "map_embed", "Admiralty Way", "Getting here"],
+  ["reservations", "venue_reservation", "Book a table at gögi", "Come through"],
 ];
 
 test("#3149 every transcribed eyebrow reaches the seeded block", () => {
@@ -179,9 +216,21 @@ test("#3149 a block gögi did not label carries NO eyebrow", () => {
    * nothing — a missing line is honest, an invented one is not. The same goes
    * for the contact page's phone handoff and the lone films on About and Menu.
    */
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   find(documents.contact, "contact_handoff", "Call gögi"),
+   *
+   * That handoff was on the retired Visit page. The identical one on the home
+   * page — same heading, same body, same label, same tel: link — is what
+   * survives, and it is already covered by the row above it.
+   *
+   * SHARPENED: the reservations page's own hours block replaces it in this
+   * list, which is a block that carries no eyebrow for exactly the reason this
+   * test exists — gögi print no line over it, so none is invented.
+   */
   const unlabelled = [
     find(documents.home, "hours_location", "Open day and night"),
-    find(documents.contact, "contact_handoff", "Call gögi"),
+    find(documents.reservations, "hours_location", "When you can come"),
     find(documents.about, "video_feature", "Meet the team"),
     find(documents.menu, "video_feature", "Coconut rice, but make it gögi"),
   ];
@@ -201,7 +250,7 @@ test("#3149 exactly the transcribed eyebrows exist, and no others", () => {
   // The guard against a later edit quietly re-introducing a placeholder.
   const documents = seeded();
   const found = [];
-  for (const role of ["home", "about", "menu", "gallery", "contact"]) {
+  for (const role of ["home", "about", "menu", "gallery", "reservations"]) {
     for (const block of documents[role].blocks) {
       if (block.eyebrow !== undefined) {
         found.push([role, block.blockType, block.heading, block.eyebrow]);
@@ -227,7 +276,7 @@ test("#3149 exactly the transcribed eyebrows exist, and no others", () => {
 test("#3149 group_heading exists on exactly the two run heads", () => {
   const documents = seeded();
   const found = [];
-  for (const role of ["home", "about", "menu", "gallery", "contact"]) {
+  for (const role of ["home", "about", "menu", "gallery", "reservations"]) {
     for (const block of documents[role].blocks) {
       if (block.group_heading !== undefined) {
         found.push(`${role} | ${block.group_heading}`);
@@ -244,7 +293,7 @@ test("#3149 every eyebrow is short enough for the CMS field", () => {
   // The Studio field is capped at 60. A seed that exceeds it would be rejected
   // on save, which the seed reports as an opaque validation failure.
   const documents = seeded();
-  for (const role of ["home", "about", "menu", "gallery", "contact"]) {
+  for (const role of ["home", "about", "menu", "gallery", "reservations"]) {
     for (const block of documents[role].blocks) {
       if (typeof block.eyebrow === "string") {
         assert.ok(
@@ -266,10 +315,37 @@ test("#3149 a seed with no media still carries the eyebrows it can", () => {
    * that is actually live.
    */
   const documents = seeded({});
-  assert.equal(find(documents.home, "rich_text").eyebrow, "The place");
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4:
+   *   assert.equal(find(documents.home, "rich_text").eyebrow, "The place");
+   *
+   * The home story is a `media_feature` now. SHARPENED rather than moved: the
+   * block needs the hero photograph, so this also pins that it SURVIVES a seed
+   * with no other media — the exact shape that is live today — and the
+   * assertion below pins that it drops cleanly when even that is missing,
+   * rather than publishing a headless caption.
+   */
+  assert.equal(find(documents.home, "media_feature").eyebrow, "The place");
+  assert.equal(
+    find(documents.home, "media_feature").heading,
+    "A room that never closes",
+  );
+  assert.equal(
+    seedDocuments({
+      heroMediaId: null,
+      homeId: HOME_ID,
+      aboutId: ABOUT_ID,
+      menuId: MENU_ID,
+      galleryId: GALLERY_ID,
+      contactId: CONTACT_ID,
+      tenantId: TENANT_ID,
+      media: {},
+    }).home.blocks.filter((block) => block.blockType === "media_feature").length,
+    0,
+  );
   assert.equal(find(documents.home, "team").eyebrow, "The kitchen");
   assert.equal(find(documents.menu, "menu_board").eyebrow, "Everything, with prices");
-  assert.equal(find(documents.contact, "hours_location").eyebrow, "Getting here");
+  assert.equal(find(documents.reservations, "map_embed").eyebrow, "Getting here");
   // No films uploaded means no run, so nothing titles one.
   for (const role of ["home", "about", "menu", "gallery"]) {
     for (const block of documents[role].blocks) {

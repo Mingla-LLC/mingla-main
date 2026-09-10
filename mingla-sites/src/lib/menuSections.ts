@@ -29,3 +29,33 @@ export function sectionForHash(
   if (wanted === "") return null;
   return sections.find((section) => menuSectionSlug(section) === wanted) ?? null;
 }
+
+/*
+ * #3149 wave 4 — ONE OWNER for splitting a Mingla section name.
+ *
+ * Mingla's own section names carry their course as a prefix: "FOOD — Rice
+ * Bowls", "DRINKS — Cocktails". The menu's filter chips need the part BEFORE
+ * the separator so several sections collapse into one course; the footer's
+ * menu column needs the part AFTER it, because "FOOD — Rice Bowls" in a
+ * footer column reads as a database row rather than as something to eat.
+ *
+ * Both halves live here rather than beside either caller. The splitting rule
+ * is the same rule, and two copies of it would eventually disagree about what
+ * a dash is — which would show up as a chip that filters nothing.
+ */
+const SEPARATOR = /\s+[\u2014\u2013-]\s+/;
+
+/** "FOOD — Rice Bowls" → "FOOD". A name with no separator is its own group. */
+export function menuGroupOf(name: string): string {
+  return name.split(SEPARATOR)[0]?.trim() || name;
+}
+
+/**
+ * "FOOD — Rice Bowls" → "Rice Bowls". A name with no separator is returned
+ * whole: a section called "Desserts" is already what a reader should see.
+ */
+export function menuSubNameOf(name: string): string {
+  const parts = name.split(SEPARATOR);
+  return (parts.length > 1 ? parts.slice(1).join(" — ").trim() : name.trim()) ||
+    name;
+}

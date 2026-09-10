@@ -28,7 +28,14 @@ const ABOUT_ID = "00000000-0000-4000-8000-000000000109";
 const MENU_ID = "00000000-0000-4000-8000-000000000110";
 // Payload gives every created document its own id. A fake that returns one id
 // for every create cannot model a multi-page seed.
-const CREATED_PAGE_IDS = { about: ABOUT_ID, menu: MENU_ID, contact: CONTACT_ID };
+// #3149 wave 4 — the sixth page the seed creates.
+const RESERVATIONS_ID = "00000000-0000-4000-8000-000000000111";
+const CREATED_PAGE_IDS = {
+  about: ABOUT_ID,
+  menu: MENU_ID,
+  contact: CONTACT_ID,
+  reservations: RESERVATIONS_ID,
+};
 const MEDIA_ID = "00000000-0000-4000-8000-000000000105";
 const SETTINGS_ID = "00000000-0000-4000-8000-000000000106";
 const NAVIGATION_ID = "00000000-0000-4000-8000-000000000107";
@@ -235,12 +242,39 @@ test("dry-run is read-only and reports the exact pending actions", async () => {
   assert.equal(result.mode, "dry-run");
   assert.equal(result.changed, false);
   assert.deepEqual(client.calls, ["read"]);
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4 — one entry appended:
+   *   "create_contact_draft",
+   *   "update_navigation_draft",
+   *
+   * The seed now describes a booking page, so a dry-run against an unseeded
+   * site reports a create for it.
+   *
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4 — one entry removed:
+   *   "create_contact_draft",
+   *
+   * The Visit page is retired: it publishes with no blocks, so it is disabled,
+   * and the caller never creates a page it would not publish. That rule is
+   * older than this wave — "an empty draft the brand did not ask for is
+   * clutter in their Studio" — and this is the first time it has applied to a
+   * page being taken away rather than one not yet earned.
+   *
+   * SHARPENED: still an exact-order deepEqual over the whole plan, so a
+   * retired page that started being created again fails here, as does one
+   * created after the navigation that has to name it.
+   *
+   * SHARPENED: this is an exact-order deepEqual over the WHOLE plan, so the
+   * new entry is pinned in its position — after contact, before the navigation
+   * write — which is the ordering the caller depends on. A page created after
+   * the navigation is written is a page the navigation cannot name, and that
+   * is the #2830 defect this suite exists for.
+   */
   assert.deepEqual(result.actions, [
     "upload_hero_through_private_pipeline",
     "update_home_draft",
     "create_about_draft",
     "create_menu_draft",
-    "create_contact_draft",
+    "create_reservations_draft",
     "update_navigation_draft",
     "update_footer_draft",
     "update_site_settings_draft",
@@ -257,6 +291,21 @@ test("apply uses every real boundary once and a successful rerun writes nothing"
     actions: [],
     changed: true,
   });
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4 — one call appended:
+   *   "contact",
+   *   "navigation",
+   *
+   * `"contact"` is gone from this list for the same reason it is gone from the
+   * plan above: a retired page is never created.
+   *
+   * SHARPENED for the same reason as the plan: this is the record of every
+   * boundary the apply actually crossed, in order, and it pins that the
+   * reservations page is WRITTEN BEFORE the navigation that has to name it.
+   * Without that entry in this exact position the caller could create the page
+   * after the navigation and nothing here would notice — which is precisely
+   * the defect this wave introduced and this suite caught.
+   */
   assert.deepEqual(client.calls, [
     "read",
     "upload",
@@ -264,7 +313,7 @@ test("apply uses every real boundary once and a successful rerun writes nothing"
     "home",
     "about",
     "menu",
-    "contact",
+    "reservations",
     "navigation",
     "footer",
     "settings",
@@ -285,22 +334,63 @@ test("apply uses every real boundary once and a successful rerun writes nothing"
     aboutId: ABOUT_ID,
     menuId: MENU_ID,
     contactId: CONTACT_ID,
+    reservationsId: RESERVATIONS_ID,
     tenantId: TENANT_ID,
   });
   assert.deepEqual(client.snapshot.navigation[0].pages, target.navigation.pages);
+  /*
+   * #3149 wave 4 — and the sixth page is actually IN that navigation.
+   *
+   * The comparison above passes whenever the two agree, including when both
+   * omit the page. This is the half that would have caught the real defect
+   * this wave introduced: `reconcileSeed` created the reservations page and
+   * then built the navigation from an id map that had no slot for it, so the
+   * page existed, was reachable by URL, and appeared in no menu on the site.
+   */
+  assert.ok(
+    client.snapshot.navigation[0].pages.includes(RESERVATIONS_ID),
+    "the reservations page was created but never linked",
+  );
   assert.equal(client.snapshot.settings[0].display_name, "gögi");
 });
 
 test("the seed copy contains no excluded commerce, reservation, endorsement, or provider claims", () => {
   const serialized = JSON.stringify(GOGI_SEED_COPY).toLowerCase();
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4 — two entries removed from
+   * this list:
+   *   "reservation",
+   *   "book a table",
+   *
+   * These two were here on a PREMISE, recorded in the #2830 ingest brief:
+   * "nothing claims they take bookings, because nothing says they do." The
+   * premise is now false on evidence, so the ban it produced goes with it.
+   *
+   * What the evidence actually shows, stated precisely because the distinction
+   * is the entire justification: gögi have a real forward book of reservations
+   * in Mingla — 20 of them, across 20 distinct future slot days between
+   * 2026-08-28 and 2026-09-24, so not seeded rows. Every one is
+   * `source = 'phone'` and `created_via = 'operator'`, with `consumer_user_id`
+   * NULL on all 20 and zero rows in `venue_organic_reservation_attributions`.
+   *
+   * So they DO take bookings — by phone, typed in by their own staff — and
+   * NOBODY has ever booked themselves. That is not a capability they lack; it
+   * is a channel they do not yet have, which is exactly why a booking page is
+   * worth building. It is their first self-serve one.
+   *
+   * DROPPED, and honestly labelled as such: no replacement can assert the
+   * absence of words the site now deliberately prints. The property those two
+   * entries protected is NOT abandoned, though — it is re-stated below as what
+   * it was really guarding, which is that the seed reproduces none of gögi's
+   * own WhatsApp-and-bank-transfer booking flow. Every other entry in the list
+   * is untouched, including "whatsapp" and both account numbers.
+   */
   for (const excluded of [
     "whatsapp",
     "moniepoint",
     "zenith",
     "5255950743",
     "1311904951",
-    "reservation",
-    "book a table",
     "email",
     "somethingelse",
     "vercel",
@@ -309,4 +399,27 @@ test("the seed copy contains no excluded commerce, reservation, endorsement, or 
   ]) {
     assert.equal(serialized.includes(excluded), false, excluded);
   }
+  /*
+   * The replacement, and it is stricter than a substring ban. A booking on
+   * this site goes through Mingla, which already owns the availability, the
+   * cancellation policy and the attribution — so the seed may say a table can
+   * be booked, and may NOT reproduce their own channel for doing it.
+   */
+  for (const excluded of ["wa.me", "send the request", "send proof", "0912 711 7528 with"]) {
+    assert.equal(serialized.includes(excluded), false, excluded);
+  }
+  // And the page that does exist carries no destination of its own at all —
+  // the link is derived from the brand by the publisher.
+  const reservations = seedDocuments({
+    heroMediaId: MEDIA_ID,
+    homeId: HOME_ID,
+    tenantId: TENANT_ID,
+  }).reservations;
+  const booking = reservations.blocks.find(
+    (block) => block.blockType === "venue_reservation",
+  );
+  assert.ok(booking, "the booking page must carry a reservation block");
+  assert.equal(booking.url, undefined);
+  assert.equal(booking.href, undefined);
+  assert.equal(booking.reservation_target_id, undefined);
 });

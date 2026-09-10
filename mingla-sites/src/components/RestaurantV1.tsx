@@ -8,8 +8,14 @@ import {
   navigablePages,
   type ArtifactPage,
 } from "../lib/pageRouting";
-import { isCanonicalMinglaHref, isSafeHref } from "../contracts/artifact";
+import {
+  isCanonicalMinglaHref,
+  isSafeHref,
+  isStatsIcon,
+} from "../contracts/artifact";
 import { ConsentControl } from "./ConsentControl";
+import { LocalNowLine, OpenNowPill } from "./LocalClock";
+import { StatIcon } from "./StatIcon";
 import { MenuCart, type CartItem } from "./MenuCart";
 import { HeroVideo } from "./HeroVideo";
 import { ReelVideo } from "./ReelVideo";
@@ -17,7 +23,8 @@ import { RevealOnScroll } from "./RevealOnScroll";
 import { HeaderScrollState } from "./HeaderScrollState";
 import { GalleryLightbox } from "./GalleryLightbox";
 import { MapEmbed } from "./MapEmbed";
-import { menuSectionSlug } from "../lib/menuSections";
+import { menuSectionSlug, menuSubNameOf } from "../lib/menuSections";
+import { SocialGlyph, socialIconFor } from "./SocialIcon";
 import { CartScope } from "./CartScope";
 import { HeaderCart } from "./HeaderCart";
 import { SiteNav } from "./SiteNav";
@@ -41,6 +48,40 @@ function firstBlock(
 ): RestaurantBlock | undefined {
   return blocks.find((block) => block.type === type);
 }
+
+/*
+ * #3149 wave 4 -- a button needs BOTH HALVES or it is not a button.
+ *
+ * A label with no destination is a word that does nothing, and a destination
+ * with no label is a link with no accessible name. Every new call to action in
+ * this wave -- under the team grid, under the reels, beside the menu preview,
+ * at the foot of the story -- is optional on both sides, so a half-filled
+ * Studio form renders NO control rather than a broken one.
+ */
+function ctaOf(
+  label: unknown,
+  href: unknown,
+): { label: string; href: string } | null {
+  const written = typeof label === "string" ? label.trim() : "";
+  if (!written || !isSafeHref(href)) return null;
+  return { label: written, href };
+}
+
+/*
+ * #3149 wave 4 -- the zone a live clock may be drawn from, or null.
+ *
+ * BOTH facts are required and NEITHER is inferred. `hours` is a list of
+ * display strings -- "Open 24 hours" is a sentence and not a schedule -- so a
+ * venue that has not declared `always_open` gets no open/closed claim at all,
+ * whatever its hours happen to read. That is the whole reason this was refused
+ * twice before the fields existed.
+ */
+function liveClockZone(block: RestaurantBlock | undefined): string | null {
+  if (!block || block.type !== "hours_location") return null;
+  if (block.always_open !== true) return null;
+  return typeof block.timezone === "string" ? block.timezone : null;
+}
+
 
 function SafeLink({ href, children, className, context, ctaKind = "checkout", offeringId }: { href: unknown; children: React.ReactNode; className?: string; context?: SiteEventContext; ctaKind?: "offering" | "reservation" | "checkout" | "contact" | "menu"; offeringId?: string }) {
   if (!isSafeHref(href)) return null;
@@ -125,7 +166,7 @@ function Eyebrow({ label, heading }: { label: unknown; heading: unknown }) {
   return <p className="eyebrow">{written}</p>;
 }
 
-function Block({ block, context, primaryHeading = false, facts }: { block: RestaurantBlock; context: SiteEventContext; primaryHeading?: boolean; facts?: React.ReactNode }) {
+function Block({ block, context, primaryHeading = false, facts, pill }: { block: RestaurantBlock; context: SiteEventContext; primaryHeading?: boolean; facts?: React.ReactNode; pill?: React.ReactNode }) {
   switch (block.type) {
     case "hero": {
       const Heading = primaryHeading ? "h1" : "h2";
@@ -135,10 +176,28 @@ function Block({ block, context, primaryHeading = false, facts }: { block: Resta
        * with the same 0.82 gradient, so it compounded to ~0.97 and buried the
        * brand's own photography.
        */
-      return <section className="hero" style={isSafeHref(block.media_url) ? { backgroundImage: `url(${JSON.stringify(block.media_url).slice(1, -1)})` } : undefined}>{isSafeHref(block.video_url) && isSafeHref(block.media_url) ? <HeroVideo src={text(block.video_url)} poster={text(block.media_url)} /> : null}<div><Heading>{headline.lead}{headline.accent ? <>{" "}<span className="accent-line">{headline.accent}</span></> : null}</Heading>{block.subheading ? <p>{text(block.subheading)}</p> : null}<div className="hero-actions">{items(block.ctas).slice(0, 2).map((cta, index) => <SafeLink key={index} href={cta.href} context={context} className={index ? "button ghost" : "button accent"}>{text(cta.label, "Learn more")}</SafeLink>)}</div></div>{facts}{primaryHeading ? <span className="hero-scroll" aria-hidden="true">Scroll</span> : null}</section>;
+      return <section className="hero" style={isSafeHref(block.media_url) ? { backgroundImage: `url(${JSON.stringify(block.media_url).slice(1, -1)})` } : undefined}>{isSafeHref(block.video_url) && isSafeHref(block.media_url) ? <HeroVideo src={text(block.video_url)} poster={text(block.media_url)} /> : null}<div>{pill}<Heading>{headline.lead}{headline.accent ? <>{" "}<span className="accent-line">{headline.accent}</span></> : null}</Heading>{block.subheading ? <p>{text(block.subheading)}</p> : null}<div className="hero-actions">{items(block.ctas).slice(0, 2).map((cta, index) => <SafeLink key={index} href={cta.href} context={context} className={index ? "button ghost" : "button accent"}>{text(cta.label, "Learn more")}</SafeLink>)}</div></div>{facts}{primaryHeading ? <span className="hero-scroll" aria-hidden="true">Scroll</span> : null}</section>;
     }
     case "rich_text": return <section className="prose editorial-prose"><Eyebrow label={block.eyebrow} heading={block.heading} /><h2>{text(block.heading)}</h2>{items(block.paragraphs).map((paragraph, index) => <p key={index}>{text(paragraph.text)}</p>)}</section>;
-    case "media_feature": return <section className="feature editorial-feature"><div className="editorial-media">{isSafeHref(block.media_url) ? <img src={text(block.media_url)} alt={text(block.alt)} width={960} height={720} /> : null}</div><div><Eyebrow label={block.eyebrow} heading={block.heading} /><h2>{text(block.heading)}</h2><p>{text(block.caption)}</p></div></section>;
+    /*
+     * #3149 wave 4 -- the STORY section, as one composite.
+     *
+     * The reference pairs the prose with a circular crop carrying a badge, the
+     * quotation inline rather than banished to its own band, and a button
+     * onward. Ours printed the writing and the quotation as two unrelated
+     * sections with no picture at all, which is why the top of the home page
+     * read as a document rather than as a page.
+     *
+     * Every added element is printed ONLY when the brand supplied it, and with
+     * none of them supplied this emits byte-for-byte what it emitted before.
+     */
+    case "media_feature": {
+      const badge = text(block.badge_figure).trim();
+      const quote = text(block.quote).trim();
+      const featureCta = ctaOf(block.cta_label, block.cta_href);
+      const circular = text(block.media_shape) === "circle";
+      return <section className="feature editorial-feature"><div className={circular ? "editorial-media editorial-media-circle" : "editorial-media"}>{isSafeHref(block.media_url) ? <img src={text(block.media_url)} alt={text(block.alt)} width={960} height={720} /> : null}{badge ? <span className="media-badge"><strong>{badge}</strong>{block.badge_label ? <span>{text(block.badge_label)}</span> : null}</span> : null}</div><div><Eyebrow label={block.eyebrow} heading={block.heading} /><h2>{text(block.heading)}</h2><p>{text(block.caption)}</p>{quote ? <figure className="pull-quote feature-quote"><blockquote><p>{quote}</p></blockquote>{block.quote_attribution ? <figcaption>{text(block.quote_attribution)}</figcaption> : null}</figure> : null}{featureCta ? <SafeLink href={featureCta.href} context={context} className="button ghost feature-cta">{featureCta.label}</SafeLink> : null}</div></section>;
+    }
     case "cta": return <section className="cta"><Eyebrow label={block.eyebrow} heading={block.heading} /><h2>{text(block.heading)}</h2><p>{text(block.body)}</p><SafeLink href={block.href} context={context} className="button accent">{text(block.label, "Continue")}</SafeLink></section>;
     case "offering_grid": return <section className="editorial-grid"><Eyebrow label={block.eyebrow} heading={text(block.heading, "Experiences")} /><h2>{text(block.heading, "Experiences")}</h2><div className="grid">{items(block.offerings).map((offering, index) => <article className="tile" key={text(offering.id, String(index))}><h3>{text(offering.label, "Experience")}</h3><p>{text(offering.summary)}</p><SafeLink href={offering.url} context={context} ctaKind="offering" offeringId={text(offering.id)}>View on Mingla</SafeLink></article>)}</div></section>;
     case "venue_reservation": return <section className="cta"><Eyebrow label={block.eyebrow} heading={text(block.heading, "Make a reservation")} /><h2>{text(block.heading, "Make a reservation")}</h2><p>{text(block.body)}</p><SafeLink href={block.url} context={context} ctaKind="reservation" className="button accent">Continue with Mingla</SafeLink></section>;
@@ -168,10 +227,70 @@ function Block({ block, context, primaryHeading = false, facts }: { block: Resta
       }
       return <section className="menu-board"><Eyebrow label={block.eyebrow} heading={text(block.heading, "Menu")} /><h2>{text(block.heading, "Menu")}</h2>{block.note ? <p className="menu-note">{text(block.note)}</p> : null}{sections.map((section, sectionIndex) => <div className="menu-section" id={menuSectionSlug(text(section.name))} key={`${text(section.name)}-${sectionIndex}`}><h3>{text(section.name)}</h3>{section.description ? <p className="menu-section-note">{text(section.description)}</p> : null}<ul className="menu-list">{items(section.items).map((item, itemIndex) => { const price = formatMenuPrice(item.price_minor, item.currency); return <li className="menu-row" key={`${text(item.name)}-${itemIndex}`}><div className="menu-row-head"><span className="menu-item-name">{text(item.name)}</span><span className="menu-leader" aria-hidden="true" />{price ? <span className="menu-price">{price}</span> : null}</div>{item.description ? <p className="menu-item-note">{text(item.description)}</p> : null}</li>; })}</ul></div>)}</section>;
     }
+    /*
+     * #3149 wave 4 -- A TASTE OF THE MENU, AND IT IS THE REAL MENU.
+     *
+     * The home page used to carry four photographs of food and no prices at
+     * all, under a heading that promised "what people order". The reference
+     * carries real sections with real prices beside the photographs, and a
+     * button to the rest.
+     *
+     * This block is the ONLY thing that could honestly do that, because it
+     * is the one that already receives Mingla's own menu at publish time.
+     * Nothing is retyped: the sections are Mingla's rows, in Mingla's order,
+     * with two of them shown and the rest a click away. The cart is
+     * deliberately absent even where the site is orderable -- a preview that
+     * could take an order would be a second, shorter checkout on a page that
+     * is not the menu.
+     */
+    case "menu_preview": {
+      const sections = items(block.sections);
+      const sectionCap = typeof block.section_limit === "number"
+        ? block.section_limit
+        : sections.length;
+      const itemCap = typeof block.item_limit === "number"
+        ? block.item_limit
+        : null;
+      const photos = items(block.images)
+        .filter((image) => isSafeHref(image.url))
+        .slice(0, 4);
+      const previewCta = ctaOf(block.cta_label, block.cta_href);
+      return <section className="menu-board menu-preview"><Eyebrow label={block.eyebrow} heading={text(block.heading, "Menu")} /><h2>{text(block.heading, "Menu")}</h2>{block.note ? <p className="menu-note">{text(block.note)}</p> : null}<div className="menu-preview-split"><div className="menu-preview-list">{sections.slice(0, sectionCap).map((section, sectionIndex) => <div className="menu-section" key={`${text(section.name)}-${sectionIndex}`}><h3>{text(section.name)}</h3>{section.description ? <p className="menu-section-note">{text(section.description)}</p> : null}<ul className="menu-list">{(itemCap === null ? items(section.items) : items(section.items).slice(0, itemCap)).map((item, itemIndex) => { const price = formatMenuPrice(item.price_minor, item.currency); return <li className="menu-row" key={`${text(item.name)}-${itemIndex}`}><div className="menu-row-head"><span className="menu-item-name">{text(item.name)}</span><span className="menu-leader" aria-hidden="true" />{price ? <span className="menu-price">{price}</span> : null}</div>{item.description ? <p className="menu-item-note">{text(item.description)}</p> : null}</li>; })}</ul></div>)}{previewCta ? <SafeLink href={previewCta.href} context={context} ctaKind="menu" className="button accent menu-preview-cta">{previewCta.label}</SafeLink> : null}</div>{photos.length ? <div className="menu-preview-photos">{photos.map((photo, index) => <img key={`${text(photo.url)}-${index}`} src={text(photo.url)} alt={text(photo.alt)} width={640} height={640} loading="lazy" />)}</div> : null}</div></section>;
+    }
+    /*
+     * #3149 wave 4 -- ONE film runs FULL BLEED WITH ITS WORDS OVER IT.
+     *
+     * The reference's single film is the width of the page with the play
+     * control, the eyebrow, the heading and the line under it printed on top
+     * of the footage. Ours stacked a heading, then a caption, then a portrait
+     * card underneath -- three separate things where theirs is one.
+     *
+     * The copy is emitted AFTER the film so it stacks above it in the same
+     * grid cell, and it is `pointer-events: none` in the stylesheet, which
+     * makes the whole frame the play control rather than only the round button
+     * in the middle of it.
+     */
     case "video_feature":
-      return <section className="video-feature"><Eyebrow label={block.eyebrow} heading={block.heading} /><h2>{text(block.heading)}</h2>{block.caption ? <p className="video-caption">{text(block.caption)}</p> : null}<ReelVideo src={text(block.video_url)} poster={text(block.poster_url)} label={text(block.heading, "Video")} /></section>;
-    case "team":
-      return <section className="team"><Eyebrow label={block.eyebrow} heading={block.heading} /><h2>{text(block.heading, "The team")}</h2>{block.caption ? <p>{text(block.caption)}</p> : null}<ul className="team-grid">{items(block.members).map((member, index) => <li key={`${text(member.name)}-${index}`}>{isSafeHref(member.media_url) ? <img src={text(member.media_url)} alt={text(member.alt)} width={480} height={480} loading="lazy" /> : <span className="team-initial" aria-hidden="true">{text(member.name).slice(0, 1)}</span>}<strong>{text(member.name)}</strong>{member.role ? <span>{text(member.role)}</span> : null}</li>)}</ul></section>;
+      return <section className="video-feature"><ReelVideo src={text(block.video_url)} poster={text(block.poster_url)} label={text(block.heading, "Video")} /><div className="video-feature-copy"><Eyebrow label={block.eyebrow} heading={block.heading} /><h2>{text(block.heading)}</h2>{block.caption ? <p className="video-caption">{text(block.caption)}</p> : null}</div></section>;
+    /*
+     * #3149 wave 4 -- the role ABOVE the name, and a way to show some of them.
+     *
+     * `role` has been in the contract since #2830 and nothing ever set it, so
+     * ten people appeared as ten nicknames with no idea who did what. The
+     * reference prints the role first, in gold, over the name -- and shows
+     * five of ten with a button to the rest, because a wall of ten portraits
+     * is the whole page.
+     *
+     * No `preview_count` means every member, which is what this always did.
+     */
+    case "team": {
+      const members = items(block.members);
+      const shown = typeof block.preview_count === "number"
+        ? members.slice(0, block.preview_count)
+        : members;
+      const teamCta = ctaOf(block.cta_label, block.cta_href);
+      return <section className="team"><Eyebrow label={block.eyebrow} heading={block.heading} /><h2>{text(block.heading, "The team")}</h2>{block.caption ? <p>{text(block.caption)}</p> : null}<ul className="team-grid">{shown.map((member, index) => <li key={`${text(member.name)}-${index}`}>{isSafeHref(member.media_url) ? <img src={text(member.media_url)} alt={text(member.alt)} width={480} height={480} loading="lazy" /> : <span className="team-initial" aria-hidden="true">{text(member.name).slice(0, 1)}</span>}{member.role ? <span className="team-role">{text(member.role)}</span> : null}<strong>{text(member.name)}</strong></li>)}</ul>{teamCta ? <SafeLink href={teamCta.href} context={context} className="button ghost team-cta">{teamCta.label}</SafeLink> : null}</section>;
+    }
     /*
      * #3149 -- every photograph opens larger, as every one of theirs does.
      *
@@ -187,7 +306,18 @@ function Block({ block, context, primaryHeading = false, facts }: { block: Resta
         .map((image) => ({ url: text(image.url), alt: text(image.alt) }));
       return <section className="editorial-gallery"><Eyebrow label={block.eyebrow} heading={text(block.heading, "Gallery")} /><h2>{text(block.heading, "Gallery")}</h2><GalleryLightbox images={galleryImages} className={galleryImages.length <= 4 ? "gallery gallery-strip" : "gallery"} /></section>;
     }
-    case "hours_location": return <section className="feature"><div><Eyebrow label={block.eyebrow} heading={text(block.heading, "Hours & location")} /><h2>{text(block.heading, "Hours & location")}</h2><p>{text(block.address)}</p><SafeLink href={block.map_url}>Open map</SafeLink></div><div className="hours">{items(block.hours).map((row, index) => <p key={index}><strong>{text(row.day)}</strong><span>{text(row.value)}</span></p>)}</div></section>;
+    /*
+     * #3149 wave 4 -- "Now 22:05 in Lagos" under the opening hours, which is
+     * exactly where the reference prints it and exactly what it says.
+     *
+     * Printed ONLY when the block declares `always_open` AND names a
+     * timezone. Nothing is read out of the hours strings above it: they are a
+     * brand's own words about their week and there is no clock in them.
+     */
+    case "hours_location": {
+      const zone = liveClockZone(block);
+      return <section className="feature"><div><Eyebrow label={block.eyebrow} heading={text(block.heading, "Hours & location")} /><h2>{text(block.heading, "Hours & location")}</h2><p>{text(block.address)}</p><SafeLink href={block.map_url}>Open map</SafeLink></div><div className="hours">{items(block.hours).map((row, index) => <p key={index}><strong>{text(row.day)}</strong><span>{text(row.value)}</span></p>)}{zone ? <p className="hours-live"><LocalNowLine timezone={zone} /></p> : null}</div></section>;
+    }
     case "testimonials": return <section><Eyebrow label={block.eyebrow} heading={text(block.heading, "What guests say")} /><h2>{text(block.heading, "What guests say")}</h2><div className="grid">{items(block.items).slice(0, 8).map((item, index) => <blockquote className="tile" key={index}>“{text(item.quote)}”<footer>{text(item.name)}</footer></blockquote>)}</div></section>;
     case "faq": return <section><Eyebrow label={block.eyebrow} heading={text(block.heading, "Questions")} /><h2>{text(block.heading, "Questions")}</h2>{items(block.items).slice(0, 12).map((item, index) => <details key={index}><summary>{text(item.question)}</summary><p>{text(item.answer)}</p></details>)}</section>;
     case "contact_handoff": return <section className="cta"><Eyebrow label={block.eyebrow} heading={text(block.heading, "Get in touch")} /><h2>{text(block.heading, "Get in touch")}</h2><p>{text(block.body)}</p><SafeLink href={block.href} context={context} ctaKind="contact" className="button accent">{text(block.label, "Contact")}</SafeLink></section>;
@@ -216,7 +346,19 @@ function Block({ block, context, primaryHeading = false, facts }: { block: Resta
       const rows = items(block.items);
       if (!rows.length) return null;
       const heading = text(block.heading).trim();
-      return <section className="stats"><Eyebrow label={block.eyebrow} heading={heading} />{heading ? <h2>{heading}</h2> : null}{block.body ? <p className="stats-lead">{text(block.body)}</p> : null}<dl className="stats-row">{rows.map((row, index) => <div key={index}><dt>{text(row.figure)}</dt>{row.label ? <dd>{text(row.label)}</dd> : null}</div>)}</dl></section>;
+      /*
+       * #3149 wave 4 -- a card now carries a DRAWING and a SENTENCE, and one
+       * of them can be the one being pointed at.
+       *
+       * The icon is a name from a closed list drawn by this app (see
+       * `StatIcon`), never markup and never a URL: the reference pulls its
+       * four glyphs out of a third-party icon font, and a published site here
+       * makes no third-party request at all.
+       *
+       * `highlight` adds a class and nothing else -- the gold ring is the
+       * stylesheet's business, so a brand cannot style its own page.
+       */
+      return <section className="stats"><Eyebrow label={block.eyebrow} heading={heading} />{heading ? <h2>{heading}</h2> : null}{block.body ? <p className="stats-lead">{text(block.body)}</p> : null}<dl className="stats-row">{rows.map((row, index) => <div key={index} className={row.highlight === true ? "stat-highlight" : undefined}>{isStatsIcon(row.icon) ? <StatIcon name={row.icon} /> : null}<dt>{text(row.figure)}</dt>{row.label ? <dd>{text(row.label)}</dd> : null}{row.body ? <dd className="stat-body">{text(row.body)}</dd> : null}</div>)}</dl></section>;
     }
     /*
      * #3149 -- a line lifted out of the prose, against a gold bar. `figure`
@@ -305,6 +447,76 @@ function reelGridHeading(first: RestaurantBlock): React.ReactNode {
   return <div className="reel-grid-head"><Eyebrow label={first.eyebrow} heading={heading} /><h2>{heading}</h2></div>;
 }
 
+/*
+ * #3149 wave 4 -- and ONE button under the grid, read off the same first film
+ * for the same reason: the button belongs to the run, not to any one reel, and
+ * four films each carrying "Follow @gogilagos" would print it four times.
+ *
+ * No label or no destination means no button, and the grid is exactly what it
+ * was.
+ */
+function reelGridCta(first: RestaurantBlock): React.ReactNode {
+  const cta = ctaOf(first.group_cta_label, first.group_cta_href);
+  if (!cta) return null;
+  return <div className="reel-grid-cta"><SafeLink href={cta.href} className="button ghost">{cta.label}</SafeLink></div>;
+}
+
+/*
+ * #3149 wave 4 -- THE FOOTER'S MENU COLUMN, DERIVED FROM MINGLA.
+ *
+ * The reference lists its courses in the footer: Rice Bowls, Flat Burgers,
+ * Shawarmas, Cocktails. Those are not words to type here -- they are what the
+ * restaurant currently sells, and Mingla owns that. So they are read off the
+ * menu blocks the artifact already carries, which came from Mingla's own
+ * projection at publish time.
+ *
+ * The displayed name is the SUB-NAME. Mingla's sections carry their course as
+ * a prefix -- "FOOD - Rice Bowls" -- and a footer column reading
+ * "FOOD - Rice Bowls" looks like a database row rather than something to eat.
+ * Duplicates collapse: home's taster and the menu page's board project the
+ * same sections, so a naive list would print every course twice.
+ *
+ * A site whose menu Mingla has nothing for gets NO column at all rather than
+ * an empty heading.
+ */
+const FOOTER_MENU_LIMIT = 6;
+
+function footerMenuLinks(
+  artifact: RestaurantArtifact,
+  menuHref: string | null,
+): { label: string; href: string }[] {
+  if (!menuHref) return [];
+  const seen = new Map<string, string>();
+  for (const page of artifact.pages) {
+    if (page.enabled !== true) continue;
+    for (const block of page.blocks ?? []) {
+      if (block.type !== "menu_board" && block.type !== "menu_preview") continue;
+      for (const section of items(block.sections)) {
+        const name = menuSubNameOf(text(section.name)).trim();
+        if (!name) continue;
+        const slug = menuSectionSlug(name);
+        if (!slug || seen.has(slug)) continue;
+        seen.set(slug, name);
+      }
+    }
+  }
+  return [...seen.entries()]
+    .slice(0, FOOTER_MENU_LIMIT)
+    .map(([slug, label]) => ({ label, href: `${menuHref}#${slug}` }));
+}
+
+/*
+ * #3149 wave 4 -- MINGLA'S OWN CREDIT, and the one line in this footer that is
+ * not the brand's.
+ *
+ * It is written here rather than carried in the artifact on purpose: it
+ * belongs to every published site, it is not a brand's to edit or remove, and
+ * a field for it would be a field a brand could put anything into. The
+ * reference's own footer credits its builder in this spot; that is THEIR
+ * credit and is not copied.
+ */
+const MINGLA_CREDIT_HREF = "https://usemingla.com/host";
+
 export function RestaurantV1({
   artifact,
   page,
@@ -339,6 +551,13 @@ export function RestaurantV1({
    * ordered from -- one page carrying a menu_board that names a verified venue.
    * Everything else gets no cart at all rather than a cart that cannot check
    * out.
+   */
+  /*
+   * #3149 wave 4 -- still `menu_board` ONLY. A home page's menu taster is a
+   * `menu_preview`, which is a different block type and deliberately carries
+   * no venue: it cannot be mistaken for the page that sells, so the header's
+   * bag and its "Order now" keep pointing at the real menu rather than at the
+   * page you are already on.
    */
   const orderablePage = artifact.pages.find((page) =>
     page.enabled === true &&
@@ -384,6 +603,51 @@ export function RestaurantV1({
    * site this renders. They used to be a band below it, which pushed them off
    * a full-height hero entirely and read as a separate section.
    */
+  /*
+   * #3149 wave 4 -- the live pill, over the hero and in the inner-page band,
+   * exactly where the reference carries it.
+   *
+   * The zone is read from THIS page's hours block, falling back to the home
+   * page's, because "this venue never closes and it is 22:03 there" is a fact
+   * about the site rather than about the page you happen to be on. Falling
+   * back to home is what puts it on the Gallery and About pages, as theirs
+   * does. A site whose home page declares neither field gets no pill anywhere.
+   */
+  const siteHours = hoursLocation ??
+    firstBlock(homePage(artifact)?.blocks ?? [], "hours_location");
+  const liveZone = liveClockZone(siteHours);
+  const openPill = liveZone ? <OpenNowPill timezone={liveZone} /> : null;
+  /*
+   * #3149 wave 4 -- the footer the reference has, in four columns.
+   *
+   * Every string in it is the brand's own content or Mingla's own data, and
+   * the ONE exception says so in its own comment: the credit at the bottom is
+   * Mingla's chrome and renders for every site.
+   *
+   *   1. The wordmark if one was uploaded, the brand's own short description,
+   *      and a round button per contact link -- the drawing chosen by where
+   *      the link GOES, so a brand that publishes no WhatsApp number gets no
+   *      WhatsApp button rather than an invented one.
+   *   2. The site's own navigation.
+   *   3. The courses Mingla says this restaurant currently sells.
+   *   4. The address, the phone and the hours, all from the footer contract.
+   *
+   * A column whose content the brand has not supplied is not printed. An empty
+   * heading over nothing is worse than three columns.
+   */
+  const menuHref = orderablePage ? hrefForPage(orderablePage as ArtifactPage) : null;
+  const menuLinks = footerMenuLinks(artifact, menuHref);
+  const contactLinks = (artifact.footer.links ?? []).filter((link) =>
+    isSafeHref(link.href)
+  );
+  const iconLinks = contactLinks
+    .map((link) => ({ link, icon: socialIconFor(String(link.href)) }))
+    .filter((row): row is { link: typeof row.link; icon: NonNullable<typeof row.icon> } =>
+      row.icon !== null
+    );
+  const phoneLink = contactLinks.find((link) => String(link.href).startsWith("tel:"));
+  const logo = artifact.site_settings.logo;
+  const footerColumns = <div className="footer-columns"><div className="footer-brand">{logo && isSafeHref(logo.url) ? <img src={logo.url} alt={artifact.site_settings.display_name} width={logo.width} height={logo.height} className="footer-wordmark" /> : <strong>{artifact.site_settings.display_name}</strong>}{artifact.site_settings.short_description ? <p>{artifact.site_settings.short_description}</p> : null}{iconLinks.length ? <ul className="footer-social">{iconLinks.map(({ link, icon }) => <li key={String(link.href)}><SafeLink href={link.href} className="social-button"><SocialGlyph name={icon} /><span className="sr-only">{link.label}</span></SafeLink></li>)}</ul> : null}</div><div><h2>Site</h2><nav aria-label="Footer navigation">{navPages.map((navPage) => <Link key={navPage.role} href={hrefForPage(navPage)}>{navPage.nav_label}</Link>)}</nav></div>{menuLinks.length ? <div><h2>Menu</h2><nav aria-label="Menu sections">{menuLinks.map((link) => <Link key={link.href} href={link.href}>{link.label}</Link>)}</nav></div> : null}<div className="footer-find"><h2>Find us</h2>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}{phoneLink ? <p><SafeLink href={phoneLink.href}>{phoneLink.label}</SafeLink></p> : null}{artifact.footer.hours_summary ? <p className="footer-hours">{artifact.footer.hours_summary}</p> : null}</div></div>;
   const factRail = <aside className="fact-rail" aria-label="Restaurant facts"><dl><div><dt>Visit</dt><dd>{address || "See restaurant details"}</dd></div><div><dt>Hours</dt><dd>{hours ? `${text(hours.day)} ${text(hours.value)}` : "See current opening hours"}</dd></div><div><dt>Contact</dt><dd>{contactLink && isSafeHref(contactLink.href) ? <SafeLink href={contactLink.href} context={context} ctaKind="contact">{contactLink.label}</SafeLink> : "Contact the restaurant"}</dd></div></dl></aside>;
-  return <CartScope siteId={artifact.site_id}><SiteTheme artifact={artifact} /><SiteRuntimeClient context={context} /><RevealOnScroll /><HeaderScrollState /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand">{artifact.site_settings.display_name}</Link><SiteNav links={navPages.map((navPage) => ({ role: navPage.role, label: String(navPage.nav_label ?? ""), href: hrefForPage(navPage), current: navPage.role === current.role }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.role === current.role} /> : null}{headerAction ? <SafeLink href={headerAction.href} context={context} ctaKind={headerAction.kind} className="header-action accent">{headerAction.label}</SafeLink> : null}</header><main id="main" className={contentStartsUnderHeader ? "header-offset" : undefined}>{primaryHeroIndex < 0 ? <header className="page-header" style={isSafeHref(pageBackdrop) ? { backgroundImage: `url(${JSON.stringify(pageBackdrop).slice(1, -1)})` } : undefined}><div><h1>{current.title}</h1><nav className="crumbs" aria-label="Breadcrumb"><Link href="/">Home</Link><span aria-hidden="true">/</span><span aria-current="page">{current.title}</span></nav></div></header> : null}<div className="page-content">{groupReels(current.blocks).map((group, groupIndex) => group.kind === "reels" ? <section className="reel-grid" key={`reels-${groupIndex}`}>{reelGridHeading(group.reels[0]!.block)}{group.reels.map(({ block, index }) => <figure className="reel-card" key={`${block.type}-${index}`}><ReelVideo src={text(block.video_url)} poster={text(block.poster_url)} label={text(block.heading, "Film")} /><figcaption>{text(block.heading)}</figcaption></figure>)}</section> : <Fragment key={`${group.block.type}-${group.index}`}><Block block={group.block} context={context} primaryHeading={group.index === primaryHeroIndex} facts={isHome && group.index === primaryHeroIndex ? factRail : undefined} /></Fragment>)}</div></main><footer className="footer"><div><strong>{artifact.site_settings.display_name}</strong>{artifact.footer.address ? <p>{artifact.footer.address}</p> : null}<p>{artifact.footer.legal_text}</p></div><nav aria-label="Footer navigation">{navPages.map((navPage) => <Link key={navPage.role} href={hrefForPage(navPage)}>{navPage.nav_label}</Link>)}</nav><div>{artifact.footer.links?.map((link) => <SafeLink key={link.href} href={link.href}>{link.label}</SafeLink>)}</div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
+  return <CartScope siteId={artifact.site_id}><SiteTheme artifact={artifact} /><SiteRuntimeClient context={context} /><RevealOnScroll /><HeaderScrollState /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand">{artifact.site_settings.display_name}</Link><SiteNav links={navPages.map((navPage) => ({ role: navPage.role, label: String(navPage.nav_label ?? ""), href: hrefForPage(navPage), current: navPage.role === current.role }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.role === current.role} /> : null}{headerAction ? <SafeLink href={headerAction.href} context={context} ctaKind={headerAction.kind} className="header-action accent">{headerAction.label}</SafeLink> : null}</header><main id="main" className={contentStartsUnderHeader ? "header-offset" : undefined}>{primaryHeroIndex < 0 ? <header className="page-header" style={isSafeHref(pageBackdrop) ? { backgroundImage: `url(${JSON.stringify(pageBackdrop).slice(1, -1)})` } : undefined}><div>{openPill}<h1>{current.title}</h1><nav className="crumbs" aria-label="Breadcrumb"><Link href="/">Home</Link><span aria-hidden="true">/</span><span aria-current="page">{current.title}</span></nav></div></header> : null}<div className="page-content">{groupReels(current.blocks).map((group, groupIndex) => group.kind === "reels" ? <section className="reel-grid" key={`reels-${groupIndex}`}>{reelGridHeading(group.reels[0]!.block)}{group.reels.map(({ block, index }) => <figure className="reel-card" key={`${block.type}-${index}`}><ReelVideo src={text(block.video_url)} poster={text(block.poster_url)} label={text(block.heading, "Film")} /><figcaption>{text(block.heading)}</figcaption></figure>)}{reelGridCta(group.reels[0]!.block)}</section> : <Fragment key={`${group.block.type}-${group.index}`}><Block block={group.block} context={context} primaryHeading={group.index === primaryHeroIndex} facts={isHome && group.index === primaryHeroIndex ? factRail : undefined} pill={group.index === primaryHeroIndex ? openPill : undefined} /></Fragment>)}</div></main><footer className="footer">{footerColumns}<div className="footer-bar"><p>{artifact.footer.legal_text}</p><a href={MINGLA_CREDIT_HREF} target="_blank" rel="noopener noreferrer" className="footer-credit">Powered by Mingla<span className="sr-only"> (opens in a new tab)</span></a></div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
 }

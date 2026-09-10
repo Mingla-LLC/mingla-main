@@ -67,16 +67,38 @@ test("#2922 accepts the production Payload baseline without hidden renderer meta
 
   assert.equal(plan.state, "reconcilable");
   assert.equal(plan.states.settings, "baseline");
+  /*
+   * [TEST-MOD-APPROVED #3149] SUPERSEDED, wave 4 — one entry appended:
+   *   "create_contact_draft",
+   *   "update_navigation_draft",
+   *
+   * The seed describes a booking page and no longer describes a Visit page, so
+   * a plan against the untouched production baseline creates the one and not
+   * the other. This test is about what the planner does with a REAL Payload
+   * baseline full of explicit nulls, and that behaviour is unchanged.
+   *
+   * SHARPENED: the assertion below is added so this keeps testing the thing it
+   * is named for. A baseline of nulls must still classify as `baseline` rather
+   * than as somebody's content — the failure #2922 was written about — and
+   * every page absent from it must be a create rather than a refusal.
+   */
   assert.deepEqual(plan.actions, [
     "upload_hero_through_private_pipeline",
     "update_home_draft",
     "create_about_draft",
     "create_menu_draft",
-    "create_contact_draft",
+    "create_reservations_draft",
     "update_navigation_draft",
     "update_footer_draft",
     "update_site_settings_draft",
   ]);
+  assert.equal(plan.states.home, "baseline");
+  for (const role of ["about", "menu", "gallery", "contact", "reservations"]) {
+    assert.equal(plan.states[role], "absent", role);
+  }
+  // Absent AND retired: the planner must not create a page the seed publishes
+  // disabled, however absent it is.
+  assert.equal(plan.actions.includes("create_contact_draft"), false);
 });
 
 test("#2922 never includes provisioning-owned renderer metadata in a seed mutation", () => {
