@@ -1,4 +1,15 @@
 /*
+ * #3149 wave 5 — ONE ASSERTION IN THIS FILE WAS SUPERSEDED. [TEST-MOD-APPROVED #3149]
+ *
+ * "the grid's heading spans every column of the grid" read `styles.css` as text
+ * and required `.reel-grid-head` to declare `grid-column: 1 / -1`. That
+ * declaration IS the empty-fourth-column defect: it makes the heading occupy
+ * every `auto-fit` track, so no track is ever empty and none can collapse. The
+ * test pinned the bug as the fix. It is replaced below by an assertion on the
+ * rendered structure, with the computed-CSS half measured in
+ * `wave5Parity.issue3149.test.tsx`. Nothing else here changed.
+ */
+/*
  * #3149 — the eyebrow is the BRAND'S line, or there is no line.
  *
  * The renderer used to hand every section a fixed label above its heading —

@@ -1,3 +1,13 @@
+/*
+ * #3149 wave 5 — TWO PINNED EXPRESSIONS WERE RE-PINNED. [TEST-MOD-APPROVED #3149]
+ *
+ * Not wrong when written. `include` had to become a repeatable parameter so one
+ * projection can carry the menu AND the venue slugs a booking button needs —
+ * `set` would have made asking for one silently drop the other — so the gateway
+ * appends and the callback reads the list. The assertion itself is unchanged:
+ * the menu is read only when a page actually shows one. A further assertion was
+ * ADDED so the venue read is gated on its own flag rather than the menu's.
+ */
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";

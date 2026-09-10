@@ -1,4 +1,14 @@
 /*
+ * #3149 wave 5 — THE BOOKING URL IN THIS FILE WAS WRONG. [TEST-MOD-APPROVED #3149]
+ *
+ * The reservation fixture carried `https://host.usemingla.com/reserve/{brand}`
+ * and one test asserted the renderer emits it. That address renders "Payment
+ * cancelled. You haven't been charged." — `/reserve/[brandId]` is a
+ * payment-RETURN surface, not where a booking starts. The fixture now carries
+ * the venue's public page and the renderer test also asserts the output
+ * contains no `/reserve/` at all.
+ */
+/*
  * #3149 wave 4 — everything this wave adds, RENDERED, plus the promise that
  * nothing else moved.
  *

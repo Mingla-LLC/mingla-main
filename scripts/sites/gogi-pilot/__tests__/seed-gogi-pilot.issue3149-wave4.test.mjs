@@ -1,4 +1,13 @@
 /*
+ * #3149 wave 5 — ONE ASSERTION HERE COULD ONLY EVER PASS. [TEST-MOD-APPROVED #3149]
+ *
+ * It compared a template string against its own expansion, so it restated the
+ * value of GOGI_BRAND_ID and proved nothing. The comment above it claimed "the
+ * derived address is the one that was verified reachable", and that address
+ * renders "Payment cancelled." Replaced with assertions on the shape the
+ * publisher must produce, including that it is not a cancellation page.
+ */
+/*
  * #3149 wave 4 — the seed, EXECUTED, and every word in it traced to gögi.
  *
  * `seedDocuments` is run and its output asserted, rather than the file being

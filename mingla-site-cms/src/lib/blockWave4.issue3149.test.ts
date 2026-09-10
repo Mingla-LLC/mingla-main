@@ -1,4 +1,13 @@
 /*
+ * #3149 wave 5 — THIS SUITE PINNED THE CANCEL PAGE AS CORRECT. [TEST-MOD-APPROVED #3149]
+ *
+ * "builds the link from the BRAND" asserted the built URL equals
+ * `/reserve/${BRAND_ID}`, making a payment-RETURN surface the contract. It now
+ * asserts the derived venue-page URL and, explicitly, that the result does not
+ * match `/reserve/`. The projection stub also learned `includeVenue`, so a
+ * builder that stopped asking for the slugs fails rather than passing quietly.
+ */
+/*
  * #3149 wave 4 — from a Studio field to the published bytes, EXECUTED.
  *
  * Same shape as the wave 3 suite beside it and for the same reason: this runs
