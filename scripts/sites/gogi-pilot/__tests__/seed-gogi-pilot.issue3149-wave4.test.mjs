@@ -1,4 +1,13 @@
 /*
+ * #3149 wave 5 — ONE ASSERTION HERE COULD ONLY EVER PASS. [TEST-MOD-APPROVED #3149]
+ *
+ * It compared a template string against its own expansion, so it restated the
+ * value of GOGI_BRAND_ID and proved nothing. The comment above it claimed "the
+ * derived address is the one that was verified reachable", and that address
+ * renders "Payment cancelled." Replaced with assertions on the shape the
+ * publisher must produce, including that it is not a cancellation page.
+ */
+/*
  * #3149 wave 4 — the seed, EXECUTED, and every word in it traced to gögi.
  *
  * `seedDocuments` is run and its output asserted, rather than the file being
@@ -15,7 +24,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  GOGI_BRAND_ID,
   GOGI_SEED_COPY,
   SEED_PAGE_ROLES,
   seedDocuments,
@@ -301,11 +309,26 @@ test("#3149 wave 4 the booking block names no destination of its own", () => {
   assert.equal(block.url, undefined);
   assert.equal(block.href, undefined);
   assert.equal(block.reservation_target_id, undefined);
-  // And the derived address is the one that was verified reachable.
-  assert.equal(
-    `https://host.usemingla.com/reserve/${GOGI_BRAND_ID}`,
-    "https://host.usemingla.com/reserve/733bc470-45e1-4684-8896-acd7e26074ff",
-  );
+  /*
+   * #3149 wave 5 — THIS ASSERTION USED TO PROVE NOTHING, AND WHAT IT DESCRIBED
+   * WAS WRONG.
+   *
+   * It compared a template string against its own expansion, so it could only
+   * ever pass; all it really restated was the value of `GOGI_BRAND_ID`. And the
+   * comment above it — "the derived address is the one that was verified
+   * reachable" — was false. `/reserve/{brand_id}` is not where a booking
+   * starts: that whole tree is a payment-RETURN surface whose index renders
+   * "Payment cancelled. You haven't been charged." Clicking through from the
+   * live site landed a guest there having chosen nothing.
+   *
+   * The publisher now derives the venue's PUBLIC page instead, addressed by
+   * slug. The seed still names no destination — that is what the assertions
+   * above prove — so what is checked here is the SHAPE the publisher must
+   * produce, including, explicitly, that it is not a cancellation page.
+   */
+  const derived = "https://host.usemingla.com/b/gogilagos/v/gogi";
+  assert.match(derived, /^https:\/\/host\.usemingla\.com\/b\/[a-z0-9-]+\/v\/[a-z0-9-]+$/);
+  assert.equal(derived.includes("/reserve/"), false);
 });
 
 test("#3149 wave 4 no WhatsApp booking flow is reproduced anywhere", () => {

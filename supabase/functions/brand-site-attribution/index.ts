@@ -86,6 +86,8 @@ async function handleBrandSiteAttributionRequest(
       ? `/internal/v1/sites/${siteId}/analytics-events`
       : action === "issue"
       ? `/internal/v1/sites/${siteId}/attribution`
+      : action === "consume"
+      ? `/internal/v1/sites/${siteId}/attribution/consume`
       : "";
     if (envelope.site_id !== siteId || path !== expectedPath) {
       throw new Error("SIGNATURE_INVALID");
@@ -207,6 +209,50 @@ async function handleBrandSiteAttributionRequest(
         ok: true,
         data: { token: rawToken, expires_in_seconds: 1800 },
       });
+    }
+    /*
+     * #3149 — SPENDING a touch on the order it produced.
+     *
+     * `brand_site_consume_attribution` shipped with the #2830 foundation and
+     * had no caller. The trigger that did the binding fires on
+     * `ticket_checkout_sessions`, which is the TICKET rail — it never sees a
+     * venue order, so a guest who ordered dinner from the website earned the
+     * site no credit at all. This is the caller, and it lives here because
+     * this is the only place that holds the pepper: the runtime sends the raw
+     * token it minted and never learns the digest.
+     *
+     * The touch is checked against THIS site before it is spent, so a signed
+     * runtime cannot consume another site's touch, and a token that is
+     * expired, unknown or already spent answers `accepted: false` rather than
+     * failing — an order is never contingent on its analytics.
+     */
+    if (action === "consume") {
+      const consumeKeys = new Set(["action", "site_id", "token", "order_id"]);
+      const rawToken = input.token;
+      if (
+        Object.keys(input).some((key) => !consumeKeys.has(key)) ||
+        typeof rawToken !== "string" ||
+        !/^[A-Za-z0-9_-]{43}$/.test(rawToken)
+      ) {
+        return sitesJson(
+          { ok: false, error: { code: "VALIDATION_FAILED" } },
+          400,
+        );
+      }
+      const orderId = requireUuid(input.order_id);
+      const tokenDigest = await digest(pepper, rawToken);
+      const { data: touch } = await service
+        .from("brand_site_attribution_touches")
+        .select("id")
+        .eq("token_digest", tokenDigest)
+        .eq("site_id", siteId)
+        .maybeSingle();
+      if (!touch) return sitesJson({ ok: true, data: { accepted: false } });
+      const { error } = await service.rpc("brand_site_consume_attribution", {
+        p_token_digest: tokenDigest,
+        p_order_id: orderId,
+      });
+      return sitesJson({ ok: true, data: { accepted: !error } });
     }
     return sitesJson({ ok: false, error: { code: "FORBIDDEN" } }, 403);
   } catch (error) {

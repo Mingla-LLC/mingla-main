@@ -54,6 +54,7 @@ import {
   revokeCoverPickedAssets,
 } from "./coverPickerDeviceMedia";
 import { getCoverPickerFileInfoAsync } from "./coverPickerFileInfo";
+import { useElapsedSince } from "./coverPickerElapsed";
 import { trimVideoWithDedicatedEditor } from "./coverPickerVideoTrimEditor";
 
 import {
@@ -1714,6 +1715,13 @@ const VideoStatusCard: React.FC<{
 }> = ({ stage, status, hasExistingCover, onCancel, onReplace, onRetry, onRetryReady, onResume, onCheck }) => {
   const [confirming, setConfirming] = useState<"cancel" | "replace" | null>(null);
   const copy = videoProjectionCopy(stage, status);
+  // Processing is the only genuinely long phase, and the only one where the
+  // card can sit unchanged for a minute or more. Anchor on the moment the
+  // source was acknowledged — that is when the provider actually took over.
+  const elapsed = useElapsedSince(
+    status?.sourceUploadedAt ?? status?.createdAt ?? null,
+    stage.phase === "processing",
+  );
   const active = !["idle", "applied", "error"].includes(stage.phase);
   if (confirming !== null) {
     const replacing = confirming === "replace";
@@ -1748,7 +1756,14 @@ const VideoStatusCard: React.FC<{
         {copy.tone === "error" ? <Icon name="x" size={20} color={color} /> : null}
         {isIndeterminate ? <ActivityIndicator color={color} accessibilityLabel={copy.title} /> : null}
         <Text style={[styles.videoStatusTitle, { color }]}>{copy.title}</Text>
-        {copy.percent !== null ? <Text style={styles.videoStatusPercent}>{Math.round(copy.percent)}%</Text> : null}
+        {copy.percent !== null
+          ? <Text style={styles.videoStatusPercent}>{Math.round(copy.percent)}%</Text>
+          : elapsed !== null
+          // Hidden from assistive tech on purpose: this card is a polite live
+          // region, so a value that changes every second would re-announce the
+          // whole card every second. The body copy stays the announced content.
+          ? <Text style={styles.videoStatusPercent} accessibilityElementsHidden importantForAccessibility="no">{elapsed}</Text>
+          : null}
       </View>
       <Text style={styles.videoStatusBody}>{copy.body}</Text>
       {copy.percent !== null ? (

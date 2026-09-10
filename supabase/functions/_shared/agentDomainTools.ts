@@ -3129,6 +3129,192 @@ const cancelCampaign = writeTool(
   },
 );
 
+/** #1980 — same channel_payload shape as draft_campaign / Host compose. */
+function buildCampaignChannelPayload(
+  channel: "email" | "sms",
+  body: string,
+  subject: string | undefined,
+): Record<string, unknown> {
+  if (channel === "sms") {
+    return { kind: "sms", body };
+  }
+  return {
+    kind: "email",
+    subject: typeof subject === "string" ? subject : "",
+    body_html: body,
+    body_text: stripHtmlToText(body),
+    embedded_events: [] as string[],
+  };
+}
+
+/**
+ * #1980 — Host updateDraft passes the full channel_payload object; Ari rebuilds
+ * only the fields the tool owns (body/subject/kind). When the channel stays the
+ * same, preserve composer-owned optional keys so a subject/body edit does not
+ * wipe email embedded_events or SMS media_urls / short_url_token.
+ */
+function preserveCampaignOptionalPayloadKeys(
+  channel: "email" | "sms",
+  rebuilt: Record<string, unknown>,
+  existing: Record<string, unknown>,
+  sameChannel: boolean,
+): Record<string, unknown> {
+  if (!sameChannel) return rebuilt;
+  if (channel === "email") {
+    if (Array.isArray(existing.embedded_events)) {
+      rebuilt.embedded_events = existing.embedded_events;
+    }
+    return rebuilt;
+  }
+  if (existing.media_urls !== undefined) {
+    rebuilt.media_urls = existing.media_urls;
+  }
+  if (existing.short_url_token !== undefined) {
+    rebuilt.short_url_token = existing.short_url_token;
+  }
+  return rebuilt;
+}
+
+// #1980 — Host updateDraft parity (marketingCampaignService.updateDraft).
+const updateCampaignDraft = writeTool(
+  "update_campaign_draft",
+  "Update a marketing campaign that is still in draft. Optional fields: title/name, audience_id, body, subject, channel (email|sms). Rebuilds channel_payload when body/subject/channel change.",
+  {
+    campaign_id: UUID,
+    title: STR,
+    name: STR,
+    audience_id: UUID,
+    body: { type: "string" },
+    subject: { type: "string" },
+    channel: { type: "string", enum: ["email", "sms"] },
+  },
+  ["campaign_id"],
+  async (args, client, _userId) => {
+    if (!isUuid(args.campaign_id)) {
+      throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
+    if (
+      args.channel !== undefined && args.channel !== "email" &&
+      args.channel !== "sms"
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        `channel must be "email" or "sms" — ${
+          String(args.channel)
+        } cannot be dispatched`,
+      );
+    }
+    if (args.audience_id !== undefined && !isUuid(args.audience_id)) {
+      throw new ToolError("INVALID_ARGS", "audience_id must be a uuid");
+    }
+    const title = typeof args.title === "string"
+      ? args.title
+      : (typeof args.name === "string" ? args.name : undefined);
+    const touchesPayload = args.body !== undefined ||
+      args.subject !== undefined ||
+      args.channel !== undefined;
+    if (
+      title === undefined && args.audience_id === undefined && !touchesPayload
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Provide at least one of title/name, audience_id, body, subject, or channel",
+      );
+    }
+
+    const { data: existing, error: loadErr } = await client
+      .from("marketing_campaigns")
+      .select("id, status, channel, channel_payload")
+      .eq("id", args.campaign_id)
+      .maybeSingle();
+    if (loadErr) throw new ToolError("RPC_FAILED", loadErr.message);
+    if (!existing) throw new ToolError("INVALID_ARGS", "Campaign not found");
+    if ((existing as { status?: string }).status !== "draft") {
+      throw new ToolError("INVALID_ARGS", "Campaign is not a draft");
+    }
+
+    const patch: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (title !== undefined) patch.name = title;
+    if (args.audience_id !== undefined) patch.audience_id = args.audience_id;
+
+    if (touchesPayload) {
+      const existingChannel =
+        (existing as { channel?: string }).channel === "sms" ? "sms" : "email";
+      const channel = args.channel === "sms"
+        ? "sms"
+        : (args.channel === "email" ? "email" : existingChannel);
+      const existingPayload =
+        ((existing as { channel_payload?: Record<string, unknown> })
+          .channel_payload ?? {}) as Record<string, unknown>;
+      const rawBody = typeof args.body === "string"
+        ? args.body
+        : (channel === "sms"
+          ? String(existingPayload.body ?? "")
+          : String(existingPayload.body_html ?? ""));
+      const subject = typeof args.subject === "string"
+        ? args.subject
+        : (typeof existingPayload.subject === "string"
+          ? existingPayload.subject
+          : "");
+      const channelPayload = preserveCampaignOptionalPayloadKeys(
+        channel,
+        buildCampaignChannelPayload(channel, rawBody, subject),
+        existingPayload,
+        channel === existingChannel,
+      );
+      const payloadIssues = campaignPayloadIssues(channelPayload);
+      if (payloadIssues.length > 0) {
+        throw new ToolError("INVALID_ARGS", payloadIssues.join("; "));
+      }
+      patch.channel = channel;
+      patch.channel_payload = channelPayload;
+    }
+
+    const { data, error } = await client
+      .from("marketing_campaigns")
+      .update(patch)
+      .eq("id", args.campaign_id)
+      .eq("status", "draft")
+      .select("id, name, status, channel, audience_id")
+      .maybeSingle();
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (!data) {
+      throw new ToolError("INVALID_ARGS", "Campaign is not a draft");
+    }
+    return data;
+  },
+);
+
+// #1980 — Host deleteDraft parity; type-to-confirm DELETE.
+const deleteCampaignDraft = writeTool(
+  "delete_campaign_draft",
+  "Permanently delete a marketing campaign draft. Irreversible — type-to-confirm DELETE.",
+  { campaign_id: UUID },
+  ["campaign_id"],
+  async (args, client, _userId) => {
+    if (!isUuid(args.campaign_id)) {
+      throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
+    const { data, error } = await client
+      .from("marketing_campaigns")
+      .delete()
+      .eq("id", args.campaign_id)
+      .eq("status", "draft")
+      .select("id");
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (!data || (data as unknown[]).length === 0) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Draft not found, already sent, or not eligible for deletion",
+      );
+    }
+    return { deleted: true, campaign_id: args.campaign_id };
+  },
+  "DELETE",
+);
+
 // #1743 / #1980 — the four intelligence engines are FOUR separate app-lane edge
 // functions, not one. `tool_key` selects the engine; the body is the exact
 // app-lane contract from runGrowthTool() in
@@ -3145,7 +3331,7 @@ const GROWTH_TOOL_FUNCTION: Readonly<Record<string, string>> = Object.freeze({
 
 const runGrowthTool = writeTool(
   "run_growth_tool",
-  "Run one of the four Growth Tools (site_check, turnout_forecast, trip_quote, pricing_audit) via its app-lane engine. `input` is the tool's intake object. Read the report afterwards with get_brand_analytics.",
+  "Run one of the four Growth Tools (site_check, turnout_forecast, trip_quote, pricing_audit) via its app-lane engine. `input` is the tool's intake object. Read the report afterwards with get_growth_tool_report (run_id or client_ref).",
   {
     brand_id: UUID,
     tool_key: {
@@ -3184,21 +3370,135 @@ const runGrowthTool = writeTool(
   },
 );
 
+// #1980 — Host readRunByClientRef / growth-tools-report app-lane read.
+// Exactly one of run_id or client_ref (edge also accepts subject_ref; Ari
+// stays on the resume selectors Host uses day-to-day).
+const getGrowthToolReport = writeTool(
+  "get_growth_tool_report",
+  "Read a Growth Tool run report via growth-tools-report (lane:app). Pass exactly one of run_id or client_ref.",
+  {
+    brand_id: UUID,
+    run_id: UUID,
+    client_ref: UUID,
+  },
+  ["brand_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    const hasRunId = args.run_id !== undefined && args.run_id !== null;
+    const hasClientRef = args.client_ref !== undefined &&
+      args.client_ref !== null;
+    if (hasRunId === hasClientRef) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Provide exactly one of run_id or client_ref",
+      );
+    }
+    if (hasRunId && !isUuid(args.run_id)) {
+      throw new ToolError("INVALID_ARGS", "run_id must be a uuid");
+    }
+    if (hasClientRef && !isUuid(args.client_ref)) {
+      throw new ToolError("INVALID_ARGS", "client_ref must be a uuid");
+    }
+    // Edge returns allowlisted status/report/input fields only
+    // (APP_READ_COLUMNS = id, status, report, input, brand_id, created_at).
+    return await invokeFn(client, "growth-tools-report", {
+      lane: "app",
+      brand_id: args.brand_id,
+      ...(hasRunId ? { run_id: args.run_id } : { client_ref: args.client_ref }),
+    });
+  },
+);
+
 // ----------------------------------------------------------------------------
 // J. Payouts / partners / tax (read + destructive disconnect)
 // ----------------------------------------------------------------------------
 
+/** #1976 — PII-minimised Stripe connect status (Host: brand-stripe-refresh-status). */
+function nullableBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function minimiseStripeConnectStatus(
+  raw: Record<string, unknown> | null,
+): Record<string, unknown> {
+  if (!raw || typeof raw !== "object") {
+    return {
+      unavailable: true,
+      reason: "Stripe connect status could not be loaded.",
+    };
+  }
+  const requirements = raw.requirements;
+  const hasDisabledReason = typeof requirements === "object" &&
+    requirements !== null &&
+    typeof (requirements as Record<string, unknown>).disabled_reason ===
+      "string" &&
+    String((requirements as Record<string, unknown>).disabled_reason).length >
+      0;
+  return {
+    status: typeof raw.status === "string" ? raw.status : null,
+    charges_enabled: nullableBoolean(raw.charges_enabled),
+    payouts_enabled: nullableBoolean(raw.payouts_enabled),
+    has_disabled_reason: hasDisabledReason,
+  };
+}
+
+/** #1976 — PII-minimised Paystack connect status (Host: refresh_status). */
+function minimisePaystackConnectStatus(
+  raw: Record<string, unknown> | null,
+): Record<string, unknown> {
+  if (!raw || typeof raw !== "object") {
+    return {
+      unavailable: true,
+      reason: "Paystack connect status could not be loaded.",
+    };
+  }
+  return {
+    connected: nullableBoolean(raw.connected),
+    is_verified: nullableBoolean(raw.is_verified),
+    active: nullableBoolean(raw.active),
+    settlement_bank: typeof raw.settlement_bank === "string"
+      ? raw.settlement_bank
+      : null,
+    account_number_masked: typeof raw.account_number_masked === "string"
+      ? raw.account_number_masked
+      : null,
+    recipient_connected: nullableBoolean(raw.recipient_connected),
+  };
+}
+
+async function readProviderRailStatus(
+  client: any,
+  edgeName: string,
+  body: Record<string, unknown>,
+  minimise: (raw: Record<string, unknown> | null) => Record<string, unknown>,
+  unavailableReason: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const raw = await invokeFn<Record<string, unknown> | null>(
+      client,
+      edgeName,
+      body,
+    );
+    return minimise(raw);
+  } catch (error) {
+    const message = error instanceof ToolError
+      ? error.message
+      : unavailableReason;
+    return { unavailable: true, reason: message || unavailableReason };
+  }
+}
+
 const getPayoutStatus = writeTool(
   "get_payout_status",
-  "Read payout readiness (pg_brand_can_collect) and guide KYC. Never bypasses Stripe/Paystack.",
+  "Read payout readiness (pg_brand_can_collect) plus Stripe/Paystack connect status and guide KYC. Never bypasses Stripe/Paystack.",
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
-    // #1982 — canonical readiness gate. Ari NEVER completes hosted KYC in chat
-    // — it only reads the gate and hands the owner off to the native Payouts
-    // flow.
+    // #1982 / #1976 — canonical readiness gate + Host connect-status edges.
+    // Ari NEVER completes hosted KYC in chat — it only reads status and hands
+    // the owner off to the native Payouts flow.
     //
     // #2593 — the bare-boolean read is CORRECT and is now pinned. Production
     // carries exactly ONE overload, `pg_brand_can_collect(uuid) RETURNS
@@ -3222,9 +3522,30 @@ const getPayoutStatus = writeTool(
       );
     }
     const canCollect = can;
+    // Same edges Host polls: brand-stripe-refresh-status + Paystack
+    // refresh_status. Per-rail failures stay on that rail — never invent
+    // can_collect:false from a provider outage.
+    const [stripe, paystack] = await Promise.all([
+      readProviderRailStatus(
+        client,
+        "brand-stripe-refresh-status",
+        { brand_id: args.brand_id },
+        minimiseStripeConnectStatus,
+        "Stripe connect status could not be loaded.",
+      ),
+      readProviderRailStatus(
+        client,
+        "brand-paystack-onboard",
+        { action: "refresh_status", brand_id: args.brand_id },
+        minimisePaystackConnectStatus,
+        "Paystack connect status could not be loaded.",
+      ),
+    ]);
     return {
       brand_id: args.brand_id,
       can_collect: canCollect,
+      stripe,
+      paystack,
       guide: canCollect
         ? "Payouts are enabled — this brand can collect money."
         : "Open Brand → Payouts to finish Stripe or Paystack KYC. Ari cannot complete hosted KYC in chat.",
@@ -3356,16 +3677,42 @@ const disconnectPartner = writeTool(
 
 const getTaxStatus = writeTool(
   "get_tax_status",
-  "Read tax-registration status and tell the operator to open Stripe/Paystack Connect tax. Never files tax.",
+  "Read tax-registration status via brand-tax-registrations-list and guide to Connect tax. Never files tax.",
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
+    // #1976 — same probe Host uses (useBrandTaxRegistration). Read-only;
+    // registration completion stays a guided handoff to Connect tax.
+    // Edge outages must not erase guidance — return unavailable + still hand
+    // the operator to /connect-tax-registrations.
+    let hasActiveRegistration: boolean | null = null;
+    let reason: string | null = null;
+    let unavailable = false;
+    try {
+      const raw = await invokeFn<Record<string, unknown>>(
+        client,
+        "brand-tax-registrations-list",
+        { brand_id: args.brand_id },
+      );
+      hasActiveRegistration = nullableBoolean(raw?.hasActiveRegistration);
+      reason = typeof raw?.reason === "string" ? raw.reason : null;
+    } catch (error) {
+      unavailable = true;
+      reason = error instanceof ToolError
+        ? error.message
+        : "Tax registration status could not be loaded.";
+    }
+    const guide = hasActiveRegistration === true
+      ? "An active tax registration is on file. Open Brand → Tax / Connect tax to review details; Ari cannot edit tax registrations in chat."
+      : "Open Brand → Tax / Connect tax (/connect-tax-registrations) to register or review. Ari cannot complete hosted tax onboarding in chat.";
     return {
       brand_id: args.brand_id,
-      guide:
-        "Open Brand → Tax / Connect tax to register. Ari cannot complete hosted tax onboarding in chat.",
+      has_active_registration: hasActiveRegistration,
+      reason,
+      ...(unavailable ? { unavailable: true } : {}),
+      guide,
     };
   },
 );
@@ -5698,10 +6045,13 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   manageVenueMenu,
   manageVenueWaitlist,
   draftCampaign,
+  updateCampaignDraft,
+  deleteCampaignDraft,
   scheduleCampaign,
   sendCampaignNow,
   cancelCampaign,
   runGrowthTool,
+  getGrowthToolReport,
   getPayoutStatus,
   getPartnerStatus,
   disconnectPartner,
@@ -5758,6 +6108,8 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "list_brand_team",
   "list_event_orders",
   "get_campaign_report",
+  // #1980 — Growth Tool report read (growth-tools-report app lane).
+  "get_growth_tool_report",
   "get_operator_snapshot",
   "get_event_order_reconciliation",
   // issue #1978 — venue discovery reads run inline; they never mutate.
@@ -5774,6 +6126,7 @@ export const MONEY_CONFIRM_TOOLS = new Set<string>([
   "discard_event_draft",
   "refund_rsvp_contribution",
   "send_campaign_now",
+  "delete_campaign_draft",
   "disconnect_partner",
   "refund_order",
   "cancel_order",

@@ -1,4 +1,14 @@
 /*
+ * #3149 wave 5 — THE BOOKING URL IN THIS FILE WAS WRONG. [TEST-MOD-APPROVED #3149]
+ *
+ * The reservation fixture carried `https://host.usemingla.com/reserve/{brand}`
+ * and one test asserted the renderer emits it. That address renders "Payment
+ * cancelled. You haven't been charged." — `/reserve/[brandId]` is a
+ * payment-RETURN surface, not where a booking starts. The fixture now carries
+ * the venue's public page and the renderer test also asserts the output
+ * contains no `/reserve/` at all.
+ */
+/*
  * #3149 wave 4 — everything this wave adds, RENDERED, plus the promise that
  * nothing else moved.
  *
@@ -688,7 +698,9 @@ describe("#3149 wave 4 the sixth page role", () => {
       eyebrow: "Come through",
       heading: "Book a table at gögi",
       body: "gögi is walk-in and always open.",
-      url: `https://host.usemingla.com/reserve/${U(91)}`,
+      // #3149 wave 5 — the venue's PUBLIC page, which is where a booking
+      // actually starts. `/reserve/{brand_id}` is a payment-RETURN surface.
+      url: "https://host.usemingla.com/b/gogilagos/v/gogi",
     }]),
   ];
 
@@ -726,8 +738,9 @@ describe("#3149 wave 4 the sixth page role", () => {
     );
     expect(html).toContain('href="/reservations"');
     expect(html).toContain(
-      `href="https://host.usemingla.com/reserve/${U(91)}"`,
+      'href="https://host.usemingla.com/b/gogilagos/v/gogi"',
     );
+    expect(html).not.toContain("/reserve/");
     expect(textOf(html)).toContain("Book a table at gögi");
   });
 
