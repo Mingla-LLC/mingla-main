@@ -2465,7 +2465,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "8aa4dcf4d9674ba4cbe606feb8359a16b10027a0",
+          "sha": "aaf9d7284653d3fdacc0c5848570494b565579af",
           "reference": "#1980 agentDomainTools.ts:updateCampaignDraft mirrors Host updateDraft (draft-only, channel_payload rebuild)"
         }
       ],
@@ -2515,7 +2515,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "8aa4dcf4d9674ba4cbe606feb8359a16b10027a0",
+          "sha": "aaf9d7284653d3fdacc0c5848570494b565579af",
           "reference": "#1980 agentDomainTools.ts:deleteCampaignDraft mirrors Host deleteDraft with confirm DELETE"
         }
       ],
@@ -2570,7 +2570,7 @@
         },
         {
           "tier": "source_contract",
-          "sha": "8aa4dcf4d9674ba4cbe606feb8359a16b10027a0",
+          "sha": "aaf9d7284653d3fdacc0c5848570494b565579af",
           "reference": "#1980 run_growth_tool description points at get_growth_tool_report (not get_brand_analytics)"
         }
       ],
@@ -2621,7 +2621,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "8aa4dcf4d9674ba4cbe606feb8359a16b10027a0",
+          "sha": "aaf9d7284653d3fdacc0c5848570494b565579af",
           "reference": "#1980 agentDomainTools.ts:getGrowthToolReport invokes growth-tools-report lane:app with exclusive run_id|client_ref"
         }
       ],
