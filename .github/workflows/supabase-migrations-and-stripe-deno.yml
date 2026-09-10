@@ -1073,8 +1073,10 @@ jobs:
             supabase/functions/_shared/__tests__/issue_1982_ari_team_people.implementor.test.ts
             # ISSUE-1972 reopen — group chat, door sale, orders, waitlist, scanners.
             supabase/functions/_shared/__tests__/issue_1972_ari_event_ops.implementor.test.ts
-            # ISSUE-1980 — marketing audiences, templates, campaign reports.
+            # ISSUE-1980 — marketing audiences, templates, campaign reports,
+            # draft update/delete, growth report read.
             supabase/functions/_shared/__tests__/issue_1980_ari_marketing.implementor.test.ts
+            supabase/functions/_shared/__tests__/issue_1980_ari_marketing.tester_adversarial.test.ts
             # ISSUE-1983 — profile avatar, Ari history, notifications, support inbox.
             supabase/functions/_shared/__tests__/issue_1983_ari_account_inbox.implementor.test.ts
             supabase/functions/_shared/__tests__/issue_1983_ari_account_inbox.tester_adversarial.test.ts

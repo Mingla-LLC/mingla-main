@@ -74,7 +74,10 @@ ari.marketing.draft_campaign
 ari.marketing.schedule_campaign
 ari.marketing.send_now
 ari.marketing.cancel_campaign
+ari.marketing.update_draft
+ari.marketing.delete_draft
 ari.growth.run_tool
+ari.growth.read_report
 ari.payout.status
 ari.partner.status
 ari.partner.disconnect
