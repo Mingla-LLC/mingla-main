@@ -5,7 +5,7 @@ Engineering scaffolding is on `main` (contracts green via `scripts/audit/run-all
 
 ## G3 — Sentry live
 
-Follow [`docs/evidence/g3-sentry/README.md`](../g3-sentry/README.md):
+Follow [`docs/evidence/g3-sentry/README.md`](./g3-sentry/README.md):
 
 1. `eas env:create` for `EXPO_PUBLIC_SENTRY_DSN` (preview + production) + `SENTRY_AUTH_TOKEN` (production).
 2. `./scripts/ops/deploy-g3-sentry.sh <project-ref>` with edge `SENTRY_DSN`.
@@ -13,7 +13,7 @@ Follow [`docs/evidence/g3-sentry/README.md`](../g3-sentry/README.md):
 
 ## G4 — DR restore
 
-Follow [`docs/runbooks/DR_RESTORE.md`](../../runbooks/DR_RESTORE.md) — **restore-to-new-project clone only** (never in-place on the authority production project).
+Follow [`docs/runbooks/DR_RESTORE.md`](../runbooks/DR_RESTORE.md) — **restore-to-new-project clone only** (never in-place on the authority production project).
 
 ```bash
 ./scripts/ops/g4-dr-restore-drill.sh start

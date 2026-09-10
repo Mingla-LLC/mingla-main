@@ -83,6 +83,13 @@ const PUBLIC_TRIP_STALE_MS = 60 * 1000; // 1 minute
 const isWebRuntime = (): boolean => typeof document !== "undefined";
 const TRIP_CACHE_MISS = "miss" as const;
 
+const isTripRpcPayload = (value: unknown): value is RpcTripPayload =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as { id?: unknown }).id === "string" &&
+  typeof (value as { brand?: unknown }).brand === "object" &&
+  (value as { brand: unknown }).brand !== null;
+
 const readCachedTripPayload = async (
   brandSlug: string,
   tripSlug: string,
@@ -95,8 +102,17 @@ const readCachedTripPayload = async (
     const response = await fetch(url);
     if (response.status === 404) return null;
     if (!response.ok) return TRIP_CACHE_MISS;
-    return (await response.json()) as RpcTripPayload;
-  } catch {
+    const data: unknown = await response.json();
+    if (!isTripRpcPayload(data)) {
+      // Malformed body is a REAL defect — do not hide it behind RPC fallback
+      // (same contract as publicEventsService invalid_direct_event_checkout_bundle).
+      throw new Error("invalid_trip_checkout_bundle");
+    }
+    return data;
+  } catch (error) {
+    if (error instanceof Error && error.message === "invalid_trip_checkout_bundle") {
+      throw error;
+    }
     return TRIP_CACHE_MISS;
   }
 };

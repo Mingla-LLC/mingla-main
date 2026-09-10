@@ -683,6 +683,13 @@ function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
  * anon RPC. Returns null when the brand/experience is missing, not an experience, or
  * not live (draft → never leaks). Mirrors useConsumerTripDetail's RPC read.
  */
+const isExperienceRpcPayload = (value: unknown): value is RpcExpPayload =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as { id?: unknown }).id === "string" &&
+  typeof (value as { brand?: unknown }).brand === "object" &&
+  (value as { brand: unknown }).brand !== null;
+
 export async function getPublicExperienceBySlug(
   brandSlug: string,
   experienceSlug: string,
@@ -698,11 +705,20 @@ export async function getPublicExperienceBySlug(
       if (response.status === 404) return null;
       if (response.ok) {
         const data: unknown = await response.json();
-        if (data !== null && data !== undefined) {
-          return mapRpcPayload(data as RpcExpPayload);
+        if (!isExperienceRpcPayload(data)) {
+          // Malformed body is a REAL defect — do not hide it behind RPC fallback
+          // (same contract as publicEventsService invalid_direct_event_checkout_bundle).
+          throw new Error("invalid_experience_checkout_bundle");
         }
+        return mapRpcPayload(data);
       }
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "invalid_experience_checkout_bundle"
+      ) {
+        throw error;
+      }
       // Transport failure → fall through to PostgREST (same as event bundle).
     }
   }

@@ -15,8 +15,18 @@ const REQUIRED = [
   "scripts/load/public-experience-read.js",
   "scripts/load/public-offering-fanout.js",
   "scripts/load/lib/public-read.js",
+  // Event bundle is the #2879 precedent the new trip/exp APIs mirror — the
+  // public-event-bundle.js harness depends on it remaining present.
+  "mingla-business/api/event-checkout-bundle.js",
   "mingla-business/api/trip-checkout-bundle.js",
   "mingla-business/api/experience-checkout-bundle.js",
+];
+
+const RUN_STAGING_ALIASES = [
+  "public-event-bundle",
+  "public-trip-read",
+  "public-experience-read",
+  "public-offering-fanout",
 ];
 
 function fail(msg) {
@@ -41,8 +51,22 @@ for (const name of [
 }
 
 const runStaging = readFileSync(join(ROOT, "scripts/load/run-staging.sh"), "utf8");
-if (!runStaging.includes("public-event-bundle")) {
-  fail("run-staging.sh must alias public-event-bundle");
+for (const alias of RUN_STAGING_ALIASES) {
+  if (!runStaging.includes(alias)) {
+    fail(`run-staging.sh must alias ${alias}`);
+  }
+}
+
+const runDistributed = readFileSync(join(ROOT, "scripts/load/run-distributed.sh"), "utf8");
+for (const alias of RUN_STAGING_ALIASES) {
+  if (!runDistributed.includes(alias)) {
+    fail(`run-distributed.sh must alias ${alias}`);
+  }
+}
+
+const publicRead = readFileSync(join(ROOT, "scripts/load/lib/public-read.js"), "utf8");
+if (!publicRead.includes("s-maxage")) {
+  fail("lib/public-read.js checkCacheable2xx must require s-maxage (not mere Cache-Control presence)");
 }
 
 const tripApi = readFileSync(

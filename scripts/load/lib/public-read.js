@@ -55,8 +55,10 @@ export function postgrestRpc(functionName, body, tagName) {
 export function checkCacheable2xx(label) {
   return {
     [`${label} status 2xx`]: (r) => r.status >= 200 && r.status < 300,
-    [`${label} has cache-control`]: (r) =>
-      typeof r.headers["Cache-Control"] === "string" ||
-      typeof r.headers["cache-control"] === "string",
+    // Require shared-cache TTL — a bare `no-store` Cache-Control must NOT pass.
+    [`${label} s-maxage cache`]: (r) => {
+      const cc = r.headers["Cache-Control"] || r.headers["cache-control"] || "";
+      return /\bs-maxage=\d+\b/i.test(String(cc));
+    },
   };
 }

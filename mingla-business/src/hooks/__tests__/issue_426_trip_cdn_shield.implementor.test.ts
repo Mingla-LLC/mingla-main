@@ -16,5 +16,6 @@ describe("issue #426 trip CDN shield", () => {
     expect(src).toContain("/api/trip-checkout-bundle?");
     expect(src).toContain('typeof document !== "undefined"');
     expect(src).toContain("pg_public_trip_by_slug");
+    expect(src).toContain("invalid_trip_checkout_bundle");
   });
 });
