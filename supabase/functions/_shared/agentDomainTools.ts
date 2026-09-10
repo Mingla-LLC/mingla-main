@@ -3147,6 +3147,34 @@ function buildCampaignChannelPayload(
   };
 }
 
+/**
+ * #1980 — Host updateDraft passes the full channel_payload object; Ari rebuilds
+ * only the fields the tool owns (body/subject/kind). When the channel stays the
+ * same, preserve composer-owned optional keys so a subject/body edit does not
+ * wipe email embedded_events or SMS media_urls / short_url_token.
+ */
+function preserveCampaignOptionalPayloadKeys(
+  channel: "email" | "sms",
+  rebuilt: Record<string, unknown>,
+  existing: Record<string, unknown>,
+  sameChannel: boolean,
+): Record<string, unknown> {
+  if (!sameChannel) return rebuilt;
+  if (channel === "email") {
+    if (Array.isArray(existing.embedded_events)) {
+      rebuilt.embedded_events = existing.embedded_events;
+    }
+    return rebuilt;
+  }
+  if (existing.media_urls !== undefined) {
+    rebuilt.media_urls = existing.media_urls;
+  }
+  if (existing.short_url_token !== undefined) {
+    rebuilt.short_url_token = existing.short_url_token;
+  }
+  return rebuilt;
+}
+
 // #1980 — Host updateDraft parity (marketingCampaignService.updateDraft).
 const updateCampaignDraft = writeTool(
   "update_campaign_draft",
@@ -3230,10 +3258,11 @@ const updateCampaignDraft = writeTool(
         : (typeof existingPayload.subject === "string"
           ? existingPayload.subject
           : "");
-      const channelPayload = buildCampaignChannelPayload(
+      const channelPayload = preserveCampaignOptionalPayloadKeys(
         channel,
-        rawBody,
-        subject,
+        buildCampaignChannelPayload(channel, rawBody, subject),
+        existingPayload,
+        channel === existingChannel,
       );
       const payloadIssues = campaignPayloadIssues(channelPayload);
       if (payloadIssues.length > 0) {

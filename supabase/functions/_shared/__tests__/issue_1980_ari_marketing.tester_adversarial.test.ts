@@ -152,3 +152,67 @@ Deno.test("#1980 tester: update_campaign_draft refuses rcs channel", async () =>
   );
   assertEquals(error.code, "INVALID_ARGS");
 });
+
+Deno.test(
+  "#1980 tester: email→sms channel switch drops embedded_events (no cross-channel bleed)",
+  async () => {
+    const writes: Array<Record<string, unknown>> = [];
+    const client = {
+      from() {
+        return {
+          select() {
+            return this;
+          },
+          eq() {
+            return this;
+          },
+          maybeSingle() {
+            return Promise.resolve({
+              data: {
+                id: CAMPAIGN,
+                status: "draft",
+                channel: "email",
+                channel_payload: {
+                  kind: "email",
+                  subject: "S",
+                  body_html: "<p>H</p>",
+                  body_text: "H",
+                  embedded_events: ["cccccccc-cccc-4ccc-8ccc-cccccccccccc"],
+                },
+              },
+              error: null,
+            });
+          },
+          update(payload: Record<string, unknown>) {
+            writes.push(payload);
+            return {
+              eq() {
+                return this;
+              },
+              select() {
+                return this;
+              },
+              maybeSingle() {
+                return Promise.resolve({
+                  data: { id: CAMPAIGN, status: "draft", channel: "sms" },
+                  error: null,
+                });
+              },
+            };
+          },
+        };
+      },
+    };
+    await domainTool("update_campaign_draft").executor(
+      { campaign_id: CAMPAIGN, channel: "sms", body: "plain sms" },
+      client,
+      USER,
+    );
+    assertEquals(writes.length, 1);
+    const payload = writes[0].channel_payload as Record<string, unknown>;
+    assertEquals(payload.kind, "sms");
+    assertEquals(payload.body, "plain sms");
+    assert(!Object.prototype.hasOwnProperty.call(payload, "embedded_events"));
+    assert(!Object.prototype.hasOwnProperty.call(payload, "subject"));
+  },
+);

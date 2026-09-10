@@ -220,7 +220,7 @@ Deno.test("#1980 implementor: update_campaign_draft rebuilds email payload", asy
         subject: "Old",
         body_html: "<p>Old</p>",
         body_text: "Old",
-        embedded_events: [],
+        embedded_events: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
       },
       name: "Old name",
       audience_id: AUDIENCE,
@@ -246,8 +246,77 @@ Deno.test("#1980 implementor: update_campaign_draft rebuilds email payload", asy
   assertEquals(payload.subject, "Doors at 9");
   assertEquals(payload.body_html, "<p>See you there.</p>");
   assertEquals(payload.body_text, "See you there.");
+  assertEquals(payload.embedded_events, [
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  ]);
   assert(!Object.prototype.hasOwnProperty.call(payload, "body"));
 });
+
+Deno.test(
+  "#1980 implementor: subject-only email edit preserves embedded_events",
+  async () => {
+    const { client, writes } = campaignClient({
+      row: {
+        id: CAMPAIGN,
+        status: "draft",
+        channel: "email",
+        channel_payload: {
+          kind: "email",
+          subject: "Old",
+          body_html: "<p>Keep me</p>",
+          body_text: "Keep me",
+          embedded_events: ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"],
+        },
+      },
+    });
+    await domainTool("update_campaign_draft").executor(
+      { campaign_id: CAMPAIGN, subject: "New subject only" },
+      client,
+      USER,
+    );
+    const update = writes.find((w) => w.op === "update");
+    assert(update);
+    const payload = (update!.payload as { channel_payload: Record<string, unknown> })
+      .channel_payload;
+    assertEquals(payload.subject, "New subject only");
+    assertEquals(payload.body_html, "<p>Keep me</p>");
+    assertEquals(payload.embedded_events, [
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    ]);
+  },
+);
+
+Deno.test(
+  "#1980 implementor: SMS body edit preserves media_urls and short_url_token",
+  async () => {
+    const { client, writes } = campaignClient({
+      row: {
+        id: CAMPAIGN,
+        status: "draft",
+        channel: "sms",
+        channel_payload: {
+          kind: "sms",
+          body: "old sms",
+          media_urls: ["https://cdn.example/mms.jpg"],
+          short_url_token: "tok_preserve",
+        },
+      },
+    });
+    await domainTool("update_campaign_draft").executor(
+      { campaign_id: CAMPAIGN, body: "new sms body" },
+      client,
+      USER,
+    );
+    const update = writes.find((w) => w.op === "update");
+    assert(update);
+    const payload = (update!.payload as { channel_payload: Record<string, unknown> })
+      .channel_payload;
+    assertEquals(payload.kind, "sms");
+    assertEquals(payload.body, "new sms body");
+    assertEquals(payload.media_urls, ["https://cdn.example/mms.jpg"]);
+    assertEquals(payload.short_url_token, "tok_preserve");
+  },
+);
 
 Deno.test("#1980 implementor: update_campaign_draft refuses non-draft", async () => {
   const { client, writes } = campaignClient({
