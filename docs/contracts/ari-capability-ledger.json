@@ -2517,18 +2517,18 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "aa9408b61a2256d6076a435f5a614e9561a7b2c4",
+          "sha": "09f938f7546c95778003a4f05172066831ebd6d5",
           "reference": "#1976 getPayoutStatus reads pg_brand_can_collect plus brand-stripe-refresh-status and brand-paystack-onboard refresh_status (PII-minimised)"
         },
         {
           "tier": "regression",
-          "sha": "aa9408b61a2256d6076a435f5a614e9561a7b2c4",
+          "sha": "09f938f7546c95778003a4f05172066831ebd6d5",
           "reference": "issue_1976_ari_payments_partner.implementor.test.ts: Stripe+Paystack invoke + can_collect pin",
           "guard_role": "implementor"
         },
         {
           "tier": "regression",
-          "sha": "aa9408b61a2256d6076a435f5a614e9561a7b2c4",
+          "sha": "09f938f7546c95778003a4f05172066831ebd6d5",
           "reference": "issue_1976_ari_payments_partner.tester_adversarial.test.ts: no stripe_account_id / rail outage isolation",
           "guard_role": "independent_tester"
         }
@@ -2579,18 +2579,18 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "aa9408b61a2256d6076a435f5a614e9561a7b2c4",
+          "sha": "09f938f7546c95778003a4f05172066831ebd6d5",
           "reference": "#1976 agentDomainTools.ts:getPartnerStatus reads partner_brand_links with derived status"
         },
         {
           "tier": "regression",
-          "sha": "aa9408b61a2256d6076a435f5a614e9561a7b2c4",
+          "sha": "09f938f7546c95778003a4f05172066831ebd6d5",
           "reference": "issue_1976_ari_payments_partner.implementor.test.ts: finance gate + partner tools registered",
           "guard_role": "implementor"
         },
         {
           "tier": "regression",
-          "sha": "aa9408b61a2256d6076a435f5a614e9561a7b2c4",
+          "sha": "09f938f7546c95778003a4f05172066831ebd6d5",
           "reference": "issue_1976_ari_payments_partner.tester_adversarial.test.ts: partner_account_id never selected",
           "guard_role": "independent_tester"
         }
@@ -2641,18 +2641,18 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "aa9408b61a2256d6076a435f5a614e9561a7b2c4",
+          "sha": "09f938f7546c95778003a4f05172066831ebd6d5",
           "reference": "#1976/#2593 agentDomainTools.ts:disconnectPartner calls partner_disconnect_link on partner_brand_links row id"
         },
         {
           "tier": "regression",
-          "sha": "aa9408b61a2256d6076a435f5a614e9561a7b2c4",
+          "sha": "09f938f7546c95778003a4f05172066831ebd6d5",
           "reference": "issue_1976_ari_payments_partner.implementor.test.ts: DISCONNECT confirm phrase required",
           "guard_role": "implementor"
         },
         {
           "tier": "regression",
-          "sha": "aa9408b61a2256d6076a435f5a614e9561a7b2c4",
+          "sha": "09f938f7546c95778003a4f05172066831ebd6d5",
           "reference": "issue_1976_ari_payments_partner.tester_adversarial.test.ts: classifier rejects substring laundering",
           "guard_role": "independent_tester"
         }
@@ -2707,18 +2707,18 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "aa9408b61a2256d6076a435f5a614e9561a7b2c4",
+          "sha": "09f938f7546c95778003a4f05172066831ebd6d5",
           "reference": "#1976 getTaxStatus invokes brand-tax-registrations-list then guides to /connect-tax-registrations; never files tax"
         },
         {
           "tier": "regression",
-          "sha": "aa9408b61a2256d6076a435f5a614e9561a7b2c4",
+          "sha": "09f938f7546c95778003a4f05172066831ebd6d5",
           "reference": "issue_1976_ari_payments_partner.implementor.test.ts: tax list invoke + unregistered guide",
           "guard_role": "implementor"
         },
         {
           "tier": "regression",
-          "sha": "aa9408b61a2256d6076a435f5a614e9561a7b2c4",
+          "sha": "09f938f7546c95778003a4f05172066831ebd6d5",
           "reference": "issue_1976_ari_payments_partner.tester_adversarial.test.ts: hasActiveRegistration mapping; no filing claim",
           "guard_role": "independent_tester"
         }
