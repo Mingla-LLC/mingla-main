@@ -12,6 +12,22 @@ const SELF_TEST = process.argv.includes('--self-test')
 const BUNDLES = process.argv.includes('--bundles')
 const SENTINEL = 'MINGLA_3176_PRODUCT_PROOF_CAPTURE_ONLY'
 const FIXTURE_MARKERS = ['sample-saved-3176', 'sample-session-3176', 'sample-live-event-3176', 'Sample sunset gallery plan', 'Sample rooftop listening session']
+const ABOUT_PROOFS = {
+  explorer_saved_details: {
+    path: 'mingla-marketing/public/product-proof/explorer-saved-details.png',
+    sha256: 'b8adad52781a036985bd2e1099e831c0776e9f855d53c811197e50a9ddc7b478',
+    privacyState: 'Synthetic sample fixtures only; no real account, person, place, order, payment or contact data.',
+    altText: 'Mingla Explorer showing the saved Sample sunset gallery plan open in its details sheet.',
+    allowedSurfaces: ['usemingla.com/explorer', 'usemingla.com/about'],
+  },
+  host_live_listing_public_page: {
+    path: 'mingla-marketing/public/product-proof/host-live-public-page.png',
+    sha256: 'fff33b33928e3e8e74e7edfd48fe96db5e7ddfe0a882d2a6d971433f53d32e05',
+    privacyState: 'Synthetic sample listing and brand only; no real host, buyer, attendee, order, QR, payment or public slug.',
+    altText: 'Mingla Host showing the Sample rooftop listening session open in its public event page with a free-ticket action.',
+    allowedSurfaces: ['usemingla.com/about'],
+  },
+}
 
 const REQUIRED = [
   'tools/product-proof-capture/run.mjs',
@@ -57,6 +73,22 @@ function validateNetworkDeny(value) {
   assert.match(value, /globalThis\.fetch\s*=/, 'capture fetch can escape the network deny')
   assert.match(value, /Object\.assign\(Linking,/, 'capture Linking can escape the network deny')
   assert.match(value, /blockedAttempts\.push/)
+}
+
+function validateAboutProofs(about, css, manifest) {
+  for (const [scene, expected] of Object.entries(ABOUT_PROOFS)) {
+    const output = manifest.outputs.find((row) => row.scene === scene)
+    assert(output, `/about proof manifest lost ${scene}`)
+    for (const key of ['path', 'sha256', 'privacyState', 'altText']) assert.equal(output[key], expected[key], `${scene} changed approved ${key}`)
+    assert.deepEqual(output.allowedSurfaces, expected.allowedSurfaces, `${scene} changed approved surface rights`)
+    assert.deepEqual(output.redactions, [], `${scene} gained an unreviewed redaction`)
+    assert.match(output.approvedBy, /independent tester pending/, `${scene} changed its review owner`)
+    assert(about.includes(`/${expected.path.split('/public/')[1]}`), `/about omits approved ${scene} capture`)
+    assert(about.includes(`alt="${expected.altText}"`), `/about changed approved ${scene} alt text`)
+  }
+  assert.equal((about.match(/className="core-product-proof core-product-proof--/g) ?? []).length, 2, '/about proofs do not share the neutral frame')
+  assert.doesNotMatch(about, /core-host-proof/, '/about retained the Host-specific proof class')
+  for (const token of ['.core-product-story { display:flex; flex-direction:column; }', '.core-product-proof { width:min(100%,24rem); aspect-ratio:1206/2050;', '.core-product-proof--explorer img { object-position:top; }', '.core-product-proof--host img { object-position:bottom; }', '.core-product-proof{width:min(100%,13rem);margin:0 auto 1rem}']) assert(css.includes(token), `/about balanced proof CSS lost ${token}`)
 }
 
 function pngSize(relative) {
@@ -114,8 +146,9 @@ function sourceContract() {
   }
   const proofGrid = read('mingla-marketing/components/core-pages/explorer-proof-grid.tsx')
   for (const output of manifest.outputs.filter((row) => row.surface === 'explorer')) assert(proofGrid.includes(`/${output.path.split('/public/')[1]}`), `Explorer page omits ${output.path}`)
-  assert.match(read('mingla-marketing/app/(core)/about/page.tsx'), /product-proof\/host-live-public-page\.png/)
-  const publicCore = read('mingla-marketing/app/(core)/about/page.tsx') + proofGrid
+  const about = read('mingla-marketing/app/(core)/about/page.tsx')
+  validateAboutProofs(about, read('mingla-marketing/components/core-pages/core-pages.css'), manifest)
+  const publicCore = about + proofGrid
   assert.doesNotMatch(publicCore, /illustrative concept|not a real (?:event|customer)|concept image/i)
 }
 
@@ -142,6 +175,13 @@ if (SELF_TEST) {
   assert.throws(() => validateCaptureBundle('ordinary application bundle', 'mutant'), /capture-only sentinel/)
   const deny = read('tools/product-proof-capture/shared/networkDeny.ts')
   assert.throws(() => validateNetworkDeny(deny.replace('globalThis.fetch =', 'globalThis.__escapedFetch =')), /fetch can escape/)
+  const about = read('mingla-marketing/app/(core)/about/page.tsx')
+  const css = read('mingla-marketing/components/core-pages/core-pages.css')
+  const manifest = JSON.parse(read('tools/product-proof-capture/rights-manifest.json'))
+  assert.throws(() => validateAboutProofs(about.replace('/product-proof/explorer-saved-details.png', ''), css, manifest), /omits approved explorer_saved_details/)
+  const rightsMutant = structuredClone(manifest)
+  rightsMutant.outputs.find((row) => row.scene === 'explorer_saved_details').sha256 = '0'.repeat(64)
+  assert.throws(() => validateAboutProofs(about, css, rightsMutant), /changed approved sha256/)
   process.stdout.write('RED proof: production import, sentinel leak, remote fixture, missing capture sentinel and network escape mutants were rejected\n')
 }
 process.stdout.write('PASS #3176 controlled product-proof capture isolation and retained-asset contract\n')
