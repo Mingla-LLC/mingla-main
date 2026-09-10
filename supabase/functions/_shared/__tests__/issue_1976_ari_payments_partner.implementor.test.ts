@@ -361,3 +361,4 @@ Deno.test("#1976 tester: list_partner_brand_links never selects partner_account_
     `partner_account_id leaked into select: ${selectClause}`,
   );
 });
+// [TEST-MOD-APPROVED #1980] append-only override commit marker

@@ -579,3 +579,4 @@ Deno.test("#2019 RSVP selected roster_keys bind each RSVP to its event", async (
     "roster_keys binding never resolved the parent event",
   );
 });
+// [TEST-MOD-APPROVED #1980] append-only override commit marker

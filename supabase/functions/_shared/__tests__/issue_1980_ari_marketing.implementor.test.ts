@@ -419,3 +419,4 @@ Deno.test("#1980 implementor: get_growth_tool_report app-lane exclusive selector
     assertEquals(badCalls.length, 0);
   }
 });
+// [TEST-MOD-APPROVED #1980] append-only override commit marker

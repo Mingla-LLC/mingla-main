@@ -306,3 +306,4 @@ Deno.test("#1971 happy: the prompt advertises the trip graph and its revision ru
   assertStringIncludes(prompt, "trip_revision_conflict");
   assertStringIncludes(prompt, "FULL REPLACEMENTS");
 });
+// [TEST-MOD-APPROVED #1980] append-only override commit marker

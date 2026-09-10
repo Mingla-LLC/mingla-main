@@ -135,3 +135,4 @@ Deno.test("#1978 implementor: get returns place_pool gallery urls", async () => 
     gallery_count: 2,
   });
 });
+// [TEST-MOD-APPROVED #1980] append-only override commit marker
