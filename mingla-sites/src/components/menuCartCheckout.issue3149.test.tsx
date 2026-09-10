@@ -16,6 +16,10 @@
  *
  * The single seam is `navigation.go`, because jsdom cannot follow a real
  * top-level navigation. Its real body is `window.location.href = url`.
+ *
+ * fails-on-revert verified at b8050c655 — with `MenuCart.tsx`, `RestaurantV1.tsx`
+ * and `api/order/route.ts` restored to origin/main, all 9 tests here fail:
+ * there is no checkout form to find and no create request to inspect.
  */
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";

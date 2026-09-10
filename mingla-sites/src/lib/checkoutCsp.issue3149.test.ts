@@ -20,6 +20,11 @@
  *
  * So no change to the policy was needed for #3149, and this pins that reading
  * so a future tightening cannot silently break paying for dinner.
+ *
+ * No fails-on-revert line, deliberately: verified at b8050c655 that `csp.ts` is
+ * UNCHANGED by this issue. These pass on origin/main too — they are the
+ * evidence for the claim that nothing needed loosening, and the guard against
+ * a later change that would.
  */
 import { describe, expect, it } from "vitest";
 import { buildCsp } from "./csp";

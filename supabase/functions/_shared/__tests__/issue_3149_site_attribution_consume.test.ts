@@ -11,6 +11,18 @@
  * PostgREST traffic the Supabase client actually emits, so the assertions are
  * about what the function DOES: which digest it computes, which site it scopes
  * the touch to, and whether an order can ever depend on its analytics.
+ *
+ * fails-on-revert verified at b8050c655 — with `brand-site-attribution/index.ts`
+ * restored to origin/main, all 4 tests fail: consume is an unknown action and
+ * the RPC is never called.
+ *
+ * NOT YET WIRED INTO CI, and that is worth saying out loud rather than
+ * discovering later. Every Deno lane in this repo enumerates its test files by
+ * name, and adding this one to `supabase-secret-budget.yml` drifts the frozen
+ * PR-family digest in `.github/scripts/strict-grep/issue-2851-*.mjs`, which
+ * this change may not touch. Registering it is a follow-up that has to re-pin
+ * that seal. Until then: `deno test --allow-env --allow-read
+ * --allow-net=deno.land,esm.sh <this file>`.
  */
 import { handleBrandSiteAttribution } from "../../brand-site-attribution/index.ts";
 

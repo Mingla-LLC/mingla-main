@@ -10,6 +10,9 @@
  * from memory.
  *
  * Every one of these runs the component. None of them reads its source.
+ *
+ * fails-on-revert verified at b8050c655 — with `MenuCart.tsx`, `RestaurantV1.tsx`
+ * and `api/order/route.ts` restored to origin/main, all 15 tests here fail.
  */
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";

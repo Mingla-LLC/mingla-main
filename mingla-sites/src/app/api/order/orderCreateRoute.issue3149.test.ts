@@ -10,6 +10,11 @@
  * The three endings `venue-order-create` can give a create are each exercised
  * here, end to end, plus the two things this route exists to guarantee — that
  * the venue comes from the artifact and that no price is ever forwarded.
+ *
+ * fails-on-revert verified at b8050c655 — with `api/order/route.ts` restored to
+ * origin/main, the refusal-name test and all six attribution tests fail. The
+ * pass-through tests keep passing, which is correct: that half already worked
+ * and these pin that #3149 did not break it.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
