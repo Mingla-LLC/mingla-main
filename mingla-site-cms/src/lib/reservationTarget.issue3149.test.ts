@@ -19,7 +19,8 @@
  * Payload and a configurable projection. Nothing reads the builder as text —
  * reading it as text is what let the cancel-page link ship in the first place.
  *
- * fails-on-revert verified at db7e04a38 (`url` restored to
+ * fails-on-revert verified at fe8740545 (all seven wave-5 fixes reverted, these
+ * tests kept; `url` restored to
  * `${MINGLA_HOST_ORIGIN}/reserve/${input.tenant.core_brand_id}`, the fail-closed
  * guard and the `wantsVenue` read removed): 14 of the 16 tests here fail. The
  * two that still pass are the ones that must — the brand's own copy travels

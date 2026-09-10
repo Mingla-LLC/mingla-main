@@ -140,7 +140,7 @@ const TEAM = {
 /* ──────────────────────────────────────────────────────────────────────────
  * FIX 1 — an <img> that declares an aspect ratio must also declare a height.
  *
- * fails-on-revert verified at db7e04a38 (all five fixes reverted, these tests
+ * fails-on-revert verified at fe8740545 (all seven fixes reverted, these tests
  * kept): all 3 tests in this group fail, each with the computed height reading
  * "" instead of "auto".
  *
@@ -213,7 +213,7 @@ describe("#3149 wave 5 an aspect ratio only works if a height is given back", ()
 /* ──────────────────────────────────────────────────────────────────────────
  * FIX 2 — the films own the grid, and nothing in it spans every track.
  *
- * fails-on-revert verified at db7e04a38 (all five fixes reverted, these tests
+ * fails-on-revert verified at fe8740545 (all seven fixes reverted, these tests
  * kept): 5 of the 7 tests in this group fail — the spanning-child test naming
  * `reel-grid-head` and `reel-grid-cta`, the rest with the films container
  * absent. Two still pass, both correctly: a lone reel never went through the
@@ -323,7 +323,7 @@ describe("#3149 wave 5 the reel grid holds films and nothing else", () => {
 /* ──────────────────────────────────────────────────────────────────────────
  * FIX 4 — the count badge must not cover the bag it counts.
  *
- * fails-on-revert verified at db7e04a38 (all five fixes reverted, these tests
+ * fails-on-revert verified at fe8740545 (all seven fixes reverted, these tests
  * kept): 5 of the 6 tests in this group fail — each occlusion case with a badge
  * bottom of 28px against a glyph top of 12px, and both collision tests with the
  * pill reading `position: absolute`. The 44px tap-target test still passes,
@@ -430,7 +430,7 @@ describe("#3149 wave 5 the cart badge sits on the corner, not on the glyph", () 
 /* ──────────────────────────────────────────────────────────────────────────
  * FIX 5 — the breadcrumbs sit on one line.
  *
- * fails-on-revert verified at db7e04a38 (all five fixes reverted, these tests
+ * fails-on-revert verified at fe8740545 (all seven fixes reverted, these tests
  * kept): the alignment test fails with the computed value reading "normal".
  * The align-self test still passes, correctly: no child ever opted out — the
  * container was the whole defect.
@@ -472,7 +472,7 @@ describe("#3149 wave 5 the breadcrumb reads as one line", () => {
 /* ──────────────────────────────────────────────────────────────────────────
  * FIX 6 — the section reaches the page edges; its CONTENT is what is capped.
  *
- * fails-on-revert verified at 43a2f0c73 (all seven fixes reverted, these tests
+ * fails-on-revert verified at fe8740545 (all seven fixes reverted, these tests
  * kept): all 4 tests in this group fail — three on the section geometry, one on
  * `.cta` still carrying the `!important` overrides.
  *
@@ -572,7 +572,7 @@ describe("#3149 wave 5 a section is full-bleed and holds its content to a column
 /* ──────────────────────────────────────────────────────────────────────────
  * FIX 7 — the brand's wordmark, which was built and never called.
  *
- * fails-on-revert verified at 43a2f0c73 (all seven fixes reverted, these tests
+ * fails-on-revert verified at fe8740545 (all seven fixes reverted, these tests
  * kept): 3 of the 5 tests in this group fail. The two that still pass are the
  * fallback cases, correctly — a site with no logo rendered its name as text
  * before this change and must go on doing exactly that.
