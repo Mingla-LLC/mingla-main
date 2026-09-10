@@ -528,7 +528,17 @@ test("#1902 typed Business Jest exposure is lock-pinned and resolves exact offli
     } finally {workspace.cleanup();}
     for(const key of ["version","packageName","providerExecutable","consumerPackageLinkTarget","consumerBinLinkTarget","authorityKey"]){const attack=structuredClone(value);attack.setupProfiles["phase3b-lifecycle-node20-deno2"].toolExposures[0][key]+="-drift";assert.match(validateRegistry(attack,{root:ROOT}).join("\n"),/setupProfiles differ|exposure contract drifted/);}
   } finally {fs.rmSync(root,{recursive:true,force:true});}
-  const hashes={"app-mobile/package.json":"2e167f8c716e80e9baf53dd2b2ba14833afd3a3da48f19718442672bbd0ce6a2","app-mobile/package-lock.json":"80d18eae58c8e0a81c7e858730caaaae7294e767a27b078ffae2c6d2a2786624","mingla-business/package.json":"61ddd3137b3cc5542f9d58b28edd0a4f1cd6479a9212d99b8067025a03547601","mingla-business/package-lock.json":"6725babece1c8c2aab52d3d66dae35de0a45088e4a240560d7f4eb8317ee6513"};
+  // [TEST-MOD-APPROVED #3175] Refreshed 2026-09-10 alongside the same four pins
+  // in validate-manifest-v2.mjs. This is an INDEPENDENT second copy of the
+  // authority, restated here on purpose so the gate cannot be satisfied by the
+  // validator agreeing with itself — which also means a refresh has to touch
+  // BOTH, and missing this one leaves the gate red while the validator passes.
+  // The three that moved are the already-merged Dependabot bumps: browserslist
+  // 4.28.1→4.28.8 in /app-mobile (#3013), browserslist 4.28.2→4.28.8 in
+  // /mingla-business (#3024), and the npm_and_yarn group of 7 carrying fast-uri
+  // ^3.1.5→^3.1.7 (#3168). mingla-business/package.json never moved and keeps
+  // its original pin.
+  const hashes={"app-mobile/package.json":"89b2d535fba9a12823b44a89b44854ba5e16b9a81aae24b66b0189296f994ab9","app-mobile/package-lock.json":"c66a57bebba18941e980061a79d0e39cf482a1c39ffc3427aede7ca615ac2dca","mingla-business/package.json":"61ddd3137b3cc5542f9d58b28edd0a4f1cd6479a9212d99b8067025a03547601","mingla-business/package-lock.json":"b1100bc40a3ec59739a2559ed0f88f3b6b0d6bc6700d1553cd2dd19059ee18dc"};
   for(const [relative,expected] of Object.entries(hashes)) assert.equal(digest(fs.readFileSync(path.join(ROOT,relative))),expected);
 });
 
