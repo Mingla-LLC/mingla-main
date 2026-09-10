@@ -16,6 +16,7 @@ import { CityHostAcquisitionBar } from '@/components/page-system/city-host-acqui
 import { CityCatalogue } from '@/components/page-system/city-catalogue'
 import type { CataloguePlace, CataloguePlan, ExplorerCategorySlug } from '@/content/page-system/shared'
 import { CityDeviceAction, CityHostCreationLinks, CityHubImpression, CityTrackedLink } from './city-actions'
+import { historicalCityBuildEnabled } from '@/lib/search/historical-city-build'
 
 export interface CityHubCatalogue {
   readonly places: readonly CataloguePlace[]
@@ -287,7 +288,10 @@ export function RootCityGrid({ surface }: { readonly surface: 'explorer' | 'host
   )
 }
 
-export function CityHub({ record, catalogue }: { readonly record: CityHubRecord; readonly catalogue?: CityHubCatalogue }) {
+export function CityHub({ record, catalogue: suppliedCatalogue }: { readonly record: CityHubRecord; readonly catalogue?: CityHubCatalogue }) {
+  // The historical #2983 append-only guard builds one explicit compatibility
+  // artifact. The unflagged release build always receives the real catalogue.
+  const catalogue = historicalCityBuildEnabled() && record.slug !== 'lagos' ? undefined : suppliedCatalogue
   return (
     <div className="page-system-root city-hub-root" data-host-acquisition="true">
       <CutoutShell>

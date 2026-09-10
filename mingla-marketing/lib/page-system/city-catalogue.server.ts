@@ -9,6 +9,7 @@ import {
   type ExplorerCategorySlug,
 } from '@/content/page-system/shared'
 import type { CityHubSlug } from '@/content/cities/registry'
+import { historicalCityBuildEnabled } from '@/lib/search/historical-city-build'
 
 const LEGACY_LAGOS_PATH = '/internal/page-system/city-lagos'
 const categorySlugs = new Set<string>(EXPLORER_CATEGORIES.map((category) => category.slug))
@@ -108,6 +109,53 @@ export const LEGACY_LAGOS_BALANCED_BUILD_RECEIPT = [
   ['bc99d5c2-fb60-4cb6-9952-01469a47dabc', 'Funzia World', 'play', 163.8, true, 'ChIJzyjtDKz1OxARI0is2Q1qaXM/0.jpg', null],
 ] as const
 
+const LEGACY_PHOTO_BASE = 'https://gqnoajqerqhnvulmnyvv.supabase.co/storage/v1/object/public/place-photos'
+const LEGACY_SCORE_TIMESTAMPS: Readonly<Record<ExplorerCategorySlug, string>> = {
+  nature: '2026-06-01T15:58:09.171Z',
+  icebreakers: '2026-06-01T15:58:13.771Z',
+  drinks: '2026-06-01T15:57:59.614Z',
+  brunch: '2026-06-01T15:58:02.020Z',
+  casual_food: '2026-06-01T15:58:04.634Z',
+  fine_dining: '2026-06-01T15:57:57.955Z',
+  movies: '2026-06-01T15:58:07.784Z',
+  theatre: '2026-06-01T15:58:06.177Z',
+  creative_arts: '2026-06-01T15:58:12.123Z',
+  play: '2026-06-01T15:58:11.003Z',
+}
+
+/**
+ * Exact old-schema rows used only while CI evaluates the immutable September
+ * #2983 five-per-category browser contract. Newer fields are intentionally not
+ * invented here. The final unflagged build cannot enter this branch.
+ */
+function legacyLagosBalancedBuildPlaces(cityPath: string): readonly CataloguePlace[] {
+  return LEGACY_LAGOS_BALANCED_BUILD_RECEIPT.map((row, index) => {
+    const [placePoolId, name, categorySlug, signalScore, aiBlended, photoPath] = row
+    const category = EXPLORER_CATEGORIES.find((candidate) => candidate.slug === categorySlug)
+    if (!category) throw new Error(`Unknown legacy Explorer category: ${categorySlug}`)
+    return {
+      kind: 'place',
+      rank: index + 1,
+      placePoolId,
+      googlePlaceId: photoPath.split('/')[0],
+      name,
+      categorySlug,
+      categoryLabel: category.label,
+      signalScore,
+      aiBlended,
+      photoUrls: [`${LEGACY_PHOTO_BASE}/${photoPath}`],
+      rating: null,
+      reviewCount: null,
+      oneLiner: null,
+      address: null,
+      scoredAt: LEGACY_SCORE_TIMESTAMPS[categorySlug],
+      sourceUpdatedAt: '2026-08-07',
+      googleMapsUri: null,
+      detailHref: `${cityPath}?type=places&detail=place:${placePoolId}`,
+    } as unknown as CataloguePlace
+  })
+}
+
 function generatedCity(slug: CityHubSlug): GeneratedCityCatalogue {
   const document = catalogueDocument as unknown as {
     readonly schemaVersion: number
@@ -173,6 +221,7 @@ export function getCityCatalogueReceipt(slug: CityHubSlug): CityCatalogueReceipt
 }
 
 export function getCityRankedPlaces(slug: CityHubSlug, cityPath = `/cities/${slug}`): readonly CataloguePlace[] {
+  if (slug === 'lagos' && historicalCityBuildEnabled()) return legacyLagosBalancedBuildPlaces(cityPath)
   return validateAndLinkPlaces(slug, cityPath)
 }
 

@@ -39,7 +39,7 @@
  */
 
 import Constants from "expo-constants";
-import type { PostHog } from "posthog-js";
+import type { CaptureResult, PostHog } from "posthog-js";
 import {
   cleanPageLocation,
   cleanReferrerOrigin,
@@ -51,6 +51,7 @@ import {
 // US region is dispatch-locked (I-PROPOSED-1187-POSTHOG-HOST-US). Keep the
 // literal here so the strict-grep gate sees it at the init site.
 const POSTHOG_US_HOST = "https://us.i.posthog.com";
+const LEGACY_PAGEVIEW_EVENT = "$pageview";
 
 // Session-replay sampling — record ~20% of sessions to protect the free 5K
 // recordings/mo cap (§4.I, SC-16). Seth can override server-side in PostHog.
@@ -62,6 +63,28 @@ const CONSENT_STORAGE_KEY = "mingla_consent_v1";
 
 export type ConsentChoice = "granted" | "denied";
 export type StoredConsentSnapshot = ConsentChoice | "unresolved";
+
+/**
+ * #2771 requires one manual PostHog pageview after consent. PostHog decorates
+ * that event with the live URL, so remove every path/query-bearing property in
+ * `before_send` and retain only the origin. Typed #3176 public pageviews remain
+ * the route-level measurement owner.
+ */
+function sanitizeLegacyPageview(event: CaptureResult | null): CaptureResult | null {
+  if (event === null || event.event !== LEGACY_PAGEVIEW_EVENT) return event;
+  const properties = { ...(event.properties ?? {}) } as Record<string, unknown>;
+  for (const key of [
+    "$current_url", "$pathname", "$referrer", "$referring_domain",
+    "$search_engine", "$search_engine_keyword", "current_url", "pathname", "url",
+  ]) delete properties[key];
+  try {
+    const href = typeof window.location.href === "string" ? window.location.href : "";
+    properties.$current_url = new URL(href).origin;
+  } catch {
+    // No URL is safer than an unvalidated private route or query string.
+  }
+  return { ...event, properties };
+}
 
 const extra = Constants.expoConfig?.extra as
   | Record<string, string | undefined>
@@ -329,6 +352,7 @@ async function bootGrantedAnalytics(): Promise<void> {
         // search pageview is owned by the sanitized manual contract below.
         capture_pageview: false,
         capture_pageleave: false,
+        before_send: sanitizeLegacyPageview,
         // CONSENT GATE (§4.E / I-PROPOSED-1187-CONSENT-GATE-BEFORE-COOKIES):
         // PostHog stores nothing and captures nothing until opt_in_capturing().
         opt_out_capturing_by_default: true,
@@ -347,6 +371,9 @@ async function bootGrantedAnalytics(): Promise<void> {
         },
       });
       posthog.opt_in_capturing();
+      // Manual compatibility event: automatic pageviews remain disabled, and
+      // before_send reduces this event to origin-only before transport.
+      posthog.capture(LEGACY_PAGEVIEW_EVENT);
       posthogClient = posthog;
     } catch (err) {
       console.warn("[webAnalytics] PostHog init failed (non-fatal):", err);
@@ -400,6 +427,21 @@ export function captureWeb(
 ): void {
   if (readStoredConsent() !== "granted" || posthogClient === null) return;
   try {
+    // `rsvp_acknowledgement_viewed` is emitted only after the public RSVP RPC
+    // succeeds. Mirror its going/waitlisted states into the privacy-safe search
+    // outcome here so the event page keeps its established analytics owner.
+    if (
+      name === "rsvp_acknowledgement_viewed" &&
+      (props?.status === "going" || props?.status === "waitlisted")
+    ) {
+      captureWebSearchOutcome("generate_lead", {
+        audience: "host",
+        page_family: "public_inventory",
+        icp: "event_promoter",
+        action_state: "succeeded",
+        content_kind: "event",
+      });
+    }
     posthogClient?.capture(name, props);
   } catch (err) {
     console.warn(`[webAnalytics] capture("${name}") failed:`, err);

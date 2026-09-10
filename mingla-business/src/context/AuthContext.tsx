@@ -33,7 +33,6 @@ import { mixpanelService } from "../services/mixpanelService";
 // META-ORCH-1187 [Growth Analytics Hub] — PostHog identity bind + reset runs
 // alongside Mixpanel/AppsFlyer (parallel run; do NOT remove them).
 import { postHogService } from "../services/postHogService";
-import { captureHostSearchOutcome } from "../analytics/searchOutcome";
 // ORCH-0808-FOLLOWUP — RevenueCat identity binding (install-only scope).
 import { revenueCatService } from "../services/revenueCatService";
 // ORCH-0808-FOLLOWUP — OneSignal identity binding (install-only scope).
@@ -899,11 +898,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                       postHogService.capture("signup_completed", {
                         method,
                         surface: "business_app",
-                      });
-                      captureHostSearchOutcome("sign_up", {
-                        audience: "host",
-                        page_family: "host_pillar",
-                        action_state: "succeeded",
                       });
                     }
                   } catch (e) {

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import { AnswerBlock, CutoutSection, DeviceCta } from '@/components/cutout'
 import { CityDirectory } from '@/components/core-pages/city-directory'
 import { CoreHero } from '@/components/core-pages/core-hero'
@@ -8,6 +9,7 @@ import { CITY_HUBS } from '@/content/cities/registry'
 import { CORE_PAGES } from '@/content/core-pages'
 import { corePageMetadata } from '@/lib/search/metadata'
 import { corePageStructuredData, serializeCorePageStructuredData } from '@/lib/search/core-page-schema'
+import { historicalCityBuildEnabled } from '@/lib/search/historical-city-build'
 
 const record = CORE_PAGES.cities
 export const metadata: Metadata = corePageMetadata(record)
@@ -17,6 +19,7 @@ function CityConstellation() {
 }
 
 export default function CitiesPage() {
+  if (historicalCityBuildEnabled()) notFound()
   const schema = corePageStructuredData(record)
   return <CorePageShell>
     {schema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeCorePageStructuredData(schema) }} /> : null}

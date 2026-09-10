@@ -28,7 +28,7 @@ if (!/^[A-Za-z0-9-]{8,128}$/.test(indexNowKey)) throw new Error('INDEXNOW_KEY is
 if (urls.length===0) process.exit(0)
 const response = await fetch('https://api.indexnow.org/indexnow', {
   method:'POST', headers:{'content-type':'application/json'},
-  body:JSON.stringify({ host:'host.usemingla.com', key:indexNowKey, keyLocation:'https://host.usemingla.com/indexnow-key.txt', urlList:urls }),
+  body:JSON.stringify({ host:'host.usemingla.com', key:indexNowKey, keyLocation:'https://host.usemingla.com/api/indexnow-key', urlList:urls }),
 })
 const ids = valid.map((row) => row.id)
 if (response.ok) {

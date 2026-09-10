@@ -21,6 +21,11 @@
  * Claim mode does NOT enter the inline deck-readiness leg — deck-readiness
  * stays reachable post-submit via the existing to-dos/resume route, prefilled
  * from staging (Leg A §A3.1/§A3.5).
+ *
+ * #3176 append-only compatibility receipt: "sign_up" and "generate_lead"
+ * remain reserved analytics names, but venue create/claim never emits either.
+ * Only the established account-success owner or a completed public booking,
+ * contact, or RSVP boundary may record those outcomes.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -29,7 +34,6 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 // removed. Per SPEC §7.F.
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
-import { captureHostSearchOutcome } from "../../analytics/searchOutcome";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useAnimatedStyle,
@@ -468,13 +472,6 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       if (claimMode) {
         // ORCH-1263 — claim success: the standard pending card state (DESIGN
         // §8.1); NO inline deck-readiness leg (resume route serves it later).
-        captureHostSearchOutcome("generate_lead", {
-          audience: "host",
-          page_family: "host_pillar",
-          icp: "venue",
-          action_state: "succeeded",
-          content_kind: "venue",
-        });
         onDone(null, venueId, st.displayName.trim(), true);
         // Issue #1685 — clear ONLY the submitted draft; `reset(currentBrand.id)`
         // would destroy this brand's sibling drafts.
@@ -503,13 +500,6 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           // non-blocking — the pitch/photos are editable on the listing page.
         }
       }
-      captureHostSearchOutcome("generate_lead", {
-        audience: "host",
-        page_family: "host_pillar",
-        icp: "venue",
-        action_state: "succeeded",
-        content_kind: "venue",
-      });
       onDone(null, venueId, st.displayName.trim(), false);
       // Issue #1685 — clear ONLY the submitted draft; `reset(currentBrand.id)`
       // would destroy this brand's sibling drafts.
