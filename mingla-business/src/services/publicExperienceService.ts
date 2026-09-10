@@ -683,10 +683,66 @@ function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
  * anon RPC. Returns null when the brand/experience is missing, not an experience, or
  * not live (draft → never leaks). Mirrors useConsumerTripDetail's RPC read.
  */
+const isExperienceRpcPayload = (value: unknown): value is RpcExpPayload => {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as {
+    id?: unknown;
+    experienceSlug?: unknown;
+    brand?: { id?: unknown; slug?: unknown } | null;
+    stops?: unknown;
+    dates?: unknown;
+  };
+  return (
+    typeof v.id === "string" &&
+    typeof v.experienceSlug === "string" &&
+    Array.isArray(v.stops) &&
+    Array.isArray(v.dates) &&
+    typeof v.brand === "object" &&
+    v.brand !== null &&
+    typeof v.brand.id === "string" &&
+    typeof v.brand.slug === "string"
+  );
+};
+
 export async function getPublicExperienceBySlug(
   brandSlug: string,
   experienceSlug: string,
 ): Promise<PublicExperiencePayload | null> {
+  // #426 G1 — web prefers the CDN-cached Host API (#2879 mirror); native and
+  // cache misses keep the canonical SECURITY DEFINER RPC.
+  if (typeof document !== "undefined") {
+    try {
+      const url =
+        `/api/experience-checkout-bundle?brandSlug=${encodeURIComponent(brandSlug)}` +
+        `&experienceSlug=${encodeURIComponent(experienceSlug)}`;
+      const response = await fetch(url);
+      if (response.status === 404) return null;
+      if (response.ok) {
+        const data: unknown = await response.json();
+        if (!isExperienceRpcPayload(data)) {
+          // Malformed body is a REAL defect — do not hide it behind RPC fallback
+          // (same contract as publicEventsService invalid_direct_event_checkout_bundle).
+          throw new Error("invalid_experience_checkout_bundle");
+        }
+        try {
+          return mapRpcPayload(data);
+        } catch {
+          // Mapper throws on nested shape defects that slipped the guard —
+          // still a broken CDN contract, never a silent RPC fallback.
+          throw new Error("invalid_experience_checkout_bundle");
+        }
+      }
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "invalid_experience_checkout_bundle"
+      ) {
+        throw error;
+      }
+      // Transport failure → fall through to PostgREST (same as event bundle).
+    }
+  }
+
   const { data, error } = await supabase.rpc("pg_public_experience_by_slug", {
     p_brand_slug: brandSlug,
     p_experience_slug: experienceSlug,

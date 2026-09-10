@@ -16,6 +16,15 @@
 
 Reports land in `docs/evidence/g1-load/reports/` (JSON summary exports).
 
+## Public offering path (1A — closes G1)
+
+Primary 100k surface is **not** discover. Use:
+
+- `./scripts/load/run-staging.sh public-offering-fanout …`
+- Phase 4 recipe: [`phase4-100k-runner-recipe.md`](./phase4-100k-runner-recipe.md)
+
+Discover Phase 2/3 evidence remains on disk as a **platform limit**, not a silent pass.
+
 ## Run locally
 
 ```bash

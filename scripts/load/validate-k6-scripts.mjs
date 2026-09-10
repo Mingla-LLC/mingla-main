@@ -20,6 +20,11 @@ const REQUIRED_SCRIPT_NAMES = [
   "ticket-checkout-create.js",
   "agent-chat.js",
   "marketing-send.js",
+  // #426 G1 public offering path (1A)
+  "public-event-bundle.js",
+  "public-trip-read.js",
+  "public-experience-read.js",
+  "public-offering-fanout.js",
 ];
 
 const LIB_EXPORTS = ["postJsonAuthed", "edgeHeadersWithJwt", "checkNot5xx"];

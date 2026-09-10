@@ -4,8 +4,10 @@
   "type": "module",
   "scripts": {
     "validate:categories": "node validate-category-consistency.mjs",
+    "test:g3-sentry": "node audit/g3-sentry-contract.mjs",
     "test:g4-dr-restore": "node audit/g4-dr-restore-contract.mjs",
-    "test:g5-synthetic-incident": "node audit/g5-synthetic-incident-contract.mjs"
+    "test:g5-synthetic-incident": "node audit/g5-synthetic-incident-contract.mjs",
+    "test:public-offering-load": "node audit/public-offering-load-contract.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2",

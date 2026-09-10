@@ -21,6 +21,10 @@ Adjust these with real Mixpanel/Supabase metrics before launch.
 | Path | Edge / service | Auth | Load script |
 |------|----------------|------|-------------|
 | Public discover merge | `discover-merged-events` | Anon | `scripts/load/discover-merged-events.js` |
+| Public event data (CDN) | Host `/api/event-checkout-bundle` | Anon | `scripts/load/public-event-bundle.js` |
+| Public trip data (CDN) | Host `/api/trip-checkout-bundle` | Anon | `scripts/load/public-trip-read.js` |
+| Public experience data (CDN) | Host `/api/experience-checkout-bundle` | Anon | `scripts/load/public-experience-read.js` |
+| Public offering fan-out | Host bundles ×3 | Anon | `scripts/load/public-offering-fanout.js` |
 | Buyer checkout status | `ticket-checkout-status` | Anon token | `scripts/load/ticket-checkout-status.js` |
 | Checkout create | `ticket-checkout-create` | Anon / mixed | `scripts/load/ticket-checkout-create.js` |
 | Ari chat | `agent-chat` | JWT | `scripts/load/agent-chat.js` |

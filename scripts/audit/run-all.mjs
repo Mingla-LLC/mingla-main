@@ -25,6 +25,11 @@ const AUDITS = [
   "n-plus-one-heuristic.mjs",
   "rls-perf-heuristic.mjs",
   "discover-scale-contract.mjs",
+  // #426 Tier 2 scaffolding contracts (G3–G5 + public offering harness)
+  "g3-sentry-contract.mjs",
+  "g4-dr-restore-contract.mjs",
+  "g5-synthetic-incident-contract.mjs",
+  "public-offering-load-contract.mjs",
 ];
 
 function run(script, extraArgs = []) {
