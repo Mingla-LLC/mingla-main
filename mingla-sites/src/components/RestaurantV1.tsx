@@ -223,7 +223,7 @@ function Block({ block, context, primaryHeading = false, facts, pill }: { block:
             section: text(section.name),
           })),
         );
-        return <section className="menu-board"><Eyebrow label={block.eyebrow} heading={text(block.heading, "Menu")} /><h2>{text(block.heading, "Menu")}</h2>{block.note ? <p className="menu-note">{text(block.note)}</p> : null}<MenuCart items={cartItems} /></section>;
+        return <section className="menu-board"><Eyebrow label={block.eyebrow} heading={text(block.heading, "Menu")} /><h2>{text(block.heading, "Menu")}</h2>{block.note ? <p className="menu-note">{text(block.note)}</p> : null}<MenuCart items={cartItems} context={context} /></section>;
       }
       return <section className="menu-board"><Eyebrow label={block.eyebrow} heading={text(block.heading, "Menu")} /><h2>{text(block.heading, "Menu")}</h2>{block.note ? <p className="menu-note">{text(block.note)}</p> : null}{sections.map((section, sectionIndex) => <div className="menu-section" id={menuSectionSlug(text(section.name))} key={`${text(section.name)}-${sectionIndex}`}><h3>{text(section.name)}</h3>{section.description ? <p className="menu-section-note">{text(section.description)}</p> : null}<ul className="menu-list">{items(section.items).map((item, itemIndex) => { const price = formatMenuPrice(item.price_minor, item.currency); return <li className="menu-row" key={`${text(item.name)}-${itemIndex}`}><div className="menu-row-head"><span className="menu-item-name">{text(item.name)}</span><span className="menu-leader" aria-hidden="true" />{price ? <span className="menu-price">{price}</span> : null}</div>{item.description ? <p className="menu-item-note">{text(item.description)}</p> : null}</li>; })}</ul></div>)}</section>;
     }

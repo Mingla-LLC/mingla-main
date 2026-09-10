@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
 
+import { analyticsAllowed, sendSiteEvent, type SiteEventContext } from "../lib/clientAnalytics";
 import { menuGroupOf, menuSectionSlug, sectionForHash } from "../lib/menuSections";
+import { MINGLA_BUSINESS_ORIGIN } from "../lib/origins";
 import { useCart } from "./CartScope";
 
 /**
@@ -55,6 +57,131 @@ type Priced = {
   error?: string;
 };
 
+/*
+ * #3149 — WHAT MINGLA ANSWERS WHEN THE ORDER IS ACTUALLY PLACED.
+ *
+ * `mode: "create"` has more than one ending and they are not interchangeable:
+ *
+ *   requires_paystack_redirect  NG / Paystack. The guest leaves for Paystack.
+ *   requires_web_redirect       Stripe hosted checkout, for a non-NG brand.
+ *   free_completed              zero total. The order is already complete.
+ *   already_created             this basket was ALREADY submitted. Mingla
+ *                               returns the FIRST order rather than a second
+ *                               one, and holds back the status token because a
+ *                               replay legitimately cannot re-mint it.
+ *
+ * The website chooses none of this. It does not know which payment provider a
+ * brand uses, what currency it settles in, or whether tax is passed on — those
+ * are resolved from the brand row inside Mingla, and a browser that guessed at
+ * any of them would eventually guess wrong in public.
+ */
+type Created = {
+  kind?: string;
+  orderId?: string;
+  buyerStatusToken?: string;
+  authorizationUrl?: string;
+  url?: string;
+  error?: string;
+};
+
+/*
+ * The redirect goes through here so it can be PROVEN. A test cannot let jsdom
+ * follow a real navigation, and asserting that the source contains the string
+ * `location.href` is exactly the kind of test that has shipped six defects on
+ * this issue. This is one line of indirection in exchange for a test that runs
+ * the branch and reads back where the guest was actually sent.
+ */
+export const navigation = {
+  go(url: string): void {
+    window.location.href = url;
+  },
+};
+
+/*
+ * A redirect target is only followed when it is HTTPS and belongs to the place
+ * that kind of response is allowed to send someone. Mingla composes these URLs,
+ * but the browser is the thing that acts on them, and an unchecked
+ * `location.href = <whatever came back>` is an open redirect waiting for the
+ * day a response is not what we expected. `checkout.paystack.com` is the same
+ * host Mingla's own continuation resolver pins.
+ */
+function safeRedirect(value: unknown, hosts: readonly string[]): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && hosts.includes(parsed.hostname)
+      ? parsed.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/*
+ * The SAME predicate Mingla's rail applies (`normalizePhoneE164`), reproduced
+ * so a guest is told what is wrong beside the field instead of being refused
+ * after a round trip. It is deliberately not more permissive: anything this
+ * accepts and the rail rejects would be a checkout that fails at the last step.
+ *
+ * Note the shape of it. A bare local number is only understood as a NORTH
+ * AMERICAN one, so a Lagos guest typing 0801... is not recognised and must
+ * include +234. The field says so rather than leaving them to guess.
+ */
+export function normalizePhone(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (/^\+[1-9][0-9]{1,14}$/.test(trimmed)) return trimmed;
+  const digits = trimmed.replace(/[^\d]/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return null;
+}
+
+/*
+ * #3149 — ONE order per basket, however many times the button is pressed.
+ *
+ * Mingla replays a create against the same idempotency key instead of writing
+ * a second order, so the whole question is whether the browser sends the SAME
+ * key twice. A key minted at press time would not: a double-tap, a flaky
+ * network and a reload would each mint a new one and each could become its own
+ * order and its own charge.
+ *
+ * So the key is minted once per basket-and-buyer and remembered. Changing the
+ * basket, or the person ordering, is a different order and gets a different
+ * key. It is remembered in sessionStorage so a reload mid-checkout continues
+ * the same order rather than starting a second one; a browser refusing storage
+ * falls back to memory, which still covers the double-tap.
+ */
+const KEY_STORE = "mingla_site_order_key_v1";
+let memoKey: { signature: string; key: string } | null = null;
+
+export function idempotencyKeyFor(signature: string): string {
+  let held = memoKey;
+  if (held === null || held.signature !== signature) {
+    try {
+      const raw = window.sessionStorage.getItem(KEY_STORE);
+      const parsed = raw === null ? null : JSON.parse(raw) as { signature?: unknown; key?: unknown };
+      if (
+        parsed !== null && parsed.signature === signature &&
+        typeof parsed.key === "string" && parsed.key.length > 0
+      ) held = { signature, key: parsed.key };
+    } catch {
+      // Storage refused or held nonsense. A fresh key is the safe answer.
+    }
+  }
+  if (held === null || held.signature !== signature) {
+    held = { signature, key: `sites:${crypto.randomUUID()}` };
+    try {
+      window.sessionStorage.setItem(KEY_STORE, JSON.stringify(held));
+    } catch {
+      // Memory alone still stops a double-tap becoming two orders.
+    }
+  }
+  memoKey = held;
+  return held.key;
+}
+
 function money(minor: number | null | undefined, currency: string | null | undefined): string | null {
   if (typeof minor !== "number" || !Number.isFinite(minor)) return null;
   if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) return null;
@@ -85,7 +212,7 @@ const readHash = () => window.location.hash;
 // The server has no fragment; it renders the whole menu.
 const readServerHash = () => "";
 
-export function MenuCart({ items }: { items: CartItem[] }) {
+export function MenuCart({ items, context }: { items: CartItem[]; context: SiteEventContext }) {
   /*
    * The cart lives above this block now, so it survives walking to another page
    * and back. A page rendered without the provider still works: it falls back
@@ -113,6 +240,23 @@ export function MenuCart({ items }: { items: CartItem[] }) {
   const [priced, setPriced] = useState<Priced | null>(null);
   const [pricing, setPricing] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  /*
+   * #3149 — the guest. THREE fields, because three is what Mingla's venue-order
+   * rail requires of a counter-pickup order and it validates all three itself
+   * before it will write a row: a name of at least two characters, an email
+   * (Paystack cannot be initialised without one, and it is where the receipt
+   * goes), and a phone number the kitchen can reach when the order is ready.
+   * Nothing else is asked for, because nothing else is required.
+   */
+  const [buyerName, setBuyerName] = useState("");
+  const [buyerEmail, setBuyerEmail] = useState("");
+  const [buyerPhone, setBuyerPhone] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<
+    { name?: string; email?: string; phone?: string }
+  >({});
+  const [placing, setPlacing] = useState(false);
+  const [placedNote, setPlacedNote] = useState<string | null>(null);
+  const fieldId = useId();
 
   /*
    * #2830 -- gogi's menu offers four filters (Everything / Food / Drinks /
@@ -273,6 +417,150 @@ export function MenuCart({ items }: { items: CartItem[] }) {
     : null;
   const unavailable = (priced?.lines ?? []).filter((line) => line.unavailable);
 
+  /*
+   * #3149 — CHECKING OUT. The drawer used to end at the total, which meant the
+   * cart could count, price and display an order that no one could ever place:
+   * gogi's own page finishes with "message us on WhatsApp and send proof of
+   * transfer". This is the ending the component's own header promised — the
+   * order goes onto the venue-order rail their staff already work in, and is
+   * paid for through whichever provider Mingla routes that brand to.
+   *
+   * WHAT THIS FUNCTION DOES NOT DO, on purpose: it does not price anything, it
+   * does not name a currency, and it does not choose a payment provider. It
+   * sends menu item ids, quantities and the guest; every question about money
+   * is answered inside Mingla, from the brand's own row.
+   */
+  const checkout = useCallback(async () => {
+    if (placing || lines.length === 0) return;
+    const name = buyerName.trim();
+    const email = buyerEmail.trim();
+    const phone = normalizePhone(buyerPhone);
+
+    /*
+     * Validated HERE, before anything is sent. Each of these is a refusal the
+     * rail would make anyway, and a guest should hear it beside the field they
+     * typed rather than as a failed checkout half a second later.
+     */
+    const next: { name?: string; email?: string; phone?: string } = {};
+    if (name.length < 2) next.name = "Please tell us who the order is for.";
+    if (!EMAIL.test(email)) next.email = "Please give an email address for the receipt.";
+    if (phone === null) {
+      next.phone = "Please give a phone number with its country code, like +234 801 234 5678.";
+    }
+    setFieldErrors(next);
+    if (Object.keys(next).length > 0) return;
+
+    setPlacing(true);
+    setFailed(null);
+    setPlacedNote(null);
+
+    /*
+     * ATTRIBUTION, and it is worth being plain about why it is here rather
+     * than at the end: the touch has to exist BEFORE the order it will be
+     * bound to, and it is what earns the website credit for a sale that
+     * settles inside Mingla. It follows the same shape `TrackedLink` uses when
+     * a visitor leaves for Mingla — ask `/api/attribution` for a token, carry
+     * the token to whatever creates the order. Consent gates it, it never
+     * blocks the order, and a failure here is silent by design.
+     */
+    let siteAttributionToken: string | null = null;
+    if (analyticsAllowed()) {
+      await sendSiteEvent(context, "checkout_start", { cta_kind: "checkout" });
+      try {
+        const issued = await fetch("/api/attribution", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...context,
+            event_name: "checkout_start",
+            source_kind: "site",
+            source_ref: "menu_cart",
+          }),
+        });
+        const token = (await issued.json()) as { data?: { token?: unknown } };
+        if (issued.ok && typeof token?.data?.token === "string") {
+          siteAttributionToken = token.data.token;
+        }
+      } catch {
+        // Attribution is additive. It may never stop somebody buying dinner.
+      }
+    }
+
+    try {
+      const response = await fetch("/api/order", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "create",
+          lines,
+          buyer: { name, email, phone },
+          idempotencyKey: idempotencyKeyFor(
+            `${email}|${phone}|${lines.map((line) => `${line.menuItemId}x${line.quantity}`).sort().join(",")}`,
+          ),
+          ...(siteAttributionToken === null ? {} : { siteAttributionToken }),
+        }),
+      });
+      const created = (await response.json().catch(() => null)) as Created | null;
+      if (!response.ok || created === null) {
+        /*
+         * The limiter deserves its own sentence. "We could not place this
+         * order" for somebody who is simply ordering quickly is both wrong and
+         * alarming — nothing is broken and nothing has failed.
+         */
+        setFailed(
+          created?.error === "too_many_orders"
+            ? "That is a lot of orders in a row. Give it a moment and try again. Nothing has been charged."
+            : "We could not place this order just now. Nothing has been charged.",
+        );
+        return;
+      }
+
+      const paystack = safeRedirect(created.authorizationUrl, ["checkout.paystack.com"]);
+      if (created.kind === "requires_paystack_redirect" && paystack !== null) {
+        shared?.clear();
+        navigation.go(paystack);
+        return;
+      }
+      const hosted = safeRedirect(created.url, ["checkout.stripe.com"]);
+      if (created.kind === "requires_web_redirect" && hosted !== null) {
+        shared?.clear();
+        navigation.go(hosted);
+        return;
+      }
+      if (
+        created.kind === "free_completed" && typeof created.orderId === "string" &&
+        typeof created.buyerStatusToken === "string"
+      ) {
+        shared?.clear();
+        // The same landing surface a paid order returns to, so a free round and
+        // a paid one end on one page rather than two.
+        navigation.go(
+          `${MINGLA_BUSINESS_ORIGIN}/o/venue/${encodeURIComponent(created.orderId)}?bst=${
+            encodeURIComponent(created.buyerStatusToken)
+          }`,
+        );
+        return;
+      }
+      if (created.kind === "already_created") {
+        /*
+         * This basket was already sent. Mingla answered with the FIRST order
+         * rather than writing a second, and holds back the status token that
+         * only the first response carried. So there is nowhere to send the
+         * guest, and pressing again must not look like it did nothing.
+         */
+        setPlacedNote(
+          "This order is already with the kitchen. Nothing has been charged twice.",
+        );
+        return;
+      }
+      setFailed("We could not place this order just now. Nothing has been charged.");
+    } catch {
+      setFailed("We could not place this order just now. Nothing has been charged.");
+    } finally {
+      setPlacing(false);
+    }
+  }, [buyerEmail, buyerName, buyerPhone, context, lines, placing, shared]);
+
   return (
     <div className="menu-order">
       <div className="menu-toolbar">
@@ -376,6 +664,73 @@ export function MenuCart({ items }: { items: CartItem[] }) {
               <span>{pricing ? "Checking…" : total ?? "—"}</span>
             </div>
             <p className="drawer-note">Priced by Mingla when you check out.</p>
+
+            <form
+              className="checkout-fields"
+              noValidate
+              onSubmit={(event) => { event.preventDefault(); void checkout(); }}
+            >
+              <div className="checkout-field">
+                <label htmlFor={`${fieldId}-name`}>Name</label>
+                <input
+                  id={`${fieldId}-name`}
+                  name="name"
+                  type="text"
+                  autoComplete="name"
+                  value={buyerName}
+                  onChange={(event) => setBuyerName(event.target.value)}
+                  aria-invalid={fieldErrors.name ? true : undefined}
+                  aria-describedby={fieldErrors.name ? `${fieldId}-name-error` : undefined}
+                />
+                {fieldErrors.name
+                  ? <p className="checkout-error" id={`${fieldId}-name-error`}>{fieldErrors.name}</p>
+                  : null}
+              </div>
+              <div className="checkout-field">
+                <label htmlFor={`${fieldId}-email`}>Email</label>
+                <input
+                  id={`${fieldId}-email`}
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  value={buyerEmail}
+                  onChange={(event) => setBuyerEmail(event.target.value)}
+                  aria-invalid={fieldErrors.email ? true : undefined}
+                  aria-describedby={fieldErrors.email ? `${fieldId}-email-error` : undefined}
+                />
+                {fieldErrors.email
+                  ? <p className="checkout-error" id={`${fieldId}-email-error`}>{fieldErrors.email}</p>
+                  : null}
+              </div>
+              <div className="checkout-field">
+                <label htmlFor={`${fieldId}-phone`}>Phone</label>
+                <input
+                  id={`${fieldId}-phone`}
+                  name="phone"
+                  type="tel"
+                  autoComplete="tel"
+                  inputMode="tel"
+                  placeholder="+234 801 234 5678"
+                  value={buyerPhone}
+                  onChange={(event) => setBuyerPhone(event.target.value)}
+                  aria-invalid={fieldErrors.phone ? true : undefined}
+                  aria-describedby={fieldErrors.phone ? `${fieldId}-phone-error` : undefined}
+                />
+                {fieldErrors.phone
+                  ? <p className="checkout-error" id={`${fieldId}-phone-error`}>{fieldErrors.phone}</p>
+                  : null}
+              </div>
+              <button
+                type="submit"
+                className="checkout-btn"
+                disabled={placing || unavailable.length > 0}
+              >
+                {placing ? "Placing your order…" : "Check out with Mingla"}
+              </button>
+              {placedNote
+                ? <p className="checkout-status" role="status">{placedNote}</p>
+                : null}
+            </form>
           </div>
         </div>
       ) : null}
