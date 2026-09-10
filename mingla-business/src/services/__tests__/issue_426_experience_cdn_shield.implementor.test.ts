@@ -17,5 +17,7 @@ describe("issue #426 experience CDN shield", () => {
     expect(src).toContain('typeof document !== "undefined"');
     expect(src).toContain("pg_public_experience_by_slug");
     expect(src).toContain("invalid_experience_checkout_bundle");
+    expect(src).toContain("experienceSlug");
+    expect(src).toContain("Array.isArray(v.stops)");
   });
 });

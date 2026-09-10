@@ -83,12 +83,23 @@ const PUBLIC_TRIP_STALE_MS = 60 * 1000; // 1 minute
 const isWebRuntime = (): boolean => typeof document !== "undefined";
 const TRIP_CACHE_MISS = "miss" as const;
 
-const isTripRpcPayload = (value: unknown): value is RpcTripPayload =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as { id?: unknown }).id === "string" &&
-  typeof (value as { brand?: unknown }).brand === "object" &&
-  (value as { brand: unknown }).brand !== null;
+const isTripRpcPayload = (value: unknown): value is RpcTripPayload => {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as {
+    id?: unknown;
+    tripSlug?: unknown;
+    tiers?: unknown;
+    brand?: { slug?: unknown } | null;
+  };
+  return (
+    typeof v.id === "string" &&
+    typeof v.tripSlug === "string" &&
+    Array.isArray(v.tiers) &&
+    typeof v.brand === "object" &&
+    v.brand !== null &&
+    typeof v.brand.slug === "string"
+  );
+};
 
 const readCachedTripPayload = async (
   brandSlug: string,

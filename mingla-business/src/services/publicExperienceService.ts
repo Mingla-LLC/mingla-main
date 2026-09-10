@@ -683,12 +683,26 @@ function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
  * anon RPC. Returns null when the brand/experience is missing, not an experience, or
  * not live (draft → never leaks). Mirrors useConsumerTripDetail's RPC read.
  */
-const isExperienceRpcPayload = (value: unknown): value is RpcExpPayload =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as { id?: unknown }).id === "string" &&
-  typeof (value as { brand?: unknown }).brand === "object" &&
-  (value as { brand: unknown }).brand !== null;
+const isExperienceRpcPayload = (value: unknown): value is RpcExpPayload => {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as {
+    id?: unknown;
+    experienceSlug?: unknown;
+    brand?: { id?: unknown; slug?: unknown } | null;
+    stops?: unknown;
+    dates?: unknown;
+  };
+  return (
+    typeof v.id === "string" &&
+    typeof v.experienceSlug === "string" &&
+    Array.isArray(v.stops) &&
+    Array.isArray(v.dates) &&
+    typeof v.brand === "object" &&
+    v.brand !== null &&
+    typeof v.brand.id === "string" &&
+    typeof v.brand.slug === "string"
+  );
+};
 
 export async function getPublicExperienceBySlug(
   brandSlug: string,
@@ -710,7 +724,13 @@ export async function getPublicExperienceBySlug(
           // (same contract as publicEventsService invalid_direct_event_checkout_bundle).
           throw new Error("invalid_experience_checkout_bundle");
         }
-        return mapRpcPayload(data);
+        try {
+          return mapRpcPayload(data);
+        } catch {
+          // Mapper throws on nested shape defects that slipped the guard —
+          // still a broken CDN contract, never a silent RPC fallback.
+          throw new Error("invalid_experience_checkout_bundle");
+        }
       }
     } catch (error) {
       if (

@@ -84,6 +84,9 @@ const expApi = readFileSync(
   join(ROOT, "mingla-business/api/experience-checkout-bundle.js"),
   "utf8",
 );
+if (!expApi.includes("s-maxage=${CACHE_SECONDS}") && !expApi.includes("s-maxage=")) {
+  fail("experience-checkout-bundle must set s-maxage cache");
+}
 if (!expApi.includes("pg_public_experience_by_slug")) {
   fail("experience-checkout-bundle must call pg_public_experience_by_slug");
 }
