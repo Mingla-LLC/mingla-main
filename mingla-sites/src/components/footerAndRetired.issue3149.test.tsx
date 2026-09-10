@@ -1,4 +1,11 @@
 /*
+ * #3149 wave 5 — THE BOOKING URL IN THIS FIXTURE WAS WRONG. [TEST-MOD-APPROVED #3149]
+ *
+ * It carried `https://host.usemingla.com/reserve/{brand}`, which renders
+ * "Payment cancelled. You haven't been charged." Repointed at the venue's
+ * public page, which is where a booking actually starts.
+ */
+/*
  * #3149 wave 4 — the rebuilt footer, and the URL of a page that no longer
  * exists.
  *
@@ -98,7 +105,8 @@ const PAGES = [
       type: "venue_reservation",
       heading: "Book a table at gögi",
       body: "gögi is walk-in and always open.",
-      url: `https://host.usemingla.com/reserve/${U(91)}`,
+      // #3149 wave 5 — the venue's public page, not the payment-return surface.
+      url: "https://host.usemingla.com/b/gogilagos/v/gogi",
     }],
   },
 ];

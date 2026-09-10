@@ -337,6 +337,28 @@ a {
 }
 
 /*
+ * #3149 wave 5 — the brand's own wordmark, when it has uploaded one.
+ *
+ * BOTH dimensions are declared, deliberately. This <img> carries `width` and
+ * `height` attributes from the media manifest, and those are presentational
+ * hints the UA maps to real declarations — the same mechanism that rendered a
+ * 640px-tall menu photo in a 251px column earlier in this wave. Setting only a
+ * height would leave the attribute's width to win and squash the mark. `width:
+ * auto` against a fixed height is what makes the attributes do their proper job
+ * instead: they supply the intrinsic ratio the width is computed from.
+ *
+ * The reference sets its header mark 34px tall; it scales down on narrow
+ * screens so a long wordmark cannot push the navigation off the row.
+ */
+.brand-wordmark {
+  display: block;
+  height: clamp(24px, 2.4vw, 34px);
+  width: auto;
+  max-width: min(100%, 12rem);
+  object-fit: contain;
+}
+
+/*
  * #2830 — the header navigation is a disclosure on phones.
  *
  * `display: contents` keeps the panel out of the layout entirely on desktop, so
@@ -412,19 +434,45 @@ a {
   cursor: pointer;
 }
 
-.cart-count {
+/*
+ * #3149 wave 5 — THE COUNT BADGE, SCOPED TO THE BUTTON IT BELONGS TO.
+ *
+ * `.cart-count` was declared twice in this stylesheet for two different
+ * components: this corner badge on the 44px header button, and the inline pill
+ * inside the menu page's `.cart-btn`. Neither rule was scoped, so a visitor got
+ * the UNION of both and both components were wrong:
+ *
+ *   - the header badge took the pill's 24px box, its dark fill and its 0.8rem
+ *     type, so a 24px disc sat over the middle of a 20px shopping bag and
+ *     covered 56% of it. Only a corner of the glyph was visible.
+ *   - the pill took this rule's `position: absolute; top; right`, which tore it
+ *     out of the button's flow and pinned it to the button's top-right corner
+ *     instead of sitting after the words "Your order".
+ *
+ * Both rules are scoped to their own component now, so neither can reach the
+ * other again.
+ *
+ * The anchor is the second half of the fix. A 44px button with a centred 20px
+ * glyph leaves 12px of margin, and no badge big enough to read a digit fits in
+ * 12px — so the badge is hung on the button's corner rather than tucked inside
+ * it. `top: -4px` puts its BOTTOM edge exactly on the glyph's top edge, which
+ * is what makes the overlap zero, and zero for a two- or three-character count
+ * as well: the badge grows leftwards from `right`, and a box that never
+ * descends past the glyph's top cannot intersect it at any width.
+ */
+.header-cart .cart-count {
   position: absolute;
-  top: 4px;
-  right: 2px;
-  min-width: 17px;
-  height: 17px;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
   padding: 0 4px;
-  border-radius: 9px;
+  border-radius: 999px;
   background: var(--gold);
   color: var(--ink);
   font-size: 10px;
   font-weight: 800;
-  line-height: 17px;
+  line-height: 16px;
   text-align: center;
 }
 
@@ -669,10 +717,35 @@ main h2,
   font-size: clamp(0.9rem, 1.5vw, 1.05rem);
 }
 
+/*
+ * #3149 wave 5 — THE SECTION IS FULL-BLEED; ITS CONTENT IS WHAT IS CAPPED.
+ *
+ * This capped the SECTION BOX at 1200px, so a section's own background — the
+ * hero photograph, the dark bands, the video — stopped at 1200px and left bare
+ * page down both sides: 120px each at a 1440 viewport, 360px at 1920. The site
+ * read as cut off, which is exactly what it was.
+ *
+ * The reference does the opposite and it is worth stating precisely, because it
+ * is the shape being matched: every one of its sections is x=0 and the full
+ * viewport wide with no padding, and a `.wrap` INSIDE each one is
+ * `min(100% - 40px, 1200px)`, centred. Background edge to edge, content in a
+ * column.
+ *
+ * Ours has no `.wrap` element and does not need one — the same geometry comes
+ * from padding on the section itself, so no markup changes and no other rule
+ * has to learn a new box. The third term is what centres the content: once the
+ * box is the full width, `(100% - 1200px) / 2` IS the gutter that leaves a
+ * 1200px column in the middle. It only wins past ~1440, so every narrower
+ * viewport keeps the gutter it has today.
+ *
+ * NOT a `max-width` on the section, and not `width: min(...)` again: both cap
+ * the box, and the box is the thing that has to reach the edges.
+ */
 .page-content > section {
-  width: min(100%, 1200px);
+  width: 100%;
   margin: 0 auto;
-  padding: clamp(5rem, 9vw, 9rem) max(20px, 4vw);
+  padding-block: clamp(5rem, 9vw, 9rem);
+  padding-inline: max(20px, 4vw, calc((100% - 1200px) / 2));
 }
 
 main h2 {
@@ -770,11 +843,17 @@ main h2 {
   color: var(--muted);
 }
 
+/*
+ * #3149 wave 5 — four `!important`s lived here and all of them are gone.
+ *
+ * They were not a style choice: this section had to reach the page edges, the
+ * base `.page-content > section` rule capped it at 1200px, and `!important` was
+ * the only way past. That the one section anybody explicitly wanted full-bleed
+ * needed four overrides to get there is the clearest evidence the cap was on
+ * the wrong box. Now that the base rule is full-bleed and centres its content
+ * by padding, `.cta` inherits precisely what it was forcing.
+ */
 .cta {
-  width: 100% !important;
-  max-width: none !important;
-  padding-left: max(20px, calc((100vw - 1200px) / 2)) !important;
-  padding-right: max(20px, calc((100vw - 1200px) / 2)) !important;
   text-align: center;
   background: var(--panel-raised);
   border-top: 1px solid var(--line);
@@ -1108,9 +1187,16 @@ summary {
 }
 
 @media (min-width: 1440px) {
+  /*
+   * #3149 wave 5 — `.page-content > section` was in this list and is not any
+   * more. These two cap an INNER element, which is right and is left alone; the
+   * section is the outer box and capping it is what stopped every background at
+   * 1200px. Its content is held to 1200 by padding instead, at every width,
+   * which is also why this rule was redundant: the base rule's
+   * `width: min(100%, 1200px)` was already capping the box below 1440.
+   */
   .hero > div,
-  .fact-rail,
-  .page-content > section {
+  .fact-rail {
     max-width: 1200px;
   }
 }
@@ -1205,7 +1291,10 @@ summary {
   display: inline-flex; align-items: center; gap: 0.6rem; padding: 0.8rem 1.4rem;
   border-radius: 999px; border: 0; cursor: pointer; min-height: 44px;
   background: var(--accent, #cda052); color: #101013; }
-.cart-count { display: inline-grid; place-items: center; min-width: 1.5rem; height: 1.5rem;
+/* #3149 wave 5 — the INLINE pill inside the menu page's cart button, scoped so
+   it stops overriding the header's corner badge (see `.header-cart
+   .cart-count`). It is a flow item after "Your order" and takes no position. */
+.cart-btn .cart-count { display: inline-grid; place-items: center; min-width: 1.5rem; height: 1.5rem;
   border-radius: 999px; background: #101013; color: #f0eee9; font-size: 0.8rem; }
 .cart-drawer { position: fixed; inset: auto 0 0 0; z-index: 60; max-height: 80vh; overflow: auto;
   padding: 1rem 1.25rem 1.5rem; border-top: 1px solid rgba(240,238,233,.2);
@@ -1298,6 +1387,17 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
 .crumbs {
   display: flex;
   justify-content: center;
+  /*
+   * #3149 wave 5 — WITHOUT THIS THE CRUMBS DO NOT SHARE A LINE.
+   *
+   * The row defaulted to `align-items: normal`, i.e. stretch, so all three
+   * children were given the row's full 44px height. The `<a>` is itself a
+   * centred flex box (it carries the 44px tap target), so its text centred in
+   * that height — but the "/" and the current page are plain blocks, so theirs
+   * sat at the TOP of theirs. "Home" rendered 12.9px lower than "/ Menu" on
+   * what is meant to be one line.
+   */
+  align-items: center;
   gap: 0.55rem;
   margin-top: 0.9rem;
   font-size: 0.74rem;
@@ -1436,7 +1536,26 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
 /* #3149 — was 12px beside a 14px gallery and 14px reels, which is a difference
    you see and cannot name. The reference rounds team portraits with the same
    token as everything else. */
-.team-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-media); }
+.team-grid img {
+  width: 100%;
+  /*
+   * #3149 wave 5 — WITHOUT THIS `aspect-ratio` DOES NOTHING.
+   *
+   * The renderer emits `<img width="480" height="480">`. Those attributes are
+   * presentational hints the UA maps to real `width`/`height` declarations,
+   * and a used height of 480px beats an aspect ratio every time: the portrait
+   * rendered 164x480 in a 164px column, so ten of them stacked a 1089px-tall
+   * grid of letterboxed faces. `height: auto` hands the height back to
+   * `aspect-ratio` and the portrait is square again.
+   *
+   * The attributes STAY: they are what reserves the box before the file
+   * arrives, which is the whole point of writing them.
+   */
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius-media);
+}
 .team-initial {
   display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: var(--radius-media);
   background: var(--panel-raised); color: var(--gold);
@@ -1511,18 +1630,42 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
  * four-across on a wide screen and collapsing to two on a phone, each with its
  * label under the film.
  */
+/*
+ * #3149 wave 5 -- THE SECTION IS NO LONGER THE GRID.
+ *
+ * It was, and it held the heading, the films and the button as siblings. The
+ * track list is `auto-fit`, which collapses tracks nothing occupies -- except
+ * that the heading and the button each carried `grid-column: 1 / -1`, so they
+ * occupied EVERY track and there was never an empty one to collapse. Three
+ * films were laid out in four 253px columns with a conspicuous hole on the
+ * right, and the more the run was trimmed the wider the hole got.
+ *
+ * Deleting those spans was not the fix: without them the heading takes the
+ * first film's track and the films shuffle along by one, which is the bug the
+ * spans were added to stop. Both are true at once because the heading was a
+ * grid item AT ALL. So it is not one any more.
+ *
+ * The section is now a column of three things -- heading, films, button -- and
+ * only the FILMS are a grid. `auto-fit` finally sees a container holding
+ * nothing but cards, so the track count follows the film count: three films,
+ * three columns. Flex rather than block for the outer box so the gap that used
+ * to separate these rows still does, and so the heading's own `h2` margin
+ * cannot collapse out through the section edge and change the spacing.
+ *
+ * `.reel-grid` STAYS on the section: `.reel-grid .reel-card`, `.reel-poster`,
+ * `.reel-video`, `figcaption` and `.reel-play` are all descendant selectors and
+ * keep matching straight through the new wrapper.
+ */
 .reel-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  display: flex;
+  flex-direction: column;
   gap: clamp(0.75rem, 2vw, 1.5rem);
 }
 
-/*
- * #3149 -- the run's heading is a grid ITEM, so without this it would take the
- * first film's column and the films would shuffle along by one.
- */
-.reel-grid-head {
-  grid-column: 1 / -1;
+.reel-grid-films {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: clamp(0.75rem, 2vw, 1.5rem);
 }
 
 .reel-grid .reel-card {
@@ -2192,6 +2335,14 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
 
 .menu-preview-photos img {
   width: 100%;
+  /*
+   * #3149 wave 5 — the same defect as `.team-grid img`, one section down.
+   *
+   * `<img width="640" height="640">` made every dish 251x640 inside a 251px
+   * column, so the photo half of the menu split stood 1296px tall beside a
+   * 458px list — 838px of the section was one column of stretched food.
+   */
+  height: auto;
   aspect-ratio: 1;
   object-fit: cover;
   border-radius: var(--radius-media);
@@ -2298,12 +2449,15 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
 }
 
 /*
- * ONE button under a run of films, and one under the team grid. Both span
- * every column, because a grid item that did not would take a card's track and
- * shuffle the cards along by one.
+ * ONE button under a run of films, and one under the team grid.
+ *
+ * #3149 wave 5 -- this used to span every column for the same reason the
+ * heading did, and it is dropped for the same reason: the button is a sibling
+ * of the films grid now, not an item inside it, so there is no column for it to
+ * span. `.team-cta` below never had one — the team section is ordinary flow
+ * and only its `ul` is a grid — so it is untouched.
  */
 .reel-grid-cta {
-  grid-column: 1 / -1;
   display: flex;
   justify-content: center;
   margin-top: 1.5rem;

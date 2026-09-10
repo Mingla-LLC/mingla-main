@@ -719,10 +719,23 @@ export function mapEventCoverVideoStatus(
     ? job.status as EventCoverVideoJobStatus
     : "processing";
   const stage = stageForStatus(status);
+  // #3173 — a provider progress of ZERO is not progress, it is the absence of
+  // progress, and it must never be dressed up as a determinate reading.
+  //
+  // Bunny's first "encoding" webhook lands with encodeProgress: 0, and
+  // cover_video_transition_job latches it monotonically through greatest().
+  // Accepting that 0 flipped progressKind to "determinate" (see below), which
+  // on every client replaces the honest indeterminate treatment — spinner plus
+  // "This can take a while" — with a frozen "0%" over an empty bar that cannot
+  // move until the encode finishes. A minute of that reads as a hung upload.
+  //
+  // Zero therefore stays null and the stage's own indeterminate kind survives.
+  // The floor is exclusive: the first REAL reading Bunny gives us (1..100) is
+  // still trusted and still renders as a percentage.
   const trustedProgress =
     (status === "processing" || status === "processing_queued") &&
       typeof job.provider_progress === "number" &&
-      job.provider_progress >= 0 && job.provider_progress <= 100
+      job.provider_progress > 0 && job.provider_progress <= 100
       ? job.provider_progress
       : null;
   const isTerminal = ["failed", "cancelled", "superseded", "applied"]

@@ -192,6 +192,9 @@ export async function readCoreProjection(
   // #2830 — ask for the menu only when a page actually shows one, so a site
   // without a menu block costs no menu read.
   includeMenu = false,
+  // #3149 wave 5 — and ask for the venue slugs only when a page actually
+  // carries a booking button, on the same principle.
+  includeVenue = false,
 ): Promise<Record<string, unknown>> {
   const body = "";
   const envelope = await signCmsRequest({
@@ -203,7 +206,10 @@ export async function readCoreProjection(
   });
   const query = new URLSearchParams();
   for (const id of offeringIds) query.append("offering_id", id);
-  if (includeMenu) query.set("include", "menu");
+  // `include` is repeatable — appended, never set, so asking for one does not
+  // silently drop the other.
+  if (includeMenu) query.append("include", "menu");
+  if (includeVenue) query.append("include", "venue");
   const response = await fetch(
     `${cmsConfig().coreBaseUrl}/functions/v1/brand-site-cms-callback${path}?${query}`,
     {

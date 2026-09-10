@@ -1,4 +1,13 @@
 /*
+ * #3149 wave 5 — THIS SUITE PINNED THE CANCEL PAGE AS CORRECT. [TEST-MOD-APPROVED #3149]
+ *
+ * "builds the link from the BRAND" asserted the built URL equals
+ * `/reserve/${BRAND_ID}`, making a payment-RETURN surface the contract. It now
+ * asserts the derived venue-page URL and, explicitly, that the result does not
+ * match `/reserve/`. The projection stub also learned `includeVenue`, so a
+ * builder that stopped asking for the slugs fails rather than passing quietly.
+ */
+/*
  * #3149 wave 4 — from a Studio field to the published bytes, EXECUTED.
  *
  * Same shape as the wave 3 suite beside it and for the same reason: this runs
@@ -62,6 +71,12 @@ vi.mock("./config", () => ({
   cmsConfig: () => ({ artifactBucket: "artifact-bucket" }),
 }));
 vi.mock("./observability", () => ({ emitCmsObservation: async () => {} }));
+/*
+ * #3149 wave 5 — the projection also carries the venue's public slugs now, and
+ * only when the builder asks for them, exactly as the menu does. The stub
+ * honours `includeVenue` rather than answering unconditionally, so a builder
+ * that stopped asking would fail these tests instead of quietly passing them.
+ */
 vi.mock("./gateway", () => ({
   readCoreProjection: async (
     _path: string,
@@ -69,10 +84,15 @@ vi.mock("./gateway", () => ({
     _operationId: string,
     _offeringIds: string[],
     includeMenu: boolean,
+    includeVenue: boolean,
   ) => ({
     offerings: [],
     menu: includeMenu ? MENU_ROWS : [],
-    menu_venue_id: includeMenu ? "00000000-0000-4000-8000-000000000b01" : null,
+    menu_venue_id: includeMenu || includeVenue
+      ? "00000000-0000-4000-8000-000000000b01"
+      : null,
+    venue_slug: includeVenue ? "gogi" : null,
+    brand_slug: includeVenue ? "gogilagos" : null,
   }),
 }));
 vi.mock("./objectStore", () => ({
@@ -507,7 +527,13 @@ describe("#3149 wave 4 a reservation points at Mingla, and is derived", () => {
       body: "gögi is walk-in and always open.",
     }]);
     const block = homeBlocks(artifact)[1]!;
-    expect(block.url).toBe(`https://host.usemingla.com/reserve/${BRAND_ID}`);
+    /*
+     * #3149 wave 5 — was `/reserve/${BRAND_ID}`. That route is where a payment
+     * RETURNS, not where a booking starts: its index renders "Payment
+     * cancelled." The link is derived from the venue's public page instead.
+     */
+    expect(block.url).toBe("https://host.usemingla.com/b/gogilagos/v/gogi");
+    expect(block.url).not.toContain("/reserve/");
     const { assertRestaurantArtifact } = await publicContract();
     expect(() => assertRestaurantArtifact(artifact)).not.toThrow();
   });

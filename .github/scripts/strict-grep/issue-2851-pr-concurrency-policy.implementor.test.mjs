@@ -749,7 +749,34 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     zero errors — both sibling subtests pass at this commit; only this
   //     content digest moved.
   // Every earlier re-derivation above is preserved, not replaced.
-  "3666588c6212d7da808bea2e8089ec8e6a906b3792bd3af2e40db85335032167";
+  //
+  // [TEST-MOD-APPROVED #2241] Re-derived again. #2241 added ONE `paths:` entry
+  // (plus its comment) to the existing secret-budget lane, so a runbook edit
+  // re-runs the only reader that compares that runbook to the contract it
+  // describes. That lane is PR-family, so its non-concurrency document is
+  // inside this digest, exactly as every re-derivation above. It is named here
+  // the way they all name their lanes — never by its `.yml` path, because a
+  // workflow FILENAME written in this file is counted by
+  // `discoverWorkflowProviders()` as an external provider reference and moves
+  // the frozen #2148 provider seal.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING:
+  //   - the change is PURELY ADDITIVE: the workflow diff is 6 insertions and 0
+  //     deletions, and grepping added AND removed lines for `concurrency`,
+  //     `group:` and `cancel-in-progress` returns ZERO. No concurrency block,
+  //     group expression or cancellation value is touched; the addition is a
+  //     `paths:` entry, which is the same shape as the #2967 and #2060
+  //     re-derivations above.
+  //   - PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED: the diff is
+  //     a single `M`, no workflow added, removed or renamed, and the count
+  //     assertion (subtest 1) passes at 124 untouched.
+  //   - the policy audit itself still reports zero errors at 124 PR-family
+  //     workflows — the sibling test above, which passes.
+  //   - the digest is derived on a branch rebuilt on TODAY's main, not the
+  //     eight-day-old tree this work was first cut from, so it is the value CI
+  //     will compute for the merge.
+  // Every earlier re-derivation is preserved, not replaced.
+  "e23925a45ea29db16f5019721a2674f3b41c1d72a8fa1ec3325cef08804af8b0";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
