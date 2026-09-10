@@ -83,6 +83,7 @@ const EXPECTED_TOOL_NAMES = [
   "create_venue_listing",
   "create_venue_reservation",
   "delete_brand",
+  "delete_campaign_draft",
   "delete_experience",
   "delete_trip",
   "discard_event_draft",
@@ -97,6 +98,7 @@ const EXPECTED_TOOL_NAMES = [
   "get_brand_site",
   "get_campaign_report",
   "get_event_order_reconciliation",
+  "get_growth_tool_report",
   "get_operator_snapshot",
   "get_partner_status",
   "get_payout_status",
@@ -177,6 +179,7 @@ const EXPECTED_TOOL_NAMES = [
   "unpublish_experience",
   "update_ari_prefs",
   "update_brand",
+  "update_campaign_draft",
   "update_event",
   "update_experience",
   "update_notification_prefs",
@@ -189,19 +192,19 @@ const EXPECTED_TOOL_NAMES = [
 ];
 
 const EXPECTED = Object.freeze({
-  capabilityCount: 132,
+  capabilityCount: 135,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 119,
+    registered_unverified: 122,
     broken: 0,
     guided_handoff: 8,
     unsupported: 0,
     in_flight: 5,
   }),
-  idDigest: "ea5af0ae087e01585d83f8542aff31654957432887110ba653ed41fc11fa35d1",
-  statusDigest: "5b567ade54913529c0ca0211e6e5ce481de863687573a4c73907460736916fca",
-  mappingDigest: "29bd0dd6827b42f36cc72a47b7c41c19bc63fb08e3e60303767bad7731f6c1bb",
-  sourceRefDigest: "e2a1ce66b158e9b7b2d54b899fb4d14e5f05a281d5c757e067500fabcabc68f9",
+  idDigest: "2f8eeb429327003e903d6d81e3cf88733f18979cddbccdad8eee024d6441da9d",
+  statusDigest: "58529cfcc8edd36e3f08713c92908ba8055fff6c62d3ccfc6079f74d24f2c627",
+  mappingDigest: "4ca62f883dd93a144aaf7f6a53efea37c2e013ea142e23712aed7e123a018259",
+  sourceRefDigest: "94b7f50a25f415fe0bf80e6031422dd56a491d5bc1d3cc82795e32042c419997",
 });
 
 function readLedger() {
@@ -227,9 +230,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("120-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("123-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("0/119/0/8/0/5 classification changed");
+    failures.push("0/122/0/8/0/5 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
