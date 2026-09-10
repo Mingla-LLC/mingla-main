@@ -69,6 +69,21 @@ Add repo secrets for full agent-chat smoke:
 - `LOAD_TEST_USER_JWT` — short-lived; rotate via automation or skip (auth-gate-only smoke is fine)
 - `LOAD_TEST_EVENT_ID` / `LOAD_TEST_TICKET_TYPE_ID` — staging fixtures
 
+## Optional — public offering path (#426 G1 / 1A)
+
+| Variable | Purpose |
+|----------|---------|
+| `LOAD_HOST_WEB_ORIGIN` | Host web origin (e.g. `https://host.usemingla.com` or staging Vercel) for `/api/*-checkout-bundle` |
+| `LOAD_TEST_BRAND_SLUG` | Published brand slug |
+| `LOAD_TEST_EVENT_SLUG` | Published event slug under that brand |
+| `LOAD_TEST_TRIP_SLUG` | Published trip slug |
+| `LOAD_TEST_EXPERIENCE_SLUG` | Published experience slug |
+| `LOAD_PUBLIC_READ_MODE` | `cdn` (default — Vercel bundles) or `rpc` (PostgREST, native-shaped) |
+
+Scripts: `public-event-bundle.js`, `public-trip-read.js`, `public-experience-read.js`, `public-offering-fanout.js`.
+
+**Architecture note:** the expensive viral surface is the **data** RPC/bundle (#2879), not Host SEO HTML (`publicSearchDocument` stays `no-store` per #2986).
+
 ## Example env file
 
 Copy `scripts/load/fixtures/example.env` and fill values locally (do not commit).

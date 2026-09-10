@@ -687,6 +687,26 @@ export async function getPublicExperienceBySlug(
   brandSlug: string,
   experienceSlug: string,
 ): Promise<PublicExperiencePayload | null> {
+  // #426 G1 — web prefers the CDN-cached Host API (#2879 mirror); native and
+  // cache misses keep the canonical SECURITY DEFINER RPC.
+  if (typeof document !== "undefined") {
+    try {
+      const url =
+        `/api/experience-checkout-bundle?brandSlug=${encodeURIComponent(brandSlug)}` +
+        `&experienceSlug=${encodeURIComponent(experienceSlug)}`;
+      const response = await fetch(url);
+      if (response.status === 404) return null;
+      if (response.ok) {
+        const data: unknown = await response.json();
+        if (data !== null && data !== undefined) {
+          return mapRpcPayload(data as RpcExpPayload);
+        }
+      }
+    } catch {
+      // Transport failure → fall through to PostgREST (same as event bundle).
+    }
+  }
+
   const { data, error } = await supabase.rpc("pg_public_experience_by_slug", {
     p_brand_slug: brandSlug,
     p_experience_slug: experienceSlug,

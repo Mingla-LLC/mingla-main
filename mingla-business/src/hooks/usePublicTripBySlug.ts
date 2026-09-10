@@ -78,6 +78,29 @@ const strOrNull = (raw: unknown): string | null =>
 
 const PUBLIC_TRIP_STALE_MS = 60 * 1000; // 1 minute
 
+// #426 G1 — web-only CDN shield for the trip RPC (mirrors event-checkout-bundle
+// / #2879). Native keeps calling PostgREST directly.
+const isWebRuntime = (): boolean => typeof document !== "undefined";
+const TRIP_CACHE_MISS = "miss" as const;
+
+const readCachedTripPayload = async (
+  brandSlug: string,
+  tripSlug: string,
+): Promise<RpcTripPayload | null | typeof TRIP_CACHE_MISS> => {
+  if (!isWebRuntime()) return TRIP_CACHE_MISS;
+  try {
+    const url =
+      `/api/trip-checkout-bundle?brandSlug=${encodeURIComponent(brandSlug)}` +
+      `&tripSlug=${encodeURIComponent(tripSlug)}`;
+    const response = await fetch(url);
+    if (response.status === 404) return null;
+    if (!response.ok) return TRIP_CACHE_MISS;
+    return (await response.json()) as RpcTripPayload;
+  } catch {
+    return TRIP_CACHE_MISS;
+  }
+};
+
 // META-ORCH-1174 Leg A.2 — the raw JSON shape returned by
 // `pg_public_trip_by_slug` (mirrors the migration's json_build_object keys).
 // All fields are read defensively; the mapper below narrows them into the
@@ -254,17 +277,20 @@ export const usePublicTripBySlug = (
         return null;
       }
 
-      // META-ORCH-1174 Leg A.2 — the ONE canonical anon read path. The SECURITY
-      // DEFINER RPC returns the full trip payload (identity, master dates, route
-      // legs + destination/departure lat/lng, per-tier rows WITH remaining +
-      // installments, trip_days, trip_inclusions, refund_policy, booking_deadline,
-      // and the brand card incl. theme + verified). Restricted server-side to
-      // event_type='trip' + published. Returns null when no such trip exists.
-      const { data, error } = await supabase.rpc("pg_public_trip_by_slug", {
-        p_brand_slug: brandSlug,
-        p_event_slug: tripSlug,
-      });
-      if (error !== null) throw error;
+      // #426 G1 — web prefers the CDN-cached Host API; native / cache miss
+      // falls through to the canonical SECURITY DEFINER RPC.
+      const cached = await readCachedTripPayload(brandSlug, tripSlug);
+      let data: unknown;
+      if (cached === TRIP_CACHE_MISS) {
+        const rpc = await supabase.rpc("pg_public_trip_by_slug", {
+          p_brand_slug: brandSlug,
+          p_event_slug: tripSlug,
+        });
+        if (rpc.error !== null) throw rpc.error;
+        data = rpc.data;
+      } else {
+        data = cached;
+      }
       if (data === null || data === undefined) return null;
       const p = data as RpcTripPayload;
 

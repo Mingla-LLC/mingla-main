@@ -28,7 +28,8 @@ fi
 
 case "$SCRIPT" in
   discover) K6_SCRIPT="discover-merged-events.js" ;;
-  smoke|ticket-checkout-status|ticket-checkout-create|agent-chat|marketing-send)
+  smoke|ticket-checkout-status|ticket-checkout-create|agent-chat|marketing-send|\
+  public-event-bundle|public-trip-read|public-experience-read|public-offering-fanout)
     K6_SCRIPT="${SCRIPT}.js" ;;
   *)
     echo "Unknown script: $SCRIPT" >&2

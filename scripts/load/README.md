@@ -22,6 +22,13 @@ k6 run scripts/load/discover-merged-events.js
 k6 run scripts/load/ticket-checkout-status.js
 k6 run scripts/load/ticket-checkout-create.js
 k6 run scripts/load/agent-chat.js   # 401 without JWT; full path with LOAD_TEST_USER_JWT
+
+# Public offering path (#426 G1 / 1A) — needs LOAD_HOST_WEB_ORIGIN + slugs
+k6 run scripts/load/public-event-bundle.js
+k6 run scripts/load/public-trip-read.js
+k6 run scripts/load/public-experience-read.js
+k6 run scripts/load/public-offering-fanout.js
+# or: ./scripts/load/run-staging.sh public-offering-fanout 50 60s
 ```
 
 ### JWT helper (staging)

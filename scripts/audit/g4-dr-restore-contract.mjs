@@ -38,7 +38,13 @@ const checks = [
   [runbook.includes("T0"), "DR runbook timed phases (T0)"],
   [runbook.includes("PITR"), "DR runbook PITR procedure"],
   [runbook.includes("g4-dr-restore-drill.sh"), "DR runbook drill script link"],
-  [runbook.includes("gqnoajqerqhnvulmnyvv"), "DR runbook staging project ref"],
+  // Authority migrated off a separate staging ref: G4 drills restore-to-clone
+  // of the project named in production-supabase-authority.json (#426 hygiene).
+  [
+    runbook.includes("production-supabase-authority.json") &&
+      runbook.includes("Restore to a new project"),
+    "DR runbook isolated-clone authority (no in-place staging)",
+  ],
   [incident.includes("DR_RESTORE.md"), "incident runbook links DR_RESTORE"],
   [evidence.includes("G4"), "G4 evidence README"],
   [evidence.includes("g4-dr-restore-contract.mjs"), "G4 evidence CI contract doc"],

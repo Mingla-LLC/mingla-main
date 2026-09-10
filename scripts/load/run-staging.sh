@@ -37,12 +37,13 @@ case "$SCRIPT" in
   discover)
     K6_SCRIPT="discover-merged-events.js"
     ;;
-  smoke|ticket-checkout-status|ticket-checkout-create|agent-chat|marketing-send)
+  smoke|ticket-checkout-status|ticket-checkout-create|agent-chat|marketing-send|\
+  public-event-bundle|public-trip-read|public-experience-read|public-offering-fanout)
     K6_SCRIPT="${SCRIPT}.js"
     ;;
   *)
     echo "Unknown script: $SCRIPT" >&2
-    echo "Usage: $0 {smoke|discover|...|scale} [VUS] [DURATION]" >&2
+    echo "Usage: $0 {smoke|discover|public-event-bundle|public-trip-read|public-experience-read|public-offering-fanout|...|scale} [VUS] [DURATION]" >&2
     exit 1
     ;;
 esac
@@ -68,6 +69,9 @@ run_k6() {
       -e LOAD_VUS -e LOAD_DURATION -e LOAD_RAMP_DURATION \
       -e LOAD_TEST_EVENT_ID -e LOAD_TEST_TICKET_TYPE_ID \
       -e LOAD_TEST_USER_JWT -e LOAD_TEST_CAMPAIGN_ID -e LOAD_TEST_BRAND_ID \
+      -e LOAD_HOST_WEB_ORIGIN -e LOAD_PUBLIC_READ_MODE \
+      -e LOAD_TEST_BRAND_SLUG -e LOAD_TEST_EVENT_SLUG \
+      -e LOAD_TEST_TRIP_SLUG -e LOAD_TEST_EXPERIENCE_SLUG \
       -v "$ROOT/scripts/load:/scripts/load:ro" \
       -v "$REPORT_DIR:/reports:rw" \
       grafana/k6 run \
