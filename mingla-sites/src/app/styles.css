@@ -2674,3 +2674,25 @@ h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); letter-spacing: 0; }
 .footer .footer-credit:hover {
   color: var(--gold);
 }
+
+/* ── #3149 the cart's ending ──────────────────────────────────────────────
+   The drawer used to stop at the total. These are the three fields Mingla's
+   venue-order rail requires of a counter-pickup order and the control that
+   hands the basket over. Appended as NEW selectors rather than folded into
+   the drawer block above, so nothing already declared there moves. */
+.checkout-fields { display: grid; gap: 0.75rem; margin-top: 1.1rem; }
+.checkout-field { display: grid; gap: 0.3rem; }
+.checkout-field label { font-size: 0.78rem; letter-spacing: 0.08em;
+  text-transform: uppercase; opacity: 0.75; }
+.checkout-field input { font: inherit; font-size: 0.95rem; padding: 0.6rem 0.8rem;
+  min-height: 44px; border-radius: 0.4rem; border: 1px solid rgba(240,238,233,.32);
+  background: rgba(240,238,233,.06); color: inherit; }
+.checkout-field input:focus-visible { outline: 2px solid var(--accent, #cda052);
+  outline-offset: 1px; }
+.checkout-field input[aria-invalid="true"] { border-color: #ff9d8a; }
+.checkout-error { margin: 0; font-size: 0.8rem; color: #ff9d8a; }
+.checkout-btn { font: inherit; font-weight: 700; width: 100%; min-height: 48px;
+  margin-top: 0.35rem; padding: 0.85rem 1.4rem; border: 0; border-radius: 999px;
+  cursor: pointer; background: var(--accent, #cda052); color: #101013; }
+.checkout-btn[disabled] { cursor: default; opacity: 0.6; }
+.checkout-status { margin: 0.6rem 0 0; font-size: 0.85rem; font-weight: 600; }

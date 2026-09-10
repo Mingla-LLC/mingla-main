@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { loadPublication, normalizePublicHost } from "../../../lib/publication";
 import { runtimeConfig } from "../../../lib/config";
+import { signedCorePost } from "../../../lib/coreGateway";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +25,19 @@ export const dynamic = "force-dynamic";
  *
  * THE VENUE COMES FROM THE PUBLISHED ARTIFACT, never from the request. A caller
  * cannot point a gogi order at somebody else's kitchen.
+ *
+ * #3149 — IT MAY ALSO CARRY AN ATTRIBUTION TOKEN, and that token is not
+ * forwarded either. It is spent HERE, after Mingla has answered with an order
+ * id, by asking core to bind the touch to that order. The website never learns
+ * the digest (the pepper lives in core) and Mingla never learns there was a
+ * website (the order rail takes no such field), so this route is the one place
+ * that can hold both halves. Binding failures are swallowed: analytics is
+ * additive and may not decide whether somebody can buy dinner.
  */
 const MAX_LINES = 40;
 const MAX_QTY = 50;
+/* The shape `/api/attribution` mints: 32 random bytes, base64url, unpadded. */
+const ATTRIBUTION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 type Line = { menuItemId: string; quantity: number };
 
@@ -72,6 +83,39 @@ async function orderableVenue(): Promise<
     }
   }
   return null;
+}
+
+/**
+ * Spend the site's attribution touch on the order Mingla just wrote.
+ *
+ * Returns nothing and throws nothing. A touch that expired, was already spent,
+ * or belongs to another site is a no-op inside core; a core that is down is a
+ * missed attribution and nothing more.
+ */
+async function bindAttribution(
+  siteId: string,
+  token: unknown,
+  orderId: unknown,
+): Promise<void> {
+  if (
+    typeof token !== "string" || !ATTRIBUTION_TOKEN.test(token) ||
+    typeof orderId !== "string" || !UUID.test(orderId)
+  ) return;
+  try {
+    await signedCorePost({
+      edgeFunction: "brand-site-attribution",
+      path: `/internal/v1/sites/${siteId}/attribution/consume`,
+      siteId,
+      body: {
+        action: "consume",
+        site_id: siteId,
+        token,
+        order_id: orderId,
+      },
+    });
+  } catch {
+    // Attribution never changes whether an order was placed.
+  }
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -130,9 +174,34 @@ export async function POST(request: Request): Promise<NextResponse> {
   );
   const result = await response.json().catch(() => null);
   if (!response.ok || !result) {
+    /*
+     * #3149 — a REFUSAL keeps its name.
+     *
+     * Every refusal used to collapse to "ordering_unavailable", which reads as
+     * "Mingla is down" whatever actually happened. The rate limiter is the case
+     * that made this untenable: an eleventh order in a row is a guest who
+     * should be told to wait a moment, not a guest who should be told the
+     * restaurant is broken. Only the machine code crosses — a short token from
+     * Mingla's own enum — and the website owns the words the guest reads.
+     */
+    const code = result !== null && typeof result === "object"
+      ? (result as Record<string, unknown>).error
+      : null;
     return NextResponse.json(
-      { ok: false, error: "ordering_unavailable" },
+      {
+        ok: false,
+        error: typeof code === "string" && /^[a-z_]{1,40}$/.test(code)
+          ? code
+          : "ordering_unavailable",
+      },
       { status: 503 },
+    );
+  }
+  if (mode === "create" && response.ok) {
+    await bindAttribution(
+      venue.siteId,
+      payload.siteAttributionToken,
+      (result as Record<string, unknown>).orderId,
     );
   }
   // Pass Mingla's answer through unchanged. It is the authority on price and
