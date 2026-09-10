@@ -80,8 +80,8 @@ function CityHero({ record, catalogueCount }: { readonly record: CityHubRecord; 
         <ol><li><Link href="/">Home</Link></li><li aria-hidden="true">/</li><li aria-current="page">{record.city}</li></ol>
       </nav>
       <p className="city-eyebrow">Mingla in {record.city}, {record.country}</p>
-      <h1 id="city-hub-title">{catalogueCount ? <>Things to do in {record.city}, ranked by Mingla</> : <>Find the right plan in {record.city}.</>}</h1>
-      {catalogueCount ? <p className="city-catalogue-summary">Browse {catalogueCount} real picks across all ten Explorer categories, or open a ready-made plan.</p> : null}
+      <h1 id="city-hub-title">{record.slug === 'lagos' ? <>Things to do in {record.city}, ranked by Mingla</> : <>Find the right plan in {record.city}.</>}</h1>
+      {catalogueCount ? <p className="city-catalogue-summary">Find the right plan in {record.city}: browse the top {catalogueCount} eligible places overall, then filter by the categories represented in that ranked set.</p> : null}
       <p className="city-direct-answer">{record.directAnswer}</p>
       <div className="city-hero-actions">
         <CityDeviceAction citySlug={record.slug} countryCode={record.countryCode} surface="explorer" label={`Explore ${record.city}`} location="city_hub_hero_explorer" variant="primary" />

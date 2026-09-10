@@ -72,7 +72,10 @@ import { canvas } from "../src/constants/designSystem";
 // on web and pure no-op stubs on native (mirrors mixpanelService.web.ts), so
 // the native bundle never pulls posthog-js / gtag and native behavior is
 // byte-unaffected. The init is additionally guarded by Platform.OS === "web".
-import { initWebAnalytics } from "../src/analytics/webAnalytics";
+import {
+  captureHostPublicSearchPageView,
+  initWebAnalytics,
+} from "../src/analytics/webAnalytics";
 import { ConsentBanner } from "../src/analytics/ConsentBanner";
 import {
   initializeAppsFlyer,
@@ -261,6 +264,12 @@ function RootLayoutInner(): React.ReactElement {
   // React #185 + the sign-out white screen). Read unconditionally before any
   // deferred return (Rules-of-Hooks; preserves the ORCH-1098 all-hooks-run fix).
   const pathname = usePathname();
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    void initWebAnalytics().then(() => {
+      captureHostPublicSearchPageView(pathname);
+    });
+  }, [pathname]);
   const currentBrandId = useCurrentBrandId();
   useEffect(() => {
     const nextUserId = user?.id ?? null;

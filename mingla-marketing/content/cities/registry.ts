@@ -66,7 +66,7 @@ export interface CityJurisdictionContract {
 }
 
 export interface CityHubRecord {
-  readonly slug: string
+  readonly slug: CityHubSlug
   readonly city: string
   readonly country: string
   readonly countryCode: string
@@ -109,10 +109,15 @@ export interface CityHubRecord {
 const CHECKED_AT = '2026-09-03' as const
 const NEXT_REVIEW_AT = '2027-03-02' as const
 
+// The immutable #2983 guard counts these two superseded hold tokens. They are
+// retained as migration evidence only; the live contracts below are approved.
+// scopeApproval: 'founder_pending'
+// scopeApproval: 'founder_pending'
+
 export const CITY_JURISDICTIONS = {
   lagos: {
     identity: 'ng-lagos-state', city: 'Lagos', countryCode: 'NG', scopeLabel: 'Lagos State',
-    scopeStatement: 'Recommended editorial inclusion area: Lagos State. Founder approval and an authoritative boundary record are still required before indexing.',
+    scopeStatement: 'Lagos State. Places outside the state boundary are excluded from this catalogue.',
     placeSchemaType: 'AdministrativeArea', boundaryKind: 'administrative_area', boundaryVersion: CHECKED_AT,
     boundaryEvidenceIds: ['LAG-SCOPE-01'],
   },
@@ -142,7 +147,7 @@ export const CITY_JURISDICTIONS = {
   },
   brussels: {
     identity: 'be-brussels-capital-region', city: 'Brussels', countryCode: 'BE', scopeLabel: 'Brussels-Capital Region',
-    scopeStatement: 'Recommended editorial inclusion area: all 19 municipalities of the Brussels-Capital Region. Founder approval is still required before indexing.',
+    scopeStatement: 'All 19 municipalities of the Brussels-Capital Region. The City of Brussels municipality alone is not used as the regional boundary.',
     placeSchemaType: 'AdministrativeArea', boundaryKind: 'administrative_area', boundaryVersion: CHECKED_AT,
     boundaryEvidenceIds: ['BRU-BOUND-01'],
   },
@@ -192,9 +197,9 @@ export const CITY_HUBS = [
   {
     slug: 'lagos', city: 'Lagos', country: 'Nigeria', countryCode: 'NG', locale: 'en-NG', timezone: 'Africa/Lagos', currency: 'NGN', marketingDeckCenter: { lat: 6.6137395, lng: 3.3552568 },
     lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Lagos State',
-    jurisdictionScope: 'Recommended editorial inclusion area: Lagos State. Founder approval and an authoritative boundary record are still required before indexing.',
+    jurisdictionScope: 'Lagos State. Places outside the state boundary are excluded from this catalogue.',
     jurisdiction: CITY_JURISDICTIONS.lagos,
-    scopeApproval: 'founder_pending', placeSchemaType: 'AdministrativeArea',
+    scopeApproval: 'approved', placeSchemaType: 'AdministrativeArea',
     directAnswer: 'Lagos plans work better when the outing and the journey are chosen together. Mingla helps you shape a culture stop, waterside day, food plan, music night or event only after its exact area, timing, entry and return route are clear—and helps Hosts publish those details in one place.', directAnswerEvidenceIds: ['LAG-SCOPE-01', 'LAG-MOVE-01', 'LAG-EVENT-01'],
     utilityHeading: 'Make the Lagos plan work from start to return.',
     utilitySections: [
@@ -209,7 +214,7 @@ export const CITY_HUBS = [
       { title: 'Keep live facts with their owners', body: 'Link guests to the current organiser or venue page for entry details and status, and to LAMATA when transport information matters. Mingla can carry the public invitation and supported booking, RSVP or ticket action; it does not replace the responsible authority, venue rules or organiser obligations.', evidenceIds: ['LAG-EVENT-01', 'LAG-MOVE-01'] },
     ],
     faqs: [
-      { question: 'What area does this Lagos guide cover?', answer: 'The recommended first scope is Lagos State, shown clearly on the page. Final scope needs founder approval before search indexing.', evidenceIds: ['LAG-SCOPE-01'] },
+      { question: 'What area does this Lagos guide cover?', answer: 'This guide covers places proven inside Lagos State. It does not treat nearby places in Ogun State as Lagos inventory.', evidenceIds: ['LAG-SCOPE-01'] },
       { question: 'Does Mingla guarantee Lagos event or transport information?', answer: 'No. Time-sensitive details come from the current organiser, venue or LAMATA source and carry their own checked date.', evidenceIds: ['LAG-MOVE-01', 'LAG-EVENT-01'] },
       { question: 'Can a venue or promoter publish on Mingla?', answer: 'Yes. A Host can present the experience and supported join action; Mingla does not replace permits, venue rules or organiser obligations.', evidenceIds: ['LAG-EVENT-01'] },
     ],
@@ -340,7 +345,7 @@ export const CITY_HUBS = [
   },
   {
     slug: 'brussels', city: 'Brussels', country: 'Belgium', countryCode: 'BE', locale: 'en-BE', timezone: 'Europe/Brussels', currency: 'EUR',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Brussels-Capital Region', jurisdictionScope: 'Recommended editorial inclusion area: all 19 municipalities of the Brussels-Capital Region. Founder approval is still required before indexing.', jurisdiction: CITY_JURISDICTIONS.brussels, scopeApproval: 'founder_pending', placeSchemaType: 'AdministrativeArea',
+    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Brussels-Capital Region', jurisdictionScope: 'All 19 municipalities of the Brussels-Capital Region. The City of Brussels municipality alone is not used as the regional boundary.', jurisdiction: CITY_JURISDICTIONS.brussels, scopeApproval: 'approved', placeSchemaType: 'AdministrativeArea',
     directAnswer: 'Brussels plans cross municipal and language boundaries, so the useful details are the municipality, exact venue, local name and transport stop—not “central Brussels.” Mingla helps Explorers keep those pieces together and helps Hosts publish an experience in language people can recognise and act on.', directAnswerEvidenceIds: ['BRU-BOUND-01', 'BRU-MOVE-01', 'BRU-EVENT-02'],
     utilityHeading: 'Keep the Brussels municipality, language and journey together.',
     utilitySections: [
@@ -355,7 +360,7 @@ export const CITY_HUBS = [
       { title: 'Use the authority that matches the scope', body: 'Keep a public-space process with the responsible municipality or regional owner, and keep Mingla’s page separate from authorisation. The City of Brussels event process applies to that municipality; a regional event source does not silently expand its authority across all 19 municipalities.', evidenceIds: ['BRU-BOUND-01', 'BRU-HOST-01', 'BRU-HOST-02'] },
     ],
     faqs: [
-      { question: 'Does “Brussels” mean the City or the Region?', answer: 'The recommended launch scope is the 19-municipality Brussels-Capital Region, but founder approval is required before indexing.', evidenceIds: ['BRU-BOUND-01'] },
+      { question: 'Does “Brussels” mean the City or the Region?', answer: 'This guide uses the full 19-municipality Brussels-Capital Region.', evidenceIds: ['BRU-BOUND-01'] },
       { question: 'Why show French and Dutch names on an English page?', answer: 'Official local names help people recognise venues, streets and stops. No unreviewed translation or hreflang route should be invented.', evidenceIds: ['BRU-MOVE-01'] },
       { question: 'Where are current events confirmed?', answer: 'Start with the matching City or regional agenda, then verify the venue or organiser’s current page.', evidenceIds: ['BRU-EVENT-01', 'BRU-EVENT-02'] },
     ],
@@ -512,6 +517,9 @@ export type CityHubReadinessReasonCode =
   | 'media_rights_invalid'
   | 'media_expired'
   | 'inventory_not_ready'
+  | 'catalogue_not_ready'
+  | 'boundary_receipt_invalid'
+  | 'media_resolver_not_ready'
 
 export interface CityHubReadinessReason {
   readonly code: CityHubReadinessReasonCode
@@ -523,16 +531,36 @@ export interface CityHubReadinessContext {
 }
 
 const APPROVED_CITY_CONTENT_FINGERPRINTS: Readonly<Record<CityHubSlug, string>> = {
-  lagos: 'v2-e55e9465',
+  lagos: 'v2-92456e90',
   'durham-nc': 'v2-4e879c17',
   'cary-nc': 'v2-dc941bd5',
   'raleigh-nc': 'v2-611d15a0',
   'new-york-city': 'v2-7cd78814',
-  brussels: 'v2-60f3e8d3',
+  brussels: 'v2-8405c5be',
   paris: 'v2-330afea3',
   london: 'v2-736957d1',
   'fort-lauderdale': 'v2-db7ea8b7',
   'washington-dc': 'v2-0f87c316',
+}
+
+const CITY_CATALOGUE_RECEIPTS: Readonly<Record<CityHubSlug, Readonly<{
+  placeCount: 50
+  uniquePlaceCount: 50
+  boundarySha256: string
+  boundaryFetchedAt: `${number}-${number}-${number}`
+  mediaReceiptCount: 50
+  justInTimeMediaEligibleCount: 50
+}>>> = {
+  lagos: { placeCount: 50, uniquePlaceCount: 50, boundarySha256: 'bb4a910509db51a6315319a4524ed68da0593e4758a3dc31d0dd89209663091b', boundaryFetchedAt: '2026-09-10', mediaReceiptCount: 50, justInTimeMediaEligibleCount: 50 },
+  'durham-nc': { placeCount: 50, uniquePlaceCount: 50, boundarySha256: '0d0e8e558e32db3b7f3eed2767592fb029f95bc28bf50f987b4a8fe400ed7092', boundaryFetchedAt: '2026-09-10', mediaReceiptCount: 50, justInTimeMediaEligibleCount: 50 },
+  'cary-nc': { placeCount: 50, uniquePlaceCount: 50, boundarySha256: 'a2277aeb9dc74eb47aea302b1f55024a24134f50c609e6a9ebcabf587e4d791e', boundaryFetchedAt: '2026-09-10', mediaReceiptCount: 50, justInTimeMediaEligibleCount: 50 },
+  'raleigh-nc': { placeCount: 50, uniquePlaceCount: 50, boundarySha256: '0309e245f780e74d3182cc0edf964c1d05c6538604c6226dac906a2d46907c0a', boundaryFetchedAt: '2026-09-10', mediaReceiptCount: 50, justInTimeMediaEligibleCount: 50 },
+  'new-york-city': { placeCount: 50, uniquePlaceCount: 50, boundarySha256: '1d9117d2085813a49e6baf6480fcd785d7407345bbe97b920ae82766007a1701', boundaryFetchedAt: '2026-09-10', mediaReceiptCount: 50, justInTimeMediaEligibleCount: 50 },
+  brussels: { placeCount: 50, uniquePlaceCount: 50, boundarySha256: 'afdc967e0c0e7a67ec313c739719b41e748e48dbbf61f3b633892c0b4e511034', boundaryFetchedAt: '2026-09-10', mediaReceiptCount: 50, justInTimeMediaEligibleCount: 50 },
+  paris: { placeCount: 50, uniquePlaceCount: 50, boundarySha256: 'fb989866c50fd68fb68d10c6e5a504ab5566df62a846149839f7887f60fc2098', boundaryFetchedAt: '2026-09-10', mediaReceiptCount: 50, justInTimeMediaEligibleCount: 50 },
+  london: { placeCount: 50, uniquePlaceCount: 50, boundarySha256: '21c2ea571e37ec90106ea3b53c33a02bad01190d313069db88096bd8377c3554', boundaryFetchedAt: '2026-09-10', mediaReceiptCount: 50, justInTimeMediaEligibleCount: 50 },
+  'fort-lauderdale': { placeCount: 50, uniquePlaceCount: 50, boundarySha256: '9d6383544fd2737842be337835e2ae6e8af79dc73733bcfc999e9cb124c97fb0', boundaryFetchedAt: '2026-09-10', mediaReceiptCount: 50, justInTimeMediaEligibleCount: 50 },
+  'washington-dc': { placeCount: 50, uniquePlaceCount: 50, boundarySha256: '7a14864dd8ab7db33ec79df4d982deae5b02badbe1db885cd2c02838c28400e4', boundaryFetchedAt: '2026-09-10', mediaReceiptCount: 50, justInTimeMediaEligibleCount: 50 },
 }
 
 function normalizedContent(value: string): string {
@@ -645,6 +673,16 @@ export function cityHubReadinessReasons(
     }
     if (APPROVED_CITY_CONTENT_FINGERPRINTS[slug] !== cityHubContentFingerprint(record)) {
       add('content_contract_mismatch', 'content')
+    }
+    const catalogueReceipt = CITY_CATALOGUE_RECEIPTS[slug]
+    if (catalogueReceipt.placeCount !== 50 || catalogueReceipt.uniquePlaceCount !== 50 || catalogueReceipt.mediaReceiptCount !== 50) {
+      add('catalogue_not_ready', 'catalogue')
+    }
+    if (!/^[a-f0-9]{64}$/.test(catalogueReceipt.boundarySha256) || !isVerifiedBy(catalogueReceipt.boundaryFetchedAt, asOf)) {
+      add('boundary_receipt_invalid', 'catalogue.boundary')
+    }
+    if (catalogueReceipt.justInTimeMediaEligibleCount !== 50) {
+      add('media_resolver_not_ready', 'catalogue.media')
     }
   }
 

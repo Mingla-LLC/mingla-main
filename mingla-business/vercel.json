@@ -16,6 +16,7 @@
   "rewrites": [
     { "source": "/robots.txt", "destination": "/api/robots" },
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
+    { "source": "/indexnow-key.txt", "destination": "/api/indexnow-key" },
     { "source": "/s/:code", "destination": "/api/content-share?code=:code" },
     { "source": "/og/s/:code/v:version-r2.jpg", "destination": "/api/content-share-image?code=:code&version=:version" },
     { "source": "/share/:shareId.png", "destination": "/api/shared-card-image?shareId=:shareId&surface=s4" },

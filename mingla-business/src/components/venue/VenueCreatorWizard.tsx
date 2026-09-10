@@ -29,6 +29,7 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 // removed. Per SPEC §7.F.
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
+import { captureHostSearchOutcome } from "../../analytics/searchOutcome";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useAnimatedStyle,
@@ -467,6 +468,13 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       if (claimMode) {
         // ORCH-1263 — claim success: the standard pending card state (DESIGN
         // §8.1); NO inline deck-readiness leg (resume route serves it later).
+        captureHostSearchOutcome("generate_lead", {
+          audience: "host",
+          page_family: "host_pillar",
+          icp: "venue",
+          action_state: "succeeded",
+          content_kind: "venue",
+        });
         onDone(null, venueId, st.displayName.trim(), true);
         // Issue #1685 — clear ONLY the submitted draft; `reset(currentBrand.id)`
         // would destroy this brand's sibling drafts.
@@ -495,6 +503,13 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           // non-blocking — the pitch/photos are editable on the listing page.
         }
       }
+      captureHostSearchOutcome("generate_lead", {
+        audience: "host",
+        page_family: "host_pillar",
+        icp: "venue",
+        action_state: "succeeded",
+        content_kind: "venue",
+      });
       onDone(null, venueId, st.displayName.trim(), false);
       // Issue #1685 — clear ONLY the submitted draft; `reset(currentBrand.id)`
       // would destroy this brand's sibling drafts.

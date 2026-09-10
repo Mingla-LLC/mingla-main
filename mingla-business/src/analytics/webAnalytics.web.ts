@@ -40,6 +40,13 @@
 
 import Constants from "expo-constants";
 import type { PostHog } from "posthog-js";
+import {
+  cleanPageLocation,
+  cleanReferrerOrigin,
+  sanitizeSearchMeasurement,
+  type SearchEventName,
+  type SearchMeasurementProperties,
+} from "@mingla/search-measurement";
 
 // US region is dispatch-locked (I-PROPOSED-1187-POSTHOG-HOST-US). Keep the
 // literal here so the strict-grep gate sees it at the init site.
@@ -228,7 +235,8 @@ function writeStoredConsent(choice: ConsentChoice): void {
 /**
  * GA4 Consent Mode v2 loader. Emits the all-denied `default` consent BEFORE the
  * gtag config runs (so GA sets no cookies pre-consent), then loads the gtag
- * script and configures the measurement with `send_page_view` enabled. Idempotent.
+ * script with automatic pageviews disabled. Search pageviews are emitted only
+ * through the sanitized manual owner below. Idempotent.
  */
 function loadGa4(measurementId: string): void {
   window.dataLayer = window.dataLayer ?? [];
@@ -255,7 +263,7 @@ function loadGa4(measurementId: string): void {
     ad_personalization: "granted",
   });
   window.gtag("js", new Date());
-  window.gtag("config", measurementId);
+  window.gtag("config", measurementId, { send_page_view: false });
 
   // (2) Load the gtag script AFTER the consent default + config are queued on
   // dataLayer, so order (consent → config) is guaranteed.
@@ -316,8 +324,11 @@ async function bootGrantedAnalytics(): Promise<void> {
         // alias persist PostHog identity onto sibling *.usemingla.com hosts.
         cross_subdomain_cookie: false,
         person_profiles: "identified_only",
-        capture_pageview: true,
-        capture_pageleave: true,
+        // #3176 — public URLs can carry tokens and attribution parameters.
+        // Automatic lifecycle events include the raw browser URL, so every
+        // search pageview is owned by the sanitized manual contract below.
+        capture_pageview: false,
+        capture_pageleave: false,
         // CONSENT GATE (§4.E / I-PROPOSED-1187-CONSENT-GATE-BEFORE-COOKIES):
         // PostHog stores nothing and captures nothing until opt_in_capturing().
         opt_out_capturing_by_default: true,
@@ -336,9 +347,6 @@ async function bootGrantedAnalytics(): Promise<void> {
         },
       });
       posthog.opt_in_capturing();
-      // The init-time pageview was deliberately suppressed by opt-out-default;
-      // emit exactly one only after the explicit grant opens capture.
-      posthog.capture("$pageview");
       posthogClient = posthog;
     } catch (err) {
       console.warn("[webAnalytics] PostHog init failed (non-fatal):", err);
@@ -375,6 +383,7 @@ export async function grantConsent(): Promise<void> {
   // Deny-rate remains derived as sessions without a grant.
   captureWeb("consent_granted");
   gaEvent("consent_granted");
+  captureHostPublicSearchPageView(window.location.pathname);
 }
 
 /** Reject handler — keeps both gates closed and persists the choice. */
@@ -406,6 +415,61 @@ export function gaEvent(name: string, params?: Record<string, unknown>): void {
       console.warn(`[webAnalytics] gaEvent("${name}") failed:`, err);
     }
   }
+}
+
+/**
+ * Fan one already-sanitized search event to both consented web sinks. Existing
+ * product analytics keep their established owners; this is the only entry
+ * point for the low-cardinality search/outcome contract.
+ */
+export function captureWebSearchOutcome(
+  event: SearchEventName,
+  properties: SearchMeasurementProperties,
+): void {
+  const safe = sanitizeSearchMeasurement(event, properties);
+  if (safe === null) return;
+  captureWeb(safe.event, safe.properties);
+  gaEvent(safe.event, safe.properties);
+}
+
+/** Only public event/trip/experience/brand/venue pages are search inventory. */
+export function isHostPublicInventoryPathname(pathname: unknown): pathname is string {
+  if (typeof pathname !== "string") return false;
+  const segments = pathname.split("/").filter(Boolean);
+  if (["e", "t", "exp"].includes(segments[0] ?? "")) {
+    return segments.length === 3;
+  }
+  if (segments[0] !== "b") return false;
+  return segments.length === 2 ||
+    (segments.length === 4 && segments[2] === "v");
+}
+
+/**
+ * Manual Host public-inventory pageview. Query/fragment data is never accepted;
+ * referrer is reduced to its origin before the typed contract sees it.
+ */
+export function captureHostPublicSearchPageView(pathname: string): void {
+  if (
+    !hasWindow() ||
+    !isHostPublicInventoryPathname(pathname) ||
+    readStoredConsent() !== "granted"
+  ) {
+    return;
+  }
+  const pageLocation = cleanPageLocation(
+    new URL(pathname, window.location.origin).toString(),
+  );
+  if (pageLocation === null) return;
+  const referrerOrigin = cleanReferrerOrigin(window.document.referrer);
+  captureWebSearchOutcome("page_view", {
+    audience: "explorer",
+    page_family: "public_inventory",
+    page_location: pageLocation,
+    source_kind: referrerOrigin === null ? "direct" : "referrer",
+    ...(referrerOrigin === null
+      ? {}
+      : { page_referrer_origin: referrerOrigin }),
+  });
 }
 
 /** Bind identity (Supabase user.id). No-op if PostHog is gated/absent. */

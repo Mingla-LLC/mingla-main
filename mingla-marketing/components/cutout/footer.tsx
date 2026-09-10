@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { CutoutSection } from './primitives'
 import { DeviceCta, type CutoutSurface } from './device-cta'
+import { allCoreTrustPagesSearchReady } from '@/content/core-pages'
+import { allCityHubsSearchReady } from '@/content/cities/registry'
 
 // #2902 — Cutout footer. Dark band closing the page shell.
 //
@@ -11,33 +13,14 @@ import { DeviceCta, type CutoutSurface } from './device-cta'
 // blog, about, editorial standards and six ICP pages -- and nine of those
 // fourteen links 404ed. Those pages are owned by the search/page-system work;
 // when they land they get their entries back.
-const COLUMNS = [
-  {
-    title: 'Explore',
-    links: [{ href: '/', label: 'For Explorers' }],
-  },
-  {
-    title: 'Host',
-    links: [
-      { href: '/host', label: 'For Hosts' },
-      { href: '/tools', label: 'Free tools' },
-    ],
-  },
-  {
-    title: 'Company',
-    links: [{ href: 'https://career.usemingla.com', label: 'Careers', external: true }],
-  },
-  {
-    title: 'Legal',
-    links: [
-      { href: '/privacy-policy', label: 'Privacy' },
-      { href: '/terms-of-service', label: 'Terms' },
-      { href: '/support', label: 'Support' },
-    ],
-  },
-] as const
-
 export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
+  const coreReady = allCoreTrustPagesSearchReady()
+  const columns = [
+    { title: 'Explore', links: [{ href: coreReady ? '/explorer' : '/', label: 'For Explorers' }, ...(coreReady && allCityHubsSearchReady() ? [{ href: '/cities', label: 'Cities' }] : [])] },
+    { title: 'Host', links: [{ href: '/host', label: 'For Hosts' }, { href: '/tools', label: 'Free tools' }] },
+    { title: 'Company', links: [...(coreReady ? [{ href: '/about', label: 'About' }, { href: '/editorial-standards', label: 'Editorial Standards' }] : []), { href: 'https://career.usemingla.com', label: 'Careers', external: true as const }] },
+    { title: 'Legal', links: [{ href: '/privacy-policy', label: 'Privacy' }, { href: '/terms-of-service', label: 'Terms' }, { href: '/support', label: 'Support' }] },
+  ]
   return (
     <CutoutSection band="dark" as="div" aria-label="Footer" className="pb-10">
       <footer>
@@ -66,7 +49,7 @@ export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
           </div>
 
           <div className="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-4">
-            {COLUMNS.map((col) => (
+            {columns.map((col) => (
               <div key={col.title}>
                 <p className="text-[0.6875rem] font-bold uppercase tracking-[0.16em] text-[var(--cut-muted)]">
                   {col.title}
@@ -102,7 +85,7 @@ export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
           style={{ borderColor: 'var(--cut-hairline)' }}
         >
           <p className="text-[0.8125rem] text-[var(--cut-muted)]">
-            © {new Date().getFullYear()} Mingla. Live in Lagos, London and US cities.
+            © {new Date().getFullYear()} Mingla. Find the plan. Feel the city. Show up.
           </p>
           <Link
             href={surface === 'host' ? '/' : '/host'}

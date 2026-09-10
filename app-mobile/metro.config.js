@@ -72,6 +72,12 @@ config.resolver.extraNodeModules = {
     "packages",
     "card-identity",
   ),
+  // #3176 — privacy-safe, RN-free search outcome vocabulary and sanitizer.
+  "@mingla/search-measurement": path.join(
+    WORKSPACE_ROOT,
+    "packages",
+    "search-measurement",
+  ),
   // CRITICAL — force single React + RN instance across app + packages.
   // The packages have their own node_modules/react (for type-checking
   // only) which at runtime would create a DUPLICATE React instance and

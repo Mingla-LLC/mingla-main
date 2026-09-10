@@ -8,6 +8,7 @@ import {
 import type { CityHubRecord } from '@/content/cities/registry'
 import { cityHubEffectiveLifecycle, cityHubPath } from '@/content/cities/registry'
 import { canonicalMarketingUrl } from '@/lib/site'
+import type { CorePageRecord } from '@/content/core-pages'
 
 export interface PublicNoindexMetadataInput {
   readonly title: string
@@ -82,4 +83,10 @@ export function cityHubMetadata(record: CityHubRecord): Metadata {
     }
   }
   return metadata
+}
+
+export function corePageMetadata(record: CorePageRecord): Metadata {
+  return record.lifecycle === 'search_ready'
+    ? searchRouteMetadata(record.pathname)
+    : publicNoindexMetadata(record.pathname, { title: record.title, description: record.description, follow: true })
 }

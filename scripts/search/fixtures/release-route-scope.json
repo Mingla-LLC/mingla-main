@@ -1,0 +1,32 @@
+{
+  "version": "search-release-r1",
+  "marketingOrigin": "https://usemingla.com",
+  "hostOrigin": "https://host.usemingla.com",
+  "marketing": [
+    { "path": "/", "lifecycle": "search_ready" },
+    { "path": "/host", "lifecycle": "search_ready" },
+    { "path": "/tools", "lifecycle": "search_ready" },
+    { "path": "/tools/events", "lifecycle": "search_ready" },
+    { "path": "/tools/venues", "lifecycle": "search_ready" },
+    { "path": "/tools/trips", "lifecycle": "search_ready" },
+    { "path": "/tools/pricing", "lifecycle": "search_ready" },
+    { "path": "/support", "lifecycle": "search_ready" },
+    { "path": "/privacy-policy", "lifecycle": "search_ready" },
+    { "path": "/terms-of-service", "lifecycle": "search_ready" },
+    { "path": "/about", "lifecycle": "public_noindex" },
+    { "path": "/explorer", "lifecycle": "public_noindex" },
+    { "path": "/cities", "lifecycle": "public_noindex" },
+    { "path": "/editorial-standards", "lifecycle": "public_noindex" },
+    { "path": "/cities/lagos", "lifecycle": "public_noindex" },
+    { "path": "/cities/durham-nc", "lifecycle": "public_noindex" },
+    { "path": "/cities/cary-nc", "lifecycle": "public_noindex" },
+    { "path": "/cities/raleigh-nc", "lifecycle": "public_noindex" },
+    { "path": "/cities/new-york-city", "lifecycle": "public_noindex" },
+    { "path": "/cities/brussels", "lifecycle": "public_noindex" },
+    { "path": "/cities/paris", "lifecycle": "public_noindex" },
+    { "path": "/cities/london", "lifecycle": "public_noindex" },
+    { "path": "/cities/fort-lauderdale", "lifecycle": "public_noindex" },
+    { "path": "/cities/washington-dc", "lifecycle": "public_noindex" }
+  ],
+  "host": []
+}

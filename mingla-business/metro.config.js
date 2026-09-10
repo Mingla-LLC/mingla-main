@@ -84,6 +84,12 @@ config.resolver.extraNodeModules = {
   // ISSUE-1001 — canonical brand-asset masters (wordmark + business lockup).
   // Single committed source for every Mingla mark; mirrors are parity-checked.
   "@mingla/brand-assets": path.join(WORKSPACE_ROOT, "packages", "brand-assets"),
+  // #3176 — privacy-safe, RN-free search outcome vocabulary and sanitizer.
+  "@mingla/search-measurement": path.join(
+    WORKSPACE_ROOT,
+    "packages",
+    "search-measurement",
+  ),
   //
   // CRITICAL — force single React + RN instance across app + packages.
   // The packages have their own node_modules/react (for type-checking

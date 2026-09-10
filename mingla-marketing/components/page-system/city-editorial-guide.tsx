@@ -1,6 +1,7 @@
 import type { CataloguePlace } from '@/content/page-system/shared'
 import { DeviceCta } from '@/components/cutout'
 import { LAGOS_EDITORIAL_SECTIONS, LAGOS_QUICK_FACTS } from '@/content/page-system/lagos-editorial'
+import { CurrentPlacePhoto } from './current-place-photo'
 import { ExplorerCatalogueCard } from './explorer-catalogue-card'
 
 const CITY_PATH = '/internal/page-system/city-lagos'
@@ -15,6 +16,16 @@ function sectionPicks(places: readonly CataloguePlace[]): readonly { section: (t
       if (!match) continue
       used.add(match.placePoolId)
       picks.push(match)
+    }
+    // The city catalogue is now the truthful top 50 overall rather than a
+    // forced category quota. If a preferred mood category is absent from that
+    // top 50, finish the three-card editorial row with the next unused ranked
+    // place instead of inventing weaker inventory or repeating a card.
+    for (const place of places) {
+      if (picks.length === 3) break
+      if (used.has(place.placePoolId)) continue
+      used.add(place.placePoolId)
+      picks.push(place)
     }
     return { section, places: picks }
   })
@@ -35,7 +46,7 @@ export function CityEditorialGuide({ places }: { readonly places: readonly Catal
         </div>
         {hero ? (
           <figure className="ps-guide-hero-photo">
-            <img src={hero.photoUrls[0]} alt={`${hero.name} in Lagos`} width="960" height="720" fetchPriority="high" />
+            <CurrentPlacePhoto googlePlaceId={hero.googlePlaceId} name={hero.name} cityName="Lagos" eager />
             <figcaption><span>{hero.categoryLabel}</span><strong>{hero.name}</strong></figcaption>
           </figure>
         ) : null}

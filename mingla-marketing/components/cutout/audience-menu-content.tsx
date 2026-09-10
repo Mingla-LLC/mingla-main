@@ -4,11 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Compass, Store } from 'lucide-react'
 import { DeviceCta, type CutoutSurface } from './device-cta'
-
-const AUDIENCE_DESTINATIONS = [
-  { href: '/', label: 'Explorer', surface: 'explorer', Icon: Compass },
-  { href: '/host', label: 'Host', surface: 'host', Icon: Store },
-] as const
+import { allCoreTrustPagesSearchReady } from '@/content/core-pages'
+import { allCityHubsSearchReady } from '@/content/cities/registry'
 
 const EXPLORER_PAGE_SYSTEM_PATHS = new Set([
   '/internal/page-system/city-lagos',
@@ -38,11 +35,25 @@ export function AudienceMenuContent({
 }) {
   const pathname = usePathname()
   const activeSurface = surfaceForPath(pathname) ?? surface
+  const coreReady = allCoreTrustPagesSearchReady()
+  const explorerFallback = { href: '/', label: 'Explorer', surface: 'explorer' as const, Icon: Compass }
+  const audienceDestinations = [
+    coreReady
+      ? { href: '/explorer', label: 'Explorer', surface: 'explorer' as const, Icon: Compass }
+      : explorerFallback,
+    { href: '/host', label: 'Host', surface: 'host' as const, Icon: Store },
+  ]
+  const supportingDestinations = [
+    { href: '/', label: 'Home' },
+    ...(allCityHubsSearchReady() && coreReady ? [{ href: '/cities', label: 'Cities' }] : []),
+    ...(coreReady ? [{ href: '/about', label: 'About' }, { href: '/editorial-standards', label: 'Editorial Standards' }] : []),
+    { href: '/tools', label: 'Free tools' },
+  ]
 
   return (
     <>
       <nav aria-label="Primary" className="flex flex-col gap-1.5">
-        {AUDIENCE_DESTINATIONS.map(({ href, label, surface: destinationSurface, Icon }) => {
+        {audienceDestinations.map(({ href, label, surface: destinationSurface, Icon }) => {
           const active = activeSurface === destinationSurface
           return (
             <Link
@@ -61,6 +72,10 @@ export function AudienceMenuContent({
             </Link>
           )
         })}
+        <div className="my-2 border-t" style={{ borderColor: 'var(--cut-hairline)' }} />
+        {supportingDestinations.map(({ href, label }) => (
+          <Link key={href} href={href} onClick={onDismiss} className="flex min-h-11 items-center rounded-2xl px-5 text-sm font-bold text-[var(--cut-body)] transition-colors hover:bg-[var(--cut-card-sunken)] hover:text-[var(--cut-ink)] focus-ring">{label}</Link>
+        ))}
       </nav>
 
       <div className="mt-auto flex flex-col gap-2.5 pt-6">
