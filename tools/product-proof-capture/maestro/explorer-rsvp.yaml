@@ -1,0 +1,15 @@
+appId: com.mingla.app.v2
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+- tapOn:
+    point: "92%,94%"
+    optional: true
+- tapOn: "Show rsvp sample"
+- assertVisible: "Sample rooftop listening session"
+- assertVisible: "Going"
+- assertVisible: "Show at door"
+- tapOn:
+    point: "92%,94%"
+    optional: true

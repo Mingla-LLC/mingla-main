@@ -98,4 +98,10 @@ config.resolver.extraNodeModules = {
 // could check `! -d packages/*/node_modules/react` to lock it in.
 config.resolver.disableHierarchicalLookup = false;
 
+// #3176 — opt-in local product-proof harness. The production graph never sees
+// this resolver: the environment flag is set only by tools/product-proof-capture.
+if (process.env.MINGLA_CAPTURE_SURFACE === "explorer") {
+  require("../tools/product-proof-capture/explorer/metroOverlay.js")(config, WORKSPACE_ROOT);
+}
+
 module.exports = config;

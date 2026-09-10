@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Mingla controlled product proof capture",
+  "type": "object",
+  "required": ["baselineCommit", "sources", "outputs"],
+  "properties": {
+    "baselineCommit": { "const": "925aab769cd4970336c16d80391db15773012607" },
+    "sources": { "type": "array", "items": { "type": "object", "required": ["assetId", "path", "sha256", "creator", "licenseOrRelease", "modelRelease", "allowedSurfaces", "redactions", "altText"] } },
+    "outputs": { "type": "array", "minItems": 4, "items": { "type": "object", "required": ["scene", "surface", "commit", "appVersion", "captureUTC", "UDID", "device", "OS", "pixels", "componentPaths", "fixtureIds", "assertedAction", "assertedResult", "sampleStateVisible", "networkAttempts", "sha256"] } }
+  }
+}

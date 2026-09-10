@@ -231,4 +231,10 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return context.resolveRequest(context, moduleName, platform);
 };
 
+// #3176 — opt-in local product-proof harness. The production graph never sees
+// this resolver: the environment flag is set only by tools/product-proof-capture.
+if (process.env.MINGLA_CAPTURE_SURFACE === "host") {
+  require("../tools/product-proof-capture/host/metroOverlay.js")(config, WORKSPACE_ROOT);
+}
+
 module.exports = config;
