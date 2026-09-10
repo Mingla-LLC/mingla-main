@@ -50,8 +50,14 @@ const extraNames = [...contract.remediation.allowed_extra_live_names].sort();
 /** What live parity legitimately equals mid-remediation. */
 const remediationCount = declaredCount + extraNames.length;
 
-const SEQUENCE_ANCHOR =
-  "may the five direct names be removed, one at a time, in this order:";
+// The runbook was rewritten on 2026-09-02 (#3048, #3067): three of the five
+// names were actually removed in production and the migration band was narrowed
+// to the two that remain. The old anchor sentence — "may the five direct names
+// be removed, one at a time, in this order:" — no longer exists, and pinning a
+// five-name sequence against a two-name band would be asserting a state that
+// can no longer occur (#2113). This anchors on the sentence the runbook now
+// uses to order what is left.
+const SEQUENCE_ANCHOR = "The remaining order is";
 const SEQUENCE_TERMINATOR = "Stop on any fallback";
 
 /**
@@ -145,7 +151,18 @@ test("the runbook's parity sentence lists exactly the allowed extra names", () =
   const anchor = `live names equal the exact ${declaredCount}-name manifest plus`;
   const start = RUNBOOK.indexOf(anchor);
   assert.notEqual(start, -1, "runbook no longer states remediation parity");
-  const span = RUNBOOK.slice(start, RUNBOOK.indexOf(".", start));
+  // The parity claim and the list of names are two sentences now: "…plus the
+  // migration band." then "…it is now exactly `A` and `B`." Slicing to the
+  // FIRST period stopped before any name and made this a vacuous deepEqual
+  // against an empty list, so the span runs to the sentence that names them.
+  const NAMES_ANCHOR = "it is now exactly";
+  const namesStart = RUNBOOK.indexOf(NAMES_ANCHOR, start);
+  assert.notEqual(
+    namesStart,
+    -1,
+    "runbook states remediation parity but no longer names the band",
+  );
+  const span = RUNBOOK.slice(start, RUNBOOK.indexOf(".", namesStart));
   assert.deepEqual(
     [...new Set([...span.matchAll(/`([A-Z][A-Z0-9_]*)`/g)].map((m) => m[1]))]
       .sort(),
