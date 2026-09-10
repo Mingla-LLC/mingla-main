@@ -295,7 +295,8 @@ Deno.test("#1971 happy: trip capability routing is classified correctly", () => 
 });
 
 Deno.test("#1971 happy: the prompt advertises the trip graph and its revision rule", () => {
-  assertEquals(PROMPT_VERSION, "v15");
+  // [TEST-MOD-APPROVED #1976] Prompt revision advanced for payout/tax connect-status ads.
+  assertEquals(PROMPT_VERSION, "v16");
   const prompt = buildSystemPrompt(null, []);
   for (const name of ALL_TRIP_TOOLS) {
     assertStringIncludes(prompt, `- ${name} —`);

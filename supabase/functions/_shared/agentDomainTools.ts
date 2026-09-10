@@ -3188,17 +3188,92 @@ const runGrowthTool = writeTool(
 // J. Payouts / partners / tax (read + destructive disconnect)
 // ----------------------------------------------------------------------------
 
+/** #1976 — PII-minimised Stripe connect status (Host: brand-stripe-refresh-status). */
+function nullableBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function minimiseStripeConnectStatus(
+  raw: Record<string, unknown> | null,
+): Record<string, unknown> {
+  if (!raw || typeof raw !== "object") {
+    return {
+      unavailable: true,
+      reason: "Stripe connect status could not be loaded.",
+    };
+  }
+  const requirements = raw.requirements;
+  const hasDisabledReason = typeof requirements === "object" &&
+    requirements !== null &&
+    typeof (requirements as Record<string, unknown>).disabled_reason ===
+      "string" &&
+    String((requirements as Record<string, unknown>).disabled_reason).length >
+      0;
+  return {
+    status: typeof raw.status === "string" ? raw.status : null,
+    charges_enabled: nullableBoolean(raw.charges_enabled),
+    payouts_enabled: nullableBoolean(raw.payouts_enabled),
+    has_disabled_reason: hasDisabledReason,
+  };
+}
+
+/** #1976 — PII-minimised Paystack connect status (Host: refresh_status). */
+function minimisePaystackConnectStatus(
+  raw: Record<string, unknown> | null,
+): Record<string, unknown> {
+  if (!raw || typeof raw !== "object") {
+    return {
+      unavailable: true,
+      reason: "Paystack connect status could not be loaded.",
+    };
+  }
+  return {
+    connected: nullableBoolean(raw.connected),
+    is_verified: nullableBoolean(raw.is_verified),
+    active: nullableBoolean(raw.active),
+    settlement_bank: typeof raw.settlement_bank === "string"
+      ? raw.settlement_bank
+      : null,
+    account_number_masked: typeof raw.account_number_masked === "string"
+      ? raw.account_number_masked
+      : null,
+    recipient_connected: nullableBoolean(raw.recipient_connected),
+  };
+}
+
+async function readProviderRailStatus(
+  client: any,
+  edgeName: string,
+  body: Record<string, unknown>,
+  minimise: (raw: Record<string, unknown> | null) => Record<string, unknown>,
+  unavailableReason: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const raw = await invokeFn<Record<string, unknown> | null>(
+      client,
+      edgeName,
+      body,
+    );
+    return minimise(raw);
+  } catch (error) {
+    const message = error instanceof ToolError
+      ? error.message
+      : unavailableReason;
+    return { unavailable: true, reason: message || unavailableReason };
+  }
+}
+
 const getPayoutStatus = writeTool(
   "get_payout_status",
-  "Read payout readiness (pg_brand_can_collect) and guide KYC. Never bypasses Stripe/Paystack.",
+  "Read payout readiness (pg_brand_can_collect) plus Stripe/Paystack connect status and guide KYC. Never bypasses Stripe/Paystack.",
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
-    // #1982 — canonical readiness gate. Ari NEVER completes hosted KYC in chat
-    // — it only reads the gate and hands the owner off to the native Payouts
-    // flow.
+    // #1982 / #1976 — canonical readiness gate + Host connect-status edges.
+    // Ari NEVER completes hosted KYC in chat — it only reads status and hands
+    // the owner off to the native Payouts flow.
     //
     // #2593 — the bare-boolean read is CORRECT and is now pinned. Production
     // carries exactly ONE overload, `pg_brand_can_collect(uuid) RETURNS
@@ -3222,9 +3297,30 @@ const getPayoutStatus = writeTool(
       );
     }
     const canCollect = can;
+    // Same edges Host polls: brand-stripe-refresh-status + Paystack
+    // refresh_status. Per-rail failures stay on that rail — never invent
+    // can_collect:false from a provider outage.
+    const [stripe, paystack] = await Promise.all([
+      readProviderRailStatus(
+        client,
+        "brand-stripe-refresh-status",
+        { brand_id: args.brand_id },
+        minimiseStripeConnectStatus,
+        "Stripe connect status could not be loaded.",
+      ),
+      readProviderRailStatus(
+        client,
+        "brand-paystack-onboard",
+        { action: "refresh_status", brand_id: args.brand_id },
+        minimisePaystackConnectStatus,
+        "Paystack connect status could not be loaded.",
+      ),
+    ]);
     return {
       brand_id: args.brand_id,
       can_collect: canCollect,
+      stripe,
+      paystack,
       guide: canCollect
         ? "Payouts are enabled — this brand can collect money."
         : "Open Brand → Payouts to finish Stripe or Paystack KYC. Ari cannot complete hosted KYC in chat.",
@@ -3356,16 +3452,42 @@ const disconnectPartner = writeTool(
 
 const getTaxStatus = writeTool(
   "get_tax_status",
-  "Read tax-registration status and tell the operator to open Stripe/Paystack Connect tax. Never files tax.",
+  "Read tax-registration status via brand-tax-registrations-list and guide to Connect tax. Never files tax.",
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
+    // #1976 — same probe Host uses (useBrandTaxRegistration). Read-only;
+    // registration completion stays a guided handoff to Connect tax.
+    // Edge outages must not erase guidance — return unavailable + still hand
+    // the operator to /connect-tax-registrations.
+    let hasActiveRegistration: boolean | null = null;
+    let reason: string | null = null;
+    let unavailable = false;
+    try {
+      const raw = await invokeFn<Record<string, unknown>>(
+        client,
+        "brand-tax-registrations-list",
+        { brand_id: args.brand_id },
+      );
+      hasActiveRegistration = nullableBoolean(raw?.hasActiveRegistration);
+      reason = typeof raw?.reason === "string" ? raw.reason : null;
+    } catch (error) {
+      unavailable = true;
+      reason = error instanceof ToolError
+        ? error.message
+        : "Tax registration status could not be loaded.";
+    }
+    const guide = hasActiveRegistration === true
+      ? "An active tax registration is on file. Open Brand → Tax / Connect tax to review details; Ari cannot edit tax registrations in chat."
+      : "Open Brand → Tax / Connect tax (/connect-tax-registrations) to register or review. Ari cannot complete hosted tax onboarding in chat.";
     return {
       brand_id: args.brand_id,
-      guide:
-        "Open Brand → Tax / Connect tax to register. Ari cannot complete hosted tax onboarding in chat.",
+      has_active_registration: hasActiveRegistration,
+      reason,
+      ...(unavailable ? { unavailable: true } : {}),
+      guide,
     };
   },
 );

@@ -23,7 +23,9 @@
 // draft graph, publish from stored payload, selected/all_pending guest status,
 // contribution settings, and contribution-path refunds.
 
-export const PROMPT_VERSION = "v15";
+export const PROMPT_VERSION = "v16";
+// v16 (#1976): get_payout_status advertises Stripe/Paystack connect status;
+// get_tax_status advertises live tax-registration read + Connect tax handoff.
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -341,10 +343,10 @@ CAPABILITIES (your tools):
 - send_campaign_now — send a campaign now (irreversible)
 - cancel_campaign — cancel a scheduled campaign
 - run_growth_tool — run a Growth Tool
-- get_payout_status — read payout readiness; guide KYC (never bypass)
+- get_payout_status — read payout readiness plus Stripe/Paystack connect status; guide KYC (never bypass)
 - get_partner_status — read partner-split status
 - disconnect_partner — disconnect a partner (destructive)
-- get_tax_status — read tax status; open Connect tax screen
+- get_tax_status — read tax-registration status; open Connect tax screen when unregistered
 - get_brand_balances_reports — Stripe balances + recent payout releases (CSV stays in Payments → Reports)
 - list_partner_brand_links — list the caller's partner-brand links
 - list_partner_splits — list partner earnings / split rows
