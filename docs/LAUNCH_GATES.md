@@ -11,8 +11,8 @@ Engineering scaffolding (Tier 1) can merge without these. **Do not claim product
 | G3 | **Sentry live** | 🟡 Scaffolding ✅; operator DSN/proof pending | [`docs/evidence/g3-sentry/`](./evidence/g3-sentry/) · pack [`docs/evidence/g3-g5-operator-pack.md`](./evidence/g3-g5-operator-pack.md) |
 | G4 | **DR restore performed** | 🟡 Scaffolding ✅; timed drill pending | [`docs/runbooks/DR_RESTORE.md`](./runbooks/DR_RESTORE.md) · clone-only |
 | G5 | **Synthetic incident drill** | 🟡 Scaffolding ✅; drill pending (needs G3 alerts) | [`docs/runbooks/SYNTHETIC_INCIDENT_DRILL.md`](./runbooks/SYNTHETIC_INCIDENT_DRILL.md) |
-| G6 | **Stripe TEST → LIVE** | 🟡 2A attestation in-repo; screenshots pending | [`docs/evidence/g6-stripe-live/`](./evidence/g6-stripe-live/) |
-| G7 | **App Store + Play** | 🟡 2A attestation in-repo; screenshots pending | [`docs/evidence/g7-store-submission/`](./evidence/g7-store-submission/) |
+| G6 | **Stripe TEST → LIVE** | 🟡 Partial — `pk_live` OTA attestation; Dashboard screenshots pending | [`docs/evidence/g6-stripe-live/`](./evidence/g6-stripe-live/) |
+| G7 | **App Store + Play** | ✅ Public storefronts live at **1.1.6** (2026-09-10) | [`docs/evidence/g7-store-submission/`](./evidence/g7-store-submission/) |
 
 ## Tier 1 (engineering — no platform blockers)
 

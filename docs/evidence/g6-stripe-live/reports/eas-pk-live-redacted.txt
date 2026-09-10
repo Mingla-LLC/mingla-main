@@ -1,0 +1,21 @@
+# G6 — EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY live attestation (redacted)
+# Evidence time: 2026-09-10T05:22:43Z
+# Source: COMMS.md production OTA verification notes (not a fresh eas env:list)
+
+## Attestation
+Multiple production OTA publishes verified the *served* EAS update manifest carried
+EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY = pk_live_… (live publishable key; secret material omitted).
+
+Documented instances (see COMMS.md Active table):
+- COMMS-0151 (2026-08-18): Consumer 1.1.5 production OTA — served manifests carry pk_live… for EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY on iOS + Android.
+- COMMS-0164 (2026-08-25): Mingla Host 1.1.6 production OTA — served manifest verified EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY = pk_live_… (107 chars), not the committed pk_test_ sandbox literal.
+- COMMS-0147 / related Host+Consumer 1.1.6 publishes: served manifests verified carrying pk_live_ on all four platform payloads.
+
+## Still missing for full G6 close (operator dashboard)
+- [ ] Stripe Dashboard Live mode screenshot → reports/stripe-live-dashboard.png
+- [ ] Live Connect + Platform webhook endpoints screenshot → reports/stripe-live-webhooks.png
+- [ ] One recent live charge or Connect payout row (PII redacted) → reports/live-charge-redacted.png
+- [ ] Fresh redacted `eas env:list` (optional if operator prefers current CLI over COMMS attestation)
+
+## Product attestation
+PRODUCT_AND_STRATEGY.md §2 (2026-07-19): Stripe (live mode) for tickets/reservations/trips/experiences + Connect payouts; Paystack live for Nigeria rail.

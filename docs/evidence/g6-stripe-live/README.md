@@ -1,7 +1,8 @@
 # G6 — Stripe LIVE evidence backfill (#426 / decision 2A)
 
 **Gate:** G6 — Stripe TEST → LIVE  
-**Mode:** Evidence backfill only (no mode flip). Product already asserts live-mode checkout.
+**Mode:** Evidence backfill only (no mode flip). Product already asserts live-mode checkout.  
+**Status:** 🟡 Partial — `pk_live` attestation landed; Stripe Dashboard screenshots still required.
 
 ## Canonical product attestation (in-repo)
 
@@ -11,25 +12,25 @@ From [`PRODUCT_AND_STRATEGY.md`](../../../PRODUCT_AND_STRATEGY.md) §2 (2026-07-
 
 Also asserts **Paystack (live mode)** for the Nigeria rail.
 
-## Operator evidence still required (attach screenshots here / on #426)
+## Evidence captured
 
-| Check | Artifact |
-|-------|----------|
-| Stripe Dashboard in **Live** mode (platform account) | `reports/stripe-live-dashboard.png` |
-| Live Connect + Platform webhook endpoints present | `reports/stripe-live-webhooks.png` |
-| Redacted `eas env:list` showing `pk_live_*` on mingla-business production | `reports/eas-pk-live-redacted.txt` |
-| One recent live charge or Connect payout row (PII redacted) | `reports/live-charge-redacted.png` |
+| Check | Artifact | Status |
+|-------|----------|--------|
+| Redacted live publishable-key attestation (from verified production OTA manifests in COMMS) | [`reports/eas-pk-live-redacted.txt`](./reports/eas-pk-live-redacted.txt) | ✅ |
+| Stripe Dashboard in **Live** mode (platform account) | `reports/stripe-live-dashboard.png` | ❌ needs operator login |
+| Live Connect + Platform webhook endpoints present | `reports/stripe-live-webhooks.png` | ❌ needs operator login |
+| One recent live charge or Connect payout row (PII redacted) | `reports/live-charge-redacted.png` | ❌ needs operator login |
 
 ## Checklist annotation
 
-Work [`docs/runbooks/B2_GO_LIVE_CHECKLIST.md`](../../runbooks/B2_GO_LIVE_CHECKLIST.md). For each section mark:
+Work [`docs/runbooks/B2_GO_LIVE_CHECKLIST.md`](../../runbooks/B2_GO_LIVE_CHECKLIST.md) only after dashboard screenshots exist. Until then:
 
-- `[x] verified-already-live` — confirmed via dashboard evidence above
-- `[~] N/A post-launch` — not re-run for 2A backfill
-- leave `[ ]` only for items that are still genuinely open
+- Publishable key live-mode: treat as `[x] verified-already-live` via COMMS OTA manifest checks cited in `eas-pk-live-redacted.txt`
+- Webhooks / live charge / Connect payout UI: leave open
 
 ## Close checklist for #426
 
-- [ ] Screenshots / redacted CLI attached under `reports/` or pasted on #426
-- [ ] B2 checklist annotated
-- [ ] Epic Tier 2 G6 row → ✅ with link to this folder
+- [~] Partial screenshots / redacted attestation under `reports/` (pk_live only)
+- [ ] Stripe Dashboard + webhooks + live charge screenshots
+- [ ] B2 checklist fully annotated
+- [ ] Epic Tier 2 G6 row → ✅ (blocked on dashboard trio)

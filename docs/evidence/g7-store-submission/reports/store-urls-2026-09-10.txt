@@ -1,0 +1,32 @@
+# G7 — public store URLs at evidence time 2026-09-10T05:22:43Z
+
+## App Store (iTunes lookup API 2026-09-10)
+Explorer: https://apps.apple.com/us/app/mingla-date-plans-city-gems/id6760440898
+  name: Mingla –Date Plans & City Gems
+  version: 1.1.6
+  released: 2026-08-23T14:47:55Z
+  bundle: com.mingla.app.v2
+  ascAppId: 6760440898
+
+Host: https://apps.apple.com/us/app/mingla-host-sell-grow/id6768737367
+  name: Mingla: Host, Sell & Grow
+  version: 1.1.6
+  released: 2026-08-23T14:47:59Z
+  bundle: com.sethogieva.minglabusiness
+  ascAppId: 6768737367
+
+## Google Play (canonical package IDs from mingla-marketing/lib/store-links.ts)
+Explorer: https://play.google.com/store/apps/details?id=com.mingla.app.v2
+  name: Mingla-Date Plans & City Gems
+  version in page payload: 1.1.6
+  updated: Aug 22, 2026
+  status: public Install button present
+
+Host: https://play.google.com/store/apps/details?id=com.sethogieva.minglabusiness
+  name: Mingla: Host, Sell & Grow
+  version in page payload: 1.1.6
+  updated: Aug 22, 2026
+  status: public Install button present
+
+Note: PRODUCT_AND_STRATEGY.md §2 still says 1.1.2; public storefront versions at evidence time are 1.1.6.
+Screenshots: reports/asc-*.png and reports/play-*.png from public storefronts (not ASC/Play Console logins).
