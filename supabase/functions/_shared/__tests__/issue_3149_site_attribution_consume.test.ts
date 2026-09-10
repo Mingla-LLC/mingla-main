@@ -18,11 +18,19 @@
  *
  * NOT YET WIRED INTO CI, and that is worth saying out loud rather than
  * discovering later. Every Deno lane in this repo enumerates its test files by
- * name, and adding this one to `supabase-secret-budget.yml` drifts the frozen
- * PR-family digest in `.github/scripts/strict-grep/issue-2851-*.mjs`, which
- * this change may not touch. Registering it is a follow-up that has to re-pin
- * that seal. Until then: `deno test --allow-env --allow-read
- * --allow-net=deno.land,esm.sh <this file>`.
+ * name, and adding this one to the `supabase-secret-budget` lane drifts the
+ * frozen PR-family digest the #2851 gate holds, which this change may not
+ * touch. Registering it is a follow-up that has to re-pin that seal. Until
+ * then: `deno test --allow-env --allow-read --allow-net=deno.land,esm.sh
+ * <this file>`.
+ *
+ * That lane is named WITHOUT its file extension on purpose, and so is the gate.
+ * The #2148 provider seal derives, for every workflow filename, the sorted set
+ * of tracked files containing that name AS A LITERAL — so writing the filename
+ * out in full here makes this file a discovered reference for that workflow and
+ * reds `external reference file inventory drifted`. It did exactly that on this
+ * branch. The same trap is what d377bd9a6 (#3166) landed on main, and the fix
+ * is prose both times: name the lane, never the file.
  */
 import { handleBrandSiteAttribution } from "../../brand-site-attribution/index.ts";
 
