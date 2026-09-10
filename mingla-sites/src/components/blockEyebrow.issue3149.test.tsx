@@ -308,16 +308,41 @@ describe("#3149 a run of reels is titled by its first film", () => {
     expect(html).not.toContain("Unused here");
   });
 
-  it("the grid's heading spans every column of the grid", () => {
-    // It is a grid ITEM. Without this it takes the first film's column and the
-    // films shuffle along by one.
-    const css = fs.readFileSync(
-      path.resolve(process.cwd(), "src/app/styles.css"),
-      "utf8",
-    );
-    const rule = css.match(/^\.reel-grid-head\s*\{([^}]*)\}/m);
-    expect(rule).not.toBeNull();
-    expect(rule![1]).toContain("grid-column: 1 / -1");
+  it("the grid's heading is rendered OUTSIDE the films grid", () => {
+    /*
+     * #3149 wave 5 — REPLACED, because what this pinned was the defect.
+     *
+     * It read `styles.css` as text and required `.reel-grid-head` to declare
+     * `grid-column: 1 / -1`. That declaration was added to stop the heading
+     * taking the first film's column — a real bug — but it caused a second one:
+     * `.reel-grid` laid its tracks with `auto-fit`, which collapses tracks
+     * nothing occupies, and a child spanning every track means no track is ever
+     * empty. Three films rendered in four columns with a hole on the right, and
+     * this test called that correct.
+     *
+     * Both bugs come from the heading being a grid item AT ALL. It is not one
+     * now: the films moved into `.reel-grid-films` and the heading is a sibling
+     * of that container rather than an item inside it. Asserted here on the
+     * rendered STRUCTURE, which is what this suite can see; the computed-CSS
+     * half — that the films container is the grid and the heading occupies no
+     * track — is measured in `wave5Parity.issue3149.test.tsx`.
+     */
+    const html = render([
+      reel(1, { group_heading: "The room, on any given night" }),
+      reel(2),
+      reel(3),
+    ]);
+    const grid = gridSection(html);
+    const films = grid.match(/<div class="reel-grid-films">([\s\S]*?)<\/div><\/section>|<div class="reel-grid-films">([\s\S]*)$/);
+    expect(grid).toContain('<div class="reel-grid-films">');
+    // The heading is before the films container, not inside it.
+    expect(grid.indexOf('class="reel-grid-head"'))
+      .toBeLessThan(grid.indexOf('class="reel-grid-films"'));
+    expect(films).not.toBeNull();
+    const inner = (films![1] ?? films![2])!;
+    expect(inner).not.toContain("reel-grid-head");
+    // All three films are inside it, and nothing else is.
+    expect(inner.match(/<figure class="reel-card">/g)).toHaveLength(3);
   });
 });
 

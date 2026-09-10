@@ -12,6 +12,19 @@ import { readObject, writeObject } from "./objectStore";
  */
 const MINGLA_HOST_ORIGIN = "https://host.usemingla.com";
 
+/*
+ * #3149 wave 5 — the shape a Mingla slug is allowed to have before it may
+ * become a path segment. Letters, digits and inner hyphens, nothing else: no
+ * separator, no dot, no space, no empty string. Anything Mingla hands back that
+ * does not match is treated as ABSENT rather than escaped, because a slug that
+ * needs escaping is not a slug and the honest answer is to publish no link.
+ */
+const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/i;
+
+function slugOf(value: unknown): string | null {
+  return typeof value === "string" && SLUG_RE.test(value) ? value : null;
+}
+
 // Payload documents are generated dynamically from the closed collection
 // schema; this private normalizer deliberately handles their heterogeneous
 // field values before emitting the strictly validated public artifact.
@@ -224,16 +237,29 @@ export async function buildPublicationArtifact(
       if (
         block.blockType === "menu_board" || block.blockType === "menu_preview"
       ) wantsMenu = true;
+  /*
+   * #3149 wave 5 — does any page carry a booking button? Only then are the
+   * venue slugs read, on the same principle as the menu above. Kept as its own
+   * loop rather than folded into the one above because that expression is
+   * pinned by the menu-authority suite.
+   */
+  let wantsVenue = false;
+  for (const page of pagesResult.docs as AnyDoc[])
+    for (const block of page.blocks || [])
+      if (block.blockType === "venue_reservation") wantsVenue = true;
   let commercial: AnyDoc[] = [];
   let menuRows: AnyDoc[] = [];
   let menuVenueId: string | null = null;
-  if (offeringIds.size || wantsMenu) {
+  let venueSlug: string | null = null;
+  let brandSlug: string | null = null;
+  if (offeringIds.size || wantsMenu || wantsVenue) {
     const projection = await readCoreProjection(
       `/internal/v1/sites/${input.tenant.core_site_id}/projection`,
       input.tenant.core_site_id,
       input.operationId,
       [...offeringIds],
       wantsMenu,
+      wantsVenue,
     );
     commercial = Array.isArray(projection.offerings)
       ? (projection.offerings as AnyDoc[])
@@ -246,6 +272,16 @@ export async function buildPublicationArtifact(
     menuVenueId = typeof projection.menu_venue_id === "string"
       ? projection.menu_venue_id
       : null;
+    /*
+     * #3149 wave 5 — VALIDATED, not merely copied. These two strings are about
+     * to become path segments on Mingla's own host, so anything that is not a
+     * plain slug is treated as absent: a value carrying a `/`, a `.` or a space
+     * would not address the page it claims to and could walk out of `/b/../v/`
+     * into another surface entirely. A rejected slug fails the block closed,
+     * exactly as a missing one does.
+     */
+    venueSlug = slugOf(projection.venue_slug);
+    brandSlug = slugOf(projection.brand_slug);
   }
   /*
    * Group Mingla's flat rows into the sections the renderer draws. The order is
@@ -438,31 +474,41 @@ export async function buildPublicationArtifact(
             }),
           };
         /*
-         * #3149 wave 4 — THE BOOKING LINK IS DERIVED FROM THE BRAND.
+         * #3149 wave 5 — THE BOOKING LINK POINTS AT THE VENUE'S PUBLIC PAGE.
          *
-         * This resolved a "reservation target id" against the commercial
-         * projection, and it could not ever succeed: only `offering_grid` ids
-         * are sent to that projection, its own count check would have rejected
-         * an extra row, and the projection returns EVENTS with kind
-         * 'offering' — there is no reservation target in it at all. So every
-         * page carrying this block failed the publish closed. Confirmed by
-         * reading all three: the id gather, the count check, and
-         * `brand_site_commercial_projection` itself.
+         * Wave 4 derived this from the tenant's brand id as
+         * `/reserve/{brand_id}`, which was free of typos and still wrong:
+         * `/reserve/[brandId]` is not where a booking STARTS, it is where a
+         * payment RETURNS. That whole tree is a payment-return surface — the
+         * index renders "Payment cancelled. You haven't been charged.",
+         * `confirm` is the post-payment landing and `manage` edits a booking
+         * that already exists. So "Continue with Mingla" took a guest who had
+         * chosen nothing and charged nothing to a cancellation notice.
          *
-         * Mingla already owns reservations — the policy, the cancellations,
-         * the attribution — and its booking page is addressed by BRAND. That
-         * address is computed here from the tenant's own brand id, so the
-         * button cannot drift out of step with the brand and there is no free
-         * text on the way to it.
+         * The page that actually takes a booking is the venue's public one,
+         * `/b/{brand_slug}/v/{venue_slug}`: it carries "BOOKING · Available
+         * through Mingla" and a "Reserve a table" button. It is addressed by
+         * SLUG, and the tenant row holds only ids — so the slugs travel on the
+         * site projection the builder already fetches, resolved by Mingla from
+         * the site id. Derived end to end; there is still no free text on the
+         * way to it.
+         *
+         * FAILS CLOSED. No verified venue, an ambiguous one, or a slug that is
+         * not a slug means no link, and the block is DROPPED. A reservation
+         * section that is briefly absent is a gap; one that is present and
+         * lands on a cancellation notice is a lost booking and a guest who
+         * thinks the restaurant is broken.
          */
-        case "venue_reservation":
+        case "venue_reservation": {
+          if (!brandSlug || !venueSlug) return null;
           return {
             type: "venue_reservation",
             ...eyebrow,
             heading: raw.heading,
             body: raw.body,
-            url: `${MINGLA_HOST_ORIGIN}/reserve/${input.tenant.core_brand_id}`,
+            url: `${MINGLA_HOST_ORIGIN}/b/${brandSlug}/v/${venueSlug}`,
           };
+        }
         case "video_feature": {
           const video = renderVideo(raw.video);
           // A video block whose file is not ready is dropped rather than

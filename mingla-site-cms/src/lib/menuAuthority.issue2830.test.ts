@@ -69,9 +69,22 @@ describe("#2830 the menu belongs to Mingla", () => {
   });
 
   it("the menu is read ONLY when a page actually shows one", () => {
+    /*
+     * #3149 wave 5 — the two expressions below were re-pinned, NOT relaxed.
+     *
+     * `include` became a repeatable parameter so the same projection can also
+     * carry the venue slugs a booking button needs. The gateway therefore
+     * APPENDS rather than sets — setting would have made asking for one
+     * silently drop the other — and the callback reads the list rather than
+     * comparing the single value with `===`. What is being asserted is
+     * unchanged: the menu is fetched only when a page actually shows one.
+     */
     expect(builder).toContain("wantsMenu");
-    expect(gateway).toContain('if (includeMenu) query.set("include", "menu")');
-    expect(callback).toContain('searchParams.get("include") === "menu"');
+    expect(gateway).toContain('if (includeMenu) query.append("include", "menu")');
+    expect(callback).toContain('searchParams.getAll("include")');
+    expect(callback).toContain('includes.has("menu")');
+    // And the venue read is gated on its own flag, not carried by the menu's.
+    expect(gateway).toContain('if (includeVenue) query.append("include", "venue")');
   });
 
   it("a price is never defaulted, in SQL or in the builder", () => {

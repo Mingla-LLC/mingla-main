@@ -688,7 +688,9 @@ describe("#3149 wave 4 the sixth page role", () => {
       eyebrow: "Come through",
       heading: "Book a table at gögi",
       body: "gögi is walk-in and always open.",
-      url: `https://host.usemingla.com/reserve/${U(91)}`,
+      // #3149 wave 5 — the venue's PUBLIC page, which is where a booking
+      // actually starts. `/reserve/{brand_id}` is a payment-RETURN surface.
+      url: "https://host.usemingla.com/b/gogilagos/v/gogi",
     }]),
   ];
 
@@ -726,8 +728,9 @@ describe("#3149 wave 4 the sixth page role", () => {
     );
     expect(html).toContain('href="/reservations"');
     expect(html).toContain(
-      `href="https://host.usemingla.com/reserve/${U(91)}"`,
+      'href="https://host.usemingla.com/b/gogilagos/v/gogi"',
     );
+    expect(html).not.toContain("/reserve/");
     expect(textOf(html)).toContain("Book a table at gögi");
   });
 

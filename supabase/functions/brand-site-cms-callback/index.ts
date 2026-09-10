@@ -433,9 +433,19 @@ async function handleBrandSiteCmsCallbackRequest(
       // when the builder asks for it, so a page with no menu block costs no
       // menu read. Mingla stays the authority: the website never keeps its own
       // copy of what a restaurant sells.
+      //
+      // #3149 wave 5 — `include` is now a LIST. It was compared with `===`
+      // against the single value "menu"; read with `getAll` a caller can ask
+      // for the menu, the venue, or both, and a caller that still sends one
+      // `include=menu` is understood exactly as before.
+      const includes = new Set(
+        new URL(req.url).searchParams.getAll("include"),
+      );
       let menu: unknown[] = [];
       let menuVenueId: string | null = null;
-      if (new URL(req.url).searchParams.get("include") === "menu") {
+      let venueSlug: string | null = null;
+      let brandSlug: string | null = null;
+      if (includes.has("menu")) {
         const menuResult = await service.rpc("brand_site_menu_projection", {
           p_site_id: siteId,
         });
@@ -446,9 +456,16 @@ async function handleBrandSiteCmsCallbackRequest(
           );
         }
         menu = menuResult.data ?? [];
-        // Which kitchen receives a website order. NULL when the brand has no
-        // verified venue, or more than one — the website then shows the menu
-        // without a cart rather than guessing where dinner should be cooked.
+      }
+      if (includes.has("menu") || includes.has("venue")) {
+        // Which kitchen receives a website order, and — since #3149 wave 5 —
+        // which public venue page a reservation button points at. Both want
+        // the same answer, so it is resolved ONCE for either caller.
+        //
+        // NULL when the brand has no verified venue, or more than one: the
+        // website then shows the menu without a cart rather than guessing where
+        // dinner should be cooked, and drops its booking button rather than
+        // guessing which room is being booked.
         const venueResult = await service.rpc("brand_site_orderable_venue", {
           p_site_id: siteId,
         });
@@ -461,10 +478,44 @@ async function handleBrandSiteCmsCallbackRequest(
         menuVenueId = typeof venueResult.data === "string"
           ? venueResult.data
           : null;
+        /*
+         * #3149 wave 5 — the SLUGS for that venue's public page.
+         *
+         * `venue_public_view` is the anon read model and is defined
+         * `WHERE claim_status = 'verified'`, which is exactly the gate the
+         * booking link needs: a row here means the page it addresses is
+         * publicly reachable. No row means no link, and the block is dropped
+         * rather than published pointing at a 404.
+         */
+        if (includes.has("venue") && menuVenueId) {
+          const slugResult = await service
+            .from("venue_public_view")
+            .select("slug,brand_slug")
+            .eq("id", menuVenueId)
+            .maybeSingle();
+          if (slugResult.error) {
+            return sitesJson(
+              { ok: false, error: { code: "VALIDATION_FAILED" } },
+              409,
+            );
+          }
+          venueSlug = typeof slugResult.data?.slug === "string"
+            ? slugResult.data.slug
+            : null;
+          brandSlug = typeof slugResult.data?.brand_slug === "string"
+            ? slugResult.data.brand_slug
+            : null;
+        }
       }
       return sitesJson({
         ok: true,
-        data: { offerings: data ?? [], menu, menu_venue_id: menuVenueId },
+        data: {
+          offerings: data ?? [],
+          menu,
+          menu_venue_id: menuVenueId,
+          venue_slug: venueSlug,
+          brand_slug: brandSlug,
+        },
       });
     }
     const retentionMatch = path.match(

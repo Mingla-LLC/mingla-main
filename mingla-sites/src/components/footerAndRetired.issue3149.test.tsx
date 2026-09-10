@@ -98,7 +98,8 @@ const PAGES = [
       type: "venue_reservation",
       heading: "Book a table at gögi",
       body: "gögi is walk-in and always open.",
-      url: `https://host.usemingla.com/reserve/${U(91)}`,
+      // #3149 wave 5 — the venue's public page, not the payment-return surface.
+      url: "https://host.usemingla.com/b/gogilagos/v/gogi",
     }],
   },
 ];
