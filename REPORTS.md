@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-11 — Two brands can now be paid into the same bank account on both Paystack and Stripe, and connecting one no longer deletes another brand's payout destination at Paystack; a brand whose Contact email is not an email no longer blocks Stripe setup, because payout onboarding falls back to the organiser's verified login email instead of silently registering Mingla's support inbox (#3192, #3191, PR #3199)
 - 2026-09-09 — City guides now keep their review notice deliberately inside the rounded page shell instead of pressing it against the top edge, without moving navigation or catalogue controls (#3135, PR #3138)
 - 2026-09-09 — Starting and abandoning a Mingla Sites media upload no longer disables protected recovery or blocks unrelated releases; existing upload bytes are still backed up and every committed file remains fail-closed (#3154, PR #3156)
 - 2026-09-08 — The complete test corpus now runs every night at 03:17 UTC regardless of what anyone changed, so a suite that no pull request happens to touch still gets exercised daily; a nightly failure is reported on the next merge rather than on the night, which is tracked as the remaining gap (#3078, PR #3123)
