@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-11 — Trip pages show their "Where you'll be" map again in the Mingla Host app and on the Business website; the public Mapbox key had never been set for either (#3225)
 - 2026-09-11 — Deploying edge functions no longer leaves a stray release stamp behind in the code: the file is put back after every deploy, whether it succeeds or fails, which also removes a CI check that only stayed green by luck of step order (#3217, PR #3219)
 - 2026-09-11 — The Stripe onboarding reminder finally runs: it had no schedule, turned away every caller, and would have been cut off mid-wait even if called; it now runs daily at 10:15 UTC and its first run was verified live, with two brands excluded on request. The redundant Stripe webhook monitor — which had never run, alerted to a non-Mingla address, and contradicted a later decision not to alert on quiet webhooks — was retired and removed from production (#3200, PR #3212)
 - 2026-09-11 — The spam guard on beta signup and job applications now works, and the admin refund list no longer breaks on its second page — both were waiting on settings production never had, and now derive their keys from an existing server key instead of adding settings past the 88-setting limit (#3201, PR #3212)
