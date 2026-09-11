@@ -165,7 +165,17 @@ async function openPublicPage(page: Page, target: { kind: PageKind; slugs: strin
     // Hermetic: the bundle's Supabase calls get fixtures, everything else is cut.
     if (/\.supabase\.co$/.test(url.hostname)) {
       if (url.pathname.endsWith('/functions/v1/stripe-mode')) {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: '{"mode":"live","publishablePrefix":"pk_live_"}' })
+        // Answer as a correctly configured backend for THIS export: the app's
+        // boot handshake throws (and the ErrorBoundary replaces the page) when
+        // the backend's mode disagrees with the bundled key. CI's export bakes
+        // app.config's pk_test_ default; a local .env usually supplies pk_live_.
+        // A fixed "live" answer passed locally and crashed the app in CI.
+        if (!chunks.stripePrefix) { await route.abort(); return }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ mode: chunks.stripePrefix === 'pk_live_' ? 'live' : 'test', publishablePrefix: chunks.stripePrefix }),
+        })
         return
       }
       if (url.pathname.endsWith('/rest/v1/business_public_brands_view') && url.searchParams.get('slug') === 'eq.issue3214-host') {
@@ -183,8 +193,9 @@ async function openPublicPage(page: Page, target: { kind: PageKind; slugs: strin
   return harness
 }
 
-// The three entry chunks, by the exact paths the export's index.html lists.
-async function entryChunks(): Promise<{ runtime: string; common: string; index: string }> {
+// The three entry chunks, by the exact paths the export's index.html lists,
+// and the Stripe key prefix this export baked in (null when it has none).
+async function entryChunks(): Promise<{ runtime: string; common: string; index: string; stripePrefix: string | null }> {
   const html = await (await fetch(`${BUSINESS}/index.html`)).text()
   const sources = [...html.matchAll(/<script[^>]+src="([^"?]+)[^"]*"/g)].map((match) => match[1])
   const find = (pattern: RegExp) => {
@@ -198,7 +209,12 @@ async function entryChunks(): Promise<{ runtime: string; common: string; index: 
     index: find(/\/index-[0-9a-f]+\.js$/),
   }
   expect(sources.slice(0, 3)).toEqual([chunks.runtime, chunks.common, chunks.index])
-  return chunks
+  let stripePrefix: string | null = null
+  for (const chunk of [chunks.index, chunks.common]) {
+    const match = /\bpk_(live|test)_[A-Za-z0-9]{8,}/.exec(await (await fetch(`${BUSINESS}${chunk}`)).text())
+    if (match) { stripePrefix = `pk_${match[1]}_`; break }
+  }
+  return { ...chunks, stripePrefix }
 }
 
 async function loadedFontFaces(page: Page): Promise<number> {
@@ -222,6 +238,16 @@ async function expectTakenOver(page: Page) {
   await expect(page.locator('#root > main.shell')).toHaveCount(0, { timeout: 30_000 })
   await expect(page.locator('.hero')).toHaveCount(0)
   await expect(page.locator('#root > *').first()).toBeAttached()
+  await expectAppNotCrashed(page)
+}
+
+// The app's ErrorBoundary is also a full-viewport tree in #root: every layout
+// measurement passes on it. That is how CI's first red went unexplained by the
+// takeover checks, so a crashed app is asserted against by name.
+async function expectAppNotCrashed(page: Page) {
+  await page.waitForTimeout(500)
+  await expect(page.getByText('Something broke.', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Try again', { exact: true })).toHaveCount(0)
 }
 
 // Every <style> index.html carries in its head (expo-reset everywhere; the
@@ -320,6 +346,7 @@ test.describe('#3214 public page handoff to the Expo app', () => {
       await page.waitForTimeout(1500)
       await attachScreenshot(page, `issue3214-${target.kind}`)
       await expectAppStylesSwapped(page)
+      await expectAppNotCrashed(page)
       // #3214 CSP: nothing the booted app did on this page kind was refused.
       expect(await cspViolations(page)).toEqual([])
       expect(harness.cspConsole).toEqual([])

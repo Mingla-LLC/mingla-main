@@ -367,7 +367,14 @@ const publicDocumentCspSources = () => [
   ["media-src", "'self'", "the app's own bundled media"],
   ["media-src", BUNNY_STREAM_ORIGIN, "cover videos (Bunny Stream)"],
   ["script-src", "'self'", "the Expo chunks and lazy route chunks"],
-  ["script-src", "'unsafe-inline'", "this document's inline handoff runtime (unchanged)"],
+  // Kept deliberately, not by default. The inline scripts are server-authored
+  // (this handoff runtime; #3187 adds share analytics) and every value they
+  // embed goes through escapeJsonForHtml. A nonce-only script-src was run
+  // against the production bundle across every flow with zero violations, so
+  // it is a ready follow-up; it is not done here because a nonce makes CSP3
+  // browsers ignore 'unsafe-inline', and any inline script that does not carry
+  // the nonce (#3187's, until it adopts one) would be silently refused.
+  ["script-src", "'unsafe-inline'", "this document's server-authored inline scripts (handoff runtime, #3187 share analytics)"],
   ["script-src", "https://www.googletagmanager.com", "Google Analytics gtag (unchanged)"],
   ["script-src", "https://us-assets.i.posthog.com", "PostHog config, exception autocapture, session replay and surveys"],
   ["script-src", "https://js.stripe.com", "Stripe.js for the in-page Payment Element (venue stays)"],
