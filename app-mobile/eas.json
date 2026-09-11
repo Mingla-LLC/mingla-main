@@ -49,6 +49,15 @@
         "simulator": true,
         "buildConfiguration": "Release"
       }
+    },
+    "demo-simulator": {
+      "extends": "production",
+      "environment": "production",
+      "autoIncrement": false,
+      "ios": {
+        "simulator": true,
+        "buildConfiguration": "Release"
+      }
     }
   },
   "submit": {
@@ -67,4 +76,3 @@
     }
   }
 }
-
