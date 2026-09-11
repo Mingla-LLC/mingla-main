@@ -1267,6 +1267,19 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "            src/components/people/__tests__/BrandBookExportSheet.issue1776.tester.adversarial.test.tsx \\\n"],
     [liveWorkflow("issue", "1774", "people", "page", "tests"),
       "            src/components/people/__tests__/PeoplePage.issue1776.happy.test.tsx \\\n"],
+    // [TEST-MOD-APPROVED #3193] The four lines #3193 added across two lanes:
+    // the #2117 lane's exact-filename phase-1 skip and its post-#2986 apply,
+    // and the migrations-and-Stripe Deno lane's two pg17 suite targets. Each
+    // must independently move the digest, or the re-pins above would be
+    // accepting a change nothing proves.
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270624003193_issue_3193_public_search_live_brand_row.sql) continue ;;\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "            -f supabase/migrations/20270624003193_issue_3193_public_search_live_brand_row.sql\n"],
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3193_public_search_live_brand_row.implementor.happy.pg17.test.sql\n"],
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3193_public_search_live_brand_row.tester.adversarial.pg17.test.sql\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
