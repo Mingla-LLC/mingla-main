@@ -47,7 +47,9 @@ interface FakeState {
 }
 
 function fakeSupabase(state: FakeState) {
-  const writes: Array<{ table: string; op: string; values: Record<string, unknown> }> = [];
+  const writes: Array<
+    { table: string; op: string; values: Record<string, unknown> }
+  > = [];
 
   function rowFor(table: string): Record<string, unknown> | null {
     if (table === "creator_accounts") return state.creatorAccount ?? null;
@@ -66,6 +68,26 @@ function fakeSupabase(state: FakeState) {
       },
       eq() {
         return this;
+      },
+      // #3192 — the cross-table shared-recipient check runs
+      // .select().eq().neq().limit() before any provider-side delete. This fake
+      // modelled only maybeSingle(), so that chain threw
+      // "brandQuery.limit is not a function", the check failed CLOSED, and T-1's
+      // legitimate sole-owner delete was skipped. Modelled here so the fake
+      // answers the question the production code actually asks.
+      _neq: null as null | { column: string; value: unknown },
+      neq(column: string, value: unknown) {
+        this._neq = { column, value };
+        return this;
+      },
+      limit(_n: number) {
+        const row = rowFor(table);
+        const rows = row ? [row] : [];
+        const exclusion = this._neq;
+        const kept = exclusion
+          ? rows.filter((r) => r[exclusion.column] !== exclusion.value)
+          : rows;
+        return Promise.resolve({ data: kept, error: null });
       },
       maybeSingle() {
         return Promise.resolve({ data: rowFor(table), error: null });
@@ -229,6 +251,10 @@ Deno.test("T-1 · status — connected shape after onboarding", async () => {
     state: {
       creatorAccount: { id: USER_ID, partner_enabled: true },
       paystackRow: {
+        // #3192 — a real row always carries its owner, and the shared-recipient
+        // check excludes the asking holder by account_id. Without it the row
+        // reads as ANOTHER holder's and the sole-owner delete is skipped.
+        account_id: USER_ID,
         id: "row-1",
         recipient_code: "RCP_orch1331",
         bank_code: "058",
@@ -251,6 +277,10 @@ Deno.test("T-1 · status — detached row reads connected:false", async () => {
     state: {
       creatorAccount: { id: USER_ID, partner_enabled: true },
       paystackRow: {
+        // #3192 — a real row always carries its owner, and the shared-recipient
+        // check excludes the asking holder by account_id. Without it the row
+        // reads as ANOTHER holder's and the sole-owner delete is skipped.
+        account_id: USER_ID,
         id: "row-1",
         recipient_code: "RCP_orch1331",
         bank_code: "058",
@@ -271,6 +301,10 @@ Deno.test("T-1 · disconnect — soft-detach + best-effort recipient delete + au
     state: {
       creatorAccount: { id: USER_ID, partner_enabled: true },
       paystackRow: {
+        // #3192 — a real row always carries its owner, and the shared-recipient
+        // check excludes the asking holder by account_id. Without it the row
+        // reads as ANOTHER holder's and the sole-owner delete is skipped.
+        account_id: USER_ID,
         id: "row-1",
         recipient_code: "RCP_orch1331",
         detached_at: null,

@@ -224,19 +224,33 @@ describe("#3192 migration and call-site contracts", () => {
   const read = (rel: string): string =>
     fs.readFileSync(path.join(REPO_ROOT, rel), "utf8");
 
-  it("the migration drops both recipient_code UNIQUE indexes", () => {
+  it("the migration drops recipient_code uniqueness as a CONSTRAINT, not an index", () => {
+    // recipient_code uniqueness is enforced by a UNIQUE CONSTRAINT, so the
+    // backing index cannot be dropped on its own:
+    //   ERROR: cannot drop index ..._recipient_code_key because constraint
+    //          ... requires it
+    // The first draft used DROP INDEX and CI reproduced exactly that. Pinned so
+    // the statement form cannot regress.
     const sql = read(
       "supabase/migrations/20270622003192_issue_3192_paystack_recipient_code_shared.sql",
     );
-    expect(sql).toContain("DROP INDEX IF EXISTS public.brand_paystack_recipients_recipient_code_key");
-    expect(sql).toContain("DROP INDEX IF EXISTS public.partner_paystack_accounts_recipient_code_key");
+    expect(sql).toContain(
+      "DROP CONSTRAINT IF EXISTS brand_paystack_recipients_recipient_code_key",
+    );
+    expect(sql).toContain(
+      "DROP CONSTRAINT IF EXISTS partner_paystack_accounts_recipient_code_key",
+    );
+    expect(sql).not.toMatch(/DROP INDEX[^\n]*recipient_code_key/);
     // Replaced by plain btrees — the sharing check filters on recipient_code,
-    // so removing the index outright would make every disconnect a seq scan.
+    // so leaving it unindexed would make every disconnect a seq scan.
     expect(sql).toContain("brand_paystack_recipients_recipient_code_idx");
     expect(sql).toContain("partner_paystack_accounts_recipient_code_idx");
     // Per-owner uniqueness must survive: one recipient per brand / per partner.
-    expect(sql).not.toContain("DROP INDEX IF EXISTS public.brand_paystack_recipients_brand_id_key");
-    expect(sql).not.toContain("DROP INDEX IF EXISTS public.partner_paystack_accounts_account_id_key");
+    // Dropping it would make every brand -> recipient read in the payout path
+    // silently ambiguous.
+    expect(sql).not.toMatch(/DROP CONSTRAINT[^\n]*brand_paystack_recipients_brand_id_key/);
+    expect(sql).not.toMatch(/DROP CONSTRAINT[^\n]*partner_paystack_accounts_account_id_key/);
+    expect(sql).toContain("per-owner uniqueness must remain intact");
   });
 
   it("no payout edge function hardcodes support@usemingla.com as an identity", () => {
