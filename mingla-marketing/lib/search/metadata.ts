@@ -8,6 +8,8 @@ import {
 import type { CityHubRecord } from '@/content/cities/registry'
 import { cityHubEffectiveLifecycle, cityHubPath } from '@/content/cities/registry'
 import { canonicalMarketingUrl } from '@/lib/site'
+import type { HelpVideoRecord } from '@/content/help/registry'
+import { bambooPosterUrl, helpVideoPath } from '@/content/help/registry'
 
 export interface PublicNoindexMetadataInput {
   readonly title: string
@@ -82,4 +84,39 @@ export function cityHubMetadata(record: CityHubRecord): Metadata {
     }
   }
   return metadata
+}
+
+/**
+ * Per-video metadata for a help page.
+ *
+ * The `/help/` route contract is a prefix, so it carries one title for the
+ * whole branch. That is right for the contract and wrong for search: each video
+ * answers a different question. This keeps the contract's canonical and robots
+ * handling and replaces only the parts that are per-video — including an
+ * og:image, since the poster is the reason these preview well when shared.
+ */
+export function helpVideoMetadata(record: HelpVideoRecord): Metadata {
+  const pathname = helpVideoPath(record.slug)
+  const base = searchRouteMetadata(pathname)
+  const title = `${record.title} — Mingla help`
+  const poster = record.bambooEntryId ? bambooPosterUrl(record.bambooEntryId, 1280) : null
+
+  return {
+    ...base,
+    title: { absolute: title },
+    description: record.blurb,
+    openGraph: {
+      ...base.openGraph,
+      type: 'video.other',
+      title,
+      description: record.blurb,
+      ...(poster ? { images: [{ url: poster, width: 1280, height: 720 }] } : {}),
+    },
+    twitter: {
+      card: poster ? 'summary_large_image' : 'summary',
+      title,
+      description: record.blurb,
+      ...(poster ? { images: [poster] } : {}),
+    },
+  }
 }

@@ -20,9 +20,15 @@ const SEARCH_READY_PATHS = [
   '/tools/venues',
   '/tools/trips',
   '/tools/pricing',
+  // #3220 — the help centre. Order matters: this list is deep-equal'd against
+  // the sitemap, and the sitemap follows ROUTE_REGISTRY order. '/help' sits in
+  // SEARCH_READY_ROUTES; each video's contract is projected after, so
+  // '/help/<slug>' lands at the end with the other generated families.
+  '/help',
   '/support',
   '/privacy-policy',
   '/terms-of-service',
+  '/help/getting-the-apps',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [

@@ -6,8 +6,16 @@ replace the domain rollback instructions owned by each Pass 4 issue.
 ## Release preflight
 
 1. Freeze the candidate to one merge SHA. Build `agent-chat` and
-   `agent-confirm-action` from that same checkout and embed the SHA through
-   `MINGLA_RELEASE_SHA`.
+   `agent-confirm-action` from that same checkout. The SHA is embedded
+   automatically: `scripts/deploy-supabase-functions.sh` bakes `--merged-commit`
+   into `supabase/functions/_shared/releaseAttestationBake.ts` before it deploys,
+   and restores the file afterwards (#3186, #3217). **Do NOT set a
+   `MINGLA_RELEASE_SHA` secret.** It is only an optional override now, and any
+   secret not declared in `supabase/secrets.manifest.json` (exactly 88 names)
+   fails the deploy preflight and blocks every edge deploy — this step's old
+   wording ("embed the SHA through `MINGLA_RELEASE_SHA`") is how #3185 happened.
+   A hand deploy that bypasses the wrapper must apply the same bake itself, then
+   verify the served envelope's `release_sha`, never the CLI exit code.
 2. Record the two deployed function versions and downloaded bundle hashes, the
    Business web deployment, the Business iOS simulator and physical-device
    artifacts, and the Business Android artifact in one `ari_cert_run_id`.

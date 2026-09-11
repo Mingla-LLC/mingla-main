@@ -21,6 +21,7 @@ const COLUMNS = [
     links: [
       { href: '/host', label: 'For Hosts' },
       { href: '/tools', label: 'Free tools' },
+      { href: '/help', label: 'Help centre' },
     ],
   },
   {
