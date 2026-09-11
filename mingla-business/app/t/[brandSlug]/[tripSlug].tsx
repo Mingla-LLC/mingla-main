@@ -102,6 +102,7 @@ import {
   buildTripOfferingData,
 } from "../../../src/components/trip/tripOfferingAdapter";
 import { collapseTripPlanChoice } from "../../../src/components/trip/tripCartPlanChoice";
+import { recordShareDestination } from "../../../src/analytics/shareDestination";
 
 export default function PublicTripRoute(): React.ReactElement {
   const router = useRouter();
@@ -438,10 +439,13 @@ const ResolvedTripPage: React.FC<{
       // checkout chain first. `restricted`, `loading` and `error` no-op, so no
       // checkout route opens and no eligibility is fabricated.
       if (tripAccess.requiresSignIn) {
+        // #3187 P2-1 — a share recipient's Reserve intent (no-op off a shared link).
+        recordShareDestination("book_trip");
         router.push(tripSignInResumeHref as never);
         return;
       }
       if (tripAccess.blocked) return;
+      recordShareDestination("book_trip");
       const linesParam =
         lines !== undefined && lines.length > 0
           ? { lines: JSON.stringify(lines) }
@@ -522,6 +526,7 @@ const ResolvedTripPage: React.FC<{
 
   const handleViewBrand = useCallback((): void => {
     if (brandSlug.length > 0) {
+      recordShareDestination("view_brand");
       router.push(`/b/${brandSlug}` as never);
     }
   }, [router, brandSlug]);

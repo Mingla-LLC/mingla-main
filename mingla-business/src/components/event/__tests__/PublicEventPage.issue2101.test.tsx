@@ -902,3 +902,88 @@ describe("issue #2101 — revert isolation ledger (A7.3 item 22)", () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #3187 P2-1 — once the Host web app has taken a shared page over, the server
+// CTA (and its analytics listener) is gone; the recipient's Get-tickets tap is
+// the app's handler. These tests invoke the REAL page-owned handlers, exactly as
+// the renderers receive them, with a spy standing in for the page's recorder
+// (`window.__minglaShareDestination`, exposed only on a page reached with `ms`).
+describe("#3187 P2-1 — a booted shared event page records the recipient's destination action", () => {
+  const RECORDER = "__minglaShareDestination";
+  let recorded: string[] = [];
+  beforeEach(() => {
+    recorded = [];
+    Object.defineProperty(globalThis, RECORDER, {
+      value: (action: string) => { recorded.push(action); return true; },
+      configurable: true,
+      writable: false,
+    });
+  });
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>)[RECORDER];
+  });
+
+  test("Get tickets records buy_tickets and still navigates into checkout", () => {
+    const { root } = renderPage();
+    const handlers = proceedHandlers(root);
+    expect(handlers.length).toBeGreaterThan(0);
+    act(() => handlers[0]());
+    expect(recorded).toEqual(["buy_tickets"]);
+    expect(routerPush).toHaveBeenCalledTimes(1);
+    expect(String(routerPush.mock.calls[0][0])).toContain("/checkout/");
+  });
+
+  test("a signed-out Get tickets still records the intent, then resumes via sign-in", () => {
+    mockAccessState = "sign_in_required";
+    const { root } = renderPage();
+    act(() => proceedHandlers(root)[0]());
+    expect(recorded).toEqual(["buy_tickets"]);
+    expect(routerPush).toHaveBeenCalledTimes(1);
+  });
+
+  test("a blocked purchase records nothing — no intent reached checkout", () => {
+    mockAccessState = "restricted";
+    const { root } = renderPage();
+    act(() => proceedHandlers(root)[0]());
+    expect(recorded).toEqual([]);
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
+  test("the organiser link records view_brand and directions record directions", () => {
+    const { root } = renderPage();
+    // The renderers receive these as direct props (foundation layouts) or inside
+    // `callbacks` (legacy layout) — more than this file's NodeProps declares.
+    type BrandAndMaps = {
+      onOpenBrand?: (brandSlug: string) => void;
+      onOpenMaps?: (target: unknown) => void;
+    };
+    const handlersOf = (node: TestInstance): BrandAndMaps => {
+      const direct = node.props as NodeProps & BrandAndMaps;
+      const nested = node.props?.callbacks as (NodeProps["callbacks"] & BrandAndMaps) | undefined;
+      return {
+        onOpenBrand: direct?.onOpenBrand ?? nested?.onOpenBrand,
+        onOpenMaps: direct?.onOpenMaps ?? nested?.onOpenMaps,
+      };
+    };
+    const owners = root.findAll(
+      (node) =>
+        typeof handlersOf(node).onOpenBrand === "function" &&
+        typeof handlersOf(node).onOpenMaps === "function",
+      { deep: true },
+    );
+    expect(owners.length).toBeGreaterThan(0);
+    const handlers = handlersOf(owners[0]);
+    act(() => handlers.onOpenBrand?.("acme"));
+    act(() => handlers.onOpenMaps?.({ kind: "text", text: "The Loft, Lagos" }));
+    expect(recorded).toEqual(["view_brand", "directions"]);
+  });
+
+  test("a page not reached from a share has no recorder: taps navigate exactly as before", () => {
+    delete (globalThis as Record<string, unknown>)[RECORDER];
+    const { root } = renderPage();
+    act(() => proceedHandlers(root)[0]());
+    expect(recorded).toEqual([]);
+    expect(routerPush).toHaveBeenCalledTimes(1);
+  });
+});

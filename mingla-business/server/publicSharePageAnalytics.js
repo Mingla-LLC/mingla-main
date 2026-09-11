@@ -7,7 +7,10 @@
  * page, with the exact payload the endpoint accepts:
  *
  *   share_public_page_viewed   on load
- *   share_destination_action   on a click of the page's `[data-share-destination]` CTA
+ *   share_destination_action   on a click of the page's `[data-share-destination]` CTA,
+ *                              and — after the Host web app takes the page over and
+ *                              replaces that CTA — from the app's own controls, via
+ *                              `window.__minglaShareDestination(action)` (#3187 P2-1)
  *
  * `share_install_cta_opened` is deliberately absent: the page has no install
  * CTA and must not grow one (accepted in the #3187 SPEC, F-11).
@@ -62,9 +65,43 @@ const scriptJson = (value) => JSON.stringify(value)
   .replace(/\u2029/g, "\\u2029");
 
 /**
+ * Every `action` the relay accepts (`api/content-share-analytics.js` ACTIONS).
+ * Pinned against the real handler by the #3187 suite, so the two cannot drift.
+ */
+const SHARE_DESTINATION_ACTIONS = Object.freeze([
+  "buy_tickets", "rsvp", "book_trip", "book_experience",
+  "view_event", "view_rsvp_event", "view_trip", "view_experience", "view_venue", "view_brand",
+  "directions", "website", "call", "view_offering",
+]);
+
+/**
+ * #3187 P2-1 — the global the booted Host web app records destination actions
+ * through. The server CTA is inside `#root`, so the app replaces it (and its
+ * listener) when it takes the page over; the app's own controls then report the
+ * same intent here, and the server CTA and the app share ONE recorder: one
+ * consent gate, one payload shape, one relay, one de-duplication ledger.
+ */
+const SHARE_DESTINATION_GLOBAL = "__minglaShareDestination";
+const SHARE_DESTINATION_LEDGER_KEY = "mingla_share_destination_v1";
+
+/**
  * The inline analytics script for one attributed page view, or "" when any
  * input is invalid — a malformed or absent attribution renders no script and
  * leaves the page otherwise identical.
+ *
+ * DE-DUPLICATION RULE. At most ONE `share_destination_action` per
+ * (share code, version, action) per browser tab. The first tap wins, whether it
+ * is the server CTA before the app boots or the app's own control after it
+ * does, so the count means "recipients of this share who took this action", not
+ * taps. The ledger is in memory and in `sessionStorage`, so a tap on the server
+ * RSVP anchor (which stays on the page) followed by the app's RSVP after
+ * takeover, or a return to the page in the same tab, is still one intent. A tap
+ * without consent records nothing and marks nothing, so granting consent later
+ * does not lose the next tap. `share_public_page_viewed` is not de-duplicated.
+ *
+ * PAGE SCOPE. The app may navigate client-side to another page without a new
+ * document; the recorder only accepts calls while the tab is still on the path
+ * this attribution was issued for.
  */
 const shareAnalyticsScript = (attribution) => {
   if (attribution === null || typeof attribution !== "object") return "";
@@ -73,7 +110,24 @@ const shareAnalyticsScript = (attribution) => {
   if (!Number.isSafeInteger(version) || version < 1) return "";
   if (!ANALYTICS_KINDS.has(kind)) return "";
   const base = scriptJson({ code, version, kind });
-  return `<script>(()=>{const base=${base};const record=(event,action)=>{try{const consent=JSON.parse(localStorage.getItem('mingla_consent_v1')||'null');if(consent?.choice!=='granted'&&consent?.value!=='granted')return;const payload={event,code:base.code,version:base.version,kind:base.kind};if(action)payload.action=action;fetch('/api/content-share-analytics',{method:'POST',keepalive:true,credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}).catch(()=>{})}catch{}};record('share_public_page_viewed');document.querySelectorAll('[data-share-destination]').forEach((node)=>node.addEventListener('click',()=>record('share_destination_action',node.dataset.shareDestination)))})()</script>`;
+  const actions = scriptJson(SHARE_DESTINATION_ACTIONS);
+  return `<script>(()=>{const base=${base};`
+    + `const actions=new Set(${actions});`
+    + `const trimPath=(value)=>String(value||'/').replace(/\\/+$/,'')||'/';`
+    + `const issuedPath=trimPath(location.pathname);`
+    + `const done=new Set();`
+    + `try{const stored=JSON.parse(sessionStorage.getItem('${SHARE_DESTINATION_LEDGER_KEY}')||'[]');if(Array.isArray(stored))stored.forEach((entry)=>{if(typeof entry==='string')done.add(entry)})}catch{}`
+    + `const consented=()=>{try{const consent=JSON.parse(localStorage.getItem('mingla_consent_v1')||'null');return consent?.choice==='granted'||consent?.value==='granted'}catch{return false}};`
+    + `const send=(payload)=>{try{fetch('/api/content-share-analytics',{method:'POST',keepalive:true,credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}).catch(()=>{})}catch{}};`
+    + `const record=(event,action)=>{try{if(!consented())return false;const payload={event,code:base.code,version:base.version,kind:base.kind};`
+    + `if(event==='share_destination_action'){if(!actions.has(action)||trimPath(location.pathname)!==issuedPath)return false;`
+    + `const entry=base.code+'.'+base.version+':'+action;if(done.has(entry))return false;done.add(entry);`
+    + `try{sessionStorage.setItem('${SHARE_DESTINATION_LEDGER_KEY}',JSON.stringify(Array.from(done)))}catch{}payload.action=action}`
+    + `send(payload);return true}catch{return false}};`
+    + `try{Object.defineProperty(window,'${SHARE_DESTINATION_GLOBAL}',{value:(action)=>record('share_destination_action',action),configurable:true,writable:false})}catch{}`
+    + `record('share_public_page_viewed');`
+    + `document.querySelectorAll('[data-share-destination]').forEach((node)=>node.addEventListener('click',()=>record('share_destination_action',node.dataset.shareDestination)))`
+    + `})()</script>`;
 };
 
 /**
@@ -97,6 +151,9 @@ const shareAnalyticsKindFor = (facts) => {
 };
 
 module.exports = {
+  SHARE_DESTINATION_ACTIONS,
+  SHARE_DESTINATION_GLOBAL,
+  SHARE_DESTINATION_LEDGER_KEY,
   shareAnalyticsKindFor,
   shareAnalyticsScript,
   shareAttributionFromRequestUrl,

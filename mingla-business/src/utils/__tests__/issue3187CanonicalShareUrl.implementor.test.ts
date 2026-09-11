@@ -334,9 +334,13 @@ describe("#3187 canonical page — the same share analytics the interstitial fir
     const cta = html.match(/data-share-destination="([^"]+)"/);
     const nodes = cta ? [{ dataset: { shareDestination: cta[1] }, addEventListener: (_: string, fn: () => void) => listeners.push(fn) }] : [];
     const fetchStub = (url: string, init: Record<string, any>) => { posted.push({ url, ...init }); return Promise.resolve(); };
+    const session = new Map<string, string>();
     // eslint-disable-next-line no-new-func -- the page's own emitted script
-    new Function("localStorage", "document", "fetch", match[1])(
+    new Function("localStorage", "sessionStorage", "location", "window", "document", "fetch", match[1])(
       { getItem: () => consent },
+      { getItem: (key: string) => session.get(key) ?? null, setItem: (key: string, value: string) => { session.set(key, value); } },
+      { pathname: "/e/acme/autumn-night" },
+      {},
       { querySelectorAll: () => nodes },
       fetchStub,
     );

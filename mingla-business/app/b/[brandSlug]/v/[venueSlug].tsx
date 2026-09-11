@@ -65,6 +65,7 @@ import type {
   MapsOpenTarget,
 } from "@mingla/offering-rendering/mapsDeepLink";
 import { openMapsTarget } from "../../../../src/utils/openMapsTarget";
+import { recordShareDestination } from "../../../../src/analytics/shareDestination";
 import { copyAddressText } from "../../../../src/utils/copyAddressText";
 
 import {
@@ -421,6 +422,8 @@ export default function PublicVenueRoute(): React.ReactElement {
     (target: MapsOpenTarget, app?: MapsAppId): void => {
       // issue #2508 — `app` is the guest's choice from the shared chooser;
       // undefined means nothing was asked (the exact #2468 path).
+      // #3187 P2-1 — a share recipient's directions tap (no-op off a shared link).
+      recordShareDestination("directions");
       openMapsTarget(target, { app });
     },
     [],
@@ -436,6 +439,7 @@ export default function PublicVenueRoute(): React.ReactElement {
 
   const handleOpenBrand = useCallback((): void => {
     if (typeof brandSlug !== "string") return;
+    recordShareDestination("view_brand");
     router.push(brandPublicPath(brandSlug) as never);
   }, [brandSlug, router]);
 
