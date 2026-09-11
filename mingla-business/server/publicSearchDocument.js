@@ -1,4 +1,4 @@
-const { requestRpcJson } = require("./supabaseRpc");
+const { requestRpcJson, SUPABASE_URL } = require("./supabaseRpc");
 const { browserRuntimeScript } = require("./publicSearchBrowserRuntime");
 
 const PUBLIC_HOST_ORIGIN = "https://host.usemingla.com";
@@ -316,6 +316,103 @@ const renderStatePage = ({ status, heading, message }) => `<!doctype html>
 <style>:root{color-scheme:dark;font-family:Inter,system-ui,sans-serif}body{min-height:100vh;margin:0;display:grid;place-items:center;background:#080706;color:#fff8f1}.state{max-width:680px;padding:40px;text-align:center}.code{color:#f47c20;font-weight:900;letter-spacing:.16em}h1{font-size:clamp(2.6rem,7vw,5.5rem);margin:14px 0}p{color:#d7c6b8;font-size:1.2rem;line-height:1.6}a{display:inline-block;margin-top:18px;color:#ff9a4d}</style></head>
 <body><main class="state"><div class="code">${status}</div><h1>${escapeHtml(heading)}</h1><p>${escapeHtml(message)}</p><a href="https://usemingla.com/">Explore Mingla</a></main></body></html>`;
 
+// #3214 — the public document's Content-Security-Policy.
+//
+// This header is the policy of the WHOLE visit, not just of the plain page: the
+// Expo app boots over this document and in-app navigation (brand -> event ->
+// /checkout/...) keeps it. So every source below is one the booted app was
+// OBSERVED to use on public flows, recorded on a normal app route (no CSP) with
+// analytics granted, and each row says which feature needs it. The recording
+// and the method are on #3214. What protects stays: default-src/object-src/
+// base-uri/frame-ancestors 'none', form-action 'self' (payment hand-offs are
+// top-level navigations or a new tab, never form posts), no 'unsafe-eval' (the
+// booted app ran every flow under this policy with zero eval violations), and
+// no `https:`/`*` in script, connect or frame. `img-src https:` is unchanged
+// from before: images come from many public hosts (Supabase storage, Bunny
+// thumbnails, Giphy, Pexels, pixels) and cannot execute.
+const DEFAULT_SUPABASE_ORIGIN = "https://gqnoajqerqhnvulmnyvv.supabase.co";
+const BUNNY_STREAM_ORIGIN = "https://vz-a16fce08-6c6.b-cdn.net";
+
+const originOf = (value, fallback = null) => {
+  try {
+    const parsed = new URL(String(value || ""));
+    return parsed.protocol === "https:" ? parsed.origin : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+// The app's backend is the same Supabase project the server reads from.
+const supabaseOrigin = () => originOf(SUPABASE_URL, DEFAULT_SUPABASE_ORIGIN);
+
+// Sentry receives crash reports at the DSN's ingest host. Only a Sentry ingest
+// host is accepted, and never the DSN's key (origin only).
+const sentryIngestOrigin = () => {
+  const origin = originOf(process.env.EXPO_PUBLIC_SENTRY_DSN);
+  return origin && /^https:\/\/[a-z0-9-]+\.ingest(?:\.[a-z]{2})?\.sentry\.io$/.test(origin) ? origin : null;
+};
+
+const publicDocumentCspSources = () => [
+  // [directive, source, feature that needs it]
+  ["default-src", "'none'", "deny anything not listed below"],
+  ["base-uri", "'none'", "no <base> rewriting"],
+  ["object-src", "'none'", "no plugin content (<object>, <embed>)"],
+  ["frame-ancestors", "'none'", "the page cannot be framed (clickjacking)"],
+  ["form-action", "'self'", "payment hand-offs are navigations, not form posts"],
+  ["img-src", "'self'", "the app's own bundled images"],
+  ["img-src", "https:", "cover, gallery and avatar images from public hosts; pixel images (unchanged)"],
+  ["img-src", "data:", "inline images (unchanged)"],
+  ["style-src", "'unsafe-inline'", "the document's own <style>, react-native-web and index.html styles injected at takeover (unchanged)"],
+  ["font-src", "'self'", "the app's theme fonts (Inter, Poppins, ...) under /assets"],
+  ["media-src", "'self'", "the app's own bundled media"],
+  ["media-src", BUNNY_STREAM_ORIGIN, "cover videos (Bunny Stream)"],
+  ["script-src", "'self'", "the Expo chunks and lazy route chunks"],
+  ["script-src", "'unsafe-inline'", "this document's inline handoff runtime (unchanged)"],
+  ["script-src", "https://www.googletagmanager.com", "Google Analytics gtag (unchanged)"],
+  ["script-src", "https://us-assets.i.posthog.com", "PostHog config, exception autocapture, session replay and surveys"],
+  ["script-src", "https://js.stripe.com", "Stripe.js for the in-page Payment Element (venue stays)"],
+  ["script-src", "https://connect.facebook.net", "Meta pixel script (fbevents.js)"],
+  ["script-src", "https://analytics.tiktok.com", "TikTok pixel"],
+  ["script-src", "https://sc-static.net", "Snap pixel script (scevent.min.js)"],
+  ["script-src", "https://tr.snapchat.com", "Snap pixel configuration"],
+  ["script-src", "https://www.redditstatic.com", "Reddit pixel"],
+  ["connect-src", "'self'", "/index.html handoff, /api/public-boot-outcome, /api/content-share-analytics"],
+  ["connect-src", supabaseOrigin(), "every public page's data, RPCs and edge functions"],
+  ["connect-src", "https://api.stripe.com", "Stripe.js API calls from the page (venue stays)"],
+  ["connect-src", "https://us.i.posthog.com", "PostHog capture and flags (unchanged)"],
+  ["connect-src", "https://us-assets.i.posthog.com", "PostHog remote config, fetched when its config script cannot load"],
+  ["connect-src", "https://www.google-analytics.com", "Google Analytics collect (unchanged)"],
+  ["connect-src", "https://region1.google-analytics.com", "Google Analytics regional collect (unchanged)"],
+  ["connect-src", "https://analytics.google.com", "Google Analytics collect"],
+  ["connect-src", "https://www.google.com", "Google Analytics collect (/g/collect)"],
+  ["connect-src", "https://stats.g.doubleclick.net", "Google Analytics collect (Google signals)"],
+  ["connect-src", "https://www.facebook.com", "Meta pixel events"],
+  ["connect-src", "https://analytics.tiktok.com", "TikTok pixel events"],
+  ["connect-src", "https://analytics-ipv6.tiktokw.us", "TikTok pixel events (IPv6 endpoint)"],
+  ["connect-src", "https://pixel-config.reddit.com", "Reddit pixel configuration"],
+  ["connect-src", "https://tr.snapchat.com", "Snap pixel events"],
+  ["connect-src", "https://tr6.snapchat.com", "Snap pixel events"],
+  ...(sentryIngestOrigin() ? [["connect-src", sentryIngestOrigin(), "Sentry crash reports"]] : []),
+  ["frame-src", "https://js.stripe.com", "Stripe.js controller and Payment Element frames"],
+  ["frame-src", "https://hooks.stripe.com", "Stripe 3-D Secure card authentication frame"],
+  ["frame-src", "https://tr.snapchat.com", "Snap pixel frame"],
+];
+
+const DIRECTIVE_ORDER = [
+  "default-src", "base-uri", "object-src", "frame-ancestors", "form-action", "img-src", "style-src",
+  "font-src", "media-src", "script-src", "connect-src", "frame-src",
+];
+
+const publicDocumentCsp = () => {
+  const byDirective = new Map(DIRECTIVE_ORDER.map((directive) => [directive, []]));
+  for (const [directive, source] of publicDocumentCspSources()) {
+    const sources = byDirective.get(directive);
+    if (!sources) throw new Error(`public document CSP: unknown directive ${directive}`);
+    if (!sources.includes(source)) sources.push(source);
+  }
+  return DIRECTIVE_ORDER.map((directive) => `${directive} ${byDirective.get(directive).join(" ")}`).join("; ");
+};
+
 const cacheForState = () => "private, no-store, max-age=0, must-revalidate";
 
 const setBaseHeaders = (res, state) => {
@@ -323,7 +420,7 @@ const setBaseHeaders = (res, state) => {
   res.setHeader("cdn-cache-control", "no-store");
   res.setHeader("vercel-cdn-cache-control", "no-store");
   res.setHeader("x-robots-tag", state === "search_ready" ? "index, follow" : "noindex");
-  res.setHeader("content-security-policy", "default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; connect-src 'self' https://*.supabase.co https://us.i.posthog.com https://*.posthog.com https://www.google-analytics.com https://region1.google-analytics.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+  res.setHeader("content-security-policy", publicDocumentCsp());
   res.setHeader("referrer-policy", "strict-origin-when-cross-origin");
   res.setHeader("x-content-type-options", "nosniff");
 };
@@ -427,5 +524,7 @@ module.exports = {
   firstQueryValue,
   handlePublicSearchDocument,
   jsonLdFor,
+  publicDocumentCsp,
+  publicDocumentCspSources,
   renderVisibleDocument,
 };

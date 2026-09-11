@@ -107,6 +107,7 @@ const BRAND_ROW = {
 
 type Harness = {
   pageErrors: string[]
+  cspConsole: string[]
   beacons: Array<Record<string, unknown>>
   chunkFinishedAt: Map<string, number>
 }
@@ -116,11 +117,16 @@ async function openPublicPage(page: Page, target: { kind: PageKind; slugs: strin
   common?: (route: Route) => Promise<void>
   entry?: (route: Route) => Promise<void>
 } = {}): Promise<Harness> {
-  const harness: Harness = { pageErrors: [], beacons: [], chunkFinishedAt: new Map() }
+  const harness: Harness = { pageErrors: [], cspConsole: [], beacons: [], chunkFinishedAt: new Map() }
   const chunks = await entryChunks()
   const served = await serverDocument(target.kind, target.slugs, target.path)
   if (options.consent) await page.addInitScript((value) => window.localStorage.setItem('mingla_consent_v1', value), CONSENT)
   await page.addInitScript(() => {
+    const violations: Array<{ directive: string; blocked: string }> = []
+    ;(window as unknown as { __issue3214Csp: typeof violations }).__issue3214Csp = violations
+    document.addEventListener('securitypolicyviolation', (event) => {
+      violations.push({ directive: event.effectiveDirective, blocked: event.blockedURI })
+    })
     const writes: string[] = []
     ;(window as unknown as { __issue3214StatusWrites: string[] }).__issue3214StatusWrites = writes
     document.addEventListener('DOMContentLoaded', () => {
@@ -131,6 +137,9 @@ async function openPublicPage(page: Page, target: { kind: PageKind; slugs: strin
     })
   })
   page.on('pageerror', (error) => harness.pageErrors.push(error.message))
+  page.on('console', (message) => {
+    if (/Content Security Policy/i.test(message.text())) harness.cspConsole.push(message.text())
+  })
   page.on('request', (request: Request) => {
     if (new URL(request.url()).pathname !== '/api/public-boot-outcome') return
     harness.beacons.push(JSON.parse(request.postData() ?? 'null') as Record<string, unknown>)
@@ -190,6 +199,18 @@ async function entryChunks(): Promise<{ runtime: string; common: string; index: 
   }
   expect(sources.slice(0, 3)).toEqual([chunks.runtime, chunks.common, chunks.index])
   return chunks
+}
+
+async function loadedFontFaces(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    let loaded = 0
+    document.fonts.forEach((face) => { if (face.status === 'loaded') loaded += 1 })
+    return loaded
+  })
+}
+
+async function cspViolations(page: Page): Promise<Array<{ directive: string; blocked: string }>> {
+  return page.evaluate(() => (window as unknown as { __issue3214Csp: Array<{ directive: string; blocked: string }> }).__issue3214Csp)
 }
 
 const delayed = (ms: number) => async (route: Route) => {
@@ -299,6 +320,9 @@ test.describe('#3214 public page handoff to the Expo app', () => {
       await page.waitForTimeout(1500)
       await attachScreenshot(page, `issue3214-${target.kind}`)
       await expectAppStylesSwapped(page)
+      // #3214 CSP: nothing the booted app did on this page kind was refused.
+      expect(await cspViolations(page)).toEqual([])
+      expect(harness.cspConsole).toEqual([])
       expect(harness.pageErrors.filter((message) => /Requiring unknown module/.test(message))).toEqual([])
       await expect(page.getByText(FAILURE_COPY)).toHaveCount(0)
       // No stored grant, so the boot outcome is never sent.
@@ -372,3 +396,120 @@ test.describe('#3214 public page handoff to the Expo app', () => {
     expect(Number(harness.beacons[0].elapsed_ms)).toBeGreaterThanOrEqual(bootRuntime.BOOT_MOUNT_DEADLINE_MS)
   })
 })
+
+// #3214 — the public document's CSP governs the booted app for the whole visit.
+// OBSERVED_SOURCES is the record of what the app used on public flows, taken on
+// a normal app route (no CSP) against the production bundle; see #3214. It is
+// deliberately NOT read from the server module: dropping an origin from the
+// policy must turn this red, not shrink the list of things it checks.
+const SENTRY_DSN_FOR_TEST = 'https://issue3214@o4511136062701568.ingest.us.sentry.io/1'
+const OBSERVED_SOURCES: Array<[directive: 'script-src' | 'connect-src' | 'frame-src' | 'media-src' | 'img-src', origin: string]> = [
+  ['script-src', 'https://www.googletagmanager.com'],
+  ['script-src', 'https://us-assets.i.posthog.com'],
+  ['script-src', 'https://js.stripe.com'],
+  ['script-src', 'https://connect.facebook.net'],
+  ['script-src', 'https://analytics.tiktok.com'],
+  ['script-src', 'https://sc-static.net'],
+  ['script-src', 'https://tr.snapchat.com'],
+  ['script-src', 'https://www.redditstatic.com'],
+  ['connect-src', 'https://gqnoajqerqhnvulmnyvv.supabase.co'],
+  ['connect-src', 'https://api.stripe.com'],
+  ['connect-src', 'https://us.i.posthog.com'],
+  ['connect-src', 'https://us-assets.i.posthog.com'],
+  ['connect-src', 'https://www.google-analytics.com'],
+  ['connect-src', 'https://region1.google-analytics.com'],
+  ['connect-src', 'https://analytics.google.com'],
+  ['connect-src', 'https://www.google.com'],
+  ['connect-src', 'https://stats.g.doubleclick.net'],
+  ['connect-src', 'https://www.facebook.com'],
+  ['connect-src', 'https://analytics.tiktok.com'],
+  ['connect-src', 'https://analytics-ipv6.tiktokw.us'],
+  ['connect-src', 'https://pixel-config.reddit.com'],
+  ['connect-src', 'https://tr.snapchat.com'],
+  ['connect-src', 'https://tr6.snapchat.com'],
+  ['connect-src', new URL(SENTRY_DSN_FOR_TEST).origin],
+  ['frame-src', 'https://js.stripe.com'],
+  ['frame-src', 'https://hooks.stripe.com'],
+  ['frame-src', 'https://tr.snapchat.com'],
+  ['media-src', 'https://vz-a16fce08-6c6.b-cdn.net'],
+  ['img-src', 'https://gqnoajqerqhnvulmnyvv.supabase.co'],
+]
+const NOT_ALLOWED = 'https://issue3214-not-allowed.invalid'
+
+test.describe('#3214 the public document policy lets the booted app work', () => {
+  test('zero CSP violations across the app\'s own flows and every observed source, with a working detector', async ({ page }) => {
+    test.setTimeout(90_000)
+    process.env.EXPO_PUBLIC_SENTRY_DSN = SENTRY_DSN_FOR_TEST
+    const harness = await openPublicPage(page, KINDS[0], { consent: true })
+    await expectTakenOver(page)
+
+    // The app's own flows: granted analytics boots its vendors (PostHog, GA,
+    // Meta in this export), its theme fonts load, and it navigates in-app to a
+    // checkout route without leaving this document (so this policy still rules).
+    await expect.poll(() => loadedFontFaces(page)).toBeGreaterThan(0)
+    await expect.poll(() => page.evaluate(() => Array.from(document.querySelectorAll('script[src]'))
+      .some((script) => (script as HTMLScriptElement).src.startsWith('https://www.googletagmanager.com/')))).toBe(true)
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/checkout/issue3214-event')
+      window.dispatchEvent(new PopStateEvent('popstate', { state: {} }))
+    })
+    await expect.poll(() => page.evaluate(() => location.pathname)).toBe('/checkout/issue3214-event')
+    expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1)
+    await page.waitForTimeout(1500)
+    await attachScreenshot(page, 'issue3214-csp-in-app-checkout')
+
+    // Every observed source, driven through the directive it is used under.
+    // Network is cut by the route handler AFTER the browser's CSP check, so a
+    // refused source reports a violation and an allowed one simply fails to load.
+    await page.evaluate(async ({ sources, notAllowed }) => {
+      const settle = (element: HTMLElement) => new Promise<void>((resolve) => {
+        element.addEventListener('error', () => resolve(), { once: true })
+        element.addEventListener('load', () => resolve(), { once: true })
+        setTimeout(resolve, 1500)
+      })
+      const work: Promise<unknown>[] = []
+      for (const [directive, origin] of sources) {
+        const url = `${origin}/issue3214-csp-probe`
+        if (directive === 'script-src') {
+          const script = document.createElement('script')
+          script.src = `${url}.js`
+          work.push(settle(script))
+          document.head.appendChild(script)
+        } else if (directive === 'connect-src') {
+          work.push(fetch(url, { mode: 'no-cors' }).catch(() => undefined))
+        } else if (directive === 'frame-src') {
+          const frame = document.createElement('iframe')
+          frame.src = url
+          frame.style.display = 'none'
+          work.push(settle(frame))
+          document.body.appendChild(frame)
+        } else if (directive === 'media-src') {
+          const video = document.createElement('video')
+          video.muted = true
+          video.src = `${url}.mp4`
+          work.push(settle(video))
+          document.body.appendChild(video)
+        } else {
+          const image = new Image()
+          image.src = `${url}.png`
+          work.push(settle(image))
+        }
+      }
+      // Same-origin analytics: this page's boot beacon and #3187's page analytics.
+      navigator.sendBeacon('/api/content-share-analytics', '{}')
+      work.push(fetch('/api/public-boot-outcome', { method: 'POST', body: '{}' }).catch(() => undefined))
+      // The detector must be able to see a refusal, or zero proves nothing.
+      work.push(fetch(`${notAllowed}/`, { mode: 'no-cors' }).catch(() => undefined))
+      await Promise.all(work)
+    }, { sources: OBSERVED_SOURCES, notAllowed: NOT_ALLOWED })
+    await page.waitForTimeout(1000)
+
+    const violations = await cspViolations(page)
+    expect(violations.filter((violation) => violation.blocked.startsWith(NOT_ALLOWED)), 'the detector sees a refusal')
+      .toEqual([{ directive: 'connect-src', blocked: `${NOT_ALLOWED}/` }])
+    expect(violations.filter((violation) => !violation.blocked.startsWith(NOT_ALLOWED))).toEqual([])
+    expect(harness.cspConsole.filter((message) => !message.includes(NOT_ALLOWED))).toEqual([])
+    expect(harness.pageErrors.filter((message) => /EvalError|unsafe-eval/i.test(message))).toEqual([])
+  })
+})
+

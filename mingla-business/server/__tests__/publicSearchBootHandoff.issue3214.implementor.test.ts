@@ -462,3 +462,91 @@ describe("#3214 the real-browser race proof stays routed into CI", () => {
     expect(workflow).toContain("npx playwright test -c playwright.issue2771.config.ts");
   });
 });
+
+describe("#3214 the public document's CSP is the booted app's policy", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const doc = require("../publicSearchDocument") as {
+    publicDocumentCsp: () => string;
+    publicDocumentCspSources: () => Array<[string, string, string]>;
+  };
+  const directives = (csp: string) => new Map(csp.split("; ").map((part) => {
+    const [name, ...sources] = part.split(" ");
+    return [name, sources] as [string, string[]];
+  }));
+  const ORIGINAL_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+  const withDsn = <T>(dsn: string | undefined, run: () => T): T => {
+    if (dsn === undefined) delete process.env.EXPO_PUBLIC_SENTRY_DSN;
+    else process.env.EXPO_PUBLIC_SENTRY_DSN = dsn;
+    try { return run(); } finally {
+      if (ORIGINAL_DSN === undefined) delete process.env.EXPO_PUBLIC_SENTRY_DSN;
+      else process.env.EXPO_PUBLIC_SENTRY_DSN = ORIGINAL_DSN;
+    }
+  };
+
+  it("keeps every protective directive", () => {
+    const policy = directives(doc.publicDocumentCsp());
+    expect(policy.get("default-src")).toEqual(["'none'"]);
+    expect(policy.get("base-uri")).toEqual(["'none'"]);
+    expect(policy.get("object-src")).toEqual(["'none'"]);
+    expect(policy.get("frame-ancestors")).toEqual(["'none'"]);
+    expect(policy.get("form-action")).toEqual(["'self'"]);
+  });
+
+  it("allows no eval and no scheme or star wildcards where code, connections or frames are concerned", () => {
+    const csp = withDsn("https://key@o4511136062701568.ingest.us.sentry.io/1", () => doc.publicDocumentCsp());
+    expect(csp).not.toContain("unsafe-eval");
+    const policy = directives(csp);
+    for (const name of ["script-src", "connect-src", "frame-src", "media-src", "font-src"]) {
+      for (const source of policy.get(name) ?? []) {
+        expect(source).toMatch(/^(?:'self'|'unsafe-inline'|https:\/\/[a-z0-9.-]+)$/);
+        expect(source).not.toContain("*");
+      }
+    }
+    expect(policy.get("script-src")).toContain("'self'");
+    expect(policy.get("connect-src")).toContain("'self'");
+  });
+
+  it("lets the booted app load what it was observed to use on public flows", () => {
+    const policy = directives(withDsn("https://key@o4511136062701568.ingest.us.sentry.io/1", () => doc.publicDocumentCsp()));
+    expect(policy.get("font-src")).toEqual(["'self'"]);
+    expect(policy.get("media-src")).toEqual(["'self'", "https://vz-a16fce08-6c6.b-cdn.net"]);
+    expect(policy.get("frame-src")).toEqual(["https://js.stripe.com", "https://hooks.stripe.com", "https://tr.snapchat.com"]);
+    expect(policy.get("script-src")).toEqual(expect.arrayContaining([
+      "https://www.googletagmanager.com", "https://us-assets.i.posthog.com", "https://js.stripe.com",
+      "https://connect.facebook.net", "https://analytics.tiktok.com", "https://sc-static.net",
+      "https://tr.snapchat.com", "https://www.redditstatic.com",
+    ]));
+    expect(policy.get("connect-src")).toEqual(expect.arrayContaining([
+      "https://gqnoajqerqhnvulmnyvv.supabase.co", "https://api.stripe.com", "https://us.i.posthog.com",
+      "https://us-assets.i.posthog.com", "https://analytics.google.com", "https://www.google.com",
+      "https://www.facebook.com", "https://tr.snapchat.com", "https://o4511136062701568.ingest.us.sentry.io",
+    ]));
+  });
+
+  it("derives Sentry from the DSN's ingest host only, never its key, and nothing else", () => {
+    expect(withDsn("https://secretkey@o4511136062701568.ingest.us.sentry.io/1", () => doc.publicDocumentCsp())).not.toContain("secretkey");
+    expect(withDsn(undefined, () => doc.publicDocumentCsp())).not.toContain("sentry");
+    expect(withDsn("https://key@evil.example/1", () => doc.publicDocumentCsp())).not.toContain("evil.example");
+    expect(withDsn("http://key@o1.ingest.sentry.io/1", () => doc.publicDocumentCsp())).not.toContain("o1.ingest");
+  });
+
+  it("gives every source a stated reason", () => {
+    for (const [directive, source, reason] of doc.publicDocumentCspSources()) {
+      expect(directive).toMatch(/-(?:src|uri|ancestors|action)$/);
+      expect(source.length).toBeGreaterThan(0);
+      expect(reason.length).toBeGreaterThan(10);
+    }
+  });
+
+  it("is the header every public document response carries", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { handlePublicSearchDocument } = require("../publicSearchDocument") as {
+      handlePublicSearchDocument: (input: unknown) => Promise<void>;
+    };
+    const headers: Record<string, string> = {};
+    const res = { statusCode: 0, setHeader: (key: string, value: string) => { headers[key.toLowerCase()] = value; }, end: () => undefined };
+    await handlePublicSearchDocument({ req: { method: "GET", url: "/b/NOT VALID" }, res, kind: "brand", slugs: ["NOT VALID"] });
+    expect(headers["content-security-policy"]).toBe(doc.publicDocumentCsp());
+  });
+});
+
