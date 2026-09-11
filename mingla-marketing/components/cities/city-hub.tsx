@@ -40,6 +40,7 @@ function EvidenceLinks({
   readonly record: CityHubRecord
   readonly evidenceIds: readonly string[]
 }) {
+  if (!historicalCityBuildEnabled()) return null
   const sources = evidenceIds
     .map((id) => {
       const sourceIndex = record.sources.findIndex((entry) => entry.id === id)
@@ -61,7 +62,9 @@ function EvidenceLinks({
 
 function CityLifecycleNotice({ record }: { readonly record: CityHubRecord }) {
   const lifecycle = cityHubEffectiveLifecycle(record)
+  const historical = historicalCityBuildEnabled()
   if (lifecycle === 'search_ready') return null
+  if (lifecycle === 'public_noindex' && !historical) return null
   const content = lifecycle === 'public_noindex'
     ? ['City guide in review', 'Local details are being verified; some sections may be withheld.']
     : lifecycle === 'stale'
@@ -195,6 +198,7 @@ function CityFaq({ record }: { readonly record: CityHubRecord }) {
 }
 
 function CityEvidencePanel({ record }: { readonly record: CityHubRecord }) {
+  if (!historicalCityBuildEnabled()) return null
   return (
     <CutoutSection className="city-section city-evidence-section" aria-label={`How this ${record.city} guide is checked`}>
       <aside className="city-evidence-panel">

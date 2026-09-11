@@ -22,7 +22,7 @@ export const CORE_PAGES: Readonly<Record<CorePageSlug, CorePageRecord>> = {
   about: {
     slug: 'about', pathname: '/about', lifecycle: 'public_noindex',
     title: 'About Mingla: One Platform for Plans and Hosts | Mingla',
-    description: 'Learn what Mingla is, how Explorer and Mingla Host work together, where Mingla is launching, and how to contact or correct us.',
+    description: 'Learn what Mingla is, how Explorer and Mingla Host work together, where Mingla is launching, and how each product helps people show up.',
     eyebrow: 'About Mingla',
     h1: 'Mingla helps people make plans—and helps Hosts make those plans possible.',
     directQuestion: 'What is Mingla?',

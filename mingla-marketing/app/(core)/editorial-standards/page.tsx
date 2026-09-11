@@ -1,10 +1,8 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import { AnswerBlock, CutoutSection } from '@/components/cutout'
 import { CoreHero } from '@/components/core-pages/core-hero'
 import { CorePageShell } from '@/components/core-pages/core-page-shell'
 import { EditorialPolicy, type PolicySection } from '@/components/core-pages/editorial-policy'
-import { ReviewRecord } from '@/components/core-pages/review-record'
 import { CORE_PAGES } from '@/content/core-pages'
 import { corePageMetadata } from '@/lib/search/metadata'
 import { corePageStructuredData, serializeCorePageStructuredData } from '@/lib/search/core-page-schema'
@@ -36,9 +34,8 @@ export default function EditorialStandardsPage() {
   return <CorePageShell>
     {schema?<script type="application/ld+json" dangerouslySetInnerHTML={{__html:serializeCorePageStructuredData(schema)}}/>:null}
     <CoreHero eyebrow={record.eyebrow} title={record.h1} answer={record.directAnswer} visual={<SourcePath/>}/>
-    <AnswerBlock question={record.directQuestion} answer={record.directAnswer} crumbs={[{name:'Home',path:'/'},{name:'Editorial Standards',path:'/editorial-standards'}]} lastChecked="10 September 2026" />
+    <AnswerBlock question={record.directQuestion} answer={record.directAnswer} crumbs={[{name:'Home',path:'/'},{name:'Editorial Standards',path:'/editorial-standards'}]} />
     <CutoutSection id="policy"><EditorialPolicy sections={sections}/></CutoutSection>
     <CutoutSection band="dark" id="report-correction"><div className="core-final"><h2>See something that needs correcting?</h2><a className="cut-btn cut-btn-brand h-[3.25rem] px-7 font-display focus-ring" href="mailto:support@usemingla.com?subject=Mingla%20page%20correction">Report a correction</a></div></CutoutSection>
-    <CutoutSection><ReviewRecord reviewedAt={record.reviewedAt} label="Policy record"/><p className="mt-5 text-[var(--cut-body)]">Effective: when published · Change summary: first public policy edition · Related: <Link href="/about">About</Link> · <Link href="/explorer">Explorer</Link> · <Link href="/cities">Cities</Link> · <Link href="/privacy-policy">Privacy</Link> · <Link href="/terms-of-service">Terms</Link></p></CutoutSection>
   </CorePageShell>
 }
