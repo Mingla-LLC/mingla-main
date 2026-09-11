@@ -334,8 +334,8 @@ const renderVisibleDocument = ({ facts, state, canonicalPath, attributionQuery =
     </article>
     <footer class="trust">Public facts supplied by ${escapeHtml(text(facts.brandName, "the host"))} and served from Mingla’s authoritative Host domain.</footer>
   </main></div>
-  <script>${browserRuntimeScript(canonicalUrl)}</script>${shareScript}
-</body>
+  <script>${browserRuntimeScript(canonicalUrl)}</script>
+${shareScript}</body>
 </html>`;
 };
 
