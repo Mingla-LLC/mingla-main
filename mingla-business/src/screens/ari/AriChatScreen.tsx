@@ -26,7 +26,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Menu, Settings } from "lucide-react-native";
-import * as Sentry from "../../diagnostics/sentry";
 
 import {
   accent,
@@ -346,10 +345,27 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         // like flaky wifi. Anything we have no copy for is by definition a code
         // we did not anticipate, which is precisely what must be reported.
         if (result.code === "ENVELOPE_INVALID" || copy[result.code] === undefined) {
-          Sentry.captureException(
-            new Error(`ari_chat_unmapped_error:${result.code}`),
-            { tags: { surface: "ari_chat", ari_error_code: result.code } },
-          );
+          // Loaded LAZILY, on purpose. A module-scope import of the diagnostics
+          // barrel pulls @sentry/react-native's ESM build into every render
+          // suite that imports this screen, and the #1890 jest config does not
+          // transform it — that broke `issue_1890_ari_composer_clearance` in CI
+          // on this PR's first push. Telemetry must never decide whether a
+          // screen can be tested, and `reportNonFatal` is already throw-proof,
+          // so a failure here cannot reach the chat either.
+          void (async () => {
+            try {
+              const { reportNonFatal } = await import(
+                "../../diagnostics/reportNonFatal"
+              );
+              reportNonFatal(
+                "ari_chat",
+                new Error(`ari_chat_unmapped_error:${result.code}`),
+                { ari_error_code: result.code },
+              );
+            } catch {
+              // Reporting a fault must never become one.
+            }
+          })();
         }
         setLocalError(copy[result.code] ?? "Ari could not connect — check your connection and try again.");
       }
