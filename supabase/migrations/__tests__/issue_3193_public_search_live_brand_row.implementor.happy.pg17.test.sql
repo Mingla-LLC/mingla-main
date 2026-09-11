@@ -10,6 +10,23 @@
 -- suite is behavioural: it builds a multi-row slug, sweeps planner
 -- configurations, and asserts on what the real anonymous resolver returns.
 --
+-- [TEST-MOD-APPROVED #3193] P2-1 from the #3193 tester: the ambiguity controls
+-- (H3, and the ambiguity class in H8/H9) asserted WHICH row the pre-fix
+-- unordered `LIMIT 1` returns under the planner's default -- and that answer
+-- flips with table statistics. On a fresh table (`reltuples=-1`) `brands` is
+-- the scanned side and the first-INSERTED row comes out; after `VACUUM`
+-- (`reltuples=0`) `brands` becomes the hash BUILD side and a hash bucket
+-- returns rows in REVERSE insertion order, so the live row comes out and the
+-- suite failed on CORRECT code. CI's image runs autovacuum (1-minute naptime,
+-- 50-dead-tuple threshold), so main passed on timing, not by construction.
+-- The fix is a MIRROR twin for every ambiguity fixture -- same shape, insertion
+-- order and ids reversed -- and a claim that holds whichever way any plan
+-- emits rows: under EVERY plan, at least one of the pair reads a tombstone.
+-- Measured before writing it: 5 table states (fresh, dirty, VACUUM, VACUUM
+-- ANALYZE, dirty-after-vacuum) x 5 plans x 3 branches, exactly one of each
+-- pair was wrong in all 75 cells. The sweeps also force custom plans, so a
+-- cached generic plan cannot make five configurations run one plan (P4-1).
+--
 -- One transaction + ROLLBACK: no fixture survives, and H3's temporary
 -- `CREATE OR REPLACE` of the production function is rolled back with everything
 -- else.
@@ -18,13 +35,15 @@
 BEGIN;
 
 CREATE TEMP TABLE i3193_defs(name text PRIMARY KEY, def text NOT NULL);
-CREATE TEMP TABLE i3193_sweep(body text NOT NULL, cfg text NOT NULL, doc jsonb, PRIMARY KEY(body,cfg));
+CREATE TEMP TABLE i3193_sweep(body text NOT NULL, path text NOT NULL, cfg text NOT NULL, doc jsonb, PRIMARY KEY(body,path,cfg));
 
 -- The five planner configurations swept below. `planner-default` is the one
 -- production runs; the other four force the join and scan strategies that make
 -- an unordered `LIMIT 1` return a different row.
 CREATE FUNCTION pg_temp.i3193_plan_cfg(p_cfg text) RETURNS void LANGUAGE plpgsql AS $cfg$
 BEGIN
+  -- A cached generic plan would let five configurations re-run ONE plan.
+  SET LOCAL plan_cache_mode = force_custom_plan;
   IF p_cfg='seq-nestloop' THEN
     SET LOCAL enable_indexscan=off; SET LOCAL enable_bitmapscan=off; SET LOCAL enable_indexonlyscan=off;
     SET LOCAL enable_seqscan=on; SET LOCAL enable_hashjoin=off; SET LOCAL enable_mergejoin=off;
@@ -74,6 +93,27 @@ VALUES
    'The live brand a host recreated under the same slug, with a real public description for explorers.',
    'popup','none','USD','usd',now()-interval '1 hour',now()-interval '1 hour',NULL);
 
+-- i3193dupmirror: the MIRROR of i3193dup -- the live row inserted FIRST and
+-- holding the LOWEST id, the tombstones after it. Whichever direction a plan
+-- emits rows (insertion order, reverse insertion order, id order), one of the
+-- pair reaches a tombstone first under the pre-#3193 selection.
+INSERT INTO public.brands(
+  id,account_id,name,slug,description,kind,claim_status,default_currency,pricing_currency,
+  created_at,updated_at,deleted_at)
+VALUES
+  ('31930000-0000-4000-8000-000000000014','31930000-0000-4000-8000-000000000001',
+   'Issue 3193 Mirror Live Brand','i3193dupmirror',
+   'The live brand of the mirror group, inserted first, with a real public description.',
+   'popup','none','USD','usd',now()-interval '1 hour',now()-interval '1 hour',NULL),
+  ('31930000-0000-4000-8000-000000000015','31930000-0000-4000-8000-000000000001',
+   'Issue 3193 Mirror Dead Twin One','i3193dupmirror',
+   'A soft-deleted copy in the mirror group. A public reader must never resolve from it.',
+   'popup','none','USD','usd',now()-interval '3 hour',now()-interval '3 hour',now()-interval '2 hour'),
+  ('31930000-0000-4000-8000-000000000016','31930000-0000-4000-8000-000000000001',
+   'Issue 3193 Mirror Dead Twin Two','i3193dupmirror',
+   'A second soft-deleted copy in the mirror group.',
+   'popup','none','USD','usd',now()-interval '2 hour',now()-interval '2 hour',now()-interval '1 hour');
+
 -- A live brand with a unique slug and zero published content. This is the case
 -- the issue body wrongly believed resolved to `draft`.
 INSERT INTO public.brands(
@@ -114,35 +154,39 @@ $h1$;
 -- call. All five configurations must return the identical document for the
 -- identical rows.
 DO $h2$
-DECLARE cfg text; v jsonb; v_distinct int;
+DECLARE cfg text; v jsonb; v_distinct int; r record;
 BEGIN
-  FOREACH cfg IN ARRAY ARRAY['seq-nestloop','seq-hash','seq-merge','index-scans','planner-default'] LOOP
-    PERFORM pg_temp.i3193_plan_cfg(cfg);
-    EXECUTE 'SELECT public.resolve_public_search_document($1)' INTO v USING '/b/i3193dup';
-    INSERT INTO i3193_sweep VALUES ('shipped',cfg,v);
-    IF v->>'state'<>'public_noindex' OR v->'facts'->>'id'<>'31930000-0000-4000-8000-000000000012' THEN
-      RAISE EXCEPTION 'ISSUE-3193 H2 FAIL: plan % read a row other than the live brand: %',cfg,v;
+  FOR r IN SELECT * FROM (VALUES ('/b/i3193dup','31930000-0000-4000-8000-000000000012'),
+                                 ('/b/i3193dupmirror','31930000-0000-4000-8000-000000000014')) t(path,live_id) LOOP
+    FOREACH cfg IN ARRAY ARRAY['seq-nestloop','seq-hash','seq-merge','index-scans','planner-default'] LOOP
+      PERFORM pg_temp.i3193_plan_cfg(cfg);
+      EXECUTE 'SELECT public.resolve_public_search_document($1)' INTO v USING r.path;
+      INSERT INTO i3193_sweep VALUES ('shipped',r.path,cfg,v);
+      IF v->>'state'<>'public_noindex' OR v->'facts'->>'id'<>r.live_id THEN
+        RAISE EXCEPTION 'ISSUE-3193 H2 FAIL: plan % read a row other than the live brand for %: %',cfg,r.path,v;
+      END IF;
+    END LOOP;
+    PERFORM pg_temp.i3193_plan_cfg('planner-default');
+    SELECT count(DISTINCT doc) INTO v_distinct FROM i3193_sweep WHERE body='shipped' AND path=r.path;
+    IF v_distinct<>1 THEN
+      RAISE EXCEPTION 'ISSUE-3193 H2 FAIL: the shipped resolver returned % different documents across plans for %',v_distinct,r.path;
     END IF;
   END LOOP;
-  PERFORM pg_temp.i3193_plan_cfg('planner-default');
-  SELECT count(DISTINCT doc) INTO v_distinct FROM i3193_sweep WHERE body='shipped';
-  IF v_distinct<>1 THEN
-    RAISE EXCEPTION 'ISSUE-3193 H2 FAIL: the shipped resolver returned % different documents across plans',v_distinct;
-  END IF;
 END
 $h2$;
 
 -- H3: fails-on-revert control. Put the pre-#3193 row selection back into the real
--- function and re-run the same sweep over the same rows. Two things must hold,
--- and together they ARE the defect: under the planner's own default configuration
--- the page resolves `draft` -- which `handlePublicSearchDocument` serves as HTTP
--- 404, exactly what production did for `lanternroom` -- and the answer is not even
--- stable across plans, which is why no static gate could have caught it. Then the
--- shipped body is restored and the page is public again. The substitution is
+-- function and re-run the same sweep over BOTH mirror twins. Under EVERY plan,
+-- the planner's default included, at least one twin must resolve `draft` --
+-- which `handlePublicSearchDocument` serves as HTTP 404, exactly what production
+-- did for `lanternroom`. Which twin it is depends on the plan and on the table's
+-- statistics; that one of them always is, is the defect, and it holds in every
+-- table state (see the file header). Then the shipped body is restored and both
+-- pages are public again. The substitution is
 -- asserted to have actually changed the definition, so a silently unmatched
 -- replace cannot read as a pass.
 DO $h3$
-DECLARE v_fixed text; v_reverted text; cfg text; v jsonb; v_distinct int; v_default jsonb;
+DECLARE v_fixed text; v_reverted text; cfg text; v jsonb; va jsonb; vb jsonb; v_twin_wrong int := 0; v_plans int := 0;
 BEGIN
   SELECT pg_get_functiondef(p.oid) INTO v_fixed
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
@@ -164,24 +208,28 @@ BEGIN
 
   FOREACH cfg IN ARRAY ARRAY['seq-nestloop','seq-hash','seq-merge','index-scans','planner-default'] LOOP
     PERFORM pg_temp.i3193_plan_cfg(cfg);
-    EXECUTE 'SELECT public.resolve_public_search_document($1)' INTO v USING '/b/i3193dup';
-    INSERT INTO i3193_sweep VALUES ('pre-3193',cfg,v);
-    IF cfg='planner-default' THEN v_default := v; END IF;
+    EXECUTE 'SELECT public.resolve_public_search_document($1)' INTO va USING '/b/i3193dup';
+    EXECUTE 'SELECT public.resolve_public_search_document($1)' INTO vb USING '/b/i3193dupmirror';
+    INSERT INTO i3193_sweep VALUES ('pre-3193','/b/i3193dup',cfg,va), ('pre-3193','/b/i3193dupmirror',cfg,vb);
+    v_plans := v_plans+1;
+    IF NOT ((va->>'state'='draft' AND va->'facts'='null'::jsonb) OR (vb->>'state'='draft' AND vb->'facts'='null'::jsonb)) THEN
+      RAISE EXCEPTION 'ISSUE-3193 H3 FAIL: under plan % the pre-fix selection read the live row for BOTH mirror twins, so this fixture no longer reproduces the arbitrary row choice: % / %',cfg,va,vb;
+    END IF;
+    IF va->>'state'='draft' THEN v_twin_wrong := v_twin_wrong+1; END IF;
+    IF vb->>'state'='draft' THEN v_twin_wrong := v_twin_wrong+1; END IF;
   END LOOP;
   PERFORM pg_temp.i3193_plan_cfg('planner-default');
-
-  IF v_default->>'state'<>'draft' OR v_default->'facts' IS DISTINCT FROM 'null'::jsonb THEN
-    RAISE EXCEPTION 'ISSUE-3193 H3 FAIL: the pre-fix selection did not reproduce the production 404 under the default plan: %',v_default;
+  IF v_plans<>5 THEN
+    RAISE EXCEPTION 'ISSUE-3193 H3 FAIL: swept % plans, expected 5',v_plans;
   END IF;
-  SELECT count(DISTINCT doc) INTO v_distinct FROM i3193_sweep WHERE body='pre-3193';
-  IF v_distinct<2 THEN
-    RAISE EXCEPTION 'ISSUE-3193 H3 FAIL: the pre-fix selection was stable across every plan, so this fixture no longer reproduces the arbitrary row choice';
-  END IF;
+  RAISE NOTICE 'ISSUE-3193 brand control: pre-fix read a tombstone in % of 10 twin-plan cells; >= 1 of the pair under all 5 plans',v_twin_wrong;
 
   EXECUTE (SELECT def FROM i3193_defs WHERE name='shipped');
-  EXECUTE 'SELECT public.resolve_public_search_document($1)' INTO v USING '/b/i3193dup';
-  IF v->>'state'<>'public_noindex' OR v->'facts'->>'id'<>'31930000-0000-4000-8000-000000000012' THEN
-    RAISE EXCEPTION 'ISSUE-3193 H3 FAIL: restoring the shipped body did not restore the live page: %',v;
+  EXECUTE 'SELECT public.resolve_public_search_document($1)' INTO va USING '/b/i3193dup';
+  EXECUTE 'SELECT public.resolve_public_search_document($1)' INTO vb USING '/b/i3193dupmirror';
+  IF va->>'state'<>'public_noindex' OR va->'facts'->>'id'<>'31930000-0000-4000-8000-000000000012'
+     OR vb->>'state'<>'public_noindex' OR vb->'facts'->>'id'<>'31930000-0000-4000-8000-000000000014' THEN
+    RAISE EXCEPTION 'ISSUE-3193 H3 FAIL: restoring the shipped body did not restore both live pages: % / %',va,vb;
   END IF;
 END
 $h3$;
@@ -261,12 +309,18 @@ $h6$;
 -- only). Each fixture is tagged with the class of defect it reproduces, MEASURED
 -- on this schema rather than assumed:
 --   ambiguity     — the pre-fix selection has no usable order, so the answer
---                   depends on the plan. Anti-vacuity: wrong under the planner's
---                   default AND >= 2 distinct results across the five plans.
+--                   depends on the plan AND on the table's statistics. Every
+--                   ambiguity fixture therefore has a MIRROR twin (insertion order
+--                   and ids reversed, linked by `mirror_of`), and the anti-vacuity
+--                   claim is about the pair: under EVERY plan, at least one twin
+--                   reads a tombstone. [TEST-MOD-APPROVED #3193] This replaced
+--                   "wrong under the default AND >= 2 distinct results", which
+--                   failed on CORRECT code after a VACUUM flipped the default
+--                   plan's direction (the #3193 tester's P2-1).
 --   deterministic — the pre-fix `ORDER BY ed.start_at NULLS LAST` reliably ranks
 --                   a tombstone's dated entity above the live, dateless one. There
---                   is nothing ambiguous to vary, so ">= 2 distinct" cannot hold;
---                   the stronger condition applies: wrong under ALL five plans.
+--                   is nothing ambiguous to vary, so no twin is needed; the
+--                   condition is: wrong under ALL five plans, in any table state.
 --                   These fixtures prove the fix identically on any planner.
 -- Tombstones that CARRY an entity are created the only way production allows:
 -- brand live, entity created, entity already ended, THEN the brand soft-deleted
@@ -277,7 +331,9 @@ $h6$;
 
 CREATE TEMP TABLE i3193_expect(path text PRIMARY KEY, live_id uuid NOT NULL,
   branch text NOT NULL CHECK (branch IN ('event','venue')),
-  class text NOT NULL CHECK (class IN ('ambiguity','deterministic')));
+  class text NOT NULL CHECK (class IN ('ambiguity','deterministic')),
+  mirror_of text,
+  CHECK ((class='ambiguity') = (mirror_of IS NOT NULL)));
 CREATE TEMP TABLE i3193_multi(body text NOT NULL, path text NOT NULL, cfg text NOT NULL, doc jsonb,
   PRIMARY KEY (body,path,cfg));
 
@@ -289,6 +345,15 @@ INSERT INTO public.brands(id,account_id,name,slug,description,kind,claim_status,
   ('31930000-0000-4000-8000-000000000103','31930000-0000-4000-8000-000000000001','I3193 EvDup Live','i3193evdup','The live brand.','popup','none','USD','usd',now()-interval '1 hour',now()-interval '1 hour',NULL);
 INSERT INTO public.events(id,brand_id,created_by,title,description,slug,event_type,visibility,status,timezone,is_online,city,theme,published_at) VALUES
   ('31930000-0000-4000-8000-000000001040','31930000-0000-4000-8000-000000000103','31930000-0000-4000-8000-000000000001','I3193 Live Gig','A live, published event with no master date yet.','gig','event','public','scheduled','UTC',false,'Lagos','{}',now());
+
+-- evdupmirror (ambiguity, twin of evdup) — the live brand inserted FIRST with the
+-- LOWEST id, its tombstone twins after it.
+INSERT INTO public.brands(id,account_id,name,slug,description,kind,claim_status,default_currency,pricing_currency,created_at,updated_at,deleted_at) VALUES
+  ('31930000-0000-4000-8000-000000000104','31930000-0000-4000-8000-000000000001','I3193 EvDupMirror Live','i3193evdupmirror','The live brand, inserted first.','popup','none','USD','usd',now()-interval '1 hour',now()-interval '1 hour',NULL),
+  ('31930000-0000-4000-8000-000000000105','31930000-0000-4000-8000-000000000001','I3193 EvDupMirror Dead One','i3193evdupmirror','Soft-deleted brand twin.','popup','none','USD','usd',now()-interval '3 hour',now()-interval '3 hour',now()-interval '2 hour'),
+  ('31930000-0000-4000-8000-000000000106','31930000-0000-4000-8000-000000000001','I3193 EvDupMirror Dead Two','i3193evdupmirror','Soft-deleted brand twin.','popup','none','USD','usd',now()-interval '2 hour',now()-interval '2 hour',now()-interval '1 hour');
+INSERT INTO public.events(id,brand_id,created_by,title,description,slug,event_type,visibility,status,timezone,is_online,city,theme,published_at) VALUES
+  ('31930000-0000-4000-8000-000000001045','31930000-0000-4000-8000-000000000104','31930000-0000-4000-8000-000000000001','I3193 Mirror Live Gig','A live, published event with no master date yet.','gig','event','public','scheduled','UTC',false,'Lagos','{}',now());
 
 -- evrecreated + triprecreated (deterministic) — the tombstone carries an ENDED,
 -- past-dated entity under the same slug; the recreated live one has no date yet.
@@ -335,13 +400,35 @@ INSERT INTO public.venue_listings(id,brand_id,slug,name,city,country_code,lat,ln
   ('31930000-0000-4000-8000-000000001530','31930000-0000-4000-8000-000000000151','roof','I3193 Dead Roof','Lagos','NG',6.45,3.39,'restaurant','verified',now()-interval '3 hour'),
   ('31930000-0000-4000-8000-000000001540','31930000-0000-4000-8000-000000000152','roof','I3193 Live Roof','Lagos','NG',6.45,3.39,'restaurant','verified',now()-interval '1 hour');
 
+-- vdupmirror (ambiguity, twin of vdup) — the live brand and its venue inserted
+-- FIRST with the LOWEST ids, the tombstone brand and its venue after them.
+INSERT INTO public.brands(id,account_id,name,slug,description,kind,claim_status,default_currency,pricing_currency,created_at,updated_at,deleted_at) VALUES
+  ('31930000-0000-4000-8000-000000000153','31930000-0000-4000-8000-000000000001','I3193 VDupMirror Live','i3193vdupmirror','The live brand, inserted first.','popup','none','USD','usd',now()-interval '1 hour',now()-interval '1 hour',NULL),
+  ('31930000-0000-4000-8000-000000000154','31930000-0000-4000-8000-000000000001','I3193 VDupMirror Dead','i3193vdupmirror','Soft-deleted brand twin.','popup','none','USD','usd',now()-interval '3 hour',now()-interval '3 hour',now()-interval '2 hour');
+INSERT INTO public.venue_listings(id,brand_id,slug,name,city,country_code,lat,lng,venue_category,claim_status,created_at) VALUES
+  ('31930000-0000-4000-8000-000000001550','31930000-0000-4000-8000-000000000153','roof','I3193 Mirror Live Roof','Lagos','NG',6.45,3.39,'restaurant','verified',now()-interval '1 hour'),
+  ('31930000-0000-4000-8000-000000001560','31930000-0000-4000-8000-000000000154','roof','I3193 Mirror Dead Roof','Lagos','NG',6.45,3.39,'restaurant','verified',now()-interval '3 hour');
+
 INSERT INTO i3193_expect VALUES
-  ('/e/i3193evdup/gig',            '31930000-0000-4000-8000-000000001040','event','ambiguity'),
-  ('/e/i3193evrecreated/gig',      '31930000-0000-4000-8000-000000001140','event','deterministic'),
-  ('/t/i3193triprecreated/escape', '31930000-0000-4000-8000-000000001240','event','deterministic'),
-  ('/exp/i3193exptwin/tour',       '31930000-0000-4000-8000-000000001330','event','deterministic'),
-  ('/e/i3193evtwin/show',          '31930000-0000-4000-8000-000000001430','event','deterministic'),
-  ('/b/i3193vdup/v/roof',          '31930000-0000-4000-8000-000000001540','venue','ambiguity');
+  ('/e/i3193evdup/gig',            '31930000-0000-4000-8000-000000001040','event','ambiguity',    '/e/i3193evdupmirror/gig'),
+  ('/e/i3193evdupmirror/gig',      '31930000-0000-4000-8000-000000001045','event','ambiguity',    '/e/i3193evdup/gig'),
+  ('/e/i3193evrecreated/gig',      '31930000-0000-4000-8000-000000001140','event','deterministic',NULL),
+  ('/t/i3193triprecreated/escape', '31930000-0000-4000-8000-000000001240','event','deterministic',NULL),
+  ('/exp/i3193exptwin/tour',       '31930000-0000-4000-8000-000000001330','event','deterministic',NULL),
+  ('/e/i3193evtwin/show',          '31930000-0000-4000-8000-000000001430','event','deterministic',NULL),
+  ('/b/i3193vdup/v/roof',          '31930000-0000-4000-8000-000000001540','venue','ambiguity',    '/b/i3193vdupmirror/v/roof'),
+  ('/b/i3193vdupmirror/v/roof',    '31930000-0000-4000-8000-000000001550','venue','ambiguity',    '/b/i3193vdup/v/roof');
+
+-- Every twin link must be symmetric and point at a real fixture of the same
+-- branch, or a pair check could silently compare a path with nothing.
+DO $pairs$
+BEGIN
+  IF EXISTS (SELECT 1 FROM i3193_expect a LEFT JOIN i3193_expect b ON b.path=a.mirror_of
+             WHERE a.class='ambiguity' AND (b.path IS NULL OR b.mirror_of IS DISTINCT FROM a.path OR b.branch<>a.branch)) THEN
+    RAISE EXCEPTION 'ISSUE-3193 fixture FAIL: an ambiguity fixture has no symmetric mirror twin';
+  END IF;
+END
+$pairs$;
 
 -- H7: the SHIPPED body resolves every constructed path to its live entity, as
 -- `public_noindex`, under all five planner configurations, with ONE identical
@@ -379,6 +466,7 @@ CREATE FUNCTION pg_temp.i3193_branch_control(p_branch text, p_from text, p_to te
 LANGUAGE plpgsql AS $ctl$
 DECLARE v_shipped text; v_reverted text; r record; cfg text; v jsonb;
         v_default jsonb; v_distinct int; v_wrong int; v_paths int := 0;
+        v_pairs int := 0; v_self boolean; v_twin boolean; v_pcfg text;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM i3193_expect WHERE branch=p_branch) THEN
     RAISE EXCEPTION 'ISSUE-3193 % control FAIL: no fixture paths for this branch, so the control would sweep nothing',p_branch;
@@ -400,13 +488,13 @@ BEGIN
       IF cfg='planner-default' THEN v_default := v; END IF;
     END LOOP;
     PERFORM pg_temp.i3193_plan_cfg('planner-default');
-    IF v_default->>'state'<>'draft' OR v_default->'facts' IS DISTINCT FROM 'null'::jsonb THEN
-      RAISE EXCEPTION 'ISSUE-3193 % control FAIL: pre-fix % did not reproduce the 404 under the default plan: %',p_branch,r.path,v_default;
-    END IF;
     SELECT count(DISTINCT doc), count(*) FILTER (WHERE doc->>'state'='draft')
       INTO v_distinct, v_wrong FROM i3193_multi WHERE body='pre-3193' AND path=r.path;
-    IF r.class='ambiguity' AND v_distinct<2 THEN
-      RAISE EXCEPTION 'ISSUE-3193 % control FAIL: ambiguity fixture % was stable across every plan, so it no longer reproduces the arbitrary row choice',p_branch,r.path;
+    -- A deterministic fixture must reproduce the 404 under the default plan on
+    -- its own. An ambiguity fixture is only required to as a PAIR (below): which
+    -- twin the default plan exposes depends on the table's statistics.
+    IF r.class='deterministic' AND (v_default->>'state'<>'draft' OR v_default->'facts' IS DISTINCT FROM 'null'::jsonb) THEN
+      RAISE EXCEPTION 'ISSUE-3193 % control FAIL: pre-fix % did not reproduce the 404 under the default plan: %',p_branch,r.path,v_default;
     END IF;
     IF r.class='deterministic' AND v_wrong<>5 THEN
       RAISE EXCEPTION 'ISSUE-3193 % control FAIL: deterministic fixture % was right under % of 5 plans',p_branch,r.path,5-v_wrong;
@@ -417,6 +505,25 @@ BEGIN
   END LOOP;
   IF v_paths <> (SELECT count(*) FROM i3193_expect WHERE branch=p_branch) THEN
     RAISE EXCEPTION 'ISSUE-3193 % control FAIL: swept % paths, expected %',p_branch,v_paths,(SELECT count(*) FROM i3193_expect WHERE branch=p_branch);
+  END IF;
+  -- The ambiguity rule, per mirror pair and per plan: at least one twin reads a
+  -- tombstone. Checked once per unordered pair.
+  FOR r IN SELECT * FROM i3193_expect WHERE branch=p_branch AND class='ambiguity' AND path < mirror_of ORDER BY path LOOP
+    FOREACH v_pcfg IN ARRAY ARRAY['seq-nestloop','seq-hash','seq-merge','index-scans','planner-default'] LOOP
+      SELECT m.doc->>'state'='draft' AND m.doc->'facts'='null'::jsonb INTO v_self FROM i3193_multi m WHERE m.body='pre-3193' AND m.path=r.path AND m.cfg=v_pcfg;
+      SELECT m.doc->>'state'='draft' AND m.doc->'facts'='null'::jsonb INTO v_twin FROM i3193_multi m WHERE m.body='pre-3193' AND m.path=r.mirror_of AND m.cfg=v_pcfg;
+      IF v_self IS NULL OR v_twin IS NULL THEN
+        RAISE EXCEPTION 'ISSUE-3193 % control FAIL: pair % / % has no recorded pre-fix result under plan %',p_branch,r.path,r.mirror_of,v_pcfg;
+      END IF;
+      IF NOT (v_self OR v_twin) THEN
+        RAISE EXCEPTION 'ISSUE-3193 % control FAIL: under plan % the pre-fix selection read the live row for BOTH twins % and %, so the pair no longer reproduces the arbitrary row choice',p_branch,v_pcfg,r.path,r.mirror_of;
+      END IF;
+    END LOOP;
+    v_pairs := v_pairs+1;
+    RAISE NOTICE 'ISSUE-3193 % control: pair % / % -> >= 1 twin read a tombstone under all 5 plans',p_branch,r.path,r.mirror_of;
+  END LOOP;
+  IF v_pairs <> (SELECT count(*) FROM i3193_expect WHERE branch=p_branch AND class='ambiguity') / 2 THEN
+    RAISE EXCEPTION 'ISSUE-3193 % control FAIL: checked % mirror pairs, expected %',p_branch,v_pairs,(SELECT count(*) FROM i3193_expect WHERE branch=p_branch AND class='ambiguity')/2;
   END IF;
   EXECUTE v_shipped;
   FOR r IN SELECT * FROM i3193_expect WHERE branch=p_branch LOOP
