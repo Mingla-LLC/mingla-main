@@ -43,6 +43,10 @@ import {
   setManualPayoutSchedule,
 } from "../_shared/stripeBlueprintClient.ts";
 import { resolveBusinessWebOrigin } from "../_shared/businessWebOrigin.ts";
+import {
+  MissingOrganiserEmailError,
+  resolveOrganiserContactEmail,
+} from "../_shared/organiserContactEmail.ts";
 import { resolvePaymentOperationFlagValue } from "../_shared/secretBundle.ts";
 import { evaluateBusinessNativeVersion } from "../_shared/appVersionPolicy.ts";
 
@@ -155,19 +159,6 @@ function safeDisplayName(value: unknown): string {
   return "Mingla organiser";
 }
 
-function safeContactEmail(
-  brandEmail: unknown,
-  userEmail: string | null,
-): string {
-  if (typeof brandEmail === "string" && brandEmail.trim().length > 0) {
-    return brandEmail.trim();
-  }
-  if (userEmail && userEmail.trim().length > 0) {
-    return userEmail.trim();
-  }
-  return "support@usemingla.com";
-}
-
 function isNonEmptyRows(value: unknown): boolean {
   return Array.isArray(value) && value.length > 0;
 }
@@ -245,7 +236,10 @@ serve(async (req) => {
   if (req.method !== "POST") {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
-  const versionBlocked = await evaluateBusinessNativeVersion(req, "brand-stripe-onboard");
+  const versionBlocked = await evaluateBusinessNativeVersion(
+    req,
+    "brand-stripe-onboard",
+  );
   if (versionBlocked) return versionBlocked;
 
   try {
@@ -376,6 +370,31 @@ serve(async (req) => {
       );
     }
 
+    // #3191 — resolve the provider-facing email BEFORE any Stripe call, so a
+    // brand record we cannot represent fails as an actionable 422 here rather
+    // than as an opaque `stripe_api_error: Invalid email` after the network
+    // round-trip. A malformed `contact_email` is skipped, not fatal: the
+    // verified auth email carries onboarding through, so a broken brand record
+    // never blocks payout setup.
+    let contactEmail: string;
+    try {
+      contactEmail = resolveOrganiserContactEmail(
+        brandRow.contact_email,
+        claims.email,
+      );
+    } catch (err) {
+      if (err instanceof MissingOrganiserEmailError) {
+        console.error(
+          `[brand-stripe-onboard] no usable organiser email for brand ${brand_id}`,
+        );
+        return jsonResponse(
+          { error: err.code, detail: err.message },
+          422,
+        );
+      }
+      throw err;
+    }
+
     let stripeAccountId: string;
     let scaRowId: string | null = null;
     let replacementAudit:
@@ -397,7 +416,7 @@ serve(async (req) => {
       try {
         stripeAccount = await createRecipientAccount({
           displayName: safeDisplayName(brandRow.name),
-          contactEmail: safeContactEmail(brandRow.contact_email, claims.email),
+          contactEmail,
           country,
           idempotencyKey: generateIdempotencyKey(
             brand_id,

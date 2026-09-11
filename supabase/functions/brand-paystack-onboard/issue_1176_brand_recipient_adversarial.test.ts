@@ -44,6 +44,8 @@ function adversarialHarness(seed: BrandRecipientRow) {
     },
     deactivateRecipient: () => Promise.resolve(),
     audit: () => Promise.resolve(),
+    // #3192 — sole-holder fixture: sharing is false, so prior behaviour stands.
+    isRecipientCodeSharedElsewhere: () => Promise.resolve(false),
     warn: () => undefined,
   };
   return { calls, deps };

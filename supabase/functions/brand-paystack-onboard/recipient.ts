@@ -48,12 +48,65 @@ export type BrandRecipientDeps = {
     recipient: BrandRecipientRow,
   ) => Promise<void>;
   deactivateRecipient: (brandId: string) => Promise<void>;
+  /**
+   * #3192 — is `recipientCode` held by any brand OTHER than `brandId`?
+   *
+   * Paystack de-duplicates transfer recipients per integration: creating one
+   * for a bank account that already exists returns the EXISTING recipient_code
+   * with a success status, and nothing in the response distinguishes that from
+   * a fresh mint. Proven against our own test integration on 2026-09-11 — two
+   * creates on one account returned the same `RCP_…`.
+   *
+   * Every provider-side delete in this module must therefore ask this first.
+   * Deleting a shared code destroys another brand's live payout destination
+   * while their database row still points at it, so their payouts fail later
+   * with nothing to explain why.
+   */
+  isRecipientCodeSharedElsewhere: (
+    recipientCode: string,
+    brandId: string,
+  ) => Promise<boolean>;
   audit: (
     action: "created" | "updated" | "deactivated",
     recipient: BrandRecipientRow,
   ) => Promise<void>;
   warn: (message: string, error: unknown) => void;
 };
+
+/**
+ * #3192 — delete a recipient at Paystack ONLY when no other brand depends on
+ * it. Never throws: a cleanup that cannot be proven safe is skipped and warned
+ * about, because losing a stray provider object is always cheaper than
+ * breaking a live brand's payouts.
+ */
+async function deleteRecipientIfUnshared(
+  recipientCode: string,
+  brandId: string,
+  deps: BrandRecipientDeps,
+  context: string,
+): Promise<void> {
+  try {
+    if (await deps.isRecipientCodeSharedElsewhere(recipientCode, brandId)) {
+      deps.warn(
+        `${context}: skipped provider delete — recipient is shared with another brand`,
+        new Error(`shared recipient_code retained for ${recipientCode}`),
+      );
+      return;
+    }
+  } catch (error) {
+    // Could not establish safety → do not delete. Fail closed.
+    deps.warn(
+      `${context}: shared-recipient check failed, delete skipped`,
+      error,
+    );
+    return;
+  }
+  try {
+    await deps.deleteRecipient(recipientCode);
+  } catch (error) {
+    deps.warn(`${context}: provider delete failed`, error);
+  }
+}
 
 function result(row: BrandRecipientRow): BrandRecipientResult {
   return {
@@ -161,11 +214,15 @@ export async function saveBrandPaystackRecipient(
   try {
     await deps.persistRecipient(input.brandId, next);
   } catch (error) {
-    try {
-      await deps.deleteRecipient(recipientCode);
-    } catch (cleanupError) {
-      deps.warn("new recipient rollback delete failed", cleanupError);
-    }
+    // #3192 — `recipientCode` may be another brand's, handed back by Paystack's
+    // de-duplication rather than minted for us. Rolling it back unconditionally
+    // is what deleted a live brand's payout recipient in production.
+    await deleteRecipientIfUnshared(
+      recipientCode,
+      input.brandId,
+      deps,
+      "new recipient rollback",
+    );
     throw new BrandRecipientError("recipient_store_failed", 500, error);
   }
 
@@ -173,11 +230,14 @@ export async function saveBrandPaystackRecipient(
     previous?.recipient_code &&
     previous.recipient_code !== recipientCode
   ) {
-    try {
-      await deps.deleteRecipient(previous.recipient_code);
-    } catch (error) {
-      deps.warn("previous recipient delete failed", error);
-    }
+    // #3192 — the brand switched banks. The code it is leaving behind may be
+    // shared with another brand that is still using it.
+    await deleteRecipientIfUnshared(
+      previous.recipient_code,
+      input.brandId,
+      deps,
+      "previous recipient delete",
+    );
   }
   try {
     await deps.audit(
@@ -207,11 +267,14 @@ export async function deactivateBrandPaystackRecipient(
   } catch (error) {
     throw new BrandRecipientError("recipient_store_failed", 500, error);
   }
-  try {
-    await deps.deleteRecipient(previous.recipient_code);
-  } catch (error) {
-    deps.warn("deactivated recipient provider delete failed", error);
-  }
+  // #3192 — this brand is disconnecting, but another brand may settle to the
+  // same bank account and therefore share this recipient code.
+  await deleteRecipientIfUnshared(
+    previous.recipient_code,
+    brandId,
+    deps,
+    "deactivated recipient",
+  );
   try {
     await deps.audit("deactivated", {
       ...previous,
