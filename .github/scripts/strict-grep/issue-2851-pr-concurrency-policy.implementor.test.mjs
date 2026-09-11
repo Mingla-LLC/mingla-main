@@ -860,7 +860,53 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     the gate. Rule 0 also requires the cited work item to carry a bracketed
   //     label in that same body. #3186 lost a CI round-trip learning this.
   // Every earlier re-derivation is preserved, not replaced.
-  "6b94b56f5f7b9717319b808c7a81aec2d03ea46774ad1e492a83c23fc4b76f96";
+  //
+  // [TEST-MOD-APPROVED #3193] Re-derived again, on top of #3186's re-pin. #3193
+  // added TWO PostgreSQL 17 test targets (plus their comments) to the existing
+  // migrations-and-Stripe Deno lane, because the CI registry gate refuses a new
+  // issue-named workflow and those suites need a live PostgreSQL. That lane is
+  // PR-family, so its non-concurrency document is inside this digest, exactly as
+  // every re-derivation above. It is named here the way they all name their
+  // lanes: descriptively, never by its `.y`+`ml` path, because a workflow
+  // FILENAME written in this file is counted by `discoverWorkflowProviders()` as
+  // an external provider reference and moves the frozen #2148 provider seal.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING:
+  //   - the change is PURELY ADDITIVE: `git diff origin/main --stat` over
+  //     `.github/workflows/` is `1 file changed, 21 insertions(+)` with zero
+  //     deletions, and grepping the added AND removed lines for `concurrency`,
+  //     `group:` and `cancel-in-progress` returns ZERO. No concurrency block,
+  //     group expression or cancellation value is touched, and no `paths:`
+  //     entry is added — the lane already scopes `supabase/migrations/**`,
+  //     where both new suites live.
+  //   - `--diff-filter=ADR` over `.github/workflows/` returns ZERO files; the
+  //     single workflow change is one `M`. No workflow was added, removed or
+  //     renamed, so PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 cannot have
+  //     moved — corroborated by execution, not inferred from the diff shape:
+  //     both derive at 124 PR-family and
+  //     9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04,
+  //     unchanged, and subtests 1 and 4 PASS against this tree.
+  //   - the policy audit itself still reports zero errors at 124 PR-family
+  //     workflows — the sibling subtest above, which passes.
+  //   - THE DELTA IS EXACTLY THIS CHANGE, executed rather than asserted:
+  //     restoring that one lane to its `origin/main` bytes recomputes
+  //     6b94b56f5f7b9717319b808c7a81aec2d03ea46774ad1e492a83c23fc4b76f96,
+  //     the value this pin replaces — #3186's, one commit old — so nothing else
+  //     in the tree drifted into this digest. The new value below is stable
+  //     across three consecutive derivations.
+  //   - this pin was ALREADY re-derived once on `origin/main` 6f95a0502, where
+  //     it was a6b3a749a7c3b6d65b37fc70a6c8136b8e28ff02e24b8fcced5e7f3387879f71.
+  //     #3186 (PR #3190) then landed two lines on the secret-budget lane and
+  //     moved the base out from under it, which is the #3015 blast radius in
+  //     action and the reason this note names the commit it was derived on:
+  //     the branch is now rebased onto `origin/main` 1ebf80216, so the
+  //     derivation tree and the tree CI will hash for the merge carry the same
+  //     124 PR-family documents. Per #3015 the `actual:` printed by a PR run
+  //     must not be copied; this value was derived independently by re-running
+  //     the gate's own canonicalizer over the working tree, three times, plus
+  //     the reversion check above.
+  // Every earlier re-derivation is preserved, not replaced.
+  "8c09aa3b025b64af2488575c1fb3e47c57de78010b79cb31de2e31ac382073cf";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
