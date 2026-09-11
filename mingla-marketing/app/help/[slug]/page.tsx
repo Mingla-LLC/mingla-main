@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, Clock } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, Clock } from 'lucide-react'
 import { helpVideoMetadata } from '@/lib/search/metadata'
 import {
   BreadcrumbSchema,
@@ -138,6 +138,25 @@ export default async function HelpVideoPage({ params }: HelpVideoPageProps) {
                     <p className="mt-1.5 text-[0.9375rem] leading-relaxed text-[var(--cut-body)]">
                       {step.body}
                     </p>
+                    {step.links?.length ? (
+                      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+                        {step.links.map((link) => (
+                          <li key={link.href}>
+                            <a
+                              href={link.href}
+                              /* Every one of these leaves Mingla, so it opens in
+                                 a new tab and carries noopener. */
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[0.875rem] font-semibold text-[var(--cut-accent-ink)] underline underline-offset-2 hover:opacity-80"
+                            >
+                              {link.label}
+                              <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </div>
                 </li>
               ))}

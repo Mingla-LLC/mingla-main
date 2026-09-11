@@ -45,9 +45,21 @@ export const HELP_INTENTS = [
 
 export type HelpIntent = (typeof HELP_INTENTS)[number]
 
+/** A place the step sends you. External hrefs open in a new tab. */
+export interface HelpStepLink {
+  readonly label: string
+  readonly href: string
+}
+
 export interface HelpStep {
   readonly title: string
   readonly body: string
+  /**
+   * The things this step names, made clickable. A step that says "go to the
+   * download page" should be actionable from the page itself — otherwise the
+   * reader has to retype a URL they were just shown.
+   */
+  readonly links?: readonly HelpStepLink[]
 }
 
 export interface HelpVideoRecord {
@@ -99,21 +111,39 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       {
         title: 'Open usemingla.com',
         body: 'Mingla has two sides — one for finding something to do, one for hosting it.',
+        links: [{ label: 'usemingla.com', href: 'https://usemingla.com' }],
       },
       {
         title: 'Go to the download page',
         body:
-          'It detects your phone: an iPhone goes to the App Store, an Android to Google Play. Or scan the QR code with your camera.',
+          'It detects your phone: an iPhone goes to the App Store, an Android to Google Play. Or scan the QR code with your camera. That page is the Explorer app — Mingla Host is downloaded from the Host page instead.',
+        links: [
+          { label: 'Explorer · usemingla.com/download', href: 'https://usemingla.com/download' },
+          { label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' },
+        ],
       },
       {
         title: 'Pick the right app',
         body:
           'Mingla is for exploring. Mingla Host is for venues, promoters and trip organisers. They are separate downloads.',
+        links: [
+          { label: 'Mingla · App Store', href: 'https://apps.apple.com/app/id6760440898' },
+          {
+            label: 'Mingla · Google Play',
+            href: 'https://play.google.com/store/apps/details?id=com.mingla.app.v2',
+          },
+          { label: 'Mingla Host · App Store', href: 'https://apps.apple.com/app/id6768737367' },
+          {
+            label: 'Mingla Host · Google Play',
+            href: 'https://play.google.com/store/apps/details?id=com.sethogieva.minglabusiness',
+          },
+        ],
       },
       {
         title: 'For the business side, go to host.usemingla.com',
         body:
           'Sign in with Apple, Google or email — the same account works on the web and in the app.',
+        links: [{ label: 'host.usemingla.com', href: 'https://host.usemingla.com' }],
       },
     ],
   },
