@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-11 — Trip pages show their "Where you'll be" map again in the Mingla Host app and on the Business website; the public Mapbox key had never been set for either (#3225)
 - 2026-09-11 — Investors now get a private, password-protected data room with charts, the round, the team and the diligence documents; every sign-in emails Seth, and the page lives outside this public repo (#3213)
 - 2026-09-11 — A bad brand contact email is now pointed at on the field itself, which is also scrolled into view, instead of a toast about something off-screen; and when payment setup can't find a usable email, organisers are told to add one — with a button straight to the field — instead of being told to check their connection (#3208, PR #3210)
 - 2026-09-11 — `main` is green again after a CI workflow edit silently invalidated a pinned fingerprint shared by 124 workflows; every branch cut from main had been inheriting a red check it did not cause (#3189, PR #3195)
