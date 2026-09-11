@@ -1,5 +1,8 @@
 import type { BrandStripeStatus } from "../store/currentBrandStore";
-import { isPermissionDeniedError } from "./edgeFunctionErrors";
+import {
+  isOrganiserEmailRequiredError,
+  isPermissionDeniedError,
+} from "./edgeFunctionErrors";
 
 export const ACTIVE_STRIPE_BANNER_TITLE = "You're connected to Stripe";
 
@@ -26,6 +29,58 @@ export function mapStripeStatusErrorToViewState(
   error: unknown,
 ): BrandStripeStatusErrorViewState {
   return isPermissionDeniedError(error) ? "permission-denied" : "failed-network";
+}
+
+/** Every ViewState a failed "start onboarding" call may resolve to. */
+export type BrandOnboardingStartErrorViewState =
+  | "country-locked"
+  | "permission-denied"
+  | "email-required"
+  | "failed-stripe"
+  | "failed-network";
+
+/**
+ * #3208 — classifies an error thrown by `startBrandStripeOnboarding`.
+ *
+ * This decision used to live inline in `BrandOnboardView`'s catch, where it
+ * could only be tested by mounting the screen. That is how
+ * `organiser_email_required` shipped misclassified: it is not a Stripe error
+ * (the server refuses before calling Stripe) and its message contained no
+ * "stripe", so it fell to the last branch — `failed-network`, "check your
+ * connection". Same pure-function treatment #1863 gave the status query, so
+ * the regression suites feed it the REAL errors the REAL service throws.
+ *
+ * ORDER IS LOAD-BEARING:
+ *   1. country_locked — a 400-class rule with its own copy; unchanged.
+ *   2. permission denied — terminal role boundary; unchanged.
+ *   3. email required — MUST precede the substring check, because its copy
+ *      legitimately says "Stripe needs an email address" and would otherwise
+ *      be shown under a "Stripe couldn't verify" title.
+ *   4. anything mentioning Stripe — unchanged heuristic.
+ *   5. everything else — treated as transport; unchanged.
+ *
+ * country_locked is matched on its `code` rather than `instanceof` so this
+ * module stays free of the service layer (and its Supabase import); a parity
+ * test pins it against the real `BrandStripeCountryLockedError`.
+ */
+export function classifyBrandOnboardingStartError(
+  error: unknown,
+): BrandOnboardingStartErrorViewState {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "country_locked"
+  ) {
+    return "country-locked";
+  }
+  if (isPermissionDeniedError(error)) return "permission-denied";
+  if (isOrganiserEmailRequiredError(error)) return "email-required";
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+  if (lower.includes("stripe_api_error") || lower.includes("stripe")) {
+    return "failed-stripe";
+  }
+  return "failed-network";
 }
 
 export interface BrandProfileStripeBannerCopy {

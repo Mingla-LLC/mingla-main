@@ -16,7 +16,11 @@ import { logAppsFlyerEvent } from "./appsFlyerService";
 import { businessWebOriginOverrideBody } from "./businessWebOriginOverride";
 // #1863 — 403 classification. A permission denial must reach the hook layer as
 // a typed, recognisable error instead of being flattened into a generic Error.
-import { EdgeFunctionPermissionDeniedError } from "../utils/edgeFunctionErrors";
+import {
+  EdgeFunctionPermissionDeniedError,
+  ORGANISER_EMAIL_REQUIRED_CODE,
+  OrganiserEmailRequiredError,
+} from "../utils/edgeFunctionErrors";
 
 declare const __DEV__: boolean | undefined;
 
@@ -128,7 +132,7 @@ function isPermissionDeniedResponse(
 
 /**
  * ORDER IS LOAD-BEARING (#1863 §4.6): country_locked → permission_denied →
- * generic.
+ * organiser_email_required (#3208) → generic.
  *
  * `country_locked` keeps precedence because it is a 400-class business rule
  * with its own dedicated UI (`BrandOnboardView.tsx` failed-stripe branch) and
@@ -155,6 +159,12 @@ function mapFunctionErrorPayload(
       ? payload.detail
       : null;
     return new EdgeFunctionPermissionDeniedError(functionName, detail);
+  }
+  // #3208 — typed so the UI can tell "no usable email" apart from a Stripe or
+  // network failure. As a plain formatted Error it fell through the view's
+  // "contains 'stripe'" check into failed-network ("check your connection").
+  if (isRecord(payload) && payload.error === ORGANISER_EMAIL_REQUIRED_CODE) {
+    return new OrganiserEmailRequiredError("brand");
   }
   if (!isRecord(payload)) return null;
   const formatted = formatFunctionErrorPayload(payload);

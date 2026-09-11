@@ -88,6 +88,8 @@ describe("#3191 organiser contact email resolution", () => {
   it("refuses rather than inventing an address when nothing usable exists", () => {
     // Unreachable under today's email-OTP-only business auth; asserted so the
     // behaviour stays fail-closed if an auth model without email ever lands.
+    // #3208 correction: "email-OTP-only" is wrong — Google and Apple sign-in
+    // exist too. It stays unreachable because all three leave an email.
     expect(() => resolveOrganiserContactEmail(PRODUCTION_BAD_EMAIL, null))
       .toThrow(MissingOrganiserEmailError);
     expect(() => resolveOrganiserContactEmail(null, "not-an-email")).toThrow();
@@ -281,8 +283,15 @@ describe("#3192 migration and call-site contracts", () => {
   it("brand edit validates the contact email before saving", () => {
     // #3191 — stop a non-email reaching brands.contact_email at the door.
     const src = read("mingla-business/src/components/brand/BrandEditView.tsx");
-    expect(src).toContain("CONTACT_EMAIL_RE");
+    // #3208 — the rule moved to `utils/brandContactEmail.ts` (behaviour is
+    // pinned there by issue_3208_contact_email_ux.*). What must hold HERE is
+    // that the Save handler calls it, and calls it BEFORE the write — a
+    // stronger check than the old "within 1,200 chars" window.
+    expect(src).toContain("validateBrandContactEmail");
     const handler = src.slice(src.indexOf("const handleSave"));
-    expect(handler.slice(0, 1200)).toContain("CONTACT_EMAIL_RE.test");
+    const check = handler.indexOf("validateBrandContactEmail(");
+    const write = handler.indexOf("await onSave(");
+    expect(check).toBeGreaterThan(-1);
+    expect(write).toBeGreaterThan(check);
   });
 });

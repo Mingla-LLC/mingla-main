@@ -22,13 +22,22 @@
  *     the organiser. That fallback is deleted, not relaxed.
  *
  * Enforcement of "a real organiser email" is STRUCTURAL, not a gate. The
- * Business app authenticates by email OTP only (`AuthContext.tsx`,
- * `signInWithOtp({ email })` — there is no phone path), so any caller able to
- * reach an onboarding function necessarily carries a verified email. Rule 2
- * therefore costs no blocking prompt and no new UI. The throw below is a
- * fail-closed backstop for an auth model that does not exist today; if it ever
+ * Business app offers exactly three ways in (`AuthContext.tsx`): an emailed
+ * code (`signInWithOtp({ email })`), Google, and Apple. All three leave a
+ * verified email on the auth user — Google always returns one, and Apple
+ * returns either the real address or an `@privaterelay.appleid.com` relay
+ * address. There is no phone-only path. Production on 2026-09-11: 152 auth
+ * users, 0 without an email, 0 malformed. Rule 2 therefore costs no blocking
+ * prompt and no new UI. The throw below is a fail-closed backstop; if it ever
  * fires, the caller is told to supply an email rather than being handed a
- * silently wrong one.
+ * silently wrong one, and the Business app renders dedicated copy for it
+ * (issue #3208) rather than a connection error.
+ *
+ * Apple relay caveat: a relay address is well formed and passes, but Apple
+ * only forwards mail from senders registered against Mingla's Sign in with
+ * Apple configuration. Unless Stripe's sending domain is registered there,
+ * Stripe's mail to such an organiser may bounce. 28 users sign in with a relay
+ * address; as of 2026-09-11 none of them owns a brand.
  */
 
 /**
