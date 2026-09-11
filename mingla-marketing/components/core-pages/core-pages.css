@@ -10,6 +10,7 @@
 .core-platform-graphic { display: grid; gap: 1rem; align-items: center; }
 .core-platform-graphic > div { border: 1px solid var(--cut-hairline); border-radius: 1.5rem; padding: 1.25rem; background: var(--cut-card); box-shadow: var(--cut-mould-dark); }
 .core-platform-graphic img { width: 3.5rem; height: 3.5rem; border-radius: 1rem; object-fit: cover; }
+.core-app-icon { display:block; overflow:hidden; border-radius:1rem; object-fit:cover; }
 .core-platform-graphic strong,.core-platform-graphic span { display: block; margin-top: .75rem; }
 .core-platform-graphic strong { font-family: var(--font-mochiy), sans-serif; font-size: 1.125rem; }
 .core-platform-graphic span { color: var(--cut-body); }
