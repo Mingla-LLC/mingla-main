@@ -11,6 +11,7 @@ type CircleQuery=ReturnType<typeof useBrandCircleReach>;
 type FocusNode={focus?:()=>void};
 export function CircleReachSheet({visible,ring,query,onClose}:{visible:boolean;ring:BrandCircleRing;query:CircleQuery;onClose:()=>void}):React.ReactElement|null{
   const [retrying,setRetrying]=React.useState(false);
+  const paginationFailureReported=React.useRef(false);
   const title=ring==="follower"?"Followers":"Extended circle",count=query.counts?.[ring==="follower"?"followers":"extended"]??null;
   const ready=query.hasCurrentTruth&&query.currentPage?.availability[ring==="follower"?"followers":"extended"].state==="ready";
   const sheetRef=React.useRef<View|null>(null),titleRef=React.useRef<Text|null>(null),closeRef=React.useRef<View|null>(null);
@@ -37,6 +38,12 @@ export function CircleReachSheet({visible,ring,query,onClose}:{visible:boolean;r
     document.addEventListener("keydown",onKeyDown);
     return()=>document.removeEventListener("keydown",onKeyDown);
   },[onClose,visible]);
+  React.useEffect(()=>{
+    if(!visible||!query.isFetchNextPageError){paginationFailureReported.current=false;return}
+    if(paginationFailureReported.current)return;
+    paginationFailureReported.current=true;
+    capturePeople("people_circle_pagination_failed",{surface:"circle_sheet",circleRing:ring,dependencyState:"unavailable"});
+  },[query.isFetchNextPageError,ring,visible]);
   const retry=async():Promise<void>=>{if(retrying)return;capturePeople("people_circle_retry_selected",{surface:"circle_sheet",circleRing:ring,dependencyState:"unavailable"});setRetrying(true);try{await query.refetch()}finally{setRetrying(false)}};
   if(!visible)return null;
   const {Sheet}=require("../ui/Sheet") as typeof import("../ui/Sheet"),{Spinner}=require("../ui/Spinner") as typeof import("../ui/Spinner"),{IconChrome}=require("../ui/IconChrome") as typeof import("../ui/IconChrome");
