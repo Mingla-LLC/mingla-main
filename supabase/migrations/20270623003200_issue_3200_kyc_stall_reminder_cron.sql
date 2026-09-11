@@ -18,9 +18,21 @@
 --
 -- FIRST-TICK BLAST RADIUS, measured read-only on 2026-09-11: 3 Stripe Connect
 -- accounts, 2 with charges disabled, both stalled > 1 day and never reminded.
--- The first run notifies those 2 brands' payment managers once;
--- `kyc_stall_reminder_sent_at` makes the stall reminder once-per-account, and
--- each deadline warning is keyed per tier per deadline date.
+-- Seth reviewed those two before merge and excluded both, so this migration
+-- SUPPRESSES them before it schedules anything: the first tick finds 2
+-- candidates, suppresses 2, and sends nothing.
+--
+-- WHY A SUPPRESSION COLUMN, NOT A FAKED `kyc_stall_reminder_sent_at`. That
+-- column means "the stall reminder was sent". Stamping it would make the audit
+-- trail lie, would not stop the 7/3/1-day deadline warnings (which ignore it),
+-- and `stripeWebhookRouter` clears it whenever charges become enabled. An
+-- operator exclusion is none of those things, so it gets its own column, read
+-- by `kycRemindersSuppressed()` before ANY reminder for the account.
+--
+-- The two rows are addressed by brand_id only. The brands are not named here:
+-- this repository is public, and a customer's payment-onboarding status is
+-- theirs. The UPDATE is idempotent and touches zero rows on any environment
+-- without those accounts, including CI's baseline.
 --
 -- WHY DAILY AT 10:15 UTC. Daily is the checklist's cadence and the function's
 -- own design: it selects accounts stalled > 1 day. 10:15 UTC is late morning in
@@ -55,6 +67,28 @@ BEGIN
   END IF;
 END;
 $block$;
+
+ALTER TABLE public.stripe_connect_accounts
+  ADD COLUMN IF NOT EXISTS kyc_reminders_suppressed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS kyc_reminders_suppressed_reason text;
+
+COMMENT ON COLUMN public.stripe_connect_accounts.kyc_reminders_suppressed_at IS
+  '#3200 — when set, stripe-kyc-stall-reminder sends NO reminder of any kind for this account (stall or deadline). An operator decision; cleared only by an operator.';
+COMMENT ON COLUMN public.stripe_connect_accounts.kyc_reminders_suppressed_reason IS
+  '#3200 — why this account''s KYC reminders are suppressed, and who decided.';
+
+-- Suppress BEFORE scheduling, in the same transaction, so no tick can ever see
+-- these accounts unsuppressed.
+UPDATE public.stripe_connect_accounts
+   SET kyc_reminders_suppressed_at = COALESCE(kyc_reminders_suppressed_at, now()),
+       kyc_reminders_suppressed_reason = COALESCE(
+         kyc_reminders_suppressed_reason,
+         'operator: excluded by Seth Ogieva before the first #3200 run (2026-09-11)'
+       )
+ WHERE brand_id IN (
+   '163b39b4-f206-4cad-9f2b-66b8596ec2d1',
+   'bca4b6a7-299e-4ce3-b83e-6e9f77e9320c'
+ );
 
 SELECT cron.unschedule('issue_3200_stripe_kyc_stall_reminder')
  WHERE EXISTS (SELECT 1 FROM cron.job

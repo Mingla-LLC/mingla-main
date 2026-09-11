@@ -19,6 +19,7 @@ import {
 import { isAuthorizedCronCaller } from "../cronCallerAuth.ts";
 import {
   calculateCronJitterMs,
+  kycRemindersSuppressed,
   MAX_CRON_JITTER_MS,
 } from "../stripeKycReminderSchedule.ts";
 
@@ -99,4 +100,75 @@ Deno.test("#3200 happy: the migration gives the reminder a daily caller with the
     `pg_net timeout ${timeout}ms is shorter than the jitter`,
   );
   assertEquals((sql.match(/cron\.schedule\(/g) ?? []).length, 1);
+});
+
+// ── operator suppression (Seth excluded the two first-run brands) ────────────
+
+const SUPPRESSED_BRAND_IDS = [
+  "163b39b4-f206-4cad-9f2b-66b8596ec2d1",
+  "bca4b6a7-299e-4ce3-b83e-6e9f77e9320c",
+];
+
+Deno.test("#3200 happy: a suppressed account is recognised, an unsuppressed one is not", () => {
+  assert(
+    kycRemindersSuppressed({
+      kyc_reminders_suppressed_at: "2026-09-11T00:00:00Z",
+    }),
+  );
+  assertEquals(
+    kycRemindersSuppressed({ kyc_reminders_suppressed_at: null }),
+    false,
+  );
+  assertEquals(kycRemindersSuppressed({}), false);
+});
+
+Deno.test("#3200 happy: the handler skips a suppressed account before looking it up or notifying it", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../../stripe-kyc-stall-reminder/index.ts", import.meta.url),
+  );
+  assert(
+    source.includes("kyc_reminders_suppressed_at"),
+    "the column must be selected",
+  );
+  const check = source.indexOf("if (kycRemindersSuppressed(account))");
+  assert(check > 0, "the suppression check must exist in the loop");
+  assert(check < source.indexOf('.from("brands")'), "before the brand lookup");
+  assert(
+    check < source.indexOf("await notifyBrand("),
+    "before any notification",
+  );
+});
+
+Deno.test("#3200 happy: the migration suppresses exactly the two excluded accounts BEFORE scheduling", async () => {
+  const sql = await Deno.readTextFile(
+    new URL(
+      "../../../migrations/20270623003200_issue_3200_kyc_stall_reminder_cron.sql",
+      import.meta.url,
+    ),
+  );
+  assert(
+    sql.includes(
+      "ADD COLUMN IF NOT EXISTS kyc_reminders_suppressed_at timestamptz",
+    ),
+  );
+  assert(
+    sql.includes(
+      "ADD COLUMN IF NOT EXISTS kyc_reminders_suppressed_reason text",
+    ),
+  );
+  const update = sql.indexOf("UPDATE public.stripe_connect_accounts");
+  const schedule = sql.indexOf("SELECT cron.schedule(");
+  assert(
+    update > 0 && schedule > 0 && update < schedule,
+    "suppress before scheduling",
+  );
+  const updateBlock = sql.slice(update, sql.indexOf(");", update) + 2);
+  for (const id of SUPPRESSED_BRAND_IDS) {
+    assert(updateBlock.includes(`'${id}'`), `${id} must be suppressed`);
+  }
+  assertEquals(
+    (updateBlock.match(/'[0-9a-f-]{36}'/g) ?? []).length,
+    SUPPRESSED_BRAND_IDS.length,
+    "exactly the two excluded accounts, no more",
+  );
 });

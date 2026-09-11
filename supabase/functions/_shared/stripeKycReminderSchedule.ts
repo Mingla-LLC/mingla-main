@@ -21,6 +21,23 @@ export function calculateCronJitterMs(): number {
   return Math.floor(Math.random() * MAX_CRON_JITTER_MS);
 }
 
+/**
+ * #3200 — an operator decision to stop ALL KYC reminders for one account:
+ * the stall reminder AND the 7/3/1-day deadline warnings.
+ *
+ * Deliberately its own column rather than stamping `kyc_stall_reminder_sent_at`.
+ * That column means "we sent the stall reminder"; faking it would make the audit
+ * trail lie, would not stop deadline warnings (which ignore it), and is cleared
+ * by `stripeWebhookRouter` whenever charges become enabled. A suppression is
+ * none of those things, so it gets a name that says what it is.
+ */
+export function kycRemindersSuppressed(
+  account: { kyc_reminders_suppressed_at?: string | null },
+): boolean {
+  return typeof account.kyc_reminders_suppressed_at === "string" &&
+    account.kyc_reminders_suppressed_at.length > 0;
+}
+
 export function requirementsHasDue(requirements: unknown): boolean {
   const remediation = getKycRemediationForRequirements(
     requirements as Record<string, unknown> | null,

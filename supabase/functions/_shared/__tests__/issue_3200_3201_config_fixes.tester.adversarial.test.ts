@@ -294,3 +294,35 @@ Deno.test("#3201 adversarial: when the throttle cannot key itself it fails open 
     }
   }
 });
+
+Deno.test("#3200 adversarial: suppression stops the DEADLINE warnings too, not just the stall reminder", async () => {
+  // The tempting shortcut — stamp kyc_stall_reminder_sent_at — would silence
+  // the stall reminder and leave every 7/3/1-day deadline warning firing. The
+  // suppression must short-circuit the whole account, so it has to sit before
+  // BOTH branches.
+  const source = await Deno.readTextFile(
+    new URL("../../stripe-kyc-stall-reminder/index.ts", import.meta.url),
+  );
+  const check = source.indexOf("if (kycRemindersSuppressed(account))");
+  const afterCheck = source.slice(
+    check,
+    source.indexOf("\n", source.indexOf("continue;", check)),
+  );
+  assert(
+    afterCheck.includes("continue;"),
+    "a suppressed account must be skipped entirely",
+  );
+  assert(
+    check < source.indexOf("kyc_stall_reminder_sent_at === null"),
+    "before the stall branch",
+  );
+  assert(
+    check < source.indexOf("deadlineWarningTiers(remediation.currentDeadline)"),
+    "before the deadline branch",
+  );
+  // And the suppression is reported, so a skipped run is not a silent run.
+  assert(
+    /\n\s+suppressed,\n/.test(source),
+    "suppressed count must be in the response",
+  );
+});

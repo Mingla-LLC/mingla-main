@@ -11,6 +11,7 @@ import { isAuthorizedCronCaller } from "../_shared/cronCallerAuth.ts";
 import {
   calculateCronJitterMs,
   deadlineWarningTiers,
+  kycRemindersSuppressed,
   requirementsHasDue,
 } from "../_shared/stripeKycReminderSchedule.ts";
 
@@ -92,7 +93,7 @@ serve(async (req) => {
   const cutoff = new Date(Date.now() - DAY_MS).toISOString();
   const { data: accounts, error } = await supabase
     .from("stripe_connect_accounts")
-    .select("brand_id, stripe_account_id, requirements, updated_at, charges_enabled, kyc_stall_reminder_sent_at")
+    .select("brand_id, stripe_account_id, requirements, updated_at, charges_enabled, kyc_stall_reminder_sent_at, kyc_reminders_suppressed_at")
     .eq("charges_enabled", false);
   if (error) {
     console.error("[stripe-kyc-stall-reminder] account query failed:", error);
@@ -102,6 +103,7 @@ serve(async (req) => {
   let sent = 0;
   let reminders = 0;
   let deadlineWarnings = 0;
+  let suppressed = 0;
   const errors: string[] = [];
   let dispatchErrorStreak = 0;
 
@@ -109,6 +111,13 @@ serve(async (req) => {
     if (dispatchErrorStreak >= 5) {
       errors.push("dispatch circuit breaker opened after 5 consecutive failures");
       break;
+    }
+
+    // #3200 — an operator suppression stops every reminder for this account,
+    // stall AND deadline warnings, before any brand lookup or dispatch.
+    if (kycRemindersSuppressed(account)) {
+      suppressed += 1;
+      continue;
     }
 
     const brandId = String(account.brand_id);
@@ -198,6 +207,7 @@ serve(async (req) => {
     sent,
     reminders,
     deadlineWarnings,
+    suppressed,
     jitterMs,
     errors,
   });
