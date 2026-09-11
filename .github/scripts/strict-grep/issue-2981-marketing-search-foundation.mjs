@@ -25,6 +25,10 @@ const SEARCH_READY = [
   '/tools/venues',
   '/tools/trips',
   '/tools/pricing',
+  // #3220 — the help centre. Only '/help' belongs here: this gate reads the
+  // SEARCH_READY_ROUTES array literal, and each video's '/help/<slug>' contract
+  // is projected separately (HELP_ROUTE_CONTRACTS), outside that block.
+  '/help',
   '/support',
   '/privacy-policy',
   '/terms-of-service',
