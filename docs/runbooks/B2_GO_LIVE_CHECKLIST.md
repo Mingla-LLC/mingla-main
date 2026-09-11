@@ -69,7 +69,11 @@ Per https://docs.stripe.com/get-started/checklist/go-live:
   - stripe-webhook
   - stripe-webhook-health-check
 - [ ] notify-dispatch redeployed (extended for stripe.* + business.* types)
-- [ ] Cron schedules configured: stripe-kyc-stall-reminder daily, stripe-webhook-health-check every 6 hours
+- [x] Cron schedules configured: stripe-kyc-stall-reminder daily — done by #3200
+      (`20270623003200_issue_3200_kyc_stall_reminder_cron.sql`, 10:15 UTC). This box sat unticked
+      through launch; the function had no caller and refused every request until #3200.
+      stripe-webhook-health-check every 6 hours — RETIRED by #3200, superseded by ORCH-1213's
+      informational webhook freshness in `api-health-probe`.
 - [ ] Production smoke (`scripts/e2e/stripe-connect-smoke.mjs`) passes against live mode for at least 3 countries
 
 ---
@@ -111,7 +115,9 @@ Per https://docs.stripe.com/get-started/checklist/go-live:
 ## Section F — Monitoring + alerting
 
 - [ ] Supabase edge fn logs accessible to ops team
-- [ ] Webhook silence alert (`stripe-webhook-health-check` cron) tested by killing the endpoint briefly in test mode + verifying ops@mingla.app receives the alert
+- [ ] ~~Webhook silence alert (`stripe-webhook-health-check` cron) tested …~~ — superseded by #3200.
+      The function is retired, and `ops@mingla.app` was never a Mingla mailbox (`mingla.app` is a
+      parked domain with no MX). Webhook freshness is informational in `api-health-probe` (ORCH-1213).
 - [ ] Stripe Dashboard → Webhooks → endpoint metrics page bookmarked
 - [ ] Sentry / equivalent error tracking wired into Mingla Host + edge fns
 - [ ] On-call rotation / escalation contact list documented

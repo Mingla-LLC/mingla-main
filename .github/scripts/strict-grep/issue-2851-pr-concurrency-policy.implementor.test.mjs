@@ -860,7 +860,21 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     the gate. Rule 0 also requires the cited work item to carry a bracketed
   //     label in that same body. #3186 lost a CI round-trip learning this.
   // Every earlier re-derivation is preserved, not replaced.
-  "6b94b56f5f7b9717319b808c7a81aec2d03ea46774ad1e492a83c23fc4b76f96";
+  //
+  // #3200 / #3201 [stripe safety nets and derived secrets] re-derivation. The
+  // secret-budget lane's Deno step gained three test paths so this change's
+  // suites run in CI: the #3200 and #3201 regression globs, and the retirement
+  // guard that replaced the retired Stripe webhook health check's source test —
+  // which no lane had ever run. No concurrency block, group expression or
+  // cancellation value is touched; no workflow is added, removed or renamed.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring that one lane to its
+  //     `origin/main` bytes recomputes
+  //     6b94b56f5f7b9717319b808c7a81aec2d03ea46774ad1e492a83c23fc4b76f96,
+  //     the value this pin replaces, and the gate exits 0.
+  //   - derived twice on the branch tree, identical both times; not copied from
+  //     a PR run's printed `actual:` (#3015).
+  //   - the override token is in the commit body, not here (see the NOTE above).
+  "6e75928e5fac031876fa317ca62e775f45a61bc9681ba5979b537d96136bd9be";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

@@ -7,6 +7,7 @@ import {
   serviceRoleClient,
 } from "../_shared/stripeEdgeAuth.ts";
 import { getKycRemediationForRequirements } from "../_shared/stripeKycRemediation.ts";
+import { isAuthorizedCronCaller } from "../_shared/cronCallerAuth.ts";
 import {
   calculateCronJitterMs,
   deadlineWarningTiers,
@@ -75,9 +76,10 @@ async function notifyBrand(
 serve(async (req) => {
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
 
-  const cronSecret = Deno.env.get("CRON_SECRET");
-  const auth = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  if (!cronSecret || auth !== cronSecret) {
+  // #3200 — accept the vault service-role bearer every pg_cron job sends, with
+  // CRON_SECRET as an alternative. The old guard required CRON_SECRET, which was
+  // never set, so this function refused every call it ever received.
+  if (!(await isAuthorizedCronCaller(req.headers.get("authorization")))) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
 
