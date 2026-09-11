@@ -233,6 +233,13 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
 // historical record; live discovery and MANIFEST.json retain the full record.
 export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
   Object.freeze({
+    issue: 1777,
+    workflow: "issue-1774-people-page-tests.yml",
+    referenceFiles: Object.freeze([
+      ".github/scripts/strict-grep/issue-1777-brand-circle-reach.mjs",
+    ]),
+  }),
+  Object.freeze({
     issue: 2241,
     workflow: "supabase-secret-budget.yml",
     referenceFiles: Object.freeze([

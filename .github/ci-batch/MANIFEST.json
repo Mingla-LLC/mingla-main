@@ -15259,7 +15259,7 @@
       "providerWorkflow": ".github/workflows/issue-1774-people-page-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "a39de74b0f5763b9936e5c53825f6db023d1e41ab25f6edbee0a03a294878c85",
+        "sourceSha256": "af876682bac80f44da3f22ecf2cb7143591ec9d3103fc6ed49f2739fb8c7ad47",
         "triggers": [
           "pull_request",
           "push"
@@ -15298,7 +15298,7 @@
           "supabase/functions/marketing-*/**",
           "supabase/migrations/20270329001774_issue_1774_people_page.sql",
           "supabase/migrations/20270330001774_issue_1774_qualify_people_digest.sql",
-          "supabase/migrations/20270623001777_issue_1777_brand_circle_reach.sql",
+          "supabase/migrations/20270625001777_issue_1777_brand_circle_reach.sql",
           "supabase/migrations/__tests__/issue_1774_people_digest_qualification.test.sql",
           "supabase/migrations/__tests__/issue_1774_people_page.test.sql",
           "supabase/migrations/__tests__/issue_1774_people_page.tester.adversarial.test.sql",
@@ -22181,6 +22181,7 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/issue-1774-people-page-tests.yml",
       "referenceFiles": [
+        ".github/scripts/strict-grep/issue-1777-brand-circle-reach.mjs",
         ".github/scripts/strict-grep/issue-2024-people-page-layout.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
