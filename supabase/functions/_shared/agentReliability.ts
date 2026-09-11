@@ -7,6 +7,8 @@
  */
 
 export const ARI_PROTOCOL_VERSION = 1 as const;
+import { BAKED_RELEASE_SHA } from "./releaseAttestationBake.ts";
+
 export const ARI_UNATTESTED_RELEASE = "unattested" as const;
 
 export type AriRetryability =
@@ -481,8 +483,26 @@ function defaultReleaseAttestationEnv(): AriReleaseAttestationEnv {
 
 export function resolveReleaseAttestation(
   env: AriReleaseAttestationEnv = defaultReleaseAttestationEnv(),
+  bakedSha: string = BAKED_RELEASE_SHA,
 ): AriReleaseAttestation {
-  const sha = env.get("MINGLA_RELEASE_SHA")?.trim() ?? "";
+  // #3186 — two sources, env FIRST so every pinned #2060 assertion that injects
+  // `MINGLA_RELEASE_SHA` keeps its exact meaning; no existing expectation moves.
+  //
+  // The baked constant is what production actually uses. It ships inside the
+  // bundle it describes, so it cannot name a commit other than the one deployed
+  // — the precise failure a project-global secret invites, and the reason the
+  // #3185 hotfix's pinned secret is being retired rather than kept. It also
+  // spends no slot against the 88-name capacity target.
+  //
+  // Neither source valid => `unattested`, which the production client rejects on
+  // purpose. Failing loudly beats attesting to code we cannot name.
+  const envSha = env.get("MINGLA_RELEASE_SHA")?.trim() ?? "";
+  const baked = bakedSha?.trim() ?? "";
+  const sha = RELEASE_SHA_PATTERN.test(envSha)
+    ? envSha
+    : RELEASE_SHA_PATTERN.test(baked)
+    ? baked
+    : "";
   const deployment = env.get("DENO_DEPLOYMENT_ID")?.trim() ||
     env.get("SB_EXECUTION_ID")?.trim() || "unknown";
   return {

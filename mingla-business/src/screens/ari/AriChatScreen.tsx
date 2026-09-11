@@ -26,6 +26,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Menu, Settings } from "lucide-react-native";
+import * as Sentry from "../../diagnostics/sentry";
 
 import {
   accent,
@@ -331,7 +332,25 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           TASK_STATE_INVALID: "Ari couldn't safely read this plan. Nothing was changed.",
           TASK_STATE_OVERSIZED: "This plan is too large to continue safely. Start a new Ari chat.",
           TASK_RECOVERY_REQUIRED: "The action finished, but Ari needs to reconcile the plan before continuing.",
+          // #3186 — a misconfiguration is NOT a network error and must never be
+          // reported as one. `ENVELOPE_INVALID` means the server answered and
+          // this app refused the answer: exactly what #3185 was, and for nine
+          // days every user was told to check a connection that was fine.
+          ENVELOPE_INVALID: "Ari replied but this app couldn't verify the response. That's on us — it's been reported.",
+          DEPENDENCY_UNAVAILABLE: "Ari can't reach part of Mingla right now. Nothing was changed; try again shortly.",
+          PROVIDER_UNAVAILABLE: "Ari is temporarily unavailable. Nothing was changed; try again shortly.",
+          INTERNAL: "Ari couldn't finish that request. Nothing was changed; try again shortly.",
         };
+        // #3186 — the generic fallback used to swallow this class entirely: the
+        // user saw a toast, nothing reached Sentry, and a total outage looked
+        // like flaky wifi. Anything we have no copy for is by definition a code
+        // we did not anticipate, which is precisely what must be reported.
+        if (result.code === "ENVELOPE_INVALID" || copy[result.code] === undefined) {
+          Sentry.captureException(
+            new Error(`ari_chat_unmapped_error:${result.code}`),
+            { tags: { surface: "ari_chat", ari_error_code: result.code } },
+          );
+        }
         setLocalError(copy[result.code] ?? "Ari could not connect — check your connection and try again.");
       }
       return false;
