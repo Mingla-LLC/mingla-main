@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-11 — A bad brand contact email is now pointed at on the field itself, which is also scrolled into view, instead of a toast about something off-screen; and when payment setup can't find a usable email, organisers are told to add one — with a button straight to the field — instead of being told to check their connection (#3208, PR #3210)
 - 2026-09-11 — `main` is green again after a CI workflow edit silently invalidated a pinned fingerprint shared by 124 workflows; every branch cut from main had been inheriting a red check it did not cause (#3189, PR #3195)
 - 2026-09-11 — Two brands can now be paid into the same bank account on both Paystack and Stripe, and connecting one no longer deletes another brand's payout destination at Paystack; a brand whose Contact email is not an email no longer blocks Stripe setup, because payout onboarding falls back to the organiser's verified login email instead of silently registering Mingla's support inbox (#3192, #3191, PR #3199)
 - 2026-09-09 — City guides now keep their review notice deliberately inside the rounded page shell instead of pressing it against the top edge, without moving navigation or catalogue controls (#3135, PR #3138)
