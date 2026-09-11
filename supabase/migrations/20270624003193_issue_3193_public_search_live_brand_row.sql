@@ -1,5 +1,12 @@
 -- issue #3193 — the public resolver must read the LIVE brand row.
 --
+-- VERSION NOTE: this file was written as 20270622003193. While it was still
+-- unapplied everywhere, 20270623003200 (#3200) was applied to production, which
+-- would have made this an out-of-order version: `db push` refuses one, and
+-- `--include-all` would also sweep in other work items' unapplied files. It was
+-- re-versioned to 20270624003193 so it stays strictly above the remote head and
+-- every prefix in every worktree. The content did not change.
+--
 -- `public.public_search_source_facts` selected the brand with
 -- `WHERE b.slug = v_parts[2] LIMIT 1`: no `deleted_at` filter and no `ORDER BY`.
 -- Soft delete leaves the row, and `idx_brands_slug_active` only constrains LIVE
