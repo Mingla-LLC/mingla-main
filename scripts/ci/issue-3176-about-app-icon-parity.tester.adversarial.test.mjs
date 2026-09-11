@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const MARKETING = path.join(ROOT, 'mingla-marketing')
+const SOURCE_ONLY = process.argv.includes('--source-only')
+const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
 const CHROME = [
   process.env.CHROME_BIN,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -126,6 +128,22 @@ function assertIconParity(evidence, width) {
   assert.equal(evidence.overflow, 0, `${width}px About page has horizontal overflow`)
 }
 
+function sourceContract(overrides = {}) {
+  const source = (relative) => overrides[relative] ?? read(relative)
+  const about = source('mingla-marketing/app/(core)/about/page.tsx')
+  const bridge = source('mingla-marketing/components/core-pages/platform-bridge-graphic.tsx')
+  const packageJson = JSON.parse(source('mingla-marketing/package.json'))
+  const roundedOrangeIcon = /className="core-app-icon" src="\/brand\/mingla-logo-white-on-orange\.png"/g
+
+  assert.equal((bridge.match(roundedOrangeIcon) ?? []).length, 2, 'bridge must give Explorer and Host the same rounded orange icon')
+  assert.equal((about.match(roundedOrangeIcon) ?? []).length, 2, 'product cards must give Explorer and Host the same rounded orange icon')
+  assert.match(
+    packageJson.scripts.prebuild,
+    /issue-3176-about-app-icon-parity\.tester\.adversarial\.test\.mjs --source-only/,
+    'the independent About icon guard must execute in the production build lane',
+  )
+}
+
 async function run() {
   assert(CHROME, 'Chrome/Chromium is required for the About app-icon parity test')
   assert(fs.existsSync(path.join(MARKETING, '.next/BUILD_ID')), 'run the current production build before this test')
@@ -178,7 +196,19 @@ async function run() {
   }
 }
 
+sourceContract()
+
 if (process.argv.includes('--self-test')) {
+  const relative = 'mingla-marketing/app/(core)/about/page.tsx'
+  const reverted = read(relative).replace(
+    'className="core-app-icon" src="/brand/mingla-logo-white-on-orange.png" width="64" height="64" alt="Mingla Host app icon"',
+    'src="/brand/mingla-business-logo.png" width="64" height="64" alt="Mingla Host app icon"',
+  )
+  assert.throws(
+    () => sourceContract({ [relative]: reverted }),
+    /product cards must give Explorer and Host the same rounded orange icon/,
+    'deleting the Host rounded-icon fix must prove RED',
+  )
   assert.throws(
     () => assertIconParity({
       bridge: [
@@ -197,5 +227,5 @@ if (process.argv.includes('--self-test')) {
   process.stdout.write('RED proof: the former unboxed Host mark was rejected by rendered parity checks\n')
 }
 
-await run()
+if (!SOURCE_ONLY) await run()
 process.stdout.write('PASS #3176 independent About app-icon runtime parity\n')
