@@ -83,3 +83,80 @@ test("#3186 adversarial: the committed bake carries the sentinel, never a real S
   assert.ok(line, "bake target line is missing");
   assert.equal(line, 'export const BAKED_RELEASE_SHA = "unattested";');
 });
+
+// ── #3217 — the bake must not outlive the deploy ─────────────────────────────
+//
+// The bake rewrites a TRACKED file. Before #3217 it was never put back, so any
+// run outside a throwaway CI checkout — a hand deploy from a worktree, or
+// scripts/ci/issue1456-edge-deploy-idempotency.test.mjs, which runs this script
+// for real — left the stamped SHA behind as an uncommitted change. These cases
+// run the real script with `supabase` and `node` mocked on PATH, and prove BOTH
+// halves: the deploy command saw the baked SHA while it ran, and the file is
+// byte-identical to the original after the script exits — on success AND on a
+// failed deploy.
+
+async function runMockedDeploy({ sha, deployExitCode }) {
+  const { chmod, mkdtemp, writeFile, readFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const root = await mkdtemp(join(tmpdir(), "mingla-3217-"));
+  const seenPath = join(root, "seen.txt");
+  // `supabase` records what the bake file said AT DEPLOY TIME, then succeeds or
+  // fails as instructed. A non-409 failure is fatal to the wrapper.
+  await writeFile(
+    join(root, "supabase"),
+    `#!/usr/bin/env bash
+grep '^export const BAKED_RELEASE_SHA = ' "$MINGLA_3217_BAKE" >> "$MINGLA_3217_SEEN"
+if [[ "$MINGLA_3217_EXIT" != 0 ]]; then
+  printf '%s\\n' 'unexpected deploy status 500: {"message":"boom"}' >&2
+  exit "$MINGLA_3217_EXIT"
+fi
+printf 'deployed %s\\n' "$3"
+`,
+  );
+  await chmod(join(root, "supabase"), 0o755);
+  // Authority, preflight and the post-deploy watch have their own suites.
+  await writeFile(join(root, "node"), "#!/usr/bin/env bash\nexit 0\n");
+  await chmod(join(root, "node"), 0o755);
+  const result = spawnSync("bash", [
+    DEPLOY,
+    "--function",
+    "agent-chat",
+    "--merged-commit",
+    sha,
+  ], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    timeout: 120_000,
+    env: {
+      ...process.env,
+      PATH: `${root}:${process.env.PATH}`,
+      SUPABASE_PROJECT_ID: PRODUCTION_REF,
+      MINGLA_3217_BAKE: BAKE,
+      MINGLA_3217_SEEN: seenPath,
+      MINGLA_3217_EXIT: String(deployExitCode),
+    },
+  });
+  const seen = await readFile(seenPath, "utf8").catch(() => "");
+  return { result, seen };
+}
+
+test("#3217 adversarial: a SUCCESSFUL deploy ships the baked SHA and leaves the file untouched", async () => {
+  const before = readFileSync(BAKE, "utf8");
+  const sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
+  const { result, seen } = await runMockedDeploy({ sha, deployExitCode: 0 });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(seen, new RegExp(`BAKED_RELEASE_SHA = "${sha}";`), "the deploy must see the baked SHA");
+  assert.equal(readFileSync(BAKE, "utf8"), before, "the tracked file must be restored after success");
+});
+
+test("#3217 adversarial: a FAILED deploy still restores the file and keeps its non-zero status", async () => {
+  const before = readFileSync(BAKE, "utf8");
+  const sha = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c";
+  const { result, seen } = await runMockedDeploy({ sha, deployExitCode: 1 });
+  // The restore must not mask the verdict: a failed deploy is still a failure.
+  assert.notEqual(result.status, 0, "a failed deploy must not exit 0 because the trap ran");
+  assert.match(`${result.stderr}`, /function deployment failed/);
+  assert.match(seen, new RegExp(`BAKED_RELEASE_SHA = "${sha}";`), "the bake happened before the failure");
+  assert.equal(readFileSync(BAKE, "utf8"), before, "the tracked file must be restored after failure");
+});
