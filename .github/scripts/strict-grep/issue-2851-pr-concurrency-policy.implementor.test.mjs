@@ -853,6 +853,12 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     PR-family workflow lands before this one, the digest moves again and
   //     this must be re-derived on the new `main` — that blast radius is #3015,
   //     not this pin.
+  //   - NOTE for the next re-derivation: replacing the literal below DELETES a
+  //     line, so `test-append-only-check.js` requires
+  //     `[TEST-MOD-APPROVED #ISSUE]` in the BODY of a commit in the PR range
+  //     that touches THIS file — not in this comment, where it is invisible to
+  //     the gate. Rule 0 also requires the cited work item to carry a bracketed
+  //     label in that same body. #3186 lost a CI round-trip learning this.
   // Every earlier re-derivation is preserved, not replaced.
   "6b94b56f5f7b9717319b808c7a81aec2d03ea46774ad1e492a83c23fc4b76f96";
 const DENIED_FULL_SHA256 = [
