@@ -331,7 +331,42 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           TASK_STATE_INVALID: "Ari couldn't safely read this plan. Nothing was changed.",
           TASK_STATE_OVERSIZED: "This plan is too large to continue safely. Start a new Ari chat.",
           TASK_RECOVERY_REQUIRED: "The action finished, but Ari needs to reconcile the plan before continuing.",
+          // #3186 — a misconfiguration is NOT a network error and must never be
+          // reported as one. `ENVELOPE_INVALID` means the server answered and
+          // this app refused the answer: exactly what #3185 was, and for nine
+          // days every user was told to check a connection that was fine.
+          ENVELOPE_INVALID: "Ari replied but this app couldn't verify the response. That's on us — it's been reported.",
+          DEPENDENCY_UNAVAILABLE: "Ari can't reach part of Mingla right now. Nothing was changed; try again shortly.",
+          PROVIDER_UNAVAILABLE: "Ari is temporarily unavailable. Nothing was changed; try again shortly.",
+          INTERNAL: "Ari couldn't finish that request. Nothing was changed; try again shortly.",
         };
+        // #3186 — the generic fallback used to swallow this class entirely: the
+        // user saw a toast, nothing reached Sentry, and a total outage looked
+        // like flaky wifi. Anything we have no copy for is by definition a code
+        // we did not anticipate, which is precisely what must be reported.
+        if (result.code === "ENVELOPE_INVALID" || copy[result.code] === undefined) {
+          // Loaded LAZILY, on purpose. A module-scope import of the diagnostics
+          // barrel pulls @sentry/react-native's ESM build into every render
+          // suite that imports this screen, and the #1890 jest config does not
+          // transform it — that broke `issue_1890_ari_composer_clearance` in CI
+          // on this PR's first push. Telemetry must never decide whether a
+          // screen can be tested, and `reportNonFatal` is already throw-proof,
+          // so a failure here cannot reach the chat either.
+          void (async () => {
+            try {
+              const { reportNonFatal } = await import(
+                "../../diagnostics/reportNonFatal"
+              );
+              reportNonFatal(
+                "ari_chat",
+                new Error(`ari_chat_unmapped_error:${result.code}`),
+                { ari_error_code: result.code },
+              );
+            } catch {
+              // Reporting a fault must never become one.
+            }
+          })();
+        }
         setLocalError(copy[result.code] ?? "Ari could not connect — check your connection and try again.");
       }
       return false;

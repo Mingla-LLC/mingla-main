@@ -13,6 +13,11 @@
 
 import { supabase } from "./supabase";
 import { businessWebOriginOverrideBody } from "./businessWebOriginOverride";
+import { unwrapFunctionError } from "./brandStripeService";
+import {
+  isOrganiserEmailRequiredError,
+  OrganiserEmailRequiredError,
+} from "../utils/edgeFunctionErrors";
 
 export type PartnerStripeStatus =
   | "not_a_partner"
@@ -171,6 +176,14 @@ export async function startPartnerOnboarding(
     },
   });
   if (error) {
+    // #3208 — read the body for ONE code only. `app/partner/earnings.tsx`
+    // renders this error's message inline, so a typed error with honest copy
+    // replaces "Edge Function returned a non-2xx status code" for the no-email
+    // case. Every other failure keeps its existing message untouched.
+    const unwrapped = await unwrapFunctionError("partner-stripe-onboard", error);
+    if (isOrganiserEmailRequiredError(unwrapped)) {
+      throw new OrganiserEmailRequiredError("partner");
+    }
     throw new Error(error.message ?? "partner_stripe_onboard_failed");
   }
   if (!data || !isRecord(data) || typeof data.client_secret !== "string") {

@@ -27,6 +27,7 @@
  *      session-expired   (Stripe AccountSession TTL exceeded)
  *      failed-network    (mutation failed before browser opened)
  *      failed-stripe     (terminal Stripe rejection)
+ *      email-required    (#3208 — no usable organiser email; Stripe never called)
  *    }
  *
  * Trust signals (per design review):
@@ -104,15 +105,20 @@ import {
   getStripeCountryReplaceableCopy,
   isStripeCountryPickerLocked,
   mapStripeStatusErrorToViewState,
+  classifyBrandOnboardingStartError,
 } from "../../utils/brandStripeUiState";
 // #1863 — a 403 is a permission boundary, not a transport failure, and not a
 // program error. One exported copy pair, shared with the route gate.
-import { isPermissionDeniedError } from "../../utils/edgeFunctionErrors";
+// #3208 — the start-onboarding error decision moved into
+// `classifyBrandOnboardingStartError`; the no-email copy has one owner.
+import {
+  BRAND_EMAIL_REQUIRED_SUB,
+  BRAND_EMAIL_REQUIRED_TITLE,
+} from "../../utils/edgeFunctionErrors";
 import {
   BRAND_PAYMENTS_DENIED_BODY,
   BRAND_PAYMENTS_DENIED_TITLE,
 } from "../../utils/brandPaymentsPermission";
-import { BrandStripeCountryLockedError } from "../../services/brandStripeService";
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
 import { resolveBankConnectRail } from "../../utils/bankConnectRail";
 
@@ -174,12 +180,20 @@ type ViewState =
   | "cancelled"
   | "session-expired"
   | "failed-network"
-  | "failed-stripe";
+  | "failed-stripe"
+  // #3208 — no usable organiser email; the server refused before Stripe.
+  | "email-required";
 
 export interface BrandOnboardViewProps {
   brand: Brand | null;
   onCancel: () => void;
   onAfterDone: () => void;
+  /**
+   * #3208 — opens Brand Edit scrolled to CONTACT. Offered only when setup is
+   * refused for want of a usable email, since adding a brand contact email is
+   * the fix. Optional: without it the state still renders, with support only.
+   */
+  onEditContact?: () => void;
 }
 
 /** Best-effort haptic — silently swallowed if unavailable. */
@@ -218,6 +232,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   brand,
   onCancel,
   onAfterDone,
+  onEditContact,
 }) => {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -539,36 +554,35 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (err instanceof BrandStripeCountryLockedError) {
+      // #3208 — the decision lives in `classifyBrandOnboardingStartError` so it
+      // is testable without mounting this screen; see its ORDER note. #1863
+      // §4.6 still holds: a 403 is decided before any fallback.
+      const failure = classifyBrandOnboardingStartError(err);
+      if (failure === "country-locked") {
         setViewState("failed-stripe");
-        setErrorMessage(err.message);
+        setErrorMessage(message);
         fireHaptic("warning");
-        announceForAccessibility(err.message);
+        announceForAccessibility(message);
         return;
       }
-      // #1863 §4.6 — a 403 from `brand-stripe-onboard` used to fall through the
-      // `message.includes("stripe")` discriminator below (the string
-      // "forbidden: permission_denied" contains no "stripe") straight into
-      // `failed-network`. Placed AFTER country_locked so that 400-class rule
-      // keeps its precedence.
-      if (isPermissionDeniedError(err)) {
+      if (failure === "permission-denied") {
         setViewState("permission-denied");
         setErrorMessage(null);
         fireHaptic("warning");
         announceForAccessibility(BRAND_PAYMENTS_DENIED_TITLE);
         return;
       }
-      // Discriminate network vs Stripe errors
-      if (
-        message.toLowerCase().includes("stripe_api_error") ||
-        message.toLowerCase().includes("stripe")
-      ) {
-        setViewState("failed-stripe");
-        setErrorMessage(message);
-      } else {
-        setViewState("failed-network");
-        setErrorMessage(message);
+      if (failure === "email-required") {
+        // Not Stripe, not the network: the server refused before calling
+        // Stripe. "warning", not "error" — the organiser can fix this.
+        setViewState("email-required");
+        setErrorMessage(null);
+        fireHaptic("warning");
+        announceForAccessibility(BRAND_EMAIL_REQUIRED_TITLE);
+        return;
       }
+      setViewState(failure === "failed-stripe" ? "failed-stripe" : "failed-network");
+      setErrorMessage(message);
       fireHaptic("error");
       announceForAccessibility("Onboarding failed. Tap try again.");
     } finally {
@@ -1113,6 +1127,41 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
                 fullWidth
                 accessibilityLabel="Retry onboarding"
               />
+              <Pressable
+                onPress={handleSupport}
+                accessibilityLabel="Email Mingla support"
+                accessibilityRole="link"
+              >
+                <Text style={styles.supportLink}>
+                  Email {SUPPORT_EMAIL}
+                </Text>
+              </Pressable>
+            </View>
+          </>
+        ) : null}
+
+        {viewState === "email-required" ? (
+          <>
+            <View style={styles.stateBlock}>
+              <View style={[styles.stateIconCircle, styles.stateIconCircleFailed]}>
+                <Icon name="mail" size={32} color={semantic.error} />
+              </View>
+              <Text style={styles.stateTitle}>{BRAND_EMAIL_REQUIRED_TITLE}</Text>
+              <Text style={styles.stateSub}>{BRAND_EMAIL_REQUIRED_SUB}</Text>
+            </View>
+            <View style={styles.actionsCol}>
+              {/* #3208 — deliberately NO "Try again": the same session and the
+                  same brand record would be refused identically. */}
+              {onEditContact ? (
+                <Button
+                  label="Add contact email"
+                  onPress={onEditContact}
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  accessibilityLabel="Add a contact email to your brand"
+                />
+              ) : null}
               <Pressable
                 onPress={handleSupport}
                 accessibilityLabel="Email Mingla support"

@@ -29,6 +29,7 @@ import React, {
   useState,
 } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Pressable,
   StyleSheet,
@@ -51,6 +52,8 @@ import type {
 // ORCH-0892-A is DELETED — KAS supersedes it functionally.
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+// #3191/#3208 — the contact-email rule and its copy have one owner.
+import { validateBrandContactEmail } from "../../utils/brandContactEmail";
 
 import {
   accent,
@@ -315,9 +318,14 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   const pendingSectionRef = useRef<BrandEditSection | null>(
     initialSection ?? null,
   );
+  // #3208 — the latest measured offset of every section anchor. The latch
+  // above scrolls ONCE, at mount; this lets a failed Save scroll to the field
+  // at fault whenever it happens, without re-arming the latch.
+  const sectionYRef = useRef<Partial<Record<BrandEditSection, number>>>({});
   const handleSectionLayout = useCallback(
     (section: BrandEditSection) =>
       (event: LayoutChangeEvent): void => {
+        sectionYRef.current[section] = event.nativeEvent.layout.y;
         if (pendingSectionRef.current !== section) return;
         pendingSectionRef.current = null;
         // layout.y is relative to the ScrollView content container because
@@ -352,6 +360,11 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
     }
   }, [brand, draft]);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  // #3208 — inline error on the Contact email field. Cleared as soon as the
+  // organiser edits that field.
+  const [contactEmailError, setContactEmailError] = useState<string | null>(
+    null,
+  );
   const [discardDialogVisible, setDiscardDialogVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
 
@@ -381,6 +394,36 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
 
   const handleSave = useCallback(async (): Promise<void> => {
     if (!isDirty || submitting || draft === null) return;
+    // #3191 — stop a non-email reaching `brands.contact_email`. This field had
+    // no validation at ANY layer (input, mapper, column, edge function), so a
+    // street address typed here was persisted and later handed to Stripe as the
+    // connected account's contact email, dead-ending payout onboarding on
+    // "Invalid email" with nothing naming the field. It is also rendered as a
+    // `mailto:` chip on the public brand page, where a non-address is a dead
+    // link. Empty stays valid — this field is optional.
+    //
+    // #3208 — this check runs on EVERY save, so a bad value already stored
+    // (e.g. a brand whose Contact email holds a street address) blocks saves
+    // of unrelated fields. A bare toast then told the organiser about a field
+    // far below the fold that they never touched. Now the error sits on the
+    // field itself, the screen scrolls to it, and screen readers hear it.
+    const contactEmailProblem = validateBrandContactEmail(draft.contact?.email);
+    if (contactEmailProblem !== null) {
+      setContactEmailError(contactEmailProblem);
+      const contactY = sectionYRef.current.contact;
+      if (contactY !== undefined) {
+        scrollRef.current?.scrollTo({
+          y: Math.max(0, contactY - 8),
+          animated: true,
+        });
+      }
+      try {
+        AccessibilityInfo.announceForAccessibility(contactEmailProblem);
+      } catch {
+        // No announcer on this platform — the inline error still shows.
+      }
+      return;
+    }
     setSubmitting(true);
     // Cycle 17e-A: parent's onSave is now async and wires useUpdateBrand
     // mutation. Removed simulated 300ms delay — real network round-trip
@@ -750,13 +793,16 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             <Input
               variant="email"
               value={draft.contact?.email ?? ""}
-              onChangeText={(v) =>
-                setDraft({ ...draft, contact: { ...draft.contact, email: v } })
-              }
+              onChangeText={(v) => {
+                setDraft({ ...draft, contact: { ...draft.contact, email: v } });
+                if (contactEmailError !== null) setContactEmailError(null);
+              }}
               placeholder="hello@yourbrand.com"
               leadingIcon="mail"
               accessibilityLabel="Contact email"
               clearable
+              error={contactEmailError}
+              errorId="brand-edit-contact-email-error"
             />
             <Input
               variant="phone"

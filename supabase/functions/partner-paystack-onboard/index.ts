@@ -40,9 +40,13 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 // @ts-ignore — Deno ESM import
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { writeAudit } from "../_shared/audit.ts";
+import { isPaystackRecipientShared } from "../_shared/paystackRecipientSharing.ts";
 import {
   paystackCreateTransferRecipient,
   paystackDeleteTransferRecipient,
@@ -90,6 +94,51 @@ export interface PartnerPaystackOnboardDeps {
   resolveAccount: typeof paystackResolveAccount;
   createRecipient: typeof paystackCreateTransferRecipient;
   deleteRecipient: typeof paystackDeleteTransferRecipient;
+}
+
+/**
+ * #3192 — delete a partner's transfer recipient at Paystack ONLY when nothing
+ * else depends on it. Paystack de-duplicates recipients across the entire
+ * integration, so a partner's code can be the same object a BRAND settles to.
+ * Never throws: an unprovable cleanup is skipped, because a stray provider
+ * object costs far less than a broken payout destination.
+ */
+async function deletePartnerRecipientIfUnshared(
+  client: SupabaseClient,
+  deps: PartnerPaystackOnboardDeps,
+  recipientCode: string,
+  accountId: string,
+  context: string,
+): Promise<void> {
+  try {
+    const shared = await isPaystackRecipientShared(
+      client,
+      recipientCode,
+      { kind: "partner", accountId },
+    );
+    if (shared) {
+      console.warn(
+        `[partner-paystack-onboard] ${context}: skipped provider delete — ` +
+          `recipient ${recipientCode} is shared with another holder`,
+      );
+      return;
+    }
+  } catch (err) {
+    console.error(
+      `[partner-paystack-onboard] ${context}: shared-recipient check failed, ` +
+        "delete skipped (fail-closed):",
+      err instanceof Error ? err.message : String(err),
+    );
+    return;
+  }
+  try {
+    await deps.deleteRecipient(recipientCode);
+  } catch (err) {
+    console.error(
+      `[partner-paystack-onboard] ${context}: recipient delete failed (non-fatal):`,
+      err instanceof Error ? err.message : String(err),
+    );
+  }
 }
 
 function defaultDeps(): PartnerPaystackOnboardDeps {
@@ -141,7 +190,10 @@ export async function handler(
     try {
       body = await req.json();
     } catch {
-      return jsonResponse({ error: "validation_error", detail: "invalid_json" }, 400);
+      return jsonResponse(
+        { error: "validation_error", detail: "invalid_json" },
+        400,
+      );
     }
 
     const action = body?.action;
@@ -150,7 +202,10 @@ export async function handler(
       action !== "create_recipient" && action !== "status" &&
       action !== "disconnect"
     ) {
-      return jsonResponse({ error: "validation_error", detail: "unknown_action" }, 400);
+      return jsonResponse({
+        error: "validation_error",
+        detail: "unknown_action",
+      }, 400);
     }
 
     // Auth — every action requires a valid JWT.
@@ -170,7 +225,10 @@ export async function handler(
       .eq("id", userId)
       .maybeSingle<PartnerAccountRow>();
     if (accountErr) {
-      console.error("[partner-paystack-onboard] account lookup failed:", accountErr);
+      console.error(
+        "[partner-paystack-onboard] account lookup failed:",
+        accountErr,
+      );
       return jsonResponse({ error: "internal_error" }, 500);
     }
     if (!account) {
@@ -195,7 +253,10 @@ export async function handler(
         return jsonResponse({ banks: slim });
       } catch (err) {
         return jsonResponse(
-          { error: "banks_unavailable", detail: String((err as Error)?.message ?? err) },
+          {
+            error: "banks_unavailable",
+            detail: String((err as Error)?.message ?? err),
+          },
           502,
         );
       }
@@ -244,7 +305,10 @@ export async function handler(
         .eq("account_id", userId)
         .maybeSingle<PaystackAccountRow>();
       if (rowErr) {
-        console.error("[partner-paystack-onboard] disconnect read failed:", rowErr);
+        console.error(
+          "[partner-paystack-onboard] disconnect read failed:",
+          rowErr,
+        );
         return jsonResponse({ error: "internal_error" }, 500);
       }
       if (!row) {
@@ -259,19 +323,24 @@ export async function handler(
         })
         .eq("id", row.id);
       if (updErr) {
-        console.error("[partner-paystack-onboard] detach update failed:", updErr);
+        console.error(
+          "[partner-paystack-onboard] detach update failed:",
+          updErr,
+        );
         return jsonResponse({ error: "internal_error" }, 500);
       }
       if (row.recipient_code) {
-        try {
-          await deps.deleteRecipient(row.recipient_code);
-        } catch (err) {
-          // Non-fatal — mirrors partner-stripe-detach semantics.
-          console.error(
-            "[partner-paystack-onboard] recipient delete failed (non-fatal):",
-            err instanceof Error ? err.message : String(err),
-          );
-        }
+        // #3192 — Paystack de-duplicates recipients across the whole
+        // integration, so this code may also be a BRAND's payout destination.
+        // Deleting it would break them. Fail closed: if sharing cannot be
+        // established, skip the delete.
+        await deletePartnerRecipientIfUnshared(
+          supabase,
+          deps,
+          row.recipient_code,
+          userId,
+          "detach",
+        );
       }
       try {
         await writeAudit(supabase, {
@@ -283,7 +352,10 @@ export async function handler(
           before: { recipient_code: row.recipient_code },
         });
       } catch (auditErr) {
-        console.error("[partner-paystack-onboard] audit write failed:", auditErr);
+        console.error(
+          "[partner-paystack-onboard] audit write failed:",
+          auditErr,
+        );
       }
       return jsonResponse({ disconnected: true });
     }
@@ -291,7 +363,10 @@ export async function handler(
     // resolve_account + create_recipient both require bank details.
     if (!isValidNuban(body?.account_number)) {
       return jsonResponse(
-        { error: "validation_error", detail: "account_number_must_be_10_digits" },
+        {
+          error: "validation_error",
+          detail: "account_number_must_be_10_digits",
+        },
         400,
       );
     }
@@ -317,7 +392,10 @@ export async function handler(
         });
       } catch (err) {
         return jsonResponse(
-          { error: "account_unresolved", detail: String((err as Error)?.message ?? err) },
+          {
+            error: "account_unresolved",
+            detail: String((err as Error)?.message ?? err),
+          },
           422,
         );
       }
@@ -330,9 +408,14 @@ export async function handler(
       .from("partner_stripe_connect_accounts")
       .select("stripe_account_id, detached_at")
       .eq("account_id", userId)
-      .maybeSingle<{ stripe_account_id: string | null; detached_at: string | null }>();
+      .maybeSingle<
+        { stripe_account_id: string | null; detached_at: string | null }
+      >();
     if (stripeErr) {
-      console.error("[partner-paystack-onboard] stripe exclusivity read failed:", stripeErr);
+      console.error(
+        "[partner-paystack-onboard] stripe exclusivity read failed:",
+        stripeErr,
+      );
       return jsonResponse({ error: "internal_error" }, 500);
     }
     if (stripeRow?.stripe_account_id && stripeRow.detached_at === null) {
@@ -349,7 +432,10 @@ export async function handler(
       accountName = resolved.account_name;
     } catch (err) {
       return jsonResponse(
-        { error: "account_unresolved", detail: String((err as Error)?.message ?? err) },
+        {
+          error: "account_unresolved",
+          detail: String((err as Error)?.message ?? err),
+        },
         422,
       );
     }
@@ -362,14 +448,15 @@ export async function handler(
       .eq("account_id", userId)
       .maybeSingle<{ recipient_code: string | null }>();
     if (priorRow?.recipient_code) {
-      try {
-        await deps.deleteRecipient(priorRow.recipient_code);
-      } catch (err) {
-        console.error(
-          "[partner-paystack-onboard] prior recipient delete failed (non-fatal):",
-          err instanceof Error ? err.message : String(err),
-        );
-      }
+      // #3192 — same hazard on the re-run path: the code being replaced may be
+      // shared with a brand or another partner still settling to it.
+      await deletePartnerRecipientIfUnshared(
+        supabase,
+        deps,
+        priorRow.recipient_code,
+        userId,
+        "prior recipient replace",
+      );
     }
 
     // (3) Create the Transfer Recipient (name = the RESOLVED holder name).
@@ -383,7 +470,10 @@ export async function handler(
       recipientCode = recipient.recipient_code;
     } catch (err) {
       return jsonResponse(
-        { error: "recipient_create_failed", detail: String((err as Error)?.message ?? err) },
+        {
+          error: "recipient_create_failed",
+          detail: String((err as Error)?.message ?? err),
+        },
         502,
       );
     }
@@ -391,9 +481,10 @@ export async function handler(
     // (4) UPSERT the mirror row — LAST4 ONLY, never the full NUBAN
     //     (I-PROPOSED-1331-NUBAN-NEVER-PERSISTED).
     const last4 = accountNumber.slice(-4);
-    const bankName = typeof body?.bank_name === "string" && body.bank_name.length > 0
-      ? body.bank_name
-      : null;
+    const bankName =
+      typeof body?.bank_name === "string" && body.bank_name.length > 0
+        ? body.bank_name
+        : null;
     const { error: upsertErr } = await supabase
       .from("partner_paystack_accounts")
       .upsert(
