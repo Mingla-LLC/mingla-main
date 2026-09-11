@@ -7430,6 +7430,7 @@
       "expectedFiles": [
         "mingla-business/jest.issue679.cfg.cjs",
         "packages/brand-rendering/__tests__/issue_2539_avatar_clip_and_glow.test.tsx",
+        "packages/brand-rendering/__tests__/issue_3188_socials_one_line.test.tsx",
         "packages/brand-rendering/__tests__/issue_679_follow_gate.adversarial.render.test.tsx",
         "packages/brand-rendering/__tests__/issue_679_follow_gate.test.tsx",
         "packages/brand-rendering/__tests__/orch_1155_brand_redesign.adversarial.test.tsx",
