@@ -45,9 +45,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 // @ts-ignore — Deno ESM import
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { writeAudit } from "../_shared/audit.ts";
+import { isPaystackRecipientShared } from "../_shared/paystackRecipientSharing.ts";
 import {
-  paystackCreateTransferRecipient,
   paystackCreateSubaccount,
+  paystackCreateTransferRecipient,
   paystackDeleteTransferRecipient,
   paystackFetchSubaccount,
   paystackListBanks,
@@ -56,12 +57,12 @@ import {
   resolvePaystackSecretKey,
 } from "../_shared/paystack.ts";
 import {
+  type BrandRecipientDeps,
   BrandRecipientError,
+  type BrandRecipientRow,
   deactivateBrandPaystackRecipient,
   hmacPaystackAccountFingerprint,
   saveBrandPaystackRecipient,
-  type BrandRecipientDeps,
-  type BrandRecipientRow,
 } from "./recipient.ts";
 import { resolvePaystackPayoutHoldOnboardFlip } from "../_shared/secretBundle.ts";
 import { evaluateBusinessNativeVersion } from "../_shared/appVersionPolicy.ts";
@@ -412,14 +413,19 @@ export async function attemptPaystackOnboardStamp(
   }
 }
 
-export const brandPaystackOnboardHandler = async (req: Request): Promise<Response> => {
+export const brandPaystackOnboardHandler = async (
+  req: Request,
+): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
   if (req.method !== "POST") {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
-  const versionBlocked = await evaluateBusinessNativeVersion(req, "brand-paystack-onboard");
+  const versionBlocked = await evaluateBusinessNativeVersion(
+    req,
+    "brand-paystack-onboard",
+  );
   if (versionBlocked) return versionBlocked;
 
   try {
@@ -427,7 +433,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
     try {
       body = await req.json();
     } catch {
-      return jsonResponse({ error: "validation_error", detail: "invalid_json" }, 400);
+      return jsonResponse(
+        { error: "validation_error", detail: "invalid_json" },
+        400,
+      );
     }
 
     const action = body?.action;
@@ -439,7 +448,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
       action !== "disconnect" && action !== "refresh_status" &&
       action !== "select_provider" && action !== "clear_provider"
     ) {
-      return jsonResponse({ error: "validation_error", detail: "unknown_action" }, 400);
+      return jsonResponse({
+        error: "validation_error",
+        detail: "unknown_action",
+      }, 400);
     }
 
     // Authenticate the caller (all actions require a valid JWT).
@@ -478,7 +490,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
       { p_brand_id: brandId, p_user_id: userId },
     );
     if (permError) {
-      console.error("[brand-paystack-onboard] permission RPC failed:", permError);
+      console.error(
+        "[brand-paystack-onboard] permission RPC failed:",
+        permError,
+      );
       return jsonResponse({ error: "internal_error" }, 500);
     }
     if (canManage !== true) {
@@ -489,7 +504,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
     if (action === "resolve_account") {
       if (!isValidNuban(body?.account_number)) {
         return jsonResponse(
-          { error: "validation_error", detail: "account_number_must_be_10_digits" },
+          {
+            error: "validation_error",
+            detail: "account_number_must_be_10_digits",
+          },
           400,
         );
       }
@@ -511,7 +529,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
       } catch (err) {
         // Paystack returns non-200 for an unresolvable account; surface as 422.
         return jsonResponse(
-          { error: "account_unresolved", detail: String((err as Error)?.message ?? err) },
+          {
+            error: "account_unresolved",
+            detail: String((err as Error)?.message ?? err),
+          },
           422,
         );
       }
@@ -521,7 +542,9 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
     // clear_provider can symmetrically unstamp the issue #1014 NGN signal.
     const { data: brand, error: brandErr } = await supabase
       .from("brands")
-      .select("id, name, payment_provider, payment_country, paystack_subaccount_code, default_currency")
+      .select(
+        "id, name, payment_provider, payment_country, paystack_subaccount_code, default_currency",
+      )
       .eq("id", brandId)
       .maybeSingle();
     if (brandErr || !brand) {
@@ -556,8 +579,32 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
             },
             { onConflict: "brand_id" },
           );
-        if (error) throw error;
+        // #3192 — this write failing is how the cross-tenant delete was
+        // triggered, and it previously produced NO server-side line at all:
+        // the function's logs held only `booted` and the Paystack api_call
+        // entries, so diagnosis meant reading raw PostgREST status codes out
+        // of edge_logs. Never let it fail silently again.
+        if (error) {
+          console.error(
+            `[brand-paystack-onboard] recipient persist failed for brand ${recipientBrandId}:`,
+            JSON.stringify({
+              code: error.code,
+              message: error.message,
+              details: error.details,
+              hint: error.hint,
+            }),
+          );
+          throw error;
+        }
       },
+      // #3192 — Paystack de-duplicates transfer recipients, so a code we hold
+      // may belong to another brand settling to the same bank account. Asked
+      // before every provider-side delete.
+      isRecipientCodeSharedElsewhere: (recipientCode, recipientBrandId) =>
+        isPaystackRecipientShared(supabase, recipientCode, {
+          kind: "brand",
+          brandId: recipientBrandId,
+        }),
       deactivateRecipient: async (recipientBrandId) => {
         const { error } = await supabase
           .from("brand_paystack_recipients")
@@ -661,15 +708,24 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
     if (action === "select_provider") {
       if (brand.payment_provider === "paystack") {
         // Already on Paystack — idempotent success.
-        return jsonResponse({ payment_provider: "paystack", payment_country: "NG" });
+        return jsonResponse({
+          payment_provider: "paystack",
+          payment_country: "NG",
+        });
       }
       const { error: updErr } = await supabase
         .from("brands")
         .update({ payment_provider: "paystack", payment_country: "NG" })
         .eq("id", brandId);
       if (updErr) {
-        console.error("[brand-paystack-onboard] select_provider update failed:", updErr);
-        return jsonResponse({ error: "internal_error", detail: "brand_update_failed" }, 500);
+        console.error(
+          "[brand-paystack-onboard] select_provider update failed:",
+          updErr,
+        );
+        return jsonResponse({
+          error: "internal_error",
+          detail: "brand_update_failed",
+        }, 500);
       }
       await writeAudit(supabase, {
         user_id: userId,
@@ -679,7 +735,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
         target_id: brandId,
         after: { payment_provider: "paystack", payment_country: "NG" },
       });
-      return jsonResponse({ payment_provider: "paystack", payment_country: "NG" });
+      return jsonResponse({
+        payment_provider: "paystack",
+        payment_country: "NG",
+      });
     }
 
     // ── action: clear_provider ───────────────────────────────────────────────
@@ -689,7 +748,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
     // subaccount exists (use disconnect first).
     if (action === "clear_provider") {
       if (brand.paystack_subaccount_code != null) {
-        return jsonResponse({ error: "conflict", detail: "disconnect_first" }, 409);
+        return jsonResponse(
+          { error: "conflict", detail: "disconnect_first" },
+          409,
+        );
       }
       // issue #1014 — symmetric removal of the explicit NGN signal when the
       // brand leaves the NG rail pre-subaccount: a lingering NGN would leak
@@ -706,8 +768,14 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
         .update(clearUpdate)
         .eq("id", brandId);
       if (updErr) {
-        console.error("[brand-paystack-onboard] clear_provider update failed:", updErr);
-        return jsonResponse({ error: "internal_error", detail: "brand_update_failed" }, 500);
+        console.error(
+          "[brand-paystack-onboard] clear_provider update failed:",
+          updErr,
+        );
+        return jsonResponse({
+          error: "internal_error",
+          detail: "brand_update_failed",
+        }, 500);
       }
       await writeAudit(supabase, {
         user_id: userId,
@@ -721,7 +789,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
           ...(clearNgnStamp ? { default_currency: null } : {}),
         },
       });
-      return jsonResponse({ payment_provider: "stripe", payment_country: null });
+      return jsonResponse({
+        payment_provider: "stripe",
+        payment_country: null,
+      });
     }
 
     // ── action: disconnect ───────────────────────────────────────────────────
@@ -746,7 +817,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
           await paystackUpdateSubaccount(code, { active: false });
         } catch (err) {
           // Non-fatal: still clear the local link so the brand can re-onboard.
-          console.error("[brand-paystack-onboard] deactivate subaccount failed:", err);
+          console.error(
+            "[brand-paystack-onboard] deactivate subaccount failed:",
+            err,
+          );
         }
       }
       const { error: updErr } = await supabase
@@ -754,8 +828,14 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
         .update({ paystack_subaccount_code: null })
         .eq("id", brandId);
       if (updErr) {
-        console.error("[brand-paystack-onboard] disconnect update failed:", updErr);
-        return jsonResponse({ error: "internal_error", detail: "brand_update_failed" }, 500);
+        console.error(
+          "[brand-paystack-onboard] disconnect update failed:",
+          updErr,
+        );
+        return jsonResponse({
+          error: "internal_error",
+          detail: "brand_update_failed",
+        }, 500);
       }
       await writeAudit(supabase, {
         user_id: userId,
@@ -771,7 +851,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
     // Both create_subaccount + update_subaccount require bank details.
     if (!isValidNuban(body?.account_number)) {
       return jsonResponse(
-        { error: "validation_error", detail: "account_number_must_be_10_digits" },
+        {
+          error: "validation_error",
+          detail: "account_number_must_be_10_digits",
+        },
         400,
       );
     }
@@ -811,7 +894,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
       const code = brand.paystack_subaccount_code as string | null;
       if (!code) {
         // Nothing to update — caller should create instead.
-        return jsonResponse({ error: "conflict", detail: "no_subaccount_to_update" }, 409);
+        return jsonResponse({
+          error: "conflict",
+          detail: "no_subaccount_to_update",
+        }, 409);
       }
       let accountName: string;
       try {
@@ -822,7 +908,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
         accountName = resolved.account_name;
       } catch (err) {
         return jsonResponse(
-          { error: "account_unresolved", detail: String((err as Error)?.message ?? err) },
+          {
+            error: "account_unresolved",
+            detail: String((err as Error)?.message ?? err),
+          },
           422,
         );
       }
@@ -834,7 +923,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
         });
       } catch (err) {
         return jsonResponse(
-          { error: "subaccount_update_failed", detail: String((err as Error)?.message ?? err) },
+          {
+            error: "subaccount_update_failed",
+            detail: String((err as Error)?.message ?? err),
+          },
           502,
         );
       }
@@ -844,12 +936,16 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
         action: "paystack.subaccount_updated",
         target_type: "brand",
         target_id: brandId,
-        after: { account_number_last4: (body.account_number as string).slice(-4) },
+        after: {
+          account_number_last4: (body.account_number as string).slice(-4),
+        },
       });
       return jsonResponse({
         subaccount_code: code,
         account_name: accountName,
-        account_number_masked: `••••${(body.account_number as string).slice(-4)}`,
+        account_number_masked: `••••${
+          (body.account_number as string).slice(-4)
+        }`,
       });
     }
 
@@ -858,7 +954,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
     // already on Stripe cannot reach Nigeria (Stripe has no NG payouts), but be
     // explicit — only an unconfigured or already-Paystack brand may onboard here.
     if (brand.payment_provider === "stripe" && brand.paystack_subaccount_code) {
-      return jsonResponse({ error: "conflict", detail: "provider_already_set" }, 409);
+      return jsonResponse(
+        { error: "conflict", detail: "provider_already_set" },
+        409,
+      );
     }
 
     // Verify the account name first (Paystack disclaims wrong-account liability).
@@ -871,7 +970,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
       accountName = resolved.account_name;
     } catch (err) {
       return jsonResponse(
-        { error: "account_unresolved", detail: String((err as Error)?.message ?? err) },
+        {
+          error: "account_unresolved",
+          detail: String((err as Error)?.message ?? err),
+        },
         422,
       );
     }
@@ -886,7 +988,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
     );
     const bps = Array.isArray(takeRows)
       ? Number(takeRows[0]?.effective_take_rate_bps)
-      : Number((takeRows as { effective_take_rate_bps?: number })?.effective_take_rate_bps);
+      : Number(
+        (takeRows as { effective_take_rate_bps?: number })
+          ?.effective_take_rate_bps,
+      );
     if (Number.isFinite(bps) && bps >= 0) percentageCharge = bps / 100;
 
     let subaccountCode: string;
@@ -900,7 +1005,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
       subaccountCode = sub.subaccount_code;
     } catch (err) {
       return jsonResponse(
-        { error: "subaccount_create_failed", detail: String((err as Error)?.message ?? err) },
+        {
+          error: "subaccount_create_failed",
+          detail: String((err as Error)?.message ?? err),
+        },
         502,
       );
     }
@@ -925,7 +1033,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
       .eq("id", brandId);
     if (updErr) {
       console.error("[brand-paystack-onboard] brand update failed:", updErr);
-      return jsonResponse({ error: "internal_error", detail: "brand_update_failed" }, 500);
+      return jsonResponse({
+        error: "internal_error",
+        detail: "brand_update_failed",
+      }, 500);
     }
 
     let stampReconciliationStartedAt: number | null = null;
@@ -1084,7 +1195,10 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
   } catch (err) {
     console.error("[brand-paystack-onboard] unhandled error:", err);
     return jsonResponse(
-      { error: "internal_error", detail: String((err as Error)?.message ?? err) },
+      {
+        error: "internal_error",
+        detail: String((err as Error)?.message ?? err),
+      },
       500,
     );
   }

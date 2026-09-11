@@ -114,6 +114,15 @@ const SIMULATED_SAVE_DELAY_MS = 300;
 // feedback is visually registered.
 const POST_SAVE_NAV_DELAY_MS = 300;
 
+/**
+ * #3191 — the same email shape the Business app already enforces at sign-in
+ * (`AuthContext.signInWithEmail`) and that the payout edge functions apply
+ * server-side (`supabase/functions/_shared/organiserContactEmail.ts`). Kept
+ * byte-identical across all three so one layer can never accept what another
+ * rejects.
+ */
+const CONTACT_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // Cycle 7 FX2 cover-hue tiles — MIRROR Cycle 3 CreatorStep4Cover.tsx
 // hue array verbatim. If the event-cover palette ever expands, brand
 // covers should follow (keep these arrays in sync).
@@ -381,6 +390,18 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
 
   const handleSave = useCallback(async (): Promise<void> => {
     if (!isDirty || submitting || draft === null) return;
+    // #3191 — stop a non-email reaching `brands.contact_email`. This field had
+    // no validation at ANY layer (input, mapper, column, edge function), so a
+    // street address typed here was persisted and later handed to Stripe as the
+    // connected account's contact email, dead-ending payout onboarding on
+    // "Invalid email" with nothing naming the field. It is also rendered as a
+    // `mailto:` chip on the public brand page, where a non-address is a dead
+    // link. Empty stays valid — this field is optional.
+    const contactEmail = draft.contact?.email?.trim() ?? "";
+    if (contactEmail.length > 0 && !CONTACT_EMAIL_RE.test(contactEmail)) {
+      fireToast("That contact email doesn't look right. Check it and save again.");
+      return;
+    }
     setSubmitting(true);
     // Cycle 17e-A: parent's onSave is now async and wires useUpdateBrand
     // mutation. Removed simulated 300ms delay — real network round-trip
