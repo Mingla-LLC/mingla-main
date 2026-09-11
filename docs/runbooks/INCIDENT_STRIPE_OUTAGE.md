@@ -7,7 +7,11 @@
 
 1. Check [Stripe status](https://status.stripe.com/).
 2. Surface honest buyer copy — do not retry-charge in a tight loop.
-3. Monitor `stripe-webhook-health-check` / `stripe_audit_log` for silence.
+3. Check webhook arrival on the API health dashboard — `api-health-probe` records Stripe
+   webhook freshness hourly (`last_received`), and `stripe_audit_log` for recent events.
+   Silence alone is informational at current traffic (ORCH-1213); a real Stripe API/auth
+   outage pages through the synthetic Stripe probe. (#3200 retired `stripe-webhook-health-check`,
+   which this step used to name: it had never run, and alerted to a non-Mingla address.)
 
 ## Mitigation
 

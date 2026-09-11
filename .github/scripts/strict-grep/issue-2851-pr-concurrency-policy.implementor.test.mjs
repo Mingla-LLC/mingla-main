@@ -861,7 +861,20 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     label in that same body. #3186 lost a CI round-trip learning this.
   // Every earlier re-derivation is preserved, not replaced.
   //
-  // [TEST-MOD-APPROVED #3193] Re-derived again, on top of #3186's re-pin. #3193
+  // #3200 / #3201 [stripe safety nets and derived secrets] re-derivation. The
+  // secret-budget lane's Deno step gained three test paths so this change's
+  // suites run in CI: the #3200 and #3201 regression globs, and the retirement
+  // guard that replaced the retired Stripe webhook health check's source test —
+  // which no lane had ever run. No concurrency block, group expression or
+  // cancellation value is touched; no workflow is added, removed or renamed.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring that one lane to its
+  //     `origin/main` bytes recomputes
+  //     6b94b56f5f7b9717319b808c7a81aec2d03ea46774ad1e492a83c23fc4b76f96,
+  //     the value this pin replaces, and the gate exits 0.
+  //   - derived twice on the branch tree, identical both times; not copied from
+  //     a PR run's printed `actual:` (#3015).
+  //   - the override token is in the commit body, not here (see the NOTE above).
+  // [TEST-MOD-APPROVED #3193] Re-derived again, on top of #3200/#3201's re-pin. #3193
   // added TWO PostgreSQL 17 test targets (plus their comments) to the existing
   // migrations-and-Stripe Deno lane, because the CI registry gate refuses a new
   // issue-named workflow and those suites need a live PostgreSQL. That lane is
@@ -890,23 +903,29 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     workflows — the sibling subtest above, which passes.
   //   - THE DELTA IS EXACTLY THIS CHANGE, executed rather than asserted:
   //     restoring that one lane to its `origin/main` bytes recomputes
-  //     6b94b56f5f7b9717319b808c7a81aec2d03ea46774ad1e492a83c23fc4b76f96,
-  //     the value this pin replaces — #3186's, one commit old — so nothing else
-  //     in the tree drifted into this digest. The new value below is stable
+  //     6e75928e5fac031876fa317ca62e775f45a61bc9681ba5979b537d96136bd9be,
+  //     the value this pin replaces — #3200/#3201's, whose own secret-budget
+  //     lane edit is preserved untouched — so nothing else in the tree drifted
+  //     into this digest. The new value below is stable
   //     across three consecutive derivations.
   //   - this pin was ALREADY re-derived once on `origin/main` 6f95a0502, where
   //     it was a6b3a749a7c3b6d65b37fc70a6c8136b8e28ff02e24b8fcced5e7f3387879f71.
   //     #3186 (PR #3190) then landed two lines on the secret-budget lane and
   //     moved the base out from under it, which is the #3015 blast radius in
   //     action and the reason this note names the commit it was derived on:
-  //     the branch is now rebased onto `origin/main` 1ebf80216, so the
+  //     the branch then took `origin/main` 1ebf80216 (#3186, `8c09aa3b...`),
+  //     and was later MERGED with `origin/main` f93287730 (#3200/#3201 moved
+  //     the secret-budget lane again), so the value below is derived on the
+  //     merged tree that carries BOTH lane edits. Superseded values, for the
+  //     record: a6b3a749... (base 6f95a0502), 8c09aa3b... (base 1ebf80216).
+  //     The branch is now current with `origin/main` f93287730, so the
   //     derivation tree and the tree CI will hash for the merge carry the same
   //     124 PR-family documents. Per #3015 the `actual:` printed by a PR run
   //     must not be copied; this value was derived independently by re-running
   //     the gate's own canonicalizer over the working tree, three times, plus
   //     the reversion check above.
   // Every earlier re-derivation is preserved, not replaced.
-  "8c09aa3b025b64af2488575c1fb3e47c57de78010b79cb31de2e31ac382073cf";
+  "eabe1ba163977917869ee78a5933c0c2a3eb6c9f7922e02d81ee22b1e0aad2a5";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
