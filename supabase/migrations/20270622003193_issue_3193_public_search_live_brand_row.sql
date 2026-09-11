@@ -10,23 +10,24 @@
 -- `resolve_public_search_document` returned `state='draft'`, and
 -- `handlePublicSearchDocument` served 404 for a live brand.
 --
--- This migration changes WHICH ROW the brand predicate is evaluated against. It
--- does NOT change the predicate. Every path into `draft` enumerated in the #3193
+-- This migration changes WHICH ROW each predicate is evaluated against. It does
+-- NOT change any predicate. Every path into `draft` enumerated in the #3193
 -- investigation (D1 brand soft-deleted, D2 account soft-deleted, D3 unverified
 -- physical brand with nothing published, D4 unknown slug or no creator account,
 -- D5 path/kind mismatch, D6 archived ledger row) is preserved byte-for-byte, and
 -- no brand that is hidden before this migration is reachable after it.
 --
 -- `plpgsql` has no partial replace, so the whole body is re-emitted. Everything
--- except the brand branch's row selection is byte-identical to
+-- except the three row selections is byte-identical to
 -- `20270614002986_issue_2986_public_search_documents.sql` lines 350-465, which is
 -- deliberately left untouched (three CI gates pin that file).
 --
--- Event/trip/experience and venue row selection are NOT changed here. They carry
--- the same unfiltered `WHERE b.slug=`; the event branch is protected only
--- accidentally by `ORDER BY ed.start_at NULLS LAST`, which does not hold for an
--- event with no master `event_dates` row. That is #3193's OQ-1, left open by the
--- orchestrator and deliberately not scoped in here.
+-- All three slug-keyed row selections are made total and live-preferring, on
+-- Seth's ruling (#3193 OQ-1): brand, event/trip/experience, and venue. Each
+-- carries its own protective comment below explaining why its keys are in the
+-- order they are. The one non-obvious choice is the event branch's FIRST key,
+-- which preserves the resolver's fail-closed contract rather than blindly
+-- preferring the live brand.
 
 BEGIN;
 
@@ -101,8 +102,36 @@ BEGIN
       FROM public.experience_stops s
       WHERE p_kind='experience' AND s.event_id=e.id
     ) stop_meta ON true
+    -- #3193 — this branch also selected with an unfiltered `WHERE b.slug=`, and
+    -- only the accident of `ed.start_at NULLS LAST` made it look deterministic.
+    -- It is not: an event with no master `event_dates` row ties with every other
+    -- row, and there are TWO duplicate axes here, not one. A slug can carry
+    -- soft-deleted BRAND twins (`idx_brands_slug_active` constrains live rows
+    -- only), and one brand can carry soft-deleted EVENT twins
+    -- (`idx_events_brand_slug_active` is UNIQUE (brand_id, lower(slug)) WHERE
+    -- deleted_at IS NULL). Either tombstone could decide a live event's page.
+    --
+    -- Key order is load-bearing:
+    --   1. a row carrying an entity OF THE REQUESTED KIND ranks first, using the
+    --      predicate's own kind expression verbatim. This preserves the
+    --      resolver's fail-closed contract: an existing-but-ineligible source
+    --      must yield `draft`, which returns BEFORE any ledger overlay. A plain
+    --      live-brand-first order would pick a live twin that has no such event,
+    --      yield `missing`, and let a `gone`/`redirected` ledger row apply to a
+    --      path whose only real entity sits under a tombstone.
+    --   2. any event row ranks ahead of an empty one (the type-mismatch case).
+    --   3. the live brand, then 4. the live event.
+    --   5. the pre-#3193 `ed.start_at NULLS LAST`, preserved beneath all of it.
+    --   6. `e.id, b.id, ed.id` make the order total — master dates carry no
+    --      uniqueness constraint, so `ed.id` is required, not decorative.
+    -- Do not drop or reorder keys 1-4.
     WHERE b.slug=v_parts[2]
-    ORDER BY ed.start_at NULLS LAST LIMIT 1;
+    ORDER BY (e.id IS NOT NULL AND ((p_kind='event' AND e.event_type IN ('event','rsvp')) OR e.event_type=p_kind)) DESC,
+      (e.id IS NOT NULL) DESC,
+      (b.deleted_at IS NULL) DESC,
+      (e.deleted_at IS NULL) DESC,
+      ed.start_at NULLS LAST, e.id, b.id, ed.id
+    LIMIT 1;
   ELSIF p_kind='brand' THEN
     SELECT CASE WHEN b.deleted_at IS NULL AND ca.deleted_at IS NULL AND (
       b.kind IS DISTINCT FROM 'physical' OR b.claim_status='verified' OR EXISTS (
@@ -150,7 +179,17 @@ BEGIN
     FROM public.brands b JOIN public.venue_listings v ON v.brand_id=b.id
     JOIN public.creator_accounts ca ON ca.id=b.account_id
     LEFT JOIN public.place_pool pp ON pp.id=v.place_pool_id
-    WHERE b.slug=v_parts[2] AND v.slug=v_parts[4] LIMIT 1;
+    -- #3193 — the inner `JOIN venue_listings` was believed to protect this
+    -- branch. It does not: `venue_listings_brand_slug_uniq` is UNIQUE (brand_id,
+    -- slug) — per brand, not global — so a soft-deleted brand twin and the live
+    -- brand can each own a venue with the same slug, which is exactly what a host
+    -- who recreates a brand and re-adds the same venue produces. Every row here
+    -- carries a venue (inner join), so no fail-closed key is needed: the live
+    -- brand ranks first, and `v.created_at DESC, v.id` make the order total.
+    -- Do not drop the `(b.deleted_at IS NULL) DESC` key.
+    WHERE b.slug=v_parts[2] AND v.slug=v_parts[4]
+    ORDER BY (b.deleted_at IS NULL) DESC, v.created_at DESC, v.id
+    LIMIT 1;
   END IF;
 
   RETURN jsonb_build_object('sourceState',COALESCE(v_source_state,'missing'),'facts',v_facts);
@@ -162,11 +201,12 @@ REVOKE ALL ON FUNCTION public.public_search_source_facts(text,text) FROM PUBLIC,
 GRANT EXECUTE ON FUNCTION public.public_search_source_facts(text,text) TO service_role;
 
 COMMENT ON FUNCTION public.public_search_source_facts(text,text) IS
-  '#2986 safe public facts for the five route families. #3193 makes brand row selection total and live-preferring: a soft-deleted tombstone may decide a page''s public state only when no live row shares that slug.';
+  '#2986 safe public facts for the five route families. #3193 makes every slug-keyed row selection total and live-preferring: a soft-deleted brand or event tombstone may decide a page''s public state only when no live row carries that path, and an existing-but-ineligible source still fails closed before any ledger overlay.';
 
 -- Migration-time proof. These checks intentionally fail the clean Postgres
--- migration lane if a later edit loses the live-row ordering or widens the
--- #2986 ACL posture this function was shipped with.
+-- migration lane if a later edit loses ANY of the three live-row orderings,
+-- reorders the event branch's keys, or widens the #2986 ACL posture this
+-- function was shipped with.
 DO $check$
 DECLARE v_def text;
 BEGIN
@@ -182,6 +222,20 @@ BEGIN
   END IF;
   IF position('WHERE b.slug=v_parts[2] LIMIT 1;' IN v_def)<>0 THEN
     RAISE EXCEPTION '#3193 the unordered brand row selection is still present';
+  END IF;
+  -- Event/trip/experience: the exact key sequence, checked as one block so a
+  -- REORDER fails this as surely as a deletion. Key 1 is the fail-closed key.
+  IF position(E'    ORDER BY (e.id IS NOT NULL AND ((p_kind=''event'' AND e.event_type IN (''event'',''rsvp'')) OR e.event_type=p_kind)) DESC,\n      (e.id IS NOT NULL) DESC,\n      (b.deleted_at IS NULL) DESC,\n      (e.deleted_at IS NULL) DESC,\n      ed.start_at NULLS LAST, e.id, b.id, ed.id\n    LIMIT 1;' IN v_def)=0 THEN
+    RAISE EXCEPTION '#3193 event/trip/experience row selection lost its fail-closed, live-preferring total order';
+  END IF;
+  IF position('ORDER BY ed.start_at NULLS LAST LIMIT 1;' IN v_def)<>0 THEN
+    RAISE EXCEPTION '#3193 the accidental event row selection is still present';
+  END IF;
+  IF position('ORDER BY (b.deleted_at IS NULL) DESC, v.created_at DESC, v.id' IN v_def)=0 THEN
+    RAISE EXCEPTION '#3193 venue row selection lost its live-preferring total order';
+  END IF;
+  IF position('WHERE b.slug=v_parts[2] AND v.slug=v_parts[4] LIMIT 1;' IN v_def)<>0 THEN
+    RAISE EXCEPTION '#3193 the unordered venue row selection is still present';
   END IF;
   IF EXISTS (
     SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace

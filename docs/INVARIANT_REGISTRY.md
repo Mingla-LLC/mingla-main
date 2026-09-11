@@ -10030,15 +10030,21 @@ All four #2796 rules were established ACTIVE after independent web, iOS AX5, and
   contains no `hitSlop` geometry at all.
 - **Status:** DRAFT — flips ACTIVE on CLOSE.
 
-## DRAFT — issue #3193 (a live brand's public page must read the live brand row)
+## DRAFT — issue #3193 (a live public page must read the live row, and a tombstone must still fail closed)
 
-### I-PROPOSED-3193-PUBLIC-RESOLVER-READS-THE-LIVE-BRAND-ROW (DRAFT)
+### I-PROPOSED-3193-PUBLIC-RESOLVER-READS-THE-LIVE-ROW (DRAFT)
 
-- **Rule:** The brand branch of `public.public_search_source_facts(text,text)` selects its row under a total order that prefers `deleted_at IS NULL`. A soft-deleted tombstone may decide a brand page's public state only when no live row shares that slug. `idx_brands_slug_active` (`UNIQUE (lower(slug)) WHERE deleted_at IS NULL`) already guarantees at most one live brand per slug; the resolver must honour it rather than reading the raw base table unordered. The #2986 brand visibility predicate itself is unchanged — this invariant governs which row the predicate is evaluated against, never the predicate.
-- **Scope limit, stated deliberately:** this covers the **brand** branch only. The event/trip/experience and venue branches of the same function still select with an unfiltered `WHERE b.slug=`; the event branch is protected only accidentally by `ORDER BY ed.start_at NULLS LAST`, which does not hold for an event with no master `event_dates` row (production has one such live event). That is #3193's open question OQ-1 and is deliberately not claimed here.
-- **Enforcement:** migration `20270622003193_issue_3193_public_search_live_brand_row.sql`, whose own `DO $check$` refuses to apply if the `(b.deleted_at IS NULL) DESC` key is absent or the unordered statement returns; the #3193 implementor pg17 suite, which sweeps five planner configurations and requires one identical document from all of them; and the #3193 adversarial pg17 suite, which proves a tombstone created *after* the live row still loses.
-- **Fails on revert:** deleting the three ordering lines from the migration makes it fail its own apply-time check (exit 3), and installing the pre-fix body makes the implementor suite's H1 fail with `state='draft'` and null facts — the exact production symptom.
+- **Rule:** every slug-keyed row selection inside `public.public_search_source_facts(text,text)` — brand, event/trip/experience, and venue — is totally ordered and prefers live rows. A soft-deleted brand or event tombstone may decide a page's public state only when no live row carries that path. The #2986 visibility predicates are unchanged; this invariant governs which row each predicate is evaluated against, never the predicate.
+- **Why it needs all three branches:** soft delete keeps rows, and every relevant uniqueness constraint covers live rows only — `idx_brands_slug_active` (brand slug), `idx_events_brand_slug_active` (event slug *per brand*, so one brand can carry an event tombstone and its live twin), and `venue_listings_brand_slug_uniq` (venue slug *per brand*, so two brand twins can each own the same venue slug). An unordered `LIMIT 1` over any of them decides a live page from whichever row the plan emits first. The event branch's `ORDER BY ed.start_at NULLS LAST` was not a protection: it ties for an event with no master date, and it *reliably* prefers an earlier-dated tombstone over the live entity.
+- **Enforcement:** migration `20270622003193_issue_3193_public_search_live_brand_row.sql`, whose `DO $check$` refuses to apply if any of the three orderings is missing, if the event keys are reordered, or if an unordered selection returns; the #3193 implementor pg17 suite (H1-H9), which sweeps five planner configurations per constructed path and requires one identical, live document from all of them; and per-branch fails-on-revert controls inside that suite.
 - **Established:** DRAFT at #3193; flip to ACTIVE only after independent tester PASS, the reviewed migration apply, an all-green merge, and merged-main verification.
+
+### I-PROPOSED-3193-TOMBSTONE-ENTITY-STAYS-FAIL-CLOSED (DRAFT)
+
+- **Rule:** preferring live rows must never convert an existing-but-ineligible source into a missing one. When the only entity of the requested kind at a path sits under a tombstone brand, the resolver returns `draft` — before any `public_search_documents` overlay is consulted — exactly as it did before #3193. A `gone` or `redirected` ledger row may apply to a path only when no entity of that kind exists there at all.
+- **Why:** `resolve_public_search_document` returns early for a `draft` source but lets a `missing` source carry `gone`/`redirected` history, and the `gone` validation trigger checks only the canonical path. A plain live-brand-first ordering therefore turns an admin-written `gone` row on a deleted brand's old event URL from a 404 into a 410. That is why the event branch's first key is *"this row carries an entity of the requested kind"*, using the predicate's own kind expression verbatim, ahead of the live-brand key.
+- **Enforcement:** the #3193 adversarial pg17 suite — A7 writes the `gone` row through the real `upsert_public_search_document` RPC and requires `draft`, A7b proves removing keys 1-2 lets the overlay through, A8/A8b prove key 1 specifically (a tombstone's trip against a live brand's same-slug event), and A11 proves no control leaks a mutated resolver.
+- **Established:** DRAFT at #3193; flip to ACTIVE with the invariant above.
 
 ### I-PROPOSED-3193-BRAND-PAGE-PUBLIC-WHEN-EMPTY (DRAFT)
 
