@@ -49,6 +49,10 @@ import {
   createRecipientAccount,
 } from "../_shared/stripeBlueprintClient.ts";
 import { resolveBusinessWebOrigin } from "../_shared/businessWebOrigin.ts";
+import {
+  MissingOrganiserEmailError,
+  resolveOrganiserContactEmail,
+} from "../_shared/organiserContactEmail.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -175,7 +179,10 @@ serve(async (req) => {
       .eq("id", userId)
       .maybeSingle<CreatorAccountRow>();
     if (accountErr) {
-      console.error("[partner-stripe-onboard] account lookup failed:", accountErr);
+      console.error(
+        "[partner-stripe-onboard] account lookup failed:",
+        accountErr,
+      );
       return jsonResponse({ error: "internal_error" }, 500);
     }
     if (!account) {
@@ -199,7 +206,9 @@ serve(async (req) => {
       .from("partner_paystack_accounts")
       .select("recipient_code, detached_at")
       .eq("account_id", userId)
-      .maybeSingle<{ recipient_code: string | null; detached_at: string | null }>();
+      .maybeSingle<
+        { recipient_code: string | null; detached_at: string | null }
+      >();
     if (paystackErr) {
       console.error(
         "[partner-stripe-onboard] paystack exclusivity read failed:",
@@ -235,14 +244,28 @@ serve(async (req) => {
     } else {
       // Fresh create — Accounts v2 with the Mingla recipient blueprint.
       // Cites https://docs.stripe.com/api/v2/accounts/create.md.
-      const safeDisplay =
-        typeof account.display_name === "string" &&
-        account.display_name.trim().length > 0
-          ? account.display_name.trim()
-          : "Mingla partner";
-      const contactEmail = (claims.email && claims.email.trim().length > 0)
-        ? claims.email.trim()
-        : "support@usemingla.com";
+      const safeDisplay = typeof account.display_name === "string" &&
+          account.display_name.trim().length > 0
+        ? account.display_name.trim()
+        : "Mingla partner";
+      // #3191 — a partner has no brand record, so the verified auth email is
+      // the only source. The former `support@usemingla.com` fallback is gone:
+      // registering Mingla's own inbox as the partner's Stripe contact routes
+      // their verification and payout mail to us instead of to them. Partners
+      // reach this function only through email-OTP auth, so the throw is a
+      // fail-closed backstop rather than a reachable path.
+      let contactEmail: string;
+      try {
+        contactEmail = resolveOrganiserContactEmail(null, claims.email);
+      } catch (err) {
+        if (err instanceof MissingOrganiserEmailError) {
+          console.error(
+            `[partner-stripe-onboard] no verified email on session for user ${userId}`,
+          );
+          return jsonResponse({ error: err.code, detail: err.message }, 422);
+        }
+        throw err;
+      }
 
       let stripeAccount: { id: string };
       try {
@@ -257,7 +280,10 @@ serve(async (req) => {
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error("[partner-stripe-onboard] v2 account create failed:", message);
+        console.error(
+          "[partner-stripe-onboard] v2 account create failed:",
+          message,
+        );
         return jsonResponse(
           { error: "stripe_api_error", detail: message },
           502,

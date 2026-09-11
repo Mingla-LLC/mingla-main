@@ -84,6 +84,12 @@ import {
 import { hexToRgba } from "@mingla/offering-rendering/themePalette";
 
 import { spacing } from "./designTokens";
+// #3188 — the socials-row sizing solver. A separate, pure, import-free module
+// (no React, no react-native) so the arithmetic can be pinned in the ALWAYS-RUN
+// required `mingla-business jest (full suite)` lane, which is a node/ts-jest
+// runner. Deep-import only; deliberately NOT re-exported from index.ts, for the
+// same partial-mock reason documented above for `hexToRgba`.
+import { solveSocialRow } from "./socialRowSizing";
 // META-ORCH-1255(R2) — the DISPLAY-ONLY menu renderer lives in its own module
 // so the venue public page can share it WITHOUT dragging this whole file into
 // the eager __common chunk (ORCH-1083 bundle budget). Composition unchanged.
@@ -869,35 +875,84 @@ const Avatar: React.FC<{
   );
 };
 
+// Issue #3188 [brand-page social icons wrap onto a second line] — the row now
+// fits ONE line at any entry count (the true maximum is 8: `SocialKind` has
+// eight members and email/phone render as full-width text rows, not chips).
+//
+// THE SIZE COMES FROM THE ROW'S OWN `onLayout`, NEVER FROM THE VIEWPORT. The
+// container that overflowed is the desktop sticky panel, whose inner width is a
+// FIXED 318pt regardless of viewport (360 panel − 2×1px border − 2×20pt
+// padding; measured live at exactly 318 — investigation F-2). A size derived
+// from `useWindowDimensions()` / `useResponsiveLayout().width` reads 1440 there
+// and would leave the reported 6 + 2 wrap exactly where it was reported.
+//
+// `hitSlop is INERT on react-native-web` — measured, not assumed (investigation
+// F-5: an element whose source claims a 44pt target via hitSlop renders as a
+// bare 40×40 box with no padding and no margin). So hitSlop restores the touch
+// area lost to shrinking on NATIVE ONLY; on every web surface the visible
+// circle IS the tap target, which is why `solveSocialRow` floors the diameter
+// at 24 (WCAG 2.2 AA SC 2.5.8 Target Size (Minimum)) by construction. Do NOT
+// re-assert a 44pt web target here.
 const SocialLinksRow: React.FC<{
   entries: Array<{ kind: SocialKind; label: string; url: string }>;
   palette: ThemePalette;
   onPress: (url: string) => void;
 }> = ({ entries, palette, onPress }) => {
+  // null until the first layout pass; `solveSocialRow` seeds at the narrowest
+  // real container (278pt) so the first frame is conservative — it can only
+  // grow on measurement, never clip.
+  const [rowWidth, setRowWidth] = useState<number | null>(null);
   if (entries.length === 0) return null;
+  const metrics = solveSocialRow(rowWidth, entries.length);
   return (
-    <View style={styles.socialsRow}>
+    <View
+      style={[styles.socialsRow, { gap: metrics.gap }]}
+      onLayout={(e: LayoutChangeEvent) => {
+        const measured = e.nativeEvent.layout.width;
+        // Guard the setter: RNW backs onLayout with a ResizeObserver that can
+        // re-fire with an identical width, and an unguarded setState there
+        // churns a render loop.
+        setRowWidth((prev) => (prev === measured ? prev : measured));
+      }}
+    >
       {entries.map((entry) => (
         <Pressable
           key={entry.url}
           onPress={() => onPress(entry.url)}
           accessibilityRole="link"
           accessibilityLabel={entry.label}
-          style={[styles.socialBtn, { backgroundColor: palette.accent }]}
+          hitSlop={metrics.hitSlop}
+          style={[
+            styles.socialBtn,
+            {
+              width: metrics.diameter,
+              height: metrics.diameter,
+              backgroundColor: palette.accent,
+            },
+          ]}
         >
-          <SocialIcon kind={entry.kind} color="#ffffff" />
+          <SocialIcon
+            kind={entry.kind}
+            color="#ffffff"
+            size={metrics.glyph}
+            strokeWidth={metrics.strokeWidth}
+          />
         </Pressable>
       ))}
     </View>
   );
 };
 
-const SocialIcon: React.FC<{ kind: SocialKind; color: string }> = ({
-  kind,
-  color,
-}) => {
+// #3188 — size/strokeWidth are now props: the glyph scales with the circle or
+// it clips out of it (it was a hardcoded 21 inside a hardcoded 44).
+const SocialIcon: React.FC<{
+  kind: SocialKind;
+  color: string;
+  size: number;
+  strokeWidth: number;
+}> = ({ kind, color, size, strokeWidth }) => {
   const Icon = SOCIAL_ICON_BY_KIND[kind];
-  return <Icon color={color} size={21} strokeWidth={2.2} />;
+  return <Icon color={color} size={size} strokeWidth={strokeWidth} />;
 };
 
 // Issue #679 — Follow/Following toggle. Renders ONLY when the host provides
@@ -1926,19 +1981,30 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   // ---- socials ----
+  // #3188: `nowrap` is THE fix — the row can no longer start a second line.
+  // `gap` is applied INLINE from solveSocialRow (it is reclaimed down to 4 at
+  // narrow widths), and NO width/maxWidth/alignSelf may be added here: the row
+  // must stay parent-sized, or its measured width would depend on its children
+  // which depend on the measurement — a feedback loop.
   socialsRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
+    flexWrap: "nowrap",
+    alignItems: "center",
     marginTop: 18,
   },
+  // #3188: width/height are applied INLINE from solveSocialRow.
+  // `flexShrink: 1` + `minWidth: 0` is the STRUCTURAL backstop, not cosmetics —
+  // Yoga and react-native-web both default flex-shrink to 0 (measured, F-1),
+  // which is why removing `flexWrap` alone would have produced horizontal
+  // OVERFLOW instead of shrink-to-fit. With these the row can neither wrap nor
+  // overflow even if the computation were wrong or the measurement never came.
   socialBtn: {
-    width: 44,
-    height: 44,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
+    flexShrink: 1,
+    minWidth: 0,
   },
   // ---- featured teaser ----
   nextTeaser: {

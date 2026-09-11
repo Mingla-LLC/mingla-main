@@ -68,6 +68,9 @@ function harness(seed: BrandRecipientRow | null = null) {
       calls.audits.push(action);
       return Promise.resolve();
     },
+    // #3192 — pre-existing fixtures describe a SOLE holder, so nothing is
+    // shared and every historical delete assertion below still holds.
+    isRecipientCodeSharedElsewhere: () => Promise.resolve(false),
     warn: (message) => calls.warnings.push(message),
   };
   return { calls, deps, getStored: () => stored };

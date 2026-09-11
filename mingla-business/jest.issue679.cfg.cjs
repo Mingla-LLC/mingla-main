@@ -61,6 +61,15 @@ module.exports = {
     // named here runs in NO CI job at all. The file's contents are unchanged
     // by the amendment; only where it runs from.
     "**/__tests__/issue_2539_avatar_clip_and_glow.test.tsx",
+    // #3188 [brand-page social icons wrap onto a second line] — implementor
+    // RENDER proof (real RNW mount + onLayout at the measured 318pt / 278pt
+    // containers). Named here for reason #1 in this file's header, exactly as
+    // #2539 was: rootDir is mingla-business, so a suite under
+    // packages/**/__tests__ that is not listed here runs in NO CI job at all.
+    // The paired `.github/ci-batch/MANIFEST.json` expectedFiles entry is NOT
+    // optional — the manifest validator resolves this testMatch and requires
+    // the two to agree exactly, so each half fails closed without the other.
+    "**/__tests__/issue_3188_socials_one_line.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|react-native-web|@react-native-community|react-native-svg|lucide-react-native|expo|@expo)",

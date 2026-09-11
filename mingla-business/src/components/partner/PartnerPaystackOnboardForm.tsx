@@ -208,9 +208,18 @@ export const PartnerPaystackOnboardForm: React.FC<Props> = ({
       onConnected?.();
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
+      // #3192 — this form already BINDS its error (unlike the brand form's bare
+      // catch), but it logged nothing and collapsed every non-Stripe cause into
+      // one generic line. Log it, and name the causes the organiser can fix.
+      console.error("[PartnerPaystackOnboardForm] connect failed", { message });
       // Confirm-name block is RETAINED (the resolution is still valid).
       setError(
-        message.includes("stripe_already_connected") ? E3_STRIPE_CONNECTED : E4_CONNECT_GENERIC,
+        message.includes("stripe_already_connected")
+          ? E3_STRIPE_CONNECTED
+          : message.includes("account_unresolved") ||
+              message.includes("resolved_account_mismatch")
+          ? E1_UNRESOLVED
+          : E4_CONNECT_GENERIC,
       );
     }
   };

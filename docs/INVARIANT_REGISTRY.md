@@ -9980,6 +9980,56 @@ All four #2796 rules were established ACTIVE after independent web, iOS AX5, and
 - **Enforcement:** the #2768 production-topology Playwright happy and independent adversarial suites mount the real public venue and consent owners, prove the exclusive first-visit lifecycle, label consent-owned starts honestly, transition through the visible Reject control, immediately hit-verify the revealed CTA, prove a pan scrolls without opening/emitting, and prove a deliberate tap opens/emits exactly once. The suites are required by `web-build-check.yml` and preserve #2729, #2755, #2756, #2769, #2771/#2795, and #2774 behavior.
 - **Established:** ACTIVE after independent P0–P4-zero tester PASS, two true mutations with byte-exact restores, and terminal exact-head CI at candidate `adf3af2b2e5da80d4d883ca9d4e7a81179f2ed69` on 2026-08-29. Product/runtime bytes remain identical to released main; exact-merge production verification remains required before closure.
 
+## DRAFT — issue #3188 (brand-page social chips fit one line at any entry count)
+
+### I-PROPOSED-3188-SOCIAL-ROW-SINGLE-LINE (DRAFT)
+
+- **Rule:** The shared public-brand-page socials row (`SocialLinksRow` in
+  `packages/brand-rendering/PublicBrandPage.tsx`) renders on exactly ONE line for any entry count
+  1..8 at any container width >= 220pt. `styles.socialsRow.flexWrap` is `"nowrap"` and every chip
+  carries `flexShrink: 1` + `minWidth: 0`, so neither a wrong computation nor an absent measurement
+  can produce a second line or a horizontal overflow. There is no horizontal scroll fallback.
+- **Enforcement:** `mingla-business/src/components/brand/__tests__/issue_3188_social_row_sizing.test.ts`
+  (always-run required lane) pins the arithmetic — `N*diameter + (N-1)*gap <= containerWidth` across
+  6 widths x 8 counts, plus the terminal sub-220pt branch — and the structural `nowrap`/`flexShrink`
+  source pins. `packages/brand-rendering/__tests__/issue_3188_socials_one_line.test.tsx` (the #679
+  lane) mounts the REAL page through react-native-web at the measured 318pt and 278pt containers and
+  reads the resolved geometry AND the emitted `flex-wrap:nowrap` / `flex-shrink:1` CSS rules back
+  out of the stylesheet the browser is handed.
+- **Fails on revert:** deleting `flexWrap: "nowrap"` from `styles.socialsRow`, or restoring
+  `width: 44, height: 44` to `styles.socialBtn`, reds both suites.
+- **Status:** DRAFT — flips ACTIVE on CLOSE after independent tester PASS on buyer web and at least
+  one business native surface.
+
+### I-PROPOSED-3188-SOCIAL-ROW-MEASURES-ITS-OWN-CONTAINER (DRAFT)
+
+- **Rule:** Social-chip sizing derives from the row's OWN `onLayout` width, never from
+  `useWindowDimensions()` or `useResponsiveLayout().width`. The desktop sticky panel is a FIXED
+  318pt (360 − 2x1px border − 2x20pt padding) inside a viewport of 1024pt or more, so a
+  viewport-derived size reads 1440 there and leaves the reported wrap exactly where it was reported.
+  The row must also stay parent-sized — no `width`, `maxWidth` or `alignSelf` on `socialsRow`, or its
+  measured width would depend on the children that depend on the measurement.
+- **Enforcement:** the SC-10/SC-11 source assertions in the #3188 always-run suite (the row's own
+  source contains `solveSocialRow` and `onLayout` and contains none of `useWindowDimensions`,
+  `useResponsiveLayout`, `Dimensions`), and the R-2 render leg which asserts the resolved row style
+  carries no `width`/`maxWidth`/`alignSelf`.
+- **Status:** DRAFT — flips ACTIVE on CLOSE.
+
+### I-PROPOSED-3188-SOCIAL-CHIP-MEETS-WEB-TARGET-MINIMUM (DRAFT)
+
+- **Rule:** The computed chip diameter is never below 24pt (`SOCIAL_CHIP_D_MIN`). `hitSlop` is inert
+  on react-native-web — measured, not assumed — so on every web surface the visible circle IS the tap
+  target, and 24x24 CSS px is the WCAG 2.2 AA SC 2.5.8 Target Size (Minimum). Any future change that
+  lowers `SOCIAL_CHIP_D_MIN`, or that claims a 44pt web target via `hitSlop`, violates this.
+  Horizontal `hitSlop` is additionally capped at `floor(gap / 2)` so adjacent native hit boxes can
+  never overlap: an overlapping target is resolved by responder order, so a tap in the seam would
+  open the wrong social network.
+- **Enforcement:** T-6 (`diameter >= 24` across all 48 width x count cells) and SC-8 (no hit-area
+  overlap) in the always-run suite; the R-4 render leg measures the EMITTED DOM box of all eight
+  chips, asserts it clears 24 CSS px with zero padding and zero margin, and asserts the markup
+  contains no `hitSlop` geometry at all.
+- **Status:** DRAFT — flips ACTIVE on CLOSE.
+
 ## DRAFT — issue #3193 (a live brand's public page must read the live brand row)
 
 ### I-PROPOSED-3193-PUBLIC-RESOLVER-READS-THE-LIVE-BRAND-ROW (DRAFT)
