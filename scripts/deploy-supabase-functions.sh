@@ -101,6 +101,40 @@ if [[ "$governed_bundle_deploy" == true ]]; then
   exit 0
 fi
 
+# #3186 — bake the release attestation INTO the bundle before it is built.
+#
+# `MINGLA_RELEASE_SHA` was declared optional and set by nobody: the runbook told
+# a human to "embed the SHA" and no caller ever did, so production served
+# `release_sha: "unattested"`, the Business app rejected 100% of Ari responses,
+# and Ari was dead on every production build for nine days (#3185). A runbook
+# sentence is not a setter.
+#
+# A file, not a secret: the constant travels with the bundle it describes and so
+# cannot name a different commit than the one deployed, and it spends no slot
+# against the founder-approved 88-name capacity target. This runs for EVERY
+# deploy because the module is shared — whichever functions are being shipped,
+# the ones that bundle it get a stamp describing exactly themselves.
+release_bake_file="${repo_root}/supabase/functions/_shared/releaseAttestationBake.ts"
+# Exactly 40 lowercase hex. The client's `RELEASE_SHA_RE` is `^[0-9a-f]{40}$`
+# while the edge pattern tolerates 40-64, so a longer digest would pass the
+# server and be rejected by every app — #3185 again, from the other end.
+if [[ ! "$merged_commit" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "FAIL deploy: --merged-commit must be exactly 40 lowercase hex to bake MINGLA release attestation (got '${merged_commit}')" >&2
+  exit 2
+fi
+if ! grep -q '^export const BAKED_RELEASE_SHA = ' "$release_bake_file"; then
+  echo "FAIL deploy: release attestation bake target not found in ${release_bake_file}" >&2
+  exit 2
+fi
+# The value is a validated 40-hex literal, so it cannot carry sed metacharacters.
+perl -pi -e "s{^export const BAKED_RELEASE_SHA = .*\$}{export const BAKED_RELEASE_SHA = \"${merged_commit}\";}" \
+  "$release_bake_file"
+if ! grep -q "^export const BAKED_RELEASE_SHA = \"${merged_commit}\";\$" "$release_bake_file"; then
+  echo "FAIL deploy: release attestation bake did not take effect" >&2
+  exit 2
+fi
+echo "PASS baked release attestation ${merged_commit}"
+
 preflight_args=(
   --project-ref "$project_ref"
   --merged-commit "$merged_commit"
