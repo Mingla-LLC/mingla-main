@@ -413,6 +413,13 @@ const renderPublicEventPage = (
       // close assertion below is untouched.
       case "../../utils/copyAddressText":
         return { copyAddressText: () => Promise.resolve() };
+      // [TEST-MOD-APPROVED #3187] Harness registration only — ADDITION, no
+      // assertion changed. A page opened from a shared link now reports the
+      // recipient's destination action through this bridge (a no-op anywhere
+      // else). The close-callback contract is unrelated; every close assertion
+      // below is untouched.
+      case "../../analytics/shareDestination":
+        return { recordShareDestination: () => false };
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }
