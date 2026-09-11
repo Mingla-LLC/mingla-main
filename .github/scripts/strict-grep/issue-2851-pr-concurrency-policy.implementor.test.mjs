@@ -816,8 +816,45 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     Per #3015 the `actual:` printed by a PR run must not be copied; this
   //     value was derived on the merged tree itself, where the derivation tree
   //     and the hashed tree are the same commit.
+  //
+  // [TEST-MOD-APPROVED #3186] Re-derived again. #3186 added exactly TWO lines to
+  // the existing secret-budget lane's two test-runner steps, so this issue's new
+  // Deno and Node regression suites actually execute in CI — that lane's steps
+  // match by explicit glob and filename, so without them the suites would exist
+  // and never run, which is half of the defect #3186 exists to end. The lane is
+  // named here the way every re-derivation above names its lane — never by its
+  // `.yml` path, because a workflow FILENAME written in this file is counted by
+  // `discoverWorkflowProviders()` as an external provider reference and would
+  // move the frozen #2148 provider seal.
+  //
+  // Evidence, executed rather than asserted:
+  //   - the change is PURELY ADDITIVE: `git diff --stat` over
+  //     `.github/workflows/` for `origin/main...HEAD` is `1 file changed,
+  //     2 insertions(+)`. No line is removed.
+  //   - grepping the added AND removed lines under `.github/workflows/` for
+  //     `concurrency`, `group:` and `cancel-in-progress` returns ZERO. No
+  //     concurrency block, group expression or cancellation value is touched;
+  //     this digest covers the NON-concurrency document, which is precisely
+  //     what moved.
+  //   - `--diff-filter=ADR` over `.github/workflows/` returns ZERO files. No
+  //     workflow was added, removed or renamed, so PR_FAMILY_COUNT and
+  //     PR_FAMILY_IDENTITY_SHA256 cannot have moved — corroborated by
+  //     execution: subtests 1 and 4 PASS at 124 PR-family and seven non-PR
+  //     workflows against this tree.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring that one lane to its
+  //     `origin/main` bytes recomputes
+  //     42772929e794fd18c4fa9a3a771a23cad49391c6f3d9dd64286b495ff013d991,
+  //     the value this pin replaces, and subtest 2 goes green — so nothing else
+  //     in the tree drifted into this digest.
+  //   - the value is stable across consecutive runs (derived twice, identical).
+  //   - per #3015 the `actual:` printed by a PR run must not be copied. This
+  //     value was derived LOCALLY on the rebased branch, whose workflow set is
+  //     the tree a squash merge puts on `main`. If another PR touching any
+  //     PR-family workflow lands before this one, the digest moves again and
+  //     this must be re-derived on the new `main` — that blast radius is #3015,
+  //     not this pin.
   // Every earlier re-derivation is preserved, not replaced.
-  "42772929e794fd18c4fa9a3a771a23cad49391c6f3d9dd64286b495ff013d991";
+  "6b94b56f5f7b9717319b808c7a81aec2d03ea46774ad1e492a83c23fc4b76f96";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
