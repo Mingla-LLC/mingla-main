@@ -118,7 +118,7 @@ async function runtimeContract() {
     server.kill('SIGTERM')
     await new Promise((resolve) => { server.once('exit', resolve); setTimeout(resolve, 1500) })
   }
-  execFileSync(process.execPath, ['scripts/ci/issue-3176-core-page-simplification.implementor.happy.test.mjs', '--built-only'], { cwd: ROOT, stdio: 'inherit' })
+  execFileSync(process.execPath, ['--experimental-websocket', 'scripts/ci/issue-3176-core-page-simplification.implementor.happy.test.mjs', '--built-only'], { cwd: ROOT, stdio: 'inherit' })
 }
 
 if (!BUILT_ONLY) sourceContract()

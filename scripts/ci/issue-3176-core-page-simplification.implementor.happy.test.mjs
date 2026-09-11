@@ -4,6 +4,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import net from 'node:net'
+import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -16,6 +17,14 @@ const sha256 = (relative) => crypto.createHash('sha256').update(fs.readFileSync(
 const SOURCE_ONLY = process.argv.includes('--source-only')
 const BUILT_ONLY = process.argv.includes('--built-only')
 const SELF_TEST = process.argv.includes('--self-test')
+const CHROME = [
+  process.env.CHROME_BIN,
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+].filter(Boolean).find((candidate) => fs.existsSync(candidate))
 const CITIES = [
   ['Lagos', '/cities/lagos', 'lagos.jpg'],
   ['Durham', '/cities/durham-nc', 'durham-nc.jpg'],
@@ -98,6 +107,8 @@ function verifySource(overrides = {}) {
   assert.match(css, /aspect-ratio:\s*4\s*\/\s*5/)
   assert.match(css, /@media \(max-width:1023px\)[\s\S]*aspect-ratio:\s*4\s*\/\s*3/)
   assert.match(css, /@media \(max-width:519px\)[\s\S]*aspect-ratio:\s*16\s*\/\s*10/)
+  assert.doesNotMatch(css, /\.core-city-pills\s+(?:li|a)[^{]*\{[^}]*width:\s*100%/, 'narrow screens must keep city pills wrapping instead of stacking ten full-width rows')
+  assert.match(css, /\.core-city-pills a\s*\{[^}]*min-height:\s*44px/, 'city pills must retain 44px touch targets')
   assert.match(css, /@media \(prefers-reduced-motion:reduce\)/)
 
   assert.equal(manifest.schemaVersion, 1, 'city asset manifest needs its supported schema')
@@ -157,6 +168,137 @@ function request(port, pathname) {
   })
 }
 
+async function waitFor(check, message, timeout = 20_000) {
+  const deadline = Date.now() + timeout
+  let lastError
+  while (Date.now() < deadline) {
+    try {
+      if (await check()) return
+    } catch (error) {
+      lastError = error
+    }
+    await new Promise((resolve) => setTimeout(resolve, 60))
+  }
+  throw new Error(`${message}${lastError ? `: ${lastError.message}` : ''}`)
+}
+
+class CdpPage {
+  constructor(url) {
+    this.nextId = 0
+    this.pending = new Map()
+    this.socket = new WebSocket(url)
+    this.ready = new Promise((resolve, reject) => {
+      this.socket.addEventListener('open', resolve, { once: true })
+      this.socket.addEventListener('error', reject, { once: true })
+    })
+    this.socket.addEventListener('message', ({ data }) => {
+      const message = JSON.parse(String(data))
+      const pending = this.pending.get(message.id)
+      if (!pending) return
+      clearTimeout(pending.timer)
+      this.pending.delete(message.id)
+      message.error ? pending.reject(new Error(message.error.message)) : pending.resolve(message.result)
+    })
+  }
+
+  async send(method, params = {}) {
+    await this.ready
+    const id = ++this.nextId
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        reject(new Error(`CDP timeout: ${method}`))
+      }, 20_000)
+      this.pending.set(id, { resolve, reject, timer })
+      this.socket.send(JSON.stringify({ id, method, params }))
+    })
+  }
+
+  async evaluate(expression) {
+    const result = await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+    assert(!result.exceptionDetails, result.exceptionDetails?.exception?.description ?? result.exceptionDetails?.text)
+    return result.result.value
+  }
+
+  close() {
+    this.socket.close()
+  }
+}
+
+async function stopOwnedChild(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return
+  child.kill('SIGTERM')
+  const exited = await Promise.race([
+    new Promise((resolve) => child.once('exit', () => resolve(true))),
+    new Promise((resolve) => setTimeout(() => resolve(false), 2_000)),
+  ])
+  if (!exited && child.exitCode === null && child.signalCode === null) {
+    child.kill('SIGKILL')
+    await new Promise((resolve) => child.once('exit', resolve))
+  }
+}
+
+async function verifyNarrowHeroGeometry(port) {
+  if (process.env.VERCEL === '1') {
+    process.stdout.write('SKIP #3176 320px hero geometry on Vercel only; source and runtime contracts executed\n')
+    return
+  }
+  assert(CHROME, 'Chrome is required for the #3176 320px hero geometry guard')
+  assert.equal(typeof WebSocket, 'function', 'run the built guard with command-scoped --experimental-websocket')
+  const chromePort = await freePort()
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'mingla-3176-cities-'))
+  const chrome = spawn(CHROME, [
+    '--headless=new',
+    `--remote-debugging-port=${chromePort}`,
+    '--remote-debugging-address=127.0.0.1',
+    `--user-data-dir=${profile}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-background-networking',
+    '--disable-extensions',
+    'about:blank',
+  ], { stdio: 'ignore' })
+  let page
+  try {
+    await waitFor(async () => (await fetch(`http://127.0.0.1:${chromePort}/json/version`)).ok, 'owned Chrome did not start')
+    const target = await fetch(`http://127.0.0.1:${chromePort}/json/new?about:blank`, { method: 'PUT' }).then((response) => response.json())
+    page = new CdpPage(target.webSocketDebuggerUrl)
+    await page.send('Page.enable')
+    await page.send('Runtime.enable')
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 844, deviceScaleFactor: 1, mobile: false })
+    await page.send('Page.navigate', { url: `http://127.0.0.1:${port}/cities` })
+    await waitFor(() => page.evaluate("document.readyState === 'complete' && !!document.querySelector('.core-cities-hero')"), '/cities did not load for 320px geometry proof')
+    await page.evaluate('(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));})()')
+    const geometry = await page.evaluate(`(()=>{
+      const rect=(element)=>{const r=element.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height}}
+      const hero=rect(document.querySelector('.core-cities-hero'))
+      const nav=rect(document.querySelector('.core-city-pills'))
+      const cue=rect(document.querySelector('.core-cities-scroll'))
+      const pills=[...document.querySelectorAll('[data-city-pill]')].map(rect)
+      return {hero,nav,cue,pills,innerHeight,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}
+    })()`)
+    const geometryEvidence = JSON.stringify(geometry)
+    assert.equal(geometry.pills.length, 10, '320px hero must show all ten city pills')
+    assert.equal(geometry.overflow, 0, '320px hero must not create horizontal overflow')
+    assert(Math.abs(geometry.hero.height - geometry.innerHeight) <= 1, `320px hero must remain exactly 100svh: ${geometryEvidence}`)
+    assert(geometry.cue.top >= geometry.hero.top && geometry.cue.bottom <= geometry.hero.bottom && geometry.cue.top < geometry.innerHeight, `320px scroll cue must remain visible and inside the hero: ${geometryEvidence}`)
+    assert(geometry.nav.bottom <= geometry.cue.top - 12, `320px city pills need at least 12px clearance above the scroll cue: ${geometryEvidence}`)
+    for (const [index, pill] of geometry.pills.entries()) {
+      assert(pill.width >= 44 && pill.height >= 44, `320px pill ${index + 1} lost its 44px target`)
+      assert(pill.left >= 0 && pill.right <= 320, `320px pill ${index + 1} overflows horizontally`)
+      assert(pill.top >= 0 && pill.bottom <= geometry.cue.top - 12, `320px pill ${index + 1} is clipped or overlaps the scroll cue`)
+    }
+    process.stdout.write(`PASS #3176 320px/400%-equivalent hero geometry ${geometryEvidence}\n`)
+  } finally {
+    if (page) {
+      try { await page.send('Browser.close') } catch {}
+      page.close()
+    }
+    await stopOwnedChild(chrome)
+    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 })
+  }
+}
+
 async function verifyRuntime() {
   assert(exists('mingla-marketing/.next/BUILD_ID'), 'run the current release build first')
   const port = await freePort()
@@ -199,6 +341,7 @@ async function verifyRuntime() {
       }
       assert.equal((hub.body.match(/class="ps-catalogue-card"/g) ?? []).length, 50, `${pathname} must retain its 50-place catalogue`)
     }
+    await verifyNarrowHeroGeometry(port)
   } finally {
     server.kill('SIGTERM')
     await new Promise((resolve) => { server.once('exit', resolve); setTimeout(resolve, 1500) })
