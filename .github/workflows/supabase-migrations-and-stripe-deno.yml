@@ -832,6 +832,19 @@ jobs:
           # function being re-emitted.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3193_public_search_live_brand_row.tester.adversarial.pg17.test.sql
+          # Issue #3193 — the TESTER's own suite, a different reader: the search
+          # ledger. Promotion to search_ready, the redirect-target check, the
+          # resolver's integrity branch and the sitemap all re-read the same
+          # source facts, and a tombstone read there makes a verified live page
+          # unpromotable and silently drops it from the sitemap. Also pins that a
+          # dead predecessor's approval never transfers to the host who reuses
+          # its web name, and that a private or unlisted live event never becomes
+          # enumerable because its path once belonged to a public one. Kept LAST
+          # in this list: its rolled-back fixtures leave dead brand tuples that
+          # invite an autovacuum, and the implementor suite above asserts a
+          # plan-dependent pre-fix outcome that flips once `brands` is vacuumed.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3193_public_search_live_row_ledger_consumers.tester.adversarial.pg17.test.sql
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on

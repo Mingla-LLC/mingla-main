@@ -952,7 +952,26 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //   - `origin/main` was re-read immediately before deriving (debcb3883, 0
   //     commits ahead, no workflow or gate change since the last merge).
   // Every earlier re-derivation is preserved, not replaced.
-  "3b7ab48115e982a2aa267dafd76c8dbd7ad3c2b171d1a712e94c9731401c6df7";
+  //
+  // [TEST-MOD-APPROVED #3193] Re-derived for the #3193 TESTER's own suite, a
+  // third pg17 target (plus its comment) appended to the same migrations-and-
+  // Stripe Deno lane, after the implementor's two. Named descriptively, never
+  // by its `.y`+`ml` path, for the provider-seal reason above.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING:
+  //   - PURELY ADDITIVE: over `.github/workflows/`, this branch vs `origin/main`
+  //     5f030dada is `1 file changed, 13 insertions(+)`, zero deletions, and the
+  //     added lines contain ZERO `concurrency`, `group:` or `cancel-in-progress`.
+  //   - no workflow added, removed or renamed: PR_FAMILY_COUNT stays 124 and
+  //     PR_FAMILY_IDENTITY_SHA256 stays 9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring ONLY that lane to its
+  //     `origin/main` 5f030dada bytes recomputes
+  //     3b7ab48115e982a2aa267dafd76c8dbd7ad3c2b171d1a712e94c9731401c6df7,
+  //     the value this pin replaces; the new value below is identical across
+  //     three derivations with this file's own RUBY_CANONICAL, and was not
+  //     copied from a PR run's printed `actual:` (#3015).
+  // Every earlier re-derivation is preserved, not replaced.
+  "3966c39a24b702810f0df71d424b6ed1976e008232555a6f70f8e9b1385057c3";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1280,6 +1299,9 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "            -f supabase/migrations/__tests__/issue_3193_public_search_live_brand_row.implementor.happy.pg17.test.sql\n"],
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "            -f supabase/migrations/__tests__/issue_3193_public_search_live_brand_row.tester.adversarial.pg17.test.sql\n"],
+    // [TEST-MOD-APPROVED #3193] The #3193 tester's ledger-consumer suite target.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3193_public_search_live_row_ledger_consumers.tester.adversarial.pg17.test.sql\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
