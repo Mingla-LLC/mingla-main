@@ -925,7 +925,34 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     the gate's own canonicalizer over the working tree, three times, plus
   //     the reversion check above.
   // Every earlier re-derivation is preserved, not replaced.
-  "eabe1ba163977917869ee78a5933c0c2a3eb6c9f7922e02d81ee22b1e0aad2a5";
+  //
+  // [TEST-MOD-APPROVED #3193] Re-derived once more, for a SECOND lane. CI on
+  // PR #3224 found that the #2117 offering-visibility lane replays the chain
+  // in phases and applied this issue's migration in phase 1, before the
+  // public-search resolver it asserts on exists. The fix adds one exact-
+  // filename phase-1 skip and one post-resolver apply step to that existing
+  // lane — named here descriptively, never by its `.y`+`ml` path, for the same
+  // provider-seal reason as every note above. That lane is PR-family, so its
+  // non-concurrency document is inside this digest.
+  //
+  // WHAT WAS VERIFIED BEFORE RE-DERIVING:
+  //   - the change is PURELY ADDITIVE: over `.github/workflows/`, this branch
+  //     vs `origin/main` debcb3883 is `2 files changed, 43 insertions(+)` — the
+  //     21-line migrations-lane registration above plus this 22-line lane edit
+  //     — with ZERO deletions, and grepping added AND removed lines for
+  //     `concurrency`, `group:` and `cancel-in-progress` returns ZERO.
+  //   - `--diff-filter=ADR` over `.github/workflows/` returns ZERO files, so
+  //     PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 cannot move: both derive
+  //     at 124 and 9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04.
+  //   - THE DELTA IS EXACTLY THIS CHANGE: restoring ONLY the #2117 lane to its
+  //     `origin/main` bytes recomputes
+  //     eabe1ba163977917869ee78a5933c0c2a3eb6c9f7922e02d81ee22b1e0aad2a5,
+  //     the value this pin replaces, and the new value below is identical
+  //     across three consecutive derivations on the merged tree.
+  //   - `origin/main` was re-read immediately before deriving (debcb3883, 0
+  //     commits ahead, no workflow or gate change since the last merge).
+  // Every earlier re-derivation is preserved, not replaced.
+  "3b7ab48115e982a2aa267dafd76c8dbd7ad3c2b171d1a712e94c9731401c6df7";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
