@@ -2,7 +2,9 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './playwright',
-  testMatch: /(?:issue2771-preconsent-analytics(?:\.tester\.adversarial)?|issue2795-posthog-alias-consent)\.spec\.ts$/,
+  // #3214 rides this web-build step: it needs the same real `dist` export, and
+  // its boot-outcome beacon is one more analytics emission gated on the grant.
+  testMatch: /(?:issue2771-preconsent-analytics(?:\.tester\.adversarial)?|issue2795-posthog-alias-consent|issue3214-public-boot-order)\.spec\.ts$/,
   fullyParallel: false,
   workers: 1,
   retries: 0,

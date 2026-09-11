@@ -1,4 +1,4 @@
-const { requestRpcJson } = require("./supabaseRpc");
+const { requestRpcJson, SUPABASE_URL } = require("./supabaseRpc");
 const { browserRuntimeScript } = require("./publicSearchBrowserRuntime");
 
 const PUBLIC_HOST_ORIGIN = "https://host.usemingla.com";
@@ -280,7 +280,7 @@ const renderVisibleDocument = ({ facts, state, canonicalPath, attributionQuery =
   <meta name="twitter:description" content="${escapeHtml(description)}" />
   ${image ? `<meta name="twitter:image" content="${escapeHtml(image)}" />` : ""}
   ${structuredData ? `<script type="application/ld+json">${escapeJsonForHtml(structuredData)}</script>` : ""}
-  <style>
+  <style id="mingla-public-document-style">
     :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#080706;color:#fff8f1}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% 5%,rgba(244,124,32,.2),transparent 30rem),#080706;color:#fff8f1}
     a{color:inherit}.shell{max-width:1120px;margin:0 auto;padding:24px clamp(18px,4vw,56px) 64px}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-weight:900;letter-spacing:.02em}.brand-logo{display:block;width:auto;height:42px;max-width:170px;object-fit:contain}.hero{display:grid;gap:clamp(28px,5vw,64px);align-items:center;min-height:calc(100vh - 100px);padding:52px 0}.hero.has-image{grid-template-columns:minmax(0,1fr) minmax(280px,.78fr)}.eyebrow{color:#ff9a4d;font-size:.82rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase}.status{display:inline-flex;margin:18px 0 0;padding:8px 12px;border:1px solid rgba(255,154,77,.42);border-radius:999px;color:#ffd5b2}.status[role="status"]{border-color:#f2b84b;color:#ffe0a0}.hero h1{margin:14px 0 18px;font-size:clamp(2.8rem,7vw,6.8rem);line-height:.92;letter-spacing:-.05em}.summary{max-width:720px;margin:0;color:#e5d5c7;font-size:clamp(1.08rem,2vw,1.35rem);line-height:1.58}.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:30px 0}.fact{padding:16px;border:1px solid rgba(255,255,255,.13);border-radius:16px;background:rgba(255,255,255,.05)}.fact dt{color:#c9b8aa;font-size:.78rem;text-transform:uppercase;letter-spacing:.1em}.fact dd{margin:7px 0 0;font-weight:750}.actions{display:flex;flex-wrap:wrap;gap:12px}.cta,.share{display:inline-flex;min-height:52px;align-items:center;justify-content:center;padding:0 24px;border-radius:999px;font:inherit;font-weight:900}.cta{background:#f47c20;color:#090807;text-decoration:none}.share{border:1px solid rgba(255,255,255,.24);background:transparent;color:#fff8f1;cursor:pointer}.share:disabled{cursor:wait;opacity:.7}.share:focus-visible,.cta:focus-visible,.brand:focus-visible,.share-fallback input:focus-visible{outline:3px solid #fff;outline-offset:4px}.share-feedback{min-height:1.5rem;margin:12px 0 0;color:#ffe0a0}.share-fallback{max-width:680px;margin:12px 0 0;padding:14px;border:1px solid rgba(255,255,255,.18);border-radius:14px;background:rgba(255,255,255,.05)}.share-fallback p{margin:0 0 8px;color:#e5d5c7}.share-fallback input{width:100%;padding:10px;border:1px solid rgba(255,255,255,.24);border-radius:9px;background:#15120f;color:#fff8f1;font:inherit;user-select:all}.runtime-status{min-height:1.3rem;margin:16px 0 0;color:#f2b84b}.cover{width:100%;max-height:72vh;aspect-ratio:4/5;border-radius:30px;object-fit:cover;border:1px solid rgba(255,255,255,.14);box-shadow:0 28px 80px rgba(0,0,0,.45)}.trust{border-top:1px solid rgba(255,255,255,.12);padding-top:24px;color:#a99a8f;font-size:.9rem}@media(max-width:780px){.hero.has-image{grid-template-columns:1fr}.hero{min-height:auto;padding-top:64px}.cover{aspect-ratio:16/10;order:-1}}
@@ -316,6 +316,110 @@ const renderStatePage = ({ status, heading, message }) => `<!doctype html>
 <style>:root{color-scheme:dark;font-family:Inter,system-ui,sans-serif}body{min-height:100vh;margin:0;display:grid;place-items:center;background:#080706;color:#fff8f1}.state{max-width:680px;padding:40px;text-align:center}.code{color:#f47c20;font-weight:900;letter-spacing:.16em}h1{font-size:clamp(2.6rem,7vw,5.5rem);margin:14px 0}p{color:#d7c6b8;font-size:1.2rem;line-height:1.6}a{display:inline-block;margin-top:18px;color:#ff9a4d}</style></head>
 <body><main class="state"><div class="code">${status}</div><h1>${escapeHtml(heading)}</h1><p>${escapeHtml(message)}</p><a href="https://usemingla.com/">Explore Mingla</a></main></body></html>`;
 
+// #3214 — the public document's Content-Security-Policy.
+//
+// This header is the policy of the WHOLE visit, not just of the plain page: the
+// Expo app boots over this document and in-app navigation (brand -> event ->
+// /checkout/...) keeps it. So every source below is one the booted app was
+// OBSERVED to use on public flows, recorded on a normal app route (no CSP) with
+// analytics granted, and each row says which feature needs it. The recording
+// and the method are on #3214. What protects stays: default-src/object-src/
+// base-uri/frame-ancestors 'none', form-action 'self' (payment hand-offs are
+// top-level navigations or a new tab, never form posts), no 'unsafe-eval' (the
+// booted app ran every flow under this policy with zero eval violations), and
+// no `https:`/`*` in script, connect or frame. `img-src https:` is unchanged
+// from before: images come from many public hosts (Supabase storage, Bunny
+// thumbnails, Giphy, Pexels, pixels) and cannot execute.
+const DEFAULT_SUPABASE_ORIGIN = "https://gqnoajqerqhnvulmnyvv.supabase.co";
+const BUNNY_STREAM_ORIGIN = "https://vz-a16fce08-6c6.b-cdn.net";
+
+const originOf = (value, fallback = null) => {
+  try {
+    const parsed = new URL(String(value || ""));
+    return parsed.protocol === "https:" ? parsed.origin : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+// The app's backend is the same Supabase project the server reads from.
+const supabaseOrigin = () => originOf(SUPABASE_URL, DEFAULT_SUPABASE_ORIGIN);
+
+// Sentry receives crash reports at the DSN's ingest host. Only a Sentry ingest
+// host is accepted, and never the DSN's key (origin only).
+const sentryIngestOrigin = () => {
+  const origin = originOf(process.env.EXPO_PUBLIC_SENTRY_DSN);
+  return origin && /^https:\/\/[a-z0-9-]+\.ingest(?:\.[a-z]{2})?\.sentry\.io$/.test(origin) ? origin : null;
+};
+
+const publicDocumentCspSources = () => [
+  // [directive, source, feature that needs it]
+  ["default-src", "'none'", "deny anything not listed below"],
+  ["base-uri", "'none'", "no <base> rewriting"],
+  ["object-src", "'none'", "no plugin content (<object>, <embed>)"],
+  ["frame-ancestors", "'none'", "the page cannot be framed (clickjacking)"],
+  ["form-action", "'self'", "payment hand-offs are navigations, not form posts"],
+  ["img-src", "'self'", "the app's own bundled images"],
+  ["img-src", "https:", "cover, gallery and avatar images from public hosts; pixel images (unchanged)"],
+  ["img-src", "data:", "inline images (unchanged)"],
+  ["style-src", "'unsafe-inline'", "the document's own <style>, react-native-web and index.html styles injected at takeover (unchanged)"],
+  ["font-src", "'self'", "the app's theme fonts (Inter, Poppins, ...) under /assets"],
+  ["media-src", "'self'", "the app's own bundled media"],
+  ["media-src", BUNNY_STREAM_ORIGIN, "cover videos (Bunny Stream)"],
+  ["script-src", "'self'", "the Expo chunks and lazy route chunks"],
+  // Kept deliberately, not by default. The inline scripts are server-authored
+  // (this handoff runtime; #3187 adds share analytics) and every value they
+  // embed goes through escapeJsonForHtml. A nonce-only script-src was run
+  // against the production bundle across every flow with zero violations, so
+  // it is a ready follow-up; it is not done here because a nonce makes CSP3
+  // browsers ignore 'unsafe-inline', and any inline script that does not carry
+  // the nonce (#3187's, until it adopts one) would be silently refused.
+  ["script-src", "'unsafe-inline'", "this document's server-authored inline scripts (handoff runtime, #3187 share analytics)"],
+  ["script-src", "https://www.googletagmanager.com", "Google Analytics gtag (unchanged)"],
+  ["script-src", "https://us-assets.i.posthog.com", "PostHog config, exception autocapture, session replay and surveys"],
+  ["script-src", "https://js.stripe.com", "Stripe.js for the in-page Payment Element (venue stays)"],
+  ["script-src", "https://connect.facebook.net", "Meta pixel script (fbevents.js)"],
+  ["script-src", "https://analytics.tiktok.com", "TikTok pixel"],
+  ["script-src", "https://sc-static.net", "Snap pixel script (scevent.min.js)"],
+  ["script-src", "https://tr.snapchat.com", "Snap pixel configuration"],
+  ["script-src", "https://www.redditstatic.com", "Reddit pixel"],
+  ["connect-src", "'self'", "/index.html handoff, /api/public-boot-outcome, /api/content-share-analytics"],
+  ["connect-src", supabaseOrigin(), "every public page's data, RPCs and edge functions"],
+  ["connect-src", "https://api.stripe.com", "Stripe.js API calls from the page (venue stays)"],
+  ["connect-src", "https://us.i.posthog.com", "PostHog capture and flags (unchanged)"],
+  ["connect-src", "https://us-assets.i.posthog.com", "PostHog remote config, fetched when its config script cannot load"],
+  ["connect-src", "https://www.google-analytics.com", "Google Analytics collect (unchanged)"],
+  ["connect-src", "https://region1.google-analytics.com", "Google Analytics regional collect (unchanged)"],
+  ["connect-src", "https://analytics.google.com", "Google Analytics collect"],
+  ["connect-src", "https://www.google.com", "Google Analytics collect (/g/collect)"],
+  ["connect-src", "https://stats.g.doubleclick.net", "Google Analytics collect (Google signals)"],
+  ["connect-src", "https://www.facebook.com", "Meta pixel events"],
+  ["connect-src", "https://analytics.tiktok.com", "TikTok pixel events"],
+  ["connect-src", "https://analytics-ipv6.tiktokw.us", "TikTok pixel events (IPv6 endpoint)"],
+  ["connect-src", "https://pixel-config.reddit.com", "Reddit pixel configuration"],
+  ["connect-src", "https://tr.snapchat.com", "Snap pixel events"],
+  ["connect-src", "https://tr6.snapchat.com", "Snap pixel events"],
+  ...(sentryIngestOrigin() ? [["connect-src", sentryIngestOrigin(), "Sentry crash reports"]] : []),
+  ["frame-src", "https://js.stripe.com", "Stripe.js controller and Payment Element frames"],
+  ["frame-src", "https://hooks.stripe.com", "Stripe 3-D Secure card authentication frame"],
+  ["frame-src", "https://tr.snapchat.com", "Snap pixel frame"],
+];
+
+const DIRECTIVE_ORDER = [
+  "default-src", "base-uri", "object-src", "frame-ancestors", "form-action", "img-src", "style-src",
+  "font-src", "media-src", "script-src", "connect-src", "frame-src",
+];
+
+const publicDocumentCsp = () => {
+  const byDirective = new Map(DIRECTIVE_ORDER.map((directive) => [directive, []]));
+  for (const [directive, source] of publicDocumentCspSources()) {
+    const sources = byDirective.get(directive);
+    if (!sources) throw new Error(`public document CSP: unknown directive ${directive}`);
+    if (!sources.includes(source)) sources.push(source);
+  }
+  return DIRECTIVE_ORDER.map((directive) => `${directive} ${byDirective.get(directive).join(" ")}`).join("; ");
+};
+
 const cacheForState = () => "private, no-store, max-age=0, must-revalidate";
 
 const setBaseHeaders = (res, state) => {
@@ -323,7 +427,7 @@ const setBaseHeaders = (res, state) => {
   res.setHeader("cdn-cache-control", "no-store");
   res.setHeader("vercel-cdn-cache-control", "no-store");
   res.setHeader("x-robots-tag", state === "search_ready" ? "index, follow" : "noindex");
-  res.setHeader("content-security-policy", "default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; connect-src 'self' https://*.supabase.co https://us.i.posthog.com https://*.posthog.com https://www.google-analytics.com https://region1.google-analytics.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+  res.setHeader("content-security-policy", publicDocumentCsp());
   res.setHeader("referrer-policy", "strict-origin-when-cross-origin");
   res.setHeader("x-content-type-options", "nosniff");
 };
@@ -427,5 +531,7 @@ module.exports = {
   firstQueryValue,
   handlePublicSearchDocument,
   jsonLdFor,
+  publicDocumentCsp,
+  publicDocumentCspSources,
   renderVisibleDocument,
 };
