@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Image from 'next/image'
 import { AnswerBlock, CutoutSection, DeviceCta } from '@/components/cutout'
 import { CityDirectory } from '@/components/core-pages/city-directory'
 import { CoreHero } from '@/components/core-pages/core-hero'
@@ -24,7 +25,7 @@ export default function ExplorerPage() {
   const schema = corePageStructuredData(record)
   return <CorePageShell dark>
     {schema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeCorePageStructuredData(schema) }} /> : null}
-    <CoreHero eyebrow={record.eyebrow} title={record.h1} answer={record.directAnswer} visual={<div className="core-proof-mark"><img src="/brand/mingla-logo-white-on-orange.png" alt="Mingla Explorer app icon" /></div>} primary="explorer" secondary="host" />
+    <CoreHero eyebrow={record.eyebrow} title={record.h1} answer={record.directAnswer} visual={<figure className="core-explorer-hero-proof"><Image src="/product-proof/explorer-saved-details.png" alt="Mingla Explorer showing the saved Sample sunset gallery plan open in its details sheet." width={1206} height={2622} sizes="(min-width: 1024px) 21rem, 18rem" priority /></figure>} primary="explorer" secondary="host" />
     <AnswerBlock question={record.directQuestion} answer={record.directAnswer} crumbs={[{name:'Home',path:'/'},{name:'Explorer',path:'/explorer'}]} />
     <CutoutSection id="the-moment"><div className="core-section-heading"><h2>Start with the moment.</h2><p>The same place is not right for every plan. The goal is not to show the most results; it is to help you find a choice you can actually make.</p></div><div className="core-six">{moment.map((item,i)=><article className="core-card" key={item}><h3>{String(i+1).padStart(2,'0')} · {item}</h3><p>Use this part of the moment to narrow what actually fits.</p></article>)}</div></CutoutSection>
     <CutoutSection band="dark" id="product-proof"><div className="core-section-heading"><h2>From discovery to a real action.</h2><p>Keep useful ideas together and carry a decision forward without losing the plan.</p></div><ExplorerProofGrid /></CutoutSection>
