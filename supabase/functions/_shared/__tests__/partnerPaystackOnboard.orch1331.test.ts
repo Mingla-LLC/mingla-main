@@ -47,9 +47,7 @@ interface FakeState {
 }
 
 function fakeSupabase(state: FakeState) {
-  const writes: Array<
-    { table: string; op: string; values: Record<string, unknown> }
-  > = [];
+  const writes: Array<{ table: string; op: string; values: Record<string, unknown> }> = [];
 
   function rowFor(table: string): Record<string, unknown> | null {
     if (table === "creator_accounts") return state.creatorAccount ?? null;
