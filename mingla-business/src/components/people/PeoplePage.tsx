@@ -260,7 +260,6 @@ export function PeoplePage(): React.ReactElement {
   const circleFollowers = useBrandCircleReach(brand?.id??null,"follower",roleResolved,role.accepted,role.rank,online);
   const circleExtended = useBrandCircleReach(brand?.id??null,"extended",roleResolved,role.accepted,role.rank,online);
   const [circleOpen,setCircleOpen]=React.useState<BrandCircleRing|null>(null);
-  const circleSheet = useBrandCircleReach(brand?.id??null,circleOpen??"follower",roleResolved,role.accepted,role.rank,online,circleOpen!==null);
   const [bookOpen, setBookOpen] = React.useState(false);
   const [groupsOpen, setGroupsOpen] = React.useState(false);
   const [createGroupOpen, setCreateGroupOpen] = React.useState(false);
@@ -297,7 +296,7 @@ export function PeoplePage(): React.ReactElement {
     setBookSearch("");
     setCircleOpen(null);
   }, [brand?.id, isAuthReady, role.accepted, role.rank]);
-  React.useEffect(()=>{if([circleFollowers.kind,circleExtended.kind].some((kind)=>kind==="forbidden"||kind==="authLoading"||kind==="roleLoading"))setCircleOpen(null)},[circleExtended.kind,circleFollowers.kind]);
+  React.useEffect(()=>{if([circleFollowers.kind,circleExtended.kind].some((kind)=>kind==="forbidden"||kind==="authLoading"||kind==="roleLoading"||kind==="featureLoading"||kind==="featureOff"))setCircleOpen(null)},[circleExtended.kind,circleFollowers.kind]);
   React.useEffect(() => {
     setExportOpen(false);
     setExportMounted(false);
@@ -768,7 +767,7 @@ export function PeoplePage(): React.ReactElement {
         onPressManual={openManualGroup}
         onCreate={() => { setGroupsOpen(false); setCreateGroupOpen(true); capturePeople("manual_group_create_started", { surface: "groups_sheet" }); }}
       />
-      <CircleReachSheet visible={circleOpen!==null} ring={circleOpen??"follower"} query={circleSheet} onClose={closeCircle}/>
+      <CircleReachSheet visible={circleOpen!==null} ring={circleOpen??"follower"} query={circleOpen==="extended"?circleExtended:circleFollowers} onClose={closeCircle}/>
       {brand && createGroupOpen ? <ManualGroupFlow visible brandId={brand.id} online={online} onAddPerson={() => setAddOpen(true)} onClose={() => setCreateGroupOpen(false)} onCompleted={(created: ManualGroupSummary) => { setCreateGroupOpen(false); openManualGroup(created); }} /> : null}
       <ConflictReviewSheet
         visible={conflictOpen}
