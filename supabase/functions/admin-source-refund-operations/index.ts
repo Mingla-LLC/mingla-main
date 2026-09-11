@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  resolveScopedSecret,
+  SCOPED_SECRET_LABELS,
+} from "../_shared/derivedSecret.ts";
 
 const encoder = new TextEncoder();
 const UUID_RE =
@@ -20,8 +24,15 @@ async function sign(
   payload: string,
   secretOverride?: string,
 ): Promise<string> {
+  // #3201 — derived from the service-role key when the named secret is unset.
+  // It never was, so page one of the refund list worked and page two threw
+  // `cursor_secret_unavailable`. An explicit value (or a test override) still
+  // wins; an unusable root still refuses, below, rather than signing weakly.
   const secret = secretOverride ??
-    Deno.env.get("ADMIN_SOURCE_REFUND_CURSOR_HMAC_SECRET") ?? "";
+    await resolveScopedSecret(
+      Deno.env.get("ADMIN_SOURCE_REFUND_CURSOR_HMAC_SECRET"),
+      SCOPED_SECRET_LABELS.adminSourceRefundCursor,
+    ).catch(() => "");
   if (secret.length < 32) throw new Error("cursor_secret_unavailable");
   const key = await crypto.subtle.importKey(
     "raw",

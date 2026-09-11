@@ -101,6 +101,65 @@ if [[ "$governed_bundle_deploy" == true ]]; then
   exit 0
 fi
 
+# #3186 — bake the release attestation INTO the bundle before it is built.
+#
+# `MINGLA_RELEASE_SHA` was declared optional and set by nobody: the runbook told
+# a human to "embed the SHA" and no caller ever did, so production served
+# `release_sha: "unattested"`, the Business app rejected 100% of Ari responses,
+# and Ari was dead on every production build for nine days (#3185). A runbook
+# sentence is not a setter.
+#
+# A file, not a secret: the constant travels with the bundle it describes and so
+# cannot name a different commit than the one deployed, and it spends no slot
+# against the founder-approved 88-name capacity target. This runs for EVERY
+# deploy because the module is shared — whichever functions are being shipped,
+# the ones that bundle it get a stamp describing exactly themselves.
+release_bake_file="${repo_root}/supabase/functions/_shared/releaseAttestationBake.ts"
+# Exactly 40 lowercase hex. The client's `RELEASE_SHA_RE` is `^[0-9a-f]{40}$`
+# while the edge pattern tolerates 40-64, so a longer digest would pass the
+# server and be rejected by every app — #3185 again, from the other end.
+if [[ ! "$merged_commit" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "FAIL deploy: --merged-commit must be exactly 40 lowercase hex to bake MINGLA release attestation (got '${merged_commit}')" >&2
+  exit 2
+fi
+if ! grep -q '^export const BAKED_RELEASE_SHA = ' "$release_bake_file"; then
+  echo "FAIL deploy: release attestation bake target not found in ${release_bake_file}" >&2
+  exit 2
+fi
+# #3217 — the bake rewrites a TRACKED source file, so put it back when this
+# script exits, however it exits. On a CI runner the checkout is discarded and
+# this is invisible; everywhere else (a hand deploy from a worktree, or
+# scripts/ci/issue1456-edge-deploy-idempotency.test.mjs, which runs this script
+# for real with a mocked `supabase`) the stamped SHA used to stay behind as an
+# uncommitted change — and in the secret-budget lane it only stayed harmless
+# because the Deno step asserting the committed sentinel happens to run first.
+# `supabase functions deploy` reads the file during the command, so every
+# deploy below still ships the baked bundle; restoring afterwards changes only
+# what is left on disk.
+release_bake_backup="$(mktemp "${TMPDIR:-/tmp}/mingla-release-bake.XXXXXX")"
+cp "$release_bake_file" "$release_bake_backup"
+restore_release_bake() {
+  # Never mask the script's own verdict: keep the status the exit carried.
+  local status=$?
+  if [[ -n "${release_bake_backup:-}" && -f "$release_bake_backup" ]]; then
+    if cp "$release_bake_backup" "$release_bake_file"; then
+      rm -f "$release_bake_backup"
+    else
+      echo "WARN deploy: could not restore ${release_bake_file}; the original is at ${release_bake_backup}" >&2
+    fi
+  fi
+  return "$status"
+}
+trap restore_release_bake EXIT
+# The value is a validated 40-hex literal, so it cannot carry sed metacharacters.
+perl -pi -e "s{^export const BAKED_RELEASE_SHA = .*\$}{export const BAKED_RELEASE_SHA = \"${merged_commit}\";}" \
+  "$release_bake_file"
+if ! grep -q "^export const BAKED_RELEASE_SHA = \"${merged_commit}\";\$" "$release_bake_file"; then
+  echo "FAIL deploy: release attestation bake did not take effect" >&2
+  exit 2
+fi
+echo "PASS baked release attestation ${merged_commit}"
+
 preflight_args=(
   --project-ref "$project_ref"
   --merged-commit "$merged_commit"

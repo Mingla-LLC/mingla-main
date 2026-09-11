@@ -84,6 +84,41 @@ const BANK_PICKER_MAX_HEIGHT = 720;
 const BANK_PICKER_ROW_MIN_HEIGHT = 56;
 const BANK_PICKER_SCRIM = "rgba(0, 0, 0, 0.50)";
 
+/**
+ * #3192 — turn a payout-connect failure into copy the organiser can act on.
+ *
+ * The edge function already returns a specific `error` code and `detail`, and
+ * `brandPaystackService.unwrapError` folds both into the thrown message. Only
+ * the view was discarding it. Unknown causes still fall back to the generic
+ * line, but they no longer erase what actually happened — the caller logs the
+ * bound error alongside this.
+ */
+export function describePaystackConnectError(
+  err: unknown,
+  isUpdate: boolean,
+): string {
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+
+  if (raw.includes("account_unresolved") || raw.includes("resolved_account_mismatch")) {
+    return "That account number doesn't match the bank you picked. Check both, then verify again.";
+  }
+  if (raw.includes("recipient_create_failed") || raw.includes("subaccount_create_failed")) {
+    return "Paystack couldn't accept this account right now. Wait a moment and try again — if it keeps failing, contact support.";
+  }
+  if (raw.includes("recipient_store_failed") || raw.includes("recipient_read_failed")) {
+    return "We reached Paystack but couldn't save the result on our side. Nothing was charged or changed. Try again, and contact support if it persists.";
+  }
+  if (raw.includes("provider_already_set")) {
+    return "This brand is already connected to a different payment provider. Disconnect it first, then add this bank.";
+  }
+  if (raw.includes("forbidden") || raw.includes("unauthenticated")) {
+    return "You don't have permission to change payouts for this brand. Ask a brand owner to do it.";
+  }
+  return isUpdate
+    ? "We couldn't update this bank account. Please try again in a moment."
+    : "We couldn't connect this bank account. Please try again in a moment.";
+}
+
 export const BrandPaystackOnboardView: React.FC<Props> = ({
   brandId,
   brandName,
@@ -341,12 +376,19 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
       await recipientMutation.mutateAsync(input);
       await submitMutation.mutateAsync(input);
       onConnected?.();
-    } catch {
-      setError(
-        isUpdate
-          ? "We couldn't update this bank account. Please try again in a moment."
-          : "We couldn't connect this bank account. Please try again in a moment.",
-      );
+    } catch (err) {
+      // #3192 — this was a BARE `catch {}`. The error object was discarded, so
+      // the real cause never reached the UI, Sentry, or any log line. A
+      // cross-tenant recipient deletion therefore surfaced to Seth as
+      // "try again in a moment" — advice that repeated the damage on every tap.
+      // Bind it, log it, and say something the organiser can act on.
+      console.error("[BrandPaystackOnboardView] connect failed", {
+        brandId,
+        bankCode,
+        isUpdate,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      setError(describePaystackConnectError(err, isUpdate));
     }
   };
 

@@ -1861,14 +1861,6 @@
         "app.qr_token_pepper"
       ]
     },
-    "stripe-webhook-health-check": {
-      "migration_fallback_top_level": [],
-      "optional_top_level": [
-        "CRON_SECRET"
-      ],
-      "required_bundle_fields": {},
-      "required_top_level": []
-    },
     "submit-feedback": {
       "migration_fallback_top_level": [],
       "optional_top_level": [],

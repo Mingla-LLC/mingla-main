@@ -4,6 +4,7 @@ import {
   cityHubEffectiveLifecycle,
   cityHubPath,
 } from '../../content/cities/registry'
+import { HELP_VIDEOS, helpVideoPath } from '../../content/help/registry'
 
 export const ROUTE_LIFECYCLE_STATES = [
   'draft',
@@ -115,6 +116,15 @@ const SEARCH_READY_ROUTES = [
     description:
       'Calculate your true cost per guest, including your time, compare the market, and see a practical price range for your workshop, class, club, or hosted experience.',
     lastModified: '2026-09-01',
+  },
+  {
+    id: 'help-centre',
+    match: { type: 'exact', pathname: '/help' },
+    lifecycle: 'search_ready',
+    title: 'Mingla Help Centre',
+    description:
+      'Short video walkthroughs of every part of Mingla — getting the apps, creating events and trips, taking payments, and running the door.',
+    lastModified: '2026-09-11',
   },
   {
     id: 'support',
@@ -230,6 +240,20 @@ export const CITY_ROUTE_CONTRACTS: readonly RouteContract[] = CITY_HUBS.map((rec
   lastModified: record.sourcesCheckedAt,
 } as RouteContract))
 
+// Help videos own their route contracts the same way #2983's cities do: one
+// content record controls route identity, so each video has its own canonical
+// and its own sitemap row. A `prefix` contract would have been shorter and
+// wrong — the sitemap emits `match.pathname` verbatim, so `/help/` itself would
+// have been submitted as a page, and `/help/` renders nothing.
+export const HELP_ROUTE_CONTRACTS: readonly RouteContract[] = HELP_VIDEOS.map((record) => ({
+  id: `help-video-${record.slug}`,
+  match: { type: 'exact' as const, pathname: helpVideoPath(record.slug) },
+  lifecycle: 'search_ready' as const,
+  title: `${record.title} — Mingla help`,
+  description: record.blurb,
+  lastModified: record.uploadedAt,
+} as RouteContract))
+
 export const ROUTE_REGISTRY: readonly RouteContract[] = [
   ...SEARCH_READY_ROUTES,
   ...PUBLIC_NOINDEX_ROUTES.map(([pathname, id]) => ({
@@ -243,6 +267,7 @@ export const ROUTE_REGISTRY: readonly RouteContract[] = [
     lifecycle: 'public_noindex' as const,
   })),
   ...CITY_ROUTE_CONTRACTS,
+  ...HELP_ROUTE_CONTRACTS,
   ...REDIRECTED_ROUTES,
 ]
 

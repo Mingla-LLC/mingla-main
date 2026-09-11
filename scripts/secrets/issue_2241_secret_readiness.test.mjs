@@ -279,7 +279,12 @@ function receiptSet(nowMs = Date.parse("2026-08-31T12:00:00.000Z")) {
 
 test("#2241 happy: checked contract classifies the complete production import graph", () => {
   assert.deepEqual(auditFunctionSecretContract(), []);
-  assert.equal(Object.keys(contract.functions).length, 232);
+  // [TEST-MOD-APPROVED #3200] 232 -> 231: #3200 retired
+  // `stripe-webhook-health-check` (superseded by ORCH-1213's webhook freshness
+  // in api-health-probe; it had never run) and removed its contract entry. The
+  // pin still does its job — any entry dropped WITHOUT a matching retirement
+  // moves this count and fails here.
+  assert.equal(Object.keys(contract.functions).length, 231);
   assert.equal(manifest.secrets.length, 88);
 });
 

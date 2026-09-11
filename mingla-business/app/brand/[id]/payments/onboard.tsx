@@ -62,6 +62,16 @@ export default function BrandOnboardRoute(): React.ReactElement {
     handleBack();
   };
 
+  // #3208 — when setup is refused for want of a usable email, the fix is a
+  // brand contact email, so land the organiser on that field via Brand Edit's
+  // ORCH-1256 `?section=` deep link (validated against the closed section set).
+  const handleEditContact = (): void => {
+    if (brandId === null) return;
+    router.push(
+      `/brand/${encodeURIComponent(brandId)}/edit?section=contact` as never,
+    );
+  };
+
   return (
     <View
       style={{
@@ -79,6 +89,7 @@ export default function BrandOnboardRoute(): React.ReactElement {
           brand={brand}
           onCancel={handleBack}
           onAfterDone={handleAfterDone}
+          onEditContact={brandId !== null ? handleEditContact : undefined}
         />
       </BrandPaymentsPermissionGate>
     </View>
