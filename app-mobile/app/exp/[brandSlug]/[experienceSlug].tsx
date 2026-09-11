@@ -20,6 +20,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import ConsumerExperienceDetailScreen from "../../../src/screens/Experience/ConsumerExperienceDetailScreen";
+import { useCanonicalShareArrival } from "../../../src/hooks/useCanonicalShareArrival";
 import { useConsumerExperienceDetail } from "../../../src/hooks/useConsumerExperienceDetail";
 import { hueFromId } from "../../../src/utils/hueFromId";
 import type { BusinessEventCard } from "../../../src/types/mergedDiscover";
@@ -39,7 +40,10 @@ export default function ExperienceDeepLinkScreen(): React.ReactElement | null {
     brandSlug: string | string[];
     experienceSlug: string | string[];
     landing?: string | string[];
+    ms?: string | string[];
   }>();
+  // #3187 — a shared experience link opens here directly; record its attribution.
+  useCanonicalShareArrival(params.ms);
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
     : params.brandSlug;

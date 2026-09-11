@@ -448,18 +448,20 @@ export default function PublicVenueRoute(): React.ReactElement {
     router.replace(brandPublicPath(brandSlug) as never);
   }, [brandSlug, router]);
 
+  // #3187 — the canonical URL needs only the route params, so web never falls
+  // through to the native sheet while the venue query is unresolved. Title and
+  // description degrade; the URL does not.
   const handleShare = useCallback((): void => {
     if (
       Platform.OS === "web" &&
-      venue !== null &&
       typeof brandSlug === "string" &&
       typeof venueSlug === "string"
     ) {
-      const { pageTitle, metaDescription } = publicVenueMeta(venue);
+      const meta = venue !== null ? publicVenueMeta(venue) : null;
       void shareCanonicalPublicPageOnWeb({
         url: venuePublicUrl({ brandSlug, venueSlug }),
-        title: pageTitle,
-        description: metaDescription,
+        title: meta?.pageTitle ?? "Mingla",
+        description: meta?.metaDescription,
       });
       return;
     }

@@ -194,17 +194,19 @@ export default function PublicExperienceRoute(): React.ReactElement {
 
   // #1968 — public web is already the destination, so it shares the canonical
   // URL directly. Native retains the existing custom Mingla share sheet.
+  // #3187 — the canonical URL needs only the route params, so web never falls
+  // through to the native sheet while the page query is unresolved. Title and
+  // description degrade; the URL does not.
   const handleShare = useCallback((): void => {
     if (
       Platform.OS === "web" &&
       typeof brandSlug === "string" &&
-      typeof experienceSlug === "string" &&
-      query.data?.experience !== undefined
+      typeof experienceSlug === "string"
     ) {
       void shareCanonicalPublicPageOnWeb({
         url: experiencePublicUrl({ brandSlug, experienceSlug }),
-        title: query.data.experience.title,
-        description: query.data.experience.description?.slice(0, 200) ?? undefined,
+        title: query.data?.experience?.title ?? "Mingla",
+        description: query.data?.experience?.description?.slice(0, 200) ?? undefined,
       });
       return;
     }

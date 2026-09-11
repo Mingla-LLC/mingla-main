@@ -24,6 +24,7 @@ import React from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import ConsumerEventDetailScreen from "../../../src/screens/Event/ConsumerEventDetailScreen";
+import { useCanonicalShareArrival } from "../../../src/hooks/useCanonicalShareArrival";
 
 export default function EventDeepLinkScreen(): React.ReactElement | null {
   const router = useRouter();
@@ -31,7 +32,10 @@ export default function EventDeepLinkScreen(): React.ReactElement | null {
     brandSlug: string | string[];
     eventSlug: string | string[];
     landing?: string | string[];
+    ms?: string | string[];
   }>();
+  // #3187 — a shared event link opens here directly; record its attribution.
+  useCanonicalShareArrival(params.ms);
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
     : params.brandSlug;

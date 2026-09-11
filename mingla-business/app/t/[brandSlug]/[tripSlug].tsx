@@ -210,17 +210,19 @@ export default function PublicTripRoute(): React.ReactElement {
 
   // #1968 — public web is already the destination, so it shares the canonical
   // URL directly. Native retains the existing custom Mingla share sheet.
+  // #3187 — the canonical URL needs only the route params, so web never falls
+  // through to the native sheet while the page query is unresolved. Title and
+  // description degrade; the URL does not.
   const handleShare = useCallback((): void => {
     if (
       Platform.OS === "web" &&
       typeof brandSlug === "string" &&
-      typeof tripSlug === "string" &&
-      query.data?.trip !== undefined
+      typeof tripSlug === "string"
     ) {
       void shareCanonicalPublicPageOnWeb({
         url: tripPublicUrl({ brandSlug, tripSlug }),
-        title: query.data.trip.title,
-        description: query.data.trip.description?.slice(0, 200),
+        title: query.data?.trip?.title ?? "Mingla",
+        description: query.data?.trip?.description?.slice(0, 200),
       });
       return;
     }

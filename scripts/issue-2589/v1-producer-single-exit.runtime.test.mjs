@@ -83,6 +83,8 @@ function buildProducer(invokeResult) {
     supabase: { functions: { invoke: async () => (typeof invokeResult === "function" ? invokeResult() : invokeResult) } },
     buildShortShareUrl: sharing.buildShortShareUrl,
     buildSharePortraitUrl: sharing.buildSharePortraitUrl,
+    // #3187 — the producer derives the shared URL/text through this one package function.
+    deriveCanonicalShare: sharing.deriveCanonicalShare,
     // The legacy producer and its companions, live and watched.
     createSharedCard: trap("createSharedCard"),
     prepareLegacyPublicFields: trap("prepareLegacyPublicFields"),
@@ -142,7 +144,11 @@ test("V2 the success path is the ONLY path that returns, and it is unchanged", a
   const prepared = await prepare("event", { brandSlug: "b", eventSlug: "e" });
   assert.equal(prepared.contract, "content_share_v1");
   assert.equal(prepared.shortCode, "Aa0Bb1Cc2Dd3Ee4F");
-  assert.equal(prepared.canonicalUrl, "https://usemingla.com/s/Aa0Bb1Cc2Dd3Ee4F");
+  // [TEST-MOD-APPROVED #3187] `canonicalUrl` held the /s/ interstitial link and
+  // is renamed `shortShareUrl`. This fixture has no `destination.webPath`, so
+  // the share falls back to that link for `url` too — the fail-closed path.
+  assert.equal(prepared.shortShareUrl, "https://usemingla.com/s/Aa0Bb1Cc2Dd3Ee4F");
+  assert.equal(prepared.url, "https://usemingla.com/s/Aa0Bb1Cc2Dd3Ee4F");
   // The card URL is built here, in the adapter — the layer that owns it.
   assert.equal(prepared.s4Url, "https://usemingla.com/og/s/Aa0Bb1Cc2Dd3Ee4F/v4-r2.jpg");
   assert.deepEqual(trapped, []);

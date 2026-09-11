@@ -161,10 +161,127 @@ function sanitizeReferralCode(value) {
   return REFERRAL_CODE_RE.test(normalized) ? normalized : null;
 }
 
+/**
+ * The `/s/<code>` interstitial link. This is NOT the canonical page URL — it is
+ * the short link to Mingla's share interstitial, which still serves every link
+ * already sent plus `place`/`curated`, which have no public page (#3187).
+ */
 function buildShortShareUrl(code) {
   if (!isShortShareCode(code)) throw new TypeError('invalid_share_code');
-  // SHARE-CANONICAL-URL-BUILDER
+  // SHARE-SHORT-URL-BUILDER
   return `https://usemingla.com/s/${code}`;
+}
+
+/**
+ * #3187 — the canonical public page a share points at, plus the share's
+ * attribution. One builder for both apps; no caller may hand-roll either
+ * string.
+ *
+ * The attribution travels as ONE param, `ms=<code>.<version>`, so it either
+ * parses whole or not at all — two params can arrive half-copied and be
+ * half-trusted. The dot sits outside the 16-char alphanumeric code class, so
+ * the split is unambiguous. The version has to be in the URL: the page cannot
+ * resolve a code to a version (both resolver RPCs are service_role-only and
+ * the page reads with the anon key), and the analytics endpoint rejects a body
+ * without one.
+ */
+const SHARE_CANONICAL_ORIGIN = 'https://host.usemingla.com';
+const SHARE_ATTRIBUTION_PARAM = 'ms';
+// Upper bound mirrors the 9-digit ceiling `parseShareAttributionValue` accepts,
+// so every value this module builds is one it will parse back.
+const SHARE_ATTRIBUTION_MAX_VERSION = 999999999;
+const SHARE_ATTRIBUTION_RE = /^[0-9A-Za-z]{16}\.[1-9][0-9]{0,8}$/;
+// Same character class and bound the edge validator enforces on
+// `destination.webPath` (`supabase/functions/_shared/contentShareService.ts`).
+const CANONICAL_WEB_PATH_RE = /^\/[A-Za-z0-9_~!$&'()*+,;=:@%./-]+$/;
+const CANONICAL_WEB_PATH_MAX = 512;
+const DOT_SEGMENT_RE = /^(?:\.|%2e){1,2}$/i;
+
+const isShareAttributionVersion = (version) =>
+  Number.isSafeInteger(version) && version >= 1 && version <= SHARE_ATTRIBUTION_MAX_VERSION;
+
+function buildShareAttributionValue(code, version) {
+  if (!isShortShareCode(code) || !isShareAttributionVersion(version)) {
+    throw new TypeError('invalid_share_attribution');
+  }
+  return `${code}.${version}`;
+}
+
+function parseShareAttributionValue(value) {
+  if (typeof value !== 'string' || !SHARE_ATTRIBUTION_RE.test(value)) return null;
+  const dot = value.indexOf('.');
+  return { code: value.slice(0, dot), version: Number(value.slice(dot + 1)) };
+}
+
+/**
+ * The page path a share may point at, or null. `destination.webPath` is
+ * present for exactly the six kinds with a public page (event, rsvp_event,
+ * trip, experience, venue, brand) and absent for `place`/`curated`, so it is
+ * the scope discriminator — there is no kind list here to drift. Pure string
+ * checks, deliberately: the origin is fixed, and a path that could be
+ * re-interpreted (a `//` authority, a dot segment, a query or fragment) is
+ * refused rather than normalised.
+ */
+function canonicalWebPath(destination) {
+  if (!destination || typeof destination !== 'object' || Array.isArray(destination)) return null;
+  const webPath = destination.webPath;
+  if (typeof webPath !== 'string' || webPath.length > CANONICAL_WEB_PATH_MAX) return null;
+  if (!CANONICAL_WEB_PATH_RE.test(webPath)) return null;
+  if (webPath.includes('?') || webPath.includes('#') || webPath.includes('//')) return null;
+  if (webPath.split('/').some((segment) => DOT_SEGMENT_RE.test(segment))) return null;
+  return webPath;
+}
+
+/** Canonical page URL with attribution, or null — never throws. */
+function buildCanonicalShareUrl(destination, code, version) {
+  const webPath = canonicalWebPath(destination);
+  if (webPath === null || !isShortShareCode(code) || !isShareAttributionVersion(version)) return null;
+  return `${SHARE_CANONICAL_ORIGIN}${webPath}?${SHARE_ATTRIBUTION_PARAM}=${code}.${version}`;
+}
+
+/**
+ * Pure substitution of one substring. It composes nothing: it cannot add a
+ * fact or a word the server did not author. Returns `message` unchanged when
+ * either URL is not a non-empty string or the short URL does not occur.
+ */
+function withCanonicalShareUrl(message, shortUrl, canonicalUrl) {
+  if (typeof message !== 'string') return message;
+  if (typeof shortUrl !== 'string' || shortUrl.length === 0) return message;
+  if (typeof canonicalUrl !== 'string' || canonicalUrl.length === 0) return message;
+  if (!message.includes(shortUrl)) return message;
+  return message.split(shortUrl).join(canonicalUrl);
+}
+
+/**
+ * #3187 — the URL and text a prepared share actually sends.
+ *
+ * WHY THE TEXT HAS TO MOVE WITH THE URL. The share message is authored in
+ * Postgres by `content_share_message_text` with `https://usemingla.com/s/<code>`
+ * appended, and frozen into an immutable column by a BEFORE INSERT trigger.
+ * Android shares that text and nothing else. Changing only the URL field would
+ * leave Android sharing the interstitial and put two links in every iOS paste.
+ * Substituting the short link inside the server's own text is what makes the
+ * URL and the prose agree — for new links and for links minted before this
+ * change alike, with no backfill and no change to what installed older apps
+ * receive.
+ *
+ * Fails closed to today's behaviour: no public page, a malformed path, or a
+ * message that does not carry the short link all yield the short link and the
+ * untouched server message.
+ */
+function deriveCanonicalShare(input) {
+  const source = input && typeof input === 'object' ? input : {};
+  const message = typeof source.message === 'string' ? source.message : '';
+  const shortShareUrl = typeof source.shortShareUrl === 'string' ? source.shortShareUrl : '';
+  const canonicalShareUrl = buildCanonicalShareUrl(source.destination, source.code, source.version);
+  if (canonicalShareUrl === null || shortShareUrl.length === 0 || !message.includes(shortShareUrl)) {
+    return { url: shortShareUrl, canonicalShareUrl: null, shareMessage: message };
+  }
+  return {
+    url: canonicalShareUrl,
+    canonicalShareUrl,
+    shareMessage: withCanonicalShareUrl(message, shortShareUrl, canonicalShareUrl),
+  };
 }
 
 function buildSharePortraitUrl(code, version) {
@@ -587,6 +704,7 @@ module.exports = {
   ROUTE_MANIFEST, cleanText, cleanHttpsUrl, cleanMoney, cleanMedia, cleanDestination,
   isPublicShareMediaUrl, selectPublicMediaIdentity,
   isShortShareCode, sanitizeReferralCode, buildShortShareUrl, buildSharePortraitUrl, contentShareRequestFromPublicUrl, validateShareFactsV1, parseShareFactsV1,
+  SHARE_CANONICAL_ORIGIN, SHARE_ATTRIBUTION_PARAM, buildShareAttributionValue, parseShareAttributionValue, buildCanonicalShareUrl, withCanonicalShareUrl, deriveCanonicalShare,
   formatMoney, formatEstimate, formatRating, statusLabel, shareKindLabel, formatPlanningPreference, selectRecipientFacts, selectPreviewFacts, selectCompactPreviewFacts,
   buildShareMessage, routeContractFor, validateNativeContentCardDescriptorV1, nativeContentCardCacheKey, createNativeContentCardSessionCache, createContentShareSingleFlight, checkContentShareReadiness, checkContentShareReadinessDetailed, weekdayForShareTimezone, openStateForHours,
 };

@@ -254,6 +254,10 @@ function buildAdoptFromSource(relative, name) {
   assert.notEqual(end, -1, `${relative}: ${name}'s body is no longer where it was`);
   const body = source.slice(start, end + 2)
     .replace(new RegExp(`export function ${name}\\([\\s\\S]*?\\): \\w+ \\{`), `return function ${name}(prepared, version) {`);
+  // [TEST-MOD-APPROVED #3187] The helper now also re-derives the shared URL
+  // and text for the adopted version (`?ms=<code>.<version>`), through the one
+  // package function that owns them. It is injected here exactly like
+  // buildSharePortraitUrl; nothing else about the harness changes.
   // eslint-disable-next-line no-new-func -- the helper's own source, read from disk
-  return new Function("buildSharePortraitUrl", body)(sharing.buildSharePortraitUrl);
+  return new Function("buildSharePortraitUrl", "deriveCanonicalShare", body)(sharing.buildSharePortraitUrl, sharing.deriveCanonicalShare);
 }

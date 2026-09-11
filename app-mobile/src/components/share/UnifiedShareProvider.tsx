@@ -482,7 +482,7 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
     if (!prepared) return;
     setExternalError(null);
     try {
-      await Clipboard.setString(prepared.canonicalUrl);
+      await Clipboard.setString(prepared.url);
       setCopied(true);
       AccessibilityInfo.announceForAccessibility('Link copied');
       setTimeout(() => setCopied(false), 1200);

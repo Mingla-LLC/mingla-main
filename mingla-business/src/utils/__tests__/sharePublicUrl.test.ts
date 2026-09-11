@@ -73,22 +73,27 @@ describe("sharePublicUrl helpers", () => {
     expect(writeText).toHaveBeenCalledWith(canonicalUrl);
   });
 
-  test("iOS native share payload carries the SEO public URL exactly once", async () => {
+  test("iOS native share payload carries the SEO public URL in the text AND the url item", async () => {
+    // [TEST-MOD-APPROVED #3187] This test pinned the iOS defect itself: the URL
+    // stripped out of `message` and carried only in `url`, so a target that
+    // reads just the text item pasted the prose with no link (Seth's report).
+    // iOS now puts the link in the text too, so the payload holds it TWICE by
+    // design — once in `message`, once in `url` — and the text holds it once.
     await sharePublicUrl({
       title: "Great Free Event",
       url: canonicalUrl,
       description: "A free Mingla QA event.",
     });
 
-    expect(mockShare).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Great Free Event",
-        url: canonicalUrl,
-        message: "A free Mingla QA event.",
-      }),
-    );
+    expect(mockShare).toHaveBeenCalledWith({
+      title: "Great Free Event",
+      url: canonicalUrl,
+      message: `A free Mingla QA event.\n${canonicalUrl}`,
+    });
     const payload = JSON.stringify(mockShare.mock.calls);
-    expect(countOccurrences(payload, canonicalUrl)).toBe(1);
+    expect(countOccurrences(payload, canonicalUrl)).toBe(2);
+    const [{ message }] = mockShare.mock.calls[0] as [{ message: string }];
+    expect(countOccurrences(message, canonicalUrl)).toBe(1);
     expect(payload).not.toContain("exp://");
     expect(payload).not.toContain("localhost");
     expect(payload).not.toContain("https://mingla.com/e");
