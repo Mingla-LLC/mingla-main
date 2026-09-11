@@ -47,6 +47,10 @@ import {
 // email-assets fallback URL with a live default.
 import { minglaLogoUrl } from "../_shared/brandAssets.ts";
 import { resolveRuntimeString } from "../_shared/runtimeConfig.ts";
+import {
+  resolveScopedSecret,
+  SCOPED_SECRET_LABELS,
+} from "../_shared/derivedSecret.ts";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -444,7 +448,20 @@ export async function handler(req: Request): Promise<Response> {
     }
 
     // ── Abuse guard: salted-IP-hash soft throttle. Reuse BETA_LEAD_IP_SALT. ──
-    const salt = Deno.env.get("BETA_LEAD_IP_SALT") ?? "";
+    // #3201 — derived from the service-role key when BETA_LEAD_IP_SALT is unset
+    // (the salt was never set in production, so this throttle never ran: 2 leads,
+    // 0 with an ip_hash). An explicit BETA_LEAD_IP_SALT still wins. Fails open,
+    // loudly, only if the root itself is unusable — the pre-#3201 behaviour.
+    const salt = await resolveScopedSecret(
+      Deno.env.get("BETA_LEAD_IP_SALT"),
+      SCOPED_SECRET_LABELS.betaLeadIpSalt,
+    ).catch((err: unknown) => {
+      console.error(
+        "[careers-apply] throttle salt unavailable — throttle skipped",
+        err instanceof Error ? err.message : String(err),
+      );
+      return "";
+    });
     const ip = firstForwardedHop(req.headers.get("x-forwarded-for"));
     const ipHash = salt ? await hashIp(ip, salt) : null;
 

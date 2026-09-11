@@ -34,6 +34,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // The shared object already uses "POST, OPTIONS", matching this function's
 // methods, so behavior is unchanged except the widened allow-headers.
 import { corsHeaders } from "../_shared/cors.ts";
+import {
+  resolveScopedSecret,
+  SCOPED_SECRET_LABELS,
+} from "../_shared/derivedSecret.ts";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -366,7 +370,20 @@ export async function handler(req: Request): Promise<Response> {
     });
 
     // ── Abuse guard: salted-IP-hash soft throttle (§3.3.5) ──────────────────
-    const salt = Deno.env.get("BETA_LEAD_IP_SALT") ?? "";
+    // #3201 — derived from the service-role key when BETA_LEAD_IP_SALT is unset
+    // (the salt was never set in production, so this throttle never ran: 2 leads,
+    // 0 with an ip_hash). An explicit BETA_LEAD_IP_SALT still wins. Fails open,
+    // loudly, only if the root itself is unusable — the pre-#3201 behaviour.
+    const salt = await resolveScopedSecret(
+      Deno.env.get("BETA_LEAD_IP_SALT"),
+      SCOPED_SECRET_LABELS.betaLeadIpSalt,
+    ).catch((err: unknown) => {
+      console.error(
+        "[beta-access-lead-submit] throttle salt unavailable — throttle skipped",
+        err instanceof Error ? err.message : String(err),
+      );
+      return "";
+    });
     const ip = firstForwardedHop(req.headers.get("x-forwarded-for"));
     const ipHash = salt ? await hashIp(ip, salt) : null;
 
