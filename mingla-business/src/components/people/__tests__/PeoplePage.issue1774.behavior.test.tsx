@@ -17,6 +17,7 @@ jest.mock("../../../hooks/useFeatureFlag",()=>({useFeatureFlag:()=>flag}));
 jest.mock("../../../hooks/useResponsiveLayout",()=>({useResponsiveLayout:()=>({isWideDesktop:false,width:390})}));
 jest.mock("../../../hooks/useStickyFooterOffset",()=>({useStickyFooterOffset:()=>120}));
 jest.mock("../../../hooks/marketing/useBrandPeople",()=>({useBrandPeople:(...args:any[])=>peopleHook(args[0],args[1],args[2],args[3],args[4])}));
+jest.mock("../../../hooks/marketing/useBrandCircleReach",()=>({useBrandCircleReach:()=>({kind:"featureOff",rows:[],counts:undefined,currentPage:undefined,hasCurrentTruth:false,hasNextPage:false,isFetchingNextPage:false,isFetchNextPageError:false,refetch,fetchNextPage})}));
 jest.mock("../../../hooks/marketing/useAudienceList",()=>({useAudienceList:()=>groupState}));
 // #2305 — the conflict queue hook uses React Query like useBrandPeople above, so it
 // is stubbed for the same reason: this suite renders PeoplePage without a QueryClient.

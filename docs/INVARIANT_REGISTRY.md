@@ -1,5 +1,25 @@
 # Invariant Registry
 
+## DRAFT — issue #1777 (server-owned Brand Circle reach)
+
+### I-PROPOSED-1777-CIRCLE-FRESHNESS-FAILS-CLOSED (DRAFT)
+
+- **Rule:** A Brand Circle ring is readable or Circle-send-eligible only when a fresh invocation of the sole resolver produces the same full canonical count and SHA-256 digest as both the ready state and its materialized generation. Dirty markers and the circuit breaker accelerate repair but are never freshness proof; if invalidation and circuit writes both fail, the live equivalence gate still hides stale rows, counts, cursors, and sends.
+- **Enforcement:** `issue_1777_resolve_brand_circle_members`, the live truth-digest and scope-status functions, atomic refresh generations, the non-throwing source wrapper, PostgreSQL 17 regression, and the self-testing #1777 strict gate in the retained #1774 People workflow.
+- **Status:** DRAFT until independent tester PASS, Business iOS/Android/web runtime acceptance, merged-main proof, guarded surgical migration apply, and production readback.
+
+### I-PROPOSED-1777-CIRCLE-CONSENT-AND-BLOCKS (DRAFT)
+
+- **Rule:** Current Follow is Ring-2 roster and Circle-delivery activation; the single explicit #1782 extended-brand-reach decision is Ring-3 roster and Circle-delivery activation. Missing/unreadable consent, either-direction canonical `blocked_users`, active Book ownership, brand exit, or ineligible identity denies. Existing category, channel, suppression, unsubscribe, quiet-hours, provider, and `can_send` authorities remain additive final-delivery gates.
+- **Enforcement:** The sole resolver, service-only revalidation seam, exact rollout flags, Book subtraction and bidirectional block predicates, PG17 activation regressions, and #1777 strict gate.
+- **Status:** DRAFT under the same #1777 verification, runtime, merge, apply, and production gates above; Ring 3 remains dark until #1782 ships both mobile controls.
+
+### I-876-CIRCLE-NO-CONTACT-FIELDS (DRAFT)
+
+- **Rule:** Brand Circle materialization and the Business list response contain only opaque member ID, ring, approved public display name/avatar, and the fixed safe reason. They never store, return, log, infer, copy, export, or render contact/address/device/AppsFlyer/event/path/connector identity. Every Ring-3 reason is anonymous and byte-stable.
+- **Enforcement:** Deny-all material tables, exact-key Business parser, static/non-interactive Circle rows, schema catalog assertions, and the self-testing #1777 privacy gate.
+- **Status:** DRAFT until #1777 completes independent testing and release verification.
+
 ## ACTIVE — issue #2979 (attendance-claim secret continuity)
 
 ### I-PROPOSED-2979-ATTENDANCE-DUAL-PROOF-CONTINUITY (ACTIVE)
