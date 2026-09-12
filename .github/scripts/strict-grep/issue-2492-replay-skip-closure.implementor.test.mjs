@@ -6,7 +6,7 @@
 // T-3  error      synthetic migration reading a skipped column from
 //                 a `LANGUAGE sql` body                              -> non-zero
 // T-5  negative   the SAME reference inside a plpgsql body           -> exit 0
-// T-10 INVENTORY  exactly 4 filtered lanes, glob counts 11/1/3/7,
+// T-10 INVENTORY  exactly 4 filtered lanes, glob counts 11/1/3/8,
 //                 zero violations
 //
 // T-10 is the non-vacuous one. "Real chain -> exit 0" passes just as happily
@@ -185,7 +185,13 @@ test("T-1 — the guard is clean on the repository as shipped", () => {
 // [TEST-MOD-APPROVED #2728] The #2728 fix-forward is deliberately skipped
 // before baseline and applied after corrected #2117; only the pinned inventory
 // moves, and every parser, security, and containment assertion remains intact.
-test("T-10 — lane inventory is exactly 4 lanes at 11/1/3/7 (a blind parser reds here)", () => {
+// [TEST-MOD-APPROVED #3193] #3193's migration re-emits the public-search
+// source reader and its closing DO block asserts on the resolver #2986
+// creates, so the #2117 lane now skips it by EXACT filename in phase 1 and
+// applies it once straight after #2986. That lane's inventory moves 7 -> 8;
+// the lane count, both subject kinds, and zero violations are unchanged. The
+// guard's own self-test pin moves with it in issue-2492-replay-skip-closure.mjs.
+test("T-10 — lane inventory is exactly 4 lanes at 11/1/3/8 (a blind parser reds here)", () => {
   const { lanes, violations } = analyseLanes();
   assert.equal(violations.length, 0);
 
@@ -194,7 +200,7 @@ test("T-10 — lane inventory is exactly 4 lanes at 11/1/3/7 (a blind parser red
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
     [LANE]: 11,
-    "issue-2117-offering-visibility-gate-tests.yml": 7,
+    "issue-2117-offering-visibility-gate-tests.yml": 8,
   });
   assert.equal(lanes.length, 4, "exactly four filtered replay lanes exist on this base");
 
