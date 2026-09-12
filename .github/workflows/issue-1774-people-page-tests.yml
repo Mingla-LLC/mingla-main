@@ -29,7 +29,7 @@ on:
       - "supabase/migrations/__tests__/issue_1774_people_page.test.sql"
       - "supabase/migrations/__tests__/issue_1774_people_digest_qualification.test.sql"
       - "supabase/migrations/__tests__/issue_1774_people_page.tester.adversarial.test.sql"
-      - "supabase/migrations/20270625001777_issue_1777_brand_circle_reach.sql"
+      - "supabase/migrations/20270626001777_issue_1777_brand_circle_reach.sql"
       - "supabase/migrations/__tests__/issue_1777_brand_circle_reach.happy.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1777_brand_circle_reach.tester.adversarial.pg17.test.sql"
       - ".github/scripts/strict-grep/issue-1774-people-page.mjs"

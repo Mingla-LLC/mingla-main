@@ -15259,7 +15259,7 @@
       "providerWorkflow": ".github/workflows/issue-1774-people-page-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "8cbc17323a090850a8a231087bf684ab462a7edd8648ddea67b6d054682b8ef6",
+        "sourceSha256": "72061d5b0e5d5b9eea13efc75bb8d46555fa6c3810b2259090ca9b911cf414b4",
         "triggers": [
           "pull_request",
           "push"
@@ -15298,7 +15298,7 @@
           "supabase/functions/marketing-*/**",
           "supabase/migrations/20270329001774_issue_1774_people_page.sql",
           "supabase/migrations/20270330001774_issue_1774_qualify_people_digest.sql",
-          "supabase/migrations/20270625001777_issue_1777_brand_circle_reach.sql",
+          "supabase/migrations/20270626001777_issue_1777_brand_circle_reach.sql",
           "supabase/migrations/__tests__/issue_1774_people_digest_qualification.test.sql",
           "supabase/migrations/__tests__/issue_1774_people_page.test.sql",
           "supabase/migrations/__tests__/issue_1774_people_page.tester.adversarial.test.sql",
