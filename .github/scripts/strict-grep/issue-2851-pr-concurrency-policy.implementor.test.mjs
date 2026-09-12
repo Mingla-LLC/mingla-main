@@ -1028,7 +1028,35 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //
   // The prior pin fc352f93a0791aa95e33e7559b702d7364665c1d9fb7f4642f14babcd1fb03a7
   // recomputes when those eight lines are removed.
-  "7d7e9165a4a80bfb71e2aebe6fd4457f2e181248f4a79630ecc863ab6a81a218";
+  //
+  // [TEST-MOD-APPROVED #3272] Re-derived again. #3272 stops the daily Stripe
+  // KYC stall reminder from nagging sellers whose review Stripe is already
+  // conducting, and registered its edge-side Deno proof on the existing
+  // migrations-and-Stripe Deno lane. Same shape as #3249 above, one suite
+  // smaller.
+  //
+  // That lane is DESCRIBED, never spelled as a filename, for the reason the
+  // #3261 note gives and the #2948 note below repeats: a workflow filename
+  // written in this file becomes a provider reference and drifts the frozen
+  // #2148 external-reference inventory. It cost nine red #2148 gates once.
+  //
+  // PURELY ADDITIVE, and auditable from the commit itself: the complete
+  // added/removed set under .github/workflows in #3272 is FIVE lines — a
+  // four-line comment plus one more Deno suite path appended to an existing
+  // list — `1 file changed, 5 insertions(+)`, zero deletions. Grepping those
+  // lines for concurrency / group: / cancel-in-progress returns ZERO.
+  // PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED (124 /
+  // 9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04), and
+  // this file's own first test — which asserts both — passes untouched. Only
+  // the non-concurrency document moved, which is what this digest tracks.
+  //
+  // The prior pin 7d7e9165a4a80bfb71e2aebe6fd4457f2e181248f4a79630ecc863ab6a81a218
+  // recomputes when those five lines are removed — MEASURED, not assumed:
+  // restoring ONLY that lane to its `origin/main` 5cb036f63 bytes turns this
+  // suite 11/11 green against the value this pin replaces. The new value below
+  // is identical across three derivations with this file's own RUBY_CANONICAL,
+  // and was not copied from a PR run's printed `actual:` (#3015).
+  "cd049e29326739fe863e274b1a981444a6f3f4c0d7f49fc6e6af85323edf520e";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

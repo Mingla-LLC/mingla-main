@@ -132,6 +132,78 @@ export function getKycRemediationForRequirements(
   };
 }
 
+/**
+ * #3272 — the edge-side copy of the client predicate at
+ * `mingla-business/src/utils/stripeOnboardingOutcome.ts` (shipped in PR #3266).
+ *
+ * This is a DELIBERATE second copy, not an oversight. Two reasons, both hard:
+ *
+ *  1. The Deno edge runtime cannot import the React Native client module. That
+ *     file imports `BrandStripeStatus` from `src/store/currentBrandStore`, which
+ *     pulls Zustand and the rest of the app graph — there is no import path from
+ *     `supabase/functions/**` to it, and there never will be.
+ *  2. This module is the only one of the two edge modules jest can execute. It
+ *     has zero imports and never touches the `Deno` global, so
+ *     `mingla-business jest (full suite)` — the one required check that runs on
+ *     EVERY pull request — can import it directly and run the real function.
+ *     `stripeKycReminderSchedule.ts` cannot be imported by jest at all (its
+ *     extensioned `./stripeKycRemediation.ts` specifier trips ts-jest TS5097,
+ *     and `calculateCronJitterMs` reads `Deno.env`, TS2304). That is why
+ *     `requirementsHasDue` was MOVED here in #3272: so the CI-executed
+ *     regression test is behavioural, not a source-text grep.
+ *
+ * Because the copy is deliberate, the parity between the two is itself under
+ * test — see `issue_3272_stripe_kyc_reminder_pending_verification.happy.test.ts`,
+ * which runs both predicates over a shared state matrix and asserts they agree.
+ *
+ * Semantics, mirroring the client EXACTLY: `requirements.pending_verification`
+ * with nothing `currently_due` and nothing `past_due`. `eventually_due` and
+ * `pending_verification` are deliberately IGNORED — neither is something the
+ * seller can act on today, and the client ignores them too.
+ *
+ * Known, accepted divergence: for MALFORMED input (a `currently_due` that is not
+ * an array of strings) the client counts `.length` on whatever it was handed
+ * while this copy filters to strings first. Stripe never emits that shape; the
+ * parity matrix covers the shapes Stripe does emit.
+ */
+const PENDING_REVIEW_REASONS = new Set([
+  "requirements.pending_verification",
+]);
+
+function hasDueRequirements(
+  requirements: Record<string, unknown> | null | undefined,
+): boolean {
+  return asStringArray(requirements?.currently_due).length > 0 ||
+    asStringArray(requirements?.past_due).length > 0;
+}
+
+export function isStripePendingVerification(
+  requirements: Record<string, unknown> | null | undefined,
+): boolean {
+  const disabledReason = requirements?.disabled_reason;
+  if (typeof disabledReason !== "string") return false;
+  if (!PENDING_REVIEW_REASONS.has(disabledReason)) return false;
+  return !hasDueRequirements(requirements);
+}
+
+/**
+ * #3272 — "does this account owe Stripe anything the seller can act on?"
+ *
+ * MOVED here from `stripeKycReminderSchedule.ts` (which now re-exports it) so
+ * jest can execute it — see the note above. The edge function's import is
+ * unchanged.
+ */
+export function requirementsHasDue(requirements: unknown): boolean {
+  const reqs = requirements as Record<string, unknown> | null;
+  // #3272: requirements.pending_verification is a disabled_reason that means the
+  // OPPOSITE of "due" — Stripe is checking what it already has and the seller has
+  // nothing to do. Never nag on it. Mirrors isStripePendingVerification() in
+  // mingla-business/src/utils/stripeOnboardingOutcome.ts (PR #3266).
+  if (isStripePendingVerification(reqs)) return false;
+  const remediation = getKycRemediationForRequirements(reqs);
+  return remediation.dueFields.length > 0 || remediation.disabledReason !== null;
+}
+
 export function mapPayoutFailureCode(code: unknown): string {
   if (typeof code !== "string" || code.trim() === "") {
     return "Stripe could not complete the payout. Check the payout details in Stripe.";
