@@ -134,6 +134,10 @@ const mapDraftToPublicEvent = (draft: DraftEvent): PublicEventProps => {
         ? safeCoverMediaType
         : null,
     coverCredit,
+    // #3288 — the draft's additional photos. `coverGallery` is OPTIONAL on
+    // PublicEventProps, so leaving it out compiled silently and the RSVP
+    // preview never showed the photos the host had added.
+    coverGallery: draft.coverGallery ?? [],
     tickets: [],
     currency: draft.currency ?? null,
     // ORCH-1157 [rsvp-public-redesign] — pass the draft's party types so the

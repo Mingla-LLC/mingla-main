@@ -1,5 +1,8 @@
 import { supabase } from "./supabase";
-import type { ThemeInput } from "@mingla/offering-rendering";
+import type {
+  OfferingGalleryImage,
+  ThemeInput,
+} from "@mingla/offering-rendering";
 import { patchOfferingTheme, themeOverridesFromColumns } from "./offeringTheme";
 import type {
   DraftEvent,
@@ -64,6 +67,11 @@ interface BusinessManagementEventRow {
   cover_media_credit: string | null;
   cover_media_credit_url: string | null;
   cover_media_alt: string | null;
+  // #3288 — the additional photos. The management view exposes the column and
+  // BUSINESS_EVENT_SELECT is "*", so it is present at runtime; optional for old
+  // fixtures. It was never mapped, so the published-event editor always opened
+  // with an empty gallery and could never save a change to it.
+  cover_media_gallery?: OfferingGalleryImage[] | null;
   currency?: string | null;
   // ORCH-1006 — per-offering pricing switches. Optional: the management view
   // does NOT expose these today, so they arrive undefined here and the edit
@@ -178,6 +186,8 @@ export interface PublishRpcResponse {
     cover_media_credit?: string | null;
     cover_media_credit_url?: string | null;
     cover_media_alt?: string | null;
+    // #3288 — present at runtime (`to_jsonb(v_event)`); optional for fixtures.
+    cover_media_gallery?: OfferingGalleryImage[] | null;
     currency?: string | null;
     visibility: string;
     status: string;
@@ -503,6 +513,16 @@ const eventFromRow = (
     coverMediaCredit: asStringOrNull(row.cover_media_credit),
     coverMediaCreditUrl: asStringOrNull(row.cover_media_credit_url),
     coverMediaAlt: asStringOrNull(row.cover_media_alt),
+    // #3288 — load the additional photos. An absent column stays UNKNOWN
+    // (undefined) so the editor never diffs against — or saves — a fabricated
+    // empty gallery; a present array (or null → []) is the stored truth.
+    ...(row.cover_media_gallery === undefined
+      ? {}
+      : {
+          coverGallery: Array.isArray(row.cover_media_gallery)
+            ? row.cover_media_gallery
+            : [],
+        }),
     currency:
       asIsoCurrencyCodeOrNull(row.currency) ??
       tickets.find(
@@ -883,6 +903,8 @@ export const eventFromPublishResponse = (
     cover_media_credit: response.event.cover_media_credit ?? null,
     cover_media_credit_url: response.event.cover_media_credit_url ?? null,
     cover_media_alt: response.event.cover_media_alt ?? null,
+    // #3288 — carry the gallery through (undefined stays unknown).
+    cover_media_gallery: response.event.cover_media_gallery,
     currency: eventCurrency,
     visibility: response.event.visibility,
     show_on_discover: false,
@@ -1154,6 +1176,10 @@ export interface AtomicPublishedEventPatch {
     passServiceFee: boolean | null;
   };
   cover?: { clear: true } | { selectionRef: string };
+  // #3288 — the full additional-photos list, sent only when it changed. The
+  // server writes it AFTER the cover block, so removing the cover in the same
+  // save can never take the gallery with it.
+  gallery?: OfferingGalleryImage[];
 }
 
 export const patchPublishedEventAtomically = (

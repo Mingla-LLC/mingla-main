@@ -120,7 +120,9 @@ export const draftEventBuyerPreview = (
         provider: coverVideoUnsafe ? null : draft.coverMediaProvider,
         credit: coverVideoUnsafe ? null : draft.coverMediaCredit,
       }),
-      coverGallery: [],
+      // #3288 — the draft's additional photos. This was a hard-coded [] (since
+      // #2428), so the preview never showed photos the organiser had added.
+      coverGallery: draft.coverGallery ?? [],
       tickets: draft.tickets.map(mapTicket),
       currency: draft.currency ?? brand?.defaultCurrency ?? null,
       partyTypes: draft.partyTypes,

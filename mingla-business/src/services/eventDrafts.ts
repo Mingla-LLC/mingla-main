@@ -23,8 +23,34 @@ import {
 // the autosave echo replaces the local draft with a projection lacking the
 // theme, so a colour set in the wizard is silently deleted roughly one
 // round-trip after being picked (A/F-1).
-const EVENT_DRAFT_SELECT =
-  "id,brand_id,created_by,title,description,slug,location_text,online_url,cover_media_url,cover_media_poster_url,cover_media_type,currency,is_online,is_recurring,is_multi_date,recurrence_rules,theme,visibility,status,timezone,created_at,updated_at,published_at,deleted_at,party_types,vibe_tags,music_genres,city,location_geo,pass_tax,pass_mingla_fee,pass_service_fee,theme_color_override,theme_font_override,theme_animation_override";
+// #3288 — `cover_media_gallery` (and the cover provider/credit/alt columns) were
+// missing here, so every draft READ came back without the additional photos,
+// the mapper saw "no photos", and the next save + publish wrote an empty gallery
+// over the organiser's real ones. The compile-time check below splits this
+// literal into its column names and makes any `ServerDraftEventRow` key that is
+// not selected a type error. `serverRowToDraft` can only read typed row keys, so
+// "every row key is selected" == "every mapper read is selected". Optional keys
+// are included on purpose: optional is exactly how the gallery slipped through.
+// Keep this a single string literal — #1022's T-2 reads it from source.
+export const EVENT_DRAFT_SELECT =
+  "id,brand_id,created_by,title,description,slug,location_text,online_url,cover_media_url,cover_media_poster_url,cover_media_type,cover_media_provider,cover_media_source_url,cover_media_credit,cover_media_credit_url,cover_media_alt,cover_media_gallery,currency,is_online,is_recurring,is_multi_date,recurrence_rules,theme,visibility,status,timezone,created_at,updated_at,published_at,deleted_at,party_types,vibe_tags,music_genres,city,location_geo,pass_tax,pass_mingla_fee,pass_service_fee,theme_color_override,theme_font_override,theme_animation_override";
+
+type SelectColumns<
+  S extends string,
+  Acc extends string = never,
+> = S extends `${infer Head},${infer Rest}`
+  ? SelectColumns<Rest, Acc | Head>
+  : Acc | S;
+type UnselectedDraftRowKey = Exclude<
+  keyof ServerDraftEventRow,
+  SelectColumns<typeof EVENT_DRAFT_SELECT>
+>;
+// When a row key is not selected, the error names it: Type 'true' is not
+// assignable to type '"<missing_column>"'.
+const everyDraftRowKeyIsSelected: [UnselectedDraftRowKey] extends [never]
+  ? true
+  : UnselectedDraftRowKey = true;
+void everyDraftRowKeyIsSelected;
 
 export type ServerDraftLifecycleErrorCode =
   | "draft_not_found"

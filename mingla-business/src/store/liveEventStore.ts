@@ -96,6 +96,10 @@ export type EditableLiveEventFields = Pick<
   | "coverMediaCredit"
   | "coverMediaCreditUrl"
   | "coverMediaAlt"
+  // #3288 — the additional photos are editable post-publish. Additive/cosmetic
+  // (SAFE_KEYS). Reach the server through the atomic owner's `gallery` key
+  // (ticketed) or `cover_media_gallery` on the RSVP graph update (RSVP).
+  | "coverGallery"
   | "tickets"
   | "visibility"
   | "requireApproval"

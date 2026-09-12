@@ -276,8 +276,15 @@ const loadIssue2009Visibility = (): Promise<
   typeof import("../../services/publishedEventVisibility.issue2009")
 > => import("../../services/publishedEventVisibility.issue2009");
 
+// #3288 — the additional photos have a server write path: the atomic owner's
+// `gallery` key (written after the cover block, in the same transaction).
+const ISSUE_3288_GALLERY_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
+  "coverGallery",
+]);
+
 const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   ...COVER_MEDIA_PATCH_KEYS,
+  ...ISSUE_3288_GALLERY_PATCH_KEYS,
   ...ORCH_0824_PATCH_KEYS,
   ...ORCH_0877_WHEN_PATCH_KEYS,
   ...ORCH_0964_THEME_PATCH_KEYS,
@@ -1197,6 +1204,11 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       }
       if (patch.pricingSwitches !== undefined) {
         atomicPatch.pricing = patch.pricingSwitches;
+      }
+      // #3288 — the additional photos. Before this the editor never sent them,
+      // so a gallery change on a published event was silently dropped.
+      if (patch.coverGallery !== undefined) {
+        atomicPatch.gallery = patch.coverGallery;
       }
 
       try {
