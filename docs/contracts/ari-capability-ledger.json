@@ -3509,7 +3509,7 @@
         },
         {
           "tier": "source_contract",
-          "sha": "b3783f3859c8ad6540ce1f4c9f6a28f7c5c23141",
+          "sha": "0faec49c41ddede8baaede6d0058de23c1d82461",
           "reference": "#1983 update_ari_prefs upserts agent_user_profile timezone/currency/style only"
         }
       ],
@@ -3560,7 +3560,7 @@
         },
         {
           "tier": "source_contract",
-          "sha": "b3783f3859c8ad6540ce1f4c9f6a28f7c5c23141",
+          "sha": "0faec49c41ddede8baaede6d0058de23c1d82461",
           "reference": "#1983 update_notification_prefs push|in_app \u00d7 business.* with onConflict user_id,channel,type"
         }
       ],
@@ -3615,7 +3615,7 @@
         },
         {
           "tier": "source_contract",
-          "sha": "b3783f3859c8ad6540ce1f4c9f6a28f7c5c23141",
+          "sha": "0faec49c41ddede8baaede6d0058de23c1d82461",
           "reference": "#1983 create_support_ticket RPC p_subject/p_brand_id"
         }
       ],
@@ -3666,7 +3666,7 @@
         },
         {
           "tier": "source_contract",
-          "sha": "b3783f3859c8ad6540ce1f4c9f6a28f7c5c23141",
+          "sha": "0faec49c41ddede8baaede6d0058de23c1d82461",
           "reference": "#1983 request_account_deletion invokes delete-user {side:business} after legal_name match + DELETE"
         }
       ],
@@ -5126,7 +5126,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "b3783f3859c8ad6540ce1f4c9f6a28f7c5c23141",
+          "sha": "0faec49c41ddede8baaede6d0058de23c1d82461",
           "reference": "#1983 edit_profile_avatar updates creator_accounts; regression suite issue_1983_*"
         }
       ],
@@ -5176,7 +5176,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "b3783f3859c8ad6540ce1f4c9f6a28f7c5c23141",
+          "sha": "0faec49c41ddede8baaede6d0058de23c1d82461",
           "reference": "#1983 manage_ari_history mirrors agentChatService; regression suite issue_1983_*"
         }
       ],
@@ -5226,7 +5226,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "b3783f3859c8ad6540ce1f4c9f6a28f7c5c23141",
+          "sha": "0faec49c41ddede8baaede6d0058de23c1d82461",
           "reference": "#1983 manage_business_notifications inbox; regression suite issue_1983_*"
         }
       ],
@@ -5276,7 +5276,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "b3783f3859c8ad6540ce1f4c9f6a28f7c5c23141",
+          "sha": "0faec49c41ddede8baaede6d0058de23c1d82461",
           "reference": "#1983 manage_support_inbox list/get/reply; regression suite issue_1983_*"
         }
       ],
