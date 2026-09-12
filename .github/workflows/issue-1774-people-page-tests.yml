@@ -95,9 +95,11 @@ jobs:
           npx jest --runInBand --runTestsByPath \
             src/services/__tests__/peopleService.issue1774.test.ts \
             src/services/__tests__/brandCircleReachService.issue1777.happy.test.ts \
+            src/services/__tests__/brandCircleReachService.issue1777.tester.adversarial.test.ts \
             src/services/__tests__/brandBookExportService.issue1776.test.ts \
             src/hooks/marketing/__tests__/useBrandPeople.issue1774.behavior.test.tsx \
             src/hooks/marketing/__tests__/useBrandCircleReach.issue1777.happy.test.tsx \
+            src/hooks/marketing/__tests__/useBrandCircleReach.issue1777.tester.adversarial.test.tsx \
             src/components/people/__tests__/PeoplePage.issue1774.happy.test.tsx \
             src/components/people/__tests__/PeoplePage.issue1774.behavior.test.tsx \
             src/components/people/__tests__/PeoplePage.issue1774.tester.adversarial.test.tsx \
@@ -108,6 +110,8 @@ jobs:
             src/components/people/__tests__/PeoplePage.issue1776.happy.test.tsx \
             src/components/people/__tests__/PeoplePage.issue1777.happy.test.tsx \
             src/components/people/__tests__/CircleReachSheet.issue1777.happy.test.tsx \
+            src/components/people/__tests__/PeoplePage.issue1777.tester.adversarial.test.tsx \
+            src/components/people/__tests__/CircleReachSheet.issue1777.tester.adversarial.test.tsx \
             src/components/people/__tests__/PeopleSheets.issue1774.behavior.test.ts \
             src/components/people/__tests__/AddPersonSheet.issue1774.behavior.test.tsx \
             src/components/people/__tests__/PersonDetailView.issue1774.behavior.test.tsx \
@@ -136,3 +140,4 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1774_people_digest_qualification.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1774_people_page.tester.adversarial.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1777_brand_circle_reach.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1777_brand_circle_reach.tester.adversarial.pg17.test.sql

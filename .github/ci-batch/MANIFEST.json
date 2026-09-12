@@ -15259,7 +15259,7 @@
       "providerWorkflow": ".github/workflows/issue-1774-people-page-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "af876682bac80f44da3f22ecf2cb7143591ec9d3103fc6ed49f2739fb8c7ad47",
+        "sourceSha256": "8cbc17323a090850a8a231087bf684ab462a7edd8648ddea67b6d054682b8ef6",
         "triggers": [
           "pull_request",
           "push"
