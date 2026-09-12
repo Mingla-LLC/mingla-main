@@ -147,6 +147,54 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'sign-up-and-create-a-brand',
+    episode: 2,
+    title: 'Sign up and create your brand',
+    blurb: 'Your account, then the brand people actually see — name, contact, cover and colours.',
+    duration: '3:55',
+    durationIso: 'PT3M55S',
+    chapter: 'getting-started',
+    intents: ['Get set up'],
+    surfaces: ['Web', 'iOS'],
+    bambooEntryId: '0_0l13f021',
+    uploadedAt: '2026-09-11',
+    // Nothing is burned into this render, so the sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Sign in with a code',
+        body:
+          'There is no password to invent. Give Mingla an email and it sends a six-digit code. Apple and Google work too, and land you in the same place.',
+        links: [{ label: 'host.usemingla.com', href: 'https://host.usemingla.com' }],
+      },
+      {
+        title: 'Create a brand from either entry point',
+        body:
+          'The to-do list on your home screen, or the brand dropdown in the top bar — same destination. Five steps, and only the first is compulsory.',
+      },
+      {
+        title: 'Name, tagline and description',
+        body:
+          'Use the name people say out loud. Then a short bio, up to 200 characters: the FIRST LINE becomes your tagline, then leave a blank line and write the rest. That is why a brand page reads as a headline and a paragraph.',
+      },
+      {
+        title: 'Address, phone and socials',
+        body:
+          'Your address pre-fills the venue on anything you publish, and the phone country matters because the dial code travels with the number. Paste full social links, not handles. Nothing is compulsory — an empty field simply does not show on your page.',
+      },
+      {
+        title: 'Add a video cover',
+        body:
+          'A cover can be video, up to 15 seconds and under 100 MB. Trim, flip, mute or change speed first. It uploads in the background: close the sheet, close the app, and it is waiting for you when you come back.',
+      },
+      {
+        title: 'Make it yours',
+        body:
+          'Pick a colour and watch the live preview change. Choose a typeface from sans, serif, display or handwriting, and a small animation that plays once when someone opens your page. The Mingla default is a starting point, not a rule.',
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>
