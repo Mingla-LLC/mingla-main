@@ -10,7 +10,7 @@ import { defineConfig, devices } from '@playwright/test'
 // ISSUE_3214_WEB_BUILD points it at another export directory.
 export default defineConfig({
   testDir: './playwright',
-  testMatch: /issue3214-public-boot-order\.spec\.ts$/,
+  testMatch: /issue3214-public-boot-order(?:\.tester\.adversarial)?\.spec\.ts$/,
   fullyParallel: false,
   workers: 1,
   retries: 0,
