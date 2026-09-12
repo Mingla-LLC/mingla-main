@@ -20,6 +20,26 @@
 - **Enforcement:** Deny-all material tables, exact-key Business parser, static/non-interactive Circle rows, schema catalog assertions, and the self-testing #1777 privacy gate.
 - **Status:** DRAFT until #1777 completes independent testing and release verification.
 
+## DRAFT — issue #1778 (Book and Circle marketing audiences)
+
+### I-PROPOSED-1778-CIRCLE-SENDS-ARE-SEALED (DRAFT)
+
+- **Rule:** A Followers or Extended campaign never accepts recipients or contact values from a client. The service quotes the current server-owned ring, seals its exact audience ID, kind, snapshot version, content, user identities, verified channel values, consent outcome, segments, and cost, and confirmation succeeds only when a fresh server recomputation is identical. The public preview exposes aggregate counts, cost, and safe audience identity only.
+- **Enforcement:** Exact system-audience JSON constraints, service-only quote/confirm/dispatch functions, the existing immutable #1995 execution/target ledger, `marketingBookQuote` aggregate allowlist, PG17/Deno/Jest #1778 proofs, and the retained #1995 CI lane.
+- **Status:** DRAFT until independent tester PASS, Business iOS/Android/web runtime acceptance, merged-main proof, guarded migration apply, deployment, and production readback.
+
+### I-PROPOSED-1778-CIRCLE-DELIVERY-CAN-ONLY-SHRINK (DRAFT)
+
+- **Rule:** Confirmation freezes the maximum recipient set and exact contact digest. At dispatch, canonical membership, bidirectional blocks, brand exits, verified account identifiers, the contact digest, `can_send`, and both delivery kill switches are checked again. A later removal, block, exit, opt-out, identifier change, or disabled flag may skip a sealed target; no later addition or changed address may enter or redirect the send.
+- **Enforcement:** Targeted current-truth recomputation in `biz_marketing_circle_send_audience_v1`, channel authorization, immutable recipient-user targets, digest equality, default-off per-ring/channel flags, and post-confirm shrink regressions.
+- **Status:** DRAFT under the same #1778 verification and release gates; all four delivery switches remain OFF until #1779 supplies every-address fan-out and its own activation proof.
+
+### I-PROPOSED-1778-AUDIENCE-PICKER-IS-PRIVATE-AND-HONEST (DRAFT)
+
+- **Rule:** Business iOS, Android, and web show the same audience hierarchy—Your brand, Mingla reach, Groups, Automatic—and show only names, safe aggregate counts, availability, privacy labels, and aggregate review metrics. No Circle email address or phone number renders. Unready, stale, consent-blocked, or delivery-dark rings are visibly disabled and cannot be selected.
+- **Enforcement:** `AudiencePickerSheet`, `ComposerReviewSheet`, the exact-key Circle reach parser, route-token tests, rendered cross-platform contract tests, and live three-surface acceptance.
+- **Status:** DRAFT until Seth accepts the live Business iOS, Android, and web implementation.
+
 ## ACTIVE — issue #2979 (attendance-claim secret continuity)
 
 ### I-PROPOSED-2979-ATTENDANCE-DUAL-PROOF-CONTINUITY (ACTIVE)

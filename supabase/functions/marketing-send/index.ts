@@ -469,9 +469,11 @@ export async function handleMarketingSendRequest(
   const isServiceRole = serviceKey.length > 0 &&
     auth === `Bearer ${serviceKey}`;
   const isPreviewPeopleAction = body.action === "preview_book_v1" ||
-    body.action === "preview_people_v2";
+    body.action === "preview_people_v2" ||
+    body.action === "preview_circle_v1";
   const isConfirmPeopleAction = body.action === "confirm_book_v1" ||
-    body.action === "confirm_people_v2";
+    body.action === "confirm_people_v2" ||
+    body.action === "confirm_circle_v1";
   const isBookAction = isPreviewPeopleAction || isConfirmPeopleAction;
 
   // Direct invocation path requires a campaign_id AND a user JWT we can
@@ -532,7 +534,9 @@ export async function handleMarketingSendRequest(
       }
     }
     const candidates = await supabase.rpc(
-      "biz_marketing_book_quote_candidates",
+      body.action === "preview_circle_v1" || body.action === "confirm_circle_v1"
+        ? "biz_marketing_circle_quote_candidates_v1"
+        : "biz_marketing_book_quote_candidates",
       { p_actor_id: actor.user.id, p_campaign_id: body.campaign_id },
     );
     if (candidates.error) {
@@ -581,7 +585,9 @@ export async function handleMarketingSendRequest(
       return jsonResponse({ error: "BOOK_BLAST_ZERO_RECIPIENTS" }, 409);
     }
     const confirmed = await supabase.rpc(
-      body.action === "confirm_people_v2"
+      body.action === "confirm_circle_v1"
+        ? "biz_confirm_marketing_circle_send_v1"
+        : body.action === "confirm_people_v2"
         ? "biz_confirm_marketing_people_send_v2"
         : "biz_confirm_marketing_book_send_v1",
       {
@@ -685,10 +691,19 @@ function bookRpcErrorResponse(message: string): Response {
 export function bookRpcErrorEnvelope(
   message: string,
 ): { error: string; status: number } {
-  if (message.includes("book_blast_audience_not_found")) {
+  if (message.includes("circle_blast_snapshot_stale")) {
+    return { error: "BOOK_BLAST_PREVIEW_STALE", status: 409 };
+  }
+  if (
+    message.includes("circle_blast_audience_not_found") ||
+    message.includes("book_blast_audience_not_found")
+  ) {
     return { error: "BOOK_BLAST_AUDIENCE_NOT_FOUND", status: 404 };
   }
-  if (message.includes("book_blast_flag_disabled")) {
+  if (
+    message.includes("circle_blast_flag_disabled") ||
+    message.includes("book_blast_flag_disabled")
+  ) {
     return { error: "BOOK_BLAST_FLAG_DISABLED", status: 503 };
   }
   if (message.includes("book_blast_forbidden")) {

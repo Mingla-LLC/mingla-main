@@ -36,6 +36,10 @@ export interface AudienceQueryBrandFollowers {
   kind: "brand_followers";
   brand_id: string;
 }
+export interface AudienceQueryBrandCircleExtended {
+  kind: "brand_circle_extended";
+  brand_id: string;
+}
 export interface AudienceQueryCustomSegment {
   kind: "custom_segment";
   filters: ReadonlyArray<unknown>;
@@ -56,6 +60,7 @@ export type AudienceQueryDefinition =
   | AudienceQueryBrandBuyers
   | AudienceQueryEventBuyers
   | AudienceQueryBrandFollowers
+  | AudienceQueryBrandCircleExtended
   | AudienceQueryCustomSegment
   | AudienceQueryOfferingSendGroup
   | AudienceQueryAllBrandPeople
@@ -267,7 +272,24 @@ export async function resolveAudience(
     case "event_buyers":
       return await resolveEventBuyers(client, query.event_id);
     case "brand_followers":
-      throw new Error("audience_kind_not_yet_enabled:brand_followers");
+    case "brand_circle_extended": {
+      if (campaignId === undefined) {
+        throw new Error("circle_blast_campaign_context_required");
+      }
+      const { data, error } = await client.rpc(
+        "biz_marketing_circle_send_audience_v1",
+        { p_campaign_id: campaignId },
+      );
+      if (error) {
+        throw new Error(`circle_blast_audience_failed:${error.message}`);
+      }
+      const result = data as Partial<ResolveResult> | null;
+      if (
+        result === null || result.brand_id !== query.brand_id ||
+        !Array.isArray(result.rows)
+      ) throw new Error("circle_blast_audience_invalid_response");
+      return result as ResolveResult;
+    }
     case "custom_segment":
       throw new Error("audience_kind_not_yet_enabled:custom_segment");
     case "offering_send_group":
@@ -296,7 +318,9 @@ export async function resolveAudience(
         "biz_marketing_people_send_audience_v2",
         { p_campaign_id: campaignId },
       );
-      if (error) throw new Error(`manual_group_audience_failed:${error.message}`);
+      if (error) {
+        throw new Error(`manual_group_audience_failed:${error.message}`);
+      }
       const result = data as Partial<ResolveResult> | null;
       if (result === null || !Array.isArray(result.rows)) {
         throw new Error("manual_group_audience_invalid_response");

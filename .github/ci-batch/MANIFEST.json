@@ -16877,7 +16877,7 @@
       "providerWorkflow": ".github/workflows/issue-1995-contact-book-blast.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "97ee0d6d524b6dd6ab5aafa0acc60fdb7c8d222df53c9fe3a3c70feb7a7d5cf4",
+        "sourceSha256": "23c0778a6e98a02af97f1f4aa9fc985e4e4deb14400aecc915ee51b385844922",
         "triggers": [
           "pull_request"
         ],
@@ -16904,6 +16904,9 @@
           "supabase/migrations/20270525002509_issue_2509_blast_durability.sql",
           "supabase/migrations/20270526002510_issue_2510_email_event_ingest.sql",
           "supabase/migrations/20270606002714_issue_2714_campaign_open_tracking_truth.sql",
+          "supabase/migrations/20270627001778_issue_1778_ring_audiences.sql",
+          "supabase/migrations/__tests__/issue_1778_ring_audiences.happy.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_1778_ring_audiences.tester_adversarial.pg17.test.sql",
           "supabase/migrations/__tests__/issue_2510_email_event_ingest.tester_adversarial.pg17.test.sql",
           "supabase/migrations/__tests__/issue_2714_campaign_open_truth.happy.pg17.test.sql",
           "supabase/migrations/__tests__/issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql"
