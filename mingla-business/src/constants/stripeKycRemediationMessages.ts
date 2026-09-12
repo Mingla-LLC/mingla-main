@@ -300,155 +300,22 @@ export function pickKycRemediationCode(
 }
 
 /**
- * Issue #3258 — `requirements.pending_verification`.
+ * Issue #3258 — the pending-verification SENTENCE now lives in its own file.
  *
- * Stripe returns this as an array of the SAME field codes as
- * `currently_due` / `past_due`, but it means the opposite thing: Mingla
- * already has the value, Stripe is checking it, and the seller is not being
- * asked for anything. Before this, the client never read the array at all,
- * so a brand stuck on `business_profile.url` was told "Action required" and
- * never told which field Stripe was actually waiting on.
+ * It was authored here, next to the remediation table, which looked tidy and
+ * was measurably wrong: `brandStripeUiState.ts` is in the eager boot payload
+ * and imports the sentence, so that one edge hoisted this whole ~245-entry
+ * table out of the lazily-chunked Payments route and into `__common` — a
+ * measured +11,916 B on the boot payload every visitor downloads, 9,718 B of
+ * it this file. See the header of `stripePendingVerificationCopy.ts` for the
+ * numbers and the reasoning.
  *
- * The vocabulary below deliberately reuses the nouns already used by
- * `MESSAGES` above and by `supabase/functions/_shared/stripeKycRemediation.ts`
- * (`FIELD_LABELS`) — a third wording set for the same Stripe codes is how
- * copy drifts. These are phrased as OBJECTS of "Stripe is checking …",
- * because nothing here is an instruction to the seller.
+ * Re-exported rather than relocated-and-forgotten so that every existing
+ * importer of these symbols from THIS path keeps working byte-for-byte; the
+ * boot path imports the sibling directly and never reaches `MESSAGES`.
  */
-const PENDING_VERIFICATION_SUBJECTS: Record<string, string> = {
-  "business_profile.url": "your website",
-  "business_profile.name": "your public business name",
-  "business_profile.mcc": "your business category",
-  "business_profile.product_description": "your product description",
-  "business_profile.support_address": "your customer support address",
-  "business_profile.support_email": "your customer support email",
-  "business_profile.support_phone": "your customer support phone number",
-  "company.address.city": "your company address",
-  "company.address.line1": "your company address",
-  "company.address.postal_code": "your company address",
-  "company.address.state": "your company address",
-  "company.name": "your legal company name",
-  "company.phone": "your company phone number",
-  "company.tax_id": "your company tax ID",
-  "company.verification.document": "the company document you uploaded",
-  "external_account": "your payout bank account",
-  "individual.address.city": "the address you gave",
-  "individual.address.line1": "the address you gave",
-  "individual.address.postal_code": "the address you gave",
-  "individual.address.state": "the address you gave",
-  "individual.dob.day": "the date of birth you gave",
-  "individual.dob.month": "the date of birth you gave",
-  "individual.dob.year": "the date of birth you gave",
-  "individual.email": "the email you gave",
-  "individual.first_name": "the name you gave",
-  "individual.last_name": "the name you gave",
-  "individual.id_number": "the ID number you gave",
-  "individual.phone": "the phone number you gave",
-  "individual.ssn_last_4": "the social security number you gave",
-  "individual.verification.document": "the ID document you uploaded",
-  "individual.verification.additional_document":
-    "the extra document you uploaded",
-  "owners.0.verification.document": "the owner ID you uploaded",
-  "directors.0.verification.document": "the director ID you uploaded",
-  "tos_acceptance.date": "your acceptance of Stripe's terms",
-  "tos_acceptance.ip": "your acceptance of Stripe's terms",
-};
-
-/**
- * Humanise a Stripe field code we have no phrasing for, so an unrecognised
- * code still reaches the seller as words instead of `snake.case`. Mirrors the
- * edge-side fallback in `_shared/stripeKycRemediation.ts` exactly.
- */
-function humanisePendingCode(code: string): string {
-  return code.replace(/_/g, " ").replace(/\./g, " ").trim();
-}
-
-/** The object of "Stripe is checking …" for one pending field code. */
-export function getPendingVerificationSubject(code: string): string {
-  const known = PENDING_VERIFICATION_SUBJECTS[code];
-  if (known !== undefined) return known;
-  const humanised = humanisePendingCode(code);
-  return humanised.length > 0
-    ? `the ${humanised} you provided`
-    : "the details you provided";
-}
-
-export interface PendingVerificationSentenceInput {
-  /** `requirements.pending_verification` straight off the Stripe payload. */
-  readonly pendingVerification?: readonly string[] | null;
-  /**
-   * Issue #3258 — `business_profile.url` AS THE CONNECTED ACCOUNT REPORTS IT,
-   * threaded up from `brand-stripe-refresh-status`. This is the URL Stripe is
-   * actually fetching, so it is the one the sentence must name when it exists.
-   *
-   * It is not always the brand's Mingla page. Accounts onboarded before the
-   * platform began prefilling `defaults.profile.business_url` carry whatever
-   * website the seller typed inside Stripe onboarding — for the brand this
-   * issue was filed over, a domain whose ports are closed. Naming the Mingla
-   * page for such an account would state something false with total
-   * confidence (Constitution rule 9), and it would hide the single most
-   * useful fact the product could show: Stripe is checking a site that is
-   * down. Rendered without the scheme.
-   */
-  readonly accountBusinessUrl?: string | null;
-  /**
-   * The brand's own public Mingla page, e.g. `brandPublicUrl(brand.slug)`.
-   * The FALLBACK, used only when the account reports no URL of its own.
-   * Included in the sentence ONLY when Stripe is checking the website, since
-   * that is the one pending field a seller can look at and understand.
-   * Rendered without the scheme. Omit it and the sentence still reads.
-   */
-  readonly brandPublicUrl?: string | null;
-}
-
-const stripScheme = (url: string): string =>
-  url.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
-
-/** First trimmed non-blank candidate, or `null` when every one is absent. */
-const firstNonBlank = (
-  ...candidates: readonly (string | null | undefined)[]
-): string | null => {
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim() !== "") {
-      return candidate.trim();
-    }
-  }
-  return null;
-};
-
-/**
- * One plain-English sentence naming what Stripe is waiting on, or `null` when
- * Stripe named nothing (in which case the caller keeps its generic copy).
- *
- * Never says "Action required" and never asks for anything: by definition a
- * `pending_verification` field is one Mingla already handed over.
- */
-export function describeStripePendingVerification(
-  input: PendingVerificationSentenceInput,
-): string | null {
-  const codes = (input.pendingVerification ?? []).filter(
-    (code): code is string => typeof code === "string" && code.trim() !== "",
-  );
-  if (codes.length === 0) return null;
-
-  const first = codes[0] as string;
-  let subject = getPendingVerificationSubject(first);
-
-  if (first === "business_profile.url") {
-    // Issue #3258 — the account's OWN url first; the brand page only when the
-    // account reports none. Order is the whole point: preferring the brand
-    // page would name a URL Stripe is not looking at.
-    const url = firstNonBlank(input.accountBusinessUrl, input.brandPublicUrl);
-    if (url !== null) {
-      subject = `${subject} (${stripScheme(url)})`;
-    }
-  }
-
-  const others = codes.length - 1;
-  if (others > 0) {
-    return `Stripe is checking ${subject} and ${others} other ${
-      others === 1 ? "detail" : "details"
-    }. Nothing to do — we'll email you when everything is verified.`;
-  }
-  return `Stripe is checking ${subject}. Nothing to do — we'll email you when it's verified.`;
-}
+export {
+  describeStripePendingVerification,
+  getPendingVerificationSubject,
+  type PendingVerificationSentenceInput,
+} from "./stripePendingVerificationCopy";

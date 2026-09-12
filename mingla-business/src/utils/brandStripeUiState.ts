@@ -1,7 +1,12 @@
 import type { BrandStripeStatus } from "../store/currentBrandStore";
 import type { IconName } from "../components/ui/Icon";
 import { accent, semantic } from "../constants/designSystem";
-import { describeStripePendingVerification } from "../constants/stripeKycRemediationMessages";
+// #3258 — imported from the sentence's OWN module, never from
+// `stripeKycRemediationMessages`. This file is in the eager boot payload; that
+// one is a ~245-entry remediation table whose only renderer is a lazy leaf of
+// the Payments route. Importing it from here measured +11,916 B on `__common`
+// (see `constants/stripePendingVerificationCopy.ts` for the full numbers).
+import { describeStripePendingVerification } from "../constants/stripePendingVerificationCopy";
 import {
   isOrganiserEmailRequiredError,
   isPermissionDeniedError,
@@ -338,16 +343,28 @@ export interface BrandStripeBannerInput {
   requirements: BrandStripeRequirementsShape | null | undefined;
   /**
    * Issue #3258 — `business_profile.url` as the CONNECTED ACCOUNT reports it
-   * (`RefreshStatusResult.business_profile_url`). Preferred over
-   * `brandPublicUrl`, because this is the URL Stripe is actually fetching.
-   * Optional: omit it and the banner falls back to the brand page.
+   * (`RefreshStatusResult.business_profile_url`). This is the URL Stripe is
+   * actually fetching, and it is the ONLY one the shipped screen supplies.
+   * Optional: omit it and the sentence names no URL at all.
    */
   accountBusinessUrl?: string | null;
   /**
-   * The brand's own public Mingla page (`brandPublicUrl(brand.slug)`), used
-   * only to name the URL Stripe is fetching when it is checking the website,
-   * and only when the account itself reports none.
-   * Optional: omit it and the sentence still reads.
+   * A caller-supplied fallback page to name when the account itself reports
+   * no URL — lower priority than `accountBusinessUrl` in every case.
+   *
+   * NO PRODUCTION CALLER PASSES THIS, and that is deliberate. The Payments
+   * screen used to fill it with `brandPublicUrl(brand.slug)`; that guess was
+   * removed because (a) importing `constants/publicUrls` there dragged
+   * `expo-constants` into the Payments route's module graph and killed the
+   * #1863 render suite at require time, and (b) it could name a URL Stripe
+   * is not looking at, for any account onboarded before the platform began
+   * prefilling `defaults.profile.business_url`.
+   *
+   * It survives as a parameter because it is the honest shape of the pure
+   * function — "prefer what the account says, fall back to what you were
+   * given" — and because the #3258 suites exercise the fallback branch
+   * directly. Think hard before wiring a production caller back onto it: the
+   * two reasons above are why there isn't one.
    */
   brandPublicUrl?: string | null;
 }

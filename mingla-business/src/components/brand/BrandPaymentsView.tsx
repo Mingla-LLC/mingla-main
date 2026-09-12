@@ -85,7 +85,13 @@ import {
   resolveBrandStripeBannerConfig,
   type BrandStripeRequirementsShape,
 } from "../../utils/brandStripeUiState";
-import { brandPublicUrl } from "../../constants/publicUrls";
+// #3258 — NO import of `constants/publicUrls` here, deliberately. It reaches
+// `constants/platformUrl`, which calls `expo-constants` at module scope; this
+// file is mounted for real by `__tests__/issue_1863_payments_permission_gate.
+// render.test.tsx`, whose runner has no expo-constants, so the import alone
+// killed that whole suite at require time. There is also nothing to import:
+// the pending-verification sentence names the URL the ACCOUNT reports, which
+// the server hands us on `business_profile_url`.
 // #1863 §4.10 — defence in depth for the 30s stale-role window. The primary
 // gate is the route wrapper (BrandPaymentsPermissionGate); this catches the
 // case where the client gate said ALLOW and the server said 403.
@@ -214,24 +220,33 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     (stripeStatusQuery.data?.requirements as
       | BrandStripeRequirementsShape
       | undefined) ?? null;
-  // `brandPublicUrl` throws on a blank slug, and this runs before the
-  // brand-null early return below, so guard rather than assume.
-  const brandPageUrl = brand?.slug != null && brand.slug.trim() !== ""
-    ? brandPublicUrl(brand.slug)
-    : null;
   // #3258 — the URL Stripe actually holds for this account, straight off
-  // `brand-stripe-refresh-status`. It outranks `brandPageUrl`: an account
-  // onboarded before the platform started prefilling one is being checked
-  // against whatever website the seller typed, and naming the brand's Mingla
-  // page there would confidently name the wrong URL. `?? null` covers both an
-  // absent field (edge fn not yet redeployed) and an explicit null.
+  // `brand-stripe-refresh-status`. This is the ONLY URL the sentence names.
+  //
+  // An earlier cut of this change also guessed the brand's own Mingla page
+  // (`brandPublicUrl(brand.slug)`) whenever the account reported none. That
+  // guess is gone, and its removal is a subtraction, not a loss:
+  //   - it could only ever be a guess. Stripe pends `business_profile.url`
+  //     against the URL it HOLDS; for every account onboarded before the
+  //     platform began prefilling one, that is whatever website the seller
+  //     typed inside Connect onboarding — for the brand this issue was filed
+  //     over, a dead domain. Naming the Mingla page there states something
+  //     false with total confidence (Constitution rule 9).
+  //   - it is redundant. Since `brand-stripe-onboard` prefills
+  //     `defaults.profile.business_url` with `/b/{slug}`, any account Stripe
+  //     is checking a URL on reports that URL back here.
+  // With no URL to name, the sentence reads "Stripe is checking your website.
+  // Nothing to do — we'll email you when it's verified." — still true, still
+  // names the field, just without a URL we invented.
+  //
+  // `?? null` covers both an absent field (edge fn not yet redeployed) and an
+  // explicit null.
   const accountBusinessUrl = stripeStatusQuery.data?.business_profile_url ??
     null;
   const bannerConfig = resolveBrandStripeBannerConfig({
     status: stripeStatus,
     requirements: stripeRequirements,
     accountBusinessUrl,
-    brandPublicUrl: brandPageUrl,
   });
 
   // #1863 §4.10 — the server has refused this caller. Derived once, from the
