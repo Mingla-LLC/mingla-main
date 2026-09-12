@@ -87,6 +87,9 @@ import type { CoverPatch } from "../ui/CoverPicker";
 import type { ThemeInput } from "@mingla/offering-rendering";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
+import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
+// #3259 — names the signed-in account on the settled-null brand branch below.
+import { useSwitchAccount } from "../../hooks/useSwitchAccount";
 
 interface ToastState {
   visible: boolean;
@@ -307,6 +310,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   // ORCH-1256 — scroll-to-section mechanism (anchors only). The PHYSICAL
+  const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   // LOCATION block this note used to guard was removed by META-ORCH-1255
   // (venue creation now lives in the universal creator sheet).
   // SmartScrollView forwards this ref to a real ScrollView on native and IS
@@ -547,10 +551,26 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
         <ScrollView contentContainerStyle={styles.scroll}>
           <GlassCard variant="elevated" padding={spacing.lg}>
             <Text style={styles.notFoundTitle}>Brand not found</Text>
+            {/*
+              #3259 — was "doesn't exist or has been removed", which ASSERTS a
+              fact the client cannot know.
+            */}
             <Text style={styles.notFoundBody}>
-              The brand you tried to edit doesn{"’"}t exist or has been removed.
-              Go back to your account to pick another.
+              We couldn{"’"}t open that brand for editing. Go back to your
+              account to pick another.
             </Text>
+            {/*
+              #3259 — a signed-in reader gets the account named and a way out.
+              The client CANNOT tell a deleted brand from an RLS-filtered one
+              (`.maybeSingle()` returns `{data: null, error: null}` for both), so
+              the copy states both possibilities and asserts neither.
+            */}
+            <SignedInNotFoundNotice
+              variant="restricted"
+              signedInEmail={signedInEmail}
+              onSwitchAccount={onSwitchAccount}
+              testID="brand-edit-not-found-signed-in-notice"
+            />
             <View style={styles.notFoundBtnRow}>
               <Button
                 label="Back to Account"

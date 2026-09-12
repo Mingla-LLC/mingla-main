@@ -46,6 +46,9 @@ import {
   activityRowKey,
 } from "../../../src/components/event/EventDetailActivityRow";
 import { Button } from "../../../src/components/ui/Button";
+import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
+// #3259 — names the signed-in account on the settled-null branch below.
+import { useSwitchAccount } from "../../../src/hooks/useSwitchAccount";
 import { Pill } from "../../../src/components/ui/Pill";
 import {
   deriveTripLifecycleStatus,
@@ -117,6 +120,7 @@ function HeroStatusPill({
 export default function ExperienceDashboardRoute(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
 
@@ -251,9 +255,33 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
     return (
       <SafeScreen style={styles.stateHost}>
         <Text style={styles.title}>Experience not found</Text>
-        <Text style={styles.body}>
-          This experience may have been deleted or you don&rsquo;t have access.
-        </Text>
+        {/*
+          #3259 — this sentence IS the `restricted` copy, and the notice below
+          says it again plus names the account, so showing both duplicates it.
+          A signed-out reader (who gets no notice) keeps it verbatim.
+
+          It also moves off `styles.body`, which is the main ScrollView's
+          `flex: 1` — on a Text in a centred column that absorbed every spare
+          pixel and pushed anything after it to the bottom of the screen.
+        */}
+        {signedInEmail === null ? (
+          <Text style={styles.stateBody}>
+            This experience may have been deleted or you don&rsquo;t have
+            access.
+          </Text>
+        ) : null}
+        {/*
+          #3259 — a signed-in reader gets the account named and a way out. The
+          client CANNOT tell a deleted row from an RLS-filtered one
+          (`.maybeSingle()` returns `{data: null, error: null}` for both), so the
+          copy states both possibilities and asserts neither.
+        */}
+        <SignedInNotFoundNotice
+          variant="restricted"
+          signedInEmail={signedInEmail}
+          onSwitchAccount={onSwitchAccount}
+          testID="experience-not-found-signed-in-notice"
+        />
       </SafeScreen>
     );
   }
@@ -644,6 +672,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#0c0e12",
   },
   title: { fontSize: typography.h3.fontSize, color: textTokens.primary },
+  // #3259 — the empty/error branches' body copy. Separate from `body` (which is
+  // the main ScrollView's `flex: 1`) so it sizes to its text instead of
+  // absorbing the whole column.
+  stateBody: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: textTokens.secondary,
+    textAlign: "center",
+  },
   body: { flex: 1 },
   bodyContent: {
     paddingHorizontal: spacing.md,

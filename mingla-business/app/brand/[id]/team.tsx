@@ -48,6 +48,9 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
+import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
+// #3259 — names the signed-in account on the settled-null brand branch below.
+import { useSwitchAccount } from "../../../src/hooks/useSwitchAccount";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import {
   useBrandInvitations,
@@ -104,6 +107,7 @@ interface DisplayEntry {
 export default function BrandTeamRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brandIdResolved =
@@ -324,6 +328,18 @@ export default function BrandTeamRoute(): React.ReactElement {
             illustration="users"
             title="Brand not found"
             description="This brand isn't in your list. Switch back and try again."
+          />
+          {/*
+            #3259 — a signed-in reader gets the account named and a way out. The
+            client CANNOT tell a deleted row from an RLS-filtered one
+            (`.maybeSingle()` returns `{data: null, error: null}` for both), so
+            the copy states both possibilities and asserts neither.
+          */}
+          <SignedInNotFoundNotice
+            variant="restricted"
+            signedInEmail={signedInEmail}
+            onSwitchAccount={onSwitchAccount}
+            testID="brand-team-not-found-signed-in-notice"
           />
         </View>
       </View>
