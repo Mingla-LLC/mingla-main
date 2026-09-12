@@ -498,8 +498,19 @@ describe("#3214 the public document's CSP is the booted app's policy", () => {
     const policy = directives(csp);
     for (const name of ["script-src", "connect-src", "frame-src", "media-src", "font-src"]) {
       for (const source of policy.get(name) ?? []) {
-        expect(source).toMatch(/^(?:'self'|'unsafe-inline'|https:\/\/[a-z0-9.-]+)$/);
+        // [TEST-MOD-APPROVED #3251] `wss` added to the scheme alternation.
+        // The guard's contract is "a concrete origin, never a bare scheme and
+        // never a star" — `wss://<host>` satisfies it exactly as `https://<host>`
+        // does; the pattern simply predated any WebSocket source. #3251 needs
+        // one because CSP matches scheme-for-scheme, so the Supabase https
+        // origin does not admit its realtime socket.
+        expect(source).toMatch(/^(?:'self'|'unsafe-inline'|(?:https|wss):\/\/[a-z0-9.-]+)$/);
         expect(source).not.toContain("*");
+        // Strengthened with the widening: a BARE scheme source (`https:`,
+        // `wss:`, `data:`) must never appear in these directives. Previously
+        // implied by the pattern; now asserted, so allowing a second scheme
+        // cannot quietly let a bare one through.
+        expect(source).not.toMatch(/^[a-z]+:$/);
       }
     }
     expect(policy.get("script-src")).toContain("'self'");
