@@ -374,6 +374,26 @@ const originOf = (value, fallback = null) => {
 // The app's backend is the same Supabase project the server reads from.
 const supabaseOrigin = () => originOf(SUPABASE_URL, DEFAULT_SUPABASE_ORIGIN);
 
+// #3251 — Supabase Realtime reaches the SAME project host over WebSocket, and
+// CSP matches scheme-for-scheme: the `https:` origin above does NOT authorise
+// `wss:`. Omitting it did not merely disable realtime. WebKit throws
+// SecurityError SYNCHRONOUSLY from `new WebSocket(...)` (what CSP says a UA
+// SHOULD do) while Blink returns an already-CLOSED socket and reports
+// asynchronously; the synchronous throw escaped a root-layout effect
+// (`app/_layout.tsx:294` -> `useBrands.ts`), unmounted the navigation
+// container through the outer ErrorBoundary, and expo-router's teardown then
+// rewrote the address bar to `/?brandSlug=...`. So every SIGNED-IN Safari
+// visitor to a public page got a white screen and a broken URL (#3234 is the
+// same defect seen from the console side).
+//
+// Derived from `supabaseOrigin()` rather than written as a literal so the two
+// can never drift, and so a self-hosted / preview SUPABASE_URL carries its own
+// realtime host instead of the production one.
+const supabaseRealtimeOrigin = () => {
+  const origin = supabaseOrigin();
+  return origin ? origin.replace(/^https:/, "wss:") : null;
+};
+
 // Sentry receives crash reports at the DSN's ingest host. Only a Sentry ingest
 // host is accepted, and never the DSN's key (origin only).
 const sentryIngestOrigin = () => {
@@ -414,6 +434,9 @@ const publicDocumentCspSources = () => [
   ["script-src", "https://www.redditstatic.com", "Reddit pixel"],
   ["connect-src", "'self'", "/index.html handoff, /api/public-boot-outcome, /api/content-share-analytics"],
   ["connect-src", supabaseOrigin(), "every public page's data, RPCs and edge functions"],
+  // Conditional-spread like the Sentry row: a malformed SUPABASE_URL must add
+  // no source at all rather than the string "null".
+  ...(supabaseRealtimeOrigin() ? [["connect-src", supabaseRealtimeOrigin(), "Supabase Realtime WebSocket (postgres_changes); scheme-for-scheme, so the https origin above does not cover it"]] : []),
   ["connect-src", "https://api.stripe.com", "Stripe.js API calls from the page (venue stays)"],
   ["connect-src", "https://us.i.posthog.com", "PostHog capture and flags (unchanged)"],
   ["connect-src", "https://us-assets.i.posthog.com", "PostHog remote config, fetched when its config script cannot load"],
