@@ -17,7 +17,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:search-foundation": "node scripts/verify-search-foundation.mjs",
-    "test:page-system": "node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs && node scripts/issue-2990-restructured-page-system.tester.adversarial.test.mjs",
+    "test:page-system": "MINGLA_HISTORICAL_2983_BUILD=1 node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs && MINGLA_HISTORICAL_2983_BUILD=1 node scripts/issue-2990-restructured-page-system.tester.adversarial.test.mjs",
     "test:city-hubs": "node scripts/issue-2983-city-hubs.implementor.happy.test.mjs && node scripts/issue-2983-lagos-catalogue-transfer.implementor.happy.test.mjs",
     "test:city-catalogue": "node scripts/issue-2983-lagos-catalogue-transfer.implementor.happy.test.mjs && node scripts/issue-2983-lagos-catalogue-transfer.tester.adversarial.test.mjs",
     "test:city-hero-metadata-removal": "node scripts/issue-2983-city-hero-metadata-removal.implementor.happy.test.mjs",
