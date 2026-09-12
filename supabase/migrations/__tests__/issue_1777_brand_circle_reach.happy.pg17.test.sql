@@ -319,10 +319,16 @@ $stale_denial$;
 
 -- Implementor-owned privilege/catalog contract.
 DO $catalog$
-DECLARE v_table text; v_fn regprocedure; v_config text[];
+DECLARE v_table text; v_priv text; v_fn regprocedure; v_config text[];
 BEGIN
   FOREACH v_table IN ARRAY ARRAY['brand_circle_preferences','brand_circle_exits','brand_reach_refresh_state','brand_reach_members','brand_reach_control'] LOOP
     IF NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname=v_table AND c.relrowsecurity) THEN RAISE EXCEPTION 'A6 RLS missing: %',v_table; END IF;
+  END LOOP;
+  FOREACH v_table IN ARRAY ARRAY['brand_circle_preferences','brand_circle_exits'] LOOP
+    IF NOT has_table_privilege('authenticated','public.'||v_table,'SELECT') THEN RAISE EXCEPTION 'A6 authenticated read grant missing: %',v_table; END IF;
+    FOREACH v_priv IN ARRAY ARRAY['INSERT','UPDATE','DELETE'] LOOP
+      IF has_table_privilege('authenticated','public.'||v_table,v_priv) THEN RAISE EXCEPTION 'A6 authenticated direct write grant leaked: % %',v_table,v_priv; END IF;
+    END LOOP;
   END LOOP;
   IF EXISTS(SELECT 1 FROM information_schema.role_table_grants WHERE table_schema='public' AND table_name IN ('brand_reach_refresh_state','brand_reach_members','brand_reach_control') AND grantee IN ('anon','authenticated')) THEN RAISE EXCEPTION 'A6 private table grant leaked'; END IF;
   IF has_function_privilege('anon','public.get_brand_circle_reach(uuid,text,jsonb,integer)','EXECUTE') OR NOT has_function_privilege('authenticated','public.get_brand_circle_reach(uuid,text,jsonb,integer)','EXECUTE') THEN RAISE EXCEPTION 'A6 list grants drifted'; END IF;

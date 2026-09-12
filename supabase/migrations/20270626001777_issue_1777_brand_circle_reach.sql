@@ -127,7 +127,8 @@ CREATE POLICY brand_circle_exits_owner_update ON public.brand_circle_exits FOR U
 CREATE POLICY brand_circle_exits_owner_delete ON public.brand_circle_exits FOR DELETE USING(auth.uid()=user_id);
 
 REVOKE ALL ON public.brand_circle_preferences,public.brand_circle_exits,public.brand_reach_refresh_state,public.brand_reach_members,public.brand_reach_control FROM PUBLIC,anon,authenticated;
-GRANT SELECT,INSERT,UPDATE,DELETE ON public.brand_circle_preferences,public.brand_circle_exits TO authenticated;
+GRANT SELECT ON public.brand_circle_preferences,public.brand_circle_exits TO authenticated;
+REVOKE INSERT,UPDATE,DELETE ON public.brand_circle_preferences,public.brand_circle_exits FROM authenticated;
 GRANT ALL ON public.brand_circle_preferences,public.brand_circle_exits,public.brand_reach_refresh_state,public.brand_reach_members,public.brand_reach_control TO service_role;
 
 CREATE TRIGGER brand_circle_preferences_touch BEFORE UPDATE ON public.brand_circle_preferences FOR EACH ROW EXECUTE FUNCTION public.issue_1770_touch_updated_at();
