@@ -73,10 +73,14 @@ describe("issue #3280 gallery add gate (real logic)", () => {
     // The strongest form of the fix: there is no argument a future copy-paste
     // could pass to re-introduce the block.
     expect(canAddGalleryPhoto({ uploading: false, disabled: false, atCap: false })).toBe(true);
-    expect(canAddGalleryPhoto.length).toBe(1);
-    expect(
-      Object.keys({ uploading: false, disabled: false, atCap: false }).sort(),
-    ).toEqual(["atCap", "disabled", "uploading"]);
+    // The input type itself: exactly three fields, none of them about video.
+    const gateSource = readFileSync(join(UI, "coverPickerGalleryGate.ts"), "utf8");
+    const typeStart = gateSource.indexOf("export type GalleryAddState = {");
+    expect(typeStart).toBeGreaterThan(-1);
+    const typeBody = gateSource.slice(typeStart, gateSource.indexOf("};", typeStart));
+    const fields = [...typeBody.matchAll(/^\s{2}(\w+):/gm)].map((match) => match[1]).sort();
+    expect(fields).toEqual(["atCap", "disabled", "uploading"]);
+    expect(typeBody.toLowerCase()).not.toMatch(/video|stage|phase|processing/);
   });
 
   test("each legitimate block refuses the add and names itself", () => {
