@@ -232,6 +232,7 @@ const renderHook = (
 type LooseMock = {
   mockResolvedValue: (value: unknown) => void;
   mockRejectedValue: (value: unknown) => void;
+  mockImplementation: (implementation: (...args: unknown[]) => unknown) => void;
 };
 
 const loose = (fn: unknown): LooseMock => fn as unknown as LooseMock;
@@ -307,9 +308,11 @@ describe("issue #3280 — an abandoned cover-video watch re-arms itself", () => 
   });
 
   test("a watch aborted mid-encode detaches honestly, then finishes the job without a remount", async () => {
-    // The exact production event: the watch dies while the job is still
-    // `processing`. Nothing about this abort is visible to the caller except
-    // the rejection itself.
+    // The watch dies while the job is still `processing`, and the abort
+    // reaches `startInternal` only as a thrown abort-shaped error. Before the
+    // fix this route fell through to the generic error branch and showed a
+    // "couldn't finish this video" card for a job that was about to succeed.
+    // The controller-aborted route (the literal bare `return`) is the next test.
     loose(waitForEventCoverVideoReady).mockRejectedValue(abortShapedError());
 
     const hook = renderHook();
@@ -323,7 +326,7 @@ describe("issue #3280 — an abandoned cover-video watch re-arms itself", () => 
     await mockDrain();
 
     // --- assertion 3: the abort is not swallowed -----------------------------
-    // Before the fix this read `{ phase: "processing" }` forever.
+    // Before the fix this read `{ phase: "error" }` for a job that succeeds.
     const afterAbort = renderHook();
     expect(afterAbort.stage).toMatchObject({ phase: "detached", sourceAcknowledged: true });
     expect(waitForEventCoverVideoReady).toHaveBeenCalledTimes(1);
@@ -361,6 +364,56 @@ describe("issue #3280 — an abandoned cover-video watch re-arms itself", () => 
     expect(settled.processedPosterUrl).toBe("https://cdn.example.com/poster.jpg");
   });
 
+  test("the production route: the flow's own controller aborts mid-encode — the card no longer freezes on processing", async () => {
+    // This is the exact line the 2026-09-11 freeze went through. Something
+    // aborted the controller the upload flow installed (an unmount of the
+    // picker subtree, or a resume that superseded the watch) while the job was
+    // still encoding. `waitForEventCoverVideoReady` then rejects the way the
+    // real service does — its delay listener fires on the aborted signal — and
+    // `startInternal`'s catch saw `abortRef.current.signal.aborted === true` and
+    // hit a bare `return`: no stage change, no error, no notice.
+    loose(waitForEventCoverVideoReady).mockImplementation((...args: unknown[]) => {
+      const options = args[1] as { signal?: AbortSignal; onStatus?: (next: unknown) => void };
+      options.onStatus?.(processingStatus());
+      return new Promise((_resolve, reject) => {
+        options.signal?.addEventListener("abort", () => reject(abortShapedError()), { once: true });
+      });
+    });
+
+    const hook = renderHook();
+    await mockFlushEffects();
+    await mockDrain();
+
+    const started = hook.start(sourceFile);
+    for (let index = 0; index < 500 && waitForEventCoverVideoReady.mock.calls.length === 0; index += 1) {
+      await Promise.resolve();
+    }
+    expect(waitForEventCoverVideoReady).toHaveBeenCalledTimes(1);
+    expect(renderHook().stage).toMatchObject({ phase: "processing" });
+
+    // Abort the controller the flow installed — without an unmount, so the
+    // mount and its generation are still live. It is the only AbortController
+    // this hook keeps in a ref.
+    const controllerSlot = mockRefSlots.find((slot) => slot.current instanceof AbortController);
+    expect(controllerSlot).toBeDefined();
+    (controllerSlot?.current as AbortController).abort();
+    await started;
+    await mockDrain();
+
+    // Before the fix: `{ phase: "processing" }`, forever.
+    expect(renderHook().stage).toMatchObject({ phase: "detached", sourceAcknowledged: true });
+    expect(reportNonFatal).toHaveBeenCalledTimes(1);
+
+    // And the re-arm finishes the job with no remount.
+    loose(fetchEventCoverVideoStatus).mockResolvedValue(appliedStatus());
+    renderHook();
+    jest.advanceTimersByTime(5_000);
+    await mockDrain();
+    const settled = renderHook();
+    expect(settled.stage).toMatchObject({ phase: "applied" });
+    expect(settled.processedUrl).toBe("https://cdn.example.com/processed.mp4");
+  });
+
   test("a terminal answer stops the re-arm instead of polling forever", async () => {
     loose(waitForEventCoverVideoReady).mockRejectedValue(abortShapedError());
 
@@ -371,10 +424,15 @@ describe("issue #3280 — an abandoned cover-video watch re-arms itself", () => 
     await mockDrain();
 
     loose(fetchEventCoverVideoStatus).mockResolvedValue(appliedStatus());
+    const callsBeforeRearm = fetchEventCoverVideoStatus.mock.calls.length;
     renderHook();
     jest.advanceTimersByTime(5_000);
     await mockDrain();
 
+    // Precondition: the re-arm really fired and settled the job. Without it the
+    // silence asserted below would prove nothing.
+    expect(fetchEventCoverVideoStatus.mock.calls.length).toBe(callsBeforeRearm + 1);
+    expect(renderHook().stage).toMatchObject({ phase: "applied" });
     const callsAfterFirstRearm = fetchEventCoverVideoStatus.mock.calls.length;
     // `applied` is terminal, so the phase leaves the re-armable set and the
     // interval must go quiet rather than hammering the status endpoint.
@@ -459,6 +517,14 @@ describe("issue #3280 — an abandoned cover-video watch re-arms itself", () => 
     await hook.start(sourceFile);
     await mockDrain();
     renderHook();
+
+    // Precondition: the interval is live while mounted. The job is still
+    // processing, so the re-arm checks and resubscribes (and that watch dies
+    // again the same way).
+    const callsWhileMounted = fetchEventCoverVideoStatus.mock.calls.length;
+    jest.advanceTimersByTime(5_000);
+    await mockDrain();
+    expect(fetchEventCoverVideoStatus.mock.calls.length).toBeGreaterThan(callsWhileMounted);
 
     mockUnmountEffects();
     const callsBefore = fetchEventCoverVideoStatus.mock.calls.length;
