@@ -11,14 +11,15 @@ BEGIN;
 -- #1973 unpublish capability at 131 rows.
 -- [TEST-MOD-APPROVED #1980] Three marketing/growth tools bring the set to 135;
 -- omitting unpublish still rejects at 134 rows.
+-- [TEST-MOD-APPROVED #1981] Refund preview + list_trip_installments; 135→137 / 134→136.
 -- Reject an incomplete evidence set that omits ari.experience.unpublish.
 DO $certification$
 DECLARE
   v_run_id uuid;
   v_error text;
 BEGIN
-  IF (SELECT count(*) FROM public.ari_cert_capability_requirements) <> 135 THEN
-    RAISE EXCEPTION '#1973/#1980 expected exactly 135 certification requirements';
+  IF (SELECT count(*) FROM public.ari_cert_capability_requirements) <> 137 THEN
+    RAISE EXCEPTION '#1973/#1981 expected exactly 137 certification requirements';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.ari_cert_capability_requirements
@@ -65,8 +66,8 @@ BEGIN
     RAISE EXCEPTION '#1973/#1980 finalizer accepted incomplete evidence missing unpublish';
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_error = MESSAGE_TEXT;
-    IF v_error <> 'ari_cert_missing_capabilities:134' THEN
-      RAISE EXCEPTION '#1973/#1980 expected 134-row rejection, received %', v_error;
+    IF v_error <> 'ari_cert_missing_capabilities:136' THEN
+      RAISE EXCEPTION '#1973/#1981 expected 136-row rejection, received %', v_error;
     END IF;
   END;
 END;

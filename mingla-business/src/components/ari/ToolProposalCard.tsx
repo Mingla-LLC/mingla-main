@@ -122,6 +122,13 @@ function humanizeToolName(toolName: string): string {
     case "discard_event_draft": return "Discard draft";
     case "send_campaign_now": return "Send campaign";
     case "refund_order": return "Refund order";
+    case "cancel_order": return "Cancel free order";
+    case "cancel_trip_booking": return "Cancel trip booking";
+    case "charge_installment_now": return "Charge installment now";
+    case "retry_installment": return "Retry installment";
+    case "send_installment_reminder": return "Send installment reminder";
+    case "get_order_refund_preview": return "Preview refundable lines";
+    case "list_trip_installments": return "List trip installments";
     case "request_account_deletion": return "Delete account";
     case "propose_site_content_update": return "Confirm Website draft";
     case "propose_site_settings_update": return "Confirm Website settings draft";
@@ -143,6 +150,9 @@ export const MONEY_CONFIRM_TOOLS: Record<string, string> = {
   refund_order: "REFUND",
   cancel_order: "CANCEL",
   cancel_trip_booking: "CANCEL",
+  // #1981 — backend MONEY_CONFIRM_TOOLS already requires CHARGE; client must
+  // send confirm_phrase or charge_installment_now never confirms.
+  charge_installment_now: "CHARGE",
   export_brand_people: "EXPORT",
   request_account_deletion: "DELETE",
 };
@@ -182,8 +192,70 @@ function coverTypeLabel(type: unknown): string | null {
   return null;
 }
 
+function formatMoneyCents(cents: unknown, currency: unknown): string | null {
+  if (typeof cents !== "number" || !Number.isFinite(cents)) return null;
+  const code = typeof currency === "string" && currency.trim()
+    ? currency.trim().toUpperCase()
+    : "";
+  const amount = (cents / 100).toFixed(2);
+  return code ? `${amount} ${code}` : amount;
+}
+
 function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
   const out: Field[] = [];
+  const context = args.__proposal_context !== null && typeof args.__proposal_context === "object"
+    ? args.__proposal_context as Record<string, unknown>
+    : {};
+
+  if (
+    toolName === "refund_order" ||
+    toolName === "cancel_order" ||
+    toolName === "cancel_trip_booking" ||
+    toolName === "charge_installment_now"
+  ) {
+    if (toolName === "refund_order") {
+      const total = formatMoneyCents(
+        context.refundable_total_cents,
+        context.currency,
+      );
+      if (total) out.push({ label: "Refund total", value: total });
+      if (typeof context.line_count === "number") {
+        out.push({ label: "Lines", value: String(context.line_count) });
+      }
+      if (
+        typeof context.zero_priced_remaining === "number" &&
+        context.zero_priced_remaining > 0
+      ) {
+        out.push({
+          label: "Zero-priced left",
+          value: String(context.zero_priced_remaining),
+        });
+      }
+    }
+    if (toolName === "cancel_trip_booking") {
+      const total = formatMoneyCents(context.refund_total_cents, context.currency);
+      if (total) out.push({ label: "Refund total", value: total });
+      else out.push({ label: "Refund total", value: "Preview pending" });
+    }
+    if (toolName === "cancel_order") {
+      if (typeof context.payment_method === "string") {
+        out.push({ label: "Payment", value: context.payment_method });
+      }
+    }
+    if (toolName === "charge_installment_now") {
+      const id = typeof args.installment_id === "string"
+        ? args.installment_id
+        : typeof context.installment_id === "string"
+        ? context.installment_id
+        : "";
+      if (id) out.push({ label: "Installment", value: `${id.slice(0, 8)}…` });
+    }
+    if (typeof args.reason === "string" && args.reason.trim()) {
+      out.push({ label: "Reason", value: args.reason.trim() });
+    }
+    return out;
+  }
+
   const isSiteTool = [
     "propose_site_content_update",
     "propose_site_settings_update",
@@ -242,9 +314,6 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     }
     return out;
   }
-  const context = args.__proposal_context !== null && typeof args.__proposal_context === "object"
-    ? args.__proposal_context as Record<string, unknown>
-    : {};
   if (toolName === "upsert_ticket_tier") {
     out.push({ label: "Event state", value: String(context.lifecycle ?? "event") });
     out.push({ label: "Action", value: String(context.action ?? "update") });
@@ -466,6 +535,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const [coverSheetVisible, setCoverSheetVisible] = useState(false);
   const [coverUploadState, setCoverUploadState] = useState<CoverUploadState>("idle");
   const [typedName, setTypedName] = useState("");
+  // #1983 — highest-safety: legal name must be freshly typed (never prefilled
+  // from the model proposal), same empty-start pattern as brand-delete confirm.
+  const [legalNameInput, setLegalNameInput] = useState("");
   // ORCH-1103 Q7 — create-row-first / attach-second. On a create proposal the
   // reused CoverPicker persists EVERY brand media (device, video, Pexels, GIPHY)
   // live to a real brandId — so the brand row must exist before the picker can
@@ -490,6 +562,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const isBrandDelete = toolName === "delete_brand";
   const moneyPhrase = MONEY_CONFIRM_TOOLS[toolName] ?? null;
   const isMoneyConfirm = moneyPhrase !== null;
+  const isAccountDeletion = toolName === "request_account_deletion";
   const isTypeConfirm = isBrandDelete || isMoneyConfirm;
   const isBrandWithCover = isBrandCreate || isBrandUpdate;
   const isOfferingCover =
@@ -513,6 +586,10 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     typedName.trim().toLowerCase() === deleteName.trim().toLowerCase() && deleteName.length > 0;
   const canMoneyConfirm =
     !!moneyPhrase && typedName.trim().toUpperCase() === moneyPhrase;
+  const canAccountDeletion =
+    isAccountDeletion &&
+    legalNameInput.trim().length > 0 &&
+    typedName.trim().toUpperCase() === "DELETE";
 
   // ----- cover threading -----------------------------------------------------
   const coverUrl = (liveArgs.cover_media_url as string | undefined) ?? null;
@@ -824,8 +901,52 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               accessibilityHint="The delete button enables when the name matches"
             />
           </>
+        ) : isAccountDeletion ? (
+          <>
+            <View style={styles.assuranceRow}>
+              <Text style={styles.assuranceText}>
+                This deletes your Host account. Type your legal name and DELETE to confirm.
+              </Text>
+            </View>
+            <Text style={styles.confirmHelper}>
+              Type your <Text style={styles.confirmHelperName}>legal name</Text>
+            </Text>
+            <TextInput
+              value={legalNameInput}
+              onChangeText={setLegalNameInput}
+              placeholder="Legal name"
+              placeholderTextColor={textTokens.quaternary}
+              autoCapitalize="words"
+              autoCorrect={false}
+              style={styles.confirmInput}
+              accessibilityLabel="Type your legal name to confirm account deletion"
+            />
+            <Text style={styles.confirmHelper}>
+              Type <Text style={styles.confirmHelperName}>DELETE</Text> to confirm
+            </Text>
+            <TextInput
+              value={typedName}
+              onChangeText={setTypedName}
+              placeholder="DELETE"
+              placeholderTextColor={textTokens.quaternary}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              style={styles.confirmInput}
+              accessibilityLabel="Type DELETE to confirm account deletion"
+            />
+          </>
         ) : isMoneyConfirm && moneyPhrase ? (
           <>
+            {fieldsFor(toolName, liveArgs).length > 0 ? (
+              <View style={styles.fields}>
+                {fieldsFor(toolName, liveArgs).map((f, i) => (
+                  <View key={i} style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>{f.label}</Text>
+                    <Text style={styles.fieldValue} numberOfLines={2}>{f.value}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
             <View style={styles.assuranceRow}>
               <Text style={styles.assuranceText}>
                 This cannot be undone from chat. Type {moneyPhrase} to confirm.
@@ -983,6 +1104,31 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             >
               <Text style={[styles.deleteText, !canDelete && styles.deleteTextDisabled]}>
                 {isExecuting ? "Deleting…" : "Delete brand"}
+              </Text>
+            </Pressable>
+          ) : isAccountDeletion ? (
+            <Pressable
+              onPress={() =>
+                void confirmProposal({
+                  ...(editing ? editedArgs : args),
+                  legal_name: legalNameInput.trim(),
+                  confirm_phrase: "DELETE",
+                })
+              }
+              disabled={isExecuting || !canAccountDeletion}
+              hitSlop={{ top: 5, bottom: 5 }}
+              style={({ pressed }) => [
+                styles.actionBtn,
+                styles.deleteBtn,
+                !canAccountDeletion && styles.deleteBtnDisabled,
+                pressed && styles.btnPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Delete account"
+              accessibilityState={{ disabled: isExecuting || !canAccountDeletion }}
+            >
+              <Text style={[styles.deleteText, !canAccountDeletion && styles.deleteTextDisabled]}>
+                {isExecuting ? "Deleting…" : "Delete account"}
               </Text>
             </Pressable>
           ) : isMoneyConfirm && moneyPhrase ? (

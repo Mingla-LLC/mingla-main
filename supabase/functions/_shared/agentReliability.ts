@@ -46,6 +46,9 @@ export type AriErrorCode =
   | "RESULT_UNKNOWN"
   | "RECONCILIATION_REQUIRED"
   | "MINIMUM_VERSION_REQUIRED"
+  | "PAID_ORDER_MUST_REFUND"
+  | "REFUND_PREVIEW_UNPRICED"
+  | "DOMAIN_ACTION_REFUSED"
   | "INTERNAL";
 
 export type AriSuccessCode =
@@ -214,6 +217,30 @@ export const ARI_ERROR_REGISTRY: Readonly<
     safeToRetry: false,
     operationState: "none",
     userMessage: "Update Mingla Business before using Ari again.",
+  },
+  // #1981 — money refusals must never become retryable INTERNAL.
+  PAID_ORDER_MUST_REFUND: {
+    httpStatus: 409,
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "none",
+    userMessage: "Paid orders cannot be cancelled. Use refund_order instead.",
+  },
+  REFUND_PREVIEW_UNPRICED: {
+    httpStatus: 409,
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "none",
+    userMessage:
+      "The cancellation preview did not return an exact refund amount. Try again in a moment.",
+  },
+  DOMAIN_ACTION_REFUSED: {
+    httpStatus: 409,
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "none",
+    userMessage:
+      "That money action cannot complete as requested. Review the details and try a different action.",
   },
   INTERNAL: {
     httpStatus: 500,
@@ -397,6 +424,11 @@ export function mapLegacyAriErrorCode(legacy: string): AriErrorCode {
       return "RECONCILIATION_REQUIRED";
     case "EXECUTION_FAILED":
       return "RESULT_UNKNOWN";
+    case "EDGE_FAILED":
+    case "RPC_FAILED":
+      // #1981 — Host/domain refusals arrive as EDGE_FAILED/RPC_FAILED; do not
+      // invite a permanent retry as INTERNAL.
+      return "DOMAIN_ACTION_REFUSED";
     case "BAD_REQUEST":
     case "MESSAGE_TOO_LONG":
     case "INVALID_ARGS":

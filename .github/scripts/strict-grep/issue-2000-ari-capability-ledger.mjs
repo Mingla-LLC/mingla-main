@@ -84,8 +84,10 @@ ari.partner.disconnect
 ari.tax.status_guidance
 ari.order.refund
 ari.order.cancel
+ari.order.refund_preview
 ari.trip.cancel_booking
 ari.installment.retry
+ari.installment.list
 ari.analytics.brand
 ari.team.invite_member
 ari.team.invite_scanner

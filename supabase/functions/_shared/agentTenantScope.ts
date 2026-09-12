@@ -32,6 +32,9 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   // issue #1971 — the aggregate trip order/money snapshot runs inline under the
   // same tenant scope as every other read.
   "get_trip_order_money",
+  // #1981 — refund/installment discovery reads before money writes.
+  "get_order_refund_preview",
+  "list_trip_installments",
   // issue #2830 — all six Website reads assert this authority inline before
   // Core independently reauthorizes the site/brand relationship.
   "get_brand_site",

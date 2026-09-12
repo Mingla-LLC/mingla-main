@@ -250,11 +250,12 @@ export function audit(base) {
     // [TEST-MOD-APPROVED #2830] The approved Sites slice adds 12 registered tools;
     // keep the #1977 census aligned without changing any RSVP invariant.
     // [TEST-MOD-APPROVED #1980] Draft mutate + growth report read; 120→123.
-    if (parsed.audit?.registered_tool_count !== 123) {
-      failures.push("ledger audit registered_tool_count is not 123");
+    // [TEST-MOD-APPROVED #1981] Refund preview + trip installments reads; 123→125.
+    if (parsed.audit?.registered_tool_count !== 125) {
+      failures.push("ledger audit registered_tool_count is not 125");
     }
-    if (mapped.length !== 123 || new Set(mapped).size !== 123) {
-      failures.push("ledger mapped tool census is not 123 unique tools");
+    if (mapped.length !== 125 || new Set(mapped).size !== 125) {
+      failures.push("ledger mapped tool census is not 125 unique tools");
     }
     if (!mapped.includes("update_rsvp") || !mapped.includes("update_rsvp_contribution_settings")) {
       failures.push("ledger lost the #1977 RSVP write mappings");

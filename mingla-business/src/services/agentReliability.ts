@@ -58,6 +58,9 @@ export type AriErrorCode =
   | "RESULT_UNKNOWN"
   | "RECONCILIATION_REQUIRED"
   | "MINIMUM_VERSION_REQUIRED"
+  | "PAID_ORDER_MUST_REFUND"
+  | "REFUND_PREVIEW_UNPRICED"
+  | "DOMAIN_ACTION_REFUSED"
   | "INTERNAL";
 
 type AriErrorTuple = Readonly<{
@@ -147,6 +150,21 @@ export const ARI_CLIENT_ERROR_REGISTRY: Readonly<
     operationState: "reconciliation_required",
   },
   MINIMUM_VERSION_REQUIRED: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "none",
+  },
+  PAID_ORDER_MUST_REFUND: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "none",
+  },
+  REFUND_PREVIEW_UNPRICED: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "none",
+  },
+  DOMAIN_ACTION_REFUSED: {
     retryability: "never",
     safeToRetry: false,
     operationState: "none",

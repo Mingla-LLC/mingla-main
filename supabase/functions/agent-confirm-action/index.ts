@@ -252,6 +252,12 @@ export function toolErrorHttpStatus(code: string): number {
   // ORCH-1103 — delete refused because the brand has upcoming/live events.
   // Recoverable, user-actionable conflict (cancel/transfer first) → 409.
   if (code === "DELETE_BLOCKED_BY_EVENTS") return 409;
+  // #1981 — paid cancel refused; organiser clears it by calling refund_order
+  // instead (same Host money-screen routing). Conflict / adjust-request → 409,
+  // never 500 (safe_to_retry).
+  if (code === "PAID_ORDER_MUST_REFUND") return 409;
+  if (code === "REFUND_PREVIEW_UNPRICED") return 409;
+  if (code === "DOMAIN_ACTION_REFUSED") return 409;
   // issue #2592 — an optimistic-concurrency conflict. The resource moved under
   // the caller, so the request is CORRECTLY refused and the caller resolves it
   // by re-reading the current version. That is the same 409 the Edge-owned

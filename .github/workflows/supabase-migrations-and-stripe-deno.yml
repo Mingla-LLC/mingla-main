@@ -1103,6 +1103,11 @@ jobs:
             supabase/functions/_shared/__tests__/issue_1976_ari_payments_partner.implementor.test.ts
             # ISSUE-1981 — trip installment charge-now + reminder.
             supabase/functions/_shared/__tests__/issue_1981_ari_installments.implementor.test.ts
+            # ISSUE-1981 e2e — refunds/cancels/discovery (implementor + independent tester).
+            supabase/functions/_shared/__tests__/issue_1981_ari_refunds_cancels.implementor.test.ts
+            supabase/functions/_shared/__tests__/issue_1981_ari_refunds_cancels.tester_adversarial.test.ts
+            # ISSUE-1981 — paid-cancel ToolError must map to HTTP 409 (not 500).
+            supabase/functions/agent-confirm-action/__tests__/issue_1981_paid_order_must_refund_status.test.ts
             # ISSUE-1982 — team list, scanner revoke, Brand People manage.
             supabase/functions/_shared/__tests__/issue_1982_ari_team_people.implementor.test.ts
             # ISSUE-1972 reopen — group chat, door sale, orders, waitlist, scanners.
@@ -1114,6 +1119,8 @@ jobs:
             # ISSUE-1983 — profile avatar, Ari history, notifications, support inbox.
             supabase/functions/_shared/__tests__/issue_1983_ari_account_inbox.implementor.test.ts
             supabase/functions/_shared/__tests__/issue_1983_ari_account_inbox.tester_adversarial.test.ts
+            # ISSUE-1983 — prefs / support create / business-side deletion executors.
+            supabase/functions/_shared/__tests__/issue_1983_ari_account_support.implementor.test.ts
             # ISSUE-1978 reopen — venue gallery get/sync.
             supabase/functions/_shared/__tests__/issue_1978_ari_venue_gallery.implementor.test.ts
             supabase/functions/_shared/__tests__/issue_1978_ari_venue_gallery.tester_adversarial.test.ts

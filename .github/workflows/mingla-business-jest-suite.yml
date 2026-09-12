@@ -126,3 +126,9 @@ jobs:
           src/services/__tests__/eventCoverVideoProcessingService.test.ts
           --testNamePattern="keeps the same processing job alive beyond the former deadline and later resolves"
           --setupFilesAfterEnv=./scripts/ci/issue-1664-frozen-wall-clock.setup.cjs
+
+      - name: "#1983 Ari account-deletion confirm card (legal name + DELETE)"
+        if: always()
+        run: >-
+          npx jest --ci --runInBand --runTestsByPath
+          src/components/ari/__tests__/issue_1983_account_deletion_confirm.test.ts

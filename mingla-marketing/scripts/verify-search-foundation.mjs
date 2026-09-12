@@ -29,6 +29,7 @@ const SEARCH_READY_PATHS = [
   '/privacy-policy',
   '/terms-of-service',
   '/help/getting-the-apps',
+  '/help/sign-up-and-create-a-brand',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [

@@ -40,6 +40,12 @@ const EVENT_TYPE_BY_TOOL: Readonly<
   delete_trip: "trip",
   get_trip_order_money: "trip",
   cancel_trip_booking: "trip",
+  list_trip_installments: "trip",
+  // #1981 — installment money actions resolve order → event; pin trip type so
+  // assertExpectedEventType rejects non-trip events before the Host RPCs run.
+  retry_installment: "trip",
+  charge_installment_now: "trip",
+  send_installment_reminder: "trip",
   update_rsvp: "rsvp",
   publish_rsvp: "rsvp",
   update_rsvp_contribution_settings: "rsvp",
@@ -157,6 +163,10 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   // #1981 — Trip Money manual charge + reminder; same finance floor as Host.
   charge_installment_now: role("finance_manager", "brand"),
   send_installment_reminder: role("finance_manager", "brand"),
+  // #1981 — PII-free discovery reads before money writes.
+  get_order_refund_preview: role("finance_manager", "brand"),
+  // event resource so EVENT_TYPE_BY_TOOL rejects non-trip events.
+  list_trip_installments: role("finance_manager", "event"),
   get_brand_analytics: role("scanner", "brand"),
   invite_brand_member: role("brand_admin", "brand"),
   invite_scanner: role("event_manager", "brand"),
