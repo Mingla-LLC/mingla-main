@@ -3266,7 +3266,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
+          "sha": "75eb44669ac748b2261e72fea34fd8f04aff2002",
           "reference": "#1982 agentDomainTools.ts:inviteBrandMember sends invitee_name to invite-brand-member"
         }
       ],
@@ -3316,7 +3316,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
+          "sha": "75eb44669ac748b2261e72fea34fd8f04aff2002",
           "reference": "#1982 agentDomainTools.ts:inviteScanner routes to invite-scanner with scope/scan contract"
         }
       ],
@@ -3362,7 +3362,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
+          "sha": "75eb44669ac748b2261e72fea34fd8f04aff2002",
           "reference": "#1982 agentDomainTools.ts:revokeBrandMember soft-deletes brand_team_members.removed_at"
         }
       ],
@@ -3412,7 +3412,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
+          "sha": "75eb44669ac748b2261e72fea34fd8f04aff2002",
           "reference": "#1982 agentDomainTools.ts:revokeBrandInvitation mirrors brandInvitationsService.revokeBrandInvitation"
         }
       ],
@@ -4829,7 +4829,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
+          "sha": "75eb44669ac748b2261e72fea34fd8f04aff2002",
           "reference": "#1982 agentDomainTools.ts:manageBrandPeople calls biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person with cursor pagination"
         }
       ],
@@ -5080,7 +5080,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
+          "sha": "75eb44669ac748b2261e72fea34fd8f04aff2002",
           "reference": "#1982 agentDomainTools.ts:listBrandTeam mirrors members + brand invitations + scanner invitations"
         }
       ],
@@ -5130,7 +5130,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
+          "sha": "75eb44669ac748b2261e72fea34fd8f04aff2002",
           "reference": "#1982 agentDomainTools.ts:revokeScannerInvitation mirrors scannerInvitationsService.revokeScannerInvitation"
         }
       ],

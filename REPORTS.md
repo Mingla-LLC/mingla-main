@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-12 — Ari can list a brand's team (including scanner invites), invite or revoke members and scanners, revoke pending invitations, and list/get/add Brand People — with Host-parity confirm cards — without inventing invitation ids (#1982, PR pending)
 - 2026-09-11 — Sharing a brand, event, RSVP event, trip, experience or venue from either app now sends a link to that page itself instead of a Mingla in-between page, and the pasted text always contains the link — on iPhone it had often arrived as a sentence with no link at all; confirmed on a real iPhone and a real Android before close (#3187, PR #3236)
 - 2026-09-11 — Opening a public Host page from a link — brand, venue, event, trip or experience — now loads the real app view, instead of leaving people stuck on the plain server page or looking at a cover with nothing beneath it that would not scroll; the app's files had been loading in the wrong order and the page's layout styles were never copied across (#3214, PR #3229)
 - 2026-09-11 — A public brand, event, trip, experience or venue page no longer shows "not found" when a deleted copy shares its web name; the page always picks the live one (#3193, PR #3224)
