@@ -337,8 +337,16 @@ export interface BrandStripeBannerInput {
    */
   requirements: BrandStripeRequirementsShape | null | undefined;
   /**
+   * Issue #3258 — `business_profile.url` as the CONNECTED ACCOUNT reports it
+   * (`RefreshStatusResult.business_profile_url`). Preferred over
+   * `brandPublicUrl`, because this is the URL Stripe is actually fetching.
+   * Optional: omit it and the banner falls back to the brand page.
+   */
+  accountBusinessUrl?: string | null;
+  /**
    * The brand's own public Mingla page (`brandPublicUrl(brand.slug)`), used
-   * only to name the URL Stripe is fetching when it is checking the website.
+   * only to name the URL Stripe is fetching when it is checking the website,
+   * and only when the account itself reports none.
    * Optional: omit it and the sentence still reads.
    */
   brandPublicUrl?: string | null;
@@ -364,6 +372,9 @@ export function resolveBrandStripeBannerConfig(
 
   const sentence = describeStripePendingVerification({
     pendingVerification: input.requirements?.pending_verification,
+    // Issue #3258 — pass BOTH; `describeStripePendingVerification` prefers the
+    // account's own URL and only falls back to the brand page.
+    accountBusinessUrl: input.accountBusinessUrl,
     brandPublicUrl: input.brandPublicUrl,
   });
   return sentence === null ? base : { ...base, sub: sentence };

@@ -235,6 +235,91 @@ export interface CreateRecipientAccountInput {
   contactEmail: string;
   country: string;
   idempotencyKey: string;
+  /**
+   * Issue #3258 — the account's publicly-available website, prefilled by the
+   * platform at CREATE time so Stripe never has to ask the seller for one.
+   *
+   * Stripe fetches this URL to verify the business before it will enable the
+   * `card_payments` capability. Sending nothing means the seller is asked for
+   * a website inside Connect onboarding and types whatever they have; when
+   * that site is unreachable, `card_payments` sits at `pending` forever with
+   * `disabled_reason = requirements.pending_verification` and
+   * `pending_verification: ["business_profile.url"]`, and the brand cannot
+   * take money. Stripe's own hosted-onboarding guidance is explicit: "If you
+   * onboard an account and your platform provides it with a URL, prefill the
+   * account's business_profile.url."
+   * (https://docs.stripe.com/connect/hosted-onboarding)
+   *
+   * MUST include the scheme — a bare `www.example.com` is rejected with
+   * `invalid_url_format`. Optional: omit it and the request body is
+   * byte-identical to the pre-#3258 shape.
+   */
+  businessUrl?: string | null;
+  /**
+   * Issue #3258 — Stripe's documented fallback when the account genuinely has
+   * no public page: "If the business doesn't have a URL, you can prefill its
+   * business_profile.product_description instead."
+   * (https://docs.stripe.com/connect/hosted-onboarding)
+   *
+   * Only ever sent when `businessUrl` is absent. Stripe rejects a body that
+   * carries the same string as both with `invalid_product_description_url_match`,
+   * and `buildRecipientAccountDefaults` below makes that unrepresentable.
+   */
+  productDescription?: string | null;
+}
+
+/**
+ * Issue #3258 — build the `defaults` object for `POST /v2/core/accounts`.
+ *
+ * THIS FUNCTION EXISTS BECAUSE OF A COLLISION, and the collision is the most
+ * dangerous line in the whole change. `STRIPE_MANAGED_RISK_CONTROLLER` does
+ * not merely contribute `dashboard` — it supplies the ENTIRE `defaults` key
+ * (`defaults.responsibilities.{losses_collector,fees_collector}`), and it
+ * reaches the request body through a spread. Writing a sibling
+ * `defaults: { profile: { business_url } }` next to that spread would silently
+ * drop `responsibilities` (or be dropped by it, depending on spread order),
+ * which on a LIVE marketplace changes who absorbs losses and who collects
+ * fees. So the profile is MERGED onto the controller's own defaults here, in
+ * one place, and pinned by regression tests.
+ *
+ * The v2 field path is `defaults.profile.business_url` — Accounts v2 has no
+ * `business_profile` object, and neither `identity.business_details.url` nor
+ * `configuration.merchant.business_profile.url` exists.
+ * (https://docs.stripe.com/api/v2/core/accounts/create)
+ *
+ * `business_url` and `product_description` are mutually exclusive by
+ * construction: the URL wins whenever there is one, so the body can never
+ * carry both, and never the same string twice.
+ */
+export function buildRecipientAccountDefaults(
+  input: Pick<
+    CreateRecipientAccountInput,
+    "businessUrl" | "productDescription"
+  >,
+): Record<string, unknown> {
+  const controllerDefaults: Record<string, unknown> = {
+    ...STRIPE_MANAGED_RISK_CONTROLLER.defaults,
+  };
+  const businessUrl = typeof input.businessUrl === "string"
+    ? input.businessUrl.trim()
+    : "";
+  if (businessUrl !== "") {
+    return {
+      ...controllerDefaults,
+      profile: { business_url: businessUrl },
+    };
+  }
+  const productDescription = typeof input.productDescription === "string"
+    ? input.productDescription.trim()
+    : "";
+  if (productDescription !== "") {
+    return {
+      ...controllerDefaults,
+      profile: { product_description: productDescription },
+    };
+  }
+  // Neither supplied — byte-identical to the pre-#3258 body.
+  return controllerDefaults;
 }
 
 export function createRecipientAccount(
@@ -267,6 +352,12 @@ export function createRecipientAccount(
       display_name: input.displayName,
       contact_email: input.contactEmail,
       ...STRIPE_MANAGED_RISK_CONTROLLER,
+      // Issue #3258 — DELIBERATELY AFTER the spread, and deliberately a merge.
+      // The spread above supplies `defaults.responsibilities`; this key
+      // replaces that whole object, so `buildRecipientAccountDefaults` carries
+      // the controller's own defaults forward. Reorder these two lines or drop
+      // the merge and the managed-risk responsibilities vanish from the wire.
+      defaults: buildRecipientAccountDefaults(input),
       include: [
         "configuration.merchant",
         "configuration.recipient",

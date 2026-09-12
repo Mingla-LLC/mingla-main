@@ -377,7 +377,23 @@ export interface PendingVerificationSentenceInput {
   /** `requirements.pending_verification` straight off the Stripe payload. */
   readonly pendingVerification?: readonly string[] | null;
   /**
+   * Issue #3258 — `business_profile.url` AS THE CONNECTED ACCOUNT REPORTS IT,
+   * threaded up from `brand-stripe-refresh-status`. This is the URL Stripe is
+   * actually fetching, so it is the one the sentence must name when it exists.
+   *
+   * It is not always the brand's Mingla page. Accounts onboarded before the
+   * platform began prefilling `defaults.profile.business_url` carry whatever
+   * website the seller typed inside Stripe onboarding — for the brand this
+   * issue was filed over, a domain whose ports are closed. Naming the Mingla
+   * page for such an account would state something false with total
+   * confidence (Constitution rule 9), and it would hide the single most
+   * useful fact the product could show: Stripe is checking a site that is
+   * down. Rendered without the scheme.
+   */
+  readonly accountBusinessUrl?: string | null;
+  /**
    * The brand's own public Mingla page, e.g. `brandPublicUrl(brand.slug)`.
+   * The FALLBACK, used only when the account reports no URL of its own.
    * Included in the sentence ONLY when Stripe is checking the website, since
    * that is the one pending field a seller can look at and understand.
    * Rendered without the scheme. Omit it and the sentence still reads.
@@ -387,6 +403,18 @@ export interface PendingVerificationSentenceInput {
 
 const stripScheme = (url: string): string =>
   url.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+
+/** First trimmed non-blank candidate, or `null` when every one is absent. */
+const firstNonBlank = (
+  ...candidates: readonly (string | null | undefined)[]
+): string | null => {
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim() !== "") {
+      return candidate.trim();
+    }
+  }
+  return null;
+};
 
 /**
  * One plain-English sentence naming what Stripe is waiting on, or `null` when
@@ -407,9 +435,12 @@ export function describeStripePendingVerification(
   let subject = getPendingVerificationSubject(first);
 
   if (first === "business_profile.url") {
-    const url = input.brandPublicUrl;
-    if (typeof url === "string" && url.trim() !== "") {
-      subject = `${subject} (${stripScheme(url.trim())})`;
+    // Issue #3258 — the account's OWN url first; the brand page only when the
+    // account reports none. Order is the whole point: preferring the brand
+    // page would name a URL Stripe is not looking at.
+    const url = firstNonBlank(input.accountBusinessUrl, input.brandPublicUrl);
+    if (url !== null) {
+      subject = `${subject} (${stripScheme(url)})`;
     }
   }
 

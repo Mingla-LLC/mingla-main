@@ -43,6 +43,7 @@ import {
   setManualPayoutSchedule,
 } from "../_shared/stripeBlueprintClient.ts";
 import { resolveBusinessWebOrigin } from "../_shared/businessWebOrigin.ts";
+import { resolveBrandPublicUrl } from "../_shared/brandPublicUrl.ts";
 import {
   MissingOrganiserEmailError,
   resolveOrganiserContactEmail,
@@ -75,6 +76,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-mingla-app-id, x-mingla-app-platform, x-mingla-app-version",
 };
+
+/**
+ * Issue #3258 — Stripe's documented fallback when an account has genuinely no
+ * public page: "If the business doesn't have a URL, you can prefill its
+ * business_profile.product_description instead."
+ * (https://docs.stripe.com/connect/hosted-onboarding)
+ *
+ * Stripe's own requirement for the field is that it "must detail the type of
+ * products being sold, as well as the manner in which the business charges its
+ * customers", so this says both. It is a DEFENSIVE branch, not the main path:
+ * `brands.slug` is `text NOT NULL`, so every brand has a `/b/{slug}` page and
+ * gets `business_url` instead. It is only reached if the slug comes back blank
+ * or the business web origin cannot be resolved.
+ */
+const BRAND_STRIPE_FALLBACK_PRODUCT_DESCRIPTION =
+  "Sells tickets, bookings and food-and-drink orders for its own events, " +
+  "experiences and venues. Guests pay online by card at the time of booking " +
+  "or ordering through the Mingla marketplace, and the business receives the " +
+  "proceeds as payouts to its connected bank account.";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -128,6 +148,13 @@ interface BrandRow {
   name: unknown;
   contact_email: unknown;
   default_currency?: unknown;
+  /**
+   * Issue #3258 — the brand's public page slug. `brands.slug` is
+   * `text NOT NULL` and immutable (trigger `trg_brands_immutable_slug`,
+   * invariant I-17), so in practice every brand has one; typed `unknown`
+   * like its siblings because this row comes back untyped from PostgREST.
+   */
+  slug?: unknown;
 }
 
 interface StripeAccountState {
@@ -352,7 +379,7 @@ serve(async (req) => {
     // Read brand details for replacement/fresh creation.
     const { data: brandRow, error: brandReadError } = await supabase
       .from("brands")
-      .select("name, contact_email, default_currency")
+      .select("name, contact_email, default_currency, slug")
       .eq("id", brand_id)
       .is("deleted_at", null)
       .maybeSingle<BrandRow>();
@@ -395,6 +422,29 @@ serve(async (req) => {
       throw err;
     }
 
+    // Issue #3258 — prefill the account's own public website BEFORE Stripe
+    // ever asks the seller for one.
+    //
+    // Stripe fetches `business_profile.url` to verify the business before it
+    // will enable `card_payments`. Sending nothing meant the seller was asked
+    // for a website inside Connect onboarding and typed whatever they had; for
+    // the brand this issue was filed over that was a domain whose ports 80 and
+    // 443 are closed, so the fetch never succeeded, `card_payments` stayed
+    // `pending` with `pending_verification: ["business_profile.url"]`, and the
+    // brand could not take money. Every Mingla brand already has a page that
+    // always loads — its own `/b/{slug}` — so that is what we hand Stripe.
+    // Prefilled fields are not re-asked during onboarding; the account holder
+    // is only asked to confirm them, and may still edit.
+    // https://docs.stripe.com/connect/hosted-onboarding
+    //
+    // Set at CREATE time ONLY. Nothing here ever overwrites the business URL
+    // of an account that already exists — silently replacing a seller's own
+    // working website with a Mingla page is not ours to do.
+    const brandPublicPageUrl = resolveBrandPublicUrl({
+      origin: businessWebOrigin,
+      slug: brandRow.slug,
+    });
+
     let stripeAccountId: string;
     let scaRowId: string | null = null;
     let replacementAudit:
@@ -418,6 +468,16 @@ serve(async (req) => {
           displayName: safeDisplayName(brandRow.name),
           contactEmail,
           country,
+          // Issue #3258 — exactly ONE of these is ever non-null. The brand's
+          // own page is the main path (`brands.slug` is NOT NULL, so it is
+          // what essentially every brand gets); the product description is
+          // Stripe's documented fallback for an account with genuinely no
+          // page, kept here as a defensive branch for a blank slug or an
+          // unresolvable origin rather than as an expected outcome.
+          businessUrl: brandPublicPageUrl,
+          productDescription: brandPublicPageUrl === null
+            ? BRAND_STRIPE_FALLBACK_PRODUCT_DESCRIPTION
+            : null,
           idempotencyKey: generateIdempotencyKey(
             brand_id,
             buildStripeOnboardCreateOperation(country, oldStripeAccountId),

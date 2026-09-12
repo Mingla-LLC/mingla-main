@@ -219,9 +219,18 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const brandPageUrl = brand?.slug != null && brand.slug.trim() !== ""
     ? brandPublicUrl(brand.slug)
     : null;
+  // #3258 — the URL Stripe actually holds for this account, straight off
+  // `brand-stripe-refresh-status`. It outranks `brandPageUrl`: an account
+  // onboarded before the platform started prefilling one is being checked
+  // against whatever website the seller typed, and naming the brand's Mingla
+  // page there would confidently name the wrong URL. `?? null` covers both an
+  // absent field (edge fn not yet redeployed) and an explicit null.
+  const accountBusinessUrl = stripeStatusQuery.data?.business_profile_url ??
+    null;
   const bannerConfig = resolveBrandStripeBannerConfig({
     status: stripeStatus,
     requirements: stripeRequirements,
+    accountBusinessUrl,
     brandPublicUrl: brandPageUrl,
   });
 
