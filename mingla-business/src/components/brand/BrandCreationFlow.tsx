@@ -460,7 +460,19 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
 
   const [brand, setBrand] = useState<Brand | null>(null);
   const payoutBrandId = resumeBrandId ?? brand?.id ?? null;
-  const payoutCanonicalBrand = brand ?? resumeBrandQuery.data ?? null;
+  // #3260 [paystack-connect-false-negative] — ONE OWNER PER TRUTH
+  // (Constitution rule 2). `brand` is a component-local snapshot captured ONCE
+  // by the resume-hydration effect (guarded by resumeHydratedRef, so it never
+  // runs twice). Reading it FIRST meant that snapshot outranked the live
+  // canonical row forever: after a Paystack connect that returned 200 and
+  // wrote both rows, the client's own refetch landed 321ms later with
+  // paystack_subaccount_code set and could not reach the UI, so step 4 kept
+  // saying "Payout setup wasn't finished" over a bank that was connected.
+  // On the resume path the query OWNS this brand, so query data wins and the
+  // surface self-heals the instant fresh data arrives. `brand` remains the
+  // source for the inline-create path, where no resume query is enabled.
+  const payoutCanonicalBrand =
+    (resumeBrandId !== null ? resumeBrandQuery.data : null) ?? brand ?? null;
   const payoutPermission = usePaymentsPermissionForCreation(payoutBrandId);
   const stripeStatusQuery = useStripeStatusForCreation(payoutBrandId);
   const online = useShareNetworkState();
@@ -474,7 +486,13 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const payoutState = deriveBrandCreationPayoutState({
     permission: permissionState,
     online,
-    statusResolved: stripeStatusQuery.isFetched,
+    // #3260 — on the Paystack rail the BRAND ROW is the payout truth, not the
+    // Stripe status query. "Resolved" must therefore mean the brand query
+    // resolved too, or an unresolved resume read as a definitive
+    // "not-connected" instead of "still checking".
+    statusResolved:
+      stripeStatusQuery.isFetched &&
+      (resumeBrandId === null || resumeBrandQuery.isFetched),
     statusError: stripeStatusQuery.isError,
     stripeStatus:
       stripeStatusQuery.data?.status ?? payoutCanonicalBrand?.stripeStatus,
@@ -996,9 +1014,12 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
 
   const isAtEntry = state.step === 0 || (state.step === 1 && !isPartner);
 
+  // #3260 — same stale-snapshot hazard as payoutState: a brand that flipped to
+  // the Paystack rail during the connect round trip must not be labelled from
+  // the pre-connect local copy.
   const payoutRail = resolveBankConnectRail({
-    countryCode: brand?.countryCode,
-    paymentProvider: brand?.paymentProvider,
+    countryCode: payoutCanonicalBrand?.countryCode,
+    paymentProvider: payoutCanonicalBrand?.paymentProvider,
   });
   const payoutProviderLabel = payoutRail.provider === "paystack"
     ? "Paystack"
