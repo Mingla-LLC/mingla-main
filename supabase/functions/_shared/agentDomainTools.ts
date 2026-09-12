@@ -4040,12 +4040,21 @@ const refundOrder = writeTool(
       }
     } else {
       lines = preview.lines;
+      // Omit-lines means "full remaining refund". Zero-priced tickets are not
+      // refundable via refund-order, so a mixed paid/free remainder would become
+      // a silent partial_refund — reject and require explicit paid lines (or Host).
+      if (preview.zero_priced_remaining > 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          lines.length === 0
+            ? "Remaining tickets have no refundable amount; use the Host money screen for zero-price voids."
+            : "This order still has zero-priced tickets that omit-lines cannot void; pass explicit paid lines or use the Host money screen.",
+        );
+      }
       if (lines.length === 0) {
         throw new ToolError(
           "INVALID_ARGS",
-          preview.zero_priced_remaining > 0
-            ? "Remaining tickets have no refundable amount; use the Host money screen for zero-price voids."
-            : "There is nothing left to refund on this order.",
+          "There is nothing left to refund on this order.",
         );
       }
     }
@@ -4114,7 +4123,7 @@ const cancelTripBooking = writeTool(
   },
   ["brand_id", "booking_id", "reason"],
   async (args, client, userId, context) => {
-    requireBrand(args, client, userId);
+    const brandId = requireBrand(args, client, userId);
     if (!isUuid(args.booking_id)) {
       throw new ToolError("INVALID_ARGS", "booking_id must be a uuid");
     }
@@ -4125,6 +4134,14 @@ const cancelTripBooking = writeTool(
         "A cancellation reason of 10–200 characters is required.",
       );
     }
+    // #1981 — bind booking → event → brand BEFORE preview. cancel-trip-booking
+    // preview uses service-role compute and would otherwise leak / cancel across
+    // tenants when only brand_id was caller-checked.
+    await loadOrderRefundableLines(
+      client,
+      args.booking_id as string,
+      brandId,
+    );
     // #1981 — cancel-trip-booking is a preview→commit engine (ORCH-0875 Tr4).
     // Commit MUST carry `expectedRefundTotalCents` (SC-22 freshness).
     const preview = await invokeFn<{ refundTotalCents?: number }>(

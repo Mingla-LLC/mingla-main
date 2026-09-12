@@ -16,12 +16,12 @@ import {
   assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  DOMAIN_TOOLS,
   DOMAIN_READ_ONLY,
+  DOMAIN_TOOLS,
   MONEY_CONFIRM_TOOLS,
 } from "../agentDomainTools.ts";
 import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
-import { PROMPT_VERSION, buildSystemPrompt } from "../agentSystemPrompt.ts";
+import { buildSystemPrompt, PROMPT_VERSION } from "../agentSystemPrompt.ts";
 import { ToolError } from "../agentToolHelpers.ts";
 
 const BRAND = "11111111-1111-4111-8111-111111111111";
@@ -134,15 +134,17 @@ function moneyClient(opts: {
           return chain({ id: EVENT, brand_id: BRAND }, true);
         }
         if (table === "order_installments") {
-          return chain(opts.installments ?? [{
-            id: INSTALLMENT,
-            order_id: ORDER,
-            status: "failed",
-            due_at: "2026-09-01T00:00:00Z",
-            amount_cents: 5000,
-            currency: "usd",
-            ordinal: 1,
-          }]);
+          return chain(
+            opts.installments ?? [{
+              id: INSTALLMENT,
+              order_id: ORDER,
+              status: "failed",
+              due_at: "2026-09-01T00:00:00Z",
+              amount_cents: 5000,
+              currency: "usd",
+              ordinal: 1,
+            }],
+          );
         }
         if (table === "brands") {
           return chain([{
@@ -435,6 +437,180 @@ Deno.test("#1981 implementor: cancel_trip_booking commits exact preview with ope
   assertEquals(invokes.length, 2);
   assertEquals(invokes[1].body.expectedRefundTotalCents, 2500);
   assertEquals(invokes[1].headers?.["Idempotency-Key"], OP);
+});
+
+Deno.test("#1981 implementor: omit-lines rejects when zero-priced tickets remain", async () => {
+  const { client, invokes } = moneyClient({
+    payment_method: "card",
+    lines: [
+      {
+        id: LINE,
+        quantity: 1,
+        unit_price_cents: 1000,
+        total_cents: 1000,
+      },
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        quantity: 1,
+        unit_price_cents: 0,
+        total_cents: 0,
+      },
+    ],
+  });
+  const err = await assertRejects(
+    () =>
+      domainTool("refund_order").executor(
+        {
+          brand_id: BRAND,
+          order_id: ORDER,
+          reason: "Full refund must not silently skip free tickets.",
+          confirm_phrase: "REFUND",
+        },
+        client,
+        USER,
+        { operationId: OP },
+      ),
+    ToolError,
+  );
+  assertEquals(err.code, "INVALID_ARGS");
+  assert(String(err.message).toLowerCase().includes("zero-priced"));
+  assertEquals(invokes.length, 0);
+});
+
+Deno.test("#1981 implementor: cancel_trip_booking refuses foreign-brand booking before preview", async () => {
+  const FOREIGN = "99999999-9999-4999-8999-999999999999";
+  const { client, invokes } = moneyClient();
+  // Override orders so booking belongs to a different brand.
+  client.from = (table: string) => {
+    if (table === "orders") {
+      const row = {
+        id: BOOKING,
+        payment_method: "card",
+        payment_status: "paid",
+        currency: "usd",
+        total_cents: 2500,
+        events: { brand_id: FOREIGN },
+        order_line_items: [],
+        refunds: [],
+      };
+      const self: Record<string, unknown> = {};
+      for (
+        const method of [
+          "select",
+          "eq",
+          "in",
+          "is",
+          "not",
+          "order",
+          "limit",
+          "or",
+          "lte",
+          "gt",
+        ]
+      ) {
+        self[method] = () => self;
+      }
+      self.maybeSingle = () => Promise.resolve({ data: row, error: null });
+      return self;
+    }
+    return moneyClient().client.from(table);
+  };
+  const err = await assertRejects(
+    () =>
+      domainTool("cancel_trip_booking").executor(
+        {
+          brand_id: BRAND,
+          booking_id: BOOKING,
+          reason: "Cross-tenant cancel must refuse.",
+          confirm_phrase: "CANCEL",
+        },
+        client,
+        USER,
+        { operationId: OP },
+      ),
+    ToolError,
+  );
+  assertEquals(err.code, "INVALID_ARGS");
+  assert(String(err.message).includes("brand"));
+  assertEquals(invokes.length, 0);
+});
+
+Deno.test("#1981 implementor: installment money tools refuse non-trip events", async () => {
+  const { authorizeAgentTool } = await import("../agentToolAuthorization.ts");
+  const FOREIGN_EVENT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  // deno-lint-ignore no-explicit-any
+  const client: any = {
+    rpc: () => Promise.resolve({ data: 50, error: null }),
+    from: (table: string) => {
+      const self: Record<string, unknown> = {};
+      for (const method of ["select", "eq", "is"]) {
+        self[method] = () => self;
+      }
+      self.maybeSingle = () => {
+        if (table === "order_installments") {
+          return Promise.resolve({
+            data: { order_id: ORDER },
+            error: null,
+          });
+        }
+        if (table === "orders") {
+          return Promise.resolve({
+            data: { event_id: FOREIGN_EVENT },
+            error: null,
+          });
+        }
+        if (table === "events") {
+          return Promise.resolve({
+            data: { brand_id: BRAND, event_type: "event" },
+            error: null,
+          });
+        }
+        return Promise.resolve({ data: null, error: null });
+      };
+      return self;
+    },
+  };
+  for (
+    const [name, args] of [
+      ["retry_installment", {
+        brand_id: BRAND,
+        installment_id: INSTALLMENT,
+      }],
+      ["charge_installment_now", {
+        brand_id: BRAND,
+        installment_id: INSTALLMENT,
+        confirm_phrase: "CHARGE",
+      }],
+      ["send_installment_reminder", {
+        brand_id: BRAND,
+        order_id: ORDER,
+      }],
+    ] as const
+  ) {
+    const tool = domainTool(name);
+    const auth = AGENT_TOOL_AUTHORIZATION[name];
+    assert(auth, `${name} must be ledgered`);
+    const err = await assertRejects(
+      () =>
+        authorizeAgentTool(
+          {
+            name,
+            parameters: tool.parameters,
+            requiredRole: auth.requiredRole,
+            resource: auth.resource,
+          },
+          args,
+          client,
+          USER,
+        ),
+      ToolError,
+    );
+    assertEquals(
+      err.code,
+      "BRAND_ACCESS_DENIED",
+      `${name} must deny non-trip via EVENT_TYPE_BY_TOOL`,
+    );
+  }
 });
 
 Deno.test("#1981 implementor: retry_installment calls biz_retry_installment", async () => {

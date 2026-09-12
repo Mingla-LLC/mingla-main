@@ -365,6 +365,35 @@ serve(async (req: Request): Promise<Response> => {
   // initial hero-amount render. Commit mode below re-computes via _begin
   // and enforces SC-22 freshness against expectedRefundTotalCents.
   if (mode === "preview") {
+    // #1981 — operator preview previously ran service-role compute with only a
+    // JWT presence check, so a member of brand A could preview brand B's
+    // booking. Bind order → brand → membership before quoting.
+    if (actorKind === "operator") {
+      if (!actorUserId) {
+        return jsonResponse({ error: "unauthenticated" }, 401);
+      }
+      const { brandId: previewBrandId } = await resolveConnectedAccountId(
+        supabase,
+        orderId,
+      );
+      if (!previewBrandId) {
+        return jsonResponse({ error: "order_not_found" }, 404);
+      }
+      const { data: isMember, error: memberErr } = await supabase.rpc(
+        "biz_is_brand_member_for_read",
+        { p_brand_id: previewBrandId, p_user_id: actorUserId },
+      );
+      if (memberErr) {
+        console.error(
+          "[cancel-trip-booking] preview membership check failed",
+          memberErr,
+        );
+        return jsonResponse({ error: "server" }, 500);
+      }
+      if (isMember !== true) {
+        return jsonResponse({ error: "forbidden" }, 403);
+      }
+    }
     const { data: computeData, error: computeErr } = await supabase.rpc(
       "biz_compute_refund_for_cancel",
       { p_order_id: orderId, p_cancel_at: new Date().toISOString() },

@@ -41,6 +41,11 @@ const EVENT_TYPE_BY_TOOL: Readonly<
   get_trip_order_money: "trip",
   cancel_trip_booking: "trip",
   list_trip_installments: "trip",
+  // #1981 — installment money actions resolve order → event; pin trip type so
+  // assertExpectedEventType rejects non-trip events before the Host RPCs run.
+  retry_installment: "trip",
+  charge_installment_now: "trip",
+  send_installment_reminder: "trip",
   update_rsvp: "rsvp",
   publish_rsvp: "rsvp",
   update_rsvp_contribution_settings: "rsvp",

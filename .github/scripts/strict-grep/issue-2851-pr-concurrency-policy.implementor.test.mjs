@@ -992,7 +992,17 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   //     three derivations with this file's own RUBY_CANONICAL, and was not
   //     copied from a PR run's printed `actual:` (#3015).
   // Every earlier re-derivation is preserved, not replaced.
-  "7f36b9b42b1d073d9eeb1abaae5046349241abed8dabd0c1f8e96373de75c24a";
+  //
+  // [TEST-MOD-APPROVED #1981] Re-derived again. #1981 added ONE Deno suite
+  // target (paid-cancel HTTP 409 status) to the existing migrations-and-Stripe
+  // Deno lane. That lane is PR-family, so its non-concurrency document is
+  // inside this digest. PURELY ADDITIVE step — grepping added/removed lines
+  // for concurrency/group/cancel-in-progress returns ZERO. PR_FAMILY_COUNT
+  // and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED (124 /
+  // 9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04).
+  // The prior pin 7f36b9b42b1d073d9eeb1abaae5046349241abed8dabd0c1f8e96373de75c24a
+  // recomputes when only that new suite line is removed.
+  "fc352f93a0791aa95e33e7559b702d7364665c1d9fb7f4642f14babcd1fb03a7";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1330,6 +1340,9 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "            supabase/functions/_shared/__tests__/issue_1981_ari_refunds_cancels.implementor.test.ts\n"],
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "            supabase/functions/_shared/__tests__/issue_1981_ari_refunds_cancels.tester_adversarial.test.ts\n"],
+    // [TEST-MOD-APPROVED #1981] Paid-cancel status suite target on the same lane.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            supabase/functions/agent-confirm-action/__tests__/issue_1981_paid_order_must_refund_status.test.ts\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
