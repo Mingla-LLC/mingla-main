@@ -94,6 +94,7 @@ import NotFoundScreen, {
 import {
   SIGNED_IN_NOT_FOUND_COPY,
   SWITCH_ACCOUNT_LABEL,
+  SignedInNotFoundNotice,
 } from "../src/components/auth/SignedInNotFoundNotice";
 
 const SIGNED_IN_EMAIL = "business@usemingla.com";
@@ -291,5 +292,149 @@ describe("#3259 — the sign-out COMPLETES before the navigation", () => {
     // `sanitizeNextRoute` allowlists none of this, and a route MISS has no
     // destination worth resuming. I-PROPOSED-1404 says: no new redirector.
     expect(mockRouterReplace).toHaveBeenCalledWith("/auth");
+  });
+});
+
+/* =====================================================================
+   REWORK — the defects the tester's CONDITIONAL PASS named (#3259 R2)
+   ===================================================================== */
+
+describe("#3259 P3-1/P3-2 — a degenerate email never renders a half-sentence", () => {
+  it.each([
+    ["whitespace-only", "   "],
+    ["a tab and a newline", "\t\n"],
+  ])("renders no identity block for %s", (_label, email) => {
+    // Stage 1 of the hook accepts it (a blank string IS non-empty), so without
+    // the trim the card reads "You're signed in as    ." — an identity block
+    // that names nobody, on the screen whose whole job is to name somebody.
+    mockAuthState.user = { email };
+    const nodes = renderTree();
+    expect(byLabel(nodes, SWITCH_ACCOUNT_LABEL)).toHaveLength(0);
+    expect(textOf(nodes)).not.toContain("signed in as");
+    expect(textOf(nodes)).toContain(SIGNED_OUT_SUBTEXT);
+  });
+
+  it("does not throw when the session hands over an undefined email", () => {
+    mockAuthState.user = { email: undefined };
+    expect(() => renderTree()).not.toThrow();
+    expect(byLabel(renderTree(), SWITCH_ACCOUNT_LABEL)).toHaveLength(0);
+  });
+
+  // The hook's own trim filters these before they can reach the component, so
+  // going through the screen cannot see the component's guard at all — these
+  // call the component DIRECTLY, which is the only way the second line of
+  // defence is falsifiable. (A reverted component guard survives a
+  // screen-level test; it does not survive these.)
+  it.each([
+    ["undefined", undefined],
+    ["whitespace-only", "   "],
+  ])("the component itself renders nothing for %s, and never throws", (_l, email) => {
+    const render = (): unknown =>
+      (
+        SignedInNotFoundNotice as unknown as (
+          p: Record<string, unknown>,
+        ) => unknown
+      )({
+        variant: "restricted",
+        signedInEmail: email,
+        onSwitchAccount: jest.fn(),
+      });
+    // `=== null` let `undefined` through to `.length` — a TypeError on the
+    // screen whose entire job is to stop a crash.
+    expect(render).not.toThrow();
+    expect(render()).toBeNull();
+  });
+});
+
+describe("#3259 P3-3 — a double tap runs ONE sign-out", () => {
+  it("joins the in-flight sign-out instead of starting a second teardown", async () => {
+    // Each signOut() re-runs clearAllStores, queryClient.clear and the
+    // AppsFlyer / Mixpanel / PostHog / RevenueCat / OneSignal identity resets.
+    // Twice is not merely wasteful — it races its own teardown.
+    signIn(SIGNED_IN_EMAIL);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const signOut = jest.fn(() => gate);
+    mockAuthState.signOut = signOut;
+
+    const onPress = (
+      byLabel(renderTree(), SWITCH_ACCOUNT_LABEL)[0].props as {
+        onPress: () => Promise<void>;
+      }
+    ).onPress;
+
+    const first = onPress();
+    const second = onPress();
+    release();
+    await Promise.all([first, second]);
+
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(mockRouterReplace).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-arms after a failed sign-out rather than wedging the button", async () => {
+    // The guard is cleared in a `finally`. Without that, one network blip would
+    // disable the only escape for the life of the process.
+    signIn(SIGNED_IN_EMAIL);
+    // The hook reads `signOut` at RENDER time, so each attempt re-renders.
+    const press = (): Promise<void> =>
+      (
+        byLabel(renderTree(), SWITCH_ACCOUNT_LABEL)[0].props as {
+          onPress: () => Promise<void>;
+        }
+      ).onPress();
+
+    mockAuthState.signOut = jest.fn(async () => {
+      throw new Error("first attempt failed");
+    });
+    await expect(press()).rejects.toThrow("first attempt failed");
+
+    const second = jest.fn(async () => undefined);
+    mockAuthState.signOut = second;
+    await press();
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(mockRouterReplace).toHaveBeenCalledWith("/auth");
+  });
+});
+
+describe("#3259 P3-4 — a rejecting sign-out is never silent", () => {
+  it("surfaces the failure AND still refuses to navigate", async () => {
+    // Constitution #3. signOut() does far more than call supabase; anything in
+    // clearAllStores or the analytics resets can throw AFTER the session is
+    // gone, leaving the user signed out, un-navigated, and reading a card that
+    // names an account they are no longer in.
+    signIn(SIGNED_IN_EMAIL);
+    const spy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      mockAuthState.signOut = jest.fn(async () => {
+        throw new Error("clearAllStores blew up");
+      });
+      const onPress = (
+        byLabel(renderTree(), SWITCH_ACCOUNT_LABEL)[0].props as {
+          onPress: () => Promise<void>;
+        }
+      ).onPress;
+
+      await expect(onPress()).rejects.toThrow("clearAllStores blew up");
+      expect(spy).toHaveBeenCalled();
+      // Swallowing it would hand /auth a live session and start the bounce loop.
+      expect(mockRouterReplace).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("#3259 P2-1 — the copy promises only what the navigation allows", () => {
+  it("tells the reader to copy the address BEFORE switching", () => {
+    // Both exits are `router.replace`, which drops this URL from web history.
+    // The old line ("switch accounts and open it again") promised a recovery
+    // the switch itself destroyed — in the reported case the link came from a
+    // Stripe return redirect, so no other copy of it existed.
+    const copy = SIGNED_IN_NOT_FOUND_COPY.missing;
+    expect(copy).toContain("copy the address first");
+    expect(copy).not.toContain("open it again");
   });
 });

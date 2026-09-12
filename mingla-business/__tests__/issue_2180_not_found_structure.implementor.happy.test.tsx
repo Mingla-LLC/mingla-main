@@ -82,8 +82,9 @@ jest.mock("react-native-safe-area-context", () => ({
 //
 // ADDITIVE, and deliberately SIGNED OUT. Every #2180 assertion below is about
 // the signed-out screen — the structure that stranded the user on device — so
-// pinning `user: null` keeps all twelve of them measuring exactly what they
-// measured before, byte for byte. The signed-in branch is asserted in
+// pinning `user: null` keeps all 63 of them (19 `it` blocks, several
+// `describe.each`/`it.each` over both apps and the Dynamic Type table)
+// measuring exactly what they measured before, byte for byte. The signed-in branch is asserted in
 // `issue_3259_signed_in_not_found.implementor.happy.test.tsx`, which drives the
 // same screen through the other value of this same mock.
 jest.mock("../src/context/AuthContext", () => ({

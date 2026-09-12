@@ -62,8 +62,20 @@ export type SignedInNotFoundVariant = "missing" | "restricted";
  */
 export const SIGNED_IN_NOT_FOUND_COPY: Record<SignedInNotFoundVariant, string> =
   {
+    // #3259 P2-1 — the old line said "switch accounts and open it again", and
+    // the switch itself made that impossible: `signOut()` then
+    // `router.replace("/auth")` wipes the missed URL out of web history, and in
+    // the reported case the link arrived from a Stripe return redirect, so the
+    // user had no other copy of it. This names the cost and the ORDER: copy the
+    // address (it is still in the address bar at this moment), THEN switch.
+    //
+    // Rendering the missed path here as well is still owed — see the #3259
+    // rework report. It needs `usePathname()` in `app/+not-found.tsx`, which
+    // the adversarial suite's `jest.mock("expo-router")` factory does not
+    // currently provide, so it is deliberately NOT wired rather than wired
+    // behind a weaker source.
     missing:
-      "If the link was meant for a different account, switch accounts and open it again.",
+      "If the link was meant for a different account, copy the address first — switching signs you out and clears it.",
     restricted:
       "It may have been deleted, or it may not be visible to this account.",
   };
@@ -96,7 +108,16 @@ export function SignedInNotFoundNotice({
 }: SignedInNotFoundNoticeProps): React.ReactElement | null {
   // No session to name → render nothing at all. A signed-out visitor must see
   // the host screen's original copy, byte for byte.
-  if (signedInEmail === null || signedInEmail.length === 0) return null;
+  //
+  // #3259 P3-2 — `== null` (loose, deliberately) catches `undefined` as well as
+  // `null`. The prop is typed `string | null`, but a JS caller, a partial mock
+  // or a widened session shape can hand over `undefined`, and the strict `===
+  // null` check let it through to `.length` and threw a TypeError — a crash on
+  // the screen whose entire job is to stop a crash.
+  //
+  // The `trim()` is #3259 P3-1's second line of defence: a whitespace-only
+  // address is a non-empty string, and it renders "You're signed in as   ."
+  if (signedInEmail == null || signedInEmail.trim().length === 0) return null;
 
   return (
     <View style={styles.card} testID={testID}>

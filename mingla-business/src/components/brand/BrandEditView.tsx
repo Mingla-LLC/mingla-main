@@ -309,8 +309,8 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   initialSection,
 }) => {
   const insets = useSafeAreaInsets();
-  // ORCH-1256 — scroll-to-section mechanism (anchors only). The PHYSICAL
   const { signedInEmail, onSwitchAccount } = useSwitchAccount();
+  // ORCH-1256 — scroll-to-section mechanism (anchors only). The PHYSICAL
   // LOCATION block this note used to guard was removed by META-ORCH-1255
   // (venue creation now lives in the universal creator sheet).
   // SmartScrollView forwards this ref to a real ScrollView on native and IS

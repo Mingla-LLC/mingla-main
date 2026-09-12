@@ -28,6 +28,23 @@
 import { useRouter } from "expo-router";
 
 import { useAuth } from "../context/AuthContext";
+import * as Sentry from "../diagnostics/sentry";
+
+/**
+ * #3259 P3-3 — the in-flight sign-out, MODULE-scoped rather than a `useRef`.
+ *
+ * Two reasons it belongs here and not in a ref. Signing out is a single
+ * APP-WIDE teardown (clearAllStores, queryClient.clear, and the AppsFlyer /
+ * Mixpanel / PostHog / RevenueCat / OneSignal identity resets), so "is a
+ * sign-out running" is a property of the app, not of one mounted screen — two
+ * screens cannot meaningfully sign out concurrently. And this hook is called by
+ * screens that the node-env suites invoke as plain functions, where `useRef`
+ * throws for want of a React dispatcher.
+ *
+ * Cleared in a `finally`, so a REJECTED sign-out re-arms the button instead of
+ * wedging it (measured before the fix: two taps ran the whole teardown twice).
+ */
+let signOutInFlight: Promise<void> | null = null;
 
 export interface SwitchAccountBinding {
   /**
@@ -44,19 +61,55 @@ export function useSwitchAccount(): SwitchAccountBinding {
   const router = useRouter();
   const { user, isAuthReady, signOut } = useAuth();
 
-  const signedInEmail =
+  // Stage 1 — does this session carry an email at all?
+  const sessionEmail =
     isAuthReady && typeof user?.email === "string" && user.email.length > 0
       ? user.email
       : null;
+  // Stage 2 — #3259 P3-1. Is it an ADDRESS, or just blanks? A whitespace-only
+  // value is a non-empty string, so stage 1 passes it and the card renders
+  // "You're signed in as    ." — an identity block that names nobody.
+  const signedInEmail =
+    sessionEmail !== null && sessionEmail.trim().length > 0 ? sessionEmail : null;
 
   const onSwitchAccount = async (): Promise<void> => {
     // NO haptic here: the `Button` primitive already fires
     // `HapticFeedback.buttonPress()` on press-down, so a second call would
     // double-fire — and importing the helper would drag `expo-haptics` (ESM)
     // into every node-env suite that merely loads a host screen.
-    // THE ORDERING. Sign out FIRST, and WAIT for it.
-    await signOut();
-    router.replace("/auth" as never);
+
+    // #3259 P3-3 — a second tap JOINS the running sign-out instead of starting
+    // another one. Returning the same promise keeps the caller's `await`
+    // meaningful: it still resolves exactly when the navigation has happened.
+    if (signOutInFlight !== null) return signOutInFlight;
+
+    const run = (async (): Promise<void> => {
+      try {
+        // THE ORDERING. Sign out FIRST, and WAIT for it.
+        await signOut();
+      } catch (error) {
+        // #3259 P3-4 — `signOut()` does far more than call supabase: it runs
+        // clearAllStores, clears the query cache and resets five analytics
+        // identities. Any of those can throw AFTER the session is already gone,
+        // which strands the user signed out, un-navigated, and staring at a
+        // card naming an account they are no longer in. Surface it, then
+        // RE-THROW: swallowing it here would let the navigation below run with
+        // a live session and start the /auth bounce loop.
+        Sentry.captureException(error, {
+          tags: { feature: "switch-account", issue: "3259" },
+        });
+        console.error("[#3259] switch-account sign-out failed", error);
+        throw error;
+      }
+      router.replace("/auth" as never);
+    })();
+
+    signOutInFlight = run;
+    try {
+      await run;
+    } finally {
+      signOutInFlight = null;
+    }
   };
 
   return { signedInEmail, onSwitchAccount };

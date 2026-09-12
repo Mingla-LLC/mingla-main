@@ -703,7 +703,15 @@ export default function EventDetailScreen(): React.ReactElement {
           <EmptyState
             illustration="ticket"
             title="Event not found"
-            description="This event may have been deleted or moved."
+            // #3259 P2-3 — the host's own hedge is for a reader we know
+            // NOTHING about. When the notice renders it says this and names the
+            // account, so showing both states one cause and then a different
+            // set of causes a line apart. Signed-out keeps it verbatim.
+            description={
+              signedInEmail === null
+                ? "This event may have been deleted or moved."
+                : undefined
+            }
             cta={{ label: "Back to events", onPress: handleBack }}
           />
           {/*

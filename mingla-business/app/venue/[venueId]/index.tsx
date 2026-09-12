@@ -271,9 +271,17 @@ export default function VenueManagementPage(): React.ReactElement {
           contentContainerStyle={styles.centerContent}
         >
           <Text style={styles.notFoundTitle}>Venue not found</Text>
-          <Text style={styles.helper}>
-            This venue may have been removed, or the link is out of date.
-          </Text>
+          {/*
+            #3259 P2-3 — the host's own hedge is for a reader we know NOTHING
+            about. When the notice renders it says this and names the account,
+            so showing both states one cause and then a different set of causes
+            a line apart. Signed-out keeps it verbatim.
+          */}
+          {signedInEmail === null ? (
+            <Text style={styles.helper}>
+              This venue may have been removed, or the link is out of date.
+            </Text>
+          ) : null}
           <Button
             label="Back to your venues"
             variant="secondary"

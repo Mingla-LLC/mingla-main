@@ -327,7 +327,17 @@ export default function BrandTeamRoute(): React.ReactElement {
           <EmptyState
             illustration="users"
             title="Brand not found"
-            description="This brand isn't in your list. Switch back and try again."
+            // #3259 P2-3 — the host's own hedge is for a reader we know
+            // NOTHING about. When the notice renders it says this and names the
+            // account, so showing both states one cause and then a different
+            // set of causes a line apart. Signed-out keeps it verbatim.
+            // "Switch back and try again" also sat directly above a
+            // "Switch account" button — two different switch verbs, adjacent.
+            description={
+              signedInEmail === null
+                ? "This brand isn't in your list. Switch back and try again."
+                : undefined
+            }
           />
           {/*
             #3259 — a signed-in reader gets the account named and a way out. The
