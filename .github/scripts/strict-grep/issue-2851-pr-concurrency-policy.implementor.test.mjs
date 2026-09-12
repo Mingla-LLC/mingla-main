@@ -1002,7 +1002,7 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // 9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04).
   // The prior pin 7f36b9b42b1d073d9eeb1abaae5046349241abed8dabd0c1f8e96373de75c24a
   // recomputes when only that new suite line is removed.
-  "fc352f93a0791aa95e33e7559b702d7364665c1d9fb7f4642f14babcd1fb03a7";
+  "7d7e9165a4a80bfb71e2aebe6fd4457f2e181248f4a79630ecc863ab6a81a218";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
