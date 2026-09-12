@@ -216,16 +216,18 @@ const EVENT_ID = "09b4ece6-eabc-4734-8ce3-3a25d90417e4";
 const BRAND_ID = "22a18413-bfbf-4087-9ba7-45f70deba0f3";
 const JOB_ID = "job-3280";
 
+const VENUE_ID = "7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f";
+
 const renderHook = (
-  target: "event" | "brand" = "event",
+  target: "event" | "brand" | "venue" = "event",
 ): ReturnType<typeof useEventCoverVideoUpload> => {
   mockResetRenderCursor();
   return useEventCoverVideoUpload(
     EVENT_ID,
     BRAND_ID,
-    target === "brand" ? "published_manual" : "draft_auto",
+    target === "event" ? "draft_auto" : "published_manual",
     target,
-    {},
+    target === "venue" ? { venueId: VENUE_ID } : {},
   );
 };
 
@@ -479,6 +481,54 @@ describe("issue #3280 — an abandoned cover-video watch re-arms itself", () => 
     // A brand `ready` is applied by this client, then re-read as canonical.
     expect(applyEventCoverVideoJob).toHaveBeenCalled();
     expect(renderHook("brand").stage).toMatchObject({ phase: "applied" });
+  });
+
+  test("a venue re-arm never acknowledges the job itself, so CoverPicker's persist-then-acknowledge order is untouched", async () => {
+    // Venue is the one target where the OWNER persists first and acknowledges
+    // second (`persistReadyVideo` in CoverPicker, pinned by
+    // CoverPicker.videoReadyIdempotency.test.ts). The server does not treat
+    // `ready` as terminal, so the re-arm can legitimately see `ready` and
+    // resubscribe. It must never call apply/acknowledge on its own, and once
+    // the hook projects `applying` the phase is outside the re-armable set, so
+    // nothing here can race the owner's save.
+    loose(waitForEventCoverVideoReady).mockRejectedValue(abortShapedError());
+
+    const hook = renderHook("venue");
+    await mockFlushEffects();
+    await mockDrain();
+    await hook.start(sourceFile);
+    await mockDrain();
+    expect(renderHook("venue").stage).toMatchObject({ phase: "detached" });
+
+    const readyVenue = processingStatus({
+      processedPosterUrl: "https://cdn.example.com/poster.jpg",
+      processedUrl: "https://cdn.example.com/processed.mp4",
+      progressKind: "terminal",
+      progressPercent: 100,
+      status: "ready",
+      targetKind: "venue",
+    });
+    loose(fetchEventCoverVideoStatus).mockResolvedValue(readyVenue);
+    loose(waitForEventCoverVideoReady).mockResolvedValue(readyVenue);
+    renderHook("venue");
+    jest.advanceTimersByTime(5_000);
+    await mockDrain();
+
+    const afterRearm = renderHook("venue");
+    expect(afterRearm.stage).toMatchObject({ phase: "applying" });
+    expect(afterRearm.status).toMatchObject({ status: "ready" });
+    expect(afterRearm.processedUrl).toBe("https://cdn.example.com/processed.mp4");
+    // The hook never applies a venue job; only CoverPicker's acknowledgeApplied does.
+    expect(applyEventCoverVideoJob).not.toHaveBeenCalled();
+
+    // `applying` is not re-armable: the interval goes quiet while the owner saves.
+    const callsWhileOwnerSaves = fetchEventCoverVideoStatus.mock.calls.length;
+    const watchesWhileOwnerSaves = waitForEventCoverVideoReady.mock.calls.length;
+    jest.advanceTimersByTime(20_000);
+    await mockDrain();
+    expect(fetchEventCoverVideoStatus.mock.calls.length).toBe(callsWhileOwnerSaves);
+    expect(waitForEventCoverVideoReady.mock.calls.length).toBe(watchesWhileOwnerSaves);
+    expect(applyEventCoverVideoJob).not.toHaveBeenCalled();
   });
 
   test("a deliberate cancel stays silent — it must not surface a detached card", async () => {
