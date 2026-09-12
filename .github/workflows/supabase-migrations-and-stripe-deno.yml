@@ -1065,6 +1065,11 @@ jobs:
             supabase/functions/_shared/__tests__/stripeIpAllowlist.test.ts
             supabase/functions/_shared/__tests__/stripeKycRemediation.test.ts
             supabase/functions/_shared/__tests__/stripeKycReminderSchedule.test.ts
+            # Issue #3272 — `requirements.pending_verification` is a disabled_reason
+            # that means the OPPOSITE of "due", so the daily stall reminder must not
+            # nag on it. Registered HERE, in the existing Stripe Deno lane, rather
+            # than in a new issue-*.yml workflow (banned by I-2148-CI-TOPOLOGY-BOUNDED).
+            supabase/functions/_shared/__tests__/stripeKycStallReminder.pendingVerification.test.ts
             supabase/functions/_shared/__tests__/stripeWebhookRouter.test.ts
             supabase/functions/_shared/__tests__/stripeWebhookSignature.test.ts
             # ISSUE-865 WP-B — ad-conversion senders + fire helper (hermetic:

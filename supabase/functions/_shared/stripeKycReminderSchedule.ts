@@ -1,4 +1,17 @@
-import { getKycRemediationForRequirements } from "./stripeKycRemediation.ts";
+/**
+ * #3272 — `requirementsHasDue` now LIVES in `stripeKycRemediation.ts` and is
+ * re-exported from here so `stripe-kyc-stall-reminder/index.ts` (and the
+ * existing Deno suite `__tests__/stripeKycReminderSchedule.test.ts`) keep their
+ * imports unchanged.
+ *
+ * The move is not cosmetic. jest can import `stripeKycRemediation.ts` — zero
+ * imports, no `Deno` global — but it cannot import THIS module: the extensioned
+ * `./stripeKycRemediation.ts` specifier trips ts-jest TS5097 and
+ * `calculateCronJitterMs` below reads `Deno.env` (TS2304). Putting the gate in
+ * the jest-reachable module is what makes the #3272 regression test in
+ * `mingla-business jest (full suite)` behavioural instead of a source grep.
+ */
+export { requirementsHasDue } from "./stripeKycRemediation.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEADLINE_TIERS = [7, 3, 1] as const;
@@ -36,13 +49,6 @@ export function kycRemindersSuppressed(
 ): boolean {
   return typeof account.kyc_reminders_suppressed_at === "string" &&
     account.kyc_reminders_suppressed_at.length > 0;
-}
-
-export function requirementsHasDue(requirements: unknown): boolean {
-  const remediation = getKycRemediationForRequirements(
-    requirements as Record<string, unknown> | null,
-  );
-  return remediation.dueFields.length > 0 || remediation.disabledReason !== null;
 }
 
 export function deadlineWarningTiers(
