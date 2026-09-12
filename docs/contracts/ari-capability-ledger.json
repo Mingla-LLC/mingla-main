@@ -2928,7 +2928,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "c6bbc1207e0c9a00000000000000000000000000",
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
           "reference": "#1981 agentDomainTools.ts:refundOrder pins Idempotency-Key to operation id; omits lines for full remaining refund"
         }
       ],
@@ -2974,7 +2974,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "c6bbc1207e0c9a00000000000000000000000000",
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
           "reference": "#1981 agentDomainTools.ts:getOrderRefundPreview returns remaining lines only"
         }
       ],
@@ -3024,7 +3024,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "c6bbc1207e0c9a00000000000000000000000000",
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
           "reference": "#1981 agentDomainTools.ts:cancelOrder preflights paid orders and pins Idempotency-Key to operation id"
         }
       ],
@@ -3074,7 +3074,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "c6bbc1207e0c9a00000000000000000000000000",
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
           "reference": "#1981/#2593 agentDomainTools.ts:cancelTripBooking preview→commit fail-closed; Idempotency-Key = operation id"
         }
       ],
@@ -3120,7 +3120,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "c6bbc1207e0c9a00000000000000000000000000",
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
           "reference": "#1981 agentDomainTools.ts:retryInstallment calls biz_retry_installment under finance_manager gate"
         }
       ],
@@ -3166,7 +3166,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "c6bbc1207e0c9a00000000000000000000000000",
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
           "reference": "#1981 agentDomainTools.ts:listTripInstallments returns installment_id/order_id/status/amounts only"
         }
       ],
@@ -5986,7 +5986,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "c6bbc1207e0c9a00000000000000000000000000",
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
           "reference": "#1981 agentDomainTools.ts:chargeInstallmentNow invokes manual-charge-installment"
         }
       ],
@@ -6040,7 +6040,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "c6bbc1207e0c9a00000000000000000000000000",
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
           "reference": "#1981 agentDomainTools.ts:sendInstallmentReminder invokes send-installment-reminder"
         }
       ],
