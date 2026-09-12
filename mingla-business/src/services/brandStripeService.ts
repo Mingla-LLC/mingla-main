@@ -46,6 +46,13 @@ export interface RefreshStatusResult {
   country?: string | null;
   default_currency?: string | null;
   details_submitted?: boolean;
+  /**
+   * Issue #3258 — `business_profile.url` as the connected account reports it,
+   * additive on `brand-stripe-refresh-status`. `null` when Stripe holds none;
+   * `undefined` from an edge deployment that predates the field, which is why
+   * every reader must treat absent and null the same way.
+   */
+  business_profile_url?: string | null;
 }
 
 export class BrandStripeCountryLockedError extends Error {

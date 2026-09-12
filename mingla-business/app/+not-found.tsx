@@ -25,6 +25,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Button } from "../src/components/ui/Button";
+// #3259 — the signed-in identity block. Renders NOTHING without an email, so
+// the signed-out screen below is untouched.
+import { SignedInNotFoundNotice } from "../src/components/auth/SignedInNotFoundNotice";
+// #3259 — the wrong-account escape, shared with every other "we can't show you
+// this" screen. Owns the await-before-navigate ordering and the auth-ready gate.
+import { useSwitchAccount } from "../src/hooks/useSwitchAccount";
 import {
   backgroundWarmGlow,
   colors,
@@ -89,12 +95,32 @@ export function ctaLabelStyle(fontScale: number): {
   };
 }
 
+/**
+ * #3259 — the heading for a viewer whose session we CAN name.
+ *
+ * It still says the page does not exist, because that is the only thing this
+ * screen actually knows: `+not-found` is a pure routing outcome with no props,
+ * no error and no status, so it must never claim a permission denial. What it
+ * stops doing is implying a typo is the only explanation.
+ */
+export const SIGNED_IN_HEADING = "This page doesn't exist.";
+
+/** The signed-out copy — unchanged, and asserted unchanged. */
+export const SIGNED_OUT_HEADING = "Hmm, that's not a real page.";
+export const SIGNED_OUT_SUBTEXT = "Maybe a typo? Or it moved?";
+
 export default function NotFoundScreen(): React.ReactElement {
   const router = useRouter();
+  // #3259 — safe here: `+not-found` renders inside `<AuthProvider>` (the Stack
+  // this screen belongs to is a descendant of it in `app/_layout.tsx`).
+  // `signedInEmail` is NULL until auth resolves, so nothing flashes.
+  const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   // #2180 P2-1 — reactive, so a Dynamic Type change while this screen is open
   // re-lays it out rather than leaving a stale measurement behind.
   const { fontScale } = useWindowDimensions();
   const largeType = fontScale >= LARGE_TYPE_FONT_SCALE;
+
+  const isSignedIn = signedInEmail !== null;
 
   const handleGoHome = (): void => {
     HapticFeedback.buttonPress();
@@ -141,9 +167,33 @@ export default function NotFoundScreen(): React.ReactElement {
               accessibilityRole="image"
             />
             <Text style={styles.heading} accessibilityRole="header">
-              Hmm, that&apos;s not a real page.
+              {isSignedIn ? SIGNED_IN_HEADING : SIGNED_OUT_HEADING}
             </Text>
-            <Text style={styles.subtext}>Maybe a typo? Or it moved?</Text>
+            {/*
+              #3259 — "Maybe a typo? Or it moved?" is the line that sends a
+              signed-in user hunting for their own mistake. It is RIGHT for a
+              signed-out visitor (we know nothing about them) and wrong for
+              someone whose account we can name, so it renders only in the
+              signed-out branch. Nothing else about this region moves.
+            */}
+            {isSignedIn ? null : (
+              <Text style={styles.subtext}>{SIGNED_OUT_SUBTEXT}</Text>
+            )}
+            {/*
+              #3259 — the identity block. It lives INSIDE the scroll region, not
+              in the footer, on purpose: #2180's guarantee is that the screen's
+              one certain exit ("Go home") can never be displaced, and a second
+              pinned CTA would double the footer's height at accessibility type
+              sizes — reintroducing exactly the crowding #2180 removed. #2211
+              makes this region scroll, so the recovery action is always
+              reachable; the guaranteed exit stays pinned below.
+            */}
+            <SignedInNotFoundNotice
+              variant="missing"
+              signedInEmail={signedInEmail}
+              onSwitchAccount={onSwitchAccount}
+              testID="not-found-signed-in-notice"
+            />
           </ScrollView>
           {/*
             #2180 — the exit lives OUTSIDE the centred region so no measurement

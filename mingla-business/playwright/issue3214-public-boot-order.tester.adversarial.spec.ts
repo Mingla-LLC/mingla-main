@@ -472,14 +472,19 @@ async function shot(page: Page, name: string) {
 
 // Violations that exist on merged main, each reviewed. Anything else is red.
 const REVIEWED_VIOLATIONS = [
-  { match: (v: { blocked: string }) => v.blocked.startsWith(`wss://${SUPABASE_HOST}`), why: '#3234 — connect-src lists the Supabase project as https:// only' },
+  // [TEST-MOD-APPROVED #3251] The `wss://${SUPABASE_HOST}` entry is REMOVED.
+  // #3251 added the wss:// connect-src source, so that refusal must no longer
+  // happen — and because this array is an allow-list of tolerated violations,
+  // deleting the entry upgrades a returning refusal from "tolerated" to RED.
+  // That is the regression guard for #3251/#3234 and is the point of removing
+  // it rather than leaving a harmless stale row.
   { match: (v: { blocked: string }) => v.blocked === 'blob' || v.blocked.startsWith('blob:'), why: '#3214 tester finding — no worker-src/child-src/script-src source admits blob:, so the session-replay worker falls through to default-src' },
 ]
 
 test.use({ viewport: { width: 390, height: 640 } })
 
 test.describe('#3214 tester adversarial — the booted app under the real policy', () => {
-  test('the app opens a realtime socket here, and Chromium refuses it scheme-for-scheme', async ({ page }) => {
+  test('the app opens a realtime socket here, the policy now admits it, and a same-host https source still does not admit wss', async ({ page }) => {
     test.setTimeout(90_000)
     const harness = await openPage(page, { consent: true })
     await takenOver(page)
@@ -514,9 +519,15 @@ test.describe('#3214 tester adversarial — the booted app under the real policy
     const after = (await readStore(page, '__advCsp')) as Array<{ directive: string; blocked: string }>
     const realtimeRefused = after.some((violation) => violation.blocked.startsWith(`wss://${SUPABASE_HOST}`))
     test.info().annotations.push({ type: 'derived-realtime', description: `${socketOutcome} refused=${realtimeRefused}` })
+    // [TEST-MOD-APPROVED #3251] Was annotation-only, so it could never fail.
+    // It is now an assertion: the endpoint the app derives at runtime MUST be
+    // admitted. If this refusal comes back, signed-in WebKit visitors get a
+    // white screen (the throw is synchronous there), so it has to be red.
+    expect(realtimeRefused).toBe(false)
 
-    // Whatever the app itself opened is recorded for the record: on production
-    // this is where the three refused realtime attempts in #3234 come from.
+    // Whatever the app itself opened is recorded for the record. Before #3251
+    // this is where #3234's three REFUSED realtime attempts came from; they
+    // should now connect (or fail on auth), never on CSP.
     const sockets = (await readStore(page, '__advSockets')) as Array<{ url: string; stack: string }>
     test.info().annotations.push({ type: 'sockets-opened', description: JSON.stringify(sockets).slice(0, 900) })
 

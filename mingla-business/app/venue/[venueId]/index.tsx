@@ -68,7 +68,11 @@ import {
   venuePublicPath,
   venuePublicUrl,
 } from "../../../src/constants/publicUrls";
+import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
 import { useAuth } from "../../../src/context/AuthContext";
+// #3259 — names the signed-in account on the empty branch below and offers the
+// wrong-account escape. Owns the await-before-navigate ordering.
+import { useSwitchAccount } from "../../../src/hooks/useSwitchAccount";
 import { useVenuePipelineState } from "../../../src/hooks/useBrandPlacePipelineState";
 import { useBrand } from "../../../src/hooks/useBrands";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
@@ -95,6 +99,7 @@ export default function VenueManagementPage(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, isAuthReady } = useAuth();
+  const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const { isWideDesktop } = useResponsiveLayout();
   const params = useLocalSearchParams<{
     venueId?: string | string[];
@@ -266,14 +271,34 @@ export default function VenueManagementPage(): React.ReactElement {
           contentContainerStyle={styles.centerContent}
         >
           <Text style={styles.notFoundTitle}>Venue not found</Text>
-          <Text style={styles.helper}>
-            This venue may have been removed, or the link is out of date.
-          </Text>
+          {/*
+            #3259 P2-3 — the host's own hedge is for a reader we know NOTHING
+            about. When the notice renders it says this and names the account,
+            so showing both states one cause and then a different set of causes
+            a line apart. Signed-out keeps it verbatim.
+          */}
+          {signedInEmail === null ? (
+            <Text style={styles.helper}>
+              This venue may have been removed, or the link is out of date.
+            </Text>
+          ) : null}
           <Button
             label="Back to your venues"
             variant="secondary"
             size="md"
             onPress={() => handleBack()}
+          />
+          {/*
+            #3259 — a signed-in reader gets the account named and a way out. The
+            client CANNOT tell a deleted row from an RLS-filtered one
+            (`.maybeSingle()` returns `{data: null, error: null}` for both), so
+            the copy states both and asserts neither.
+          */}
+          <SignedInNotFoundNotice
+            variant="restricted"
+            signedInEmail={signedInEmail}
+            onSwitchAccount={onSwitchAccount}
+            testID="venue-not-found-signed-in-notice"
           />
         </ScrollView>
       </View>

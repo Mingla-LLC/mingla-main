@@ -30,6 +30,7 @@ const SEARCH_READY_PATHS = [
   '/terms-of-service',
   '/help/getting-the-apps',
   '/help/sign-up-and-create-a-brand',
+  '/help/connect-a-bank-and-get-paid',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [

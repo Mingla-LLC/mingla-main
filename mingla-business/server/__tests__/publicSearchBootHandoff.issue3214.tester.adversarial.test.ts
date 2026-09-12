@@ -188,11 +188,18 @@ const DERIVED_ENDPOINTS: Derived[] = [
  * the policy admits it.
  */
 const KNOWN_UNMET: Array<{ url: string; issue: string; why: string }> = [
-  {
-    url: derivedRealtimeEndpoint(),
-    issue: "#3234",
-    why: "connect-src lists the Supabase project as https:// only; CSP matches scheme-for-scheme, so the wss:// realtime socket is refused. Pre-existing (main's https://*.supabase.co was https-only too) and only visible once #3214 made the app boot here.",
-  },
+  // [TEST-MOD-APPROVED #3251] The #3234 realtime entry is REMOVED, not edited.
+  // This list is an exact set and its own docblock requires an entry to leave
+  // once the policy admits the URL — #3251 added the `wss://` connect-src
+  // source (publicSearchDocument.js `supabaseRealtimeOrigin()`), so
+  // `derivedRealtimeEndpoint()` is now permitted and must assert as MET by
+  // DERIVED_ENDPOINTS above. Leaving the entry here would red this lane.
+  //
+  // Invalidated assertion, named per the pinned-contract rule: "the wss://
+  // realtime socket is refused" is no longer true of merged main. What that
+  // entry documented was not merely dead realtime — the refusal threw
+  // synchronously in WebKit and white-screened every signed-in Safari visitor
+  // to a public page (#3251).
   {
     url: "blob:https://host.usemingla.com/replay-worker",
     issue: "#3214",
@@ -277,10 +284,21 @@ describe("#3214 tester adversarial — the policy is a decision function, not a 
     expect(realtime.protocol).toBe("wss:");
     expect(realtime.hostname).toBe(supabaseHttp.hostname);
     expect(realtime.pathname).toBe("/realtime/v1/websocket");
-    // The same host the policy admits over https — which is exactly why the
-    // string reads as "Supabase is allowed" while the socket is refused.
+    // [TEST-MOD-APPROVED #3251] Second invalidated assertion, named: this line
+    // asserted the realtime socket is REFUSED. #3251 added a `wss:` source, so
+    // the same host is now admitted over BOTH schemes and it must assert true.
+    //
+    // The scheme-for-scheme rule this test exists to protect is NOT weakened —
+    // it is still proven, on a host that is deliberately https-only, by the
+    // "can tell wss:// from https://" case above (`wss://example.test`) and by
+    // the live Chromium oracle in the playwright leg (`wss://api.stripe.com`).
+    // Asserting refusal on the Supabase host specifically would now be
+    // asserting the bug.
     expect(permits(policy, "connect-src", `${supabaseHttp.origin}/rest/v1/x`)).toBe(true);
-    expect(permits(policy, "connect-src", derivedRealtimeEndpoint())).toBe(false);
+    expect(permits(policy, "connect-src", derivedRealtimeEndpoint())).toBe(true);
+    // ...and the ws:// downgrade of that same host is still refused, so the new
+    // source is exactly one scheme wider, not a blanket relaxation.
+    expect(permits(policy, "connect-src", derivedRealtimeEndpoint().replace(/^wss:/, "ws:"))).toBe(false);
   });
 
   it("keeps the protections that make the rest of the policy worth auditing", () => {

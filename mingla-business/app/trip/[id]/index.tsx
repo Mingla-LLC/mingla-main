@@ -61,6 +61,9 @@ import {
 } from "../../../src/components/trip/TripDetailHeroStatusPill";
 import { TripDetailKpiCard } from "../../../src/components/trip/TripDetailKpiCard";
 import { Button } from "../../../src/components/ui/Button";
+import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
+// #3259 — names the signed-in account on the settled-null branch below.
+import { useSwitchAccount } from "../../../src/hooks/useSwitchAccount";
 import {
   tripKeys,
   useTrip,
@@ -145,6 +148,7 @@ function normalizeCoverMediaType(value: string | null): EventCoverMediaType | nu
 export default function TripDashboardRoute(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
 
@@ -356,6 +360,18 @@ export default function TripDashboardRoute(): React.ReactElement {
     return (
       <SafeScreen style={styles.stateHost}>
         <Text style={styles.title}>Trip not found</Text>
+        {/*
+          #3259 — a signed-in reader gets the account named and a way out. The
+          client CANNOT tell a deleted row from an RLS-filtered one
+          (`.maybeSingle()` returns `{data: null, error: null}` for both), so the
+          copy states both possibilities and asserts neither.
+        */}
+        <SignedInNotFoundNotice
+          variant="restricted"
+          signedInEmail={signedInEmail}
+          onSwitchAccount={onSwitchAccount}
+          testID="trip-not-found-signed-in-notice"
+        />
       </SafeScreen>
     );
   }

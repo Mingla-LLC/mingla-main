@@ -18,8 +18,18 @@ export interface KycRemediationMessage {
   readonly title: string;
   /** Friendly body explaining what's needed */
   readonly body: string;
-  /** Label for the primary CTA button */
-  readonly ctaLabel: string;
+  /**
+   * Label for the primary CTA button, or `null` when there is genuinely
+   * nothing for the seller to do.
+   *
+   * Issue #3258: every CTA on this card is wired to `onResolve`, which
+   * re-opens Stripe onboarding. A "Check back later" button that navigates
+   * back into a completed form is a dead-tap/false-affordance (Constitution
+   * rule 1) — the seller taps it, lands on a form with nothing left to fill
+   * in, submits again, and sees the same card. `null` means "render no
+   * button at all"; the renderer MUST honour it.
+   */
+  readonly ctaLabel: string | null;
   /** Severity affects card color + sort order */
   readonly severity: "blocking" | "warning" | "info";
 }
@@ -41,8 +51,10 @@ const MESSAGES: Record<string, KycRemediationMessage> = {
   },
   "requirements.pending_verification": {
     title: "Verification in progress",
-    body: "Stripe is reviewing the documents you submitted. This typically takes a few minutes but can occasionally take up to 24 hours.",
-    ctaLabel: "Check back later",
+    body: "Stripe is reviewing the details you submitted. Nothing is needed from you — we'll email you when it's done.",
+    // Issue #3258: was "Check back later", wired to onResolve → onboarding.
+    // Nothing is due, so there is nothing to resolve and no button to show.
+    ctaLabel: null,
     severity: "info",
   },
   "rejected.fraud": {
@@ -72,13 +84,25 @@ const MESSAGES: Record<string, KycRemediationMessage> = {
   "listed": {
     title: "Awaiting Stripe review",
     body: "This account is being checked against compliance lists. We'll let you know when it clears.",
-    ctaLabel: "Check back later",
+    // Issue #3258: was "Check back later", wired to `onResolve` → onboarding.
+    // A button that says "later" and navigates NOW is a false affordance
+    // (Constitution rule 1), and there is nothing at the other end to do.
+    //
+    // Setting this to null also fixes a second, quieter lie for free. The
+    // yield rule in `pickKycRemediationCode` hands priority to a genuinely due
+    // field whenever the disabled_reason's message has no CTA — so
+    // `{ disabled_reason: "listed", currently_due: ["external_account"] }`
+    // used to resolve to THIS info-severity "no action needed" card while a
+    // blocking bank account was actually due, and now resolves to the
+    // `external_account` card that asks for it.
+    ctaLabel: null,
     severity: "info",
   },
   "under_review": {
     title: "Under review",
     body: "Stripe is reviewing this account. No action needed from you right now.",
-    ctaLabel: "Check back later",
+    // Issue #3258 — identical reasoning to "listed" above.
+    ctaLabel: null,
     severity: "info",
   },
   "platform_paused": {
@@ -243,3 +267,67 @@ const MESSAGES: Record<string, KycRemediationMessage> = {
 export function getKycRemediationMessage(code: string): KycRemediationMessage {
   return MESSAGES[code] ?? FALLBACK;
 }
+
+export interface KycRemediationRequirementsShape {
+  readonly disabled_reason?: string | null;
+  readonly currently_due?: readonly string[] | null;
+  readonly past_due?: readonly string[] | null;
+}
+
+/**
+ * Picks the ONE code `BrandStripeKycRemediationCard` renders, in priority
+ * order: disabled_reason, then past_due[0], then currently_due[0].
+ *
+ * Issue #3258 adds one exception, and it exists because of this change rather
+ * than despite it. "Stripe is checking something" and "Stripe still needs
+ * something" can both be true at once — `requirements.pending_verification`
+ * arriving alongside a non-empty currently_due. That message now renders with
+ * NO CTA (nothing to do), so letting it keep top priority would show
+ * "nothing is needed from you" on an account that genuinely IS blocked, with
+ * no way to act from the card.
+ *
+ * The rule is expressed over the DATA, not over a hardcoded reason string: a
+ * disabled_reason whose message has no CTA yields to a genuinely due field.
+ * Every actionable reason keeps top priority exactly as before, and an
+ * unrecognised reason falls back to an actionable message so it does too.
+ *
+ * Lives here rather than in the component so it is executable in a plain jest
+ * test — the card itself cannot be imported by the default node/ts-jest
+ * runner.
+ */
+export function pickKycRemediationCode(
+  requirements: KycRemediationRequirementsShape | null | undefined,
+): string | null {
+  if (requirements == null) return null;
+  const due = requirements.past_due?.[0] ?? requirements.currently_due?.[0] ??
+    null;
+  const reason = requirements.disabled_reason;
+  if (reason != null && reason !== "") {
+    if (due !== null && getKycRemediationMessage(reason).ctaLabel === null) {
+      return due;
+    }
+    return reason;
+  }
+  return due;
+}
+
+/**
+ * Issue #3258 — the pending-verification SENTENCE now lives in its own file.
+ *
+ * It was authored here, next to the remediation table, which looked tidy and
+ * was measurably wrong: `brandStripeUiState.ts` is in the eager boot payload
+ * and imports the sentence, so that one edge hoisted this whole ~245-entry
+ * table out of the lazily-chunked Payments route and into `__common` — a
+ * measured +11,916 B on the boot payload every visitor downloads, 9,718 B of
+ * it this file. See the header of `stripePendingVerificationCopy.ts` for the
+ * numbers and the reasoning.
+ *
+ * Re-exported rather than relocated-and-forgotten so that every existing
+ * importer of these symbols from THIS path keeps working byte-for-byte; the
+ * boot path imports the sibling directly and never reaches `MESSAGES`.
+ */
+export {
+  describeStripePendingVerification,
+  getPendingVerificationSubject,
+  type PendingVerificationSentenceInput,
+} from "./stripePendingVerificationCopy";

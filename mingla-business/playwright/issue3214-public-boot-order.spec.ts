@@ -440,6 +440,9 @@ const OBSERVED_SOURCES: Array<[directive: 'script-src' | 'connect-src' | 'frame-
   ['script-src', 'https://tr.snapchat.com'],
   ['script-src', 'https://www.redditstatic.com'],
   ['connect-src', 'https://gqnoajqerqhnvulmnyvv.supabase.co'],
+  // #3251 — Supabase Realtime over WebSocket. CSP matches scheme-for-scheme,
+  // so the https row above does NOT cover this one.
+  ['connect-src', 'wss://gqnoajqerqhnvulmnyvv.supabase.co'],
   ['connect-src', 'https://api.stripe.com'],
   ['connect-src', 'https://us.i.posthog.com'],
   ['connect-src', 'https://us-assets.i.posthog.com'],

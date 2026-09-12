@@ -61,6 +61,28 @@ interface AccountResponse {
   requirements?: Record<string, unknown>;
   country?: string;
   default_currency?: string;
+  /**
+   * Issue #3258 — the website Stripe actually holds for this account, and
+   * therefore the one it actually fetches when
+   * `requirements.pending_verification` contains `business_profile.url`.
+   */
+  business_profile?: { url?: string | null } | null;
+}
+
+/**
+ * Issue #3258 — read `business_profile.url` off the retrieved account.
+ *
+ * The app needs this because it names the URL to the seller. Before #3258 the
+ * only URL the client had was the brand's OWN public page, built from
+ * `brands.slug` — but for every account onboarded before the platform started
+ * prefilling one, Stripe is checking the URL the SELLER typed, which for the
+ * brand in this issue is a dead domain. Naming the brand page in that case
+ * would be confidently telling the seller the wrong thing (Constitution rule
+ * 9, no fabricated data). Hidden behind a `null` when Stripe holds none.
+ */
+function readBusinessProfileUrl(account: AccountResponse): string | null {
+  const url = account.business_profile?.url;
+  return typeof url === "string" && url.trim() !== "" ? url.trim() : null;
 }
 
 serve(async (req) => {
@@ -153,6 +175,9 @@ serve(async (req) => {
         country: null,
         default_currency: null,
         details_submitted: false,
+        // Issue #3258 — same key on every branch, so the client never has to
+        // tell "no account" apart from "field absent from this response".
+        business_profile_url: null,
       });
     }
 
@@ -250,6 +275,9 @@ serve(async (req) => {
       default_currency: account.default_currency ?? scaRow.default_currency ??
         null,
       details_submitted: account.details_submitted ?? false,
+      // Issue #3258 — additive. The one field that lets the app name the URL
+      // Stripe is really checking instead of guessing the brand's own page.
+      business_profile_url: readBusinessProfileUrl(account),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

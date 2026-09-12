@@ -42,7 +42,11 @@ import {
   restoreDailyPayoutSchedule,
   setManualPayoutSchedule,
 } from "../_shared/stripeBlueprintClient.ts";
-import { resolveBusinessWebOrigin } from "../_shared/businessWebOrigin.ts";
+import {
+  PRODUCTION_BUSINESS_WEB_ORIGIN,
+  resolveBusinessWebOrigin,
+} from "../_shared/businessWebOrigin.ts";
+import { resolveBrandPublicUrl } from "../_shared/brandPublicUrl.ts";
 import {
   MissingOrganiserEmailError,
   resolveOrganiserContactEmail,
@@ -75,6 +79,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-mingla-app-id, x-mingla-app-platform, x-mingla-app-version",
 };
+
+/**
+ * Issue #3258 — Stripe's documented fallback when an account has genuinely no
+ * public page: "If the business doesn't have a URL, you can prefill its
+ * business_profile.product_description instead."
+ * (https://docs.stripe.com/connect/hosted-onboarding)
+ *
+ * Stripe's own requirement for the field is that it "must detail the type of
+ * products being sold, as well as the manner in which the business charges its
+ * customers", so this says both. It is a DEFENSIVE branch, not the main path:
+ * `brands.slug` is `text NOT NULL`, so every brand has a `/b/{slug}` page and
+ * gets `business_url` instead. It is only reached if the slug comes back blank
+ * or the business web origin cannot be resolved.
+ */
+const BRAND_STRIPE_FALLBACK_PRODUCT_DESCRIPTION =
+  "Sells tickets, bookings and food-and-drink orders for its own events, " +
+  "experiences and venues. Guests pay online by card at the time of booking " +
+  "or ordering through the Mingla marketplace, and the business receives the " +
+  "proceeds as payouts to its connected bank account.";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -128,6 +151,13 @@ interface BrandRow {
   name: unknown;
   contact_email: unknown;
   default_currency?: unknown;
+  /**
+   * Issue #3258 — the brand's public page slug. `brands.slug` is
+   * `text NOT NULL` and immutable (trigger `trg_brands_immutable_slug`,
+   * invariant I-17), so in practice every brand has one; typed `unknown`
+   * like its siblings because this row comes back untyped from PostgREST.
+   */
+  slug?: unknown;
 }
 
 interface StripeAccountState {
@@ -229,7 +259,18 @@ async function deleteReplaceableStripeAccount(
   });
 }
 
-serve(async (req) => {
+/**
+ * Exported so the #3258 regression suite can drive the REAL request path
+ * end-to-end (a source-text pin cannot prove which origin reaches the
+ * wire). `import.meta.main` keeps `serve()` off the import path — the same
+ * shape 74 other edge functions in this repo already deploy with.
+ *
+ * An arrow CONST, not a hoisted `function` declaration: the module-scope
+ * `if (!BUSINESS_WEB_ORIGIN) throw` narrows that const to `string` only for
+ * code TypeScript can prove runs after it, and a hoisted declaration is not
+ * that (TS2322 on `configuredOrigin`).
+ */
+export const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -352,7 +393,7 @@ serve(async (req) => {
     // Read brand details for replacement/fresh creation.
     const { data: brandRow, error: brandReadError } = await supabase
       .from("brands")
-      .select("name, contact_email, default_currency")
+      .select("name, contact_email, default_currency, slug")
       .eq("id", brand_id)
       .is("deleted_at", null)
       .maybeSingle<BrandRow>();
@@ -395,6 +436,57 @@ serve(async (req) => {
       throw err;
     }
 
+    // Issue #3258 — prefill the account's own public website BEFORE Stripe
+    // ever asks the seller for one.
+    //
+    // Stripe fetches `business_profile.url` to verify the business before it
+    // will enable `card_payments`. Sending nothing meant the seller was asked
+    // for a website inside Connect onboarding and typed whatever they had; for
+    // the brand this issue was filed over that was a domain whose ports 80 and
+    // 443 are closed, so the fetch never succeeded, `card_payments` stayed
+    // `pending` with `pending_verification: ["business_profile.url"]`, and the
+    // brand could not take money. Every Mingla brand already has a page that
+    // always loads — its own `/b/{slug}` — so that is what we hand Stripe.
+    // Prefilled fields are not re-asked during onboarding; the account holder
+    // is only asked to confirm them, and may still edit.
+    // https://docs.stripe.com/connect/hosted-onboarding
+    //
+    // Set at CREATE time ONLY. Nothing here ever overwrites the business URL
+    // of an account that already exists — silently replacing a seller's own
+    // working website with a Mingla page is not ours to do.
+    //
+    // THE ORIGIN IS `PRODUCTION_BUSINESS_WEB_ORIGIN`, NOT `businessWebOrigin`,
+    // AND THAT DIFFERENCE IS THE WHOLE POINT.
+    //
+    // `businessWebOrigin` carries `body.business_web_origin_override`, which
+    // `_shared/businessWebOrigin.ts` accepts as any
+    // `https://mingla-business-*.vercel.app`. That is correct for what the
+    // override exists for — the EPHEMERAL return/refresh journey below, where
+    // a preview build has to send the seller back to the preview — and it is
+    // still used for exactly that, unchanged.
+    //
+    // `defaults.profile.business_url` is not ephemeral. It is PERSISTED on a
+    // live Stripe connected account, this function deliberately never
+    // overwrites it afterwards, and Stripe FETCHES it to verify the business.
+    // A Vercel preview domain is deployment-protected (401) and is eventually
+    // deleted, so baking one in would leave `card_payments` at `pending` with
+    // `pending_verification: ["business_profile.url"]` forever — the exact
+    // defect this issue exists to kill, reached through our own API by any
+    // authenticated payments manager who posts an override.
+    //
+    // So the one value that outlives the request is built from the constant.
+    // That is also the rule the rest of the repo already follows for anything
+    // handed to a third party or printed: Paystack callback URLs
+    // (`ticket-checkout-create`, `venue-order-staff`, `venue-reservation-create`,
+    // `rsvp-contribution-create`), venue QR sheets (`venue-qr-sheet/qrSpotUrl.ts`)
+    // and ad destinations (`_shared/adDestination.ts`) all use the constant;
+    // the env-backed, overridable origin is only ever used for in-session
+    // redirects.
+    const brandPublicPageUrl = resolveBrandPublicUrl({
+      origin: PRODUCTION_BUSINESS_WEB_ORIGIN,
+      slug: brandRow.slug,
+    });
+
     let stripeAccountId: string;
     let scaRowId: string | null = null;
     let replacementAudit:
@@ -418,6 +510,16 @@ serve(async (req) => {
           displayName: safeDisplayName(brandRow.name),
           contactEmail,
           country,
+          // Issue #3258 — exactly ONE of these is ever non-null. The brand's
+          // own page is the main path (`brands.slug` is NOT NULL, so it is
+          // what essentially every brand gets); the product description is
+          // Stripe's documented fallback for an account with genuinely no
+          // page, kept here as a defensive branch for a blank slug or an
+          // unresolvable origin rather than as an expected outcome.
+          businessUrl: brandPublicPageUrl,
+          productDescription: brandPublicPageUrl === null
+            ? BRAND_STRIPE_FALLBACK_PRODUCT_DESCRIPTION
+            : null,
           idempotencyKey: generateIdempotencyKey(
             brand_id,
             buildStripeOnboardCreateOperation(country, oldStripeAccountId),
@@ -919,4 +1021,8 @@ serve(async (req) => {
     console.error("[brand-stripe-onboard] unhandled error:", message);
     return jsonResponse({ error: "internal_error" }, 500);
   }
-});
+};
+
+if (import.meta.main) {
+  serve(handler);
+}

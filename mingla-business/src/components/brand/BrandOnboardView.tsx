@@ -121,6 +121,9 @@ import {
 } from "../../utils/brandPaymentsPermission";
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
 import { resolveBankConnectRail } from "../../utils/bankConnectRail";
+import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
+// #3259 — names the signed-in account on the settled-null brand branch below.
+import { useSwitchAccount } from "../../hooks/useSwitchAccount";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
@@ -237,6 +240,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const onboardMutation = useStartBrandStripeOnboarding();
+  const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const statusQuery = useBrandStripeStatus(brand?.id ?? null);
   const startInProgressRef = useRef(false);
   const brandRail = resolveBankConnectRail({
@@ -638,10 +642,25 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         <View style={styles.notFoundWrap}>
           <GlassCard variant="elevated" padding={spacing.lg}>
             <Text style={styles.notFoundTitle}>Brand not found</Text>
+            {/*
+              #3259 — was "doesn't exist or has been removed", which ASSERTS a
+              fact the client cannot know.
+            */}
             <Text style={styles.notFoundBody}>
-              The brand you tried to onboard doesn{"’"}t exist or has been
-              removed.
+              We couldn{"’"}t open that brand.
             </Text>
+            {/*
+              #3259 — a signed-in reader gets the account named and a way out.
+              The client CANNOT tell a deleted brand from an RLS-filtered one
+              (`.maybeSingle()` returns `{data: null, error: null}` for both), so
+              the copy states both possibilities and asserts neither.
+            */}
+            <SignedInNotFoundNotice
+              variant="restricted"
+              signedInEmail={signedInEmail}
+              onSwitchAccount={onSwitchAccount}
+              testID="brand-onboard-not-found-signed-in-notice"
+            />
             <View style={styles.notFoundBtnRow}>
               <Button
                 label="Back"
