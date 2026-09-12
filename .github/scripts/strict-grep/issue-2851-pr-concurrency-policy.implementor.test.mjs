@@ -1147,7 +1147,50 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // d2f72965.... The count, identity and policy audit remain 124 /
   // 9356c425... / zero errors. Whole-block assertions below lock the branch
   // deltas independently while every receipt retains #1778's main truth.
-  "330740baa866dd1013a9047498c746effbb6808e4e0a5a3cb13df02c8b78447a";
+  //
+  // [TEST-MOD-APPROVED #3095] IA-1. Re-derived because this digest now hashes a
+  // DIFFERENT THING, not because a workflow changed. Until #3095 it hashed each
+  // PR-family workflow's whole parsed document minus top-level concurrency, so
+  // every paths, types, branches, env, step, test-target or comment edit moved
+  // it. Replaying first-parent main 13dd62554..779c1c9d0 (54 commits touching
+  // workflows or this file), it moved 48 times, was re-pinned 43 times, and
+  // left main red at 11 commits. None of the re-derivations above records
+  // catching a defect.
+  //
+  // It now hashes the #2851 POLICY PROJECTION. Per PR-family workflow:
+  //   - the sorted trigger event keys: what makes a workflow PR-family, and the
+  //     event set the audit's evaluation proof models;
+  //   - job-level concurrency blocks, keyed by job id;
+  //   - job uses: values (reusable-workflow calls), keyed by job id.
+  // Both job-level inputs are invisible to auditWorkflowSources, which reads
+  // only the top-level block, and neither moves PR_FAMILY_COUNT or
+  // PR_FAMILY_IDENTITY_SHA256, so this pin is their only guard. Top-level
+  // concurrency stays EXCLUDED: on any tree that passes the audit it is a pure
+  // function of the filename, and the concurrency-only drift assertion in the
+  // second test requires this pin to ignore it.
+  //
+  // Derived on the .github/workflows tree c925c13c8a36 (main c6efb21f6).
+  // Identical across three derivations with this file's own RUBY_CANONICAL,
+  // and not copied from a CI run. It is the value the projection already had
+  // on 779c1c9d0: the five re-pins that landed while #3095 was in review
+  // (#3285, #3055, #3288, #1778 and #3176, noted above) each moved the old
+  // digest, and none moved the projection. The run-time document digest on
+  // this tree is 330740ba..., exactly the value this literal replaces, so the
+  // pre-#3095 computation survives intact as the run-time check.
+  // PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED.
+  // Replayed through this derivation over those 54 commits plus the five, the
+  // old digest moved 53 times in 59 and the projection 3 times, each a real
+  // policy change: #2899 (Sites recovery joined the PR family), #3072 (push
+  // added to six lanes) and #3078 (schedule added). It does not move for any
+  // of the 2026-09-03 collisions, the five green-again re-pins, #2947's
+  // two-line registration, or the five in-review re-pins.
+  //
+  // RULE FOR THE NEXT READER: re-pin only when PR-family membership, a trigger
+  // event key, a job-level concurrency block or a job uses: value changed, and
+  // name in your note which one and why the #2851 policy still holds for it. If
+  // this fails and your branch changed none of those, rebase; do not re-pin.
+  // Every earlier re-derivation is preserved above, not replaced.
+  "6d801614096e869746862f804ed347ad58054820403a11d6a50efd77bdf1e3e7";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1184,8 +1227,20 @@ payload.each do |file, source|
            when String then [on_value]
            else []
            end
+  jobs = document["jobs"].is_a?(Hash) ? document["jobs"] : {}
+  job_concurrency = {}
+  reusable_workflows = {}
+  jobs.map { |id, job| [id.to_s, job] }.sort_by(&:first).each do |id, job|
+    next unless job.is_a?(Hash)
+    job_concurrency[id] = job["concurrency"] if job.key?("concurrency")
+    reusable_workflows[id] = job["uses"] if job.key?("uses")
+  end
   document.delete("concurrency")
-  result[file] = {"events" => events.sort, "withoutConcurrency" => document}
+  result[file] = {
+    "events" => events.sort,
+    "withoutConcurrency" => document,
+    "policy" => {"events" => events.sort, "jobConcurrency" => job_concurrency, "reusableWorkflows" => reusable_workflows},
+  }
 end
 STDOUT.write(JSON.generate(result))
 `;
@@ -1202,30 +1257,56 @@ function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-function currentTreeAuthority(sources) {
+// [TEST-MOD-APPROVED #3095] One canonicalization feeds two digests. The pinned
+// authority hashes only the #2851 policy projection: per PR-family workflow,
+// its sorted trigger event keys, job-level concurrency and job uses. The
+// pre-#3095 whole-document digest is kept as documentSha256, derived at run
+// time and never pinned, so a mutation can still prove it changed semantics.
+function canonicalDigests(sources) {
   const canonical = canonicalize(sources);
   const names = Object.keys(canonical).filter((name) => {
     const events = canonical[name].events;
     return events.includes("pull_request") || events.includes("pull_request_target");
   }).sort();
-  const withoutConcurrency = Object.fromEntries(
-    names.map((name) => [name, canonical[name]]),
-  );
+  const policyProjection = Object.fromEntries(names.map((name) => [name, canonical[name].policy]));
+  const document = Object.fromEntries(names.map((name) => [
+    name,
+    { events: canonical[name].events, withoutConcurrency: canonical[name].withoutConcurrency },
+  ]));
   return {
-    names,
-    identitySha256: sha256(JSON.stringify(names)),
-    withoutConcurrencySha256: sha256(JSON.stringify(withoutConcurrency)),
+    authority: {
+      names,
+      identitySha256: sha256(JSON.stringify(names)),
+      withoutConcurrencySha256: sha256(JSON.stringify(policyProjection)),
+    },
+    documentSha256: sha256(JSON.stringify(document)),
+    canonical,
   };
 }
 
+function currentTreeAuthority(sources) {
+  return canonicalDigests(sources).authority;
+}
+
 function assertCurrentTreeAuthority(sources) {
-  const authority = currentTreeAuthority(sources);
+  return assertAuthority(currentTreeAuthority(sources));
+}
+
+function assertAuthority(authority) {
   assert.equal(authority.names.length, PR_FAMILY_COUNT, "PR-family identity count drifted");
   assert.equal(authority.identitySha256, PR_FAMILY_IDENTITY_SHA256, "PR-family identity digest drifted");
+  // [TEST-MOD-APPROVED #3095] IA-2: the old message named a whole-document
+  // digest this constant no longer is, and gave a colliding session no route.
   assert.equal(
     authority.withoutConcurrencySha256,
     PR_FAMILY_WITHOUT_CONCURRENCY_SHA256,
-    "PR-family non-concurrency semantic digest drifted",
+    "PR-family policy projection digest drifted: a PR-family workflow's trigger event keys, " +
+      "job-level concurrency or reusable-workflow calls changed, or the PR-family set did. " +
+      "A paths, types, branches, env, step, test-target or comment edit cannot move it; if that is " +
+      "all your branch changed, rebase onto current main before touching this constant. Never pin " +
+      "an actual printed by a CI run: re-derive locally, on the rebased branch, with " +
+      "node --test .github/scripts/strict-grep/issue-2851-pr-concurrency-policy.implementor.test.mjs " +
+      "and name in your note which policy input changed (#3095, #3015)",
   );
   return authority;
 }
@@ -1293,7 +1374,10 @@ test("the real tree has 124 canonical PR-family policies and the sole load excep
 // digests, and preserve the seven exclusions with durable full-byte hashes.
 test("the real tree independently classifies 124 PR-family and seven non-PR workflows", () => {
   const sources = readWorkflowSources();
-  const authority = assertCurrentTreeAuthority(sources);
+  // [TEST-MOD-APPROVED #3095] The same pin assertion, over a derivation the
+  // controls and the inverted rows below reuse, so it costs no extra spawn.
+  const liveDigests = canonicalDigests(sources);
+  const authority = assertAuthority(liveDigests.authority);
   const audit = auditWorkflowSources(sources);
   const sitesRecoveryName = liveWorkflow("sites", "backup", "restore");
   assert.deepEqual(
@@ -1345,14 +1429,125 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   const semanticDrift = { ...sources };
   const semanticName = authority.names[0];
   semanticDrift[semanticName] = `${semanticDrift[semanticName]}\nx-amendment-13-probe: true\n`;
-  const semanticAuthority = currentTreeAuthority(semanticDrift);
+  // [TEST-MOD-APPROVED #3095] IA-3 and IA-4, inverted rather than deleted.
+  // Before #3095 this unrelated top-level key had to MOVE the pinned digest,
+  // because that digest hashed the whole document. The pin now hashes only the
+  // policy projection, so the probe must still move the run-time document
+  // digest (it is a real semantic change) and must leave the pin where it is.
+  // This is the widening tripwire: hash any non-policy content again and it
+  // goes red here.
+  const semanticDigests = canonicalDigests(semanticDrift);
+  const semanticAuthority = semanticDigests.authority;
   assert.equal(semanticAuthority.identitySha256, authority.identitySha256);
-  assert.notEqual(semanticAuthority.withoutConcurrencySha256, authority.withoutConcurrencySha256);
-  assert.throws(() => assertCurrentTreeAuthority(semanticDrift), /non-concurrency semantic digest drifted/);
+  assert.notEqual(semanticDigests.documentSha256, liveDigests.documentSha256);
+  assert.deepEqual(semanticAuthority, authority);
+  assert.deepEqual(assertAuthority(semanticAuthority), authority);
+
+  // [TEST-MOD-APPROVED #3095] What the pin exists for. Each mutation below
+  // changes an input the #2851 audit cannot see: a trigger event key, a
+  // job-level concurrency group, or a reusable-workflow call whose callee can
+  // declare one. None changes the PR-family set or its identity, and every one
+  // passes auditWorkflowSources, so this pin is their only guard. Targets are
+  // chosen by shape, never by name, so no single lane's edit can break them.
+  const occurrences = (source, pattern) => (source.match(new RegExp(pattern.source, "gm")) || []).length;
+  const exactlyOnce = (source, pattern, label) =>
+    assert.equal(occurrences(source, pattern), 1, `${label}: expected exactly one mutation target`);
+  const probeName = authority.names.find((name) =>
+    occurrences(sources[name], /^on:\n/) === 1 && occurrences(sources[name], /^jobs:\n/) === 1
+      && occurrences(sources[name], /^  pull_request:\n/) === 1);
+  const scheduledName = authority.names.find((name) =>
+    liveDigests.canonical[name].events.includes("schedule") && occurrences(sources[name], /^  schedule:\n/) === 1);
+  assert.ok(probeName, "policy controls need a PR-family workflow with one on, jobs and pull_request block");
+  assert.ok(scheduledName, "policy controls need a PR-family workflow with one schedule block");
+  const probeJob = (extra) => ["jobs:", "  issue-3095-probe:", ...extra, ""].join("\n");
+  const runnerJob = ["    runs-on: ubuntu-latest", "    steps:", "      - run: true"];
+  const concurrencyJob = ["    runs-on: ubuntu-latest", "    concurrency:", "      group: shared",
+    "      cancel-in-progress: true", "    steps:", "      - run: true"];
+  const reusableCall = `./.github/workflows/${liveWorkflow("reusable", "probe")}`;
+  const eventsOf = (digests, name) => digests.canonical[name].events;
+  const probeJobOf = (digests, name) => (digests.canonical[name].withoutConcurrency.jobs || {})["issue-3095-probe"];
+  const policySensitive = [
+    ["schedule event removed", scheduledName, (source) => {
+      exactlyOnce(source, /^  schedule:\n/, "schedule event");
+      return source.replace(/^  schedule:\n(?:(?: {4,}.*)?\n)*/m, "");
+    }, (digests, name) => assert.deepEqual(eventsOf(digests, name),
+      eventsOf(liveDigests, name).filter((event) => event !== "schedule"))],
+    ["workflow_run event added", probeName, (source) => {
+      exactlyOnce(source, /^on:\n/, "on block");
+      return source.replace(/^on:\n/m, "on:\n  workflow_run:\n    workflows: [Checks]\n");
+    }, (digests, name) => assert.deepEqual(eventsOf(digests, name),
+      [...eventsOf(liveDigests, name), "workflow_run"].sort())],
+    ["pull_request retargeted to pull_request_target", probeName, (source) => {
+      exactlyOnce(source, /^  pull_request:\n/, "pull_request event");
+      return source.replace(/^  pull_request:\n/m, "  pull_request_target:\n");
+    }, (digests, name) => assert.deepEqual(eventsOf(digests, name),
+      eventsOf(liveDigests, name).map((event) => (event === "pull_request" ? "pull_request_target" : event)).sort())],
+    ["job-level concurrency added", probeName, (source) => {
+      exactlyOnce(source, /^jobs:\n/, "jobs block");
+      return source.replace(/^jobs:\n/m, probeJob(concurrencyJob));
+    }, (digests, name) => assert.deepEqual(probeJobOf(digests, name)?.concurrency,
+      { group: "shared", "cancel-in-progress": true })],
+    ["reusable-workflow call added", probeName, (source) => {
+      exactlyOnce(source, /^jobs:\n/, "jobs block");
+      return source.replace(/^jobs:\n/m, probeJob([`    uses: ${reusableCall}`]));
+    }, (digests, name) => assert.equal(probeJobOf(digests, name)?.uses, reusableCall)],
+  ];
+  for (const [label, name, mutate, applied] of policySensitive) {
+    const mutated = { ...sources, [name]: mutate(sources[name]) };
+    assert.notEqual(mutated[name], sources[name], `${label} (${name}): mutation must change the workflow`);
+    const digests = canonicalDigests(mutated);
+    applied(digests, name);
+    assert.deepEqual(digests.authority.names, authority.names, `${label} (${name}): must not change PR-family membership`);
+    assert.equal(digests.authority.identitySha256, authority.identitySha256, `${label} (${name}): must not move the identity digest`);
+    assert.notEqual(
+      digests.authority.withoutConcurrencySha256,
+      authority.withoutConcurrencySha256,
+      `${label} (${name}): must move the policy projection`,
+    );
+    assert.throws(() => assertAuthority(digests.authority), /policy projection digest drifted/, `${label} (${name})`);
+  }
+
+  // [TEST-MOD-APPROVED #3095] The deliberate non-sensitivities, pinned so a
+  // silent widening of the projection is caught. Each partners a sensitive
+  // mutation above: a job WITHOUT concurrency, and pull_request activity types
+  // (the recorded #3095 residual: types changes neither PR-family membership
+  // nor the audited obligation).
+  const policyInsensitive = [
+    ["job without concurrency added", probeName, (source) => {
+      exactlyOnce(source, /^jobs:\n/, "jobs block");
+      return source.replace(/^jobs:\n/m, probeJob(runnerJob));
+    }, (digests, name) => assert.deepEqual(probeJobOf(digests, name),
+      { "runs-on": "ubuntu-latest", steps: [{ run: true }] })],
+    ["pull_request activity types added", probeName, (source) => {
+      exactlyOnce(source, /^  pull_request:\n/, "pull_request event");
+      return source.replace(/^  pull_request:\n/m, "  pull_request:\n    types: [opened, synchronize, reopened, closed]\n");
+    }, (digests, name) => {
+      const on = digests.canonical[name].withoutConcurrency.on ?? digests.canonical[name].withoutConcurrency.true;
+      assert.deepEqual(on.pull_request.types, ["opened", "synchronize", "reopened", "closed"]);
+    }],
+  ];
+  for (const [label, name, mutate, applied] of policyInsensitive) {
+    const mutated = { ...sources, [name]: mutate(sources[name]) };
+    const digests = canonicalDigests(mutated);
+    applied(digests, name);
+    assert.notEqual(digests.documentSha256, liveDigests.documentSha256, `${label} (${name}): mutation must change the parsed document`);
+    assert.deepEqual(digests.authority, authority, `${label} (${name}): must not move the policy projection`);
+  }
 
   // [TEST-MOD-APPROVED #2241] Each workflow delta that legitimately moved the
   // digest is independently revert-sensitive; the unrelated semantic mutation
   // above remains a separate widening tripwire.
+  //
+  // [TEST-MOD-APPROVED #3095] IA-5: this loop is INVERTED for every row, including
+  // the rows whose comments predate #3095 and still say a reversion must move or
+  // invalidate the digest. Those comments were true of the whole-document digest
+  // and are kept as history. No row is removed and no row's bytes change. Each row
+  // still proves its registered line is present exactly once in its live workflow
+  // (so a CI registration cannot vanish silently) and that removing it is a real
+  // semantic change (the run-time document digest moves). It now also proves that
+  // removing it does NOT move the pinned policy projection. A row whose reversion
+  // does move the projection is policy-relevant: it belongs with the must-move
+  // controls above, not here.
   for (const [name, line] of [
     [liveWorkflow("issue", "1930", "checkout", "current", "truth"), '      - "supabase/functions/_shared/secretBundle.ts"\n'],
     [liveWorkflow("supabase", "secret", "budget"), '      - "supabase/function-env.contract.json"\n'],
@@ -1515,7 +1710,9 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
-    assert.throws(() => assertCurrentTreeAuthority(reverted), /non-concurrency semantic digest drifted/);
+    const revertedDigests = canonicalDigests(reverted);
+    assert.notEqual(revertedDigests.documentSha256, liveDigests.documentSha256, `${name}: reverting this row must change the parsed document`);
+    assert.deepEqual(revertedDigests.authority, authority, `${name}: a non-policy reversion must not move the policy projection`);
   }
 
   // [TEST-MOD-APPROVED #3176] The five lines live inside YAML's `run: |` block,
@@ -1540,13 +1737,20 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     indexNowReplayBlock,
     "#3176 offering-visibility replay block",
   );
-  const before3176Authority = currentTreeAuthority(before3176);
+  // [TEST-MOD-APPROVED #3095] IA-6 (x3: this receipt and the two below). Each
+  // recorded the pre-#3095 WHOLE-DOCUMENT digest of a partly restored tree.
+  // That computation is now the run-time documentSha256, so the receipt reads
+  // it there and its literal is byte-identical. The pinned policy projection
+  // must not move for any of these non-policy restorations.
+  const before3176Digests = canonicalDigests(before3176);
+  const before3176Authority = before3176Digests.authority;
   assert.equal(before3176Authority.names.length, 124);
   assert.equal(before3176Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
-    before3176Authority.withoutConcurrencySha256,
+    before3176Digests.documentSha256,
     "a24d680bd5fc50d7dae67f67c0f6b95536be0b28e3acfd21c970cf09a901d491",
   );
+  assert.deepEqual(before3176Authority, authority);
 
   // [TEST-MOD-APPROVED #3176] Current main and this branch both change the
   // non-concurrency document. Reverting #3288's two whole workflow blocks must
@@ -1578,25 +1782,29 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   before3288[publishName] = removeExactLine(
     before3288[publishName], galleryReplayBlock, "#3288 online-publish replay block",
   );
-  const before3288Authority = currentTreeAuthority(before3288);
+  const before3288Digests = canonicalDigests(before3288);
+  const before3288Authority = before3288Digests.authority;
   assert.equal(before3288Authority.names.length, 124);
   assert.equal(before3288Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
-    before3288Authority.withoutConcurrencySha256,
+    before3288Digests.documentSha256,
     "b1b5f75759ecb8ae6dd12d005b2583ac8414eb1c86c110b6c5585684f013f8a3",
   );
+  assert.deepEqual(before3288Authority, authority);
 
   const beforeBoth = { ...before3288 };
   beforeBoth[offeringVisibilityName] = removeExactLine(
     beforeBoth[offeringVisibilityName], indexNowReplayBlock, "combined pre-#3176 replay block",
   );
-  const beforeBothAuthority = currentTreeAuthority(beforeBoth);
+  const beforeBothDigests = canonicalDigests(beforeBoth);
+  const beforeBothAuthority = beforeBothDigests.authority;
   assert.equal(beforeBothAuthority.names.length, 124);
   assert.equal(beforeBothAuthority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
-    beforeBothAuthority.withoutConcurrencySha256,
+    beforeBothDigests.documentSha256,
     "aadaaea7efdbd00254fa460f07f64be589cd0773d0e7f8aab42d25788cf5af6c",
   );
+  assert.deepEqual(beforeBothAuthority, authority);
 
   const sitesWithoutPullRequest = { ...sources };
   sitesWithoutPullRequest[sitesRecoveryName] = removeExactLine(
