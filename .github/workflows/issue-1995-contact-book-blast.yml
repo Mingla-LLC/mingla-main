@@ -5,6 +5,10 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/migrations/20270401001995_issue_1995_contact_book_blast.sql"
+      # #1778 — Followers / Extended audiences reuse this exact sealed rail.
+      - "supabase/migrations/20270627001778_issue_1778_ring_audiences.sql"
+      - "supabase/migrations/__tests__/issue_1778_ring_audiences.happy.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1778_ring_audiences.tester_adversarial.pg17.test.sql"
       - "supabase/functions/marketing-send/**"
       - "supabase/functions/_shared/marketingAudience.ts"
       - "supabase/functions/_shared/marketingBookQuote.ts"
@@ -74,6 +78,14 @@ jobs:
       - run: node .github/scripts/strict-grep/issue-2714-campaign-open-truth.mjs
       - run: deno test supabase/functions/marketing-send/issue_1995_contact_book_blast.happy.test.ts
       - run: deno test supabase/functions/marketing-send/issue_1995_contact_book_blast.adversarial.test.ts
+      - name: "#1778 Circle audience seal and privacy boundaries"
+        run: |
+          deno fmt --check \
+            supabase/functions/marketing-send/issue_1778_ring_audiences.happy.test.ts \
+            supabase/functions/marketing-send/issue_1778_ring_audiences.tester_adversarial.test.ts
+          deno test --allow-env --allow-read \
+            supabase/functions/marketing-send/issue_1778_ring_audiences.happy.test.ts \
+            supabase/functions/marketing-send/issue_1778_ring_audiences.tester_adversarial.test.ts
       - run: deno check supabase/functions/marketing-send/index.ts
       # #2520 — paragraph reflow. Without it every campaign shipped as one
       # unbroken wall of text; proven against the 189 We Go Again emails.
@@ -113,6 +125,8 @@ jobs:
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
           done
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1995_contact_book_blast.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1778_ring_audiences.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1778_ring_audiences.tester_adversarial.pg17.test.sql
       # #2509 — the chain above already APPLIES the durability migration. What
       # it does not prove is that re-applying is safe (every migration is
       # replayed on a fresh baseline) or that the indexes actually REFUSE the
@@ -176,6 +190,14 @@ jobs:
         working-directory: mingla-business
       - run: npx jest src/components/marketing/__tests__/issue_1995_contact_book_blast.happy.test.tsx --runInBand
         working-directory: mingla-business
+      - name: "#1778 Business audience picker, review, routes, and action mapping"
+        run: >-
+          npx jest --runTestsByPath
+          src/components/marketing/__tests__/issue_1778_ring_audiences.happy.test.tsx
+          src/services/marketing/__tests__/issue_1778_ring_audiences.happy.test.ts
+          src/components/marketing/__tests__/issue_2395_manual_contact_groups_feature_off.tester.test.ts
+          --runInBand --no-cache
+        working-directory: mingla-business
       - name: "#2714 complete overview regression suite"
         run: >-
           npx jest --runTestsByPath
@@ -196,7 +218,7 @@ jobs:
             cat /tmp/issue-1995-tsc.log
             exit "$tsc_status"
           fi
-          if grep -E 'compose\.tsx|AudiencePickerSheet\.tsx|ComposerReviewSheet\.tsx|marketingCampaignService\.ts|useBookBlastPreview\.ts|issue_1995_contact_book_blast\.happy\.test\.tsx|types/marketing\.ts|marketingOverviewService\.ts|marketingReportService\.ts|OverviewMetricCard\.tsx|marketing/index\.tsx|marketing/campaigns/\[id\]\.tsx|issue_2714_campaign_open_truth\.happy\.test\.ts' /tmp/issue-1995-tsc.log; then
+          if grep -E 'compose\.tsx|AudiencePickerSheet\.tsx|ComposerReviewSheet\.tsx|marketingCampaignService\.ts|useBookBlastPreview\.ts|useResolveAudience\.ts|parseAudienceParam\.ts|issue_1995_contact_book_blast\.happy\.test\.tsx|issue_1778_ring_audiences\.happy\.test\.(tsx|ts)|types/marketing\.ts|marketingOverviewService\.ts|marketingReportService\.ts|OverviewMetricCard\.tsx|marketing/index\.tsx|marketing/campaigns/\[id\]\.tsx|issue_2714_campaign_open_truth\.happy\.test\.ts' /tmp/issue-1995-tsc.log; then
             cat /tmp/issue-1995-tsc.log
             exit 1
           fi

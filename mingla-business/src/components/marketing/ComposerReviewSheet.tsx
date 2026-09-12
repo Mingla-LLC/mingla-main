@@ -6,7 +6,7 @@
  */
 
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { Sheet } from "../ui/Sheet";
 import {
@@ -58,6 +58,7 @@ export interface ComposerReviewSheetProps {
   suppressedCount?: number;
   unavailableCount?: number;
   quoteExpiresAt?: string;
+  audienceReason?: string;
   staleWarning?: boolean;
   disabledReason?: string | null;
   onRetryPreview?: () => void;
@@ -88,6 +89,7 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
   suppressedCount,
   unavailableCount,
   quoteExpiresAt,
+  audienceReason,
   staleWarning,
   disabledReason,
   onRetryPreview,
@@ -109,35 +111,59 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
       snapPoint="half"
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.title}>Ready to send?</Text>
+        <Text style={styles.title}>Ready to send</Text>
         <Text style={styles.subtitle}>
-          Review the details below. Mingla auto-skips suppressed contacts.
+          {selectedCount !== undefined
+            ? "The price and reach below are locked to this preview. Nothing sends until you tap Send now."
+            : "Review the details below. Mingla auto-skips suppressed contacts."}
         </Text>
         <View style={styles.section}>
           <Text style={styles.label}>AUDIENCE</Text>
           <Text style={styles.value}>{audienceName ?? "—"}</Text>
-          {recipientCount !== null ? (
+          {audienceReason !== undefined ? (
+            <Text style={styles.metaText}>{audienceReason}</Text>
+          ) : null}
+          {recipientCount !== null && selectedCount === undefined ? (
             <Text style={styles.metaText}>
               {recipientCount} reachable{" "}
               {recipientCount === 1 ? "person" : "people"}
             </Text>
           ) : null}
-          {estimatedCostLabel !== undefined ? (
+          {estimatedCostLabel !== undefined && selectedCount === undefined ? (
             <Text style={styles.metaText}>{estimatedCostLabel}</Text>
           ) : null}
           {selectedCount !== undefined ? (
-            <Text style={styles.metaText}>
-              {selectedCount} selected · {suppressedCount ?? 0} suppressed ·{" "}
-              {unavailableCount ?? 0} unavailable
-            </Text>
+            <View style={styles.metricGrid}>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>SELECTED POOL</Text>
+                <Text style={styles.metricValue}>{selectedCount}</Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>REACHABLE NOW</Text>
+                <Text style={styles.metricValue}>{recipientCount ?? "—"}</Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>SKIPPED</Text>
+                <Text style={styles.metricValue}>
+                  {(suppressedCount ?? 0) + (unavailableCount ?? 0)}
+                </Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>ESTIMATED COST</Text>
+                <Text style={styles.metricCost} numberOfLines={2}>
+                  {estimatedCostLabel ?? "Not metered"}
+                </Text>
+              </View>
+            </View>
           ) : null}
           {quoteExpiresAt !== undefined ? (
             <Text style={styles.metaText}>
-              Preview valid until{" "}
-              {new Date(quoteExpiresAt).toLocaleTimeString([], {
-                hour: "numeric",
-                minute: "2-digit",
-              })}
+              Preview refreshed just now · Valid for 5 minutes
+            </Text>
+          ) : null}
+          {selectedCount !== undefined ? (
+            <Text style={styles.billingNote}>
+              Suppressed and unavailable people are skipped automatically. You are charged only for reachable recipients.
             </Text>
           ) : null}
           {staleWarning === true ? (
@@ -226,13 +252,13 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
             onPress={onBack}
             disabled={submitting}
             accessibilityRole="button"
-            accessibilityLabel="Back to edit"
+            accessibilityLabel="Back"
             style={({ pressed }) => [
               styles.ghostBtn,
               pressed ? styles.ghostBtnPressed : null,
             ]}
           >
-            <Text style={styles.ghostBtnLabel}>Back to edit</Text>
+            <Text style={styles.ghostBtnLabel}>Back</Text>
           </Pressable>
           <Pressable
             onPress={onConfirm}
@@ -248,8 +274,8 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
             }}
             style={({ pressed }) => [
               styles.primaryBtn,
-              pressed && !submitting ? styles.primaryBtnPressed : null,
-              submitting ? styles.primaryBtnDisabled : null,
+              pressed && !submitting && disabledReason == null ? styles.primaryBtnPressed : null,
+              submitting || disabledReason != null ? styles.primaryBtnDisabled : null,
             ]}
           >
             <Text style={styles.primaryBtnLabel}>
@@ -287,8 +313,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: Platform.OS === "android" ? "#1F2125" : glass.border.profileBase,
+    backgroundColor: Platform.OS === "android" ? "#16181B" : glass.tint.profileBase,
   },
   label: {
     ...typography.labelCap,
@@ -303,6 +329,32 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.secondary,
   },
+  metricGrid: {
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  metricCard: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileBase,
+    backgroundColor: Platform.OS === "android" ? "#16181B" : "rgba(255,255,255,0.05)",
+  },
+  metricLabel: { ...typography.labelCap, color: textTokens.tertiary },
+  metricValue: { ...typography.h3, color: textTokens.primary },
+  metricCost: {
+    ...typography.bodySm,
+    color: textTokens.primary,
+    fontWeight: "700",
+    flexShrink: 1,
+    textAlign: "right",
+  },
+  billingNote: { ...typography.bodySm, color: textTokens.secondary, paddingTop: spacing.sm },
   errorText: { ...typography.bodySm, color: "#FFB4AB", fontWeight: "600" },
   // ORCH-1270 F-1 — neutral SMS-timing INFO note (not a warning). Reuses the
   // plain section container shape + neutral border (no accent, no new tokens)

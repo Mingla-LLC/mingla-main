@@ -20,6 +20,7 @@ import type {
   CampaignStatus,
   MarketingCampaignRow,
   MarketingBookQuote,
+  SealedMarketingAudienceKind,
 } from "../../types/marketing";
 
 const UUID_RE =
@@ -296,12 +297,52 @@ export async function getOrCreateMarketingBookAudience(input: {
   if (error) throw error;
   return data as { audienceId: string; activeBookTotal: number };
 }
+export async function getOrCreateMarketingCircleAudience(input: {
+  actor_id: string;
+  brand_id: string;
+  audience_kind: "brand_followers" | "brand_circle_extended";
+}): Promise<{ audienceId: string }> {
+  assertUuid(input.actor_id, "getOrCreateMarketingCircleAudience.actor_id");
+  assertUuid(input.brand_id, "getOrCreateMarketingCircleAudience.brand_id");
+  const { data, error } = await supabase.rpc(
+    "biz_get_or_create_marketing_circle_audience_v1",
+    {
+      p_actor_id: input.actor_id,
+      p_brand_id: input.brand_id,
+      p_audience_kind: input.audience_kind,
+    },
+  );
+  if (error) throw error;
+  return data as { audienceId: string };
+}
+export async function getMarketingAudienceKind(
+  audienceId: string,
+): Promise<SealedMarketingAudienceKind | null> {
+  assertUuid(audienceId, "getMarketingAudienceKind.audience_id");
+  const { data, error } = await supabase
+    .from("marketing_audiences")
+    .select("query_definition")
+    .eq("id", audienceId)
+    .maybeSingle();
+  if (error) throw error;
+  const kind = (data as { query_definition?: { kind?: unknown } } | null)
+    ?.query_definition?.kind;
+  return kind === "all_brand_people" || kind === "manual_group" ||
+      kind === "brand_followers" || kind === "brand_circle_extended"
+    ? kind
+    : null;
+}
 export async function previewMarketingBook(
-  input: string | { campaignId: string; audienceKind: "all_brand_people" | "manual_group" },
+  input: string | { campaignId: string; audienceKind: SealedMarketingAudienceKind },
 ): Promise<MarketingBookQuote> {
-  // The object branch's typed audienceKind is Manual (`audience_kind === "manual_group"`).
+  const audienceKind = typeof input === "string" ? "all_brand_people" : input.audienceKind;
+  const action = audienceKind === "manual_group"
+    ? "preview_people_v2"
+    : audienceKind === "brand_followers" || audienceKind === "brand_circle_extended"
+      ? "preview_circle_v1"
+      : "preview_book_v1";
   const { data, error } = await supabase.functions.invoke("marketing-send", {
-    body: { action: typeof input !== "string" && input.audienceKind[0] === "m" ? "preview_people_v2" : "preview_book_v1", campaign_id: typeof input === "string" ? input : input.campaignId },
+    body: { action, campaign_id: typeof input === "string" ? input : input.campaignId },
   });
   if (error) throw await parseMarketingBookError(error);
   return data as MarketingBookQuote;
@@ -311,7 +352,7 @@ export async function confirmMarketingBook(input: {
   client_request_id: string;
   quote: MarketingBookQuote;
   scheduled_for: string | null;
-  audience_kind?: "all_brand_people" | "manual_group";
+  audience_kind?: SealedMarketingAudienceKind;
 }): Promise<{
   mode: "sent" | "deferred" | "scheduled" | "in_progress";
   delivered: number;
@@ -320,7 +361,11 @@ export async function confirmMarketingBook(input: {
 }> {
   const { data, error } = await supabase.functions.invoke("marketing-send", {
     body: {
-      action: input.audience_kind?.[0] === "m" ? "confirm_people_v2" : "confirm_book_v1",
+      action: input.audience_kind === "manual_group"
+        ? "confirm_people_v2"
+        : input.audience_kind === "brand_followers" || input.audience_kind === "brand_circle_extended"
+          ? "confirm_circle_v1"
+          : "confirm_book_v1",
       campaign_id: input.campaign_id,
       client_request_id: input.client_request_id,
       quoteHash: input.quote.quoteHash,
