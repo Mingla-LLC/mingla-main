@@ -812,6 +812,40 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2986_public_search_documents.tester.adversarial.pg17.test.sql
 
+          # Issue #3193 — the public resolver must read the LIVE brand row. A host
+          # who deletes and recreates a brand leaves several rows under one slug,
+          # `idx_brands_slug_active` only constrains the live ones, and the brand
+          # branch of `public_search_source_facts` selected with `LIMIT 1` and no
+          # ordering at all — so production served a tombstone and a live brand's
+          # page 404'd. Registered HERE rather than in a new `issue-*.yml`, which
+          # the CI registry gate refuses, and behavioural rather than structural:
+          # no static gate can see a missing `ORDER BY`, and no #2986 fixture ever
+          # created two rows under one slug. Both suites sweep planner
+          # configurations, because an unordered `LIMIT 1` answers differently per
+          # plan and a single call would prove nothing either way.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3193_public_search_live_brand_row.implementor.happy.pg17.test.sql
+          # Issue #3193 — independent adversarial axis: every enumerated path into
+          # `draft` still reaches it (all-tombstone slug, closed owning account,
+          # unverified physical brand, unknown slug, path/kind mismatch), the
+          # live-row key outranks recency, and the #2986 ACL posture survives the
+          # function being re-emitted.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3193_public_search_live_brand_row.tester.adversarial.pg17.test.sql
+          # Issue #3193 — the TESTER's own suite, a different reader: the search
+          # ledger. Promotion to search_ready, the redirect-target check, the
+          # resolver's integrity branch and the sitemap all re-read the same
+          # source facts, and a tombstone read there makes a verified live page
+          # unpromotable and silently drops it from the sitemap. Also pins that a
+          # dead predecessor's approval never transfers to the host who reuses
+          # its web name, and that a private or unlisted live event never becomes
+          # enumerable because its path once belonged to a public one. Kept LAST
+          # in this list: its rolled-back fixtures leave dead brand tuples that
+          # invite an autovacuum, and the implementor suite above asserts a
+          # plan-dependent pre-fix outcome that flips once `brands` is vacuumed.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3193_public_search_live_row_ledger_consumers.tester.adversarial.pg17.test.sql
+
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
       # "hide the address until someone buys" had that address served to an
