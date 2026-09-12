@@ -321,7 +321,9 @@ async function verifyRuntime() {
       assert.equal(response.status, 200, `${pathname} must render`)
       const text = visibleText(response.body)
       for (const phrase of REMOVED_COPY) assert(!text.includes(phrase), `${pathname} renders removed copy: ${phrase}`)
-      assert.match(response.body, /name="robots" content="noindex, follow"|content="noindex, follow" name="robots"/i, `${pathname} must remain noindex`)
+      assert.match(response.body, /name="robots" content="index, follow"|content="index, follow" name="robots"/i, `${pathname} must carry the approved index directive`)
+      assert.match(response.body, new RegExp(`<link[^>]+rel="canonical"[^>]+href="https://usemingla\\.com${pathname}"|<link[^>]+href="https://usemingla\\.com${pathname}"[^>]+rel="canonical"`, 'i'), `${pathname} must self-canonicalise after promotion`)
+      assert.match(response.body, /application\/ld\+json/i, `${pathname} must expose structured data after promotion`)
     }
     const directory = await request(port, '/cities')
     assert.equal((directory.body.match(/<h1\b/gi) ?? []).length, 1, '/cities needs one H1')

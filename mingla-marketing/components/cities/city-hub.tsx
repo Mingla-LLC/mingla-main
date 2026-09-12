@@ -6,7 +6,6 @@ import {
   allCityHubsSearchReady,
   cityHubEffectiveLifecycle,
   cityHubPath,
-  isCityHubSearchReady,
   type CityHubRecord,
   type CityUtilityRecord,
 } from '@/content/cities/registry'
@@ -198,7 +197,8 @@ function CityFaq({ record }: { readonly record: CityHubRecord }) {
 }
 
 function CityEvidencePanel({ record }: { readonly record: CityHubRecord }) {
-  if (!historicalCityBuildEnabled()) return null
+  const historical = historicalCityBuildEnabled()
+  if (!historical) return null
   return (
     <CutoutSection className="city-section city-evidence-section" aria-label={`How this ${record.city} guide is checked`}>
       <aside className="city-evidence-panel">
@@ -211,13 +211,7 @@ function CityEvidencePanel({ record }: { readonly record: CityHubRecord }) {
           <div><dt>Sources checked</dt><dd><time dateTime={record.sourcesCheckedAt}>{formatDate(record.sourcesCheckedAt, record.locale)}</time></dd></div>
           <div>
             <dt>Local review</dt>
-            <dd>
-              {record.localReview.status === 'pending' ? (
-                'Pending — this page is not yet in search'
-              ) : (
-                <>Reviewed by {record.localReview.name}, {record.localReview.relationship} on <time dateTime={record.localReview.reviewedAt}>{formatDate(record.localReview.reviewedAt, record.locale)}</time></>
-              )}
-            </dd>
+            <dd>Pending — this page is not yet in search</dd>
           </div>
           <div><dt>Next evergreen review</dt><dd><time dateTime={record.nextReviewAt}>{formatDate(record.nextReviewAt, record.locale)}</time></dd></div>
         </dl>
@@ -248,7 +242,7 @@ function CityNavigator({ record }: { readonly record: CityHubRecord }) {
           {CITY_HUBS.map((city) => {
             const current = city.slug === record.slug
             if (current) return <li key={city.slug}><span aria-current="page">{city.city}</span></li>
-            if (!isCityHubSearchReady(city)) return <li key={city.slug}><span>{city.city}</span></li>
+            if (cityHubEffectiveLifecycle(city) !== 'search_ready') return <li key={city.slug}><span>{city.city}</span></li>
             return (
               <li key={city.slug}>
                 <CityTrackedLink citySlug={record.slug} countryCode={record.countryCode} event="city_hub_switch_city" destinationType="city_hub">

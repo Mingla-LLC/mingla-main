@@ -18,9 +18,10 @@ function verify(
   const sitemap = read('mingla-marketing/app/sitemap.ts')
 
   for (const slug of ['about', 'explorer', 'cities']) {
-    assert.match(corePages, new RegExp(`slug: '${slug}', pathname: '/${slug}', lifecycle: 'public_noindex'`), `${slug} fixture must still exercise the pre-index navigation state`)
-    assert.match(menu, new RegExp(`href: '/${slug}', label: '(?:${slug === 'about' ? 'About' : slug === 'cities' ? 'Cities' : 'Explorer'})'`), `${slug} must remain reachable before sitemap promotion`)
+    assert.match(corePages, new RegExp(`slug: '${slug}', pathname: '/${slug}', lifecycle: CORE_PAGE_RELEASE_LIFECYCLE`), `${slug} must share the founder-approved release lifecycle`)
+    assert.match(menu, new RegExp(`href: '/${slug}', label: '(?:${slug === 'about' ? 'About' : slug === 'cities' ? 'Cities' : 'Explorer'})'`), `${slug} must remain reachable independently from sitemap state`)
   }
+  assert.match(corePages, /CORE_PAGE_RELEASE_LIFECYCLE = allCityHubsSearchReady\(\) \? 'search_ready' : 'public_noindex'/, 'core promotion must fail closed with the ten-city cohort')
   assert.doesNotMatch(menu, /coreReady\s*\?|allCityHubsSearchReady\(\).*Cities|allCoreTrustPagesSearchReady/, 'navigation visibility must not be coupled back to publication readiness')
   assert.match(menu, /const menuButtonClass = 'cut-btn[^']*min-h-14[^']*w-full[^']*justify-start/, 'the shared menu must give every destination one full-width moulded button owner')
   assert.match(menu, /supportingDestinations\.map\([\s\S]*menuButtonClass[\s\S]*cut-btn-brand[\s\S]*cut-btn-light/, 'Home, Cities, About and Free tools must receive the same selected/unselected treatment as the audience links')
@@ -56,4 +57,4 @@ if (SELF_TEST) {
   assert.throws(() => verify(read('mingla-marketing/components/cutout/audience-menu-content.tsx'), read('mingla-marketing/components/cutout/footer.tsx'), footerGap), /missing \/cities/, 'removing a footer route must prove RED')
   process.stdout.write('RED proof: coupled, flat, and footer-incomplete navigation was rejected\n')
 }
-process.stdout.write('PASS #3176 independent navigation test: complete styled menu and footer links stay visible while indexing remains fail-closed\n')
+process.stdout.write('PASS #3176 independent navigation test: complete styled menu and footer links stay visible while founder-approved indexing remains fail-closed\n')

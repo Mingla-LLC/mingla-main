@@ -1,4 +1,5 @@
 import type { RouteLifecycle } from '@/lib/search/route-registry'
+import { allCityHubsSearchReady } from './cities/registry'
 
 export type CorePageSlug = 'about' | 'explorer' | 'cities'
 
@@ -16,11 +17,13 @@ export interface CorePageRecord {
 }
 
 // These three records are the only owner of core-page metadata and lifecycle.
-// Publication is deliberately fail-closed until the release evidence named on
-// #3176 exists; deploy time must never impersonate an editorial review date.
+// They join the approved city cohort only while the shared ten-city readiness
+// predicate passes, so every discovery surface fails closed together.
+const CORE_PAGE_RELEASE_LIFECYCLE = allCityHubsSearchReady() ? 'search_ready' : 'public_noindex'
+
 export const CORE_PAGES: Readonly<Record<CorePageSlug, CorePageRecord>> = {
   about: {
-    slug: 'about', pathname: '/about', lifecycle: 'public_noindex',
+    slug: 'about', pathname: '/about', lifecycle: CORE_PAGE_RELEASE_LIFECYCLE,
     title: 'About Mingla: One Platform for Plans and Hosts | Mingla',
     description: 'Learn what Mingla is, how Explorer and Mingla Host work together, where Mingla is launching, and how each product helps people show up.',
     eyebrow: 'About Mingla',
@@ -30,7 +33,7 @@ export const CORE_PAGES: Readonly<Record<CorePageSlug, CorePageRecord>> = {
     reviewedAt: '2026-09-10',
   },
   explorer: {
-    slug: 'explorer', pathname: '/explorer', lifecycle: 'public_noindex',
+    slug: 'explorer', pathname: '/explorer', lifecycle: CORE_PAGE_RELEASE_LIFECYCLE,
     title: 'Mingla Explorer: Date Plans, Events & City Gems | Mingla',
     description: 'Use Mingla to discover date ideas, events, restaurants, activities and city gems, compare what fits, and turn an idea into a shared plan.',
     eyebrow: 'Mingla Explorer',
@@ -40,7 +43,7 @@ export const CORE_PAGES: Readonly<Record<CorePageSlug, CorePageRecord>> = {
     reviewedAt: '2026-09-10',
   },
   cities: {
-    slug: 'cities', pathname: '/cities', lifecycle: 'public_noindex',
+    slug: 'cities', pathname: '/cities', lifecycle: CORE_PAGE_RELEASE_LIFECYCLE,
     title: 'Mingla Cities: Local Plans and Host Tools | Mingla',
     description: 'Explore Mingla’s ten launch cities for local plans, events, experiences and matched tools for Hosts and organisers.',
     eyebrow: 'Ten launch cities',
@@ -52,7 +55,8 @@ export const CORE_PAGES: Readonly<Record<CorePageSlug, CorePageRecord>> = {
 }
 
 export function allCoreTrustPagesSearchReady(): boolean {
-  return CORE_PAGES.about.lifecycle === 'search_ready' &&
+  return allCityHubsSearchReady() &&
+    CORE_PAGES.about.lifecycle === 'search_ready' &&
     CORE_PAGES.explorer.lifecycle === 'search_ready' &&
     CORE_PAGES.cities.lifecycle === 'search_ready'
 }

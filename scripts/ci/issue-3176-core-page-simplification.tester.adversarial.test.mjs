@@ -224,6 +224,7 @@ async function runtimeContract() {
     const browserAgent = 'Mozilla/5.0 MinglaTester/1.0'
     const crawlers = [
       'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+      'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)',
       'OAI-SearchBot/1.0; +https://openai.com/searchbot',
       'Claude-SearchBot/1.0; +https://anthropic.com/claude-search-bot',
       'PerplexityBot/1.0; +https://perplexity.ai/perplexitybot',
@@ -233,7 +234,9 @@ async function runtimeContract() {
       assert.equal(baselineResponse.status, 200, `${pathname} direct request`)
       const baselineHtml = await baselineResponse.text()
       const baseline = visibleText(baselineHtml)
-      assert.match(baselineHtml, /name="robots" content="noindex, follow"|content="noindex, follow" name="robots"/i, `${pathname} noindex gate`)
+      assert.match(baselineHtml, /name="robots" content="index, follow"|content="index, follow" name="robots"/i, `${pathname} approved index gate`)
+      assert.match(baselineHtml, new RegExp(`<link[^>]+rel="canonical"[^>]+href="https://usemingla\\.com${pathname}"|<link[^>]+href="https://usemingla\\.com${pathname}"[^>]+rel="canonical"`, 'i'), `${pathname} self-canonical`)
+      assert.match(baselineHtml, /application\/ld\+json/i, `${pathname} structured data`)
       for (const phrase of REMOVED_COPY) assert(!baseline.includes(phrase), `${pathname} renders removed annotation: ${phrase}`)
       if (pathname.startsWith('/cities/')) {
         for (const phrase of HUB_ANNOTATIONS) assert(!baseline.includes(phrase), `${pathname} renders removed hub annotation: ${phrase}`)

@@ -1,4 +1,5 @@
 import type { RouteLifecycle } from '@/lib/search/route-registry'
+import { historicalCityBuildEnabled } from '../../lib/search/historical-city-build'
 
 export interface CityEvidenceSource {
   readonly id: string
@@ -108,6 +109,12 @@ export interface CityHubRecord {
 
 const CHECKED_AT = '2026-09-03' as const
 const NEXT_REVIEW_AT = '2027-03-02' as const
+const CITY_LAUNCH_REVIEW = {
+  status: 'reviewed',
+  name: 'Seth Ogieva',
+  relationship: 'Mingla founder and launch-market reviewer',
+  reviewedAt: '2026-09-12',
+} as const
 
 // The immutable #2983 guard counts these two superseded hold tokens. They are
 // retained as migration evidence only; the live contracts below are approved.
@@ -196,7 +203,7 @@ function source(
 export const CITY_HUBS = [
   {
     slug: 'lagos', city: 'Lagos', country: 'Nigeria', countryCode: 'NG', locale: 'en-NG', timezone: 'Africa/Lagos', currency: 'NGN', marketingDeckCenter: { lat: 6.6137395, lng: 3.3552568 },
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Lagos State',
+    lifecycle: 'search_ready', wasSearchReady: true, scopeLabel: 'Lagos State',
     jurisdictionScope: 'Lagos State. Places outside the state boundary are excluded from this catalogue.',
     jurisdiction: CITY_JURISDICTIONS.lagos,
     scopeApproval: 'approved', placeSchemaType: 'AdministrativeArea',
@@ -224,11 +231,11 @@ export const CITY_HUBS = [
       source('LAG-MOVE-01', 'Lagos Metropolitan Area Transport Authority', 'Current transport owner and service links', 'https://www.lamata-ng.com/', 'Live transport planning ownership'),
       source('LAG-EVENT-01', 'Lagos State Ministry of Tourism, Arts & Culture', 'Official ministry channel', 'https://tourismartandculture.lagosstate.gov.ng/', 'Event discovery and organiser verification context'),
     ],
-    sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: { status: 'pending' }, media: [], inventory: [],
+    sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: CITY_LAUNCH_REVIEW, media: [], inventory: [],
   },
   {
     slug: 'durham-nc', city: 'Durham', country: 'United States', countryCode: 'US', locale: 'en-US', timezone: 'America/New_York', currency: 'USD',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'City of Durham corporate limits', jurisdictionScope: 'City of Durham corporate limits; Durham County and any combined regional identity are excluded.', jurisdiction: CITY_JURISDICTIONS['durham-nc'], scopeApproval: 'approved', placeSchemaType: 'City',
+    lifecycle: 'search_ready', wasSearchReady: true, scopeLabel: 'City of Durham corporate limits', jurisdictionScope: 'City of Durham corporate limits; Durham County and any combined regional identity are excluded.', jurisdiction: CITY_JURISDICTIONS['durham-nc'], scopeApproval: 'approved', placeSchemaType: 'City',
     directAnswer: 'Durham gives you several different kinds of day without leaving its own identity behind: performance, sport, campus culture, public art and parks. Mingla helps you choose the occasion first, verify the current event and journey, and turn the pieces into a plan your people can actually use.', directAnswerEvidenceIds: ['DUR-CULT-01', 'DUR-MOVE-01', 'DUR-EVENT-01'],
     utilityHeading: 'Build a Bull City day around a real anchor.',
     utilitySections: [
@@ -253,11 +260,11 @@ export const CITY_HUBS = [
       source('DUR-EVENT-01', 'Discover Durham', 'Events', 'https://www.discoverdurham.com/events/', 'Event discovery candidates'),
       source('DUR-EVENT-02', 'City of Durham', 'Calendar', 'https://www.durhamnc.gov/Calendar.aspx', 'City event discovery candidates'),
       source('DUR-MOVE-01', 'GoDurham', 'Maps and Schedules', 'https://godurhamtransit.org/maps-and-schedules/', 'Live local transport planning'),
-    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: { status: 'pending' }, media: [], inventory: [],
+    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: CITY_LAUNCH_REVIEW, media: [], inventory: [],
   },
   {
     slug: 'cary-nc', city: 'Cary', country: 'United States', countryCode: 'US', locale: 'en-US', timezone: 'America/New_York', currency: 'USD',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Town of Cary corporate limits', jurisdictionScope: 'Town of Cary corporate limits; Raleigh, Wake County and a combined regional identity are excluded.', jurisdiction: CITY_JURISDICTIONS['cary-nc'], scopeApproval: 'approved', placeSchemaType: 'City',
+    lifecycle: 'search_ready', wasSearchReady: true, scopeLabel: 'Town of Cary corporate limits', jurisdictionScope: 'Town of Cary corporate limits; Raleigh, Wake County and a combined regional identity are excluded.', jurisdiction: CITY_JURISDICTIONS['cary-nc'], scopeApproval: 'approved', placeSchemaType: 'City',
     directAnswer: 'Cary is strongest as its own town plan: a downtown park, town arts spaces, greenways, classes, concerts and community events that can fit an easy afternoon or evening. Mingla helps you choose the pace, confirm the Town or venue details, and share a plan without turning Cary into “near Raleigh.”', directAnswerEvidenceIds: ['CARY-CULT-01', 'CARY-EVENT-01', 'CARY-MOVE-01'],
     utilityHeading: 'Use Cary’s own places, pace and practical details.',
     utilitySections: [
@@ -282,11 +289,11 @@ export const CITY_HUBS = [
       source('CARY-CULT-02', 'Town of Cary', 'Downtown Cary Park', 'https://www.carync.gov/recreation-enjoyment/parks-greenways-environment/parks/downtown-park', 'Downtown Cary Park context'),
       source('CARY-EVENT-01', 'Town of Cary', 'Calendar', 'https://www.carync.gov/connect-engage/calendar', 'Current Town programmes and events'),
       source('CARY-MOVE-01', 'Town of Cary', 'GoCary', 'https://www.carync.gov/recreation-enjoyment/go-cary', 'Live local transport planning'),
-    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: { status: 'pending' }, media: [], inventory: [],
+    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: CITY_LAUNCH_REVIEW, media: [], inventory: [],
   },
   {
     slug: 'raleigh-nc', city: 'Raleigh', country: 'United States', countryCode: 'US', locale: 'en-US', timezone: 'America/New_York', currency: 'USD', marketingDeckCenter: { lat: 35.7795897, lng: -78.6381787 },
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Raleigh city limits', jurisdictionScope: 'Current City of Raleigh corporate limits; the ETJ and the rest of Wake County are excluded unless a record is proven inside the city.', jurisdiction: CITY_JURISDICTIONS['raleigh-nc'], scopeApproval: 'approved', placeSchemaType: 'City',
+    lifecycle: 'search_ready', wasSearchReady: true, scopeLabel: 'Raleigh city limits', jurisdictionScope: 'Current City of Raleigh corporate limits; the ETJ and the rest of Wake County are excluded unless a record is proven inside the city.', jurisdiction: CITY_JURISDICTIONS['raleigh-nc'], scopeApproval: 'approved', placeSchemaType: 'City',
     directAnswer: 'Raleigh can move from a downtown square or gallery to a greenway, museum, park programme or live performance, but the useful plan is the one that names the exact place and journey. Mingla keeps Raleigh’s City sources, current event facts and the group’s next action together.', directAnswerEvidenceIds: ['RAL-CULT-01', 'RAL-EVENT-01', 'RAL-MOVE-01'],
     utilityHeading: 'Connect Raleigh culture to City limits and live facts.',
     utilitySections: [
@@ -313,11 +320,11 @@ export const CITY_HUBS = [
       source('RAL-EVENT-01', 'City of Raleigh', 'Events', 'https://raleighnc.gov/events/calendar', 'City event discovery'),
       source('RAL-EVENT-02', 'Greater Raleigh Convention and Visitors Bureau', 'Events', 'https://www.visitraleigh.com/events/', 'Wake County discovery with city-boundary verification'),
       source('RAL-MOVE-01', 'GoRaleigh', 'Official transit site', 'https://goraleigh.org/', 'Live local transport planning'),
-    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: { status: 'pending' }, media: [], inventory: [],
+    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: CITY_LAUNCH_REVIEW, media: [], inventory: [],
   },
   {
     slug: 'new-york-city', city: 'New York City', country: 'United States', countryCode: 'US', locale: 'en-US', timezone: 'America/New_York', currency: 'USD',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'New York City’s five boroughs', jurisdictionScope: 'The five boroughs of New York City; the wider New York metropolitan area is excluded.', jurisdiction: CITY_JURISDICTIONS['new-york-city'], scopeApproval: 'approved', placeSchemaType: 'City',
+    lifecycle: 'search_ready', wasSearchReady: true, scopeLabel: 'New York City’s five boroughs', jurisdictionScope: 'The five boroughs of New York City; the wider New York metropolitan area is excluded.', jurisdiction: CITY_JURISDICTIONS['new-york-city'], scopeApproval: 'approved', placeSchemaType: 'City',
     directAnswer: 'In New York City, the borough and the journey are part of the plan. Mingla helps you choose the occasion, keep the venue in one of the five boroughs, check live event and MTA information, and share a plan that says more than “somewhere downtown.”', directAnswerEvidenceIds: ['NYC-BOUND-01', 'NYC-EVENT-01', 'NYC-MOVE-01'],
     utilityHeading: 'Make the borough and journey part of the New York plan.',
     utilitySections: [
@@ -341,11 +348,11 @@ export const CITY_HUBS = [
       source('NYC-EVENT-01', 'NYC Mayor’s Office of Citywide Event Coordination and Management', 'Find an Event', 'https://www.nyc.gov/site/cecm/support/find-an-event.page', 'Public-event discovery'),
       source('NYC-MOVE-01', 'Metropolitan Transportation Authority', 'Official MTA service', 'https://www.mta.info/', 'Live journey and accessibility planning'),
       source('NYC-HOST-01', 'NYC311', 'Events and permit routes', 'https://portal.311.nyc.gov/article/?kanumber=KA-01892', 'Event and permit ownership'),
-    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: { status: 'pending' }, media: [], inventory: [],
+    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: CITY_LAUNCH_REVIEW, media: [], inventory: [],
   },
   {
     slug: 'brussels', city: 'Brussels', country: 'Belgium', countryCode: 'BE', locale: 'en-BE', timezone: 'Europe/Brussels', currency: 'EUR',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Brussels-Capital Region', jurisdictionScope: 'All 19 municipalities of the Brussels-Capital Region. The City of Brussels municipality alone is not used as the regional boundary.', jurisdiction: CITY_JURISDICTIONS.brussels, scopeApproval: 'approved', placeSchemaType: 'AdministrativeArea',
+    lifecycle: 'search_ready', wasSearchReady: true, scopeLabel: 'Brussels-Capital Region', jurisdictionScope: 'All 19 municipalities of the Brussels-Capital Region. The City of Brussels municipality alone is not used as the regional boundary.', jurisdiction: CITY_JURISDICTIONS.brussels, scopeApproval: 'approved', placeSchemaType: 'AdministrativeArea',
     directAnswer: 'Brussels plans cross municipal and language boundaries, so the useful details are the municipality, exact venue, local name and transport stop—not “central Brussels.” Mingla helps Explorers keep those pieces together and helps Hosts publish an experience in language people can recognise and act on.', directAnswerEvidenceIds: ['BRU-BOUND-01', 'BRU-MOVE-01', 'BRU-EVENT-02'],
     utilityHeading: 'Keep the Brussels municipality, language and journey together.',
     utilitySections: [
@@ -371,11 +378,11 @@ export const CITY_HUBS = [
       source('BRU-MOVE-01', 'STIB-MIVB', 'Network and District Maps', 'https://www.stib-mivb.be/travel/network-and-district-maps', 'Local stop names and live journey planning'),
       source('BRU-HOST-01', 'City of Brussels', 'Organising an event in a public space', 'https://www.brussels.be/organising-event', 'City-municipality event authorisation'),
       source('BRU-HOST-02', 'visit.brussels', 'Adding a regional event', 'https://www.visit.brussels/en/professionals/partners/faq-partners/faq-adding-an-event', 'Regional event submission'),
-    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: { status: 'pending' }, media: [], inventory: [],
+    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: CITY_LAUNCH_REVIEW, media: [], inventory: [],
   },
   {
     slug: 'paris', city: 'Paris', country: 'France', countryCode: 'FR', locale: 'en-FR', timezone: 'Europe/Paris', currency: 'EUR',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Ville de Paris', jurisdictionScope: 'The Commune or Ville de Paris, represented by its 20 municipal arrondissements; the wider Île-de-France region is excluded.', jurisdiction: CITY_JURISDICTIONS.paris, scopeApproval: 'approved', placeSchemaType: 'City',
+    lifecycle: 'search_ready', wasSearchReady: true, scopeLabel: 'Ville de Paris', jurisdictionScope: 'The Commune or Ville de Paris, represented by its 20 municipal arrondissements; the wider Île-de-France region is excluded.', jurisdiction: CITY_JURISDICTIONS.paris, scopeApproval: 'approved', placeSchemaType: 'City',
     directAnswer: 'Paris plans become manageable when the arrondissement, meeting point and last journey are decided with the activity. Mingla helps you turn a municipal event, exhibition, class, performance or local outing into one shareable plan while keeping regional transport information clearly separate from the city boundary.', directAnswerEvidenceIds: ['PAR-BOUND-01', 'PAR-EVENT-01', 'PAR-MOVE-01'],
     utilityHeading: 'Build the Paris plan from arrondissement to last journey.',
     utilitySections: [
@@ -400,11 +407,11 @@ export const CITY_HUBS = [
       source('PAR-MOVE-01', 'RATP', 'Traveller’s Guide', 'https://www.ratp.fr/en/visiting-paris/travelers-guide', 'Live regional journey planning'),
       source('PAR-MOVE-02', 'RATP', 'Accessible Maps', 'https://www.ratp.fr/en/plans-accessibles', 'Accessibility planning'),
       source('PAR-HOST-01', 'Ville de Paris', 'Organising events in public space', 'https://www.paris.fr/pages/evenements-dans-l-espace-public-33659', 'Public-space event authorisation'),
-    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: { status: 'pending' }, media: [], inventory: [],
+    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: CITY_LAUNCH_REVIEW, media: [], inventory: [],
   },
   {
     slug: 'london', city: 'London', country: 'United Kingdom', countryCode: 'GB', locale: 'en-GB', timezone: 'Europe/London', currency: 'GBP',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'Greater London', jurisdictionScope: 'Greater London: the 32 London boroughs plus the City of London; commuter towns and the wider travel-to-work region are excluded.', jurisdiction: CITY_JURISDICTIONS.london, scopeApproval: 'approved', placeSchemaType: 'AdministrativeArea',
+    lifecycle: 'search_ready', wasSearchReady: true, scopeLabel: 'Greater London', jurisdictionScope: 'Greater London: the 32 London boroughs plus the City of London; commuter towns and the wider travel-to-work region are excluded.', jurisdiction: CITY_JURISDICTIONS.london, scopeApproval: 'approved', placeSchemaType: 'AdministrativeArea',
     directAnswer: 'London is too large for “somewhere central” to be a plan. Mingla helps you choose the borough and area, check the actual venue and TfL journey, and keep the occasion, timing and join action in one place for everyone coming.', directAnswerEvidenceIds: ['LON-BOUND-01', 'LON-MOVE-01', 'LON-EVENT-01'],
     utilityHeading: 'Choose the London people can actually reach.',
     utilitySections: [
@@ -429,11 +436,11 @@ export const CITY_HUBS = [
       source('LON-EVENT-01', 'Visit London', 'London Events Calendar', 'https://www.visitlondon.com/things-to-do/whats-on/special-events/london-events-calendar', 'Event discovery'),
       source('LON-MOVE-01', 'Transport for London', 'Visiting London', 'https://tfl.gov.uk/travel-information/visiting-london/', 'Live journey planning'),
       source('LON-MOVE-02', 'Transport for London', 'Plan an Accessible Journey', 'https://tfl.gov.uk/transport-accessibility/plan-an-accessible-journey', 'Accessibility planning'),
-    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: { status: 'pending' }, media: [], inventory: [],
+    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: CITY_LAUNCH_REVIEW, media: [], inventory: [],
   },
   {
     slug: 'fort-lauderdale', city: 'Fort Lauderdale', country: 'United States', countryCode: 'US', locale: 'en-US', timezone: 'America/New_York', currency: 'USD',
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'City of Fort Lauderdale municipal limits', jurisdictionScope: 'City of Fort Lauderdale municipal boundary; Broward County and Greater Fort Lauderdale are excluded as city boundaries.', jurisdiction: CITY_JURISDICTIONS['fort-lauderdale'], scopeApproval: 'approved', placeSchemaType: 'City',
+    lifecycle: 'search_ready', wasSearchReady: true, scopeLabel: 'City of Fort Lauderdale municipal limits', jurisdictionScope: 'City of Fort Lauderdale municipal boundary; Broward County and Greater Fort Lauderdale are excluded as city boundaries.', jurisdiction: CITY_JURISDICTIONS['fort-lauderdale'], scopeApproval: 'approved', placeSchemaType: 'City',
     directAnswer: 'Fort Lauderdale plans often need the place and the event impact checked together: exact city location, waterfront or street access, parking or road effects, and the real organiser action. Mingla helps Explorers keep those practical details with the outing and helps Hosts explain what changes around the event.', directAnswerEvidenceIds: ['FTL-BOUND-01', 'FTL-EVENT-01'],
     utilityHeading: 'Plan the Fort Lauderdale outing and its edges.',
     utilitySections: [
@@ -457,11 +464,11 @@ export const CITY_HUBS = [
       source('FTL-EVENT-01', 'City of Fort Lauderdale Parks and Recreation', 'Events and Event Impact Dashboard', 'https://www.parks.fortlauderdale.gov/special-events', 'City events, impacts and permit ownership'),
       source('FTL-EVENT-02', 'Visit Lauderdale', 'Submit your event', 'https://www.visitlauderdale.com/partners/submit-your-event/', 'Broward County destination scope'),
       source('FTL-MOVE-01', 'Broward County Transit', 'Official transit service', 'https://www.broward.org/BCT', 'Live county transport planning'),
-    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: { status: 'pending' }, media: [], inventory: [],
+    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: CITY_LAUNCH_REVIEW, media: [], inventory: [],
   },
   {
     slug: 'washington-dc', city: 'Washington, DC', country: 'United States', countryCode: 'US', locale: 'en-US', timezone: 'America/New_York', currency: 'USD', marketingDeckCenter: { lat: 38.9072873, lng: -77.0369274 },
-    lifecycle: 'public_noindex', wasSearchReady: false, scopeLabel: 'District of Columbia boundary', jurisdictionScope: 'District of Columbia boundary; Maryland, Virginia and the wider DMV or metropolitan area are excluded.', jurisdiction: CITY_JURISDICTIONS['washington-dc'], scopeApproval: 'approved', placeSchemaType: 'AdministrativeArea',
+    lifecycle: 'search_ready', wasSearchReady: true, scopeLabel: 'District of Columbia boundary', jurisdictionScope: 'District of Columbia boundary; Maryland, Virginia and the wider DMV or metropolitan area are excluded.', jurisdiction: CITY_JURISDICTIONS['washington-dc'], scopeApproval: 'approved', placeSchemaType: 'AdministrativeArea',
     directAnswer: 'Washington, DC is more useful when the plan names the neighbourhood and institution, not only the monument or the Metro stop. Mingla helps you connect a District event, museum, performance, tour, restaurant or gathering with its real entry details and regional journey without turning the DMV into one city.', directAnswerEvidenceIds: ['DC-BOUND-01', 'DC-EVENT-01', 'DC-MOVE-01'],
     utilityHeading: 'Connect the District place, institution and regional journey.',
     utilitySections: [
@@ -486,7 +493,7 @@ export const CITY_HUBS = [
       source('DC-HOST-01', 'Events DC', 'Venues and booking paths', 'https://eventsdc.com/venues', 'Venue and booking ownership'),
       source('DC-MOVE-01', 'Washington Metropolitan Area Transit Authority', 'Official regional transport service', 'https://www.wmata.com/', 'Live regional journey planning'),
       source('DC-AUTH-01', 'District Government', 'Destination DC referral', 'https://dc.gov/external-link/destination-dc', 'Destination authority relationship'),
-    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: { status: 'pending' }, media: [], inventory: [],
+    ], sourcesCheckedAt: CHECKED_AT, nextReviewAt: NEXT_REVIEW_AT, localReview: CITY_LAUNCH_REVIEW, media: [], inventory: [],
   },
 ] as const satisfies readonly CityHubRecord[]
 
@@ -785,13 +792,19 @@ export function isCityHubSearchReady(
   return cityHubReadinessReasons(record, context).length === 0
 }
 
-export function cityHubEffectiveLifecycle(record: CityHubRecord): RouteLifecycle {
-  if (record.lifecycle === 'search_ready' && !isCityHubSearchReady(record)) return 'public_noindex'
-  return record.lifecycle
+export function allCityHubsSearchReady(
+  context: CityHubReadinessContext = { asOf: currentUtcDate() },
+): boolean {
+  if (historicalCityBuildEnabled()) return false
+  return CITY_HUBS.length === 10 && CITY_HUBS.every((record) => isCityHubSearchReady(record, context))
 }
 
-export function allCityHubsSearchReady(): boolean {
-  return CITY_HUBS.length === 10 && CITY_HUBS.every((record) => isCityHubSearchReady(record))
+export function cityHubEffectiveLifecycle(record: CityHubRecord): RouteLifecycle {
+  if (
+    record.lifecycle === 'search_ready' &&
+    (!isCityHubSearchReady(record) || !allCityHubsSearchReady())
+  ) return 'public_noindex'
+  return record.lifecycle
 }
 
 export function cityHubPath(record: Pick<CityHubRecord, 'slug'>): `/cities/${string}` {

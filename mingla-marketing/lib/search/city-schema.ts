@@ -1,9 +1,8 @@
 import { canonicalMarketingUrl } from '@/lib/site'
-import { cityHubPath, type CityHubRecord } from '@/content/cities/registry'
-import { isCityHubSearchReady } from '@/content/cities/registry'
+import { cityHubEffectiveLifecycle, cityHubPath, type CityHubRecord } from '@/content/cities/registry'
 
 export function cityHubStructuredData(record: CityHubRecord): Record<string, unknown> | null {
-  if (!isCityHubSearchReady(record)) return null
+  if (cityHubEffectiveLifecycle(record) !== 'search_ready') return null
   const url = canonicalMarketingUrl(cityHubPath(record))
   return {
     '@context': 'https://schema.org',
