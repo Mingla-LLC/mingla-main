@@ -228,6 +228,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   // [TEST-MOD-APPROVED #1772] Maintenance reads and mutations are actor/brand
   // scoped and must wait for direct auth/user/role authority.
   "marketing/useBrandPersonMaintenance.ts",
+  // #1777 — the Brand Circle roster RPC is auth.uid()/brand-rank scoped.
+  "marketing/useBrandCircleReach.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads

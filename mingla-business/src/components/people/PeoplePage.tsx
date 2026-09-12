@@ -31,6 +31,7 @@ import { useAuth } from "../../context/AuthContext";
 import { capturePeople } from "../../features/people/peopleAnalytics";
 import { useAudienceList } from "../../hooks/marketing/useAudienceList";
 import { useBrandPeople } from "../../hooks/marketing/useBrandPeople";
+import { useBrandCircleReach } from "../../hooks/marketing/useBrandCircleReach";
 import {
   useBrandPersonConflicts,
   useResolveBrandPersonConflict,
@@ -53,6 +54,9 @@ import type {
   ConflictResolution,
 } from "../../types/people";
 import { ConflictReviewSheet, ConflictReviewStrip } from "./ConflictReviewSheet";
+import { CircleReachBlock } from "./CircleReachBlock";
+import { CircleReachSheet } from "./CircleReachSheet";
+import type { BrandCircleRing } from "../../types/brandCircleReach";
 import {
   BookSheet,
   DependencyStatus,
@@ -253,6 +257,9 @@ export function PeoplePage(): React.ReactElement {
   const resolveConflict = useResolveBrandPersonConflict(brand?.id ?? "");
   const flag = useFeatureFlag("contact_import_v1");
   const importEnabled=authorized&&online&&!flag.isPending&&!flag.isFetching&&!flag.isError&&flag.data===true;
+  const circleFollowers = useBrandCircleReach(brand?.id??null,"follower",roleResolved,role.accepted,role.rank,online);
+  const circleExtended = useBrandCircleReach(brand?.id??null,"extended",roleResolved,role.accepted,role.rank,online);
+  const [circleOpen,setCircleOpen]=React.useState<BrandCircleRing|null>(null);
   const [bookOpen, setBookOpen] = React.useState(false);
   const [groupsOpen, setGroupsOpen] = React.useState(false);
   const [createGroupOpen, setCreateGroupOpen] = React.useState(false);
@@ -268,7 +275,14 @@ export function PeoplePage(): React.ReactElement {
   } | null>(null);
   const consumedReviewSignalRef = React.useRef(false);
   const exportButtonRef = React.useRef<React.ElementRef<typeof Pressable> | null>(null);
-  const modalOpen = bookOpen || groupsOpen || addOpen || exportOpen || conflictOpen || createGroupOpen;
+  const followerCircleOpenerRef = React.useRef<React.ElementRef<typeof Button> | null>(null);
+  const extendedCircleOpenerRef = React.useRef<React.ElementRef<typeof Button> | null>(null);
+  const modalOpen = bookOpen || groupsOpen || addOpen || exportOpen || conflictOpen || createGroupOpen || circleOpen!==null;
+  const closeCircle = React.useCallback(():void=>{
+    const opener=circleOpen==="follower"?followerCircleOpenerRef.current:extendedCircleOpenerRef.current;
+    setCircleOpen(null);
+    if(Platform.OS==="web"&&opener!==null)setTimeout(()=>{(opener as unknown as {focus?:()=>void}).focus?.()},0);
+  },[circleOpen]);
 
   React.useEffect(() => {
     capturePeople("people_page_viewed", { surface: "page" });
@@ -280,7 +294,9 @@ export function PeoplePage(): React.ReactElement {
     setConflictOpen(false);
     setCreateGroupOpen(false);
     setBookSearch("");
+    setCircleOpen(null);
   }, [brand?.id, isAuthReady, role.accepted, role.rank]);
+  React.useEffect(()=>{if([circleFollowers.kind,circleExtended.kind].some((kind)=>kind==="forbidden"||kind==="authLoading"||kind==="roleLoading"||kind==="featureLoading"||kind==="featureOff"))setCircleOpen(null)},[circleExtended.kind,circleFollowers.kind]);
   React.useEffect(() => {
     setExportOpen(false);
     setExportMounted(false);
@@ -656,6 +672,10 @@ export function PeoplePage(): React.ReactElement {
               testID="people-groups-column"
               style={isWideDesktop ? styles.groupsColumnWide : styles.compactColumn}
             >
+              {circleFollowers.kind!=="featureLoading"&&circleFollowers.kind!=="featureOff"?<>
+                <CircleReachBlock ring="follower" openerRef={followerCircleOpenerRef} query={circleFollowers} width={width} onSeeAll={()=>{capturePeople("people_circle_sheet_opened",{surface:"circle_sheet",circleRing:"follower",dependencyState:"ready"});setCircleOpen("follower")}}/>
+                <CircleReachBlock ring="extended" openerRef={extendedCircleOpenerRef} query={circleExtended} width={width} onSeeAll={()=>{capturePeople("people_circle_sheet_opened",{surface:"circle_sheet",circleRing:"extended",dependencyState:"ready"});setCircleOpen("extended")}}/>
+              </>:null}
               <PeopleBlock
                 title="Groups"
                 caption={manualEnabled ? "Organize people for focused campaigns." : "Buyer groups that update automatically."}
@@ -747,6 +767,7 @@ export function PeoplePage(): React.ReactElement {
         onPressManual={openManualGroup}
         onCreate={() => { setGroupsOpen(false); setCreateGroupOpen(true); capturePeople("manual_group_create_started", { surface: "groups_sheet" }); }}
       />
+      <CircleReachSheet visible={circleOpen!==null} ring={circleOpen??"follower"} query={circleOpen==="extended"?circleExtended:circleFollowers} onClose={closeCircle}/>
       {brand && createGroupOpen ? <ManualGroupFlow visible brandId={brand.id} online={online} onAddPerson={() => setAddOpen(true)} onClose={() => setCreateGroupOpen(false)} onCompleted={(created: ManualGroupSummary) => { setCreateGroupOpen(false); openManualGroup(created); }} /> : null}
       <ConflictReviewSheet
         visible={conflictOpen}
@@ -894,10 +915,12 @@ const styles = StyleSheet.create({
     flexBasis: 0,
     flexGrow: 3,
     minWidth: 0,
+    gap: spacing.lg,
   },
   compactColumn: {
     width: "100%",
     minWidth: 0,
+    gap: spacing.lg,
   },
   actions: {
     flexDirection: "row",

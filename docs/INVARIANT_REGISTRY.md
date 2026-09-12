@@ -1,5 +1,25 @@
 # Invariant Registry
 
+## DRAFT — issue #1777 (server-owned Brand Circle reach)
+
+### I-PROPOSED-1777-CIRCLE-FRESHNESS-FAILS-CLOSED (DRAFT)
+
+- **Rule:** A Brand Circle ring is readable or Circle-send-eligible only when a fresh invocation of the sole resolver produces the same full canonical count and SHA-256 digest as both the ready state and its materialized generation. Dirty markers and the circuit breaker accelerate repair but are never freshness proof; if invalidation and circuit writes both fail, the live equivalence gate still hides stale rows, counts, cursors, and sends.
+- **Enforcement:** `issue_1777_resolve_brand_circle_members`, the live truth-digest and scope-status functions, atomic refresh generations, the non-throwing source wrapper, PostgreSQL 17 regression, and the self-testing #1777 strict gate in the retained #1774 People workflow.
+- **Status:** DRAFT until independent tester PASS, Business iOS/Android/web runtime acceptance, merged-main proof, guarded surgical migration apply, and production readback.
+
+### I-PROPOSED-1777-CIRCLE-CONSENT-AND-BLOCKS (DRAFT)
+
+- **Rule:** Current Follow is Ring-2 roster and Circle-delivery activation; the single explicit #1782 extended-brand-reach decision is Ring-3 roster and Circle-delivery activation. Missing/unreadable consent, either-direction canonical `blocked_users`, active Book ownership, brand exit, or ineligible identity denies. Existing category, channel, suppression, unsubscribe, quiet-hours, provider, and `can_send` authorities remain additive final-delivery gates.
+- **Enforcement:** The sole resolver, service-only revalidation seam, exact rollout flags, Book subtraction and bidirectional block predicates, PG17 activation regressions, and #1777 strict gate.
+- **Status:** DRAFT under the same #1777 verification, runtime, merge, apply, and production gates above; Ring 3 remains dark until #1782 ships both mobile controls.
+
+### I-876-CIRCLE-NO-CONTACT-FIELDS (DRAFT)
+
+- **Rule:** Brand Circle materialization and the Business list response contain only opaque member ID, ring, approved public display name/avatar, and the fixed safe reason. They never store, return, log, infer, copy, export, or render contact/address/device/AppsFlyer/event/path/connector identity. Every Ring-3 reason is anonymous and byte-stable.
+- **Enforcement:** Deny-all material tables, exact-key Business parser, static/non-interactive Circle rows, schema catalog assertions, and the self-testing #1777 privacy gate.
+- **Status:** DRAFT until #1777 completes independent testing and release verification.
+
 ## ACTIVE — issue #2979 (attendance-claim secret continuity)
 
 ### I-PROPOSED-2979-ATTENDANCE-DUAL-PROOF-CONTINUITY (ACTIVE)
@@ -9506,7 +9526,7 @@ enforced by the executed PostgreSQL suites listed at the end, not by review.
 - **Why both conditions and not "any function that says claim".** `claim` alone is far too loose: `support-claim`, `claim-attendance`, `attendance-claim-identity`, `attendance-claim-link`, `claim-search-pool`, `admin-review-venue-claim` and the `venue-claim-*` family all call claim-named RPCs and are all driven by a human holding a user JWT. Condition (b) separates them — those forward the bearer to `auth.getUser()` and never compare it to a service key. A function that compares the bearer to a service key has declared, in code, that its only possible caller is a machine. If the repo does not also declare WHICH machine, the answer in production is "none".
 - **Reachability is a transitive closure, not a cron lookup.** A worker cannot be laundered green by a caller that is itself unreachable. `ticket-confirmation-dispatch` has a machine-only door and is legitimately not dark because the Stripe webhook router and `reconcile-stuck-checkouts` both invoke it by name and both have callers of their own.
 - **What it would have caught.** Run against `20270305001770`'s own commit the gate FAILS: `brand-person-ingest-worker` calls `biz_claim_brand_person_ingest`, gates on `Bearer ${serviceKey}` / `Bearer ${cronSecret}`, and no `cron.schedule` anywhere names it. The same run fails #2168's pre-fix tree on `checkout-sale-revocation`. This defect class has now shipped three times (#2168, #2222, #2290); nothing in the type system, no unit test, no `deno check` and no green CI run could see it, because the missing half is a row in `cron.job` rather than a line of code.
-- **Two acknowledged blind spots, both pinned rather than hidden.** The model is textual and does not evaluate plpgsql control flow, so (1) a dynamic `cron.unschedule(<expr>)` is counted but not applied — assertion A-5 freezes that count at 5, forcing human review of a 6th — and (2) a `cron.schedule` inside a non-executing branch is credited as live, and 6 migrations already use `PERFORM cron.schedule` inside `DO` blocks — assertion A-4 pins #2290's own schedule to top level. A gate that names and pins its blind spots beats one that pretends it has none.
+- **Two acknowledged blind spots, both pinned rather than hidden.** The model is textual and does not evaluate plpgsql control flow, so (1) a dynamic `cron.unschedule(<expr>)` is counted but not applied — assertion A-5 freezes that count at 6 after #1777's reviewed same-transaction unschedule-then-reschedule addition, forcing human review of a 7th — and (2) a `cron.schedule` inside a non-executing branch is credited as live, and 6 migrations already use `PERFORM cron.schedule` inside `DO` blocks — assertion A-4 pins #2290's own schedule to top level. A gate that names and pins its blind spots beats one that pretends it has none.
 - **Enforcement:** `.github/scripts/strict-grep/issue-2290-queue-worker-has-cron-caller.mjs` (`batch:A`, `self-test` + `plain`, registered `selfTest: "wired"`), with `.github/scripts/strict-grep/__tests__/issue-2290-brand-person-ingest-cron.test.mjs` (10 cases, implementor) and `.github/scripts/strict-grep/__tests__/issue-2290-ingest-cron-adversarial.test.mjs` (8 cases, tester — atomicity, replay-idempotency, and both guard blind spots). Confirmed to actually EXECUTE in CI, not merely be registered: `run-batch.mjs --class A` reported `expected 890, executed 890, missing 0` with all three entries `ok`.
 - **Fails-on-revert:** reproduced independently by the orchestrator in a throwaway tree — guard exits 0 with the migration present, exits 1 without it, naming `brand-person-ingest-worker — claims via biz_claim_brand_person_ingest; no cron.schedule targets it and no other edge function invokes it`.
 - **Established:** ACTIVE at #2290, 2026-08-19. Migration `20270423002290_issue_2290_brand_person_ingest_cron.sql` applied to production `gqnoajqerqhnvulmnyvv` and verified live (jobid 61, `*/5 * * * *`, first tick drained 33/33).

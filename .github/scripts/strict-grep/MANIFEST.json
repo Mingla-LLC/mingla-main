@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 640,
-  "selfTestWiredFloor": 410,
+  "expectedStrictGrepMjsFiles": 641,
+  "selfTestWiredFloor": 411,
   "unenforcedCap": 2,
   "fixtureCap": 9,
   "capableUnwiredCap": 23,
@@ -3710,6 +3710,20 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-1776-marketing-edge-rank-boundary.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1774-people-page"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1777-brand-circle-reach.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",

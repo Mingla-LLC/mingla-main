@@ -1,0 +1,42 @@
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, type AppStateStatus } from "react-native";
+import { useAuth } from "../../context/AuthContext";
+import { BrandCircleReachError, listBrandCircleReach } from "../../services/brandCircleReachService";
+import type { BrandCircleCursor, BrandCircleReachPage, BrandCircleRequestRing } from "../../types/brandCircleReach";
+import { useFeatureFlag } from "../useFeatureFlag";
+import { marketingKeys } from "./marketingKeys";
+
+const retry=(count:number,error:Error)=>count<1&&error instanceof BrandCircleReachError&&error.retryable&&error.code!=="circle_cursor_stale";
+export function useBrandCircleReach(brandId:string|null,ring:BrandCircleRequestRing,roleResolved:boolean,accepted:boolean,rank:number,online=true,active=true){
+  const {isAuthReady,user}=useAuth(),flag=useFeatureFlag("brand_circle_followers_v1"),client=useQueryClient();
+  const actorId=user?.id??null;
+  const [expired,setExpired]=useState(false),[actorScope,setActorScope]=useState<string|null>(actorId),[foregroundTrusted,setForegroundTrusted]=useState(AppState.currentState==="active"),previousBrand=useRef<string|null>(brandId),appState=useRef<AppStateStatus>(AppState.currentState);
+  const staleRecoveryScope=`${actorId??"anonymous"}:${brandId??"no-brand"}:${ring}`,staleRecovery=useRef({scope:staleRecoveryScope,attempted:false});
+  const allowed=roleResolved&&accepted&&rank>=20,flagReady=!flag.isPending&&!flag.isFetching&&!flag.isError;
+  const actorCurrent=actorScope===actorId;
+  const enabled=active&&foregroundTrusted&&isAuthReady&&actorId!==null&&actorCurrent&&brandId!==null&&allowed&&online&&flagReady&&flag.data===true;
+  const query=useInfiniteQuery<BrandCircleReachPage,Error,InfiniteData<BrandCircleReachPage,BrandCircleCursor|null>,readonly unknown[],BrandCircleCursor|null>({queryKey:brandId?marketingKeys.people.circle(brandId,ring):marketingKeys.all,queryFn:({pageParam})=>listBrandCircleReach({brandId:brandId!,ring,cursor:pageParam,limit:50}),initialPageParam:null,getNextPageParam:(page)=>page.nextCursor,enabled,staleTime:0,gcTime:0,refetchOnMount:"always",refetchOnWindowFocus:"always",refetchOnReconnect:"always",retry});
+  const pages=useMemo(()=>query.data?.pages??[],[query.data?.pages]),first=pages[0],error=query.error instanceof BrandCircleReachError?query.error:null;
+  const queryRefetch=query.refetch;
+  const freshness=useMemo(()=>{let expiresAt:number|null=null,invalid=false;for(const page of pages)for(const availability of [page.availability.followers,page.availability.extended]){if(availability.state!=="ready")continue;const parsed=availability.expiresAt===null?Number.NaN:Date.parse(availability.expiresAt);if(!Number.isFinite(parsed)){invalid=true;continue}expiresAt=expiresAt===null?parsed:Math.min(expiresAt,parsed)}return{expiresAt,invalid}},[pages]);
+  const freshnessRejected=first!==undefined&&(freshness.invalid||freshness.expiresAt!==null&&freshness.expiresAt<=Date.now());
+  useEffect(()=>{setExpired(false);if(freshness.expiresAt===null||freshness.invalid)return;const delay=Math.min(2_147_483_647,Math.max(0,freshness.expiresAt-Date.now()));const timer=setTimeout(()=>setExpired(true),delay);return()=>clearTimeout(timer)},[freshness]);
+  useEffect(()=>{const subscription=AppState.addEventListener("change",(next)=>{const wasActive=appState.current==="active";appState.current=next;if(next!=="active"||!wasActive){if(brandId){void client.cancelQueries({queryKey:marketingKeys.people.circle(brandId,ring)});client.removeQueries({queryKey:marketingKeys.people.circle(brandId,ring)})}setForegroundTrusted(next==="active")}});return()=>subscription.remove()},[brandId,client,ring]);
+  useEffect(()=>{if(actorScope===actorId)return;if(brandId){void client.cancelQueries({queryKey:marketingKeys.people.circle(brandId,ring)});client.removeQueries({queryKey:marketingKeys.people.circle(brandId,ring)})}setActorScope(actorId)},[actorId,actorScope,brandId,client,ring]);
+  useEffect(()=>{if(previousBrand.current&&previousBrand.current!==brandId)void client.removeQueries({queryKey:marketingKeys.people.circle(previousBrand.current,ring)});previousBrand.current=brandId},[brandId,client,ring]);
+  useEffect(()=>{if((!enabled||expired||freshnessRejected)&&brandId){void client.cancelQueries({queryKey:marketingKeys.people.circle(brandId,ring)});client.removeQueries({queryKey:marketingKeys.people.circle(brandId,ring)});}},[brandId,client,enabled,expired,freshnessRejected,ring]);
+  const restartAfterStale=useCallback(()=>{if(!brandId)return;if(staleRecovery.current.scope!==staleRecoveryScope)staleRecovery.current={scope:staleRecoveryScope,attempted:false};if(staleRecovery.current.attempted)return;staleRecovery.current.attempted=true;client.removeQueries({queryKey:marketingKeys.people.circle(brandId,ring)});return client.refetchQueries({queryKey:marketingKeys.people.circle(brandId,ring),type:"active"})},[brandId,client,ring,staleRecoveryScope]);
+  useEffect(()=>{staleRecovery.current={scope:staleRecoveryScope,attempted:false}},[staleRecoveryScope]);
+  useEffect(()=>{if(error?.code==="circle_cursor_stale")void restartAfterStale()},[error,query.errorUpdatedAt,restartAfterStale]);
+  useEffect(()=>{if(enabled&&first!==undefined&&!query.isFetching&&!query.isError&&!freshnessRejected)staleRecovery.current={scope:staleRecoveryScope,attempted:false}},[enabled,first,freshnessRejected,query.isError,query.isFetching,staleRecoveryScope]);
+  const refetch=useCallback(async()=>{staleRecovery.current={scope:staleRecoveryScope,attempted:false};const result=await queryRefetch();if(result.error instanceof BrandCircleReachError&&result.error.code==="circle_cursor_stale")await restartAfterStale();return result},[queryRefetch,restartAfterStale,staleRecoveryScope]);
+  const checkingCurrent=query.isFetching&&!query.isFetchingNextPage;
+  const staleAttempted=staleRecovery.current.scope===staleRecoveryScope&&staleRecovery.current.attempted;
+  const envelopeCurrent=enabled&&!expired&&!freshnessRejected&&!checkingCurrent&&first!==undefined&&error?.code!=="circle_cursor_stale"&&(!query.isError||query.isFetchNextPageError);
+  const safeAvailability=envelopeCurrent?{followers:{state:first.availability.followers.state,reason:first.availability.followers.reason},extended:{state:first.availability.extended.state,reason:first.availability.extended.reason}}:undefined;
+  const current=envelopeCurrent&&first.state!=="unavailable";
+  const rows=current?pages.flatMap((page)=>page.rows):[];
+  const kind=!active?"featureOff":!isAuthReady||actorId===null||!actorCurrent?"authLoading":!roleResolved?"roleLoading":!allowed||error?.code==="circle_forbidden"?"forbidden":flag.isError||flagReady&&flag.data!==true?"featureOff":!flagReady?"featureLoading":!online?"offlineUnavailable":error?.code==="circle_cursor_stale"&&!staleAttempted||error?.code==="circle_cursor_stale"&&query.isFetching?"cursorRefreshing":query.isLoading?"loading":query.isFetchingNextPage?"loadingMore":query.isFetching?"refreshing":query.isFetchNextPageError?"paginationError":expired||freshnessRejected||query.isError||first?.state==="unavailable"?"unavailable":rows.length===0?"empty":first?.state==="partial"?"partial":"ready";
+  return {...query,refetch,kind,rows,safeAvailability,currentPage:current?first:undefined,counts:current?first?.counts:undefined,hasCurrentTruth:current};
+}

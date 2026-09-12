@@ -1056,7 +1056,14 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // suite 11/11 green against the value this pin replaces. The new value below
   // is identical across three derivations with this file's own RUBY_CANONICAL,
   // and was not copied from a PR run's printed `actual:` (#3015).
-  "cd049e29326739fe863e274b1a981444a6f3f4c0d7f49fc6e6af85323edf520e";
+  // [TEST-MOD-APPROVED #1777] Re-derived after #1777 added only paths, test
+  // commands, and PostgreSQL proof commands to the existing People lane. The
+  // workflow delta is 19 additions and zero deletions, with no concurrency,
+  // group, or cancel-in-progress change. PR_FAMILY_COUNT and
+  // PR_FAMILY_IDENTITY_SHA256 remain unchanged; restoring that one lane to
+  // current origin/main recomputes #3272's cd049e29... pin. Three independent
+  // runs of this file's RUBY_CANONICAL over the combined tree agree below.
+  "3b01e307b2ab9066864ae69314ca42eb243a0b169c451921cf54ebbebf039018";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

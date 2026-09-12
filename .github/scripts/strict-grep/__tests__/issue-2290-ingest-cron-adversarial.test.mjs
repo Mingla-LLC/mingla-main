@@ -255,14 +255,15 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
     "documents the blind spot: a dynamic unschedule does not remove the job from the model",
   );
 
-  // So freeze the repo-wide count. Every one today is the
-  // unschedule-then-reschedule idiom, where the reschedule restores the entry.
+  // [TEST-MOD-APPROVED #1777] Freeze the repo-wide count at six. Every one,
+  // including #1777's same-transaction pair, is the unschedule-then-reschedule
+  // idiom, where the reschedule restores the entry.
   // A NEW one must force a human to confirm it is not a permanent kill.
   const repo = cronReachability(loadMigrations());
   assert.ok(repo.scheduleCalls > 0, "anti-vacuity: the repo scan must parse real migrations");
   assert.equal(
     repo.dynamicUnschedules,
-    5,
+    6,
     "the number of unmodelled dynamic cron.unschedule calls changed. Each one is a place " +
       "where this gate cannot see a job being removed. Confirm the new call is the " +
       "unschedule-then-reschedule idiom (and not a permanent removal of a live worker) " +
