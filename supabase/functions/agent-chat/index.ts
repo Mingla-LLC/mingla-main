@@ -54,6 +54,7 @@ import {
   preflightTicketPricingProposal,
   verifiedProposalArgs,
 } from "../_shared/agentTicketPricing.ts";
+import { preflightMoneyProposal } from "../_shared/agentDomainTools.ts";
 import { logError } from "../_shared/structuredLog.ts";
 import {
   AccessibleAgentBrand,
@@ -1961,17 +1962,31 @@ async function handle(req: Request): Promise<Response> {
     let proposalContext: Record<string, unknown> | null = null;
     try {
       await authorizeAgentTool(tool, gemini.toolCall.args, userClient, userId);
-      proposalContext = await preflightTicketPricingProposal(
+      const pricingContext = await preflightTicketPricingProposal(
         tool.name,
         gemini.toolCall.args,
         userClient,
       );
+      const moneyContext = await preflightMoneyProposal(
+        tool.name,
+        gemini.toolCall.args,
+        userClient,
+      );
+      if (pricingContext || moneyContext) {
+        proposalContext = {
+          ...(pricingContext ?? {}),
+          ...(moneyContext ?? {}),
+        };
+      }
     } catch (err: unknown) {
       if (err instanceof ToolError) {
         const status = err.code === "ROLE_CHECK_UNAVAILABLE"
           ? 503
           : err.code === "INVALID_ARGS"
           ? 400
+          : err.code === "PAID_ORDER_MUST_REFUND" ||
+              err.code === "REFUND_PREVIEW_UNPRICED"
+          ? 409
           : 403;
         return errorResponse(status, err.code, err.message);
       }

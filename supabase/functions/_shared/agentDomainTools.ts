@@ -3852,6 +3852,31 @@ type RefundLinePayload = {
   amount_cents: number;
 };
 
+/** #1981 — booking/order → event → brand only (no line pricing). */
+async function assertOrderBelongsToBrand(
+  client: any,
+  orderId: string,
+  brandId: string,
+): Promise<void> {
+  const { data, error } = await client
+    .from("orders")
+    .select("id, events!inner ( brand_id )")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (error) throw new ToolError("RPC_FAILED", error.message);
+  if (!data) {
+    throw new ToolError("INVALID_ARGS", "That order was not found.");
+  }
+  const eventBrand = (data as { events?: { brand_id?: string } | null }).events
+    ?.brand_id;
+  if (eventBrand !== brandId) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "order_id does not belong to this brand.",
+    );
+  }
+}
+
 async function loadOrderRefundableLines(
   client: any,
   orderId: string,
@@ -4137,7 +4162,7 @@ const cancelTripBooking = writeTool(
     // #1981 — bind booking → event → brand BEFORE preview. cancel-trip-booking
     // preview uses service-role compute and would otherwise leak / cancel across
     // tenants when only brand_id was caller-checked.
-    await loadOrderRefundableLines(
+    await assertOrderBelongsToBrand(
       client,
       args.booking_id as string,
       brandId,
@@ -4269,6 +4294,8 @@ const getOrderRefundPreview = writeTool(
         (sum, line) => sum + line.amount_cents,
         0,
       ),
+      // #1981 — surface comps so "full refund" is not silent about unvoided free tickets.
+      zero_priced_remaining: preview.zero_priced_remaining,
     };
   },
 );
@@ -6280,6 +6307,98 @@ const getOperatorSnapshot = writeTool(
     };
   },
 );
+
+/** #1981 — proposal-time money context so Confirm cards show amounts. */
+export async function preflightMoneyProposal(
+  toolName: string,
+  args: Record<string, unknown>,
+  client: any,
+): Promise<Record<string, unknown> | null> {
+  if (toolName === "cancel_trip_booking") {
+    if (!isUuid(args.brand_id) || !isUuid(args.booking_id)) return null;
+    await assertOrderBelongsToBrand(
+      client,
+      args.booking_id as string,
+      args.brand_id as string,
+    );
+    const preview = await invokeFn<{
+      refundTotalCents?: number;
+      currency?: string;
+    }>(client, "cancel-trip-booking", {
+      mode: "preview",
+      orderId: args.booking_id,
+    });
+    const refundTotalCents = preview?.refundTotalCents;
+    if (
+      typeof refundTotalCents !== "number" ||
+      !Number.isInteger(refundTotalCents) ||
+      refundTotalCents < 0
+    ) {
+      throw new ToolError(
+        "REFUND_PREVIEW_UNPRICED",
+        "The cancellation preview did not return an exact refund amount, so nothing was proposed. Try again in a moment.",
+      );
+    }
+    return {
+      refund_total_cents: refundTotalCents,
+      currency: typeof preview?.currency === "string" ? preview.currency : null,
+    };
+  }
+  if (toolName === "refund_order") {
+    if (!isUuid(args.brand_id) || !isUuid(args.order_id)) return null;
+    const preview = await loadOrderRefundableLines(
+      client,
+      args.order_id as string,
+      args.brand_id as string,
+    );
+    let total = 0;
+    let lineCount = 0;
+    if (Array.isArray(args.lines) && args.lines.length > 0) {
+      const availableById = new Map(
+        preview.lines.map((line) => [line.order_line_item_id, line]),
+      );
+      for (const raw of args.lines as Array<Record<string, unknown>>) {
+        const lineId = String(raw.order_line_item_id ?? "");
+        const quantity = Number(raw.quantity ?? 0);
+        const available = availableById.get(lineId);
+        if (!available || !Number.isInteger(quantity) || quantity < 1) continue;
+        const unit = available.amount_cents / available.quantity;
+        total += Math.round(quantity * unit);
+        lineCount += 1;
+      }
+    } else if (args.lines === undefined) {
+      total = preview.lines.reduce((sum, line) => sum + line.amount_cents, 0);
+      lineCount = preview.lines.length;
+    }
+    return {
+      refundable_total_cents: total,
+      line_count: lineCount,
+      currency: preview.currency,
+      zero_priced_remaining: preview.zero_priced_remaining,
+      payment_method: preview.payment_method,
+    };
+  }
+  if (toolName === "cancel_order") {
+    if (!isUuid(args.brand_id) || !isUuid(args.order_id)) return null;
+    const preview = await loadOrderRefundableLines(
+      client,
+      args.order_id as string,
+      args.brand_id as string,
+    );
+    return {
+      payment_method: preview.payment_method,
+      currency: preview.currency,
+    };
+  }
+  if (toolName === "charge_installment_now") {
+    return {
+      installment_id: typeof args.installment_id === "string"
+        ? args.installment_id
+        : null,
+    };
+  }
+  return null;
+}
 
 export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   publishEvent,

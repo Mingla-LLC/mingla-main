@@ -256,6 +256,8 @@ export function toolErrorHttpStatus(code: string): number {
   // instead (same Host money-screen routing). Conflict / adjust-request → 409,
   // never 500 (safe_to_retry).
   if (code === "PAID_ORDER_MUST_REFUND") return 409;
+  if (code === "REFUND_PREVIEW_UNPRICED") return 409;
+  if (code === "DOMAIN_ACTION_REFUSED") return 409;
   // issue #2592 — an optimistic-concurrency conflict. The resource moved under
   // the caller, so the request is CORRECTLY refused and the caller resolves it
   // by re-reading the current version. That is the same 409 the Edge-owned

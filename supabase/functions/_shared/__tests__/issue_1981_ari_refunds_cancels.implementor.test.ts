@@ -658,6 +658,7 @@ Deno.test("#1981 implementor: get_order_refund_preview omits buyer PII", async (
   assertEquals(result.order_id, ORDER);
   assertEquals(result.payment_method, "card");
   assert(Array.isArray(result.refundable_lines));
+  assertEquals(typeof result.zero_priced_remaining, "number");
   const blob = JSON.stringify(result);
   assert(!blob.includes("buyer"));
   assert(!blob.includes("email"));

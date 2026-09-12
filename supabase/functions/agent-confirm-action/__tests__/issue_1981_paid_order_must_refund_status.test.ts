@@ -1,9 +1,8 @@
-// #1981 — paid cancel is a client-resolvable conflict, not a server fault.
+// #1981 — money refusals must reach the operator as non-retryable envelopes.
 //
-// `cancel_order` raises PAID_ORDER_MUST_REFUND before invoke. agent-confirm-action
-// maps only an explicit allowlist and previously fell through to HTTP 500 —
-// the one status Ari treats as safe_to_retry. Prove the shipped executor's
-// code maps to 409 by executing toolErrorHttpStatus (never a hand-typed literal).
+// toolErrorHttpStatus alone is insufficient: ariErrorResponse remaps via
+// mapLegacyAriErrorCode and registry-owned user_message / safe_to_retry.
+// Assert the envelope fields that Confirm surfaces.
 //
 // Run:
 //   deno test --no-check --allow-env --allow-net --allow-read \
@@ -17,16 +16,25 @@ import {
 import { toolErrorHttpStatus } from "../index.ts";
 import { DOMAIN_TOOLS } from "../../_shared/agentDomainTools.ts";
 import { ToolError } from "../../_shared/agentToolHelpers.ts";
+import {
+  ARI_ERROR_REGISTRY,
+  mapLegacyAriErrorCode,
+} from "../../_shared/agentReliability.ts";
 
 const BRAND = "11111111-1111-4111-8111-111111111111";
 const ORDER = "22222222-2222-4222-8222-222222222222";
 const LINE = "33333333-3333-4333-8333-333333333333";
+const BOOKING = "44444444-4444-4444-8444-444444444444";
 const OPERATION = "55555555-5555-4555-8555-555555555555";
 
-function paidOrderClient() {
+function orderClient(opts: {
+  payment_method?: string;
+  booking?: boolean;
+  invoke?: (name: string, body: Record<string, unknown>) => unknown;
+} = {}) {
   const orderRow = {
-    id: ORDER,
-    payment_method: "card",
+    id: opts.booking ? BOOKING : ORDER,
+    payment_method: opts.payment_method ?? "card",
     payment_status: "paid",
     currency: "usd",
     total_cents: 2000,
@@ -53,12 +61,28 @@ function paidOrderClient() {
   return {
     from: (table: string) => table === "orders" ? chain(orderRow) : chain(null),
     functions: {
-      invoke: () => Promise.resolve({ data: { ok: true }, error: null }),
+      invoke: (name: string, init: { body?: Record<string, unknown> }) => {
+        const data = opts.invoke
+          ? opts.invoke(name, init?.body ?? {})
+          : { ok: true };
+        return Promise.resolve({ data, error: null });
+      },
     },
   };
 }
 
-Deno.test("#1981 paid cancel ToolError maps to 409, not 500", async () => {
+function assertMoneyEnvelope(legacyCode: string, expectedCode: string) {
+  const mapped = mapLegacyAriErrorCode(legacyCode);
+  assertEquals(mapped, expectedCode);
+  const def = ARI_ERROR_REGISTRY[mapped];
+  assertEquals(def.httpStatus, 409);
+  assertEquals(def.safeToRetry, false);
+  assertEquals(def.retryability, "never");
+  assert(def.userMessage.length > 0);
+  return def;
+}
+
+Deno.test("#1981 paid cancel ToolError maps to honest non-retryable envelope", async () => {
   // deno-lint-ignore no-explicit-any
   const tool = DOMAIN_TOOLS.find((t: any) => t.name === "cancel_order");
   assert(tool, "cancel_order must be registered");
@@ -72,7 +96,7 @@ Deno.test("#1981 paid cancel ToolError maps to 409, not 500", async () => {
           reason: "Trying to cancel a paid order.",
           confirm_phrase: "CANCEL",
         },
-        paidOrderClient() as never,
+        orderClient() as never,
         "user",
         { operationId: OPERATION },
       ),
@@ -80,19 +104,46 @@ Deno.test("#1981 paid cancel ToolError maps to 409, not 500", async () => {
   );
 
   assertEquals(error.code, "PAID_ORDER_MUST_REFUND");
-  const status = toolErrorHttpStatus(error.code);
-  assertEquals(
-    status,
-    409,
-    `paid cancel must be a 409 conflict, got ${status} for ${error.code}`,
-  );
-  assert(
-    status !== 500,
-    "a deterministic caller mistake must never be reported as a server fault",
-  );
+  assertEquals(toolErrorHttpStatus(error.code), 409);
+  const def = assertMoneyEnvelope(error.code, "PAID_ORDER_MUST_REFUND");
+  assert(def.userMessage.includes("refund_order"));
 });
 
-Deno.test("#1981 PAID_ORDER_MUST_REFUND stays on the explicit 409 allowlist", () => {
-  assertEquals(toolErrorHttpStatus("PAID_ORDER_MUST_REFUND"), 409);
-  assertEquals(toolErrorHttpStatus("RPC_FAILED"), 500);
+Deno.test("#1981 unpriced trip cancel maps to honest non-retryable envelope", async () => {
+  // deno-lint-ignore no-explicit-any
+  const tool = DOMAIN_TOOLS.find((t: any) => t.name === "cancel_trip_booking");
+  assert(tool, "cancel_trip_booking must be registered");
+
+  const error = await assertRejects(
+    () =>
+      tool.executor(
+        {
+          brand_id: BRAND,
+          booking_id: BOOKING,
+          reason: "Unpriced preview must refuse.",
+          confirm_phrase: "CANCEL",
+        },
+        orderClient({
+          booking: true,
+          invoke: (_name, body) => body.mode === "preview" ? {} : { ok: true },
+        }) as never,
+        "user",
+        { operationId: OPERATION },
+      ),
+    ToolError,
+  );
+
+  assertEquals(error.code, "REFUND_PREVIEW_UNPRICED");
+  assertEquals(toolErrorHttpStatus(error.code), 409);
+  const def = assertMoneyEnvelope(error.code, "REFUND_PREVIEW_UNPRICED");
+  assert(def.userMessage.toLowerCase().includes("preview"));
+});
+
+Deno.test("#1981 EDGE_FAILED / RPC_FAILED map to DOMAIN_ACTION_REFUSED, not INTERNAL", () => {
+  for (const legacy of ["EDGE_FAILED", "RPC_FAILED"]) {
+    const def = assertMoneyEnvelope(legacy, "DOMAIN_ACTION_REFUSED");
+    assertEquals(def.safeToRetry, false);
+  }
+  assertEquals(mapLegacyAriErrorCode("HANDLER_THREW"), "INTERNAL");
+  assertEquals(ARI_ERROR_REGISTRY.INTERNAL.safeToRetry, true);
 });

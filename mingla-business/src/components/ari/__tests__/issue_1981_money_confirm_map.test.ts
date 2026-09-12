@@ -20,4 +20,11 @@ describe("#1981 ToolProposalCard MONEY_CONFIRM_TOOLS", () => {
     expect(source).not.toMatch(/retry_installment:\s*"/);
     expect(source).not.toMatch(/send_installment_reminder:\s*"/);
   });
+
+  it("shows money fieldsFor above type-to-confirm (refund total / zero-priced)", () => {
+    expect(source).toContain("formatMoneyCents");
+    expect(source).toContain("refund_total_cents");
+    expect(source).toContain("zero_priced_remaining");
+    expect(source).toMatch(/isMoneyConfirm && moneyPhrase[\s\S]*fieldsFor\(toolName, liveArgs\)/);
+  });
 });

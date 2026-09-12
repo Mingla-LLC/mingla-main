@@ -9,6 +9,8 @@
 // [TEST-MOD-APPROVED #1981] cancel_trip_booking now requires
 // context.operationId as Idempotency-Key (Host gesture pin).
 // [TEST-MOD-APPROVED #1981] census pin bump authorized in the CI-fix commit.
+// [TEST-MOD-APPROVED #1981] cancel fixtures seed orders[BOOKING] so brand-bind
+// before preview does not 404 the amount-guard proofs.
 
 import {
   assert,
@@ -137,8 +139,17 @@ function rosterClient(
 // Item 1 — a money-moving commit must carry the exact previewed amount.
 // ---------------------------------------------------------------------------
 
+function bookingOrderRows(): Record<string, Record<string, Row | null>> {
+  return {
+    orders: {
+      [BOOKING]: { id: BOOKING, events: { brand_id: BRAND } },
+    },
+  };
+}
+
 Deno.test("#2593 D1 cancel_trip_booking commits the EXACT previewed refund", async () => {
   const { client, calls } = makeClient({
+    rows: bookingOrderRows(),
     invoke: (_name, body) =>
       body.mode === "preview" ? { refundTotalCents: 4275 } : { ok: true },
   });
@@ -165,6 +176,7 @@ Deno.test("#2593 D1 an unpriced preview refuses instead of committing zero", asy
     }]
   ) {
     const { client, calls } = makeClient({
+      rows: bookingOrderRows(),
       invoke: (
         _name,
         body,

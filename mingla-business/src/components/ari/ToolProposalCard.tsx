@@ -192,8 +192,70 @@ function coverTypeLabel(type: unknown): string | null {
   return null;
 }
 
+function formatMoneyCents(cents: unknown, currency: unknown): string | null {
+  if (typeof cents !== "number" || !Number.isFinite(cents)) return null;
+  const code = typeof currency === "string" && currency.trim()
+    ? currency.trim().toUpperCase()
+    : "";
+  const amount = (cents / 100).toFixed(2);
+  return code ? `${amount} ${code}` : amount;
+}
+
 function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
   const out: Field[] = [];
+  const context = args.__proposal_context !== null && typeof args.__proposal_context === "object"
+    ? args.__proposal_context as Record<string, unknown>
+    : {};
+
+  if (
+    toolName === "refund_order" ||
+    toolName === "cancel_order" ||
+    toolName === "cancel_trip_booking" ||
+    toolName === "charge_installment_now"
+  ) {
+    if (toolName === "refund_order") {
+      const total = formatMoneyCents(
+        context.refundable_total_cents,
+        context.currency,
+      );
+      if (total) out.push({ label: "Refund total", value: total });
+      if (typeof context.line_count === "number") {
+        out.push({ label: "Lines", value: String(context.line_count) });
+      }
+      if (
+        typeof context.zero_priced_remaining === "number" &&
+        context.zero_priced_remaining > 0
+      ) {
+        out.push({
+          label: "Zero-priced left",
+          value: String(context.zero_priced_remaining),
+        });
+      }
+    }
+    if (toolName === "cancel_trip_booking") {
+      const total = formatMoneyCents(context.refund_total_cents, context.currency);
+      if (total) out.push({ label: "Refund total", value: total });
+      else out.push({ label: "Refund total", value: "Preview pending" });
+    }
+    if (toolName === "cancel_order") {
+      if (typeof context.payment_method === "string") {
+        out.push({ label: "Payment", value: context.payment_method });
+      }
+    }
+    if (toolName === "charge_installment_now") {
+      const id = typeof args.installment_id === "string"
+        ? args.installment_id
+        : typeof context.installment_id === "string"
+        ? context.installment_id
+        : "";
+      if (id) out.push({ label: "Installment", value: `${id.slice(0, 8)}…` });
+    }
+    if (typeof args.reason === "string" && args.reason.trim()) {
+      out.push({ label: "Reason", value: args.reason.trim() });
+    }
+    return out;
+  }
+
   const isSiteTool = [
     "propose_site_content_update",
     "propose_site_settings_update",
@@ -252,9 +314,6 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     }
     return out;
   }
-  const context = args.__proposal_context !== null && typeof args.__proposal_context === "object"
-    ? args.__proposal_context as Record<string, unknown>
-    : {};
   if (toolName === "upsert_ticket_tier") {
     out.push({ label: "Event state", value: String(context.lifecycle ?? "event") });
     out.push({ label: "Action", value: String(context.action ?? "update") });
@@ -836,6 +895,16 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           </>
         ) : isMoneyConfirm && moneyPhrase ? (
           <>
+            {fieldsFor(toolName, liveArgs).length > 0 ? (
+              <View style={styles.fields}>
+                {fieldsFor(toolName, liveArgs).map((f, i) => (
+                  <View key={i} style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>{f.label}</Text>
+                    <Text style={styles.fieldValue} numberOfLines={2}>{f.value}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
             <View style={styles.assuranceRow}>
               <Text style={styles.assuranceText}>
                 This cannot be undone from chat. Type {moneyPhrase} to confirm.
