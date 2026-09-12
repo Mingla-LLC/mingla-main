@@ -226,6 +226,39 @@ Deno.test("#1983 implementor: update_notification_prefs bulk types", async () =>
   assertEquals(rows[1].type, "business.payout_paid");
 });
 
+Deno.test("#1983 implementor: update_notification_prefs rejects empty types", async () => {
+  const tool = domainTool("update_notification_prefs");
+  const { client, upserts } = accountClient();
+  await assertRejects(
+    () =>
+      tool.executor(
+        { types: [], channel: "push", opt_in: false },
+        client,
+        USER,
+      ),
+    ToolError,
+  );
+  assertEquals(upserts.length, 0);
+});
+
+Deno.test("#1983 implementor: update_notification_prefs dedupes duplicate types", async () => {
+  const tool = domainTool("update_notification_prefs");
+  const { client, upserts } = accountClient();
+  await tool.executor(
+    {
+      types: ["business.order_paid", "business.order_paid"],
+      channel: "push",
+      opt_in: false,
+    },
+    client,
+    USER,
+  );
+  assertEquals(upserts.length, 1);
+  const rows = upserts[0].rows as Array<Record<string, unknown>>;
+  assertEquals(rows.length, 1);
+  assertEquals(rows[0].type, "business.order_paid");
+});
+
 Deno.test("#1983 implementor: update_notification_prefs rejects email/sms/order", async () => {
   const tool = domainTool("update_notification_prefs");
   const { client, upserts } = accountClient();

@@ -535,10 +535,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const [coverSheetVisible, setCoverSheetVisible] = useState(false);
   const [coverUploadState, setCoverUploadState] = useState<CoverUploadState>("idle");
   const [typedName, setTypedName] = useState("");
-  // #1983 — account deletion requires legal name AND typed DELETE (highest-safety).
-  const [legalNameInput, setLegalNameInput] = useState(
-    typeof args.legal_name === "string" ? args.legal_name : "",
-  );
+  // #1983 — highest-safety: legal name must be freshly typed (never prefilled
+  // from the model proposal), same empty-start pattern as brand-delete confirm.
+  const [legalNameInput, setLegalNameInput] = useState("");
   // ORCH-1103 Q7 — create-row-first / attach-second. On a create proposal the
   // reused CoverPicker persists EVERY brand media (device, video, Pexels, GIPHY)
   // live to a real brandId — so the brand row must exist before the picker can

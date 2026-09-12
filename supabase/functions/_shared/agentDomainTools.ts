@@ -6191,7 +6191,9 @@ const BUSINESS_NOTIFICATION_TYPES = [
   "business.claim_decision",
   "business.team_member_joined",
 ] as const;
-const BUSINESS_NOTIFICATION_TYPE_SET = new Set<string>(BUSINESS_NOTIFICATION_TYPES);
+const BUSINESS_NOTIFICATION_TYPE_SET = new Set<string>(
+  BUSINESS_NOTIFICATION_TYPES,
+);
 
 const updateNotificationPrefs = writeTool(
   "update_notification_prefs",
@@ -6221,6 +6223,13 @@ const updateNotificationPrefs = writeTool(
 
     const types: string[] = [];
     if (Array.isArray(args.types)) {
+      if (args.types.length === 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "types must include at least one business.* notification type",
+        );
+      }
+      const seen = new Set<string>();
       for (const t of args.types) {
         if (typeof t !== "string" || !BUSINESS_NOTIFICATION_TYPE_SET.has(t)) {
           throw new ToolError(
@@ -6228,6 +6237,8 @@ const updateNotificationPrefs = writeTool(
             `invalid notification type: ${String(t)}`,
           );
         }
+        if (seen.has(t)) continue;
+        seen.add(t);
         types.push(t);
       }
     } else if (typeof args.type === "string") {

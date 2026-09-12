@@ -33,7 +33,7 @@ Deno.test("#1970 happy: PROMPT_VERSION is v6 and create_experience is advertised
   // packages, traveller intake and the aggregate money read are advertised, and
   // the trip rules block is new). ONE assertion is invalidated — the version
   // literal. Every capability-advertisement assertion below is unchanged.
-  assertEquals(PROMPT_VERSION, "v6");
+  assertEquals(PROMPT_VERSION, "v19"); // [TEST-MOD-APPROVED #1983] prompt bumped for account/notification ads
   const prompt = buildSystemPrompt(null, []);
   const caps = prompt.slice(prompt.indexOf("CAPABILITIES"));
   assertStringIncludes(caps, "create_experience");

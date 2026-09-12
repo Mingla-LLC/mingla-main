@@ -29,4 +29,13 @@ describe("#1983 ToolProposalCard account deletion confirm", () => {
       /legalNameInput\.trim\(\)\.length > 0[\s\S]*typedName\.trim\(\)\.toUpperCase\(\) === "DELETE"/,
     );
   });
+
+  it("starts legal name empty so the operator must type it", () => {
+    expect(source).toMatch(
+      /const \[legalNameInput, setLegalNameInput\] = useState\(""\);/,
+    );
+    expect(source).not.toMatch(
+      /useState\(\s*typeof args\.legal_name === "string"/,
+    );
+  });
 });
