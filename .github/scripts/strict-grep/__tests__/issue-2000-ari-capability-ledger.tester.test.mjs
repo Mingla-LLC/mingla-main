@@ -57,6 +57,8 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // [TEST-MOD-APPROVED #1981] Register charge_installment_now +
 // send_installment_reminder (90→92). Two unsupported rows leave into
 // registered_unverified (89→91, unsupported 18→16). Denominator stays 120.
+// [TEST-MOD-APPROVED #1981] get_order_refund_preview + list_trip_installments
+// (123→125 tools / 135→137 capabilities).
 // [TEST-MOD-APPROVED #1976] Three partner/payments reads (87→90):
 // get_brand_balances_reports, list_partner_brand_links, list_partner_splits.
 // unsupported 21→18; registered_unverified 86→89. Denominator stays 120.

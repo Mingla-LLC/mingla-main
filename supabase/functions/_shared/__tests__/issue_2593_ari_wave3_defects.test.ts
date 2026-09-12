@@ -8,6 +8,7 @@
 // The tester owns the adversarial angle separately.
 // [TEST-MOD-APPROVED #1981] cancel_trip_booking now requires
 // context.operationId as Idempotency-Key (Host gesture pin).
+// [TEST-MOD-APPROVED #1981] census pin bump authorized in the CI-fix commit.
 
 import {
   assert,

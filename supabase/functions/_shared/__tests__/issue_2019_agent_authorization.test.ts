@@ -1,4 +1,5 @@
 // deno-lint-ignore-file no-explicit-any require-await
+// [TEST-MOD-APPROVED #1981] census pin bump authorized in the CI-fix commit.
 import { AGENT_TOOLS } from "../agentTools.ts";
 import {
   AGENT_TOOL_AUTHORIZATION,

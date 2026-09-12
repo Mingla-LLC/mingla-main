@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+// [TEST-MOD-APPROVED #1981] append-only auth for #1981 census/prompt pin bump.
 import test from "node:test";
 
 import {

@@ -51,13 +51,13 @@ function clientFor(
     payment_method: opts.payment_method ?? "free",
     payment_status: "paid",
     currency: "usd",
-    total_cents: 0,
+    total_cents: opts.payment_method === "card" ? 1000 : 0,
     events: { brand_id: BRAND },
     order_line_items: [{
       id: LINE,
       quantity: 1,
-      unit_price_cents: 0,
-      total_cents: 0,
+      unit_price_cents: opts.payment_method === "card" ? 1000 : 0,
+      total_cents: opts.payment_method === "card" ? 1000 : 0,
     }],
     refunds: [],
   };

@@ -230,7 +230,7 @@ Deno.test("#1981 implementor: refund_order omits lines → full remaining; key =
   }]);
 });
 
-Deno.test("#1981 implementor: refund_order partial lines pass through with same key", async () => {
+Deno.test("#1981 implementor: refund_order partial lines recompute amount_cents server-side", async () => {
   const { client, invokes } = moneyClient();
   await domainTool("refund_order").executor(
     {
@@ -239,7 +239,7 @@ Deno.test("#1981 implementor: refund_order partial lines pass through with same 
       lines: [{
         order_line_item_id: LINE,
         quantity: 1,
-        amount_cents: 1000,
+        amount_cents: 1, // attacker/model underpay — must be ignored
       }],
       reason: "Partial refund for one ticket only.",
       confirm_phrase: "REFUND",
@@ -249,7 +249,55 @@ Deno.test("#1981 implementor: refund_order partial lines pass through with same 
     { operationId: OP },
   );
   assertEquals(invokes[0].headers?.["Idempotency-Key"], OP);
-  assertEquals((invokes[0].body.lines as unknown[]).length, 1);
+  assertEquals(invokes[0].body.lines, [{
+    order_line_item_id: LINE,
+    quantity: 1,
+    amount_cents: 1000,
+  }]);
+});
+
+Deno.test("#1981 implementor: refund_order rejects present-but-empty lines", async () => {
+  const { client, invokes } = moneyClient();
+  const err = await assertRejects(
+    () =>
+      domainTool("refund_order").executor(
+        {
+          brand_id: BRAND,
+          order_id: ORDER,
+          lines: [],
+          reason: "Empty lines must not become a full refund.",
+          confirm_phrase: "REFUND",
+        },
+        client,
+        USER,
+        { operationId: OP },
+      ),
+    ToolError,
+  );
+  assertEquals(err.code, "INVALID_ARGS");
+  assert(String(err.message).includes("non-empty"));
+  assertEquals(invokes.length, 0);
+});
+
+Deno.test("#1981 implementor: refund preview subtracts pending refunds", async () => {
+  const { client } = moneyClient({
+    payment_method: "card",
+    refunds: [{
+      status: "pending",
+      refund_line_items: [{
+        order_line_item_id: LINE,
+        quantity: 2,
+        amount_cents: 2000,
+      }],
+    }],
+  });
+  const result = await domainTool("get_order_refund_preview").executor(
+    { brand_id: BRAND, order_id: ORDER },
+    client,
+    USER,
+  );
+  assertEquals(result.refundable_lines, []);
+  assertEquals(result.refundable_total_cents, 0);
 });
 
 Deno.test("#1981 implementor: cancel_order refuses paid before invoke", async () => {
@@ -323,6 +371,30 @@ Deno.test("#1981 implementor: retry_installment calls biz_retry_installment", as
   assertEquals(result.installment_id, INSTALLMENT);
 });
 
+Deno.test("#1981 implementor: retry_installment treats ok:false as ToolError", async () => {
+  const { client } = moneyClient();
+  client.rpc = (name: string) => {
+    if (name === "biz_retry_installment") {
+      return Promise.resolve({
+        data: { ok: false, reason: "not_failed" },
+        error: null,
+      });
+    }
+    return Promise.resolve({ data: null, error: null });
+  };
+  const err = await assertRejects(
+    () =>
+      domainTool("retry_installment").executor(
+        { brand_id: BRAND, installment_id: INSTALLMENT },
+        client,
+        USER,
+      ),
+    ToolError,
+  );
+  assertEquals(err.code, "RPC_FAILED");
+  assert(String(err.message).includes("not_failed"));
+});
+
 Deno.test("#1981 implementor: get_order_refund_preview omits buyer PII", async () => {
   const { client } = moneyClient({ payment_method: "card" });
   const result = await domainTool("get_order_refund_preview").executor(
@@ -340,16 +412,37 @@ Deno.test("#1981 implementor: get_order_refund_preview omits buyer PII", async (
   assert(!blob.includes("name"));
 });
 
-Deno.test("#1981 implementor: list_trip_installments returns ids only", async () => {
-  const { client } = moneyClient();
+Deno.test("#1981 implementor: list_trip_installments returns due/failed only", async () => {
+  const { client } = moneyClient({
+    installments: [
+      {
+        id: INSTALLMENT,
+        order_id: ORDER,
+        status: "failed",
+        due_at: "2026-09-01T00:00:00Z",
+        amount_cents: 5000,
+        currency: "usd",
+        ordinal: 1,
+      },
+      {
+        id: "99999999-9999-4999-8999-999999999999",
+        order_id: ORDER,
+        status: "scheduled",
+        due_at: "2099-01-01T00:00:00Z",
+        amount_cents: 5000,
+        currency: "usd",
+        ordinal: 2,
+      },
+    ],
+  });
   const result = await domainTool("list_trip_installments").executor(
     { brand_id: BRAND, event_id: EVENT },
     client,
     USER,
   );
   assertEquals(result.event_id, EVENT);
+  assertEquals(result.installments.length, 1);
   assertEquals(result.installments[0].installment_id, INSTALLMENT);
-  assertEquals(result.installments[0].order_id, ORDER);
   const blob = JSON.stringify(result);
   assert(!blob.includes("buyer"));
   assert(!blob.includes("email"));

@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #1981] census pin bump authorized in the CI-fix commit.
 // #1999 — provider-compatible Ari tool declarations.
 // Implementor happy path: compile the complete actual registry, preserve the
 // canonical execution schemas, and normalize Google's typed int64 fields.
@@ -211,3 +212,4 @@ Deno.test("#1999 happy: numeric enums normalize narrowly and invalid enum member
     );
   }
 });
+

@@ -3861,6 +3861,7 @@ async function loadOrderRefundableLines(
   payment_status: string | null;
   currency: string | null;
   lines: RefundLinePayload[];
+  zero_priced_remaining: number;
 }> {
   const { data, error } = await client
     .from("orders")
@@ -3884,10 +3885,12 @@ async function loadOrderRefundableLines(
       "order_id does not belong to this brand.",
     );
   }
+  // Match biz_refund_order's line_overrefund guard: pending + succeeded both
+  // consume refundable quantity (Host UI shows succeeded-only; write path is stricter).
   const refundedQtyByLine: Record<string, number> = {};
   const refunds = Array.isArray(data.refunds) ? data.refunds : [];
   for (const refund of refunds as Array<Record<string, unknown>>) {
-    if (refund.status !== "succeeded") continue;
+    if (refund.status !== "succeeded" && refund.status !== "pending") continue;
     const rlis = Array.isArray(refund.refund_line_items)
       ? refund.refund_line_items as Array<Record<string, unknown>>
       : [];
@@ -3902,6 +3905,7 @@ async function loadOrderRefundableLines(
     ? data.order_line_items as Array<Record<string, unknown>>
     : [];
   const lines: RefundLinePayload[] = [];
+  let zeroPricedRemaining = 0;
   for (const line of rawLines) {
     const lineId = String(line.id ?? "");
     if (!isUuid(lineId)) continue;
@@ -3909,6 +3913,10 @@ async function loadOrderRefundableLines(
     const unit = Number(line.unit_price_cents ?? 0);
     const remaining = qty - (refundedQtyByLine[lineId] ?? 0);
     if (remaining <= 0) continue;
+    if (!(unit > 0)) {
+      zeroPricedRemaining += remaining;
+      continue;
+    }
     lines.push({
       order_line_item_id: lineId,
       quantity: remaining,
@@ -3924,6 +3932,7 @@ async function loadOrderRefundableLines(
       : null,
     currency: typeof data.currency === "string" ? data.currency : null,
     lines,
+    zero_priced_remaining: zeroPricedRemaining,
   };
 }
 
@@ -3954,6 +3963,9 @@ const refundOrder = writeTool(
   ["brand_id", "order_id", "reason"],
   async (args, client, userId, context) => {
     const brandId = requireBrand(args, client, userId);
+    // Pin key before any preview work so a missing operation id fails closed
+    // without implying a refundable state.
+    const operationId = requireAgentOperationId(context);
     if (!isUuid(args.order_id)) {
       throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
     }
@@ -3965,19 +3977,62 @@ const refundOrder = writeTool(
       );
     }
     let lines: RefundLinePayload[];
-    if (Array.isArray(args.lines) && args.lines.length > 0) {
-      lines = args.lines as RefundLinePayload[];
-    } else {
-      const preview = await loadOrderRefundableLines(
-        client,
-        args.order_id as string,
-        brandId,
+    const preview = await loadOrderRefundableLines(
+      client,
+      args.order_id as string,
+      brandId,
+    );
+    // Present-but-empty/null must NOT become a full refund (schema minItems is
+    // not enforced by the Ari validator).
+    if (args.lines !== undefined && args.lines !== null) {
+      if (!Array.isArray(args.lines) || args.lines.length === 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "lines must be a non-empty array for a partial refund; omit lines for a full remaining refund.",
+        );
+      }
+      const availableById = new Map(
+        preview.lines.map((line) => [line.order_line_item_id, line]),
       );
+      lines = [];
+      for (const raw of args.lines as Array<Record<string, unknown>>) {
+        const lineId = String(raw.order_line_item_id ?? "");
+        const quantity = Number(raw.quantity ?? 0);
+        if (!isUuid(lineId) || !Number.isInteger(quantity) || quantity < 1) {
+          throw new ToolError(
+            "INVALID_ARGS",
+            "Each refund line needs a uuid order_line_item_id and quantity ≥ 1.",
+          );
+        }
+        const available = availableById.get(lineId);
+        if (!available) {
+          throw new ToolError(
+            "INVALID_ARGS",
+            `Line ${lineId} is not refundable on this order (unknown, fully refunded, or pending).`,
+          );
+        }
+        if (quantity > available.quantity) {
+          throw new ToolError(
+            "INVALID_ARGS",
+            `Line ${lineId} only has ${available.quantity} ticket(s) left to refund.`,
+          );
+        }
+        const unit = available.amount_cents / available.quantity;
+        lines.push({
+          order_line_item_id: lineId,
+          quantity,
+          // Server-authoritative cents — never trust model/edited amount_cents.
+          amount_cents: Math.round(quantity * unit),
+        });
+      }
+    } else {
       lines = preview.lines;
       if (lines.length === 0) {
         throw new ToolError(
           "INVALID_ARGS",
-          "There is nothing left to refund on this order.",
+          preview.zero_priced_remaining > 0
+            ? "Remaining tickets have no refundable amount; use the Host money screen for zero-price voids."
+            : "There is nothing left to refund on this order.",
         );
       }
     }
@@ -3985,7 +4040,7 @@ const refundOrder = writeTool(
       client,
       "refund-order",
       { order_id: args.order_id, lines, reason },
-      { "Idempotency-Key": requireAgentOperationId(context) },
+      { "Idempotency-Key": operationId },
     );
   },
   "REFUND",
@@ -4101,9 +4156,18 @@ const retryInstallment = writeTool(
     if (!isUuid(args.installment_id)) {
       throw new ToolError("INVALID_ARGS", "installment_id must be a uuid");
     }
-    return await callRpc(client, "biz_retry_installment", {
-      p_installment_id: args.installment_id,
-    });
+    const result = await callRpc<Record<string, unknown>>(
+      client,
+      "biz_retry_installment",
+      { p_installment_id: args.installment_id },
+    );
+    if (result?.ok !== true) {
+      const reason = typeof result?.reason === "string"
+        ? result.reason
+        : "retry_installment_failed";
+      throw new ToolError("RPC_FAILED", reason);
+    }
+    return result;
   },
 );
 
@@ -4208,7 +4272,17 @@ const listTripInstallments = writeTool(
       .order("due_at", { ascending: true })
       .limit(limit);
     if (error) throw new ToolError("RPC_FAILED", error.message);
-    const installments = (data ?? []).map((row: Record<string, unknown>) => ({
+    const nowIso = new Date().toISOString();
+    // Advertised as due/failed — keep failed, drop future scheduled.
+    const installments = (data ?? [])
+      .filter((row: Record<string, unknown>) => {
+        if (row.status === "failed") return true;
+        if (row.status === "scheduled") {
+          return typeof row.due_at === "string" && row.due_at <= nowIso;
+        }
+        return false;
+      })
+      .map((row: Record<string, unknown>) => ({
       installment_id: row.id,
       order_id: row.order_id,
       status: row.status,

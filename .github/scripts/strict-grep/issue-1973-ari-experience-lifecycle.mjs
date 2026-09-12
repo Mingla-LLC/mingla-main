@@ -155,10 +155,11 @@ function check(s) {
   // [TEST-MOD-APPROVED #2830] Twelve approved Website tools extend the
   // certification denominator while this owner still proves one missing row.
   // [TEST-MOD-APPROVED #1980] Three marketing/growth tools; 132→135 / 131→134.
-  requireAll("135-capability certification proof", s.certificationTest, [
+  // [TEST-MOD-APPROVED #1981] Refund preview + trip installments; 135→137 / 134→136.
+  requireAll("137-capability certification proof", s.certificationTest, [
     "ari.experience.unpublish",
-    "ari_cert_missing_capabilities:134",
-    "expected exactly 135 certification requirements",
+    "ari_cert_missing_capabilities:136",
+    "expected exactly 137 certification requirements",
   ]);
   requireAll("public payload Edge proof", s.publicPayloadTest, [
     '"update_experience"',
