@@ -64,7 +64,6 @@ function verifySource(overrides = {}) {
   const about = source('mingla-marketing/app/(core)/about/page.tsx')
   const explorer = source('mingla-marketing/app/(core)/explorer/page.tsx')
   const cities = source('mingla-marketing/app/(core)/cities/page.tsx')
-  const standards = source('mingla-marketing/app/(core)/editorial-standards/page.tsx')
   const directory = source('mingla-marketing/components/core-pages/city-directory.tsx')
   const hero = source('mingla-marketing/components/core-pages/cities-hero.tsx')
   const answer = source('mingla-marketing/components/cutout/answer.tsx')
@@ -97,7 +96,7 @@ function verifySource(overrides = {}) {
   assert.match(about, /Lagos, Durham, Cary, Raleigh, New York City, Brussels, Paris, London, Fort Lauderdale and Washington, DC each have their own Mingla city page\./)
   assert.match(explorer, /Pick the city you are in—or the one you are heading to\./)
   for (const phrase of REMOVED_COPY) {
-    assert(![about, explorer, cities, standards, answer].join('\n').includes(phrase), `removed public copy remains: ${phrase}`)
+    assert(![about, explorer, cities, answer].join('\n').includes(phrase), `removed public copy remains: ${phrase}`)
   }
   assert(!exists('mingla-marketing/components/core-pages/review-record.tsx'), 'orphaned ReviewRecord component must be removed')
   assert.doesNotMatch(answer, /lastChecked/)
@@ -317,7 +316,7 @@ async function verifyRuntime() {
       try { if ((await request(port, '/robots.txt')).status === 200) break } catch {}
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
-    for (const pathname of ['/about', '/explorer', '/cities', '/editorial-standards']) {
+    for (const pathname of ['/about', '/explorer', '/cities']) {
       const response = await request(port, pathname)
       assert.equal(response.status, 200, `${pathname} must render`)
       const text = visibleText(response.body)

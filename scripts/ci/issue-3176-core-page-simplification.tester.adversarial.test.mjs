@@ -228,7 +228,7 @@ async function runtimeContract() {
       'Claude-SearchBot/1.0; +https://anthropic.com/claude-search-bot',
       'PerplexityBot/1.0; +https://perplexity.ai/perplexitybot',
     ]
-    for (const pathname of ['/about', '/explorer', '/cities', '/editorial-standards', ...SLUGS.map((slug) => `/cities/${slug}`)]) {
+    for (const pathname of ['/about', '/explorer', '/cities', ...SLUGS.map((slug) => `/cities/${slug}`)]) {
       const baselineResponse = await request(appPort, pathname, browserAgent)
       assert.equal(baselineResponse.status, 200, `${pathname} direct request`)
       const baselineHtml = await baselineResponse.text()

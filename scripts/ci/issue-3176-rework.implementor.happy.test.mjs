@@ -45,14 +45,14 @@ function sourceContract() {
 
   const packageJson = JSON.parse(read('mingla-marketing/package.json'))
   assert.match(packageJson.scripts.build, /export MINGLA_HISTORICAL_2983_BUILD=1/)
-  assert.match(packageJson.scripts.build, /unset MINGLA_HISTORICAL_2983_BUILD && node scripts\/clear-historical-city-build\.mjs && next build && node \.\.\/scripts\/ci\/issue-3176-rework\.implementor\.happy\.test\.mjs --built-only$/)
+  assert.match(packageJson.scripts.build, /unset MINGLA_HISTORICAL_2983_BUILD && node scripts\/clear-historical-city-build\.mjs && next build && node \.\.\/scripts\/ci\/issue-3176-editorial-route-removal\.implementor\.happy\.test\.mjs --built-only && node \.\.\/scripts\/ci\/issue-3176-editorial-route-removal\.tester\.adversarial\.test\.mjs --built-only && node \.\.\/scripts\/ci\/issue-3176-rework\.implementor\.happy\.test\.mjs --built-only$/)
   assert.equal(packageJson.scripts.postbuild, 'node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs --built-only && node scripts/issue-2990-restructured-page-system.tester.adversarial.test.mjs')
   assert.match(read('mingla-marketing/lib/search/historical-city-build.ts'), /process\.env\.MINGLA_HISTORICAL_2983_BUILD === '1'[\s\S]*?process\.env\.npm_lifecycle_event === 'postbuild'/)
 
   const tabs = validateWorkbookTabs(buildWorkbookTabs())
   assert.deepEqual(Object.keys(tabs), WORKBOOK_TAB_NAMES)
   assert.deepEqual(tabs['00_ROUTE_LEDGER'].columns, WORKBOOK_SCHEMAS['00_ROUTE_LEDGER'])
-  assert.equal(tabs['00_ROUTE_LEDGER'].rows.length, 24)
+  assert.equal(tabs['00_ROUTE_LEDGER'].rows.length, 23)
   assert.equal(tabs['07_BENCHMARK'].rows.length, 145)
   for (const field of [
     'deployment_sha','observed_at','expected_http_status','observed_browser_status','gsc_pages_result','bing_index_result',

@@ -1,6 +1,6 @@
 import type { RouteLifecycle } from '@/lib/search/route-registry'
 
-export type CorePageSlug = 'about' | 'explorer' | 'cities' | 'editorial-standards'
+export type CorePageSlug = 'about' | 'explorer' | 'cities'
 
 export interface CorePageRecord {
   readonly slug: CorePageSlug
@@ -15,7 +15,7 @@ export interface CorePageRecord {
   readonly reviewedAt: `${number}-${number}-${number}`
 }
 
-// These four records are the only owner of core-page metadata and lifecycle.
+// These three records are the only owner of core-page metadata and lifecycle.
 // Publication is deliberately fail-closed until the release evidence named on
 // #3176 exists; deploy time must never impersonate an editorial review date.
 export const CORE_PAGES: Readonly<Record<CorePageSlug, CorePageRecord>> = {
@@ -49,20 +49,10 @@ export const CORE_PAGES: Readonly<Record<CorePageSlug, CorePageRecord>> = {
     directAnswer: 'Each Mingla city has its own evidence, boundaries, local context and Explorer and Host paths. Choose the city you mean; Mingla does not merge neighbouring cities into one generic page.',
     reviewedAt: '2026-09-10',
   },
-  'editorial-standards': {
-    slug: 'editorial-standards', pathname: '/editorial-standards', lifecycle: 'public_noindex',
-    title: 'Mingla Editorial Standards, Sources & Corrections',
-    description: 'See how Mingla selects, verifies, labels, updates and corrects city, event, venue and guide content—including AI and sponsored material.',
-    eyebrow: 'Editorial Standards',
-    h1: 'How Mingla chooses, verifies and updates content.',
-    directQuestion: 'How does Mingla decide what to publish?',
-    directAnswer: 'Mingla publishes decision-helpful information only when the city, source, date, action and media can be explained. Commercial relationships are labelled; stale or unsupported claims do not stay search-ready.',
-    reviewedAt: '2026-09-10',
-  },
 }
 
 export function allCoreTrustPagesSearchReady(): boolean {
   return CORE_PAGES.about.lifecycle === 'search_ready' &&
     CORE_PAGES.explorer.lifecycle === 'search_ready' &&
-    CORE_PAGES['editorial-standards'].lifecycle === 'search_ready'
+    CORE_PAGES.cities.lifecycle === 'search_ready'
 }

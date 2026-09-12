@@ -16,7 +16,6 @@
     { "path": "/about", "lifecycle": "public_noindex" },
     { "path": "/explorer", "lifecycle": "public_noindex" },
     { "path": "/cities", "lifecycle": "public_noindex" },
-    { "path": "/editorial-standards", "lifecycle": "public_noindex" },
     { "path": "/cities/lagos", "lifecycle": "public_noindex" },
     { "path": "/cities/durham-nc", "lifecycle": "public_noindex" },
     { "path": "/cities/cary-nc", "lifecycle": "public_noindex" },

@@ -46,7 +46,7 @@ export function AudienceMenuContent({
   const supportingDestinations = [
     { href: '/', label: 'Home' },
     ...(allCityHubsSearchReady() && coreReady ? [{ href: '/cities', label: 'Cities' }] : []),
-    ...(coreReady ? [{ href: '/about', label: 'About' }, { href: '/editorial-standards', label: 'Editorial Standards' }] : []),
+    ...(coreReady ? [{ href: '/about', label: 'About' }] : []),
     { href: '/tools', label: 'Free tools' },
   ]
 

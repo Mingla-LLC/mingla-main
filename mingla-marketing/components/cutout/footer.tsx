@@ -10,7 +10,7 @@ import { allCityHubsSearchReady } from '@/content/cities/registry'
 // page reachable from every page, or the 31-page pilot has no crawl graph.
 
 // Only routes that exist. The first draft linked a future sitemap -- cities,
-// blog, about, editorial standards and six ICP pages -- and nine of those
+// blog, about and six ICP pages -- and nine of those
 // fourteen links 404ed. Those pages are owned by the search/page-system work;
 // when they land they get their entries back.
 export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
@@ -18,7 +18,7 @@ export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
   const columns = [
     { title: 'Explore', links: [{ href: coreReady ? '/explorer' : '/', label: 'For Explorers' }, ...(coreReady && allCityHubsSearchReady() ? [{ href: '/cities', label: 'Cities' }] : [])] },
     { title: 'Host', links: [{ href: '/host', label: 'For Hosts' }, { href: '/tools', label: 'Free tools' }, { href: '/help', label: 'Help centre' }] },
-    { title: 'Company', links: [...(coreReady ? [{ href: '/about', label: 'About' }, { href: '/editorial-standards', label: 'Editorial Standards' }] : []), { href: 'https://career.usemingla.com', label: 'Careers', external: true as const }] },
+    { title: 'Company', links: [...(coreReady ? [{ href: '/about', label: 'About' }] : []), { href: 'https://career.usemingla.com', label: 'Careers', external: true as const }] },
     { title: 'Legal', links: [{ href: '/privacy-policy', label: 'Privacy' }, { href: '/terms-of-service', label: 'Terms' }, { href: '/support', label: 'Support' }] },
   ]
   return (

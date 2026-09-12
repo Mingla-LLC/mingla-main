@@ -318,7 +318,7 @@ export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
   useEffect(() => {
     if (!enabled || !pathname) return
     const audience = pathname === '/host' || pathname.startsWith('/host/') ? 'host' : pathname === '/explorer' || pathname.startsWith('/cities/') ? 'explorer' : 'neutral'
-    const pageFamily = pathname.startsWith('/cities/') ? 'city_hub' : pathname.startsWith('/tools') ? 'tools' : pathname === '/editorial-standards' ? 'editorial' : pathname === '/explorer' ? 'explorer_pillar' : pathname === '/host' ? 'host_pillar' : 'brand_core'
+    const pageFamily = pathname.startsWith('/cities/') ? 'city_hub' : pathname.startsWith('/tools') ? 'tools' : pathname === '/explorer' ? 'explorer_pillar' : pathname === '/host' ? 'host_pillar' : 'brand_core'
     const referrerOrigin = typeof document === 'undefined' ? null : cleanReferrerOrigin(document.referrer)
     captureSearchMeasurement('page_view', {
       audience,

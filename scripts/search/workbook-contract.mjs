@@ -98,10 +98,9 @@ function routeIdentity(origin, record) {
   const routeKey = record.path === '/' ? 'home' : record.path.slice(1).replaceAll('/', '-')
   const isHost = record.path === '/host'
   const isExplorer = record.path === '/explorer'
-  const isEditorial = record.path === '/editorial-standards'
   const isTool = record.path === '/tools' || record.path.startsWith('/tools/')
   const isCity = citySlug.length > 0
-  const pageFamily = isHost ? 'host_pillar' : isExplorer ? 'explorer_pillar' : isEditorial ? 'editorial' : isTool ? 'tools' : isCity ? 'city_hub' : 'brand_core'
+  const pageFamily = isHost ? 'host_pillar' : isExplorer ? 'explorer_pillar' : isTool ? 'tools' : isCity ? 'city_hub' : 'brand_core'
   const audience = isHost ? 'host' : isExplorer || isCity ? 'explorer' : 'neutral'
   const icp = record.path === '/tools/events' ? 'event_promoter'
     : record.path === '/tools/venues' ? 'venue'

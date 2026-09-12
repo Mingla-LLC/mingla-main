@@ -52,7 +52,7 @@ function verifyCityData() {
 }
 
 function verifySourceWiring() {
-  const trustRoutes=['about','explorer','cities','editorial-standards']
+  const trustRoutes=['about','explorer','cities']
   for(const route of trustRoutes) {
     const page=read(`mingla-marketing/app/(core)/${route}/page.tsx`)
     assert.match(page,/<CorePageShell/); assert.match(page,/corePageMetadata/)
