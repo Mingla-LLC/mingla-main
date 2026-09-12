@@ -48,9 +48,12 @@ describe("#1777 tester adversarial hook lifecycle", () => {
     TR.act(() => { tree = TR.create(<QueryClientProvider client={client}><Probe /></QueryClientProvider>); }); await flush();
     expect(list).toHaveBeenCalledTimes(1); expect(latest.kind).toBe("forbidden"); expect(latest.rows).toEqual([]);
     TR.act(() => tree?.unmount()); tree = null; client.clear();
-    list.mockRejectedValue(new BrandCircleReachError("circle_cursor_stale", true));
+    list.mockClear();
+    list.mockImplementation(() => Promise.reject(new BrandCircleReachError("circle_cursor_stale", true)));
     TR.act(() => { tree = TR.create(<QueryClientProvider client={client}><Probe /></QueryClientProvider>); }); await flush();
-    expect(list).toHaveBeenCalledTimes(1); expect(latest.rows).toEqual([]); expect(latest.hasCurrentTruth).toBe(false);
+    expect(list).toHaveBeenCalledTimes(2); expect(latest.rows).toEqual([]); expect(latest.counts).toBeUndefined();
+    expect(latest.currentPage).toBeUndefined(); expect(latest.safeAvailability).toBeUndefined(); expect(latest.hasCurrentTruth).toBe(false);
+    await flush(); expect(list).toHaveBeenCalledTimes(2); expect(latest.kind).toBe("unavailable");
   });
 
   test("changing brand removes the previous brand cache and cannot flash its rows", async () => {
