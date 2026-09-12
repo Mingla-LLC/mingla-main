@@ -1063,7 +1063,23 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // PR_FAMILY_IDENTITY_SHA256 remain unchanged; restoring that one lane to
   // current origin/main recomputes #3272's cd049e29... pin. Three independent
   // runs of this file's RUBY_CANONICAL over the combined tree agree below.
-  "3b01e307b2ab9066864ae69314ca42eb243a0b169c451921cf54ebbebf039018";
+  //
+  // [TEST-MOD-APPROVED #3285] Re-derived for two additive deltas in two
+  // existing PR-family lanes, both named by description: (1) the migrations-and-
+  // Stripe Deno lane gains one psql target for the #3285 event-dates suite plus
+  // its comment; (2) the private-event lane's pre-#1931 replay phase gains one
+  // exact-filename skip for 20270628003285 plus its comment, on the #2492
+  // guard's own instruction. The workflow delta is 24 insertions, zero
+  // deletions, and none of it touches concurrency, group: or cancel-in-progress.
+  // PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED.
+  //
+  // MEASURED, from the committed tree: restoring BOTH lanes to origin/main
+  // recomputes the prior pin 3b01e307b2ab9066864ae69314ca42eb243a0b169c451921cf54ebbebf039018;
+  // restoring only one of them yields 21a7c17f... or c1c05dff..., so each delta
+  // moves the digest on its own, and both exact lines are added to the
+  // revert-sensitivity loop below. The value is identical across three
+  // derivations with this file's own RUBY_CANONICAL, not copied from a PR run.
+  "9d8ccb3860de299955df4ec0bb38abff13f4e82eff52fd116b0cd7fcd01bd4db";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1404,6 +1420,14 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     // [TEST-MOD-APPROVED #1981] Paid-cancel status suite target on the same lane.
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "            supabase/functions/agent-confirm-action/__tests__/issue_1981_paid_order_must_refund_status.test.ts\n"],
+    // [TEST-MOD-APPROVED #3285] The #3285 event-dates suite target on the
+    // migrations lane, and the private-event lane's exact-filename skip. Each must
+    // independently move the digest, or the re-pin above would accept a change
+    // nothing proves.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3285_event_dates_stable_identity.implementor.happy.pg17.test.sql\n"],
+    [liveWorkflow("issue", "1931", "private", "event", "access"),
+      "              *20270628003285_issue_3285_event_dates_stable_identity.sql) continue ;;\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
