@@ -71,6 +71,10 @@ export function marketingBookSmsWireBody(
 }
 export interface MarketingBookCandidate {
   brandPersonId: string;
+  /** #1778 service-only identity for a circle member; never returned publicly. */
+  recipientUserId?: string | null;
+  ring?: "follower" | "extended" | null;
+  snapshotVersion?: number | null;
   contactMethodId: string | null;
   normalizedContact: string | null;
   allowed: boolean;
@@ -83,7 +87,11 @@ export interface MarketingBookCandidateResponse {
   content: Record<string, unknown>;
   candidates: MarketingBookCandidate[];
   audienceId?: string;
-  audienceKind?: "all_brand_people" | "manual_group";
+  audienceKind?:
+    | "all_brand_people"
+    | "manual_group"
+    | "brand_followers"
+    | "brand_circle_extended";
   audienceVersion?: number;
   audienceName?: string;
 }
@@ -146,8 +154,12 @@ export async function buildMarketingBookQuote(
     rateId: null as string | null,
     sourceReference: null as string | null,
   }));
+  const hasDeliveryIdentity = (candidate: MarketingBookCandidate): boolean =>
+    candidate.contactMethodId !== null ||
+    (typeof candidate.recipientUserId === "string" &&
+      candidate.normalizedContact !== null);
   const reachable = candidates.filter((candidate) =>
-    candidate.allowed && candidate.contactMethodId !== null
+    candidate.allowed && hasDeliveryIdentity(candidate)
   );
   let estimatedCostMinor: number | null = null, currency: string | null = null;
   if (input.channel === "sms" && reachable.length > 0) {
@@ -162,7 +174,10 @@ export async function buildMarketingBookQuote(
           throw new Error("cost_unavailable");
         }
         return {
-          key: `${candidate.brandPersonId}:${candidate.contactMethodId}`,
+          key: `${candidate.brandPersonId}:${
+            candidate.contactMethodId ?? candidate.recipientUserId ??
+              "unavailable"
+          }`,
           normalizedPhone: candidate.normalizedContact,
           segments,
           target: candidate,
@@ -182,10 +197,10 @@ export async function buildMarketingBookQuote(
   }
   const suppressedCount =
     candidates.filter((candidate) =>
-      candidate.contactMethodId !== null && !candidate.allowed
+      hasDeliveryIdentity(candidate) && !candidate.allowed
     ).length;
   const unavailableCount =
-    candidates.filter((candidate) => candidate.contactMethodId === null).length;
+    candidates.filter((candidate) => !hasDeliveryIdentity(candidate)).length;
   const quotedAt = now.toISOString();
   const internal = {
     quoteVersion: 1,
@@ -255,7 +270,7 @@ export function publicMarketingBookQuote(
     audienceVersion,
     ...safe
   } = quote;
-  return audienceKind === "manual_group" &&
+  return audienceKind !== null && audienceKind !== "all_brand_people" &&
       typeof audienceId === "string" &&
       typeof audienceVersion === "number"
     ? { ...safe, audienceId, audienceKind, audienceVersion }

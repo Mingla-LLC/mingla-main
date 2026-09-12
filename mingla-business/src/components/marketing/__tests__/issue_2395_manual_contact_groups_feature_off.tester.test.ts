@@ -35,6 +35,18 @@ jest.mock("../../ui/Sheet", () => ({
   Sheet: ({ visible, children }: { visible: boolean; children: unknown }) =>
     visible ? children : null,
 }));
+jest.mock("../../ui/Skeleton", () => ({ Skeleton: () => null }));
+jest.mock("lucide-react-native", () => {
+  const icon = () => null;
+  return {
+    BookOpen: icon,
+    Check: icon,
+    Network: icon,
+    Radio: icon,
+    ShoppingBag: icon,
+    UsersRound: icon,
+  };
+});
 
 const ordersEq = jest.fn(async () => ({
   data: [

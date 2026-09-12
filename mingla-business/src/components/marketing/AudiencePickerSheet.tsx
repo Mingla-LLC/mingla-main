@@ -24,15 +24,24 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import {
+  BookOpen,
+  Check,
+  Network,
+  Radio,
+  ShoppingBag,
+  UsersRound,
+} from "lucide-react-native";
 
 import { Sheet } from "../ui/Sheet";
+import { Skeleton } from "../ui/Skeleton";
 import { supabase } from "../../services/supabase";
 import { getOrCreateMarketingBookAudience } from "../../services/marketing/marketingCampaignService";
 import {
@@ -45,7 +54,12 @@ import {
 } from "../../constants/designSystem";
 
 export type AudienceOptionKind =
-  "brand_buyers" | "event_buyers" | "all_brand_people" | "manual_group";
+  | "brand_buyers"
+  | "event_buyers"
+  | "all_brand_people"
+  | "manual_group"
+  | "brand_followers"
+  | "brand_circle_extended";
 
 export interface AudienceOption {
   /** Stable client-side key. NOT the marketing_audiences row id. */
@@ -59,6 +73,24 @@ export interface AudienceOption {
   buyer_count: number;
   /** If a marketing_audiences row already exists for this kind+target, its id; else null. */
   existing_audience_id: string | null;
+  disabled?: boolean;
+  status_label?: string;
+  privacy_label?: string;
+}
+
+export interface CircleAudiencePickerState {
+  followers: {
+    count: number | null;
+    state: "loading" | "ready" | "unavailable";
+    enabled: boolean;
+    reason?: string | null;
+  };
+  extended: {
+    count: number | null;
+    state: "loading" | "ready" | "unavailable";
+    enabled: boolean;
+    reason?: string | null;
+  };
 }
 
 export interface AudiencePickerSheetProps {
@@ -71,6 +103,9 @@ export interface AudiencePickerSheetProps {
   actorId?: string | null;
   bookBlastEnabled?: boolean;
   manualGroupsEnabled?: boolean;
+  circleAudienceEnabled?: boolean;
+  circleReach?: CircleAudiencePickerState;
+  onRetryCircleReach?: () => void;
 }
 
 interface OrderJoinRow {
@@ -97,6 +132,9 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
   actorId,
   bookBlastEnabled,
   manualGroupsEnabled,
+  circleAudienceEnabled,
+  circleReach,
+  onRetryCircleReach,
 }) => {
   const [options, setOptions] = useState<AudienceOption[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -183,6 +221,17 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
           }
         }
 
+        const existingCircleAudienceIds = new Map<string, string>();
+        for (const a of audiences) {
+          if (
+            (a.query_definition.kind === "brand_followers" ||
+              a.query_definition.kind === "brand_circle_extended") &&
+            a.query_definition.brand_id === brandId
+          ) {
+            existingCircleAudienceIds.set(a.query_definition.kind, a.id);
+          }
+        }
+
         const built: AudienceOption[] =
           book === null
             ? []
@@ -196,6 +245,49 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
                   existing_audience_id: book.audienceId,
                 },
               ];
+        if (circleAudienceEnabled === true) {
+          const followerReady = circleReach?.followers.state === "ready";
+          const extendedReady = circleReach?.extended.state === "ready";
+          built.push(
+            {
+              key: `followers:${brandId}`,
+              name: "Followers",
+              kind: "brand_followers",
+              target_id: brandId,
+              buyer_count: circleReach?.followers.count ?? 0,
+              existing_audience_id:
+                existingCircleAudienceIds.get("brand_followers") ?? null,
+              disabled:
+                !followerReady || circleReach?.followers.enabled !== true ||
+                (circleReach?.followers.count ?? 0) === 0,
+              status_label: followerReady
+                ? (circleReach?.followers.count ?? 0) === 0
+                  ? "No followers yet"
+                  : circleReach?.followers.enabled === true
+                    ? undefined
+                  : "Messaging is not available for this channel yet."
+                : circleReach?.followers.reason ?? "Checking current reach…",
+              privacy_label: "Names only",
+            },
+            {
+              key: `extended:${brandId}`,
+              name: "Extended circle",
+              kind: "brand_circle_extended",
+              target_id: brandId,
+              buyer_count: circleReach?.extended.count ?? 0,
+              existing_audience_id:
+                existingCircleAudienceIds.get("brand_circle_extended") ?? null,
+              disabled: !extendedReady || circleReach?.extended.enabled !== true,
+              status_label: extendedReady
+                ? circleReach?.extended.enabled === true
+                  ? undefined
+                  : "Messaging is not available for this channel yet."
+                : circleReach?.extended.reason ??
+                  "Not available until people can control extended brand reach in Mingla.",
+              privacy_label: "Consent controlled",
+            },
+          );
+        }
         built.push(...manualGroups.map((group) => ({
           key: `manual:${group.groupId}`,
           name: group.name,
@@ -252,18 +344,49 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [visible, brandId, brandName, actorId, bookBlastEnabled, manualGroupsEnabled]);
+  }, [
+    visible,
+    brandId,
+    brandName,
+    actorId,
+    bookBlastEnabled,
+    manualGroupsEnabled,
+    circleAudienceEnabled,
+    circleReach,
+  ]);
 
   const renderOption = (option: AudienceOption): React.ReactElement => {
     const isSelected = option.existing_audience_id !== null && option.existing_audience_id === selectedAudienceId;
-    const peopleAudience = option.kind === "manual_group" || option.kind === "all_brand_people";
-    return <Pressable key={option.key} onPress={() => { onSelect(option); onClose(); }} accessibilityRole="button"
-      accessibilityLabel={`Pick audience ${option.name} with ${option.buyer_count} ${peopleAudience ? "people" : "buyers"}`}
-      accessibilityState={{ selected: isSelected }} style={({ pressed }) => [styles.row, isSelected ? styles.rowSelected : null, pressed ? styles.rowPressed : null]}>
-      <Text style={styles.rowName} numberOfLines={1}>{option.name}</Text>
-      <Text style={styles.rowMeta}>{option.buyer_count} {peopleAudience ? (option.buyer_count === 1 ? "person" : "people") : (option.buyer_count === 1 ? "buyer" : "buyers")}{" · "}
-        {option.kind === "manual_group" ? "Manual group" : option.kind === "all_brand_people" ? "Your Book" : option.kind === "brand_buyers" ? "Brand rollup" : "Event buyers"}
-      </Text>
+    const peopleAudience = option.kind === "manual_group" || option.kind === "all_brand_people" || option.kind === "brand_followers" || option.kind === "brand_circle_extended";
+    const Icon = option.kind === "all_brand_people"
+      ? BookOpen
+      : option.kind === "brand_followers"
+        ? Radio
+        : option.kind === "brand_circle_extended"
+          ? Network
+          : option.kind === "manual_group"
+            ? UsersRound
+            : ShoppingBag;
+    const audienceMeaning = option.kind === "all_brand_people"
+      ? "Owned by your brand"
+      : option.kind === "brand_followers" || option.kind === "brand_circle_extended"
+        ? "Mingla reach"
+        : option.kind === "manual_group"
+          ? "Saved group"
+          : "Automatic buyer group";
+    const countLabel = option.status_label ?? `${option.buyer_count} ${peopleAudience ? (option.buyer_count === 1 ? "person" : "people") : (option.buyer_count === 1 ? "buyer" : "buyers")}`;
+    return <Pressable key={option.key} disabled={option.disabled} onPress={() => { onSelect(option); onClose(); }} accessibilityRole="button"
+      accessibilityLabel={`Pick audience ${option.name}. ${countLabel}. ${audienceMeaning}.${option.privacy_label ? ` ${option.privacy_label}.` : ""}${option.disabled ? " Unavailable." : ""}`}
+      accessibilityState={{ selected: isSelected, disabled: option.disabled === true }} style={({ pressed }) => [styles.row, isSelected ? styles.rowSelected : null, option.disabled ? styles.rowDisabled : null, pressed ? styles.rowPressed : null]}>
+      <View style={styles.rowIcon}><Icon size={20} color={isSelected ? accent.warm : textTokens.secondary} strokeWidth={2} /></View>
+      <View style={styles.rowCopy}>
+        <View style={styles.rowTitleLine}>
+          <Text style={styles.rowName} numberOfLines={1}>{option.name}</Text>
+          {option.privacy_label ? <Text style={styles.privacyPill}>{option.privacy_label}</Text> : null}
+        </View>
+        <Text style={styles.rowMeta}>{option.kind === "all_brand_people" && option.buyer_count === 0 ? "No saved people yet" : countLabel}</Text>
+      </View>
+      {isSelected ? <Check size={20} color={accent.warm} strokeWidth={2.5} /> : null}
     </Pressable>;
   };
 
@@ -309,9 +432,11 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="half">
       <View style={styles.host}>
-        <Text style={styles.title}>Pick an audience</Text>
+        <Text style={styles.title}>{circleAudienceEnabled === true ? "Choose who gets this" : "Pick an audience"}</Text>
         <Text style={styles.subtitle}>
-          {manualGroupsEnabled === true
+          {circleAudienceEnabled === true
+            ? "Choose from your brand’s Book, its Mingla reach, or a saved group. Private contact details stay private."
+            : manualGroupsEnabled === true
             ? "Choose Your Book, a Manual group, or an Automatic buyer group."
             : "Your Book shows active saved people; buyer lists come from paid orders."}
         </Text>
@@ -321,8 +446,10 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
           </Text>
         ) : null}
         {isLoading ? (
-          <View style={styles.centerHost}>
-            <ActivityIndicator size="small" color={textTokens.secondary} />
+          <View accessibilityLabel="Loading audiences" style={styles.skeletonList}>
+            {[0, 1, 2, 3].map((key) => (
+              <Skeleton key={key} width="100%" height={64} radius="lg" />
+            ))}
           </View>
         ) : errorMessage !== null ? (
           <Text style={styles.errorText}>{errorMessage}</Text>
@@ -338,7 +465,29 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
           >
-            {manualGroupsEnabled === true ? [
+            {circleAudienceEnabled === true ? [
+              { title: "Your brand", data: options.filter((option) => option.kind === "all_brand_people") },
+              { title: "Mingla reach", data: options.filter((option) => option.kind === "brand_followers" || option.kind === "brand_circle_extended") },
+              { title: "Groups", data: options.filter((option) => option.kind === "manual_group") },
+              { title: "Automatic", data: options.filter((option) => option.kind === "brand_buyers" || option.kind === "event_buyers") },
+            ].map((section) => (
+              <View key={section.title} style={styles.section}>
+                <Text accessibilityRole="header" style={styles.sectionTitle}>{section.title}</Text>
+                {section.data.length === 0 ? <Text style={styles.sectionEmpty}>None yet</Text> : section.data.map(renderOption)}
+                {section.title === "Mingla reach" &&
+                    circleReach?.followers.state === "unavailable" &&
+                    onRetryCircleReach !== undefined ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry follower reach"
+                    onPress={onRetryCircleReach}
+                    style={({ pressed }) => [styles.retryButton, pressed ? styles.rowPressed : null]}
+                  >
+                    <Text style={styles.retryLabel}>Retry</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            )) : manualGroupsEnabled === true ? [
               { title: "Your Book", data: options.filter((option) => option.kind === "all_brand_people") },
               { title: "Manual groups", data: options.filter((option) => option.kind === "manual_group") },
               { title: "Automatic groups", data: options.filter((option) => option.kind === "brand_buyers" || option.kind === "event_buyers") },
@@ -350,6 +499,11 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
             )) : options.map(renderLegacyOption)}
           </ScrollView>
         )}
+        {circleAudienceEnabled === true ? (
+          <Text style={styles.privacyNote}>
+            Mingla keeps follower contact details hidden. You see names and reach totals only.
+          </Text>
+        ) : null}
       </View>
     </Sheet>
   );
@@ -369,12 +523,7 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.secondary,
   },
-  centerHost: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing.lg,
-  },
+  skeletonList: { flex: 1, gap: spacing.sm, paddingTop: spacing.md },
   emptyHost: {
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.md,
@@ -402,27 +551,40 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingBottom: spacing.lg,
   },
-  section: { gap: spacing.xs, marginBottom: spacing.sm },
+  section: { gap: spacing.sm, marginBottom: spacing.lg },
   sectionTitle: { ...typography.labelCap, color: textTokens.secondary },
   sectionEmpty: { ...typography.bodySm, color: textTokens.tertiary, paddingVertical: spacing.xs },
   row: {
-    minHeight: 56,
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    gap: 2,
+    borderColor: Platform.OS === "android" ? "#1F2125" : glass.border.profileBase,
+    backgroundColor: Platform.OS === "android" ? "#16181B" : glass.tint.profileBase,
+    gap: spacing.sm,
   },
   rowSelected: {
     borderColor: accent.border,
-    backgroundColor: "rgba(235, 120, 37, 0.12)",
+    backgroundColor: Platform.OS === "android" ? "#2B1D15" : "rgba(235, 120, 37, 0.12)",
   },
   rowPressed: {
     opacity: 0.85,
   },
+  rowDisabled: { opacity: 0.52 },
+  rowIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Platform.OS === "android" ? "#1F2125" : "rgba(255,255,255,0.06)",
+  },
+  rowCopy: { flex: 1, gap: 3 },
+  rowTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   rowName: {
     ...typography.body,
     color: textTokens.primary,
@@ -432,4 +594,29 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.secondary,
   },
+  privacyPill: {
+    ...typography.labelCap,
+    color: textTokens.secondary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  privacyNote: {
+    ...typography.bodySm,
+    color: textTokens.tertiary,
+    paddingHorizontal: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  retryButton: {
+    minHeight: 44,
+    alignSelf: "flex-start",
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: accent.border,
+  },
+  retryLabel: { ...typography.bodySm, color: accent.warm, fontWeight: "700" },
 });
