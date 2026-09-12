@@ -42,7 +42,10 @@ import {
   restoreDailyPayoutSchedule,
   setManualPayoutSchedule,
 } from "../_shared/stripeBlueprintClient.ts";
-import { resolveBusinessWebOrigin } from "../_shared/businessWebOrigin.ts";
+import {
+  PRODUCTION_BUSINESS_WEB_ORIGIN,
+  resolveBusinessWebOrigin,
+} from "../_shared/businessWebOrigin.ts";
 import { resolveBrandPublicUrl } from "../_shared/brandPublicUrl.ts";
 import {
   MissingOrganiserEmailError,
@@ -256,7 +259,18 @@ async function deleteReplaceableStripeAccount(
   });
 }
 
-serve(async (req) => {
+/**
+ * Exported so the #3258 regression suite can drive the REAL request path
+ * end-to-end (a source-text pin cannot prove which origin reaches the
+ * wire). `import.meta.main` keeps `serve()` off the import path — the same
+ * shape 74 other edge functions in this repo already deploy with.
+ *
+ * An arrow CONST, not a hoisted `function` declaration: the module-scope
+ * `if (!BUSINESS_WEB_ORIGIN) throw` narrows that const to `string` only for
+ * code TypeScript can prove runs after it, and a hoisted declaration is not
+ * that (TS2322 on `configuredOrigin`).
+ */
+export const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -440,8 +454,36 @@ serve(async (req) => {
     // Set at CREATE time ONLY. Nothing here ever overwrites the business URL
     // of an account that already exists — silently replacing a seller's own
     // working website with a Mingla page is not ours to do.
+    //
+    // THE ORIGIN IS `PRODUCTION_BUSINESS_WEB_ORIGIN`, NOT `businessWebOrigin`,
+    // AND THAT DIFFERENCE IS THE WHOLE POINT.
+    //
+    // `businessWebOrigin` carries `body.business_web_origin_override`, which
+    // `_shared/businessWebOrigin.ts` accepts as any
+    // `https://mingla-business-*.vercel.app`. That is correct for what the
+    // override exists for — the EPHEMERAL return/refresh journey below, where
+    // a preview build has to send the seller back to the preview — and it is
+    // still used for exactly that, unchanged.
+    //
+    // `defaults.profile.business_url` is not ephemeral. It is PERSISTED on a
+    // live Stripe connected account, this function deliberately never
+    // overwrites it afterwards, and Stripe FETCHES it to verify the business.
+    // A Vercel preview domain is deployment-protected (401) and is eventually
+    // deleted, so baking one in would leave `card_payments` at `pending` with
+    // `pending_verification: ["business_profile.url"]` forever — the exact
+    // defect this issue exists to kill, reached through our own API by any
+    // authenticated payments manager who posts an override.
+    //
+    // So the one value that outlives the request is built from the constant.
+    // That is also the rule the rest of the repo already follows for anything
+    // handed to a third party or printed: Paystack callback URLs
+    // (`ticket-checkout-create`, `venue-order-staff`, `venue-reservation-create`,
+    // `rsvp-contribution-create`), venue QR sheets (`venue-qr-sheet/qrSpotUrl.ts`)
+    // and ad destinations (`_shared/adDestination.ts`) all use the constant;
+    // the env-backed, overridable origin is only ever used for in-session
+    // redirects.
     const brandPublicPageUrl = resolveBrandPublicUrl({
-      origin: businessWebOrigin,
+      origin: PRODUCTION_BUSINESS_WEB_ORIGIN,
       slug: brandRow.slug,
     });
 
@@ -979,4 +1021,8 @@ serve(async (req) => {
     console.error("[brand-stripe-onboard] unhandled error:", message);
     return jsonResponse({ error: "internal_error" }, 500);
   }
-});
+};
+
+if (import.meta.main) {
+  serve(handler);
+}

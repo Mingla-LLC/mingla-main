@@ -243,9 +243,18 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   // explicit null.
   const accountBusinessUrl = stripeStatusQuery.data?.business_profile_url ??
     null;
+  // #3258 (review follow-up) — `stripeStatus` can come from the CACHED
+  // `brand.stripeStatus` while `stripeRequirements` can only come from the
+  // live query, so on every cold mount there is a window where the pair reads
+  // `{ restricted, null }`. Without this flag that window rendered the red
+  // "Action required" card plus a tappable "Continue verification", then
+  // flipped to the warm verifying card once the edge function (which itself
+  // round-trips to Stripe) answered. `isSuccess` is the only honest signal
+  // that `stripeRequirements` means anything yet.
   const bannerConfig = resolveBrandStripeBannerConfig({
     status: stripeStatus,
     requirements: stripeRequirements,
+    statusQuerySucceeded: stripeStatusQuery.isSuccess,
     accountBusinessUrl,
   });
 

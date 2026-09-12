@@ -19,6 +19,19 @@ import {
 export const ACTIVE_STRIPE_BANNER_TITLE = "You're connected to Stripe";
 
 /**
+ * Issue #3258 (review follow-up) — the copy for the window where the live
+ * status query has not come back yet. Exported so both surfaces and the
+ * regression suites name the same string rather than two that drift.
+ *
+ * It deliberately claims nothing about the outcome: not "action required"
+ * (which was the reported lie) and not "verifying" (which would be the same
+ * lie inverted). Just what is true — we are asking Stripe.
+ */
+export const STRIPE_STATUS_UNRESOLVED_TITLE = "Checking your Stripe status…";
+export const STRIPE_STATUS_UNRESOLVED_SUB =
+  "One moment — we're confirming this with Stripe.";
+
+/**
  * Issue #3258 — the Stripe requirements blob as the PRESENTATION layer reads
  * it. `StripeRequirementsShape` already covers the three fields the
  * pending-verification predicate needs; this adds the one field nothing in the
@@ -47,7 +60,28 @@ export interface BrandStripeRequirementsShape extends StripeRequirementsShape {
  * rule 1, dead tap). That is a PRESENTATION bug, so it gets a PRESENTATION
  * type: the derived status, widened by the one case the copy has to split on.
  */
-export type BrandStripePresentation = BrandStripeStatus | "pending_verification";
+export type BrandStripePresentation =
+  | BrandStripeStatus
+  | "pending_verification"
+  /**
+   * Issue #3258 (review follow-up) — "the server says `restricted`, and we do
+   * not yet know why."
+   *
+   * `stripeStatus` falls back to the CACHED `brand.stripeStatus`, but
+   * `requirements` exist only on the live status query, which round-trips
+   * through an edge function that itself calls Stripe's `accounts.retrieve`.
+   * So on EVERY cold mount there is a window where the input is
+   * `{ status: "restricted", requirements: null }` — and treating that as
+   * plain `restricted` renders the red "Action required" card with a tappable
+   * "Continue verification" before anyone knows whether anything is required.
+   * For the brand this issue was filed over, nothing was: the card then
+   * flipped to the warm verifying copy a beat later.
+   *
+   * Showing the verifying copy pre-emptively would be the same fabrication
+   * pointed the other way, so this is its own state: no red, no button, and
+   * copy that says exactly what is true — we are still checking.
+   */
+  | "status_unresolved";
 
 /**
  * The single place the split is decided. Reuses `isStripePendingVerification`
@@ -68,11 +102,25 @@ export function deriveBrandStripePresentation(args: {
    * the status query has not resolved.
    */
   requirements: BrandStripeRequirementsShape | null | undefined;
+  /**
+   * Issue #3258 (review follow-up) — has the LIVE status query succeeded?
+   *
+   * Optional, and `undefined` means "resolved", because the callers that omit
+   * it are not driven by a query at all: they hold a settled value already.
+   * The two screen callers are driven by `useBrandStripeStatus` and BOTH pass
+   * `query.isSuccess`, because until that flips there are no `requirements` to
+   * judge `restricted` on and the red card would be a guess.
+   *
+   * Only `restricted` consults this. Every other status is self-describing
+   * without requirements, so passing `false` alongside one changes nothing.
+   */
+  statusQuerySucceeded?: boolean;
 }): BrandStripePresentation {
-  if (
-    args.status === "restricted" &&
-    isStripePendingVerification(args.requirements)
-  ) {
+  if (args.status !== "restricted") return args.status;
+  // Order is load-bearing: "we don't know yet" outranks both of the answers
+  // below, because both of them claim to know.
+  if (args.statusQuerySucceeded === false) return "status_unresolved";
+  if (isStripePendingVerification(args.requirements)) {
     return "pending_verification";
   }
   return args.status;
@@ -215,6 +263,16 @@ export function getBrandProfileStripeBannerCopy(
         title: "Onboarding submitted — verifying",
         sub: "Nothing needed from you. We'll email you when Stripe finishes checking your details.",
       };
+    // #3258 review follow-up — the banner is still a Pressable into Payments,
+    // which is a real destination, but it is NOT painted red and it does not
+    // claim anything is required. `isRestricted` in `BrandProfileView` is a
+    // `=== "restricted"` check, so this state drops the destructive style on
+    // its own.
+    case "status_unresolved":
+      return {
+        title: STRIPE_STATUS_UNRESOLVED_TITLE,
+        sub: STRIPE_STATUS_UNRESOLVED_SUB,
+      };
     case "active":
       return null;
     case "restricted":
@@ -235,6 +293,8 @@ export function getBrandProfileStripeOperationsSub(
       return "Onboarding…";
     case "pending_verification":
       return "Verifying…";
+    case "status_unresolved":
+      return "Checking…";
     case "active":
       return "Active";
     case "restricted":
@@ -330,6 +390,20 @@ export const BRAND_STRIPE_BANNER_CONFIG: Record<
     ctaVariant: "destructive",
     destructive: true,
   },
+  // Issue #3258 (review follow-up). Same warm treatment as the other
+  // non-destructive entries, and CTA-less for the same reason the
+  // pending-verification entry is: we do not yet know that there is anything
+  // to continue, so a "Continue verification" button here would be a guess
+  // with a tap target on it.
+  status_unresolved: {
+    icon: "bank",
+    iconColor: accent.warm,
+    title: STRIPE_STATUS_UNRESOLVED_TITLE,
+    sub: STRIPE_STATUS_UNRESOLVED_SUB,
+    ctaLabel: null,
+    ctaVariant: null,
+    destructive: false,
+  },
 };
 
 export interface BrandStripeBannerInput {
@@ -367,6 +441,12 @@ export interface BrandStripeBannerInput {
    * two reasons above are why there isn't one.
    */
   brandPublicUrl?: string | null;
+  /**
+   * Issue #3258 (review follow-up) — forwarded verbatim to
+   * `deriveBrandStripePresentation`; see the field of the same name there.
+   * `BrandPaymentsView` passes `stripeStatusQuery.isSuccess`.
+   */
+  statusQuerySucceeded?: boolean;
 }
 
 /**
@@ -382,6 +462,7 @@ export function resolveBrandStripeBannerConfig(
   const presentation = deriveBrandStripePresentation({
     status: input.status,
     requirements: input.requirements,
+    statusQuerySucceeded: input.statusQuerySucceeded,
   });
   const base = BRAND_STRIPE_BANNER_CONFIG[presentation];
   if (base === null) return null;

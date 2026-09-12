@@ -84,13 +84,25 @@ const MESSAGES: Record<string, KycRemediationMessage> = {
   "listed": {
     title: "Awaiting Stripe review",
     body: "This account is being checked against compliance lists. We'll let you know when it clears.",
-    ctaLabel: "Check back later",
+    // Issue #3258: was "Check back later", wired to `onResolve` → onboarding.
+    // A button that says "later" and navigates NOW is a false affordance
+    // (Constitution rule 1), and there is nothing at the other end to do.
+    //
+    // Setting this to null also fixes a second, quieter lie for free. The
+    // yield rule in `pickKycRemediationCode` hands priority to a genuinely due
+    // field whenever the disabled_reason's message has no CTA — so
+    // `{ disabled_reason: "listed", currently_due: ["external_account"] }`
+    // used to resolve to THIS info-severity "no action needed" card while a
+    // blocking bank account was actually due, and now resolves to the
+    // `external_account` card that asks for it.
+    ctaLabel: null,
     severity: "info",
   },
   "under_review": {
     title: "Under review",
     body: "Stripe is reviewing this account. No action needed from you right now.",
-    ctaLabel: "Check back later",
+    // Issue #3258 — identical reasoning to "listed" above.
+    ctaLabel: null,
     severity: "info",
   },
   "platform_paused": {

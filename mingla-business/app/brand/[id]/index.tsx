@@ -102,6 +102,12 @@ export default function BrandProfileRoute(): React.ReactElement {
     requirements: (stripeStatusQuery.data?.requirements as
       | BrandStripeRequirementsShape
       | undefined) ?? null,
+    // #3258 (review follow-up) — same cold-mount window as the Payments
+    // screen: the cached status can say `restricted` a beat before the live
+    // requirements arrive, and this row/banner would read "Action required"
+    // on a brand with nothing due. Until the query succeeds the answer is
+    // "Checking…", not an accusation.
+    statusQuerySucceeded: stripeStatusQuery.isSuccess,
   });
 
   // Cycle 17e-A — BrandDeleteSheet state
