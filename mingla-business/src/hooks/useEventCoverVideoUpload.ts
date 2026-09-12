@@ -18,10 +18,6 @@ import {
   removePersistedCoverVideoJob, type PersistedCoverVideoJob, writePersistedCoverVideoJob,
 } from "../services/eventCoverVideoJobPersistence";
 import { supabase } from "../services/supabase";
-// issue #3280 — ONE targeted breadcrumb for an abandoned watch. Deliberately
-// NOT a reroute of `logEventCoverVideoUploadTelemetry`, which fires on every
-// telemetry event and would flood Sentry.
-import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import { validateNativeTrimmedEventCoverVideo } from "../utils/eventCoverNativeVideo";
 import { brandKeys } from "./useBrands";
 import { businessEventKeys } from "./useBusinessEvents";
@@ -38,50 +34,6 @@ const idleStage: EventCoverVideoUploadStage = { phase: "idle", percent: 0 };
 // the argument for a deadline rather than a third per-trigger patch — whatever
 // the branch, the sheet lands on the job's canonical status.
 const REATTACH_DEADLINE_MS = 12_000;
-
-// Issue #3280 — the open sheet's ONLY channel to a job's outcome used to be a
-// single in-memory promise chain (`uploadPrepared` -> `watch` ->
-// `waitForEventCoverVideoReady` -> `settleCanonical`) owned by one mount. It is
-// abortable and it was never re-armed, so any abort left the card frozen on
-// whatever it last showed. Proven in production on 2026-09-11: a 3m28s encode
-// had its watcher die at 20:03:14 while the job went `ready` at 20:04:11 — the
-// client stopped watching 57.4s before the video was ready, and reopening the
-// sheet (a fresh mount, a fresh `resume()`) was the only recovery. A 24s encode
-// the same day rendered perfectly. The split is encode duration vs watcher
-// lifetime, not clip size.
-//
-// This interval is the re-arm. It is deliberately indifferent to WHICH abort
-// killed the watch — the architecture had no re-arm for any of them — and it
-// incidentally covers app backgrounding, which nothing covered before.
-const EVENT_COVER_VIDEO_REARM_INTERVAL_MS = 5_000;
-
-// Phases where the SERVER is still working and this client is not watching:
-// re-arming is safe and is the only thing that can move the sheet forward.
-// `detached` is included because that is exactly where an abandoned watch now
-// lands (see the `startInternal` catch), and leaving it out would mean the card
-// still needed a manual Check now to finish. Client-driven phases
-// (`uploading`, `compressing`, `intent_pending`, `applying`) are deliberately
-// absent: a live flow owns them and a second watcher there would double-settle.
-const REARMABLE_PHASES: ReadonlySet<EventCoverVideoUploadStage["phase"]> = new Set([
-  "processing", "ack_pending", "reattaching", "detached",
-]);
-
-// Issue #3280 — a best-effort poll must never be the reason a JS runtime stays
-// alive. React Native and browsers hand back a numeric handle with no `unref`,
-// so this is a no-op in the app. In Node — jest, and the web static export — a
-// hook that is mounted and never unmounted would otherwise pin the process open
-// forever on a 5-second interval. Measured: the existing hook suite stopped
-// exiting under `--runInBand` until this was added.
-// Typed `unknown` on purpose: this project's timer typings say `number` (the RN
-// and DOM shape), which is exactly the case where there is nothing to release.
-const releaseTimerFromProcessLifetime = (timer: unknown): void => {
-  if (
-    typeof timer === "object" && timer !== null &&
-    "unref" in timer && typeof timer.unref === "function"
-  ) {
-    timer.unref();
-  }
-};
 
 // Issue #3119 — the 100 MB source cap used to be applied to the file the host
 // PICKED, one line before `compressVideoLocally` — the step whose whole job is
@@ -216,24 +168,6 @@ export const EVENT_COVER_VIDEO_WATCH_DEADLINE_MS = 600_000;
 // down instead of failing one assertion. Owning the predicate locally means no
 // mock can reach it. Same reasoning as the repo's PostgREST error checks, which
 // duck-type because those errors arrive as plain objects.
-// Issue #3280 — an abort must never be lost silently. Matched by SHAPE, and
-// owned locally, for the same reason `isMissingVideoTrackError` below is:
-// several suites mock `../services/eventCoverVideoProcessingService` partially,
-// so an `instanceof` against an imported class is `undefined` at runtime there
-// and throws, taking a whole suite down instead of failing one assertion.
-//
-// Three shapes reach this predicate: the service's own
-// `source_upload_cancelled` (thrown by `waitForEventCoverVideoReady`'s delay
-// and by the transport when its signal aborts), a platform `AbortError`, and
-// this hook's own `new Error("aborted")` sleep rejections.
-const isAbortShapedError = (error: unknown): boolean => {
-  if (error === null || typeof error !== "object") return false;
-  const candidate = error as { name?: unknown; code?: unknown; message?: unknown };
-  return candidate.name === "AbortError" ||
-    candidate.code === "source_upload_cancelled" ||
-    candidate.message === "aborted";
-};
-
 const isMissingVideoTrackError = (error: unknown): boolean =>
   error !== null && typeof error === "object" &&
   (error as { name?: unknown }).name === "EventCoverVideoSourceHasNoVideoTrackError";
@@ -287,22 +221,6 @@ export function useEventCoverVideoUpload(
   const abortRef = useRef<AbortController | null>(null);
   const generationRef = useRef(0);
   const jobIdRef = useRef<string | null>(null);
-  // issue #3280 — "is a `watch()` currently subscribed to this job?". The
-  // re-arm interval below exists precisely for the window where this is false
-  // and the server is still working.
-  const watchLiveRef = useRef(false);
-  // issue #3280 — how many start/resume flows are currently driving this hook.
-  // The re-arm must not fire during the acknowledgement loop: `ack_pending` is a
-  // re-armable phase, no watch is live yet, and a second watcher started there
-  // would race the one `uploadPrepared` is about to start for the same job. A
-  // COUNTER rather than a flag because a mount-time `resume()` and a user-driven
-  // `start()` can legitimately overlap, and the one that finishes first must not
-  // declare the hook idle while the other is still uploading.
-  const flowLiveRef = useRef(0);
-  // issue #3280 — a deliberate cancel is the one abort that must stay silent.
-  // Every other abort now lands on `detached`, which renders honest copy plus a
-  // reachable Check now control.
-  const cancelRequestedRef = useRef(false);
   // issue #2974 — the generation `uploadPrepared` claimed for the CURRENT
   // delegated flow. `resume()` cannot know it up front (uploadPrepared bumps
   // generationRef itself), and without it resume cannot tell "my delegate
@@ -463,10 +381,6 @@ export function useEventCoverVideoUpload(
       deadlineReached = true;
       watchdog.abort();
     }, EVENT_COVER_VIDEO_WATCH_DEADLINE_MS);
-    // issue #3280 — the re-arm interval reads this to answer "is anybody
-    // watching this job?". Set before the first await so a tick that lands
-    // between entry and the first poll cannot start a second watcher.
-    watchLiveRef.current = true;
     try {
       const ready = await waitForEventCoverVideoReady(jobId, {
         onStatus: (next) => { if (generationRef.current === generation) project(next); },
@@ -490,10 +404,6 @@ export function useEventCoverVideoUpload(
       }
       throw caught;
     } finally {
-      // issue #3280 — however this watch ended (settled, deadline, abort, or
-      // throw), this instance is no longer subscribed. Releasing the flag here
-      // is what lets the re-arm interval take over.
-      watchLiveRef.current = false;
       clearTimeout(timer);
       signal.removeEventListener("abort", stopWatching);
     }
@@ -703,11 +613,6 @@ export function useEventCoverVideoUpload(
   ): Promise<void> => {
     let prepared: PreparedEventCoverVideoSource | null = null;
     let replacementAccepted = false;
-    // issue #3280 — a start OWNS this hook until it returns. The re-arm
-    // interval stands down for that whole window (see `flowLiveRef`), and a new
-    // start clears the cancel latch so a previous cancel cannot mute this one.
-    flowLiveRef.current += 1;
-    if (!replacing) cancelRequestedRef.current = false;
     try {
       // issue #2974 — the create-event wizard holds a client-only `d_<ts36>`
       // draft id until the lazy server promotion lands. Sending it to
@@ -786,53 +691,7 @@ export function useEventCoverVideoUpload(
       );
     } catch (caught) {
       clearPreparationProjection();
-      // issue #3280 — this is the line the production freeze went through. It
-      // used to be a bare `return`: no stage change, no error, no notice, so
-      // the card sat on "Processing video…" forever while the server finished
-      // the job 57 seconds later. An abandoned watch is not a failure and it is
-      // not nothing — the job is alive server-side and `detached` is the stage
-      // that says exactly that, with a reachable Check now control.
-      //
-      // The abort is recognised two ways because it arrives two ways: the
-      // controller this flow installed was aborted (unmount, cancel, SIGNED_OUT
-      // or a superseding flow), or the abort surfaced only as a thrown error
-      // from inside the watch. A replacement that was never accepted still
-      // throws to its caller, unchanged: the old watcher and persistence never
-      // moved, so the picker owns that error.
-      const abandoned = abortRef.current?.signal.aborted === true ||
-        (isAbortShapedError(caught) && !(replacing && !replacementAccepted));
-      if (abandoned) {
-        // The generation guard is the same contract every other writer in this
-        // file honours: unmount bumps `generationRef` BEFORE aborting, and a
-        // superseding flow claims a new one, so a mismatch means this mount is
-        // gone or has been replaced and must write nothing.
-        if (
-          !cancelRequestedRef.current &&
-          jobIdRef.current !== null &&
-          generationRef.current === delegatedGenerationRef.current
-        ) {
-          // issue #3280 — the one call that makes the next recurrence visible.
-          // This pipeline has no production telemetry at all
-          // (`logEventCoverVideoUploadTelemetry` is a dev-only console line), so
-          // every stall so far has needed forensics against edge logs. Exactly
-          // one targeted breadcrumb, at the one site that was silent — NOT a
-          // wholesale reroute of the telemetry helper, which fires on every
-          // event and would flood Sentry.
-          reportNonFatal(
-            "coverPicker.video",
-            new Error("event cover video watch ended without a terminal status"),
-            {
-              jobId: jobIdRef.current,
-              lastPhase: stageRef.current.phase,
-              applyMode,
-              target: exactTarget.serverTarget,
-            },
-            ["coverPicker.video", "watch-abandoned"],
-          );
-          setStage({ phase: "detached", percent: 0, sourceAcknowledged: true });
-        }
-        return;
-      }
+      if (abortRef.current?.signal.aborted) return;
       const next = safeUploadError(caught);
       if (replacing && !replacementAccepted) {
         if (prepared?.uri) await deletePreparedEventCoverVideoSource(prepared.uri);
@@ -853,10 +712,6 @@ export function useEventCoverVideoUpload(
         setError(next);
         setStage({ phase: "error", percent: 0, code: "video_upload_failed", message: next.message });
       }
-    } finally {
-      // issue #3280 — however this flow ended, it no longer owns the hook, so
-      // the re-arm interval may take over once every flow has released.
-      flowLiveRef.current = Math.max(0, flowLiveRef.current - 1);
     }
   }, [applyMode, beginPreparationProjection, clearPreparationProjection, eventId, exactTarget, persistenceKey, projectPreparation, status?.sourceUploadedAt, uploadPrepared]);
 
@@ -866,10 +721,6 @@ export function useEventCoverVideoUpload(
   const resume = useCallback(async (): Promise<void> => {
     let persisted: PersistedCoverVideoJob | null = null;
     let delegated = false;
-    // issue #3280 — same ownership contract as `startInternal`: while a resume
-    // is reattaching, the re-arm interval must not start a competing watch.
-    flowLiveRef.current += 1;
-    cancelRequestedRef.current = false;
     const generation = ++generationRef.current;
     delegatedGenerationRef.current = null;
     const abort = new AbortController();
@@ -1038,23 +889,8 @@ export function useEventCoverVideoUpload(
       setStage(persisted
         ? { phase: "detached", percent: 0, sourceAcknowledged: persisted.sourceAcknowledged }
         : idleStage);
-    } finally {
-      // issue #3280 — see `startInternal`.
-      flowLiveRef.current = Math.max(0, flowLiveRef.current - 1);
     }
   }, [brandId, cleanupPersisted, exactTarget, persistenceKey, replacementPersistenceKey, settleCanonical, uploadPrepared, watch]);
-
-  // issue #3280 — hoisted above the mount effect (it used to sit below) so the
-  // re-arm interval can call it directly, and it now RETURNS the settled status
-  // instead of discarding it. The re-arm has to decide whether to resubscribe,
-  // and `stageRef` cannot answer that inside the same tick: React has not
-  // re-rendered yet, so the ref still holds the pre-check phase. The return
-  // value is the only truthful answer available at that moment. Callers that
-  // ignore it (`CoverPicker`'s Check now button) are unaffected.
-  const checkNow = useCallback(async (): Promise<EventCoverVideoStatus | null> => {
-    if (!jobIdRef.current) return null;
-    return await settleCanonical(await fetchEventCoverVideoStatus(jobIdRef.current));
-  }, [settleCanonical]);
 
   useEffect(() => {
     void resume();
@@ -1065,54 +901,7 @@ export function useEventCoverVideoUpload(
         abortRef.current?.abort();
       }
     });
-    // issue #3280 — THE RE-ARM. The watch is a single abortable promise chain
-    // owned by this mount; when it dies the sheet has no other channel to the
-    // job's outcome and freezes on its last frame (production: 57.4s of silence
-    // before the job went ready, recovered only by closing and reopening). This
-    // interval is that missing channel. It asks the server directly while the
-    // server is still working and nobody is watching, and resubscribes when the
-    // answer is still non-terminal.
-    //
-    // It lives inside the mount effect rather than beside it on purpose: one
-    // effect means one cleanup, and the interval is torn down by exactly the
-    // unmount that ends the watch it exists to replace.
-    let rearmInFlight = false;
-    const rearmTimer = setInterval(() => {
-      if (rearmInFlight) return;
-      if (jobIdRef.current === null) return;
-      if (watchLiveRef.current || flowLiveRef.current > 0) return;
-      if (!REARMABLE_PHASES.has(stageRef.current.phase)) return;
-      // A `detached` card whose source was never acknowledged (web resume) has
-      // no bytes on the server to wait for; re-arming it would poll a job that
-      // can only fail. That card's Discard/Choose-again controls are the right
-      // exit, so leave it alone.
-      if (stageRef.current.phase === "detached" && !stageRef.current.sourceAcknowledged) return;
-      rearmInFlight = true;
-      void (async () => {
-        try {
-          const settled = await checkNow();
-          if (
-            settled !== null && !settled.isTerminal &&
-            jobIdRef.current !== null &&
-            !watchLiveRef.current && flowLiveRef.current === 0
-          ) {
-            const controller = new AbortController();
-            abortRef.current = controller;
-            await watch(jobIdRef.current, controller.signal, generationRef.current);
-          }
-        } catch {
-          // Re-arming is best effort by design. A transient status failure must
-          // not replace an honest "still working" card with an error, and the
-          // next tick tries again — the same contract `waitForEventCoverVideoReady`
-          // already applies to its own poll failures.
-        } finally {
-          rearmInFlight = false;
-        }
-      })();
-    }, EVENT_COVER_VIDEO_REARM_INTERVAL_MS);
-    releaseTimerFromProcessLifetime(rearmTimer);
     return () => {
-      clearInterval(rearmTimer);
       clearPreparationProjection();
       // issue #3075 — bumping the generation is what makes this instance stop
       // WRITING (every setStage/progress callback is generation-guarded), and
@@ -1128,8 +917,11 @@ export function useEventCoverVideoUpload(
       abortRef.current?.abort();
       subscription.unsubscribe();
     };
-  }, [checkNow, clearPreparationProjection, resume, watch]);
+  }, [clearPreparationProjection, resume]);
 
+  const checkNow = useCallback(async (): Promise<void> => {
+    if (jobIdRef.current) await settleCanonical(await fetchEventCoverVideoStatus(jobIdRef.current));
+  }, [settleCanonical]);
   const acknowledgeApplied = useCallback(async (): Promise<void> => {
     if (!jobIdRef.current || !status?.processedUrl) return;
     setStage({ phase: "applying", percent: 100 });
@@ -1142,9 +934,6 @@ export function useEventCoverVideoUpload(
   // transfer, so it aborts the operation's slot as well as this instance's
   // watch. Unmount is not a cancel.
   const cancel = useCallback(async (): Promise<void> => {
-    // issue #3280 — the one abort that must stay silent. Every other abort now
-    // lands the sheet on `detached` rather than freezing it.
-    cancelRequestedRef.current = true;
     generationRef.current += 1;
     abortRef.current?.abort();
     abortActiveTransfersFor(persistenceKey);
