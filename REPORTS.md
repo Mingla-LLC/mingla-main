@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-12 — Opening a public Mingla page in Safari while signed in no longer crashes the app to an error screen with a broken address bar; brand, venue, event, trip and experience pages were all affected, and Safari is the default browser on iPhone, iPad and Mac. The page's security policy allowed the live-updates connection over https only, and Safari treats that refusal as a hard error where Chrome ignores it quietly (#3251, #3234, PR #3257)
 - 2026-09-11 — Sharing a brand, event, RSVP event, trip, experience or venue from either app now sends a link to that page itself instead of a Mingla in-between page, and the pasted text always contains the link — on iPhone it had often arrived as a sentence with no link at all; confirmed on a real iPhone and a real Android before close (#3187, PR #3236)
 - 2026-09-11 — Opening a public Host page from a link — brand, venue, event, trip or experience — now loads the real app view, instead of leaving people stuck on the plain server page or looking at a cover with nothing beneath it that would not scroll; the app's files had been loading in the wrong order and the page's layout styles were never copied across (#3214, PR #3229)
 - 2026-09-11 — A public brand, event, trip, experience or venue page no longer shows "not found" when a deleted copy shares its web name; the page always picks the live one (#3193, PR #3224)
