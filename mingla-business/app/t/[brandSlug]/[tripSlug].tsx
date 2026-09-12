@@ -102,6 +102,7 @@ import {
   buildTripOfferingData,
 } from "../../../src/components/trip/tripOfferingAdapter";
 import { collapseTripPlanChoice } from "../../../src/components/trip/tripCartPlanChoice";
+import { recordShareDestination } from "../../../src/analytics/shareDestination";
 
 export default function PublicTripRoute(): React.ReactElement {
   const router = useRouter();
@@ -210,17 +211,19 @@ export default function PublicTripRoute(): React.ReactElement {
 
   // #1968 — public web is already the destination, so it shares the canonical
   // URL directly. Native retains the existing custom Mingla share sheet.
+  // #3187 — the canonical URL needs only the route params, so web never falls
+  // through to the native sheet while the page query is unresolved. Title and
+  // description degrade; the URL does not.
   const handleShare = useCallback((): void => {
     if (
       Platform.OS === "web" &&
       typeof brandSlug === "string" &&
-      typeof tripSlug === "string" &&
-      query.data?.trip !== undefined
+      typeof tripSlug === "string"
     ) {
       void shareCanonicalPublicPageOnWeb({
         url: tripPublicUrl({ brandSlug, tripSlug }),
-        title: query.data.trip.title,
-        description: query.data.trip.description?.slice(0, 200),
+        title: query.data?.trip?.title ?? "Mingla",
+        description: query.data?.trip?.description?.slice(0, 200),
       });
       return;
     }
@@ -436,10 +439,13 @@ const ResolvedTripPage: React.FC<{
       // checkout chain first. `restricted`, `loading` and `error` no-op, so no
       // checkout route opens and no eligibility is fabricated.
       if (tripAccess.requiresSignIn) {
+        // #3187 P2-1 — a share recipient's Reserve intent (no-op off a shared link).
+        recordShareDestination("book_trip");
         router.push(tripSignInResumeHref as never);
         return;
       }
       if (tripAccess.blocked) return;
+      recordShareDestination("book_trip");
       const linesParam =
         lines !== undefined && lines.length > 0
           ? { lines: JSON.stringify(lines) }
@@ -520,6 +526,7 @@ const ResolvedTripPage: React.FC<{
 
   const handleViewBrand = useCallback((): void => {
     if (brandSlug.length > 0) {
+      recordShareDestination("view_brand");
       router.push(`/b/${brandSlug}` as never);
     }
   }, [router, brandSlug]);

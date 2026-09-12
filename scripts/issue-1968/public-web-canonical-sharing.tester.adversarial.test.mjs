@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import test from "node:test";
+
+// #3187 — the renderer gained exactly one dependency, the share-analytics
+// module for pages opened from a share. It is pure (no I/O), so the real one
+// is loaded; every other specifier still fails loudly below.
+const requireFromRepo = createRequire(new URL("../../mingla-business/server/", import.meta.url));
 
 const read = (file) => fs.readFileSync(file, "utf8");
 
@@ -33,6 +39,9 @@ const publicSearchWithResolution = (resolution) => evaluateCommonJs(
     }
     if (specifier === "./publicSearchBrowserRuntime") {
       return { browserRuntimeScript: () => "" };
+    }
+    if (specifier === "./publicSharePageAnalytics") {
+      return requireFromRepo("./publicSharePageAnalytics.js");
     }
     throw new Error(`unexpected module ${specifier}`);
   },

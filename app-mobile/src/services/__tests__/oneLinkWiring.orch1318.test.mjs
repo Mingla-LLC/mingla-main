@@ -174,5 +174,10 @@ test('E1: ShareModal copy-link + social share emit the prepared stable share', (
   );
   // Social sharing must consume the one server-prepared message/link envelope.
   assert.match(unifiedShare, /sharePreparedContent\(prepared\)/, 'native sharing must receive the prepared canonical URL');
-  assert.match(unifiedShare, /Clipboard\.setString\(prepared\.canonicalUrl\)/, 'copy must receive the prepared canonical URL');
+  // [TEST-MOD-APPROVED #3187] `prepared.canonicalUrl` held the /s/ interstitial
+  // link, never the canonical URL. It is renamed `shortShareUrl`, and Copy now
+  // copies `prepared.url` — the canonical page URL with attribution (/s/ only
+  // for place/curated). The property pinned is unchanged: copy uses the
+  // adapter-prepared URL, never a string the sheet builds.
+  assert.match(unifiedShare, /Clipboard\.setString\(prepared\.url\)/, 'copy must receive the prepared outbound URL');
 });

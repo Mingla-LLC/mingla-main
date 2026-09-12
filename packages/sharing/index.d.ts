@@ -10,7 +10,10 @@ export type PublicShareDetails =
   | { kind: 'curated'; estimate?: unknown; stops: { title: string; category?: string; area?: string; address?: string; description?: string; imageUrl?: string }[] }
   | { kind: 'event' | 'rsvp_event' | 'trip' | 'experience'; actionEligible: boolean; occurrences: { startAt: string; endAt?: string; timezone?: string }[] }
   | { kind: 'venue' | 'brand'; offerings: { title: string; kind: 'event' | 'rsvp' | 'trip' | 'experience'; brandSlug: string; eventSlug: string; startAt: string }[] };
-export type ShareDestination = { kind: ShareEntityKind; placeId?: string; eventSlug?: string; brandSlug?: string; venueSlug?: string };
+// #3187 — `webPath` is required by the edge validator for the six kinds with a
+// public page and forbidden for `place`/`curated`. Optional here because this
+// same type is reused as `facts.route`, which never carries it.
+export type ShareDestination = { kind: ShareEntityKind; placeId?: string; eventSlug?: string; brandSlug?: string; venueSlug?: string; webPath?: string };
 export type NativeContentCardDescriptorV1 = { contract: 'native_content_card_v1'; version: 1; kind: 'place' | 'curated'; snapshotRef: string; snapshotFingerprint: string; preview: { title: string; category?: string; image?: string; cardType?: 'single' | 'curated'; stopCount?: number } };
 type Common = { schemaVersion: 1; title: string; status?: ShareStatus; timezone?: string; media?: ShareMediaIdentity; route?: ShareDestination };
 export type ShareHoursRow = { day: string; label: string; isToday?: boolean; special?: string };
@@ -42,7 +45,18 @@ export function selectPublicMediaIdentity(value: {
 }, options?: { allowedBunnyHosts?: string[] }): ShareMediaIdentity | null;
 export function isShortShareCode(value: unknown): value is string;
 export function sanitizeReferralCode(value: unknown): string | null;
+/** The `usemingla.com/s/<code>` interstitial link — not the canonical page URL. */
 export function buildShortShareUrl(code: string): string;
+export const SHARE_CANONICAL_ORIGIN: 'https://host.usemingla.com';
+export const SHARE_ATTRIBUTION_PARAM: 'ms';
+export function buildShareAttributionValue(code: string, version: number): string;
+export function parseShareAttributionValue(value: unknown): { code: string; version: number } | null;
+/** `https://host.usemingla.com<webPath>?ms=<code>.<version>`, or null when the share has no public page. Never throws. */
+export function buildCanonicalShareUrl(destination: unknown, code: string, version: number): string | null;
+export function withCanonicalShareUrl(message: string, shortUrl: string, canonicalUrl: string): string;
+/** #3187 — the URL and text a prepared share sends. `canonicalShareUrl` is null when it falls back to the short link. */
+export type CanonicalShareFields = { url: string; canonicalShareUrl: string | null; shareMessage: string };
+export function deriveCanonicalShare(input: { message: string; shortShareUrl: string; destination: unknown; code: string; version: number }): CanonicalShareFields;
 export function buildSharePortraitUrl(code: string, version: number): string;
 export function contentShareRequestFromPublicUrl(value: string, overrideKind?: ShareEntityKind): { kind: ShareEntityKind; identity: Record<string,string> } | null;
 export function validateShareFactsV1(value: unknown): { ok: true; value: ShareFactsV1 } | { ok: false; errors: string[] };

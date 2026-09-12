@@ -232,7 +232,10 @@ test("H19 Explorer payload is canonical S5/S6 URL while CTA remains attributed w
   // [TEST-MOD-APPROVED #1719] The compatibility bridge now synchronously hands
   // identity/context to the one provider; preparation occurs after it opens.
   assert.match(modal, /openContentShare\(\{ kind, identity, messageContext: \{ planningPreference: dateTimePreferences \} \}\)/);
-  assert.match(read("app-mobile/src/services/contentShareAdapter.ts"), /canonicalUrl=buildShortShareUrl|canonicalUrl\s*=\s*buildShortShareUrl/);
+  // [TEST-MOD-APPROVED #3187] `canonicalUrl` named the /s/ interstitial link,
+  // which is not canonical; it is renamed `shortShareUrl`. The builder pinned
+  // is unchanged.
+  assert.match(read("app-mobile/src/services/contentShareAdapter.ts"), /shortShareUrl\s*=\s*buildShortShareUrl/);
   assert.doesNotMatch(modal, /externalSharedCardUrl/);
   assert.doesNotMatch(modal, /created\s*\?\s*\{\s*type:.*shareId/s);
   const reader = read("app-mobile/src/services/sharedCardService.ts");

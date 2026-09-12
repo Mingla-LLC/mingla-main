@@ -65,6 +65,7 @@ import type {
   MapsOpenTarget,
 } from "@mingla/offering-rendering/mapsDeepLink";
 import { openMapsTarget } from "../../../../src/utils/openMapsTarget";
+import { recordShareDestination } from "../../../../src/analytics/shareDestination";
 import { copyAddressText } from "../../../../src/utils/copyAddressText";
 
 import {
@@ -421,6 +422,8 @@ export default function PublicVenueRoute(): React.ReactElement {
     (target: MapsOpenTarget, app?: MapsAppId): void => {
       // issue #2508 — `app` is the guest's choice from the shared chooser;
       // undefined means nothing was asked (the exact #2468 path).
+      // #3187 P2-1 — a share recipient's directions tap (no-op off a shared link).
+      recordShareDestination("directions");
       openMapsTarget(target, { app });
     },
     [],
@@ -436,6 +439,7 @@ export default function PublicVenueRoute(): React.ReactElement {
 
   const handleOpenBrand = useCallback((): void => {
     if (typeof brandSlug !== "string") return;
+    recordShareDestination("view_brand");
     router.push(brandPublicPath(brandSlug) as never);
   }, [brandSlug, router]);
 
@@ -448,18 +452,20 @@ export default function PublicVenueRoute(): React.ReactElement {
     router.replace(brandPublicPath(brandSlug) as never);
   }, [brandSlug, router]);
 
+  // #3187 — the canonical URL needs only the route params, so web never falls
+  // through to the native sheet while the venue query is unresolved. Title and
+  // description degrade; the URL does not.
   const handleShare = useCallback((): void => {
     if (
       Platform.OS === "web" &&
-      venue !== null &&
       typeof brandSlug === "string" &&
       typeof venueSlug === "string"
     ) {
-      const { pageTitle, metaDescription } = publicVenueMeta(venue);
+      const meta = venue !== null ? publicVenueMeta(venue) : null;
       void shareCanonicalPublicPageOnWeb({
         url: venuePublicUrl({ brandSlug, venueSlug }),
-        title: pageTitle,
-        description: metaDescription,
+        title: meta?.pageTitle ?? "Mingla",
+        description: meta?.metaDescription,
       });
       return;
     }

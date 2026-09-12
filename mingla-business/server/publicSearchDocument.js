@@ -1,5 +1,12 @@
 const { requestRpcJson, SUPABASE_URL } = require("./supabaseRpc");
 const { browserRuntimeScript } = require("./publicSearchBrowserRuntime");
+const {
+  shareAnalyticsKindFor,
+  shareAnalyticsScript,
+  shareAttributionFromRequestUrl,
+  shareAttributionQueryParam,
+  shareDestinationActionFor,
+} = require("./publicSharePageAnalytics");
 
 const PUBLIC_HOST_ORIGIN = "https://host.usemingla.com";
 const APEX_ORGANIZATION_ID = "https://usemingla.com/#organization";
@@ -83,6 +90,20 @@ const attributionQueryFromRequest = (req) => {
   } catch {
     return "";
   }
+};
+
+/**
+ * #3187 — the share attribution a canonical page was opened with
+ * (`?ms=<code>.<version>`), or null. `ms` is deliberately NOT in
+ * ATTRIBUTION_KEYS, so it is never forwarded into CTA hrefs.
+ */
+const shareAttributionFromRequest = (req) => shareAttributionFromRequestUrl(text(req?.url, "/"), PUBLIC_HOST_ORIGIN);
+
+/** Query string for a 308 to a renamed page, carrying a valid share attribution across it. */
+const redirectQuery = (attributionQuery, shareAttribution) => {
+  if (shareAttribution === null) return attributionQuery;
+  const param = shareAttributionQueryParam(shareAttribution);
+  return attributionQuery ? `${attributionQuery}&${param}` : `?${param}`;
 };
 
 const labelForKind = (kind) => ({
@@ -249,8 +270,16 @@ const detailRows = (facts) => {
   return rows;
 };
 
-const renderVisibleDocument = ({ facts, state, canonicalPath, attributionQuery = "" }) => {
+const renderVisibleDocument = ({ facts, state, canonicalPath, attributionQuery = "", shareAttribution = null }) => {
   const canonicalUrl = `${PUBLIC_HOST_ORIGIN}${canonicalPath}`;
+  // #3187 — present only when the page was opened from a share. Without it the
+  // document is byte-identical to the unattributed render.
+  const shareScript = shareAttribution === null ? "" : shareAnalyticsScript({
+    code: shareAttribution.code,
+    version: shareAttribution.version,
+    kind: shareAnalyticsKindFor(facts),
+  });
+  const destinationAction = shareScript ? shareDestinationActionFor(facts) : null;
   const title = documentTitle(facts);
   const description = visibleDescription(facts);
   const image = safeHttpsUrl(facts.imageUrl);
@@ -296,7 +325,7 @@ const renderVisibleDocument = ({ facts, state, canonicalPath, attributionQuery =
         <h1>${escapeHtml(text(facts.title, labelForKind(facts.kind)))}</h1>
         <p class="summary">${escapeHtml(description)}</p>
         ${rows.length ? `<dl class="facts">${rows.map(([term, value]) => `<div class="fact"><dt>${escapeHtml(term)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>` : ""}
-        <div class="actions">${action ? `<a class="cta" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>` : ""}<button class="share" id="mingla-share" type="button" aria-describedby="mingla-share-status mingla-share-fallback">Share</button></div>
+        <div class="actions">${action ? `<a class="cta"${destinationAction ? ` data-share-destination="${escapeHtml(destinationAction)}"` : ""} href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>` : ""}<button class="share" id="mingla-share" type="button" aria-describedby="mingla-share-status mingla-share-fallback">Share</button></div>
         <p class="share-feedback" id="mingla-share-status" role="status" aria-live="polite">Share this page using your device or copy its canonical link.</p>
         <div class="share-fallback" id="mingla-share-fallback" hidden><p>Select and copy this canonical Mingla link:</p><input id="mingla-share-fallback-input" aria-label="Canonical Mingla link" type="text" readonly value="${escapeHtml(canonicalUrl)}" /></div>
         <p class="runtime-status" id="mingla-runtime-status" role="status" aria-live="polite"></p>
@@ -306,7 +335,7 @@ const renderVisibleDocument = ({ facts, state, canonicalPath, attributionQuery =
     <footer class="trust">Public facts supplied by ${escapeHtml(text(facts.brandName, "the host"))} and served from Mingla’s authoritative Host domain.</footer>
   </main></div>
   <script>${browserRuntimeScript(canonicalUrl)}</script>
-</body>
+${shareScript}</body>
 </html>`;
 };
 
@@ -455,6 +484,7 @@ const handlePublicSearchDocument = async ({ req, res, kind, slugs }) => {
   }
   const canonicalPath = buildPublicPath(kind, slugs);
   const attributionQuery = attributionQueryFromRequest(req);
+  const shareAttribution = shareAttributionFromRequest(req);
   if (!canonicalPath) {
     send(req, res, 404, "draft", renderStatePage({ status: 404, heading: "Page not found", message: "This Mingla page does not exist or is not public." }));
     return;
@@ -478,7 +508,7 @@ const handlePublicSearchDocument = async ({ req, res, kind, slugs }) => {
       send(req, res, 503, "dependency_failure", renderStatePage({ status: 503, heading: "Temporarily unavailable", message: "Mingla could not safely verify this page right now." }), { "retry-after": "60" });
       return;
     }
-    send(req, res, 308, "redirected", "", { location: `${PUBLIC_HOST_ORIGIN}${targetPath}${attributionQuery}` });
+    send(req, res, 308, "redirected", "", { location: `${PUBLIC_HOST_ORIGIN}${targetPath}${redirectQuery(attributionQuery, shareAttribution)}` });
     return;
   }
   if (resolution.state === "gone") {
@@ -502,7 +532,7 @@ const handlePublicSearchDocument = async ({ req, res, kind, slugs }) => {
     send(req, res, 503, "dependency_failure", renderStatePage({ status: 503, heading: "Temporarily unavailable", message: "Mingla could not safely verify this page right now." }), { "retry-after": "60" });
     return;
   }
-  send(req, res, 200, resolution.state, renderVisibleDocument({ facts, state: resolution.state, canonicalPath, attributionQuery }));
+  send(req, res, 200, resolution.state, renderVisibleDocument({ facts, state: resolution.state, canonicalPath, attributionQuery, shareAttribution }));
 };
 
 const buildRedirectTarget = (path) => {
@@ -534,4 +564,5 @@ module.exports = {
   publicDocumentCsp,
   publicDocumentCspSources,
   renderVisibleDocument,
+  shareAttributionFromRequest,
 };

@@ -186,7 +186,13 @@ test('C9 Business retains the full binding state machine and exact portrait prev
 test('C10 Android adapters put the canonical URL in message exactly once', () => {
   const consumer = read('app-mobile/src/services/contentShareAdapter.ts');
   const businessTransport = read('mingla-business/src/utils/sharePublicUrl.ts');
-  assert.match(consumer, /Platform\.OS==='android'[\s\S]{0,120}Share\.share\(\{title,message:prepared\.message\}\)/);
+  // [TEST-MOD-APPROVED #3187] The old pin was `Share.share({title,message:prepared.message})`
+  // on Android — the server text, which carries the /s/ interstitial link. That
+  // is the Android half of the #3187 defect: changing only the URL field leaves
+  // Android sharing the interstitial. The one transport now shares the DERIVED
+  // text (server text with only the link replaced), and puts the URL in it.
+  assert.match(consumer, /message: prepared\.shareMessage/);
+  assert.match(consumer, /Platform\.OS === 'android'\) \{ await Share\.share\(\{ title: input\.title, message: input\.message\.includes\(input\.url\) \? input\.message : message \}\)/);
   assert.match(businessTransport, /stripUrlFromBody[\s\S]*buildAndroidPublicShareMessage[\s\S]*body\.includes\(url\)\s*\?\s*body\s*:\s*`\$\{body\}\\n\$\{url\}`/);
   const message = sharing.buildShareMessage({ schemaVersion: 1, kind: 'place', title: 'Namu' }, { shortCode: 'Aa0Bb1Cc2Dd3Ee4F' });
   assert.equal((message.match(/https:\/\/usemingla\.com\/s\/Aa0Bb1Cc2Dd3Ee4F/g) ?? []).length, 1);

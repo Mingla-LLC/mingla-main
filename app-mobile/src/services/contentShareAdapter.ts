@@ -1,6 +1,6 @@
 // SHARE-SEMANTIC-ROLE:content-adapter
 import { Platform, Share } from 'react-native';
-import { buildSharePortraitUrl, buildShortShareUrl, createContentShareSingleFlight, type PublicShareDetails, type ShareDestination, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
+import { buildSharePortraitUrl, buildShortShareUrl, createContentShareSingleFlight, deriveCanonicalShare, type PublicShareDetails, type ShareDestination, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
 import { supabase } from './supabase';
 import { openUnifiedContentShare } from './contentShareController';
 import { mixpanelService } from './mixpanelService';
@@ -14,7 +14,17 @@ export type ContentShareIdentity = {
 export type { PublicShareDetails } from '@mingla/sharing';
 export type PreparedContentShareV1 = {
   contract: 'content_share_v1'; kind: ShareEntityKind; title: string;
-  shortCode: string; version: number; canonicalUrl: string; message: string;
+  shortCode: string; version: number;
+  /** #3187 — the URL this share SENDS: the canonical page with `?ms=` when the kind has a public page, else `shortShareUrl`. */
+  url: string;
+  /** The `usemingla.com/s/<code>` interstitial link. Named for what it is; it was called `canonicalUrl`, which it never was. */
+  shortShareUrl: string;
+  /** The canonical page URL with attribution, or null for `place`/`curated` (no public page). */
+  canonicalShareUrl: string | null;
+  /** The server-authored message, byte-for-byte. Never rewritten — `shareMessage` is derived from it. */
+  message: string;
+  /** The text this share SENDS: `message` with the short link replaced by `url`. */
+  shareMessage: string;
   s4Url: string | null; facts: ShareFactsV1; media: ShareMediaIdentity | null;
   destination: ShareDestination; publicDetails: PublicShareDetails | null;
 };
@@ -64,6 +74,10 @@ export function adoptContentShareVersion(
     ...prepared,
     version,
     s4Url: prepared.media === null ? null : buildSharePortraitUrl(prepared.shortCode, version),
+    // #3187 — the shared URL carries the version (`?ms=<code>.<version>`), so
+    // adopting a version must re-derive it or the next share/copy would name
+    // a version this object no longer holds.
+    ...deriveCanonicalShare({ message: prepared.message, shortShareUrl: prepared.shortShareUrl, destination: prepared.destination, code: prepared.shortCode, version }),
   };
 }
 
@@ -119,39 +133,52 @@ export async function prepareContentShare(kind: ShareEntityKind, identity: Conte
     throw Object.assign(new Error(`${SHARE_FAILURE_PREFIX}${reason}`), { reason });
   });
   const data=prepared.data;
-  const canonicalUrl=buildShortShareUrl(data.shortCode);
+  const shortShareUrl=buildShortShareUrl(data.shortCode);
   const media = data.media ?? null;
+  const destination = data.destination ?? { kind };
   return {
     contract: 'content_share_v1',
     kind: data.facts.kind,
     title: data.facts.title,
     shortCode: data.shortCode,
     version: data.version,
-    canonicalUrl,
+    shortShareUrl,
+    // The server's text, byte-for-byte. It is authored in Postgres
+    // (content_share_message_text) with the /s/ link appended and frozen into
+    // an immutable column, so it names the interstitial. Android shares that
+    // text and nothing else: the URL must change INSIDE the text too, or
+    // Android keeps sharing the interstitial and iOS carries two links.
+    // deriveCanonicalShare substitutes the link and composes nothing (#3187 F-2).
     message: data.message,
+    ...deriveCanonicalShare({ message: data.message, shortShareUrl, destination, code: data.shortCode, version: data.version }),
     s4Url: media === null ? null : buildSharePortraitUrl(data.shortCode, data.version),
     facts: data.facts,
     media,
-    destination: data.destination ?? { kind },
+    destination,
     publicDetails: data.publicDetails ?? null,
   };
 }
 
+/**
+ * The one native transport for a prepared share. Delegates to
+ * `shareCanonicalFallback` so there is exactly one pair of Share calls to keep
+ * correct, and sends the URL and text the adapter derived (#3187).
+ */
 export async function sharePreparedContent(prepared:PreparedContentShare):Promise<void>{
-  const title=prepared.title;
-  // SHARE-CONTENT-CALL:adapter
-  if(Platform.OS==='android'){await Share.share({title,message:prepared.message});return;}
-  const body=prepared.message.split(prepared.canonicalUrl).join('').trim();
-  // SHARE-CONTENT-CALL:adapter
-  await Share.share({title,message:body,url:prepared.canonicalUrl});
+  await shareCanonicalFallback({ title: prepared.title, url: prepared.url, message: prepared.shareMessage });
 }
 
 export async function shareCanonicalFallback(input: { title: string; url: string; message: string }): Promise<void> {
-  // SHARE-CONTENT-CALL:adapter
-  if (Platform.OS === 'android') { await Share.share({ title: input.title, message: input.message }); return; }
+  // Both platforms put the link IN the text. A share target that reads only
+  // the text item (the reported iOS paste) would otherwise receive no link.
   const body = input.message.split(input.url).join('').trim();
+  const message = body.length > 0 ? `${body}\n${input.url}` : input.url;
   // SHARE-CONTENT-CALL:adapter
-  await Share.share({ title: input.title, message: body, url: input.url });
+  if (Platform.OS === 'android') { await Share.share({ title: input.title, message: input.message.includes(input.url) ? input.message : message }); return; }
+  // iOS used to strip the URL out of the text and rely on the separate `url`
+  // item alone — which is how a paste arrived with no link at all (#3187).
+  // SHARE-CONTENT-CALL:adapter
+  await Share.share({ title: input.title, message, url: input.url });
 }
 
 export async function shareContent(kind: ShareEntityKind, identity: ContentShareIdentity, channel = 'generic'): Promise<void> {
