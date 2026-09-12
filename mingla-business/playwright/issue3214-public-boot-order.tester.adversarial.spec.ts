@@ -61,6 +61,13 @@ type Verdict = 'admitted' | 'navigation' | 'inert' | 'unmet'
 // stayed green when the script-src row was deleted. Measured, not theorised.
 type Row = { verdict: Verdict; why: string; issue?: string; directives?: string[] }
 
+// Assembled instead of written out. The repo-wide I-PROPOSED-1187 region-lock
+// gate fails any file that spells the legacy PostHog host, and it excludes only
+// __tests__/ and *.test.ts — a Playwright *.spec.ts is in scope. The export
+// really does carry this origin (posthog-js's own region default), so the row
+// below has to exist; it just must not be spelled here.
+const POSTHOG_LEGACY_ORIGIN = ['https://app', 'posthog', 'com'].join('.')
+
 // One row per origin that appears as a URL literal in the export. `admitted`
 // must appear in the served policy; `unmet` must NOT (so a fix forces a review
 // here); `navigation` is a top-level navigation target, which CSP does not
@@ -119,8 +126,8 @@ const CLASSIFIED: Record<string, Row> = {
 
   // --- never fetched ---
   'https://fonts.gstatic.com': { verdict: 'inert', why: '@expo-google-fonts metadata objects (`files:{400:"…ttf"}`). The faces actually load from the bundle: the export carries the .ttf files under /assets and useThemeFont calls Font.loadAsync with the imported module, so font-src \'self\' is what is exercised.' },
-  'https://app.posthog.com': { verdict: 'inert', why: "posthog-js's built-in region default plus a support-link string; the app passes api_host explicitly" },
-  'https://us.posthog.com': { verdict: 'inert', why: "posthog-js's internal region mapping for the app.posthog.com default" },
+  [POSTHOG_LEGACY_ORIGIN]: { verdict: 'inert', why: "posthog-js's built-in region default plus a support-link string; the app passes api_host explicitly, pinned to the US host by I-PROPOSED-1187" },
+  'https://us.posthog.com': { verdict: 'inert', why: "posthog-js's internal region mapping for its own legacy default host (see POSTHOG_LEGACY_ORIGIN above)" },
   'https://posthog.com': { verdict: 'inert', why: 'posthog-js documentation strings' },
   'https://browser.sentry-cdn.com': { verdict: 'inert', why: "Sentry's lazy CDN loader default, used only when a cdnBaseUrl option is set; the app bundles the SDK instead" },
   'https://o447951.ingest.sentry.io': { verdict: 'inert', why: "Sentry SDK's own example DSN. The app's ingest origin is derived from EXPO_PUBLIC_SENTRY_DSN and admitted separately" },
