@@ -33,6 +33,14 @@ const VERIFIED_PROPOSAL_CONTEXT_KEYS = new Set([
   "proposed_tax",
   "proposed_mingla_fee",
   "proposed_service_fee",
+  // #1981 — money confirm cards.
+  "refund_total_cents",
+  "refundable_total_cents",
+  "line_count",
+  "currency",
+  "zero_priced_remaining",
+  "payment_method",
+  "installment_id",
 ]);
 
 export function verifiedProposalArgs(

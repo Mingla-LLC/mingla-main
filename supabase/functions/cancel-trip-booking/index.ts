@@ -365,6 +365,35 @@ serve(async (req: Request): Promise<Response> => {
   // initial hero-amount render. Commit mode below re-computes via _begin
   // and enforces SC-22 freshness against expectedRefundTotalCents.
   if (mode === "preview") {
+    // #1981 — operator preview previously ran service-role compute with only a
+    // JWT presence check, so a member of brand A could preview brand B's
+    // booking. Bind order → brand → membership before quoting.
+    if (actorKind === "operator") {
+      if (!actorUserId) {
+        return jsonResponse({ error: "unauthenticated" }, 401);
+      }
+      const { brandId: previewBrandId } = await resolveConnectedAccountId(
+        supabase,
+        orderId,
+      );
+      if (!previewBrandId) {
+        return jsonResponse({ error: "order_not_found" }, 404);
+      }
+      const { data: isMember, error: memberErr } = await supabase.rpc(
+        "biz_is_brand_member_for_read",
+        { p_brand_id: previewBrandId, p_user_id: actorUserId },
+      );
+      if (memberErr) {
+        console.error(
+          "[cancel-trip-booking] preview membership check failed",
+          memberErr,
+        );
+        return jsonResponse({ error: "server" }, 500);
+      }
+      if (isMember !== true) {
+        return jsonResponse({ error: "forbidden" }, 403);
+      }
+    }
     const { data: computeData, error: computeErr } = await supabase.rpc(
       "biz_compute_refund_for_cancel",
       { p_order_id: orderId, p_cancel_at: new Date().toISOString() },
@@ -424,6 +453,31 @@ serve(async (req: Request): Promise<Response> => {
     brandId,
     paymentProvider,
   } = await resolveConnectedAccountId(supabase, orderId);
+
+  // #1981 — operator commit uses service-role begin RPC; bind order → brand →
+  // membership before state flips (same check as operator preview).
+  if (actorKind === "operator") {
+    if (!actorUserId) {
+      return jsonResponse({ error: "unauthenticated" }, 401);
+    }
+    if (!brandId) {
+      return jsonResponse({ error: "order_not_found" }, 404);
+    }
+    const { data: isMember, error: memberErr } = await supabase.rpc(
+      "biz_is_brand_member_for_read",
+      { p_brand_id: brandId, p_user_id: actorUserId },
+    );
+    if (memberErr) {
+      console.error(
+        "[cancel-trip-booking] commit membership check failed",
+        memberErr,
+      );
+      return jsonResponse({ error: "server" }, 500);
+    }
+    if (isMember !== true) {
+      return jsonResponse({ error: "forbidden" }, 403);
+    }
+  }
 
   // Paystack rejects explicit partial-refund amounts below NGN 50. Validate
   // before the cancellation state flips. True full refunds omit `amount` and
@@ -576,7 +630,9 @@ serve(async (req: Request): Promise<Response> => {
   // v1 simplification: attribute every per-payment refund row to the FIRST line item.
   // Multi-line trip orders are not a Tr2/Tr3 pattern; future ORCH if multi-tier trips appear.
   const primaryLineItem = orderLineItems[0];
-  const expectedStripeAttemptCount = perPaymentRefund.filter((entry) => entry.refund_cents > 0 && entry.source_pi).length;
+  const expectedStripeAttemptCount = perPaymentRefund.filter((entry) =>
+    entry.refund_cents > 0 && entry.source_pi
+  ).length;
 
   for (const entry of perPaymentRefund) {
     if (entry.refund_cents <= 0) {
@@ -670,35 +726,48 @@ serve(async (req: Request): Promise<Response> => {
         // it never estimates a percentage.
         expectedApplicationFeeAmount: null,
         requestedRefundAmount: entry.refund_cents,
-        requestFingerprint: `${idempotencyKey}:${entry.installment_id ?? "deposit"}`,
-        providerIdempotencyKey: `tr4_cancel:${refundId}:${entry.installment_id ?? "deposit"}`,
+        requestFingerprint: `${idempotencyKey}:${
+          entry.installment_id ?? "deposit"
+        }`,
+        providerIdempotencyKey: `tr4_cancel:${refundId}:${
+          entry.installment_id ?? "deposit"
+        }`,
         expectedAttemptCount: expectedStripeAttemptCount,
-        createBuyerRefund: () => stripe.refunds.create(
-          {
-            payment_intent: entry.source_pi,
-            amount: entry.refund_cents,
-            reason: "requested_by_customer",
-            refund_application_fee: true,
-            metadata: {
-              mingla_refund_id: refundId,
-              mingla_order_id: orderId,
-              mingla_installment_id: entry.installment_id ?? "",
-              mingla_idempotency_key: idempotencyKey,
-              mingla_tr4_cancel: "true",
+        createBuyerRefund: () =>
+          stripe.refunds.create(
+            {
+              payment_intent: entry.source_pi,
+              amount: entry.refund_cents,
+              reason: "requested_by_customer",
+              refund_application_fee: true,
+              metadata: {
+                mingla_refund_id: refundId,
+                mingla_order_id: orderId,
+                mingla_installment_id: entry.installment_id ?? "",
+                mingla_idempotency_key: idempotencyKey,
+                mingla_tr4_cancel: "true",
+              },
             },
-          },
-          {
-            idempotencyKey: `tr4_cancel:${refundId}:${entry.installment_id ?? "deposit"}`,
-            stripeAccount: connectedAccountId,
-          },
-        ),
+            {
+              idempotencyKey: `tr4_cancel:${refundId}:${
+                entry.installment_id ?? "deposit"
+              }`,
+              stripeAccount: connectedAccountId,
+            },
+          ),
       });
       const result: StripeRefundResult = {
         id: feeTruth.buyerRefundId ?? "",
-        status: feeTruth.status === "succeeded_positive" || feeTruth.status === "not_applicable" ? "succeeded" : "pending",
+        status: feeTruth.status === "succeeded_positive" ||
+            feeTruth.status === "not_applicable"
+          ? "succeeded"
+          : "pending",
         amount: entry.refund_cents,
       };
-      if (feeTruth.status !== "succeeded_positive" && feeTruth.status !== "not_applicable") {
+      if (
+        feeTruth.status !== "succeeded_positive" &&
+        feeTruth.status !== "not_applicable"
+      ) {
         stripeFailureDetail = `fee_truth_${feeTruth.status}`;
         break;
       }
@@ -795,14 +864,17 @@ serve(async (req: Request): Promise<Response> => {
   // application_fee_refunded_cents + processed_at. v1: primary stripe refund
   // id = first one; multi-PI refunds carry full list in audit metadata.
   // Legacy #1175 ordering sentinel: const { data: commitData, error: commitErr } = await supabase.rpc(
-  const { data: commitData, error: commitErr } = await (paymentProvider === "paystack"
-    ? supabase.rpc("biz_cancel_trip_booking_commit", {
-      p_refund_id: refundId,
-      p_stripe_refund_ids: stripeRefundIds.length > 0 ? stripeRefundIds : [""],
-      p_application_fee_refunded_cents: 0,
-      p_processed_at: new Date().toISOString(),
-    })
-    : Promise.resolve({ data: { ok: true }, error: null }));
+  const { data: commitData, error: commitErr } =
+    await (paymentProvider === "paystack"
+      ? supabase.rpc("biz_cancel_trip_booking_commit", {
+        p_refund_id: refundId,
+        p_stripe_refund_ids: stripeRefundIds.length > 0
+          ? stripeRefundIds
+          : [""],
+        p_application_fee_refunded_cents: 0,
+        p_processed_at: new Date().toISOString(),
+      })
+      : Promise.resolve({ data: { ok: true }, error: null }));
   if (paymentProvider === "paystack" && !commitErr) {
     await supabase.rpc("issue_2097_finalize_not_applicable", {
       p_refund_id: refundId,

@@ -9,12 +9,12 @@
   },
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
-    "verified_at": "2026-09-10T00:00:00Z",
-    "registered_tool_count": 123,
-    "capability_count": 135,
+    "verified_at": "2026-09-11T00:00:00Z",
+    "registered_tool_count": 125,
+    "capability_count": 137,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 122,
+      "registered_unverified": 124,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -2928,8 +2928,8 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
-          "reference": "#1981 agentDomainTools.ts:refundOrder sends lines+reason+Idempotency-Key to refund-order"
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
+          "reference": "#1981 agentDomainTools.ts:refundOrder pins Idempotency-Key to operation id; omits lines for full remaining refund"
         }
       ],
       "owning_issues": [
@@ -2940,7 +2940,53 @@
         "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-25"
+      "verified_at": "2026-09-11"
+    },
+    {
+      "id": "ari.order.refund_preview",
+      "domain": "orders",
+      "outcome": "Read remaining refundable order lines without buyer PII",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "issue-1981"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/event/[id]/orders/[oid]/index.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getOrderRefundPreview"
+          }
+        ]
+      },
+      "ari_tool": "get_order_refund_preview",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
+          "reference": "#1981 agentDomainTools.ts:getOrderRefundPreview returns remaining lines only"
+        }
+      ],
+      "owning_issues": [
+        1981,
+        2000
+      ],
+      "blockers": [
+        "No deployed cross-surface Pass-5 proof"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-09-11"
     },
     {
       "id": "ari.order.cancel",
@@ -2978,8 +3024,8 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
-          "reference": "#1981 agentDomainTools.ts:cancelOrder sends reason+Idempotency-Key to cancel-order"
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
+          "reference": "#1981 agentDomainTools.ts:cancelOrder preflights paid orders and pins Idempotency-Key to operation id"
         }
       ],
       "owning_issues": [
@@ -2990,7 +3036,7 @@
         "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-25"
+      "verified_at": "2026-09-11"
     },
     {
       "id": "ari.trip.cancel_booking",
@@ -3028,8 +3074,8 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
-          "reference": "#1981/#2593 agentDomainTools.ts:cancelTripBooking preview\u2192commit with expectedRefundTotalCents fail-closed"
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
+          "reference": "#1981/#2593 agentDomainTools.ts:cancelTripBooking preview→commit fail-closed; Idempotency-Key = operation id"
         }
       ],
       "owning_issues": [
@@ -3040,7 +3086,7 @@
         "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-25"
+      "verified_at": "2026-09-11"
     },
     {
       "id": "ari.installment.retry",
@@ -3074,7 +3120,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
           "reference": "#1981 agentDomainTools.ts:retryInstallment calls biz_retry_installment under finance_manager gate"
         }
       ],
@@ -3086,7 +3132,53 @@
         "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-25"
+      "verified_at": "2026-09-11"
+    },
+    {
+      "id": "ari.installment.list",
+      "domain": "orders",
+      "outcome": "List due or failed trip installments without buyer PII",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "issue-1981"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/trip/[id]/money/index.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const listTripInstallments"
+          }
+        ]
+      },
+      "ari_tool": "list_trip_installments",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
+          "reference": "#1981 agentDomainTools.ts:listTripInstallments returns installment_id/order_id/status/amounts only"
+        }
+      ],
+      "owning_issues": [
+        1981,
+        2000
+      ],
+      "blockers": [
+        "No deployed cross-surface Pass-5 proof"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-09-11"
     },
     {
       "id": "ari.analytics.brand",
@@ -5894,7 +5986,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
           "reference": "#1981 agentDomainTools.ts:chargeInstallmentNow invokes manual-charge-installment"
         }
       ],
@@ -5906,7 +5998,7 @@
         "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-25"
+      "verified_at": "2026-09-11"
     },
     {
       "id": "ari.installment.send_reminder",
@@ -5948,7 +6040,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
+          "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
           "reference": "#1981 agentDomainTools.ts:sendInstallmentReminder invokes send-installment-reminder"
         }
       ],
@@ -5960,7 +6052,7 @@
         "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-25"
+      "verified_at": "2026-09-11"
     },
     {
       "id": "ari.trip.order_money",

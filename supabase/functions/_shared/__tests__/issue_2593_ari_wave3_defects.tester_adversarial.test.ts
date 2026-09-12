@@ -1,3 +1,6 @@
+// [TEST-MOD-APPROVED #1981] cancel_trip_booking Idempotency-Key = operation id.
+// [TEST-MOD-APPROVED #1981] census pin bump authorized in the CI-fix commit.
+// [TEST-MOD-APPROVED #1981] cancelWith seeds orders[BOOKING] for brand-bind.
 // deno-lint-ignore-file no-explicit-any
 // [TEST-MOD-APPROVED #1977] set_guest_approval retired; containment
 // proofs now drive set_rsvp_guest_status via roster_keys (rsvp:<uuid>).
@@ -308,6 +311,12 @@ async function cancelWith(
 ): Promise<{ error: ToolError | null; calls: Recorder }> {
   const preview = omit ? {} : { refundTotalCents };
   const { client, calls } = makeClient({
+    // [TEST-MOD-APPROVED #1981] brand-bind before preview needs the booking row.
+    rows: {
+      orders: {
+        [BOOKING]: { id: BOOKING, events: { brand_id: BRAND } },
+      },
+    },
     invoke: (_name: string, body: Row) =>
       body.mode === "preview" ? preview : { ok: true },
   });
@@ -322,7 +331,7 @@ async function cancelWith(
       args,
       client,
       CALLER,
-      undefined as never,
+      { operationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
     );
     return { error: null, calls };
   } catch (error) {

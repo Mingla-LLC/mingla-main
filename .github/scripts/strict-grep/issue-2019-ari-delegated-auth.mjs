@@ -122,8 +122,8 @@ function check(s, manifest) {
   // [TEST-MOD-APPROVED #2830] The twelve closed Website tools extend the same
   // central caller-scoped authorization denominator (108 + 12 = 120).
   // [TEST-MOD-APPROVED #1980] Draft update/delete + growth report read
-  // (120 + 3 = 123).
-  if (declarationCount !== 123) failures.push(`expected 123 declarations, got ${declarationCount}`);
+  // (123 + 2 = 125).
+  if (declarationCount !== 125) failures.push(`expected 125 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }
