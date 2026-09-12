@@ -6176,39 +6176,85 @@ const updateAriPrefs = writeTool(
   },
 );
 
+// #1983 — canonical Host matrix (migration 20270304001614 / useNotificationTypePrefs).
+// Never write email|sms or non-business.* types; CHECK constraints reject them.
+const BUSINESS_NOTIFICATION_TYPES = [
+  "business.order_paid",
+  "business.event_sold_out",
+  "business.low_inventory",
+  "business.refund_processed",
+  "business.dispute_opened",
+  "business.dispute_action_needed",
+  "business.payout_paid",
+  "business.account_status_changed",
+  "business.new_review",
+  "business.claim_decision",
+  "business.team_member_joined",
+] as const;
+const BUSINESS_NOTIFICATION_TYPE_SET = new Set<string>(BUSINESS_NOTIFICATION_TYPES);
+
 const updateNotificationPrefs = writeTool(
   "update_notification_prefs",
-  "Update notification type preferences for the signed-in operator.",
+  "Update Host notification type preferences (push or in_app channel × business.* type) for the signed-in operator. Matches Account > Notifications — never email/sms master toggles.",
   {
-    email_enabled: { type: "boolean" },
-    push_enabled: { type: "boolean" },
-    sms_enabled: { type: "boolean" },
+    type: { type: "string", enum: [...BUSINESS_NOTIFICATION_TYPES] },
+    types: {
+      type: "array",
+      items: { type: "string", enum: [...BUSINESS_NOTIFICATION_TYPES] },
+      minItems: 1,
+    },
+    channel: { type: "string", enum: ["push", "in_app"] },
+    opt_in: { type: "boolean" },
   },
-  [],
+  ["channel", "opt_in"],
   async (args, client, userId) => {
-    const rows = [
-      {
-        user_id: userId,
-        channel: "email",
-        type: "order",
-        opt_in: args.email_enabled ?? true,
-      },
-      {
-        user_id: userId,
-        channel: "push",
-        type: "order",
-        opt_in: args.push_enabled ?? true,
-      },
-      {
-        user_id: userId,
-        channel: "sms",
-        type: "order",
-        opt_in: args.sms_enabled ?? false,
-      },
-    ];
+    const channel = args.channel;
+    if (channel !== "push" && channel !== "in_app") {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "channel must be push or in_app (not email/sms)",
+      );
+    }
+    if (typeof args.opt_in !== "boolean") {
+      throw new ToolError("INVALID_ARGS", "opt_in is required");
+    }
+
+    const types: string[] = [];
+    if (Array.isArray(args.types)) {
+      for (const t of args.types) {
+        if (typeof t !== "string" || !BUSINESS_NOTIFICATION_TYPE_SET.has(t)) {
+          throw new ToolError(
+            "INVALID_ARGS",
+            `invalid notification type: ${String(t)}`,
+          );
+        }
+        types.push(t);
+      }
+    } else if (typeof args.type === "string") {
+      if (!BUSINESS_NOTIFICATION_TYPE_SET.has(args.type)) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          `invalid notification type: ${args.type}`,
+        );
+      }
+      types.push(args.type);
+    } else {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Provide type or types (a business.* notification type)",
+      );
+    }
+
+    const rows = types.map((type) => ({
+      user_id: userId,
+      channel,
+      type,
+      opt_in: args.opt_in as boolean,
+      updated_at: new Date().toISOString(),
+    }));
     const { data, error } = await client
       .from("business_notification_type_preferences")
-      .upsert(rows)
+      .upsert(rows, { onConflict: "user_id,channel,type" })
       .select("channel, type, opt_in");
     if (error) throw new ToolError("RPC_FAILED", error.message);
     return data;
@@ -6230,14 +6276,55 @@ const createSupportTicket = writeTool(
 
 const requestAccountDeletion = writeTool(
   "request_account_deletion",
-  "Delete the operator account via delete-user. Requires typed legal name + DELETE.",
+  "Delete the Host (business) side of the operator account via delete-user. Requires typed legal name matching the account display name (or email if no display name) plus confirm_phrase DELETE.",
   { legal_name: STR },
   ["legal_name"],
-  async (args, client, _userId) => {
-    return await invokeFn(client, "delete-user", {
-      legal_name: args.legal_name,
-      confirm: "DELETE",
-    });
+  async (args, client, userId) => {
+    const typed = typeof args.legal_name === "string"
+      ? args.legal_name.trim()
+      : "";
+    if (!typed) {
+      throw new ToolError("INVALID_ARGS", "legal_name is required");
+    }
+
+    const { data: account, error: accountError } = await client
+      .from("creator_accounts")
+      .select("display_name")
+      .eq("id", userId)
+      .maybeSingle();
+    if (accountError) {
+      throw new ToolError("RPC_FAILED", accountError.message);
+    }
+
+    const displayName = typeof account?.display_name === "string"
+      ? account.display_name.trim()
+      : "";
+    let expected = displayName;
+    if (!expected) {
+      const { data: authData, error: authError } = await client.auth.getUser();
+      if (authError) {
+        throw new ToolError("RPC_FAILED", authError.message);
+      }
+      expected = typeof authData?.user?.email === "string"
+        ? authData.user.email.trim()
+        : "";
+    }
+    if (!expected) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "No display name or email on file to confirm against",
+      );
+    }
+    if (typed.toLowerCase() !== expected.toLowerCase()) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "legal_name does not match your account name",
+      );
+    }
+
+    // Host UI parity: useAccountDeletion always sends side:business. Omitting
+    // side defaults delete-user to explorer and can purge the wrong half.
+    return await invokeFn(client, "delete-user", { side: "business" });
   },
   "DELETE",
 );

@@ -535,6 +535,10 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const [coverSheetVisible, setCoverSheetVisible] = useState(false);
   const [coverUploadState, setCoverUploadState] = useState<CoverUploadState>("idle");
   const [typedName, setTypedName] = useState("");
+  // #1983 — account deletion requires legal name AND typed DELETE (highest-safety).
+  const [legalNameInput, setLegalNameInput] = useState(
+    typeof args.legal_name === "string" ? args.legal_name : "",
+  );
   // ORCH-1103 Q7 — create-row-first / attach-second. On a create proposal the
   // reused CoverPicker persists EVERY brand media (device, video, Pexels, GIPHY)
   // live to a real brandId — so the brand row must exist before the picker can
@@ -559,6 +563,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const isBrandDelete = toolName === "delete_brand";
   const moneyPhrase = MONEY_CONFIRM_TOOLS[toolName] ?? null;
   const isMoneyConfirm = moneyPhrase !== null;
+  const isAccountDeletion = toolName === "request_account_deletion";
   const isTypeConfirm = isBrandDelete || isMoneyConfirm;
   const isBrandWithCover = isBrandCreate || isBrandUpdate;
   const isOfferingCover =
@@ -582,6 +587,10 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     typedName.trim().toLowerCase() === deleteName.trim().toLowerCase() && deleteName.length > 0;
   const canMoneyConfirm =
     !!moneyPhrase && typedName.trim().toUpperCase() === moneyPhrase;
+  const canAccountDeletion =
+    isAccountDeletion &&
+    legalNameInput.trim().length > 0 &&
+    typedName.trim().toUpperCase() === "DELETE";
 
   // ----- cover threading -----------------------------------------------------
   const coverUrl = (liveArgs.cover_media_url as string | undefined) ?? null;
@@ -893,6 +902,40 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               accessibilityHint="The delete button enables when the name matches"
             />
           </>
+        ) : isAccountDeletion ? (
+          <>
+            <View style={styles.assuranceRow}>
+              <Text style={styles.assuranceText}>
+                This deletes your Host account. Type your legal name and DELETE to confirm.
+              </Text>
+            </View>
+            <Text style={styles.confirmHelper}>
+              Type your <Text style={styles.confirmHelperName}>legal name</Text>
+            </Text>
+            <TextInput
+              value={legalNameInput}
+              onChangeText={setLegalNameInput}
+              placeholder="Legal name"
+              placeholderTextColor={textTokens.quaternary}
+              autoCapitalize="words"
+              autoCorrect={false}
+              style={styles.confirmInput}
+              accessibilityLabel="Type your legal name to confirm account deletion"
+            />
+            <Text style={styles.confirmHelper}>
+              Type <Text style={styles.confirmHelperName}>DELETE</Text> to confirm
+            </Text>
+            <TextInput
+              value={typedName}
+              onChangeText={setTypedName}
+              placeholder="DELETE"
+              placeholderTextColor={textTokens.quaternary}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              style={styles.confirmInput}
+              accessibilityLabel="Type DELETE to confirm account deletion"
+            />
+          </>
         ) : isMoneyConfirm && moneyPhrase ? (
           <>
             {fieldsFor(toolName, liveArgs).length > 0 ? (
@@ -1062,6 +1105,31 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             >
               <Text style={[styles.deleteText, !canDelete && styles.deleteTextDisabled]}>
                 {isExecuting ? "Deleting…" : "Delete brand"}
+              </Text>
+            </Pressable>
+          ) : isAccountDeletion ? (
+            <Pressable
+              onPress={() =>
+                void confirmProposal({
+                  ...(editing ? editedArgs : args),
+                  legal_name: legalNameInput.trim(),
+                  confirm_phrase: "DELETE",
+                })
+              }
+              disabled={isExecuting || !canAccountDeletion}
+              hitSlop={{ top: 5, bottom: 5 }}
+              style={({ pressed }) => [
+                styles.actionBtn,
+                styles.deleteBtn,
+                !canAccountDeletion && styles.deleteBtnDisabled,
+                pressed && styles.btnPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Delete account"
+              accessibilityState={{ disabled: isExecuting || !canAccountDeletion }}
+            >
+              <Text style={[styles.deleteText, !canAccountDeletion && styles.deleteTextDisabled]}>
+                {isExecuting ? "Deleting…" : "Delete account"}
               </Text>
             </Pressable>
           ) : isMoneyConfirm && moneyPhrase ? (

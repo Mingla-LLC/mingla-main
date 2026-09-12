@@ -3075,7 +3075,7 @@
         {
           "tier": "source_contract",
           "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
-          "reference": "#1981/#2593 agentDomainTools.ts:cancelTripBooking preview→commit fail-closed; Idempotency-Key = operation id"
+          "reference": "#1981/#2593 agentDomainTools.ts:cancelTripBooking preview\u2192commit fail-closed; Idempotency-Key = operation id"
         }
       ],
       "owning_issues": [
@@ -3509,10 +3509,11 @@
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "No runtime surface proof"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"
@@ -3554,10 +3555,11 @@
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "No runtime surface proof"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"
@@ -3603,10 +3605,11 @@
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "No runtime surface proof"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"
@@ -3648,10 +3651,11 @@
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "No runtime surface proof"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"
