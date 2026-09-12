@@ -156,8 +156,11 @@ const SEARCH_READY_ROUTES = [
   },
 ] as const satisfies readonly SearchReadyRouteContract[]
 
+const CORE_PUBLIC_NOINDEX_ROUTES = Object.values(CORE_PAGES).filter((record) => record.lifecycle === 'public_noindex')
+  .map((record) => [record.pathname, `core-${record.slug}`] as const)
+
 const PUBLIC_NOINDEX_ROUTES = [
-  ...Object.values(CORE_PAGES).filter((record) => record.lifecycle === 'public_noindex').map((record) => [record.pathname, `core-${record.slug}`] as const),
+  ...CORE_PUBLIC_NOINDEX_ROUTES,
   ['/links', 'links'],
   ['/download', 'explorer-download'],
   ['/host/download', 'host-download'],

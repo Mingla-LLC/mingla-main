@@ -2344,11 +2344,15 @@ export function validateRegistry(
       || crypto.createHash("sha256").update(JSON.stringify(exposure)).digest("hex") !== "08d4e3d37b2c5a45805b110cfb9e20fc100d05f065a34ce46ef5b56444bee1ef") {
     fail(errors, "#1902 typed Jest 29.7.0 exposure contract drifted");
   }
+  // [TEST-MOD-APPROVED #3176] The two applications now import the shared
+  // search-measurement package through declared file dependencies. Re-bank
+  // the four exact manifest/lock authorities; setup and tool exposure stay
+  // byte-for-byte unchanged.
   const packageAuthorities = {
-    "app-mobile/package.json": "89b2d535fba9a12823b44a89b44854ba5e16b9a81aae24b66b0189296f994ab9",
-    "app-mobile/package-lock.json": "c66a57bebba18941e980061a79d0e39cf482a1c39ffc3427aede7ca615ac2dca",
-    "mingla-business/package.json": "61ddd3137b3cc5542f9d58b28edd0a4f1cd6479a9212d99b8067025a03547601",
-    "mingla-business/package-lock.json": "b1100bc40a3ec59739a2559ed0f88f3b6b0d6bc6700d1553cd2dd19059ee18dc",
+    "app-mobile/package.json": "e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542",
+    "app-mobile/package-lock.json": "f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27",
+    "mingla-business/package.json": "98105e8ce8c3d17fa2e0c2640f7cdb721a782498fca79886ce01d8a8b5a0f19e",
+    "mingla-business/package-lock.json": "71449617f9cd6133da0395f3dcf780a3170da5d49b1e2eff2876a7afeb92addc",
   };
   for (const [relative, expected] of Object.entries(packageAuthorities)) {
     const actual = crypto.createHash("sha256").update(fs.readFileSync(path.join(root, relative))).digest("hex");

@@ -39,9 +39,13 @@ function sourceContract() {
   assert.match(read('mingla-business/src/services/postHogService.web.ts'), /event === "signup_completed"[\s\S]*?captureWebSearchOutcome\("sign_up"/)
 
   const hostVercel = JSON.parse(read('mingla-business/vercel.json'))
-  assert(!hostVercel.rewrites.some((rule) => rule.source === '/indexnow-key.txt'), 'IndexNow key must not bypass the fixed deep-link rewrite table')
-  assert(hostVercel.redirects.some((rule) => rule.source === '/indexnow-key.txt' && rule.destination === '/api/indexnow-key'), 'legacy IndexNow key URL must redirect to its protocol key location')
+  assert(!hostVercel.redirects.some((rule) => rule.source === '/indexnow-key.txt'), 'IndexNow key alias must not widen the five-rule Business redirect contract')
+  assert(hostVercel.rewrites.some((rule) => rule.source === '/indexnow-key.txt' && rule.destination === '/api/indexnow-key'), 'IndexNow key alias must resolve internally to its protocol key handler')
   assert.match(read('scripts/search/indexnow.mjs'), /keyLocation:'https:\/\/host\.usemingla\.com\/api\/indexnow-key'/)
+
+  const privacyBrowserConfig = read('mingla-business/playwright.issue2771.config.ts')
+  assert.match(privacyBrowserConfig, /node scripts\/clear-historical-city-build\.mjs && NEXT_PUBLIC_POSTHOG_KEY=[^']+ npm exec -- next build/, '#2771 browser runtime must build one fresh current marketing artifact')
+  assert.doesNotMatch(privacyBrowserConfig, /npm run build/, '#2771 browser runtime must not repeat the separately enforced two-pass release build')
 
   const packageJson = JSON.parse(read('mingla-marketing/package.json'))
   assert.match(packageJson.scripts.build, /export MINGLA_HISTORICAL_2983_BUILD=1/)

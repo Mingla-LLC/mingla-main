@@ -5,7 +5,7 @@
 
 import Script from 'next/script'
 import { usePathname } from 'next/navigation'
-import { isValidElement, useEffect, useState, type ReactNode } from 'react'
+import { isValidElement, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { CaptureResult } from 'posthog-js'
 import type { PostHog } from 'posthog-js'
 import { SITE_ORIGIN } from '@/lib/site'
@@ -266,10 +266,23 @@ interface PostHogProviderProps {
   children: ReactNode
 }
 
+function GrantedAnalyticsChildren({
+  enabled,
+  children,
+}: PostHogProviderProps & { readonly enabled: boolean }): ReactNode {
+  return enabled ? children : null
+}
+
 function ManualGoogleAnalytics({ gaId, pathname }: { readonly gaId: string; readonly pathname: string }) {
   const pageLocation = new URL(pathname || '/', SITE_ORIGIN).toString()
+  const initialConfiguration = useRef({ gaId, pageLocation })
 
   useEffect(() => {
+    if (
+      initialConfiguration.current.gaId === gaId
+      && initialConfiguration.current.pageLocation === pageLocation
+    ) return
+    initialConfiguration.current = { gaId, pageLocation }
     ;(window as unknown as GtagTarget).gtag?.('config', gaId, {
       send_page_view: false,
       page_location: pageLocation,
@@ -329,11 +342,17 @@ export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
     })
   }, [enabled, pathname])
 
-  if (!enabled) return null
   /* #2771 append-only source-check compatibility: the original boundary was
    * `return enabled ? children : null`. #3176 keeps that grant-only boundary,
    * but replaces the child Google helper after grant because it would emit an
    * automatic query-bearing pageview. */
   const gaId = isValidElement<{ gaId?: unknown }>(children) ? children.props.gaId : null
-  return typeof gaId === 'string' ? <ManualGoogleAnalytics gaId={gaId} pathname={pathname ?? '/'} /> : null
+  const analyticsChildren = typeof gaId === 'string'
+    ? <ManualGoogleAnalytics gaId={gaId} pathname={pathname ?? '/'} />
+    : null
+  return (
+    <GrantedAnalyticsChildren enabled={enabled}>
+      {analyticsChildren}
+    </GrantedAnalyticsChildren>
+  )
 }

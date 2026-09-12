@@ -1056,7 +1056,14 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // suite 11/11 green against the value this pin replaces. The new value below
   // is identical across three derivations with this file's own RUBY_CANONICAL,
   // and was not copied from a PR run's printed `actual:` (#3015).
-  "cd049e29326739fe863e274b1a981444a6f3f4c0d7f49fc6e6af85323edf520e";
+  // [TEST-MOD-APPROVED #3176] The offering-visibility replay lane adds four
+  // explanatory shell-comment lines and one exact-filename skip for #3176's
+  // IndexNow migration. No workflow identity, trigger, concurrency block,
+  // group expression, cancellation policy, or timeout changes. The prior
+  // digest was cd049e29326739fe863e274b1a981444a6f3f4c0d7f49fc6e6af85323edf520e;
+  // the new value was derived three times from RUBY_CANONICAL, while the exact
+  // skip-line reversion below proves the change remains independently visible.
+  "b59dc7e87f8d555875f5e83dc28b9906ef62fe43f752119b2d07d3a1760eced3";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1380,6 +1387,8 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "              *20270624003193_issue_3193_public_search_live_brand_row.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "            -f supabase/migrations/20270624003193_issue_3193_public_search_live_brand_row.sql\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270627003176_issue_3176_indexnow_outbox.sql) continue ;;\n"],
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "            -f supabase/migrations/__tests__/issue_3193_public_search_live_brand_row.implementor.happy.pg17.test.sql\n"],
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
