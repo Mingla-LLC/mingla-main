@@ -1,28 +1,30 @@
 /**
- * Issue #3280 [cover sheet stale state] — implementor happy-path regression,
- * defect 2: "Add photo" was a dead tap for the whole life of a cover-video job.
+ * Issue #3280 [cover sheet stale state] — implementor happy-path regression:
+ * "Add photo" was a dead tap for the whole life of a cover-video job.
  *
- * `activeVideoUpload` (true for every phase that is not idle/ready/applied/error)
- * sat in TWO gallery-path sites: the `addGalleryPhoto` guard and the
- * `AdditionalPhotosSection` `disabled` prop. Both were an accidental copy of the
- * COVER-path guard in `pickImageOrGifCover`, where blocking is correct. The
- * evidence it was accidental: the gallery's own comment two lines above says it
- * is "Independent of the primary cover — does NOT touch it"; every deliberate
- * guard in that 2,794-line file carries an issue number and a rationale and
- * these two carried neither; and the gallery uploads into the
- * `event_covers`/`brand_covers` storage buckets, sharing no transport, lock or
- * row with the Bunny/TUS video job. The `disabled` it produced reached a
- * `Pressable` whose style array had no disabled variant, so the tile rendered
- * fully enabled and did nothing.
+ * Two stacked blocks, both on the GALLERY path:
+ *   1. `activeVideoUpload` in the `addGalleryPhoto` guard and the
+ *      `AdditionalPhotosSection` `disabled` prop — an accidental copy of the
+ *      COVER-path guard (evidence on the issue: the gallery's own comment says
+ *      it is "Independent of the primary cover — does NOT touch it", no issue
+ *      number or rationale, and the gallery shares no transport, lock or row
+ *      with the Bunny/TUS video job).
+ *   2. The picker-wide `uploading` flag in the same two sites. The THIS-SESSION
+ *      case is the one that matters: `pickVideoCover` sets `uploading`, then
+ *      awaits `videoUpload.start`, which awaits the watch — so `uploading` is
+ *      true for the entire "Processing video…" window in the sheet that picked
+ *      the video. A first fix that removed only (1) still left the tile blocked,
+ *      now dimmed, with a hint claiming a photo was uploading. It passed a
+ *      test that checked only that `activeVideoUpload` was gone.
  *
  * Two layers, the convention this directory already uses:
- *   1. REAL LOGIC — `coverPickerGalleryGate` is imported and exercised for
- *      real. It is a separate module because CoverPicker.tsx pulls in
- *      expo-video / expo-image-picker / react-native-video-trim and cannot be
- *      mounted under jest (documented in `CoverPicker.selectedState.test.ts`
- *      and `coverPickerElapsed.issue3173.test.tsx`).
- *   2. SOURCE WIRING — the render-side wiring is asserted against the source,
- *      each assertion failing on revert of the corresponding change.
+ *   1. REAL LOGIC — `coverPickerGalleryGate` is imported and exercised for real.
+ *      CoverPicker.tsx pulls in expo-video / expo-image-picker /
+ *      react-native-video-trim and cannot be mounted under jest (documented in
+ *      `CoverPicker.selectedState.test.ts` and
+ *      `coverPickerElapsed.issue3173.test.tsx`).
+ *   2. SOURCE WIRING — which flag each call site actually passes, asserted
+ *      against the source. Each assertion fails on reintroducing either block.
  */
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -36,25 +38,31 @@ import {
 
 const UI = join(__dirname, "..");
 const coverPickerSource = readFileSync(join(UI, "CoverPicker.tsx"), "utf8");
+const gateSource = readFileSync(join(UI, "coverPickerGalleryGate.ts"), "utf8");
 
-/** The body of `addGalleryPhoto`, up to the next top-level const declaration. */
-const addGalleryPhotoBody = (): string => {
-  const start = coverPickerSource.indexOf(
-    "const addGalleryPhoto = useCallback(async (): Promise<void> => {",
-  );
+/** Source with whole-line `//` comments removed, so prose cannot satisfy or trip a check. */
+const executable = (source: string): string =>
+  source
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("//"))
+    .join("\n");
+
+/** A `useCallback` body, from its declaration to the next named declaration. */
+const callbackBody = (name: string, nextName: string): string => {
+  const start = coverPickerSource.indexOf(`const ${name} = useCallback(`);
   expect(start).toBeGreaterThan(-1);
-  const end = coverPickerSource.indexOf("\n  const moveGalleryItem", start);
+  const end = coverPickerSource.indexOf(`const ${nextName} = useCallback(`, start);
   expect(end).toBeGreaterThan(start);
-  return coverPickerSource.slice(start, end);
+  return executable(coverPickerSource.slice(start, end));
 };
 
-/** The `<AdditionalPhotosSection …>` JSX element in the render tree. */
+/** The `<AdditionalPhotosSection …/>` element in the render tree. */
 const additionalPhotosSectionElement = (): string => {
   const start = coverPickerSource.indexOf("<AdditionalPhotosSection");
   expect(start).toBeGreaterThan(-1);
   const end = coverPickerSource.indexOf("/>", start);
   expect(end).toBeGreaterThan(start);
-  return coverPickerSource.slice(start, end);
+  return executable(coverPickerSource.slice(start, end));
 };
 
 /** The add-photo `Pressable`, located by its testID. */
@@ -68,78 +76,162 @@ const addPhotoPressable = (): string => {
   return coverPickerSource.slice(start, end);
 };
 
+/** The argument object of every call to `fn` in the executable source. */
+const gateCallArguments = (fn: string): string[] => {
+  const source = executable(coverPickerSource);
+  const found: string[] = [];
+  let from = 0;
+  for (;;) {
+    const at = source.indexOf(`${fn}({`, from);
+    if (at === -1) break;
+    const close = source.indexOf("})", at);
+    expect(close).toBeGreaterThan(at);
+    found.push(source.slice(at + fn.length + 1, close + 1));
+    from = close;
+  }
+  return found;
+};
+
+/** A bare identifier match — `galleryUploading` does NOT contain `\buploading\b`. */
+const PICKER_WIDE_UPLOADING = /\buploading\b/;
+
 describe("issue #3280 gallery add gate (real logic)", () => {
-  test("a processing video cover cannot block adding a photo — the predicate has no video input", () => {
-    // The strongest form of the fix: there is no argument a future copy-paste
-    // could pass to re-introduce the block.
-    expect(canAddGalleryPhoto({ uploading: false, disabled: false, atCap: false })).toBe(true);
-    // The input type itself: exactly three fields, none of them about video.
-    const gateSource = readFileSync(join(UI, "coverPickerGalleryGate.ts"), "utf8");
+  test("adding a photo is allowed when only the gallery's own state is clear", () => {
+    expect(canAddGalleryPhoto({ galleryUploading: false, disabled: false, atCap: false })).toBe(true);
+  });
+
+  test("the gate's input is the gallery's own state — no video field and no picker-wide upload flag", () => {
     const typeStart = gateSource.indexOf("export type GalleryAddState = {");
     expect(typeStart).toBeGreaterThan(-1);
     const typeBody = gateSource.slice(typeStart, gateSource.indexOf("};", typeStart));
     const fields = [...typeBody.matchAll(/^\s{2}(\w+):/gm)].map((match) => match[1]).sort();
-    expect(fields).toEqual(["atCap", "disabled", "uploading"]);
-    expect(typeBody.toLowerCase()).not.toMatch(/video|stage|phase|processing/);
+    expect(fields).toEqual(["atCap", "disabled", "galleryUploading"]);
+    expect(fields).not.toContain("uploading");
+    const fieldLines = executable(typeBody)
+      .split("\n")
+      .filter((line) => /^\s{2}\w+:/.test(line))
+      .join("\n")
+      .toLowerCase();
+    expect(fieldLines).not.toMatch(/video|stage|phase|processing/);
   });
 
-  test("each legitimate block refuses the add and names itself", () => {
+  test("each legitimate block refuses the add and names itself in a readable sentence", () => {
     const cases: { state: Parameters<typeof canAddGalleryPhoto>[0]; label: string }[] = [
-      { state: { uploading: true, disabled: false, atCap: false }, label: "uploading" },
-      { state: { uploading: false, disabled: true, atCap: false }, label: "disabled" },
-      { state: { uploading: false, disabled: false, atCap: true }, label: "atCap" },
+      { state: { galleryUploading: true, disabled: false, atCap: false }, label: "galleryUploading" },
+      { state: { galleryUploading: false, disabled: true, atCap: false }, label: "disabled" },
+      { state: { galleryUploading: false, disabled: false, atCap: true }, label: "atCap" },
     ];
+    const reasons = new Set<string>();
     for (const { state, label } of cases) {
       expect(canAddGalleryPhoto(state)).toBe(false);
       const reason = galleryAddBlockedReason(state);
       expect(typeof reason).toBe("string");
-      expect((reason ?? "").length).toBeGreaterThan(0);
-      // A reason a person can read, not a code.
       expect(reason).toMatch(/^[A-Z].*\.$/);
       expect(reason).not.toContain(label);
+      reasons.add(reason ?? "");
+    }
+    // Three different states, three different explanations.
+    expect(reasons.size).toBe(3);
+  });
+
+  test("the gallery-uploading reason is about a photo upload, and only that state says so", () => {
+    const uploadingReason = galleryAddBlockedReason({ galleryUploading: true, disabled: false, atCap: false });
+    expect(uploadingReason).toMatch(/photo/i);
+    expect(uploadingReason).toMatch(/upload/i);
+    expect(uploadingReason).not.toMatch(/video/i);
+    for (const other of [
+      galleryAddBlockedReason({ galleryUploading: false, disabled: true, atCap: false }),
+      galleryAddBlockedReason({ galleryUploading: false, disabled: false, atCap: true }),
+    ]) {
+      expect(other).not.toMatch(/upload/i);
     }
   });
 
   test("an available add tile has no blocked reason", () => {
     expect(
-      galleryAddBlockedReason({ uploading: false, disabled: false, atCap: false }),
+      galleryAddBlockedReason({ galleryUploading: false, disabled: false, atCap: false }),
     ).toBeNull();
-  });
-
-  test("the busy case reports the photo upload, never the video", () => {
-    expect(galleryAddBlockedReason({ uploading: true, disabled: false, atCap: false }))
-      .toBe("Finishing the current photo upload.");
   });
 });
 
-describe("issue #3280 gallery add gate (source wiring)", () => {
-  test("addGalleryPhoto's guard consults the gate and no longer mentions activeVideoUpload", () => {
-    const body = addGalleryPhotoBody();
-    expect(body).toContain("canAddGalleryPhoto({ uploading, disabled, atCap })");
-    // Only the explanatory comment may name it; the guard expression may not.
-    const executable = body
-      .split("\n")
-      .filter((line) => !line.trim().startsWith("//"))
-      .join("\n");
-    expect(executable).not.toContain("activeVideoUpload");
+describe("issue #3280 gallery add gate (source wiring: the same-session case)", () => {
+  test("the gallery has its own in-flight flag", () => {
+    expect(coverPickerSource).toContain(
+      "const [galleryUploading, setGalleryUploading] = useState(false);",
+    );
   });
 
-  test("the AdditionalPhotosSection disabled prop no longer mentions activeVideoUpload", () => {
+  test("every gate call passes the gallery flag — never the picker-wide `uploading`, never `activeVideoUpload`", () => {
+    const calls = [
+      ...gateCallArguments("canAddGalleryPhoto"),
+      ...gateCallArguments("galleryAddBlockedReason"),
+    ];
+    // addGalleryPhoto guard + the section's disabled prop + its reason.
+    expect(calls.length).toBeGreaterThanOrEqual(3);
+    for (const args of calls) {
+      expect(args).toContain("galleryUploading");
+      expect(args).not.toMatch(PICKER_WIDE_UPLOADING);
+      expect(args).not.toContain("activeVideoUpload");
+    }
+  });
+
+  test("addGalleryPhoto gates on the gallery flag and owns it, and never touches the picker-wide flag", () => {
+    const body = callbackBody("addGalleryPhoto", "moveGalleryItem");
+    expect(body).toContain("canAddGalleryPhoto({ galleryUploading, disabled, atCap })");
+    expect(body).not.toContain("activeVideoUpload");
+    expect(body).toContain("setGalleryUploading(true);");
+    expect(body).toContain("setGalleryUploading(false);");
+    expect(body).not.toContain("setUploading(");
+    // Its early-return guard reads no picker-wide flag either.
+    const guardLine = body.split("\n").find((line) => line.includes("canAddGalleryPhoto("));
+    expect(guardLine).toBeDefined();
+    expect(guardLine).not.toMatch(PICKER_WIDE_UPLOADING);
+  });
+
+  test("the AdditionalPhotosSection disabled prop reads the gallery flag only", () => {
     const element = additionalPhotosSectionElement();
-    const executable = element
-      .split("\n")
-      .filter((line) => !line.trim().startsWith("//"))
-      .join("\n");
-    expect(executable).toContain("disabled={!canAddGalleryPhoto({ uploading, disabled, atCap: false })}");
-    expect(executable).not.toContain("activeVideoUpload");
-    expect(executable).toContain("addBlockedReason={galleryAddBlockedReason(");
+    expect(element).toContain("disabled={!canAddGalleryPhoto({ galleryUploading, disabled, atCap: false })}");
+    expect(element).toContain("addBlockedReason={galleryAddBlockedReason({ galleryUploading, disabled, atCap: false })}");
+    expect(element).not.toContain("activeVideoUpload");
+    expect(element).not.toMatch(PICKER_WIDE_UPLOADING);
+  });
+
+  test("the video flow holds the picker-wide flag and never touches the gallery flag", () => {
+    const body = callbackBody("pickVideoCover", "cancelVideoCoverUpload");
+    // This is WHY the gallery cannot share `uploading`: the video flow sets it
+    // and awaits the upload (and its watch) before clearing it.
+    expect(body).toContain("setUploading(true);");
+    expect(body).toContain("await videoUpload.start(uploadFile);");
+    expect(body).toContain("setUploading(false);");
+    expect(body).not.toContain("setGalleryUploading(");
+  });
+
+  test("cover actions treat an in-flight gallery upload as busy", () => {
+    expect(callbackBody("pickImageOrGifCover", "pickVideoCover")).toContain(
+      "if (uploading || galleryUploading || disabled || activeVideoUpload) return;",
+    );
+    expect(callbackBody("pickVideoCover", "cancelVideoCoverUpload")).toMatch(
+      /if \(uploading \|\| galleryUploading \|\| disabled \|\|/,
+    );
+    expect(callbackBody("retryVideoCoverUpload", "loadTrending")).toContain("galleryUploading");
+    // The Image / Video / Remove / retry buttons get the merged busy flag.
+    expect(executable(coverPickerSource)).toContain("uploading={uploading || galleryUploading}");
+  });
+
+  test("a cover emit updates the cover ref before a gallery commit can re-emit it", () => {
+    const body = callbackBody("emitChange", "persistReadyVideo");
+    const refSync = body.indexOf("localCoverRef.current = patch;");
+    const stateSet = body.indexOf("setLocalCover(patch);");
+    const parentEmit = body.indexOf("await onCoverChange(");
+    expect(refSync).toBeGreaterThan(-1);
+    expect(stateSet).toBeGreaterThan(refSync);
+    expect(parentEmit).toBeGreaterThan(stateSet);
   });
 
   test("the add tile carries a disabled visual in its style array", () => {
     const pressable = addPhotoPressable();
     expect(pressable).toContain("styles.galleryAddTile,");
     expect(pressable).toContain("disabled && styles.galleryAddTileDisabled,");
-    // And the style actually exists, with a real reduction in opacity.
     const styleIndex = coverPickerSource.indexOf("galleryAddTileDisabled: {");
     expect(styleIndex).toBeGreaterThan(-1);
     const styleBody = coverPickerSource.slice(styleIndex, coverPickerSource.indexOf("}", styleIndex));
@@ -150,19 +242,12 @@ describe("issue #3280 gallery add gate (source wiring)", () => {
 
   test("the add tile carries a non-empty accessibilityHint in every state", () => {
     const pressable = addPhotoPressable();
-    expect(pressable).toContain("accessibilityHint=");
     expect(pressable).toContain("accessibilityState={{ disabled }}");
-    // Both branches of the hint are real sentences, so a screen-reader user is
-    // never handed an empty explanation.
     const hintStart = pressable.indexOf("accessibilityHint=");
+    expect(hintStart).toBeGreaterThan(-1);
     const hintBlock = pressable.slice(hintStart, pressable.indexOf("accessibilityState=", hintStart));
+    expect(hintBlock).toContain("addBlockedReason");
     const quoted = hintBlock.match(/"[^"]{8,}"/g) ?? [];
     expect(quoted.length).toBeGreaterThanOrEqual(2);
-  });
-
-  test("the COVER path keeps its deliberate video guard", () => {
-    // The fix is surgical: blocking a COVER change mid-video is correct and
-    // must survive. Only the gallery path was ever wrong.
-    expect(coverPickerSource).toContain("if (uploading || disabled || activeVideoUpload) return;");
   });
 });

@@ -301,6 +301,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
   const [activeTab, setActiveTab] = useState<CoverTabId>("library");
   const [uploading, setUploading] = useState(false);
+  // issue #3280 — the Additional photos gallery's OWN in-flight flag, set and
+  // cleared ONLY by `addGalleryPhoto`. It cannot share `uploading`: the cover
+  // VIDEO flow holds `uploading` true for its whole processing window
+  // (`pickVideoCover` awaits `videoUpload.start`, which awaits the watch), so
+  // a gallery gated on `uploading` stays blocked in exactly the session that
+  // picked the video. Cover-path actions treat BOTH flags as busy.
+  const [galleryUploading, setGalleryUploading] = useState(false);
   const [mediaDisplayError, setMediaDisplayError] = useState<string | null>(null);
   // issue #1338 — in-sheet feedback channel for the cover-VIDEO flow. Rendered
   // INSIDE LibraryTab (never a root-portal Toast, which iOS drops while the
@@ -464,6 +471,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
   const emitChange = useCallback(
     async (patch: CoverPatch): Promise<void> => {
+      // issue #3280 — keep the ref in step with the emit, as `applyMakeCover`
+      // already does. A gallery upload may now finish while a cover emit is in
+      // flight (the video-ready emit is server-driven and cannot be blocked),
+      // and `commitGallery` re-emits `localCoverRef.current`. Waiting for the
+      // effect below to sync it would leave one render in which that re-emit
+      // carries the PREVIOUS cover and silently reverts the new one.
+      localCoverRef.current = patch;
       setLocalCover(patch);
       // issue #868 — always carry the current gallery so a cover change never
       // drops the additional photos (they are INDEPENDENT of the cover).
@@ -608,11 +622,12 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     // guard at `pickImageOrGifCover`, where blocking is correct; the gallery is
     // a separate storage pipeline that shares nothing with the video job, and
     // the tile it silenced had no disabled styling, so the tap was simply dead.
-    // The rule now lives in `coverPickerGalleryGate` and cannot take a video
-    // argument at all.
+    // The rule now lives in `coverPickerGalleryGate`, cannot take a video
+    // argument, and reads the gallery's own `galleryUploading` — never the
+    // picker-wide `uploading` the video flow holds while it processes.
     const atCap = galleryRef.current.length >= GALLERY_MAX;
-    if (!canAddGalleryPhoto({ uploading, disabled, atCap })) {
-      if (atCap && !uploading && !disabled) onShowToast(`Up to ${GALLERY_MAX} extra photos.`);
+    if (!canAddGalleryPhoto({ galleryUploading, disabled, atCap })) {
+      if (atCap && !galleryUploading && !disabled) onShowToast(`Up to ${GALLERY_MAX} extra photos.`);
       return;
     }
     if (!isAuthReady) {
@@ -622,7 +637,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     if (!(await ensureMediaPermission())) return;
     if (!validateEventRowId()) return;
 
-    setUploading(true);
+    setGalleryUploading(true);
     let pickedAssets: Parameters<typeof revokeCoverPickedAssets>[0] = [];
     try {
       const result = await launchCoverImagePicker();
@@ -701,7 +716,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       showUploadError(error);
     } finally {
       revokeCoverPickedAssets(pickedAssets);
-      setUploading(false);
+      setGalleryUploading(false);
     }
     // issue #3280 — `activeVideoUpload` is gone from the body and therefore
     // from this list; the gallery does not depend on video state.
@@ -710,10 +725,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     disabled,
     ensureMediaPermission,
     isAuthReady,
+    galleryUploading,
     onShowToast,
     showUploadError,
     target,
-    uploading,
     validateEventRowId,
   ]);
 
@@ -796,7 +811,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   );
 
   const pickImageOrGifCover = useCallback(async (): Promise<void> => {
-    if (uploading || disabled || activeVideoUpload) return;
+    // issue #3280 — a gallery upload is busy for the cover too, so a cover emit
+    // and a gallery commit are never both in flight from user actions.
+    if (uploading || galleryUploading || disabled || activeVideoUpload) return;
     if (!isAuthReady) {
       onShowToast("Finishing sign-in before upload. Try again in a moment.");
       return;
@@ -957,6 +974,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     disabled,
     emitChange,
     ensureMediaPermission,
+    galleryUploading,
     isAuthReady,
     localCover.coverMediaUrl,
     onShowToast,
@@ -968,7 +986,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
   const pickVideoCover = useCallback(async (replacing = false): Promise<void> => {
     const resumingDetachedWeb = Platform.OS === "web" && videoUpload.stage.phase === "detached";
-    if (uploading || disabled || (lockedVideoOperation && !replacing && !resumingDetachedWeb)) return;
+    // issue #3280 — see `pickImageOrGifCover`: a gallery upload is cover-busy.
+    if (uploading || galleryUploading || disabled || (lockedVideoOperation && !replacing && !resumingDetachedWeb)) return;
     // ORCH-1307: mobile web is no longer gated out of video covers. The web has
     // no trimmer (native-only react-native-video-trim), so a raw clip flows
     // straight to the duration guard below; clips within the ceiling upload
@@ -1111,6 +1130,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   }, [
     disabled,
     ensureMediaPermission,
+    galleryUploading,
     isAuthReady,
     isNative,
     lockedVideoOperation,
@@ -1127,9 +1147,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
   const retryVideoCoverUpload = useCallback((): void => {
     const uploadFile = lastVideoUploadFileRef.current;
-    if (uploadFile === null || activeVideoUpload || disabled || uploading) return;
+    // issue #3280 — a gallery upload is cover-busy (see `pickImageOrGifCover`).
+    if (uploadFile === null || activeVideoUpload || disabled || uploading || galleryUploading) return;
     void videoUpload.start(uploadFile);
-  }, [activeVideoUpload, disabled, uploading, videoUpload]);
+  }, [activeVideoUpload, disabled, galleryUploading, uploading, videoUpload]);
 
   // ----- Provider browse (gallery-first) ---------------------------------
 
@@ -1548,7 +1569,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           activeMediaType={activeMediaType}
           alt={localCover.coverMediaAlt}
           credit={selectedCredit}
-          uploading={uploading}
+          // issue #3280 — the Image / Video / Remove / retry buttons are cover
+          // actions, so an in-flight gallery upload makes them busy too. This is
+          // the same set of buttons that was busy before the gallery got its own
+          // flag, when the gallery upload still set `uploading`.
+          uploading={uploading || galleryUploading}
           activeVideoUpload={lockedVideoOperation}
           videoStage={projectedVideoStage}
           videoStatus={videoUpload.status}
@@ -1650,8 +1675,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         max={GALLERY_MAX}
         // issue #3280 — the cap is the section's own business (it hides the add
         // tile), so the gate is asked only about the two host-level blocks.
-        disabled={!canAddGalleryPhoto({ uploading, disabled, atCap: false })}
-        addBlockedReason={galleryAddBlockedReason({ uploading, disabled, atCap: false })}
+        disabled={!canAddGalleryPhoto({ galleryUploading, disabled, atCap: false })}
+        addBlockedReason={galleryAddBlockedReason({ galleryUploading, disabled, atCap: false })}
         pendingMakeCoverIndex={pendingMakeCoverIndex}
         onAdd={() => {
           void addGalleryPhoto();
