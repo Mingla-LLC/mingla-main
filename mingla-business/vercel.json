@@ -11,7 +11,8 @@
     { "source": "/t/:brandSlug/:tripSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/t/:brandSlug/:tripSlug", "permanent": true },
     { "source": "/exp/:brandSlug/:experienceSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/exp/:brandSlug/:experienceSlug", "permanent": true },
     { "source": "/b/:brandSlug/v/:venueSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/b/:brandSlug/v/:venueSlug", "permanent": true },
-    { "source": "/b/:brandSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/b/:brandSlug", "permanent": true }
+    { "source": "/b/:brandSlug", "has": [{ "type": "host", "value": "business\\.usemingla\\.com" }], "destination": "https://host.usemingla.com/b/:brandSlug", "permanent": true },
+    { "source": "/indexnow-key.txt", "destination": "/api/indexnow-key", "permanent": false }
   ],
   "rewrites": [
     { "source": "/robots.txt", "destination": "/api/robots" },

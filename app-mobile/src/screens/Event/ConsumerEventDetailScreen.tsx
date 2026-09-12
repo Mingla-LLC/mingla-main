@@ -165,6 +165,7 @@ import { useAppStore } from "../../store/appStore";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion capture (PostHog
 // runs alongside the existing analytics; no Mixpanel call exists at this site).
 import { postHogService } from "../../services/postHogService";
+import { captureExplorerSearchOutcome } from "../../services/searchOutcome";
 import { shareContent } from "../../services/contentShareAdapter";
 import { glass } from "../../constants/designSystem";
 // ORCH-1162 Bug 2 — shared static-Mapbox builder (re-exported from
@@ -841,6 +842,14 @@ export default function ConsumerEventDetailScreen({
           phoneCountryIso: input.guestPhoneCountryIso,
         },
       );
+      if (result.status === "going") {
+        captureExplorerSearchOutcome("rsvp_complete", {
+          audience: "explorer",
+          page_family: "public_inventory",
+          action_state: "succeeded",
+          content_kind: "event",
+        });
+      }
       // Refresh the live going-count after a successful own-submit.
       void queryClient.invalidateQueries({
         queryKey: ["rsvpMomentum", seed.eventId],

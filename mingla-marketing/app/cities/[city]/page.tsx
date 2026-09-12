@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { CityHub } from '@/components/cities/city-hub'
 import { CITY_HUBS, cityHubForSlug } from '@/content/cities/registry'
-import { getLagosCatalogueSnapshot } from '@/lib/page-system/city-catalogue.server'
+import { getCityCatalogueSnapshot, getLagosCatalogueSnapshot } from '@/lib/page-system/city-catalogue.server'
 import { cityHubMetadata } from '@/lib/search/metadata'
 import { cityHubStructuredData, serializeCityHubStructuredData } from '@/lib/search/city-schema'
 
@@ -28,7 +28,8 @@ export default async function CityHubPage({ params }: CityHubPageProps) {
   const record = cityHubForSlug(city)
   if (!record) notFound()
   const structuredData = cityHubStructuredData(record)
-  const catalogue = city === 'lagos' ? getLagosCatalogueSnapshot('/cities/lagos') : null
+  const legacyLagosCatalogue = city === 'lagos' ? getLagosCatalogueSnapshot('/cities/lagos') : null
+  const catalogue = legacyLagosCatalogue ?? getCityCatalogueSnapshot(record.slug, `/cities/${record.slug}`)
   return (
     <>
       {structuredData ? (

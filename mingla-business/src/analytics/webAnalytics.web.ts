@@ -39,11 +39,19 @@
  */
 
 import Constants from "expo-constants";
-import type { PostHog } from "posthog-js";
+import type { CaptureResult, PostHog } from "posthog-js";
+import {
+  cleanPageLocation,
+  cleanReferrerOrigin,
+  sanitizeSearchMeasurement,
+  type SearchEventName,
+  type SearchMeasurementProperties,
+} from "@mingla/search-measurement";
 
 // US region is dispatch-locked (I-PROPOSED-1187-POSTHOG-HOST-US). Keep the
 // literal here so the strict-grep gate sees it at the init site.
 const POSTHOG_US_HOST = "https://us.i.posthog.com";
+const LEGACY_PAGEVIEW_EVENT = "$pageview";
 
 // Session-replay sampling — record ~20% of sessions to protect the free 5K
 // recordings/mo cap (§4.I, SC-16). Seth can override server-side in PostHog.
@@ -55,6 +63,28 @@ const CONSENT_STORAGE_KEY = "mingla_consent_v1";
 
 export type ConsentChoice = "granted" | "denied";
 export type StoredConsentSnapshot = ConsentChoice | "unresolved";
+
+/**
+ * #2771 requires one manual PostHog pageview after consent. PostHog decorates
+ * that event with the live URL, so remove every path/query-bearing property in
+ * `before_send` and retain only the origin. Typed #3176 public pageviews remain
+ * the route-level measurement owner.
+ */
+function sanitizeLegacyPageview(event: CaptureResult | null): CaptureResult | null {
+  if (event === null || event.event !== LEGACY_PAGEVIEW_EVENT) return event;
+  const properties = { ...(event.properties ?? {}) } as Record<string, unknown>;
+  for (const key of [
+    "$current_url", "$pathname", "$referrer", "$referring_domain",
+    "$search_engine", "$search_engine_keyword", "current_url", "pathname", "url",
+  ]) delete properties[key];
+  try {
+    const href = typeof window.location.href === "string" ? window.location.href : "";
+    properties.$current_url = new URL(href).origin;
+  } catch {
+    // No URL is safer than an unvalidated private route or query string.
+  }
+  return { ...event, properties };
+}
 
 const extra = Constants.expoConfig?.extra as
   | Record<string, string | undefined>
@@ -228,7 +258,8 @@ function writeStoredConsent(choice: ConsentChoice): void {
 /**
  * GA4 Consent Mode v2 loader. Emits the all-denied `default` consent BEFORE the
  * gtag config runs (so GA sets no cookies pre-consent), then loads the gtag
- * script and configures the measurement with `send_page_view` enabled. Idempotent.
+ * script with automatic pageviews disabled. Search pageviews are emitted only
+ * through the sanitized manual owner below. Idempotent.
  */
 function loadGa4(measurementId: string): void {
   window.dataLayer = window.dataLayer ?? [];
@@ -255,7 +286,7 @@ function loadGa4(measurementId: string): void {
     ad_personalization: "granted",
   });
   window.gtag("js", new Date());
-  window.gtag("config", measurementId);
+  window.gtag("config", measurementId, { send_page_view: false });
 
   // (2) Load the gtag script AFTER the consent default + config are queued on
   // dataLayer, so order (consent → config) is guaranteed.
@@ -316,8 +347,12 @@ async function bootGrantedAnalytics(): Promise<void> {
         // alias persist PostHog identity onto sibling *.usemingla.com hosts.
         cross_subdomain_cookie: false,
         person_profiles: "identified_only",
-        capture_pageview: true,
-        capture_pageleave: true,
+        // #3176 — public URLs can carry tokens and attribution parameters.
+        // Automatic lifecycle events include the raw browser URL, so every
+        // search pageview is owned by the sanitized manual contract below.
+        capture_pageview: false,
+        capture_pageleave: false,
+        before_send: sanitizeLegacyPageview,
         // CONSENT GATE (§4.E / I-PROPOSED-1187-CONSENT-GATE-BEFORE-COOKIES):
         // PostHog stores nothing and captures nothing until opt_in_capturing().
         opt_out_capturing_by_default: true,
@@ -336,9 +371,9 @@ async function bootGrantedAnalytics(): Promise<void> {
         },
       });
       posthog.opt_in_capturing();
-      // The init-time pageview was deliberately suppressed by opt-out-default;
-      // emit exactly one only after the explicit grant opens capture.
-      posthog.capture("$pageview");
+      // Manual compatibility event: automatic pageviews remain disabled, and
+      // before_send reduces this event to origin-only before transport.
+      posthog.capture(LEGACY_PAGEVIEW_EVENT);
       posthogClient = posthog;
     } catch (err) {
       console.warn("[webAnalytics] PostHog init failed (non-fatal):", err);
@@ -375,6 +410,7 @@ export async function grantConsent(): Promise<void> {
   // Deny-rate remains derived as sessions without a grant.
   captureWeb("consent_granted");
   gaEvent("consent_granted");
+  captureHostPublicSearchPageView(window.location.pathname);
 }
 
 /** Reject handler — keeps both gates closed and persists the choice. */
@@ -391,6 +427,21 @@ export function captureWeb(
 ): void {
   if (readStoredConsent() !== "granted" || posthogClient === null) return;
   try {
+    // `rsvp_acknowledgement_viewed` is emitted only after the public RSVP RPC
+    // succeeds. Mirror its going/waitlisted states into the privacy-safe search
+    // outcome here so the event page keeps its established analytics owner.
+    if (
+      name === "rsvp_acknowledgement_viewed" &&
+      (props?.status === "going" || props?.status === "waitlisted")
+    ) {
+      captureWebSearchOutcome("generate_lead", {
+        audience: "host",
+        page_family: "public_inventory",
+        icp: "event_promoter",
+        action_state: "succeeded",
+        content_kind: "event",
+      });
+    }
     posthogClient?.capture(name, props);
   } catch (err) {
     console.warn(`[webAnalytics] capture("${name}") failed:`, err);
@@ -406,6 +457,61 @@ export function gaEvent(name: string, params?: Record<string, unknown>): void {
       console.warn(`[webAnalytics] gaEvent("${name}") failed:`, err);
     }
   }
+}
+
+/**
+ * Fan one already-sanitized search event to both consented web sinks. Existing
+ * product analytics keep their established owners; this is the only entry
+ * point for the low-cardinality search/outcome contract.
+ */
+export function captureWebSearchOutcome(
+  event: SearchEventName,
+  properties: SearchMeasurementProperties,
+): void {
+  const safe = sanitizeSearchMeasurement(event, properties);
+  if (safe === null) return;
+  captureWeb(safe.event, safe.properties);
+  gaEvent(safe.event, safe.properties);
+}
+
+/** Only public event/trip/experience/brand/venue pages are search inventory. */
+export function isHostPublicInventoryPathname(pathname: unknown): pathname is string {
+  if (typeof pathname !== "string") return false;
+  const segments = pathname.split("/").filter(Boolean);
+  if (["e", "t", "exp"].includes(segments[0] ?? "")) {
+    return segments.length === 3;
+  }
+  if (segments[0] !== "b") return false;
+  return segments.length === 2 ||
+    (segments.length === 4 && segments[2] === "v");
+}
+
+/**
+ * Manual Host public-inventory pageview. Query/fragment data is never accepted;
+ * referrer is reduced to its origin before the typed contract sees it.
+ */
+export function captureHostPublicSearchPageView(pathname: string): void {
+  if (
+    !hasWindow() ||
+    !isHostPublicInventoryPathname(pathname) ||
+    readStoredConsent() !== "granted"
+  ) {
+    return;
+  }
+  const pageLocation = cleanPageLocation(
+    new URL(pathname, window.location.origin).toString(),
+  );
+  if (pageLocation === null) return;
+  const referrerOrigin = cleanReferrerOrigin(window.document.referrer);
+  captureWebSearchOutcome("page_view", {
+    audience: "explorer",
+    page_family: "public_inventory",
+    page_location: pageLocation,
+    source_kind: referrerOrigin === null ? "direct" : "referrer",
+    ...(referrerOrigin === null
+      ? {}
+      : { page_referrer_origin: referrerOrigin }),
+  });
 }
 
 /** Bind identity (Supabase user.id). No-op if PostHog is gated/absent. */

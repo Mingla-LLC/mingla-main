@@ -31,6 +31,7 @@ import { useAuth } from "../context/AuthContext";
 import { upcomingKeys } from "./upcomingKeys";
 // META-ORCH-1187 [Growth Analytics Hub] — offering-published conversion (SC-6).
 import { postHogService } from "../services/postHogService";
+import { captureHostSearchOutcome } from "../analytics/searchOutcome";
 import {
   createTripDraft,
   getTrip,
@@ -392,6 +393,13 @@ export const usePublishTrip = (): UseMutationResult<
         offering_type: "trip",
         brand_id: brandId,
         surface: "business_app",
+      });
+      captureHostSearchOutcome("listing_published", {
+        audience: "host",
+        page_family: "host_pillar",
+        icp: "trip_operator",
+        action_state: "succeeded",
+        content_kind: "trip",
       });
     },
     onError: (error, { eventId }) => {

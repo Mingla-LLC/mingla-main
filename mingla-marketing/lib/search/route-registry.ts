@@ -4,6 +4,7 @@ import {
   cityHubEffectiveLifecycle,
   cityHubPath,
 } from '../../content/cities/registry'
+import { CORE_PAGES } from '../../content/core-pages'
 import { HELP_VIDEOS, helpVideoPath } from '../../content/help/registry'
 
 export const ROUTE_LIFECYCLE_STATES = [
@@ -156,6 +157,7 @@ const SEARCH_READY_ROUTES = [
 ] as const satisfies readonly SearchReadyRouteContract[]
 
 const PUBLIC_NOINDEX_ROUTES = [
+  ...Object.values(CORE_PAGES).filter((record) => record.lifecycle === 'public_noindex').map((record) => [record.pathname, `core-${record.slug}`] as const),
   ['/links', 'links'],
   ['/download', 'explorer-download'],
   ['/host/download', 'host-download'],
@@ -182,6 +184,17 @@ const PUBLIC_NOINDEX_ROUTES = [
   ['/internal/page-system/explorer-event-guide', 'page-system-explorer-event-guide'],
   ['/internal/page-system/host-event-promoter-guide', 'page-system-host-event-promoter-guide'],
 ] as const
+
+const CORE_SEARCH_READY_ROUTES = Object.values(CORE_PAGES)
+  .filter((record) => record.lifecycle === 'search_ready')
+  .map((record) => ({
+    id: `core-${record.slug}`,
+    match: { type: 'exact' as const, pathname: record.pathname },
+    lifecycle: 'search_ready' as const,
+    title: record.title,
+    description: record.description,
+    lastModified: record.reviewedAt,
+  })) satisfies readonly SearchReadyRouteContract[]
 
 const PUBLIC_NOINDEX_FAMILIES = [
   ['/orders', 'orders-family'],
@@ -256,6 +269,7 @@ export const HELP_ROUTE_CONTRACTS: readonly RouteContract[] = HELP_VIDEOS.map((r
 
 export const ROUTE_REGISTRY: readonly RouteContract[] = [
   ...SEARCH_READY_ROUTES,
+  ...CORE_SEARCH_READY_ROUTES,
   ...PUBLIC_NOINDEX_ROUTES.map(([pathname, id]) => ({
     id,
     match: { type: 'exact' as const, pathname },

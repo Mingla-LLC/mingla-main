@@ -6,7 +6,6 @@ import {
   allCityHubsSearchReady,
   cityHubEffectiveLifecycle,
   cityHubPath,
-  isCityHubSearchReady,
   type CityHubRecord,
   type CityUtilityRecord,
 } from '@/content/cities/registry'
@@ -16,6 +15,7 @@ import { CityHostAcquisitionBar } from '@/components/page-system/city-host-acqui
 import { CityCatalogue } from '@/components/page-system/city-catalogue'
 import type { CataloguePlace, CataloguePlan, ExplorerCategorySlug } from '@/content/page-system/shared'
 import { CityDeviceAction, CityHostCreationLinks, CityHubImpression, CityTrackedLink } from './city-actions'
+import { historicalCityBuildEnabled } from '@/lib/search/historical-city-build'
 
 export interface CityHubCatalogue {
   readonly places: readonly CataloguePlace[]
@@ -39,6 +39,7 @@ function EvidenceLinks({
   readonly record: CityHubRecord
   readonly evidenceIds: readonly string[]
 }) {
+  if (!historicalCityBuildEnabled()) return null
   const sources = evidenceIds
     .map((id) => {
       const sourceIndex = record.sources.findIndex((entry) => entry.id === id)
@@ -60,7 +61,9 @@ function EvidenceLinks({
 
 function CityLifecycleNotice({ record }: { readonly record: CityHubRecord }) {
   const lifecycle = cityHubEffectiveLifecycle(record)
+  const historical = historicalCityBuildEnabled()
   if (lifecycle === 'search_ready') return null
+  if (lifecycle === 'public_noindex' && !historical) return null
   const content = lifecycle === 'public_noindex'
     ? ['City guide in review', 'Local details are being verified; some sections may be withheld.']
     : lifecycle === 'stale'
@@ -80,8 +83,8 @@ function CityHero({ record, catalogueCount }: { readonly record: CityHubRecord; 
         <ol><li><Link href="/">Home</Link></li><li aria-hidden="true">/</li><li aria-current="page">{record.city}</li></ol>
       </nav>
       <p className="city-eyebrow">Mingla in {record.city}, {record.country}</p>
-      <h1 id="city-hub-title">{catalogueCount ? <>Things to do in {record.city}, ranked by Mingla</> : <>Find the right plan in {record.city}.</>}</h1>
-      {catalogueCount ? <p className="city-catalogue-summary">Browse {catalogueCount} real picks across all ten Explorer categories, or open a ready-made plan.</p> : null}
+      <h1 id="city-hub-title">{record.slug === 'lagos' ? <>Things to do in {record.city}, ranked by Mingla</> : <>Find the right plan in {record.city}.</>}</h1>
+      {catalogueCount ? <p className="city-catalogue-summary">Find the right plan in {record.city}: browse the top {catalogueCount} eligible places overall, then filter by the categories represented in that ranked set.</p> : null}
       <p className="city-direct-answer">{record.directAnswer}</p>
       <div className="city-hero-actions">
         <CityDeviceAction citySlug={record.slug} countryCode={record.countryCode} surface="explorer" label={`Explore ${record.city}`} location="city_hub_hero_explorer" variant="primary" />
@@ -194,6 +197,8 @@ function CityFaq({ record }: { readonly record: CityHubRecord }) {
 }
 
 function CityEvidencePanel({ record }: { readonly record: CityHubRecord }) {
+  const historical = historicalCityBuildEnabled()
+  if (!historical) return null
   return (
     <CutoutSection className="city-section city-evidence-section" aria-label={`How this ${record.city} guide is checked`}>
       <aside className="city-evidence-panel">
@@ -206,13 +211,7 @@ function CityEvidencePanel({ record }: { readonly record: CityHubRecord }) {
           <div><dt>Sources checked</dt><dd><time dateTime={record.sourcesCheckedAt}>{formatDate(record.sourcesCheckedAt, record.locale)}</time></dd></div>
           <div>
             <dt>Local review</dt>
-            <dd>
-              {record.localReview.status === 'pending' ? (
-                'Pending — this page is not yet in search'
-              ) : (
-                <>Reviewed by {record.localReview.name}, {record.localReview.relationship} on <time dateTime={record.localReview.reviewedAt}>{formatDate(record.localReview.reviewedAt, record.locale)}</time></>
-              )}
-            </dd>
+            <dd>Pending — this page is not yet in search</dd>
           </div>
           <div><dt>Next evergreen review</dt><dd><time dateTime={record.nextReviewAt}>{formatDate(record.nextReviewAt, record.locale)}</time></dd></div>
         </dl>
@@ -243,7 +242,7 @@ function CityNavigator({ record }: { readonly record: CityHubRecord }) {
           {CITY_HUBS.map((city) => {
             const current = city.slug === record.slug
             if (current) return <li key={city.slug}><span aria-current="page">{city.city}</span></li>
-            if (!isCityHubSearchReady(city)) return <li key={city.slug}><span>{city.city}</span></li>
+            if (cityHubEffectiveLifecycle(city) !== 'search_ready') return <li key={city.slug}><span>{city.city}</span></li>
             return (
               <li key={city.slug}>
                 <CityTrackedLink citySlug={record.slug} countryCode={record.countryCode} event="city_hub_switch_city" destinationType="city_hub">
@@ -287,7 +286,10 @@ export function RootCityGrid({ surface }: { readonly surface: 'explorer' | 'host
   )
 }
 
-export function CityHub({ record, catalogue }: { readonly record: CityHubRecord; readonly catalogue?: CityHubCatalogue }) {
+export function CityHub({ record, catalogue: suppliedCatalogue }: { readonly record: CityHubRecord; readonly catalogue?: CityHubCatalogue }) {
+  // The historical #2983 append-only guard builds one explicit compatibility
+  // artifact. The unflagged release build always receives the real catalogue.
+  const catalogue = historicalCityBuildEnabled() && record.slug !== 'lagos' ? undefined : suppliedCatalogue
   return (
     <div className="page-system-root city-hub-root" data-host-acquisition="true">
       <CutoutShell>

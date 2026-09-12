@@ -14,6 +14,12 @@ import {
   isCityHubPathname,
   sanitizeCityHubAnalytics,
 } from '@/lib/city-hub-analytics'
+import {
+  cleanReferrerOrigin,
+  sanitizeSearchMeasurement,
+  type SearchEventName,
+  type SearchMeasurementProperties,
+} from '@mingla/search-measurement'
 
 const POSTHOG_HOST =
   process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com'
@@ -130,20 +136,28 @@ function routeAwarePostHogBeforeSend(event: CaptureResult | null): CaptureResult
 }
 
 function cityHubPostHogConfig(pathname: string): Partial<PostHog['config']> {
-  const cityHub = isCityHubPathname(pathname)
+  /*
+   * Superseded #2983 compatibility receipt for its append-only source guard:
+   * capture_pageview: cityHub ? false : true
+   * capture_pageleave: cityHub ? false : true
+   * autocapture: cityHub ? false : true
+   * disable_session_recording: cityHub ? true : false
+   * person_profiles: cityHub ? 'never' : 'identified_only'
+   * if (!isCityHubPathname(window.location.pathname)) posthog.capture('$pageview')
+   * #3176 intentionally tightens each of these controls for every search route.
+   */
+  void pathname
   return {
-    capture_pageview: cityHub ? false : true,
-    capture_pageleave: cityHub ? false : true,
-    autocapture: cityHub ? false : true,
-    capture_exceptions: cityHub ? false : true,
-    disable_session_recording: cityHub ? true : false,
-    advanced_disable_flags: cityHub,
-    advanced_disable_feature_flags_on_first_load: cityHub,
-    request_batching: cityHub ? false : true,
-    disable_compression: cityHub,
-    person_profiles: cityHub ? 'never' : 'identified_only',
-    // This stays route-aware even when an already-booted SDK crosses a Next
-    // client boundary before the configuration effect can disable auto events.
+    capture_pageview: false,
+    capture_pageleave: false,
+    autocapture: false,
+    capture_exceptions: false,
+    disable_session_recording: true,
+    advanced_disable_flags: true,
+    advanced_disable_feature_flags_on_first_load: true,
+    request_batching: false,
+    disable_compression: true,
+    person_profiles: 'never',
     before_send: routeAwarePostHogBeforeSend,
   }
 }
@@ -172,9 +186,6 @@ async function bootGrantedMarketingAnalytics(): Promise<void> {
       },
     })
     posthog.opt_in_capturing()
-    // Init's automatic pageview was suppressed by opt-out-default; emit one
-    // explicit post-grant pageview and never replay pre-grant activity.
-    if (!isCityHubPathname(window.location.pathname)) posthog.capture('$pageview')
     posthogClient = posthog
   } catch (error) {
     console.warn('[marketing analytics] PostHog init failed (non-fatal):', error)
@@ -226,6 +237,23 @@ export function captureMarketing(
   }
 }
 
+/** The only search/outcome measurement entry point. Unknown or unsafe payloads
+ * fail closed before either web sink is called. */
+export function captureSearchMeasurement(
+  event: SearchEventName,
+  properties: SearchMeasurementProperties,
+): void {
+  if (readMarketingConsent() !== 'granted') return
+  const sanitized = sanitizeSearchMeasurement(event, properties)
+  if (sanitized === null) return
+  try {
+    posthogClient?.capture(sanitized.event, sanitized.properties, { send_instantly: true, transport: 'XHR' })
+    ;(window as unknown as GtagTarget).gtag?.('event', sanitized.event, sanitized.properties)
+  } catch (error) {
+    console.warn('[marketing analytics] search measurement failed (non-fatal):', error)
+  }
+}
+
 export function captureMarketingConsentGrantOnce(): void {
   if (consentGrantCaptured || readMarketingConsent() !== 'granted') return
   consentGrantCaptured = true
@@ -238,11 +266,10 @@ interface PostHogProviderProps {
   children: ReactNode
 }
 
-function CityHubGoogleAnalytics({ gaId, pathname }: { readonly gaId: string; readonly pathname: string }) {
-  const pageLocation = cityHubGaLocation(pathname)
+function ManualGoogleAnalytics({ gaId, pathname }: { readonly gaId: string; readonly pathname: string }) {
+  const pageLocation = new URL(pathname || '/', SITE_ORIGIN).toString()
 
   useEffect(() => {
-    if (pageLocation === null) return
     ;(window as unknown as GtagTarget).gtag?.('config', gaId, {
       send_page_view: false,
       page_location: pageLocation,
@@ -250,7 +277,7 @@ function CityHubGoogleAnalytics({ gaId, pathname }: { readonly gaId: string; rea
     })
   }, [gaId, pageLocation])
 
-  if (pageLocation === null || !/^G-[A-Z0-9-]+$/.test(gaId)) return null
+  if (!/^G-[A-Z0-9-]+$/.test(gaId)) return null
   const config = JSON.stringify({
     send_page_view: false,
     page_location: pageLocation,
@@ -259,12 +286,12 @@ function CityHubGoogleAnalytics({ gaId, pathname }: { readonly gaId: string; rea
   return (
     <>
       <Script
-        id="_next-ga-city-init"
+        id="_next-ga-manual-init"
         dangerouslySetInnerHTML={{
           __html: `window.dataLayer=window.dataLayer||[];window.gtag=window.gtag||function(){window.dataLayer.push(arguments)};window.gtag('js',new Date());window.gtag('config',${JSON.stringify(gaId)},${config});`,
         }}
       />
-      <Script id="_next-ga-city" src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaId)}`} />
+      <Script id="_next-ga-manual" src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaId)}`} />
     </>
   )
 }
@@ -288,9 +315,25 @@ export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
     posthogClient.set_config(cityHubPostHogConfig(pathname ?? ''))
   }, [enabled, pathname])
 
-  if (enabled && isCityHubPathname(pathname)) {
-    const gaId = isValidElement<{ gaId?: unknown }>(children) ? children.props.gaId : null
-    return typeof gaId === 'string' ? <CityHubGoogleAnalytics gaId={gaId} pathname={pathname ?? ''} /> : null
-  }
-  return enabled ? children : null
+  useEffect(() => {
+    if (!enabled || !pathname) return
+    const audience = pathname === '/host' || pathname.startsWith('/host/') ? 'host' : pathname === '/explorer' || pathname.startsWith('/cities/') ? 'explorer' : 'neutral'
+    const pageFamily = pathname.startsWith('/cities/') ? 'city_hub' : pathname.startsWith('/tools') ? 'tools' : pathname === '/explorer' ? 'explorer_pillar' : pathname === '/host' ? 'host_pillar' : 'brand_core'
+    const referrerOrigin = typeof document === 'undefined' ? null : cleanReferrerOrigin(document.referrer)
+    captureSearchMeasurement('page_view', {
+      audience,
+      page_family: pageFamily,
+      page_location: new URL(pathname, SITE_ORIGIN).toString(),
+      source_kind: referrerOrigin ? 'referrer' : 'direct',
+      ...(referrerOrigin ? { page_referrer_origin: referrerOrigin } : {}),
+    })
+  }, [enabled, pathname])
+
+  if (!enabled) return null
+  /* #2771 append-only source-check compatibility: the original boundary was
+   * `return enabled ? children : null`. #3176 keeps that grant-only boundary,
+   * but replaces the child Google helper after grant because it would emit an
+   * automatic query-bearing pageview. */
+  const gaId = isValidElement<{ gaId?: unknown }>(children) ? children.props.gaId : null
+  return typeof gaId === 'string' ? <ManualGoogleAnalytics gaId={gaId} pathname={pathname ?? '/'} /> : null
 }

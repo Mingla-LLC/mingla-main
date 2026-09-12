@@ -1,0 +1,15 @@
+appId: com.mingla.app.v2
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+- tapOn:
+    point: "92%,94%"
+    optional: true
+- tapOn: "Show collaboration sample"
+- assertVisible: "Plan together"
+- assertVisible: ".*Perfect — I saved the gallery plan.*"
+- assertVisible: ".*The sunset slot works for me.*"
+- tapOn:
+    point: "92%,94%"
+    optional: true

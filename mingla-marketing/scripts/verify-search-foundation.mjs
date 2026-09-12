@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import http from 'node:http'
 import net from 'node:net'
 import { spawn } from 'node:child_process'
@@ -21,13 +22,30 @@ const SEARCH_READY_PATHS = [
   '/tools/trips',
   '/tools/pricing',
   // #3220 — the help centre. Order matters: this list is deep-equal'd against
-  // the sitemap, and the sitemap follows ROUTE_REGISTRY order. '/help' sits in
-  // SEARCH_READY_ROUTES; each video's contract is projected after, so
-  // '/help/<slug>' lands at the end with the other generated families.
+  // its established search contracts, while the lifecycle-owned sitemap set
+  // below inserts this family around the #3176 release-ledger projection.
   '/help',
   '/support',
   '/privacy-policy',
   '/terms-of-service',
+  '/help/getting-the-apps',
+  '/help/sign-up-and-create-a-brand',
+  '/help/connect-a-bank-and-get-paid',
+]
+
+const releaseRouteScope = JSON.parse(
+  readFileSync(new URL('../../scripts/search/fixtures/release-route-scope.json', import.meta.url), 'utf8'),
+)
+assert.equal(releaseRouteScope.marketingOrigin, APEX_ORIGIN, 'release route scope must own the marketing origin')
+const releaseSearchReadyPaths = releaseRouteScope.marketing
+  .filter((record) => record.lifecycle === 'search_ready')
+  .map((record) => record.path)
+const helpInsertionIndex = releaseSearchReadyPaths.indexOf('/support')
+assert.notEqual(helpInsertionIndex, -1, 'release route scope must retain the support insertion anchor')
+const SITEMAP_SEARCH_READY_PATHS = [
+  ...releaseSearchReadyPaths.slice(0, helpInsertionIndex),
+  '/help',
+  ...releaseSearchReadyPaths.slice(helpInsertionIndex),
   '/help/getting-the-apps',
   '/help/sign-up-and-create-a-brand',
   '/help/connect-a-bank-and-get-paid',
@@ -331,7 +349,7 @@ async function main() {
     const lastModified = [...sitemapBody.matchAll(/<lastmod>([^<]+)<\/lastmod>/g)].map((match) => match[1])
     assert.deepEqual(
       locations,
-      SEARCH_READY_PATHS.map((pathname) =>
+      SITEMAP_SEARCH_READY_PATHS.map((pathname) =>
         pathname === '/' ? `${APEX_ORIGIN}/` : canonicalFor(pathname),
       ),
     )
@@ -339,7 +357,7 @@ async function main() {
     assert.equal(lastModified.length, locations.length)
     for (const value of lastModified) assert(new Date(value).getTime() <= Date.now(), `future lastmod ${value}`)
     assert.doesNotMatch(sitemapBody, /<loc>https:\/\/www\.|\/links<|\/download<|\/report<|\/orders|\/chat|\/board|\/invite/)
-    for (const pathname of SEARCH_READY_PATHS) {
+    for (const pathname of SITEMAP_SEARCH_READY_PATHS) {
       assert.equal((await request(port, pathname)).status, 200, `sitemap target ${pathname}`)
     }
     pass('exact lifecycle-derived sitemap')

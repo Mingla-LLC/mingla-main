@@ -45,6 +45,7 @@ import { supabase } from "../../services/supabase";
 import { setEventGuestPrivacy } from "../../services/businessEvents";
 // META-ORCH-1187 [Growth Analytics Hub] — offering-published conversion (SC-6).
 import { postHogService } from "../../services/postHogService";
+import { captureHostSearchOutcome } from "../../analytics/searchOutcome";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
@@ -859,6 +860,13 @@ export const ExperienceCreatorWizard: React.FC<
             event_id: savedId,
             brand_id: brandId,
             surface: "business_app",
+          });
+          captureHostSearchOutcome("listing_published", {
+            audience: "host",
+            page_family: "host_pillar",
+            icp: "experience_host",
+            action_state: "succeeded",
+            content_kind: "experience",
           });
         }
         onComplete(savedId);
