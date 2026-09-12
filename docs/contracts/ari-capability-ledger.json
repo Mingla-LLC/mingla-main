@@ -3075,7 +3075,7 @@
         {
           "tier": "source_contract",
           "sha": "0a7fec301499cd9d58a83a3a0e6ebbaf15ef9dc4",
-          "reference": "#1981/#2593 agentDomainTools.ts:cancelTripBooking preview→commit fail-closed; Idempotency-Key = operation id"
+          "reference": "#1981/#2593 agentDomainTools.ts:cancelTripBooking preview\u2192commit fail-closed; Idempotency-Key = operation id"
         }
       ],
       "owning_issues": [
@@ -3506,13 +3506,19 @@
           "tier": "registration",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
           "reference": "agentDomainTools.ts:updateAriPrefs"
+        },
+        {
+          "tier": "source_contract",
+          "sha": "93b9f26fe949f8ad1bf097f6e34afcd9be3109d7",
+          "reference": "#1983 update_ari_prefs upserts agent_user_profile timezone/currency/style only"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "No runtime surface proof"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"
@@ -3551,13 +3557,19 @@
           "tier": "registration",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
           "reference": "agentDomainTools.ts:updateNotificationPrefs"
+        },
+        {
+          "tier": "source_contract",
+          "sha": "93b9f26fe949f8ad1bf097f6e34afcd9be3109d7",
+          "reference": "#1983 update_notification_prefs push|in_app \u00d7 business.* with onConflict user_id,channel,type"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "No runtime surface proof"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"
@@ -3600,13 +3612,19 @@
           "tier": "registration",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
           "reference": "agentDomainTools.ts:createSupportTicket"
+        },
+        {
+          "tier": "source_contract",
+          "sha": "93b9f26fe949f8ad1bf097f6e34afcd9be3109d7",
+          "reference": "#1983 create_support_ticket RPC p_subject/p_brand_id"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "No runtime surface proof"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"
@@ -3645,13 +3663,19 @@
           "tier": "registration",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
           "reference": "agentDomainTools.ts:requestAccountDeletion"
+        },
+        {
+          "tier": "source_contract",
+          "sha": "93b9f26fe949f8ad1bf097f6e34afcd9be3109d7",
+          "reference": "#1983 request_account_deletion invokes delete-user {side:business} after legal_name match + DELETE"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "No runtime surface proof"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"
@@ -5102,8 +5126,8 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "e1e3a975aec1e430aa0d3bee99e2af70cc900b26",
-          "reference": "#1983 agentDomainTools.ts:editProfileAvatar updates creator_accounts like edit-profile"
+          "sha": "93b9f26fe949f8ad1bf097f6e34afcd9be3109d7",
+          "reference": "#1983 edit_profile_avatar updates creator_accounts; regression suite issue_1983_*"
         }
       ],
       "owning_issues": [
@@ -5152,8 +5176,8 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "e1e3a975aec1e430aa0d3bee99e2af70cc900b26",
-          "reference": "#1983 agentDomainTools.ts:manageAriHistory mirrors agentChatService history ops"
+          "sha": "93b9f26fe949f8ad1bf097f6e34afcd9be3109d7",
+          "reference": "#1983 manage_ari_history mirrors agentChatService; regression suite issue_1983_*"
         }
       ],
       "owning_issues": [
@@ -5202,8 +5226,8 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "e1e3a975aec1e430aa0d3bee99e2af70cc900b26",
-          "reference": "#1983 agentDomainTools.ts:manageBusinessNotifications mirrors useBusinessNotificationsInbox"
+          "sha": "93b9f26fe949f8ad1bf097f6e34afcd9be3109d7",
+          "reference": "#1983 manage_business_notifications inbox; regression suite issue_1983_*"
         }
       ],
       "owning_issues": [
@@ -5252,8 +5276,8 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "e1e3a975aec1e430aa0d3bee99e2af70cc900b26",
-          "reference": "#1983 agentDomainTools.ts:manageSupportInbox mirrors supportService list/get + message reply"
+          "sha": "93b9f26fe949f8ad1bf097f6e34afcd9be3109d7",
+          "reference": "#1983 manage_support_inbox list/get/reply; regression suite issue_1983_*"
         }
       ],
       "owning_issues": [

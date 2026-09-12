@@ -5,7 +5,7 @@
 //   - omit-lines full refund builds remaining Host-parity lines
 //   - paid cancel preflight (PAID_ORDER_MUST_REFUND) before cancel-order
 //   - get_order_refund_preview + list_trip_installments PII-free reads
-//   - PROMPT_VERSION v18 money/discovery ads
+//   - PROMPT_VERSION v19 money/discovery ads
 //
 // Run:
 //   deno test --allow-read supabase/functions/_shared/__tests__/issue_1981_ari_refunds_cancels.implementor.test.ts
@@ -194,8 +194,8 @@ Deno.test("#1981 implementor: money tools finance-gated; discovery read-only", (
   assert(!MONEY_CONFIRM_TOOLS.has("send_installment_reminder"));
 });
 
-Deno.test("#1981 implementor: PROMPT_VERSION v18 advertises discovery + trip-cancel confirm", () => {
-  assertEquals(PROMPT_VERSION, "v18");
+Deno.test("#1981 implementor: PROMPT_VERSION v19 advertises discovery + trip-cancel confirm", () => {
+  assertEquals(PROMPT_VERSION, "v19"); // [TEST-MOD-APPROVED #1983] prompt bumped for account/notification ads
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assert(prompt.includes("get_order_refund_preview"));
   assert(prompt.includes("list_trip_installments"));

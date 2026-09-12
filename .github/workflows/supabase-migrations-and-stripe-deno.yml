@@ -1119,6 +1119,8 @@ jobs:
             # ISSUE-1983 — profile avatar, Ari history, notifications, support inbox.
             supabase/functions/_shared/__tests__/issue_1983_ari_account_inbox.implementor.test.ts
             supabase/functions/_shared/__tests__/issue_1983_ari_account_inbox.tester_adversarial.test.ts
+            # ISSUE-1983 — prefs / support create / business-side deletion executors.
+            supabase/functions/_shared/__tests__/issue_1983_ari_account_support.implementor.test.ts
             # ISSUE-1978 reopen — venue gallery get/sync.
             supabase/functions/_shared/__tests__/issue_1978_ari_venue_gallery.implementor.test.ts
             supabase/functions/_shared/__tests__/issue_1978_ari_venue_gallery.tester_adversarial.test.ts
