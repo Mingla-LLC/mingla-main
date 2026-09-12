@@ -195,6 +195,50 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'connect-a-bank-and-get-paid',
+    episode: 3,
+    title: 'Connect a bank and get paid',
+    blurb:
+      'Stripe for most countries, Paystack for Nigeria — and why your address, not a menu, picks the rail.',
+    duration: '1:58',
+    durationIso: 'PT1M58S',
+    chapter: 'getting-started',
+    intents: ['Get set up', 'Get paid'],
+    surfaces: ['Web', 'iOS'],
+    bambooEntryId: '0_jtcuedgh',
+    uploadedAt: '2026-09-12',
+    // Nothing is burned into this render, so the sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'It lives on the brand, not your account',
+        body:
+          'Every brand you run has its own bank. Open your account, pick the brand, and scroll to Payments and Bank. Same path on the web — same place, same account, whichever screen is nearest.',
+        links: [{ label: 'host.usemingla.com', href: 'https://host.usemingla.com' }],
+      },
+      {
+        title: 'Free publishes without one',
+        body:
+          'A free event, an RSVP, a venue listing — none of it needs a bank. Connecting one is the step that turns your page into something people can pay you for.',
+      },
+      {
+        title: 'Your bank details never touch Mingla',
+        body:
+          'Accept the Mingla Host terms and Stripe’s own secure pages take your business and bank details. Mingla gets back one answer — connected, or not connected. Never your numbers. Mingla is the merchant of record for ticket sales, which is why payouts reach you from us rather than from each buyer.',
+      },
+      {
+        title: 'Your address chooses your payment network',
+        body:
+          'A brand belongs to one country. Put a Lagos address on a brand and Mingla has already decided: Nigeria, naira, Paystack. Everywhere else goes to Stripe in that country’s currency. Operating in two countries means two brands — the app says so itself.',
+      },
+      {
+        title: 'Nigeria is quicker, not harder',
+        body:
+          'No hosted page, no documents, no waiting for review. Choose your bank, type your ten-digit account number, tap verify. Paystack checks it against the bank and sends back the name on the account before you commit — so a wrong digit is caught before a payout goes anywhere.',
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>
