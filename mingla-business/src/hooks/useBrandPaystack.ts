@@ -47,6 +47,30 @@ export const brandPaystackKeys = {
 
 const DISABLED_KEY = ["brand-paystack-status-disabled"] as const;
 
+/**
+ * #3260 [paystack-connect-false-negative] — settle the canonical brand-row
+ * refetch before the awaiting mutation resolves.
+ *
+ * Returned (not fired-and-forgotten) from the subaccount mutations' `onSuccess`
+ * so `mutateAsync` cannot resolve while the brand row is still in flight. A
+ * refetch that fails must NEVER convert a successful connect into a reported
+ * failure — a rejection here would surface as a mutation error, which is the
+ * exact class of lie this issue exists to kill — so the promise is swallowed.
+ * The UI's own self-healing derivation (BrandCreationFlow) covers the case
+ * where this refresh did not land.
+ */
+export function awaitBrandDetailRefresh(
+  queryClient: ReturnType<typeof useQueryClient>,
+  brandId: string,
+): Promise<void> {
+  return queryClient
+    .invalidateQueries({ queryKey: brandKeys.detail(brandId) })
+    .then(
+      () => undefined,
+      () => undefined,
+    );
+}
+
 /** NG NUBAN settlement banks. Static-ish → long stale time. */
 export function shouldRetryPaystackBankList(
   failureCount: number,
@@ -122,12 +146,20 @@ export function useCreatePaystackSubaccount(): UseMutationResult<
   return useMutation<PaystackSubaccountResult, Error, ResolveInput>({
     mutationFn: ({ brandId, accountNumber, bankCode }) =>
       createPaystackSubaccount(brandId, accountNumber, bankCode),
-    onSuccess: (_data, { brandId }) => {
+    onSuccess: async (_data, { brandId }) => {
       queryClient.invalidateQueries({
         queryKey: brandPaystackKeys.status(brandId),
       });
-      queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
       queryClient.invalidateQueries({ queryKey: brandKeys.lists() });
+      // #3260 [paystack-connect-false-negative] — AWAIT the canonical brand
+      // row. This mutation resolving is the signal the connect journey uses to
+      // navigate straight out of the onboarding screen and back into the brand
+      // wizard. Firing the invalidation and resolving immediately handed the
+      // remounted wizard the PRE-CONNECT cached row — already `isFetched`, so
+      // indistinguishable from fresh — and it reported "Payout setup wasn't
+      // finished" over a connect that had returned 200 and written both rows.
+      // Awaiting makes the cache correct BEFORE onSuccess callers navigate.
+      await awaitBrandDetailRefresh(queryClient, brandId);
     },
     onError: (error, { brandId }) => {
       console.error("[useCreatePaystackSubaccount] failed", {
@@ -148,11 +180,13 @@ export function useUpdatePaystackSubaccount(): UseMutationResult<
   return useMutation<PaystackSubaccountResult, Error, ResolveInput>({
     mutationFn: ({ brandId, accountNumber, bankCode }) =>
       updatePaystackSubaccount(brandId, accountNumber, bankCode),
-    onSuccess: (_data, { brandId }) => {
+    onSuccess: async (_data, { brandId }) => {
       queryClient.invalidateQueries({
         queryKey: brandPaystackKeys.status(brandId),
       });
-      queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
+      // #3260 — same ordering guarantee as the create twin: the settlement-bank
+      // change screen also navigates on resolve.
+      await awaitBrandDetailRefresh(queryClient, brandId);
     },
   });
 }
