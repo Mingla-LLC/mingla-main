@@ -60,6 +60,9 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { reportNonFatal } from "../../diagnostics/reportNonFatal";
 import { PaystackBankListError } from "../../services/brandPaystackService";
+// #3260 — payout-failure copy lives in a pure module so it can be asserted
+// without mounting this view's reanimated/svg dependency chain.
+import { describePaystackConnectError } from "./paystackConnectMessages";
 // #1850 — the bank picker's lift is budgeted against the DERIVED Done-bar cost.
 import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";
 // #1890 — whether the Done bar is actually IN this raw <Modal>'s own native
@@ -83,41 +86,6 @@ const BANK_PICKER_MIN_HEIGHT = 360;
 const BANK_PICKER_MAX_HEIGHT = 720;
 const BANK_PICKER_ROW_MIN_HEIGHT = 56;
 const BANK_PICKER_SCRIM = "rgba(0, 0, 0, 0.50)";
-
-/**
- * #3192 — turn a payout-connect failure into copy the organiser can act on.
- *
- * The edge function already returns a specific `error` code and `detail`, and
- * `brandPaystackService.unwrapError` folds both into the thrown message. Only
- * the view was discarding it. Unknown causes still fall back to the generic
- * line, but they no longer erase what actually happened — the caller logs the
- * bound error alongside this.
- */
-export function describePaystackConnectError(
-  err: unknown,
-  isUpdate: boolean,
-): string {
-  const raw = err instanceof Error ? err.message : String(err ?? "");
-
-  if (raw.includes("account_unresolved") || raw.includes("resolved_account_mismatch")) {
-    return "That account number doesn't match the bank you picked. Check both, then verify again.";
-  }
-  if (raw.includes("recipient_create_failed") || raw.includes("subaccount_create_failed")) {
-    return "Paystack couldn't accept this account right now. Wait a moment and try again — if it keeps failing, contact support.";
-  }
-  if (raw.includes("recipient_store_failed") || raw.includes("recipient_read_failed")) {
-    return "We reached Paystack but couldn't save the result on our side. Nothing was charged or changed. Try again, and contact support if it persists.";
-  }
-  if (raw.includes("provider_already_set")) {
-    return "This brand is already connected to a different payment provider. Disconnect it first, then add this bank.";
-  }
-  if (raw.includes("forbidden") || raw.includes("unauthenticated")) {
-    return "You don't have permission to change payouts for this brand. Ask a brand owner to do it.";
-  }
-  return isUpdate
-    ? "We couldn't update this bank account. Please try again in a moment."
-    : "We couldn't connect this bank account. Please try again in a moment.";
-}
 
 export const BrandPaystackOnboardView: React.FC<Props> = ({
   brandId,
@@ -365,6 +333,9 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
 
   const handleConnect = async (): Promise<void> => {
     setError(null);
+    // #3260 — track which half committed so a partial write is reported as a
+    // partial write. See PARTIAL_CONNECT_MESSAGE.
+    let bankDetailsSaved = false;
     try {
       const input = {
         brandId,
@@ -374,6 +345,10 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
       // Create the RCP_ first. If the legacy ACCT_ write then fails, retrying is
       // idempotent and today's at-charge split remains unchanged.
       await recipientMutation.mutateAsync(input);
+      bankDetailsSaved = true;
+      // #3260 — this resolves only AFTER the canonical brand row has been
+      // refetched (useCreatePaystackSubaccount awaits its own invalidation), so
+      // the screen this navigates to cannot read a pre-connect snapshot.
       await submitMutation.mutateAsync(input);
       onConnected?.();
     } catch (err) {
@@ -386,9 +361,10 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
         brandId,
         bankCode,
         isUpdate,
+        bankDetailsSaved,
         message: err instanceof Error ? err.message : String(err),
       });
-      setError(describePaystackConnectError(err, isUpdate));
+      setError(describePaystackConnectError(err, isUpdate, bankDetailsSaved));
     }
   };
 
