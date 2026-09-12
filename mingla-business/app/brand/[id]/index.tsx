@@ -33,6 +33,10 @@ import {
   type Brand,
 } from "../../../src/store/currentBrandStore";
 import { getEffectiveBrandStripeStatus } from "../../../src/utils/stripeOnboardingOutcome";
+import {
+  type BrandStripeRequirementsShape,
+  deriveBrandStripePresentation,
+} from "../../../src/utils/brandStripeUiState";
 
 export default function BrandProfileRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -84,9 +88,20 @@ export default function BrandProfileRoute(): React.ReactElement {
     return () => clearTimeout(timer);
   }, [isBrandResolving]);
   const stripeStatusQuery = useBrandStripeStatus(brandId);
-  const effectiveStripeStatus = getEffectiveBrandStripeStatus({
-    liveStatus: stripeStatusQuery.data?.status,
-    cachedStatus: brand?.stripeStatus,
+  // #3258 — the profile banner + "Payments & Bank" row read a PRESENTATION,
+  // not the raw derived status. `restricted` purely because Stripe is still
+  // checking a field it already has (`disabled_reason =
+  // requirements.pending_verification`, empty currently_due/past_due) is not
+  // "Action required" — nothing is due. Every other status passes through
+  // unchanged. The derived enum itself is untouched.
+  const effectiveStripeStatus = deriveBrandStripePresentation({
+    status: getEffectiveBrandStripeStatus({
+      liveStatus: stripeStatusQuery.data?.status,
+      cachedStatus: brand?.stripeStatus,
+    }),
+    requirements: (stripeStatusQuery.data?.requirements as
+      | BrandStripeRequirementsShape
+      | undefined) ?? null,
   });
 
   // Cycle 17e-A — BrandDeleteSheet state

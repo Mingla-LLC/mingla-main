@@ -7,8 +7,10 @@
  *   - active → green connected banner + populated KPIs + payouts + refunds + Export
  *   - restricted → red Action Required banner + £0/historical KPIs + payouts + Export
  *
- * Status-driven banner via `Record<BrandStripeStatus, BannerConfig | null>`
- * table. ORCH-0764C changed active from suppressed to explicit success banner.
+ * Status-driven banner via `resolveBrandStripeBannerConfig` (#3258; the
+ * `Record<BrandStripePresentation, …>` table lives in
+ * `src/utils/brandStripeUiState.ts`). ORCH-0764C changed active from
+ * suppressed to explicit success banner.
  *
  * Inline composition (DEC-079 closure):
  *   - formatGbp (D-INV-A10-2 watch-point — THRESHOLD HIT, defer lift to J-A12)
@@ -42,18 +44,13 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import type {
-  Brand,
-  BrandPayout,
-  BrandStripeStatus,
-} from "../../store/currentBrandStore";
+import type { Brand, BrandPayout } from "../../store/currentBrandStore";
 import { formatCurrency } from "../../utils/currency";
 import { formatRelativeTime } from "../../utils/relativeTime";
 
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
-import type { IconName } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
 import { TopBar } from "../ui/TopBar";
 // V3 multi-country surfaces — Sub-C Session A + B
@@ -80,7 +77,15 @@ import { useBrandStripeBalances } from "../../hooks/useBrandStripeBalances";
 import { useBrandStripeTaxAccountSession } from "../../hooks/useBrandStripeTaxAccountSession";
 import { useBrandStripeAccountSession } from "../../hooks/useBrandStripeAccountSession";
 import { getEffectiveBrandStripeStatus } from "../../utils/stripeOnboardingOutcome";
-import { ACTIVE_STRIPE_BANNER_TITLE } from "../../utils/brandStripeUiState";
+// #3258 — the status banner is resolved from status + requirements, not from a
+// bare enum lookup. Table + selector live in the pure util so they are
+// executable in a plain jest test (this file is not: expo-web-browser,
+// reanimated and expo-haptics all land here at module scope).
+import {
+  resolveBrandStripeBannerConfig,
+  type BrandStripeRequirementsShape,
+} from "../../utils/brandStripeUiState";
+import { brandPublicUrl } from "../../constants/publicUrls";
 // #1863 §4.10 — defence in depth for the 30s stale-role window. The primary
 // gate is the route wrapper (BrandPaymentsPermissionGate); this catches the
 // case where the client gate said ALLOW and the server said 403.
@@ -97,57 +102,18 @@ const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 // success confirmation; only truly unsupported statuses would be suppressed.
 // W-1 watch-point: kit lacks `alert`/`info` icons; restricted state uses
 // `flag` (action-needed connotation) + semantic.error coloring.
-
-interface BannerConfig {
-  icon: IconName;
-  iconColor: string;
-  title: string;
-  sub: string;
-  ctaLabel: string | null;
-  ctaVariant: "primary" | "destructive" | null;
-  destructive: boolean;
-  success?: boolean;
-}
-
-const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
-  not_connected: {
-    icon: "bank",
-    iconColor: accent.warm,
-    title: "Connect your bank to get paid",
-    sub: "Get paid for what you sell. Setup takes 5 minutes.",
-    ctaLabel: "Connect bank",
-    ctaVariant: "primary",
-    destructive: false,
-  },
-  onboarding: {
-    icon: "bank",
-    iconColor: accent.warm,
-    title: "Onboarding submitted — verifying",
-    sub: "We're reviewing your details. We'll email you when verified.",
-    ctaLabel: "Finish onboarding",
-    ctaVariant: "primary",
-    destructive: false,
-  },
-  active: {
-    icon: "check",
-    iconColor: semantic.success,
-    title: ACTIVE_STRIPE_BANNER_TITLE,
-    sub: "Payments are ready for this brand.",
-    ctaLabel: null,
-    ctaVariant: null,
-    destructive: false,
-    success: true,
-  },
-  restricted: {
-    icon: "flag", // W-1: alert/info absent in kit; flag = action-needed
-    iconColor: semantic.error,
-    title: "Action required — your account is limited",
-    sub: "We need additional information before you can take payments.",
-    ctaLabel: "Continue verification",
-    ctaVariant: "destructive",
-    destructive: true,
-  },
-};
+//
+// #3258 — the table and the presentation selector MOVED to
+// `src/utils/brandStripeUiState.ts` (`BRAND_STRIPE_BANNER_CONFIG` +
+// `resolveBrandStripeBannerConfig`) and gained a `pending_verification` entry.
+// It sat here as `BANNER_CONFIG[stripeStatus]`, a bare enum lookup that never
+// consulted `requirements` even though they were already in scope one screen
+// down — which is how a seller with `disabled_reason =
+// requirements.pending_verification` and EMPTY currently_due/past_due was shown
+// "Action required — your account is limited" plus a destructive "Continue
+// verification" button that returned them to a form they had already finished.
+// Moving it also makes it testable: nothing in this file can be imported by the
+// default node/ts-jest runner.
 
 export interface BrandPaymentsViewProps {
   brand: Brand | null;
@@ -240,7 +206,24 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     setExplainerVisible(false);
   }, []);
 
-  const bannerConfig = BANNER_CONFIG[stripeStatus];
+  // #3258 — status + requirements, not status alone. `stripeStatus` stays the
+  // server-derived enum for every OTHER consumer on this screen (bank section,
+  // danger zone, balances, KPI gating); only the banner splits the
+  // "Stripe is still checking" case out of `restricted`.
+  const stripeRequirements =
+    (stripeStatusQuery.data?.requirements as
+      | BrandStripeRequirementsShape
+      | undefined) ?? null;
+  // `brandPublicUrl` throws on a blank slug, and this runs before the
+  // brand-null early return below, so guard rather than assume.
+  const brandPageUrl = brand?.slug != null && brand.slug.trim() !== ""
+    ? brandPublicUrl(brand.slug)
+    : null;
+  const bannerConfig = resolveBrandStripeBannerConfig({
+    status: stripeStatus,
+    requirements: stripeRequirements,
+    brandPublicUrl: brandPageUrl,
+  });
 
   // #1863 §4.10 — the server has refused this caller. Derived once, from the
   // real classified errors, for BOTH twins. When true the whole body is
