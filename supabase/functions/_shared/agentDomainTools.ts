@@ -4266,15 +4266,24 @@ const listTripInstallments = writeTool(
   },
   ["brand_id", "event_id"],
   async (args, client, userId) => {
-    const { eventId, brandId } = await requireEvent(args, client, userId);
+    if (!isUuid(args.event_id)) {
+      throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
+    }
+    // Single events round-trip: assertAgentReadEvent returns brand_id.
+    const brandId = await assertAgentReadEvent(
+      client,
+      userId,
+      args.event_id,
+    );
     if (brandId !== args.brand_id) {
       throw new ToolError("INVALID_ARGS", "brand_id does not match the trip");
     }
-    await assertAgentReadEvent(client, userId, eventId);
+    const eventId = args.event_id as string;
     const limit = typeof args.limit === "number"
       ? Math.min(100, Math.max(1, Math.floor(args.limit)))
       : 50;
-    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
     // Due/failed predicate in the query BEFORE limit so a future scheduled
     // row cannot consume the only DB slot and hide a later failed/due row.
     const { data, error } = await client
@@ -4289,12 +4298,13 @@ const listTripInstallments = writeTool(
       .order("due_at", { ascending: true })
       .limit(limit);
     if (error) throw new ToolError("RPC_FAILED", error.message);
-    // Defense in depth — same due/failed contract as the query filter.
+    // Defense in depth — parse timestamps numerically (Z vs +00:00 safe).
     const installments = (data ?? [])
       .filter((row: Record<string, unknown>) => {
         if (row.status === "failed") return true;
         if (row.status === "scheduled") {
-          return typeof row.due_at === "string" && row.due_at <= nowIso;
+          const dueMs = Date.parse(String(row.due_at ?? ""));
+          return Number.isFinite(dueMs) && dueMs <= nowMs;
         }
         return false;
       })

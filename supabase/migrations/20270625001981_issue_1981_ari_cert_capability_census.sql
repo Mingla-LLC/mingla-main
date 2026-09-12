@@ -17,7 +17,7 @@ CREATE OR REPLACE FUNCTION private.ari_cert_requirements_set_digest_v1()
 RETURNS text
 LANGUAGE sql
 STABLE
-SET search_path = public, private, extensions, pg_temp
+SET search_path = pg_catalog, public, private, extensions, pg_temp
 AS $function$
   SELECT private.ari_cert_digest_v1(
     'requirements-set',
@@ -47,7 +47,7 @@ CREATE OR REPLACE FUNCTION public.ari_cert_begin_run(
 RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = pg_catalog, public, pg_temp
 AS $function$
 DECLARE
   v_run_id uuid;
@@ -84,7 +84,7 @@ CREATE OR REPLACE FUNCTION public.ari_cert_finalize_run(p_run_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = pg_catalog, public, pg_temp
 AS $function$
 DECLARE
   v_run public.ari_cert_runs%ROWTYPE;
