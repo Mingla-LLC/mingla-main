@@ -122,6 +122,10 @@ import {
 } from "../../services/brandCoverService";
 import { BrandCoverError } from "../../utils/brandCoverRules";
 import { Button } from "./Button";
+import {
+  canAddGalleryPhoto,
+  galleryAddBlockedReason,
+} from "./coverPickerGalleryGate";
 import { findSelectedProviderId } from "./coverPickerSelection";
 import { Icon } from "./Icon";
 import { EventCoverMedia, type EventCoverMediaErrorEvent } from "./EventCoverMedia";
@@ -599,9 +603,16 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // Add ONE image/GIF from the device library to the gallery (never a video).
   // Clamps at GALLERY_MAX. Independent of the primary cover — does NOT touch it.
   const addGalleryPhoto = useCallback(async (): Promise<void> => {
-    if (uploading || disabled || activeVideoUpload) return;
-    if (galleryRef.current.length >= GALLERY_MAX) {
-      onShowToast(`Up to ${GALLERY_MAX} extra photos.`);
+    // issue #3280 — `activeVideoUpload` used to sit in this guard and in the
+    // section's `disabled` prop. It was an accidental copy of the COVER-path
+    // guard at `pickImageOrGifCover`, where blocking is correct; the gallery is
+    // a separate storage pipeline that shares nothing with the video job, and
+    // the tile it silenced had no disabled styling, so the tap was simply dead.
+    // The rule now lives in `coverPickerGalleryGate` and cannot take a video
+    // argument at all.
+    const atCap = galleryRef.current.length >= GALLERY_MAX;
+    if (!canAddGalleryPhoto({ uploading, disabled, atCap })) {
+      if (atCap && !uploading && !disabled) onShowToast(`Up to ${GALLERY_MAX} extra photos.`);
       return;
     }
     if (!isAuthReady) {
@@ -692,8 +703,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       revokeCoverPickedAssets(pickedAssets);
       setUploading(false);
     }
+    // issue #3280 — `activeVideoUpload` is gone from the body and therefore
+    // from this list; the gallery does not depend on video state.
   }, [
-    activeVideoUpload,
     commitGallery,
     disabled,
     ensureMediaPermission,
@@ -1636,7 +1648,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       <AdditionalPhotosSection
         gallery={gallery}
         max={GALLERY_MAX}
-        disabled={disabled || uploading || activeVideoUpload}
+        // issue #3280 — the cap is the section's own business (it hides the add
+        // tile), so the gate is asked only about the two host-level blocks.
+        disabled={!canAddGalleryPhoto({ uploading, disabled, atCap: false })}
+        addBlockedReason={galleryAddBlockedReason({ uploading, disabled, atCap: false })}
         pendingMakeCoverIndex={pendingMakeCoverIndex}
         onAdd={() => {
           void addGalleryPhoto();
@@ -2197,6 +2212,13 @@ const AdditionalPhotosSection: React.FC<{
   gallery: OfferingGalleryImage[];
   max: number;
   disabled: boolean;
+  /**
+   * issue #3280 — why the add tile is unavailable, when it is. The section
+   * cannot work this out on its own (it sees one merged `disabled` boolean),
+   * and a disabled control with no explanation is the dead tap this issue is
+   * about. Null whenever adding is allowed.
+   */
+  addBlockedReason: string | null;
   pendingMakeCoverIndex: number | null;
   onAdd: () => void;
   onMakeCover: (index: number) => void;
@@ -2209,6 +2231,7 @@ const AdditionalPhotosSection: React.FC<{
   gallery,
   max,
   disabled,
+  addBlockedReason,
   pendingMakeCoverIndex,
   onAdd,
   onMakeCover,
@@ -2331,10 +2354,20 @@ const AdditionalPhotosSection: React.FC<{
             disabled={disabled}
             accessibilityRole="button"
             accessibilityLabel="Add photo"
+            // issue #3280 — a blocked tile must SAY it is blocked, in pixels and
+            // to a screen reader. It used to render fully enabled and do
+            // nothing for the whole life of a video upload; the video block is
+            // gone, and the busy state that remains is now legible.
+            accessibilityHint={
+              disabled
+                ? addBlockedReason ?? "Adding photos is unavailable right now."
+                : "Choose a photo or GIF to show after your cover."
+            }
             accessibilityState={{ disabled }}
             testID="cover-add-photo"
             style={({ pressed }) => [
               styles.galleryAddTile,
+              disabled && styles.galleryAddTileDisabled,
               pressed && styles.tilePressed,
             ]}
           >
@@ -2784,6 +2817,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 2,
     backgroundColor: accent.tint,
+  },
+  // issue #3280 — the disabled variant the tile never had. Without it the
+  // control looked identical enabled and blocked, which is what made the
+  // accidental video block invisible instead of merely wrong.
+  galleryAddTileDisabled: {
+    opacity: 0.45,
   },
   galleryAddLabel: {
     fontSize: typography.caption.fontSize,
