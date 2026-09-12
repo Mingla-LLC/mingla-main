@@ -1002,7 +1002,30 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // 9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04).
   // The prior pin 7f36b9b42b1d073d9eeb1abaae5046349241abed8dabd0c1f8e96373de75c24a
   // recomputes when only that new suite line is removed.
-  "fc352f93a0791aa95e33e7559b702d7364665c1d9fb7f4642f14babcd1fb03a7";
+  //
+  // [TEST-MOD-APPROVED #3261] Re-derived again. #3249 (#1983 Ari account /
+  // notifications / support / deletion) added test steps to TWO PR-family
+  // lanes and did not re-pin, which left `main` RED and the #2909 pre-merge
+  // gate refusing to certify every PR — the #3189 class, where one workflow
+  // edit invalidates a digest shared across 124 workflows and every branch cut
+  // afterwards inherits a red check it did not cause.
+  //
+  // Touched lanes: mingla-business-jest-suite.yml (+6) and
+  // supabase-migrations-and-stripe-deno.yml (+2). Both are PR-family, so their
+  // non-concurrency documents are inside this digest.
+  //
+  // PURELY ADDITIVE, and auditable: the complete added/removed set for
+  // .github/workflows in that commit is eight lines — a jest step for #1983's
+  // account-deletion confirm card, and one more Deno suite path in an existing
+  // list. Grepping those lines for concurrency / group: / cancel-in-progress
+  // returns ZERO. PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED
+  // (124 / 9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04),
+  // and this file's own test 1 — which asserts both — passes untouched. Only
+  // the non-concurrency document moved.
+  //
+  // The prior pin fc352f93a0791aa95e33e7559b702d7364665c1d9fb7f4642f14babcd1fb03a7
+  // recomputes when those eight lines are removed.
+  "7d7e9165a4a80bfb71e2aebe6fd4457f2e181248f4a79630ecc863ab6a81a218";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
