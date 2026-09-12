@@ -64,6 +64,7 @@ import {
 } from "../../store/draftEventStore";
 import {
   draftToServerInsert,
+  draftToServerUpdate,
   serverRowToDraft,
   type ServerDraftEventRow,
 } from "../serverDraftEventMapper";
@@ -216,5 +217,92 @@ describe("#1026 — chip-in survives the full autosave store-echo (tester advers
         (stored?.rsvpContributionSuggestedCents ?? 0);
     expect(contributionOn).toBe(false);
     expect(minExceedsSuggested).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3287 [multi-day pricing snap-back] — T-7, the production symptom reproduced
+// in-process through the REAL store. Added by the #3287 implementation (this
+// dispatch has no separate tester phase); a tester may extend it. Append-only.
+//
+// Production sequence (forensic §4, timestamped): tap "One price for all days"
+// → local draft all_days → 700ms debounce → business_update_event_draft →
+// serverRowToDraft(returned row) → upsertServerDraft ACCEPTS (equal revision)
+// → WHOLESALE replace → the copy lacked the key → control read "Per day".
+//
+// FAILS-ON-REVERT: remove either the write leg (buildBusinessDraftPayload) or the
+// read leg (serverRowToDraft) of #3287 → stored mode is "per_day"/undefined → RED.
+// ---------------------------------------------------------------------------
+
+// An event (ticketed, multi-date) draft as step 2 holds it after the tap.
+const multiDateDraft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
+  ...buildDraftEvent(BRAND_ID, DRAFT_ID, "2026-09-12T21:30:00.000Z"),
+  name: "Wythe Weekender",
+  whenMode: "multi_date",
+  multiDates: [
+    {
+      id: "md-mon",
+      date: "2026-09-14",
+      startTime: "21:00",
+      endTime: "03:00",
+      overrides: { title: null, description: null, venueName: null, address: null, onlineUrl: null },
+    },
+    {
+      id: "md-tue",
+      date: "2026-09-15",
+      startTime: "21:00",
+      endTime: "03:00",
+      overrides: { title: null, description: null, venueName: null, address: null, onlineUrl: null },
+    },
+  ],
+  multiDatePricingMode: "all_days",
+  clientRevision: 95,
+  ...patch,
+});
+
+// The row the autosave RPC returns: the REAL update payload's blob after a JSON
+// wire hop (JSON.stringify drops undefined, exactly like the network does).
+const echoRowFromAutosave = (local: DraftEvent): ServerDraftEventRow => {
+  const update = draftToServerUpdate(local, {});
+  const wireTheme = JSON.parse(JSON.stringify(update.theme)) as Record<string, unknown>;
+  return rowFromDraft(local, wireTheme);
+};
+
+describe("#3287 — One price for all days survives the autosave store-echo", () => {
+  test("T-7 all_days is still selected after the autosave echo wholesale-replaces the draft, and after a later unrelated autosave", () => {
+    const local = multiDateDraft();
+    useDraftEventStore.getState().upsertDraft(local);
+    expect(useDraftEventStore.getState().getDraft(DRAFT_ID)?.multiDatePricingMode).toBe(
+      "all_days",
+    );
+
+    // 1) The save that carried the tap comes back at the SAME revision.
+    const accepted = useDraftEventStore
+      .getState()
+      .upsertServerDraft(serverRowToDraft(echoRowFromAutosave(local)));
+    // Must be a real replace — a rejected echo would make "survives" a false pass.
+    expect(accepted).toBe(true);
+    expect(useDraftEventStore.getState().getDraft(DRAFT_ID)?.multiDatePricingMode).toBe(
+      "all_days",
+    );
+
+    // 2) The organiser then edits an unrelated field (timezone); that autosave's
+    //    echo is built from the STORED draft and must not wipe the choice either.
+    const afterEcho = useDraftEventStore.getState().getDraft(DRAFT_ID);
+    expect(afterEcho).not.toBeNull();
+    const edited: DraftEvent = {
+      ...(afterEcho as DraftEvent),
+      timezone: "America/New_York",
+      clientRevision: 96,
+    };
+    useDraftEventStore.getState().upsertDraft(edited);
+    const acceptedLater = useDraftEventStore
+      .getState()
+      .upsertServerDraft(serverRowToDraft(echoRowFromAutosave(edited)));
+    expect(acceptedLater).toBe(true);
+
+    const stored = useDraftEventStore.getState().getDraft(DRAFT_ID);
+    expect(stored?.timezone).toBe("America/New_York");
+    expect(stored?.multiDatePricingMode).toBe("all_days");
   });
 });
