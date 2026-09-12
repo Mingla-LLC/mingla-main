@@ -1,4 +1,4 @@
-import { buildSharePortraitUrl, buildShortShareUrl, checkContentShareReadiness, checkContentShareReadinessDetailed, contentShareRequestFromPublicUrl, createContentShareSingleFlight, selectCompactPreviewFacts, shareKindLabel, statusLabel, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
+import { buildSharePortraitUrl, buildShortShareUrl, checkContentShareReadiness, checkContentShareReadinessDetailed, contentShareRequestFromPublicUrl, createContentShareSingleFlight, deriveCanonicalShare, selectCompactPreviewFacts, shareKindLabel, statusLabel, type ShareDestination, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 import { postHogService } from './postHogService';
@@ -7,8 +7,14 @@ import { captureWeb } from '../analytics/webAnalytics';
 import { emailIntent, smsIntent, twitterIntent, whatsappIntent } from '../utils/shareIntents';
 
 export type ContentShareRequest = { kind: ShareEntityKind; identity: Record<string,string> };
-export type PreparedBusinessShare = { shortCode:string; version:number; facts:ShareFactsV1; media:ShareMediaIdentity|null; url:string; message:string; title:string; s4Url:string|null };
-type CreatedShare={shortCode:string;version:number;facts:ShareFactsV1;media?:ShareMediaIdentity|null};
+/**
+ * #3187 — field roles mirror the Explorer adapter's PreparedContentShareV1:
+ * `url` / `shareMessage` are what this share SENDS (the canonical page with
+ * `?ms=` when the kind has a public page); `shortShareUrl` is the `/s/`
+ * interstitial; `message` is the server's text byte-for-byte.
+ */
+export type PreparedBusinessShare = { shortCode:string; version:number; facts:ShareFactsV1; media:ShareMediaIdentity|null; url:string; shortShareUrl:string; canonicalShareUrl:string|null; message:string; shareMessage:string; destination:ShareDestination|null; title:string; s4Url:string|null };
+type CreatedShare={shortCode:string;version:number;facts:ShareFactsV1;media?:ShareMediaIdentity|null;destination?:ShareDestination};
 type CreatedShareResponse=CreatedShare&{message:string};
 const singleFlight=createContentShareSingleFlight();
 
@@ -42,6 +48,10 @@ export function adoptBusinessShareVersion(
     ...prepared,
     version,
     s4Url: prepared.media === null ? null : buildSharePortraitUrl(prepared.shortCode, version),
+    // #3187 — the shared URL carries the version (`?ms=<code>.<version>`), so
+    // adopting a version must re-derive it or the next share/copy would name
+    // a version this object no longer holds.
+    ...deriveCanonicalShare({ message: prepared.message, shortShareUrl: prepared.shortShareUrl, destination: prepared.destination, code: prepared.shortCode, version }),
   };
 }
 
@@ -118,5 +128,20 @@ export async function prepareBusinessContentShare(publicUrl:string,channel='gene
     if(error)throw shareCreateFailure(invokeStatus(error));
     if(!data?.shortCode||!data?.facts||!data.message)throw shareCreateFailure(null);
     return data
-  });const url=buildShortShareUrl(data.shortCode);return{shortCode:data.shortCode,version:data.version,facts:data.facts,media:data.media??null,url,title:data.facts.title,message:data.message,s4Url:data.media==null?null:buildSharePortraitUrl(data.shortCode,data.version)}
+  });
+  const shortShareUrl=buildShortShareUrl(data.shortCode);
+  const destination=data.destination??null;
+  return{
+    shortCode:data.shortCode,version:data.version,facts:data.facts,media:data.media??null,title:data.facts.title,
+    shortShareUrl,destination,
+    // The server's text, byte-for-byte. It is authored in Postgres
+    // (content_share_message_text) with the /s/ link appended and frozen into
+    // an immutable column, so it names the interstitial. Android shares that
+    // text and nothing else: the URL must change INSIDE the text too, or
+    // Android keeps sharing the interstitial and iOS carries two links.
+    // deriveCanonicalShare substitutes the link and composes nothing (#3187 F-2).
+    message:data.message,
+    ...deriveCanonicalShare({message:data.message,shortShareUrl,destination,code:data.shortCode,version:data.version}),
+    s4Url:data.media==null?null:buildSharePortraitUrl(data.shortCode,data.version),
+  };
 }

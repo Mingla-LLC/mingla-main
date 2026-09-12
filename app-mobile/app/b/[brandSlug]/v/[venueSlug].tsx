@@ -100,6 +100,7 @@ import { useConsumerThemeFont } from "../../../../src/theme/useConsumerThemeFont
 import type { ConsumerPublicVenue } from "../../../../src/services/publicVenueService";
 import { colors } from "../../../../src/constants/designSystem";
 import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
+import { useCanonicalShareArrival } from "../../../../src/hooks/useCanonicalShareArrival";
 
 /** This app's ONE analytics surface tag for the public venue page. */
 const ANALYTICS_SURFACE = "consumer_native";
@@ -169,7 +170,10 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     tab?: string | string[];
     spot?: string | string[];
     src?: string | string[];
+    ms?: string | string[];
   }>();
+  // #3187 — a shared venue link opens here directly; record its attribution.
+  useCanonicalShareArrival(params.ms);
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
     : params.brandSlug;

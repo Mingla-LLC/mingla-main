@@ -10,6 +10,7 @@ import React from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import ConsumerTripDetailScreen from "../../../src/screens/Trip/ConsumerTripDetailScreen";
+import { useCanonicalShareArrival } from "../../../src/hooks/useCanonicalShareArrival";
 
 export default function TripDeepLinkScreen(): React.ReactElement | null {
   const router = useRouter();
@@ -17,7 +18,10 @@ export default function TripDeepLinkScreen(): React.ReactElement | null {
     brandSlug: string | string[];
     tripSlug: string | string[];
     landing?: string | string[];
+    ms?: string | string[];
   }>();
+  // #3187 — a shared trip link opens here directly; record its attribution.
+  useCanonicalShareArrival(params.ms);
   const brandSlug = Array.isArray(params.brandSlug) ? params.brandSlug[0] : params.brandSlug;
   const tripSlug = Array.isArray(params.tripSlug) ? params.tripSlug[0] : params.tripSlug;
   // ORCH-1342 — `?landing=guest-list` (OneLink deferred-funnel landing,

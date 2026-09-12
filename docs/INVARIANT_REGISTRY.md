@@ -10030,6 +10030,64 @@ All four #2796 rules were established ACTIVE after independent web, iOS AX5, and
   contains no `hitSlop` geometry at all.
 - **Status:** DRAFT — flips ACTIVE on CLOSE.
 
+## DRAFT — issue #3187 (a share sends the page itself, and the paste carries the link)
+
+### I-PROPOSED-3187-SHARED-URL-IS-CANONICAL (DRAFT)
+
+- **Rule:** For a share whose `destination.webPath` exists (event, rsvp_event, trip, experience,
+  venue, brand), the URL that leaves either app — share sheet, Copy Link and QR — is
+  `SHARE_CANONICAL_ORIGIN + webPath + ?ms=<code>.<version>`. `place` and `curated` keep
+  `usemingla.com/s/<code>`. Eligibility is decided ONLY by `buildCanonicalShareUrl` returning
+  non-null (`packages/sharing/index.js`) — never by a hard-coded kind list — and every doubt
+  (missing, malformed or hostile `webPath`) falls back to today's `/s/` share.
+- **Enforcement:** `mingla-business/src/utils/__tests__/issue3187CanonicalShareUrl.implementor.test.ts`
+  (required `mingla-business jest (full suite)` lane): T1–T3, SC-8, SC-9, SC-10.
+- **Status:** DRAFT — flips ACTIVE on CLOSE after tester PASS with physical iPhone and Android.
+
+### I-PROPOSED-3187-MESSAGE-URL-AGREEMENT (DRAFT)
+
+- **Rule:** The shared text and the shared URL never disagree. The server authors the text in
+  Postgres (`content_share_message_text`) with the `/s/` link appended and freezes it into an
+  immutable column, and Android shares that text alone — so changing only the URL field leaves
+  Android sharing the interstitial and puts two links in every iOS paste. The text sent is the
+  server text with that one link substituted (`deriveCanonicalShare`); it contains the shared URL
+  and, for a canonical-eligible share, no `usemingla.com/s/`.
+- **Enforcement:** the four executed T5 transport rows (Explorer iOS/Android, Business iOS/Android)
+  in the #3187 suite. **Fails on revert:** deleting the `shareMessage:` substitution line in
+  `deriveCanonicalShare` reds the T5 rows.
+- **Status:** DRAFT — flips ACTIVE on CLOSE.
+
+### I-PROPOSED-3187-IOS-PASTE-CARRIES-LINK (DRAFT)
+
+- **Rule:** On iOS the `message` passed to `Share.share` contains the shared URL, in both
+  `app-mobile/src/services/contentShareAdapter.ts` (`shareCanonicalFallback`) and
+  `mingla-business/src/utils/sharePublicUrl.ts`. A target that reads only the text item still
+  receives the link. (If physical-iPhone evidence shows a duplicated link, SPEC §10-A's
+  pre-authorised fallback drops the `url` item on iOS; the link stays in the text either way.)
+- **Enforcement:** T5 iOS rows in the #3187 suite; `sharePublicUrl.test.ts` iOS case.
+- **Status:** DRAFT — flips ACTIVE on CLOSE after physical-iPhone evidence.
+
+### I-PROPOSED-3187-SERVER-MESSAGE-UNMUTATED (DRAFT)
+
+- **Rule:** `PreparedContentShare.message` and `PreparedBusinessShare.message` hold the server's
+  `data.message` byte-for-byte. Transport text lives only in the derived `shareMessage`; no client
+  composes share prose (the substitution replaces one substring and adds nothing).
+- **Enforcement:** T5 Explorer Android asserts `prepared.message === SERVER_MESSAGE`; the #1615
+  semantic gate still requires the literal `message: data.message` in the Explorer adapter.
+- **Status:** DRAFT — flips ACTIVE on CLOSE.
+
+### I-PROPOSED-3187-SHARE-ARRIVAL-ATTRIBUTED (DRAFT)
+
+- **Rule:** A canonical share link opened in the installed Explorer app records what `/s/`
+  recorded: every route such a link can open (`/b/:slug`, `/b/:brandSlug/v/:venueSlug`, `/e/…`,
+  `/t/…`, `/exp/…`) calls `useCanonicalShareArrival(params.ms)` before any early return, which
+  resolves the code through `readContentShare`, persists `{shortCode, version}` and records
+  `share_native_opened`. On the web, a page opened with a valid `ms` posts
+  `share_public_page_viewed` and, on its CTA, `share_destination_action`, with exactly the keys
+  `api/content-share-analytics.js` accepts. `share_install_cta_opened` has no page analogue
+  (accepted, SPEC F-11).
+- **Enforcement:** the "installed app" and "canonical page" blocks of the #3187 suite.
+- **Status:** DRAFT — flips ACTIVE on CLOSE.
 ## ACTIVE — issue #3193 (a live public page must read the live row, and a tombstone must still fail closed)
 
 ### I-PROPOSED-3193-PUBLIC-RESOLVER-READS-THE-LIVE-ROW (ACTIVE)

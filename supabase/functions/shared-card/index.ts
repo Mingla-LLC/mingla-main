@@ -84,7 +84,7 @@ serve(async (req) => {
             stops: Array.isArray(details.stops) ? details.stops : [],
           },
           appUrl: sharedCardOneLink(facts.kind, shareId),
-          // SHARE-CANONICAL-URL-BUILDER
+          // SHARE-SHORT-URL-BUILDER
           canonicalUrl: `https://usemingla.com/s/${envelope.shortCode}`,
         });
       }

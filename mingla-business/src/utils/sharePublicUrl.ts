@@ -115,11 +115,11 @@ export const sharePublicUrl = async ({
     return;
   }
 
-  const message = shareBody.length > 0 ? shareBody : trimmedOrNull(title);
+  // #3187 — iOS carries the link IN the text as well as in the `url` item.
+  // This branch used to strip the URL from the text and rely on `url` alone;
+  // a target that reads only the text item then pasted the prose with no link
+  // at all. Android already appended it (buildAndroidPublicShareMessage).
+  const message = shareBody.length > 0 ? `${shareBody}\n${url}` : url;
   // SHARE-CONTENT-CALL:transport
-  await Share.share({
-    title,
-    ...(message !== null ? { message } : {}),
-    url,
-  });
+  await Share.share({ title, message, url });
 };

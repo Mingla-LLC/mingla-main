@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Platform } from "react-native";
+import { Linking, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,6 +15,7 @@ import {
 } from "@mingla/brand-rendering";
 import { resolveTheme, type ResolvedTheme } from "@mingla/offering-rendering";
 import { captureWeb } from "../../analytics/webAnalytics";
+import { recordShareDestination } from "../../analytics/shareDestination";
 
 import {
   brandOgImageUrl,
@@ -226,8 +227,26 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     setShareModalVisible(true);
   }, [brand]);
 
+  // #3187 P2-1 — the brand renderer opens the website, socials, email and phone
+  // through this ONE callback (its default is Linking.openURL). Supplying it
+  // lets a share recipient's website or call tap be recorded; socials and email
+  // have no destination action in the relay, so they record nothing. The open
+  // itself is unchanged, except that a failure is now logged instead of dropped.
+  const websiteUrl = brand.links?.website;
+  const handleOpenExternal = useCallback(
+    (url: string): void => {
+      if (url.startsWith("tel:")) recordShareDestination("call");
+      else if (websiteUrl !== undefined && url === websiteUrl) recordShareDestination("website");
+      void Linking.openURL(url).catch((error: unknown) => {
+        console.warn("[public-brand] could not open link", error instanceof Error ? error.message : String(error));
+      });
+    },
+    [websiteUrl],
+  );
+
   const handleOpenEvent = useCallback(
     (event: PublicBrandEvent): void => {
+      recordShareDestination("view_offering");
       router.push(
         eventPublicPath({
           brandSlug: event.brandSlug,
@@ -240,6 +259,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 
   const handleOpenTrip = useCallback(
     (trip: PublicBrandTrip): void => {
+      recordShareDestination("view_offering");
       router.push(
         tripPublicPath({
           brandSlug: trip.brandSlug,
@@ -252,6 +272,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 
   const handleOpenExperience = useCallback(
     (experience: PublicBrandExperience): void => {
+      recordShareDestination("view_offering");
       router.push(
         `/exp/${experience.brandSlug}/${experience.experienceSlug}` as never,
       );
@@ -262,6 +283,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // Issue #1365 — Reservations card tap → the per-venue public page.
   const handleOpenVenue = useCallback(
     (item: PublicBrandVenueSummary): void => {
+      recordShareDestination("view_venue");
       captureWeb("brand_venue_selected", {
         surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
         brand_id: brand.id,
@@ -282,6 +304,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 
   const handleOpenUpcoming = useCallback(
     (item: PublicBrandUpcoming): void => {
+      recordShareDestination("view_offering");
       if (item.offeringType === "trip") {
         router.push(
           tripPublicPath({
@@ -388,6 +411,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           onOpenExperience: handleOpenExperience,
           onOpenUpcoming: handleOpenUpcoming,
           onOpenVenue: handleOpenVenue,
+          onOpenExternal: handleOpenExternal,
           onRetryVenues,
           onReservationsTabViewed: () => {
             captureWeb("brand_reservations_tab_viewed", {

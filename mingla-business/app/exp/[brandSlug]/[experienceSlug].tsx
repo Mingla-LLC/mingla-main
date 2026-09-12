@@ -84,6 +84,7 @@ import { ExperiencePreview } from "../../../src/components/experience/Experience
 // §3). LAZY (ORCH-1083 budget): tap-opened, never boot-path — a static import
 // re-enters the eager __common chunk and fails the budget gate.
 import type { GuestFunnelEntity } from "../../../src/services/guestFunnelLink";
+import { recordShareDestination } from "../../../src/analytics/shareDestination";
 
 const SeeWhosGoingGate = React.lazy(
   () => import("../../../src/components/event/SeeWhosGoingGate"),
@@ -194,17 +195,19 @@ export default function PublicExperienceRoute(): React.ReactElement {
 
   // #1968 — public web is already the destination, so it shares the canonical
   // URL directly. Native retains the existing custom Mingla share sheet.
+  // #3187 — the canonical URL needs only the route params, so web never falls
+  // through to the native sheet while the page query is unresolved. Title and
+  // description degrade; the URL does not.
   const handleShare = useCallback((): void => {
     if (
       Platform.OS === "web" &&
       typeof brandSlug === "string" &&
-      typeof experienceSlug === "string" &&
-      query.data?.experience !== undefined
+      typeof experienceSlug === "string"
     ) {
       void shareCanonicalPublicPageOnWeb({
         url: experiencePublicUrl({ brandSlug, experienceSlug }),
-        title: query.data.experience.title,
-        description: query.data.experience.description?.slice(0, 200) ?? undefined,
+        title: query.data?.experience?.title ?? "Mingla",
+        description: query.data?.experience?.description?.slice(0, 200) ?? undefined,
       });
       return;
     }
@@ -457,10 +460,13 @@ const ResolvedExperiencePage: React.FC<{
     (selection?: ExperienceReserveSelection): void => {
       // issue #2101 — fail closed at the route, before any checkout navigation.
       if (experienceAccess.requiresSignIn) {
+        // #3187 P2-1 — a share recipient's Reserve intent (no-op off a shared link).
+        recordShareDestination("book_experience");
         router.push(experienceSignInResumeHref as never);
         return;
       }
       if (experienceAccess.blocked) return;
+      recordShareDestination("book_experience");
       const routeParams: Record<string, string> = {};
       if (selection !== undefined) {
         routeParams.eventDateId = selection.eventDateId;
@@ -491,6 +497,7 @@ const ResolvedExperiencePage: React.FC<{
     // rather than exposing a stale picker selection; restricted / loading /
     // error no-op so the picker cannot open at all.
     if (experienceAccess.requiresSignIn) {
+      recordShareDestination("book_experience");
       router.push(experienceSignInResumeHref as never);
       return;
     }
@@ -523,7 +530,10 @@ const ResolvedExperiencePage: React.FC<{
   );
 
   const handleViewBrand = (): void => {
-    if (brandSlug.length > 0) router.push(`/b/${brandSlug}` as never);
+    if (brandSlug.length > 0) {
+      recordShareDestination("view_brand");
+      router.push(`/b/${brandSlug}` as never);
+    }
   };
 
   // state banner (sold out / ended / unavailable) rendered above the body.

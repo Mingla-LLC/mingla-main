@@ -196,7 +196,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
     busyRef.current = true;
     setActionError(null); setBusy(true);
     try {
-      await sharePublicUrl({ title: prepared.title, url: prepared.url, description: prepared.message });
+      await sharePublicUrl({ title: prepared.title, url: prepared.url, description: prepared.shareMessage });
       trackBusinessShareEvent('share_sheet_returned', { kind: contentKind, result: 'returned' });
     }
     catch {

@@ -21,7 +21,9 @@ const EXCLUDED_SEGMENTS = new Set([
 ]);
 const NON_CONTENT_CLASSIFICATION = /^\s*\/\/\s*SHARE-NON-CONTENT:(?:invite|file-export)\s*$/;
 const CONTENT_CALL_CLASSIFICATION = /^\s*\/\/\s*SHARE-CONTENT-CALL:(?:adapter|transport)\s*$/;
-const CANONICAL_URL_CLASSIFICATION = /^\s*\/\/\s*SHARE-CANONICAL-URL-BUILDER\s*$/;
+// #3187 — renamed from SHARE-CANONICAL-URL-BUILDER: the tagged builders emit the
+// `usemingla.com/s/<code>` interstitial link, which is not the canonical URL.
+const SHORT_URL_CLASSIFICATION = /^\s*\/\/\s*SHARE-SHORT-URL-BUILDER\s*$/;
 const SIGNATURES = Object.freeze({
   react_native_share: /\bShare\.share\s*\(/g,
   browser_share: /\bnavigator\.share\s*\(/g,
@@ -56,10 +58,10 @@ export function findUnauthorizedConstructs(source, relativePath = 'unknown.ts') 
       const nearby = sourceLines.slice(Math.max(0, line - 2), line);
       const exactNonContent = nearby.some((candidate) => NON_CONTENT_CLASSIFICATION.test(candidate));
       const exactContentCall = nearby.some((candidate) => CONTENT_CALL_CLASSIFICATION.test(candidate));
-      const exactCanonicalBuilder = nearby.some((candidate) => CANONICAL_URL_CLASSIFICATION.test(candidate));
+      const exactShortUrlBuilder = nearby.some((candidate) => SHORT_URL_CLASSIFICATION.test(candidate));
       if (exactNonContent && signature === 'react_native_share') continue;
       if (exactContentCall && isAuthorizedContentCall(source, signature)) continue;
-      if (signature === 'inline_short_content_url' && exactCanonicalBuilder
+      if (signature === 'inline_short_content_url' && exactShortUrlBuilder
         && (/function\s+buildShortShareUrl\s*\(/.test(source)
           || (/canonicalUrl\s*:/.test(source) && /CONTENT_SHARE_RE/.test(source)))) continue;
 
