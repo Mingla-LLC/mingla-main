@@ -224,17 +224,101 @@ class CdpPage {
   }
 }
 
+function waitForChildExit(child, timeoutMs) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true)
+  return new Promise((resolve) => {
+    const onExit = () => { clearTimeout(timer); resolve(true) }
+    const timer = setTimeout(() => { child.removeListener('exit', onExit); resolve(false) }, timeoutMs)
+    child.once('exit', onExit)
+    if (child.exitCode !== null || child.signalCode !== null) onExit()
+  })
+}
+
 async function stopOwnedChild(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return
+  if (await waitForChildExit(child, 2_000)) return
   child.kill('SIGTERM')
-  const exited = await Promise.race([
-    new Promise((resolve) => child.once('exit', () => resolve(true))),
-    new Promise((resolve) => setTimeout(() => resolve(false), 2_000)),
-  ])
-  if (!exited && child.exitCode === null && child.signalCode === null) {
-    child.kill('SIGKILL')
-    await new Promise((resolve) => child.once('exit', resolve))
+  if (await waitForChildExit(child, 2_000)) return
+  child.kill('SIGKILL')
+  assert(await waitForChildExit(child, 2_000), 'owned Chrome did not reach a terminal state after SIGKILL')
+}
+
+function profileSnapshot(profile) {
+  if (!fs.existsSync(profile)) return 'absent'
+  const rows = []
+  const visit = (directory) => {
+    let entries
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))
+    } catch (error) {
+      if (error?.code === 'ENOENT') return false
+      throw error
+    }
+    for (const entry of entries) {
+      const entryPath = path.join(directory, entry.name)
+      const stat = fs.lstatSync(entryPath, { throwIfNoEntry: false })
+      if (!stat) return false
+      rows.push(`${path.relative(profile, entryPath)}\0${stat.mode}\0${stat.size}\0${stat.mtimeMs}`)
+      if (entry.isDirectory() && !visit(entryPath)) return false
+    }
+    return true
   }
+  return visit(profile) ? rows.join('\n') : null
+}
+
+async function waitForProfileQuiescence(profile) {
+  const deadline = Date.now() + 3_000
+  let previous
+  let stableSamples = 0
+  while (Date.now() < deadline) {
+    const current = profileSnapshot(profile)
+    if (current === 'absent') return
+    stableSamples = current !== null && current === previous ? stableSamples + 1 : 0
+    if (stableSamples >= 2) return
+    previous = current
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  throw new Error(`owned Chrome profile did not become quiescent: ${profile}`)
+}
+
+async function removeOwnedProfile(profile) {
+  const transientCodes = new Set(['EBUSY', 'EMFILE', 'ENFILE', 'ENOTEMPTY', 'EPERM'])
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      fs.rmSync(profile, { recursive: true, force: true })
+      assert(!fs.existsSync(profile), `owned Chrome profile remained after removal: ${profile}`)
+      return
+    } catch (error) {
+      if (!transientCodes.has(error?.code) || attempt === 9) throw error
+      await new Promise((resolve) => setTimeout(resolve, Math.min(100 * (attempt + 1), 500)))
+    }
+  }
+}
+
+async function teardownOwnedBrowser({ page, chrome, profile }) {
+  const errors = []
+  try {
+    if (page) await page.send('Browser.close')
+  } catch (error) {
+    errors.push(error)
+  } finally {
+    page?.close()
+  }
+  try {
+    await stopOwnedChild(chrome)
+  } catch (error) {
+    errors.push(error)
+  }
+  if (!chrome || chrome.exitCode !== null || chrome.signalCode !== null) {
+    try {
+      await waitForProfileQuiescence(profile)
+      await removeOwnedProfile(profile)
+    } catch (error) {
+      errors.push(error)
+    }
+  }
+  if (errors.length === 1) throw errors[0]
+  if (errors.length > 1) throw new AggregateError(errors, 'owned Chrome cleanup failed')
 }
 
 async function verifyNarrowHeroGeometry(port) {
@@ -258,6 +342,7 @@ async function verifyNarrowHeroGeometry(port) {
     'about:blank',
   ], { stdio: 'ignore' })
   let page
+  let primaryError
   try {
     await waitFor(async () => (await fetch(`http://127.0.0.1:${chromePort}/json/version`)).ok, 'owned Chrome did not start')
     const target = await fetch(`http://127.0.0.1:${chromePort}/json/new?about:blank`, { method: 'PUT' }).then((response) => response.json())
@@ -288,13 +373,20 @@ async function verifyNarrowHeroGeometry(port) {
       assert(pill.top >= 0 && pill.bottom <= geometry.cue.top - 12, `320px pill ${index + 1} is clipped or overlaps the scroll cue`)
     }
     process.stdout.write(`PASS #3176 320px/400%-equivalent hero geometry ${geometryEvidence}\n`)
+  } catch (error) {
+    primaryError = error
   } finally {
-    if (page) {
-      try { await page.send('Browser.close') } catch {}
-      page.close()
+    let cleanupError
+    try {
+      await teardownOwnedBrowser({ page, chrome, profile })
+    } catch (error) {
+      cleanupError = error
     }
-    await stopOwnedChild(chrome)
-    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 })
+    if (primaryError && cleanupError) {
+      throw new AggregateError([primaryError, cleanupError], `browser verification failed and cleanup also failed: ${primaryError.message}`)
+    }
+    if (primaryError) throw primaryError
+    if (cleanupError) throw cleanupError
   }
 }
 
