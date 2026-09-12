@@ -163,6 +163,7 @@ const EXPECTED_TOOL_NAMES = [
   "refund_rsvp_contribution",
   "request_account_deletion",
   "retry_installment",
+  "revoke_brand_invitation",
   "revoke_brand_member",
   "revoke_scanner_invitation",
   "rollback_site",
@@ -196,19 +197,19 @@ const EXPECTED_TOOL_NAMES = [
 ];
 
 const EXPECTED = Object.freeze({
-  capabilityCount: 137,
+  capabilityCount: 138,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 124,
+    registered_unverified: 125,
     broken: 0,
     guided_handoff: 8,
     unsupported: 0,
     in_flight: 5,
   }),
-  idDigest: "ca80b9ab9f4509a4851323de8df8208b270f14badc1ecebf6d3043aab86dee13",
-  statusDigest: "8f619f43996a34898ade956f382ffd026bcea3e17e123868f67ac11c59fb2fed",
-  mappingDigest: "c0a95492c729ad849a8b547778c917deb7020ddd8e4872b27a979b0d24df986e",
-  sourceRefDigest: "9bc368191573ffca2f1a6305a0f36f7f6e66fb2fd53f1f4b8847c3ae2f7edb79",
+  idDigest: "c6b3bca9ca504684e3d86c1a6ae7ff6e577b8f655d220ae5436686c0d6e72b54",
+  statusDigest: "b754e5cce0b340b7119e533f785632411898d10dc57162f2711a355f74827ef0",
+  mappingDigest: "ac64aaad33f879d98bbf43910264a729e1f091a52d085810cb7c17afb4fbe7dd",
+  sourceRefDigest: "f4146f3065b7413fb54c972253a2f6bae0d99b67d6f51643ad58a26f3b08ba68",
 });
 
 function readLedger() {
@@ -234,9 +235,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("125-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("126-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("0/124/0/8/0/5 classification changed");
+    failures.push("0/125/0/8/0/5 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");

@@ -130,6 +130,12 @@ function humanizeToolName(toolName: string): string {
     case "get_order_refund_preview": return "Preview refundable lines";
     case "list_trip_installments": return "List trip installments";
     case "request_account_deletion": return "Delete account";
+    case "invite_brand_member": return "Invite team member";
+    case "invite_scanner": return "Invite scanner";
+    case "revoke_brand_member": return "Revoke team member";
+    case "revoke_brand_invitation": return "Revoke team invitation";
+    case "revoke_scanner_invitation": return "Revoke scanner invitation";
+    case "manage_brand_people": return "Add Brand Person";
     case "propose_site_content_update": return "Confirm Website draft";
     case "propose_site_settings_update": return "Confirm Website settings draft";
     case "attach_approved_site_media": return "Confirm Website image";
@@ -383,6 +389,50 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     if (typeof args.cover_media_url === "string" && args.cover_media_url && ct) {
       out.push({ label: "Cover", value: ct });
     }
+  }
+  // #1982 — team / scanner / Brand People confirm summaries.
+  if (
+    toolName === "invite_brand_member" ||
+    toolName === "invite_scanner" ||
+    toolName === "revoke_brand_member" ||
+    toolName === "revoke_brand_invitation" ||
+    toolName === "revoke_scanner_invitation" ||
+    toolName === "manage_brand_people"
+  ) {
+    if (typeof args.name === "string" && args.name.trim()) {
+      out.push({ label: "Name", value: args.name.trim() });
+    }
+    if (typeof args.display_name === "string" && args.display_name.trim()) {
+      out.push({ label: "Name", value: args.display_name.trim() });
+    }
+    if (typeof args.email === "string" && args.email.trim()) {
+      out.push({ label: "Email", value: args.email.trim() });
+    }
+    if (typeof args.role === "string" && args.role.trim()) {
+      out.push({ label: "Role", value: args.role.replace(/_/g, " ") });
+    }
+    if (typeof args.scope === "string" && args.scope.trim()) {
+      out.push({ label: "Scope", value: args.scope });
+    }
+    if (toolName === "invite_scanner" && args.can_accept_payments === true) {
+      out.push({ label: "Door payments", value: "Allowed" });
+    }
+    if (typeof args.invitation_id === "string" && args.invitation_id) {
+      out.push({
+        label: "Invitation",
+        value: `${args.invitation_id.slice(0, 8)}…`,
+      });
+    }
+    if (typeof args.member_id === "string" && args.member_id) {
+      out.push({ label: "Member", value: `${args.member_id.slice(0, 8)}…` });
+    }
+    if (toolName === "manage_brand_people" && typeof args.action === "string") {
+      out.push({ label: "Action", value: args.action });
+    }
+    if (typeof args.phone_e164 === "string" && args.phone_e164.trim()) {
+      out.push({ label: "Phone", value: args.phone_e164.trim() });
+    }
+    return out;
   }
   if (out.length === 0) {
     const skip = new Set([

@@ -92,6 +92,7 @@ ari.analytics.brand
 ari.team.invite_member
 ari.team.invite_scanner
 ari.team.revoke_member
+ari.team.revoke_invitation
 ari.guests.list_roster
 ari.people.export
 ari.settings.preferences
