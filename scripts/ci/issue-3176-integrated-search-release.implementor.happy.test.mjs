@@ -72,7 +72,7 @@ function verifySourceWiring() {
   const host=['src/context/AuthContext.tsx','src/hooks/useBusinessEvents.ts','src/hooks/useTrips.ts','src/hooks/useRsvpEvents.ts','src/components/experience/ExperienceCreatorWizard.tsx','src/components/venue/VenueCreatorWizard.tsx'].map((relative)=>read(`mingla-business/${relative}`)).join('\n')
   for(const event of ['sign_up','listing_published','generate_lead']) assert(host.includes(`"${event}"`),`missing Host outcome ${event}`)
   assert(fs.existsSync(path.join(ROOT,'mingla-business/src/analytics/searchOutcome.web.ts')))
-  const migration=read('supabase/migrations/20270621003176_issue_3176_indexnow_outbox.sql')
+  const migration=read('supabase/migrations/20270627003176_issue_3176_indexnow_outbox.sql')
   for(const token of ['FORCE ROW LEVEL SECURITY','FROM PUBLIC, anon, authenticated','ON CONFLICT (change_fingerprint) DO NOTHING','delivery_state=CASE WHEN p_delivered','search_indexnow_retention_minimum_90_days','AFTER INSERT OR UPDATE OR DELETE ON public.public_search_documents']) assert(migration.includes(token),`missing outbox contract ${token}`)
   assert.match(read('mingla-business/vercel.json'),/indexnow-key\.txt/)
   assert(fs.existsSync(path.join(ROOT,'mingla-marketing/app/indexnow-key.txt/route.ts')))
