@@ -82,6 +82,8 @@ function moneyClient(opts: {
         "not",
         "order",
         "limit",
+        "or",
+        "lte",
         "gt",
       ]
     ) {
@@ -168,7 +170,6 @@ Deno.test("#1981 implementor: money tools finance-gated; discovery read-only", (
       "charge_installment_now",
       "send_installment_reminder",
       "get_order_refund_preview",
-      "list_trip_installments",
     ]
   ) {
     assertEquals(AGENT_TOOL_AUTHORIZATION[name], {
@@ -176,6 +177,11 @@ Deno.test("#1981 implementor: money tools finance-gated; discovery read-only", (
       resource: "brand",
     });
   }
+  // [TEST-MOD-APPROVED #1981] event resource so EVENT_TYPE_BY_TOOL rejects non-trips.
+  assertEquals(AGENT_TOOL_AUTHORIZATION.list_trip_installments, {
+    requiredRole: "finance_manager",
+    resource: "event",
+  });
   assert(DOMAIN_READ_ONLY.has("get_order_refund_preview"));
   assert(DOMAIN_READ_ONLY.has("list_trip_installments"));
   assert(MONEY_CONFIRM_TOOLS.has("refund_order"));
@@ -277,6 +283,77 @@ Deno.test("#1981 implementor: refund_order rejects present-but-empty lines", asy
   assertEquals(err.code, "INVALID_ARGS");
   assert(String(err.message).includes("non-empty"));
   assertEquals(invokes.length, 0);
+});
+
+Deno.test("#1981 implementor: refund_order rejects explicit null lines", async () => {
+  const { client, invokes } = moneyClient();
+  const err = await assertRejects(
+    () =>
+      domainTool("refund_order").executor(
+        {
+          brand_id: BRAND,
+          order_id: ORDER,
+          lines: null,
+          reason: "Null lines must not become a full refund.",
+          confirm_phrase: "REFUND",
+        },
+        client,
+        USER,
+        { operationId: OP },
+      ),
+    ToolError,
+  );
+  assertEquals(err.code, "INVALID_ARGS");
+  assert(String(err.message).includes("non-empty"));
+  assertEquals(invokes.length, 0);
+});
+
+Deno.test("#1981 implementor: refund_order aggregates duplicate line ids before capacity", async () => {
+  const { client, invokes } = moneyClient();
+  const err = await assertRejects(
+    () =>
+      domainTool("refund_order").executor(
+        {
+          brand_id: BRAND,
+          order_id: ORDER,
+          lines: [
+            { order_line_item_id: LINE, quantity: 2, amount_cents: 1 },
+            { order_line_item_id: LINE, quantity: 1, amount_cents: 1 },
+          ],
+          reason: "Duplicate line ids must not over-refund capacity.",
+          confirm_phrase: "REFUND",
+        },
+        client,
+        USER,
+        { operationId: OP },
+      ),
+    ToolError,
+  );
+  assertEquals(err.code, "INVALID_ARGS");
+  assert(String(err.message).includes("only has"));
+  assertEquals(invokes.length, 0);
+
+  const { client: okClient, invokes: okInvokes } = moneyClient();
+  await domainTool("refund_order").executor(
+    {
+      brand_id: BRAND,
+      order_id: ORDER,
+      lines: [
+        { order_line_item_id: LINE, quantity: 1, amount_cents: 1 },
+        { order_line_item_id: LINE, quantity: 1, amount_cents: 1 },
+      ],
+      reason: "Duplicate line ids aggregate within remaining capacity.",
+      confirm_phrase: "REFUND",
+    },
+    okClient,
+    USER,
+    { operationId: OP },
+  );
+  assertEquals(okInvokes[0].body.lines, [{
+    order_line_item_id: LINE,
+    quantity: 2,
+    amount_cents: 2000,
+  }]);
 });
 
 Deno.test("#1981 implementor: refund preview subtracts pending refunds", async () => {

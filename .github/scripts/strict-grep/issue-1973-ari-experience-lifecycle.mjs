@@ -261,7 +261,7 @@ if (process.argv.includes("--self-test")) {
     {
       ...sources,
       certificationTest: sources.certificationTest.replace(
-        "ari_cert_missing_capabilities:134",
+        "ari_cert_missing_capabilities:136",
         "accepted_obsolete_inventory",
       ),
     },

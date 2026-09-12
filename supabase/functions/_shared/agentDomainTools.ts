@@ -3982,9 +3982,16 @@ const refundOrder = writeTool(
       args.order_id as string,
       brandId,
     );
-    // Present-but-empty/null must NOT become a full refund (schema minItems is
-    // not enforced by the Ari validator).
-    if (args.lines !== undefined && args.lines !== null) {
+    // Only a truly omitted `lines` (undefined) means full remaining refund.
+    // Present null / empty / non-array must NOT become a full refund (schema
+    // minItems is not enforced by the Ari validator).
+    if (args.lines === null) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "lines must be a non-empty array for a partial refund; omit lines for a full remaining refund.",
+      );
+    }
+    if (args.lines !== undefined) {
       if (!Array.isArray(args.lines) || args.lines.length === 0) {
         throw new ToolError(
           "INVALID_ARGS",
@@ -3994,7 +4001,9 @@ const refundOrder = writeTool(
       const availableById = new Map(
         preview.lines.map((line) => [line.order_line_item_id, line]),
       );
-      lines = [];
+      // Aggregate duplicate order_line_item_id entries before capacity checks
+      // so two partial entries cannot over-refund the same line.
+      const quantityById = new Map<string, number>();
       for (const raw of args.lines as Array<Record<string, unknown>>) {
         const lineId = String(raw.order_line_item_id ?? "");
         const quantity = Number(raw.quantity ?? 0);
@@ -4004,6 +4013,10 @@ const refundOrder = writeTool(
             "Each refund line needs a uuid order_line_item_id and quantity ≥ 1.",
           );
         }
+        quantityById.set(lineId, (quantityById.get(lineId) ?? 0) + quantity);
+      }
+      lines = [];
+      for (const [lineId, quantity] of quantityById) {
         const available = availableById.get(lineId);
         if (!available) {
           throw new ToolError(
@@ -4261,6 +4274,9 @@ const listTripInstallments = writeTool(
     const limit = typeof args.limit === "number"
       ? Math.min(100, Math.max(1, Math.floor(args.limit)))
       : 50;
+    const nowIso = new Date().toISOString();
+    // Due/failed predicate in the query BEFORE limit so a future scheduled
+    // row cannot consume the only DB slot and hide a later failed/due row.
     const { data, error } = await client
       .from("order_installments")
       .select(
@@ -4269,11 +4285,11 @@ const listTripInstallments = writeTool(
       )
       .eq("orders.event_id", eventId)
       .in("status", ["scheduled", "failed"])
+      .or(`status.eq.failed,due_at.lte.${nowIso}`)
       .order("due_at", { ascending: true })
       .limit(limit);
     if (error) throw new ToolError("RPC_FAILED", error.message);
-    const nowIso = new Date().toISOString();
-    // Advertised as due/failed — keep failed, drop future scheduled.
+    // Defense in depth — same due/failed contract as the query filter.
     const installments = (data ?? [])
       .filter((row: Record<string, unknown>) => {
         if (row.status === "failed") return true;
@@ -4283,14 +4299,14 @@ const listTripInstallments = writeTool(
         return false;
       })
       .map((row: Record<string, unknown>) => ({
-      installment_id: row.id,
-      order_id: row.order_id,
-      status: row.status,
-      due_at: row.due_at,
-      amount_cents: row.amount_cents,
-      currency: row.currency ?? null,
-      ordinal: row.ordinal ?? null,
-    }));
+        installment_id: row.id,
+        order_id: row.order_id,
+        status: row.status,
+        due_at: row.due_at,
+        amount_cents: row.amount_cents,
+        currency: row.currency ?? null,
+        ordinal: row.ordinal ?? null,
+      }));
     return { event_id: eventId, brand_id: brandId, installments };
   },
 );
