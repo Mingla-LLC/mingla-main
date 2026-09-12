@@ -87,7 +87,8 @@ Deno.test("#1980 implementor: auth + read-only pins", () => {
 
 // [TEST-MOD-APPROVED #1980] prompt bumped with draft mutate + growth report tools.
 Deno.test("#1980 implementor: PROMPT_VERSION v17 advertises new tools", () => {
-  assertEquals(PROMPT_VERSION, "v17");
+  // [TEST-MOD-APPROVED #1981] prompt v17→v18 for refund/cancel discovery.
+  assertEquals(PROMPT_VERSION, "v18");
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assertStringIncludes(prompt, "update_campaign_draft");
   assertStringIncludes(prompt, "delete_campaign_draft");

@@ -122,6 +122,13 @@ function humanizeToolName(toolName: string): string {
     case "discard_event_draft": return "Discard draft";
     case "send_campaign_now": return "Send campaign";
     case "refund_order": return "Refund order";
+    case "cancel_order": return "Cancel free order";
+    case "cancel_trip_booking": return "Cancel trip booking";
+    case "charge_installment_now": return "Charge installment now";
+    case "retry_installment": return "Retry installment";
+    case "send_installment_reminder": return "Send installment reminder";
+    case "get_order_refund_preview": return "Preview refundable lines";
+    case "list_trip_installments": return "List trip installments";
     case "request_account_deletion": return "Delete account";
     case "propose_site_content_update": return "Confirm Website draft";
     case "propose_site_settings_update": return "Confirm Website settings draft";
@@ -143,6 +150,9 @@ export const MONEY_CONFIRM_TOOLS: Record<string, string> = {
   refund_order: "REFUND",
   cancel_order: "CANCEL",
   cancel_trip_booking: "CANCEL",
+  // #1981 — backend MONEY_CONFIRM_TOOLS already requires CHARGE; client must
+  // send confirm_phrase or charge_installment_now never confirms.
+  charge_installment_now: "CHARGE",
   export_brand_people: "EXPORT",
   request_account_deletion: "DELETE",
 };

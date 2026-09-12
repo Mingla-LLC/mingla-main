@@ -113,7 +113,8 @@ Deno.test("#1978 implementor: auth + read-only pins", () => {
 Deno.test("#1978 implementor: PROMPT_VERSION advertises manage_venue_gallery", () => {
   // [TEST-MOD-APPROVED #1976] Prompt revision advanced for payout/tax connect-status ads.
   // [TEST-MOD-APPROVED #1980] Prompt revision advanced for marketing draft/growth report tools.
-  assertEquals(PROMPT_VERSION, "v17");
+  // [TEST-MOD-APPROVED #1981] prompt v17→v18 for refund/cancel discovery.
+  assertEquals(PROMPT_VERSION, "v18");
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assert(prompt.includes("manage_venue_gallery"));
 });

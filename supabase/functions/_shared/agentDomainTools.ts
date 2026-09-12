@@ -3841,15 +3841,96 @@ const listPartnerSplits = writeTool(
 );
 
 // ----------------------------------------------------------------------------
-// K. Refunds / cancels / installments
+// K. Refunds / cancels / installments (#1981 e2e)
 // ----------------------------------------------------------------------------
 
-// #1981 — `refund-order` requires a NON-EMPTY `lines` array (each
-// {order_line_item_id, quantity, amount_cents}) plus a 10–200 char `reason`,
-// and an Idempotency-Key header. The pre-repair tool sent {order_id,
-// amount_cents} — no lines, no reason — so the function 400'd
-// `refund_lines_required` on every call. Ari supplies the lines it read back
-// from the order; the RPC re-validates line ownership + over-refund.
+// #1981 — Host RefundSheet / fullRefundLines parity: remaining qty × unit
+// price, after subtracting succeeded refund_line_items. Never invent line IDs.
+type RefundLinePayload = {
+  order_line_item_id: string;
+  quantity: number;
+  amount_cents: number;
+};
+
+async function loadOrderRefundableLines(
+  client: any,
+  orderId: string,
+  brandId: string,
+): Promise<{
+  payment_method: string | null;
+  payment_status: string | null;
+  currency: string | null;
+  lines: RefundLinePayload[];
+}> {
+  const { data, error } = await client
+    .from("orders")
+    .select(
+      `id, payment_method, payment_status, currency, total_cents,
+       events!inner ( brand_id ),
+       order_line_items ( id, quantity, unit_price_cents, total_cents ),
+       refunds ( status, refund_line_items ( order_line_item_id, quantity, amount_cents ) )`,
+    )
+    .eq("id", orderId)
+    .maybeSingle();
+  if (error) throw new ToolError("RPC_FAILED", error.message);
+  if (!data) {
+    throw new ToolError("INVALID_ARGS", "That order was not found.");
+  }
+  const eventBrand = (data as { events?: { brand_id?: string } | null }).events
+    ?.brand_id;
+  if (eventBrand !== brandId) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "order_id does not belong to this brand.",
+    );
+  }
+  const refundedQtyByLine: Record<string, number> = {};
+  const refunds = Array.isArray(data.refunds) ? data.refunds : [];
+  for (const refund of refunds as Array<Record<string, unknown>>) {
+    if (refund.status !== "succeeded") continue;
+    const rlis = Array.isArray(refund.refund_line_items)
+      ? refund.refund_line_items as Array<Record<string, unknown>>
+      : [];
+    for (const rli of rlis) {
+      const lineId = String(rli.order_line_item_id ?? "");
+      if (!lineId) continue;
+      refundedQtyByLine[lineId] = (refundedQtyByLine[lineId] ?? 0) +
+        Number(rli.quantity ?? 0);
+    }
+  }
+  const rawLines = Array.isArray(data.order_line_items)
+    ? data.order_line_items as Array<Record<string, unknown>>
+    : [];
+  const lines: RefundLinePayload[] = [];
+  for (const line of rawLines) {
+    const lineId = String(line.id ?? "");
+    if (!isUuid(lineId)) continue;
+    const qty = Number(line.quantity ?? 0);
+    const unit = Number(line.unit_price_cents ?? 0);
+    const remaining = qty - (refundedQtyByLine[lineId] ?? 0);
+    if (remaining <= 0) continue;
+    lines.push({
+      order_line_item_id: lineId,
+      quantity: remaining,
+      amount_cents: remaining * unit,
+    });
+  }
+  return {
+    payment_method: typeof data.payment_method === "string"
+      ? data.payment_method
+      : null,
+    payment_status: typeof data.payment_status === "string"
+      ? data.payment_status
+      : null,
+    currency: typeof data.currency === "string" ? data.currency : null,
+    lines,
+  };
+}
+
+// #1981 — `refund-order` requires a NON-EMPTY `lines` array plus a 10–200 char
+// reason and an Idempotency-Key pinned to the Ari pending-action id (Host pins
+// the key to the gesture). Omit `lines` → server builds remaining refundable
+// lines (full refund). Present `lines` → partial. Never invent line UUIDs.
 const REFUND_LINE = {
   type: "object",
   additionalProperties: false,
@@ -3863,24 +3944,18 @@ const REFUND_LINE = {
 
 const refundOrder = writeTool(
   "refund_order",
-  "Refund specific order line items via refund-order. Finance-role gated. Requires the line items to refund and a reason. Idempotency-Key required.",
+  "Refund an order via refund-order (same Host path as RefundSheet). Finance-gated. Omit lines for a full remaining refund, or pass specific lines for a partial. Type REFUND. Idempotency-Key = Ari operation id.",
   {
     brand_id: UUID,
     order_id: UUID,
     lines: { type: "array", minItems: 1, items: REFUND_LINE },
     reason: { type: "string", minLength: 10, maxLength: 200 },
   },
-  ["brand_id", "order_id", "lines", "reason"],
-  async (args, client, userId) => {
-    await requireBrand(args, client, userId);
+  ["brand_id", "order_id", "reason"],
+  async (args, client, userId, context) => {
+    const brandId = requireBrand(args, client, userId);
     if (!isUuid(args.order_id)) {
       throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
-    }
-    if (!Array.isArray(args.lines) || args.lines.length === 0) {
-      throw new ToolError(
-        "INVALID_ARGS",
-        "At least one refund line is required.",
-      );
     }
     const reason = typeof args.reason === "string" ? args.reason.trim() : "";
     if (reason.length < 10 || reason.length > 200) {
@@ -3889,11 +3964,28 @@ const refundOrder = writeTool(
         "A refund reason of 10–200 characters is required.",
       );
     }
+    let lines: RefundLinePayload[];
+    if (Array.isArray(args.lines) && args.lines.length > 0) {
+      lines = args.lines as RefundLinePayload[];
+    } else {
+      const preview = await loadOrderRefundableLines(
+        client,
+        args.order_id as string,
+        brandId,
+      );
+      lines = preview.lines;
+      if (lines.length === 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "There is nothing left to refund on this order.",
+        );
+      }
+    }
     return await invokeFn(
       client,
       "refund-order",
-      { order_id: args.order_id, lines: args.lines, reason },
-      { "Idempotency-Key": newIdempotencyKey() },
+      { order_id: args.order_id, lines, reason },
+      { "Idempotency-Key": requireAgentOperationId(context) },
     );
   },
   "REFUND",
@@ -3901,21 +3993,18 @@ const refundOrder = writeTool(
 
 const cancelOrder = writeTool(
   "cancel_order",
-  "Cancel a FREE order via cancel-order (paid orders must be refunded, not cancelled). Finance-role gated. Requires a reason. Idempotency-Key required.",
+  "Cancel a FREE order via cancel-order (paid orders must use refund_order). Finance-gated. Type CANCEL. Idempotency-Key = Ari operation id.",
   {
     brand_id: UUID,
     order_id: UUID,
     reason: { type: "string", minLength: 10, maxLength: 200 },
   },
   ["brand_id", "order_id", "reason"],
-  async (args, client, userId) => {
-    await requireBrand(args, client, userId);
+  async (args, client, userId, context) => {
+    const brandId = requireBrand(args, client, userId);
     if (!isUuid(args.order_id)) {
       throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
     }
-    // #1981 — cancel-order requires reason (10–200) + Idempotency-Key header.
-    // The pre-repair tool sent {order_id} only, so the function 400'd
-    // `reason_invalid_length` on every call.
     const reason = typeof args.reason === "string" ? args.reason.trim() : "";
     if (reason.length < 10 || reason.length > 200) {
       throw new ToolError(
@@ -3923,11 +4012,25 @@ const cancelOrder = writeTool(
         "A cancellation reason of 10–200 characters is required.",
       );
     }
+    // #1981 — fail closed BEFORE invoke when the order is paid (Host routes
+    // paid orders to RefundSheet; biz_cancel_order raises
+    // paid_orders_must_be_refunded_not_cancelled).
+    const preview = await loadOrderRefundableLines(
+      client,
+      args.order_id as string,
+      brandId,
+    );
+    if (preview.payment_method !== "free") {
+      throw new ToolError(
+        "PAID_ORDER_MUST_REFUND",
+        "Paid orders cannot be cancelled — use refund_order instead (same as the Host money screen).",
+      );
+    }
     return await invokeFn(
       client,
       "cancel-order",
       { order_id: args.order_id, reason },
-      { "Idempotency-Key": newIdempotencyKey() },
+      { "Idempotency-Key": requireAgentOperationId(context) },
     );
   },
   "CANCEL",
@@ -3935,15 +4038,15 @@ const cancelOrder = writeTool(
 
 const cancelTripBooking = writeTool(
   "cancel_trip_booking",
-  "Cancel a trip booking (operator) via cancel-trip-booking. Previews the refund, then commits at that exact amount. Finance-role gated. Requires a reason.",
+  "Cancel a trip booking (operator) via cancel-trip-booking. Previews the refund, then commits at that exact amount. Finance-gated. Type CANCEL. Idempotency-Key = Ari operation id.",
   {
     brand_id: UUID,
     booking_id: UUID,
     reason: { type: "string", minLength: 10, maxLength: 200 },
   },
   ["brand_id", "booking_id", "reason"],
-  async (args, client, userId) => {
-    await requireBrand(args, client, userId);
+  async (args, client, userId, context) => {
+    requireBrand(args, client, userId);
     if (!isUuid(args.booking_id)) {
       throw new ToolError("INVALID_ARGS", "booking_id must be a uuid");
     }
@@ -3955,21 +4058,13 @@ const cancelTripBooking = writeTool(
       );
     }
     // #1981 — cancel-trip-booking is a preview→commit engine (ORCH-0875 Tr4).
-    // Commit MUST carry `expectedRefundTotalCents` (SC-22 freshness); the
-    // pre-repair tool sent {booking_id} and 400'd `order_id_required`. We
-    // preview under the caller JWT to pin the amount, then commit that exact
-    // value in operator mode. Both take camelCase `orderId` (= booking_id).
+    // Commit MUST carry `expectedRefundTotalCents` (SC-22 freshness).
     const preview = await invokeFn<{ refundTotalCents?: number }>(
       client,
       "cancel-trip-booking",
       { mode: "preview", orderId: args.booking_id },
     );
-    // #2593 — FAIL CLOSED on the amount. This used to default a missing or
-    // non-numeric `refundTotalCents` to `0` and commit anyway, which is the
-    // exact opposite of the freshness contract two lines above: a preview that
-    // could not price the cancellation would silently commit a ZERO refund and
-    // the buyer would be owed money nobody moved. There is no safe default for
-    // a money amount — if the preview did not price it, nothing is committed.
+    // #2593 — FAIL CLOSED on the amount. No safe default for a money amount.
     const expectedRefundTotalCents = preview?.refundTotalCents;
     if (
       typeof expectedRefundTotalCents !== "number" ||
@@ -3990,7 +4085,7 @@ const cancelTripBooking = writeTool(
         reason,
         expectedRefundTotalCents,
       },
-      { "Idempotency-Key": newIdempotencyKey() },
+      { "Idempotency-Key": requireAgentOperationId(context) },
     );
   },
   "CANCEL",
@@ -3998,11 +4093,14 @@ const cancelTripBooking = writeTool(
 
 const retryInstallment = writeTool(
   "retry_installment",
-  "Retry a failed installment via biz_retry_installment.",
+  "Retry a failed installment via biz_retry_installment (same Host Trip Money path). Finance-gated. Standard confirm.",
   { brand_id: UUID, installment_id: UUID },
   ["brand_id", "installment_id"],
   async (args, client, userId) => {
-    await requireBrand(args, client, userId);
+    requireBrand(args, client, userId);
+    if (!isUuid(args.installment_id)) {
+      throw new ToolError("INVALID_ARGS", "installment_id must be a uuid");
+    }
     return await callRpc(client, "biz_retry_installment", {
       p_installment_id: args.installment_id,
     });
@@ -4020,7 +4118,7 @@ const chargeInstallmentNow = writeTool(
   },
   ["brand_id", "installment_id"],
   async (args, client, userId) => {
-    await requireBrand(args, client, userId);
+    requireBrand(args, client, userId);
     if (!isUuid(args.installment_id)) {
       throw new ToolError("INVALID_ARGS", "installment_id must be a uuid");
     }
@@ -4035,17 +4133,91 @@ const chargeInstallmentNow = writeTool(
 // #1981 — same Host edge as Trip Money → Send reminder.
 const sendInstallmentReminder = writeTool(
   "send_installment_reminder",
-  "Send a buyer trip-installment reminder via send-installment-reminder. Finance-gated.",
+  "Send a buyer trip-installment reminder via send-installment-reminder. Finance-gated. Standard confirm.",
   { brand_id: UUID, order_id: UUID },
   ["brand_id", "order_id"],
   async (args, client, userId) => {
-    await requireBrand(args, client, userId);
+    requireBrand(args, client, userId);
     if (!isUuid(args.order_id)) {
       throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
     }
     return await invokeFn(client, "send-installment-reminder", {
       orderId: args.order_id,
     });
+  },
+);
+
+// #1981 — PII-free discovery reads so Ari can propose without inventing UUIDs.
+const getOrderRefundPreview = writeTool(
+  "get_order_refund_preview",
+  "Read remaining refundable line items for one order (ids, qty, cents, payment_method). No buyer name/email/phone. Use before refund_order.",
+  { brand_id: UUID, order_id: UUID },
+  ["brand_id", "order_id"],
+  async (args, client, userId) => {
+    const brandId = requireBrand(args, client, userId);
+    if (!isUuid(args.order_id)) {
+      throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
+    }
+    await assertAgentReadBrand(client, userId, brandId);
+    const preview = await loadOrderRefundableLines(
+      client,
+      args.order_id as string,
+      brandId,
+    );
+    return {
+      order_id: args.order_id,
+      brand_id: brandId,
+      payment_method: preview.payment_method,
+      payment_status: preview.payment_status,
+      currency: preview.currency,
+      refundable_lines: preview.lines,
+      refundable_total_cents: preview.lines.reduce(
+        (sum, line) => sum + line.amount_cents,
+        0,
+      ),
+    };
+  },
+);
+
+const listTripInstallments = writeTool(
+  "list_trip_installments",
+  "List due/failed trip installments for a trip (installment_id, order_id, status, due_at, amount_cents). No buyer PII. Use before retry_installment / charge_installment_now / send_installment_reminder / cancel_trip_booking.",
+  {
+    brand_id: UUID,
+    event_id: UUID,
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+  },
+  ["brand_id", "event_id"],
+  async (args, client, userId) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    if (brandId !== args.brand_id) {
+      throw new ToolError("INVALID_ARGS", "brand_id does not match the trip");
+    }
+    await assertAgentReadEvent(client, userId, eventId);
+    const limit = typeof args.limit === "number"
+      ? Math.min(100, Math.max(1, Math.floor(args.limit)))
+      : 50;
+    const { data, error } = await client
+      .from("order_installments")
+      .select(
+        `id, order_id, status, due_at, amount_cents, currency, ordinal,
+         orders!inner ( event_id )`,
+      )
+      .eq("orders.event_id", eventId)
+      .in("status", ["scheduled", "failed"])
+      .order("due_at", { ascending: true })
+      .limit(limit);
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    const installments = (data ?? []).map((row: Record<string, unknown>) => ({
+      installment_id: row.id,
+      order_id: row.order_id,
+      status: row.status,
+      due_at: row.due_at,
+      amount_cents: row.amount_cents,
+      currency: row.currency ?? null,
+      ordinal: row.ordinal ?? null,
+    }));
+    return { event_id: eventId, brand_id: brandId, installments };
   },
 );
 
@@ -6065,6 +6237,8 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   retryInstallment,
   chargeInstallmentNow,
   sendInstallmentReminder,
+  getOrderRefundPreview,
+  listTripInstallments,
   getBrandAnalytics,
   getEventOrderReconciliation,
   inviteBrandMember,
@@ -6119,6 +6293,9 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   // issue #1971 — the trip order/money snapshot is a fail-closed aggregate
   // read. finance_manager+ is enforced in SQL; it writes nothing.
   "get_trip_order_money",
+  // #1981 — PII-free money discovery reads before refund/cancel/charge.
+  "get_order_refund_preview",
+  "list_trip_installments",
 ]);
 
 export const MONEY_CONFIRM_TOOLS = new Set<string>([

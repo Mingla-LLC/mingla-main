@@ -157,6 +157,9 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   // #1981 — Trip Money manual charge + reminder; same finance floor as Host.
   charge_installment_now: role("finance_manager", "brand"),
   send_installment_reminder: role("finance_manager", "brand"),
+  // #1981 — PII-free discovery reads before money writes.
+  get_order_refund_preview: role("finance_manager", "brand"),
+  list_trip_installments: role("finance_manager", "brand"),
   get_brand_analytics: role("scanner", "brand"),
   invite_brand_member: role("brand_admin", "brand"),
   invite_scanner: role("event_manager", "brand"),

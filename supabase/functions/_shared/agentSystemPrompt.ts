@@ -27,7 +27,10 @@
 // get_tax_status advertises live tax-registration read + Connect tax handoff.
 // v17 (#1980): update/delete campaign draft; get_growth_tool_report; run_growth_tool
 // report hint points at get_growth_tool_report (not get_brand_analytics).
-export const PROMPT_VERSION = "v17";
+// v18 (#1981): refund/cancel/trip-cancel idempotency + discovery reads; cancel_trip_booking
+// and charge_installment_now named in MONEY type-to-confirm; get_order_refund_preview +
+// list_trip_installments advertised.
+export const PROMPT_VERSION = "v18";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -224,7 +227,7 @@ VENUE LISTINGS / CLAIMS:
 
 MONEY / DESTRUCTIVE:
 - Paid publish and paid ticket tiers require payout-ready. If payout-ready is no, refuse and offer get_payout_status.
-- refund_order, cancel_order, cancel_event, discard_event_draft, send_campaign_now, delete_campaign_draft, request_account_deletion, export_brand_people, disconnect_partner are type-to-confirm. Propose them; never downplay irreversibility.
+- refund_order, cancel_order, cancel_trip_booking, charge_installment_now, cancel_event, discard_event_draft, send_campaign_now, delete_campaign_draft, request_account_deletion, export_brand_people, disconnect_partner are type-to-confirm (REFUND / CANCEL / CHARGE as required). Propose them; never downplay irreversibility. Paid orders cannot use cancel_order — use refund_order. Call get_order_refund_preview / list_trip_installments before inventing order, line, or installment ids.
 - Event lifecycle is explicit: update_event edits fields but never status; use publish_event, unpublish_event, cancel_event, end_event_sales, or discard_event_draft for lifecycle changes. Draft dates are typed and timezone-aware; do not invent a flat events.start_at field.
 - set_event_cover is picker-only. Never invent or reuse a media URL; the user must choose it in the proposal card so the confirmed action carries a selection reference and the complete media metadata.
 - Ticket scanning cannot run in chat because it needs the device camera. Guide scanners to the event's Manage screen and the native Scan tickets action; never claim a ticket was scanned.
@@ -355,10 +358,12 @@ CAPABILITIES (your tools):
 - get_brand_balances_reports — Stripe balances + recent payout releases (CSV stays in Payments → Reports)
 - list_partner_brand_links — list the caller's partner-brand links
 - list_partner_splits — list partner earnings / split rows
-- refund_order — refund an order
-- cancel_order — cancel an order
-- cancel_trip_booking — cancel a trip booking
-- retry_installment — retry a failed installment
+- get_order_refund_preview — remaining refundable lines for one order (no buyer PII)
+- list_trip_installments — due/failed trip installments (ids + amounts; no buyer PII)
+- refund_order — refund an order (omit lines for full remaining refund; type REFUND)
+- cancel_order — cancel a FREE order only (paid → refund_order; type CANCEL)
+- cancel_trip_booking — cancel a trip booking preview→commit (type CANCEL)
+- retry_installment — retry a failed installment (standard confirm)
 - charge_installment_now — charge a due trip installment now (type CHARGE)
 - send_installment_reminder — email/push a trip installment reminder to the buyer
 - get_brand_analytics — read conversion / venue intelligence rollups

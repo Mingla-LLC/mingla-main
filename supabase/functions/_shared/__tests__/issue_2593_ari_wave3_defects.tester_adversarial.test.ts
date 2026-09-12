@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #1981] cancel_trip_booking Idempotency-Key = operation id.
 // deno-lint-ignore-file no-explicit-any
 // [TEST-MOD-APPROVED #1977] set_guest_approval retired; containment
 // proofs now drive set_rsvp_guest_status via roster_keys (rsvp:<uuid>).
@@ -322,7 +323,7 @@ async function cancelWith(
       args,
       client,
       CALLER,
-      undefined as never,
+      { operationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
     );
     return { error: null, calls };
   } catch (error) {

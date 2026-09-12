@@ -6,6 +6,8 @@
 //
 // Every assertion here is written to FAIL when its fix is deleted from source.
 // The tester owns the adversarial angle separately.
+// [TEST-MOD-APPROVED #1981] cancel_trip_booking now requires
+// context.operationId as Idempotency-Key (Host gesture pin).
 
 import {
   assert,
@@ -148,7 +150,7 @@ Deno.test("#2593 D1 cancel_trip_booking commits the EXACT previewed refund", asy
     },
     client,
     CALLER,
-    undefined as never,
+    { operationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
   );
   assertEquals(calls.invokeCalls.length, 2);
   assertEquals(calls.invokeCalls[1].body.mode, "operator");
@@ -178,7 +180,7 @@ Deno.test("#2593 D1 an unpriced preview refuses instead of committing zero", asy
           },
           client,
           CALLER,
-          undefined as never,
+          { operationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
         ),
       ToolError,
     );
