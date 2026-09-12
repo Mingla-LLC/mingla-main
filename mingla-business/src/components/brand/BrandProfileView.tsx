@@ -82,6 +82,9 @@ import { KpiTile } from "../ui/KpiTile";
 import { OfferingListCard } from "../offering/OfferingListCard";
 import { liveEventToOfferingModel } from "../offering/offeringCardModels";
 import { TopBar } from "../ui/TopBar";
+import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
+// #3259 — names the signed-in account on the settled-null brand branch below.
+import { useSwitchAccount } from "../../hooks/useSwitchAccount";
 
 interface OperationsRow {
   icon: IconName;
@@ -282,6 +285,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { width: windowWidth } = useWindowDimensions();
+  const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const reduceMotion = useReducedMotion();
   // Issue #1835 — signed-in operator, for the owner-only delete gate below.
   const { user: authUser } = useAuth();
@@ -614,10 +618,27 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         <ScrollView contentContainerStyle={styles.scroll}>
           <GlassCard variant="elevated" padding={spacing.lg}>
             <Text style={styles.notFoundTitle}>Brand not found</Text>
+            {/*
+              #3259 — was "doesn't exist or has been removed", which ASSERTS a
+              fact the client cannot know. A brand that is simply invisible to
+              this account reads identically to a deleted one.
+            */}
             <Text style={styles.notFoundBody}>
-              The brand you tried to open doesn{"’"}t exist or has been removed.
-              Go back to your account to pick another.
+              We couldn{"’"}t open that brand. Go back to your account to pick
+              another.
             </Text>
+            {/*
+              #3259 — a signed-in reader gets the account named and a way out.
+              The client CANNOT tell a deleted brand from an RLS-filtered one
+              (`.maybeSingle()` returns `{data: null, error: null}` for both), so
+              the copy states both possibilities and asserts neither.
+            */}
+            <SignedInNotFoundNotice
+              variant="restricted"
+              signedInEmail={signedInEmail}
+              onSwitchAccount={onSwitchAccount}
+              testID="brand-profile-not-found-signed-in-notice"
+            />
             <View style={styles.notFoundBtnRow}>
               <Button
                 label="Back to Account"

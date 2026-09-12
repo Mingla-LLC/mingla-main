@@ -74,6 +74,27 @@ jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 59, bottom: 34, left: 0, right: 0 }),
 }));
 
+// #3259 — the business 404 now reads the session so it can name a wrong
+// account instead of sending a signed-in user hunting for a typo. This suite
+// invokes the screen as a PLAIN FUNCTION (no renderer, so no React dispatcher),
+// where a real `useContext` throws; and the real AuthContext module drags in the
+// supabase client, which this node-env suite cannot load either.
+//
+// ADDITIVE, and deliberately SIGNED OUT. Every #2180 assertion below is about
+// the signed-out screen — the structure that stranded the user on device — so
+// pinning `user: null` keeps all 63 of them (19 `it` blocks, several
+// `describe.each`/`it.each` over both apps and the Dynamic Type table)
+// measuring exactly what they measured before, byte for byte. The signed-in branch is asserted in
+// `issue_3259_signed_in_not_found.implementor.happy.test.tsx`, which drives the
+// same screen through the other value of this same mock.
+jest.mock("../src/context/AuthContext", () => ({
+  useAuth: () => ({
+    user: null,
+    isAuthReady: true,
+    signOut: jest.fn(async () => undefined),
+  }),
+}));
+
 // expo-haptics ships ESM and is reached via both apps' haptic helpers. Nothing
 // here fires a haptic; the module only has to load.
 jest.mock("expo-haptics", () => ({

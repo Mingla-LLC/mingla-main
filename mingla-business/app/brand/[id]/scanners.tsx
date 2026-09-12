@@ -29,6 +29,9 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
+import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
+// #3259 — names the signed-in account on the settled-null brand branch below.
+import { useSwitchAccount } from "../../../src/hooks/useSwitchAccount";
 import {
   useScannerInvitationsForBrand,
   useRevokeScannerInvitation,
@@ -90,6 +93,7 @@ const invitationStatusPill = (
 export default function BrandScannersListRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const brandId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { user } = useAuth();
@@ -185,7 +189,25 @@ export default function BrandScannersListRoute(): React.ReactElement {
           <EmptyState
             illustration="ticket"
             title="Brand not found"
-            description="It may have been deleted."
+            // #3259 P2-3 — the host's own hedge is for a reader we know
+            // NOTHING about. When the notice renders it says this and names the
+            // account, so showing both states one cause and then a different
+            // set of causes a line apart. Signed-out keeps it verbatim.
+            description={
+              signedInEmail === null ? "It may have been deleted." : undefined
+            }
+          />
+          {/*
+            #3259 — a signed-in reader gets the account named and a way out. The
+            client CANNOT tell a deleted row from an RLS-filtered one
+            (`.maybeSingle()` returns `{data: null, error: null}` for both), so
+            the copy states both possibilities and asserts neither.
+          */}
+          <SignedInNotFoundNotice
+            variant="restricted"
+            signedInEmail={signedInEmail}
+            onSwitchAccount={onSwitchAccount}
+            testID="brand-scanners-not-found-signed-in-notice"
           />
         </View>
       </View>

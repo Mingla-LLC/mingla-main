@@ -74,6 +74,9 @@ import { EventDetailTicketTypeRow } from "../../../src/components/event/EventDet
 import { EventManageMenu } from "../../../src/components/event/EventManageMenu";
 import { ReconciliationCtaTile } from "../../../src/components/event/ReconciliationCtaTile";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
+// #3259 — names the signed-in account on the not-found branch below.
+import { useSwitchAccount } from "../../../src/hooks/useSwitchAccount";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
 import {
@@ -111,6 +114,7 @@ const deriveScreenStatus = (event: LiveEvent): EventStatus => {
 export default function EventDetailScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const params = useLocalSearchParams<{ id: string }>();
   const id = typeof params.id === "string" ? params.id : null;
 
@@ -699,8 +703,28 @@ export default function EventDetailScreen(): React.ReactElement {
           <EmptyState
             illustration="ticket"
             title="Event not found"
-            description="This event may have been deleted or moved."
+            // #3259 P2-3 — the host's own hedge is for a reader we know
+            // NOTHING about. When the notice renders it says this and names the
+            // account, so showing both states one cause and then a different
+            // set of causes a line apart. Signed-out keeps it verbatim.
+            description={
+              signedInEmail === null
+                ? "This event may have been deleted or moved."
+                : undefined
+            }
             cta={{ label: "Back to events", onPress: handleBack }}
+          />
+          {/*
+            #3259 — a signed-in reader gets the account named and a way out. The
+            client CANNOT tell a deleted row from an RLS-filtered one
+            (`.maybeSingle()` returns `{data: null, error: null}` for both), so
+            the copy states both possibilities and asserts neither.
+          */}
+          <SignedInNotFoundNotice
+            variant="restricted"
+            signedInEmail={signedInEmail}
+            onSwitchAccount={onSwitchAccount}
+            testID="event-not-found-signed-in-notice"
           />
         </View>
       </View>

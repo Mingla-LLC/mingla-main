@@ -69,6 +69,9 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
+import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
+// #3259 — names the signed-in account on the settled-null brand branch below.
+import { useSwitchAccount } from "../../hooks/useSwitchAccount";
 
 interface ToastState {
   visible: boolean;
@@ -182,6 +185,7 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
 }) => {
   const insets = useSafeAreaInsets();
   const [period, setPeriod] = useState<TimeRange>("30d");
+  const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
 
   const fireToast = useCallback((message: string): void => {
@@ -265,10 +269,26 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
         <ScrollView contentContainerStyle={styles.scroll}>
           <GlassCard variant="elevated" padding={spacing.lg}>
             <Text style={styles.notFoundTitle}>Brand not found</Text>
+            {/*
+              #3259 — was "doesn't exist or has been removed", which ASSERTS a
+              fact the client cannot know.
+            */}
             <Text style={styles.notFoundBody}>
-              The brand you tried to open doesn{"’"}t exist or has been removed.
-              Go back to your account to pick another.
+              We couldn{"’"}t open that brand. Go back to your account to pick
+              another.
             </Text>
+            {/*
+              #3259 — a signed-in reader gets the account named and a way out.
+              The client CANNOT tell a deleted brand from an RLS-filtered one
+              (`.maybeSingle()` returns `{data: null, error: null}` for both), so
+              the copy states both possibilities and asserts neither.
+            */}
+            <SignedInNotFoundNotice
+              variant="restricted"
+              signedInEmail={signedInEmail}
+              onSwitchAccount={onSwitchAccount}
+              testID="brand-finance-not-found-signed-in-notice"
+            />
             <View style={styles.notFoundBtnRow}>
               <Button
                 label="Back to Account"
