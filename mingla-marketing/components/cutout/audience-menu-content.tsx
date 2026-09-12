@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Compass, Store } from 'lucide-react'
+import { Compass, House, Info, MapPinned, Store, Wrench } from 'lucide-react'
 import { DeviceCta, type CutoutSurface } from './device-cta'
 
 const EXPLORER_PAGE_SYSTEM_PATHS = new Set([
@@ -17,9 +17,13 @@ const HOST_PATHS = new Set([
 ])
 
 function surfaceForPath(pathname: string): CutoutSurface | null {
-  if (pathname === '/' || EXPLORER_PAGE_SYSTEM_PATHS.has(pathname)) return 'explorer'
+  if (pathname === '/' || pathname === '/explorer' || pathname.startsWith('/explorer/') || EXPLORER_PAGE_SYSTEM_PATHS.has(pathname)) return 'explorer'
   if (HOST_PATHS.has(pathname) || pathname.startsWith('/host/')) return 'host'
   return null
+}
+
+function destinationIsCurrent(pathname: string, href: string): boolean {
+  return pathname === href || (href !== '/' && pathname.startsWith(`${href}/`))
 }
 
 export function AudienceMenuContent({
@@ -32,17 +36,19 @@ export function AudienceMenuContent({
   readonly onChildDialogOpenChange: (open: boolean) => void
 }) {
   const pathname = usePathname()
-  const activeSurface = surfaceForPath(pathname) ?? surface
   const audienceDestinations = [
     { href: '/explorer', label: 'Explorer', surface: 'explorer' as const, Icon: Compass },
     { href: '/host', label: 'Host', surface: 'host' as const, Icon: Store },
   ]
   const supportingDestinations = [
-    { href: '/', label: 'Home' },
-    { href: '/cities', label: 'Cities' },
-    { href: '/about', label: 'About' },
-    { href: '/tools', label: 'Free tools' },
+    { href: '/', label: 'Home', Icon: House },
+    { href: '/cities', label: 'Cities', Icon: MapPinned },
+    { href: '/about', label: 'About', Icon: Info },
+    { href: '/tools', label: 'Free tools', Icon: Wrench },
   ]
+  const supportingDestinationIsCurrent = supportingDestinations.some(({ href }) => destinationIsCurrent(pathname, href))
+  const activeSurface = supportingDestinationIsCurrent ? null : surfaceForPath(pathname) ?? surface
+  const menuButtonClass = 'cut-btn flex min-h-14 w-full justify-start gap-3.5 rounded-2xl px-5 font-display text-base focus-ring'
 
   return (
     <>
@@ -57,8 +63,8 @@ export function AudienceMenuContent({
               onClick={onDismiss}
               className={
                 active
-                  ? 'cut-btn cut-btn-brand flex min-h-14 items-center gap-3.5 rounded-2xl px-5 font-display text-base text-white focus-ring'
-                  : 'flex min-h-14 items-center gap-3.5 rounded-2xl px-5 font-display text-base text-[var(--cut-ink)] transition-colors hover:bg-[var(--cut-card-sunken)] focus-ring'
+                  ? `${menuButtonClass} cut-btn-brand text-white`
+                  : `${menuButtonClass} cut-btn-light text-[var(--cut-ink)]`
               }
             >
               <Icon className="h-5 w-5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
@@ -67,17 +73,24 @@ export function AudienceMenuContent({
           )
         })}
         <div className="my-2 border-t" style={{ borderColor: 'var(--cut-hairline)' }} />
-        {supportingDestinations.map(({ href, label }) => (
-          <Link
-            key={href}
-            href={href}
-            aria-current={pathname === href || (href !== '/' && pathname.startsWith(`${href}/`)) ? 'page' : undefined}
-            onClick={onDismiss}
-            className="flex min-h-11 items-center rounded-2xl px-5 text-sm font-bold text-[var(--cut-body)] transition-colors hover:bg-[var(--cut-card-sunken)] hover:text-[var(--cut-ink)] focus-ring"
-          >
-            {label}
-          </Link>
-        ))}
+        {supportingDestinations.map(({ href, label, Icon }) => {
+          const active = destinationIsCurrent(pathname, href)
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-current={active ? 'page' : undefined}
+              onClick={onDismiss}
+              className={active
+                ? `${menuButtonClass} cut-btn-brand text-white`
+                : `${menuButtonClass} cut-btn-light text-[var(--cut-ink)]`
+              }
+            >
+              <Icon className="h-5 w-5 shrink-0" strokeWidth={1.9} aria-hidden="true" />
+              {label}
+            </Link>
+          )
+        })}
       </nav>
 
       <div className="mt-auto flex flex-col gap-2.5 pt-6">

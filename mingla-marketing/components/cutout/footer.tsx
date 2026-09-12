@@ -1,8 +1,6 @@
 import Link from 'next/link'
 import { CutoutSection } from './primitives'
 import { DeviceCta, type CutoutSurface } from './device-cta'
-import { allCoreTrustPagesSearchReady } from '@/content/core-pages'
-import { allCityHubsSearchReady } from '@/content/cities/registry'
 
 // #2902 — Cutout footer. Dark band closing the page shell.
 //
@@ -14,11 +12,10 @@ import { allCityHubsSearchReady } from '@/content/cities/registry'
 // fourteen links 404ed. Those pages are owned by the search/page-system work;
 // when they land they get their entries back.
 export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
-  const coreReady = allCoreTrustPagesSearchReady()
   const columns = [
-    { title: 'Explore', links: [{ href: coreReady ? '/explorer' : '/', label: 'For Explorers' }, ...(coreReady && allCityHubsSearchReady() ? [{ href: '/cities', label: 'Cities' }] : [])] },
+    { title: 'Explore', links: [{ href: '/', label: 'Home' }, { href: '/explorer', label: 'For Explorers' }, { href: '/cities', label: 'Cities' }] },
     { title: 'Host', links: [{ href: '/host', label: 'For Hosts' }, { href: '/tools', label: 'Free tools' }, { href: '/help', label: 'Help centre' }] },
-    { title: 'Company', links: [...(coreReady ? [{ href: '/about', label: 'About' }] : []), { href: 'https://career.usemingla.com', label: 'Careers', external: true as const }] },
+    { title: 'Company', links: [{ href: '/about', label: 'About' }, { href: 'https://career.usemingla.com', label: 'Careers', external: true as const }] },
     { title: 'Legal', links: [{ href: '/privacy-policy', label: 'Privacy' }, { href: '/terms-of-service', label: 'Terms' }, { href: '/support', label: 'Support' }] },
   ]
   return (

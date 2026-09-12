@@ -8,7 +8,11 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
 const SELF_TEST = process.argv.includes('--self-test')
 
-function verify(menu = read('mingla-marketing/components/cutout/audience-menu-content.tsx')) {
+function verify(
+  menu = read('mingla-marketing/components/cutout/audience-menu-content.tsx'),
+  cutoutFooter = read('mingla-marketing/components/cutout/footer.tsx'),
+  marketingFooter = read('mingla-marketing/components/marketing/footer.tsx'),
+) {
   const corePages = read('mingla-marketing/content/core-pages.ts')
   const routeRegistry = read('mingla-marketing/lib/search/route-registry.ts')
   const sitemap = read('mingla-marketing/app/sitemap.ts')
@@ -18,6 +22,17 @@ function verify(menu = read('mingla-marketing/components/cutout/audience-menu-co
     assert.match(menu, new RegExp(`href: '/${slug}', label: '(?:${slug === 'about' ? 'About' : slug === 'cities' ? 'Cities' : 'Explorer'})'`), `${slug} must remain reachable before sitemap promotion`)
   }
   assert.doesNotMatch(menu, /coreReady\s*\?|allCityHubsSearchReady\(\).*Cities|allCoreTrustPagesSearchReady/, 'navigation visibility must not be coupled back to publication readiness')
+  assert.match(menu, /const menuButtonClass = 'cut-btn[^']*min-h-14[^']*w-full[^']*justify-start/, 'the shared menu must give every destination one full-width moulded button owner')
+  assert.match(menu, /supportingDestinations\.map\([\s\S]*menuButtonClass[\s\S]*cut-btn-brand[\s\S]*cut-btn-light/, 'Home, Cities, About and Free tools must receive the same selected/unselected treatment as the audience links')
+
+  const requiredFooterRoutes = ['/', '/explorer', '/cities', '/host', '/tools', '/help', '/about']
+  for (const [name, footer] of [['Cutout footer', cutoutFooter], ['marketing/tools footer', marketingFooter]]) {
+    assert.doesNotMatch(footer, /allCoreTrustPagesSearchReady|allCityHubsSearchReady|coreReady/, `${name} must stay visible independently from sitemap promotion`)
+    for (const route of requiredFooterRoutes) {
+      assert.match(footer, new RegExp(`href: '${route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`), `${name} is missing ${route}`)
+    }
+    assert.match(footer, /https:\/\/career\.usemingla\.com/, `${name} must retain the Careers destination`)
+  }
 
   assert.match(routeRegistry, /Object\.values\(CORE_PAGES\)\.filter\(\(record\) => record\.lifecycle === 'public_noindex'\)/, 'core routes must retain their noindex registry owner')
   assert.match(routeRegistry, /Object\.values\(CORE_PAGES\)[\s\S]*\.filter\(\(record\) => record\.lifecycle === 'search_ready'\)/, 'sitemap eligibility must remain lifecycle-derived')
@@ -31,10 +46,14 @@ function verify(menu = read('mingla-marketing/components/cutout/audience-menu-co
 verify()
 if (SELF_TEST) {
   const coupled = read('mingla-marketing/components/cutout/audience-menu-content.tsx').replace(
-    "{ href: '/about', label: 'About' },",
-    "...(coreReady ? [{ href: '/about', label: 'About' }] : []),",
+    "{ href: '/about', label: 'About', Icon: Info },",
+    "...(coreReady ? [{ href: '/about', label: 'About', Icon: Info }] : []),",
   )
   assert.throws(() => verify(coupled), /publication readiness|remain reachable/, 're-coupling About visibility to indexing must prove RED')
-  process.stdout.write('RED proof: coupling a public menu link back to indexing readiness was rejected\n')
+  const unstyled = read('mingla-marketing/components/cutout/audience-menu-content.tsx').replace("const menuButtonClass = 'cut-btn", "const menuButtonClass = 'flex")
+  assert.throws(() => verify(unstyled), /full-width moulded button owner/, 'flattening the shared menu must prove RED')
+  const footerGap = read('mingla-marketing/components/marketing/footer.tsx').replace("{ href: '/cities', label: 'Cities' },", "{ href: '/', label: 'Home duplicate' },")
+  assert.throws(() => verify(read('mingla-marketing/components/cutout/audience-menu-content.tsx'), read('mingla-marketing/components/cutout/footer.tsx'), footerGap), /missing \/cities/, 'removing a footer route must prove RED')
+  process.stdout.write('RED proof: coupled, flat, and footer-incomplete navigation was rejected\n')
 }
-process.stdout.write('PASS #3176 independent navigation test: public links stay visible while indexing remains fail-closed\n')
+process.stdout.write('PASS #3176 independent navigation test: complete styled menu and footer links stay visible while indexing remains fail-closed\n')

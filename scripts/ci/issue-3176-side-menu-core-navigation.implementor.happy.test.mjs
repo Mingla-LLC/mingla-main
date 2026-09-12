@@ -6,10 +6,16 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const MENU_PATH = 'mingla-marketing/components/cutout/audience-menu-content.tsx'
+const CUTOUT_FOOTER_PATH = 'mingla-marketing/components/cutout/footer.tsx'
+const MARKETING_FOOTER_PATH = 'mingla-marketing/components/marketing/footer.tsx'
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
 const SELF_TEST = process.argv.includes('--self-test')
 
-function verify(menu = read(MENU_PATH)) {
+function verify(
+  menu = read(MENU_PATH),
+  cutoutFooter = read(CUTOUT_FOOTER_PATH),
+  marketingFooter = read(MARKETING_FOOTER_PATH),
+) {
   assert.doesNotMatch(menu, /allCoreTrustPagesSearchReady|allCityHubsSearchReady|explorerFallback|coreReady\s*\?/, 'approved navigation must not disappear behind an indexing-readiness gate')
 
   const orderedLinks = [
@@ -28,8 +34,18 @@ function verify(menu = read(MENU_PATH)) {
     priorIndex = linkIndex
   }
 
-  assert.match(menu, /aria-current=\{pathname === href \|\| \(href !== '\/' && pathname\.startsWith\(`\$\{href\}\/`\)\) \? 'page' : undefined\}/, 'supporting links must expose their current route')
+  assert.match(menu, /aria-current=\{active \? 'page' : undefined\}/, 'all menu links must expose their current route')
+  assert.match(menu, /const menuButtonClass = 'cut-btn flex min-h-14 w-full justify-start[^']*font-display text-base focus-ring'/, 'every primary menu destination must inherit the same full-width moulded button anatomy')
+  assert.match(menu, /supportingDestinations\.map\([\s\S]*\? `\$\{menuButtonClass\} cut-btn-brand text-white`[\s\S]*: `\$\{menuButtonClass\} cut-btn-light text-\[var\(--cut-ink\)\]`/, 'supporting destinations must use the same active and inactive button treatments as Explorer and Host')
   assert.match(menu, /label="Explore Your City"[\s\S]*label="Host Your City"/, 'device-aware audience actions must remain stacked at the bottom')
+
+  const requiredFooterRoutes = ['/', '/explorer', '/cities', '/host', '/tools', '/help', '/about']
+  for (const [owner, source] of [[CUTOUT_FOOTER_PATH, cutoutFooter], [MARKETING_FOOTER_PATH, marketingFooter]]) {
+    assert.doesNotMatch(source, /allCoreTrustPagesSearchReady|allCityHubsSearchReady|coreReady/, `${owner} must not hide approved public links behind indexing readiness`)
+    for (const route of requiredFooterRoutes) {
+      assert.match(source, new RegExp(`href: '${route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`), `${owner} must expose ${route} in its footer navigation`)
+    }
+  }
 
   for (const owner of [
     'mingla-marketing/components/cutout/cutout-nav.tsx',
@@ -45,8 +61,12 @@ function verify(menu = read(MENU_PATH)) {
 
 verify()
 if (SELF_TEST) {
-  const reverted = read(MENU_PATH).replace("{ href: '/cities', label: 'Cities' },", "...(coreReady ? [{ href: '/cities', label: 'Cities' }] : []),")
+  const reverted = read(MENU_PATH).replace("{ href: '/cities', label: 'Cities', Icon: MapPinned },", "...(coreReady ? [{ href: '/cities', label: 'Cities', Icon: MapPinned }] : []),")
   assert.throws(() => verify(reverted), /indexing-readiness gate|must exist once/, 'restoring the hidden Cities link must prove RED')
-  process.stdout.write('RED proof: hiding Cities behind an indexing gate was rejected\n')
+  const flatMenu = read(MENU_PATH).replace("const menuButtonClass = 'cut-btn", "const menuButtonClass = 'flex")
+  assert.throws(() => verify(flatMenu), /same full-width moulded button anatomy/, 'restoring flat supporting links must prove RED')
+  const missingFooter = read(CUTOUT_FOOTER_PATH).replace("{ href: '/about', label: 'About' }, ", '')
+  assert.throws(() => verify(read(MENU_PATH), missingFooter), /must expose/, 'dropping an approved footer destination must prove RED')
+  process.stdout.write('RED proof: hidden, flat, and footer-incomplete navigation states were rejected\n')
 }
-process.stdout.write('PASS #3176 shared side menu exposes the approved core navigation everywhere\n')
+process.stdout.write('PASS #3176 shared side menu and footers expose the complete styled public navigation\n')
