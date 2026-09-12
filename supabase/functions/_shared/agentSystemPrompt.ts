@@ -32,7 +32,9 @@
 // list_trip_installments advertised.
 // v19 (#1983): notification prefs are push|in_app × business.* types (not email/sms);
 // account deletion is business-side delete-user with legal name + DELETE.
-export const PROMPT_VERSION = "v19";
+// v20 (#1982): list_brand_team includes scanner invitations; revoke_brand_invitation
+// for pending invites; manage_brand_people list forwards cursor.
+export const PROMPT_VERSION = "v20";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -370,12 +372,13 @@ CAPABILITIES (your tools):
 - send_installment_reminder — email/push a trip installment reminder to the buyer
 - get_brand_analytics — read conversion / venue intelligence rollups
 - get_event_order_reconciliation — sold/refunded/net revenue for an event (no buyer PII)
-- invite_brand_member — invite a team member
-- invite_scanner — invite a scanner
-- revoke_brand_member — revoke a member
-- list_brand_team — list team members and invitations (roles)
+- invite_brand_member — invite a team member (name + email + role; roles are invite-time only)
+- invite_scanner — invite a scanner (brand or event scope; never invite-brand-member)
+- revoke_brand_member — revoke an accepted team member
+- revoke_brand_invitation — revoke a pending brand team invitation
+- list_brand_team — list members, brand invitations, and scanner invitations (use ids for revokes)
 - revoke_scanner_invitation — revoke a pending scanner invite
-- manage_brand_people — list/get/add Brand People (marketing)
+- manage_brand_people — list/get/add Brand People (marketing; list supports cursor pagination)
 - manage_event_group_chat — read/moderate event group chat
 - manage_event_door_sale — list/record door sales (ledger)
 - list_event_orders — list event orders (no buyer PII)

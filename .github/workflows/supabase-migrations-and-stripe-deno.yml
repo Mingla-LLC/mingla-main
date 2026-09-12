@@ -1110,6 +1110,8 @@ jobs:
             supabase/functions/agent-confirm-action/__tests__/issue_1981_paid_order_must_refund_status.test.ts
             # ISSUE-1982 — team list, scanner revoke, Brand People manage.
             supabase/functions/_shared/__tests__/issue_1982_ari_team_people.implementor.test.ts
+            # ISSUE-1982 — adversarial: wrong-table scanner invite, hard-DELETE forbid, cursor.
+            supabase/functions/_shared/__tests__/issue_1982_ari_team_people.tester_adversarial.test.ts
             # ISSUE-1972 reopen — group chat, door sale, orders, waitlist, scanners.
             supabase/functions/_shared/__tests__/issue_1972_ari_event_ops.implementor.test.ts
             # ISSUE-1980 — marketing audiences, templates, campaign reports,

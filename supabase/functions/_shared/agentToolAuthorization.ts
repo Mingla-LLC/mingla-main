@@ -171,7 +171,8 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   invite_brand_member: role("brand_admin", "brand"),
   invite_scanner: role("event_manager", "brand"),
   revoke_brand_member: role("brand_admin", "brand"),
-  // #1982 — team list + scanner revoke + Brand People book.
+  // #1982 — team list + pending invite revoke + scanner revoke + Brand People.
+  revoke_brand_invitation: role("brand_admin", "brand"),
   list_brand_team: role("brand_admin", "brand"),
   revoke_scanner_invitation: role("event_manager", "brand"),
   manage_brand_people: role("marketing_manager", "brand"),

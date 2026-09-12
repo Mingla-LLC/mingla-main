@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-09-11T00:00:00Z",
-    "registered_tool_count": 125,
-    "capability_count": 137,
+    "registered_tool_count": 126,
+    "capability_count": 138,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 124,
+      "registered_unverified": 125,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -3252,6 +3252,10 @@
         ],
         "source": [
           {
+            "path": "mingla-business/src/services/brandInvitationsService.ts",
+            "symbol": "inviteBrandMember"
+          },
+          {
             "path": "supabase/functions/_shared/agentDomainTools.ts",
             "symbol": "const inviteBrandMember"
           }
@@ -3262,19 +3266,19 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
-          "reference": "#1983 agentDomainTools.ts:inviteBrandMember sends invitee_name to invite-brand-member"
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
+          "reference": "#1982 agentDomainTools.ts:inviteBrandMember sends invitee_name to invite-brand-member"
         }
       ],
       "owning_issues": [
-        1983,
+        1982,
         2000
       ],
       "blockers": [
         "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-25"
+      "verified_at": "2026-09-12"
     },
     {
       "id": "ari.team.invite_scanner",
@@ -3312,19 +3316,19 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
-          "reference": "#1983 agentDomainTools.ts:inviteScanner routes to invite-scanner with scope/scan contract"
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
+          "reference": "#1982 agentDomainTools.ts:inviteScanner routes to invite-scanner with scope/scan contract"
         }
       ],
       "owning_issues": [
-        1983,
+        1982,
         2000
       ],
       "blockers": [
         "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-25"
+      "verified_at": "2026-09-12"
     },
     {
       "id": "ari.team.revoke_member",
@@ -3358,19 +3362,69 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
-          "reference": "#1983 agentDomainTools.ts:revokeBrandMember soft-deletes brand_team_members.removed_at"
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
+          "reference": "#1982 agentDomainTools.ts:revokeBrandMember soft-deletes brand_team_members.removed_at"
         }
       ],
       "owning_issues": [
-        1983,
+        1982,
         2000
       ],
       "blockers": [
         "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-25"
+      "verified_at": "2026-09-12"
+    },
+    {
+      "id": "ari.team.revoke_invitation",
+      "domain": "team",
+      "outcome": "Revoke a pending brand team invitation",
+      "safety": "destructive",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue-1982"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/team.tsx"
+        ],
+        "source": [
+          {
+            "path": "mingla-business/src/services/brandInvitationsService.ts",
+            "symbol": "revokeBrandInvitation"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const revokeBrandInvitation"
+          }
+        ]
+      },
+      "ari_tool": "revoke_brand_invitation",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
+          "reference": "#1982 agentDomainTools.ts:revokeBrandInvitation mirrors brandInvitationsService.revokeBrandInvitation"
+        }
+      ],
+      "owning_issues": [
+        1982,
+        2000
+      ],
+      "blockers": [
+        "No deployed cross-surface Pass-5 proof"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-09-12"
     },
     {
       "id": "ari.guests.list_roster",
@@ -4775,8 +4829,8 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
-          "reference": "#1982 agentDomainTools.ts:manageBrandPeople calls biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person"
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
+          "reference": "#1982 agentDomainTools.ts:manageBrandPeople calls biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person with cursor pagination"
         }
       ],
       "owning_issues": [
@@ -4993,10 +5047,10 @@
     {
       "id": "ari.team.list_manage_roles",
       "domain": "team",
-      "outcome": "List team members and change roles",
-      "safety": "write",
+      "outcome": "List team members, brand invitations, and scanner invitations",
+      "safety": "read",
       "required_role": "owner_or_admin",
-      "confirmation": "standard",
+      "confirmation": "none",
       "surfaces": [
         "business_ios",
         "business_android",
@@ -5026,8 +5080,8 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
-          "reference": "#1982 agentDomainTools.ts:listBrandTeam mirrors listBrandTeamMembers + listBrandInvitations"
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
+          "reference": "#1982 agentDomainTools.ts:listBrandTeam mirrors members + brand invitations + scanner invitations"
         }
       ],
       "owning_issues": [
@@ -5038,7 +5092,7 @@
         "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-25"
+      "verified_at": "2026-09-12"
     },
     {
       "id": "ari.team.revoke_scanner",
@@ -5076,7 +5130,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01982",
           "reference": "#1982 agentDomainTools.ts:revokeScannerInvitation mirrors scannerInvitationsService.revokeScannerInvitation"
         }
       ],
@@ -5088,7 +5142,7 @@
         "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-25"
+      "verified_at": "2026-09-12"
     },
     {
       "id": "ari.account.edit_profile_avatar",
