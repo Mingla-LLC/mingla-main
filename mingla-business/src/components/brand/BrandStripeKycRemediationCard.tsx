@@ -30,6 +30,7 @@ import {
 import {
   getKycRemediationMessage,
   type KycRemediationMessage,
+  pickKycRemediationCode,
 } from "../../constants/stripeKycRemediationMessages";
 
 interface RequirementsShape {
@@ -65,24 +66,29 @@ const SEVERITY_PALETTE: Record<
   },
 };
 
-function pickRemediationCode(req: RequirementsShape | null): string | null {
-  if (!req) return null;
-  if (req.disabled_reason) return req.disabled_reason;
-  if (req.past_due && req.past_due.length > 0) return req.past_due[0];
-  if (req.currently_due && req.currently_due.length > 0) return req.currently_due[0];
-  return null;
-}
-
 export function BrandStripeKycRemediationCard({
   requirements,
   onResolve,
 }: BrandStripeKycRemediationCardProps): React.ReactElement | null {
-  const code = useMemo(() => pickRemediationCode(requirements), [requirements]);
+  // #3258 — the picker moved to the pure constants module so it is
+  // executable in a plain jest test; behaviour for every actionable code is
+  // unchanged.
+  const code = useMemo(
+    () => pickKycRemediationCode(requirements),
+    [requirements],
+  );
 
   if (code === null) return null;
 
   const message = getKycRemediationMessage(code);
   const palette = SEVERITY_PALETTE[message.severity];
+  // Issue #3258 — a `null` ctaLabel means there is genuinely nothing for the
+  // seller to do, so render NO button. Every CTA on this card is wired to
+  // `onResolve`, which re-opens Stripe onboarding; offering one on a message
+  // that says "no action needed" is a dead tap (Constitution rule 1) — it is
+  // what sent a pending-verification seller back to a completed form, over and
+  // over. The actionable severities are untouched and keep their CTAs.
+  const ctaLabel = message.ctaLabel;
 
   return (
     <GlassCard
@@ -91,20 +97,26 @@ export function BrandStripeKycRemediationCard({
       style={[styles.card, { borderColor: palette.borderColor, backgroundColor: palette.tint }]}
     >
       <Text style={styles.title}>{message.title}</Text>
-      <Text style={styles.body}>{message.body}</Text>
+      <Text style={[styles.body, ctaLabel === null ? styles.bodyNoCta : null]}>
+        {message.body}
+      </Text>
 
-      <Pressable
-        onPress={onResolve}
-        accessibilityRole="button"
-        accessibilityLabel={message.ctaLabel}
-        style={({ pressed }) => [
-          styles.cta,
-          { backgroundColor: palette.ctaColor },
-          pressed ? styles.ctaPressed : null,
-        ]}
-      >
-        <Text style={styles.ctaText}>{message.ctaLabel}</Text>
-      </Pressable>
+      {ctaLabel !== null
+        ? (
+          <Pressable
+            onPress={onResolve}
+            accessibilityRole="button"
+            accessibilityLabel={ctaLabel}
+            style={({ pressed }) => [
+              styles.cta,
+              { backgroundColor: palette.ctaColor },
+              pressed ? styles.ctaPressed : null,
+            ]}
+          >
+            <Text style={styles.ctaText}>{ctaLabel}</Text>
+          </Pressable>
+        )
+        : null}
     </GlassCard>
   );
 }
@@ -126,6 +138,11 @@ const styles = StyleSheet.create({
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
     marginBottom: spacing.md,
+  },
+  // #3258 — with no CTA below it the body is the last element in the card, so
+  // the button's top gap would read as stray padding.
+  bodyNoCta: {
+    marginBottom: 0,
   },
   cta: {
     paddingVertical: spacing.sm,

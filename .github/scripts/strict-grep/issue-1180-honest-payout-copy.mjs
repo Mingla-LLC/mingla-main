@@ -32,6 +32,11 @@ const root = path.join(__dirname, "..", "..", "..");
 
 const FILES = [
   "mingla-business/src/components/brand/BrandPaymentsView.tsx",
+  // #3258 — the Payments status-banner copy MOVED out of BrandPaymentsView.tsx
+  // into this pure presentation util (BRAND_STRIPE_BANNER_CONFIG). Listed here
+  // so the honest-payout-copy invariant keeps covering those exact strings
+  // instead of silently losing them when the table changed files.
+  "mingla-business/src/utils/brandStripeUiState.ts",
   "mingla-business/src/components/brand/BrandPaystackOnboardView.tsx",
   "mingla-business/src/components/onboarding/MinglaToSAcceptanceGate.tsx",
   "mingla-business/src/components/brand/BrandPayoutBreakdown.tsx",

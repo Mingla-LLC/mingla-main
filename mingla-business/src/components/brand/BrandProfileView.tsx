@@ -54,13 +54,14 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import type { Brand, BrandStripeStatus } from "../../store/currentBrandStore";
+import type { Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
 import { formatCurrencyRound, formatCount } from "../../utils/currency";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../utils/permissionGates";
 import { isBrandPayoutReady } from "../../utils/brandPayout";
 import {
+  type BrandStripePresentation,
   getBrandProfileStripeBannerCopy,
   getBrandProfileStripeOperationsSub,
 } from "../../utils/brandStripeUiState";
@@ -155,8 +156,16 @@ export interface BrandProfileViewProps {
    * Live Stripe status wins over cached brand.stripeStatus when provided.
    * This prevents the profile banner/operations row from showing stale
    * "verifying" after Stripe has already marked the account active.
+   *
+   * #3258 — widened from `BrandStripeStatus` to `BrandStripePresentation`.
+   * The route derives the presentation (status + requirements) and passes it
+   * here, so a brand that is `restricted` ONLY because Stripe is still
+   * checking a field it already has stops reading "Action required" on this
+   * screen. Every other status flows through byte-identical, and
+   * `BrandStripeStatus` remains assignable, so callers that pass a plain
+   * status are unchanged.
    */
-  effectiveStripeStatus?: BrandStripeStatus;
+  effectiveStripeStatus?: BrandStripePresentation;
   onBack: () => void;
   /**
    * Called when user taps the sticky-shelf "Edit brand" button.
