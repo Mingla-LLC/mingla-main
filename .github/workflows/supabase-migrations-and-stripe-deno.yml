@@ -1055,6 +1055,33 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3081_gate_registry_append_only.tester.adversarial.pg17.test.sql
 
+      # Issue #3055 — the Ari certification backlog repair must be CONVERGENT.
+      # Five certification migrations never ran in production (they sort below
+      # its applied head), so production and this chain hold different
+      # requirement sets and different certification functions. The repair
+      # (20270630003055) must land ONE final state from both. The implementor
+      # suite applies the REAL file to this chain (a no-op, twice) and to a
+      # production-shaped fixture proven byte-identical to production's probed
+      # fingerprints, then requires identical rows, set digest, functions,
+      # trigger and ari_cert_* catalog, ledger-exact ids, and a begin/finalize
+      # round trip that passes the digest gate. The adversarial suite requires
+      # a named abort and zero residue for eight unexpected starting states,
+      # one of them against the real file's own BEGIN/COMMIT.
+      #
+      # LAST in this job on purpose: both suites commit fixtures to this
+      # database and restore the chain before they exit, each proving the
+      # restoration exactly — nothing after them depends on that proof.
+      # Runs from the checkout root: both read repo files via git rev-parse.
+      - name: "Issue #3055 — Ari certification backlog repair converges from production and chain"
+        env:
+          PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3055_ari_cert_backlog_repair.implementor.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3055_ari_cert_backlog_repair.adversarial.pg17.test.sql
+
   deno-tests:
     if: ${{ github.event.pull_request.draft != true }}
     name: "Deno unit tests for Stripe shared modules"

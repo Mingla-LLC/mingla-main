@@ -10,7 +10,7 @@
 -- EVERY CASE EXECUTES THE REAL FUNCTION against the full migration chain. Each
 -- case runs in its own transaction and rolls back.
 --
--- FAILS-ON-REVERT (delete 20270629003288_issue_3288_gallery_absent_key_preserves.sql):
+-- FAILS-ON-REVERT (delete 20270701003288_issue_3288_gallery_absent_key_preserves.sql):
 --   G-01, G-02, G-03 — the pre-#3288 bodies write COALESCE(payload, []) and
 --     erase the stored photos when the key is absent.
 --   G-05 — the pre-#3288 cover clear sets the gallery to [].

@@ -1080,26 +1080,47 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // revert-sensitivity loop below. The value is identical across three
   // derivations with this file's own RUBY_CANONICAL, not copied from a PR run.
   //
+  // [TEST-MOD-APPROVED #3055] Re-derived after #3055 appended ONE step to the
+  // end of the existing migrations job in the migrations-and-Stripe Deno lane:
+  // two psql proof commands for the Ari certification backlog repair, plus
+  // their comment. The lane is DESCRIBED, never spelled as a filename, for the
+  // #2148 provider-reference reason the #3261 note gives.
+  //
+  // PURELY ADDITIVE: over .github/workflows this branch vs origin/main
+  // 05bb53bff is `1 file changed, 27 insertions(+)`, zero deletions, and
+  // grepping the added and removed lines for concurrency / group: /
+  // cancel-in-progress returns ZERO. PR_FAMILY_COUNT and
+  // PR_FAMILY_IDENTITY_SHA256 are UNCHANGED (124 /
+  // 9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04).
+  //
+  // MEASURED on the tree rebased onto 05bb53bff: restoring ONLY that lane to
+  // its origin/main bytes recomputes #3285's pin
+  // 9d8ccb3860de299955df4ec0bb38abff13f4e82eff52fd116b0cd7fcd01bd4db, the value
+  // this replaces. The new value below is identical across three derivations
+  // with this file's own RUBY_CANONICAL (extracted, not retyped), and was not
+  // copied from a PR run's printed `actual:` (#3015). Both proof commands are
+  // added to the revert-sensitivity loop below.
+  //
   // [TEST-MOD-APPROVED #3288] Re-derived for two additive deltas in two
   // existing PR-family lanes, both named by description: (1) the migrations-and-
   // Stripe Deno lane gains one psql target for the #3288 additional-photos SQL
   // suite plus its three-line comment; (2) the #2333 online-publish lane's
-  // replay-equivalence step gains one re-apply of 20270629003288 after #2489,
+  // replay-equivalence step gains one re-apply of 20270701003288 after #2489,
   // plus its three-line comment, on that step's own written instruction (the
   // #3288 migration re-emits business_publish_event_draft, one of the three
-  // objects it snapshots). The workflow delta is 10 insertions, zero deletions,
-  // and none of it touches concurrency, group: or cancel-in-progress.
-  // PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 (9356c425...) are
-  // UNCHANGED.
+  // objects it snapshots). The workflow delta over origin/main 9e697c103 is
+  // `2 files changed, 10 insertions(+)`, zero deletions, and none of it touches
+  // concurrency, group: or cancel-in-progress. PR_FAMILY_COUNT (124) and
+  // PR_FAMILY_IDENTITY_SHA256 (9356c425...) are UNCHANGED.
   //
-  // MEASURED, from the committed tree on base 05bb53bff: restoring BOTH lanes to
-  // origin/main recomputes the prior pin
-  // 9d8ccb3860de299955df4ec0bb38abff13f4e82eff52fd116b0cd7fcd01bd4db; restoring
-  // only one of them yields d93ba4cf... or 26253b6b..., so each delta moves the
-  // digest on its own, and both exact lines are in the revert-sensitivity loop
-  // below. The value is identical across three derivations with this file's own
-  // RUBY_CANONICAL, not copied from a PR run.
-  "5b28985c40353123cd37315478b0b1e9983d3d55462b4a5af081e3fb3a3193e6";
+  // MEASURED from the committed tree rebased onto 9e697c103: restoring BOTH
+  // lanes to origin/main recomputes #3055's pin
+  // f3395ac82bb8932582b5393c701d25c592eff960b7e4bc489b432368a353db4d; restoring only one of
+  // them yields 184071df... or c982aeb9..., so each delta moves the digest on its own,
+  // and both exact lines are in the revert-sensitivity loop below. The value is
+  // identical across three derivations with this file's own RUBY_CANONICAL
+  // (extracted, not retyped), not copied from a PR run.
+  "f6f5921bc0999e3925cd7148af5c31a45af11bf1c32a872252693ea8701f1535";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1448,13 +1469,20 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "            -f supabase/migrations/__tests__/issue_3285_event_dates_stable_identity.implementor.happy.pg17.test.sql\n"],
     [liveWorkflow("issue", "1931", "private", "event", "access"),
       "              *20270628003285_issue_3285_event_dates_stable_identity.sql) continue ;;\n"],
+    // [TEST-MOD-APPROVED #3055] The two Ari certification backlog repair proof
+    // commands #3055 added to the migrations job. Each must independently move
+    // the digest, or the re-pin above would accept a change nothing proves.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3055_ari_cert_backlog_repair.implementor.pg17.test.sql\n"],
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3055_ari_cert_backlog_repair.adversarial.pg17.test.sql\n"],
     // [TEST-MOD-APPROVED #3288] The #3288 additional-photos SQL suite target on
-    // the migrations lane. Removing it must independently move the digest.
+    // the migrations lane, and the #2333 lane's re-apply of the #3288 migration.
+    // Each must independently move the digest.
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "            -f supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql\n"],
-    // [TEST-MOD-APPROVED #3288] The #2333 lane's re-apply of the #3288 migration.
     [liveWorkflow("issue", "2333", "online", "event", "publish"),
-      "            -f supabase/migrations/20270629003288_issue_3288_gallery_absent_key_preserves.sql\n"],
+      "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);

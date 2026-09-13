@@ -24,7 +24,7 @@
  * — on single-date, multi-date and RSVP drafts, the draft is autosaved and then
  * published, and the published row must still hold all 3 photos. Each case
  * runs against two server models:
- *   "patched"    — migration 20270629003288 (absent gallery key keeps stored)
+ *   "patched"    — migration 20270701003288 (absent gallery key keeps stored)
  *   "production" — the functions production runs TODAY (absent key writes []),
  *                  so the client fix is proven sufficient on its own, before
  *                  the migration is deployed.
@@ -183,7 +183,7 @@ const COPIED_PAYLOAD_COLUMNS = [
   "city", "pass_tax", "pass_mingla_fee", "pass_service_fee",
 ];
 
-// The gallery rule under test. "patched" = migration 20270629003288;
+// The gallery rule under test. "patched" = migration 20270701003288;
 // "production" = the definitions production runs today.
 const galleryAfterWrite = (row: Row, payload: Row): unknown => {
   if (fake.mode === "patched" && !("cover_media_gallery" in payload)) {

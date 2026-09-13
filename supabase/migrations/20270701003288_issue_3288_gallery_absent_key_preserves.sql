@@ -31,6 +31,12 @@
 -- supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql.
 --
 -- Idempotent: CREATE OR REPLACE only; grants and ownership are preserved.
+--
+-- MONOTONIC VERSION 20270701003288 — above the production applied head
+-- 20270628003285 and above 20270630003055 (#3055, on main but not yet applied),
+-- so a `supabase db push` after either apply order still reaches this file. An
+-- earlier draft carried 20270629003288, which #3055's version would have
+-- shadowed. None of the six functions here is re-emitted by any later file.
 -- ---------------------------------------------------------------------------
 
 BEGIN;
