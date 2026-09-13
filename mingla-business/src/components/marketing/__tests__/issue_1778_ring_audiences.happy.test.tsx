@@ -197,6 +197,41 @@ describe("#1778 Business Circle audience contract", () => {
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
+  test("keeps the truthful Followers count visible while channel delivery is disabled", async () => {
+    let tree: any;
+    await TestRenderer.act(async () => {
+      tree = TestRenderer.create(
+        <AudiencePickerSheet
+          visible
+          actorId="actor-1"
+          brandId="brand-1"
+          brandName="Mingla Test"
+          selectedAudienceId={null}
+          onClose={jest.fn()}
+          onSelect={jest.fn()}
+          bookBlastEnabled
+          circleAudienceEnabled
+          circleReach={{
+            followers: { count: 42, state: "ready", enabled: false },
+            extended: {
+              count: null,
+              state: "unavailable",
+              enabled: false,
+              reason:
+                "Not available until people can control extended brand reach in Mingla.",
+            },
+          }}
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const output = renderedText(tree.toJSON()).replace(/\s+/g, " ");
+    expect(output).toMatch(
+      /Followers.*Names only.*42 people.*Messaging is not available for this channel yet/,
+    );
+  });
+
   test("review shows the four accepted aggregate metrics", () => {
     let tree: any;
     TestRenderer.act(() => {

@@ -117,7 +117,12 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
             ? "The price and reach below are locked to this preview. Nothing sends until you tap Send now."
             : "Review the details below. Mingla auto-skips suppressed contacts."}
         </Text>
-        <View style={styles.section}>
+        <View
+          style={[
+            styles.section,
+            Platform.OS === "android" ? styles.sectionAndroid : null,
+          ]}
+        >
           <Text style={styles.label}>AUDIENCE</Text>
           <Text style={styles.value}>{audienceName ?? "—"}</Text>
           {audienceReason !== undefined ? (
@@ -313,8 +318,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Platform.OS === "android" ? "#1F2125" : glass.border.profileBase,
-    backgroundColor: Platform.OS === "android" ? "#16181B" : glass.tint.profileBase,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  sectionAndroid: {
+    borderColor: "#1F2125",
+    backgroundColor: "#16181B",
   },
   label: {
     ...typography.labelCap,

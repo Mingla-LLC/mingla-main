@@ -88,6 +88,7 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 //   ArrowLeft        src/components/venue/* (ORCH-1196)
 //   ArrowUp          src/components/ari/InputBar.tsx
 //   BedDouble        src/components/stay/StaySuiteShell.tsx
+//   BookOpen         src/components/marketing/AudiencePickerSheet.tsx (#1778)
 //   Calendar         src/components/venue/* (ORCH-1196)
 //   CalendarDays     src/components/stay/StaySuiteShell.tsx
 //   Check            src/components/ari/{QuickReplyChips,MessageList,ClarifyingCard}.tsx
@@ -107,13 +108,17 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 //   List             src/components/venue/* (ORCH-1196)
 //   Menu             src/screens/ari/AriChatScreen.tsx
 //   MessageSquare    src/components/venue/* (ORCH-1196)
+//   Network          src/components/marketing/AudiencePickerSheet.tsx (#1778)
 //   Pencil           src/components/ari/ToolProposalCard.tsx
 //   Play             src/components/ari/ToolProposalCard.tsx
 //   Plus             src/components/ari/{ToolProposalCard,EmptyState}.tsx
+//   Radio            src/components/marketing/AudiencePickerSheet.tsx (#1778)
 //   Settings         src/screens/ari/AriChatScreen.tsx
+//   ShoppingBag      src/components/marketing/AudiencePickerSheet.tsx (#1778)
 //   Square           src/components/ari/MultiSelectPrompt.tsx
 //   Utensils         src/components/stay/StaySuiteShell.tsx
 //   UtensilsCrossed  src/components/venue/* (ORCH-1196)
+//   UsersRound       src/components/marketing/AudiencePickerSheet.tsx (#1778)
 //   X                src/components/ari/ToolProposalCard.tsx
 //
 // Shared workspaces under `packages/` — rendered by the business WEB build and
@@ -143,6 +148,7 @@ const USED_ICONS = {
   // Issue #2534 — packages/brand-rendering/PublicBrandPage.tsx (Threads chip).
   AtSign: iconOf(require("lucide-react/dist/esm/icons/at-sign.js")),
   BedDouble: iconOf(require("lucide-react/dist/esm/icons/bed-double.js")),
+  BookOpen: iconOf(require("lucide-react/dist/esm/icons/book-open.js")),
   Calendar: iconOf(require("lucide-react/dist/esm/icons/calendar.js")),
   // Issue #2534 — PublicBrandPage RSVP kind badge.
   CalendarCheck: iconOf(
@@ -174,10 +180,13 @@ const USED_ICONS = {
   ),
   // Issue #2534 — PublicBrandPage TikTok chip.
   Music2: iconOf(require("lucide-react/dist/esm/icons/music-2.js")),
+  Network: iconOf(require("lucide-react/dist/esm/icons/network.js")),
   Pencil: iconOf(require("lucide-react/dist/esm/icons/pencil.js")),
   Play: iconOf(require("lucide-react/dist/esm/icons/play.js")),
   Plus: iconOf(require("lucide-react/dist/esm/icons/plus.js")),
+  Radio: iconOf(require("lucide-react/dist/esm/icons/radio.js")),
   Settings: iconOf(require("lucide-react/dist/esm/icons/settings.js")),
+  ShoppingBag: iconOf(require("lucide-react/dist/esm/icons/shopping-bag.js")),
   Sparkles: iconOf(require("lucide-react/dist/esm/icons/sparkles.js")),
   Square: iconOf(require("lucide-react/dist/esm/icons/square.js")),
   // Issue #2534 — PublicBrandPage TICKETS kind badge.
@@ -185,6 +194,7 @@ const USED_ICONS = {
   UtensilsCrossed: iconOf(
     require("lucide-react/dist/esm/icons/utensils-crossed.js"),
   ),
+  UsersRound: iconOf(require("lucide-react/dist/esm/icons/users-round.js")),
   X: iconOf(require("lucide-react/dist/esm/icons/x.js")),
   // Issue #2534 — PublicBrandPage social chip.
   Youtube: iconOf(require("lucide-react/dist/esm/icons/youtube.js")),

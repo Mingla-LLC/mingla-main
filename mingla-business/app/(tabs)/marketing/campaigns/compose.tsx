@@ -354,7 +354,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const [audienceName, setAudienceName] = useState<string | null>(null);
   const [sealedAudienceKind, setSealedAudienceKind] =
     useState<SealedMarketingAudienceKind | null>(null);
-  const isBookAudience = sealedAudienceKind !== null;
+  const [isBookAudience, setIsBookAudience] = useState(false);
   const isManualAudience = sealedAudienceKind === "manual_group";
   const [bookQuote, setBookQuote] = useState<MarketingBookQuote | null>(null);
   const [bookRequestId, setBookRequestId] = useState<string | null>(null);
@@ -560,6 +560,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setAudienceId(manual.groupId);
           setAudienceName(manual.name);
           setSealedAudienceKind("manual_group");
+          setIsBookAudience(true);
         } else if (
           audienceParam.kind === "followers" ||
           audienceParam.kind === "extended"
@@ -578,6 +579,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             audienceKind === "brand_followers" ? "Followers" : "Extended circle",
           );
           setSealedAudienceKind(audienceKind);
+          setIsBookAudience(true);
         } else if (audienceParam.kind === "brand") {
           const id = await ensureBrandBuyersAudience({
             account_id: accountId,
@@ -587,6 +589,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setAudienceId(id);
           setAudienceName("All brand buyers");
           setSealedAudienceKind(null);
+          setIsBookAudience(false);
         } else {
           const id = await ensureEventBuyersAudience({
             account_id: accountId,
@@ -597,6 +600,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setAudienceId(id);
           setAudienceName("Event buyers");
           setSealedAudienceKind(null);
+          setIsBookAudience(false);
         }
       } catch (err) {
         if (!cancelled) {
@@ -650,7 +654,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         setCampaignId(row.id);
         setChannel(row.channel as MarketingChannelKind);
         setAudienceId(row.audience_id);
-        setSealedAudienceKind(await getMarketingAudienceKind(row.audience_id));
+        const storedAudienceKind = await getMarketingAudienceKind(row.audience_id);
+        setSealedAudienceKind(storedAudienceKind);
+        setIsBookAudience(storedAudienceKind !== null);
         // issue #2291 — DEFENSIVE READS. These were bare
         // `setSubject(row.channel_payload.subject)` /
         // `setBody(row.channel_payload.body_html)` with no fallback. On a row
@@ -890,7 +896,13 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           campaign_id: campaignId,
           client_request_id: bookRequestId,
           quote: bookQuote,
-          audience_kind: sealedAudienceKind ?? "all_brand_people",
+          // #2395 keeps this exact Manual-vs-Book contract. #1778's later
+          // spread overrides it only for one of the two new circle kinds.
+          audience_kind: isManualAudience ? "manual_group" : "all_brand_people",
+          ...(sealedAudienceKind === "brand_followers" ||
+          sealedAudienceKind === "brand_circle_extended"
+            ? { audience_kind: sealedAudienceKind }
+            : {}),
           scheduled_for:
             sendMode === "now" ? null : new Date(scheduledForIso).toISOString(),
         },
@@ -948,6 +960,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   }, [
     campaignId,
     isBookAudience,
+    isManualAudience,
     sealedAudienceKind,
     bookQuote,
     bookRequestId,
@@ -1280,6 +1293,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           ? option.kind
           : null;
       setSealedAudienceKind(nextSealedKind);
+      setIsBookAudience(option.kind === "all_brand_people" || option.kind === "manual_group");
+      if (option.kind === "brand_followers" || option.kind === "brand_circle_extended") {
+        setIsBookAudience(true);
+      }
       setBookQuote(null);
       setIsDirty(true);
       if (option.existing_audience_id !== null) {

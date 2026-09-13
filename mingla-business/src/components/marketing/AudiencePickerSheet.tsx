@@ -76,6 +76,7 @@ export interface AudienceOption {
   disabled?: boolean;
   status_label?: string;
   privacy_label?: string;
+  show_count?: boolean;
 }
 
 export interface CircleAudiencePickerState {
@@ -268,6 +269,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
                   : "Messaging is not available for this channel yet."
                 : circleReach?.followers.reason ?? "Checking current reach…",
               privacy_label: "Names only",
+              show_count: followerReady,
             },
             {
               key: `extended:${brandId}`,
@@ -285,6 +287,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
                 : circleReach?.extended.reason ??
                   "Not available until people can control extended brand reach in Mingla.",
               privacy_label: "Consent controlled",
+              show_count: extendedReady,
             },
           );
         }
@@ -374,9 +377,13 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
         : option.kind === "manual_group"
           ? "Saved group"
           : "Automatic buyer group";
-    const countLabel = option.status_label ?? `${option.buyer_count} ${peopleAudience ? (option.buyer_count === 1 ? "person" : "people") : (option.buyer_count === 1 ? "buyer" : "buyers")}`;
+    const countLabel = `${option.buyer_count} ${peopleAudience ? (option.buyer_count === 1 ? "person" : "people") : (option.buyer_count === 1 ? "buyer" : "buyers")}`;
+    const showCount = option.show_count !== false;
+    const spokenMeta = [showCount ? countLabel : null, option.status_label]
+      .filter(Boolean)
+      .join(". ");
     return <Pressable key={option.key} disabled={option.disabled} onPress={() => { onSelect(option); onClose(); }} accessibilityRole="button"
-      accessibilityLabel={`Pick audience ${option.name}. ${countLabel}. ${audienceMeaning}.${option.privacy_label ? ` ${option.privacy_label}.` : ""}${option.disabled ? " Unavailable." : ""}`}
+      accessibilityLabel={`Pick audience ${option.name}. ${spokenMeta}. ${audienceMeaning}.${option.privacy_label ? ` ${option.privacy_label}.` : ""}${option.disabled ? " Unavailable." : ""}`}
       accessibilityState={{ selected: isSelected, disabled: option.disabled === true }} style={({ pressed }) => [styles.row, isSelected ? styles.rowSelected : null, option.disabled ? styles.rowDisabled : null, pressed ? styles.rowPressed : null]}>
       <View style={styles.rowIcon}><Icon size={20} color={isSelected ? accent.warm : textTokens.secondary} strokeWidth={2} /></View>
       <View style={styles.rowCopy}>
@@ -384,7 +391,10 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
           <Text style={styles.rowName} numberOfLines={1}>{option.name}</Text>
           {option.privacy_label ? <Text style={styles.privacyPill}>{option.privacy_label}</Text> : null}
         </View>
-        <Text style={styles.rowMeta}>{option.kind === "all_brand_people" && option.buyer_count === 0 ? "No saved people yet" : countLabel}</Text>
+        {showCount ? (
+          <Text style={styles.rowMeta}>{option.kind === "all_brand_people" && option.buyer_count === 0 ? "No saved people yet" : countLabel}</Text>
+        ) : null}
+        {option.status_label ? <Text style={styles.rowStatus}>{option.status_label}</Text> : null}
       </View>
       {isSelected ? <Check size={20} color={accent.warm} strokeWidth={2.5} /> : null}
     </Pressable>;
@@ -593,6 +603,10 @@ const styles = StyleSheet.create({
   rowMeta: {
     ...typography.bodySm,
     color: textTokens.secondary,
+  },
+  rowStatus: {
+    ...typography.bodySm,
+    color: textTokens.tertiary,
   },
   privacyPill: {
     ...typography.labelCap,
