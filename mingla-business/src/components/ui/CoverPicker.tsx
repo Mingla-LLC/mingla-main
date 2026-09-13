@@ -124,7 +124,10 @@ import { BrandCoverError } from "../../utils/brandCoverRules";
 import { Button } from "./Button";
 import {
   canAddGalleryPhoto,
+  canMakeGalleryPhotoCover,
   galleryAddBlockedReason,
+  galleryMakeCoverBlockedReason,
+  type GalleryMakeCoverState,
 } from "./coverPickerGalleryGate";
 import { findSelectedProviderId } from "./coverPickerSelection";
 import { Icon } from "./Icon";
@@ -460,6 +463,20 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   });
   const activeVideoUpload = !["idle", "ready", "applied", "error"].includes(videoUpload.stage.phase);
   const lockedVideoOperation = activeVideoUpload || projectedVideoStage.phase === "ready";
+  // issue #3280 — "Make cover" is a COVER action living inside the gallery
+  // section, so it keeps the video lock the gallery no longer has. Promoting a
+  // photo while a video job owns the cover would be overwritten, silently, when
+  // the job applies. One memoised state feeds the control, its reason, and both
+  // guards (`requestMakeCover`, `applyMakeCover`).
+  const makeCoverGate = useMemo<GalleryMakeCoverState>(
+    () => ({
+      disabled,
+      coverUploading: uploading,
+      galleryUploading,
+      videoLocked: lockedVideoOperation,
+    }),
+    [disabled, galleryUploading, lockedVideoOperation, uploading],
+  );
   const activeMediaUrl =
     videoUpload.localPreviewUri ??
     videoUpload.processedUrl ??
@@ -758,6 +775,15 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // VIDEO it is REPLACED (discarded) — but only via the explicit OQ-3 confirm.
   const applyMakeCover = useCallback(
     (index: number): void => {
+      // issue #3280 — the emit chokepoint. It is reached from `requestMakeCover`
+      // AND from the OQ-3 "Replace your video cover?" confirm, which can be left
+      // open while a replacement video starts; neither may promote a photo while
+      // a video job owns the cover. Never silent: the reason is shown.
+      if (!canMakeGalleryPhotoCover(makeCoverGate)) {
+        const reason = galleryMakeCoverBlockedReason(makeCoverGate);
+        if (reason !== null) onShowToast(reason);
+        return;
+      }
       const item = galleryRef.current[index];
       if (item === undefined) return;
       const priorUrl = localCoverRef.current.coverMediaUrl;
@@ -794,12 +820,20 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       onCoverChange(patch);
       onShowToast("Cover updated.");
     },
-    [onCoverChange, onShowToast],
+    [makeCoverGate, onCoverChange, onShowToast],
   );
 
   const requestMakeCover = useCallback(
     (index: number): void => {
-      if (disabled) return;
+      // issue #3280 — was `if (disabled) return;`. The control is disabled with
+      // a reason while this is false; this is the backstop, and it runs BEFORE
+      // the OQ-3 confirm so a locked tap cannot even open "Replace your video
+      // cover?".
+      if (!canMakeGalleryPhotoCover(makeCoverGate)) {
+        const reason = galleryMakeCoverBlockedReason(makeCoverGate);
+        if (reason !== null) onShowToast(reason);
+        return;
+      }
       // OQ-3: replacing a VIDEO cover with a photo requires explicit confirm.
       if (localCoverRef.current.coverMediaType === "video") {
         setPendingMakeCoverIndex(index);
@@ -807,7 +841,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       }
       applyMakeCover(index);
     },
-    [applyMakeCover, disabled],
+    [applyMakeCover, makeCoverGate, onShowToast],
   );
 
   const pickImageOrGifCover = useCallback(async (): Promise<void> => {
@@ -1677,6 +1711,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         // tile), so the gate is asked only about the two host-level blocks.
         disabled={!canAddGalleryPhoto({ galleryUploading, disabled, atCap: false })}
         addBlockedReason={galleryAddBlockedReason({ galleryUploading, disabled, atCap: false })}
+        // issue #3280 — Make cover is a cover action and keeps the video lock,
+        // so it gets its OWN gate; the shared `disabled` above deliberately
+        // cannot see video state (Add / Move / Remove stay usable).
+        makeCoverDisabled={!canMakeGalleryPhotoCover(makeCoverGate)}
+        makeCoverBlockedReason={galleryMakeCoverBlockedReason(makeCoverGate)}
         pendingMakeCoverIndex={pendingMakeCoverIndex}
         onAdd={() => {
           void addGalleryPhoto();
@@ -2244,6 +2283,14 @@ const AdditionalPhotosSection: React.FC<{
    * about. Null whenever adding is allowed.
    */
   addBlockedReason: string | null;
+  /**
+   * issue #3280 — "Make cover" (and the OQ-3 confirm's Replace) is a COVER
+   * action, gated separately from `disabled`: it stays locked while a cover
+   * video job owns the cover, while Add / Move / Remove do not.
+   */
+  makeCoverDisabled: boolean;
+  /** Why Make cover is unavailable, when it is. Null whenever it is allowed. */
+  makeCoverBlockedReason: string | null;
   pendingMakeCoverIndex: number | null;
   onAdd: () => void;
   onMakeCover: (index: number) => void;
@@ -2257,6 +2304,8 @@ const AdditionalPhotosSection: React.FC<{
   max,
   disabled,
   addBlockedReason,
+  makeCoverDisabled,
+  makeCoverBlockedReason,
   pendingMakeCoverIndex,
   onAdd,
   onMakeCover,
@@ -2285,6 +2334,15 @@ const AdditionalPhotosSection: React.FC<{
           <Text style={styles.confirmBannerText}>
             Replace your video cover with this photo?
           </Text>
+          {/* issue #3280 — the confirm can stay open while a replacement video
+              starts. Replace is then locked like Make cover, and the banner
+              says why in text: Button has no accessibilityHint, and a dimmed
+              Replace with no explanation is a dead tap. */}
+          {makeCoverDisabled && makeCoverBlockedReason !== null ? (
+            <Text style={styles.confirmBannerReason} testID="cover-make-cover-confirm-reason">
+              {makeCoverBlockedReason}
+            </Text>
+          ) : null}
           <View style={styles.confirmBannerActions}>
             <Button
               label="Cancel"
@@ -2298,6 +2356,7 @@ const AdditionalPhotosSection: React.FC<{
               variant="primary"
               size="sm"
               shape="square"
+              disabled={makeCoverDisabled}
               onPress={onConfirmMakeCover}
               testID="cover-make-cover-confirm-replace"
             />
@@ -2336,7 +2395,14 @@ const AdditionalPhotosSection: React.FC<{
                 <View style={styles.galleryMenu} accessibilityRole="menu">
                   <GalleryMenuItem
                     label="Make cover"
-                    disabled={disabled}
+                    // issue #3280 — its own gate, never the shared `disabled`,
+                    // which no longer sees the cover video lock.
+                    disabled={makeCoverDisabled}
+                    accessibilityHint={
+                      makeCoverDisabled
+                        ? makeCoverBlockedReason ?? "The cover cannot be changed right now."
+                        : "Use this photo as your cover."
+                    }
                     onPress={() => {
                       setOpenMenuIndex(null);
                       onMakeCover(index);
@@ -2409,13 +2475,16 @@ const GalleryMenuItem: React.FC<{
   label: string;
   disabled: boolean;
   destructive?: boolean;
+  /** issue #3280 — e.g. why a disabled item is unavailable. */
+  accessibilityHint?: string;
   onPress: () => void;
-}> = ({ label, disabled, destructive = false, onPress }) => (
+}> = ({ label, disabled, destructive = false, accessibilityHint, onPress }) => (
   <Pressable
     onPress={onPress}
     disabled={disabled}
     accessibilityRole="menuitem"
     accessibilityLabel={label}
+    accessibilityHint={accessibilityHint}
     accessibilityState={{ disabled }}
     style={({ pressed }) => [
       styles.galleryMenuItem,
@@ -2774,6 +2843,12 @@ const styles = StyleSheet.create({
     lineHeight: typography.body.lineHeight,
     fontWeight: "600",
     color: textTokens.primary,
+  },
+  // issue #3280 — the reason line shown while the confirm's Replace is locked.
+  confirmBannerReason: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
   },
   confirmBannerActions: {
     flexDirection: "row",

@@ -68,3 +68,64 @@ export const galleryAddBlockedReason = ({
   if (disabled) return "Photos cannot be changed right now.";
   return null;
 };
+
+/**
+ * issue #3280 — "Make cover" is the one control in Additional photos that is a
+ * COVER action, not a gallery action: it emits the photo as the primary cover.
+ * So it must NOT inherit the gallery's freedom from the video lock above.
+ *
+ * The data-loss path it closes: the host makes a photo the cover while a cover
+ * video is still processing; the video job then finishes — the server
+ * auto-applies it to the event's cover for a `draft_auto` event, and the
+ * client's ready-emit writes it too — and the host's chosen photo is silently
+ * replaced. Add, reorder and remove never touch the cover and stay unblocked.
+ *
+ * Deliberately a separate state type from `GalleryAddState`: the add gate must
+ * never be able to see video state, and this one must.
+ */
+export type GalleryMakeCoverState = {
+  /** The whole picker is locked by its host (saving, read-only, no permission). */
+  disabled: boolean;
+  /**
+   * A COVER upload is in flight — the picker-wide `uploading` flag (an image or
+   * GIF cover, or the video pick that holds it through processing).
+   */
+  coverUploading: boolean;
+  /**
+   * A gallery photo is uploading. Cover actions treat it as busy, as the other
+   * cover buttons do, so a cover emit and a gallery commit never overlap.
+   */
+  galleryUploading: boolean;
+  /**
+   * A cover video operation owns the cover: the picker's `lockedVideoOperation`
+   * (a job in flight, or ready but not yet saved).
+   */
+  videoLocked: boolean;
+};
+
+/** True iff "Make cover" may promote a gallery photo to the primary cover now. */
+export const canMakeGalleryPhotoCover = ({
+  disabled,
+  coverUploading,
+  galleryUploading,
+  videoLocked,
+}: GalleryMakeCoverState): boolean =>
+  !disabled && !coverUploading && !galleryUploading && !videoLocked;
+
+/**
+ * Why "Make cover" is unavailable, or null when it is available. The video lock
+ * is checked first: the video pick holds `coverUploading` for its whole
+ * processing window, and in that window the video is the true reason.
+ */
+export const galleryMakeCoverBlockedReason = ({
+  disabled,
+  coverUploading,
+  galleryUploading,
+  videoLocked,
+}: GalleryMakeCoverState): string | null => {
+  if (videoLocked) return "Available when the cover video finishes.";
+  if (coverUploading) return "Available once the cover upload finishes.";
+  if (galleryUploading) return "Available once the photo you are adding finishes uploading.";
+  if (disabled) return "The cover cannot be changed right now.";
+  return null;
+};
