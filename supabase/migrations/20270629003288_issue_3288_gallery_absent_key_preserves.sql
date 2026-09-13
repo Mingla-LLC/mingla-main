@@ -25,10 +25,10 @@
 --   business_update_rsvp_graph        20270617003065
 --   business_update_live_event_atomic 20270508001974
 --   business_clear_event_cover_media  20270422001972
--- ONLY the gallery lines differ. No ticket, checkout, refund, payout or ticket
--- validity logic is changed; the mingla-business jest guard
--- issue_3288_gallery_migration_body_diff pins that the normalised body diff
--- against those definitions is exactly the gallery lines.
+-- ONLY the gallery lines differ (line diff against each definition above,
+-- recorded on #3288). No ticket, checkout, refund, payout or ticket validity
+-- logic is changed. The behaviour is pinned by
+-- supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql.
 --
 -- Idempotent: CREATE OR REPLACE only; grants and ownership are preserved.
 -- ---------------------------------------------------------------------------
