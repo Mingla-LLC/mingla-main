@@ -76,6 +76,8 @@ export const marketingKeys = {
     // book, so a stale book is a visible bug).
     conflicts: (brandId: string): readonly unknown[] =>
       [...marketingKeys.people.all(brandId), "conflicts"] as const,
+    circle: (brandId: string, ring: "all" | "follower" | "extended"): readonly unknown[] =>
+      [...marketingKeys.people.all(brandId), "circle", ring] as const,
   },
   templates: {
     all: ["marketing", "templates"] as const,

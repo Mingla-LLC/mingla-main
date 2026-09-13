@@ -28,8 +28,10 @@ describe("#1774 tester-owned privacy and rollout tripwires", () => {
     expect(page).toContain('status="Import unavailable"');
   });
 
-  test("hidden reach dependencies reserve no UI and never invent a numeric recipient count", () => {
-    expect(page).not.toMatch(/People you can reach|Reach unavailable|Followers|Extended circle/);
+  test("Circle UI is bound to the server hook and never invents a numeric recipient count", () => {
+    expect(page).toContain('useBrandCircleReach(brand?.id??null,"follower"');
+    expect(page).toContain('useBrandCircleReach(brand?.id??null,"extended"');
+    expect(page).toContain('circleFollowers.kind!=="featureLoading"&&circleFollowers.kind!=="featureOff"');
     expect(page).not.toMatch(/Export unavailable|Book export is coming soon/);
     expect(page).not.toMatch(/followers?\s*:\s*\d|extended\s*:\s*\d/i);
   });

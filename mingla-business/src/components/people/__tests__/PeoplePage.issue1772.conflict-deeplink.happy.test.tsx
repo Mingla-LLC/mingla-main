@@ -46,6 +46,21 @@ jest.mock("../../../hooks/marketing/useBrandPeople", () => ({
     fetchNextPage: jest.fn(async () => undefined),
   }),
 }));
+jest.mock("../../../hooks/marketing/useBrandCircleReach", () => ({
+  useBrandCircleReach: () => ({
+    kind: "featureOff",
+    rows: [],
+    safeAvailability: undefined,
+    counts: undefined,
+    currentPage: undefined,
+    hasCurrentTruth: false,
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    isFetchNextPageError: false,
+    refetch: jest.fn(async () => undefined),
+    fetchNextPage: jest.fn(async () => undefined),
+  }),
+}));
 jest.mock("../../../hooks/marketing/useAudienceList", () => ({
   useAudienceList: () => ({
     hasResolved: true,

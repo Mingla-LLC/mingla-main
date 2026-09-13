@@ -62,6 +62,12 @@ const assertTargetTriggerMutantFails = (source) => {
   assert.throws(() => assertBatchTriggerBoundary(mutant), /ci-batch top-level event set/);
 };
 const PARTIAL_REFERENCE_DELTAS = [{
+  // [TEST-MOD-APPROVED #1777] The Circle reach guard consumes the existing
+  // People provider. Normalize only that exact reviewed reference so the
+  // frozen provider seal remains unchanged and removal/widening stays RED.
+  workflow: "issue-1774-people-page-tests.yml",
+  referenceFiles: [".github/scripts/strict-grep/issue-1777-brand-circle-reach.mjs"],
+}, {
   // [TEST-MOD-APPROVED #2241] Independently mirror the validator's reviewed
   // secret-readiness reference without moving the frozen provider seal.
   workflow: "supabase-secret-budget.yml",

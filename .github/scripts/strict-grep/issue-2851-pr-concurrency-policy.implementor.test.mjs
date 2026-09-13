@@ -1059,11 +1059,40 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // [TEST-MOD-APPROVED #3176] The offering-visibility replay lane adds four
   // explanatory shell-comment lines and one exact-filename skip for #3176's
   // IndexNow migration. No workflow identity, trigger, concurrency block,
-  // group expression, cancellation policy, or timeout changes. The prior
-  // digest was cd049e29326739fe863e274b1a981444a6f3f4c0d7f49fc6e6af85323edf520e;
-  // the new value was derived three times from RUBY_CANONICAL, while the exact
-  // skip-line reversion below proves the change remains independently visible.
-  "b59dc7e87f8d555875f5e83dc28b9906ef62fe43f752119b2d07d3a1760eced3";
+  // group expression, cancellation policy, or timeout changes.
+  //
+  // [TEST-MOD-APPROVED #1777] Re-derived after #1777 added only paths, test
+  // commands, and PostgreSQL proof commands to the existing People lane. The
+  // workflow delta is 19 additions and zero deletions, with no concurrency,
+  // group, or cancel-in-progress change. PR_FAMILY_COUNT and
+  // PR_FAMILY_IDENTITY_SHA256 remain unchanged; restoring that one lane to
+  // current origin/main recomputes #3272's cd049e29... pin. Three independent
+  // runs of this file's RUBY_CANONICAL over the combined tree agree below.
+  //
+  // [TEST-MOD-APPROVED #3285] Re-derived for two additive deltas in two
+  // existing PR-family lanes, both named by description: (1) the migrations-and-
+  // Stripe Deno lane gains one psql target for the #3285 event-dates suite plus
+  // its comment; (2) the private-event lane's pre-#1931 replay phase gains one
+  // exact-filename skip for 20270628003285 plus its comment, on the #2492
+  // guard's own instruction. The workflow delta is 24 insertions, zero
+  // deletions, and none of it touches concurrency, group: or cancel-in-progress.
+  // PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED.
+  //
+  // MEASURED, from the #3285 tree: restoring BOTH lanes to its origin/main
+  // recomputes the prior pin 3b01e307b2ab9066864ae69314ca42eb243a0b169c451921cf54ebbebf039018;
+  // restoring only one of them yields 21a7c17f... or c1c05dff..., so each delta
+  // moves the digest on its own, and both exact lines are added to the
+  // revert-sensitivity loop below. The value is identical across three
+  // derivations with this file's own RUBY_CANONICAL, not copied from a PR run.
+  //
+  // [TEST-MOD-APPROVED #3176] Combined-main re-derivation: origin/main now
+  // includes both #1777 and #3285 and pins 9d8ccb3860de299955df4ec0bb38abff13f4e82eff52fd116b0cd7fcd01bd4db.
+  // Restoring the full five-line #3176 block recomputes that prior value; removing
+  // only its executable skip still moves the semantic digest independently. With
+  // the block restored, this file's RUBY_CANONICAL produced the value below in
+  // three independent local derivations. Counts, identity and concurrency
+  // policies remain unchanged at 124 / 9356c425... / zero audit errors.
+  "69f69f7117efac70d7a54fbf0d64b84da2fa626209174ae81e9754345dee7b47";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1406,11 +1435,48 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     // [TEST-MOD-APPROVED #1981] Paid-cancel status suite target on the same lane.
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "            supabase/functions/agent-confirm-action/__tests__/issue_1981_paid_order_must_refund_status.test.ts\n"],
+    // [TEST-MOD-APPROVED #3285] The #3285 event-dates suite target on the
+    // migrations lane, and the private-event lane's exact-filename skip. Each must
+    // independently move the digest, or the re-pin above would accept a change
+    // nothing proves.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3285_event_dates_stable_identity.implementor.happy.pg17.test.sql\n"],
+    [liveWorkflow("issue", "1931", "private", "event", "access"),
+      "              *20270628003285_issue_3285_event_dates_stable_identity.sql) continue ;;\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
     assert.throws(() => assertCurrentTreeAuthority(reverted), /non-concurrency semantic digest drifted/);
   }
+
+  // [TEST-MOD-APPROVED #3176] The five lines live inside YAML's `run: |` block,
+  // so all five are semantic script bytes. Reverting the complete #3176 block
+  // must reproduce origin/main's independently measured combined-history pin;
+  // the loop above separately proves the executable skip cannot disappear while
+  // its explanation remains behind.
+  const before3176 = { ...sources };
+  const offeringVisibilityName = liveWorkflow(
+    "issue", "2117", "offering", "visibility", "gate", "tests",
+  );
+  before3176[offeringVisibilityName] = removeExactLine(
+    before3176[offeringVisibilityName],
+    [
+      "              # issue #3176 — the IndexNow outbox trigger targets #2986's",
+      "              # `public_search_documents`, which does not exist in this",
+      "              # pre-#2117 phase. The migration and its controls remain intact;",
+      "              # this filtered lane omits it by EXACT FILENAME.",
+      "              *20270627003176_issue_3176_indexnow_outbox.sql) continue ;;",
+      "",
+    ].join("\n"),
+    "#3176 offering-visibility replay block",
+  );
+  const before3176Authority = currentTreeAuthority(before3176);
+  assert.equal(before3176Authority.names.length, 124);
+  assert.equal(before3176Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
+  assert.equal(
+    before3176Authority.withoutConcurrencySha256,
+    "9d8ccb3860de299955df4ec0bb38abff13f4e82eff52fd116b0cd7fcd01bd4db",
+  );
 
   const sitesWithoutPullRequest = { ...sources };
   sitesWithoutPullRequest[sitesRecoveryName] = removeExactLine(

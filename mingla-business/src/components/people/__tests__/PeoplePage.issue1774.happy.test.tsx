@@ -12,10 +12,13 @@ describe("issue #1774 People page happy path", () => {
     expect(legacy).not.toContain("AudienceListScreen");
   });
 
-  test("the page hides future reach/export dependencies and never fabricates reach", () => {
+  test("the page renders Circle only from its server authority and never fabricates reach", () => {
     const page = read("../PeoplePage.tsx");
     expect(page).toContain('status="Import unavailable"');
-    expect(page).not.toMatch(/People you can reach|Reach unavailable|Followers|Extended circle/);
+    expect(page).toContain('useBrandCircleReach(brand?.id??null,"follower"');
+    expect(page).toContain('useBrandCircleReach(brand?.id??null,"extended"');
+    expect(page).toContain('<CircleReachBlock ring="follower"');
+    expect(page).toContain('<CircleReachBlock ring="extended"');
     expect(page).not.toMatch(/Export unavailable|Book export is coming soon/);
     expect(page).not.toMatch(/followersCount|extendedCircleCount|estimatedReach/);
   });

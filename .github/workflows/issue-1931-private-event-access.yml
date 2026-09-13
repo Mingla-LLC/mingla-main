@@ -278,6 +278,20 @@ jobs:
               # reason recorded for #2462 above — an infix glob here would also
               # drop the phase 1 file's siblings.
               *20270528002489_issue_2489_phase2_base_relation_grant.sql) continue ;;
+              # issue #3285 — SKIPPED because this deliberately pre-#1931 phase also
+              # skips #2160. 20270628003285 changes the ON DELETE rule of
+              # `ticket_event_dates_event_date_id_fkey` and defines a `LANGUAGE sql`
+              # helper that reads `ticket_event_dates`, validated at CREATE time.
+              # That table is created ONLY by the skipped #2160, so the replay would
+              # abort here. Nothing is removed from the migration to green this lane.
+              #
+              # Covered end-to-end by the unfiltered full-chain lanes that trigger on
+              # `supabase/migrations/**`, which replay every migration in true
+              # filename order; the migrations-and-Stripe Deno lane also runs the
+              # #3285 suite against that terminal state.
+              #
+              # Matched by EXACT filename, never an issue-number infix.
+              *20270628003285_issue_3285_event_dates_stable_identity.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
           done

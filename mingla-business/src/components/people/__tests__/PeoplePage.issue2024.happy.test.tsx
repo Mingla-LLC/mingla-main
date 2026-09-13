@@ -67,6 +67,9 @@ jest.mock("../../../hooks/marketing/useBrandPeople", () => ({
   useBrandPeople: (...args: [string | null, string | null, boolean, boolean, number]) =>
     peopleHook(args[0], args[1], args[2], args[3], args[4]),
 }));
+jest.mock("../../../hooks/marketing/useBrandCircleReach", () => ({
+  useBrandCircleReach: () => ({ kind: "ready", rows: [], counts: { followers: 0, extended: 0, total: 0 }, currentPage: { state: "ready", availability: { followers: { state: "ready" }, extended: { state: "ready" } } }, hasCurrentTruth: true, hasNextPage: false, isFetchingNextPage: false, isFetchNextPageError: false, refetch, fetchNextPage }),
+}));
 jest.mock("../../../hooks/marketing/useAudienceList", () => ({
   useAudienceList: () => groupState,
 }));
@@ -152,6 +155,8 @@ jest.mock("../PeoplePrimitives", () => ({
   BookSheet: ({ visible }: { visible: boolean }) => (visible ? <Text>BOOK SHEET</Text> : null),
   GroupsSheet: () => null,
 }));
+jest.mock("../CircleReachBlock", () => ({ CircleReachBlock: ({ ring }: { ring: string }) => <Text>{ring === "follower" ? "Followers" : "Extended circle"}</Text> }));
+jest.mock("../CircleReachSheet", () => ({ CircleReachSheet: () => null }));
 
 // Jest requires dependency mocks before the real component import.
 // eslint-disable-next-line import/first
@@ -211,13 +216,11 @@ beforeEach(() => {
 });
 
 describe("issue #2024 rendered People workspace happy path", () => {
-  test("renders only Book then Groups in the full-width 5:3 workspace", () => {
+  test("renders Book then Followers, Extended circle, and Groups in the full-width 5:3 workspace", () => {
     renderPage();
     const output = textOf(tree.toJSON());
-    expect(output).toMatch(/Your book.*Groups/);
-    expect(output).not.toMatch(
-      /People you can reach|Reach unavailable|Followers|Extended circle|Export unavailable/,
-    );
+    expect(output).toMatch(/Your book.*Followers.*Extended circle.*Groups/);
+    expect(output).not.toMatch(/People you can reach|Reach unavailable|Export unavailable/);
     const row = StyleSheet.flatten(tree.root.findByProps({ testID: "people-workspace-row" }).props.style);
     const bookColumn = StyleSheet.flatten(
       tree.root.findByProps({ testID: "people-book-column" }).props.style,

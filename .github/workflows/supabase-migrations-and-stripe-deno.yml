@@ -812,6 +812,16 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2986_public_search_documents.tester.adversarial.pg17.test.sql
 
+          # Issue #3285 — editing a live multi-day event's dates must keep every sold
+          # pass's days, every order's payout anchor and every scan's day. The When
+          # writer deleted and re-inserted all occurrences with new ids, and the
+          # entitlement FK cascaded, so adding a day turned one-day passes into
+          # any-day passes. Behavioural, against the real chain: it drives the
+          # shipped RPC and reads back ids, pass days, anchors and scans. Runs in
+          # one transaction ending in ROLLBACK. Fails on revert of the function
+          # (T-01) and, separately, of the RESTRICT foreign key (T-10).
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3285_event_dates_stable_identity.implementor.happy.pg17.test.sql
           # Issue #3193 — the public resolver must read the LIVE brand row. A host
           # who deletes and recreates a brand leaves several rows under one slug,
           # `idx_brands_slug_active` only constrains the live ones, and the brand

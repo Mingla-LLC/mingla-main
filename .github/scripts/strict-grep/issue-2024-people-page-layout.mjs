@@ -20,7 +20,7 @@ const files = {
 };
 
 const futureUi =
-  /People you can reach|Reach unavailable|Followers|Extended circle|Export unavailable|Book export is coming soon\./;
+  /People you can reach|Reach unavailable|Export unavailable|Book export is coming soon\./;
 
 export function audit(base) {
   const failures = [];
@@ -43,7 +43,7 @@ export function audit(base) {
   const workflow = read("workflow");
 
   if (futureUi.test(page) || futureUi.test(route)) {
-    failures.push("future reach/export UI returned to the People route");
+    failures.push("fabricated reach/export UI returned to the People route");
   }
   if (/followersCount|extendedCircleCount|estimatedReach/.test(page)) {
     failures.push("People fabricates a future reach count");
@@ -115,13 +115,13 @@ export function audit(base) {
   if (!preservedHappy.includes('status="Import unavailable"') || !preservedHappy.includes("flag\\.data")) {
     failures.push("the preserved #1774 happy import fail-closed guard was weakened");
   }
-  if (!preservedHappy.includes("followersCount") || !preservedHappy.includes("estimatedReach")) {
-    failures.push("the preserved #1774 happy no-fabricated-reach guard was weakened");
+  if (!preservedHappy.includes("useBrandCircleReach") || !preservedHappy.includes("estimatedReach")) {
+    failures.push("the preserved #1774 happy server-authority guard was weakened");
   }
   if (!preservedAdversarial.includes('status="Import unavailable"') || !preservedAdversarial.includes("flag\\.data===true")) {
     failures.push("the preserved #1774 adversarial import fail-closed guard was weakened");
   }
-  if (!preservedAdversarial.includes("followers?\\s*:\\s*\\d") || !preservedAdversarial.includes("extended\\s*:\\s*\\d")) {
+  if (!preservedAdversarial.includes("useBrandCircleReach") || !preservedAdversarial.includes("followers?\\s*:\\s*\\d") || !preservedAdversarial.includes("extended\\s*:\\s*\\d")) {
     failures.push("the preserved #1774 adversarial no-fabricated-reach guard was weakened");
   }
   return failures;
@@ -157,8 +157,8 @@ function selfTest() {
     );
     expectMutation(
       "future placeholder restored",
-      () => fs.appendFileSync(target("page"), '\nconst revertedCard = "Extended circle";\n'),
-      "future reach/export UI",
+      () => fs.appendFileSync(target("page"), '\nconst revertedCard = "People you can reach";\n'),
+      "fabricated reach/export UI",
     );
     expectMutation(
       "sticky owner deleted",
