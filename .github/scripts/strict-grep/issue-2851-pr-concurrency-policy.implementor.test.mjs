@@ -1079,7 +1079,22 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // moves the digest on its own, and both exact lines are added to the
   // revert-sensitivity loop below. The value is identical across three
   // derivations with this file's own RUBY_CANONICAL, not copied from a PR run.
-  "9d8ccb3860de299955df4ec0bb38abff13f4e82eff52fd116b0cd7fcd01bd4db";
+  //
+  // [TEST-MOD-APPROVED #3288] Re-derived for ONE additive delta in one existing
+  // PR-family lane, named by description: the migrations-and-Stripe Deno lane
+  // gains one psql target for the #3288 additional-photos SQL suite plus its
+  // three-line comment. The workflow delta is `1 file changed, 5 insertions(+)`,
+  // zero deletions, and none of it touches concurrency, group: or
+  // cancel-in-progress. PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256
+  // (9356c425...) are UNCHANGED.
+  //
+  // MEASURED, from the committed tree on base 05bb53bff: restoring ONLY that
+  // lane to origin/main turns this suite 11/11 green against the prior pin
+  // 9d8ccb3860de299955df4ec0bb38abff13f4e82eff52fd116b0cd7fcd01bd4db, and the
+  // exact added line is in the revert-sensitivity loop below. The value is
+  // identical across three derivations with this file's own RUBY_CANONICAL,
+  // not copied from a PR run.
+  "26253b6b7ca0127e69dbc90214feb9f1e7a7e470f60faee314eb1a3fc1ee16cc";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1428,6 +1443,10 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "            -f supabase/migrations/__tests__/issue_3285_event_dates_stable_identity.implementor.happy.pg17.test.sql\n"],
     [liveWorkflow("issue", "1931", "private", "event", "access"),
       "              *20270628003285_issue_3285_event_dates_stable_identity.sql) continue ;;\n"],
+    // [TEST-MOD-APPROVED #3288] The #3288 additional-photos SQL suite target on
+    // the migrations lane. Removing it must independently move the digest.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
