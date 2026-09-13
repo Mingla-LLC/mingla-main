@@ -1079,7 +1079,28 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // moves the digest on its own, and both exact lines are added to the
   // revert-sensitivity loop below. The value is identical across three
   // derivations with this file's own RUBY_CANONICAL, not copied from a PR run.
-  "9d8ccb3860de299955df4ec0bb38abff13f4e82eff52fd116b0cd7fcd01bd4db";
+  //
+  // [TEST-MOD-APPROVED #3055] Re-derived after #3055 appended ONE step to the
+  // end of the existing migrations job in the migrations-and-Stripe Deno lane:
+  // two psql proof commands for the Ari certification backlog repair, plus
+  // their comment. The lane is DESCRIBED, never spelled as a filename, for the
+  // #2148 provider-reference reason the #3261 note gives.
+  //
+  // PURELY ADDITIVE: over .github/workflows this branch vs origin/main
+  // 05bb53bff is `1 file changed, 27 insertions(+)`, zero deletions, and
+  // grepping the added and removed lines for concurrency / group: /
+  // cancel-in-progress returns ZERO. PR_FAMILY_COUNT and
+  // PR_FAMILY_IDENTITY_SHA256 are UNCHANGED (124 /
+  // 9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04).
+  //
+  // MEASURED on the tree rebased onto 05bb53bff: restoring ONLY that lane to
+  // its origin/main bytes recomputes #3285's pin
+  // 9d8ccb3860de299955df4ec0bb38abff13f4e82eff52fd116b0cd7fcd01bd4db, the value
+  // this replaces. The new value below is identical across three derivations
+  // with this file's own RUBY_CANONICAL (extracted, not retyped), and was not
+  // copied from a PR run's printed `actual:` (#3015). Both proof commands are
+  // added to the revert-sensitivity loop below.
+  "f3395ac82bb8932582b5393c701d25c592eff960b7e4bc489b432368a353db4d";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1428,6 +1449,13 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "            -f supabase/migrations/__tests__/issue_3285_event_dates_stable_identity.implementor.happy.pg17.test.sql\n"],
     [liveWorkflow("issue", "1931", "private", "event", "access"),
       "              *20270628003285_issue_3285_event_dates_stable_identity.sql) continue ;;\n"],
+    // [TEST-MOD-APPROVED #3055] The two Ari certification backlog repair proof
+    // commands #3055 added to the migrations job. Each must independently move
+    // the digest, or the re-pin above would accept a change nothing proves.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3055_ari_cert_backlog_repair.implementor.pg17.test.sql\n"],
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3055_ari_cert_backlog_repair.adversarial.pg17.test.sql\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
