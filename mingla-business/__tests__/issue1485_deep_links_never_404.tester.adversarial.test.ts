@@ -97,6 +97,11 @@ const COMPILED_SRC: Record<string, string> = {
   // shell with their own MIME-correct handlers.
   "/robots.txt": "^/robots\\.txt$",
   "/sitemap.xml": "^/sitemap\\.xml$",
+  // [TEST-MOD-APPROVED #3176] The prior exhaustive rewrite assertion was
+  // correct before #3176 added this protocol document. Keep it inside the
+  // compiled route simulation so the assertion stays exhaustive rather than
+  // exempting a legitimate non-SPA owner.
+  "/indexnow-key.txt": "^/indexnow-key\\.txt$",
   // [TEST-MOD-APPROVED #1615] The stable content page and immutable portrait
   // rewrites did not exist when #1485 froze this exhaustive transcription.
   // Their real compiled forms keep every rewrite covered without weakening the
@@ -209,6 +214,8 @@ const EXTRA_LIVE_PATHS = [
   // [TEST-MOD-APPROVED #2986] These are live server documents, never SPA HTML.
   "/robots.txt",
   "/sitemap.xml",
+  // [TEST-MOD-APPROVED #3176] IndexNow validates this exact public key path.
+  "/indexnow-key.txt",
 ];
 
 /**
@@ -218,6 +225,7 @@ const EXTRA_LIVE_PATHS = [
 const STATIC_HANDLER_PATHS: Record<string, string> = {
   "/robots.txt": "/api/robots",
   "/sitemap.xml": "/api/sitemap",
+  "/indexnow-key.txt": "/api/indexnow-key",
   "/stripe-onboarding-return": "/stripe-onboarding-return.html",
   "/auth/callback": "/auth/callback.html",
   "/accept-brand-invitation": "/accept-brand-invitation-entry",
@@ -298,6 +306,53 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
     expect(catchAll.source).toBe(
       "/((?!_expo/static/|assets/|accept-brand-invitation-entry$).*)",
     );
+  });
+
+  it("A.0c — the IndexNow key path reaches its handler and serves the configured key", () => {
+    expect(resolveForBrowser("/indexnow-key.txt")).toEqual({
+      source: "/indexnow-key.txt",
+      destination: "/api/indexnow-key",
+    });
+
+    type IndexNowResponse = {
+      statusCode: number;
+      setHeader: (name: string, value: string) => void;
+      end: (body?: string) => void;
+    };
+    type IndexNowKeyHandler = (
+      request: { method?: string },
+      response: IndexNowResponse,
+    ) => void;
+
+    // Load and execute the real Vercel handler; a source-only assertion would
+    // not prove that the rewritten public path can return the protocol key.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const indexNowKeyHandler = require("../api/indexnow-key.js") as IndexNowKeyHandler;
+    const previousKey = process.env.INDEXNOW_KEY;
+    const expectedKey = "mingla-indexnow-regression-3176";
+    const headers = new Map<string, string>();
+    let body = "";
+    const response: IndexNowResponse = {
+      statusCode: 0,
+      setHeader: (name, value) => headers.set(name.toLowerCase(), value),
+      end: (value = "") => {
+        body = value;
+      },
+    };
+
+    try {
+      process.env.INDEXNOW_KEY = expectedKey;
+      indexNowKeyHandler({ method: "GET" }, response);
+
+      expect(response.statusCode).toBe(200);
+      expect(headers.get("content-type")).toBe("text/plain; charset=utf-8");
+      expect(headers.get("x-content-type-options")).toBe("nosniff");
+      expect(headers.get("x-robots-tag")).toBe("noindex");
+      expect(body).toBe(expectedKey);
+    } finally {
+      if (previousKey === undefined) delete process.env.INDEXNOW_KEY;
+      else process.env.INDEXNOW_KEY = previousKey;
+    }
   });
 
   it("A.2 — the four production incident routes are inside the derived set", () => {
