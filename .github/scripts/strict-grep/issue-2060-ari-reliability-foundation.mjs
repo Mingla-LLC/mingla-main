@@ -22,7 +22,14 @@ const FILES = {
   certifier: "scripts/ari/certify-capabilities.mjs",
   migration: "supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql",
   currentMigration: "supabase/migrations/20270609002830_issue_2830_mingla_sites_foundation.sql",
-  censusMigration: "supabase/migrations/20270625001981_issue_1981_ari_cert_capability_census.sql",
+  // #3055 — retargeted from 20270625001981. That file sorts below the production
+  // applied head and has never run there; the repair re-issues its certification
+  // statements byte-for-byte at a reachable version, so the census this gate pins
+  // is the one production actually receives. #1981's file stays pinned below as
+  // the byte-identity source.
+  censusMigration: "supabase/migrations/20270630003055_issue_3055_ari_cert_backlog_repair.sql",
+  census1980Migration: "supabase/migrations/20270621001980_issue_1980_ari_cert_capability_census.sql",
+  census1981Migration: "supabase/migrations/20270625001981_issue_1981_ari_cert_capability_census.sql",
   setDigestMigration: "supabase/migrations/20270610002060_issue_2060_ari_cert_requirements_set_digest_post_2830.sql",
   invariants: "docs/INVARIANT_REGISTRY.md",
   rollback: "docs/runbooks/ARI_RELIABILITY_ROLLBACK.md",
@@ -58,6 +65,84 @@ function errorTuples(source, marker) {
     }
   }
   return tuples;
+}
+
+// #3055 — the span of #1981's certification statements: helper, begin_run,
+// finalize_run, their REVOKE/GRANTs and the two function COMMENTs.
+function certificationStatements(source, label) {
+  const start = source.indexOf("CREATE OR REPLACE FUNCTION private.ari_cert_requirements_set_digest_v1()");
+  assert.ok(start >= 0, `${label}: set-digest helper statement not found`);
+  const tail = /COMMENT ON FUNCTION public\.ari_cert_finalize_run\(uuid\) IS\n  '[^']*';/g;
+  tail.lastIndex = start;
+  const end = tail.exec(source);
+  assert.ok(end, `${label}: finalize_run COMMENT statement not found after the helper`);
+  return source.slice(start, end.index + end[0].length);
+}
+
+const REQUIREMENT_INSERT =
+  /INSERT INTO public\.ari_cert_capability_requirements \(capability_id, evidence_mode\)\nVALUES\n[\s\S]*?ON CONFLICT \(capability_id\) DO (?:NOTHING|UPDATE[\s\S]*?);/g;
+
+function requirementPairs(statement) {
+  return [...statement.matchAll(/\('(ari\.[a-z0-9_.]+)',\s*'([a-z_]+)'\)/g)].map((m) => [m[1], m[2]]);
+}
+
+function dollarBlock(source, tag) {
+  const open = source.indexOf(`DO ${tag}`);
+  const close = source.indexOf(`${tag};`, open + tag.length + 3);
+  assert.ok(open >= 0 && close > open, `#3055 repair: ${tag} block not found`);
+  return source.slice(open, close);
+}
+
+// #3055 — the reachable repair agrees with #1981's statements, with #1980/#1981's
+// rows, and with the ledger, and its guards stay delta-shaped.
+function checkBacklogRepair(fixture) {
+  const repair = fixture.censusMigration;
+  assert.equal(
+    certificationStatements(repair, "#3055 repair"),
+    certificationStatements(fixture.census1981Migration, "#1981 census"),
+    "#3055 repair must re-issue #1981's certification statements byte-for-byte",
+  );
+
+  const repairInserts = repair.match(REQUIREMENT_INSERT) ?? [];
+  for (const [label, source] of [["#1980", fixture.census1980Migration], ["#1981", fixture.census1981Migration]]) {
+    const inserts = source.match(REQUIREMENT_INSERT) ?? [];
+    assert.equal(inserts.length, 1, `${label} census must carry exactly one requirement INSERT`);
+    assert.ok(repairInserts.includes(inserts[0]), `#3055 repair must carry ${label}'s requirement INSERT verbatim`);
+  }
+
+  const preflight = dollarBlock(repair, "$issue_3055_preflight$");
+  const postflight = dollarBlock(repair, "$issue_3055_postflight$");
+  const owned = [...preflight.matchAll(
+    /\('(ari\.[a-z0-9_.]+)',\s*'#(\d+)',\s*(NULL|'[a-z_]+'),\s*(NULL|'[a-z_]+')\)/g,
+  )].map((m) => ({
+    id: m[1],
+    issue: m[2],
+    production: m[3] === "NULL" ? null : m[3].slice(1, -1),
+    chain: m[4] === "NULL" ? null : m[4].slice(1, -1),
+  }));
+  assert.equal(owned.length, 8, "#3055 repair must own exactly the eight backlog requirement rows");
+
+  const ledgerIds = new Set(fixture.ledger.capabilities.map((row) => row.id));
+  for (const row of owned) {
+    if (row.chain === null) {
+      assert.ok(!ledgerIds.has(row.id), `#3055 repair retires ${row.id}, but the ledger still lists it`);
+    } else {
+      assert.ok(ledgerIds.has(row.id), `#3055 repair certifies ${row.id}, which the ledger does not list`);
+    }
+  }
+  const insertedPairs = new Map(repairInserts.flatMap(requirementPairs));
+  for (const row of owned.filter((r) => r.issue === "1980" || r.issue === "1981")) {
+    assert.equal(insertedPairs.get(row.id), row.chain,
+      `#3055 repair guards ${row.id} at ${row.chain}, but its copied INSERT writes ${insertedPairs.get(row.id)}`);
+  }
+
+  // Delta-shaped (binding decision on #3055): no guard compares to a count literal.
+  for (const [label, block] of [["pre-flight", preflight], ["post-flight", postflight]]) {
+    assert.ok(!/(?:<>|!=|=|<|>)\s*\d{2,}\b/.test(block),
+      `#3055 repair ${label} compares against a numeric literal — guards must be delta-shaped`);
+  }
+  assert.equal((repair.match(/^BEGIN;$/gm) ?? []).length, 1, "#3055 repair must self-wrap: exactly one BEGIN;");
+  assert.equal((repair.match(/^COMMIT;$/gm) ?? []).length, 1, "#3055 repair must self-wrap: exactly one COMMIT;");
 }
 
 export function checkContract(fixture) {
@@ -240,7 +325,8 @@ export function checkContract(fixture) {
   need(fixture.censusMigration, [
     "v_capability_count <> 137",
     "'capability_count', 137",
-  ], "#1981 certification census");
+  ], "#3055 reachable certification census");
+  checkBacklogRepair(fixture);
 
   need(fixture.setDigestMigration, [
     "private.ari_cert_requirements_set_digest_v1",
@@ -376,7 +462,14 @@ function selfTest() {
   bad(good, (x) => { x.unicodeBoundaryGuard = x.unicodeBoundaryGuard.replace("issue_2060_unicode_value_not_bound", "unicode_values_unbound"); }, "Unicode bound-field guard removed");
   bad(good, (x) => { x.agentChat = x.agentChat.replaceAll("agentReliabilityHttp", "agentReliabilityMissing"); }, "agent-chat wire removed");
   bad(good, (x) => { x.agentConfirm = x.agentConfirm.replaceAll("decideAriFinalization", "decideNothing"); }, "confirm finalization removed");
-  console.log("issue-2060 self-test: 1 GOOD + 31 BAD fixtures passed");
+  // #3055 — the reachable backlog repair.
+  bad(good, (x) => { x.censusMigration = x.censusMigration.replace("v_requirements_digest := private.ari_cert_requirements_set_digest_v1();", "v_requirements_digest := private.ari_cert_requirements_set_digest_v1(); -- drift"); }, "#3055 repair function drift from #1981");
+  bad(good, (x) => { x.censusMigration = x.censusMigration.replace("  ('ari.growth.read_report', 'read')\nON CONFLICT", "  ('ari.growth.read_report', 'write')\nON CONFLICT"); }, "#3055 repair #1980 INSERT not verbatim");
+  bad(good, (x) => { x.censusMigration = x.censusMigration.replace("('ari.rsvp.update',                '#1977', NULL,          'write')", "('ari.rsvp.update',                '#1977', NULL,          NULL)"); }, "#3055 repair retires a ledger capability");
+  bad(good, (x) => { x.censusMigration = x.censusMigration.replace("('ari.order.refund_preview',       '#1981', NULL,          'read')", "('ari.order.refund_preview',       '#1981', NULL,          'write')"); }, "#3055 guard disagrees with copied INSERT");
+  bad(good, (x) => { x.censusMigration = x.censusMigration.replace("IF v_rows <> v_denominators[1]::integer THEN", "IF v_rows <> 132 THEN"); }, "#3055 absolute count guard");
+  bad(good, (x) => { x.censusMigration = x.censusMigration.replace(/^COMMIT;$/m, ""); }, "#3055 repair not self-wrapped");
+  console.log("issue-2060 self-test: 1 GOOD + 37 BAD fixtures passed");
 }
 
 if (process.argv.includes("--self-test")) selfTest();

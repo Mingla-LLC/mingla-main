@@ -1085,14 +1085,33 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // revert-sensitivity loop below. The value is identical across three
   // derivations with this file's own RUBY_CANONICAL, not copied from a PR run.
   //
-  // [TEST-MOD-APPROVED #3176] Combined-main re-derivation: origin/main now
-  // includes both #1777 and #3285 and pins 9d8ccb3860de299955df4ec0bb38abff13f4e82eff52fd116b0cd7fcd01bd4db.
-  // Restoring the full five-line #3176 block recomputes that prior value; removing
-  // only its executable skip still moves the semantic digest independently. With
-  // the block restored, this file's RUBY_CANONICAL produced the value below in
-  // three independent local derivations. Counts, identity and concurrency
-  // policies remain unchanged at 124 / 9356c425... / zero audit errors.
-  "69f69f7117efac70d7a54fbf0d64b84da2fa626209174ae81e9754345dee7b47";
+  // [TEST-MOD-APPROVED #3055] Re-derived after #3055 appended ONE step to the
+  // end of the existing migrations job in the migrations-and-Stripe Deno lane:
+  // two psql proof commands for the Ari certification backlog repair, plus
+  // their comment. The lane is DESCRIBED, never spelled as a filename, for the
+  // #2148 provider-reference reason the #3261 note gives.
+  //
+  // PURELY ADDITIVE: over .github/workflows this branch vs origin/main
+  // 05bb53bff is `1 file changed, 27 insertions(+)`, zero deletions, and
+  // grepping the added and removed lines for concurrency / group: /
+  // cancel-in-progress returns ZERO. PR_FAMILY_COUNT and
+  // PR_FAMILY_IDENTITY_SHA256 are UNCHANGED (124 /
+  // 9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04).
+  //
+  // [TEST-MOD-APPROVED #3176] Combined-main re-derivation after #3055: this
+  // tree carries both the Ari proof step above and #3176's five-line exact
+  // IndexNow skip block in the offering-visibility replay lane. Neither change
+  // touches a workflow identity, trigger, concurrency block, group expression,
+  // cancellation policy or timeout.
+  //
+  // MEASURED, never copied: three executions of this file's RUBY_CANONICAL
+  // produced the value below. Restoring only #3176 recomputes current main's
+  // f3395ac8... authority; restoring only #3055 recomputes #3176's pre-merge
+  // 69f69f71... authority; restoring both recomputes 9d8ccb38.... Counts,
+  // identity and the policy audit remain 124 / 9356c425... / zero errors.
+  // Both #3055 commands and #3176's executable skip remain independently
+  // revert-sensitive below.
+  "cfcf412629aec73913041d62531df32abe128e7b4aae0eb309bb1df4ea5dcffe";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1443,6 +1462,13 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "            -f supabase/migrations/__tests__/issue_3285_event_dates_stable_identity.implementor.happy.pg17.test.sql\n"],
     [liveWorkflow("issue", "1931", "private", "event", "access"),
       "              *20270628003285_issue_3285_event_dates_stable_identity.sql) continue ;;\n"],
+    // [TEST-MOD-APPROVED #3055] The two Ari certification backlog repair proof
+    // commands #3055 added to the migrations job. Each must independently move
+    // the digest, or the re-pin above would accept a change nothing proves.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3055_ari_cert_backlog_repair.implementor.pg17.test.sql\n"],
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3055_ari_cert_backlog_repair.adversarial.pg17.test.sql\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
@@ -1475,7 +1501,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(before3176Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     before3176Authority.withoutConcurrencySha256,
-    "9d8ccb3860de299955df4ec0bb38abff13f4e82eff52fd116b0cd7fcd01bd4db",
+    "f3395ac82bb8932582b5393c701d25c592eff960b7e4bc489b432368a353db4d",
   );
 
   const sitesWithoutPullRequest = { ...sources };
