@@ -24,6 +24,12 @@ import {
   type ExperienceOfferingData,
 } from "@mingla/offering-rendering";
 
+// issue #3284 — DEEP specifier: a partial barrel mock cannot blank the constant.
+import {
+  UNKNOWN_REFUND_POLICY_STATE,
+  type RefundPolicyReadState,
+} from "@mingla/offering-rendering/offeringRefundPolicy";
+
 import type { BusinessEventCard } from "../types/mergedDiscover";
 import type {
   ConsumerExperienceDetail,
@@ -158,6 +164,10 @@ export function buildExperienceOfferingDataFromDetail(
       recurrenceRule: detail.recurrenceRule,
     }),
     bookable: detail.bookable !== false,
+    // issue #3284 — section 10 refund terms from the by-slug read. `??` covers a
+    // detail object built before this field existed: unknown, never "none".
+    refundPolicyState: detail.refundPolicyState ?? UNKNOWN_REFUND_POLICY_STATE,
+    offeringClosed: detail.offeringClosed === true,
   };
 }
 
@@ -188,6 +198,14 @@ export interface SeedExperienceExtras {
   occurrences: ExperienceOfferingData["occurrences"];
   /** Resolved bookable (resolveOfferingCta upstream owns the actual CTA gate). */
   bookable: boolean;
+  /**
+   * issue #3284 — refund terms the SCREEN already holds from the fresh by-slug
+   * read. The deck-card seed itself carries no refund policy, so when this is
+   * absent the seed maps to `unknown` and section 10 renders nothing.
+   */
+  refundPolicyState?: RefundPolicyReadState;
+  /** issue #3284 — the fresh read's ended/cancelled flag; absent → false. */
+  offeringClosed?: boolean;
 }
 
 export function buildExperienceOfferingDataFromSeed(
@@ -264,6 +282,10 @@ export function buildExperienceOfferingDataFromSeed(
       recurrenceRule: seed.recurrenceRule ?? null,
     }),
     bookable: extras.bookable,
+    // issue #3284 — the seed has no refund policy: unknown unless the screen
+    // supplies the fresh read's state.
+    refundPolicyState: extras.refundPolicyState ?? UNKNOWN_REFUND_POLICY_STATE,
+    offeringClosed: extras.offeringClosed === true,
   };
 }
 

@@ -29,6 +29,14 @@ import {
   type EventTerminalSource,
 } from "@mingla/offering-rendering";
 
+// issue #3284 — the three-state refund-terms reader. DEEP specifier on purpose:
+// the #1929 / #2230 suites partially mock the package barrel, and a name missing
+// from those factories would make this mapper throw before any assertion runs.
+import {
+  readRefundPolicyState,
+  type RefundPolicyReadState,
+} from "@mingla/offering-rendering/offeringRefundPolicy";
+
 import { supabase } from "../services/supabase";
 
 export interface CanonicalPublicEvent {
@@ -43,6 +51,12 @@ export interface CanonicalPublicEvent {
   isMultiDate: boolean;
   multiDatePricingMode: "per_day" | "all_days";
   terminalSource: EventTerminalSource;
+  /**
+   * issue #3284 — the organiser's published refund terms from the bundle's
+   * `refundPolicy` key: set / none / unknown (I-3284-UNKNOWN-IS-NOT-NONE). An
+   * absent key — a server from before #3284 — is unknown and renders nothing.
+   */
+  refundPolicyState: RefundPolicyReadState;
 }
 
 export interface PublicEventOccurrenceLike {
@@ -349,6 +363,8 @@ export const mapRpcPayloadToPublicEvent = (
     multiDatePricingMode:
       payload.multiDatePricingMode === "all_days" ? "all_days" : "per_day",
     terminalSource,
+    // issue #3284 — absent key → unknown; null → none; a valid policy → set.
+    refundPolicyState: readRefundPolicyState(payload),
   };
 };
 

@@ -17,6 +17,11 @@
  * fabricate fee data). Wires when B-cycle adds real Stripe.
  *
  * Per Cycle 9c spec §3.4.3.
+ *
+ * issue #3284 [refund terms] — when the offering has published refund terms, a
+ * caption under the summary says what those terms give THIS order as of today
+ * (the server's tier rule, the order's earliest day). Display only: the lines and
+ * amount sent to `refund-order` are exactly what they were before.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -46,6 +51,11 @@ import type { OrderRecord } from "../../store/orderStore";
 // notification rollup side effects are removed in v1 (owned by ORCH-0782 if it needs them).
 import { useRefundOrder } from "../../hooks/useEventOrders";
 import { currencyCodeOrNull, formatCurrency } from "../../utils/currency";
+import type { RefundPolicy } from "../../services/refundPolicyService";
+import {
+  computeRefundPolicySuggestion,
+  type RefundPrefillOfferingType,
+} from "../../utils/refundPolicyPrefill";
 import { randomId } from "../../utils/randomId";
 
 import { Button } from "../ui/Button";
@@ -63,12 +73,23 @@ const REASON_MAX = 200;
 
 export type RefundMode = "full" | "partial";
 
+/** issue #3284 — the offering's refund terms and the start this order counts from. */
+export interface RefundSheetRefundTerms {
+  /** events.refund_policy; null = no terms; undefined = unknown (no caption). */
+  policy: RefundPolicy | null | undefined;
+  offeringType: RefundPrefillOfferingType;
+  /** The earliest start among the order's own days (or the first occurrence). */
+  startsAt: string | null;
+}
+
 export interface RefundSheetProps {
   visible: boolean;
   mode: RefundMode;
   order: OrderRecord;
   onClose: () => void;
   onSuccess: (amountGbp: number) => void;
+  /** issue #3284 — omit (or no terms) and the sheet renders exactly as before. */
+  refundTerms?: RefundSheetRefundTerms;
 }
 
 interface PartialLineState {
@@ -83,6 +104,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
   order,
   onClose,
   onSuccess,
+  refundTerms,
 }) => {
   // ORCH-0787: useRefundOrder is the server-truth mutation. Replaces the stub
   // useOrderStore.recordRefund (which only wrote to Zustand).
@@ -112,6 +134,34 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
 
   const submitting = refundMutation.isPending;
   const moneyCurrency = currencyCodeOrNull(order.currency);
+
+  // issue #3284 — what the published terms give this order "as of today", fixed
+  // when the sheet opens (the window is measured from now, not from the buyer's
+  // request, which is not recorded). Null → no caption.
+  const refundSuggestion = useMemo(() => {
+    if (!visible || refundTerms === undefined) return null;
+    const paidCents =
+      order.totalCents ?? Math.round(order.totalGbpAtPurchase * 100);
+    const refundedCents =
+      order.refundedAmountCents ?? Math.round(order.refundedAmountGbp * 100);
+    return computeRefundPolicySuggestion({
+      policy: refundTerms.policy,
+      offeringType: refundTerms.offeringType,
+      startsAt: refundTerms.startsAt,
+      paidCents,
+      remainingCents: paidCents - refundedCents,
+      currency: moneyCurrency,
+      now: new Date(),
+    });
+  }, [
+    visible,
+    refundTerms,
+    order.totalCents,
+    order.totalGbpAtPurchase,
+    order.refundedAmountCents,
+    order.refundedAmountGbp,
+    moneyCurrency,
+  ]);
 
   // Available lines for partial refund (only those with remaining qty)
   const refundableLines = useMemo(
@@ -350,6 +400,15 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
             </View>
           )}
 
+          {refundSuggestion !== null ? (
+            <Text
+              style={styles.refundPolicyCaption}
+              testID="refund-sheet-policy-caption"
+            >
+              {refundSuggestion.caption}
+            </Text>
+          ) : null}
+
           {/* Required reason input */}
           <View style={styles.reasonSection}>
             <Text style={styles.reasonLabel}>
@@ -500,6 +559,16 @@ const styles = StyleSheet.create({
     marginVertical: spacing.sm,
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  // issue #3284 — the refund-terms caption (design §4.9: caption / tertiary). The
+  // card above keeps its own bottom margin, so the caption pulls up under it.
+  refundPolicyCaption: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.xs,
   },
   partialHelper: {
     fontSize: 13,

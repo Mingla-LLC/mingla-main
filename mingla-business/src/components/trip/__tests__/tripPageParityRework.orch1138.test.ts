@@ -72,7 +72,7 @@ describe("RT-5 ORCH-1138 R2 — public trip page device-parity rework", () => {
     // ladder on every surface); the body renders it for §9 cancellation. The
     // warm-orange RefundPolicyDisplay stays OUT of the trip body.
     const bodySrc = read("../packages/offering-rendering/TripOfferingBody.tsx");
-    const ladderSrc = read("../packages/offering-rendering/TripRefundLadder.tsx");
+    const ladderSrc = read("../packages/offering-rendering/OfferingRefundLadder.tsx");
     expect(bodySrc).toContain("<TripRefundLadder");
     // the promoted ladder renders accent/tertiary refund percentages from real tiers.
     expect(ladderSrc).toMatch(/refund_pct|refundPct/);

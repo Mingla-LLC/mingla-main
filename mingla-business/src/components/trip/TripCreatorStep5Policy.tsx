@@ -28,7 +28,9 @@ import {
 } from "../../constants/designSystem";
 import type { RefundPolicy } from "../../services/refundPolicyService";
 import { BookingDeadlinePicker } from "./BookingDeadlinePicker";
-import { RefundPolicyEditor } from "./RefundPolicyEditor";
+// issue #3284 [bundle budget] — the editor loads in its own chunk (ORCH-1083);
+// never import ./RefundPolicyEditor statically here.
+import { LazyRefundPolicyEditor as RefundPolicyEditor } from "./LazyRefundPolicyEditor";
 import { GlassCard } from "../ui/GlassCard";
 
 export interface Step5Draft {

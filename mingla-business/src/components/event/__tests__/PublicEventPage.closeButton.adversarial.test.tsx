@@ -420,6 +420,13 @@ const renderPublicEventPage = (
       // below is untouched.
       case "../../analytics/shareDestination":
         return { recordShareDestination: () => false };
+      // [TEST-MOD-APPROVED #3284] Harness registration only — ADDITION, no
+      // assertion changed. The adapter now reads its refund-terms default (the
+      // pure three-state reader's UNKNOWN state, which renders nothing) from the
+      // package by deep specifier. The real module is returned; the close-callback
+      // contract is unrelated and every close assertion below is untouched.
+      case "@mingla/offering-rendering/offeringRefundPolicy":
+        return jest.requireActual("@mingla/offering-rendering/offeringRefundPolicy");
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }

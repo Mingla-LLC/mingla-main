@@ -61,6 +61,9 @@ module.exports = {
   // every other pure helper above (#2468 registered it in the per-suite
   // factories; it belongs here too).
   ...real("mapsDeepLink"),
+  // #3284 — the RN-free refund-terms reader (readRefundPolicyState and its
+  // parser/constant), re-exported REAL like every pure helper above. ADDITION only.
+  ...real("offeringRefundPolicy"),
 
   // ---- Stubbed RN visual components (never rendered under node/ts-jest) -----
   ParallaxCoverShell: Stub,
@@ -94,6 +97,8 @@ module.exports = {
   TripPaymentChoice: Stub,
   TripOfferingPaymentChoice: Stub,
   TripRefundLadder: Stub,
+  // #3284 — the ladder's new name (TripRefundLadder above stays as its alias).
+  OfferingRefundLadder: Stub,
   TripReserveBar: Stub,
   // [TEST-MOD-APPROVED #2508] Harness registration only — ADDITION, no
   // assertion changed. The shared "which map app?" chooser + copy-address

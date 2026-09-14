@@ -24,6 +24,7 @@ import {
   VIBE_TAG_SLUGS,
   MUSIC_GENRE_SLUGS,
 } from "../constants/eventTaxonomy";
+import { firstRefundPolicyError } from "./refundPolicyTerms";
 
 export interface ValidationError {
   /** Identifier for the field — drives inline rendering + Fix-jump logic. */
@@ -613,8 +614,23 @@ const validateTickets = (d: DraftEvent): ValidationError[] => {
   return errs;
 };
 
-const validateSettings = (_d: DraftEvent): ValidationError[] => {
-  return [];
+/**
+ * Step 6 — Settings. issue #3284: the refund terms run the SAME tier rule as the
+ * editor's inline errors (refundPolicyTerms), so Continue — and Save on the
+ * published-event edit surface, which validates this step too — is blocked while
+ * any tier error is showing. No terms (null) is always valid: publishing is never
+ * blocked for leaving the refund policy empty.
+ */
+const validateSettings = (d: DraftEvent): ValidationError[] => {
+  const refundError = firstRefundPolicyError(d.refundPolicy ?? null);
+  if (refundError === null) return [];
+  return [
+    {
+      fieldKey: "refundPolicy",
+      step: 5,
+      message: `Fix your refund policy: ${refundError.message}`,
+    },
+  ];
 };
 
 /** Status helper — drives Step 7 status card variant selection. */
