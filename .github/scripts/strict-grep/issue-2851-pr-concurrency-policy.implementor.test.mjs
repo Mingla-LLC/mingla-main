@@ -1120,7 +1120,16 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // and both exact lines are in the revert-sensitivity loop below. The value is
   // identical across three derivations with this file's own RUBY_CANONICAL
   // (extracted, not retyped), not copied from a PR run.
-  "f6f5921bc0999e3925cd7148af5c31a45af11bf1c32a872252693ea8701f1535";
+  //
+  // [TEST-MOD-APPROVED #1778] Re-derived after the existing Book-blast lane
+  // gained #1778's exact migration, Deno, PostgreSQL, Jest, and scoped-typecheck
+  // proof. The lane delta is 23 insertions and one long grep-line replacement;
+  // no concurrency, group:, cancel-in-progress, event kind, or workflow identity
+  // changed; only the existing path scope widened. PR_FAMILY_COUNT (124) and
+  // PR_FAMILY_IDENTITY_SHA256 are unchanged,
+  // and the policy gate plus its mutation proofs remain untouched. Three local
+  // runs of this file's RUBY_CANONICAL produced the same value below.
+  "a24d680bd5fc50d7dae67f67c0f6b95536be0b28e3acfd21c970cf09a901d491";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

@@ -40,6 +40,12 @@ export interface AudienceQueryBrandFollowers {
   brand_id: string;
 }
 
+/** #1778 — consent-gated people beyond direct followers. */
+export interface AudienceQueryBrandCircleExtended {
+  kind: "brand_circle_extended";
+  brand_id: string;
+}
+
 /** Phase A+ — saved custom-segment query (not yet shippable). */
 export interface AudienceQueryCustomSegment {
   kind: "custom_segment";
@@ -63,6 +69,7 @@ export type AudienceQueryDefinition =
   | AudienceQueryBrandBuyers
   | AudienceQueryEventBuyers
   | AudienceQueryBrandFollowers
+  | AudienceQueryBrandCircleExtended
   | AudienceQueryCustomSegment
   | AudienceQueryAllBrandPeople
   | AudienceQueryManualGroup;
@@ -106,6 +113,12 @@ export interface ManualGroupReviewResult {
   newMemberCount: number;
 }
 
+export type SealedMarketingAudienceKind =
+  | "all_brand_people"
+  | "manual_group"
+  | "brand_followers"
+  | "brand_circle_extended";
+
 export interface MarketingBookQuote {
   quoteVersion: 1;
   quoteHash: string;
@@ -120,7 +133,7 @@ export interface MarketingBookQuote {
   estimatedCostMinor: number | null;
   currency: string | null;
   audienceId?: string;
-  audienceKind?: "all_brand_people" | "manual_group";
+  audienceKind?: SealedMarketingAudienceKind;
   audienceVersion?: number;
 }
 export type MarketingBookPreviewState =

@@ -20,6 +20,7 @@ import type {
   CampaignStatus,
   MarketingCampaignRow,
   MarketingBookQuote,
+  SealedMarketingAudienceKind,
 } from "../../types/marketing";
 
 const UUID_RE =
@@ -297,11 +298,16 @@ export async function getOrCreateMarketingBookAudience(input: {
   return data as { audienceId: string; activeBookTotal: number };
 }
 export async function previewMarketingBook(
-  input: string | { campaignId: string; audienceKind: "all_brand_people" | "manual_group" },
+  input: string | { campaignId: string; audienceKind: SealedMarketingAudienceKind },
 ): Promise<MarketingBookQuote> {
-  // The object branch's typed audienceKind is Manual (`audience_kind === "manual_group"`).
+  const audienceKind = typeof input === "string" ? "all_brand_people" : input.audienceKind;
+  const action = audienceKind === "manual_group"
+    ? "preview_people_v2"
+    : audienceKind === "brand_followers" || audienceKind === "brand_circle_extended"
+      ? "preview_circle_v1"
+      : "preview_book_v1";
   const { data, error } = await supabase.functions.invoke("marketing-send", {
-    body: { action: typeof input !== "string" && input.audienceKind[0] === "m" ? "preview_people_v2" : "preview_book_v1", campaign_id: typeof input === "string" ? input : input.campaignId },
+    body: { action, campaign_id: typeof input === "string" ? input : input.campaignId },
   });
   if (error) throw await parseMarketingBookError(error);
   return data as MarketingBookQuote;
@@ -311,7 +317,7 @@ export async function confirmMarketingBook(input: {
   client_request_id: string;
   quote: MarketingBookQuote;
   scheduled_for: string | null;
-  audience_kind?: "all_brand_people" | "manual_group";
+  audience_kind?: SealedMarketingAudienceKind;
 }): Promise<{
   mode: "sent" | "deferred" | "scheduled" | "in_progress";
   delivered: number;
@@ -320,7 +326,11 @@ export async function confirmMarketingBook(input: {
 }> {
   const { data, error } = await supabase.functions.invoke("marketing-send", {
     body: {
-      action: input.audience_kind?.[0] === "m" ? "confirm_people_v2" : "confirm_book_v1",
+      action: input.audience_kind === "manual_group"
+        ? "confirm_people_v2"
+        : input.audience_kind === "brand_followers" || input.audience_kind === "brand_circle_extended"
+          ? "confirm_circle_v1"
+          : "confirm_book_v1",
       campaign_id: input.campaign_id,
       client_request_id: input.client_request_id,
       quoteHash: input.quote.quoteHash,

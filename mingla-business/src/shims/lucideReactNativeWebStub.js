@@ -37,7 +37,10 @@
  * lucide-react CJS/ESM ENTRY is a barrel that statically references every icon;
  * Metro's production minifier could not eliminate the unreferenced ones, so the
  * whole roster (1714 `lucide-*` refs) re-entered __common. Requiring the
- * per-icon module path sidesteps the barrel entirely. The deep modules carry
+ * per-icon module path sidesteps the barrel entirely. The five #1778 picker
+ * icons below use the same pinned Lucide path nodes directly with
+ * `createLucideIcon`; that preserves their rendered SVG exactly while avoiding
+ * five repeated ESM module wrappers in the eager shared chunk. The deep modules carry
  * `__esModule`, so `.default` is the component under both node (jest) and Metro.
  *
  * Drift guard: the used-set below MUST stay in sync with the real imports. If a
@@ -76,6 +79,9 @@ const React = require("react");
 // Resolve the component out of a deep-required lucide icon module. Each deep
 // module sets `__esModule` and exports the component as `default`.
 const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
+const createLucideIcon = iconOf(
+  require("lucide-react/dist/esm/createLucideIcon.js"),
+);
 
 // Authoritative used-set — every icon imported from `lucide-react-native`
 // anywhere under mingla-business/src + app/ AND under the shared `packages/`
@@ -88,6 +94,7 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 //   ArrowLeft        src/components/venue/* (ORCH-1196)
 //   ArrowUp          src/components/ari/InputBar.tsx
 //   BedDouble        src/components/stay/StaySuiteShell.tsx
+//   BookOpen         src/components/marketing/AudiencePickerSheet.tsx (#1778)
 //   Calendar         src/components/venue/* (ORCH-1196)
 //   CalendarDays     src/components/stay/StaySuiteShell.tsx
 //   Check            src/components/ari/{QuickReplyChips,MessageList,ClarifyingCard}.tsx
@@ -107,13 +114,17 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 //   List             src/components/venue/* (ORCH-1196)
 //   Menu             src/screens/ari/AriChatScreen.tsx
 //   MessageSquare    src/components/venue/* (ORCH-1196)
+//   Network          src/components/marketing/AudiencePickerSheet.tsx (#1778)
 //   Pencil           src/components/ari/ToolProposalCard.tsx
 //   Play             src/components/ari/ToolProposalCard.tsx
 //   Plus             src/components/ari/{ToolProposalCard,EmptyState}.tsx
+//   Radio            src/components/marketing/AudiencePickerSheet.tsx (#1778)
 //   Settings         src/screens/ari/AriChatScreen.tsx
+//   ShoppingBag      src/components/marketing/AudiencePickerSheet.tsx (#1778)
 //   Square           src/components/ari/MultiSelectPrompt.tsx
 //   Utensils         src/components/stay/StaySuiteShell.tsx
 //   UtensilsCrossed  src/components/venue/* (ORCH-1196)
+//   UsersRound       src/components/marketing/AudiencePickerSheet.tsx (#1778)
 //   X                src/components/ari/ToolProposalCard.tsx
 //
 // Shared workspaces under `packages/` — rendered by the business WEB build and
@@ -143,6 +154,16 @@ const USED_ICONS = {
   // Issue #2534 — packages/brand-rendering/PublicBrandPage.tsx (Threads chip).
   AtSign: iconOf(require("lucide-react/dist/esm/icons/at-sign.js")),
   BedDouble: iconOf(require("lucide-react/dist/esm/icons/bed-double.js")),
+  BookOpen: createLucideIcon("book-open", [
+    ["path", { d: "M12 7v14", key: "1akyts" }],
+    [
+      "path",
+      {
+        d: "M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z",
+        key: "ruj8y",
+      },
+    ],
+  ]),
   Calendar: iconOf(require("lucide-react/dist/esm/icons/calendar.js")),
   // Issue #2534 — PublicBrandPage RSVP kind badge.
   CalendarCheck: iconOf(
@@ -156,7 +177,9 @@ const USED_ICONS = {
   ChevronRight: iconOf(require("lucide-react/dist/esm/icons/chevron-right.js")),
   ChevronUp: iconOf(require("lucide-react/dist/esm/icons/chevron-up.js")),
   // Issue #1791 — the Orders queue's empty state (VenueOrdersModule).
-  ClipboardList: iconOf(require("lucide-react/dist/esm/icons/clipboard-list.js")),
+  ClipboardList: iconOf(
+    require("lucide-react/dist/esm/icons/clipboard-list.js"),
+  ),
   Clock: iconOf(require("lucide-react/dist/esm/icons/clock.js")),
   // Issue #2534 — PublicBrandPage social chips.
   Facebook: iconOf(require("lucide-react/dist/esm/icons/facebook.js")),
@@ -174,10 +197,44 @@ const USED_ICONS = {
   ),
   // Issue #2534 — PublicBrandPage TikTok chip.
   Music2: iconOf(require("lucide-react/dist/esm/icons/music-2.js")),
+  Network: createLucideIcon("network", [
+    [
+      "rect",
+      { x: "16", y: "16", width: "6", height: "6", rx: "1", key: "4q2zg0" },
+    ],
+    [
+      "rect",
+      { x: "2", y: "16", width: "6", height: "6", rx: "1", key: "8cvhb9" },
+    ],
+    [
+      "rect",
+      { x: "9", y: "2", width: "6", height: "6", rx: "1", key: "1egb70" },
+    ],
+    ["path", { d: "M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3", key: "1jsf9p" }],
+    ["path", { d: "M12 12V8", key: "2874zd" }],
+  ]),
   Pencil: iconOf(require("lucide-react/dist/esm/icons/pencil.js")),
   Play: iconOf(require("lucide-react/dist/esm/icons/play.js")),
   Plus: iconOf(require("lucide-react/dist/esm/icons/plus.js")),
+  Radio: createLucideIcon("radio", [
+    ["path", { d: "M16.247 7.761a6 6 0 0 1 0 8.478", key: "1fwjs5" }],
+    ["path", { d: "M19.075 4.933a10 10 0 0 1 0 14.134", key: "ehdyv1" }],
+    ["path", { d: "M4.925 19.067a10 10 0 0 1 0-14.134", key: "1q22gi" }],
+    ["path", { d: "M7.753 16.239a6 6 0 0 1 0-8.478", key: "r2q7qm" }],
+    ["circle", { cx: "12", cy: "12", r: "2", key: "1c9p78" }],
+  ]),
   Settings: iconOf(require("lucide-react/dist/esm/icons/settings.js")),
+  ShoppingBag: createLucideIcon("shopping-bag", [
+    ["path", { d: "M16 10a4 4 0 0 1-8 0", key: "1ltviw" }],
+    ["path", { d: "M3.103 6.034h17.794", key: "awc11p" }],
+    [
+      "path",
+      {
+        d: "M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z",
+        key: "o988cm",
+      },
+    ],
+  ]),
   Sparkles: iconOf(require("lucide-react/dist/esm/icons/sparkles.js")),
   Square: iconOf(require("lucide-react/dist/esm/icons/square.js")),
   // Issue #2534 — PublicBrandPage TICKETS kind badge.
@@ -185,6 +242,11 @@ const USED_ICONS = {
   UtensilsCrossed: iconOf(
     require("lucide-react/dist/esm/icons/utensils-crossed.js"),
   ),
+  UsersRound: createLucideIcon("users-round", [
+    ["path", { d: "M18 21a8 8 0 0 0-16 0", key: "3ypg7q" }],
+    ["circle", { cx: "10", cy: "8", r: "5", key: "o932ke" }],
+    ["path", { d: "M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3", key: "10s06x" }],
+  ]),
   X: iconOf(require("lucide-react/dist/esm/icons/x.js")),
   // Issue #2534 — PublicBrandPage social chip.
   Youtube: iconOf(require("lucide-react/dist/esm/icons/youtube.js")),

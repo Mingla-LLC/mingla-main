@@ -37,7 +37,11 @@ export function useResolveAudience(
     if (parsed === null) {
       return { data: undefined, isLoading: false, isError: false };
     }
-    if (parsed.kind === "manual") {
+    if (
+      parsed.kind === "manual" ||
+      parsed.kind === "followers" ||
+      parsed.kind === "extended"
+    ) {
       return { data: undefined, isLoading: false, isError: false };
     }
     const source = parsed.kind === "brand" ? brandQuery : eventQuery;
