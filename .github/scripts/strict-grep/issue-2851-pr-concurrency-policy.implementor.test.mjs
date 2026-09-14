@@ -1200,7 +1200,17 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // the revert-sensitivity loop, and a whole-block receipt below re-proves
   // 07682607...; the #3313 receipt (and through it every older one) then runs on
   // that recovered main tree. Not copied from a CI `actual:`.
-  "a32a3073712f74a5ae2e2346c460a2a9f0af122c42e444a39c7614bf6c1bde01";
+  //
+  // [TEST-MOD-APPROVED #3284] Re-derived again: the consumer refund-terms mapping
+  // suite was in no lane, so the existing #1929 hidden-direct-checkout lane now
+  // runs it beside the #1929 hook suites (one jest target appended to the
+  // clients job's app-mobile step) and triggers on its subjects (five
+  // pull_request paths and four push paths, with YAML comments). No job, trigger
+  // event, concurrency block, group expression, cancellation policy, or timeout
+  // changes. MEASURED the same way: current tree 3e75612e...; removing every #3284
+  // block in all four lanes recovers 07682607...; removing only the jest target
+  // yields 365d747a..., only the test-file trigger 8e4e13f0....
+  "3e75612ed1dcaf6dad53350901f28ccc1be8add45d838db7ece1a9eca23aadb5";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1593,6 +1603,12 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
+    // [TEST-MOD-APPROVED #3284] The consumer mapping suite's jest target in the
+    // #1929 clients job, and its test-file trigger path.
+    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"),
+      " src/hooks/__tests__/issue_3284_refund_policy_mapping.implementor.test.ts"],
+    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"),
+      '      - "app-mobile/src/hooks/__tests__/issue_3284_refund_policy_mapping*"\n'],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
@@ -1660,8 +1676,9 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;",
     "",
   ].join("\n");
-  // [TEST-MOD-APPROVED #3284] Reverting #3284's three whole workflow blocks
-  // must reproduce origin/main's pin 07682607... exactly. The #3313 receipt (and
+  // [TEST-MOD-APPROVED #3284] Reverting every #3284 workflow block (the three
+  // replay/suite blocks plus the #1929 lane's four additions) must reproduce
+  // origin/main's pin 07682607... exactly. The #3313 receipt (and
   // through it every older receipt) starts from that recovered main tree, so all
   // of their measured values stay byte-identical.
   const before3284 = { ...sources };
@@ -1707,6 +1724,31 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;",
       "",
     ].join("\n")],
+    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"), [
+      "      # issue #3284 — the consumer refund-terms mapping suite shares this lane's",
+      "      # event bundle mapper; these are the other files it pins.",
+      '      - "app-mobile/src/hooks/__tests__/issue_3284_refund_policy_mapping*"',
+      '      - "app-mobile/src/hooks/useConsumerExperienceDetail.ts"',
+      '      - "app-mobile/src/hooks/useConsumerExperienceOfferingData.ts"',
+      '      - "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx"',
+      '      - "packages/offering-rendering/offeringRefundPolicy.ts"',
+      "",
+    ].join("\n")],
+    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"), [
+      "      # issue #3284 — the refund-terms mapping suite's subjects.",
+      '      - "app-mobile/src/hooks/useConsumerExperienceDetail.ts"',
+      '      - "app-mobile/src/hooks/useConsumerExperienceOfferingData.ts"',
+      '      - "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx"',
+      '      - "packages/offering-rendering/offeringRefundPolicy.ts"',
+      "",
+    ].join("\n")],
+    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"), [
+      "      # issue #3284 — the consumer refund-terms mapping suite runs here, beside the",
+      "      # #1929 hook suites it mirrors; app-mobile has no whole-suite jest lane.",
+      "",
+    ].join("\n")],
+    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"),
+      " src/hooks/__tests__/issue_3284_refund_policy_mapping.implementor.test.ts"],
   ];
   for (const [name, block] of refundTermsBlocks) {
     before3284[name] = removeExactLine(before3284[name], block, `#3284 ${name} block`);

@@ -15,6 +15,13 @@ on:
       - "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx"
       - "app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source*"
       - "app-mobile/src/**/__tests__/issue_1929_hidden_direct_checkout*"
+      # issue #3284 — the consumer refund-terms mapping suite shares this lane's
+      # event bundle mapper; these are the other files it pins.
+      - "app-mobile/src/hooks/__tests__/issue_3284_refund_policy_mapping*"
+      - "app-mobile/src/hooks/useConsumerExperienceDetail.ts"
+      - "app-mobile/src/hooks/useConsumerExperienceOfferingData.ts"
+      - "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx"
+      - "packages/offering-rendering/offeringRefundPolicy.ts"
       - ".github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-1929-hidden-direct-checkout-tests.yml"
@@ -28,6 +35,11 @@ on:
       - "app-mobile/src/hooks/usePublicEventBySlug.ts"
       - "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx"
       - "app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source*"
+      # issue #3284 — the refund-terms mapping suite's subjects.
+      - "app-mobile/src/hooks/useConsumerExperienceDetail.ts"
+      - "app-mobile/src/hooks/useConsumerExperienceOfferingData.ts"
+      - "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx"
+      - "packages/offering-rendering/offeringRefundPolicy.ts"
       - ".github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-1929-hidden-direct-checkout-tests.yml"
@@ -98,5 +110,7 @@ jobs:
         working-directory: mingla-business
       - run: npm ci
         working-directory: app-mobile
-      - run: npx jest --runInBand src/hooks/__tests__/issue_1929_hidden_direct_checkout.test.ts src/hooks/__tests__/issue_1929_hidden_direct_checkout.tester_adversarial.test.ts src/screens/Event/__tests__/issue_1929_hidden_direct_checkout.test.tsx src/screens/Event/__tests__/issue_1929_hidden_direct_checkout.tester_adversarial.test.tsx
+      # issue #3284 — the consumer refund-terms mapping suite runs here, beside the
+      # #1929 hook suites it mirrors; app-mobile has no whole-suite jest lane.
+      - run: npx jest --runInBand src/hooks/__tests__/issue_1929_hidden_direct_checkout.test.ts src/hooks/__tests__/issue_1929_hidden_direct_checkout.tester_adversarial.test.ts src/screens/Event/__tests__/issue_1929_hidden_direct_checkout.test.tsx src/screens/Event/__tests__/issue_1929_hidden_direct_checkout.tester_adversarial.test.tsx src/hooks/__tests__/issue_3284_refund_policy_mapping.implementor.test.ts
         working-directory: app-mobile
