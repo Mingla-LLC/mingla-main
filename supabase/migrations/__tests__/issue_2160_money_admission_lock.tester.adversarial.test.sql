@@ -286,6 +286,11 @@ BEGIN
   -- by reading the migration's source text; this asserts it by minting.
   -- Revert the aggregation to the per-line comparison and this goes RED.
   SELECT * INTO f FROM pg_temp.x2160_event('cap-twolines', 'per_day', 2, 1000, 1);
+  -- issue #3313 — a multi-date checkout with no day is now refused before
+  -- capacity is read (event_date_choice_required). This case is about LINE
+  -- aggregation, not days, so the fixture stops being multi-date for it; the
+  -- cart, the cap and the expected refusal are unchanged.
+  UPDATE public.events SET is_multi_date = false WHERE id = f.o_event;
   BEGIN
     PERFORM public.biz_ticket_checkout_create_session(
       f.o_event, NULL, 'Two Lines', 'g5@example.com', '+15550001111', false,

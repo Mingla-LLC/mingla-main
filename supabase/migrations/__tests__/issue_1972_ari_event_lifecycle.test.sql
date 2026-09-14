@@ -203,6 +203,11 @@ BEGIN
      OR (SELECT recurrence_rules->>'preset' FROM public.events WHERE id=v_recur_id)<>'weekly' THEN
     RAISE EXCEPTION 'recurring publish did not preserve its master/rule';
   END IF;
+  -- issue #3313 — the rule is not only preserved but MATERIALISED: weekly x 4
+  -- publishes all four Sundays, not the first one alone.
+  IF (SELECT count(*) FROM public.event_dates WHERE event_id=v_recur_id) <> 4 THEN
+    RAISE EXCEPTION 'recurring publish did not create every date its rule describes';
+  END IF;
 
   INSERT INTO public.agent_pending_actions(id,user_id,tool_name,tool_args,status,source,related_brand_id)
   VALUES(v_forged_operation,v_user,'duplicate_event',jsonb_build_object('event_id',v_event_id),'executing','hub_experience',v_brand);

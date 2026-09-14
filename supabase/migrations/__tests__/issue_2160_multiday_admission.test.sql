@@ -359,7 +359,13 @@ BEGIN
   SELECT * INTO f FROM pg_temp.i2160_event('legacy', 'per_day', 3);
   v_days := pg_temp.i2160_days(f.o_event);
   -- NO day set — exactly what every pre-#2160 caller sends.
+  -- issue #3313 — a checkout with no day on a multi-date event is now refused
+  -- (event_date_choice_required), so the legacy pass is issued the way real
+  -- legacy passes came to exist: before the event carried the multi-date flag.
+  -- What H-03 proves — how such a pass ADMITS — is unchanged.
+  UPDATE public.events SET is_multi_date = false WHERE id = f.o_event;
   v_order := pg_temp.i2160_reserve(f.o_event, f.o_ticket_type, NULL, 1);
+  UPDATE public.events SET is_multi_date = true WHERE id = f.o_event;
 
   SELECT count(*) INTO v_n FROM public.tickets WHERE order_id = v_order;
   PERFORM pg_temp.i2160_assert(v_n = 1, 'H-03a legacy: no day chosen -> exactly one pass');
@@ -559,6 +565,11 @@ DECLARE
 BEGIN
   -- quantity_total = 1: exactly one admission may ever be sold.
   SELECT * INTO f FROM pg_temp.i2160_event('capacity', 'per_day', 2, 1);
+  -- issue #3313 — a multi-date checkout with no day is refused before capacity
+  -- is read (event_date_choice_required). H-08 is about LINE aggregation, not
+  -- days, so this fixture stops being multi-date; carts, cap and expectations
+  -- are unchanged.
+  UPDATE public.events SET is_multi_date = false WHERE id = f.o_event;
 
   BEGIN
     v_session := public.biz_ticket_checkout_create_session(
