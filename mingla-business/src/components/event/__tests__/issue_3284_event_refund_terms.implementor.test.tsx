@@ -533,6 +533,16 @@ describe("CR — event create wizard: Settings, validation, draft, publish", () 
     expect(serverRowToDraft({ ...row, theme: legacyTheme }).refundPolicy).toBeNull();
   });
 
+  test("CR-9 the organiser draft preview shows the draft's own terms (slice B's transitional marker resolved)", () => {
+    const preview = readSource("src/components/event/DraftEventFoundationPreview.tsx");
+    expect(preview).not.toContain("[TRANSITIONAL] issue #3284");
+    expect(preview).not.toContain("refundPolicyState={UNKNOWN_REFUND_POLICY_STATE}");
+    expect(preview).toContain("readRefundPolicyState({ refundPolicy })");
+    expect(preview).toContain("refundPolicy: RefundPolicy | null;");
+    const route = readSource("app/event/[id]/preview.tsx");
+    expect(route).toContain("refundPolicy={draft.refundPolicy ?? null}");
+  });
+
   const publishResponse = (id: string) => ({
     event: {
       id,
