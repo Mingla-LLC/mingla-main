@@ -1197,9 +1197,7 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // removing all three #3284 blocks recovers origin/main's pin 07682607...
   // exactly; removing any ONE executable line yields 5087b2ea..., c7f32c30... or
   // 8ced6268..., so each delta moves the digest on its own. The three lines join
-  // the revert-sensitivity loop, and a whole-block receipt below re-proves
-  // 07682607...; the #3313 receipt (and through it every older one) then runs on
-  // that recovered main tree. Not copied from a CI `actual:`.
+  // the revert-sensitivity loop. Not copied from a CI `actual:`.
   //
   // [TEST-MOD-APPROVED #3284] Re-derived again: the consumer refund-terms mapping
   // suite was in no lane, so the existing #1929 hidden-direct-checkout lane now
@@ -1209,7 +1207,9 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // event, concurrency block, group expression, cancellation policy, or timeout
   // changes. MEASURED the same way: current tree 3e75612e...; removing every #3284
   // block in all four lanes recovers 07682607...; removing only the jest target
-  // yields 365d747a..., only the test-file trigger 8e4e13f0....
+  // yields 365d747a..., only the test-file trigger 8e4e13f0.... The
+  // #3313, #3325, #3176, #3288 and combined receipts below run on this branch
+  // tree, so their literals are re-derived with the #3284 additions present.
   "3e75612ed1dcaf6dad53350901f28ccc1be8add45d838db7ece1a9eca23aadb5";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
@@ -1676,92 +1676,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;",
     "",
   ].join("\n");
-  // [TEST-MOD-APPROVED #3284] Reverting every #3284 workflow block (the three
-  // replay/suite blocks plus the #1929 lane's four additions) must reproduce
-  // origin/main's pin 07682607... exactly. The #3313 receipt (and
-  // through it every older receipt) starts from that recovered main tree, so all
-  // of their measured values stay byte-identical.
-  const before3284 = { ...sources };
-  const refundTermsBlocks = [
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"), [
-      "          # Issue #3284 — refund terms on events and experiences. The gated writer",
-      "          # refuses terms that are worse for buyers once a paid order exists, and",
-      "          # both public readers append refundPolicy without moving any existing key.",
-      "          # Behavioural against the real chain; every case rolls back.",
-      "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\",
-      "            -f supabase/migrations/__tests__/issue_3284_offering_refund_terms.test.sql",
-      "",
-    ].join("\n")],
-    [liveWorkflow("issue", "1931", "private", "event", "access"), [
-      "              # issue #3284 — SKIPPED FOR THE SAME REASON #2879 is. This phase replays",
-      "              # the chain WITHOUT #1931, and 20270702003284 re-emits",
-      "              # `pg_direct_event_checkout_bundle` to append one display key",
-      "              # (`refundPolicy`). That body reaches",
-      "              # `issue_1931_event_ordinary_read_blocked`, `multi_date_pricing_mode`",
-      "              # and the #2489 theme/address helpers, all validated at CREATE time.",
-      "              # The same file re-emits `pg_public_experience_by_slug`, which reaches",
-      "              # the #2489 helpers too. Nothing is removed from the migration to green",
-      "              # this lane: every one of those references is a real control.",
-      "              #",
-      "              # Covered end-to-end by the unfiltered full-chain lanes that trigger on",
-      "              # `supabase/migrations/**`, which replay every migration in true",
-      "              # filename order; the migrations-and-Stripe Deno lane also runs the",
-      "              # #3284 suite against that terminal state.",
-      "              #",
-      "              # Matched by EXACT filename, never an issue-number infix.",
-      "              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;",
-      "",
-    ].join("\n")],
-    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"), [
-      "              # issue #3284 — SKIPPED for the same reason #2774 and #2879 are.",
-      "              # 20270702003284 re-emits `pg_public_experience_by_slug`, whose body",
-      "              # calls `pg_offering_visibility_gate` (defined only by the skipped",
-      "              # #2117), and `pg_direct_event_checkout_bundle`, whose body reaches",
-      "              # `issue_2489_address_withheld` / `issue_2489_public_theme`, which this",
-      "              # phase does not have. Both are `LANGUAGE sql`, validated at CREATE",
-      "              # time. Nothing is removed from the migration to green this lane.",
-      "              # Covered by the unfiltered full-chain lanes. EXACT FILENAME.",
-      "              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;",
-      "",
-    ].join("\n")],
-    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"), [
-      "      # issue #3284 — the consumer refund-terms mapping suite shares this lane's",
-      "      # event bundle mapper; these are the other files it pins.",
-      '      - "app-mobile/src/hooks/__tests__/issue_3284_refund_policy_mapping*"',
-      '      - "app-mobile/src/hooks/useConsumerExperienceDetail.ts"',
-      '      - "app-mobile/src/hooks/useConsumerExperienceOfferingData.ts"',
-      '      - "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx"',
-      '      - "packages/offering-rendering/offeringRefundPolicy.ts"',
-      "",
-    ].join("\n")],
-    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"), [
-      "      # issue #3284 — the refund-terms mapping suite's subjects.",
-      '      - "app-mobile/src/hooks/useConsumerExperienceDetail.ts"',
-      '      - "app-mobile/src/hooks/useConsumerExperienceOfferingData.ts"',
-      '      - "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx"',
-      '      - "packages/offering-rendering/offeringRefundPolicy.ts"',
-      "",
-    ].join("\n")],
-    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"), [
-      "      # issue #3284 — the consumer refund-terms mapping suite runs here, beside the",
-      "      # #1929 hook suites it mirrors; app-mobile has no whole-suite jest lane.",
-      "",
-    ].join("\n")],
-    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"),
-      " src/hooks/__tests__/issue_3284_refund_policy_mapping.implementor.test.ts"],
-  ];
-  for (const [name, block] of refundTermsBlocks) {
-    before3284[name] = removeExactLine(before3284[name], block, `#3284 ${name} block`);
-  }
-  const before3284Authority = currentTreeAuthority(before3284);
-  assert.equal(before3284Authority.names.length, 124);
-  assert.equal(before3284Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
-  assert.equal(
-    before3284Authority.withoutConcurrencySha256,
-    "07682607bfff0b812a60892f7ba83e5cf1c0cb5208befc3625ba88efc1695ea2",
-  );
-
-  const before3313 = { ...before3284 };
+  const before3313 = { ...sources };
   for (const [name, block, label] of [
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"), recurringSuiteBlock3313, "#3313 migration-suite block"],
     [liveWorkflow("issue", "2333", "online", "event", "publish"), recurringReplayBlock3313, "#3313 online-publish replay block"],
@@ -1773,9 +1688,14 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   const before3313Authority = currentTreeAuthority(before3313);
   assert.equal(before3313Authority.names.length, 124);
   assert.equal(before3313Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
+  // [TEST-MOD-APPROVED #3284] This receipt and the four after it run on the branch
+  // tree, which also carries #3284's four workflow additions, so each literal is
+  // re-derived with them present (main's values: #3313 1d728bae..., #3325
+  // 330740ba..., #3176 a24d680b..., #3288 b1b5f757..., combined aadaaea7...). No
+  // receipt, removal or assertion is added or dropped; only the five literals move.
   assert.equal(
     before3313Authority.withoutConcurrencySha256,
-    "1d728baea721b73f78b3ce43646c19f61a21b8160267999239c1f70b5bf2fbed",
+    "f7e1f66ee1395fa4e95329f06ce0d9c77bf540d68a0d1959750c653e227f6a81",
   );
 
   const before3325 = { ...before3313 };
@@ -1789,7 +1709,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(before3325Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     before3325Authority.withoutConcurrencySha256,
-    "330740baa866dd1013a9047498c746effbb6808e4e0a5a3cb13df02c8b78447a",
+    "f38c1c07e74ae64f64431d2fa211f1806a49af68d3eb63b58bf322b369e049f4",
   );
 
   const before3176 = { ...before3325 };
@@ -1814,7 +1734,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(before3176Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     before3176Authority.withoutConcurrencySha256,
-    "a24d680bd5fc50d7dae67f67c0f6b95536be0b28e3acfd21c970cf09a901d491",
+    "d576e8ec2747f18d59becf4ddffa6c48f441c0663945d89b398ed0e11cd49f94",
   );
 
   // [TEST-MOD-APPROVED #3176] Current main and this branch both change the
@@ -1852,7 +1772,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(before3288Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     before3288Authority.withoutConcurrencySha256,
-    "b1b5f75759ecb8ae6dd12d005b2583ac8414eb1c86c110b6c5585684f013f8a3",
+    "de6d17031b01c457868f178cc38efdba50f78467c308e2a229a2c8fce79b928f",
   );
 
   const beforeBoth = { ...before3288 };
@@ -1864,7 +1784,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(beforeBothAuthority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     beforeBothAuthority.withoutConcurrencySha256,
-    "aadaaea7efdbd00254fa460f07f64be589cd0773d0e7f8aab42d25788cf5af6c",
+    "a4d397553ceebf0d80287eeb24e745bc58be5f46e7fc52e1dbfe550650a51b2f",
   );
 
   const sitesWithoutPullRequest = { ...sources };
