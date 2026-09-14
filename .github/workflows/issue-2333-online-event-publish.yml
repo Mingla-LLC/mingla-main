@@ -182,6 +182,11 @@ jobs:
           # implemented here — it is #2333's semantics to change.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
             -f supabase/migrations/20270523002489_issue_2489_address_privacy_server_gate.sql
+          # Issue #3288 re-emits `business_publish_event_draft` (an absent gallery key
+          # keeps the stored photos) and owns its final definition on a full replay,
+          # so the re-apply set must end with it, per the instruction above.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql
           after="$(snapshot)"
           test "$before" = "$after"
           echo "OK — replay is definition- and grant-equivalent."
