@@ -17726,7 +17726,7 @@
       "providerWorkflow": ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e5169b4e150af60002b3a0aa26db87462783e8533de99c57be61e9383cc48a73",
+        "sourceSha256": "db7cbb028f65b37abdceaef227d2c5cad6d328e7f95873114748461a47d9b9b2",
         "triggers": [
           "pull_request",
           "push",
@@ -17744,6 +17744,7 @@
           "mingla-business/jest.issue2099.web.render.cjs",
           "mingla-business/playwright.issue2099.config.ts",
           "mingla-business/playwright/issue2099/**",
+          "mingla-business/scripts/ci/bundle-baseline.json",
           "mingla-business/src/components/venue/PendingVenueIdentityCorrectionDialog.web.tsx",
           "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.d.ts",
           "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.native.tsx",
