@@ -351,7 +351,7 @@ DROP TRIGGER issue_3055_adv_interference ON public.ari_cert_capability_requireme
 COMMIT;
 \ir ../20270630003055_issue_3055_ari_cert_backlog_repair.sql
 -- [TEST-MOD-APPROVED #1982] Tip census after #3055 is #1982 (137→138).
-\ir ../20270703001982_issue_1982_ari_cert_capability_census.sql
+\ir ../20270704001982_issue_1982_ari_cert_capability_census.sql
 
 DO $restored$
 BEGIN

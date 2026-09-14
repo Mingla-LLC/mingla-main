@@ -2,7 +2,8 @@
 -- team invitation revoke. Adds revoke_brand_invitation (+1 registered tool) and
 -- one ledger capability row (137 → 138). Restores Pass-5 finalize_run count gate
 -- to the live ledger size.
--- MONOTONIC VERSION 20270703001982 (after 20270702003313 on disk).
+-- MONOTONIC VERSION 20270704001982 (after tip 20270703003284 / #3284 on disk).
+-- Must sort above production-applied head so db push cannot strand this census.
 -- Do NOT apply here — orchestrator owns production apply. COMMS-0181: Ari cert
 -- migrations stay unapplied until the convergent repair path is ready.
 
@@ -409,6 +410,6 @@ GRANT EXECUTE ON FUNCTION public.ari_cert_finalize_run(uuid) TO service_role;
 COMMENT ON FUNCTION public.ari_cert_begin_run(text, jsonb, text, jsonb, jsonb) IS
   'Issue #2060 Pass-5 post-#1982: stamps private.ari_cert_requirements_set_digest_v1() of the live 138-row requirement set.';
 COMMENT ON FUNCTION public.ari_cert_finalize_run(uuid) IS
-  'Issue #2060 Pass-5 post-#1981: finalizes only when v_run.requirements_digest equals a fresh private.ari_cert_requirements_set_digest_v1().';
+  'Issue #2060 Pass-5 post-#1982: finalizes only when v_run.requirements_digest equals a fresh private.ari_cert_requirements_set_digest_v1().';
 
 COMMIT;

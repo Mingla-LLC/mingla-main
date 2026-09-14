@@ -27,6 +27,7 @@ import { ToolError } from "../agentToolHelpers.ts";
 
 const BRAND = "11111111-1111-4111-8111-111111111111";
 const USER = "22222222-2222-4222-8222-222222222222";
+const PERSON = "55555555-5555-4555-8555-555555555555";
 
 // deno-lint-ignore no-explicit-any
 function domainTool(name: string): any {
@@ -179,6 +180,35 @@ Deno.test("#1982 tester: people add requires contact; bad cursor fails", async (
     () =>
       tool.executor(
         { brand_id: BRAND, action: "add", display_name: "No Contact" },
+        ownedClient as never,
+        USER,
+      ),
+    ToolError,
+  );
+  assert(!rpcCalled);
+  await assertRejects(
+    () =>
+      tool.executor(
+        {
+          brand_id: BRAND,
+          action: "list",
+          cursor: { updatedAt: "not-a-date", personId: PERSON },
+        },
+        ownedClient as never,
+        USER,
+      ),
+    ToolError,
+  );
+  assert(!rpcCalled);
+  await assertRejects(
+    () =>
+      tool.executor(
+        {
+          brand_id: BRAND,
+          action: "add",
+          display_name: "Pat",
+          email: "p@b.com",
+        },
         ownedClient as never,
         USER,
       ),

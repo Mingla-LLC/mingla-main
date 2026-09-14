@@ -448,16 +448,31 @@ Deno.test("#1982 implementor: manage_brand_people get + add", async () => {
       action: "add",
       display_name: "Pat",
       email: "p@b.com",
-      client_request_id: PERSON,
     },
     client as never,
     USER,
+    { operationId: PERSON },
   );
   const addRpc = rpcs.find((r) => r.name === "biz_add_brand_person");
   assert(addRpc);
   assertEquals(addRpc.args.p_display_name, "Pat");
   assertEquals(addRpc.args.p_client_request_id, PERSON);
   assertEquals(added.id, PERSON);
+
+  await assertRejects(
+    () =>
+      tool.executor(
+        {
+          brand_id: BRAND,
+          action: "add",
+          display_name: "Pat",
+          email: "p@b.com",
+        },
+        client as never,
+        USER,
+      ),
+    ToolError,
+  );
 });
 
 function securedTool(name: string) {

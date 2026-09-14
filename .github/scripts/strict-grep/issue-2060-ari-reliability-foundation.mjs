@@ -24,7 +24,7 @@ const FILES = {
   currentMigration: "supabase/migrations/20270609002830_issue_2830_mingla_sites_foundation.sql",
   // #1982 — current census pin (137→138). #3055 remains the byte-identity twin of
   // #1981 and stays pinned below; do not rewrite applied/history migrations.
-  censusMigration: "supabase/migrations/20270703001982_issue_1982_ari_cert_capability_census.sql",
+  censusMigration: "supabase/migrations/20270704001982_issue_1982_ari_cert_capability_census.sql",
   census3055Migration: "supabase/migrations/20270630003055_issue_3055_ari_cert_backlog_repair.sql",
   census1980Migration: "supabase/migrations/20270621001980_issue_1980_ari_cert_capability_census.sql",
   census1981Migration: "supabase/migrations/20270625001981_issue_1981_ari_cert_capability_census.sql",

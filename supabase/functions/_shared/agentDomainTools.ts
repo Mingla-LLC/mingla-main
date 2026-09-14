@@ -4613,7 +4613,7 @@ const revokeBrandInvitation = writeTool(
 // Role changes are invite-time only on Host; invite_brand_member already covers that.
 const listBrandTeam = writeTool(
   "list_brand_team",
-  "List active brand team members, pending brand invitations, and scanner invitations (roles/scopes included). Use invitation ids from this list for revoke_brand_invitation / revoke_scanner_invitation. Admin-gated by RLS.",
+  "List active brand team members, brand invitations (all statuses), and scanner invitations (roles/scopes included). Use pending invitation ids from this list for revoke_brand_invitation / revoke_scanner_invitation. Admin-gated by RLS.",
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
@@ -4694,7 +4694,8 @@ const PEOPLE_BOOK_CURSOR = {
   additionalProperties: false,
   required: ["updatedAt", "personId"],
   properties: {
-    updatedAt: { type: "string" },
+    // Host RPC casts updatedAt to timestamptz; reject non-date-times before RPC.
+    updatedAt: { type: "string", format: "date-time" },
     personId: { type: "string", format: "uuid" },
   },
 };
@@ -4716,6 +4717,7 @@ function normalizePeopleBookCursor(
     keys[0] !== "personId" ||
     keys[1] !== "updatedAt" ||
     typeof cursor.updatedAt !== "string" ||
+    Number.isNaN(Date.parse(cursor.updatedAt)) ||
     !isUuid(cursor.personId)
   ) {
     throw new ToolError(
@@ -4740,10 +4742,9 @@ const manageBrandPeople = writeTool(
     email: { type: "string", maxLength: 320 },
     phone_e164: { type: "string", maxLength: 32 },
     phone_country_iso: { type: "string", minLength: 2, maxLength: 2 },
-    client_request_id: UUID,
   },
   ["brand_id", "action"],
-  async (args, client, userId) => {
+  async (args, client, userId, context) => {
     await requireBrand(args, client, userId);
     const action = String(args.action);
     if (action === "list") {
@@ -4804,9 +4805,9 @@ const manageBrandPeople = writeTool(
           "Add requires email and/or phone_e164 (Host people_contact_required).",
         );
       }
-      const clientRequestId = isUuid(args.client_request_id)
-        ? args.client_request_id
-        : newIdempotencyKey();
+      // Confirmed Ari writes use the immutable operation id as Host's
+      // p_client_request_id so retries cannot mint a second Brand Person.
+      const clientRequestId = requireAgentOperationId(context);
       return await callRpc(client, "biz_add_brand_person", {
         p_brand_id: args.brand_id,
         p_display_name: displayName,
