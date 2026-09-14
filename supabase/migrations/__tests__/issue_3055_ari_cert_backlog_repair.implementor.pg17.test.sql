@@ -40,6 +40,8 @@
 -- When a later migration changes the requirement set or re-issues these functions,
 -- B2/A0/A2 move with it — the precedent is #1980/#1981 amending #2592's denominator
 -- suite. The fixture fingerprints are production's, probed once, and never move.
+-- [TEST-MOD-APPROVED #1982] Tip census is now 20270703001982 (137→138). B2 re-applies
+-- only #1982 (no-op on tip). The (A) repair path applies #3055 then #1982 so it converges on (B).
 -- =====================================================================================
 
 \set ON_ERROR_STOP on
@@ -310,16 +312,19 @@ BEGIN
 END;
 $b1$;
 
-\ir ../20270630003055_issue_3055_ari_cert_backlog_repair.sql
+-- Tip census after #3055 is #1982. Re-applying #3055 alone on this tip would
+-- rewrite finalize back to 137 and abort against 138 rows; B2 therefore proves
+-- the tip file is the no-op.
+\ir ../20270703001982_issue_1982_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('B+repair');
-\ir ../20270630003055_issue_3055_ari_cert_backlog_repair.sql
+\ir ../20270703001982_issue_1982_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('B+repair+repair');
 
 DO $b2$
 BEGIN
   PERFORM pg_temp.issue_3055_assert_same('T-3055-B2 repair is not a no-op on the chain', 'B', 'B+repair');
   PERFORM pg_temp.issue_3055_assert_same('T-3055-B2 second repair on the chain changed state', 'B+repair', 'B+repair+repair');
-  RAISE NOTICE 'T-3055-B2 PASS: repair applied twice to (B) changed nothing';
+  RAISE NOTICE 'T-3055-B2 PASS: tip census #1982 applied twice to (B) changed nothing';
 END;
 $b2$;
 
@@ -404,8 +409,10 @@ $a1$;
 ROLLBACK;
 
 \ir ../20270630003055_issue_3055_ari_cert_backlog_repair.sql
+\ir ../20270703001982_issue_1982_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('A+repair');
 \ir ../20270630003055_issue_3055_ari_cert_backlog_repair.sql
+\ir ../20270703001982_issue_1982_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('A+repair+repair');
 
 DO $a2$

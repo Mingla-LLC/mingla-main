@@ -1,3 +1,4 @@
+-- [TEST-MOD-APPROVED #1982] X3 expected abort moves with tip census 137→138.
 -- =====================================================================================
 -- #3055 adversarial proof — the backlog repair refuses a state it does not own, and
 -- leaves it exactly as it found it.
@@ -253,7 +254,7 @@ ROLLBACK TO SAVEPOINT x2;
 SAVEPOINT x3;
 INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode) VALUES ('ari.stray.unknown_capability', 'read');
 SELECT pg_temp.issue_3055_adv_expect_abort('T-3055-X3',
-  'issue_3055_preflight_requirements_disagree_with_live_finalizer: 138 requirement rows but ari_cert_finalize_run demands 137 capabilities',
+  'issue_3055_preflight_requirements_disagree_with_live_finalizer: 139 requirement rows but ari_cert_finalize_run demands 138 capabilities',
   true);
 ROLLBACK TO SAVEPOINT x3;
 
