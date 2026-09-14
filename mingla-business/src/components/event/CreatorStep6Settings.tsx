@@ -9,6 +9,13 @@
  * surfaces 5th use, lift to kit primitive (carve-out DEC required).
  *
  * Per Cycle 3 spec §3.9 Step 6.
+ *
+ * issue #3284 [refund terms] — the REFUND POLICY block renders FIRST: the shared
+ * RefundPolicyEditor (event presets) in a GlassCard, the honesty helper (Mingla
+ * does not refund automatically), and — on the published-event edit surface once
+ * tickets have sold — a read-only warning that terms cannot be made worse. Every
+ * input comes from `draft` and the existing `editMode.soldCountByTier`, so there
+ * is no new StepBodyProps field for a host to forget to pass.
  */
 
 import React, { useCallback } from "react";
@@ -18,6 +25,7 @@ import {
   accent,
   glass,
   radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -27,8 +35,20 @@ import {
   canSelectPrivateVisibility,
 } from "../../services/privateEventAccessService";
 import type { DraftEventVisibility } from "../../store/draftEventStore";
+import type { RefundPolicy } from "../../services/refundPolicyService";
+import { RefundPolicyEditor } from "../trip/RefundPolicyEditor";
+import { GlassCard } from "../ui/GlassCard";
+import { Icon } from "../ui/Icon";
 
 import { type StepBodyProps } from "./types";
+
+// issue #3284 — design §4.5 organiser copy (event variants).
+const REFUND_HELPER_PAID =
+  "Guests see these terms before they buy. You issue refunds from Orders — Mingla doesn't refund automatically yet.";
+const REFUND_HELPER_ALL_FREE =
+  "All your tickets are free, so guests won't see this until you add a paid ticket.";
+const refundSalesBannerCopy = (n: number): string =>
+  `${n} guest${n === 1 ? "" : "s"} already bought under these terms. More-generous refunds or an extra tier save instantly — but you can't make terms worse for them here.`;
 
 const VISIBILITY_OPTIONS: ReadonlyArray<{
   id: DraftEventVisibility;
@@ -76,6 +96,7 @@ const ToggleRow: React.FC<ToggleRowProps> = ({ label, sub, on, onToggle }) => (
 export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
   draft,
   updateDraft,
+  editMode,
 }) => {
   // #1931 — Private ticket sales are not ready. The row stays VISIBLE but disabled, and a
   // legacy draft already stored as `private` stays SELECTED rather than being silently
@@ -90,8 +111,61 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
     [updateDraft, privateSelectable],
   );
 
+  // issue #3284 — the refund block's inputs, all derived (no new props).
+  const hasPaidTicket = draft.tickets.some((t) => !t.isFree);
+  const soldTotal = Object.values(editMode?.soldCountByTier ?? {}).reduce(
+    (sum, n) => sum + (Number.isFinite(n) && n > 0 ? n : 0),
+    0,
+  );
+  const handleRefundPolicyChange = useCallback(
+    (refundPolicy: RefundPolicy | null): void => {
+      updateDraft({ refundPolicy });
+    },
+    [updateDraft],
+  );
+
   return (
     <View>
+      {/* issue #3284 — Refund policy (first Settings block) */}
+      <View style={styles.field}>
+        <GlassCard
+          variant="base"
+          radius="md"
+          padding={spacing.md}
+          testID="event-settings-refund-card"
+        >
+          <RefundPolicyEditor
+            offeringType="event"
+            value={draft.refundPolicy ?? null}
+            onChange={handleRefundPolicyChange}
+          />
+        </GlassCard>
+        <Text style={styles.visibilityHelper} testID="event-settings-refund-helper">
+          {hasPaidTicket ? REFUND_HELPER_PAID : REFUND_HELPER_ALL_FREE}
+        </Text>
+        {soldTotal > 0 ? (
+          <GlassCard
+            variant="base"
+            radius="md"
+            padding={spacing.md}
+            style={styles.refundSalesBanner}
+            testID="event-settings-refund-sales-banner"
+          >
+            <View style={styles.refundSalesRow}>
+              <Icon
+                name="bell"
+                size={20}
+                color={semantic.warning}
+                strokeWidth={2}
+              />
+              <Text style={styles.refundSalesText}>
+                {refundSalesBannerCopy(soldTotal)}
+              </Text>
+            </View>
+          </GlassCard>
+        ) : null}
+      </View>
+
       {/* Visibility */}
       <View style={styles.field}>
         <Text style={styles.fieldLabel}>Visibility</Text>
@@ -248,6 +322,25 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     marginTop: spacing.sm,
     paddingHorizontal: spacing.xs,
+  },
+
+  // issue #3284 — refund sales banner (copied from the trip settings accordion).
+  refundSalesBanner: {
+    borderColor: semantic.warning,
+    borderWidth: 1,
+    backgroundColor: semantic.warningTint,
+    marginTop: spacing.sm,
+  },
+  refundSalesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  refundSalesText: {
+    flex: 1,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    color: textTokens.primary,
   },
 
   // ToggleRow ----------------------------------------------------------

@@ -39,6 +39,7 @@ import type {
   EventCoverMediaType,
 } from "./draftEventStore";
 import type { EventCoverMediaProvider } from "../types/eventCoverProvider";
+import type { RefundPolicy } from "../services/refundPolicyService";
 import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-rendering";
 import { useEventEditLogStore } from "./eventEditLogStore";
 import { useOrderStore } from "./orderStore";
@@ -144,6 +145,10 @@ export type EditableLiveEventFields = Pick<
   | "rsvpContributionEnabled"
   | "rsvpContributionSuggestedCents"
   | "rsvpContributionMinCents"
+  // issue #3284 [refund terms] — buyers' money terms, editable post-publish. They
+  // reach the server ONLY through the gated business_patch_offering_refund_policy
+  // owner, which refuses a downgrade once a paid order exists. MATERIAL_KEYS.
+  | "refundPolicy"
 >;
 
 /**
@@ -163,7 +168,10 @@ export type UpdateLiveEventRejection =
   | "multi_date_remove_with_sales"
   | "when_mode_drops_active_date"
   | "recurrence_drops_occurrence"
-  | "time_change_with_sales";
+  | "time_change_with_sales"
+  // issue #3284 — the refund-terms owner refused terms worse for paid buyers.
+  // Server-only: validateLiveEventFieldUpdate never classifies refund terms.
+  | "refund_policy_downgrade_with_sales";
 
 export type UpdateLiveEventResult =
   | { ok: true; editLogEntryId: string }
@@ -331,6 +339,12 @@ export interface LiveEvent {
   };
   /** ORCH-0964 — nullable per-event public theme overrides. */
   themeOverrides?: ThemeInput | null;
+  /**
+   * issue #3284 [refund terms] — `events.refund_policy`: the published refund
+   * terms, or null when the organiser set none. UNDEFINED means UNKNOWN (the row
+   * was not read with the column, e.g. a persisted local event) — never "none".
+   */
+  refundPolicy?: RefundPolicy | null;
   tickets: TicketStub[];
   visibility: DraftEventVisibility;
   requireApproval: boolean;

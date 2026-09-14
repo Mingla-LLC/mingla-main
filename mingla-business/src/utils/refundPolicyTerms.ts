@@ -5,7 +5,8 @@
  *   - the client tier validator (moved here from RefundPolicyEditor so the event
  *     wizard's step validation and the editor's inline errors are ONE rule);
  *   - the "No refunds" shape check;
- *   - the organiser-facing policy name used by the published-event change summary.
+ *   - the organiser-facing policy name used by the published-event change summary;
+ *   - the organiser copy (and error type) for a refund-terms save that did not land.
  *
  * Type-only imports: importing this module never pulls the Supabase client, so
  * the draft validator and the live-event adapter stay pure.
@@ -15,6 +16,7 @@
  */
 
 import type {
+  OfferingRefundPolicyFailureReason,
   RefundPolicy,
   RefundPolicyTier,
 } from "../services/refundPolicyService";
@@ -137,5 +139,66 @@ export function refundPolicyDisplayName(
       const exhaustive: never = policy.kind;
       return String(exhaustive);
     }
+  }
+}
+
+/** Spec #3284 §S5 — the copy when the gated owner cannot take the terms right now. */
+export const REFUND_TERMS_UNAVAILABLE_COPY =
+  "Refund terms can't be saved right now. Try again shortly.";
+
+/**
+ * issue #3284 — organiser copy for a refund-terms save that did NOT land, for the
+ * reasons that are not the sales downgrade (each surface words that one itself:
+ * the event "Refund first" dialog, the experience inline rejection).
+ *
+ * A reason retrying cannot fix never invites a retry (I-2333-UNMAPPED-SERVER-
+ * GUARD-NEVER-INVITES-RETRY): permission and lifecycle refusals say what is wrong.
+ */
+export function refundTermsSaveFailureCopy(
+  reason: OfferingRefundPolicyFailureReason,
+): string {
+  switch (reason) {
+    case "unavailable":
+    case "network_error":
+    case "internal_error":
+      return REFUND_TERMS_UNAVAILABLE_COPY;
+    case "policy_invalid":
+      return "Your refund policy isn't valid. Fix the refund tiers, then try again.";
+    case "authentication_required":
+    case "insufficient_event_permission":
+      return "You don't have permission to change the refund terms.";
+    case "offering_not_found":
+    case "offering_type_not_supported":
+    case "offering_not_editable_status":
+      return "Refund terms can't be changed on this listing right now — it may have ended or been cancelled.";
+    case "missing_edit_reason":
+    case "invalid_edit_reason":
+      return "Please enter a reason between 10 and 200 characters.";
+    case "refund_policy_downgrade_with_sales":
+      return "You can't make the refund terms worse for guests who already paid. Refund them first.";
+    default: {
+      const exhaustive: never = reason;
+      return String(exhaustive);
+    }
+  }
+}
+
+/**
+ * issue #3284 — a refund-terms write that did not land, thrown by a publish path
+ * BEFORE its publish RPC runs (so nothing was published). `message` is the
+ * organiser-facing copy above; hosts show it as-is.
+ */
+export class OfferingRefundTermsError extends Error {
+  readonly reason: OfferingRefundPolicyFailureReason;
+  readonly affectedOrderCount: number | undefined;
+
+  constructor(
+    reason: OfferingRefundPolicyFailureReason,
+    affectedOrderCount?: number,
+  ) {
+    super(refundTermsSaveFailureCopy(reason));
+    this.name = "OfferingRefundTermsError";
+    this.reason = reason;
+    this.affectedOrderCount = affectedOrderCount;
   }
 }

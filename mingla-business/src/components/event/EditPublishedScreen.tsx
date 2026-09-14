@@ -26,6 +26,12 @@
  *   7. ok=false → reject dialog "Refund first" with "Open Orders" CTA
  *      (stub: routes Cycle-9c-toast until 9c builds Orders ledger)
  *
+ * issue #3284 [refund terms] — a changed refund policy is written FIRST, through
+ * the gated business_patch_offering_refund_policy owner, before any other server
+ * leg. A downgrade with paid buyers opens "Refund first" and nothing else is sent;
+ * any other refusal shows a toast and nothing else is sent; on success the key is
+ * stripped and the rest of the save runs as before.
+ *
  * Keyboard handling: SmartScrollView (KeyboardAwareScrollView) auto-scrolls the
  * focused input; the description reveal (issue #1027) is deferred to the
  * keyboard-shown signal via the library's useKeyboardIsVisible() (no bespoke
@@ -137,6 +143,9 @@ import {
   patchPublishedEventTheme,
 } from "../../services/businessEvents";
 import { refreshBrandTaxRegistrationAttestation } from "../../services/pricingSwitchesService";
+// issue #3284 — the one gated write owner for event refund terms.
+import { setOfferingRefundPolicy } from "../../services/refundPolicyService";
+import { refundTermsSaveFailureCopy } from "../../utils/refundPolicyTerms";
 import { updateLiveRsvp } from "../../services/rsvpEvents";
 import { buildRsvpUpdatePayloadDiff } from "../../utils/serverDraftEventMapper";
 import { RsvpStep5Setup } from "../rsvp/RsvpStep5Setup";
@@ -283,6 +292,12 @@ const ISSUE_3288_GALLERY_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "coverGallery",
 ]);
 
+// issue #3284 — the refund terms have a server write path: the gated
+// business_patch_offering_refund_policy owner, called FIRST in handleConfirmSave.
+const ISSUE_3284_REFUND_POLICY_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
+  "refundPolicy",
+]);
+
 const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   ...COVER_MEDIA_PATCH_KEYS,
   ...ISSUE_3288_GALLERY_PATCH_KEYS,
@@ -292,6 +307,7 @@ const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   ...ORCH_1006_PRICING_PATCH_KEYS,
   ...ISSUE_1972_CORE_PATCH_KEYS,
   ...ISSUE_2009_VISIBILITY_PATCH_KEYS,
+  ...ISSUE_3284_REFUND_POLICY_PATCH_KEYS,
 ]);
 
 const sleep = (ms: number): Promise<void> =>
@@ -934,13 +950,25 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             result.affectedOrderCount ?? 0,
             "change the recurrence",
           );
+        case "refund_policy_downgrade_with_sales": {
+          // issue #3284 — the server count when it sent one; otherwise this
+          // screen's sold-count context (can trail the server by a few orders).
+          const n =
+            result.affectedOrderCount ?? soldCountCtx.soldCountForEvent;
+          return {
+            title: "Refund first",
+            body: `${n} buyer${n === 1 ? "" : "s"} bought under the current refund terms. You can make refunds more generous, but to lower them, refund existing buyers first.`,
+            primaryLabel: "Open Orders",
+            primaryAction: closeAndOpenOrders,
+          };
+        }
         default: {
           const _exhaust: never = result.reason;
           return _exhaust;
         }
       }
     },
-    [liveEvent.id, router, runRefundAllAndProceed],
+    [liveEvent.id, router, runRefundAllAndProceed, soldCountCtx.soldCountForEvent],
   );
 
   const handleConfirmSave = useCallback(
@@ -951,7 +979,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       reasonRef.current = reason;
       setSubmitting(true);
       await sleep(SAVE_PROCESSING_MS);
-      const patch = currentPatch;
+      // issue #3284 — `let`: the refund leg below strips the refund terms once the
+      // gated owner has written them, so no later leg ever sees that key.
+      let patch = currentPatch;
 
       // ORCH-1150 — RSVP edit-published path. RSVP has NO sold tickets + no
       // money, so it bypasses the entire refund/sold-diff machinery below and
@@ -1108,6 +1138,63 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         setModal((prev) => ({ ...prev, visible: false }));
         showToast("Choose the cover again so its attribution can be verified.");
         return;
+      }
+
+      // ══ issue #3284 — refund terms FIRST, through the one gated owner ══════
+      // Every client-side refusal above has already run, so this is the first
+      // server write of the save. The owner refuses terms worse for paid buyers
+      // (refund_policy_downgrade_with_sales) and writes nothing on any refusal,
+      // so on every failure the REST of the patch is deliberately not sent either:
+      // the organiser fixes the terms (their edit stays in local state) and saves
+      // again, instead of half the save landing.
+      if (patch.refundPolicy !== undefined) {
+        const refundResult = await setOfferingRefundPolicy(
+          liveEvent.serverEventId,
+          patch.refundPolicy,
+          validation.trimmedReason,
+        );
+        if (!refundResult.ok) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          if (refundResult.reason === "refund_policy_downgrade_with_sales") {
+            const pendingReject = buildRejectDialog({
+              ok: false,
+              reason: "refund_policy_downgrade_with_sales",
+              affectedOrderCount: refundResult.affectedOrderCount,
+            });
+            setTimeout(
+              () => setRejectDialog(pendingReject),
+              REJECT_DIALOG_HANDOFF_MS,
+            );
+            return;
+          }
+          showToast(refundTermsSaveFailureCopy(refundResult.reason));
+          return;
+        }
+        invalidateServerEventCaches();
+        const { refundPolicy: _writtenRefundPolicy, ...restOfPatch } = patch;
+        patch = restOfPatch;
+        // [TRANSITIONAL] issue #3284 — NON-ATOMIC TAIL. The refund terms are now
+        // committed on their own; if a later leg of this same save fails, that
+        // leg's existing error surfaces and the terms stay saved. That is never a
+        // downgrade for buyers (the owner already refused any), but it is a
+        // partial save. Exit condition: one atomic event write owner that takes
+        // the refund terms together with the rest of the live-event patch.
+        if (Object.keys(patch).length === 0) {
+          // Refund terms were the whole change: nothing else to send.
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast("Saved. Live now.");
+          setTimeout(() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              // orch-strict-grep-allow route-by-event-type — EditPublishedScreen.tsx edits events only; liveEvent.id is always an event id (ORCH-0859 [Tr2] REWORK 5b)
+              router.replace(`/event/${liveEvent.id}` as never);
+            }
+          }, TOAST_NAV_DELAY_MS);
+          return;
+        }
       }
 
       const taxonomyPatchPresent =
@@ -1595,7 +1682,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             changedKeys.has("hideRemainingCount") ||
             changedKeys.has("passwordProtected") ||
             // Cycle 12 — in-person payments toggle is a Settings field.
-            changedKeys.has("inPersonPaymentsEnabled"))) ||
+            changedKeys.has("inPersonPaymentsEnabled") ||
+            // issue #3284 — the refund card is the first Settings block.
+            changedKeys.has("refundPolicy"))) ||
         // ORCH-1172 — the RSVP card owns the 6 host-controls PLUS visibility,
         // privateGuestList + hideRemainingCount (the create wizard co-locates
         // them in Step-5; in RSVP edit there is no generic Settings card).

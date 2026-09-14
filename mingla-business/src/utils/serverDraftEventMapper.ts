@@ -15,6 +15,10 @@ import {
 // issue #868 [cover-gallery] — the additional-photos item type; drafts carry it
 // through autosave (draftToServerUpdate) AND publish (same mapper output).
 import type { OfferingGalleryImage } from "@mingla/offering-rendering";
+// issue #3284 — the pure refund-terms shape check, by the DEEP specifier (a
+// partial barrel mock cannot blank it; see publicEventsService.ts).
+import { parseOfferingRefundPolicy } from "@mingla/offering-rendering/offeringRefundPolicy";
+import type { RefundPolicy } from "../services/refundPolicyService";
 import type { LiveEvent } from "../store/liveEventStore";
 import { currencyCodeOrNull } from "./currency";
 import {
@@ -210,6 +214,10 @@ export interface BusinessDraftPayload {
   multiDates: MultiDateEntry[] | null;
   // #3287 — the organiser's multi-day pricing choice. Always a concrete value.
   multiDatePricingMode: MultiDatePricingMode;
+  // issue #3284 — the organiser's refund terms, or null. Always a concrete value
+  // (never undefined, which JSON.stringify would drop). No publish RPC reads it:
+  // the terms reach events.refund_policy only through the gated owner.
+  refundPolicy: RefundPolicy | null;
   location: {
     venueName: string | null;
     address: string | null;
@@ -381,6 +389,10 @@ const buildBusinessDraftPayload = (
   // here (per_day until publish). Coerced so the blob never carries undefined,
   // which JSON.stringify would drop.
   multiDatePricingMode: draftMultiDatePricingMode(draft.multiDatePricingMode),
+  // issue #3284 — the refund terms MUST round-trip through business_draft for the
+  // same reason: the autosave echo replaces the local draft wholesale ~700ms after
+  // every edit, so a key the blob does not carry is wiped before publish.
+  refundPolicy: draft.refundPolicy ?? null,
   location: {
     venueName: draft.venueName,
     address: draft.address,
@@ -950,6 +962,9 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     // erasing it.
     themeOverrides: themeOverridesFromColumns(row),
     tickets: ticketsFromPayload(businessDraft.tickets),
+    // issue #3284 — read leg of the refund-terms round-trip. A legacy blob with no
+    // key, or a value the database could never store, reads as null ("no terms").
+    refundPolicy: parseOfferingRefundPolicy(businessDraft.refundPolicy),
     visibility: asVisibility(businessDraft.requestedVisibility),
     requireApproval: asBoolean(settings.requireApproval, false),
     allowTransfers: asBoolean(settings.allowTransfers, true),
