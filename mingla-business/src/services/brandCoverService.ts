@@ -18,12 +18,9 @@
 
 import { supabase } from "./supabase";
 import { readBrandCoverFileBytes } from "./brandCoverFileReader";
-import {
-  storageUploadTimeoutMs,
-  uploadToStorageWithRetry,
-  withStorageCause,
-  type CoverUploadStage,
-} from "./storageUploadWithRetry";
+// issue #3318 — TYPES only: this service is in business-web's boot chunk, so the
+// retry runner is passed in by the caller that wants it (see `uploadWithRetry`).
+import type { CoverUploadStage, StorageUploadRunner } from "./storageUploadWithRetry";
 import {
   BRAND_COVER_MAX_BYTES,
   BrandCoverError,
@@ -58,6 +55,11 @@ export interface BrandCoverUploadOptions {
   previousPublicUrl?: string | null;
   /** issue #3318 — told as the upload moves from reading to storage to verifying. */
   onStage?: (stage: CoverUploadStage) => void;
+  /**
+   * issue #3318 — runs the storage call (e.g. `createStorageUploadWithRetry()`).
+   * Absent: one attempt, exactly as before.
+   */
+  uploadWithRetry?: StorageUploadRunner;
 }
 
 export const uploadBrandCover = async (
@@ -113,29 +115,31 @@ export const uploadBrandCover = async (
   // bytes after reload. See ORCH-0786 stale-cache follow-up.
   const pathToken = generateBrandCoverPathToken();
   const storagePath = brandCoverStoragePath(brandId, contentType, pathToken);
-  // issue #3318 — a deadline per attempt and one retry on a network failure.
-  // The retry reuses `storagePath` (a fresh token per upload, `upsert: true`),
-  // so a first attempt that lands late is overwritten with the same bytes.
+  // issue #3318 — every attempt goes to the same `storagePath` (a fresh token
+  // per upload, `upsert: true`), so a caller's retry runner can repeat it.
   options.onStage?.("upload");
+  const attempt = () =>
+    supabase.storage
+      .from(BRAND_COVERS_BUCKET)
+      .upload(storagePath, bytes, {
+        contentType,
+        upsert: true,
+      });
   try {
-    await uploadToStorageWithRetry({
-      attempt: () =>
-        supabase.storage
-          .from(BRAND_COVERS_BUCKET)
-          .upload(storagePath, bytes, {
-            contentType,
-            upsert: true,
-          }),
-      timeoutMs: storageUploadTimeoutMs(byteLength),
-    });
+    if (options.uploadWithRetry !== undefined) {
+      await options.uploadWithRetry(attempt, byteLength);
+    } else {
+      const { error: uploadError } = await attempt();
+      if (uploadError !== null) throw uploadError;
+    }
   } catch (failure) {
-    throw withStorageCause(
-      new BrandCoverError(
-        "upload_failed",
-        "Couldn't upload cover. Tap to try again.",
-      ),
-      failure,
+    const uploadError = new BrandCoverError(
+      "upload_failed",
+      "Couldn't upload cover. Tap to try again.",
     );
+    // The storage failure rides along, so a caller can tell a network stall.
+    (uploadError as BrandCoverError & { cause?: unknown }).cause = failure;
+    throw uploadError;
   }
 
   const { data } = supabase.storage

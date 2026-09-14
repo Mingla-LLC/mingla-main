@@ -33,12 +33,24 @@ export type CoverUploadStage = "read" | "upload" | "verify";
 /**
  * Attaches the underlying failure to a service's own error, so a caller that
  * needs to know it was the network (the gallery's copy and telemetry) can,
- * while callers that only read `code` and `message` see nothing new.
+ * while callers that only read `code` and `message` see nothing new. (The
+ * services inline the same one-liner so this module stays out of the boot
+ * chunk; this export is for callers and tests.)
  */
 export const withStorageCause = <E extends Error>(error: E, cause: unknown): E => {
   (error as E & { cause?: unknown }).cause = cause;
   return error;
 };
+
+/**
+ * What an upload service accepts to run its storage call: the single attempt
+ * (to one fixed path) and the byte count. `createStorageUploadWithRetry()`
+ * builds the bounded, retrying one.
+ */
+export type StorageUploadRunner = (
+  attempt: () => Promise<StorageUploadResult>,
+  byteLength: number,
+) => Promise<void>;
 
 /** The `{ error }` half of a storage-js `upload()` result. */
 export type StorageUploadResult = {
@@ -132,6 +144,21 @@ export type UploadToStorageWithRetryOptions = {
   /** Test seam. */
   timers?: Timers;
 };
+
+/**
+ * The runner an upload service takes as `uploadWithRetry`: a size-scaled
+ * deadline per attempt and one retry on a network failure.
+ *
+ * Opt-in per caller, deliberately. The upload services sit in business-web's
+ * eager `__common` chunk (ORCH-1083 boot budget); a static import from them
+ * would put this module in the boot payload. Callers that opt in (the Cover
+ * sheet's Additional photos path) import it from their own lazy chunk.
+ */
+export const createStorageUploadWithRetry = (
+  options: Pick<UploadToStorageWithRetryOptions, "retries" | "timers"> = {},
+): StorageUploadRunner =>
+  (attempt, byteLength) =>
+    uploadToStorageWithRetry({ ...options, attempt, timeoutMs: storageUploadTimeoutMs(byteLength) });
 
 /**
  * Runs `attempt` with a deadline, retrying on a network failure. Resolves when

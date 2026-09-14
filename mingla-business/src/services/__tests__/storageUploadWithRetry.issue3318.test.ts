@@ -3,8 +3,11 @@
  *
  * The 2026-09-14 photo never reached the server: the request waited out the
  * platform default (~60 s) and failed once, for good. `uploadEventCoverMedia`
- * and `uploadBrandCover` now bound each attempt and retry ONCE on a network
- * failure, to the SAME storage path (random per upload, `upsert: true`).
+ * and `uploadBrandCover` now take a storage runner; the one the Additional
+ * photos path passes (`createStorageUploadWithRetry`) bounds each attempt and
+ * retries ONCE on a network failure, to the SAME storage path (random per
+ * upload, `upsert: true`). The runner is opt-in so the services — which sit in
+ * business-web's boot chunk — never import it.
  *
  * REAL CODE: the real services against a mocked Supabase client.
  *
@@ -52,12 +55,18 @@ jest.mock("../brandCoverFileReader", () => ({
 
 import { uploadBrandCover } from "../brandCoverService";
 import { uploadEventCoverMedia } from "../eventCoverMediaService";
+import { readFileSync } from "fs";
+import { join } from "path";
+
 import {
+  createStorageUploadWithRetry,
   storageUploadTimeoutMs,
   StorageUploadError,
   StorageUploadTimeoutError,
   uploadToStorageWithRetry,
 } from "../storageUploadWithRetry";
+
+const withRetry = createStorageUploadWithRetry();
 
 const okResponse = (): Response =>
   ({
@@ -109,7 +118,7 @@ describe("T2 — a storage upload that never settles fails after its timeout, on
     expect(timeout).toBe(26_000);
 
     let caught: unknown = null;
-    const uploading = uploadEventCoverMedia(eventInput).catch((error: unknown) => {
+    const uploading = uploadEventCoverMedia(eventInput, { uploadWithRetry: withRetry }).catch((error: unknown) => {
       caught = error;
     });
     await jest.advanceTimersByTimeAsync(timeout - 1);
@@ -138,7 +147,7 @@ describe("T2 — a storage upload that never settles fails after its timeout, on
     const uploading = uploadBrandCover(
       "brand-1",
       { uri: "file:///picked/a.jpg", mimeType: "image/jpeg", fileName: "a.jpg", fileSize: 2_400_000 },
-      { previousPublicUrl: null },
+      { previousPublicUrl: null, uploadWithRetry: withRetry },
     ).catch((error: unknown) => {
       caught = error;
     });
@@ -161,7 +170,10 @@ describe("retry policy", () => {
       .mockResolvedValueOnce({ error: NETWORK_ERROR })
       .mockResolvedValueOnce({ error: null });
     const stages: string[] = [];
-    const result = await uploadEventCoverMedia(eventInput, { onStage: (stage) => stages.push(stage) });
+    const result = await uploadEventCoverMedia(eventInput, {
+      onStage: (stage) => stages.push(stage),
+      uploadWithRetry: withRetry,
+    });
     expect(mockStorageUpload).toHaveBeenCalledTimes(2);
     expect(result.storagePath).toBe(mockStorageUpload.mock.calls[0][0]);
     expect(stages).toEqual(["read", "upload", "verify"]);
@@ -169,7 +181,7 @@ describe("retry policy", () => {
 
   test("an HTTP error from storage is not retried", async () => {
     mockStorageUpload.mockResolvedValue({ error: HTTP_ERROR });
-    await expect(uploadEventCoverMedia(eventInput)).rejects.toMatchObject({
+    await expect(uploadEventCoverMedia(eventInput, { uploadWithRetry: withRetry })).rejects.toMatchObject({
       code: "upload_failed",
       cause: expect.objectContaining({ retryable: false, timedOut: false, attempts: 1 }),
     });
@@ -179,7 +191,11 @@ describe("retry policy", () => {
   test("two network errors in a row give up after exactly one retry", async () => {
     mockStorageUpload.mockResolvedValue({ error: NETWORK_ERROR });
     await expect(
-      uploadBrandCover("brand-1", { uri: "file:///a.jpg", mimeType: "image/jpeg", fileName: "a.jpg", fileSize: 10 }),
+      uploadBrandCover(
+        "brand-1",
+        { uri: "file:///a.jpg", mimeType: "image/jpeg", fileName: "a.jpg", fileSize: 10 },
+        { uploadWithRetry: withRetry },
+      ),
     ).rejects.toMatchObject({ code: "upload_failed", cause: expect.objectContaining({ retryable: true, attempts: 2 }) });
     expect(mockStorageUpload).toHaveBeenCalledTimes(2);
   });
@@ -202,5 +218,29 @@ describe("retry policy", () => {
       }),
     ).rejects.toMatchObject({ retryable: true, attempts: 2 });
     expect(new StorageUploadTimeoutError(26_000).message).toMatch(/26 s/);
+  });
+});
+
+describe("the runner is opt-in, and stays out of the boot chunk", () => {
+  test("without a runner the services make exactly one attempt, as before, and keep the storage failure as the cause", async () => {
+    mockStorageUpload.mockResolvedValue({ error: NETWORK_ERROR });
+    await expect(uploadEventCoverMedia(eventInput)).rejects.toMatchObject({
+      name: "EventCoverMediaError",
+      code: "upload_failed",
+      message: "Network request failed",
+      cause: NETWORK_ERROR,
+    });
+    await expect(
+      uploadBrandCover("brand-1", { uri: "file:///a.jpg", mimeType: "image/jpeg", fileName: "a.jpg", fileSize: 10 }),
+    ).rejects.toMatchObject({ name: "BrandCoverError", message: "Couldn't upload cover. Tap to try again." });
+    expect(mockStorageUpload).toHaveBeenCalledTimes(2);
+  });
+
+  test("the services import the retry module for TYPES only (they are in business-web's eager __common chunk)", () => {
+    for (const file of ["eventCoverMediaService.ts", "brandCoverService.ts"]) {
+      const source = readFileSync(join(__dirname, "..", file), "utf8");
+      const imports = source.match(/^import[^;]*from "\.\/storageUploadWithRetry";$/gm) ?? [];
+      expect(imports).toEqual(['import type { CoverUploadStage, StorageUploadRunner } from "./storageUploadWithRetry";']);
+    }
   });
 });

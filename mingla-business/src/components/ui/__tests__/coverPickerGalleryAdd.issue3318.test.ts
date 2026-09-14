@@ -527,10 +527,14 @@ describe("issue #3318 source wiring", () => {
     expect(code).toContain("isVideoJobActive: () => activeVideoUpload,");
   });
 
-  test("the upload tells the controller its stage on both storage routes", () => {
+  test("the upload tells the controller its stage, and uses the bounded retrying storage runner, on both routes", () => {
     const body = callbackBody("uploadGalleryPhoto", "addGalleryPhoto");
-    expect(body).toContain("{ previousPublicUrl: null, onStage },");
-    expect((body.match(/\{ onStage \}/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(body).toContain("{ previousPublicUrl: null, onStage, uploadWithRetry: galleryStorageUpload },");
+    expect((body.match(/\{ onStage, uploadWithRetry: galleryStorageUpload \}/g) ?? []).length).toBe(2);
+    expect(body).toContain("uploadWithRetry: galleryStorageUpload,");
+    expect(executable(coverPickerSource)).toContain(
+      "const galleryStorageUpload = createStorageUploadWithRetry();",
+    );
   });
 
   test("the commit appends to the CURRENT gallery ref, and both emit paths delegate to the module", () => {

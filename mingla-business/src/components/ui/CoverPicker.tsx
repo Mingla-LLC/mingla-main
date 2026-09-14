@@ -142,6 +142,12 @@ import {
   type GalleryPhotoTile,
 } from "./coverPickerGalleryAdd";
 import { reportGalleryAddFailure } from "./coverPickerGalleryTelemetry";
+import { createStorageUploadWithRetry } from "../../services/storageUploadWithRetry";
+
+// issue #3318 — Additional photos' storage runner: a size-scaled deadline per
+// attempt and one retry on a network failure. Imported HERE (CoverPicker is its
+// own lazy web chunk), never by the upload services, which sit in the boot chunk.
+const galleryStorageUpload = createStorageUploadWithRetry();
 import { findSelectedProviderId } from "./coverPickerSelection";
 import { Icon } from "./Icon";
 import { EventCoverMedia, type EventCoverMediaErrorEvent } from "./EventCoverMedia";
@@ -713,7 +719,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             fileName: asset.fileName,
             fileSize: asset.fileSize,
           },
-          { previousPublicUrl: null, onStage },
+          { previousPublicUrl: null, onStage, uploadWithRetry: galleryStorageUpload },
         );
         publicUrl = uploaded.publicUrl;
         mediaType = uploaded.mediaType === "gif" ? "gif" : "image";
@@ -729,7 +735,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             durationMs: null,
             pickerType: asset.type,
           },
-          { onStage },
+          { onStage, uploadWithRetry: galleryStorageUpload },
         );
         publicUrl = uploaded.publicUrl;
         mediaType = uploaded.mediaType === "gif" ? "gif" : "image";
@@ -742,6 +748,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             const poster = await uploadBrandCover(target.brandId, extracted.asset, {
               previousPublicUrl: null,
               onStage,
+              uploadWithRetry: galleryStorageUpload,
             });
             posterUrl = poster.publicUrl;
           } else {
@@ -753,7 +760,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
                 durationMs: null,
                 pickerType: "image",
               },
-              { onStage },
+              { onStage, uploadWithRetry: galleryStorageUpload },
             );
             posterUrl = poster.publicUrl;
           }
