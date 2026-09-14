@@ -201,7 +201,8 @@ BEGIN
     DISABLE TRIGGER ari_cert_capability_requirements_immutable_trigger;
   DELETE FROM public.ari_cert_capability_requirements
   WHERE capability_id IN ('ari.rsvp.update', 'ari.marketing.update_draft', 'ari.marketing.delete_draft',
-                          'ari.growth.read_report', 'ari.order.refund_preview', 'ari.installment.list');
+                          'ari.growth.read_report', 'ari.order.refund_preview', 'ari.installment.list',
+                          'ari.team.revoke_invitation');
   INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode)
   VALUES ('ari.guests.set_approval', 'write');
   UPDATE public.ari_cert_capability_requirements SET evidence_mode = 'unsupported'
@@ -349,6 +350,8 @@ BEGIN;
 DROP TRIGGER issue_3055_adv_interference ON public.ari_cert_capability_requirements;
 COMMIT;
 \ir ../20270630003055_issue_3055_ari_cert_backlog_repair.sql
+-- [TEST-MOD-APPROVED #1982] Tip census after #3055 is #1982 (137→138).
+\ir ../20270703001982_issue_1982_ari_cert_capability_census.sql
 
 DO $restored$
 BEGIN

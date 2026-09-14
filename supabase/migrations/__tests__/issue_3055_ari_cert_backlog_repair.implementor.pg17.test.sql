@@ -276,7 +276,9 @@ BEGIN
   WHERE capability_id IN (
     'ari.rsvp.update',
     'ari.marketing.update_draft', 'ari.marketing.delete_draft', 'ari.growth.read_report',
-    'ari.order.refund_preview', 'ari.installment.list');
+    'ari.order.refund_preview', 'ari.installment.list',
+    -- #1982 tip census only; absent in production
+    'ari.team.revoke_invitation');
   INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode)
   VALUES ('ari.guests.set_approval', 'write');
   UPDATE public.ari_cert_capability_requirements
@@ -411,7 +413,8 @@ ROLLBACK;
 \ir ../20270630003055_issue_3055_ari_cert_backlog_repair.sql
 \ir ../20270703001982_issue_1982_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('A+repair');
-\ir ../20270630003055_issue_3055_ari_cert_backlog_repair.sql
+-- Second pass is tip-only: re-applying #3055 on the post-#1982 tip would rewrite
+-- finalize to 137 and abort against 138 rows (same constraint as B2).
 \ir ../20270703001982_issue_1982_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('A+repair+repair');
 
@@ -438,7 +441,7 @@ BEGIN
   RAISE NOTICE 'T-3055-A2 PASS: (A)+repair is identical to (B) on rows, digest, functions, trigger and every ari_cert_* catalog object';
 
   PERFORM pg_temp.issue_3055_assert_same('T-3055-A3 second repair on (A) changed state', 'A+repair', 'A+repair+repair');
-  RAISE NOTICE 'T-3055-A3 PASS: repair applied twice to (A) changed nothing the second time';
+  RAISE NOTICE 'T-3055-A3 PASS: tip census #1982 applied again to (A) changed nothing';
 
   v_rows := pg_temp.issue_3055_assert_ledger_agreement('T-3055-A4');
   RAISE NOTICE 'T-3055-A4 PASS: repaired set holds % requirement rows, id-for-id equal to the ledger', v_rows;
