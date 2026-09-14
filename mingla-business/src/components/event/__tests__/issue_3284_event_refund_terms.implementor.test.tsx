@@ -155,7 +155,7 @@ jest.mock("../../../services/orderRefundService", () => ({
   refundAllEventOrders: jest.fn(),
 }));
 jest.mock("../../../hooks/useCurrentBrandRole", () => ({
-  useCurrentBrandRole: () => ({ rank: "account_owner" }),
+  useCurrentBrandRole: () => ({ rank: 100 }),
 }));
 jest.mock("../../../hooks/useBrands", () => ({
   useBrand: () => ({ data: null, isLoading: false, isError: false }),
