@@ -4794,9 +4794,10 @@ const manageBrandPeople = writeTool(
       const email = typeof args.email === "string" && args.email.trim()
         ? args.email.trim()
         : null;
-      const phone = typeof args.phone_e164 === "string" && args.phone_e164.trim()
-        ? args.phone_e164.trim()
-        : null;
+      const phone =
+        typeof args.phone_e164 === "string" && args.phone_e164.trim()
+          ? args.phone_e164.trim()
+          : null;
       if (email === null && phone === null) {
         throw new ToolError(
           "INVALID_ARGS",
