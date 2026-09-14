@@ -646,3 +646,176 @@ describe("issue #3288 — additional photos survive every draft re-read, autosav
     expect(fake.events.get(DRAFT_ID)?.cover_media_gallery).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Issue #3318 T3 — the cover video becomes ready while a photo is uploading.
+//
+// The 2026-09-14 photo was added while a cover video processed. Whatever the
+// upload does, the two independent writes must not undo each other: the
+// photo's gallery commit must carry the ready video cover, and the video's
+// cover emit must carry the gallery. Driven through the REAL add controller and
+// the REAL picker emit paths (`coverPickerGalleryAdd`), into the REAL draft
+// store, autosave and in-memory server above.
+//
+// The video emit's host call is held open (the host has applied the patch and is
+// awaiting its save, as `VenueDeckReadinessSetup` and `CoverPickerSheet` do)
+// while the photo commits, so the commit lands inside `emitCoverWithGallery`'s
+// await. Reverting its ref-first ordering, or a commit that re-emits a cover
+// captured when the photo was picked, writes the old cover back over the video
+// and fails this.
+//
+// The host adapter mirrors `CreatorStep4Cover.handleCoverChange` (the #3288 C
+// block pins that source) feeding the wizard's `updateDraft`.
+// ---------------------------------------------------------------------------
+
+import {
+  commitGalleryWithCover,
+  createGalleryAddController,
+  emitCoverWithGallery,
+  type CoverEmitRefs,
+} from "../../components/ui/coverPickerGalleryAdd";
+
+type T3Patch = {
+  coverMediaUrl: string | null;
+  coverMediaPosterUrl: string | null;
+  coverMediaType: "image" | "gif" | "video" | null;
+  coverMediaProvider: null;
+  coverMediaSourceUrl: null;
+  coverMediaCredit: null;
+  coverMediaCreditUrl: null;
+  coverMediaAlt: string | null;
+  coverGallery?: OfferingGalleryImage[];
+};
+
+const T3_EMPTY_COVER: T3Patch = {
+  coverMediaUrl: null,
+  coverMediaPosterUrl: null,
+  coverMediaType: null,
+  coverMediaProvider: null,
+  coverMediaSourceUrl: null,
+  coverMediaCredit: null,
+  coverMediaCreditUrl: null,
+  coverMediaAlt: null,
+};
+
+const T3_VIDEO: T3Patch = {
+  ...T3_EMPTY_COVER,
+  coverMediaUrl: "https://video.example.test/issue-3318/ready.mp4",
+  coverMediaPosterUrl: "https://video.example.test/issue-3318/ready.jpg",
+  coverMediaType: "video",
+  coverMediaAlt: "Uploaded video cover",
+};
+
+const T3_PHOTO: OfferingGalleryImage = {
+  url: "https://cdn.example.test/issue-3318/added.jpg",
+  posterUrl: "https://cdn.example.test/issue-3318/added.jpg",
+  type: "image",
+  alt: null,
+  credit: null,
+};
+
+/** `CreatorStep4Cover.handleCoverChange` → the wizard's `updateDraft`. */
+const t3HostCoverChange = (patch: T3Patch): void => {
+  const draft = storeDraft();
+  useDraftEventStore.getState().updateDraft(DRAFT_ID, {
+    coverMediaUrl: patch.coverMediaUrl,
+    coverMediaPosterUrl: patch.coverMediaPosterUrl,
+    coverMediaType: patch.coverMediaType,
+    coverMediaProvider: patch.coverMediaProvider,
+    coverMediaSourceUrl: patch.coverMediaSourceUrl,
+    coverMediaCredit: patch.coverMediaCredit,
+    coverMediaCreditUrl: patch.coverMediaCreditUrl,
+    coverMediaAlt: patch.coverMediaAlt,
+    coverGallery:
+      draft.coverGallery === undefined && (patch.coverGallery ?? []).length === 0
+        ? undefined
+        : (patch.coverGallery ?? []),
+  } as Partial<DraftEvent>);
+};
+
+const saveAhead = async (): Promise<void> => {
+  const current = storeDraft();
+  await save({
+    ...current,
+    clientRevision: Math.max(current.clientRevision ?? 0, serverRevision()) + 1,
+  });
+};
+
+describe("issue #3318 T3 — a cover video that becomes ready during a photo upload keeps both", () => {
+  for (const mode of MODES) {
+    for (const format of FORMATS) {
+      test(`${mode} server · ${format} · the autosave carries the video cover AND the new photo`, async () => {
+        fake.mode = mode;
+        seedServerRow(format);
+        useDraftEventStore.getState().upsertDraft(localDraftFor(format));
+        await render([<EditRoute key="edit" />]);
+
+        // The picker, as CoverPicker wires it: one cover ref, one gallery ref.
+        const refs: CoverEmitRefs<T3Patch> = {
+          cover: { current: T3_EMPTY_COVER },
+          gallery: { current: [] },
+        };
+        let resolveUpload: (item: OfferingGalleryImage) => void = () => undefined;
+        const controller = createGalleryAddController({
+          upload: () =>
+            new Promise<OfferingGalleryImage>((resolve) => {
+              resolveUpload = resolve;
+            }),
+          commit: (item) =>
+            commitGalleryWithCover([...refs.gallery.current, item], refs, () => undefined, t3HostCoverChange),
+          onTilesChange: () => undefined,
+          notify: () => undefined,
+          report: () => undefined,
+          isVideoJobActive: () => true,
+        });
+
+        // 1. The organiser picks a photo while the cover video processes.
+        let adding: Promise<void> = Promise.resolve();
+        await TestRenderer.act(async () => {
+          adding = controller.add({ uri: "file:///picked/IMG_0412.jpg", mimeType: "image/jpeg", fileSize: 2_400_000 });
+        });
+        expect(controller.tiles()).toEqual([expect.objectContaining({ status: "uploading" })]);
+
+        // 2. The video becomes ready. The host applies its patch and is still
+        //    awaiting its save when the photo's upload finishes.
+        let openHostWrite: () => void = () => undefined;
+        const hostWriteOpen = new Promise<void>((resolve) => {
+          openHostWrite = resolve;
+        });
+        let videoEmit: Promise<void> = Promise.resolve();
+        await TestRenderer.act(async () => {
+          videoEmit = emitCoverWithGallery(T3_VIDEO, refs, () => undefined, async (patch) => {
+            t3HostCoverChange(patch);
+            await hostWriteOpen;
+          });
+        });
+
+        // 3. The photo lands and commits while the video's host call is open.
+        await TestRenderer.act(async () => {
+          resolveUpload(T3_PHOTO);
+          await adding;
+        });
+        expect(controller.tiles()).toEqual([]);
+        expect(storeDraft().coverMediaUrl).toBe(T3_VIDEO.coverMediaUrl);
+        expect(storeDraft().coverGallery).toEqual([T3_PHOTO]);
+
+        // 4. The video's host call completes; the pipeline re-reads the draft.
+        await TestRenderer.act(async () => {
+          openHostWrite();
+          await videoEmit;
+        });
+        await saveAhead();
+        await runTrigger("cover-video-ready");
+
+        // 5. The next autosave carries both.
+        await saveAhead();
+        const row = fake.events.get(DRAFT_ID) as Row;
+        expect(row.cover_media_url).toBe(T3_VIDEO.coverMediaUrl);
+        expect(row.cover_media_type).toBe("video");
+        expect(row.cover_media_gallery).toEqual([T3_PHOTO]);
+        expect(storeDraft().coverMediaUrl).toBe(T3_VIDEO.coverMediaUrl);
+        expect(storeDraft().coverGallery).toEqual([T3_PHOTO]);
+      });
+    }
+  }
+});

@@ -28,6 +28,7 @@ import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 import type { CoverPatch } from "../ui/CoverPicker";
 import type { CoverTarget } from "../ui/coverTarget";
+import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 
 import { useBrand } from "../../hooks/useBrands";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
@@ -45,6 +46,15 @@ import { type StepBodyProps } from "./types";
 interface CreatorStep4CoverProps extends StepBodyProps {
   showThemeRow?: boolean;
 }
+
+/**
+ * issue #3318 — the picker's seed for a draft whose gallery is UNKNOWN
+ * (`coverGallery` undefined, #3288). One frozen module-level array, so the seed
+ * is the same reference on every render: the picker re-seeds its local gallery
+ * whenever this reference changes, and `draft.coverGallery ?? []` changed it on
+ * every render.
+ */
+const EMPTY_COVER_GALLERY: OfferingGalleryImage[] = Object.freeze([]) as unknown as OfferingGalleryImage[];
 
 export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
   draft,
@@ -289,12 +299,18 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
           coverMediaCreditUrl: draft.coverMediaCreditUrl ?? null,
           coverMediaAlt: draft.coverMediaAlt ?? null,
           // issue #868 [cover-gallery] — seed the manager from the draft.
-          coverGallery: draft.coverGallery ?? [],
+          // issue #3318 — ONE stable empty array for an unknown gallery. A
+          // fresh `[]` here was a new reference on every render, and the picker
+          // re-seeds its gallery whenever this reference changes.
+          coverGallery: draft.coverGallery ?? EMPTY_COVER_GALLERY,
         }}
         initialCoverHue={draft.coverHue}
         onCoverChange={handleCoverChange}
         onShowToast={onShowToast}
         onCoverVideoProcessingChange={onCoverVideoProcessingChange}
+        // issue #3319 — `handleCoverChange` saves `coverGallery` into the draft
+        // (event, RSVP and published-event edit all render this step).
+        galleryEnabled
       />
 
       {/* I-SUB-SHEET-INSIDE-PARENT — last JSX child of the host's root View. */}

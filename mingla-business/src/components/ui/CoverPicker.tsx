@@ -70,6 +70,7 @@ import {
 } from "../../constants/designSystem";
 import {
   EventCoverMediaError,
+  EVENT_COVER_MAX_BYTES,
   EVENT_COVER_UPLOAD_LIMIT_COPY,
   uploadEventCoverMedia,
 } from "../../services/eventCoverMediaService";
@@ -120,7 +121,7 @@ import {
   coverFromProviderRef,
   uploadBrandCover,
 } from "../../services/brandCoverService";
-import { BrandCoverError } from "../../utils/brandCoverRules";
+import { BRAND_COVER_MAX_BYTES, BrandCoverError } from "../../utils/brandCoverRules";
 import { Button } from "./Button";
 import {
   canAddGalleryPhoto,
@@ -129,6 +130,18 @@ import {
   galleryMakeCoverBlockedReason,
   type GalleryMakeCoverState,
 } from "./coverPickerGalleryGate";
+// issue #3318 — the photo add pipeline (tiles, Retry, photo copy, the two emit
+// paths) and its failure reporting, split out so they run under jest.
+import {
+  commitGalleryWithCover,
+  createGalleryAddController,
+  emitCoverWithGallery,
+  type CoverEmitRefs,
+  type GalleryAddController,
+  type GalleryAddControllerDeps,
+  type GalleryPhotoTile,
+} from "./coverPickerGalleryAdd";
+import { reportGalleryAddFailure } from "./coverPickerGalleryTelemetry";
 import { findSelectedProviderId } from "./coverPickerSelection";
 import { Icon } from "./Icon";
 import { EventCoverMedia, type EventCoverMediaErrorEvent } from "./EventCoverMedia";
@@ -204,6 +217,13 @@ export interface CoverPickerProps {
   /** Override default 3-column desktop / 2-column phone masonry. */
   isWideDesktop?: boolean;
   onCoverVideoProcessingChange?: (isProcessing: boolean) => void;
+  /**
+   * issue #3319 — show "Additional photos" and the GIF/Photos "Add to: Gallery"
+   * option. ONLY for hosts that save `coverGallery` from the emitted patch.
+   * Default false: a host that ignores the gallery must never offer one, or
+   * the photos an organiser adds there upload and are silently never saved.
+   */
+  galleryEnabled?: boolean;
 }
 
 const TAB_DEFS: ReadonlyArray<{ id: CoverTabId; label: string; icon: Parameters<typeof Icon>[0]["name"] }> = [
@@ -291,6 +311,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   disabled = false,
   isWideDesktop = false,
   onCoverVideoProcessingChange,
+  galleryEnabled = false,
 }) => {
   const { isAuthReady } = useAuth();
   const isBrand = target.kind === "brand";
@@ -311,6 +332,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // a gallery gated on `uploading` stays blocked in exactly the session that
   // picked the video. Cover-path actions treat BOTH flags as busy.
   const [galleryUploading, setGalleryUploading] = useState(false);
+  // issue #3318 — photos under Additional photos that are uploading or have
+  // failed. Owned by `galleryAdd` (below) and mirrored here for rendering; they
+  // are NOT part of `gallery`, so a host re-seeding the gallery cannot wipe a
+  // photo that has not saved yet.
+  const [galleryTiles, setGalleryTiles] = useState<readonly GalleryPhotoTile[]>([]);
   const [mediaDisplayError, setMediaDisplayError] = useState<string | null>(null);
   // issue #1338 — in-sheet feedback channel for the cover-VIDEO flow. Rendered
   // INSIDE LibraryTab (never a root-portal Toast, which iOS drops while the
@@ -422,6 +448,39 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   useEffect(() => {
     localCoverRef.current = localCover;
   }, [localCover]);
+
+  // issue #3318 — the photo add pipeline (see `coverPickerGalleryAdd`). ONE
+  // controller per mount, so a photo's tile outlives every re-render and every
+  // host re-seed. Its callbacks read `galleryAddLatest`, refreshed after each
+  // render, so it never holds a stale closure.
+  const galleryAddLatest = useRef<
+    Pick<GalleryAddControllerDeps, "upload" | "commit" | "notify" | "isVideoJobActive">
+  >({
+    upload: () => Promise.reject(new Error("CoverPicker gallery add is not ready.")),
+    commit: () => undefined,
+    notify: () => undefined,
+    isVideoJobActive: () => false,
+  });
+  const [galleryAdd] = useState<GalleryAddController>(() =>
+    createGalleryAddController({
+      upload: (asset, onStage) => galleryAddLatest.current.upload(asset, onStage),
+      commit: (item) => galleryAddLatest.current.commit(item),
+      onTilesChange: (tiles) => setGalleryTiles(tiles),
+      notify: (message) => galleryAddLatest.current.notify(message),
+      report: (failure) => reportGalleryAddFailure(failure, target.kind),
+      isVideoJobActive: () => galleryAddLatest.current.isVideoJobActive(),
+      copy: {
+        maxMegabytes: Math.round(
+          (isBrand || isVenue ? BRAND_COVER_MAX_BYTES : EVENT_COVER_MAX_BYTES) / (1024 * 1024),
+        ),
+      },
+    }),
+  );
+  const galleryAddRef = useRef<GalleryAddController>(galleryAdd);
+  useEffect(() => {
+    galleryAdd.attach();
+    return () => galleryAdd.dispose();
+  }, [galleryAdd]);
   // Confirm state for the OQ-3 "replace video cover with this photo?" flow. Holds
   // the gallery index awaiting confirmation (null = no pending confirm).
   const [pendingMakeCoverIndex, setPendingMakeCoverIndex] = useState<number | null>(
@@ -486,21 +545,25 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       ? "video"
       : localCover.coverMediaType;
 
+  // issue #3318 — the refs both emit paths read at the moment they emit.
+  const emitRefs = useMemo<CoverEmitRefs<CoverPatch>>(
+    () => ({ cover: localCoverRef, gallery: galleryRef }),
+    [],
+  );
+
   const emitChange = useCallback(
     async (patch: CoverPatch): Promise<void> => {
-      // issue #3280 — keep the ref in step with the emit, as `applyMakeCover`
-      // already does. A gallery upload may now finish while a cover emit is in
-      // flight (the video-ready emit is server-driven and cannot be blocked),
-      // and `commitGallery` re-emits `localCoverRef.current`. Waiting for the
-      // effect below to sync it would leave one render in which that re-emit
-      // carries the PREVIOUS cover and silently reverts the new one.
-      localCoverRef.current = patch;
-      setLocalCover(patch);
-      // issue #868 — always carry the current gallery so a cover change never
-      // drops the additional photos (they are INDEPENDENT of the cover).
-      await onCoverChange({ ...patch, coverGallery: galleryRef.current });
+      // issue #3280 — the cover ref moves BEFORE the host hears about it. A
+      // gallery upload may finish while a cover emit is in flight (the
+      // video-ready emit is server-driven and cannot be blocked), and the
+      // gallery commit re-emits the cover ref; one render with the PREVIOUS
+      // cover there would silently revert the new one. issue #868 — the emit
+      // always carries the current gallery (the two are INDEPENDENT).
+      // issue #3318 — that ordering now lives in `emitCoverWithGallery`, so the
+      // video-ready-during-a-photo-upload case is tested for real.
+      await emitCoverWithGallery(patch, emitRefs, setLocalCover, onCoverChange);
     },
-    [onCoverChange],
+    [emitRefs, onCoverChange],
   );
 
   const persistReadyVideo = useCallback(async (): Promise<void> => {
@@ -608,11 +671,12 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // UNCHANGED cover fields plus the new gallery (the cover is never touched here).
   const commitGallery = useCallback(
     (next: OfferingGalleryImage[]): void => {
-      setGallery(next);
-      galleryRef.current = next;
-      onCoverChange({ ...localCoverRef.current, coverGallery: next });
+      // issue #3318 — reads the cover ref as it is NOW (see
+      // `commitGalleryWithCover`), never a cover captured when a photo was
+      // picked.
+      commitGalleryWithCover(next, emitRefs, setGallery, onCoverChange);
     },
-    [onCoverChange],
+    [emitRefs, onCoverChange],
   );
 
   // issue #868 M.3 — append ONE image/GIF item to the gallery (clamp at max). The
@@ -620,7 +684,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // tiles when the target is "gallery". Never touches the cover fields.
   const appendGalleryItem = useCallback(
     (item: OfferingGalleryImage): void => {
-      if (galleryRef.current.length >= GALLERY_MAX) {
+      // issue #3318 — a photo still uploading (or failed, awaiting Retry) holds
+      // its slot, so the cap counts it.
+      if (galleryRef.current.length + galleryAddRef.current.tiles().length >= GALLERY_MAX) {
         onShowToast(`Up to ${GALLERY_MAX} extra photos.`);
         return;
       }
@@ -630,6 +696,93 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     },
     [commitGallery, onShowToast],
   );
+
+  // issue #3318 — ONE photo's upload, for the add controller. Same storage
+  // routing as the cover (event_covers / brand_covers) so the saved item is a
+  // durable public URL; `onStage` lets a failure say where it happened.
+  const uploadGalleryPhoto = useCallback<GalleryAddControllerDeps["upload"]>(
+    async (asset, onStage) => {
+      let publicUrl: string;
+      let mediaType: "image" | "gif";
+      if (isBrand || isVenue) {
+        const uploaded = await uploadBrandCover(
+          target.brandId,
+          {
+            uri: asset.uri,
+            mimeType: asset.mimeType,
+            fileName: asset.fileName,
+            fileSize: asset.fileSize,
+          },
+          { previousPublicUrl: null, onStage },
+        );
+        publicUrl = uploaded.publicUrl;
+        mediaType = uploaded.mediaType === "gif" ? "gif" : "image";
+      } else {
+        const uploaded = await uploadEventCoverMedia(
+          {
+            uri: asset.uri,
+            brandId: target.brandId,
+            eventId: eventRowId,
+            mimeType: asset.mimeType,
+            fileName: asset.fileName,
+            fileSize: asset.fileSize,
+            durationMs: null,
+            pickerType: asset.type,
+          },
+          { onStage },
+        );
+        publicUrl = uploaded.publicUrl;
+        mediaType = uploaded.mediaType === "gif" ? "gif" : "image";
+      }
+      let posterUrl = publicUrl;
+      if (mediaType === "gif") {
+        const extracted = await extractCoverGifPoster(asset);
+        try {
+          if (isBrand || isVenue) {
+            const poster = await uploadBrandCover(target.brandId, extracted.asset, {
+              previousPublicUrl: null,
+              onStage,
+            });
+            posterUrl = poster.publicUrl;
+          } else {
+            const poster = await uploadEventCoverMedia(
+              {
+                ...extracted.asset,
+                brandId: target.brandId,
+                eventId: eventRowId,
+                durationMs: null,
+                pickerType: "image",
+              },
+              { onStage },
+            );
+            posterUrl = poster.publicUrl;
+          }
+        } finally {
+          await extracted.cleanup();
+        }
+      }
+      return { url: publicUrl, posterUrl, type: mediaType, alt: null, credit: null };
+    },
+    [eventRowId, isBrand, isVenue, target],
+  );
+
+  useEffect(() => {
+    galleryAddLatest.current = {
+      upload: uploadGalleryPhoto,
+      commit: (item) => {
+        // Reads the gallery as it is NOW: a provider pick, a reorder or a
+        // re-seed that landed during the upload is kept.
+        commitGallery([...galleryRef.current, item]);
+        if (Platform.OS !== "web") {
+          void Haptics.notificationAsync(
+            Haptics.NotificationFeedbackType.Success,
+          ).catch(() => {});
+        }
+      },
+      notify: onShowToast,
+      isVideoJobActive: () => activeVideoUpload,
+    };
+  }, [activeVideoUpload, commitGallery, onShowToast, uploadGalleryPhoto]);
 
   // Add ONE image/GIF from the device library to the gallery (never a video).
   // Clamps at GALLERY_MAX. Independent of the primary cover — does NOT touch it.
@@ -642,7 +795,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     // The rule now lives in `coverPickerGalleryGate`, cannot take a video
     // argument, and reads the gallery's own `galleryUploading` — never the
     // picker-wide `uploading` the video flow holds while it processes.
-    const atCap = galleryRef.current.length >= GALLERY_MAX;
+    // issue #3318 — a photo still uploading, or failed and awaiting Retry,
+    // holds its slot.
+    const atCap = galleryRef.current.length + galleryAdd.tiles().length >= GALLERY_MAX;
     if (!canAddGalleryPhoto({ galleryUploading, disabled, atCap })) {
       if (atCap && !galleryUploading && !disabled) onShowToast(`Up to ${GALLERY_MAX} extra photos.`);
       return;
@@ -651,103 +806,80 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       onShowToast("Finishing sign-in before upload. Try again in a moment.");
       return;
     }
-    if (!(await ensureMediaPermission())) return;
-    if (!validateEventRowId()) return;
 
     setGalleryUploading(true);
-    let pickedAssets: Parameters<typeof revokeCoverPickedAssets>[0] = [];
     try {
-      const result = await launchCoverImagePicker();
-      if (result.canceled || result.assets.length === 0) return;
-      pickedAssets = result.assets;
-      const asset = result.assets[0];
-      // Route through the same storage upload as the cover (event_covers /
-      // brand_covers bucket) so the gallery item is a durable public URL.
-      let publicUrl: string;
-      let mediaType: "image" | "gif";
-      if (isBrand || isVenue) {
-        const uploaded = await uploadBrandCover(
-          target.brandId,
-          {
-            uri: asset.uri,
-            mimeType: asset.mimeType,
-            fileName: asset.fileName,
-            fileSize: asset.fileSize,
-          },
-          { previousPublicUrl: null },
+      // issue #3318 — every failure before a file is in hand is reported with
+      // stage "pick" and shown in photo copy (the shared `showUploadError`
+      // says "cover").
+      const permission = await requestCoverMediaLibraryPermission();
+      if (!permission.granted) {
+        galleryAdd.failBeforeUpload(
+          new EventCoverMediaError("permission_denied", "Photo library permission denied."),
         );
-        publicUrl = uploaded.publicUrl;
-        mediaType = uploaded.mediaType === "gif" ? "gif" : "image";
-      } else {
-        const uploaded = await uploadEventCoverMedia({
-          uri: asset.uri,
-          brandId: target.brandId,
-          eventId: eventRowId,
-          mimeType: asset.mimeType,
-          fileName: asset.fileName,
-          fileSize: asset.fileSize,
-          durationMs: null,
-          pickerType: asset.type,
-        });
-        publicUrl = uploaded.publicUrl;
-        mediaType = uploaded.mediaType === "gif" ? "gif" : "image";
+        return;
       }
-      let posterUrl = publicUrl;
-      if (mediaType === "gif") {
-        const extracted = await extractCoverGifPoster(asset);
-        try {
-          if (isBrand || isVenue) {
-            const poster = await uploadBrandCover(target.brandId, extracted.asset, {
-              previousPublicUrl: null,
-            });
-            posterUrl = poster.publicUrl;
-          } else {
-            const poster = await uploadEventCoverMedia({
-              ...extracted.asset,
-              brandId: target.brandId,
-              eventId: eventRowId,
-              durationMs: null,
-              pickerType: "image",
-            });
-            posterUrl = poster.publicUrl;
-          }
-        } finally {
-          await extracted.cleanup();
-        }
+      if (!isBrand && !isVenue && eventRowId.trim().length === 0) {
+        galleryAdd.failBeforeUpload(
+          new EventCoverMediaError("missing_server_event_id", "Missing server row id."),
+        );
+        return;
       }
-      const item: OfferingGalleryImage = {
-        url: publicUrl,
-        posterUrl,
-        type: mediaType,
-        alt: null,
-        credit: null,
-      };
-      commitGallery([...galleryRef.current, item]);
-      if (Platform.OS !== "web") {
-        void Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Success,
-        ).catch(() => {});
+      let result: Awaited<ReturnType<typeof launchCoverImagePicker>>;
+      try {
+        result = await launchCoverImagePicker();
+      } catch (error) {
+        galleryAdd.failBeforeUpload(error);
+        return;
       }
-      onShowToast("Photo added.");
-    } catch (error) {
-      showUploadError(error);
+      if (result.canceled || result.assets.length === 0) return;
+      const pickedAssets = result.assets;
+      const asset = result.assets[0];
+      // issue #3318 — from here the photo is a tile. A failure keeps it, with
+      // Retry on the SAME file, so the picked file is freed only when the photo
+      // leaves the controller (saved or removed), never in this `finally`.
+      await galleryAdd.add({
+        // The whole picker asset, as the cover path passes it: native pickers
+        // carry width/height the GIF poster resize reads.
+        ...asset,
+        release: () => revokeCoverPickedAssets(pickedAssets),
+      });
     } finally {
-      revokeCoverPickedAssets(pickedAssets);
       setGalleryUploading(false);
     }
     // issue #3280 — `activeVideoUpload` is gone from the body and therefore
     // from this list; the gallery does not depend on video state.
   }, [
-    commitGallery,
     disabled,
-    ensureMediaPermission,
-    isAuthReady,
+    eventRowId,
+    galleryAdd,
     galleryUploading,
+    isAuthReady,
+    isBrand,
+    isVenue,
     onShowToast,
-    showUploadError,
-    target,
-    validateEventRowId,
   ]);
+
+  // issue #3318 — Retry uploads a failed tile's SAME file; Remove drops it.
+  const retryGalleryPhoto = useCallback(
+    async (key: string): Promise<void> => {
+      if (galleryUploading || disabled) return;
+      setGalleryUploading(true);
+      try {
+        await galleryAdd.retry(key);
+      } finally {
+        setGalleryUploading(false);
+      }
+    },
+    [disabled, galleryAdd, galleryUploading],
+  );
+
+  const removeGalleryTile = useCallback(
+    (key: string): void => {
+      galleryAdd.remove(key);
+    },
+    [galleryAdd],
+  );
 
   const moveGalleryItem = useCallback(
     (index: number, direction: -1 | 1): void => {
@@ -1557,7 +1689,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       {/* issue #868 M.3 — "Add to: Cover · Gallery" for the GIF/Photos tabs. Default
           Cover (byte-identical to today). Gallery appends the tapped provider item
           to the additional photos (never touches the cover fields). */}
-      {(activeTab === "gif" || activeTab === "stock") ? (
+      {/* issue #3319 — only on hosts that save the gallery (`galleryEnabled`).
+          Hidden, the provider target stays "cover", its default. */}
+      {galleryEnabled && (activeTab === "gif" || activeTab === "stock") ? (
         <View style={styles.addTargetRow} accessibilityRole="tablist">
           <Text style={styles.addTargetLabel}>Add to</Text>
           {(["cover", "gallery"] as const).map((target) => {
@@ -1603,11 +1737,15 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           activeMediaType={activeMediaType}
           alt={localCover.coverMediaAlt}
           credit={selectedCredit}
+          // issue #3318 — the Replace/Image SPINNER is the cover's own upload
+          // only; a photo add used to make the cover look like it was
+          // uploading.
+          uploading={uploading}
           // issue #3280 — the Image / Video / Remove / retry buttons are cover
-          // actions, so an in-flight gallery upload makes them busy too. This is
-          // the same set of buttons that was busy before the gallery got its own
-          // flag, when the gallery upload still set `uploading`.
-          uploading={uploading || galleryUploading}
+          // actions, so an in-flight gallery upload still makes them busy
+          // (disabled, not spinning): a cover emit and a gallery commit are
+          // never both in flight from user actions.
+          coverBusy={uploading || galleryUploading}
           activeVideoUpload={lockedVideoOperation}
           videoStage={projectedVideoStage}
           videoStatus={videoUpload.status}
@@ -1704,33 +1842,43 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       {/* issue #868 [cover-gallery] — SEPARATE "Additional photos" manager. Writes
           ONLY the coverGallery (never the primary cover, except the explicit
           "Make cover" action). Images + GIFs; never video. */}
-      <AdditionalPhotosSection
-        gallery={gallery}
-        max={GALLERY_MAX}
-        // issue #3280 — the cap is the section's own business (it hides the add
-        // tile), so the gate is asked only about the two host-level blocks.
-        disabled={!canAddGalleryPhoto({ galleryUploading, disabled, atCap: false })}
-        addBlockedReason={galleryAddBlockedReason({ galleryUploading, disabled, atCap: false })}
-        // issue #3280 — Make cover is a cover action and keeps the video lock,
-        // so it gets its OWN gate; the shared `disabled` above deliberately
-        // cannot see video state (Add / Move / Remove stay usable).
-        makeCoverDisabled={!canMakeGalleryPhotoCover(makeCoverGate)}
-        makeCoverBlockedReason={galleryMakeCoverBlockedReason(makeCoverGate)}
-        pendingMakeCoverIndex={pendingMakeCoverIndex}
-        onAdd={() => {
-          void addGalleryPhoto();
-        }}
-        onMakeCover={requestMakeCover}
-        onMoveEarlier={(i) => moveGalleryItem(i, -1)}
-        onMoveLater={(i) => moveGalleryItem(i, 1)}
-        onRemove={removeGalleryItem}
-        onConfirmMakeCover={() => {
-          const idx = pendingMakeCoverIndex;
-          setPendingMakeCoverIndex(null);
-          if (idx !== null) applyMakeCover(idx);
-        }}
-        onCancelMakeCover={() => setPendingMakeCoverIndex(null)}
-      />
+      {/* issue #3319 — only on hosts that save `coverGallery`. Everywhere else
+          a photo added here uploaded and was silently never saved. */}
+      {galleryEnabled ? (
+        <AdditionalPhotosSection
+          gallery={gallery}
+          // issue #3318 — photos uploading or failed, after the saved ones.
+          tiles={galleryTiles}
+          onRetryTile={(key) => {
+            void retryGalleryPhoto(key);
+          }}
+          onRemoveTile={removeGalleryTile}
+          max={GALLERY_MAX}
+          // issue #3280 — the cap is the section's own business (it hides the add
+          // tile), so the gate is asked only about the two host-level blocks.
+          disabled={!canAddGalleryPhoto({ galleryUploading, disabled, atCap: false })}
+          addBlockedReason={galleryAddBlockedReason({ galleryUploading, disabled, atCap: false })}
+          // issue #3280 — Make cover is a cover action and keeps the video lock,
+          // so it gets its OWN gate; the shared `disabled` above deliberately
+          // cannot see video state (Add / Move / Remove stay usable).
+          makeCoverDisabled={!canMakeGalleryPhotoCover(makeCoverGate)}
+          makeCoverBlockedReason={galleryMakeCoverBlockedReason(makeCoverGate)}
+          pendingMakeCoverIndex={pendingMakeCoverIndex}
+          onAdd={() => {
+            void addGalleryPhoto();
+          }}
+          onMakeCover={requestMakeCover}
+          onMoveEarlier={(i) => moveGalleryItem(i, -1)}
+          onMoveLater={(i) => moveGalleryItem(i, 1)}
+          onRemove={removeGalleryItem}
+          onConfirmMakeCover={() => {
+            const idx = pendingMakeCoverIndex;
+            setPendingMakeCoverIndex(null);
+            if (idx !== null) applyMakeCover(idx);
+          }}
+          onCancelMakeCover={() => setPendingMakeCoverIndex(null)}
+        />
+      ) : null}
     </View>
   );
 };
@@ -1876,6 +2024,11 @@ const LibraryTab: React.FC<{
   alt: string | null;
   credit: string | null;
   uploading: boolean;
+  /**
+   * issue #3318 — the cover buttons are disabled while this is true (a cover
+   * upload OR a gallery photo upload); `uploading` alone drives the spinner.
+   */
+  coverBusy: boolean;
   activeVideoUpload: boolean;
   videoStage: EventCoverVideoUploadStage;
   videoStatus: EventCoverVideoStatus | null;
@@ -1903,6 +2056,7 @@ const LibraryTab: React.FC<{
   alt,
   credit,
   uploading,
+  coverBusy,
   activeVideoUpload,
   videoStage,
   videoStatus,
@@ -1971,7 +2125,7 @@ const LibraryTab: React.FC<{
             shape="square"
             onPress={onPickImage}
             loading={uploading}
-            disabled={uploading || disabled}
+            disabled={coverBusy || disabled}
             style={styles.actionButton}
           />
           <Button
@@ -1981,7 +2135,7 @@ const LibraryTab: React.FC<{
             size="md"
             shape="square"
             onPress={onPickVideo}
-            disabled={uploading || disabled}
+            disabled={coverBusy || disabled}
             style={styles.actionButton}
           />
           {hasCover ? (
@@ -1992,7 +2146,7 @@ const LibraryTab: React.FC<{
               size="md"
               shape="square"
               onPress={onRemove}
-              disabled={uploading || disabled}
+              disabled={coverBusy || disabled}
               style={styles.removeButton}
             />
           ) : null}
@@ -2010,7 +2164,7 @@ const LibraryTab: React.FC<{
                 size="sm"
                 shape="square"
                 onPress={onRetryVideo}
-                disabled={uploading || disabled}
+                disabled={coverBusy || disabled}
                 style={styles.retryButton}
               />
             ) : null}
@@ -2274,6 +2428,13 @@ const GridTile: React.FC<{
 
 const AdditionalPhotosSection: React.FC<{
   gallery: OfferingGalleryImage[];
+  /**
+   * issue #3318 — photos uploading or failed. Rendered after the saved photos,
+   * from their local files; a failed one keeps Retry and Remove.
+   */
+  tiles: readonly GalleryPhotoTile[];
+  onRetryTile: (key: string) => void;
+  onRemoveTile: (key: string) => void;
   max: number;
   disabled: boolean;
   /**
@@ -2301,6 +2462,9 @@ const AdditionalPhotosSection: React.FC<{
   onCancelMakeCover: () => void;
 }> = ({
   gallery,
+  tiles,
+  onRetryTile,
+  onRemoveTile,
   max,
   disabled,
   addBlockedReason,
@@ -2316,11 +2480,29 @@ const AdditionalPhotosSection: React.FC<{
   onCancelMakeCover,
 }) => {
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null);
-  const atCap = gallery.length >= max;
+  // issue #3318 — an uploading or failed photo holds its slot.
+  const atCap = gallery.length + tiles.length >= max;
+  const photoUploading = tiles.some((tile) => tile.status === "uploading");
+  const latestFailure = [...tiles].reverse().find((tile) => tile.status === "failed") ?? null;
 
   return (
     <View style={styles.gallerySection} testID="cover-additional-photos">
-      <Text style={styles.galleryHeader}>Additional photos</Text>
+      <View style={styles.galleryHeaderRow}>
+        <Text style={styles.galleryHeader}>Additional photos</Text>
+        {/* issue #3318 — the section's OWN busy state. The cover's Replace
+            button used to spin for a photo add instead. */}
+        {photoUploading ? (
+          <View
+            style={styles.galleryBusy}
+            accessibilityRole="progressbar"
+            accessibilityLabel="Uploading photo"
+            testID="cover-gallery-uploading"
+          >
+            <ActivityIndicator size="small" color={textTokens.secondary} />
+            <Text style={styles.galleryBusyLabel}>Uploading photo…</Text>
+          </View>
+        ) : null}
+      </View>
       <Text style={styles.gallerySub}>
         Shown after your cover — swipe to flip through them. Up to {max}.
       </Text>
@@ -2439,6 +2621,68 @@ const AdditionalPhotosSection: React.FC<{
           );
         })}
 
+        {/* issue #3318 — a picked photo is a tile from the moment it is picked.
+            Uploading: its local file under a spinner. Failed: dimmed, with
+            Retry (the same file) and Remove. Never silently discarded. */}
+        {tiles.map((tile, index) => {
+          const position = gallery.length + index + 1;
+          return tile.status === "uploading" ? (
+            <View
+              key={tile.key}
+              style={styles.galleryTileWrap}
+              testID="cover-gallery-pending-tile"
+            >
+              <Image
+                source={{ uri: tile.localUri }}
+                style={styles.galleryTile}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+                accessibilityLabel={`Extra photo ${position}, uploading`}
+              />
+              <View style={styles.galleryTileOverlay} pointerEvents="none">
+                <ActivityIndicator color={textTokens.inverse} />
+              </View>
+            </View>
+          ) : (
+            <View
+              key={tile.key}
+              style={styles.galleryTileWrap}
+              testID="cover-gallery-failed-tile"
+            >
+              <Image
+                source={{ uri: tile.localUri }}
+                style={[styles.galleryTile, styles.galleryTileFailed]}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+                accessibilityLabel={`Extra photo ${position}, not added. ${tile.message ?? ""}`}
+              />
+              <View style={styles.galleryTileOverlay} pointerEvents="none">
+                <Icon name="close" size={16} color={textTokens.inverse} />
+                <Text style={styles.galleryTileFailedLabel}>Couldn't upload</Text>
+              </View>
+              <View style={styles.galleryMenu}>
+                <GalleryMenuItem
+                  label="Retry"
+                  disabled={disabled}
+                  accessibilityHint={
+                    disabled
+                      ? addBlockedReason ?? "Retry is unavailable right now."
+                      : "Upload this photo again."
+                  }
+                  onPress={() => onRetryTile(tile.key)}
+                />
+                <GalleryMenuItem
+                  label="Remove"
+                  disabled={false}
+                  destructive
+                  accessibilityHint="Remove this photo without adding it."
+                  onPress={() => onRemoveTile(tile.key)}
+                />
+              </View>
+            </View>
+          );
+        })}
+
         {!atCap ? (
           <Pressable
             onPress={onAdd}
@@ -2467,6 +2711,18 @@ const AdditionalPhotosSection: React.FC<{
           </Pressable>
         ) : null}
       </ScrollView>
+
+      {/* issue #3318 — the failure, in photo copy, for as long as the tile is
+          there (the toast is gone in seconds). */}
+      {latestFailure !== null && latestFailure.message !== null ? (
+        <Text
+          style={styles.galleryFailureText}
+          accessibilityRole="alert"
+          testID="cover-gallery-failure-message"
+        >
+          {latestFailure.message}
+        </Text>
+      ) : null}
     </View>
   );
 };
@@ -2816,6 +3072,23 @@ const styles = StyleSheet.create({
     borderTopColor: glass.border.profileBase,
     paddingTop: spacing.md,
   },
+  // issue #3318 — header row carrying the section's own busy state.
+  galleryHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  galleryBusy: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  galleryBusyLabel: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
+  },
   galleryHeader: {
     fontSize: typography.bodyLg.fontSize,
     lineHeight: typography.bodyLg.lineHeight,
@@ -2869,6 +3142,34 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: radiusTokens.md,
     backgroundColor: glass.tint.profileElevated,
+  },
+  // issue #3318 — uploading / failed photo tiles.
+  galleryTileOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: 96,
+    height: 72,
+    borderRadius: radiusTokens.md,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  galleryTileFailed: {
+    opacity: 0.5,
+  },
+  galleryTileFailedLabel: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: "600",
+    color: textTokens.inverse,
+  },
+  galleryFailureText: {
+    marginTop: spacing.sm,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.error,
   },
   galleryTileMenuButton: {
     position: "absolute",

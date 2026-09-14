@@ -19,6 +19,12 @@
 import { supabase } from "./supabase";
 import { readBrandCoverFileBytes } from "./brandCoverFileReader";
 import {
+  storageUploadTimeoutMs,
+  uploadToStorageWithRetry,
+  withStorageCause,
+  type CoverUploadStage,
+} from "./storageUploadWithRetry";
+import {
   BRAND_COVER_MAX_BYTES,
   BrandCoverError,
   brandCoverMediaTypeFromMime,
@@ -50,6 +56,8 @@ export interface BrandCoverUploadOptions {
   /** When provided, the previously-persisted public URL is parsed for its
    * storage path and best-effort removed after the new upload verifies. */
   previousPublicUrl?: string | null;
+  /** issue #3318 — told as the upload moves from reading to storage to verifying. */
+  onStage?: (stage: CoverUploadStage) => void;
 }
 
 export const uploadBrandCover = async (
@@ -82,6 +90,7 @@ export const uploadBrandCover = async (
     );
   }
 
+  options.onStage?.("read");
   const { bytes, byteLength } = await readBrandCoverFileBytes(input.uri);
 
   // ORCH-0786 — fetch(uri).blob() silently returns size-0 on RN iOS.
@@ -104,17 +113,28 @@ export const uploadBrandCover = async (
   // bytes after reload. See ORCH-0786 stale-cache follow-up.
   const pathToken = generateBrandCoverPathToken();
   const storagePath = brandCoverStoragePath(brandId, contentType, pathToken);
-  const { error: uploadError } = await supabase.storage
-    .from(BRAND_COVERS_BUCKET)
-    .upload(storagePath, bytes, {
-      contentType,
-      upsert: true,
+  // issue #3318 — a deadline per attempt and one retry on a network failure.
+  // The retry reuses `storagePath` (a fresh token per upload, `upsert: true`),
+  // so a first attempt that lands late is overwritten with the same bytes.
+  options.onStage?.("upload");
+  try {
+    await uploadToStorageWithRetry({
+      attempt: () =>
+        supabase.storage
+          .from(BRAND_COVERS_BUCKET)
+          .upload(storagePath, bytes, {
+            contentType,
+            upsert: true,
+          }),
+      timeoutMs: storageUploadTimeoutMs(byteLength),
     });
-
-  if (uploadError !== null) {
-    throw new BrandCoverError(
-      "upload_failed",
-      "Couldn't upload cover. Tap to try again.",
+  } catch (failure) {
+    throw withStorageCause(
+      new BrandCoverError(
+        "upload_failed",
+        "Couldn't upload cover. Tap to try again.",
+      ),
+      failure,
     );
   }
 
@@ -122,6 +142,7 @@ export const uploadBrandCover = async (
     .from(BRAND_COVERS_BUCKET)
     .getPublicUrl(storagePath);
 
+  options.onStage?.("verify");
   await verifyBrandCoverPublicUrl(data.publicUrl);
 
   // Best-effort orphan cleanup. Never fail the upload on cleanup error.

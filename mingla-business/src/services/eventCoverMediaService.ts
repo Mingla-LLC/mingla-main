@@ -15,6 +15,12 @@ import {
   type EventCoverMediaErrorCode,
 } from "../utils/eventCoverMediaRules";
 import { readEventCoverFileBytes } from "./eventCoverFileReader";
+import {
+  storageUploadTimeoutMs,
+  uploadToStorageWithRetry,
+  withStorageCause,
+  type CoverUploadStage,
+} from "./storageUploadWithRetry";
 import type { EventCoverProviderMetadata } from "../types/eventCoverProvider";
 import { randomId } from "../utils/randomId";
 
@@ -175,10 +181,17 @@ const logCoverUploadDebug = (
   }
 };
 
+export interface EventCoverUploadOptions {
+  /** issue #3318 — told as the upload moves from reading to storage to verifying. */
+  onStage?: (stage: CoverUploadStage) => void;
+}
+
 export const uploadEventCoverMedia = async (
   input: EventCoverAssetInput,
+  options: EventCoverUploadOptions = {},
 ): Promise<EventCoverUploadResult> => {
   requireServerEventId(input.eventId);
+  options.onStage?.("read");
 
   if (
     typeof input.fileSize === "number" &&
@@ -250,18 +263,28 @@ export const uploadEventCoverMedia = async (
     storagePath,
   });
 
-  const { error } = await supabase.storage
-    .from(EVENT_COVER_BUCKET)
-    .upload(storagePath, fileBytes.bytes, { contentType, upsert: true });
-
-  if (error !== null) {
-    throw new EventCoverMediaError("upload_failed", error.message);
+  // issue #3318 — a deadline per attempt and one retry on a network failure.
+  // The retry reuses `storagePath` (random per upload, `upsert: true`), so a
+  // first attempt that lands late is overwritten with the same bytes.
+  options.onStage?.("upload");
+  try {
+    await uploadToStorageWithRetry({
+      attempt: () =>
+        supabase.storage
+          .from(EVENT_COVER_BUCKET)
+          .upload(storagePath, fileBytes.bytes, { contentType, upsert: true }),
+      timeoutMs: storageUploadTimeoutMs(fileBytes.byteLength),
+    });
+  } catch (failure) {
+    const message = failure instanceof Error ? failure.message : String(failure);
+    throw withStorageCause(new EventCoverMediaError("upload_failed", message), failure);
   }
 
   const { data } = supabase.storage
     .from(EVENT_COVER_BUCKET)
     .getPublicUrl(storagePath);
 
+  options.onStage?.("verify");
   await verifyEventCoverPublicUrl(data.publicUrl, mediaType);
   logCoverUploadDebug("upload-verified", {
     mediaType,
