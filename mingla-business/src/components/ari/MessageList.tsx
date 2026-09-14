@@ -30,6 +30,7 @@ import { AgentMessage } from "../../services/agentChatService";
 import { ChatBubble } from "./ChatBubble";
 import { ToolProposalCard } from "./ToolProposalCard";
 import { ResponseCard } from "./ResponseCard";
+import { buildAnalyticsCardForTool } from "./ariAnalyticsResponseCard";
 import { QuickReplyChips } from "./QuickReplyChips";
 import { ClarifyingCard } from "./ClarifyingCard";
 import { MultiSelectPrompt } from "./MultiSelectPrompt";
@@ -591,6 +592,31 @@ function renderToolResult(
         }}
       />
     );
+  }
+
+  // #1984 — analytics reads render as ResponseCard metric rows (not a thin ribbon).
+  if (typeof tr?.tool_name === "string") {
+    const analyticsCard = buildAnalyticsCardForTool(tr.tool_name, r);
+    if (analyticsCard) {
+      return (
+        <ResponseCard
+          eyebrow={analyticsCard.eyebrow}
+          title={analyticsCard.title}
+          rows={analyticsCard.rows}
+          actions={
+            analyticsCard.seedAction
+              ? [{ id: analyticsCard.seedAction.id, label: analyticsCard.seedAction.label }]
+              : undefined
+          }
+          state={analyticsCard.state}
+          onAction={() => {
+            if (analyticsCard.seedAction) {
+              onSeedMessage?.(analyticsCard.seedAction.message);
+            }
+          }}
+        />
+      );
+    }
   }
 
   // executed — derive a short label (ribbon for non-brand tools)

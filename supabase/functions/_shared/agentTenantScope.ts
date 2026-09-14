@@ -15,6 +15,9 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "list_partner_brand_links",
   "list_partner_splits",
   "get_brand_analytics",
+  // #1984 — listing conversion + reservation metrics; same tenant scope.
+  "get_listing_conversion",
+  "get_reservation_metrics",
   "list_brand_audit_log",
   "list_guest_roster",
   "list_brand_team",

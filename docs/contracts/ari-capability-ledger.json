@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-09-11T00:00:00Z",
-    "registered_tool_count": 126,
-    "capability_count": 138,
+    "registered_tool_count": 128,
+    "capability_count": 140,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 125,
+      "registered_unverified": 127,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -3229,6 +3229,106 @@
       ],
       "confidence": "high",
       "verified_at": "2026-08-25"
+    },
+    {
+      "id": "ari.analytics.listing_conversion",
+      "domain": "analytics",
+      "outcome": "Read per-listing conversion for one event, trip, experience, or RSVP",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "issue-1984"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/src/services/listingInsightsService.ts"
+        ],
+        "source": [
+          {
+            "path": "mingla-business/src/services/listingInsightsService.ts",
+            "symbol": "fetchListingInsights"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getListingConversion"
+          }
+        ]
+      },
+      "ari_tool": "get_listing_conversion",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "78b52dbe8a17b687745ab11829e8fd265aee0819",
+          "reference": "#1984 getListingConversion reads entity_conversion_rollup via assertAgentReadEvent; no PII"
+        }
+      ],
+      "owning_issues": [
+        1984,
+        2000
+      ],
+      "blockers": [
+        "No deployed cross-surface Pass-5 proof"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-09-14"
+    },
+    {
+      "id": "ari.analytics.reservation_metrics",
+      "domain": "analytics",
+      "outcome": "Read reservation covers, no-show, and value metrics for a brand or venue",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "issue-1984"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/src/services/reservationMetricsService.ts"
+        ],
+        "source": [
+          {
+            "path": "mingla-business/src/services/reservationMetricsService.ts",
+            "symbol": "fetchVenueReservationMetrics"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getReservationMetrics"
+          }
+        ]
+      },
+      "ari_tool": "get_reservation_metrics",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "78b52dbe8a17b687745ab11829e8fd265aee0819",
+          "reference": "#1984 getReservationMetrics reads reservation_metrics_rollup via assertAgentReadBrand; no PII"
+        }
+      ],
+      "owning_issues": [
+        1984,
+        2000
+      ],
+      "blockers": [
+        "No deployed cross-surface Pass-5 proof"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-09-14"
     },
     {
       "id": "ari.team.invite_member",

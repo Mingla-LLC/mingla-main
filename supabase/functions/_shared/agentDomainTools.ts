@@ -4369,9 +4369,82 @@ const listTripInstallments = writeTool(
 // L. Analytics (read)
 // ----------------------------------------------------------------------------
 
+/** #1984 — keep only non-PII metric keys from rollup JSON (never buyer contacts). */
+function slimAnalyticsObject(
+  raw: unknown,
+  allowKeys: ReadonlySet<string>,
+): Record<string, unknown> | { error: string } {
+  if (raw && typeof raw === "object" && !Array.isArray(raw) &&
+    "error" in (raw as Record<string, unknown>)) {
+    return { error: String((raw as Record<string, unknown>).error) };
+  }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { error: "rollup_unavailable" };
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!allowKeys.has(key)) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+const BRAND_CONVERSION_KEYS = new Set([
+  "brand_id",
+  "authorized",
+  "customers_driven_30d",
+  "customers_driven_lifetime",
+  "value_cents_30d",
+  "value_cents_lifetime",
+  "by_platform",
+  "top_campaign",
+  "send_health",
+]);
+
+const VENUE_INTEL_KEYS = new Set([
+  "brand_id",
+  "venue_id",
+  "authorized",
+  "resolved_timezone",
+  "tz_confidence",
+  "brand_default_currency",
+  "order_count",
+  "first_order_at",
+  "hours",
+  "days",
+  "revenue_trend",
+  "revenue_by_currency",
+  "rev7d_by_currency",
+  "signal_scores",
+]);
+
+const LISTING_CONVERSION_KEYS = new Set([
+  "event_id",
+  "authorized",
+  "mingla_drove_count",
+  "value_cents",
+  "by_source",
+  "by_platform",
+]);
+
+const RESERVATION_METRICS_KEYS = new Set([
+  "brand_id",
+  "venue_id",
+  "authorized",
+  "resolved_timezone",
+  "tz_confidence",
+  "covers_30d",
+  "covers_lifetime",
+  "avg_party_size",
+  "no_show_rate",
+  "by_source",
+  "value_cents_30d",
+  "value_cents_lifetime",
+]);
+
 const getBrandAnalytics = writeTool(
   "get_brand_analytics",
-  "Read brand conversion / reservation / venue intelligence rollups. No warehouse.",
+  "Read brand conversion and venue intelligence rollups. No warehouse. No PII.",
   { brand_id: UUID, question: { type: "string" } },
   ["brand_id"],
   async (args, client, userId) => {
@@ -4387,8 +4460,60 @@ const getBrandAnalytics = writeTool(
     return {
       brand_id: args.brand_id,
       question: args.question ?? null,
-      conversion: conv,
-      venue: intel,
+      conversion: slimAnalyticsObject(conv, BRAND_CONVERSION_KEYS),
+      venue: slimAnalyticsObject(intel, VENUE_INTEL_KEYS),
+    };
+  },
+);
+
+// #1984 — per-listing conversion (Business listingInsightsService parity).
+const getListingConversion = writeTool(
+  "get_listing_conversion",
+  "Read per-listing conversion rollup for one event/trip/experience/RSVP. No PII.",
+  { event_id: UUID, question: { type: "string" } },
+  ["event_id"],
+  async (args, client, userId) => {
+    if (!isUuid(args.event_id)) {
+      throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
+    }
+    await assertAgentReadEvent(client, userId, args.event_id);
+    await requireEvent(args, client, userId);
+    const rollup = await callRpc(client, "entity_conversion_rollup", {
+      p_event_id: args.event_id,
+    }).catch((e) => ({ error: String(e) }));
+    return {
+      event_id: args.event_id,
+      question: args.question ?? null,
+      conversion: slimAnalyticsObject(rollup, LISTING_CONVERSION_KEYS),
+    };
+  },
+);
+
+// #1984 — venue reservation metrics (Business reservationMetricsService parity).
+const getReservationMetrics = writeTool(
+  "get_reservation_metrics",
+  "Read reservation covers / no-show / value metrics for a brand or exact venue. No PII.",
+  { brand_id: UUID, venue_id: UUID, question: { type: "string" } },
+  ["brand_id"],
+  async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
+    await requireBrand(args, client, userId);
+    if (args.venue_id !== undefined && args.venue_id !== null) {
+      if (!isUuid(args.venue_id)) {
+        throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+      }
+    }
+    const rpcArgs: Record<string, unknown> = { p_brand_id: args.brand_id };
+    if (typeof args.venue_id === "string" && isUuid(args.venue_id)) {
+      rpcArgs.p_venue_id = args.venue_id;
+    }
+    const rollup = await callRpc(client, "reservation_metrics_rollup", rpcArgs)
+      .catch((e) => ({ error: String(e) }));
+    return {
+      brand_id: args.brand_id,
+      venue_id: typeof args.venue_id === "string" ? args.venue_id : null,
+      question: args.question ?? null,
+      metrics: slimAnalyticsObject(rollup, RESERVATION_METRICS_KEYS),
     };
   },
 );
@@ -6680,6 +6805,8 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   getOrderRefundPreview,
   listTripInstallments,
   getBrandAnalytics,
+  getListingConversion,
+  getReservationMetrics,
   getEventOrderReconciliation,
   inviteBrandMember,
   inviteScanner,
@@ -6719,6 +6846,9 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "list_partner_brand_links",
   "list_partner_splits",
   "get_brand_analytics",
+  // #1984 — listing conversion + reservation metrics reads (no confirm).
+  "get_listing_conversion",
+  "get_reservation_metrics",
   "list_guest_roster",
   "list_brand_team",
   "list_event_orders",
