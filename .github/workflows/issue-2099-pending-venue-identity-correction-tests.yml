@@ -57,6 +57,12 @@ on:
       - "mingla-business/jest.issue2099.web.render.cjs"
       - "mingla-business/playwright.issue2099.config.ts"
       - "mingla-business/playwright/issue2099/**"
+      # issue #3325 — SC-4 reads this file at run time. A baseline-only merge
+      # must therefore start this workflow on `push`; otherwise main-health
+      # keeps the older red verdict even after the measured baseline is current.
+      - "mingla-business/scripts/ci/bundle-baseline.json"
+      - "scripts/ci/issue-3325-baseline-push-health.implementor.happy.test.mjs"
+      - "scripts/ci/main-health.mjs"
       - "mingla-admin/src/components/claims/PendingVenueIdentityCorrectionPanel.jsx"
       - "mingla-admin/src/services/adminClaimsService.js"
       - "mingla-admin/src/pages/ClaimsPage.jsx"
@@ -82,6 +88,20 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
+  issue-3325-baseline-push-health:
+    if: ${{ github.event.pull_request.draft != true }}
+    name: "#3325 baseline-only pushes refresh this workflow"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.4
+      - name: "#3325 fails-on-revert fixtures"
+        run: node scripts/ci/issue-3325-baseline-push-health.implementor.happy.test.mjs --self-test
+      - name: "#3325 live trigger contract"
+        run: node scripts/ci/issue-3325-baseline-push-health.implementor.happy.test.mjs
+
   issue-2099-web-contracts:
     if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
