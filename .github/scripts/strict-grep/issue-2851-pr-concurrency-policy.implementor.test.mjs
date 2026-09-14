@@ -1129,7 +1129,26 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // PR_FAMILY_IDENTITY_SHA256 are unchanged,
   // and the policy gate plus its mutation proofs remain untouched. Three local
   // runs of this file's RUBY_CANONICAL produced the same value below.
-  "a24d680bd5fc50d7dae67f67c0f6b95536be0b28e3acfd21c970cf09a901d491";
+  //
+  // [TEST-MOD-APPROVED #3284] Re-derived for three additive deltas in three
+  // existing PR-family lanes, all named by description: (1) the migrations-and-
+  // Stripe Deno lane gains one psql target for the #3284 refund-terms SQL suite
+  // plus its four-line comment; (2) the private-event lane and (3) the #2117
+  // offering-visibility lane each gain one exact-filename skip branch for
+  // 20270702003284 plus its comment, on the #2492 closure gate's own instruction
+  // (the migration re-emits the direct checkout bundle and the public experience
+  // reader, whose `LANGUAGE sql` bodies reach objects each filtered phase lacks).
+  // None of it touches concurrency, group: or cancel-in-progress.
+  // PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 (9356c425...) are
+  // UNCHANGED.
+  //
+  // MEASURED with this file's own RUBY_CANONICAL (extracted, not retyped): the
+  // origin/main 69af8bed5 workflow tree recomputes #1778's pin a24d680b...
+  // exactly, and the branch tree gives the value below. Removing any ONE of the
+  // three exact lines yields 889d23d8..., 5c56a710... or 62c64bf3..., so each
+  // delta moves the digest on its own, and all three lines are in the
+  // revert-sensitivity loop below. Not copied from a PR run's printed `actual:`.
+  "a82e1b1dda6ce912a2ecfa3e947cc80b152482cf9639bf508f66985750da9aca";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1492,6 +1511,15 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "            -f supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql\n"],
     [liveWorkflow("issue", "2333", "online", "event", "publish"),
       "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql\n"],
+    // [TEST-MOD-APPROVED #3284] The #3284 refund-terms SQL suite target on the
+    // migrations lane, and the exact-filename skip in each filtered replay lane.
+    // Each must independently move the digest.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3284_offering_refund_terms.test.sql\n"],
+    [liveWorkflow("issue", "1931", "private", "event", "access"),
+      "              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);

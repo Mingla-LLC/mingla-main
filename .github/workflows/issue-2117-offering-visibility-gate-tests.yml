@@ -117,6 +117,15 @@ jobs:
               # once, in its own step, straight after #2986. EXACT FILENAME,
               # never an issue-number infix.
               *20270624003193_issue_3193_public_search_live_brand_row.sql) continue ;;
+              # issue #3284 — SKIPPED for the same reason #2774 and #2879 are.
+              # 20270702003284 re-emits `pg_public_experience_by_slug`, whose body
+              # calls `pg_offering_visibility_gate` (defined only by the skipped
+              # #2117), and `pg_direct_event_checkout_bundle`, whose body reaches
+              # `issue_2489_address_withheld` / `issue_2489_public_theme`, which this
+              # phase does not have. Both are `LANGUAGE sql`, validated at CREATE
+              # time. Nothing is removed from the migration to green this lane.
+              # Covered by the unfiltered full-chain lanes. EXACT FILENAME.
+              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done
