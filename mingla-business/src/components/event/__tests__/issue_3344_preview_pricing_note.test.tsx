@@ -117,6 +117,7 @@ const mount = async (input: {
         occurrences={input.occurrences ?? days}
         isMultiDate={input.isMultiDate}
         multiDatePricingMode={input.mode}
+        refundPolicy={null}
         onClose={() => undefined}
         onShare={() => undefined}
         onCheckout={() => undefined}
