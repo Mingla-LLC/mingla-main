@@ -69,6 +69,10 @@ import {
   computeShowFreeTextRow,
   resolveFreeTextRowStyle,
 } from "./assistFooter";
+import {
+  composeSuggestionLabel,
+  resolvePickedLabel,
+} from "./suggestionLabel";
 
 const AUTOCOMPLETE_DEBOUNCE_MS = 250;
 
@@ -437,8 +441,9 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       const generation = ++requestGeneration.current;
       clearDebounceTimer();
       fireHaptic("selection");
-      const label =
-        s.fullAddress.trim().length > 0 ? s.fullAddress : s.displayName;
+      // Issue #3291 — the label must carry the tapped name. The grey line alone
+      // is only the surrounding area for streets, cities and venues.
+      let label = composeSuggestionLabel(s);
       setPendingSelectedLabel(label);
       setStatus({ kind: "fetching_details" });
       try {
@@ -446,6 +451,9 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
           invoke,
         });
         if (generation !== requestGeneration.current) return;
+        // Issue #3291 — prefer the looked-up full address, but only when it
+        // still begins with the tapped name.
+        label = resolvePickedLabel(s, details.formattedAddress);
         onPick(details, label);
         // Issue #1363 — a completed pick hides the Tier-2 free-text row until
         // the next keystroke.
@@ -525,7 +533,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
         onPress={() => handlePickSuggestion(s)}
         disabled={status.kind === "fetching_details"}
         accessibilityRole="button"
-        accessibilityLabel={s.fullAddress || s.displayName}
+        accessibilityLabel={composeSuggestionLabel(s)}
         style={({ pressed }) => [
           {
             flexDirection: "row",

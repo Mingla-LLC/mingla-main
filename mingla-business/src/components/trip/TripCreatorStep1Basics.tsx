@@ -36,6 +36,8 @@ import {
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { useBrand } from "../../hooks/useBrands";
+import { useAddressSearchProximity } from "../../hooks/useAddressSearchProximity";
+import { geoPointFrom } from "../../utils/addressSearchProximity";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 // ORCH-1079 [Business-venue Google→Mapbox sweep] — swapped the legacy Google
@@ -123,6 +125,11 @@ export interface TripCreatorStep1BasicsProps {
   // departure/destination field that is empty or typed-but-unvalidated. The
   // wizard flips this on a blocked publish attempt. Default false.
   showAddressErrors?: boolean;
+  /**
+   * Issue #3291 — the trip's IANA zone, the last source of the rank-only
+   * proximity hint for both address fields. Absent → the device's zone.
+   */
+  timeZone?: string | null;
   // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker now
   // uses the keyboard-controller library's KAV wrap instead.
 }
@@ -191,6 +198,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   tripEventId,
   onShowToast,
   showAddressErrors = false,
+  timeZone,
 }) => {
   const [departureSelectionState, setDepartureSelectionState] =
     useState<LocationSelectionState>(
@@ -385,6 +393,24 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
 
   // C-2 — brand theme so the row reports inheritance truthfully.
   const brandQuery = useBrand(brandId ?? null);
+  // Issue #3291 — rank-only proximity for both address fields: brand → a point
+  // already picked on this trip → the trip's time zone. Filters nothing.
+  const departurePoint = geoPointFrom(draft.departureLat, draft.departureLng);
+  const destinationPoint = geoPointFrom(
+    draft.destinationLat,
+    draft.destinationLng,
+  );
+  const brandPoint = geoPointFrom(brandQuery.data?.lat, brandQuery.data?.lng);
+  const departureProximity = useAddressSearchProximity({
+    brandPoint,
+    draftPoint: departurePoint ?? destinationPoint,
+    timeZone,
+  });
+  const destinationProximity = useAddressSearchProximity({
+    brandPoint,
+    draftPoint: destinationPoint ?? departurePoint,
+    timeZone,
+  });
   const brandThemeStatus = brandQuery.isLoading
     ? ("loading" as const)
     : brandQuery.isError
@@ -603,6 +629,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           allowFreeText
           selectionState={departureSelectionState}
           selectedLabel={draft.departureLocationText ?? ""}
+          proximity={departureProximity}
           // Issue #1363 — typing nulls the structured fields until the selected
           // address resolves automatically.
           onChangeText={(v) =>
@@ -681,6 +708,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           allowFreeText
           selectionState={destinationSelectionState}
           selectedLabel={draft.destinationLocationText ?? ""}
+          proximity={destinationProximity}
           // Issue #1363 — coordinate comes from automatic hierarchy resolution.
           onChangeText={(v) =>
             onChange({

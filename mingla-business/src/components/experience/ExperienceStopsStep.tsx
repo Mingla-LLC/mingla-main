@@ -32,6 +32,11 @@ import {
 import { Icon } from "../ui/Icon";
 import { ExperienceStopPhotoSheet } from "./ExperienceStopPhotoSheet";
 import { ExperienceStopCard } from "./ExperienceStopCard";
+import { useAddressSearchProximity } from "../../hooks/useAddressSearchProximity";
+import {
+  geoPointFrom,
+  type GeoPoint,
+} from "../../utils/addressSearchProximity";
 import {
   emptyStop,
   type ExperienceLocationMode,
@@ -51,6 +56,12 @@ export interface ExperienceStopsStepProps {
   pricingMode: ExperiencePricingMode;
   showErrors: boolean;
   onToast: (message: string) => void;
+  /**
+   * Issue #3291 — the brand's saved location (first proximity source) and the
+   * experience's IANA zone (last source). Both optional; absent skips ahead.
+   */
+  brandLocation?: GeoPoint | null;
+  timeZone?: string | null;
 }
 
 export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
@@ -63,7 +74,20 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
   pricingMode,
   showErrors,
   onToast,
+  brandLocation,
+  timeZone,
 }) => {
+  // Issue #3291 — one rank-only proximity for every stop's address field:
+  // brand → the first stop already placed → the experience's time zone. A
+  // string, so the memoised stop cards still bail out on unrelated edits.
+  const addressSearchProximity = useAddressSearchProximity({
+    brandPoint: brandLocation,
+    draftPoint:
+      stops
+        .map((s) => geoPointFrom(s.lat, s.lng))
+        .find((p): p is GeoPoint => p !== null) ?? null,
+    timeZone,
+  });
   const n = stops.length;
 
   // META-ORCH-1059 perf (bug #2): ALL stop mutations are keyed by clientId, not
@@ -215,6 +239,7 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
           onRemove={removeStop}
           onRemovePhoto={removePhoto}
           onOpenPhotoSheet={openPhotoSheet}
+          addressSearchProximity={addressSearchProximity}
         />
       ))}
 

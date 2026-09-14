@@ -19,6 +19,11 @@ import {
 } from "../../utils/resolveApproxLocation";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import { useAddressSearchProximity } from "../../hooks/useAddressSearchProximity";
+import {
+  geoPointFrom,
+  type GeoPoint,
+} from "../../utils/addressSearchProximity";
 // Issue #1648 — the recognition moment for a PICKED address. Kept in its own
 // component on purpose: accepting a match writes `googlePlaceId`, which the
 // ORCH-1079 guard forbids any `patch({...})` in THIS file from doing.
@@ -28,10 +33,16 @@ import type { LocationSelectionState } from "@mingla/location-input";
 
 export interface VenueStep1AddressProps {
   showErrors: boolean;
+  /**
+   * Issue #3291 — the brand's saved location, the first source of the
+   * rank-only proximity hint. Optional: the claim flow has no brand yet.
+   */
+  brandLocation?: GeoPoint | null;
 }
 
 export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
   showErrors,
+  brandLocation,
 }) => {
   const formattedAddress = useDraftVenueStore((s) => s.formattedAddress);
   const lat = useDraftVenueStore((s) => s.lat);
@@ -39,6 +50,12 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
   const city = useDraftVenueStore((s) => s.city);
   const countryCode = useDraftVenueStore((s) => s.countryCode);
   const patch = useDraftVenueStore((s) => s.patch);
+  // Issue #3291 — rank-only proximity: brand → the picked venue point → the
+  // device's time zone (a venue draft carries no zone). Filters nothing.
+  const addressSearchProximity = useAddressSearchProximity({
+    brandPoint: brandLocation,
+    draftPoint: geoPointFrom(lat, lng),
+  });
 
   const [selectionState, setSelectionState] =
     React.useState<LocationSelectionState>(
@@ -123,6 +140,7 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
         allowFreeText
         selectionState={selectionState}
         selectedLabel={formattedAddress}
+        proximity={addressSearchProximity}
         onChangeText={(t) => {
           advanceLocationRequestGeneration(requestGenerationRef);
           savedContextRef.current = { city: null, countryCode: null };

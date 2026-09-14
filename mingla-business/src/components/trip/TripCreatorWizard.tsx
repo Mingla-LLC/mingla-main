@@ -1518,6 +1518,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               tripEventId={trip.id}
               onShowToast={showToast}
               showAddressErrors={showStep1AddressErrors}
+              timeZone={trip.timezone ?? null}
             />
           ) : null}
           {step === 2 ? (

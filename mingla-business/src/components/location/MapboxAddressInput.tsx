@@ -52,6 +52,12 @@ interface MapboxAddressInputProps {
   selectionState?: LocationSelectionState;
   selectedLabel?: string | null;
   onChangeSelected?: () => void;
+  /**
+   * Issue #3291 — rank-only proximity "longitude,latitude" (Mapbox order).
+   * Reorders suggestions near the host; never filters (no types/country —
+   * INV-3 / ORCH-1079). Omitted → the request carries no proximity.
+   */
+  proximity?: string;
 }
 
 // Business token bundle — reproduces the pre-extraction dark-glass StyleSheet.
@@ -159,6 +165,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   selectionState,
   selectedLabel,
   onChangeSelected,
+  proximity,
 }) => {
   const tokens = useMemo(() => BUSINESS_TOKENS, []);
   return (
@@ -181,6 +188,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       selectionState={selectionState}
       selectedLabel={selectedLabel}
       onChangeSelected={onChangeSelected}
+      proximity={proximity}
     />
   );
 };
