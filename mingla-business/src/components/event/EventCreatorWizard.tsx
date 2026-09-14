@@ -801,6 +801,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       coverMediaEventId: liveDraft.id,
       onRequireServerDraft,
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
+      // Issue #3291 — first source of the Where step's rank-only proximity.
+      brandLocation: brand,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: setCoverVideoProcessing,
       // issue #2160 — the multi-day pricing-mode control is EVENT-only.

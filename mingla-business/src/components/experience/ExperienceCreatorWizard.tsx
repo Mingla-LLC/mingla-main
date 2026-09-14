@@ -1262,6 +1262,8 @@ export const ExperienceCreatorWizard: React.FC<
             pricingMode={pricingMode}
             showErrors={showStepErrors}
             onToast={setToast}
+            brandLocation={brand}
+            timeZone={whenAdapter.whenState.timezone}
           />
         ) : null}
 

@@ -1465,6 +1465,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         // ORCH-1335 — RsvpStep5Setup ("rsvp-setup" section) reads this to swap
         // its chip-in bank callout. Undefined for non-RSVP sections (harmless).
         chipInPayoutReady,
+        // Issue #3291 — first source of the Where step's rank-only proximity.
+        brandLocation: brandQuery.data,
         // ORCH-0892-A: legacy CoverPicker scroll-ref prop removed.
         // CoverPicker now uses the keyboard-controller library's KAV wrap.
         // scrollViewRef remains for the Cycle 3 wizard root pattern.
@@ -1535,6 +1537,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       liveEvent.serverEventId,
       liveEvent.currency,
       chipInPayoutReady,
+      brandQuery.data,
     ],
   );
 

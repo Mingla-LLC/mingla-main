@@ -550,7 +550,12 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
     switch (stepId) {
       // ── create path — META-ORCH-1290 Leg B folded 10-step wizard ──────────
       case "s0":
-        return <VenueStep1Address showErrors={showErr} />;
+        return (
+          <VenueStep1Address
+            showErrors={showErr}
+            brandLocation={currentBrand}
+          />
+        );
       case "s1":
         return (
           <VenueStep2NameSlug
