@@ -33,7 +33,9 @@ import {
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
-import { RefundPolicyEditor } from "../trip/RefundPolicyEditor";
+// issue #3284 [bundle budget] — the editor loads in its own chunk (ORCH-1083);
+// never import ./RefundPolicyEditor statically here.
+import { LazyRefundPolicyEditor as RefundPolicyEditor } from "../trip/LazyRefundPolicyEditor";
 import type { RefundPolicy } from "../../services/refundPolicyService";
 import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";

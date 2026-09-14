@@ -36,7 +36,9 @@ import {
 } from "../../services/privateEventAccessService";
 import type { DraftEventVisibility } from "../../store/draftEventStore";
 import type { RefundPolicy } from "../../services/refundPolicyService";
-import { RefundPolicyEditor } from "../trip/RefundPolicyEditor";
+// issue #3284 [bundle budget] — the editor loads in its own chunk (ORCH-1083);
+// never import ./RefundPolicyEditor statically here.
+import { LazyRefundPolicyEditor as RefundPolicyEditor } from "../trip/LazyRefundPolicyEditor";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 
