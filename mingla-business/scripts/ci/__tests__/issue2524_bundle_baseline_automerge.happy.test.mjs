@@ -764,10 +764,6 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
     ["mingla-business-jest-suite", "yml"].join("."),
     // #2058's provenance proof: the check that the PR is genuinely machine-authored.
     ["bundle-baseline-provenance-guard", "yml"].join("."),
-    // #3325: this workflow reads the baseline during its push-only SC-4 bundle
-    // verdict. Without the trigger, main-health can remain pinned to an older
-    // red run after the ratchet records the corrected measurement.
-    ["issue-2099-pending-venue-identity-correction-tests", "yml"].join("."),
     // ci-batch is deliberately UNFILTERED. Its own header says so — "NO paths:
     // filter, deliberately" — and #2148's runner-v2 tester asserts
     // `doesNotMatch(/^\s*paths(?:-ignore)?:/m)` against it, an assertion written
@@ -905,8 +901,8 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
 
   test("merging that baseline does not simply move the fan-out onto main", () => {
     // The recording PR auto-merges now, so every one of these lands a push to
-    // main. The ratchet must re-measure main after every merge; #3325's single
-    // explicit exception refreshes the workflow whose SC-4 reads that result.
+    // main. Only the ratchet — which must re-measure main after every merge —
+    // is allowed to run for a baseline-only commit.
     const started = startedBy(BASELINE_PATH, ["push"]);
     assert.deepEqual([...started].sort(), [
       // Must re-measure main after every merge — it is the mechanism.
@@ -914,8 +910,6 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
       // Always-run by their own pinned contracts; see KEEP above.
       ["issue-1614-onconflict-arbiter-audit", "yml"].join("."),
       ["ci-batch", "yml"].join("."),
-      // #3325: a fresh push verdict is the reason this reader is triggered.
-      ["issue-2099-pending-venue-identity-correction-tests", "yml"].join("."),
     ].sort());
   });
 
