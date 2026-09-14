@@ -1368,12 +1368,22 @@ export default function ConsumerEventDetailScreen({
     (g) => typeof g?.url === "string" && g.url.length > 0,
   );
   const galleryActive = coverGallery.length >= 1;
+  // issue #3321 — the foundation model has `title`, not `name`, and no alt.
+  // #2774 read `fnd.name` / `fnd.coverMediaAlt`, which are always undefined, so
+  // the hero never got a name. Only the cold-route canonical read carries an
+  // alt, and it describes the canonical cover: use it only while that cover is
+  // the one on screen. The warm deck card has no alt, so its hero names the
+  // event without a description rather than inventing one.
+  const heroCoverAlt =
+    canonical !== null && canonical.event.coverMediaUrl === fnd.coverMediaUrl
+      ? (canonical.event.coverMediaAlt ?? null)
+      : null;
   const primaryHeroAccessibleLabel = buildHeroMediaAccessibleLabel({
-    subject: fnd.name,
+    subject: fnd.title,
     mediaType: fnd.coverMediaType,
     position: 1,
     total: coverGallery.length + 1,
-    description: fnd.coverMediaAlt,
+    description: heroCoverAlt,
   });
   // issue #868 Pass 3 — the pager OWNS scrolling (it drives scrollTo from
   // activeIndex with a settle-guard, BUG 1). The row just sets the shown index.
@@ -1554,8 +1564,8 @@ export default function ConsumerEventDetailScreen({
               gallery={coverGallery}
               activeIndex={coverIndex}
               onActiveIndexChange={setCoverIndex}
-              heroAccessibilitySubject={fnd.name}
-              coverMediaAlt={fnd.coverMediaAlt}
+              heroAccessibilitySubject={fnd.title}
+              coverMediaAlt={heroCoverAlt}
               coverMediaType={fnd.coverMediaType}
             />
           ) : (
