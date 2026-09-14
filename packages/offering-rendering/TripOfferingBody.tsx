@@ -54,7 +54,9 @@ import { type ResolvedTheme } from "./designTokens";
 import { EventCoverMedia } from "./EventCoverMedia";
 import { ChipGroup, type Chip } from "./ChipGroup";
 import { DayByDay } from "./DayByDay";
-import { TripRefundLadder } from "./TripRefundLadder";
+// #3284 — the ladder was renamed OfferingRefundLadder (it now renders on event and
+// experience pages too). Imported under its trip name so this body is unchanged.
+import { OfferingRefundLadder as TripRefundLadder } from "./OfferingRefundLadder";
 import { TripPaymentChoice } from "./TripPaymentChoice";
 import { TripCountdownPill } from "./TripCountdownPill";
 import { BadgeCheck, Calendar, Minus, Moon, Plane, Plus, Users } from "./LucideIcons";

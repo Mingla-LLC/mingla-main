@@ -289,8 +289,31 @@ export { TripReserveBar } from "./TripReserveBar";
 export type { TripReserveBarProps } from "./TripReserveBar";
 export { TripPaymentChoice as TripOfferingPaymentChoice } from "./TripPaymentChoice";
 export type { TripPaymentChoiceProps as TripOfferingPaymentChoiceProps } from "./TripPaymentChoice";
-export { TripRefundLadder } from "./TripRefundLadder";
-export type { TripRefundLadderProps } from "./TripRefundLadder";
+// #3284 — the ladder is OfferingRefundLadder now (trip + event + experience). The
+// trip name stays exported as an alias for one release so any import the build
+// has not moved yet still resolves.
+export {
+  OfferingRefundLadder,
+  OfferingRefundLadder as TripRefundLadder,
+} from "./OfferingRefundLadder";
+export type {
+  OfferingRefundLadderProps,
+  OfferingRefundLadderType,
+  TripRefundLadderProps,
+} from "./OfferingRefundLadder";
+// #3284 — the three-state refund-terms reader (I-3284-UNKNOWN-IS-NOT-NONE). Apps
+// import it by the DEEP specifier `@mingla/offering-rendering/offeringRefundPolicy`
+// (a partial barrel mock cannot blank it); it is listed here for completeness.
+export {
+  parseOfferingRefundPolicy,
+  readRefundPolicyState,
+  UNKNOWN_REFUND_POLICY_STATE,
+} from "./offeringRefundPolicy";
+export type {
+  OfferingRefundPolicy,
+  OfferingRefundTier,
+  RefundPolicyReadState,
+} from "./offeringRefundPolicy";
 export { DayByDay } from "./DayByDay";
 export type { DayByDayProps } from "./DayByDay";
 export { TripCountdownPill } from "./TripCountdownPill";
