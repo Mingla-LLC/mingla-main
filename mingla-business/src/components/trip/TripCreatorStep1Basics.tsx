@@ -868,6 +868,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         onCoverChange={handleCoverChange}
         onShowToast={handleCoverToast}
         disabled={disabled}
+        // issue #3319 — `handleCoverChange` saves `coverGallery` into the trip draft.
+        galleryEnabled
       />
 
       {/* iOS picker modal */}

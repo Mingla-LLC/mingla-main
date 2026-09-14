@@ -1933,6 +1933,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                 onCoverChange={handleCoverChange}
                 onShowToast={showToast}
                 disabled={submitting}
+                // issue #3319 — `handleCoverChange` saves `coverGallery` into edit state.
+                galleryEnabled
               />
             </View>
           );

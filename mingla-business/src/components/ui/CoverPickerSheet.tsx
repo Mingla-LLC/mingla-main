@@ -108,6 +108,11 @@ export interface CoverPickerSheetProps {
   onShowToast: (msg: string) => void;
   disabled?: boolean;
   onCoverVideoProcessingChange?: (isProcessing: boolean) => void;
+  /**
+   * issue #3319 — show "Additional photos". Pass true ONLY from a host whose
+   * `onCoverChange` saves `patch.coverGallery`; see `CoverPickerProps`.
+   */
+  galleryEnabled?: boolean;
 }
 
 export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
@@ -122,6 +127,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
   // parent's root-level sibling Toast.
   disabled = false,
   onCoverVideoProcessingChange,
+  galleryEnabled = false,
 }) => {
   const { isWideDesktop } = useResponsiveLayout();
 
@@ -214,6 +220,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
               onShowToast={handleShowToast}
               disabled={disabled}
               isWideDesktop={isWideDesktop}
+              galleryEnabled={galleryEnabled}
               onCoverVideoProcessingChange={(processing): void => {
                 setVideoProcessing(processing);
                 onCoverVideoProcessingChange?.(processing);

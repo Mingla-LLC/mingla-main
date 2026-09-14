@@ -178,6 +178,9 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
           initialCoverHue={0}
           onCoverChange={onCoverChange}
           onShowToast={onShowToast}
+          // issue #3319 — the wizard keeps the whole patch and publishes
+          // `cover.coverGallery`.
+          galleryEnabled
         />
       ) : null}
 
