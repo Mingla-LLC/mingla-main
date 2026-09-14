@@ -80,6 +80,7 @@ import {
   formatTimezoneLabel,
   formatTimezoneOffset,
   getAllTimezones,
+  whenStepTimezoneReference,
 } from "../../utils/timezones";
 
 import { Button } from "../ui/Button";
@@ -265,13 +266,49 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
     : undefined;
 
   // ---- Timezone list ----
-  const allTimezones = useMemo(() => getAllTimezones(), []);
+  // On native there is no Intl.supportedValuesOf, so the list is every IANA
+  // zone checked against the runtime (tens of ms on Hermes). Build it the first
+  // time the sheet opens — not on every Step 2 mount — and keep it after, so
+  // closing the sheet never flashes the empty state.
+  const [tzListWanted, setTzListWanted] = useState<boolean>(false);
+  const allTimezones = useMemo<string[]>(
+    () => (tzListWanted ? getAllTimezones() : []),
+    [tzListWanted],
+  );
   const filteredTimezones = useMemo<string[]>(() => {
     const q = tzSearchQuery.trim().toLowerCase();
     if (q.length === 0) return allTimezones;
     return allTimezones.filter((tz) => tz.toLowerCase().includes(q));
   }, [allTimezones, tzSearchQuery]);
-  const tzLabel = formatTimezoneLabel(draft.timezone);
+  // Offsets are seasonal: a 6 Nov New York event is GMT-5 even while it is set
+  // up in September (GMT-4), so label at the event's own first start, not
+  // today. Memoised on the plain date/time strings so an unrelated draft edit
+  // recomputes nothing.
+  const tzReference = whenStepTimezoneReference(draft, lockSingleDate);
+  const tzRefDate = tzReference?.localDate ?? null;
+  const tzRefTime = tzReference?.localTime ?? null;
+  const tzLabel = useMemo<string>(
+    () =>
+      formatTimezoneLabel(
+        draft.timezone,
+        tzRefDate === null
+          ? new Date()
+          : { localDate: tzRefDate, localTime: tzRefTime },
+      ),
+    [draft.timezone, tzRefDate, tzRefTime],
+  );
+  const tzOffsets = useMemo<ReadonlyMap<string, string>>(() => {
+    const at =
+      tzRefDate === null
+        ? new Date()
+        : { localDate: tzRefDate, localTime: tzRefTime };
+    return new Map(
+      allTimezones.map((tz): [string, string] => [
+        tz,
+        formatTimezoneOffset(tz, at),
+      ]),
+    );
+  }, [allTimezones, tzRefDate, tzRefTime]);
 
   // ---- Picker handlers ----
 
@@ -1214,7 +1251,10 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       <View style={styles.field}>
         <Text style={styles.fieldLabel}>Timezone</Text>
         <Pressable
-          onPress={() => setTzSheetVisible(true)}
+          onPress={() => {
+            setTzListWanted(true);
+            setTzSheetVisible(true);
+          }}
           accessibilityRole="button"
           accessibilityLabel={`Timezone: ${tzLabel}`}
           style={styles.pickerRow}
@@ -1690,7 +1730,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             ) : (
               filteredTimezones.map((tz) => {
                 const active = draft.timezone === tz;
-                const offset = formatTimezoneOffset(tz);
+                const offset = tzOffsets.get(tz) ?? "";
                 return (
                   <Pressable
                     key={tz}
