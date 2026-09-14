@@ -34,6 +34,7 @@ import { createThemePalette } from "../../../../packages/offering-rendering/them
 import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
+import { buildDraftThemePreview } from "../theme/themePreviewContent";
 import { type StepBodyProps } from "../event/types";
 
 // #1742 / ORCH-1083 — Review intelligence is an on-demand surface, not boot UI.
@@ -189,6 +190,7 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
         onChange={handleThemeChange}
         scope="offering"
         brandTheme={brandTheme}
+        preview={buildDraftThemePreview(draft)}
         testID="rsvp-review-theme-sheet"
       />
     </View>

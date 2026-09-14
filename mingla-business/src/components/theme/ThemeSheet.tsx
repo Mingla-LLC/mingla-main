@@ -13,7 +13,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Gesture } from "react-native-gesture-handler";
 
 import type { ThemeInput } from "@mingla/offering-rendering";
-import { ThemeEntranceAnimation } from "@mingla/offering-rendering";
+import {
+  EventCoverMedia,
+  ThemeEntranceAnimation,
+} from "@mingla/offering-rendering";
 import {
   boldFontFamily,
   createThemePalette,
@@ -51,10 +54,15 @@ import {
   hexToHsv,
   hsvToHex,
   hueName,
+  themeDefaultFontLabel,
   themeResetLabel,
   type ThemeControlScope,
   type ThemeSheetTab,
 } from "./themeColorModel";
+import {
+  SAMPLE_THEME_PREVIEW,
+  type ThemePreviewContent,
+} from "./themePreviewContent";
 
 /**
  * #1022 — the expanded Theme control.
@@ -96,6 +104,12 @@ export interface ThemeSheetProps {
   onChange: (next: ThemeInput | null) => void;
   scope: ThemeControlScope;
   brandTheme?: ThemeInput | null;
+  /**
+   * issue #3349 — the draft the preview band shows (its name, first start and
+   * cover). Offering mounts pass `buildDraftThemePreview(draft)`. Omitted = a
+   * sample, for the brand and venue sheets, which have no single event.
+   */
+  preview?: ThemePreviewContent | null;
   testID?: string;
 }
 
@@ -124,9 +138,11 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
   onChange,
   scope,
   brandTheme,
+  preview,
   testID,
 }) => {
   const { height: screenHeight } = useWindowDimensions();
+  const previewContent = preview ?? SAMPLE_THEME_PREVIEW;
   const compact = screenHeight < COMPACT_SCREEN_HEIGHT;
   const [tab, setTab] = useState<TabKey>("colour");
   const [replayNonce, setReplayNonce] = useState(0);
@@ -330,20 +346,50 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
         ]}
         accessibilityLabel="Preview: your page with this theme"
       >
-        <Text style={[styles.previewEyebrow, { color: palette.accent }]}>
-          SAT 12 JUL · 8:00 PM
-        </Text>
-        <Text
-          style={[
-            styles.previewTitle,
-            { color: palette.primaryText, fontFamily: boldFontFamily(resolved) },
-          ]}
-          numberOfLines={1}
-        >
-          Rooftop Sessions
-        </Text>
-        <View style={[styles.previewCta, { backgroundColor: palette.accent }]}>
-          <Text style={styles.previewCtaLabel}>Get tickets</Text>
+        <View style={styles.previewRow}>
+          <View style={styles.previewText}>
+            <Text
+              style={[styles.previewEyebrow, { color: palette.accent }]}
+              numberOfLines={1}
+            >
+              {previewContent.dateLine}
+            </Text>
+            <Text
+              style={[
+                styles.previewTitle,
+                { color: palette.primaryText, fontFamily: boldFontFamily(resolved) },
+              ]}
+              numberOfLines={1}
+            >
+              {previewContent.title}
+            </Text>
+            <View style={[styles.previewCta, { backgroundColor: palette.accent }]}>
+              <Text style={styles.previewCtaLabel}>{previewContent.ctaLabel}</Text>
+            </View>
+          </View>
+          {/* issue #3349 — the draft's own cover, as a STILL: an image cover or
+              a video cover's poster, else its hue. Never a second video player
+              while the cover step's own player is live behind the sheet. */}
+          {previewContent.cover !== null ? (
+            <View
+              style={[
+                styles.previewCover,
+                compact ? styles.previewCoverCompact : null,
+              ]}
+              testID={testID !== undefined ? `${testID}-preview-cover` : undefined}
+            >
+              <EventCoverMedia
+                hue={previewContent.cover.hue}
+                mediaUrl={previewContent.cover.imageUrl}
+                mediaType={previewContent.cover.imageUrl !== null ? "image" : null}
+                radius={radius.md}
+                label=""
+                height="100%"
+                autoplay={false}
+                playbackActive={false}
+              />
+            </View>
+          ) : null}
         </View>
         <View style={styles.previewOverlay} pointerEvents="none">
           <ThemeEntranceAnimation
@@ -609,10 +655,10 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
               accessibilityState={{ selected: fontInherited }}
               accessibilityLabel={`${scope === "brand" ? "Mingla" : "Brand"} default font`}
             >
+              {/* issue #3348 — names the font INHERITING gives you (the
+                  brand's, or Mingla's for a brand), never the current pick. */}
               <Text style={styles.fontRowLabel}>
-                {scope === "brand" ? "Mingla default" : "Brand default"}
-                {" — "}
-                {FONT_SPECIMENS[resolved.font]?.label ?? resolved.font}
+                {themeDefaultFontLabel(scope, brandTheme)}
               </Text>
               {fontInherited ? <Icon name="check" size={16} color={accent.warm} /> : null}
             </Pressable>
@@ -748,6 +794,15 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   previewOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 2 },
+  previewRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  previewText: { flex: 1, minWidth: 0, gap: 4 },
+  previewCover: {
+    width: 96,
+    height: 96,
+    borderRadius: radius.md,
+    overflow: "hidden",
+  },
+  previewCoverCompact: { width: 72, height: 72 },
   previewEyebrow: {
     fontSize: 11,
     fontWeight: "900",

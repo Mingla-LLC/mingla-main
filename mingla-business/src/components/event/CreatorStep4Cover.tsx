@@ -33,6 +33,7 @@ import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 import { useBrand } from "../../hooks/useBrands";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
+import { buildDraftThemePreview } from "../theme/themePreviewContent";
 
 import { type StepBodyProps } from "./types";
 
@@ -321,6 +322,7 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
         onChange={handleThemeChange}
         scope="offering"
         brandTheme={brandQuery.data?.theme ?? null}
+        preview={buildDraftThemePreview(draft)}
         testID="theme-sheet"
       />
     </View>
