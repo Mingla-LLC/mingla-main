@@ -122,7 +122,6 @@ import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useBrand } from "../../hooks/useBrands";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { isChipInPayoutReady } from "../../utils/chipInPayoutReadiness";
-import { geoPointFrom } from "../../utils/addressSearchProximity";
 import { canPerformAction } from "../../utils/permissionGates";
 import {
   attestEventCoverSelection,
@@ -509,13 +508,6 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   // Ungated: one extra CACHED read per mount, already warm in the wizards.
   const brandId = liveEvent?.brandId ?? null;
   const brandQuery = useBrand(brandId);
-  // Issue #3291 — rank Where-step address suggestions near the brand.
-  const brandLat = brandQuery.data?.lat;
-  const brandLng = brandQuery.data?.lng;
-  const brandLocation = useMemo(
-    () => geoPointFrom(brandLat, brandLng),
-    [brandLat, brandLng],
-  );
   const [themeSheetOpen, setThemeSheetOpen] = useState(false);
   const chipInBrandId = rsvpMode ? brandId : null;
   const chipInBrandQuery = brandQuery;
@@ -1474,7 +1466,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         // its chip-in bank callout. Undefined for non-RSVP sections (harmless).
         chipInPayoutReady,
         // Issue #3291 — first source of the Where step's rank-only proximity.
-        brandLocation,
+        brandLocation: brandQuery.data,
         // ORCH-0892-A: legacy CoverPicker scroll-ref prop removed.
         // CoverPicker now uses the keyboard-controller library's KAV wrap.
         // scrollViewRef remains for the Cycle 3 wizard root pattern.
@@ -1545,7 +1537,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       liveEvent.serverEventId,
       liveEvent.currency,
       chipInPayoutReady,
-      brandLocation,
+      brandQuery.data,
     ],
   );
 

@@ -121,7 +121,6 @@ import { CreatorStep6Settings } from "./CreatorStep6Settings";
 import { CreatorStep7Preview } from "./CreatorStep7Preview";
 
 import { PublishErrorsSheet } from "./PublishErrorsSheet";
-import { geoPointFrom } from "../../utils/addressSearchProximity";
 // ISSUE-1001 — the official business lockup now imports from the canonical
 // master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
 // the app-local copy is deleted.
@@ -803,7 +802,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       onRequireServerDraft,
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
       // Issue #3291 — first source of the Where step's rank-only proximity.
-      brandLocation: geoPointFrom(brand?.lat, brand?.lng),
+      brandLocation: brand,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: setCoverVideoProcessing,
       // issue #2160 — the multi-day pricing-mode control is EVENT-only.

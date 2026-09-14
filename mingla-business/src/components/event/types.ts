@@ -133,7 +133,7 @@ export interface StepBodyProps {
    * suggestions (brand → draft → time zone). Never saved, never a filter.
    * Optional: absent/null simply skips to the next source.
    */
-  brandLocation?: { lat: number; lng: number } | null;
+  brandLocation?: { lat?: number | null; lng?: number | null } | null;
   // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker
   // now relies on the keyboard-controller library's KeyboardAvoidingView
   // wrap for search-input visibility above the keyboard.

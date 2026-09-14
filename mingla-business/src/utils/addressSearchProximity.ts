@@ -21,6 +21,11 @@
  * No fabricated data (Constitution #9): an unknown zone, or `UTC`, yields NO
  * point rather than a guess. The table below names each zone's own IANA city,
  * which is only ever used as a ranking hint and is never saved anywhere.
+ *
+ * BOOT PAYLOAD (ORCH-1083): this module is loaded ONLY through the dynamic
+ * `import()` in `hooks/useAddressSearchProximity.ts`, so the table ships in its
+ * own async web chunk instead of the eager `__common` chunk that every Host
+ * screen shares. Hosts must never value-import it — `import type` only.
  */
 
 export interface GeoPoint {
@@ -28,16 +33,38 @@ export interface GeoPoint {
   lng: number;
 }
 
+/** Any record carrying nullable lat/lng — a Brand, a draft, a stop. */
+export type LatLngLike =
+  | { lat?: number | null; lng?: number | null }
+  | null
+  | undefined;
+
 export interface AddressSearchProximityInput {
-  brandPoint?: GeoPoint | null;
-  draftPoint?: GeoPoint | null;
+  brandPoint?: LatLngLike;
+  draftPoint?: LatLngLike;
   timeZone?: string | null;
 }
 
+/** What a Host address field hands the hook. */
+export interface HostAddressProximitySources {
+  /** The brand's saved location (a Brand record works as-is). */
+  brandPoint?: LatLngLike;
+  /**
+   * A point already picked on this draft, or candidates in priority order
+   * (first usable wins) — e.g. departure then destination, or every stop.
+   */
+  draftPoint?: LatLngLike | ReadonlyArray<LatLngLike>;
+  /** The draft's IANA zone. Absent/blank → the device's zone. */
+  timeZone?: string | null;
+}
+
+/** Per-field memory: the last usable draft point this field has seen. */
+export interface ProximityMemory {
+  lastDraftPoint: GeoPoint | null;
+}
+
 /** Real, in-range coordinates. (0,0) is the classic unset-row sentinel. */
-export const isUsableGeoPoint = (
-  point: { lat?: number | null; lng?: number | null } | null | undefined,
-): point is GeoPoint => {
+export const isUsableGeoPoint = (point: LatLngLike): point is GeoPoint => {
   if (point === null || point === undefined) return false;
   const { lat, lng } = point;
   return (
@@ -189,4 +216,33 @@ export const resolveAddressSearchProximity = (
   }
   const zonePoint = approximatePointForTimeZone(input.timeZone);
   return zonePoint !== null ? formatProximity(zonePoint) : undefined;
+};
+
+/**
+ * The hook's whole job, kept here so it rides the async chunk. Every keystroke
+ * in a Host address field clears the draft's picked coordinates, so the
+ * "draft point" would vanish on the first letter and ranking would jump to the
+ * time-zone point mid-typing; `memory` remembers the last usable draft point
+ * for the life of the field.
+ */
+export const resolveHostAddressProximity = (
+  memory: ProximityMemory,
+  sources: HostAddressProximitySources,
+): string | undefined => {
+  const candidates: ReadonlyArray<LatLngLike> = Array.isArray(sources.draftPoint)
+    ? sources.draftPoint
+    : [sources.draftPoint as LatLngLike];
+  const found = candidates.find(isUsableGeoPoint);
+  if (found !== undefined) {
+    memory.lastDraftPoint = { lat: found.lat, lng: found.lng };
+  }
+  const zone =
+    typeof sources.timeZone === "string" && sources.timeZone.trim().length > 0
+      ? sources.timeZone
+      : deviceTimeZone();
+  return resolveAddressSearchProximity({
+    brandPoint: sources.brandPoint,
+    draftPoint: memory.lastDraftPoint,
+    timeZone: zone,
+  });
 };

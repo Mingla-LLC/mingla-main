@@ -18,12 +18,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, jest, test } from "@jest/globals";
 
-import { MapboxAddressInput } from "../../../packages/location-input/src/MapboxAddressInput";
 import {
+  MapboxAddressInput,
   addressBeginsWithName,
   composeSuggestionLabel,
   resolvePickedLabel,
-} from "../../../packages/location-input/src/suggestionLabel";
+} from "../../../packages/location-input/src/MapboxAddressInput";
 import type {
   InvokeFn,
   PlaceAutocompleteSuggestion,
@@ -374,7 +374,7 @@ describe("Issue #3291 — every Host address field saves the tapped name", () =>
       /const label = selectedLabel \?\? [A-Za-z]+\.formattedAddress;/,
     );
     // …and ranks results near the host (rank-only proximity).
-    expect(block).toMatch(/proximity=\{[A-Za-z]+\}/);
+    expect(block).toMatch(/proximity(Sources=\{\{|=\{[A-Za-z]+\})/);
 
     const { pickedLabel } = await pickThroughPicker(
       STREET,
@@ -392,7 +392,7 @@ describe("Issue #3291 — every Host address field saves the tapped name", () =>
       "src/components/event/EditPublishedScreen.tsx",
     ]) {
       const source = fs.readFileSync(path.resolve(ROOT, "mingla-business", file), "utf8");
-      expect(source).toMatch(/brandLocation(: geoPointFrom\(|,)/);
+      expect(source).toMatch(/brandLocation(: [A-Za-z.]+)?,/);
     }
   });
 });

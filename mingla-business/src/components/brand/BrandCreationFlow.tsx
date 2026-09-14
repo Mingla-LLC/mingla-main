@@ -66,8 +66,6 @@ import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 // Mapbox Search Box /suggest returns POIs/businesses by name (no `types` filter):
 // https://docs.mapbox.com/api/search/search-box/#get-suggestions
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
-import { useAddressSearchProximity } from "../../hooks/useAddressSearchProximity";
-import { geoPointFrom } from "../../utils/addressSearchProximity";
 import {
   advanceLocationRequestGeneration,
   isFreeTextResolveStale,
@@ -524,16 +522,6 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     retry: () => void;
   } | null>(null);
   const [coverPickerVisible, setCoverPickerVisible] = useState(false);
-  // Issue #3291 — rank-only proximity for the address field: a resumed
-  // brand's saved point → the point picked in this flow → the device's time
-  // zone (brand creation has no zone of its own). Filters nothing.
-  const addressSearchProximity = useAddressSearchProximity({
-    brandPoint: geoPointFrom(
-      resumeBrandQuery.data?.lat,
-      resumeBrandQuery.data?.lng,
-    ),
-    draftPoint: geoPointFrom(addrMeta.lat, addrMeta.lng),
-  });
   const [addressSelectionState, setAddressSelectionState] =
     useState<LocationSelectionState>("editing");
   // Issue #1363 P3-2 — latest-wins guard: the address text currently committed,
@@ -1285,7 +1273,12 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               allowFreeText
               selectionState={addressSelectionState}
               selectedLabel={address}
-              proximity={addressSearchProximity}
+              // Issue #3291 — rank-only: a resumed brand's point → the point
+              // picked here → the device's time zone (no zone of its own).
+              proximitySources={{
+                brandPoint: resumeBrandQuery.data,
+                draftPoint: addrMeta,
+              }}
               onChangeText={(t) => {
                 advanceLocationRequestGeneration(addressRequestGenerationRef);
                 savedContextRef.current = { city: null, countryCode: null };

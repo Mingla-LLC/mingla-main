@@ -101,7 +101,6 @@ import { CreatorStep3Where } from "../event/CreatorStep3Where";
 import { CreatorStep4Cover } from "../event/CreatorStep4Cover";
 import { PublishErrorsSheet } from "../event/PublishErrorsSheet";
 import { RsvpStep5Setup } from "./RsvpStep5Setup";
-import { geoPointFrom } from "../../utils/addressSearchProximity";
 import { RsvpStep7Preview } from "./RsvpStep7Preview";
 
 // ISSUE-1001 — the official business lockup now imports from the canonical
@@ -765,7 +764,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       onRequireServerDraft,
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
       // Issue #3291 — first source of the Where step's rank-only proximity.
-      brandLocation: geoPointFrom(brand?.lat, brand?.lng),
+      brandLocation: brand,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: setCoverVideoProcessing,
       // ORCH-1335 — RsvpStep5Setup reads this to swap its chip-in bank callout.

@@ -14,7 +14,7 @@
  * business-specific look.
  */
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   MapboxAddressInput as SharedMapboxAddressInput,
@@ -35,6 +35,10 @@ import {
 } from "../../constants/designSystem";
 import { Icon, type IconName } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
+import type {
+  HostAddressProximitySources,
+  ProximityMemory,
+} from "../../utils/addressSearchProximity";
 
 export type { PlaceDetails };
 
@@ -53,12 +57,48 @@ interface MapboxAddressInputProps {
   selectedLabel?: string | null;
   onChangeSelected?: () => void;
   /**
-   * Issue #3291 — rank-only proximity "longitude,latitude" (Mapbox order).
-   * Reorders suggestions near the host; never filters (no types/country —
-   * INV-3 / ORCH-1079). Omitted → the request carries no proximity.
+   * Issue #3291 — where to RANK suggestions from: brand point → a point
+   * already picked on the draft → the draft's time zone. Rank-only; the
+   * request never gains a types/country filter (INV-3 / ORCH-1079).
+   */
+  proximitySources?: HostAddressProximitySources;
+  /**
+   * Issue #3291 — an already-resolved proximity "longitude,latitude", for a
+   * host that resolves once for many fields (experience stops keep their memo
+   * by passing a string). Wins over `proximitySources`.
    */
   proximity?: string;
 }
+
+// ── Issue #3291 — rank-only proximity, resolved lazily ─────────────────────
+// This wrapper ships in the eager `__common` web chunk (every Host screen
+// shares it), so it holds NO proximity logic and NO data: the resolver and its
+// time-zone table load through the dynamic `import()` below into their own
+// async chunk (ORCH-1083). Until that resolves the field sends no proximity —
+// only ranking is affected, and only for the first moments after mount
+// (search waits for three letters plus a 250 ms debounce). A failed load is
+// warned and retried by the next mount; the pick itself is never affected.
+type ProximityResolver = typeof import("../../utils/addressSearchProximity");
+let proximityResolver: ProximityResolver | undefined;
+
+export const useAddressSearchProximity = (
+  sources: HostAddressProximitySources | undefined,
+): string | undefined => {
+  const memory = useRef<ProximityMemory>({ lastDraftPoint: null }).current;
+  const [, setLoaded] = useState(proximityResolver);
+  const wanted = sources !== undefined;
+  useEffect((): void => {
+    if (!wanted || proximityResolver !== undefined) return;
+    import("../../utils/addressSearchProximity").then(
+      (module) => setLoaded((proximityResolver = module)),
+      (error: unknown) =>
+        console.warn("[MapboxAddressInput] proximity resolver load failed:", error),
+    );
+  }, [wanted]);
+  return sources === undefined
+    ? undefined
+    : proximityResolver?.resolveHostAddressProximity(memory, sources);
+};
 
 // Business token bundle — reproduces the pre-extraction dark-glass StyleSheet.
 const BUSINESS_TOKENS: LocationInputTokens = {
@@ -165,9 +205,11 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   selectionState,
   selectedLabel,
   onChangeSelected,
+  proximitySources,
   proximity,
 }) => {
   const tokens = useMemo(() => BUSINESS_TOKENS, []);
+  const resolvedProximity = useAddressSearchProximity(proximitySources);
   return (
     <SharedMapboxAddressInput
       value={value}
@@ -188,7 +230,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       selectionState={selectionState}
       selectedLabel={selectedLabel}
       onChangeSelected={onChangeSelected}
-      proximity={proximity}
+      proximity={proximity ?? resolvedProximity}
     />
   );
 };

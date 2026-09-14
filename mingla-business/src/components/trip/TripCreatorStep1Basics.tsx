@@ -36,8 +36,6 @@ import {
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { useBrand } from "../../hooks/useBrands";
-import { useAddressSearchProximity } from "../../hooks/useAddressSearchProximity";
-import { geoPointFrom } from "../../utils/addressSearchProximity";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 // ORCH-1079 [Business-venue Google→Mapbox sweep] — swapped the legacy Google
@@ -394,23 +392,12 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   // C-2 — brand theme so the row reports inheritance truthfully.
   const brandQuery = useBrand(brandId ?? null);
   // Issue #3291 — rank-only proximity for both address fields: brand → a point
-  // already picked on this trip → the trip's time zone. Filters nothing.
-  const departurePoint = geoPointFrom(draft.departureLat, draft.departureLng);
-  const destinationPoint = geoPointFrom(
-    draft.destinationLat,
-    draft.destinationLng,
-  );
-  const brandPoint = geoPointFrom(brandQuery.data?.lat, brandQuery.data?.lng);
-  const departureProximity = useAddressSearchProximity({
-    brandPoint,
-    draftPoint: departurePoint ?? destinationPoint,
-    timeZone,
-  });
-  const destinationProximity = useAddressSearchProximity({
-    brandPoint,
-    draftPoint: destinationPoint ?? departurePoint,
-    timeZone,
-  });
+  // already picked on this trip (the field's own first) → the trip's zone.
+  const departurePoint = { lat: draft.departureLat, lng: draft.departureLng };
+  const destinationPoint = {
+    lat: draft.destinationLat,
+    lng: draft.destinationLng,
+  };
   const brandThemeStatus = brandQuery.isLoading
     ? ("loading" as const)
     : brandQuery.isError
@@ -629,7 +616,11 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           allowFreeText
           selectionState={departureSelectionState}
           selectedLabel={draft.departureLocationText ?? ""}
-          proximity={departureProximity}
+          proximitySources={{
+            brandPoint: brandQuery.data,
+            draftPoint: [departurePoint, destinationPoint],
+            timeZone,
+          }}
           // Issue #1363 — typing nulls the structured fields until the selected
           // address resolves automatically.
           onChangeText={(v) =>
@@ -708,7 +699,11 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           allowFreeText
           selectionState={destinationSelectionState}
           selectedLabel={draft.destinationLocationText ?? ""}
-          proximity={destinationProximity}
+          proximitySources={{
+            brandPoint: brandQuery.data,
+            draftPoint: [destinationPoint, departurePoint],
+            timeZone,
+          }}
           // Issue #1363 — coordinate comes from automatic hierarchy resolution.
           onChangeText={(v) =>
             onChange({

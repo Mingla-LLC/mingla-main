@@ -69,10 +69,6 @@ import {
   computeShowFreeTextRow,
   resolveFreeTextRowStyle,
 } from "./assistFooter";
-import {
-  composeSuggestionLabel,
-  resolvePickedLabel,
-} from "./suggestionLabel";
 
 const AUTOCOMPLETE_DEBOUNCE_MS = 250;
 
@@ -129,6 +125,58 @@ export function computeDropdownMaxHeight(params: {
   const availableBelow =
     keyboardScreenY - cardTopY - DROPDOWN_SAFETY_MARGIN - accessory;
   return Math.max(MIN_DROPDOWN_HEIGHT, Math.min(tokenMaxHeight, availableBelow));
+}
+
+// ── Issue #3291 — the saved address carries the tapped name ────────────────
+// A row shows a bold name ("Ozumba Mbadiwe Avenue") over a grey line. Mapbox
+// fills the grey line from `full_address` when the feature has one and
+// `place_formatted` otherwise — only the SURROUNDING AREA ("Lagos 10, Lagos,
+// Nigeria"), never the name; streets, cities and venues have no
+// `full_address`. Saving the grey line (#1407) dropped the street/city name.
+// One rule for the pending pill, the saved label and the row a11y label:
+//   grey line begins with the name → the grey line (no doubling)
+//   otherwise                      → "<name>, <grey line>"
+//   after retrieve, the looked-up full address wins ONLY when it begins with
+//   the name.
+// "Begins with" compares the leading comma-separated part, ignoring case and
+// spacing — a substring check would treat "Greater London" as "London".
+// Kept in this file (not a module of its own) because the picker ships in the
+// eager `__common` web chunk and every module costs a wrapper (ORCH-1083).
+
+const normaliseLabel = (value: string): string =>
+  value.replace(/\s*,\s*/g, ", ").replace(/\s+/g, " ").trim().toLowerCase();
+
+/** True when `address` leads with `name` as its first comma-separated part. */
+export function addressBeginsWithName(address: string, name: string): boolean {
+  const n = normaliseLabel(name);
+  const a = normaliseLabel(address);
+  return n.length > 0 && (a === n || a.startsWith(`${n},`));
+}
+
+/** The row's label: always carries the name, never repeats it. */
+export function composeSuggestionLabel(s: {
+  displayName: string;
+  fullAddress: string;
+}): string {
+  const name = (s.displayName ?? "").trim();
+  const secondary = (s.fullAddress ?? "").trim();
+  if (name.length === 0 || addressBeginsWithName(secondary, name)) {
+    return secondary || name;
+  }
+  return secondary.length > 0 ? `${name}, ${secondary}` : name;
+}
+
+/** The label saved after retrieve: the full address if it still names the row. */
+export function resolvePickedLabel(
+  s: { displayName: string; fullAddress: string },
+  retrievedAddress: string | null | undefined,
+): string {
+  const retrieved = (retrievedAddress ?? "").trim();
+  const name = (s.displayName ?? "").trim();
+  return retrieved.length > 0 &&
+    (name.length === 0 || addressBeginsWithName(retrieved, name))
+    ? retrieved
+    : composeSuggestionLabel(s);
 }
 
 type HapticsLike = {

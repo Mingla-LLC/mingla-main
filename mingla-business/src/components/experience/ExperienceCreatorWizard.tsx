@@ -63,7 +63,6 @@ import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import type { PricingSwitchOverrides } from "../../services/pricingSwitchesService";
 import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
 import { ExperienceStopsStep } from "./ExperienceStopsStep";
-import { geoPointFrom } from "../../utils/addressSearchProximity";
 import { ExperiencePricingStep } from "./ExperiencePricingStep";
 import { StripeBlockedCard } from "../offering/StripeBlockedCard";
 import {
@@ -1255,7 +1254,7 @@ export const ExperienceCreatorWizard: React.FC<
             pricingMode={pricingMode}
             showErrors={showStepErrors}
             onToast={setToast}
-            brandLocation={geoPointFrom(brand?.lat, brand?.lng)}
+            brandLocation={brand}
             timeZone={whenAdapter.whenState.timezone}
           />
         ) : null}

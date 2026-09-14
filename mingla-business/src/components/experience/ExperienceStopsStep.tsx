@@ -32,11 +32,8 @@ import {
 import { Icon } from "../ui/Icon";
 import { ExperienceStopPhotoSheet } from "./ExperienceStopPhotoSheet";
 import { ExperienceStopCard } from "./ExperienceStopCard";
-import { useAddressSearchProximity } from "../../hooks/useAddressSearchProximity";
-import {
-  geoPointFrom,
-  type GeoPoint,
-} from "../../utils/addressSearchProximity";
+import { useAddressSearchProximity } from "../location/MapboxAddressInput";
+import type { LatLngLike } from "../../utils/addressSearchProximity";
 import {
   emptyStop,
   type ExperienceLocationMode,
@@ -60,7 +57,7 @@ export interface ExperienceStopsStepProps {
    * Issue #3291 — the brand's saved location (first proximity source) and the
    * experience's IANA zone (last source). Both optional; absent skips ahead.
    */
-  brandLocation?: GeoPoint | null;
+  brandLocation?: LatLngLike;
   timeZone?: string | null;
 }
 
@@ -82,10 +79,7 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
   // string, so the memoised stop cards still bail out on unrelated edits.
   const addressSearchProximity = useAddressSearchProximity({
     brandPoint: brandLocation,
-    draftPoint:
-      stops
-        .map((s) => geoPointFrom(s.lat, s.lng))
-        .find((p): p is GeoPoint => p !== null) ?? null,
+    draftPoint: stops,
     timeZone,
   });
   const n = stops.length;

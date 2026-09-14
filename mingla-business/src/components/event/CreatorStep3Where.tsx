@@ -55,7 +55,6 @@ import type { LocationSelectionState } from "@mingla/location-input";
 // functions base URL is absent, in which case we render the honest "pick an
 // address" empty state (rule 9 — never a fabricated/striped placeholder tile).
 import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
-import { useAddressSearchProximity } from "../../hooks/useAddressSearchProximity";
 
 import { errorForKey, type StepBodyProps } from "./types";
 
@@ -68,13 +67,6 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   brandLocation,
 }) => {
   const intelCityHighlight = useTurnoutFocusTarget("city");
-  // Issue #3291 — rank-only proximity: brand → picked draft point → the
-  // draft's time zone. Reorders suggestions near the host; filters nothing.
-  const addressSearchProximity = useAddressSearchProximity({
-    brandPoint: brandLocation,
-    draftPoint: draft.locationGeo,
-    timeZone: draft.timezone,
-  });
   const venueError = showErrors ? errorForKey(errors, "venueName") : undefined;
   const addressError = showErrors ? errorForKey(errors, "address") : undefined;
   const onlineError = showErrors ? errorForKey(errors, "onlineUrl") : undefined;
@@ -190,7 +182,12 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               allowFreeText
               selectionState={selectionState}
               selectedLabel={draft.address ?? ""}
-              proximity={addressSearchProximity}
+              // Issue #3291 — rank-only: brand → picked point → time zone.
+              proximitySources={{
+                brandPoint: brandLocation,
+                draftPoint: draft.locationGeo,
+                timeZone: draft.timezone,
+              }}
               onChangeText={(v) => {
                 advanceLocationRequestGeneration(requestGenerationRef);
                 savedCityRef.current = null;

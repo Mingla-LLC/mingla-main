@@ -134,8 +134,6 @@ import {
 import { validateLiveTripFieldUpdate } from "../../utils/publishedTripEditGuards";
 import { useUpdateLiveTripFields } from "../../hooks/useTrips";
 import { useTripHasWebPurchases } from "../../hooks/useTripHasWebPurchases";
-import { useAddressSearchProximity } from "../../hooks/useAddressSearchProximity";
-import { geoPointFrom } from "../../utils/addressSearchProximity";
 import {
   deriveTripChannelFlags,
   notifyTripChanged,
@@ -720,22 +718,14 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   // requires both), so they lead, then the trip's time zone. The brand point
   // is not read here: this screen mounts no brand query (its route passes only
   // `trip`), and the trip's own points outrank a brand HQ for trip search.
-  const editDeparturePoint = geoPointFrom(
-    editState.departureLat,
-    editState.departureLng,
-  );
-  const editDestinationPoint = geoPointFrom(
-    editState.destinationLat,
-    editState.destinationLng,
-  );
-  const departureProximity = useAddressSearchProximity({
-    draftPoint: editDeparturePoint ?? editDestinationPoint,
-    timeZone: trip.timezone,
-  });
-  const destinationProximity = useAddressSearchProximity({
-    draftPoint: editDestinationPoint ?? editDeparturePoint,
-    timeZone: trip.timezone,
-  });
+  const editDeparturePoint = {
+    lat: editState.departureLat,
+    lng: editState.departureLng,
+  };
+  const editDestinationPoint = {
+    lat: editState.destinationLat,
+    lng: editState.destinationLng,
+  };
 
   const [departureSelectionState, setDepartureSelectionState] =
     useState<LocationSelectionState>(
@@ -1595,7 +1585,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   allowFreeText
                   selectionState={departureSelectionState}
                   selectedLabel={editState.departureLocationText ?? ""}
-                  proximity={departureProximity}
+                  proximitySources={{
+                    draftPoint: [editDeparturePoint, editDestinationPoint],
+                    timeZone: trip.timezone,
+                  }}
                   onChangeText={(v) => {
                     advanceLocationRequestGeneration(
                       departureRequestGenerationRef,
@@ -1691,7 +1684,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   allowFreeText
                   selectionState={destinationSelectionState}
                   selectedLabel={editState.destinationLocationText ?? ""}
-                  proximity={destinationProximity}
+                  proximitySources={{
+                    draftPoint: [editDestinationPoint, editDeparturePoint],
+                    timeZone: trip.timezone,
+                  }}
                   onChangeText={(v) => {
                     advanceLocationRequestGeneration(
                       destinationRequestGenerationRef,

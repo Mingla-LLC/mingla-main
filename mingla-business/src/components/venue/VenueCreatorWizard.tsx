@@ -51,7 +51,6 @@ import {
 } from "../../hooks/useBrands";
 import { useCreateVenueListing } from "../../hooks/useVenueListings";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
-import { geoPointFrom } from "../../utils/addressSearchProximity";
 import {
   commitNewVenueDiscoveryRange,
   fetchVenuePipelineState,
@@ -549,7 +548,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         return (
           <VenueStep1Address
             showErrors={showErr}
-            brandLocation={geoPointFrom(currentBrand?.lat, currentBrand?.lng)}
+            brandLocation={currentBrand}
           />
         );
       case "s1":
