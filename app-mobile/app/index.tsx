@@ -115,6 +115,7 @@ import { mixpanelService } from "../src/services/mixpanelService";
 // kept IDENTICAL across PostHog/Mixpanel so the eventual Mixpanel retirement is
 // a 1:1 mapping.
 import { postHogService } from "../src/services/postHogService";
+import { captureExplorerSearchOutcome } from "../src/services/searchOutcome";
 import { useTranslation } from 'react-i18next';
 import i18n from '../src/i18n';
 import { persistLanguage } from '../src/i18n';
@@ -1264,6 +1265,14 @@ function AppContent() {
           method: (user as any).app_metadata?.provider ?? "email",
           country: profile?.country ?? undefined,
         });
+        const accountCreatedAt = Date.parse(user.created_at ?? "");
+        if (Number.isFinite(accountCreatedAt) && Date.now() - accountCreatedAt < 30_000) {
+          captureExplorerSearchOutcome("sign_up", {
+            audience: "explorer",
+            page_family: "explorer_pillar",
+            action_state: "succeeded",
+          });
+        }
         signupFiredRef.current = true;
       }
 
@@ -1827,6 +1836,12 @@ function AppContent() {
         ? `Session "${sessionName}" created! Invites sent to ${successfulInvites} friend${successfulInvites > 1 ? 's' : ''}.`
         : `Session "${sessionName}" created successfully!`;
       toastManager.success(message);
+      captureExplorerSearchOutcome("plan_created", {
+        audience: "explorer",
+        page_family: "explorer_pillar",
+        action_state: "succeeded",
+        content_kind: "plan",
+      });
 
       return { conversationId: conversation.id, sessionId: session.id };
     } catch (error) {

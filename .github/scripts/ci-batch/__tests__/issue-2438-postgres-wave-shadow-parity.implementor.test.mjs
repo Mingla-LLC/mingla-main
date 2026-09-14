@@ -538,7 +538,11 @@ test("#1902 typed Business Jest exposure is lock-pinned and resolves exact offli
   // /mingla-business (#3024), and the npm_and_yarn group of 7 carrying fast-uri
   // ^3.1.5→^3.1.7 (#3168). mingla-business/package.json never moved and keeps
   // its original pin.
-  const hashes={"app-mobile/package.json":"89b2d535fba9a12823b44a89b44854ba5e16b9a81aae24b66b0189296f994ab9","app-mobile/package-lock.json":"c66a57bebba18941e980061a79d0e39cf482a1c39ffc3427aede7ca615ac2dca","mingla-business/package.json":"61ddd3137b3cc5542f9d58b28edd0a4f1cd6479a9212d99b8067025a03547601","mingla-business/package-lock.json":"b1100bc40a3ec59739a2559ed0f88f3b6b0d6bc6700d1553cd2dd19059ee18dc"};
+  // [TEST-MOD-APPROVED #3176] All four pins move together because the two app
+  // manifests and npm-generated locks now declare the same exact local
+  // search-measurement package. This remains an independent restatement of
+  // the validator's authority; no setup or exposure assertion is relaxed.
+  const hashes={"app-mobile/package.json":"e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542","app-mobile/package-lock.json":"f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27","mingla-business/package.json":"98105e8ce8c3d17fa2e0c2640f7cdb721a782498fca79886ce01d8a8b5a0f19e","mingla-business/package-lock.json":"71449617f9cd6133da0395f3dcf780a3170da5d49b1e2eff2876a7afeb92addc"};
   for(const [relative,expected] of Object.entries(hashes)) assert.equal(digest(fs.readFileSync(path.join(ROOT,relative))),expected);
 });
 
@@ -759,6 +763,14 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     // this contract is proven against the code under review, not against HEAD.
     fs.cpSync(path.join(ROOT, ".github/scripts"), path.join(temp, ".github/scripts"), { recursive: true });
     fs.cpSync(path.join(ROOT, ".github/ci-batch"), path.join(temp, ".github/ci-batch"), { recursive: true });
+    // [TEST-MOD-APPROVED #3176] The prior reconstruction was correct while every
+    // workflow byte named by the overlaid registry also lived at HEAD. Current
+    // main changed #2333's replay inventory and its derived sourceSha256 together;
+    // overlay that one merge-touched workflow as part of the same authority. The
+    // removal mutant below proves this is not an exemption: restoring the prior
+    // workflow bytes must still fail closed against the current registry.
+    const onlinePublishWorkflow = ".github/workflows/issue-2333-online-event-publish.yml";
+    fs.copyFileSync(path.join(ROOT, onlinePublishWorkflow), path.join(temp, onlinePublishWorkflow));
     const terminal = JSON.parse(fs.readFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), "utf8"));
     const writeManifest = (value) => fs.writeFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), `${JSON.stringify(value, null, 2)}\n`);
     const withPhase3b = (mutate) => { const copy = structuredClone(terminal); mutate(copy); writeManifest(copy); return validateRegistry(copy, { root: temp }); };
@@ -768,6 +780,23 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     //    state; it must PASS and must reach a clean verdict rather than throwing.
     for (const name of wrapperNames) assert.equal(fs.existsSync(wrapperPath(name)), false, `${name} must be absent`);
     assert.deepEqual(validateRegistry(terminal, { root: temp }), [], "terminal state must validate clean");
+    const onlinePublishSource = fs.readFileSync(path.join(temp, onlinePublishWorkflow), "utf8");
+    const currentMainReplayStep = [
+      "          # Issue #3288 re-emits `business_publish_event_draft` (an absent gallery key",
+      "          # keeps the stored photos) and owns its final definition on a full replay,",
+      "          # so the re-apply set must end with it, per the instruction above.",
+      "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\",
+      "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql",
+      "",
+    ].join("\n");
+    assert.equal(onlinePublishSource.split(currentMainReplayStep).length, 2,
+      "the merge-touched #3288 replay step must have one exact current-main owner");
+    fs.writeFileSync(path.join(temp, onlinePublishWorkflow), onlinePublishSource.replace(currentMainReplayStep, ""));
+    assert.match(validateRegistry(terminal, { root: temp }).join("\n"),
+      /issue-2333-online-event-publish\.yml: runtime\/setup\/trust\/trigger inventory drifted/,
+      "reverting the current-main #2333 workflow while retaining its registry authority must be RED");
+    fs.writeFileSync(path.join(temp, onlinePublishWorkflow), onlinePublishSource);
+    assert.deepEqual(validateRegistry(terminal, { root: temp }), [], "restoring the current workflow must restore PASS");
     for (const relative of GUARDS) assert.equal(guard(relative), 0, `${relative} must pass at terminal`);
     siblingIsIntact();
 

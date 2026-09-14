@@ -2,7 +2,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { captureSearchMeasurement } from '@/components/marketing/posthog-provider'
 import { AppQrPanel } from '@/components/marketing/app-qr-panel'
 import { AppleMark, PlayMark } from '@/components/ui/store-marks'
 import { detectClientPlatform, type Platform } from '@/lib/device-platform'
@@ -56,6 +56,14 @@ export type CutoutSurface = 'explorer' | 'host'
 function campaignFor(surface: CutoutSurface, location: string): SiteCampaign {
   if (surface === 'explorer') return 'explorer_nav'
   return location === 'nav' || location === 'nav_mobile' ? 'business_nav' : 'business_hero'
+}
+
+function sourceKindForLocation(location: string): 'navigation' | 'hero' | 'footer' | 'city_card' | 'product' {
+  if (location.includes('nav') || location.includes('menu')) return 'navigation'
+  if (location.includes('hero')) return 'hero'
+  if (location.includes('footer') || location.includes('final')) return 'footer'
+  if (location.includes('city')) return 'city_card'
+  return 'product'
 }
 
 interface DeviceCtaProps {
@@ -186,12 +194,12 @@ export function DeviceCta({
           const t = resolveBusinessAppTarget(live, attribution)
           onActivate?.(t.canInstall ? 'host_download' : 'host_web')
           if (captureDefaultAnalytics) {
-            captureMarketing('get_the_app_clicked', {
-              action: t.canInstall ? 'download' : 'use_web',
-              platform: live,
-              store: t.canInstall ? t.installStore : 'business_web',
-              surface: 'organiser',
-              location,
+            captureSearchMeasurement('host_start_click', {
+              audience: 'host',
+              page_family: 'host_pillar',
+              source_kind: sourceKindForLocation(location),
+              destination_kind: t.canInstall ? 'host_onelink' : 'host_web',
+              action_state: 'opened',
             })
           }
         }}
@@ -238,10 +246,12 @@ export function DeviceCta({
           const live = detectClientPlatform()
           onActivate?.('explorer_download')
           if (captureDefaultAnalytics) {
-            captureMarketing('get_the_app_clicked', {
-              platform: live,
-              store: live === 'ios' ? 'app_store' : 'play',
-              location,
+            captureSearchMeasurement('explorer_install_click', {
+              audience: 'explorer',
+              page_family: 'explorer_pillar',
+              source_kind: sourceKindForLocation(location),
+              destination_kind: 'explorer_onelink',
+              action_state: 'opened',
             })
           }
         }}
@@ -265,13 +275,6 @@ export function DeviceCta({
         aria-expanded={qrOpen}
         onClick={() => {
           onActivate?.('explorer_qr')
-          if (captureDefaultAnalytics) {
-            captureMarketing('get_the_app_clicked', {
-              platform: 'other',
-              store: 'qr_panel',
-              location,
-            })
-          }
           setQrOpen(true)
           onDialogOpenChange?.(true)
         }}

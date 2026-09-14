@@ -1,0 +1,15 @@
+{
+  "policy": "Capture scenes may use only bundled Mingla-owned assets declared here or truthful no-photo component states.",
+  "assets": [
+    {
+      "path": "app-mobile/assets/icon.png",
+      "sha256": "bfa1260dc23f55e59716c726a90cfaf393ae92cb81013769cdc07415b04eb986",
+      "owner": "Mingla LLC"
+    },
+    {
+      "path": "mingla-business/assets/images/icon.png",
+      "sha256": "d16e3e15956a552a6608014962857d61b1442c8db738d000fca5f155527a2307",
+      "owner": "Mingla LLC"
+    }
+  ]
+}

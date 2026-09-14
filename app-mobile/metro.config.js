@@ -72,6 +72,12 @@ config.resolver.extraNodeModules = {
     "packages",
     "card-identity",
   ),
+  // #3176 — privacy-safe, RN-free search outcome vocabulary and sanitizer.
+  "@mingla/search-measurement": path.join(
+    WORKSPACE_ROOT,
+    "packages",
+    "search-measurement",
+  ),
   // CRITICAL — force single React + RN instance across app + packages.
   // The packages have their own node_modules/react (for type-checking
   // only) which at runtime would create a DUPLICATE React instance and
@@ -91,5 +97,11 @@ config.resolver.extraNodeModules = {
 // rule is enforced socially via the package.json; a future CI gate
 // could check `! -d packages/*/node_modules/react` to lock it in.
 config.resolver.disableHierarchicalLookup = false;
+
+// #3176 — opt-in local product-proof harness. The production graph never sees
+// this resolver: the environment flag is set only by tools/product-proof-capture.
+if (process.env.MINGLA_CAPTURE_SURFACE === "explorer") {
+  require("../tools/product-proof-capture/explorer/metroOverlay.js")(config, WORKSPACE_ROOT);
+}
 
 module.exports = config;

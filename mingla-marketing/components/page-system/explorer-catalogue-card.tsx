@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, type MouseEvent } from 'react'
+import type { MouseEvent } from 'react'
 import { ArrowUpRight, Sparkles, Star } from 'lucide-react'
 import { DeviceCta } from '@/components/cutout'
 import type { CataloguePlace, CataloguePlan } from '@/content/page-system/shared'
+import { CurrentPlacePhoto } from './current-place-photo'
 
 interface ExplorerCatalogueCardProps {
   readonly item: CataloguePlace | CataloguePlan
@@ -19,13 +20,11 @@ function scoreLabel(score: number): string {
 }
 
 export function ExplorerCatalogueCard({ item, cityName = 'Lagos', href = item.detailHref, featured = false, onOpen, appCtaLocation }: ExplorerCatalogueCardProps) {
-  const [imageFailed, setImageFailed] = useState(false)
   const isPlace = item.kind === 'place'
   const action = isPlace ? 'View place' : 'View plan'
   const ariaLabel = isPlace
     ? `${action}, ${item.name}, Mingla score ${scoreLabel(item.signalScore)}, ${item.categoryLabel}`
     : `${action}, ${item.title}, ${item.stops.length} stops`
-  const photo = item.photoUrls[0]
   const aiDescriptionId = isPlace && item.aiBlended ? `ai-meaning-${item.placePoolId}` : undefined
 
   function handleClick(event: MouseEvent<HTMLAnchorElement>) {
@@ -49,19 +48,20 @@ export function ExplorerCatalogueCard({ item, cityName = 'Lagos', href = item.de
         aria-describedby={aiDescriptionId}
       >
         <div className="ps-catalogue-photo">
-          {!imageFailed && photo ? (
+          {isPlace ? (
+            <CurrentPlacePhoto googlePlaceId={item.googlePlaceId} name={item.name} cityName={cityName} eager={featured} />
+          ) : item.photoUrls[0] ? (
             <img
-              src={photo}
-              alt={isPlace ? `${item.name}, in the Explorer ${cityName} pool` : `${item.title}, a Mingla ${cityName} plan`}
+              src={item.photoUrls[0]}
+              alt={`${item.title}, a Mingla ${cityName} plan`}
               width="720"
               height="900"
               loading={featured ? 'eager' : 'lazy'}
-              onError={() => setImageFailed(true)}
             />
           ) : (
-            <div className="ps-catalogue-image-fallback" role="img" aria-label={`Photo unavailable for ${isPlace ? item.name : item.title}`}>
+            <div className="ps-catalogue-image-fallback" role="img" aria-label={`Photo unavailable for ${item.title}`}>
               <img src="/brand/mingla-business-logo.svg" alt="" width="64" height="64" />
-              <span>{isPlace ? item.name : item.title}</span>
+              <span>{item.title}</span>
             </div>
           )}
           <div className="ps-catalogue-scrim" aria-hidden="true" />

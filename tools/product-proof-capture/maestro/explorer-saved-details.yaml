@@ -1,0 +1,21 @@
+appId: com.mingla.app.v2
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+- tapOn:
+    text: "Continue"
+    optional: true
+- tapOn:
+    text: "Close"
+    optional: true
+- assertVisible: "Saved for later"
+- assertVisible: ".*Sample sunset gallery plan.*"
+- tapOn:
+    point: "92%,94%"
+- tapOn: ".*Sample sunset gallery plan.*"
+- assertVisible: ".*Sample sunset gallery plan.*"
+- assertVisible: ".*Saved.*"
+- tapOn:
+    point: "92%,94%"
+    optional: true

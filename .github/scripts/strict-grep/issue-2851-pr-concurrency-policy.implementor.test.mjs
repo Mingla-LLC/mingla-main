@@ -1056,6 +1056,11 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // suite 11/11 green against the value this pin replaces. The new value below
   // is identical across three derivations with this file's own RUBY_CANONICAL,
   // and was not copied from a PR run's printed `actual:` (#3015).
+  // [TEST-MOD-APPROVED #3176] The offering-visibility replay lane adds four
+  // explanatory shell-comment lines and one exact-filename skip for #3176's
+  // IndexNow migration. No workflow identity, trigger, concurrency block,
+  // group expression, cancellation policy, or timeout changes.
+  //
   // [TEST-MOD-APPROVED #1777] Re-derived after #1777 added only paths, test
   // commands, and PostgreSQL proof commands to the existing People lane. The
   // workflow delta is 19 additions and zero deletions, with no concurrency,
@@ -1073,7 +1078,7 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // deletions, and none of it touches concurrency, group: or cancel-in-progress.
   // PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED.
   //
-  // MEASURED, from the committed tree: restoring BOTH lanes to origin/main
+  // MEASURED, from the #3285 tree: restoring BOTH lanes to its origin/main
   // recomputes the prior pin 3b01e307b2ab9066864ae69314ca42eb243a0b169c451921cf54ebbebf039018;
   // restoring only one of them yields 21a7c17f... or c1c05dff..., so each delta
   // moves the digest on its own, and both exact lines are added to the
@@ -1128,8 +1133,21 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // changed; only the existing path scope widened. PR_FAMILY_COUNT (124) and
   // PR_FAMILY_IDENTITY_SHA256 are unchanged,
   // and the policy gate plus its mutation proofs remain untouched. Three local
-  // runs of this file's RUBY_CANONICAL produced the same value below.
-  "a24d680bd5fc50d7dae67f67c0f6b95536be0b28e3acfd21c970cf09a901d491";
+  // runs of this file's RUBY_CANONICAL produced the same main-only value.
+  //
+  // [TEST-MOD-APPROVED #3176] Final combined-tree re-derivation preserves all
+  // three owners: #1778's Book-blast proof, #3288's two workflow blocks, and
+  // #3176's five-line exact IndexNow skip block. None changes a workflow
+  // identity, concurrency block, group expression, cancellation policy, or
+  // timeout.
+  //
+  // MEASURED FROM DISK with this file's extracted RUBY_CANONICAL algorithm:
+  // current combined tree 330740ba...; without #3176 a24d680b...; without
+  // #3288 b1b5f757...; without #3176 and #3288 aadaaea7...; without #1778
+  // d2f72965.... The count, identity and policy audit remain 124 /
+  // 9356c425... / zero errors. Whole-block assertions below lock the branch
+  // deltas independently while every receipt retains #1778's main truth.
+  "330740baa866dd1013a9047498c746effbb6808e4e0a5a3cb13df02c8b78447a";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1453,6 +1471,8 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "              *20270624003193_issue_3193_public_search_live_brand_row.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "            -f supabase/migrations/20270624003193_issue_3193_public_search_live_brand_row.sql\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270627003176_issue_3176_indexnow_outbox.sql) continue ;;\n"],
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "            -f supabase/migrations/__tests__/issue_3193_public_search_live_brand_row.implementor.happy.pg17.test.sql\n"],
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
@@ -1497,6 +1517,86 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     reverted[name] = removeExactLine(reverted[name], line, name);
     assert.throws(() => assertCurrentTreeAuthority(reverted), /non-concurrency semantic digest drifted/);
   }
+
+  // [TEST-MOD-APPROVED #3176] The five lines live inside YAML's `run: |` block,
+  // so all five are semantic script bytes. Reverting the complete #3176 block
+  // must reproduce origin/main's independently measured combined-history pin;
+  // the loop above separately proves the executable skip cannot disappear while
+  // its explanation remains behind.
+  const before3176 = { ...sources };
+  const offeringVisibilityName = liveWorkflow(
+    "issue", "2117", "offering", "visibility", "gate", "tests",
+  );
+  const indexNowReplayBlock = [
+    "              # issue #3176 — the IndexNow outbox trigger targets #2986's",
+    "              # `public_search_documents`, which does not exist in this",
+    "              # pre-#2117 phase. The migration and its controls remain intact;",
+    "              # this filtered lane omits it by EXACT FILENAME.",
+    "              *20270627003176_issue_3176_indexnow_outbox.sql) continue ;;",
+    "",
+  ].join("\n");
+  before3176[offeringVisibilityName] = removeExactLine(
+    before3176[offeringVisibilityName],
+    indexNowReplayBlock,
+    "#3176 offering-visibility replay block",
+  );
+  const before3176Authority = currentTreeAuthority(before3176);
+  assert.equal(before3176Authority.names.length, 124);
+  assert.equal(before3176Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
+  assert.equal(
+    before3176Authority.withoutConcurrencySha256,
+    "a24d680bd5fc50d7dae67f67c0f6b95536be0b28e3acfd21c970cf09a901d491",
+  );
+
+  // [TEST-MOD-APPROVED #3176] Current main and this branch both change the
+  // non-concurrency document. Reverting #3288's two whole workflow blocks must
+  // recover the prior #3176 authority, while reverting both owners must recover
+  // the shared pre-change authority. These exact receipts prevent a merge-time
+  // re-pin from hiding either side of the combined tree.
+  const migrationsName = liveWorkflow("supabase", "migrations", "and", "stripe", "deno");
+  const publishName = liveWorkflow("issue", "2333", "online", "event", "publish");
+  const gallerySuiteBlock = [
+    "          # Issue #3288 — a draft's additional photos were erased at publish. Every",
+    "          # gallery writer must keep the stored gallery when the key is ABSENT and",
+    "          # still honour an explicit []; removing a cover must not wipe it.",
+    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\",
+    "            -f supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql",
+    "",
+  ].join("\n");
+  const galleryReplayBlock = [
+    "          # Issue #3288 re-emits `business_publish_event_draft` (an absent gallery key",
+    "          # keeps the stored photos) and owns its final definition on a full replay,",
+    "          # so the re-apply set must end with it, per the instruction above.",
+    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\",
+    "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql",
+    "",
+  ].join("\n");
+  const before3288 = { ...sources };
+  before3288[migrationsName] = removeExactLine(
+    before3288[migrationsName], gallerySuiteBlock, "#3288 migration-suite block",
+  );
+  before3288[publishName] = removeExactLine(
+    before3288[publishName], galleryReplayBlock, "#3288 online-publish replay block",
+  );
+  const before3288Authority = currentTreeAuthority(before3288);
+  assert.equal(before3288Authority.names.length, 124);
+  assert.equal(before3288Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
+  assert.equal(
+    before3288Authority.withoutConcurrencySha256,
+    "b1b5f75759ecb8ae6dd12d005b2583ac8414eb1c86c110b6c5585684f013f8a3",
+  );
+
+  const beforeBoth = { ...before3288 };
+  beforeBoth[offeringVisibilityName] = removeExactLine(
+    beforeBoth[offeringVisibilityName], indexNowReplayBlock, "combined pre-#3176 replay block",
+  );
+  const beforeBothAuthority = currentTreeAuthority(beforeBoth);
+  assert.equal(beforeBothAuthority.names.length, 124);
+  assert.equal(beforeBothAuthority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
+  assert.equal(
+    beforeBothAuthority.withoutConcurrencySha256,
+    "aadaaea7efdbd00254fa460f07f64be589cd0773d0e7f8aab42d25788cf5af6c",
+  );
 
   const sitesWithoutPullRequest = { ...sources };
   sitesWithoutPullRequest[sitesRecoveryName] = removeExactLine(

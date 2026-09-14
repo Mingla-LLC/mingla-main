@@ -72,7 +72,7 @@
 //
 //   lane    loop spelling                              case subject                       globs
 //   #1931   for f in $(find supabase/migrations …)     case "$f" in            full path  8
-//   #2117   for f in $(find supabase/migrations …)     case "$f" in            full path  7
+//   #2117   for f in $(find supabase/migrations …)     case "$f" in            full path  9
 //   #1644   for migration in supabase/migrations/*.sql case "$(basename …)" in basename   1
 //   #1647   for migration in supabase/migrations/*.sql case "$(basename …)" in basename   3 (alternation)
 //
@@ -794,6 +794,10 @@ function selfTest() {
   // to #2117's authority, so it is omitted from the pre-#2117 chain and applied
   // exactly once after phase 2. Only the frozen GOOD count changes; all parser
   // mutants and every BAD-fixture assertion remain intact.
+  // [TEST-MOD-APPROVED #3176] The #2117 lane now has NINE exact skips. #3176's
+  // IndexNow outbox trigger targets `public_search_documents`, which this
+  // filtered phase omits with #2986. Only the exact GOOD inventory changes;
+  // the migration and every parser/closure assertion remain intact.
   // M-6 replaces one branch's single glob with an alternation of three (9 -> 11),
   // M-10 adds one two-line branch (9 -> 10), M-9 leaves one branch unread (9).
   // [TEST-MOD-APPROVED #3285] The private-event lane goes from ELEVEN exact
@@ -806,7 +810,7 @@ function selfTest() {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
     "issue-1931-private-event-access.yml": 12,
-    "issue-2117-offering-visibility-gate-tests.yml": 8,
+    "issue-2117-offering-visibility-gate-tests.yml": 9,
   };
   if (JSON.stringify(inventory) !== JSON.stringify(expectedInventory)) {
     record("GOOD", `lane inventory is ${JSON.stringify(inventory)}, expected ${JSON.stringify(expectedInventory)}`);
@@ -945,7 +949,7 @@ function selfTest() {
     console.error(`#2492 SELF-TEST FAILED:\n  - ${failures.join("\n  - ")}`);
     process.exit(1);
   }
-  console.log("#2492 self-test PASS (1 good tree with the 12/1/3/8 lane inventory, 10 mutants M-1…M-10 all behaving).");
+  console.log("#2492 self-test PASS (1 good tree with the 12/1/3/9 lane inventory, 10 mutants M-1…M-10 all behaving).");
 }
 
 // ---------------------------------------------------------------------------

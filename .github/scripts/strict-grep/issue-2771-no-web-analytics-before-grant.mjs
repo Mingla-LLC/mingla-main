@@ -135,7 +135,7 @@ function readSources(root = ROOT) {
 function runSelfTest() {
   const clean = readSources()
   const cases = [
-    ['Business eager SDK', { business: clean.business.replace('import type { PostHog }', 'import posthog') }],
+    ['Business eager SDK', { business: clean.business.replace('import type { CaptureResult, PostHog }', 'import posthog') }],
     ['Business init loses grant', { business: clean.business.replace('if (!hasWindow() || readStoredConsent() !== "granted") return;\n  await ensureGrantedAnalyticsBoot();', 'await ensureGrantedAnalyticsBoot();') }],
     ['Attribution loses grant', { business: clean.business.replace('if (!hasWindow() || readStoredConsent() !== "granted") return;\n  try {\n    const params', 'if (!hasWindow()) return;\n  try {\n    const params') }],
     ['Marketing eager SDK', { marketingProvider: clean.marketingProvider.replace("import type { PostHog } from 'posthog-js'", "import posthog from 'posthog-js'") }],

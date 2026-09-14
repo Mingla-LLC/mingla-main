@@ -1,0 +1,19 @@
+appId: com.mingla.app.v2
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+- tapOn:
+    text: "Continue"
+    optional: true
+- tapOn:
+    text: "Close"
+    optional: true
+- assertVisible: "Saved for later"
+- tapOn:
+    id: "mingla-capture-scene-rsvp"
+- assertVisible: "RSVP pass for Sample rooftop listening session"
+- assertVisible: "Sample rooftop listening session"
+- assertVisible: "Going"
+- assertVisible: "Show at door"
+- assertVisible: "Sample pass · QR not valid"

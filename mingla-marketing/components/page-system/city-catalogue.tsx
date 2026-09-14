@@ -59,6 +59,10 @@ export function CityCatalogue({ cityName, cityPath, places, plans, initialType, 
   const openerRef = useRef<HTMLAnchorElement | null>(null)
 
   const visiblePlaces = useMemo(() => interleavePlaces(places, categories), [categories, places])
+  const availableCategories = useMemo(
+    () => EXPLORER_CATEGORIES.filter((category) => places.some((place) => place.categorySlug === category.slug)),
+    [places],
+  )
   const visiblePlans = useMemo(
     () => intents.length === 0 ? plans : intents.flatMap((intent) => plans.filter((plan) => planIntent(plan) === intent)),
     [intents, plans],
@@ -140,7 +144,7 @@ export function CityCatalogue({ cityName, cityPath, places, plans, initialType, 
 
   return (
     <section className="ps-catalogue" aria-labelledby="catalogue-results-heading">
-      <div className="ps-catalogue-controls" data-print-hide>
+      <div className="ps-catalogue-controls city-catalogue-controls" data-print-hide>
         <div className="ps-type-toggle" aria-label="Choose catalogue type">
           {(['places', 'plans'] as const).map((candidate) => {
             const href = catalogueHref(cityPath, candidate, [], [])
@@ -169,9 +173,9 @@ export function CityCatalogue({ cityName, cityPath, places, plans, initialType, 
               navigate(catalogueHref(cityPath, type, [], []), type === 'places' ? { categories: [], detail: null } : { intents: [], detail: null })
             }}
           >
-            {type === 'places' ? 'All 10' : 'All plans'}
+            {type === 'places' ? `All ${places.length}` : 'All plans'}
           </a>
-          {type === 'places' ? EXPLORER_CATEGORIES.map((category) => {
+          {type === 'places' ? availableCategories.map((category) => {
             const selected = categories.includes(category.slug)
             const next = categories.length === 0
               ? [category.slug]
@@ -179,20 +183,20 @@ export function CityCatalogue({ cityName, cityPath, places, plans, initialType, 
                 ? categories.filter((candidate) => candidate !== category.slug)
                 : [...categories, category.slug]
             const href = catalogueHref(cityPath, type, next, [])
-            return <a key={category.slug} href={href} aria-pressed={selected} onClick={(event) => { event.preventDefault(); toggleCategory(category.slug, href) }}>{category.label}</a>
+            return <a key={category.slug} href={href} role="button" aria-pressed={selected} onKeyDown={(event) => { if (event.key === ' ') { event.preventDefault(); toggleCategory(category.slug, href) } }} onClick={(event) => { event.preventDefault(); toggleCategory(category.slug, href) }}>{category.label}</a>
           }) : plans.map((plan) => {
             const intent = planIntent(plan)
             const selected = intents.includes(intent)
             const next = intents.length === 0 ? [intent] : selected ? intents.filter((candidate) => candidate !== intent) : [...intents, intent]
             const href = catalogueHref(cityPath, type, [], next)
-            return <a key={intent} href={href} aria-pressed={selected} onClick={(event) => { event.preventDefault(); toggleIntent(intent, href) }}>{plan.intentLabel}</a>
+            return <a key={intent} href={href} role="button" aria-pressed={selected} onKeyDown={(event) => { if (event.key === ' ') { event.preventDefault(); toggleIntent(intent, href) } }} onClick={(event) => { event.preventDefault(); toggleIntent(intent, href) }}>{plan.intentLabel}</a>
           })}
         </div>
       </div>
 
       <header className="ps-catalogue-result-heading">
         <div><p className="ps-eyebrow">{type === 'places' ? 'Explorer-ranked places' : 'Mingla ready-made plans'}</p><h2 id="catalogue-results-heading">{type === 'places' ? `${visiblePlaces.length} ${cityName} places` : `${visiblePlans.length} ${cityName} plans`}</h2></div>
-        <p aria-live="polite" aria-atomic="true">{type === 'places' ? 'Each category keeps its own score order.' : 'Plans are shown as curated compositions, not ranked against places.'}</p>
+        <p aria-live="polite" aria-atomic="true">{type === 'places' ? 'The unfiltered list keeps the stored overall rank; filters show matching categories from that same top 50.' : 'Plans are shown as curated compositions, not ranked against places.'}</p>
       </header>
 
       {visibleItems.length > 0 ? (

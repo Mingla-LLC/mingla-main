@@ -21,6 +21,11 @@
  * Claim mode does NOT enter the inline deck-readiness leg — deck-readiness
  * stays reachable post-submit via the existing to-dos/resume route, prefilled
  * from staging (Leg A §A3.1/§A3.5).
+ *
+ * #3176 append-only compatibility receipt: "sign_up" and "generate_lead"
+ * remain reserved analytics names, but venue create/claim never emits either.
+ * Only the established account-success owner or a completed public booking,
+ * contact, or RSVP boundary may record those outcomes.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";

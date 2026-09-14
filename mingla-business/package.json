@@ -101,6 +101,7 @@
     "@mingla/offering-rendering": "file:../packages/offering-rendering",
     "@mingla/payments-native": "file:../packages/payments-native",
     "@mingla/phone-input": "file:../packages/phone-input",
+    "@mingla/search-measurement": "file:../packages/search-measurement",
     "@mingla/sharing": "file:../packages/sharing",
     "@mingla/theme-animations": "file:../packages/theme-animations",
     "@react-native-community/netinfo": "11.4.1",
