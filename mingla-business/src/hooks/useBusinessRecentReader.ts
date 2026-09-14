@@ -6,6 +6,10 @@ import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import { useNetInfoSafe } from "../lib/netinfoSafe";
 import {
+  isRecentOfflineConfirmed,
+  recentOfflineHint,
+} from "../utils/recentOfflineConfirmation";
+import {
   businessRecentKeys,
   clearBusinessRecentCachedScope,
   hydrateBusinessRecent,
@@ -90,7 +94,11 @@ export function useBusinessRecent(input: {
   const { user, isAuthReady } = useAuth();
   const queryClient = useQueryClient();
   const network = useNetInfoSafe();
-  const isOffline = network?.isConnected === false;
+  // issue #3347 — the device status is only a HINT. Straight after a cold launch
+  // it can say "not connected" while the internet works, and on iOS it may never
+  // correct itself. Recent keeps asking the server either way; "offline" is
+  // decided further down, once a request has actually failed (`isOffline`).
+  const offlineHint = recentOfflineHint(network);
   const pageCount = Math.max(1, Math.min(8, input.pageCount ?? 1));
   const userId = user?.id ?? null;
   const scope =
@@ -181,9 +189,11 @@ export function useBusinessRecent(input: {
       userId !== null && input.brandId !== null
         ? businessRecentKeys.index(userId, input.brandId)
         : businessRecentKeys.all,
-    enabled:
-      isAuthReady && userId !== null && input.brandId !== null && !isOffline,
+    enabled: isAuthReady && userId !== null && input.brandId !== null,
     staleTime: 30_000,
+    // issue #3347 — with the hint saying offline, one attempt is enough to
+    // confirm it (a real disconnect fails at once) or disprove it.
+    ...(offlineHint ? { retry: false } : {}),
     queryFn: async (): Promise<BusinessRecentIndexRow[]> => {
       if (input.brandId === null || scope === null) return [];
       const generation = useBusinessRecentStore.getState().generation;
@@ -221,10 +231,10 @@ export function useBusinessRecent(input: {
           isAuthReady &&
           userId !== null &&
           input.brandId !== null &&
-          !isOffline &&
           indexQuery.isSuccess &&
           indexPage.length > 0,
         staleTime: 30_000,
+        ...(offlineHint ? { retry: false } : {}),
         placeholderData: (
           previous:
             { rows: BusinessRecentPointer[]; omitted: number } | undefined,
@@ -286,7 +296,7 @@ export function useBusinessRecent(input: {
 
   useBusinessRecentFocusEffect(
     useCallback(() => {
-      if (userId !== null && input.brandId !== null && !isOffline) {
+      if (userId !== null && input.brandId !== null) {
         void queryClient.invalidateQueries({
           queryKey: businessRecentKeys.index(userId, input.brandId),
         });
@@ -294,7 +304,7 @@ export function useBusinessRecent(input: {
           queryKey: businessRecentKeys.pages(userId, input.brandId),
         });
       }
-    }, [input.brandId, isOffline, queryClient, userId]),
+    }, [input.brandId, queryClient, userId]),
   );
 
   const serverRows = pageQueries.flatMap((query) => query.data?.rows ?? []);
@@ -328,6 +338,25 @@ export function useBusinessRecent(input: {
     null;
   const errorKind =
     queryError === null ? null : recentErrorCategory(queryError);
+  // issue #3347 — CONFIRMED offline: the hint says so AND Recent's own latest
+  // request failed with a connection error. A server answer clears it.
+  const isOffline = isRecentOfflineConfirmed(network, errorKind);
+
+  // issue #3347 — when the hint changes either way, ask the server again: a new
+  // "not connected" gets confirmed (or disproved) straight away, and a reconnect
+  // reloads Recent, as disabling and re-enabling the queries used to.
+  const previousOfflineHintRef = useRef(offlineHint);
+  useEffect(() => {
+    if (previousOfflineHintRef.current === offlineHint) return;
+    previousOfflineHintRef.current = offlineHint;
+    if (userId === null || input.brandId === null) return;
+    void queryClient.invalidateQueries({
+      queryKey: businessRecentKeys.index(userId, input.brandId),
+    });
+    void queryClient.invalidateQueries({
+      queryKey: businessRecentKeys.pages(userId, input.brandId),
+    });
+  }, [input.brandId, offlineHint, queryClient, userId]);
 
   useEffect(() => {
     if (scope === null || !authoritativeIndexReady) return;
@@ -570,7 +599,9 @@ export function useBusinessRecent(input: {
   ]);
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (userId === null || input.brandId === null || isOffline) return;
+    // issue #3347 — never gated on offline: a refresh is how an unconfirmed or
+    // stale offline state gets disproved.
+    if (userId === null || input.brandId === null) return;
     await Promise.all([
       queryClient.invalidateQueries({
         queryKey: businessRecentKeys.index(userId, input.brandId),
@@ -579,10 +610,10 @@ export function useBusinessRecent(input: {
         queryKey: businessRecentKeys.pages(userId, input.brandId),
       }),
     ]);
-  }, [input.brandId, isOffline, queryClient, userId]);
+  }, [input.brandId, queryClient, userId]);
 
   const retry = useCallback(async (): Promise<void> => {
-    if (userId === null || input.brandId === null || isOffline) return;
+    if (userId === null || input.brandId === null) return;
     const failedPages = pageQueries.filter((query) => query.isError);
     if (!indexQuery.isError && failedPages.length === 0) {
       await refresh();
@@ -592,7 +623,7 @@ export function useBusinessRecent(input: {
       ...(indexQuery.isError ? [indexQuery.refetch()] : []),
       ...failedPages.map((query) => query.refetch()),
     ]);
-  }, [indexQuery, input.brandId, isOffline, pageQueries, refresh, userId]);
+  }, [indexQuery, input.brandId, pageQueries, refresh, userId]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
