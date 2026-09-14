@@ -1124,8 +1124,9 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // [TEST-MOD-APPROVED #1778] Re-derived after the existing Book-blast lane
   // gained #1778's exact migration, Deno, PostgreSQL, Jest, and scoped-typecheck
   // proof. The lane delta is 23 insertions and one long grep-line replacement;
-  // no concurrency, group:, cancel-in-progress, trigger, or workflow identity
-  // changed. PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are unchanged,
+  // no concurrency, group:, cancel-in-progress, event kind, or workflow identity
+  // changed; only the existing path scope widened. PR_FAMILY_COUNT (124) and
+  // PR_FAMILY_IDENTITY_SHA256 are unchanged,
   // and the policy gate plus its mutation proofs remain untouched. Three local
   // runs of this file's RUBY_CANONICAL produced the same value below.
   "a24d680bd5fc50d7dae67f67c0f6b95536be0b28e3acfd21c970cf09a901d491";
