@@ -185,6 +185,16 @@ export interface PublicEventProps {
   musicGenres?: string[];
 
   themeOverrides?: ThemeInput | null;
+
+  /**
+   * issue #3314 — true ⇒ no remaining ticket COUNT renders anywhere on this
+   * event's public body: no "N tickets left" pill, no "N available" caption.
+   * "Sold out" / "Unlimited" still render (states, not counts). Hosts resolve it
+   * with `resolveHideRemainingCount` (fail-closed: unknown ⇒ true), because the
+   * public bundle does not carry the organiser's setting. Absent/false keeps the
+   * pre-#3314 tree byte-identical.
+   */
+  hideRemainingCount?: boolean;
 }
 
 export interface PublicBrandProps {

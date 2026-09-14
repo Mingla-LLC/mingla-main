@@ -95,6 +95,11 @@ import { withCurrencyGlyph } from "./currencyGlyph";
 // ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
 import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
+// issue #3314 — the one owner of remaining-count copy under "Hide remaining count".
+import {
+  ticketAvailabilityCaption,
+  ticketsLeftSummaryLabel,
+} from "./remainingCountVisibility";
 import {
   eventAcquisitionNoticeCopy,
   type EventAcquisitionState,
@@ -434,19 +439,13 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
     [event.tickets],
   );
 
-  const ticketsLeftLabel = useMemo<string | null>(() => {
-    let total = 0;
-    let anyFinite = false;
-    for (const t of visibleTickets) {
-      if (t.isUnlimited) continue;
-      if (t.capacity !== null) {
-        total += t.capacity;
-        anyFinite = true;
-      }
-    }
-    if (!anyFinite) return null;
-    return total <= 0 ? "Sold out" : `${total} tickets left`;
-  }, [visibleTickets]);
+  // issue #3314 — the organiser's "Hide remaining count" (host-resolved,
+  // fail-closed) was never read here, so the pill printed the count anyway.
+  const hideRemainingCount = event.hideRemainingCount === true;
+  const ticketsLeftLabel = useMemo<string | null>(
+    () => ticketsLeftSummaryLabel(visibleTickets, hideRemainingCount),
+    [hideRemainingCount, visibleTickets],
+  );
 
   const cityCountry =
     normalizeCityCountry(event.venueName) ??
@@ -1081,6 +1080,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
               disabled={!bookable}
               onChange={(qty) => onChangeTicketQuantity(t.id, qty)}
               pricingNote={pricingNote}
+              hideRemainingCount={event.hideRemainingCount === true}
             />
           ))}
 
@@ -1315,6 +1315,8 @@ const TicketStepperRow: React.FC<{
   onChange: (qty: number) => void;
   /** issue #2160 — see EventTicketBoxProps.pricingNote. null => nothing renders. */
   pricingNote?: string | null;
+  /** issue #3314 — true ⇒ "Available", never "N available". */
+  hideRemainingCount?: boolean;
 }> = ({
   ticket,
   fallbackCurrency,
@@ -1325,6 +1327,7 @@ const TicketStepperRow: React.FC<{
   disabled,
   onChange,
   pricingNote = null,
+  hideRemainingCount = false,
 }) => {
   const sellable = ticketIsSellable(ticket);
   const isSoldOut = ticketIsSoldOut(ticket);
@@ -1352,13 +1355,7 @@ const TicketStepperRow: React.FC<{
   const canIncrement = sellable && !disabled && quantity < cap;
   const canDecrement = quantity > 0;
 
-  const capacityLabel = ticket.isUnlimited
-    ? "Unlimited"
-    : ticket.capacity !== null
-      ? ticket.capacity <= 0
-        ? "Sold out"
-        : `${ticket.capacity} available`
-      : "Available";
+  const capacityLabel = ticketAvailabilityCaption(ticket, hideRemainingCount);
 
   return (
     <View

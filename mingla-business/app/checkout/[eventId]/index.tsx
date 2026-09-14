@@ -16,7 +16,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header: insets.bottom IS applied (line 230 + 283) for home-indicator clearance; the top status-bar overlap with back arrow / "Get tickets" header / "1 OF 3" pill is the intended banner-style buyer aesthetic. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1) + pixel verification on iPhone 17 Pro Max sim (screenshot 18-CHECKOUT-INDEX.png).
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -33,6 +33,10 @@ import {
 import type { LiveEvent } from "../../../src/store/liveEventStore";
 import type { TicketStub } from "../../../src/store/draftEventStore";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
+// issue #3314 — the organiser's "Hide remaining count" rule, and the query cache
+// the public event page filled with the social-proof payload that carries it.
+import { QueryClientContext } from "@tanstack/react-query";
+import { resolveHideRemainingCount } from "@mingla/offering-rendering/remainingCountVisibility";
 // issue #2160 / #2161 — occurrences ride the event payload; there is no
 // occurrence query here any more.
 import type { PublicEventOccurrence } from "../../../src/services/publicEventOccurrencesService";
@@ -137,6 +141,25 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   const publicEventQuery = usePublicEventById(eventId);
   const event = publicEventQuery.data?.event ?? null;
   const brand = publicEventQuery.data?.brand ?? null;
+  // issue #3314 — the bundle behind this step does not carry the organiser's
+  // settings. The event page a guest arrives from has already read the
+  // social-proof payload that does, under `socialProofKeys.summary(eventId)`
+  // (= ["socialProof", eventId]); read that cache entry rather than issue a
+  // second request. A deep link straight here has no entry: fail-closed, no
+  // "N left" caption. `useContext` tolerates a missing provider, like the
+  // Recent writer does.
+  const queryClient = useContext(QueryClientContext);
+  const cachedSocialProof =
+    eventId === null
+      ? undefined
+      : queryClient?.getQueryData<{ hideRemainingCount: boolean } | null>([
+          "socialProof",
+          eventId,
+        ]);
+  const hideRemainingCount = resolveHideRemainingCount({
+    organiserSetting: event?.hideRemainingCount === true ? true : null,
+    socialProof: cachedSocialProof,
+  });
   // ORCH-1162 Bug 3 — the CTA brand accent (same source/derivation as the public
   // page button: brand theme_color + event theme_color_override). undefined while
   // loading → Button keeps the default Mingla orange (no flash of wrong color).
@@ -516,6 +539,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
               key={ticket.id}
               ticket={ticket}
               quantity={qty}
+              hideRemainingCount={hideRemainingCount}
               onJoinWaitlist={setWaitlistTicketId}
               onQuantityChange={(next): void =>
                 setLineQuantity({

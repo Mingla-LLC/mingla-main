@@ -88,6 +88,8 @@ import type {
   PublicEventProps,
   PublicTicketProps,
 } from "./types";
+// issue #3314 — the one owner of remaining-count copy under "Hide remaining count".
+import { ticketAvailabilityCaption } from "./remainingCountVisibility";
 
 const SHOW_INITIAL_DATES = 10;
 
@@ -1019,6 +1021,7 @@ const PublishedBody = ({
                   callbacks={callbacks}
                   theme={theme}
                   palette={palette}
+                  hideRemainingCount={event.hideRemainingCount === true}
                 />
               ))}
             </View>
@@ -1038,6 +1041,8 @@ interface PublicTicketRowProps {
   callbacks: PublicEventPageProps["callbacks"];
   theme: ResolvedTheme;
   palette: ThemePalette;
+  /** issue #3314 — true ⇒ "Available", never "N available". */
+  hideRemainingCount?: boolean;
 }
 
 const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
@@ -1047,6 +1052,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   callbacks,
   theme,
   palette,
+  hideRemainingCount = false,
 }) => {
   const priceLabel = formatTicketPrice(ticket, fallbackCurrency);
   const isVisDisabled = ticket.visibility === "disabled";
@@ -1098,11 +1104,13 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
     isDoorOnly ||
     (isSoldOutTicket && !ticket.waitlistEnabled);
 
-  const capacityLabel = ticket.isUnlimited
-    ? "Unlimited"
-    : ticket.capacity !== null
-      ? `${ticket.capacity} available`
-      : "Available";
+  // issue #3314 — `false`: with the count allowed this page keeps its
+  // pre-#3314 "0 available" wording; hidden, an empty tier says "Sold out".
+  const capacityLabel = ticketAvailabilityCaption(
+    ticket,
+    hideRemainingCount,
+    false,
+  );
 
   return (
     <View

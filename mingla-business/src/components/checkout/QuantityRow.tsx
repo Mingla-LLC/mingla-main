@@ -46,6 +46,11 @@ export interface QuantityRowProps {
    * no-plan / pay-in-full render nothing).
    */
   installmentNote?: string | null;
+  /**
+   * issue #3314 — true ⇒ no "N left" caption (the organiser's "Hide remaining
+   * count"). Forwarded verbatim. Absent ⇒ unchanged for trip/experience carts.
+   */
+  hideRemainingCount?: boolean;
 }
 
 const MINGLA_BUSINESS_THEME: QuantityRowTheme = {
@@ -84,6 +89,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   onQuantityChange,
   onJoinWaitlist,
   installmentNote,
+  hideRemainingCount,
 }) => {
   const renderPlusIcon = useCallback(
     (iconProps: { size: number; color: string }) => (
@@ -128,6 +134,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
       theme={MINGLA_BUSINESS_THEME}
       onJoinWaitlist={onJoinWaitlist}
       installmentNote={installmentNote}
+      hideRemainingCount={hideRemainingCount}
     />
   );
 };

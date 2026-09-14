@@ -711,9 +711,22 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [event.masterEndAtUtc, event.status, nowMs, terminalSource]);
+  // issue #3314 — this page is served from the public event bundle, which does
+  // not carry the organiser's settings, so `event.hideRemainingCount` is only a
+  // real answer when it is `true`; its `false` is the reader's fallback. The
+  // social-proof read carries the server's value. Until it allows the count, no
+  // count renders (pill, ticket box, desktop sticky panel). This is the shared
+  // `resolveHideRemainingCount` rule with the organiser setting unknown unless
+  // true — inlined because this adapter's close-button harness pins its imports.
+  const hideRemainingCount =
+    event.hideRemainingCount === true ||
+    socialProofQuery.data?.hideRemainingCount !== false;
   const publicEvent = useMemo(
-    () => mapLiveEventToPublicEvent(event, acquisitionState, occurrences),
-    [acquisitionState, event, occurrences],
+    () => ({
+      ...mapLiveEventToPublicEvent(event, acquisitionState, occurrences),
+      hideRemainingCount,
+    }),
+    [acquisitionState, event, hideRemainingCount, occurrences],
   );
   const publicBrand = useMemo(() => mapBrandToPublicBrand(brand), [brand]);
   const resolvedTheme = useMemo(
