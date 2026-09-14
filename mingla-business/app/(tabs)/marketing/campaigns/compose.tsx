@@ -121,6 +121,7 @@ import { SchedulePickerSheet } from "../../../../src/components/marketing/Compos
 import {
   AudiencePickerSheet,
   type AudienceOption,
+  type CircleAudiencePickerState,
 } from "../../../../src/components/marketing/AudiencePickerSheet";
 import { ComposerReviewSheet } from "../../../../src/components/marketing/ComposerReviewSheet";
 import { ComposerSentConfirmation } from "../../../../src/components/marketing/ComposerSentConfirmation";
@@ -154,6 +155,10 @@ import {
   MarketingBookSendError,
   updateDraft,
 } from "../../../../src/services/marketing/marketingCampaignService";
+import {
+  getMarketingAudienceKind,
+  getOrCreateMarketingCircleAudience,
+} from "../../../../src/services/marketing/marketingCircleAudienceService";
 import { getTemplate } from "../../../../src/services/marketing/marketingTemplateService";
 import { extractEmbeddedEventIds } from "../../../../src/services/marketing/tenTapTokenBridge";
 // issue #2291 — the ONE payload contract, shared with the send path's Deno copy.
@@ -169,6 +174,7 @@ import type { PreviewVariables } from "../../../../src/services/marketing/market
 import type {
   CampaignChannelPayload,
   MarketingBookQuote,
+  SealedMarketingAudienceKind,
 } from "../../../../src/types/marketing";
 // ORCH-1282 — MMS photo attach: cross-platform pick (native picker / browser
 // file input), upload to the public brand_covers bucket, verified public URL.
@@ -186,6 +192,7 @@ import { BrandCoverError } from "../../../../src/utils/brandCoverRules";
 // ORCH-1281 — wire body (incl. STOP footer) for the review-sheet MESSAGE row.
 import { bodyWithFooter } from "../../../../src/utils/smsCost";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
+import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
 import { useFeatureFlag } from "../../../../src/hooks/useFeatureFlag";
 import {
   getBookBlastDisabledReason,
@@ -204,6 +211,10 @@ import { useComposerKeyboardShortcuts } from "../../../../src/hooks/useComposerK
 // label + drive the "Schedule for …" secondary CTA in the review sheet's
 // always-on "How SMS timing works" info note.
 import { nextGlobalSendWindowOpen } from "../../../../src/utils/marketing/smsSendWindow";
+import type {
+  BrandCircleAvailability,
+} from "../../../../src/types/brandCircleReach";
+import type { BrandCircleReachSummary } from "../../../../src/services/brandCircleReachSummaryService";
 
 // ORCH-1289 — Twilio MMS accepts up to 10 media items per message.
 const MMS_MAX_MEDIA = 10;
@@ -253,6 +264,21 @@ function makeMediaKey(): string {
   return `mms-${Date.now().toString(36)}-${mmsKeySeq}`;
 }
 
+type CircleReachLoadState = {
+  loading: boolean;
+  page: BrandCircleReachSummary | null;
+};
+
+function hasFreshCircleAvailability(
+  availability: BrandCircleAvailability | undefined,
+): boolean {
+  if (availability?.state !== "ready" || availability.expiresAt === null) {
+    return false;
+  }
+  const expiresAt = Date.parse(availability.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
+}
+
 export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
   const navigation = useNavigation();
@@ -285,8 +311,14 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const brandAddress = currentBrand?.address ?? null;
   const importFlag = useFeatureFlag("contact_import_v1"),
     bookFlag = useFeatureFlag("brand_book_blast_v1"),
-    manualGroupFlag = useFeatureFlag("manual_contact_groups_v1");
+    manualGroupFlag = useFeatureFlag("manual_contact_groups_v1"),
+    circleRosterFlag = useFeatureFlag("brand_circle_followers_v1"),
+    followerEmailFlag = useFeatureFlag("brand_circle_followers_email_v1"),
+    followerSmsFlag = useFeatureFlag("brand_circle_followers_sms_v1"),
+    extendedEmailFlag = useFeatureFlag("brand_circle_extended_email_v1"),
+    extendedSmsFlag = useFeatureFlag("brand_circle_extended_sms_v1");
   const bookBlastEnabled = isBookBlastFeatureReady(importFlag, bookFlag);
+  const currentBrandRole = useCurrentBrandRole(brandId);
 
   const resolvedAudience = useResolveAudience(audienceParam);
 
@@ -341,8 +373,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   );
   const [audienceId, setAudienceId] = useState<string | null>(null);
   const [audienceName, setAudienceName] = useState<string | null>(null);
+  const [sealedAudienceKind, setSealedAudienceKind] =
+    useState<SealedMarketingAudienceKind | null>(null);
   const [isBookAudience, setIsBookAudience] = useState(false);
-  const [isManualAudience, setIsManualAudience] = useState(false);
+  const isManualAudience = sealedAudienceKind === "manual_group";
   const [bookQuote, setBookQuote] = useState<MarketingBookQuote | null>(null);
   const [bookRequestId, setBookRequestId] = useState<string | null>(null);
   const [bookStaleWarning, setBookStaleWarning] = useState(false);
@@ -352,11 +386,152 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const bookPreviewMutation = useBookBlastPreview(),
     bookConfirmMutation = useConfirmBookBlast();
   const bookOnline = useShareNetworkState();
+  const [showAudiencePicker, setShowAudiencePicker] = useState(false);
+  const roleResolved = !currentBrandRole.isLoading && !currentBrandRole.isError;
+  const followerDeliveryFlag = channel === "sms"
+    ? followerSmsFlag
+    : followerEmailFlag;
+  const extendedDeliveryFlag = channel === "sms"
+    ? extendedSmsFlag
+    : extendedEmailFlag;
+  const circleAudienceEnabled =
+    bookBlastEnabled && circleRosterFlag.data === true;
+  const circleReachRequest = useRef(0);
+  const [circleReachLoad, setCircleReachLoad] = useState<CircleReachLoadState>({
+    loading: false,
+    page: null,
+  });
+  const loadCircleReach = useCallback(async (): Promise<void> => {
+    const request = ++circleReachRequest.current;
+    setCircleReachLoad({ loading: true, page: null });
+    if (
+      brandId === null ||
+      !circleAudienceEnabled ||
+      !roleResolved ||
+      !currentBrandRole.accepted ||
+      currentBrandRole.rank < 20 ||
+      !bookOnline
+    ) {
+      if (request === circleReachRequest.current) {
+        setCircleReachLoad({ loading: !roleResolved, page: null });
+      }
+      return;
+    }
+    try {
+      // #1778: this privacy-safe count read is needed only while the picker is
+      // open. Keeping it behind this route boundary prevents the People-page
+      // roster hook and query machinery from joining every web startup bundle.
+      const { getBrandCircleReachSummary } = await import(
+        "../../../../src/services/brandCircleReachSummaryService"
+      );
+      const page = await getBrandCircleReachSummary(brandId);
+      if (request === circleReachRequest.current) {
+        setCircleReachLoad({ loading: false, page });
+      }
+    } catch {
+      if (request === circleReachRequest.current) {
+        setCircleReachLoad({ loading: false, page: null });
+      }
+    }
+  }, [
+    bookOnline,
+    brandId,
+    circleAudienceEnabled,
+    currentBrandRole.accepted,
+    currentBrandRole.rank,
+    roleResolved,
+  ]);
+  useEffect(() => {
+    if (!showAudiencePicker) {
+      circleReachRequest.current += 1;
+      setCircleReachLoad({ loading: false, page: null });
+      return;
+    }
+    void loadCircleReach();
+    return () => {
+      circleReachRequest.current += 1;
+    };
+  }, [loadCircleReach, showAudiencePicker]);
+  useEffect(() => {
+    if (!showAudiencePicker || circleReachLoad.page === null) return;
+    const expiries = [
+      circleReachLoad.page.availability.followers,
+      circleReachLoad.page.availability.extended,
+    ].flatMap((availability) => {
+      if (availability.state !== "ready" || availability.expiresAt === null) {
+        return [];
+      }
+      const expiry = Date.parse(availability.expiresAt);
+      return Number.isFinite(expiry) && expiry > Date.now() ? [expiry] : [];
+    });
+    if (expiries.length === 0) return;
+    const timer = setTimeout(
+      () => void loadCircleReach(),
+      Math.min(2_147_483_647, Math.max(0, Math.min(...expiries) - Date.now())),
+    );
+    return () => clearTimeout(timer);
+  }, [circleReachLoad.page, loadCircleReach, showAudiencePicker]);
+  const circlePickerState = useMemo<CircleAudiencePickerState>(() => {
+    const reasonLabel = (reason: string | null | undefined, extended: boolean) => {
+      if (reason === "controls_not_live" || extended) {
+        return "Not available until people can control extended brand reach in Mingla.";
+      }
+      if (reason === "rollout_disabled") return "Followers are not available yet.";
+      if (reason === "refresh_failed" || reason === "authority_unavailable") {
+        return extended
+          ? "Not available until people can control extended brand reach in Mingla."
+          : "Followers are taking a minute. Try again.";
+      }
+      if (reason === "freshness_expired" || reason === "refresh_pending") {
+        return "Refreshing current reach…";
+      }
+      return "Current reach is unavailable.";
+    };
+    const page = circleReachLoad.page;
+    const followerAvailability = page?.availability.followers;
+    const extendedAvailability = page?.availability.extended;
+    const followerReady = page?.state !== "unavailable" &&
+      hasFreshCircleAvailability(followerAvailability);
+    const extendedReady = page?.state !== "unavailable" &&
+      hasFreshCircleAvailability(extendedAvailability);
+    return {
+      followers: {
+        count: followerReady ? (page?.counts.followers ?? 0) : null,
+        state: followerReady
+          ? "ready" as const
+          : circleReachLoad.loading
+            ? "loading" as const
+            : "unavailable" as const,
+        enabled: followerDeliveryFlag.data === true,
+        reason: reasonLabel(
+          followerAvailability?.reason,
+          false,
+        ),
+      },
+      extended: {
+        count: extendedReady ? (page?.counts.extended ?? 0) : null,
+        state: extendedReady
+          ? "ready" as const
+          : circleReachLoad.loading
+            ? "loading" as const
+            : "unavailable" as const,
+        enabled: extendedDeliveryFlag.data === true,
+        reason: reasonLabel(
+          extendedAvailability?.reason,
+          true,
+        ),
+      },
+    };
+  }, [
+    circleReachLoad.loading,
+    circleReachLoad.page,
+    extendedDeliveryFlag.data,
+    followerDeliveryFlag.data,
+  ]);
   const [sendMode, setSendMode] = useState<SendMode>("now");
   const [scheduledForIso, setScheduledForIso] = useState("");
   const [campaignId, setCampaignId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
-  const [showAudiencePicker, setShowAudiencePicker] = useState(false);
   const [showReview, setShowReview] = useState(false);
   // ORCH-1270 F-1 — soonest global send window, captured at the Send-now tap
   // (no live re-render needed) to label the "Schedule for …" CTA. Only
@@ -453,8 +628,27 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           if (cancelled) return;
           setAudienceId(manual.groupId);
           setAudienceName(manual.name);
+          setSealedAudienceKind("manual_group");
           setIsBookAudience(true);
-          setIsManualAudience(true);
+        } else if (
+          audienceParam.kind === "followers" ||
+          audienceParam.kind === "extended"
+        ) {
+          const audienceKind = audienceParam.kind === "followers"
+            ? "brand_followers"
+            : "brand_circle_extended";
+          const circle = await getOrCreateMarketingCircleAudience({
+            actor_id: accountId,
+            brand_id: brandId,
+            audience_kind: audienceKind,
+          });
+          if (cancelled) return;
+          setAudienceId(circle.audienceId);
+          setAudienceName(
+            audienceKind === "brand_followers" ? "Followers" : "Extended circle",
+          );
+          setSealedAudienceKind(audienceKind);
+          setIsBookAudience(true);
         } else if (audienceParam.kind === "brand") {
           const id = await ensureBrandBuyersAudience({
             account_id: accountId,
@@ -463,7 +657,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           if (cancelled) return;
           setAudienceId(id);
           setAudienceName("All brand buyers");
-          setIsManualAudience(false);
+          setSealedAudienceKind(null);
+          setIsBookAudience(false);
         } else {
           const id = await ensureEventBuyersAudience({
             account_id: accountId,
@@ -473,7 +668,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           if (cancelled) return;
           setAudienceId(id);
           setAudienceName("Event buyers");
-          setIsManualAudience(false);
+          setSealedAudienceKind(null);
+          setIsBookAudience(false);
         }
       } catch (err) {
         if (!cancelled) {
@@ -527,6 +723,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         setCampaignId(row.id);
         setChannel(row.channel as MarketingChannelKind);
         setAudienceId(row.audience_id);
+        const storedAudienceKind = await getMarketingAudienceKind(row.audience_id);
+        setSealedAudienceKind(storedAudienceKind);
+        setIsBookAudience(storedAudienceKind !== null);
         // issue #2291 — DEFENSIVE READS. These were bare
         // `setSubject(row.channel_payload.subject)` /
         // `setBody(row.channel_payload.body_html)` with no fallback. On a row
@@ -766,7 +965,13 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           campaign_id: campaignId,
           client_request_id: bookRequestId,
           quote: bookQuote,
+          // #2395 keeps this exact Manual-vs-Book contract. #1778's later
+          // spread overrides it only for one of the two new circle kinds.
           audience_kind: isManualAudience ? "manual_group" : "all_brand_people",
+          ...(sealedAudienceKind === "brand_followers" ||
+          sealedAudienceKind === "brand_circle_extended"
+            ? { audience_kind: sealedAudienceKind }
+            : {}),
           scheduled_for:
             sendMode === "now" ? null : new Date(scheduledForIso).toISOString(),
         },
@@ -825,6 +1030,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     campaignId,
     isBookAudience,
     isManualAudience,
+    sealedAudienceKind,
     bookQuote,
     bookRequestId,
     bookConfirmMutation,
@@ -1120,6 +1326,21 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     channel === "sms"
       ? (reach?.reachable_sms ?? null)
       : (reach?.reachable_email ?? null);
+  const selectedCircleTotal = sealedAudienceKind === "brand_followers"
+    ? circlePickerState.followers.count
+    : sealedAudienceKind === "brand_circle_extended"
+      ? circlePickerState.extended.count
+      : null;
+  const displayedReachable =
+    sealedAudienceKind === "brand_followers" ||
+      sealedAudienceKind === "brand_circle_extended"
+      ? (bookQuote?.reachableCount ?? null)
+      : channelReachable;
+  const displayedAudienceTotal =
+    sealedAudienceKind === "brand_followers" ||
+      sealedAudienceKind === "brand_circle_extended"
+      ? selectedCircleTotal
+      : (reach?.total ?? null);
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) router.back();
@@ -1133,8 +1354,18 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const handleSelectAudience = useCallback(
     async (option: AudienceOption) => {
       setAudienceName(option.name);
+      const nextSealedKind: SealedMarketingAudienceKind | null =
+        option.kind === "all_brand_people" ||
+          option.kind === "manual_group" ||
+          option.kind === "brand_followers" ||
+          option.kind === "brand_circle_extended"
+          ? option.kind
+          : null;
+      setSealedAudienceKind(nextSealedKind);
       setIsBookAudience(option.kind === "all_brand_people" || option.kind === "manual_group");
-      setIsManualAudience(option.kind === "manual_group");
+      if (option.kind === "brand_followers" || option.kind === "brand_circle_extended") {
+        setIsBookAudience(true);
+      }
       setBookQuote(null);
       setIsDirty(true);
       if (option.existing_audience_id !== null) {
@@ -1144,8 +1375,13 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       if (accountId === null || brandId === null) return;
       if (option.kind === "all_brand_people" || option.kind === "manual_group") return;
       try {
-        const id =
-          option.kind === "brand_buyers"
+        const id = option.kind === "brand_followers" || option.kind === "brand_circle_extended"
+          ? (await getOrCreateMarketingCircleAudience({
+              actor_id: accountId,
+              brand_id: brandId,
+              audience_kind: option.kind,
+            })).audienceId
+          : option.kind === "brand_buyers"
             ? await ensureBrandBuyersAudience({
                 account_id: accountId,
                 brand_id: option.target_id,
@@ -1290,7 +1526,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setBookQuote(null);
           setShowReview(true);
           try {
-            const quote = await bookPreviewMutation.mutateAsync({ campaignId: id, audienceKind: isManualAudience ? "manual_group" : "all_brand_people" });
+            const quote = await bookPreviewMutation.mutateAsync({ campaignId: id, audienceKind: sealedAudienceKind ?? "all_brand_people" });
             setBookQuote(quote);
             setBookStaleWarning(false);
             setBookRequestId(
@@ -1426,8 +1662,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   >
                     <ComposerStepWho
                       audienceName={audienceName}
-                      reachableEmail={channelReachable}
-                      totalAudience={reach?.total ?? null}
+                      reachableEmail={displayedReachable}
+                      totalAudience={displayedAudienceTotal}
                       onOpenPicker={() => setShowAudiencePicker(true)}
                       disabled={brandId === null}
                       compact={isShort}
@@ -1527,7 +1763,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                       setBookQuote(null);
                       setShowReview(true);
                       try {
-                        const quote = await bookPreviewMutation.mutateAsync({ campaignId: id, audienceKind: isManualAudience ? "manual_group" : "all_brand_people" });
+                        const quote = await bookPreviewMutation.mutateAsync({ campaignId: id, audienceKind: sealedAudienceKind ?? "all_brand_people" });
                         setBookQuote(quote);
                         setBookStaleWarning(false);
                         setBookRequestId(
@@ -1591,10 +1827,20 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           actorId={accountId}
           bookBlastEnabled={bookBlastEnabled}
           manualGroupsEnabled={bookBlastEnabled && manualGroupFlag.data === true}
+          circleAudienceEnabled={circleAudienceEnabled}
+          circleReach={circlePickerState}
+          onRetryCircleReach={() => {
+            void loadCircleReach();
+          }}
         />
         <ComposerReviewSheet
           visible={showReview}
           audienceName={audienceName}
+          audienceReason={sealedAudienceKind === "brand_followers"
+            ? "They follow your brand · Names only"
+            : sealedAudienceKind === "brand_circle_extended"
+              ? "They opted into extended brand reach · Consent controlled"
+              : undefined}
           recipientCount={
             isBookAudience
               ? (bookQuote?.reachableCount ?? null)
@@ -1644,7 +1890,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             isBookAudience && campaignId !== null
               ? () => {
                   setBookPreviewError(null);
-                  bookPreviewMutation.mutate({ campaignId, audienceKind: isManualAudience ? "manual_group" : "all_brand_people" }, {
+                  bookPreviewMutation.mutate({ campaignId, audienceKind: sealedAudienceKind ?? "all_brand_people" }, {
                     onSuccess: (quote) => {
                       setBookQuote(quote);
                       setBookNow(Date.now());
@@ -1682,7 +1928,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 setBookQuote(null);
                 setShowReview(true);
                 try {
-                  const quote = await bookPreviewMutation.mutateAsync({ campaignId: id, audienceKind: isManualAudience ? "manual_group" : "all_brand_people" });
+                  const quote = await bookPreviewMutation.mutateAsync({ campaignId: id, audienceKind: sealedAudienceKind ?? "all_brand_people" });
                   setBookQuote(quote);
                   setBookStaleWarning(false);
                   setBookRequestId(

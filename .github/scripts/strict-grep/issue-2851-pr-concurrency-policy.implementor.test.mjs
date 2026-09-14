@@ -1118,21 +1118,36 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // concurrency, group: or cancel-in-progress. PR_FAMILY_COUNT (124) and
   // PR_FAMILY_IDENTITY_SHA256 (9356c425...) are UNCHANGED.
   //
-  // On main-only 3ab76cd05, restoring BOTH #3288 lanes recomputes #3055's pin
-  // f3395ac82bb8932582b5393c701d25c592eff960b7e4bc489b432368a353db4d.
-  // Each executable line remains independently revert-sensitive below.
+  // MEASURED from the committed tree rebased onto 9e697c103: restoring BOTH
+  // lanes to origin/main recomputes #3055's pin
+  // f3395ac82bb8932582b5393c701d25c592eff960b7e4bc489b432368a353db4d; restoring only one of
+  // them yields 184071df... or c982aeb9..., so each delta moves the digest on its own,
+  // and both exact lines are in the revert-sensitivity loop below. The value is
+  // identical across three derivations with this file's own RUBY_CANONICAL
+  // (extracted, not retyped), not copied from a PR run.
   //
-  // [TEST-MOD-APPROVED #3176] Final combined-tree re-derivation preserves that
-  // #3288 truth and #3176's five-line exact IndexNow skip block. Neither delta
-  // touches a workflow identity, trigger, concurrency block, group expression,
-  // cancellation policy or timeout.
+  // [TEST-MOD-APPROVED #1778] Re-derived after the existing Book-blast lane
+  // gained #1778's exact migration, Deno, PostgreSQL, Jest, and scoped-typecheck
+  // proof. The lane delta is 23 insertions and one long grep-line replacement;
+  // no concurrency, group:, cancel-in-progress, event kind, or workflow identity
+  // changed; only the existing path scope widened. PR_FAMILY_COUNT (124) and
+  // PR_FAMILY_IDENTITY_SHA256 are unchanged,
+  // and the policy gate plus its mutation proofs remain untouched. Three local
+  // runs of this file's RUBY_CANONICAL produced the same main-only value.
   //
-  // MEASURED FROM DISK three times with this file's RUBY_CANONICAL algorithm:
-  // current combined tree d2f72965...; without #3176 f6f5921b...; without both
-  // #3288 workflow blocks cfcf4126...; without either change f3395ac8.... The
-  // count, identity and policy audit remain 124 / 9356c425... / zero errors.
-  // Whole-block assertions below lock all four independently derived receipts.
-  "d2f729658096ce0ca04d96250b23097fc7599c936159ab0e8e59a367d86362fc";
+  // [TEST-MOD-APPROVED #3176] Final combined-tree re-derivation preserves all
+  // three owners: #1778's Book-blast proof, #3288's two workflow blocks, and
+  // #3176's five-line exact IndexNow skip block. None changes a workflow
+  // identity, concurrency block, group expression, cancellation policy, or
+  // timeout.
+  //
+  // MEASURED FROM DISK with this file's extracted RUBY_CANONICAL algorithm:
+  // current combined tree 330740ba...; without #3176 a24d680b...; without
+  // #3288 b1b5f757...; without #3176 and #3288 aadaaea7...; without #1778
+  // d2f72965.... The count, identity and policy audit remain 124 /
+  // 9356c425... / zero errors. Whole-block assertions below lock the branch
+  // deltas independently while every receipt retains #1778's main truth.
+  "330740baa866dd1013a9047498c746effbb6808e4e0a5a3cb13df02c8b78447a";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1530,7 +1545,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(before3176Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     before3176Authority.withoutConcurrencySha256,
-    "f6f5921bc0999e3925cd7148af5c31a45af11bf1c32a872252693ea8701f1535",
+    "a24d680bd5fc50d7dae67f67c0f6b95536be0b28e3acfd21c970cf09a901d491",
   );
 
   // [TEST-MOD-APPROVED #3176] Current main and this branch both change the
@@ -1568,7 +1583,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(before3288Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     before3288Authority.withoutConcurrencySha256,
-    "cfcf412629aec73913041d62531df32abe128e7b4aae0eb309bb1df4ea5dcffe",
+    "b1b5f75759ecb8ae6dd12d005b2583ac8414eb1c86c110b6c5585684f013f8a3",
   );
 
   const beforeBoth = { ...before3288 };
@@ -1580,7 +1595,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(beforeBothAuthority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     beforeBothAuthority.withoutConcurrencySha256,
-    "f3395ac82bb8932582b5393c701d25c592eff960b7e4bc489b432368a353db4d",
+    "aadaaea7efdbd00254fa460f07f64be589cd0773d0e7f8aab42d25788cf5af6c",
   );
 
   const sitesWithoutPullRequest = { ...sources };

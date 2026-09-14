@@ -25,7 +25,8 @@
  *       resolution untouched).
  *   INV-3 (tree-shakeable — no barrel import / bloat regression):
  *     - the web shim MUST require lucide icons from their DEEP per-icon module
- *       paths (`lucide-react/dist/esm/icons/<kebab>.js`); it MUST NOT import the
+ *       paths (`lucide-react/dist/esm/icons/<kebab>.js`) or build them from the
+ *       pinned Lucide `createLucideIcon` factory plus exact icon nodes; it MUST NOT import the
  *       `"lucide-react"` barrel entry in ANY form (`import * as X from
  *       "lucide-react"`, `import {…} from "lucide-react"`, or
  *       `require("lucide-react")`). The barrel statically references all
@@ -103,6 +104,21 @@ const BARREL_ESM_IMPORT_RE = /import\b[^;]*?from\s*["']lucide-react["']/;
 // Any `require("lucide-react")` of the bare barrel entry (no deep path).
 const BARREL_REQUIRE_RE = /require\(\s*["']lucide-react["']\s*\)/;
 
+// INV-4 accepts either supported real-icon construction:
+//   Icon: iconOf(require("lucide-react/dist/esm/icons/icon.js"))
+//   Icon: createLucideIcon("icon", exactLucideNodes)
+// The latter removes repeated ESM wrappers while rendering the same Lucide SVG.
+const USED_ENTRY_RE =
+  /([A-Za-z_$][\w$]*)\s*:\s*(?:[^,:{}]*require\(\s*["']lucide-react\/[^"']*["']\s*\)|createLucideIcon\(\s*["'][^"']+["']\s*,)/g;
+
+function collectUsedIconNames(source) {
+  const names = new Set();
+  const matcher = new RegExp(USED_ENTRY_RE.source, USED_ENTRY_RE.flags);
+  let match;
+  while ((match = matcher.exec(source)) !== null) names.add(match[1]);
+  return names;
+}
+
 // metro.config.js must still alias lucide-react-native -> the shim on web.
 const METRO_ALIAS_RE = /moduleName\s*===\s*["']lucide-react-native["']/;
 const METRO_STUB_CONST_RE = /LUCIDE_REACT_NATIVE_WEB_STUB/;
@@ -139,9 +155,11 @@ function runSelfTest() {
   // import (the tree-shakeable fix shape).
   const goodShim = stripComments(`
     const React = require("react");
+    const createLucideIcon = require("lucide-react/dist/esm/createLucideIcon.js").default;
     const USED = {
       Plus: require("lucide-react/dist/esm/icons/plus.js").default,
       ArrowUp: require("lucide-react/dist/esm/icons/arrow-up.js").default,
+      BookOpen: createLucideIcon("book-open", [["path", { d: "M12 7v14" }]]),
       HelpCircle: require("lucide-react/dist/esm/icons/help-circle.js").default,
     };
     const proxy = new Proxy({}, { get: (_t, k) => USED[k] ?? USED.HelpCircle });
@@ -172,18 +190,18 @@ function runSelfTest() {
     export default new Proxy({}, { get: (_t, k) => ({ Plus, ArrowUp })[k] });
   `);
 
-  if (
-    !(
-      REQUIRES_LUCIDE_REACT_RE.test(goodShim) &&
-      EXPORTS_PROXY_RE.test(goodShim) &&
-      !NULL_STUB_RE.test(goodShim)
-    )
-  ) {
+  if (!(
+    REQUIRES_LUCIDE_REACT_RE.test(goodShim) &&
+    EXPORTS_PROXY_RE.test(goodShim) &&
+    !NULL_STUB_RE.test(goodShim)
+  )) {
     console.error("SELF-TEST FAIL: real-icon shim not accepted");
     selfFail++;
   }
   if (REQUIRES_LUCIDE_REACT_RE.test(badShim)) {
-    console.error("SELF-TEST FAIL: null-stub falsely matched lucide-react require");
+    console.error(
+      "SELF-TEST FAIL: null-stub falsely matched lucide-react require",
+    );
     selfFail++;
   }
   if (EXPORTS_PROXY_RE.test(badShim)) {
@@ -191,7 +209,9 @@ function runSelfTest() {
     selfFail++;
   }
   if (!NULL_STUB_RE.test(badShim)) {
-    console.error("SELF-TEST FAIL: null-stub `() => null` pattern not detected");
+    console.error(
+      "SELF-TEST FAIL: null-stub `() => null` pattern not detected",
+    );
     selfFail++;
   }
   // INV-3 detectors: the GOOD deep-require shim must NOT trip any barrel
@@ -201,15 +221,27 @@ function runSelfTest() {
     BARREL_ESM_IMPORT_RE.test(s) ||
     BARREL_REQUIRE_RE.test(s);
   if (tripsBarrel(goodShim)) {
-    console.error("SELF-TEST FAIL: deep-require shim falsely flagged as a barrel import");
+    console.error(
+      "SELF-TEST FAIL: deep-require shim falsely flagged as a barrel import",
+    );
     selfFail++;
   }
   if (!REQUIRES_LUCIDE_REACT_RE.test(goodShim)) {
-    console.error("SELF-TEST FAIL: deep-require shim not recognized as referencing lucide-react");
+    console.error(
+      "SELF-TEST FAIL: deep-require shim not recognized as referencing lucide-react",
+    );
+    selfFail++;
+  }
+  if (!collectUsedIconNames(goodShim).has("BookOpen")) {
+    console.error(
+      "SELF-TEST FAIL: createLucideIcon used-set entry not recognized",
+    );
     selfFail++;
   }
   if (!tripsBarrel(barrelRequireShim)) {
-    console.error("SELF-TEST FAIL: barrel require('lucide-react') not detected");
+    console.error(
+      "SELF-TEST FAIL: barrel require('lucide-react') not detected",
+    );
     selfFail++;
   }
   if (!tripsBarrel(namespaceStarShim)) {
@@ -235,13 +267,11 @@ function runSelfTest() {
       if (moduleName === "react-native-reanimated") { return {}; }
     }
   `);
-  if (
-    !(
-      METRO_ALIAS_RE.test(goodMetro) &&
-      METRO_STUB_CONST_RE.test(goodMetro) &&
-      METRO_WEB_GATE_RE.test(goodMetro)
-    )
-  ) {
+  if (!(
+    METRO_ALIAS_RE.test(goodMetro) &&
+    METRO_STUB_CONST_RE.test(goodMetro) &&
+    METRO_WEB_GATE_RE.test(goodMetro)
+  )) {
     console.error("SELF-TEST FAIL: valid metro alias not accepted");
     selfFail++;
   }
@@ -254,7 +284,9 @@ function runSelfTest() {
     console.error(`SELF-TEST: ${selfFail} expectation(s) failed`);
     process.exit(1);
   }
-  console.log("SELF-TEST OK: I-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL detectors behave");
+  console.log(
+    "SELF-TEST OK: I-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL detectors behave",
+  );
   process.exit(0);
 }
 
@@ -294,7 +326,7 @@ if (!fs.existsSync(METRO)) {
   if (hasAlias && hasStubConst && hasWebGate) {
     ok(
       "INV-2: metro-alias-web-gated",
-      "metro.config.js still aliases lucide-react-native -> the web shim behind `platform === \"web\"`",
+      'metro.config.js still aliases lucide-react-native -> the web shim behind `platform === "web"`',
     );
   } else {
     fail(
@@ -330,22 +362,9 @@ if (fs.existsSync(SHIM)) {
   // across mingla-business/{src,app} MUST be present in the shim's named-import
   // used-set.
   //
-  // Parse the shim's used-set from the USED_ICONS map: each entry is
-  // `<IconName>: iconOf(require("lucide-react/dist/esm/icons/<kebab>.js"))`.
-  // We collect the LHS icon-name keys that are bound to a deep lucide-react
-  // require.
-  const shimNames = new Set();
-  // Each map entry binds an icon-name key to a deep per-icon lucide-react
-  // require, e.g. `IconName: iconOf(require("lucide-react/dist/esm/icons/x.js"))`
-  // or `IconName: require("lucide-react/dist/esm/icons/x.js").default`. The
-  // `[^,:{}]*` between the key and the require forbids crossing another `:`/`,`
-  // so the ternary in the `iconOf` helper cannot bleed into the capture.
-  const USED_ENTRY_RE =
-    /([A-Za-z_$][\w$]*)\s*:\s*[^,:{}]*require\(\s*["']lucide-react\/[^"']*["']\s*\)/g;
-  let entryMatch;
-  while ((entryMatch = USED_ENTRY_RE.exec(shimCode)) !== null) {
-    shimNames.add(entryMatch[1]);
-  }
+  // Parse either supported real-icon entry shape: a deep per-icon require or
+  // a pinned createLucideIcon call using exact Lucide nodes.
+  const shimNames = collectUsedIconNames(shimCode);
 
   // Collect every icon name imported from lucide-react-native across every
   // source root that the business WEB bundle resolves through the metro shim.
@@ -395,7 +414,10 @@ if (fs.existsSync(SHIM)) {
         while ((m = IMPORT_RE.exec(src)) !== null) {
           for (const raw of m[1].split(",")) {
             // Handle `Foo as Bar` — the imported (source) name is `Foo`.
-            const name = raw.trim().split(/\s+as\s+/)[0].trim();
+            const name = raw
+              .trim()
+              .split(/\s+as\s+/)[0]
+              .trim();
             if (name) importedNames.add(name);
           }
         }
@@ -408,7 +430,7 @@ if (fs.existsSync(SHIM)) {
   if (shimNames.size === 0) {
     fail(
       "INV-4: used-set-drift-guard",
-      'could not parse the shim USED_ICONS map — each entry must be `<IconName>: iconOf(require("lucide-react/dist/esm/icons/<kebab>.js"))`.',
+      'could not parse the shim USED_ICONS map — each entry must use a deep per-icon require or `createLucideIcon("<kebab>", exactLucideNodes)`.',
     );
   } else if (missing.length === 0) {
     ok(
@@ -420,13 +442,15 @@ if (fs.existsSync(SHIM)) {
       "INV-4: used-set-drift-guard",
       `these icon name(s) are imported from lucide-react-native under mingla-business/{src,app} or packages/ but are MISSING from the web shim's named-import used-set:\n  ${missing.join(
         "\n  ",
-      )}\nAdd each to the USED_ICONS map in mingla-business/src/shims/lucideReactNativeWebStub.js as <IconName>: iconOf(require("lucide-react/dist/esm/icons/<kebab>.js")) so it renders a REAL glyph on web (otherwise it silently falls back to the HelpCircle placeholder).`,
+      )}\nAdd each to the USED_ICONS map in mingla-business/src/shims/lucideReactNativeWebStub.js with a deep per-icon require or the pinned inline Lucide-node factory so it renders a REAL glyph on web (otherwise it silently falls back to the HelpCircle placeholder).`,
     );
   }
 }
 
 if (failures > 0) {
-  console.error(`\nI-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL: ${failures} violation(s)`);
+  console.error(
+    `\nI-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL: ${failures} violation(s)`,
+  );
   process.exit(1);
 }
 console.log("\nI-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL: PASS · violations=0");
