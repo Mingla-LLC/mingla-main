@@ -1,4 +1,6 @@
 import React from "react";
+import fs from "fs";
+import path from "path";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -79,6 +81,31 @@ const renderedText = (node: any): string => {
 };
 
 describe("#1778 Business Circle audience contract", () => {
+  test("keeps the roster/query implementation behind the audience-picker boundary", () => {
+    const compose = fs.readFileSync(
+      path.join(
+        __dirname,
+        "../../../../app/(tabs)/marketing/campaigns/compose.tsx",
+      ),
+      "utf8",
+    );
+    expect(compose).not.toContain(
+      'from "../../../../src/hooks/marketing/useBrandCircleReach"',
+    );
+    expect(compose).not.toContain(
+      'import { listBrandCircleReach } from "../../../../src/services/brandCircleReachService"',
+    );
+    expect(compose).toMatch(
+      /await import\(\s*"\.\.\/\.\.\/\.\.\/\.\.\/src\/services\/brandCircleReachSummaryService"\s*\)/,
+    );
+    const summaryService = fs.readFileSync(
+      path.join(__dirname, "../../../services/brandCircleReachSummaryService.ts"),
+      "utf8",
+    );
+    expect(summaryService).toContain('p_ring: "all"');
+    expect(summaryService).toContain("p_limit: 1");
+  });
+
   test("deep links use privacy-safe route tokens", () => {
     const id = "11111111-2222-4333-8444-555555555555";
     const followersParam = buildComposeAudienceHref("followers", id).split(

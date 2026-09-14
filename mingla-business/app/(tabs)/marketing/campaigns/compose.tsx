@@ -121,6 +121,7 @@ import { SchedulePickerSheet } from "../../../../src/components/marketing/Compos
 import {
   AudiencePickerSheet,
   type AudienceOption,
+  type CircleAudiencePickerState,
 } from "../../../../src/components/marketing/AudiencePickerSheet";
 import { ComposerReviewSheet } from "../../../../src/components/marketing/ComposerReviewSheet";
 import { ComposerSentConfirmation } from "../../../../src/components/marketing/ComposerSentConfirmation";
@@ -151,11 +152,13 @@ import {
   ensureBrandBuyersAudience,
   ensureEventBuyersAudience,
   getCampaign,
-  getMarketingAudienceKind,
-  getOrCreateMarketingCircleAudience,
   MarketingBookSendError,
   updateDraft,
 } from "../../../../src/services/marketing/marketingCampaignService";
+import {
+  getMarketingAudienceKind,
+  getOrCreateMarketingCircleAudience,
+} from "../../../../src/services/marketing/marketingCircleAudienceService";
 import { getTemplate } from "../../../../src/services/marketing/marketingTemplateService";
 import { extractEmbeddedEventIds } from "../../../../src/services/marketing/tenTapTokenBridge";
 // issue #2291 — the ONE payload contract, shared with the send path's Deno copy.
@@ -191,7 +194,6 @@ import { bodyWithFooter } from "../../../../src/utils/smsCost";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
 import { useFeatureFlag } from "../../../../src/hooks/useFeatureFlag";
-import { useBrandCircleReach } from "../../../../src/hooks/marketing/useBrandCircleReach";
 import {
   getBookBlastDisabledReason,
   isBookBlastFeatureReady,
@@ -209,6 +211,10 @@ import { useComposerKeyboardShortcuts } from "../../../../src/hooks/useComposerK
 // label + drive the "Schedule for …" secondary CTA in the review sheet's
 // always-on "How SMS timing works" info note.
 import { nextGlobalSendWindowOpen } from "../../../../src/utils/marketing/smsSendWindow";
+import type {
+  BrandCircleAvailability,
+} from "../../../../src/types/brandCircleReach";
+import type { BrandCircleReachSummary } from "../../../../src/services/brandCircleReachSummaryService";
 
 // ORCH-1289 — Twilio MMS accepts up to 10 media items per message.
 const MMS_MAX_MEDIA = 10;
@@ -256,6 +262,21 @@ let mmsKeySeq = 0;
 function makeMediaKey(): string {
   mmsKeySeq += 1;
   return `mms-${Date.now().toString(36)}-${mmsKeySeq}`;
+}
+
+type CircleReachLoadState = {
+  loading: boolean;
+  page: BrandCircleReachSummary | null;
+};
+
+function hasFreshCircleAvailability(
+  availability: BrandCircleAvailability | undefined,
+): boolean {
+  if (availability?.state !== "ready" || availability.expiresAt === null) {
+    return false;
+  }
+  const expiresAt = Date.parse(availability.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
 }
 
 export default function ComposeCampaignRoute(): React.ReactElement {
@@ -367,24 +388,6 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const bookOnline = useShareNetworkState();
   const [showAudiencePicker, setShowAudiencePicker] = useState(false);
   const roleResolved = !currentBrandRole.isLoading && !currentBrandRole.isError;
-  const followerReach = useBrandCircleReach(
-    brandId,
-    "follower",
-    roleResolved,
-    currentBrandRole.accepted,
-    currentBrandRole.rank,
-    bookOnline,
-    showAudiencePicker,
-  );
-  const extendedReach = useBrandCircleReach(
-    brandId,
-    "extended",
-    roleResolved,
-    currentBrandRole.accepted,
-    currentBrandRole.rank,
-    bookOnline,
-    showAudiencePicker,
-  );
   const followerDeliveryFlag = channel === "sms"
     ? followerSmsFlag
     : followerEmailFlag;
@@ -393,7 +396,82 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     : extendedEmailFlag;
   const circleAudienceEnabled =
     bookBlastEnabled && circleRosterFlag.data === true;
-  const circlePickerState = useMemo(() => {
+  const circleReachRequest = useRef(0);
+  const [circleReachLoad, setCircleReachLoad] = useState<CircleReachLoadState>({
+    loading: false,
+    page: null,
+  });
+  const loadCircleReach = useCallback(async (): Promise<void> => {
+    const request = ++circleReachRequest.current;
+    setCircleReachLoad({ loading: true, page: null });
+    if (
+      brandId === null ||
+      !circleAudienceEnabled ||
+      !roleResolved ||
+      !currentBrandRole.accepted ||
+      currentBrandRole.rank < 20 ||
+      !bookOnline
+    ) {
+      if (request === circleReachRequest.current) {
+        setCircleReachLoad({ loading: !roleResolved, page: null });
+      }
+      return;
+    }
+    try {
+      // #1778: this privacy-safe count read is needed only while the picker is
+      // open. Keeping it behind this route boundary prevents the People-page
+      // roster hook and query machinery from joining every web startup bundle.
+      const { getBrandCircleReachSummary } = await import(
+        "../../../../src/services/brandCircleReachSummaryService"
+      );
+      const page = await getBrandCircleReachSummary(brandId);
+      if (request === circleReachRequest.current) {
+        setCircleReachLoad({ loading: false, page });
+      }
+    } catch {
+      if (request === circleReachRequest.current) {
+        setCircleReachLoad({ loading: false, page: null });
+      }
+    }
+  }, [
+    bookOnline,
+    brandId,
+    circleAudienceEnabled,
+    currentBrandRole.accepted,
+    currentBrandRole.rank,
+    roleResolved,
+  ]);
+  useEffect(() => {
+    if (!showAudiencePicker) {
+      circleReachRequest.current += 1;
+      setCircleReachLoad({ loading: false, page: null });
+      return;
+    }
+    void loadCircleReach();
+    return () => {
+      circleReachRequest.current += 1;
+    };
+  }, [loadCircleReach, showAudiencePicker]);
+  useEffect(() => {
+    if (!showAudiencePicker || circleReachLoad.page === null) return;
+    const expiries = [
+      circleReachLoad.page.availability.followers,
+      circleReachLoad.page.availability.extended,
+    ].flatMap((availability) => {
+      if (availability.state !== "ready" || availability.expiresAt === null) {
+        return [];
+      }
+      const expiry = Date.parse(availability.expiresAt);
+      return Number.isFinite(expiry) && expiry > Date.now() ? [expiry] : [];
+    });
+    if (expiries.length === 0) return;
+    const timer = setTimeout(
+      () => void loadCircleReach(),
+      Math.min(2_147_483_647, Math.max(0, Math.min(...expiries) - Date.now())),
+    );
+    return () => clearTimeout(timer);
+  }, [circleReachLoad.page, loadCircleReach, showAudiencePicker]);
+  const circlePickerState = useMemo<CircleAudiencePickerState>(() => {
     const reasonLabel = (reason: string | null | undefined, extended: boolean) => {
       if (reason === "controls_not_live" || extended) {
         return "Not available until people can control extended brand reach in Mingla.";
@@ -409,55 +487,46 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       }
       return "Current reach is unavailable.";
     };
-    const followerReady = followerReach.hasCurrentTruth &&
-      followerReach.safeAvailability?.followers.state === "ready";
-    const extendedReady = extendedReach.hasCurrentTruth &&
-      extendedReach.safeAvailability?.extended.state === "ready";
+    const page = circleReachLoad.page;
+    const followerAvailability = page?.availability.followers;
+    const extendedAvailability = page?.availability.extended;
+    const followerReady = page?.state !== "unavailable" &&
+      hasFreshCircleAvailability(followerAvailability);
+    const extendedReady = page?.state !== "unavailable" &&
+      hasFreshCircleAvailability(extendedAvailability);
     return {
       followers: {
-        count: followerReady ? (followerReach.counts?.followers ?? 0) : null,
+        count: followerReady ? (page?.counts.followers ?? 0) : null,
         state: followerReady
           ? "ready" as const
-          : followerReach.kind === "loading" || followerReach.kind === "refreshing" ||
-              followerReach.kind === "featureLoading" || followerReach.kind === "authLoading" ||
-              followerReach.kind === "roleLoading"
+          : circleReachLoad.loading
             ? "loading" as const
             : "unavailable" as const,
         enabled: followerDeliveryFlag.data === true,
         reason: reasonLabel(
-          followerReach.safeAvailability?.followers.reason,
+          followerAvailability?.reason,
           false,
         ),
       },
       extended: {
-        count: extendedReady ? (extendedReach.counts?.extended ?? 0) : null,
+        count: extendedReady ? (page?.counts.extended ?? 0) : null,
         state: extendedReady
           ? "ready" as const
-          : extendedReach.kind === "loading" || extendedReach.kind === "refreshing" ||
-              extendedReach.kind === "featureLoading" || extendedReach.kind === "authLoading" ||
-              extendedReach.kind === "roleLoading"
+          : circleReachLoad.loading
             ? "loading" as const
             : "unavailable" as const,
         enabled: extendedDeliveryFlag.data === true,
         reason: reasonLabel(
-          extendedReach.safeAvailability?.extended.reason,
+          extendedAvailability?.reason,
           true,
         ),
       },
     };
   }, [
+    circleReachLoad.loading,
+    circleReachLoad.page,
     extendedDeliveryFlag.data,
-    extendedReach.counts?.extended,
-    extendedReach.hasCurrentTruth,
-    extendedReach.kind,
-    extendedReach.safeAvailability?.extended.reason,
-    extendedReach.safeAvailability?.extended.state,
     followerDeliveryFlag.data,
-    followerReach.counts?.followers,
-    followerReach.hasCurrentTruth,
-    followerReach.kind,
-    followerReach.safeAvailability?.followers.reason,
-    followerReach.safeAvailability?.followers.state,
   ]);
   const [sendMode, setSendMode] = useState<SendMode>("now");
   const [scheduledForIso, setScheduledForIso] = useState("");
@@ -1761,7 +1830,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           circleAudienceEnabled={circleAudienceEnabled}
           circleReach={circlePickerState}
           onRetryCircleReach={() => {
-            void followerReach.refetch();
+            void loadCircleReach();
           }}
         />
         <ComposerReviewSheet
