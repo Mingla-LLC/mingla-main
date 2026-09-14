@@ -163,6 +163,12 @@ export interface QuantityRowProps {
    * only the Consumer native ticket sheet opts in.
    */
   allowUnboundedNameWrap?: boolean;
+  /**
+   * issue #3314 — true ⇒ the "· N left" scarcity caption never renders (the
+   * organiser turned on "Hide remaining count"). The quantity clamp still uses
+   * the real capacity. Default false keeps every existing caller unchanged.
+   */
+  hideRemainingCount?: boolean;
 }
 
 export const QuantityRow: React.FC<QuantityRowProps> = ({
@@ -177,6 +183,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   onJoinWaitlist,
   installmentNote,
   allowUnboundedNameWrap = false,
+  hideRemainingCount = false,
 }) => {
   const t: Required<QuantityRowTheme> = useMemo(
     () => ({ ...DEFAULT_THEME, ...(theme ?? {}) }),
@@ -209,7 +216,10 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
     ticket.maxPurchaseQty ?? Number.POSITIVE_INFINITY,
   );
   const showXLeft =
-    !ticket.isUnlimited && remainingCapacity > 0 && remainingCapacity <= 5;
+    !hideRemainingCount &&
+    !ticket.isUnlimited &&
+    remainingCapacity > 0 &&
+    remainingCapacity <= 5;
   const isSoldOut = !ticket.isUnlimited && remainingCapacity === 0;
   const canJoinWaitlist =
     isSoldOut &&

@@ -129,6 +129,9 @@ export const draftEventBuyerPreview = (
       vibeTags: draft.vibeTags,
       musicGenres: draft.musicGenres,
       themeOverrides: draft.themeOverrides ?? null,
+      // issue #3314 — the organiser's own setting IS known here, so the preview
+      // shows exactly what guests will see: no count when it is hidden.
+      hideRemainingCount: draft.hideRemainingCount === true,
     },
     brand: brand === null ? null : {
       id: brand.id,

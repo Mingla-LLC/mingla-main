@@ -1,0 +1,101 @@
+/**
+ * remainingCountVisibility — issue #3314.
+ *
+ * THE ONE rule for whether a public ticketed-event surface may show a remaining
+ * ticket count ("60 tickets left", "60 available", "3 left").
+ *
+ * The organiser's "Hide remaining count" setting lives in
+ * `theme.business_event.settings.hideRemainingCount`. The public event bundle
+ * that serves buyer web, the Business in-app page and the Explorer event screen
+ * does NOT carry it, so those pages used to fall back to "show" and printed the
+ * count the organiser had hidden. The only guest-readable source of the setting
+ * is `pg_public_social_proof`, which every event page already fetches — but it
+ * only answers for PUBLIC events and only once it has loaded.
+ *
+ * So the rule is fail-closed: a count is shown ONLY when something authoritative
+ * says the organiser allows it. Unknown means hidden. Hiding an optional number
+ * can never break the organiser's promise; showing one can.
+ *
+ * DISPLAY ONLY (the sealed ORCH-1339 D2 posture): capacity still travels in the
+ * payload because the quantity stepper clamp and the sold-out gate need it.
+ * "Sold out" and "Unlimited" are states, not counts, and stay visible.
+ *
+ * Dep-free (no react / react-native imports) so the Business jest suite can run
+ * it directly and every host can import it by deep specifier without touching
+ * the barrel (whose jest mocks are partial).
+ */
+
+export interface RemainingCountVisibilityInput {
+  /**
+   * The organiser's own setting when the HOST'S read actually carries it
+   * (the organiser's draft preview does). `null`/`undefined` = this read does
+   * not carry the setting, which is every bundle-served public page.
+   */
+  organiserSetting: boolean | null | undefined;
+  /**
+   * The `pg_public_social_proof` payload. `undefined` = still loading or the
+   * read failed; `null` = the server holds no summary for this viewer (an
+   * unlisted event, for example).
+   */
+  socialProof:
+    | { hideRemainingCount: boolean }
+    | null
+    | undefined;
+}
+
+/** True when a remaining ticket count must NOT be shown. */
+export const resolveHideRemainingCount = ({
+  organiserSetting,
+  socialProof,
+}: RemainingCountVisibilityInput): boolean => {
+  // Either authority saying "hide" wins.
+  if (organiserSetting === true) return true;
+  if (socialProof?.hideRemainingCount === true) return true;
+  // An authority positively allowing the count is the only way to show it.
+  if (organiserSetting === false) return false;
+  if (socialProof?.hideRemainingCount === false) return false;
+  // Unknown → hidden.
+  return true;
+};
+
+/**
+ * The pills-row summary ("N tickets left" / "Sold out") for a set of tiers'
+ * remaining capacities. `null` = omit the pill. Unlimited tiers and tiers with
+ * no finite capacity contribute nothing (never fabricate a count).
+ */
+export const ticketsLeftSummaryLabel = (
+  tickets: ReadonlyArray<{ isUnlimited: boolean; capacity: number | null }>,
+  hideRemainingCount: boolean,
+): string | null => {
+  let total = 0;
+  let anyFinite = false;
+  for (const t of tickets) {
+    if (t.isUnlimited) continue;
+    if (t.capacity !== null) {
+      total += t.capacity;
+      anyFinite = true;
+    }
+  }
+  if (!anyFinite) return null;
+  if (total <= 0) return "Sold out";
+  return hideRemainingCount ? null : `${total} tickets left`;
+};
+
+/**
+ * The per-tier caption in the ticket box ("60 available"). With the count
+ * hidden a finite tier with places reads "Available" and an empty one reads
+ * "Sold out". `soldOutWhenEmpty: false` keeps a caller's pre-#3314 "0 available"
+ * wording when the count is allowed (the legacy cancelled/password page).
+ */
+export const ticketAvailabilityCaption = (
+  ticket: { isUnlimited: boolean; capacity: number | null },
+  hideRemainingCount: boolean,
+  soldOutWhenEmpty = true,
+): string => {
+  if (ticket.isUnlimited) return "Unlimited";
+  if (ticket.capacity === null) return "Available";
+  if (ticket.capacity <= 0 && (soldOutWhenEmpty || hideRemainingCount)) {
+    return "Sold out";
+  }
+  return hideRemainingCount ? "Available" : `${ticket.capacity} available`;
+};

@@ -301,6 +301,11 @@ export interface TicketCartSheetProps {
    * null/omitted preserves the existing single-date tree and payload exactly.
    */
   multiDaySelection?: TicketCartMultiDaySelection | null;
+  /**
+   * issue #3314 — true ⇒ no "N left" caption on any tier (the organiser's
+   * "Hide remaining count"). Omitted ⇒ unchanged for trip/experience carts.
+   */
+  hideRemainingCount?: boolean;
   onCancel: () => void;
   onCheckout: (payload: TicketCartCheckoutPayload) => void;
 }
@@ -323,6 +328,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   planTiersByTicketId,
   installmentNoteByTicketId,
   multiDaySelection = null,
+  hideRemainingCount = false,
   onCancel,
   onCheckout,
 }) => {
@@ -864,6 +870,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         fallbackCurrency={fallbackCurrency}
         installmentNote={installmentNoteByTicketId?.[ticket.id] ?? null}
         allowUnboundedNameWrap={multiDaySelection !== null}
+        hideRemainingCount={hideRemainingCount}
       />
     );
   });

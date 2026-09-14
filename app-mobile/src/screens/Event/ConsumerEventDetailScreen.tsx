@@ -1429,6 +1429,13 @@ export default function ConsumerEventDetailScreen({
         validatedDayCanonical?.timezone ?? seed.timezone,
       )
     : null;
+  // issue #3314 — neither the deck seed nor the direct event bundle carries the
+  // organiser's "Hide remaining count", so both read it as "show" and the page
+  // printed "60 tickets left" anyway. The social-proof read carries the server's
+  // value. Fail-closed, the same rule as the shared `resolveHideRemainingCount`
+  // (inlined: this screen's jest mocks of the package barrel are partial): a
+  // count renders only once the server says the organiser allows it.
+  const hideRemainingCount = socialProofQuery.data?.hideRemainingCount !== false;
   const publicEventForBody: PublicEventProps =
     canonical === null
       ? {
@@ -1440,11 +1447,13 @@ export default function ConsumerEventDetailScreen({
                 acquisitionState:
                   validatedDayCanonical.event.acquisitionState,
               }),
+          hideRemainingCount,
         }
       : {
           ...canonical.event,
           dateLine: seededPublicEvent.dateLine,
           dateSubline: occurrenceSummary,
+          hideRemainingCount,
         };
   const canonicalLifecycleReady =
     validatedDayCanonical !== null && !canonicalQuery.isError;
@@ -1768,6 +1777,7 @@ export default function ConsumerEventDetailScreen({
         isSubmitting={checkoutInFlight}
         pendingPhase={checkoutPhase}
         multiDaySelection={multiDaySelection}
+        hideRemainingCount={hideRemainingCount}
         clearFloatingNav={false}
         onCancel={handleCartCancel}
         onCheckout={handleCartCheckout}
