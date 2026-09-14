@@ -84,6 +84,8 @@ import {
   type PublicTicketProps,
 } from "./types";
 import { type ResolvedTheme } from "./designTokens";
+// #3341 — naira shows "₦", not "NGN", whatever the engine or locale.
+import { withCurrencyGlyph } from "./currencyGlyph";
 // ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
 import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
@@ -221,12 +223,16 @@ if (
 const formatMoney = (amount: number, currency: string | null): string => {
   if (currency === null) return amount.toFixed(2);
   try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
+    // #3341 — en-US prints "NGN 25,000" for naira; show "₦25,000" like $/£/€.
+    return withCurrencyGlyph(
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      }).format(amount),
       currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(amount);
+    );
   } catch {
     return `${currency} ${amount.toFixed(2)}`;
   }

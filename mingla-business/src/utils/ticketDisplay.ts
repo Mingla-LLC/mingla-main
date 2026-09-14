@@ -22,6 +22,38 @@ export interface TicketBadge {
 }
 
 /**
+ * The price and the modifiers that make up a ticket sub-line, kept apart so
+ * each surface decides what to show when the price is unknown.
+ *
+ * Price is null when the ticket is paid but has no price or no established
+ * currency (#962 — never manufacture one).
+ */
+const ticketSublineParts = (
+  t: TicketStub,
+  code: string | null,
+): { price: string | null; modifiers: string[] } => {
+  const price = t.isFree
+    ? "Free"
+    : t.priceGbp !== null && code !== null
+      ? formatCurrencyRound(t.priceGbp, code)
+      : null;
+
+  const modifiers: string[] = [];
+  // Max purchase qty — only show when meaningful (cap < 10)
+  if (t.maxPurchaseQty !== null && t.maxPurchaseQty < 10) {
+    modifiers.push(`max ${t.maxPurchaseQty} / buyer`);
+  }
+
+  // Modifiers — short labels for compact sub-line
+  if (t.approvalRequired) modifiers.push("approval");
+  if (t.passwordProtected) modifiers.push("password");
+  if (t.waitlistEnabled) modifiers.push("waitlist");
+  if (!t.allowTransfers) modifiers.push("non-transferable");
+
+  return { price, modifiers };
+};
+
+/**
  * "Free · max 4 / buyer · approval" — sub-line under ticket name.
  *
  * Modifiers compose left-to-right:
@@ -29,32 +61,32 @@ export interface TicketBadge {
  *   waitlist → non-transferable.
  */
 export const formatTicketSubline = (t: TicketStub): string => {
-  const parts: string[] = [];
-
   // Price (always first)
   // #962 G8 — hide the price ("—") when the ticket has no established currency
   // (pre-bank brand); never manufacture GBP. "Free" and null-price unchanged.
-  const ticketCode = currencyCodeOrNull(t.currency);
-  parts.push(
-    t.isFree
-      ? "Free"
-      : t.priceGbp !== null && ticketCode !== null
-        ? formatCurrencyRound(t.priceGbp, ticketCode)
-        : "—",
-  );
+  const { price, modifiers } = ticketSublineParts(t, currencyCodeOrNull(t.currency));
+  return [price ?? "—", ...modifiers].join(" · ");
+};
 
-  // Max purchase qty — only show when meaningful (cap < 10)
-  if (t.maxPurchaseQty !== null && t.maxPurchaseQty < 10) {
-    parts.push(`max ${t.maxPurchaseQty} / buyer`);
-  }
-
-  // Modifiers — short labels for compact sub-line
-  if (t.approvalRequired) parts.push("approval");
-  if (t.passwordProtected) parts.push("password");
-  if (t.waitlistEnabled) parts.push("waitlist");
-  if (!t.allowTransfers) parts.push("non-transferable");
-
-  return parts.join(" · ");
+/**
+ * #3343 — the sub-line on the Tickets step card: "₦25,000 · max 6 / buyer".
+ *
+ * A draft ticket inherits the event's currency and carries none of its own, so
+ * the price resolves with `eventCurrency` when the ticket has none — the same
+ * rule the card's Price box uses. When there is still no price to show, the
+ * slot is left out instead of leading with a "— · " placeholder (the Price box
+ * already says "—" or "Currency not set"). Returns null when there is nothing
+ * to show, so the card renders no sub-line at all.
+ */
+export const formatTicketCardSubline = (
+  t: TicketStub,
+  eventCurrency?: string | null,
+): string | null => {
+  const code =
+    currencyCodeOrNull(t.currency) ?? currencyCodeOrNull(eventCurrency);
+  const { price, modifiers } = ticketSublineParts(t, code);
+  const parts = price !== null ? [price, ...modifiers] : modifiers;
+  return parts.length > 0 ? parts.join(" · ") : null;
 };
 
 /** Capacity display for ticket card stats row. */

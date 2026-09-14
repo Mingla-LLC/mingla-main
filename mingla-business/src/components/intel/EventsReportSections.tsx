@@ -15,6 +15,13 @@ import type {
   TurnoutReport,
 } from "../../types/growthTools";
 import { IntelBandStat } from "./IntelBandStat";
+import {
+  formatTurnoutCount,
+  formatTurnoutDate,
+  formatTurnoutMoney,
+  humanizeTurnoutCopy,
+  turnoutReportCurrency,
+} from "../../utils/turnoutDisplayCopy";
 
 const safePromoCopy = (value: string): string =>
   // Issue #1008 positioning rail: display transform only. Engine truth stays
@@ -40,10 +47,8 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({
   </View>
 );
 
-const number = (value?: number): string =>
-  typeof value === "number" && Number.isFinite(value)
-    ? new Intl.NumberFormat().format(Math.round(value * 100) / 100)
-    : "—";
+// #3342 — counts are grouped ("1,290"); money goes through `money` below.
+const number = (value?: number): string => formatTurnoutCount(value);
 
 const isPaidPlan = (
   plan: TurnoutFreePlan | TurnoutPaidPlan,
@@ -55,6 +60,16 @@ export const EventsReportSections: React.FC<{ report: TurnoutReport }> = ({
 }) => {
   const forecast = report.forecast;
   const plan = report.plan;
+  // #3342 — the report's own currency formats every amount ("₦362,083"), and
+  // engine / AI copy gets the same money + "Tue 13 Oct" date treatment.
+  const currency = turnoutReportCurrency(report);
+  const money = (value?: number): string => formatTurnoutMoney(value, currency);
+  const copy = (value?: string): string | undefined =>
+    value === undefined ? undefined : humanizeTurnoutCopy(value, currency);
+  const generatedOn =
+    report.meta?.generated_at !== undefined
+      ? formatTurnoutDate(report.meta.generated_at)
+      : null;
   return (
     <View style={styles.root} testID="turnout-full-report">
       {forecast !== undefined &&
@@ -70,7 +85,7 @@ export const EventsReportSections: React.FC<{ report: TurnoutReport }> = ({
           />
           <Row
             title={`Confidence: ${forecast.confidence ?? "modeled"}`}
-            body={forecast.headline_read}
+            body={copy(forecast.headline_read)}
           />
         </Section>
       ) : null}
@@ -80,8 +95,8 @@ export const EventsReportSections: React.FC<{ report: TurnoutReport }> = ({
           {report.factors.slice(0, 8).map((factor, index) => (
             <Row
               key={`${factor.key ?? factor.label ?? "factor"}:${index}`}
-              title={factor.label ?? "Signal"}
-              body={factor.detail}
+              title={copy(factor.label) ?? "Signal"}
+              body={copy(factor.detail)}
             />
           ))}
         </Section>
@@ -93,9 +108,11 @@ export const EventsReportSections: React.FC<{ report: TurnoutReport }> = ({
             <Row
               key={`${item.name ?? "event"}-${index}`}
               title={item.name ?? "Nearby event"}
-              body={[item.platform, item.date_note, item.scale_note]
-                .filter(Boolean)
-                .join(" · ")}
+              body={copy(
+                [item.platform, item.date_note, item.scale_note]
+                  .filter(Boolean)
+                  .join(" · "),
+              )}
             />
           ))}
         </Section>
@@ -110,9 +127,11 @@ export const EventsReportSections: React.FC<{ report: TurnoutReport }> = ({
                 [item.name, item.city].filter(Boolean).join(" · ") ||
                 "Comparable"
               }
-              body={[item.turnout_note, item.source_note]
-                .filter(Boolean)
-                .join(" · ")}
+              body={copy(
+                [item.turnout_note, item.source_note]
+                  .filter(Boolean)
+                  .join(" · "),
+              )}
             />
           ))}
         </Section>
@@ -127,8 +146,8 @@ export const EventsReportSections: React.FC<{ report: TurnoutReport }> = ({
           }
         >
           <Row
-            title={report.weather.summary ?? "Weather signal"}
-            body={report.weather.impact}
+            title={copy(report.weather.summary) ?? "Weather signal"}
+            body={copy(report.weather.impact)}
           />
         </Section>
       ) : null}
@@ -138,23 +157,25 @@ export const EventsReportSections: React.FC<{ report: TurnoutReport }> = ({
           {isPaidPlan(plan) ? (
             <>
               <Row
-                title={`Recommended promo budget: ${number(plan.recommended_budget)}`}
+                title={`Recommended promo budget: ${money(plan.recommended_budget)}`}
                 body={
-                  plan.read !== undefined ? safePromoCopy(plan.read) : undefined
+                  plan.read !== undefined
+                    ? copy(safePromoCopy(plan.read))
+                    : undefined
                 }
               />
               {(plan.scenarios ?? []).map((scenario, index) => (
                 <Row
                   key={`${scenario.label ?? "scenario"}-${index}`}
                   title={`${scenario.label ?? "Scenario"}${scenario.recommended ? " · Recommended" : ""}`}
-                  body={`Budget ${number(scenario.budget)} · ${number(scenario.total_attendees)} attendees · ${number(scenario.pct_capacity)}% capacity · Revenue ${number(scenario.revenue)} · Profit ${number(scenario.profit)} · ROAS ${number(scenario.roas)}`}
+                  body={`Budget ${money(scenario.budget)} · ${number(scenario.total_attendees)} attendees · ${number(scenario.pct_capacity)}% capacity · Revenue ${money(scenario.revenue)} · Profit ${money(scenario.profit)} · ROAS ${number(scenario.roas)}`}
                 />
               ))}
             </>
           ) : (
             <Row
-              title={`What a ${number(plan.budget)} promo budget buys`}
-              body={`${number(plan.clicks_low)}–${number(plan.clicks_high)} clicks · ${number(plan.attendees_low)}–${number(plan.attendees_high)} attendees${plan.read !== undefined ? ` · ${safePromoCopy(plan.read)}` : ""}`}
+              title={`What a ${money(plan.budget)} promo budget buys`}
+              body={`${number(plan.clicks_low)}–${number(plan.clicks_high)} clicks · ${number(plan.attendees_low)}–${number(plan.attendees_high)} attendees${plan.read !== undefined ? ` · ${copy(safePromoCopy(plan.read))}` : ""}`}
             />
           )}
         </Section>
@@ -166,12 +187,12 @@ export const EventsReportSections: React.FC<{ report: TurnoutReport }> = ({
             <Row
               key={`${fix.title ?? "fix"}-${index}`}
               title={
-                [fix.title, fix.lift_note].filter(Boolean).join(" · ") ||
+                copy([fix.title, fix.lift_note].filter(Boolean).join(" · ")) ||
                 "Recommendation"
               }
-              body={[fix.why, fix.change, fix.effort]
-                .filter(Boolean)
-                .join(" · ")}
+              body={copy(
+                [fix.why, fix.change, fix.effort].filter(Boolean).join(" · "),
+              )}
             />
           ))}
         </Section>
@@ -195,15 +216,13 @@ export const EventsReportSections: React.FC<{ report: TurnoutReport }> = ({
 
       {typeof report.narrative === "string" && report.narrative.length > 0 ? (
         <Section title="AI read">
-          <Text style={styles.narrative}>{report.narrative}</Text>
+          <Text style={styles.narrative}>{copy(report.narrative)}</Text>
         </Section>
       ) : null}
 
       <Text style={styles.footer}>
         Modeled guidance — not a promise
-        {report.meta?.generated_at !== undefined
-          ? ` · Generated ${new Date(report.meta.generated_at).toLocaleDateString()}`
-          : ""}
+        {generatedOn !== null ? ` · Generated ${generatedOn}` : ""}
       </Text>
     </View>
   );

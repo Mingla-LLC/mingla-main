@@ -6,6 +6,7 @@
  */
 import type { TurnoutReport } from "../types/growthTools";
 import type { TurnoutEngineInput } from "./turnoutInput";
+import { humanizeTurnoutCopy, turnoutReportCurrency } from "./turnoutDisplayCopy";
 
 export type TurnoutGateWizard = "event" | "rsvp" | "experience";
 export type TurnoutGateFocus = "name" | "date" | "city" | "price" | "capacity";
@@ -75,12 +76,15 @@ export const buildTurnoutGateRecommendations = (
   wizard: TurnoutGateWizard,
 ): TurnoutGateRecommendation[] => {
   if (report === null) return [];
+  // #3342 — show engine money and dates as "₦362,083" / "Tue 13 Oct".
+  const currency = turnoutReportCurrency(report, input?.currency);
+  const display = (copy: string): string => humanizeTurnoutCopy(copy, currency);
   const rows: TurnoutGateRecommendation[] = [];
   const fix = report.fixes?.[0];
   if (fix?.title !== undefined && fix.title.trim().length > 0) {
     rows.push({
       id: "fix",
-      copy: fix.title,
+      copy: display(fix.title),
       severity: "info",
       severityWord: "Info",
       target: classifyTurnoutGateTarget(
@@ -93,7 +97,7 @@ export const buildTurnoutGateRecommendations = (
   if (hurt?.label !== undefined && hurt.label.trim().length > 0) {
     rows.push({
       id: "hurt",
-      copy: hurt.label,
+      copy: display(hurt.label),
       severity: "warning",
       severityWord: "Warning",
       target: classifyTurnoutGateTarget(
@@ -115,7 +119,7 @@ export const buildTurnoutGateRecommendations = (
   if ((input?.ticket_price ?? 0) > 0 && report.plan?.read !== undefined) {
     rows.push({
       id: "plan",
-      copy: safePromoCopy(report.plan.read),
+      copy: display(safePromoCopy(report.plan.read)),
       severity: "info",
       severityWord: "Info",
       target: classifyTurnoutGateTarget(report.plan.read, wizard),

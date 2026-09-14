@@ -12,6 +12,7 @@
 // (`resolveOfferingCta`); the inline row keeps its per-tier label by reusing the
 // shared sub-predicates exported here.
 
+import { withCurrencyGlyph } from "./currencyGlyph";
 import type { PublicEventProps, PublicTicketProps } from "./types";
 
 /** A single ticket's per-tier sale-state sub-predicates (shared with the row). */
@@ -133,12 +134,16 @@ const formatPrice = (
   // (unreachable for real data: paid tickets always carry a currency).
   if (currency === null) return price.toFixed(2);
   try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
+    // #3341 — en-US prints "NGN 5,000" for naira; show "₦5,000" like $/£/€.
+    return withCurrencyGlyph(
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      }).format(price),
       currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(price);
+    );
   } catch {
     return `${currency} ${price.toFixed(2)}`;
   }
