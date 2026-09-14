@@ -9,6 +9,13 @@
  * Per-stop price for stop i is the SAME field the Stops step edits (one source).
  * A persistent SoldAsOneSummary makes the single-ticket truth unmissable.
  * WhoCoversCostsSection (the 3 pass/absorb switches) is kept VERBATIM.
+ *
+ * issue #3284 [refund terms] — a REFUND POLICY card follows WhoCoversCostsSection
+ * (money stays together; display settings stay last): the shared
+ * RefundPolicyEditor with experience presets, the honesty helper, and — in live
+ * edit once someone has booked — a read-only warning that terms cannot be made
+ * worse. Identical in create, draft-edit and live-edit; the wizard owns the value
+ * and writes it through the gated refund-terms owner.
  */
 
 import React from "react";
@@ -23,8 +30,13 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
+// issue #3284 [bundle budget] — the editor loads in its own chunk (ORCH-1083);
+// never import ./RefundPolicyEditor statically here.
+import { LazyRefundPolicyEditor as RefundPolicyEditor } from "../trip/LazyRefundPolicyEditor";
+import type { RefundPolicy } from "../../services/refundPolicyService";
 import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import type { PricingSwitchOverrides } from "../../services/pricingSwitchesService";
@@ -67,7 +79,24 @@ export interface ExperiencePricingStepProps {
   setPrivateGuestList: (v: boolean) => void;
   hideRemainingCount: boolean;
   setHideRemainingCount: (v: boolean) => void;
+  /** issue #3284 — the organiser's refund terms (wizard-owned; null = none). */
+  refundPolicy: RefundPolicy | null;
+  setRefundPolicy: (policy: RefundPolicy | null) => void;
+  /**
+   * issue #3284 — confirmed bookings on a LIVE experience (live-edit only). When
+   * above 0 the refund card shows the can't-make-terms-worse warning. Create and
+   * draft-edit pass nothing.
+   */
+  liveSoldCount?: number;
 }
+
+// issue #3284 — design §4.5 organiser copy (experience variants).
+const REFUND_HELPER_PAID =
+  "Guests see these terms before they book. You issue refunds from Orders — Mingla doesn't refund automatically yet.";
+const REFUND_HELPER_FREE =
+  "This experience is free, so guests won't see this unless you add a price.";
+const refundSalesBannerCopy = (n: number): string =>
+  `${n} guest${n === 1 ? "" : "s"} already booked under these terms. More-generous refunds or an extra tier save instantly — but you can't make terms worse for them here.`;
 
 const num = (s: string): number => {
   const v = parseFloat(s);
@@ -101,6 +130,9 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
   setPrivateGuestList,
   hideRemainingCount,
   setHideRemainingCount,
+  refundPolicy,
+  setRefundPolicy,
+  liveSoldCount = 0,
 }) => {
   const n = stops.length;
 
@@ -254,6 +286,44 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         vatRegistered={vatRegistered}
         onSetupVat={onSetupVat}
       />
+
+      {/* issue #3284 — Refund policy (after who-covers-costs, before guest privacy). */}
+      <GlassCard
+        variant="base"
+        radius="lg"
+        padding={spacing.md}
+        testID="experience-pricing-refund-card"
+      >
+        <RefundPolicyEditor
+          offeringType="experience"
+          value={refundPolicy}
+          onChange={setRefundPolicy}
+        />
+      </GlassCard>
+      <Text style={styles.refundHelper} testID="experience-pricing-refund-helper">
+        {isFree || resolvedTotalMajor === 0 ? REFUND_HELPER_FREE : REFUND_HELPER_PAID}
+      </Text>
+      {liveSoldCount > 0 ? (
+        <GlassCard
+          variant="base"
+          radius="lg"
+          padding={spacing.md}
+          style={styles.refundSalesBanner}
+          testID="experience-pricing-refund-sales-banner"
+        >
+          <View style={styles.refundSalesRow}>
+            <Icon
+              name="bell"
+              size={20}
+              color={semantic.warning}
+              strokeWidth={2}
+            />
+            <Text style={styles.refundSalesText}>
+              {refundSalesBannerCopy(liveSoldCount)}
+            </Text>
+          </View>
+        </GlassCard>
+      ) : null}
 
       {/* ORCH-1339 (D5) — Guest privacy settings section, appended after the
           pricing sections. Reuses the file's own ToggleRow (sub-capable).
@@ -436,6 +506,30 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     color: semantic.error,
     marginTop: spacing.xxs,
+  },
+  // issue #3284 — refund honesty helper, pulled 4pt toward the card (parent gap 16).
+  refundHelper: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    marginTop: -spacing.xs,
+  },
+  // issue #3284 — refund sales banner (copied from the trip settings accordion).
+  refundSalesBanner: {
+    borderColor: semantic.warning,
+    borderWidth: 1,
+    backgroundColor: semantic.warningTint,
+  },
+  refundSalesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  refundSalesText: {
+    flex: 1,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    color: textTokens.primary,
   },
 });
 

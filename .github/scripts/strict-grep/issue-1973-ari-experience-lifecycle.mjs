@@ -156,10 +156,11 @@ function check(s) {
   // certification denominator while this owner still proves one missing row.
   // [TEST-MOD-APPROVED #1980] Three marketing/growth tools; 132→135 / 131→134.
   // [TEST-MOD-APPROVED #1981] Refund preview + trip installments; 135→137 / 134→136.
-  requireAll("137-capability certification proof", s.certificationTest, [
+  // [TEST-MOD-APPROVED #1982] Brand invitation revoke; 137→138 / 136→137.
+  requireAll("138-capability certification proof", s.certificationTest, [
     "ari.experience.unpublish",
-    "ari_cert_missing_capabilities:136",
-    "expected exactly 137 certification requirements",
+    "ari_cert_missing_capabilities:137",
+    "expected exactly 138 certification requirements",
   ]);
   requireAll("public payload Edge proof", s.publicPayloadTest, [
     '"update_experience"',
@@ -261,7 +262,7 @@ if (process.argv.includes("--self-test")) {
     {
       ...sources,
       certificationTest: sources.certificationTest.replace(
-        "ari_cert_missing_capabilities:136",
+        "ari_cert_missing_capabilities:137",
         "accepted_obsolete_inventory",
       ),
     },

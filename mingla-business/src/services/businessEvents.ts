@@ -39,6 +39,13 @@ import {
 } from "../utils/serverDraftEventMapper";
 // ORCH-0808 — organizer-funnel instrumentation.
 import { logAppsFlyerEvent } from "./appsFlyerService";
+// issue #3284 — the gated refund-terms owner (its writer chunk loads lazily
+// through refundPolicyWrites, ORCH-1083) and the pure shape check (deep
+// specifier: a partial barrel mock cannot blank it).
+import type { RefundPolicy } from "./refundPolicyModel";
+import { setOfferingRefundPolicy } from "./refundPolicyWrites";
+import { parseOfferingRefundPolicy } from "@mingla/offering-rendering/offeringRefundPolicy";
+import { OfferingRefundTermsError } from "../utils/refundPolicyTerms";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -651,6 +658,9 @@ export const fetchBusinessEventsForBrand = async (
     string,
     "event" | "experience" | "trip" | "rsvp"
   >();
+  // issue #3284 — the organiser's refund terms from the same probe, so a live
+  // event opened from the list edits against its REAL terms.
+  const refundPolicyById = new Map<string, RefundPolicy | null | undefined>();
   // ORCH-1150 — per-RSVP host-control snapshot from the same probe.
   const rsvpMetaById = new Map<
     string,
@@ -676,7 +686,7 @@ export const fetchBusinessEventsForBrand = async (
     const typesResp = await supabase
       .from("events")
       .select(
-        "id, event_type, rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable, rsvp_contribution_enabled, rsvp_contribution_suggested_cents, rsvp_contribution_min_cents",
+        "id, event_type, rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable, rsvp_contribution_enabled, rsvp_contribution_suggested_cents, rsvp_contribution_min_cents, refund_policy",
       )
       .in("id", ids);
     if (typesResp.error !== null) throw typesResp.error;
@@ -695,9 +705,12 @@ export const fetchBusinessEventsForBrand = async (
       rsvp_contribution_enabled: boolean | null;
       rsvp_contribution_suggested_cents: number | null;
       rsvp_contribution_min_cents: number | null;
+      // issue #3284 — events.refund_policy (jsonb; not on the generated types).
+      refund_policy?: unknown;
     }>) {
       const t = r.event_type ?? "event";
       eventTypeById.set(r.id, t);
+      refundPolicyById.set(r.id, refundPolicyFromColumn(r.refund_policy));
       if (t === "trip") tripIds.add(r.id);
       if (t === "rsvp") {
         rsvpIds.push(r.id);
@@ -746,14 +759,38 @@ export const fetchBusinessEventsForBrand = async (
     filteredRows.map((row) => fetchTicketsForEvent(row.id)),
   );
   return filteredRows.map((row, idx) =>
-    eventFromRow(
-      row,
-      ticketLists[idx] ?? [],
-      eventTypeById.get(row.id) ?? "event",
-      rsvpMetaById.get(row.id) ?? null,
+    withRefundPolicy(
+      eventFromRow(
+        row,
+        ticketLists[idx] ?? [],
+        eventTypeById.get(row.id) ?? "event",
+        rsvpMetaById.get(row.id) ?? null,
+      ),
+      refundPolicyById.get(row.id),
     ),
   );
 };
+
+/**
+ * issue #3284 — read `events.refund_policy` into the live model's three states:
+ * a policy, null (the organiser set no terms), or undefined (UNKNOWN — the column
+ * was not read, or holds a value the database could never store). Unknown is
+ * never collapsed into "no terms" (I-3284-UNKNOWN-IS-NOT-NONE).
+ */
+const refundPolicyFromColumn = (
+  raw: unknown,
+): RefundPolicy | null | undefined => {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  return parseOfferingRefundPolicy(raw) ?? undefined;
+};
+
+/** Attach the probe's refund terms to a LiveEvent (unknown leaves the key off). */
+const withRefundPolicy = (
+  event: LiveEvent,
+  refundPolicy: RefundPolicy | null | undefined,
+): LiveEvent =>
+  refundPolicy === undefined ? event : { ...event, refundPolicy };
 
 export const fetchBusinessEventById = async (
   eventId: string,
@@ -779,7 +816,9 @@ export const fetchBusinessEventById = async (
       "id, event_type, pass_tax, pass_mingla_fee, pass_service_fee, " +
         "rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, " +
         "rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable, " +
-        "rsvp_contribution_enabled, rsvp_contribution_suggested_cents, rsvp_contribution_min_cents",
+        "rsvp_contribution_enabled, rsvp_contribution_suggested_cents, rsvp_contribution_min_cents, " +
+        // issue #3284 — the refund terms the edit surface diffs and gates against.
+        "refund_policy",
     )
     .eq("id", eventId)
     .maybeSingle();
@@ -803,6 +842,8 @@ export const fetchBusinessEventById = async (
     rsvp_contribution_enabled?: boolean | null;
     rsvp_contribution_suggested_cents?: number | null;
     rsvp_contribution_min_cents?: number | null;
+    // issue #3284 — events.refund_policy (jsonb; not on the generated types).
+    refund_policy?: unknown;
   } | null;
   if (probeRow !== null && probeRow.event_type === "trip") {
     return null;
@@ -856,6 +897,14 @@ export const fetchBusinessEventById = async (
       passMinglaFee: rawSwitches.pass_mingla_fee ?? null,
       passServiceFee: rawSwitches.pass_service_fee ?? null,
     };
+  }
+  // issue #3284 — the refund terms, so EditPublishedScreen edits and diffs against
+  // what is actually published (and the refund sheet can pre-fill from them).
+  if (probeRow !== null) {
+    detail.event = withRefundPolicy(
+      detail.event,
+      refundPolicyFromColumn(probeRow.refund_policy),
+    );
   }
   return detail;
 };
@@ -988,6 +1037,25 @@ export const publishBusinessEventDraft = async (
   draft: DraftEvent,
   clientRevision: number | null = draft.clientRevision ?? null,
 ): Promise<PublishedBusinessEvent> => {
+  // ══ issue #3284 — refund terms FIRST, fail closed ════════════════════════
+  // The organiser's terms are written to events.refund_policy through the one
+  // gated owner (a draft row takes them with no reason and no sales gate) BEFORE
+  // the event goes public. A refusal or a thrown error stops the publish: a
+  // published event must never silently lose the terms the organiser chose. A
+  // draft with no terms makes no call at all, so organisers who never touch the
+  // refund card publish exactly as before — even against a server that does not
+  // have the owner yet.
+  const refundPolicy = draft.refundPolicy ?? null;
+  if (refundPolicy !== null) {
+    const refundResult = await setOfferingRefundPolicy(draft.id, refundPolicy, null);
+    if (!refundResult.ok) {
+      throw new OfferingRefundTermsError(
+        refundResult.reason,
+        refundResult.affectedOrderCount,
+      );
+    }
+  }
+
   const payload = draftToServerUpdate(draft, {});
   const { data, error } = await supabase.rpc(
     "issue_1719_publish_event_with_poster",

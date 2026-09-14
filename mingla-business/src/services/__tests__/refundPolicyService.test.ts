@@ -43,11 +43,11 @@ jest.mock("../supabase", () => ({
   },
 }));
 
-import {
-  STANDARD_POLICY,
-  updateRefundPolicy,
-  type RefundPolicy,
-} from "../refundPolicyService";
+// [TEST-MOD-APPROVED #3284] Import path only: STANDARD_POLICY and the RefundPolicy
+// type moved to refundPolicyModel.ts (bundle budget, ORCH-1083). The validator
+// assertions are unchanged and still run against refundPolicyService.
+import { STANDARD_POLICY, type RefundPolicy } from "../refundPolicyModel";
+import { updateRefundPolicy } from "../refundPolicyService";
 
 const EVENT_ID = "00000000-0000-0000-0000-000000000001";
 

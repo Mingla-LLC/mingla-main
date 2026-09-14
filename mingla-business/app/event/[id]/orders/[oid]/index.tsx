@@ -53,7 +53,14 @@ import { IconChrome } from "../../../../../src/components/ui/IconChrome";
 import { Toast } from "../../../../../src/components/ui/Toast";
 
 // ORCH-0787: real refund + cancel sheets (replacing stubbed onPress toasts).
-import { RefundSheet } from "../../../../../src/components/orders/RefundSheet";
+import {
+  RefundSheet,
+  type RefundSheetRefundTerms,
+} from "../../../../../src/components/orders/RefundSheet";
+// issue #3284 — the offering's occurrences (same cached read the guest roster
+// uses) and the rule for which start an order's refund window counts from.
+import { usePublicEventById } from "../../../../../src/hooks/usePublicEvents";
+import { resolveOrderRefundStartAt } from "../../../../../src/utils/refundPolicyPrefill";
 import { CancelOrderDialog } from "../../../../../src/components/orders/CancelOrderDialog";
 
 // ORCH-0787: derive primary-action visibility per Cycle 9c §3.4.2.
@@ -189,6 +196,11 @@ export default function OrderDetailRoute(): React.ReactElement {
     typeof eventId === "string" ? eventId : null,
   );
   const event = routeEvent.event;
+  // issue #3284 — occurrences for the refund-terms caption (per-day orders count
+  // from their earliest day). Keyed like every other public read of this event.
+  const publicEventQuery = usePublicEventById(
+    typeof eventId === "string" ? eventId : null,
+  );
 
   const [resendSubmitting, setResendSubmitting] = useState<boolean>(false);
   // ORCH-0787: real sheet/dialog state replacing the hardcoded `false` action flags.
@@ -216,6 +228,24 @@ export default function OrderDetailRoute(): React.ReactElement {
       router.replace(`/event/${eventId}/orders` as never);
     }
   }, [router, eventId]);
+
+  // issue #3284 — what the refund sheet needs to caption the published refund
+  // terms. Events and experiences only (trips keep their own cancellation flow);
+  // an event whose terms were never read stays `undefined` → no caption.
+  const refundTerms = useMemo<RefundSheetRefundTerms | undefined>(() => {
+    if (order === null || event === null) return undefined;
+    const eventType = event.event_type ?? "event";
+    if (eventType !== "event" && eventType !== "experience") return undefined;
+    return {
+      policy: event.refundPolicy,
+      offeringType: eventType,
+      startsAt: resolveOrderRefundStartAt({
+        orderDayIds: (order.ticketDays ?? []).flatMap((t) => t.eventDateIds),
+        occurrences: publicEventQuery.data?.occurrences ?? [],
+        fallbackStartAt: event.masterStartAtUtc ?? null,
+      }),
+    };
+  }, [order, event, publicEventQuery.data?.occurrences]);
 
   // ---- canResend (J-M6 visibility) ----
   const canResend = useMemo<boolean>(() => {
@@ -577,6 +607,7 @@ export default function OrderDetailRoute(): React.ReactElement {
           visible={refundSheetMode !== null}
           mode={refundSheetMode}
           order={order}
+          refundTerms={refundTerms}
           onClose={() => setRefundSheetMode(null)}
           onSuccess={(amountGbp) => {
             // #1360: close the sheet FIRST, then defer the confirmation toast

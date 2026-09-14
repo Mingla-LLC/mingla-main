@@ -50,6 +50,7 @@ import {
 } from "../utils/serverDraftAutosaveGuards";
 import type { EventCoverMediaProvider } from "../types/eventCoverProvider";
 import type { LiveEvent } from "./liveEventStore";
+import type { RefundPolicy } from "../services/refundPolicyService";
 import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-rendering";
 
 /**
@@ -379,6 +380,16 @@ export interface DraftEvent {
     passServiceFee: boolean | null;
   };
   // Step 6 — Settings
+  /**
+   * issue #3284 [refund terms] — the organiser's refund terms for this event, or
+   * null for "no terms". Authored in Step 6 Settings; written to
+   * `events.refund_policy` through the gated `business_patch_offering_refund_policy`
+   * owner BEFORE publish (fail closed). Round-trips through `business_draft` so an
+   * autosave echo never wipes it. Optional on the type for the same reason as
+   * `coverGallery`: every existing fixture stays valid; DEFAULT_DRAFT_FIELDS and the
+   * persist v13→v14 backfill set null, and every read defaults `?? null`.
+   */
+  refundPolicy?: RefundPolicy | null;
   visibility: DraftEventVisibility;
   requireApproval: boolean;
   allowTransfers: boolean;
@@ -510,6 +521,8 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   coverGallery: [],
   currency: null,
   tickets: [],
+  // issue #3284 — no refund terms until the organiser picks some.
+  refundPolicy: null,
   visibility: "public",
   requireApproval: false,
   allowTransfers: true,
@@ -812,6 +825,159 @@ const withProviderMetadataDefaults = (draft: DraftEvent): DraftEvent => ({
   rsvpContributionMinCents: draft.rsvpContributionMinCents ?? null,
 });
 
+/**
+ * issue #3284 — v13 → v14. Every draft stored before refund terms existed has no
+ * `refundPolicy` key; it becomes null ("no terms"), which is exactly what such a
+ * draft means. A draft that already carries terms keeps them. Runs after the
+ * legacy chain below, so a store migrating from ANY older version lands on v14.
+ */
+const backfillRefundPolicy = (state: PersistedState): PersistedState => ({
+  ...state,
+  drafts: (state.drafts ?? []).map(
+    (draft): DraftEvent => ({ ...draft, refundPolicy: draft.refundPolicy ?? null }),
+  ),
+});
+
+/** The v1…v13 migration chain, unchanged — issue #3284 appends v14 on top of it. */
+function migrateDraftsToV13(persistedState: unknown, version: number): PersistedState {
+  if (version < 1) {
+    return { drafts: [] };
+  }
+  if (version === 1) {
+    // v1 → v7: chain v1→v2 → v3 → v4 → v5 → v6 → v7
+    const v1 = persistedState as { drafts: V1DraftEvent[] };
+    const v2Drafts = v1.drafts.map(upgradeV1DraftToV2);
+    const v3Drafts = v2Drafts.map(upgradeV2DraftToV3);
+    const v4Drafts = v3Drafts.map(upgradeV3DraftToV4);
+    const v5Drafts = v4Drafts.map(upgradeV4DraftToV5);
+    const v6Drafts = v5Drafts.map(upgradeV5DraftToV6);
+    return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
+  }
+  if (version === 2) {
+    const v2 = persistedState as { drafts: V2DraftEvent[] };
+    const v3Drafts = v2.drafts.map(upgradeV2DraftToV3);
+    const v4Drafts = v3Drafts.map(upgradeV3DraftToV4);
+    const v5Drafts = v4Drafts.map(upgradeV4DraftToV5);
+    const v6Drafts = v5Drafts.map(upgradeV5DraftToV6);
+    return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
+  }
+  if (version === 3) {
+    const v3 = persistedState as { drafts: V3DraftEvent[] };
+    const v4Drafts = v3.drafts.map(upgradeV3DraftToV4);
+    const v5Drafts = v4Drafts.map(upgradeV4DraftToV5);
+    const v6Drafts = v5Drafts.map(upgradeV5DraftToV6);
+    return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
+  }
+  if (version === 4) {
+    const v4 = persistedState as { drafts: V4DraftEvent[] };
+    const v5Drafts = v4.drafts.map(upgradeV4DraftToV5);
+    const v6Drafts = v5Drafts.map(upgradeV5DraftToV6);
+    return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
+  }
+  if (version === 5) {
+    const v5 = persistedState as { drafts: V5DraftEvent[] };
+    const v6Drafts = v5.drafts.map(upgradeV5DraftToV6);
+    return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
+  }
+  if (version === 6) {
+    const v6 = persistedState as { drafts: V6DraftEvent[] };
+    return { drafts: v6.drafts.map(upgradeV6DraftToV7) };
+  }
+  if (version === 7) {
+    const v7 = persistedState as { drafts: Array<Omit<DraftEvent, "serverSlug">> };
+    return {
+      drafts: v7.drafts.map((draft) => withProviderMetadataDefaults({
+        ...draft,
+        serverSlug: null,
+        currency: null,
+      } as DraftEvent)),
+    };
+  }
+  if (version === 8) {
+    const v8 = persistedState as { drafts: Array<Omit<DraftEvent, "currency">> };
+    return {
+      drafts: v8.drafts.map((draft) =>
+        withProviderMetadataDefaults({ ...draft, currency: null } as DraftEvent),
+      ),
+    };
+  }
+  if (version === 9) {
+    const v9 = persistedState as { drafts: DraftEvent[] };
+    return { drafts: v9.drafts.map(withProviderMetadataDefaults) };
+  }
+  if (version === 10) {
+    // ORCH-0877 — v10 → v11: backfill endsAtUtc on legacy drafts via
+    // smart-infer (cross-midnight aware). Drafts where any input is null
+    // default to endsAtUtc: null.
+    const v10 = persistedState as {
+      drafts: Array<Omit<DraftEvent, "endsAtUtc">>;
+    };
+    return {
+      // ORCH-1150 — also backfill the additive RSVP defaults on a v10 store so
+      // a v10 → v12 hydration (which runs only this branch) never lands with
+      // undefined rsvp fields. withProviderMetadataDefaults adds both.
+      drafts: v10.drafts.map((draft): DraftEvent => withProviderMetadataDefaults({
+        ...draft,
+        endsAtUtc: computeEndsAtUtcWithSmartInfer(
+          draft.date,
+          draft.doorsOpen,
+          draft.endsAt,
+          draft.timezone,
+        ),
+      } as DraftEvent)),
+    };
+  }
+  if (version === 11) {
+    // ORCH-1150 — v11 → v12: backfill the additive RSVP fields. Every legacy
+    // draft is a ticketed event → isRsvp:false + RSVP defaults. No data loss.
+    const v11 = persistedState as {
+      drafts: Array<
+        Omit<
+          DraftEvent,
+          | "isRsvp"
+          | "rsvpCapacity"
+          | "rsvpAllowPlusOnes"
+          | "rsvpPlusOnesMax"
+          | "rsvpWaitlistEnabled"
+          | "rsvpApprovalMode"
+          | "rsvpDiscoverable"
+        >
+      >;
+    };
+    return {
+      drafts: v11.drafts.map((d): DraftEvent => ({
+        ...d,
+        isRsvp: false,
+        rsvpCapacity: null,
+        rsvpAllowPlusOnes: false,
+        rsvpPlusOnesMax: 0,
+        rsvpWaitlistEnabled: false,
+        rsvpApprovalMode: "auto",
+        rsvpDiscoverable: false,
+        rsvpContributionEnabled: false,
+        rsvpContributionSuggestedCents: null,
+        rsvpContributionMinCents: null,
+        // issue #868 — v11 predates the cover gallery.
+        coverGallery: [],
+      })),
+    };
+  }
+  if (version === 12) {
+    // issue #868 — v12 → v13: backfill the additive cover gallery. Every legacy
+    // draft predates it → coverGallery:[] = single-cover behavior. No data loss.
+    const v12 = persistedState as {
+      drafts: Array<Omit<DraftEvent, "coverGallery">>;
+    };
+    return {
+      drafts: v12.drafts.map((d): DraftEvent => ({
+        ...(d as DraftEvent),
+        coverGallery: [],
+      })),
+    };
+  }
+  return persistedState as PersistedState;
+}
+
 const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
   // Store name unchanged (".v1") — versions are tracked by `version`,
   // and renaming the storage key would orphan existing user drafts.
@@ -825,146 +991,12 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
   // ORCH-1150 — v11 → v12 backfills the additive RSVP fields (isRsvp:false +
   // RSVP defaults) on legacy drafts; all existing drafts are ticketed events.
   // issue #868 — v12 → v13 backfills the additive cover gallery (coverGallery:[]).
-  version: 13,
-  migrate: (persistedState, version): PersistedState => {
-    if (version < 1) {
-      return { drafts: [] };
-    }
-    if (version === 1) {
-      // v1 → v7: chain v1→v2 → v3 → v4 → v5 → v6 → v7
-      const v1 = persistedState as { drafts: V1DraftEvent[] };
-      const v2Drafts = v1.drafts.map(upgradeV1DraftToV2);
-      const v3Drafts = v2Drafts.map(upgradeV2DraftToV3);
-      const v4Drafts = v3Drafts.map(upgradeV3DraftToV4);
-      const v5Drafts = v4Drafts.map(upgradeV4DraftToV5);
-      const v6Drafts = v5Drafts.map(upgradeV5DraftToV6);
-      return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
-    }
-    if (version === 2) {
-      const v2 = persistedState as { drafts: V2DraftEvent[] };
-      const v3Drafts = v2.drafts.map(upgradeV2DraftToV3);
-      const v4Drafts = v3Drafts.map(upgradeV3DraftToV4);
-      const v5Drafts = v4Drafts.map(upgradeV4DraftToV5);
-      const v6Drafts = v5Drafts.map(upgradeV5DraftToV6);
-      return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
-    }
-    if (version === 3) {
-      const v3 = persistedState as { drafts: V3DraftEvent[] };
-      const v4Drafts = v3.drafts.map(upgradeV3DraftToV4);
-      const v5Drafts = v4Drafts.map(upgradeV4DraftToV5);
-      const v6Drafts = v5Drafts.map(upgradeV5DraftToV6);
-      return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
-    }
-    if (version === 4) {
-      const v4 = persistedState as { drafts: V4DraftEvent[] };
-      const v5Drafts = v4.drafts.map(upgradeV4DraftToV5);
-      const v6Drafts = v5Drafts.map(upgradeV5DraftToV6);
-      return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
-    }
-    if (version === 5) {
-      const v5 = persistedState as { drafts: V5DraftEvent[] };
-      const v6Drafts = v5.drafts.map(upgradeV5DraftToV6);
-      return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
-    }
-    if (version === 6) {
-      const v6 = persistedState as { drafts: V6DraftEvent[] };
-      return { drafts: v6.drafts.map(upgradeV6DraftToV7) };
-    }
-    if (version === 7) {
-      const v7 = persistedState as { drafts: Array<Omit<DraftEvent, "serverSlug">> };
-      return {
-        drafts: v7.drafts.map((draft) => withProviderMetadataDefaults({
-          ...draft,
-          serverSlug: null,
-          currency: null,
-        } as DraftEvent)),
-      };
-    }
-    if (version === 8) {
-      const v8 = persistedState as { drafts: Array<Omit<DraftEvent, "currency">> };
-      return {
-        drafts: v8.drafts.map((draft) =>
-          withProviderMetadataDefaults({ ...draft, currency: null } as DraftEvent),
-        ),
-      };
-    }
-    if (version === 9) {
-      const v9 = persistedState as { drafts: DraftEvent[] };
-      return { drafts: v9.drafts.map(withProviderMetadataDefaults) };
-    }
-    if (version === 10) {
-      // ORCH-0877 — v10 → v11: backfill endsAtUtc on legacy drafts via
-      // smart-infer (cross-midnight aware). Drafts where any input is null
-      // default to endsAtUtc: null.
-      const v10 = persistedState as {
-        drafts: Array<Omit<DraftEvent, "endsAtUtc">>;
-      };
-      return {
-        // ORCH-1150 — also backfill the additive RSVP defaults on a v10 store so
-        // a v10 → v12 hydration (which runs only this branch) never lands with
-        // undefined rsvp fields. withProviderMetadataDefaults adds both.
-        drafts: v10.drafts.map((draft): DraftEvent => withProviderMetadataDefaults({
-          ...draft,
-          endsAtUtc: computeEndsAtUtcWithSmartInfer(
-            draft.date,
-            draft.doorsOpen,
-            draft.endsAt,
-            draft.timezone,
-          ),
-        } as DraftEvent)),
-      };
-    }
-    if (version === 11) {
-      // ORCH-1150 — v11 → v12: backfill the additive RSVP fields. Every legacy
-      // draft is a ticketed event → isRsvp:false + RSVP defaults. No data loss.
-      const v11 = persistedState as {
-        drafts: Array<
-          Omit<
-            DraftEvent,
-            | "isRsvp"
-            | "rsvpCapacity"
-            | "rsvpAllowPlusOnes"
-            | "rsvpPlusOnesMax"
-            | "rsvpWaitlistEnabled"
-            | "rsvpApprovalMode"
-            | "rsvpDiscoverable"
-          >
-        >;
-      };
-      return {
-        drafts: v11.drafts.map((d): DraftEvent => ({
-          ...d,
-          isRsvp: false,
-          rsvpCapacity: null,
-          rsvpAllowPlusOnes: false,
-          rsvpPlusOnesMax: 0,
-          rsvpWaitlistEnabled: false,
-          rsvpApprovalMode: "auto",
-          rsvpDiscoverable: false,
-          rsvpContributionEnabled: false,
-          rsvpContributionSuggestedCents: null,
-          rsvpContributionMinCents: null,
-          // issue #868 — v11 predates the cover gallery.
-          coverGallery: [],
-        })),
-      };
-    }
-    if (version === 12) {
-      // issue #868 — v12 → v13: backfill the additive cover gallery. Every legacy
-      // draft predates it → coverGallery:[] = single-cover behavior. No data loss.
-      const v12 = persistedState as {
-        drafts: Array<Omit<DraftEvent, "coverGallery">>;
-      };
-      return {
-        drafts: v12.drafts.map((d): DraftEvent => ({
-          ...(d as DraftEvent),
-          coverGallery: [],
-        })),
-      };
-    }
-    return persistedState as PersistedState;
-  },
+  // issue #3284 — v13 → v14 backfills the additive refund terms (refundPolicy:null).
+  version: 14,
+  migrate: (persistedState, version): PersistedState =>
+    backfillRefundPolicy(migrateDraftsToV13(persistedState, version)),
 };
+
 
 export const useDraftEventStore = create<DraftEventState>()(
   persist(

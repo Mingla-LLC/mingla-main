@@ -226,6 +226,8 @@ export default function EventPreviewRoute(): React.ReactElement {
         occurrences={buyerPreview.occurrences}
         isMultiDate={draft.whenMode === "multi_date"}
         multiDatePricingMode={draft.multiDatePricingMode ?? "per_day"}
+        // issue #3284 — preview the organiser's refund terms as guests will see them.
+        refundPolicy={draft.refundPolicy ?? null}
         onClose={handleClose}
         onShare={() => setToast({
           visible: true,
