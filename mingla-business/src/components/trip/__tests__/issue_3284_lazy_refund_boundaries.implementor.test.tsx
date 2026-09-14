@@ -14,7 +14,10 @@
 //         "Couldn't save policy. Try again." for trips — reported, with nothing
 //         sent; a loaded chunk delegates to the real writer unchanged.
 //   LL-*  LazyOfferingRefundLadder: nothing loads the ladder until a body mounts it
-//         (no load at module evaluation), then it renders exactly the ladder's
+//         (no load at module evaluation); until it loads, the section reserves
+//         exactly the loaded ladder's height (style-derived, for 1 tier, 3 tiers,
+//         no refunds, the paid no-terms disclosure and a trip deadline), so the
+//         content below does not move; then it renders exactly the ladder's
 //         output, and every later mount gets it on the first frame.
 //   LB-*  The boundary itself: no app or package module imports the editor, the
 //         writers or the ladder statically; only their one lazy owner loads each.
@@ -122,7 +125,11 @@ import {
 // eslint-disable-next-line import/first
 import { OfferingRefundLadder } from "../../../../../packages/offering-rendering/OfferingRefundLadder";
 // eslint-disable-next-line import/first
-import { LazyOfferingRefundLadder } from "../../../../../packages/offering-rendering/LazyOfferingRefundLadder";
+import {
+  LazyOfferingRefundLadder,
+  loadOfferingRefundLadder,
+  reservedLadderHeight,
+} from "../../../../../packages/offering-rendering/LazyOfferingRefundLadder";
 
 const REPO_ROOT = path.join(__dirname, "..", "..", "..", "..", "..");
 
@@ -291,7 +298,7 @@ describe("#3284 LL — LazyOfferingRefundLadder", () => {
     tertiaryText: { color: "#8a8f99" },
   } as never;
 
-  test("LL-1 nothing loads the ladder before a body mounts it; then it renders exactly the ladder's output, and later mounts get it on the first frame", async () => {
+  test("LL-1 nothing loads the ladder before a body mounts it; the section holds its space, then renders exactly the ladder's output, and later mounts get it on the first frame", async () => {
     const props = {
       policy: EVENT_STANDARD_POLICY,
       offeringType: "event" as const,
@@ -307,8 +314,14 @@ describe("#3284 LL — LazyOfferingRefundLadder", () => {
     });
     // First mount in this file: had anything loaded the chunk when the module was
     // evaluated (the business-web bodies are evaluated at boot on every route), the
-    // ladder would already be here.
-    expect(lazy.toJSON()).toBeNull();
+    // ladder would already be here instead of its reserved space.
+    const reservedRoot = lazy.toJSON() as { type: string; props: { style?: unknown }; children: unknown };
+    expect({ type: reservedRoot.type, style: reservedRoot.props.style, children: reservedRoot.children }).toEqual({
+      type: "View",
+      style: { height: reservedLadderHeight({ ...props }) },
+      children: null,
+    });
+    expect(textOf(lazy)).toBe("");
     await flush();
     expect(textOf(lazy)).toContain("Cancellation policy");
     expect(lazy.toJSON()).toEqual(direct.toJSON());
@@ -318,6 +331,71 @@ describe("#3284 LL — LazyOfferingRefundLadder", () => {
       again = TestRenderer.create(<LazyOfferingRefundLadder {...props} />);
     });
     expect(again.toJSON()).toEqual(direct.toJSON());
+  });
+
+  // A style-derived layout of a rendered tree: react-test-renderer has no layout
+  // engine, so heights come from the styles the tree actually carries. A View
+  // stacks its children (or takes the tallest in a row), adds padding and borders,
+  // or uses its explicit height; a Text is one line of `lineHeight`, else 1.2× its
+  // font size; vertical margins are added. The same rule applies to both trees.
+  const flatStyle = (style: unknown): Record<string, unknown> =>
+    Array.isArray(style)
+      ? Object.assign({}, ...style.map(flatStyle))
+      : style !== null && typeof style === "object"
+        ? (style as Record<string, unknown>)
+        : {};
+  const px = (value: unknown): number => (typeof value === "number" ? value : 0);
+  const outerHeight = (node: TestInstance | string): number => {
+    if (typeof node === "string") return 0;
+    const children = node.children.filter((c): c is TestInstance => typeof c !== "string");
+    if (typeof node.type !== "string") return children.reduce((sum, c) => sum + outerHeight(c), 0);
+    const st = flatStyle(node.props.style);
+    const margins = px(st.marginTop ?? st.marginVertical) + px(st.marginBottom ?? st.marginVertical);
+    if (node.type === "Text") {
+      return (typeof st.lineHeight === "number" ? st.lineHeight : (typeof st.fontSize === "number" ? st.fontSize : 14) * 1.2) + margins;
+    }
+    const heights = children.map(outerHeight);
+    const content = st.flexDirection === "row" ? Math.max(0, ...heights) : heights.reduce((a, b) => a + b, 0);
+    const inner =
+      typeof st.height === "number"
+        ? st.height
+        : content +
+          px(st.paddingTop ?? st.paddingVertical) +
+          px(st.paddingBottom ?? st.paddingVertical) +
+          px(st.borderTopWidth) +
+          px(st.borderBottomWidth);
+    return inner + margins;
+  };
+  const treeHeight = (tree: Renderer): number =>
+    tree.root.children.reduce((sum: number, c) => sum + outerHeight(c as TestInstance | string), 0);
+
+  test("LL-2 the reserved space is exactly the loaded ladder's height: 1 tier, 3 tiers, no refunds, no terms on a paid offering, and a trip deadline", async () => {
+    await loadOfferingRefundLadder();
+    const cases = [
+      { name: "1 tier", props: { policy: { kind: "custom" as const, tiers: [{ days_before_start: 7, refund_pct: 100 }] }, offeringType: "event" as const } },
+      { name: "3 tiers", props: { policy: EVENT_STANDARD_POLICY, offeringType: "experience" as const } },
+      { name: "no refunds", props: { policy: { kind: "custom" as const, tiers: [{ days_before_start: 0, refund_pct: 0 }] }, offeringType: "event" as const } },
+      { name: "paid, no terms", props: { policy: null, offeringType: "experience" as const, isPaid: true } },
+      { name: "trip, 2 tiers + deadline", props: { policy: { kind: "flexible" as const, tiers: [{ days_before_start: 30, refund_pct: 100 }, { days_before_start: 0, refund_pct: 0 }] }, bookingDeadline: "2027-01-10T12:00:00.000Z" } },
+    ];
+    for (const { name, props } of cases) {
+      let ladderTree!: Renderer;
+      act(() => {
+        ladderTree = TestRenderer.create(
+          <OfferingRefundLadder {...props} hostName="Sunset Collective" palette={palette} surface={surface} />,
+        );
+      });
+      const ladderHeight = treeHeight(ladderTree);
+      const reserved = reservedLadderHeight({ ...props, palette, surface });
+      expect({ name, reserved: Math.round(reserved * 10) / 10 }).toEqual({
+        name,
+        reserved: Math.round(ladderHeight * 10) / 10,
+      });
+      expect(ladderHeight).toBeGreaterThan(0);
+    }
+    // And when the ladder renders nothing, nothing is reserved.
+    expect(reservedLadderHeight({ policy: null, offeringType: "event", isPaid: false, palette, surface })).toBe(0);
+    expect(reservedLadderHeight({ policy: null, palette, surface })).toBe(0);
   });
 });
 

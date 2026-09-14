@@ -305,13 +305,10 @@ export type {
   TripRefundLadderProps,
 } from "./OfferingRefundLadder";
 // #3284 — the three-state refund-terms reader (I-3284-UNKNOWN-IS-NOT-NONE). Apps
-// import it by the DEEP specifier `@mingla/offering-rendering/offeringRefundPolicy`
-// (a partial barrel mock cannot blank it); it is listed here for completeness.
-export {
-  parseOfferingRefundPolicy,
-  readRefundPolicyState,
-  UNKNOWN_REFUND_POLICY_STATE,
-} from "./offeringRefundPolicy";
+// import its functions by the DEEP specifier
+// `@mingla/offering-rendering/offeringRefundPolicy` (a partial barrel mock cannot
+// blank it), so the barrel carries only its types: re-exporting the values here
+// added boot-payload bytes no import used (ORCH-1083).
 export type {
   OfferingRefundPolicy,
   OfferingRefundTier,

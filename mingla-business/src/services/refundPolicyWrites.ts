@@ -39,9 +39,9 @@ async function withWriters<T>(
   try {
     writers = await import("./refundPolicyService");
   } catch (thrown) {
-    reportNonFatal("refundPolicyWrites", thrown, { issue: "3284" });
+    reportNonFatal("refundPolicyWrites", thrown);
     return onLoadFailure(
-      `refund policy writer chunk failed to load: ${
+      `writer chunk failed to load: ${
         thrown instanceof Error ? thrown.message : String(thrown)
       }`,
     );

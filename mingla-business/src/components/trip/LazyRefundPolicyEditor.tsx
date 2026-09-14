@@ -61,7 +61,7 @@ export const LazyRefundPolicyEditor: React.FC<RefundPolicyEditorProps> = (props)
         if (live) setEditorModule(module);
       },
       (error: unknown) => {
-        reportNonFatal("LazyRefundPolicyEditor", error, { issue: "3284" });
+        reportNonFatal("LazyRefundPolicyEditor", error);
         if (live) setFailure(error ?? "load failed");
       },
     );
