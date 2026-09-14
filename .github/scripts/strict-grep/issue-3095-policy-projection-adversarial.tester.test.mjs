@@ -445,3 +445,33 @@ test("an activity-types filter is caught by the #2881 audit on every non-exempt 
       `${name}: a ruleset-required lane must not accept a types filter`);
   }
 });
+
+// [#3095 RETEST] Appended, append-only, as the tester-owned regression guard for
+// finding F-1. The first round's FAIL showed that a digest literal compared
+// against a partly restored WHOLE tree (the #3176, #3288, #3325 and #3313
+// receipts) turned class A red on any paths, step or test-target edit to any
+// PR-family lane, which is the churn #3095 exists to end. The rework retired
+// that chain. Nothing above this test goes red if it comes back, so this test
+// does: the #2851 implementor suite may carry exactly the digest literals it
+// declares as authorities (the PR-family identity, the policy projection and
+// the seven denied-workflow byte hashes) and no other 64-hex literal in code.
+// It reads source only and spawns nothing.
+test("the #2851 implementor suite pins no digest literal beyond its declared authorities (F-1 guard)", () => {
+  const source = fs.readFileSync(GATE_PATH, "utf8");
+  const identity = exactlyOne(source, /^const PR_FAMILY_IDENTITY_SHA256 =\s*"([0-9a-f]{64})";$/m, "PR_FAMILY_IDENTITY_SHA256")[1];
+  const pinned = exactlyOne(source, /"([0-9a-f]{64})";\nconst DENIED_FULL_SHA256 = \[/, "pinned projection literal")[1];
+  const deniedHashText = exactlyOne(source, /^const DENIED_FULL_SHA256 = \[([\s\S]*?)^\];$/m, "DENIED_FULL_SHA256")[1];
+  const denied = [...deniedHashText.matchAll(/"([0-9a-f]{64})"/g)].map((match) => match[1]);
+  assert.equal(denied.length, 7, "the denied byte authorities must stay seven");
+  const declared = [identity, pinned, ...denied];
+  assert.equal(new Set(declared).size, declared.length, "declared digest authorities must be distinct");
+
+  const code = source.split("\n").filter((line) => !/^\s*\/\//.test(line)).join("\n");
+  const literals = [...code.matchAll(/["'`]([0-9a-f]{64})["'`]/g)].map((match) => match[1]);
+  const undeclared = literals.filter((literal) => !declared.includes(literal));
+  assert.deepEqual(undeclared, [],
+    "a digest literal outside PR_FAMILY_IDENTITY_SHA256, PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 and DENIED_FULL_SHA256 "
+      + "re-creates the #3095 F-1 receipt chain: a whole-tree literal that every non-policy workflow edit moves. "
+      + "Guard a lane's executable line with a revert row instead.");
+  assert.deepEqual([...literals].sort(), [...declared].sort(), "each declared digest authority must appear exactly once in code");
+});
