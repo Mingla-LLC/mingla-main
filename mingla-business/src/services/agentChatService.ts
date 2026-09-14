@@ -209,6 +209,7 @@ async function extractError(error: unknown, fallback: string): Promise<{ code: s
   try {
     const err = error as Record<string, unknown> | null | undefined;
     if (!err) return { code: "EDGE_ERROR", message: fallback };
+    if (err.name === "FunctionsFetchError") return { code: "TRANSPORT_UNAVAILABLE", message: fallback };
     const ctx = err.context as Response | undefined;
     if (ctx && typeof ctx.text === "function") {
       try {

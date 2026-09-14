@@ -160,6 +160,20 @@
 - **Enforcement:** the existing #1406 A-7 adversarial assertion plus the new #2854 independent tester guard, both executed by `.github/workflows/issue-1406-customer-patterns-performance-tests.yml`.
 - **Status:** ACTIVE after independent P0–P4-zero PASS at tester commit `511060e02` on 2026-08-30: all 546 migrations and five workflow suites passed on pinned PostgreSQL 17, while both the true old-authority revert and a non-unique #871 index mutant failed closed before exact restoration returned green. Any future intentional inventory change requires a reviewed issue, provenance proof, independent expected-value derivation, explicit append-only authorization for an existing-test edit, and deliberate re-bank; never loosen the guard to avoid that process.
 
+## DRAFT — issue #3184 (Ari website questions for brands without a website)
+
+### I-PROPOSED-3184-SITES-REFUSAL-IS-NOT-AN-OUTAGE (DRAFT)
+
+- **Rule:** A non-2xx `brand-site-control` response carrying a `SITES_SAFE_CUSTOMER_CODES` body reaches Ari as that exact code; only a fetch or relay failure, or a non-2xx without a safe Sites body, becomes `SITE_SERVICE_UNAVAILABLE`. A brand without a website is a successful `get_brand_site` read (`website_state` `not_set_up` or `not_available`), never an error. No code a Sites tool can raise maps to `INTERNAL`. Ari never offers or claims to create a website from chat. A read result never carries a top-level `handoff_route` or `choices` key.
+- **Enforcement:** `supabase/functions/_shared/__tests__/issue_3184_ari_no_site_website.implementor.test.ts` and `issue_3184_ari_sites_refusals.tester_adversarial.test.ts`, run through the real pinned functions-js and the in-process `brand-site-control` handler.
+- **Status:** DRAFT until independent tester PASS, merged main, deploy of `agent-chat`, `agent-confirm-action` and `brand-site-control`, and a live HTTP 200 turn for a brand without a website.
+
+### I-PROPOSED-3184-ARI-CONNECTION-COPY-IS-TRANSPORT-ONLY (DRAFT)
+
+- **Rule:** In the Business Ari chat, "check your connection" copy is shown only for `TRANSPORT_UNAVAILABLE` (a `FunctionsFetchError`). Every `AriErrorCode` has explicit non-network copy; an unknown code falls back to non-network copy and is reported.
+- **Enforcement:** `mingla-business/src/screens/ari/__tests__/issue_3184_ari_chat_error_copy.implementor.test.ts` and the tester's adversarial suite.
+- **Status:** DRAFT until tester PASS and the Host OTA plus web deploy are verified.
+
 ## DRAFT — issue #2830 (Mingla Sites foundation and Gogi pilot)
 
 ### I-PROPOSED-2830-SITES-LAST-GOOD-TENANT-BOUNDARY (DRAFT)
