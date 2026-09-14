@@ -1,5 +1,6 @@
 // deno-lint-ignore-file no-explicit-any require-await
 // [TEST-MOD-APPROVED #1981] census pin bump authorized in the CI-fix commit.
+// [TEST-MOD-APPROVED #1982] census pin / ledger snapshot authorized for revoke_brand_invitation.
 import { AGENT_TOOLS } from "../agentTools.ts";
 import {
   AGENT_TOOL_AUTHORIZATION,

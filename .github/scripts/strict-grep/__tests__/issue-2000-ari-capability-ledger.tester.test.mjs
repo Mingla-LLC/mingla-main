@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #1982] census pin / ledger snapshot authorized for revoke_brand_invitation.
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";

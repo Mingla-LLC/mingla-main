@@ -3,6 +3,7 @@
 // Implementor happy path: compile the complete actual registry, preserve the
 // canonical execution schemas, and normalize Google's typed int64 fields.
 
+// [TEST-MOD-APPROVED #1982] census pin / ledger snapshot authorized for revoke_brand_invitation.
 import {
   assert,
   assertEquals,
@@ -213,4 +214,3 @@ Deno.test("#1999 happy: numeric enums normalize narrowly and invalid enum member
     );
   }
 });
-
