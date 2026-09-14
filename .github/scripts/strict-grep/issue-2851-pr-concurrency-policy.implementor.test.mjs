@@ -1180,43 +1180,52 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // #3176 and #3288 receipts now start from that tree, so their literals do
   // not move.
   //
-  // [TEST-MOD-APPROVED #3284] Re-derived for three additive whole blocks in
-  // three existing PR-family lanes: (1) the migrations-and-Stripe Deno lane
-  // gains one psql target for the #3284 refund-terms SQL suite plus its
-  // four-line comment; (2) the private-event lane and (3) the #2117
-  // offering-visibility lane each gain one exact-filename skip branch for the
-  // #3284 migration plus its comment, on the #2492 closure gate's own instruction
-  // (the migration re-emits the direct checkout bundle and the public experience
-  // reader, whose `LANGUAGE sql` bodies reach objects each filtered phase lacks).
-  // None of it touches a workflow identity, concurrency block, group expression,
-  // cancellation policy, or timeout. PR_FAMILY_COUNT (124) and
-  // PR_FAMILY_IDENTITY_SHA256 (9356c425...) are UNCHANGED.
+  // [TEST-MOD-APPROVED #3095] IA-1. Re-derived because this digest now hashes a
+  // DIFFERENT THING, not because a workflow changed. Until #3095 it hashed each
+  // PR-family workflow's whole parsed document minus top-level concurrency, so
+  // every paths, types, branches, env, step, test-target or comment edit moved
+  // it. Replaying first-parent main 13dd62554..779c1c9d0 (54 commits touching
+  // workflows or this file), it moved 48 times, was re-pinned 43 times, and
+  // left main red at 11 commits. None of the re-derivations above records
+  // catching a defect.
   //
-  // MEASURED FROM DISK with this file's extracted RUBY_CANONICAL (not retyped),
-  // on the tree rebased onto origin/main a98202439: current tree a32a3073...;
-  // removing all three #3284 blocks recovers origin/main's pin 07682607...
-  // exactly; removing any ONE executable line yields 5087b2ea..., c7f32c30... or
-  // 8ced6268..., so each delta moves the digest on its own. The three lines join
-  // the revert-sensitivity loop. Not copied from a CI `actual:`.
+  // It now hashes the #2851 POLICY PROJECTION. Per PR-family workflow:
+  //   - the sorted trigger event keys: what makes a workflow PR-family, and the
+  //     event set the audit's evaluation proof models;
+  //   - job-level concurrency blocks, keyed by job id;
+  //   - job uses: values (reusable-workflow calls), keyed by job id.
+  // Both job-level inputs are invisible to auditWorkflowSources, which reads
+  // only the top-level block, and neither moves PR_FAMILY_COUNT or
+  // PR_FAMILY_IDENTITY_SHA256, so this pin is their only guard. Top-level
+  // concurrency stays EXCLUDED: on any tree that passes the audit it is a pure
+  // function of the filename, and the concurrency-only drift assertion in the
+  // second test requires this pin to ignore it.
   //
-  // [TEST-MOD-APPROVED #3284] Re-derived again: the consumer refund-terms mapping
-  // suite was in no lane, so the existing #1929 hidden-direct-checkout lane now
-  // runs it beside the #1929 hook suites (one jest target appended to the
-  // clients job's app-mobile step) and triggers on its subjects (five
-  // pull_request paths and four push paths, with YAML comments). No job, trigger
-  // event, concurrency block, group expression, cancellation policy, or timeout
-  // changes. MEASURED the same way: current tree 3e75612e...; removing every #3284
-  // block in all four lanes recovers 07682607...; removing only the jest target
-  // yields 365d747a..., only the test-file trigger 8e4e13f0.... The
-  // #3313, #3325, #3176, #3288 and combined receipts below run on this branch
-  // tree, so their literals are re-derived with the #3284 additions present.
+  // Derived on the .github/workflows tree 318fee3b4477 (main a98202439).
+  // Identical across three derivations with this file's own RUBY_CANONICAL,
+  // and not copied from a CI run. It is the value the projection already had
+  // on 779c1c9d0: the seven re-pins that landed while #3095 was in review
+  // (#3285, #3055, #3288, #1778, #3176, #3325 and #3313, noted above) each
+  // moved the old digest, and none moved the projection. The run-time
+  // document digest on this tree is 07682607..., exactly the value this
+  // literal replaces, so the pre-#3095 computation survives intact as the
+  // run-time check. PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are
+  // UNCHANGED. Replayed through this derivation over those 54 commits plus the
+  // seven, the old digest moved 55 times in 61 and the projection 3 times,
+  // each a real policy change: #2899 (Sites recovery joined the PR family),
+  // #3072 (push added to six lanes) and #3078 (schedule added). It does not
+  // move for any of the 2026-09-03 collisions, the five green-again re-pins,
+  // #2947's two-line registration, or the seven in-review re-pins.
   //
-  // [TEST-MOD-APPROVED #3284] Re-derived again after the migration was renamed
-  // to 20270703003284 so it sorts after #3313: the two filtered-lane skip lines
-  // now name that file. Current tree f5045a1d...; removing one executable line
-  // yields 621dbee9... (suite target), e3beed15... (#1931 skip), 33941960...
-  // (#2117 skip), 9b85465a... (#1929 jest target) or ff96a3e8... (#1929 trigger).
-  "f5045a1d5ff4986e17b14b151a2804962db8ad896c4b984f3c3339fa9acbdd1c";
+  // RULE FOR THE NEXT READER: re-pin only when PR-family membership, a trigger
+  // event key, a job-level concurrency block or a job uses: value changed, and
+  // name in your note which one and why the #2851 policy still holds for it. If
+  // this fails and your branch changed none of those, rebase; do not re-pin.
+  // Do not add a receipt either (a restored tree compared to a literal): a
+  // registration line is protected by its row in the revert-sensitivity table,
+  // and the receipt chain that did otherwise was retired under #3095.
+  // Every earlier re-derivation is preserved above, not replaced.
+  "6d801614096e869746862f804ed347ad58054820403a11d6a50efd77bdf1e3e7";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1253,8 +1262,20 @@ payload.each do |file, source|
            when String then [on_value]
            else []
            end
+  jobs = document["jobs"].is_a?(Hash) ? document["jobs"] : {}
+  job_concurrency = {}
+  reusable_workflows = {}
+  jobs.map { |id, job| [id.to_s, job] }.sort_by(&:first).each do |id, job|
+    next unless job.is_a?(Hash)
+    job_concurrency[id] = job["concurrency"] if job.key?("concurrency")
+    reusable_workflows[id] = job["uses"] if job.key?("uses")
+  end
   document.delete("concurrency")
-  result[file] = {"events" => events.sort, "withoutConcurrency" => document}
+  result[file] = {
+    "events" => events.sort,
+    "withoutConcurrency" => document,
+    "policy" => {"events" => events.sort, "jobConcurrency" => job_concurrency, "reusableWorkflows" => reusable_workflows},
+  }
 end
 STDOUT.write(JSON.generate(result))
 `;
@@ -1271,30 +1292,56 @@ function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-function currentTreeAuthority(sources) {
+// [TEST-MOD-APPROVED #3095] One canonicalization feeds two digests. The pinned
+// authority hashes only the #2851 policy projection: per PR-family workflow,
+// its sorted trigger event keys, job-level concurrency and job uses. The
+// pre-#3095 whole-document digest is kept as documentSha256, derived at run
+// time and never pinned, so a mutation can still prove it changed semantics.
+function canonicalDigests(sources) {
   const canonical = canonicalize(sources);
   const names = Object.keys(canonical).filter((name) => {
     const events = canonical[name].events;
     return events.includes("pull_request") || events.includes("pull_request_target");
   }).sort();
-  const withoutConcurrency = Object.fromEntries(
-    names.map((name) => [name, canonical[name]]),
-  );
+  const policyProjection = Object.fromEntries(names.map((name) => [name, canonical[name].policy]));
+  const document = Object.fromEntries(names.map((name) => [
+    name,
+    { events: canonical[name].events, withoutConcurrency: canonical[name].withoutConcurrency },
+  ]));
   return {
-    names,
-    identitySha256: sha256(JSON.stringify(names)),
-    withoutConcurrencySha256: sha256(JSON.stringify(withoutConcurrency)),
+    authority: {
+      names,
+      identitySha256: sha256(JSON.stringify(names)),
+      withoutConcurrencySha256: sha256(JSON.stringify(policyProjection)),
+    },
+    documentSha256: sha256(JSON.stringify(document)),
+    canonical,
   };
 }
 
+function currentTreeAuthority(sources) {
+  return canonicalDigests(sources).authority;
+}
+
 function assertCurrentTreeAuthority(sources) {
-  const authority = currentTreeAuthority(sources);
+  return assertAuthority(currentTreeAuthority(sources));
+}
+
+function assertAuthority(authority) {
   assert.equal(authority.names.length, PR_FAMILY_COUNT, "PR-family identity count drifted");
   assert.equal(authority.identitySha256, PR_FAMILY_IDENTITY_SHA256, "PR-family identity digest drifted");
+  // [TEST-MOD-APPROVED #3095] IA-2: the old message named a whole-document
+  // digest this constant no longer is, and gave a colliding session no route.
   assert.equal(
     authority.withoutConcurrencySha256,
     PR_FAMILY_WITHOUT_CONCURRENCY_SHA256,
-    "PR-family non-concurrency semantic digest drifted",
+    "PR-family policy projection digest drifted: a PR-family workflow's trigger event keys, " +
+      "job-level concurrency or reusable-workflow calls changed, or the PR-family set did. " +
+      "A paths, types, branches, env, step, test-target or comment edit cannot move it; if that is " +
+      "all your branch changed, rebase onto current main before touching this constant. Never pin " +
+      "an actual printed by a CI run: re-derive locally, on the rebased branch, with " +
+      "node --test .github/scripts/strict-grep/issue-2851-pr-concurrency-policy.implementor.test.mjs " +
+      "and name in your note which policy input changed (#3095, #3015)",
   );
   return authority;
 }
@@ -1362,7 +1409,10 @@ test("the real tree has 124 canonical PR-family policies and the sole load excep
 // digests, and preserve the seven exclusions with durable full-byte hashes.
 test("the real tree independently classifies 124 PR-family and seven non-PR workflows", () => {
   const sources = readWorkflowSources();
-  const authority = assertCurrentTreeAuthority(sources);
+  // [TEST-MOD-APPROVED #3095] The same pin assertion, over a derivation the
+  // controls and the inverted rows below reuse, so it costs no extra spawn.
+  const liveDigests = canonicalDigests(sources);
+  const authority = assertAuthority(liveDigests.authority);
   const audit = auditWorkflowSources(sources);
   const sitesRecoveryName = liveWorkflow("sites", "backup", "restore");
   assert.deepEqual(
@@ -1414,14 +1464,160 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   const semanticDrift = { ...sources };
   const semanticName = authority.names[0];
   semanticDrift[semanticName] = `${semanticDrift[semanticName]}\nx-amendment-13-probe: true\n`;
-  const semanticAuthority = currentTreeAuthority(semanticDrift);
+  // [TEST-MOD-APPROVED #3095] IA-3 and IA-4, inverted rather than deleted.
+  // Before #3095 this unrelated top-level key had to MOVE the pinned digest,
+  // because that digest hashed the whole document. The pin now hashes only the
+  // policy projection, so the probe must still move the run-time document
+  // digest (it is a real semantic change) and must leave the pin where it is.
+  // This is the widening tripwire: hash any non-policy content again and it
+  // goes red here.
+  const semanticDigests = canonicalDigests(semanticDrift);
+  const semanticAuthority = semanticDigests.authority;
   assert.equal(semanticAuthority.identitySha256, authority.identitySha256);
-  assert.notEqual(semanticAuthority.withoutConcurrencySha256, authority.withoutConcurrencySha256);
-  assert.throws(() => assertCurrentTreeAuthority(semanticDrift), /non-concurrency semantic digest drifted/);
+  assert.notEqual(semanticDigests.documentSha256, liveDigests.documentSha256);
+  assert.deepEqual(semanticAuthority, authority);
+  assert.deepEqual(assertAuthority(semanticAuthority), authority);
+
+  // [TEST-MOD-APPROVED #3095] What the pin exists for. Each mutation below
+  // changes an input the #2851 audit cannot see: a trigger event key, a
+  // job-level concurrency group, or a reusable-workflow call whose callee can
+  // declare one. None changes the PR-family set or its identity, and every one
+  // passes auditWorkflowSources, so this pin is their only guard. Targets are
+  // chosen by shape, never by name, so no single lane's edit can break them.
+  const occurrences = (source, pattern) => (source.match(new RegExp(pattern.source, "gm")) || []).length;
+  const exactlyOnce = (source, pattern, label) =>
+    assert.equal(occurrences(source, pattern), 1, `${label}: expected exactly one mutation target`);
+  // [TEST-MOD-APPROVED #3095] F-7 hardening, applied to every inserting control:
+  // a target that already declares what a control inserts (a workflow_run or
+  // pull_request_target event, the probe job id) would get a duplicate key that
+  // YAML resolves last-wins, so the control would fail for a reason unrelated to
+  // the pin. Such lanes are never chosen.
+  const probeName = authority.names.find((name) =>
+    occurrences(sources[name], /^on:\n/) === 1 && occurrences(sources[name], /^jobs:\n/) === 1
+      && occurrences(sources[name], /^  pull_request:\n/) === 1
+      && occurrences(sources[name], /^  issue-3095-probe:/) === 0
+      && !liveDigests.canonical[name].events.some((event) => event === "workflow_run" || event === "pull_request_target"));
+  const scheduledName = authority.names.find((name) =>
+    liveDigests.canonical[name].events.includes("schedule") && occurrences(sources[name], /^  schedule:\n/) === 1);
+  assert.ok(probeName, "policy controls need a PR-family workflow with one on, jobs and pull_request block");
+  assert.ok(scheduledName, "policy controls need a PR-family workflow with one schedule block");
+  const probeJob = (extra) => ["jobs:", "  issue-3095-probe:", ...extra, ""].join("\n");
+  const runnerJob = ["    runs-on: ubuntu-latest", "    steps:", "      - run: true"];
+  const concurrencyJob = ["    runs-on: ubuntu-latest", "    concurrency:", "      group: shared",
+    "      cancel-in-progress: true", "    steps:", "      - run: true"];
+  const reusableCall = `./.github/workflows/${liveWorkflow("reusable", "probe")}`;
+  const eventsOf = (digests, name) => digests.canonical[name].events;
+  const probeJobOf = (digests, name) => (digests.canonical[name].withoutConcurrency.jobs || {})["issue-3095-probe"];
+  const policySensitive = [
+    ["schedule event removed", scheduledName, (source) => {
+      exactlyOnce(source, /^  schedule:\n/, "schedule event");
+      return source.replace(/^  schedule:\n(?:(?: {4,}.*)?\n)*/m, "");
+    }, (digests, name) => assert.deepEqual(eventsOf(digests, name),
+      eventsOf(liveDigests, name).filter((event) => event !== "schedule"))],
+    ["workflow_run event added", probeName, (source) => {
+      exactlyOnce(source, /^on:\n/, "on block");
+      return source.replace(/^on:\n/m, "on:\n  workflow_run:\n    workflows: [Checks]\n");
+    }, (digests, name) => assert.deepEqual(eventsOf(digests, name),
+      [...eventsOf(liveDigests, name), "workflow_run"].sort())],
+    ["pull_request retargeted to pull_request_target", probeName, (source) => {
+      exactlyOnce(source, /^  pull_request:\n/, "pull_request event");
+      return source.replace(/^  pull_request:\n/m, "  pull_request_target:\n");
+    }, (digests, name) => assert.deepEqual(eventsOf(digests, name),
+      eventsOf(liveDigests, name).map((event) => (event === "pull_request" ? "pull_request_target" : event)).sort())],
+    ["job-level concurrency added", probeName, (source) => {
+      exactlyOnce(source, /^jobs:\n/, "jobs block");
+      return source.replace(/^jobs:\n/m, probeJob(concurrencyJob));
+    }, (digests, name) => assert.deepEqual(probeJobOf(digests, name)?.concurrency,
+      { group: "shared", "cancel-in-progress": true })],
+    ["reusable-workflow call added", probeName, (source) => {
+      exactlyOnce(source, /^jobs:\n/, "jobs block");
+      return source.replace(/^jobs:\n/m, probeJob([`    uses: ${reusableCall}`]));
+    }, (digests, name) => assert.equal(probeJobOf(digests, name)?.uses, reusableCall)],
+  ];
+  for (const [label, name, mutate, applied] of policySensitive) {
+    const mutated = { ...sources, [name]: mutate(sources[name]) };
+    assert.notEqual(mutated[name], sources[name], `${label} (${name}): mutation must change the workflow`);
+    const digests = canonicalDigests(mutated);
+    applied(digests, name);
+    assert.deepEqual(digests.authority.names, authority.names, `${label} (${name}): must not change PR-family membership`);
+    assert.equal(digests.authority.identitySha256, authority.identitySha256, `${label} (${name}): must not move the identity digest`);
+    assert.notEqual(
+      digests.authority.withoutConcurrencySha256,
+      authority.withoutConcurrencySha256,
+      `${label} (${name}): must move the policy projection`,
+    );
+    assert.throws(() => assertAuthority(digests.authority), /policy projection digest drifted/, `${label} (${name})`);
+  }
+
+  // [TEST-MOD-APPROVED #3095] The deliberate non-sensitivities, pinned so a
+  // silent widening of the projection is caught. Each partners a sensitive
+  // mutation above: a job WITHOUT concurrency, and pull_request activity types
+  // (the recorded #3095 residual: types changes neither PR-family membership
+  // nor the audited obligation).
+  //
+  // [TEST-MOD-APPROVED #3095] F-7: the activity-types control never inserts a
+  // second types key. It targets a lane whose parsed pull_request event declares
+  // no types and inserts one; only if no such lane exists does it take a lane
+  // with exactly one inline types list and REPLACE that list. Either way the
+  // applied check proves the parsed pull_request.types is exactly the new list.
+  const pullRequestOf = (name) => {
+    const document = liveDigests.canonical[name].withoutConcurrency;
+    const on = Object.hasOwn(document, "on") ? document.on : document.true;
+    return on !== null && typeof on === "object" && !Array.isArray(on) && Object.hasOwn(on, "pull_request")
+      ? on.pull_request : undefined;
+  };
+  const typesList = ["opened", "synchronize", "reopened", "closed"];
+  const typesInsertName = authority.names.find((name) => {
+    const pullRequest = pullRequestOf(name);
+    return occurrences(sources[name], /^  pull_request:\n/) === 1
+      && (pullRequest === null
+        || (typeof pullRequest === "object" && !Array.isArray(pullRequest) && !Object.hasOwn(pullRequest, "types")));
+  });
+  const typesReplaceName = typesInsertName ? undefined : authority.names.find((name) =>
+    occurrences(sources[name], /^ {4}types: \[[^\]\n]*\]\n/) === 1 && Array.isArray(pullRequestOf(name)?.types));
+  const typesName = typesInsertName ?? typesReplaceName;
+  assert.ok(typesName, "the activity-types control needs a PR-family lane it can give a types list without a duplicate key");
+  const policyInsensitive = [
+    ["job without concurrency added", probeName, (source) => {
+      exactlyOnce(source, /^jobs:\n/, "jobs block");
+      return source.replace(/^jobs:\n/m, probeJob(runnerJob));
+    }, (digests, name) => assert.deepEqual(probeJobOf(digests, name),
+      { "runs-on": "ubuntu-latest", steps: [{ run: true }] })],
+    ["pull_request activity types added", typesName, (source) => {
+      const list = `    types: [${typesList.join(", ")}]\n`;
+      if (typesInsertName) {
+        exactlyOnce(source, /^  pull_request:\n/, "pull_request event");
+        return source.replace(/^  pull_request:\n/m, () => `  pull_request:\n${list}`);
+      }
+      exactlyOnce(source, /^ {4}types: \[[^\]\n]*\]\n/, "pull_request types list");
+      return source.replace(/^ {4}types: \[[^\]\n]*\]\n/m, () => list);
+    }, (digests, name) => {
+      const on = digests.canonical[name].withoutConcurrency.on ?? digests.canonical[name].withoutConcurrency.true;
+      assert.deepEqual(on.pull_request.types, typesList);
+    }],
+  ];
+  for (const [label, name, mutate, applied] of policyInsensitive) {
+    const mutated = { ...sources, [name]: mutate(sources[name]) };
+    const digests = canonicalDigests(mutated);
+    applied(digests, name);
+    assert.notEqual(digests.documentSha256, liveDigests.documentSha256, `${label} (${name}): mutation must change the parsed document`);
+    assert.deepEqual(digests.authority, authority, `${label} (${name}): must not move the policy projection`);
+  }
 
   // [TEST-MOD-APPROVED #2241] Each workflow delta that legitimately moved the
   // digest is independently revert-sensitive; the unrelated semantic mutation
   // above remains a separate widening tripwire.
+  //
+  // [TEST-MOD-APPROVED #3095] IA-5: this loop is INVERTED for every row, including
+  // the rows whose comments predate #3095 and still say a reversion must move or
+  // invalidate the digest. Those comments were true of the whole-document digest
+  // and are kept as history. No row is removed and no row's bytes change. Each row
+  // still proves its registered line is present exactly once in its live workflow
+  // (so a CI registration cannot vanish silently) and that removing it is a real
+  // semantic change (the run-time document digest moves). It now also proves that
+  // removing it does NOT move the pinned policy projection. A row whose reversion
+  // does move the projection is policy-relevant: it belongs with the must-move
+  // controls above, not here.
   for (const [name, line] of [
     [liveWorkflow("issue", "1930", "checkout", "current", "truth"), '      - "supabase/functions/_shared/secretBundle.ts"\n'],
     [liveWorkflow("supabase", "secret", "budget"), '      - "supabase/function-env.contract.json"\n'],
@@ -1601,8 +1797,12 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
     // [TEST-MOD-APPROVED #3284] The #3284 refund-terms SQL suite target on the
-    // migrations lane, and the exact-filename skip in each filtered replay lane.
-    // Each must independently move the digest.
+    // migrations lane, and the exact-filename skip in the #1931 and #2117
+    // filtered replays. Under #3095's inverted loop each row must be present
+    // exactly once, change the parsed document when removed, and leave the
+    // policy projection where it is: none adds a trigger event key, a job-level
+    // concurrency block or a job `uses:`, so PR_FAMILY_WITHOUT_CONCURRENCY_SHA256
+    // (the policy projection since #3095) is not re-pinned.
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "            -f supabase/migrations/__tests__/issue_3284_offering_refund_terms.test.sql\n"],
     [liveWorkflow("issue", "1931", "private", "event", "access"),
@@ -1610,7 +1810,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "              *20270703003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
     // [TEST-MOD-APPROVED #3284] The consumer mapping suite's jest target in the
-    // #1929 clients job, and its test-file trigger path.
+    // #1929 clients job, and its test-file trigger path. Same three proofs.
     [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"),
       " src/hooks/__tests__/issue_3284_refund_policy_mapping.implementor.test.ts"],
     [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"),
@@ -1618,7 +1818,9 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
-    assert.throws(() => assertCurrentTreeAuthority(reverted), /non-concurrency semantic digest drifted/);
+    const revertedDigests = canonicalDigests(reverted);
+    assert.notEqual(revertedDigests.documentSha256, liveDigests.documentSha256, `${name}: reverting this row must change the parsed document`);
+    assert.deepEqual(revertedDigests.authority, authority, `${name}: a non-policy reversion must not move the policy projection`);
   }
 
   // [TEST-MOD-APPROVED #3176] The five lines live inside YAML's `run: |` block,
@@ -1630,168 +1832,40 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   // [TEST-MOD-APPROVED #3325] Reverting #3325's single paths entry must recover
   // #3176's combined-tree pin, and every older receipt starts from that
   // pre-#3325 tree so their literals stay exactly as their owners measured them.
-  const issue2099Name = liveWorkflow(
-    "issue", "2099", "pending", "venue", "identity", "correction", "tests",
-  );
+  //
   // [TEST-MOD-APPROVED #3313] Removing #3313's four whole workflow blocks must
   // reproduce #3325's pin exactly. Every older receipt below now starts from
   // that tree, so each owner's delta stays independently measured.
-  const recurringSuiteBlock3313 = [
-    "          # Issue #3313 — a recurring event published ONE date, a guest's order",
-    "          # carried no night, and capacity was shared by every night of the run.",
-    "          # Behavioural, against the real chain: publishes through the wizard's",
-    "          # RPC, edits through the live When RPC, reserves and finalizes real",
-    "          # checkouts, reads the real public bundle and patches real tiers. One",
-    "          # transaction ending in ROLLBACK. Fails on revert of each of the six",
-    "          # re-emitted functions (revert proof on the PR). The edge half — the",
-    "          # 422 and the promoted lone eventDateId — is asserted from source by",
-    "          # the node suite beside ticket-checkout-create.",
-    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\",
-    "            -f supabase/migrations/__tests__/issue_3313_recurring_event_occurrences.implementor.happy.pg17.test.sql",
-    "          node --test supabase/functions/ticket-checkout-create/__tests__/issue_3313_day_choice_required.test.mjs",
-    "",
-  ].join("\n");
-  const recurringReplayBlock3313 = [
-    "          # Issue #3313 re-emits `business_publish_event_draft` again (a recurring",
-    "          # publish materialises every rule date) and now owns its final",
-    "          # definition, so it ends the re-apply set.",
-    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\",
-    "            -f supabase/migrations/20270702003313_issue_3313_recurring_event_occurrences.sql",
-    "",
-  ].join("\n");
-  const privateReplaySkipBlock3313 = [
-    "              # issue #3313 — SKIPPED for the same reasons as #2160, #2489 and #2879",
-    "              # above. It re-emits `pg_direct_event_checkout_bundle` (a `LANGUAGE",
-    "              # sql` body reaching `multi_date_pricing_mode`, created only by the",
-    "              # skipped #2160, and the #2489 theme helpers) plus the #2879 session",
-    "              # base, validated at CREATE time, so the replay would abort here.",
-    "              # Nothing is removed from the migration to green this lane.",
-    "              #",
-    "              # Covered end-to-end by the unfiltered full-chain migrations lane,",
-    "              # which replays every migration in filename order and runs the #3313",
-    "              # suite against that terminal state.",
-    "              #",
-    "              # Matched by EXACT filename, never an issue-number infix.",
-    "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;",
-    "",
-  ].join("\n");
-  const offeringReplaySkipBlock3313 = [
-    "              # issue #3313 — same reason: it re-emits the bundle, whose body",
-    "              # reaches `issue_2489_address_withheld` / `issue_2489_public_theme`,",
-    "              # which this phase does not have. EXACT FILENAME.",
-    "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;",
-    "",
-  ].join("\n");
-  const before3313 = { ...sources };
-  for (const [name, block, label] of [
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"), recurringSuiteBlock3313, "#3313 migration-suite block"],
-    [liveWorkflow("issue", "2333", "online", "event", "publish"), recurringReplayBlock3313, "#3313 online-publish replay block"],
-    [liveWorkflow("issue", "1931", "private", "event", "access"), privateReplaySkipBlock3313, "#3313 private-event replay skip block"],
-    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"), offeringReplaySkipBlock3313, "#3313 offering-visibility replay skip block"],
-  ]) {
-    before3313[name] = removeExactLine(before3313[name], block, label);
-  }
-  const before3313Authority = currentTreeAuthority(before3313);
-  assert.equal(before3313Authority.names.length, 124);
-  assert.equal(before3313Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
-  // [TEST-MOD-APPROVED #3284] This receipt and the four after it run on the branch
-  // tree, which also carries #3284's four workflow additions, so each literal is
-  // re-derived with them present (main's values: #3313 1d728bae..., #3325
-  // 330740ba..., #3176 a24d680b..., #3288 b1b5f757..., combined aadaaea7...). No
-  // receipt, removal or assertion is added or dropped; only the five literals move.
-  assert.equal(
-    before3313Authority.withoutConcurrencySha256,
-    "04af0331a5be66146163e3d8fadbe1181809095ca590cad85e26ef4483a8d07d",
-  );
-
-  const before3325 = { ...before3313 };
-  before3325[issue2099Name] = removeExactLine(
-    before3325[issue2099Name],
-    '      - "mingla-business/scripts/ci/bundle-baseline.json"\n',
-    "#3325 baseline paths entry",
-  );
-  const before3325Authority = currentTreeAuthority(before3325);
-  assert.equal(before3325Authority.names.length, 124);
-  assert.equal(before3325Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
-  assert.equal(
-    before3325Authority.withoutConcurrencySha256,
-    "63dfb519c84c9db7882ea032a298c680d80153684b2b3739b8103ba1f7e9bfc5",
-  );
-
-  const before3176 = { ...before3325 };
-  const offeringVisibilityName = liveWorkflow(
-    "issue", "2117", "offering", "visibility", "gate", "tests",
-  );
-  const indexNowReplayBlock = [
-    "              # issue #3176 — the IndexNow outbox trigger targets #2986's",
-    "              # `public_search_documents`, which does not exist in this",
-    "              # pre-#2117 phase. The migration and its controls remain intact;",
-    "              # this filtered lane omits it by EXACT FILENAME.",
-    "              *20270627003176_issue_3176_indexnow_outbox.sql) continue ;;",
-    "",
-  ].join("\n");
-  before3176[offeringVisibilityName] = removeExactLine(
-    before3176[offeringVisibilityName],
-    indexNowReplayBlock,
-    "#3176 offering-visibility replay block",
-  );
-  const before3176Authority = currentTreeAuthority(before3176);
-  assert.equal(before3176Authority.names.length, 124);
-  assert.equal(before3176Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
-  assert.equal(
-    before3176Authority.withoutConcurrencySha256,
-    "5520ef000fb9e1aea312c11e7c6c1528b23aa4210ce84624535e81b36618526e",
-  );
-
+  //
   // [TEST-MOD-APPROVED #3176] Current main and this branch both change the
   // non-concurrency document. Reverting #3288's two whole workflow blocks must
   // recover the prior #3176 authority, while reverting both owners must recover
   // the shared pre-change authority. These exact receipts prevent a merge-time
   // re-pin from hiding either side of the combined tree.
-  const migrationsName = liveWorkflow("supabase", "migrations", "and", "stripe", "deno");
-  const publishName = liveWorkflow("issue", "2333", "online", "event", "publish");
-  const gallerySuiteBlock = [
-    "          # Issue #3288 — a draft's additional photos were erased at publish. Every",
-    "          # gallery writer must keep the stored gallery when the key is ABSENT and",
-    "          # still honour an explicit []; removing a cover must not wipe it.",
-    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\",
-    "            -f supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql",
-    "",
-  ].join("\n");
-  const galleryReplayBlock = [
-    "          # Issue #3288 re-emits `business_publish_event_draft` (an absent gallery key",
-    "          # keeps the stored photos) and owns its final definition on a full replay,",
-    "          # so the re-apply set must end with it, per the instruction above.",
-    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\",
-    "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql",
-    "",
-  ].join("\n");
-  const before3288 = { ...before3325 };
-  before3288[migrationsName] = removeExactLine(
-    before3288[migrationsName], gallerySuiteBlock, "#3288 migration-suite block",
-  );
-  before3288[publishName] = removeExactLine(
-    before3288[publishName], galleryReplayBlock, "#3288 online-publish replay block",
-  );
-  const before3288Authority = currentTreeAuthority(before3288);
-  assert.equal(before3288Authority.names.length, 124);
-  assert.equal(before3288Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
-  assert.equal(
-    before3288Authority.withoutConcurrencySha256,
-    "bb66c9e123d6c47d453b48906cd88566db8ef3ec6927abd043e81753a793eed8",
-  );
-
-  const beforeBoth = { ...before3288 };
-  beforeBoth[offeringVisibilityName] = removeExactLine(
-    beforeBoth[offeringVisibilityName], indexNowReplayBlock, "combined pre-#3176 replay block",
-  );
-  const beforeBothAuthority = currentTreeAuthority(beforeBoth);
-  assert.equal(beforeBothAuthority.names.length, 124);
-  assert.equal(beforeBothAuthority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
-  assert.equal(
-    beforeBothAuthority.withoutConcurrencySha256,
-    "5176bd3418f0c8646907bcc825d7d9cfabfdd8afbebccfab1a8ca1831158f876",
-  );
+  //
+  // [TEST-MOD-APPROVED #3095] RECEIPT CHAIN RETIRED (IA-6 REVISED ruling on
+  // #3095). The four notes above are kept as history; the code they describe
+  // is gone. Each receipt rebuilt a partly restored tree and compared its
+  // WHOLE-DOCUMENT digest to a literal, so any paths, step or comment edit to
+  // any PR-family lane turned it red and needed one more restoration layer:
+  // the churn #3095 exists to end. Retired, by name:
+  //   - IA-6', superseding IA-6: the #3176, #3288 and combined receipt
+  //     literals (a24d680b..., b1b5f757..., aadaaea7...);
+  //   - IA-7: the #3325 before3325 receipt literal (330740ba...);
+  //   - IA-8: the #3313 before3313 receipt literal (1d728bae...);
+  //   - the restoration scaffolding: the before3313, before3325, before3176,
+  //     before3288 and beforeBoth trees, their exact-block removals, and
+  //     IA-6's authority checks. With every literal removed it was still
+  //     content-sensitive: a comment-only edit inside the #3176 block, a
+  //     #3288 block or a #3313 block broke its exact-block removal and turned
+  //     this test red.
+  // Nothing they protected is lost. Each executable line those blocks carried
+  // is a row in the revert-sensitivity table above, which fails when the line
+  // is missing or duplicated: #3176's IndexNow skip, #3288's gallery suite
+  // target and replay re-apply, #3325's baseline paths entry, and #3313's SQL
+  // suite target, edge node suite, re-apply and two replay skips. A later
+  // receipt of the same shape is retired the same way: keep its note and its
+  // rows, drop its literal and its restoration trees, and add its name here.
 
   const sitesWithoutPullRequest = { ...sources };
   sitesWithoutPullRequest[sitesRecoveryName] = removeExactLine(

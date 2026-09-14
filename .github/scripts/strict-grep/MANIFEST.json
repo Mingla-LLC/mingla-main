@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 642,
+  "expectedStrictGrepMjsFiles": 643,
   "selfTestWiredFloor": 413,
   "unenforcedCap": 2,
   "fixtureCap": 9,
@@ -9553,6 +9553,15 @@
       "modes": ["plain"],
       "selfTest": "none",
       "jobKeys": ["issue-2871-concurrency-proof-event-independence-tester"]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-3095-policy-projection-adversarial.tester.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": ["plain"],
+      "selfTest": "none",
+      "jobKeys": ["issue-3095-policy-projection-adversarial-tester"]
     },
     {
       "script": ".github/scripts/strict-grep/issue-2981-marketing-search-foundation.mjs",

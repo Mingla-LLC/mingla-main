@@ -222,10 +222,21 @@ describe("issue #3280 gallery add gate (source wiring: the same-session case)", 
   });
 
   test("a cover emit updates the cover ref before a gallery commit can re-emit it", () => {
-    const body = callbackBody("emitChange", "persistReadyVideo");
-    const refSync = body.indexOf("localCoverRef.current = patch;");
-    const stateSet = body.indexOf("setLocalCover(patch);");
-    const parentEmit = body.indexOf("await onCoverChange(");
+    // [TEST-MOD-APPROVED #3318] the ordering moved, unchanged, into
+    // `emitCoverWithGallery` in `coverPickerGalleryAdd.ts` (so #3318 T3 can run
+    // it for real); `emitChange` delegates with the picker's own refs. Same
+    // three steps, same order.
+    expect(callbackBody("emitChange", "persistReadyVideo")).toContain(
+      "await emitCoverWithGallery(patch, emitRefs, setLocalCover, onCoverChange);",
+    );
+    expect(coverPickerSource).toContain("() => ({ cover: localCoverRef, gallery: galleryRef }),");
+    const moduleSource = readFileSync(join(UI, "coverPickerGalleryAdd.ts"), "utf8");
+    const start = moduleSource.indexOf("export const emitCoverWithGallery = async");
+    expect(start).toBeGreaterThan(-1);
+    const body = executable(moduleSource.slice(start, moduleSource.indexOf("\n};", start)));
+    const refSync = body.indexOf("refs.cover.current = patch;");
+    const stateSet = body.indexOf("setCover(patch);");
+    const parentEmit = body.indexOf("await onCoverChange({ ...patch, coverGallery: refs.gallery.current });");
     expect(refSync).toBeGreaterThan(-1);
     expect(stateSet).toBeGreaterThan(refSync);
     expect(parentEmit).toBeGreaterThan(stateSet);

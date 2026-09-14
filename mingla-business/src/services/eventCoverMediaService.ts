@@ -15,6 +15,9 @@ import {
   type EventCoverMediaErrorCode,
 } from "../utils/eventCoverMediaRules";
 import { readEventCoverFileBytes } from "./eventCoverFileReader";
+// issue #3318 — TYPES only: this service is in business-web's boot chunk, so the
+// retry runner is passed in by the caller that wants it (see `uploadWithRetry`).
+import type { CoverUploadStage, StorageUploadRunner } from "./storageUploadWithRetry";
 import type { EventCoverProviderMetadata } from "../types/eventCoverProvider";
 import { randomId } from "../utils/randomId";
 
@@ -175,10 +178,23 @@ const logCoverUploadDebug = (
   }
 };
 
+export interface EventCoverUploadOptions {
+  /** issue #3318 — told as the upload moves from reading to storage to verifying. */
+  onStage?: (stage: CoverUploadStage) => void;
+  /**
+   * issue #3318 — runs the storage call (e.g. `createStorageUploadWithRetry()`:
+   * a deadline per attempt and one retry on a network failure, to the SAME
+   * random path with `upsert: true`). Absent: one attempt, exactly as before.
+   */
+  uploadWithRetry?: StorageUploadRunner;
+}
+
 export const uploadEventCoverMedia = async (
   input: EventCoverAssetInput,
+  options: EventCoverUploadOptions = {},
 ): Promise<EventCoverUploadResult> => {
   requireServerEventId(input.eventId);
+  options.onStage?.("read");
 
   if (
     typeof input.fileSize === "number" &&
@@ -250,18 +266,37 @@ export const uploadEventCoverMedia = async (
     storagePath,
   });
 
-  const { error } = await supabase.storage
-    .from(EVENT_COVER_BUCKET)
-    .upload(storagePath, fileBytes.bytes, { contentType, upsert: true });
-
-  if (error !== null) {
-    throw new EventCoverMediaError("upload_failed", error.message);
+  // issue #3318 — every attempt goes to the same `storagePath` (random per
+  // upload, `upsert: true`), so a caller's retry runner can repeat it safely.
+  options.onStage?.("upload");
+  const attempt = () =>
+    supabase.storage
+      .from(EVENT_COVER_BUCKET)
+      .upload(storagePath, fileBytes.bytes, { contentType, upsert: true });
+  try {
+    if (options.uploadWithRetry !== undefined) {
+      await options.uploadWithRetry(attempt, fileBytes.byteLength);
+    } else {
+      const { error } = await attempt();
+      if (error !== null) throw error;
+    }
+  } catch (failure) {
+    const uploadError = new EventCoverMediaError(
+      "upload_failed",
+      failure !== null && typeof failure === "object" && "message" in failure
+        ? String((failure as { message: unknown }).message)
+        : String(failure),
+    );
+    // The storage failure rides along, so a caller can tell a network stall.
+    (uploadError as EventCoverMediaError & { cause?: unknown }).cause = failure;
+    throw uploadError;
   }
 
   const { data } = supabase.storage
     .from(EVENT_COVER_BUCKET)
     .getPublicUrl(storagePath);
 
+  options.onStage?.("verify");
   await verifyEventCoverPublicUrl(data.publicUrl, mediaType);
   logCoverUploadDebug("upload-verified", {
     mediaType,
