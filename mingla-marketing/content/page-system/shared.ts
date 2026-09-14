@@ -25,19 +25,37 @@ export type ExplorerCategorySlug = (typeof EXPLORER_CATEGORIES)[number]['slug']
 
 export interface CataloguePlace {
   readonly kind: 'place'
+  readonly rank: number
   readonly placePoolId: string
+  readonly googlePlaceId: string
   readonly name: string
   readonly categorySlug: ExplorerCategorySlug
   readonly categoryLabel: string
   readonly signalScore: number
+  readonly signalVersionId: string
   readonly aiBlended: boolean
   readonly photoUrls: readonly string[]
+  readonly mediaReceipt: Readonly<{
+    status: 'current' | 'no_photo'
+    provider: string
+    checkedAt: string
+    reason?: string
+    authorName?: string
+    authorUri?: string
+  }>
   readonly rating: number | null
   readonly reviewCount: number | null
   readonly oneLiner: string | null
   readonly address: string | null
+  readonly lat: number
+  readonly lng: number
   readonly scoredAt: string
   readonly sourceUpdatedAt: string
+  readonly googleMapsUri: string | null
+  readonly boundaryReceipt: Readonly<{
+    contained: true
+    boundarySha256: string
+  }>
   readonly detailHref: string
 }
 

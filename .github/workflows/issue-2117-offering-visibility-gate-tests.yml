@@ -112,6 +112,11 @@ jobs:
               # issue #2986 — this additive resolver delegates to #2117's
               # visibility authority. It is applied exactly once after phase 2.
               *20270614002986_issue_2986_public_search_documents.sql) continue ;;
+              # issue #3176 — the IndexNow outbox trigger targets #2986's
+              # `public_search_documents`, which does not exist in this
+              # pre-#2117 phase. The migration and its controls remain intact;
+              # this filtered lane omits it by EXACT FILENAME.
+              *20270627003176_issue_3176_indexnow_outbox.sql) continue ;;
               # issue #3193 — SKIPPED for the same reason as the line above. It
               # re-emits `public_search_source_facts`, one of #2986's readers,
               # and its closing DO block asserts the anonymous resolver's

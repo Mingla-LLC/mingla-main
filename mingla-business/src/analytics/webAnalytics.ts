@@ -19,6 +19,9 @@ export const grantConsent = noopVoid;
 export const denyConsent = noopVoid;
 export const captureWeb = noopVoid;
 export const gaEvent = noopVoid;
+export const captureWebSearchOutcome = noopVoid;
+export const isHostPublicInventoryPathname = (_pathname: string): boolean => false;
+export const captureHostPublicSearchPageView = (_pathname: string): void => {};
 export const identifyWeb = noopVoid;
 export const readStoredConsent = (): "granted" | "denied" | null => null;
 export const getFeatureFlagWeb = (

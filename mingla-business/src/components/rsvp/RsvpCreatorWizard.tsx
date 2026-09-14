@@ -763,6 +763,8 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       coverMediaEventId: liveDraft.id,
       onRequireServerDraft,
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
+      // Issue #3291 — first source of the Where step's rank-only proximity.
+      brandLocation: brand,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: setCoverVideoProcessing,
       // ORCH-1335 — RsvpStep5Setup reads this to swap its chip-in bank callout.

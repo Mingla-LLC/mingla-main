@@ -102,7 +102,7 @@ function sourceContract() {
   const implementor = 'node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs'
   const tester = 'node scripts/issue-2990-restructured-page-system.tester.adversarial.test.mjs'
   assert.equal(packageJson.scripts.postbuild, `${implementor} --built-only && ${tester}`)
-  assert.equal(packageJson.scripts['test:page-system'], `${implementor} && ${tester}`)
+  assert.equal(packageJson.scripts['test:page-system'], `MINGLA_HISTORICAL_2983_BUILD=1 ${implementor} && MINGLA_HISTORICAL_2983_BUILD=1 ${tester}`)
   process.stdout.write('PASS adversarial source query, stale-link, Host-route and guard-wiring contracts\n')
 }
 

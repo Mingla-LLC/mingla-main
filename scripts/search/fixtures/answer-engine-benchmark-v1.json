@@ -1,0 +1,1656 @@
+{
+  "version": "answer-engine-benchmark-v1",
+  "count": 145,
+  "scenarios": [
+    {
+      "id": "brand-001",
+      "kind": "brand",
+      "prompt": "What is Mingla and what does it help people do?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "brand-002",
+      "kind": "brand",
+      "prompt": "What is Mingla Explorer?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "brand-003",
+      "kind": "brand",
+      "prompt": "What is Mingla Host?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "brand-004",
+      "kind": "brand",
+      "prompt": "How does Mingla choose and rank city recommendations?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "brand-005",
+      "kind": "brand",
+      "prompt": "How can someone report a correction to Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-event_promoter-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "event_promoter",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from event promoters in Lagos with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-event_promoter-host",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "event_promoter",
+      "audience": "host",
+      "prompt": "How can event promoters in Lagos use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-restaurant-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "restaurant",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from restaurants in Lagos with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-restaurant-host",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "restaurant",
+      "audience": "host",
+      "prompt": "How can restaurants in Lagos use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-resort-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "resort",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from resorts in Lagos with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-resort-host",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "resort",
+      "audience": "host",
+      "prompt": "How can resorts in Lagos use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-venue-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "venue",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from venues in Lagos with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-venue-host",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "venue",
+      "audience": "host",
+      "prompt": "How can venues in Lagos use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-trip_operator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "trip_operator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from trip operators in Lagos with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-trip_operator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "trip_operator",
+      "audience": "host",
+      "prompt": "How can trip operators in Lagos use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-experience_host-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "experience_host",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from experience hosts in Lagos with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-experience_host-host",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "experience_host",
+      "audience": "host",
+      "prompt": "How can experience hosts in Lagos use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-independent_creator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "independent_creator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from independent creators in Lagos with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-lagos-independent_creator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "lagos",
+      "icp": "independent_creator",
+      "audience": "host",
+      "prompt": "How can independent creators in Lagos use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-event_promoter-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "event_promoter",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from event promoters in Durham with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-event_promoter-host",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "event_promoter",
+      "audience": "host",
+      "prompt": "How can event promoters in Durham use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-restaurant-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "restaurant",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from restaurants in Durham with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-restaurant-host",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "restaurant",
+      "audience": "host",
+      "prompt": "How can restaurants in Durham use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-resort-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "resort",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from resorts in Durham with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-resort-host",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "resort",
+      "audience": "host",
+      "prompt": "How can resorts in Durham use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-venue-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "venue",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from venues in Durham with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-venue-host",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "venue",
+      "audience": "host",
+      "prompt": "How can venues in Durham use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-trip_operator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "trip_operator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from trip operators in Durham with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-trip_operator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "trip_operator",
+      "audience": "host",
+      "prompt": "How can trip operators in Durham use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-experience_host-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "experience_host",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from experience hosts in Durham with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-experience_host-host",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "experience_host",
+      "audience": "host",
+      "prompt": "How can experience hosts in Durham use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-independent_creator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "independent_creator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from independent creators in Durham with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-durham-nc-independent_creator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "durham-nc",
+      "icp": "independent_creator",
+      "audience": "host",
+      "prompt": "How can independent creators in Durham use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-event_promoter-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "event_promoter",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from event promoters in Cary with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-event_promoter-host",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "event_promoter",
+      "audience": "host",
+      "prompt": "How can event promoters in Cary use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-restaurant-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "restaurant",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from restaurants in Cary with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-restaurant-host",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "restaurant",
+      "audience": "host",
+      "prompt": "How can restaurants in Cary use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-resort-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "resort",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from resorts in Cary with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-resort-host",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "resort",
+      "audience": "host",
+      "prompt": "How can resorts in Cary use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-venue-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "venue",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from venues in Cary with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-venue-host",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "venue",
+      "audience": "host",
+      "prompt": "How can venues in Cary use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-trip_operator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "trip_operator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from trip operators in Cary with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-trip_operator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "trip_operator",
+      "audience": "host",
+      "prompt": "How can trip operators in Cary use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-experience_host-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "experience_host",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from experience hosts in Cary with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-experience_host-host",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "experience_host",
+      "audience": "host",
+      "prompt": "How can experience hosts in Cary use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-independent_creator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "independent_creator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from independent creators in Cary with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-cary-nc-independent_creator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "cary-nc",
+      "icp": "independent_creator",
+      "audience": "host",
+      "prompt": "How can independent creators in Cary use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-event_promoter-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "event_promoter",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from event promoters in Raleigh with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-event_promoter-host",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "event_promoter",
+      "audience": "host",
+      "prompt": "How can event promoters in Raleigh use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-restaurant-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "restaurant",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from restaurants in Raleigh with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-restaurant-host",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "restaurant",
+      "audience": "host",
+      "prompt": "How can restaurants in Raleigh use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-resort-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "resort",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from resorts in Raleigh with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-resort-host",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "resort",
+      "audience": "host",
+      "prompt": "How can resorts in Raleigh use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-venue-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "venue",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from venues in Raleigh with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-venue-host",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "venue",
+      "audience": "host",
+      "prompt": "How can venues in Raleigh use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-trip_operator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "trip_operator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from trip operators in Raleigh with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-trip_operator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "trip_operator",
+      "audience": "host",
+      "prompt": "How can trip operators in Raleigh use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-experience_host-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "experience_host",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from experience hosts in Raleigh with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-experience_host-host",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "experience_host",
+      "audience": "host",
+      "prompt": "How can experience hosts in Raleigh use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-independent_creator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "independent_creator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from independent creators in Raleigh with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-raleigh-nc-independent_creator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "raleigh-nc",
+      "icp": "independent_creator",
+      "audience": "host",
+      "prompt": "How can independent creators in Raleigh use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-event_promoter-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "event_promoter",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from event promoters in New York City with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-event_promoter-host",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "event_promoter",
+      "audience": "host",
+      "prompt": "How can event promoters in New York City use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-restaurant-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "restaurant",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from restaurants in New York City with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-restaurant-host",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "restaurant",
+      "audience": "host",
+      "prompt": "How can restaurants in New York City use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-resort-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "resort",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from resorts in New York City with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-resort-host",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "resort",
+      "audience": "host",
+      "prompt": "How can resorts in New York City use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-venue-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "venue",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from venues in New York City with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-venue-host",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "venue",
+      "audience": "host",
+      "prompt": "How can venues in New York City use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-trip_operator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "trip_operator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from trip operators in New York City with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-trip_operator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "trip_operator",
+      "audience": "host",
+      "prompt": "How can trip operators in New York City use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-experience_host-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "experience_host",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from experience hosts in New York City with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-experience_host-host",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "experience_host",
+      "audience": "host",
+      "prompt": "How can experience hosts in New York City use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-independent_creator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "independent_creator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from independent creators in New York City with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-new-york-city-independent_creator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "new-york-city",
+      "icp": "independent_creator",
+      "audience": "host",
+      "prompt": "How can independent creators in New York City use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-event_promoter-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "event_promoter",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from event promoters in Brussels with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-event_promoter-host",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "event_promoter",
+      "audience": "host",
+      "prompt": "How can event promoters in Brussels use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-restaurant-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "restaurant",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from restaurants in Brussels with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-restaurant-host",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "restaurant",
+      "audience": "host",
+      "prompt": "How can restaurants in Brussels use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-resort-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "resort",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from resorts in Brussels with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-resort-host",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "resort",
+      "audience": "host",
+      "prompt": "How can resorts in Brussels use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-venue-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "venue",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from venues in Brussels with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-venue-host",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "venue",
+      "audience": "host",
+      "prompt": "How can venues in Brussels use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-trip_operator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "trip_operator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from trip operators in Brussels with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-trip_operator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "trip_operator",
+      "audience": "host",
+      "prompt": "How can trip operators in Brussels use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-experience_host-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "experience_host",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from experience hosts in Brussels with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-experience_host-host",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "experience_host",
+      "audience": "host",
+      "prompt": "How can experience hosts in Brussels use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-independent_creator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "independent_creator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from independent creators in Brussels with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-brussels-independent_creator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "brussels",
+      "icp": "independent_creator",
+      "audience": "host",
+      "prompt": "How can independent creators in Brussels use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-event_promoter-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "event_promoter",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from event promoters in Paris with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-event_promoter-host",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "event_promoter",
+      "audience": "host",
+      "prompt": "How can event promoters in Paris use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-restaurant-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "restaurant",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from restaurants in Paris with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-restaurant-host",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "restaurant",
+      "audience": "host",
+      "prompt": "How can restaurants in Paris use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-resort-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "resort",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from resorts in Paris with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-resort-host",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "resort",
+      "audience": "host",
+      "prompt": "How can resorts in Paris use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-venue-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "venue",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from venues in Paris with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-venue-host",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "venue",
+      "audience": "host",
+      "prompt": "How can venues in Paris use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-trip_operator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "trip_operator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from trip operators in Paris with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-trip_operator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "trip_operator",
+      "audience": "host",
+      "prompt": "How can trip operators in Paris use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-experience_host-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "experience_host",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from experience hosts in Paris with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-experience_host-host",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "experience_host",
+      "audience": "host",
+      "prompt": "How can experience hosts in Paris use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-independent_creator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "independent_creator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from independent creators in Paris with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-paris-independent_creator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "paris",
+      "icp": "independent_creator",
+      "audience": "host",
+      "prompt": "How can independent creators in Paris use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-event_promoter-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "event_promoter",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from event promoters in London with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-event_promoter-host",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "event_promoter",
+      "audience": "host",
+      "prompt": "How can event promoters in London use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-restaurant-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "restaurant",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from restaurants in London with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-restaurant-host",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "restaurant",
+      "audience": "host",
+      "prompt": "How can restaurants in London use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-resort-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "resort",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from resorts in London with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-resort-host",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "resort",
+      "audience": "host",
+      "prompt": "How can resorts in London use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-venue-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "venue",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from venues in London with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-venue-host",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "venue",
+      "audience": "host",
+      "prompt": "How can venues in London use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-trip_operator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "trip_operator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from trip operators in London with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-trip_operator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "trip_operator",
+      "audience": "host",
+      "prompt": "How can trip operators in London use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-experience_host-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "experience_host",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from experience hosts in London with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-experience_host-host",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "experience_host",
+      "audience": "host",
+      "prompt": "How can experience hosts in London use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-independent_creator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "independent_creator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from independent creators in London with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-london-independent_creator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "london",
+      "icp": "independent_creator",
+      "audience": "host",
+      "prompt": "How can independent creators in London use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-event_promoter-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "event_promoter",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from event promoters in Fort Lauderdale with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-event_promoter-host",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "event_promoter",
+      "audience": "host",
+      "prompt": "How can event promoters in Fort Lauderdale use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-restaurant-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "restaurant",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from restaurants in Fort Lauderdale with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-restaurant-host",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "restaurant",
+      "audience": "host",
+      "prompt": "How can restaurants in Fort Lauderdale use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-resort-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "resort",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from resorts in Fort Lauderdale with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-resort-host",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "resort",
+      "audience": "host",
+      "prompt": "How can resorts in Fort Lauderdale use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-venue-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "venue",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from venues in Fort Lauderdale with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-venue-host",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "venue",
+      "audience": "host",
+      "prompt": "How can venues in Fort Lauderdale use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-trip_operator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "trip_operator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from trip operators in Fort Lauderdale with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-trip_operator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "trip_operator",
+      "audience": "host",
+      "prompt": "How can trip operators in Fort Lauderdale use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-experience_host-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "experience_host",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from experience hosts in Fort Lauderdale with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-experience_host-host",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "experience_host",
+      "audience": "host",
+      "prompt": "How can experience hosts in Fort Lauderdale use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-independent_creator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "independent_creator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from independent creators in Fort Lauderdale with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-fort-lauderdale-independent_creator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "fort-lauderdale",
+      "icp": "independent_creator",
+      "audience": "host",
+      "prompt": "How can independent creators in Fort Lauderdale use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-event_promoter-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "event_promoter",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from event promoters in Washington, DC with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-event_promoter-host",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "event_promoter",
+      "audience": "host",
+      "prompt": "How can event promoters in Washington, DC use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-restaurant-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "restaurant",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from restaurants in Washington, DC with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-restaurant-host",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "restaurant",
+      "audience": "host",
+      "prompt": "How can restaurants in Washington, DC use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-resort-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "resort",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from resorts in Washington, DC with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-resort-host",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "resort",
+      "audience": "host",
+      "prompt": "How can resorts in Washington, DC use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-venue-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "venue",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from venues in Washington, DC with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-venue-host",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "venue",
+      "audience": "host",
+      "prompt": "How can venues in Washington, DC use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-trip_operator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "trip_operator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from trip operators in Washington, DC with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-trip_operator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "trip_operator",
+      "audience": "host",
+      "prompt": "How can trip operators in Washington, DC use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-experience_host-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "experience_host",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from experience hosts in Washington, DC with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-experience_host-host",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "experience_host",
+      "audience": "host",
+      "prompt": "How can experience hosts in Washington, DC use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-independent_creator-explorer",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "independent_creator",
+      "audience": "explorer",
+      "prompt": "How can an Explorer discover plans from independent creators in Washington, DC with Mingla?",
+      "expectedDomains": [
+        "usemingla.com"
+      ]
+    },
+    {
+      "id": "city-washington-dc-independent_creator-host",
+      "kind": "city_icp_audience",
+      "citySlug": "washington-dc",
+      "icp": "independent_creator",
+      "audience": "host",
+      "prompt": "How can independent creators in Washington, DC use Mingla Host to become easier to discover and act on?",
+      "expectedDomains": [
+        "usemingla.com",
+        "host.usemingla.com"
+      ]
+    }
+  ]
+}

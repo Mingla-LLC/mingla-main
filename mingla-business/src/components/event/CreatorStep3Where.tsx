@@ -64,6 +64,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   errors,
   showErrors,
   scrollToBottom,
+  brandLocation,
 }) => {
   const intelCityHighlight = useTurnoutFocusTarget("city");
   const venueError = showErrors ? errorForKey(errors, "venueName") : undefined;
@@ -181,6 +182,12 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               allowFreeText
               selectionState={selectionState}
               selectedLabel={draft.address ?? ""}
+              // Issue #3291 — rank-only: brand → picked point → time zone.
+              proximitySources={{
+                brandPoint: brandLocation,
+                draftPoint: draft.locationGeo,
+                timeZone: draft.timezone,
+              }}
               onChangeText={(v) => {
                 advanceLocationRequestGeneration(requestGenerationRef);
                 savedCityRef.current = null;

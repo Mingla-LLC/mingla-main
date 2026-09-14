@@ -30,6 +30,7 @@ import { publicEventKeys } from "./usePublicEvents";
 import { upcomingKeys } from "./upcomingKeys";
 // META-ORCH-1187 [Growth Analytics Hub] — offering-published conversion (SC-6).
 import { postHogService } from "../services/postHogService";
+import { captureHostSearchOutcome } from "../analytics/searchOutcome";
 
 const STALE_TIME_MS = 30 * 1000;
 const DISABLED_KEY = ["business-events-disabled"] as const;
@@ -217,6 +218,13 @@ export const usePublishBusinessEventDraft = (): {
         offering_type: "event",
         brand_id: draft.brandId,
         surface: "business_app",
+      });
+      captureHostSearchOutcome("listing_published", {
+        audience: "host",
+        page_family: "host_pillar",
+        icp: "event_promoter",
+        action_state: "succeeded",
+        content_kind: "event",
       });
     },
     onError: (error) => {

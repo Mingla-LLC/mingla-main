@@ -1,0 +1,8 @@
+{
+  "name": "@mingla/search-measurement",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": { "test": "node --experimental-strip-types test/contract.test.mjs" },
+  "type": "module",
+  "exports": { ".": "./src/index.ts" }
+}

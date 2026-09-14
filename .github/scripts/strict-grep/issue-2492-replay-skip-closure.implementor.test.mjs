@@ -6,7 +6,7 @@
 // T-3  error      synthetic migration reading a skipped column from
 //                 a `LANGUAGE sql` body                              -> non-zero
 // T-5  negative   the SAME reference inside a plpgsql body           -> exit 0
-// T-10 INVENTORY  exactly 4 filtered lanes, glob counts 13/1/3/9,
+// T-10 INVENTORY  exactly 4 filtered lanes, glob counts 13/1/3/10,
 //                 zero violations
 //
 // T-10 is the non-vacuous one. "Real chain -> exit 0" passes just as happily
@@ -42,6 +42,11 @@
 // skips because #2986's resolver migration depends on #2117 and is deliberately
 // applied only after the frozen phase-2 suites. Only T-10's truthful inventory
 // moves; no test, mutant, parser assertion, or BAD-fixture tooth is removed.
+
+// [TEST-MOD-APPROVED #3176] The #2117 lane moves from EIGHT to NINE exact
+// skips because #3176's IndexNow outbox trigger targets #2986's omitted
+// `public_search_documents` table. Only T-10's truthful inventory moves; the
+// migration, its controls, and all parser/security assertions remain intact.
 
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -203,9 +208,9 @@ test("T-1 — the guard is clean on the repository as shipped", () => {
 // #3313's migration, which re-emits the checkout bundle (a `LANGUAGE sql` body
 // reaching #2160's `multi_date_pricing_mode` and #2489's theme helpers) and the
 // #2879 session base; the gate itself named the exact filename. ONLY counts
-// move: T-10 12/1/3/8 -> 13/1/3/9 (and the #1931 skipped-file count 12 -> 13),
+// move: T-10 12/1/3/9 -> 13/1/3/10 (and the #1931 skipped-file count 12 -> 13),
 // T-23 13 -> 14, T-24 12 -> 13, T-2723 12 -> 13. No assertion logic changed.
-test("T-10 — lane inventory is exactly 4 lanes at 13/1/3/9 (a blind parser reds here)", () => {
+test("T-10 — lane inventory is exactly 4 lanes at 13/1/3/10 (a blind parser reds here)", () => {
   const { lanes, violations } = analyseLanes();
   assert.equal(violations.length, 0);
 
@@ -214,7 +219,7 @@ test("T-10 — lane inventory is exactly 4 lanes at 13/1/3/9 (a blind parser red
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
     [LANE]: 13,
-    "issue-2117-offering-visibility-gate-tests.yml": 9,
+    "issue-2117-offering-visibility-gate-tests.yml": 10,
   });
   assert.equal(lanes.length, 4, "exactly four filtered replay lanes exist on this base");
 

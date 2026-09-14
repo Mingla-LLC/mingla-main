@@ -28,8 +28,6 @@ interface AnswerBlockProps {
   crumbs?: readonly Crumb[]
   /** Jump links / summary card rendered beside the answer on desktop. */
   aside?: ReactNode
-  /** Real last-reviewed date, shown so the freshness claim is auditable. */
-  lastChecked?: string
   id?: string
 }
 
@@ -39,7 +37,6 @@ export function AnswerBlock({
   detail = [],
   crumbs,
   aside,
-  lastChecked,
   id = 'answer',
 }: AnswerBlockProps) {
   return (
@@ -82,11 +79,6 @@ export function AnswerBlock({
                 <p key={p.slice(0, 48)}>{p}</p>
               ))}
             </div>
-          ) : null}
-          {lastChecked ? (
-            <p className="mt-6 text-[0.8125rem] text-[var(--cut-muted)]">
-              Reviewed by the Mingla team on {lastChecked}.
-            </p>
           ) : null}
         </div>
 

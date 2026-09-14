@@ -93,6 +93,10 @@ import {
   COUNTRY_NAME_TO_ISO,
   parseTrailingCountry,
 } from "./countryNames.ts";
+// Issue #3291 — the no-full-address fallback. A pure module (no Deno or remote
+// imports) so the required mingla-business jest suite can execute it directly.
+import { namedAreaAddress } from "./namedAreaAddress.ts";
+export { namedAreaAddress };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -656,7 +660,9 @@ export function featureToDetails(
 
   return {
     placeId: props.mapbox_id ?? fallbackPlaceId,
-    formattedAddress: props.full_address ?? props.place_formatted ?? city,
+    // Issue #3291 — no full_address → "<name>, <area>", never the area alone.
+    formattedAddress: props.full_address ??
+      namedAreaAddress(props.name, props.place_formatted) ?? city,
     city,
     region,
     regionCode,

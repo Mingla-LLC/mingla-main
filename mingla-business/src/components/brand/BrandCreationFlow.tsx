@@ -1273,6 +1273,12 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               allowFreeText
               selectionState={addressSelectionState}
               selectedLabel={address}
+              // Issue #3291 — rank-only: a resumed brand's point → the point
+              // picked here → the device's time zone (no zone of its own).
+              proximitySources={{
+                brandPoint: resumeBrandQuery.data,
+                draftPoint: addrMeta,
+              }}
               onChangeText={(t) => {
                 advanceLocationRequestGeneration(addressRequestGenerationRef);
                 savedContextRef.current = { city: null, countryCode: null };
