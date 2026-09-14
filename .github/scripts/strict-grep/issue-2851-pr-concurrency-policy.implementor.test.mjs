@@ -1166,7 +1166,20 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // #3176's pin 330740ba... exactly. The #3176, #3288 and combined receipts below
   // now start from that pre-#3325 tree, so their literals do not move, and the
   // entry is in the revert-sensitivity loop.
-  "1d728baea721b73f78b3ce43646c19f61a21b8160267999239c1f70b5bf2fbed";
+  //
+  // [TEST-MOD-APPROVED #3313] Re-derived on top of #3325's tree after #3313
+  // added four whole blocks: its recurring-event SQL suite and edge node suite
+  // on the migrations job, the end of the #2333 re-apply set, and its
+  // exact-filename skip in the #1931 and #2117 filtered replays (the #2492 gate
+  // named the file). No workflow identity, concurrency block, group expression,
+  // cancellation policy or timeout changed; count and identity stay 124 /
+  // 9356c425.... MEASURED FROM the committed merged tree with this file's own
+  // RUBY_CANONICAL and block literals (not a CI `actual:`): current tree
+  // 07682607...; removing the four #3313 blocks recovers #3325's
+  // pin 1d728bae... exactly (the before3313 receipt below), and the #3325,
+  // #3176 and #3288 receipts now start from that tree, so their literals do
+  // not move.
+  "07682607bfff0b812a60892f7ba83e5cf1c0cb5208befc3625ba88efc1695ea2";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1536,6 +1549,20 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     // digest, or the re-pin above would accept a change nothing proves.
     [liveWorkflow("issue", "2099", "pending", "venue", "identity", "correction", "tests"),
       '      - "mingla-business/scripts/ci/bundle-baseline.json"\n'],
+    // [TEST-MOD-APPROVED #3313] The #3313 suite targets on the migrations job,
+    // the #2333 re-apply of the #3313 migration, and its exact-filename skip in
+    // the #1931 and #2117 filtered replays. Each must independently move the
+    // digest.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3313_recurring_event_occurrences.implementor.happy.pg17.test.sql\n"],
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "          node --test supabase/functions/ticket-checkout-create/__tests__/issue_3313_day_choice_required.test.mjs\n"],
+    [liveWorkflow("issue", "2333", "online", "event", "publish"),
+      "            -f supabase/migrations/20270702003313_issue_3313_recurring_event_occurrences.sql\n"],
+    [liveWorkflow("issue", "1931", "private", "event", "access"),
+      "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
@@ -1554,7 +1581,73 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   const issue2099Name = liveWorkflow(
     "issue", "2099", "pending", "venue", "identity", "correction", "tests",
   );
-  const before3325 = { ...sources };
+  // [TEST-MOD-APPROVED #3313] Removing #3313's four whole workflow blocks must
+  // reproduce #3325's pin exactly. Every older receipt below now starts from
+  // that tree, so each owner's delta stays independently measured.
+  const recurringSuiteBlock3313 = [
+    "          # Issue #3313 — a recurring event published ONE date, a guest's order",
+    "          # carried no night, and capacity was shared by every night of the run.",
+    "          # Behavioural, against the real chain: publishes through the wizard's",
+    "          # RPC, edits through the live When RPC, reserves and finalizes real",
+    "          # checkouts, reads the real public bundle and patches real tiers. One",
+    "          # transaction ending in ROLLBACK. Fails on revert of each of the six",
+    "          # re-emitted functions (revert proof on the PR). The edge half — the",
+    "          # 422 and the promoted lone eventDateId — is asserted from source by",
+    "          # the node suite beside ticket-checkout-create.",
+    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\",
+    "            -f supabase/migrations/__tests__/issue_3313_recurring_event_occurrences.implementor.happy.pg17.test.sql",
+    "          node --test supabase/functions/ticket-checkout-create/__tests__/issue_3313_day_choice_required.test.mjs",
+    "",
+  ].join("\n");
+  const recurringReplayBlock3313 = [
+    "          # Issue #3313 re-emits `business_publish_event_draft` again (a recurring",
+    "          # publish materialises every rule date) and now owns its final",
+    "          # definition, so it ends the re-apply set.",
+    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\",
+    "            -f supabase/migrations/20270702003313_issue_3313_recurring_event_occurrences.sql",
+    "",
+  ].join("\n");
+  const privateReplaySkipBlock3313 = [
+    "              # issue #3313 — SKIPPED for the same reasons as #2160, #2489 and #2879",
+    "              # above. It re-emits `pg_direct_event_checkout_bundle` (a `LANGUAGE",
+    "              # sql` body reaching `multi_date_pricing_mode`, created only by the",
+    "              # skipped #2160, and the #2489 theme helpers) plus the #2879 session",
+    "              # base, validated at CREATE time, so the replay would abort here.",
+    "              # Nothing is removed from the migration to green this lane.",
+    "              #",
+    "              # Covered end-to-end by the unfiltered full-chain migrations lane,",
+    "              # which replays every migration in filename order and runs the #3313",
+    "              # suite against that terminal state.",
+    "              #",
+    "              # Matched by EXACT filename, never an issue-number infix.",
+    "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;",
+    "",
+  ].join("\n");
+  const offeringReplaySkipBlock3313 = [
+    "              # issue #3313 — same reason: it re-emits the bundle, whose body",
+    "              # reaches `issue_2489_address_withheld` / `issue_2489_public_theme`,",
+    "              # which this phase does not have. EXACT FILENAME.",
+    "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;",
+    "",
+  ].join("\n");
+  const before3313 = { ...sources };
+  for (const [name, block, label] of [
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"), recurringSuiteBlock3313, "#3313 migration-suite block"],
+    [liveWorkflow("issue", "2333", "online", "event", "publish"), recurringReplayBlock3313, "#3313 online-publish replay block"],
+    [liveWorkflow("issue", "1931", "private", "event", "access"), privateReplaySkipBlock3313, "#3313 private-event replay skip block"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"), offeringReplaySkipBlock3313, "#3313 offering-visibility replay skip block"],
+  ]) {
+    before3313[name] = removeExactLine(before3313[name], block, label);
+  }
+  const before3313Authority = currentTreeAuthority(before3313);
+  assert.equal(before3313Authority.names.length, 124);
+  assert.equal(before3313Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
+  assert.equal(
+    before3313Authority.withoutConcurrencySha256,
+    "1d728baea721b73f78b3ce43646c19f61a21b8160267999239c1f70b5bf2fbed",
+  );
+
+  const before3325 = { ...before3313 };
   before3325[issue2099Name] = removeExactLine(
     before3325[issue2099Name],
     '      - "mingla-business/scripts/ci/bundle-baseline.json"\n',

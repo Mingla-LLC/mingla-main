@@ -41,6 +41,13 @@ export interface EventSalesSummaryInput {
   isRefreshing?: boolean;
   /** Compatibility input for existing pure tests; hooks use readStatus. */
   hasError?: boolean;
+  /**
+   * issue #3313 — true on a recurring event, where capacity is PER NIGHT. The
+   * run's total sold is then not comparable with the capacity, so no
+   * sold / capacity figure or progress is produced: the label reads
+   * "{sold} sold · {capacity} per night".
+   */
+  capacityPerNight?: boolean;
 }
 
 const liveOrderStatuses = new Set<OrderRecord["status"]>([
@@ -90,6 +97,7 @@ export const buildEventSalesSummary = ({
   readStatus: suppliedReadStatus,
   isRefreshing = false,
   hasError = false,
+  capacityPerNight = false,
 }: EventSalesSummaryInput): EventSalesSummary => {
   const readStatus: EventOrdersReadStatus =
     suppliedReadStatus ?? (hasError ? "error" : "ready");
@@ -97,7 +105,11 @@ export const buildEventSalesSummary = ({
   // summarizeEventMoney accepts null and normalizes internally for its
   // (0-order, pre-bank) computation; the DISPLAY label hides when null.
   const displayCurrency = currencyCodeOrNull(eventCurrency ?? brandDefaultCurrency);
-  const { finiteCapacity, hasUnlimitedTickets } = summarizeTicketCapacity(tickets);
+  const ticketCapacity = summarizeTicketCapacity(tickets);
+  const perNightCapacity = capacityPerNight ? ticketCapacity.finiteCapacity : null;
+  // issue #3313 — a per-night capacity is never a denominator for the run.
+  const finiteCapacity = capacityPerNight ? null : ticketCapacity.finiteCapacity;
+  const { hasUnlimitedTickets } = ticketCapacity;
   const isReady =
     orders !== null && !(suppliedReadStatus === undefined && hasError);
   if (!isReady) {
@@ -128,7 +140,9 @@ export const buildEventSalesSummary = ({
   const soldLabel =
     finiteCapacity !== null
       ? `${formatCount(readySoldCount)} / ${formatCount(finiteCapacity)}`
-      : `${formatCount(readySoldCount)} sold`;
+      : perNightCapacity !== null
+        ? `${formatCount(readySoldCount)} sold · ${formatCount(perNightCapacity)} per night`
+        : `${formatCount(readySoldCount)} sold`;
   const revenueLabel =
     displayCurrency === null
       ? "—"

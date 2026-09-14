@@ -53,6 +53,12 @@ export interface StepBodyProps {
    */
   editMode?: {
     soldCountByTier: Record<string, number>;
+    /**
+     * issue #3313 — the lowest capacity each ticket may be set to. On a
+     * recurring event capacity is per night, so this is the busiest night's
+     * sold passes; absent everywhere else, where the floor is the sold count.
+     */
+    capacityFloorByTier?: Record<string, number>;
   };
   /**
    * Cycle 13a J-T6 G2: when false, ticket price input is uneditable with a

@@ -119,7 +119,10 @@ export const validateLiveEventFieldUpdate = (
       const sold = soldCountByTier[newT.id] ?? 0;
       if (sold === 0) continue;
 
-      if (newT.capacity !== null && newT.capacity < sold) {
+      // issue #3313 — on a recurring event capacity is PER NIGHT, so the
+      // floor is the busiest night (the server's floor too), not the run total.
+      const floor = context.capacityFloorByTier?.[newT.id] ?? sold;
+      if (newT.capacity !== null && newT.capacity < floor) {
         return {
           ok: false,
           reason: "capacity_below_sold",

@@ -105,6 +105,10 @@ jobs:
               # `issue_2489_address_withheld` / `issue_2489_public_theme`,
               # which this phase does not have. EXACT FILENAME.
               *20270609002879_issue_2879_redirect_window_counts_as_held.sql) continue ;;
+              # issue #3313 — same reason: it re-emits the bundle, whose body
+              # reaches `issue_2489_address_withheld` / `issue_2489_public_theme`,
+              # which this phase does not have. EXACT FILENAME.
+              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;
               # issue #2986 — this additive resolver delegates to #2117's
               # visibility authority. It is applied exactly once after phase 2.
               *20270614002986_issue_2986_public_search_documents.sql) continue ;;

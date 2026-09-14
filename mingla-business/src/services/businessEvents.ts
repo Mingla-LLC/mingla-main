@@ -242,6 +242,12 @@ export interface PublishedBusinessEvent {
   brand: Pick<Brand, "id" | "slug" | "displayName">;
   tickets: TicketStub[];
   clientRevision: number | null;
+  /**
+   * issue #3313 — how many dates the SERVER created. The publish dialog used to
+   * count a recurring rule on the phone and promise "8 occurrences" while the
+   * database held one; the organiser is now told the real number.
+   */
+  occurrenceCount: number;
 }
 
 const BUSINESS_EVENT_SELECT = "*";
@@ -950,6 +956,7 @@ export const eventFromPublishResponse = (
     },
     tickets,
     clientRevision: response.client_revision,
+    occurrenceCount: (response.eventDates ?? []).length,
   };
 };
 
@@ -1019,7 +1026,11 @@ export const publishBusinessEventDraft = async (
   const chosenPricingMode = draftMultiDatePricingMode(
     (draft as { multiDatePricingMode?: unknown }).multiDatePricingMode,
   );
-  if (chosenPricingMode !== "per_day") {
+  // issue #3313 — ONLY a multi-date event carries this choice; the control
+  // renders nowhere else. A draft switched from multi-date to recurring keeps a
+  // stale "all_days" in its store, and applying it here would let a guest buy
+  // every night of a recurring event for the price of one.
+  if (draft.whenMode === "multi_date" && chosenPricingMode !== "per_day") {
     try {
       await setEventMultiDatePricingMode(response.event.id, chosenPricingMode);
     } catch (pricingModeError) {

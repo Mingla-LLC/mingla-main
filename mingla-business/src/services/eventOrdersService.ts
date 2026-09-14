@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { OrderRecord, RefundRecord } from "../store/orderStore";
+import { busiestNightSoldByTicketType } from "../utils/perNightCapacity";
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import {
   assertOrderCurrencyForMoney,
@@ -67,6 +68,8 @@ export interface OrderRow {
   /** issue #2160 — each pass of this order and the days it admits. */
   tickets?: Array<{
     id: string;
+    /** issue #3313 — lets the organiser count sold places per night per ticket type. */
+    ticket_type_id?: string | null;
     status: string | null;
     used_at: string | null;
     ticket_event_dates?: Array<{ event_date_id: string }> | null;
@@ -189,6 +192,7 @@ export const fetchEventOrders = async (
       events!inner ( brand_id ),
       tickets (
         id,
+        ticket_type_id,
         status,
         used_at,
         ticket_event_dates ( event_date_id )
@@ -298,6 +302,7 @@ export const mapEventOrderRows = (rows: OrderRow[]): OrderRecord[] => {
       // day-scoped" means: that pass is valid on any occurrence.
       ticketDays: (order.tickets ?? []).map((ticket) => ({
         ticketId: ticket.id,
+        ticketTypeId: ticket.ticket_type_id ?? null,
         eventDateIds: (ticket.ticket_event_dates ?? []).map(
           (link) => link.event_date_id,
         ),
@@ -413,11 +418,26 @@ export const getEventSoldCounts = (
  */
 export const buildSoldCountContextFromOrders = (
   orders: OrderRecord[],
-): { soldCountByTier: Record<string, number>; soldCountForEvent: number } => ({
+  // issue #3313 — pass the event on a recurring event: capacity is PER NIGHT
+  // there, so the capacity floor is the busiest night, not the run's total.
+  perNight?: { eventId: string } | null,
+): {
+  soldCountByTier: Record<string, number>;
+  soldCountForEvent: number;
+  capacityFloorByTier?: Record<string, number>;
+} => ({
   soldCountByTier: getEventSoldCounts(orders),
   soldCountForEvent: orders.filter(
     (o) => o.status === "paid" || o.status === "refunded_partial",
   ).length,
+  ...(perNight !== undefined && perNight !== null
+    ? {
+        capacityFloorByTier: busiestNightSoldByTicketType(
+          orders,
+          perNight.eventId,
+        ),
+      }
+    : {}),
 });
 
 export const getEventOrderActivity = (

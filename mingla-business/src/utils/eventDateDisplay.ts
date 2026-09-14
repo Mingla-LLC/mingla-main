@@ -636,7 +636,8 @@ const readableOccurrenceLines = (
  * NOTHING ELSE MOVES. The occurrence-backed branch is taken ONLY when all three
  * hold:
  *
- *   1. the event is `multi_date` — a single or recurring event is untouched,
+ *   1. the event is `multi_date` or (issue #3313) `recurring` — a single-date
+ *      event is untouched,
  *   2. it carries NO draft `multiDates` — the organiser's own preview surfaces
  *      still render their draft entries, unchanged,
  *   3. at least one occurrence has a parseable start instant.
@@ -656,10 +657,25 @@ export const resolvePublicEventDateDisplay = (
     dateSubline: formatDraftDateSubline(event),
     datesList: formatDraftDatesList(event),
   };
-  if (event.whenMode !== "multi_date" || event.multiDates !== null) return draft;
+  // issue #3313 — a RECURRING event's public page reads its real dates too.
+  // It used to fall through to the draft formatter, which expands the rule and
+  // printed "Recurring (incomplete)" whenever the reader carried no rule — on
+  // the page an organiser shares. When the event has a rule the subline names
+  // it over the REAL count ("Every Tuesday · 7 dates"); otherwise it is the
+  // #2209 summary. A single-date event and a draft with its own entries are
+  // untouched.
+  if (
+    (event.whenMode !== "multi_date" && event.whenMode !== "recurring") ||
+    event.multiDates !== null
+  ) {
+    return draft;
+  }
   const lines = readableOccurrenceLines(event, occurrences);
   if (lines.length === 0) return draft;
-  const subline = formatOccurrenceSummary(occurrences, event.timezone);
+  const subline =
+    event.recurrenceRule !== null
+      ? `${formatRecurrenceLabel(event.recurrenceRule, event.date ?? "")} · ${lines.length} ${lines.length === 1 ? "date" : "dates"}`
+      : formatOccurrenceSummary(occurrences, event.timezone);
   return {
     dateLine: lines[0],
     dateSubline: subline ?? draft.dateSubline,

@@ -26,7 +26,7 @@ import {
   type CancelOrderInput,
   type CancelOrderResult,
 } from "../services/orderCancelService";
-import type { TicketStub } from "../store/draftEventStore";
+import type { TicketStub, WhenMode } from "../store/draftEventStore";
 import type { OrderRecord } from "../store/orderStore";
 import {
   buildEventSalesSummary,
@@ -34,6 +34,7 @@ import {
   type EventOrdersReadStatus,
 } from "../utils/eventSalesSummary";
 import { currencyCodeOrNull } from "../utils/currency";
+import { isPerNightCapacity } from "../utils/perNightCapacity";
 
 export const eventOrdersKeys = {
   all: ["event-orders"] as const,
@@ -221,6 +222,8 @@ export interface EventSalesSummarySource {
   id: string;
   tickets: TicketStub[];
   currency?: string | null;
+  /** issue #3313 — a recurring event's capacity is per night. */
+  whenMode?: WhenMode | null;
 }
 
 const ticketCapacitySignature = (tickets: TicketStub[]): string =>
@@ -274,6 +277,7 @@ export const useEventSalesSummaries = (
       orders: read.data,
       readStatus: read.status,
       isRefreshing: read.isRefreshing,
+      capacityPerNight: isPerNightCapacity(event.whenMode),
     });
     return acc;
   }, {});
