@@ -158,6 +158,12 @@ import * as EventDateDisplay from "../../utils/eventDateDisplay";
 // no runtime dependency to this hot buyer-web route).
 import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
 import type { MultiDatePricingMode } from "../../services/publicEventsService";
+// issue #3284 — deep specifier: several suites partially mock the package barrel,
+// and a name missing from those factories would be undefined here.
+import {
+  UNKNOWN_REFUND_POLICY_STATE,
+  type RefundPolicyReadState,
+} from "@mingla/offering-rendering/offeringRefundPolicy";
 import { isLegacyUnsafeEventCoverVideoUrl } from "../../utils/eventCoverMediaRules";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicPageOnWeb";
@@ -191,6 +197,13 @@ interface PublicEventPageAdapterProps {
    * "Booking unavailable" strip (no dead-end checkout 409). Defaults to true.
    */
   bookable?: boolean;
+  /**
+   * issue #3284 — the refund terms read from the SAME bundle that served the
+   * event (`PublicEventDetail.refundPolicyState`), shown as section 9 of the
+   * shared body. Defaults to unknown, which renders nothing, for callers with no
+   * bundle read.
+   */
+  refundPolicyState?: RefundPolicyReadState;
 }
 
 const mapTicket = (t: TicketStub): PublicTicketProps => ({
@@ -442,6 +455,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   occurrences = NO_OCCURRENCES,
   multiDatePricingMode = "per_day",
   onRetryOccurrences,
+  refundPolicyState = UNKNOWN_REFUND_POLICY_STATE,
 }) => {
   const router = useRouter();
   // ORCH-1295 [chip-in-post-payment-polish] — BUG 1: the chip-in web return lands
@@ -1772,6 +1786,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           {...(acquisitionState.kind === "current"
             ? {}
             : { onSeeWhosGoing: undefined })}
+          // issue #3284 — section 9 refund terms (the body hides them on a
+          // closed or free event and on an unknown read) + the name to contact.
+          refundPolicyState={refundPolicyState}
+          refundHostName={brand?.displayName ?? null}
           testID="orch-1167-event-foundation"
         />
       )}

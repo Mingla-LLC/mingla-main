@@ -136,6 +136,9 @@ import {
   type CanonicalPublicEvent,
   type PublicEventOccurrenceLike,
 } from "../../hooks/usePublicEventBySlug";
+// issue #3284 — the unknown refund-terms state, by DEEP specifier: the #1929 /
+// #2230 suites partially mock the package barrel.
+import { UNKNOWN_REFUND_POLICY_STATE } from "@mingla/offering-rendering/offeringRefundPolicy";
 import { useTripIntakeSchemas } from "../../hooks/useTripIntakeSchemas";
 import { useEventTheme } from "../../hooks/useEventTheme";
 import {
@@ -1678,6 +1681,15 @@ export default function ConsumerEventDetailScreen({
                     ? handleSeeWhosGoing
                     : undefined
                 }
+                // issue #3284 — section 9 refund terms from the SAME validated
+                // bundle that owns the days. Until it arrives (or when it came
+                // from an older build) the state is unknown and nothing renders:
+                // the deck seed carries no terms, and unknown is never "none".
+                refundPolicyState={
+                  validatedDayCanonical?.refundPolicyState ??
+                  UNKNOWN_REFUND_POLICY_STATE
+                }
+                refundHostName={seed.brandName}
                 testID="orch-1167-consumer-event-body"
               />
             ) : (

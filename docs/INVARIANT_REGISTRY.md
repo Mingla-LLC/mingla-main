@@ -2222,6 +2222,7 @@
 - **Rule:** The STANDARD ticketed-event public page renders Seth's canonical 9-section order, in order: cover → event name → date/time (AM/PM) → pills (event-format · vibes · party-types · music-genres · tickets-left, all solid-fill) → inline ticket box → Presented-By → About toggle → "Where you'll be" Mapbox → floating Get Tickets. No section is silently dropped (the vibes/party/music pills were being dropped before 1167 — never again).
 - **Enforcement:** `packages/offering-rendering/__tests__/orch_1167_*` (section-order + pill-presence assertions); CI green on #534–#541; fails-on-revert.
 - **Established:** flipped DRAFT → ACTIVE 2026-06-19 at ORCH-1167 CLOSE (registered DRAFT in the ORCH-1167 SPEC).
+- SUPERSEDED-BY I-3284-CANONICAL-10-SECTION-ORDER (#3284, flips on CLOSE)
 
 ### I-PROPOSED-1167-SHELL-AGNOSTIC-BODY (ACTIVE)
 - **Rule:** The standard-event public page body is ONE shared shell-agnostic `EventOfferingBody` in `packages/offering-rendering`, rendered identically on buyer-web + business iOS/Android + consumer iOS/Android. No per-surface fork (the FoundationEventPreview web-body + `ConsumerEventDetailScreen` event fork were retired — do not reintroduce a surface-specific body).
@@ -10185,3 +10186,23 @@ All four #2796 rules were established ACTIVE after independent web, iOS AX5, and
 
 - **Rule:** an `event_dates` row that something still holds is never deleted: a live day-bound pass (`valid`/`used`/`transferred`/`refund_pending`), a live order anchor (`pending`/`paid`/`partial_refund`), any door scan recorded against it, or a payout release. "Held" has exactly one definition, `public.issue_3285_event_date_hold_reason(uuid)`, and it holds with or without "Refund all & proceed". With sales and no acknowledgement, removing a multi-date day raises `multi_date_remove_with_sales` and retiming one raises `schedule_change_with_sales` (the multi-date twin of ORCH-1047).
 - **Enforcement, twice:** the writer consults the helper before any delete, and `ticket_event_dates_event_date_id_fkey` is `ON DELETE RESTRICT`, so the database refuses to orphan a pass's day whoever deletes it. `brand_payout_releases_event_date_id_fkey` was already RESTRICT. Any new table keyed on `event_dates.id` must join the helper and key its FK with RESTRICT. Tests: the #3285 implementor pg17 suite, T-03, T-06–T-10, T-14.
+
+## DRAFT — issue #3284 (refund terms on events and experiences)
+
+### I-3284-UNKNOWN-IS-NOT-NONE (DRAFT)
+
+- **Rule:** an event or experience payload with no `refundPolicy` key renders no refund section at all. Only a real `null` means "no terms", and only that renders the no-policy line (for a paid offering). An absent key comes from an older reader, a stale cache or a deck seed, so it is unknown, never none.
+- **Enforcement:** `readRefundPolicyState` in `packages/offering-rendering/offeringRefundPolicy.ts` (absent or unreadable → unknown, `null` → none, valid → set), used by every public adapter. `mingla-business/src/components/__tests__/issue_3284_offering_refund_ladder.implementor.test.tsx` renders both bodies through the gating matrix; `app-mobile/src/hooks/__tests__/issue_3284_refund_policy_mapping.implementor.test.ts` pins the consumer mappers.
+- **Established:** DRAFT at #3284; flips ACTIVE on CLOSE.
+
+### I-3284-POLICY-IS-A-PUBLISHED-PROMISE (DRAFT)
+
+- **Rule:** once an event or experience has a paid order (`payment_status IN ('paid','partial_refund') AND total_cents > 0`), its `refund_policy` only moves in the buyer-favourable direction. A change that is worse for buyers at any threshold is refused with `refund_policy_downgrade_with_sales`, and a `null` policy counts as 0%.
+- **Enforcement:** `business_patch_offering_refund_policy` (migration `20270703003284_issue_3284_offering_refund_terms.sql`) and `supabase/migrations/__tests__/issue_3284_offering_refund_terms.test.sql` (R-03, R-06 and R-07). `i-proposed-1120-published-refund-via-gated-rpc.mjs` stops the event and experience create and edit files from calling the ungated trip write.
+- **Established:** DRAFT at #3284; flips ACTIVE on CLOSE.
+
+### I-3284-CANONICAL-10-SECTION-ORDER (DRAFT)
+
+- **Rule:** the standard event page keeps the 1167 order and gains section 9, Cancellation (`testID="orch-1167-cancellation"`), directly after "Where you'll be". It is hidden when the offering is closed, the terms are unknown, or the offering is free.
+- **Enforcement:** `.github/scripts/strict-grep/orch-1167-canonical-9-section-order.mjs`, whose self-test fails when cancellation comes before "Where you'll be" or its anchor is missing.
+- **Established:** DRAFT at #3284; supersedes `I-PROPOSED-1167-CANONICAL-9-SECTION-ORDER` and flips ACTIVE on CLOSE.

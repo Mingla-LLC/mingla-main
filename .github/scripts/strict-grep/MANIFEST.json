@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 642,
-  "selfTestWiredFloor": 411,
+  "expectedStrictGrepMjsFiles": 643,
+  "selfTestWiredFloor": 413,
   "unenforcedCap": 2,
   "fixtureCap": 9,
   "capableUnwiredCap": 23,
@@ -6841,9 +6841,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-1138-event-no-trip-only-blocks"
       ]
@@ -8302,6 +8303,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "orch-1399-links-src-onelink-attribution"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-3284-experience-section-order.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-3284-experience-section-order"
       ]
     },
     {
