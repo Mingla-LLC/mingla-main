@@ -878,53 +878,6 @@ export const createTicketCheckoutCreateHandler = (
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // issue #3313 — NO ORDER WITHOUT A NIGHT.
-    // ═══════════════════════════════════════════════════════════════════════
-    // A checkout on an event with more than one bookable date used to finish
-    // with no day set: no payout anchor, no pass-to-day rows, an any-night
-    // pass. The DATABASE decides (the session RPC raises
-    // `event_date_choice_required` from `issue_3313_event_day_choice`); this
-    // block reads the SAME predicate so the guest gets a specific 422 rather
-    // than a generic 409, and so the two cases the server can resolve get their
-    // anchor derived below like any other day set:
-    //   * a single `eventDateId` on an event that requires a day — the
-    //     business app's native checkout forwards only that field — becomes the
-    //     day set;
-    //   * a recurring event with exactly one upcoming night binds to it.
-    // Trips, experiences and single-date events: no choice is required and
-    // there is no sole night, so nothing here changes their request.
-    if (eventDateIds.length === 0) {
-      const { data: dayChoice, error: dayChoiceErr } = await supabase.rpc(
-        "issue_3313_event_day_choice",
-        { p_event_id: eventId },
-      );
-      if (dayChoiceErr !== null) {
-        console.error(
-          "[ticket-checkout-create] day choice lookup failed",
-          dayChoiceErr,
-        );
-        return jsonResponse(
-          { error: "event_date_lookup_failed", detail: dayChoiceErr.message },
-          500,
-        );
-      }
-      const choice = (dayChoice ?? {}) as {
-        requiresChoice?: unknown;
-        soleOccurrenceId?: unknown;
-      };
-      if (choice.requiresChoice === true && eventDateId !== null) {
-        eventDateIds.push(eventDateId);
-      } else if (
-        typeof choice.soleOccurrenceId === "string" &&
-        choice.soleOccurrenceId.length > 0
-      ) {
-        eventDateIds.push(choice.soleOccurrenceId);
-      } else if (choice.requiresChoice === true) {
-        return refuse({ error: "event_date_choice_required" }, 422);
-      }
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
     // issue #2160 — VALIDATE THE CHOSEN DAY SET AND DERIVE THE ANCHOR.
     // ═══════════════════════════════════════════════════════════════════════
     // ONE batched read, never N round trips. Every id must belong to THIS event
@@ -1028,6 +981,26 @@ export const createTicketCheckoutCreateHandler = (
         },
         403,
       );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // issue #3313 — A LONE eventDateId ON AN EVENT BECOMES THE DAY SET.
+    // ═══════════════════════════════════════════════════════════════════════
+    // The session RPC now refuses a checkout with no day on an event whose
+    // guest must pick one (`event_date_choice_required`: a multi-date event, or
+    // a recurring event with more than one night ahead). The business app's
+    // native checkout forwards only the single legacy `eventDateId`, so on an
+    // EVENT that field is the guest's chosen day: it was validated above
+    // (ORCH-1072: belongs to this event, not yet ended), and treating it as a
+    // one-day set gives the pass its day row and the order its payout anchor.
+    // Experiences and trips keep their ORCH-1072 single-occurrence path.
+    if (
+      tripGateRow?.event_type === "event" &&
+      orderedEventDateIds.length === 0 &&
+      eventDateId !== null
+    ) {
+      orderedEventDateIds.push(eventDateId);
+      anchorEventDateId = eventDateId;
     }
 
     // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake gate.
@@ -1234,6 +1207,12 @@ export const createTicketCheckoutCreateHandler = (
       // the policy or membership changed between the Edge decision above and
       // the session RPC, the stable bounded contract is returned, not a generic
       // 409, and no session exists.
+      // issue #3313 — the guest has to pick which date they are coming to. The
+      // database refused before reserving anything; say so specifically (the
+      // same 422 family as the other day refusals) instead of a generic 409.
+      if (sessionError?.message?.includes("event_date_choice_required")) {
+        return jsonResponse({ error: "event_date_choice_required" }, 422);
+      }
       const dbAccessDenial = ticketCheckoutAccessDenialFromDbMessage(
         sessionError?.message,
       );
