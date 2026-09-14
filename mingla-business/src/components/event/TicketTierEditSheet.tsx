@@ -349,6 +349,21 @@ const WaitlistEntriesSheet: React.FC<WaitlistEntriesSheetProps> = ({
 
 // ---- TicketTierEditSheet (main export) ------------------------------
 
+/** issue #3350 — typed fields whose red error waits for the organiser to leave them. */
+interface TicketSheetTouched {
+  name: boolean;
+  price: boolean;
+  capacity: boolean;
+}
+
+const UNTOUCHED: TicketSheetTouched = { name: false, price: false, capacity: false };
+
+/** issue #3350 — one reason Save is disabled; `revealed` = shown as an error. */
+interface SaveBlocker {
+  message: string;
+  revealed: boolean;
+}
+
 export interface TicketTierEditSheetProps {
   visible: boolean;
   onClose: () => void;
@@ -445,6 +460,11 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   const [isUnlimited, setIsUnlimited] = useState<boolean>(false);
   const [priceText, setPriceText] = useState<string>("");
   const [capacityText, setCapacityText] = useState<string>("");
+  // issue #3350 — a field's red error waits until the organiser LEAVES it (the
+  // app's touched-on-blur pattern: checkout buyer details, guest reservations,
+  // Add person). Save stays disabled while anything is invalid (#1959), so
+  // blur is the reveal. Reset every time the sheet opens.
+  const [touched, setTouched] = useState<TicketSheetTouched>(UNTOUCHED);
 
   // Cycle 5 (v4) modifier state
   const [visibility, setVisibility] = useState<TicketVisibility>("public");
@@ -521,6 +541,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     if (!visible) return;
     // Always reset reveal-state on sheet open — never auto-show a saved password.
     setPasswordRevealed(false);
+    setTouched(UNTOUCHED);
     if (initial !== null) {
       setName(initial.name);
       setIsFree(initial.isFree);
@@ -656,35 +677,46 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   // issue #2590 — one list, rendered at the button. Derived from the SAME
   // predicates that gate `canSave`, never a second copy of the rules: a
   // summary that can disagree with the button is worse than no summary.
-  const saveBlockers: string[] = [];
-  if (name.trim().length === 0) saveBlockers.push("Give this ticket a name.");
-  if (priceInvalid) saveBlockers.push("Enter a valid price, or mark it free.");
+  // issue #3350 — every blocker is still LISTED (a greyed-out Save is never
+  // unexplained), but one from a typed field is only `revealed` — red — once
+  // that field has been left. Until then it reads as a neutral to-do.
+  const saveBlockers: SaveBlocker[] = [];
+  const block = (message: string, revealed = true): void => {
+    saveBlockers.push({ message, revealed });
+  };
+  if (name.trim().length === 0) block("Give this ticket a name.", touched.name);
+  if (priceInvalid) block("Enter a valid price, or mark it free.", touched.price);
   if (capacityInvalid) {
-    saveBlockers.push("Enter a capacity above zero, or mark it unlimited.");
+    block("Enter a capacity above zero, or mark it unlimited.", touched.capacity);
   }
   if (capacityBelowSold) {
-    saveBlockers.push(
+    block(
       capacityPerNight
         ? `Capacity per night is below the ${minimumCapacity} ticket${minimumCapacity === 1 ? "" : "s"} already sold for the busiest night.`
         : `Capacity is below the ${soldCount} ticket${soldCount === 1 ? "" : "s"} already sold.`,
+      touched.capacity,
     );
   }
-  if (minTooLow) saveBlockers.push("Minimum per buyer must be at least 1.");
+  if (minTooLow) block("Minimum per buyer must be at least 1.");
   if (maxLessThanMin) {
-    saveBlockers.push("Maximum per buyer is lower than the minimum.");
+    block("Maximum per buyer is lower than the minimum.");
   }
   if (passwordTooShort) {
-    saveBlockers.push("Password must be at least 4 characters.");
+    block("Password must be at least 4 characters.");
   }
   if (waitlistConflict) {
-    saveBlockers.push("A waitlist needs a limited capacity.");
+    block("A waitlist needs a limited capacity.");
   }
   if (descriptionTooLong) {
-    saveBlockers.push("Description is over 280 characters.");
+    block("Description is over 280 characters.");
   }
   if (saleEndBeforeStart) {
-    saveBlockers.push("Sales close before they open.");
+    block("Sales close before they open.");
   }
+  const anyBlockerRevealed = saveBlockers.some((blocker) => blocker.revealed);
+  const showPriceError = priceInvalid && touched.price;
+  const showCapacityInvalid = capacityInvalid && touched.capacity;
+  const showCapacityBelowSold = capacityBelowSold && touched.capacity;
 
   // Sale period picker handlers — bottom-docked inline DateTimePicker
   // (matches MultiDateOverrideSheet's pattern for in-sheet pickers).
@@ -928,6 +960,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
               <TextInput
                 value={name}
                 onChangeText={setName}
+                onBlur={() => setTouched((t) => ({ ...t, name: true }))}
                 placeholder="e.g. General Admission"
                 placeholderTextColor={textTokens.quaternary}
                 style={styles.textInput}
@@ -1012,6 +1045,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   onPressIn={(event) =>
                     reselectWebValueAfterPointer(event, priceText)
                   }
+                  onBlur={() => setTouched((t) => ({ ...t, price: true }))}
                   style={styles.textInput}
                   editable={!isPriceLocked}
                   accessibilityLabel={
@@ -1022,7 +1056,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   }
                 />
               </View>
-              {priceInvalid ? (
+              {showPriceError ? (
                 <Text style={styles.helperError}>
                   Enter a price greater than zero, or mark this ticket free.
                 </Text>
@@ -1067,7 +1101,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
               <View
                 style={[
                   styles.inputWrap,
-                  capacityBelowSold && styles.inputWrapError,
+                  showCapacityBelowSold && styles.inputWrapError,
                 ]}
               >
                 <TextInput
@@ -1082,18 +1116,19 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   onPressIn={(event) =>
                     reselectWebValueAfterPointer(event, capacityText)
                   }
+                  onBlur={() => setTouched((t) => ({ ...t, capacity: true }))}
                   style={styles.textInput}
                   accessibilityLabel={
                     capacityPerNight ? "Ticket capacity per night" : "Ticket capacity"
                   }
                 />
               </View>
-              {capacityInvalid ? (
+              {showCapacityInvalid ? (
                 <Text style={styles.helperError}>
                   Enter a whole-number capacity greater than zero, or mark this
                   ticket unlimited.
                 </Text>
-              ) : capacityBelowSold ? (
+              ) : showCapacityBelowSold ? (
                 <Text style={styles.helperError}>
                   {capacityPerNight
                     ? `Cannot go below ${minimumCapacity} tickets sold for the busiest night. Increase capacity or refund existing buyers first.`
@@ -1435,15 +1470,32 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 200px up the sheet is a dead control. Errors block; the caution
                 above never appears here, because it does not block. */}
             {saveBlockers.length > 0 ? (
-              <View style={styles.saveBlockerBox}>
-                <Text style={styles.saveBlockerTitle}>
+              <View
+                style={[
+                  styles.saveBlockerBox,
+                  anyBlockerRevealed ? null : styles.saveBlockerBoxPending,
+                ]}
+                testID="ticket-save-blockers"
+              >
+                <Text
+                  style={[
+                    styles.saveBlockerTitle,
+                    anyBlockerRevealed ? null : styles.saveBlockerPendingText,
+                  ]}
+                >
                   {saveBlockers.length === 1
                     ? "One thing to fix before saving"
                     : `${saveBlockers.length} things to fix before saving`}
                 </Text>
                 {saveBlockers.map((blocker) => (
-                  <Text key={blocker} style={styles.saveBlockerItem}>
-                    {`\u2022 ${blocker}`}
+                  <Text
+                    key={blocker.message}
+                    style={[
+                      styles.saveBlockerItem,
+                      blocker.revealed ? null : styles.saveBlockerPendingText,
+                    ]}
+                  >
+                    {`\u2022 ${blocker.message}`}
                   </Text>
                 ))}
               </View>
@@ -1693,6 +1745,15 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
     color: semantic.error,
+  },
+  // issue #3350 — the same list before the organiser has left a field with a
+  // problem: a neutral to-do, not a failure.
+  saveBlockerBoxPending: {
+    backgroundColor: glass.tint.profileBase,
+    borderColor: glass.border.profileBase,
+  },
+  saveBlockerPendingText: {
+    color: textTokens.secondary,
   },
   helperHint: {
     fontSize: typography.caption.fontSize,

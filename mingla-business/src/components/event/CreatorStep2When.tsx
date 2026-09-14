@@ -14,11 +14,14 @@
  *
  * No auto-snap on day-of-week mismatch (D-FOR-CYCLE4-5 user-revised) —
  * validator pushes `recurrence.dayMismatch`; user fixes manually.
+ * issue #3315 narrows that: a repeat day the organiser has NOT chosen (the
+ * "every Monday" seed, or one still matching the old first date) follows the
+ * first date when it changes — see `followFirstDate`. A day they chose stays.
  *
  * Per Cycle 4 spec §3.5.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -65,9 +68,12 @@ import {
 
 import { generateDraftId } from "../../utils/draftEventId";
 import {
+  followFirstDate,
   formatRecurrenceLabel,
   formatTermination,
+  setPosOfIso,
   weekdayOfIso,
+  type RecurrenceDayField,
 } from "../../utils/recurrenceRule";
 import {
   formatLongDate,
@@ -228,6 +234,11 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   // ---- Mode-switch confirm ----
   const [pendingMode, setPendingMode] = useState<WhenMode | null>(null);
 
+  // issue #3315 — repeat-day fields the organiser picked THIS session. A field
+  // in here is never moved when the first date changes. A ref, not state: it
+  // is read only at commit time and must not re-render the step.
+  const explicitRepeatDays = useRef<Set<RecurrenceDayField>>(new Set());
+
   // ---- Multi-date row delete confirm ----
   const [pendingDeleteEntryId, setPendingDeleteEntryId] = useState<
     string | null
@@ -320,7 +331,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       // server publish RPC which apply the SAME midnight-wrap logic).
       if (mode === "date") {
         const newDate = isoFromDate(d);
-        updateDraft({
+        const patch: Partial<DraftEvent> = {
           date: newDate,
           endsAtUtc: computeEndsAtUtcWithSmartInfer(
             newDate,
@@ -328,7 +339,20 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             draft.endsAt,
             draft.timezone,
           ),
-        });
+        };
+        // issue #3315 — every first-date commit (iOS sheet, Android dialog,
+        // web input) lands here, so a repeat day that is still following the
+        // date moves with it instead of staying on the "every Monday" seed.
+        if (draft.whenMode === "recurring" && draft.recurrenceRule !== null) {
+          const followed = followFirstDate(
+            draft.recurrenceRule,
+            draft.date,
+            newDate,
+            explicitRepeatDays.current,
+          );
+          if (followed !== draft.recurrenceRule) patch.recurrenceRule = followed;
+        }
+        updateDraft(patch);
       } else if (mode === "doorsOpen") {
         const newDoors = hhmmFromDate(d);
         updateDraft({
@@ -363,6 +387,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
     [
       updateDraft,
       draft.recurrenceRule,
+      draft.whenMode,
       draft.date,
       draft.doorsOpen,
       draft.endsAt,
@@ -501,6 +526,8 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       if (from === to) return;
 
       const patch: Partial<DraftEvent> = { whenMode: to };
+      // issue #3315 — a freshly seeded rule has no organiser-picked days yet.
+      if (to === "recurring") explicitRepeatDays.current.clear();
 
       if (from === "single" && to === "recurring") {
         const dow: Weekday =
@@ -614,7 +641,9 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           byMonthDay ?? Math.min(28, dateFromIso(draft.date).getDate());
         bySetPos = undefined;
       } else if (preset === "monthly_dow") {
-        bySetPos = bySetPos ?? 1;
+        // issue #3315 — seed the week the first date falls in, not always the 1st.
+        bySetPos =
+          bySetPos ?? (draft.date !== null ? setPosOfIso(draft.date) : 1);
         byMonthDay = undefined;
       } else if (preset === "daily") {
         byDay = undefined;
@@ -640,6 +669,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   const handleSelectByDay = useCallback(
     (w: Weekday): void => {
       if (draft.recurrenceRule === null) return;
+      explicitRepeatDays.current.add("byDay");
       updateDraft({
         recurrenceRule: { ...draft.recurrenceRule, byDay: w },
       });
@@ -650,6 +680,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   const handleSelectByMonthDay = useCallback(
     (n: number): void => {
       if (draft.recurrenceRule === null) return;
+      explicitRepeatDays.current.add("byMonthDay");
       updateDraft({
         recurrenceRule: { ...draft.recurrenceRule, byMonthDay: n },
       });
@@ -660,6 +691,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   const handleSelectBySetPos = useCallback(
     (p: SetPos): void => {
       if (draft.recurrenceRule === null) return;
+      explicitRepeatDays.current.add("bySetPos");
       updateDraft({
         recurrenceRule: { ...draft.recurrenceRule, bySetPos: p },
       });

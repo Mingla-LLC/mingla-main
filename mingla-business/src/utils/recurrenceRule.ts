@@ -68,6 +68,83 @@ export const weekdayOfIso = (iso: string): Weekday => {
   return WEEKDAY_ORDER[idx];
 };
 
+/**
+ * issue #3315 — which week of its month an ISO date falls in, in the SetPos
+ * vocabulary the monthly-by-weekday expander below matches: 1–4, and -1
+ * ("last") for a fifth occurrence (days 29–31).
+ */
+export const setPosOfIso = (iso: string): SetPos => {
+  const week = Math.ceil(parseIso(iso).getDate() / 7);
+  return week >= 5 ? -1 : (week as 1 | 2 | 3 | 4);
+};
+
+/** issue #3315 — the day of month a monthly-by-date rule takes (1–28). */
+export const monthDayOfIso = (iso: string): number =>
+  Math.min(28, parseIso(iso).getDate());
+
+/** The rule fields that describe WHICH day repeats. */
+export type RecurrenceDayField = "byDay" | "byMonthDay" | "bySetPos";
+
+/**
+ * issue #3315 — keep a repeat pattern on its first date when the organiser has
+ * not chosen the day themselves.
+ *
+ * Switching to Recurring before picking a date seeds "every Monday" (and the
+ * 1st week for monthly-by-weekday). Picking a Tuesday then left the pattern on
+ * Monday — "starts Tuesday, repeats every Monday" — and nothing said so.
+ *
+ * Each day field moves to `nextDate` only while it is still FOLLOWING the date:
+ *   - the organiser has not picked it this session (`explicit`), AND
+ *   - it equals what `previousDate` implied, or — with no previous date — it is
+ *     still the seed the wizard wrote ("MO", week 1; any day of month, since
+ *     that seed comes from today's date).
+ * A day the organiser chose on purpose is NEVER overwritten: it keeps the
+ * `recurrence.dayMismatch` validation instead (D-FOR-CYCLE4-5).
+ *
+ * Returns the SAME rule object when nothing moves, so callers can skip the write.
+ */
+export const followFirstDate = (
+  rule: RecurrenceRule,
+  previousDate: string | null,
+  nextDate: string,
+  explicit: ReadonlySet<RecurrenceDayField>,
+): RecurrenceRule => {
+  const next: Pick<RecurrenceRule, RecurrenceDayField> = {
+    byDay: weekdayOfIso(nextDate),
+    byMonthDay: monthDayOfIso(nextDate),
+    bySetPos: setPosOfIso(nextDate),
+  };
+  const previous: Pick<RecurrenceRule, RecurrenceDayField> | null =
+    previousDate === null
+      ? null
+      : {
+          byDay: weekdayOfIso(previousDate),
+          byMonthDay: monthDayOfIso(previousDate),
+          bySetPos: setPosOfIso(previousDate),
+        };
+  const noDateSeed: Pick<RecurrenceRule, RecurrenceDayField> = {
+    byDay: "MO",
+    byMonthDay: rule.byMonthDay,
+    bySetPos: 1,
+  };
+  const follows = (field: RecurrenceDayField): boolean => {
+    const current = rule[field];
+    if (current === undefined || explicit.has(field)) return false;
+    const reference = previous ?? noDateSeed;
+    return current === reference[field];
+  };
+
+  const patch: Partial<Pick<RecurrenceRule, RecurrenceDayField>> = {};
+  if (follows("byDay") && rule.byDay !== next.byDay) patch.byDay = next.byDay;
+  if (follows("byMonthDay") && rule.byMonthDay !== next.byMonthDay) {
+    patch.byMonthDay = next.byMonthDay;
+  }
+  if (follows("bySetPos") && rule.bySetPos !== next.bySetPos) {
+    patch.bySetPos = next.bySetPos;
+  }
+  return Object.keys(patch).length === 0 ? rule : { ...rule, ...patch };
+};
+
 /** Long human label for a weekday code. Used in error messages. */
 export const formatWeekdayLong = (w: Weekday): string => WEEKDAY_LONG[w];
 
