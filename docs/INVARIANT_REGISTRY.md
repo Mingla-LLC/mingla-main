@@ -1,5 +1,14 @@
 # Invariant Registry
 
+## ACTIVE — issue #3095 (a CI policy pin hashes only the policy's inputs)
+
+### I-PROPOSED-3095-POLICY-PIN-IS-A-PROJECTION (ACTIVE)
+
+- **Rule:** A pinned digest that guards a CI policy hashes only that policy's inputs, never whole documents shared across unrelated work. For #2851, `PR_FAMILY_WITHOUT_CONCURRENCY_SHA256` covers each PR-family workflow's sorted trigger event keys, job-level `concurrency`, and job `uses:`. Top-level concurrency stays with `auditWorkflowSources()`, which fully determines it. A `paths`, `types`, `branches`, step, test-target, env or comment edit never moves it. Every deliberate non-sensitivity is pinned: all 60 registration rows are inverted to *present exactly once, the document moves, the pin does not*, plus the job-without-concurrency and `types` controls. Every sensitivity is pinned too, by five must-move controls. So the projection cannot silently widen or narrow. **No other digest literal may appear in the gate's code** beyond `PR_FAMILY_IDENTITY_SHA256`, the projection literal, and the seven `DENIED_FULL_SHA256` byte authorities. A whole-tree receipt re-creates the churn this rule exists to end. Guard a lane's executable line with a registration row instead.
+- **Enforcement:** subtest 2 of `.github/scripts/strict-grep/issue-2851-pr-concurrency-policy.implementor.test.mjs`, plus `.github/scripts/strict-grep/issue-3095-policy-projection-adversarial.tester.test.mjs` (test 9 refuses any undeclared digest literal). Both run in class A.
+- **Regression:** FR-1…FR-6 (widening, narrowing, a constant digest, including top-level concurrency, a lost registration line, undoing the inversion). The tester's 13 weakened-gate reverts. Test 9 goes red against any gate version that still carries a receipt literal (`1df3d458f`, `4b6442af6`, `a98202439`).
+- **Status:** ACTIVE on 2026-09-14. PR #3332 merged as `eb15e3d6f` after an independent tester FAIL, rework, and retest PASS. Verified on merged `main` in a clean archive: gate 11/11 and tester suite 9/9; an unrelated `paths:` edit leaves the gate green; a silently dropped registration line turns it red. Over 59 commits of history, the whole-document digest moved 53 times and the projection 3, each a real policy change. **Known residuals, recorded, not in scope:** `DENIED_FULL_SHA256` byte-pins the seven non-PR workflows. A `types:`, job `if:` or `branches:` edit can switch a PR lane off without any check going red (#3289). Two fixtures still text-match workflow bytes (#3339).
+
 ## DRAFT — issue #1777 (server-owned Brand Circle reach)
 
 ### I-PROPOSED-1777-CIRCLE-FRESHNESS-FAILS-CLOSED (DRAFT)
