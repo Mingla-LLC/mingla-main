@@ -5247,6 +5247,7 @@
       "expectedFiles": [
         "mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_commit_identity.happy.test.mjs",
         "mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_commit_identity.tester.adversarial.test.mjs",
+        "mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_created_ref_read_after_write.happy.test.mjs",
         "mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_handoff.happy.test.mjs",
         "mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_handoff.tester.adversarial.test.mjs",
         "mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_pagination.happy.test.mjs"

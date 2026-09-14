@@ -27,6 +27,19 @@ export const LEGACY_BRANCH_RE = /^bundle-baseline\/[0-9a-f]{7}$/;
 
 const apiVersion = "2022-11-28";
 
+/**
+ * Waits between re-reads of a ref this run has just created (#3337).
+ *
+ * GitHub can briefly answer `GET /git/ref/heads/<branch>` with 404 right after
+ * `POST /git/refs` succeeded. On a405a4ce8 that lag was read as a collision:
+ * the handoff refused its own freshly created branch, opened no PR, and main
+ * stayed red until a re-run took the orphan path. Five reads, 3.75 s of total
+ * waiting at most, and only while the ref is not visible at all.
+ */
+export const CREATED_REF_READ_DELAYS_MS = Object.freeze([250, 500, 1000, 2000]);
+
+const realSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export class HandoffError extends Error {
   constructor(code, message, details = undefined) {
     super(message);
@@ -293,6 +306,42 @@ export async function validateManagedArtifact(api, {
   }
 
   return { sourceSha, headSha, actor, baseline };
+}
+
+/**
+ * Read back a ref this run just created and prove it points at the trusted
+ * generated commit (#3337).
+ *
+ *   - A ref that is not visible yet (404, or no object SHA) is re-read on the
+ *     bounded `delaysMs` schedule. That is the only thing that is retried.
+ *   - A ref that resolves to ANY other value fails closed on that read, with no
+ *     retry: a different commit is a collision, never lag.
+ *   - A ref still not visible after the last read fails closed. Absence is not
+ *     proof of the write.
+ *   - Any other REST failure propagates from `getRef` unchanged.
+ */
+export async function readBackCreatedRef(api, branch, trustedSha, {
+  sleep = realSleep,
+  delaysMs = CREATED_REF_READ_DELAYS_MS,
+} = {}) {
+  for (let attempt = 0; ; attempt += 1) {
+    const liveRef = await api.getRef(branch);
+    const liveSha = liveRef?.object?.sha;
+    if (liveSha !== undefined && liveSha !== null && liveSha !== "") {
+      if (liveSha !== trustedSha) {
+        throw new HandoffError("COLLISION", "Created ref does not equal the trusted generated commit.");
+      }
+      return liveRef;
+    }
+    if (attempt >= delaysMs.length) {
+      throw new HandoffError(
+        "CREATED_REF_NOT_VISIBLE",
+        `Created ref ${branch} was still not readable after ${attempt + 1} reads; ` +
+          "it was not treated as created and no PR was opened.",
+      );
+    }
+    await sleep(delaysMs[attempt]);
+  }
 }
 
 async function assertLiveSource(api, sourceSha, stage) {
@@ -642,10 +691,10 @@ export async function runHandoff(api, options) {
     }
     throw error;
   }
-  const liveRef = await api.getRef(branch);
-  if (createdRef?.object?.sha !== generatedSha || liveRef?.object?.sha !== generatedSha) {
+  if (createdRef?.object?.sha !== generatedSha) {
     throw new HandoffError("COLLISION", "Created ref does not equal the trusted generated commit.");
   }
+  await readBackCreatedRef(api, branch, generatedSha, { sleep: options.sleep });
 
   const afterRef = await assertLiveSource(api, sourceSha, "immediately after ref create");
   log.mainReads.push(afterRef);
