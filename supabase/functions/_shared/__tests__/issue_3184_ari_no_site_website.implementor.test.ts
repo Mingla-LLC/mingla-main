@@ -328,23 +328,31 @@ Deno.test({
   },
 });
 
-Deno.test("#3184 T-I5 prompt v21 carries the four no-website rules verbatim", () => {
-  assertEquals(PROMPT_VERSION, "v21");
-  const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
-  for (
-    const line of [
-      '- You cannot create, set up, or provision a website: no tool does that. Never offer to create or set up a website, never ask the user to confirm creating one, never describe a website as something you will build, and never use the "coming in a future update" phrase for websites.',
-      "- For any request to create, start, or set up a website, and for any question about a brand's website, call get_brand_site for that brand first and answer from its result.",
-      '- If get_brand_site returns website_state "not_set_up": say plainly that this brand has no website yet and that a brand admin or owner sets one up on the brand\'s Website screen (Brand profile → Website). Do not propose content, settings, media, previews, or publishing until a website exists.',
-      '- If get_brand_site returns website_state "not_available": say plainly that Mingla websites aren\'t available for this brand right now. Do not point to a Website screen, do not promise a date, and do not suggest a workaround.',
-    ]
-  ) {
-    assertStringIncludes(prompt, line);
-  }
-  const websiteRules = prompt.slice(prompt.indexOf("WEBSITE RULES:"));
-  assert(
-    websiteRules.indexOf("- You cannot create, set up, or provision") <
-      websiteRules.indexOf("- Read the current page or settings revision"),
-    "no-website rules must sit ahead of the edit rules",
-  );
+Deno.test({
+  name: "#3184 T-I5 prompt v21 carries the four no-website rules verbatim",
+  // Pure prompt read, but Supabase Auth timers started by the fixture tests
+  // above (or by an earlier file in the same deno test run) can complete
+  // while this test runs, which the op sanitizer would misreport as a leak.
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: () => {
+    assertEquals(PROMPT_VERSION, "v21");
+    const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
+    for (
+      const line of [
+        '- You cannot create, set up, or provision a website: no tool does that. Never offer to create or set up a website, never ask the user to confirm creating one, never describe a website as something you will build, and never use the "coming in a future update" phrase for websites.',
+        "- For any request to create, start, or set up a website, and for any question about a brand's website, call get_brand_site for that brand first and answer from its result.",
+        '- If get_brand_site returns website_state "not_set_up": say plainly that this brand has no website yet and that a brand admin or owner sets one up on the brand\'s Website screen (Brand profile → Website). Do not propose content, settings, media, previews, or publishing until a website exists.',
+        '- If get_brand_site returns website_state "not_available": say plainly that Mingla websites aren\'t available for this brand right now. Do not point to a Website screen, do not promise a date, and do not suggest a workaround.',
+      ]
+    ) {
+      assertStringIncludes(prompt, line);
+    }
+    const websiteRules = prompt.slice(prompt.indexOf("WEBSITE RULES:"));
+    assert(
+      websiteRules.indexOf("- You cannot create, set up, or provision") <
+        websiteRules.indexOf("- Read the current page or settings revision"),
+      "no-website rules must sit ahead of the edit rules",
+    );
+  },
 });
