@@ -159,6 +159,10 @@ export function buildExperienceOfferingData(
       recurrenceRule: exp.recurrenceRule,
     }),
     bookable: exp.bookable !== false,
+    // issue #3284 — section 10 refund terms, straight from the read. The body
+    // hides them when unknown, on a free experience, and when closed.
+    refundPolicyState: exp.refundPolicyState,
+    offeringClosed: exp.status === "ended" || exp.status === "cancelled",
   };
 }
 

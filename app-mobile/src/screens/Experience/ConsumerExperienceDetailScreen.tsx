@@ -1022,6 +1022,10 @@ export default function ConsumerExperienceDetailScreen({
       capacity: o.capacity,
     })),
     bookable: offeringCta.tappable || offeringCta.kind !== "unavailable",
+    // issue #3284 — section 10 refund terms come ONLY from the fresh by-slug read
+    // (the deck seed carries none). Before it arrives they stay unknown → hidden.
+    refundPolicyState: freshDetail?.refundPolicyState,
+    offeringClosed: freshDetail?.offeringClosed,
   });
   // ORCH-1187 FIX-3(a): the seed adapter derives openDaily from the (possibly
   // stale) SEED recurrence fields. Override with the screen's fresh-preferred

@@ -118,6 +118,8 @@ export default function PublicEventRoute(): React.ReactElement {
         const result = await publicEventQuery.refetch();
         return result.isSuccess;
       }}
+      // issue #3284 — the refund terms ride the SAME bundle as the days above.
+      refundPolicyState={publicEventQuery.data.refundPolicyState}
     />
   );
 }

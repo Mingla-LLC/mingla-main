@@ -7,6 +7,13 @@ import type { PublicMenuGroup } from "@mingla/brand-rendering";
 // the barrel keep working untouched — a mock is not a reason to change a
 // module's public API, and it is certainly not a reason to edit ten tests.
 import { extractPublicEventLocation } from "@mingla/offering-rendering/publicEventLocation";
+// issue #3284 — the three-state refund-terms reader, by the SAME deep specifier and
+// for the same reason: it is pure, and a partial barrel mock cannot blank it.
+import {
+  readRefundPolicyState,
+  UNKNOWN_REFUND_POLICY_STATE,
+  type RefundPolicyReadState,
+} from "@mingla/offering-rendering/offeringRefundPolicy";
 
 import { supabase } from "./supabase";
 // issue #2160 — the shared occurrence shape. The direct `event_dates` READ in
@@ -480,6 +487,14 @@ export interface PublicEventDetail {
    * always bookable. Defaults to true when absent (back-compat).
    */
   bookable: boolean;
+  /**
+   * issue #3284 — the organiser's published refund terms, read from the bundle's
+   * `refundPolicy` key into set / none / unknown (I-3284-UNKNOWN-IS-NOT-NONE).
+   * `unknown` when the key is absent — a cached payload or a server from before
+   * #3284, or the RSVP view fallback, which never carries it — so the public page
+   * shows no terms rather than claiming there are none.
+   */
+  refundPolicyState: RefundPolicyReadState;
 }
 
 export interface PublicBrandDetail {
@@ -1643,6 +1658,8 @@ const detailFromRow = async (
     occurrences: [],
     multiDatePricingMode: "per_day",
     bookable,
+    // issue #3284 — the view carries no refund terms: unknown, never "none".
+    refundPolicyState: UNKNOWN_REFUND_POLICY_STATE,
   };
 };
 
@@ -1877,6 +1894,10 @@ const detailFromDirectBundle = async (
       asStringOrNull(payload.timezone),
     ),
     multiDatePricingMode: asPricingMode(payload.multiDatePricingMode),
+    // issue #3284 — the SAME bundle that served the event carries its refund
+    // terms. An absent key (a pre-#3284 server, or a payload the 5-second web
+    // cache stored before the migration) reads as unknown and renders nothing.
+    refundPolicyState: readRefundPolicyState(payload),
   };
 };
 

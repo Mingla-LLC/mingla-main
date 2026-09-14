@@ -17,6 +17,7 @@ import type { PublicEventOccurrence } from "../../services/publicEventOccurrence
 import type { MultiDatePricingMode } from "../../services/publicEventsService";
 import { useThemeFont } from "../../theme/useThemeFont";
 import { scheduleDayChooserFocusAfterNotice } from "../../utils/publicEventDayRecovery";
+import { UNKNOWN_REFUND_POLICY_STATE } from "@mingla/offering-rendering/offeringRefundPolicy";
 import { FoundationEventPreview } from "./FoundationEventPreview";
 import { MultiDateDayChooser } from "./MultiDateDayChooser";
 
@@ -194,6 +195,12 @@ export const DraftEventFoundationPreview: React.FC<
       ticketQuantities={ticketQuantities}
       onChangeTicketQuantity={handleChangeTicketQuantity}
       onProceedToCart={handleProceed}
+      // [TRANSITIONAL] issue #3284 — the organiser draft carries no refund terms
+      // yet, so the preview's section 9 reads unknown and stays hidden. Exit
+      // condition: the #3284 wizard slice adds DraftEvent.refundPolicy (spec C3)
+      // and this line maps it to set / none instead.
+      refundPolicyState={UNKNOWN_REFUND_POLICY_STATE}
+      refundHostName={brand?.displayName ?? null}
       testID="issue-2399-draft-foundation-preview"
     />
   );
