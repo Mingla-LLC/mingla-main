@@ -27,11 +27,20 @@ import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import { useBrand } from "../../hooks/useBrands";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
+import { buildDraftThemePreview } from "../theme/themePreviewContent";
 import type { ThemeInput } from "@mingla/offering-rendering";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 import type { CoverPatch } from "../ui/CoverPicker";
 import type { CoverTarget } from "../ui/coverTarget";
+import type { ExperienceWhenState } from "../../hooks/useExperienceDraftAdapter";
+
+/**
+ * issue #3373 — experiences have no cover colour of their own. The inline cover
+ * preview, the picker and the Theme sheet's cover tile all fall back to this one
+ * hue when there is no media, so they always show the same colour.
+ */
+const EXPERIENCE_COVER_HUE = 0;
 
 export interface ExperienceCoverStepProps {
   brandId: string;
@@ -40,6 +49,14 @@ export interface ExperienceCoverStepProps {
   /** true while the up-front draft RPC is in flight. */
   preparingDraft: boolean;
   cover: CoverPatch;
+  /**
+   * issue #3373 — the experience's title as typed, and its When state, so the
+   * Theme sheet previews THIS experience instead of a sample. `when` MUST keep
+   * its reference between wizard renders (pass `whenAdapter.whenState`, which is
+   * React state): this component is React.memo'd — see `onThemeChange`.
+   */
+  title: string;
+  when: Pick<ExperienceWhenState, "whenMode" | "date" | "doorsOpen" | "multiDates">;
   onCoverChange: (patch: CoverPatch) => void;
   onShowToast: (msg: string) => void;
   /** #1022 — the offering's raw theme override. null = fully inherited. */
@@ -58,6 +75,8 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
   experienceId,
   preparingDraft,
   cover,
+  title,
+  when,
   onCoverChange,
   onShowToast,
   themeOverrides,
@@ -104,6 +123,30 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
     [brandId, experienceId],
   );
 
+  // issue #3373 — the Theme sheet previews this experience: its title, first
+  // date and time, and cover, with the same fallbacks as the event creator
+  // ("Untitled experience", "Date TBD", the cover colour). Keyed on primitives
+  // and the wizard's When state, so it is rebuilt only when one of them changes.
+  const coverMediaUrl = cover.coverMediaUrl;
+  const coverMediaType = cover.coverMediaType;
+  const coverMediaPosterUrl = cover.coverMediaPosterUrl;
+  const themePreview = useMemo(
+    () =>
+      buildDraftThemePreview({
+        kind: "experience",
+        name: title,
+        whenMode: when.whenMode,
+        date: when.date,
+        doorsOpen: when.doorsOpen,
+        multiDates: when.multiDates,
+        coverHue: EXPERIENCE_COVER_HUE,
+        coverMediaUrl,
+        coverMediaType,
+        coverMediaPosterUrl,
+      }),
+    [title, when, coverMediaUrl, coverMediaType, coverMediaPosterUrl],
+  );
+
   return (
     <View style={styles.stepBody}>
       <Text style={styles.title}>Cover</Text>
@@ -114,7 +157,7 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
 
       <View style={styles.preview}>
         <EventCoverMedia
-          hue={0}
+          hue={EXPERIENCE_COVER_HUE}
           mediaUrl={cover.coverMediaUrl ?? null}
           mediaType={cover.coverMediaType ?? null}
           radius={radiusTokens.md}
@@ -175,7 +218,7 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
           onClose={() => setActiveSheet("none")}
           target={target}
           initial={cover}
-          initialCoverHue={0}
+          initialCoverHue={EXPERIENCE_COVER_HUE}
           onCoverChange={onCoverChange}
           onShowToast={onShowToast}
           // issue #3319 — the wizard keeps the whole patch and publishes
@@ -192,6 +235,7 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
         onChange={onThemeChange}
         scope="offering"
         brandTheme={brandQuery.data?.theme ?? null}
+        preview={themePreview}
         testID="experience-theme-sheet"
       />
     </View>

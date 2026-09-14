@@ -1457,6 +1457,11 @@ export const ExperienceCreatorWizard: React.FC<
             experienceId={experienceId}
             preparingDraft={creatingDraft}
             cover={cover}
+            // issue #3373 — the Theme sheet previews this experience. `title` is
+            // a string and `whenState` is React state, so neither changes
+            // identity between renders and the memoised step stays memoised.
+            title={title}
+            when={whenAdapter.whenState}
             onCoverChange={setCover}
             onShowToast={setToast}
             themeOverrides={themeOverrides}
