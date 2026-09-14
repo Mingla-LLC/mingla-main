@@ -9,6 +9,7 @@ import {
 } from "../../constants/designSystem";
 import { postHogService } from "../../services/postHogService";
 import { formatRelativeTime } from "../../utils/relativeTime";
+import { formatTurnoutCount } from "../../utils/turnoutDisplayCopy";
 import { buildTurnoutGateRecommendations } from "../../utils/turnoutGateRecommendations";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -84,7 +85,7 @@ export const TurnoutGateSection: React.FC = () => {
   const benchmark = intel.report?.meta?.research_source === "fallback";
   const generatedAt = intel.report?.meta?.generated_at;
   const finiteBand = hasBand
-    ? `${forecast.total_low}–${forecast.total_high} of ${forecast.capacity}`
+    ? `${formatTurnoutCount(forecast.total_low)}–${formatTurnoutCount(forecast.total_high)} of ${formatTurnoutCount(forecast.capacity)}`
     : "";
   return (
     <IntelCard

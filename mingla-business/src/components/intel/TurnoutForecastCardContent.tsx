@@ -25,6 +25,10 @@ import { IntelDriverChip } from "./IntelDriverChip";
 import { IntelProgress, INTEL_RESULT_MIN_HEIGHT } from "./IntelProgress";
 import { useTurnoutIntel } from "./TurnoutIntelContext";
 import { buildTurnoutDrivers, type TurnoutDriver } from "./turnoutDrivers";
+import {
+  humanizeTurnoutCopy,
+  turnoutReportCurrency,
+} from "../../utils/turnoutDisplayCopy";
 
 export interface TurnoutForecastCardProps {
   surface: TurnoutSurface;
@@ -38,10 +42,13 @@ export const TurnoutForecastCardContent: React.FC<
   const entry = useRef(new Animated.Value(0)).current;
   const resultFade = useRef(new Animated.Value(0)).current;
   const report = intel?.report ?? null;
+  const inputCurrency = intel?.input?.currency ?? null;
   const drivers = useMemo<TurnoutDriver[]>(
-    () => buildTurnoutDrivers(report),
-    [report],
+    () => buildTurnoutDrivers(report, inputCurrency),
+    [report, inputCurrency],
   );
+  // #3342 — the top fix can quote money or a date; show them formatted.
+  const reportCurrency = turnoutReportCurrency(report, inputCurrency);
 
   useEffect(() => {
     Animated.timing(entry, {
@@ -180,9 +187,9 @@ export const TurnoutForecastCardContent: React.FC<
             ) : null}
             {report?.fixes?.[0]?.title !== undefined ? (
               <Text style={[styles.reco, stale ? styles.stale : null]}>
-                {report.fixes[0].title}
+                {humanizeTurnoutCopy(report.fixes[0].title, reportCurrency)}
                 {report.fixes[0].lift_note !== undefined
-                  ? ` · ${report.fixes[0].lift_note}`
+                  ? ` · ${humanizeTurnoutCopy(report.fixes[0].lift_note, reportCurrency)}`
                   : ""}
               </Text>
             ) : null}

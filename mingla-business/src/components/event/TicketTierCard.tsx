@@ -21,7 +21,7 @@ import { formatCurrencyRound } from "../../utils/currency";
 import {
   formatTicketBadges,
   formatTicketCapacity,
-  formatTicketSubline,
+  formatTicketCardSubline,
 } from "../../utils/ticketDisplay";
 
 import { GlassCard } from "../ui/GlassCard";
@@ -62,7 +62,8 @@ const TicketTierCardInner: React.FC<TicketTierCardProps> = ({
   eventCurrency,
 }) => {
   const hasSales = soldCount > 0;
-  const subLine = formatTicketSubline(ticket);
+  // #3343 — resolved with the event currency; null when there is nothing to show.
+  const subLine = formatTicketCardSubline(ticket, eventCurrency);
   const badges = formatTicketBadges(ticket);
   const capacityLabel = formatTicketCapacity(ticket);
   const priceLabel = ticket.isFree
@@ -128,7 +129,11 @@ const TicketTierCardInner: React.FC<TicketTierCardProps> = ({
                 <Text style={styles.cardTitle}>
                   {ticket.name.length > 0 ? ticket.name : "Untitled ticket"}
                 </Text>
-                <Text style={styles.cardSub}>{subLine}</Text>
+                {subLine !== null ? (
+                  <Text style={styles.cardSub} testID="ticket-tier-card-subline">
+                    {subLine}
+                  </Text>
+                ) : null}
               </View>
               <View style={styles.cardActionsRow}>
                 <Pressable

@@ -3,6 +3,10 @@ import type {
   TurnoutReport,
 } from "../../types/growthTools";
 import type { IntelDriverTone } from "./IntelDriverChip";
+import {
+  humanizeTurnoutCopy,
+  turnoutReportCurrency,
+} from "../../utils/turnoutDisplayCopy";
 
 export interface TurnoutDriver {
   id: string;
@@ -19,8 +23,12 @@ const factorOrder: Record<TurnoutFactorStatus, number> = {
 
 export const buildTurnoutDrivers = (
   report: TurnoutReport | null,
+  fallbackCurrency?: string | null,
 ): TurnoutDriver[] => {
   if (report === null) return [];
+  // #3342 — engine money and ISO dates render as "₦362,083" / "Tue 13 Oct".
+  const currency = turnoutReportCurrency(report, fallbackCurrency);
+  const display = (copy: string): string => humanizeTurnoutCopy(copy, currency);
   const output: TurnoutDriver[] = [];
   if (report.weather !== undefined && report.weather !== null) {
     output.push({
@@ -70,7 +78,10 @@ export const buildTurnoutDrivers = (
 
   // Engine factor keys are descriptive rather than unique. A positional suffix
   // gives every rendered chip its own stable identity within this ordered report.
-  return output
-    .slice(0, 5)
-    .map((driver, index) => ({ ...driver, id: `${driver.id}:${index}` }));
+  return output.slice(0, 5).map((driver, index) => ({
+    ...driver,
+    label: display(driver.label),
+    detail: display(driver.detail),
+    id: `${driver.id}:${index}`,
+  }));
 };

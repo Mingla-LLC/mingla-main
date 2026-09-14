@@ -15,6 +15,8 @@ import {
 
 import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
 import type { MultiDatePricingMode } from "../../services/publicEventsService";
+// #3344 — the same "per day" / "for all days" rule the live page uses.
+import { multiDatePricingNote } from "../../utils/multiDatePricingMode";
 import { useThemeFont } from "../../theme/useThemeFont";
 import { scheduleDayChooserFocusAfterNotice } from "../../utils/publicEventDayRecovery";
 import { readRefundPolicyState } from "@mingla/offering-rendering/offeringRefundPolicy";
@@ -95,6 +97,12 @@ export const DraftEventFoundationPreview: React.FC<
     requiresMultiDatePurchase && multiDatePricingMode === "per_day"
       ? selectedOccurrenceIds.length
       : 1;
+  // #3344 — the live page shows "$35 per day"; the preview must too.
+  const pricingNote = multiDatePricingNote({
+    hasDayChoice: isMultiDate && occurrences.length > 1,
+    tickets: event.tickets,
+    pricingMode: multiDatePricingMode,
+  });
 
   const handleChangeTicketQuantity = useCallback((ticketId: string, qty: number): void => {
     setTicketQuantities((previous) => {
@@ -176,6 +184,7 @@ export const DraftEventFoundationPreview: React.FC<
         onChangeTicketQuantity={handleChangeTicketQuantity}
         onProceedToCart={handleProceed}
         showHeading
+        pricingNote={pricingNote}
         leadingPurchaseSection={dayChooser}
         priceMultiplier={priceMultiplier}
         purchaseReady={purchaseReady}
@@ -201,6 +210,7 @@ export const DraftEventFoundationPreview: React.FC<
       safeAreaTop={insets.top}
       contentBottomInset={insets.bottom + 24}
       hideTicketBox={isDesktop}
+      pricingNote={pricingNote}
       leadingPurchaseSection={dayChooser}
       priceMultiplier={priceMultiplier}
       purchaseReady={purchaseReady}

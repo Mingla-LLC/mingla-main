@@ -8,6 +8,7 @@ import {
   text,
   typography,
 } from "../../constants/designSystem";
+import { formatCount } from "../../utils/currency";
 
 export interface IntelBandStatProps {
   low: number;
@@ -26,7 +27,8 @@ export const IntelBandStat: React.FC<IntelBandStatProps> = ({
     <View style={styles.copy}>
       <Text style={styles.label}>Expected turnout</Text>
       <Text style={styles.value} testID="turnout-band-value">
-        {low}–{high} <Text style={styles.context}>of {capacity}</Text>
+        {formatCount(low)}–{formatCount(high)}{" "}
+        <Text style={styles.context}>of {formatCount(capacity)}</Text>
       </Text>
     </View>
     <View style={styles.pill}>

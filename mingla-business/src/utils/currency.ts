@@ -13,6 +13,10 @@
  * formatter in a component.
  */
 
+// #3341 — the shared glyph rule: naira reads "₦25,000", never "NGN 25,000",
+// whatever the engine (Hermes on iOS, some browsers) does with its locale data.
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+
 /**
  * Format a numeric GBP value as a locale-aware currency string.
  * Always uses `en-GB` locale + GBP currency + max 2 fraction digits.
@@ -96,11 +100,14 @@ export const formatCurrency = (
   const code = normalizeCurrency(currency);
   const locale = LOCALE_BY_CURRENCY[code] ?? "en-GB";
   const major = minor ? value / minorUnitFactor(code) : value;
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: code,
-    maximumFractionDigits: 2,
-  }).format(major);
+  return withCurrencyGlyph(
+    new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2,
+    }).format(major),
+    code,
+  );
 };
 
 /**
@@ -121,11 +128,14 @@ export const formatCurrencyRound = (
   const code = normalizeCurrency(currency);
   const locale = LOCALE_BY_CURRENCY[code] ?? "en-GB";
   const major = minor ? value / minorUnitFactor(code) : value;
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: code,
-    maximumFractionDigits: 0,
-  }).format(major);
+  return withCurrencyGlyph(
+    new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 0,
+    }).format(major),
+    code,
+  );
 };
 
 export const formatMoney = (

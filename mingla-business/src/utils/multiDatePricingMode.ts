@@ -31,3 +31,22 @@ export type MultiDatePricingMode = "per_day" | "all_days";
 export const draftMultiDatePricingMode = (
   value: unknown,
 ): MultiDatePricingMode => (value === "all_days" ? "all_days" : "per_day");
+
+/**
+ * #3344 — the short note under a ticket price on a multi-date event: "per day"
+ * or "for all days". The #2160 rule, for every surface that mounts the shared
+ * ticket box (the live page and the organiser's preview must say the same).
+ *
+ * Null when there is nothing to qualify: no real choice of days, or no priced
+ * ticket (a free event has no price to multiply). Kept import-free with the
+ * rest of this leaf module.
+ */
+export const multiDatePricingNote = (input: {
+  hasDayChoice: boolean;
+  tickets: readonly { priceGbp?: number | null }[];
+  pricingMode: MultiDatePricingMode;
+}): "per day" | "for all days" | null => {
+  if (!input.hasDayChoice) return null;
+  if (!input.tickets.some((ticket) => (ticket.priceGbp ?? 0) > 0)) return null;
+  return input.pricingMode === "all_days" ? "for all days" : "per day";
+};

@@ -44,6 +44,7 @@ import type { EventWaitlistEntry } from "../../services/waitlistService";
 import { generateTicketId } from "../../utils/draftEventId";
 import { saleWindowCaution } from "../../utils/saleWindowCaution";
 import { formatCurrency } from "../../utils/currency";
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 // #2664 — Android has no `datetime` picker mode; the sale window has to step
 // date -> time and combine. See the module header for the crash mechanism.
 import {
@@ -88,7 +89,11 @@ const currencySymbol = (currency?: string): string | null => {
       currency: currency.trim().toUpperCase(),
       maximumFractionDigits: 0,
     }).formatToParts(0);
-    return parts.find((part) => part.type === "currency")?.value ?? currency;
+    // #3341 — en-GB prints "NGN" for naira; the label should read "Price (₦)".
+    return withCurrencyGlyph(
+      parts.find((part) => part.type === "currency")?.value ?? currency,
+      currency,
+    );
   } catch {
     return currency.trim().toUpperCase();
   }
