@@ -1167,6 +1167,19 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // now start from that pre-#3325 tree, so their literals do not move, and the
   // entry is in the revert-sensitivity loop.
   //
+  // [TEST-MOD-APPROVED #3313] Re-derived on top of #3325's tree after #3313
+  // added four whole blocks: its recurring-event SQL suite and edge node suite
+  // on the migrations job, the end of the #2333 re-apply set, and its
+  // exact-filename skip in the #1931 and #2117 filtered replays (the #2492 gate
+  // named the file). No workflow identity, concurrency block, group expression,
+  // cancellation policy or timeout changed; count and identity stay 124 /
+  // 9356c425.... MEASURED FROM the committed merged tree with this file's own
+  // RUBY_CANONICAL and block literals (not a CI `actual:`): current tree
+  // 07682607...; removing the four #3313 blocks recovers #3325's
+  // pin 1d728bae... exactly (the before3313 receipt below), and the #3325,
+  // #3176 and #3288 receipts now start from that tree, so their literals do
+  // not move.
+  //
   // [TEST-MOD-APPROVED #3095] IA-1. Re-derived because this digest now hashes a
   // DIFFERENT THING, not because a workflow changed. Until #3095 it hashed each
   // PR-family workflow's whole parsed document minus top-level concurrency, so
@@ -1188,21 +1201,21 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // function of the filename, and the concurrency-only drift assertion in the
   // second test requires this pin to ignore it.
   //
-  // Derived on the .github/workflows tree d68483eb9da5 (main 411596c8a).
+  // Derived on the .github/workflows tree 318fee3b4477 (main a98202439).
   // Identical across three derivations with this file's own RUBY_CANONICAL,
   // and not copied from a CI run. It is the value the projection already had
-  // on 779c1c9d0: the six re-pins that landed while #3095 was in review
-  // (#3285, #3055, #3288, #1778, #3176 and #3325, noted above) each moved the
-  // old digest, and none moved the projection. The run-time document digest
-  // on this tree is 1d728bae..., exactly the value this literal replaces, so
-  // the pre-#3095 computation survives intact as the run-time check.
-  // PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED.
-  // Replayed through this derivation over those 54 commits plus the six, the
-  // old digest moved 54 times in 60 and the projection 3 times, each a real
-  // policy change: #2899 (Sites recovery joined the PR family), #3072 (push
-  // added to six lanes) and #3078 (schedule added). It does not move for any
-  // of the 2026-09-03 collisions, the five green-again re-pins, #2947's
-  // two-line registration, or the six in-review re-pins.
+  // on 779c1c9d0: the seven re-pins that landed while #3095 was in review
+  // (#3285, #3055, #3288, #1778, #3176, #3325 and #3313, noted above) each
+  // moved the old digest, and none moved the projection. The run-time
+  // document digest on this tree is 07682607..., exactly the value this
+  // literal replaces, so the pre-#3095 computation survives intact as the
+  // run-time check. PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are
+  // UNCHANGED. Replayed through this derivation over those 54 commits plus the
+  // seven, the old digest moved 55 times in 61 and the projection 3 times,
+  // each a real policy change: #2899 (Sites recovery joined the PR family),
+  // #3072 (push added to six lanes) and #3078 (schedule added). It does not
+  // move for any of the 2026-09-03 collisions, the five green-again re-pins,
+  // #2947's two-line registration, or the seven in-review re-pins.
   //
   // RULE FOR THE NEXT READER: re-pin only when PR-family membership, a trigger
   // event key, a job-level concurrency block or a job uses: value changed, and
@@ -1769,6 +1782,20 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     // digest, or the re-pin above would accept a change nothing proves.
     [liveWorkflow("issue", "2099", "pending", "venue", "identity", "correction", "tests"),
       '      - "mingla-business/scripts/ci/bundle-baseline.json"\n'],
+    // [TEST-MOD-APPROVED #3313] The #3313 suite targets on the migrations job,
+    // the #2333 re-apply of the #3313 migration, and its exact-filename skip in
+    // the #1931 and #2117 filtered replays. Each must independently move the
+    // digest.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3313_recurring_event_occurrences.implementor.happy.pg17.test.sql\n"],
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "          node --test supabase/functions/ticket-checkout-create/__tests__/issue_3313_day_choice_required.test.mjs\n"],
+    [liveWorkflow("issue", "2333", "online", "event", "publish"),
+      "            -f supabase/migrations/20270702003313_issue_3313_recurring_event_occurrences.sql\n"],
+    [liveWorkflow("issue", "1931", "private", "event", "access"),
+      "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
@@ -1787,6 +1814,10 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   // #3176's combined-tree pin, and every older receipt starts from that
   // pre-#3325 tree so their literals stay exactly as their owners measured them.
   //
+  // [TEST-MOD-APPROVED #3313] Removing #3313's four whole workflow blocks must
+  // reproduce #3325's pin exactly. Every older receipt below now starts from
+  // that tree, so each owner's delta stays independently measured.
+  //
   // [TEST-MOD-APPROVED #3176] Current main and this branch both change the
   // non-concurrency document. Reverting #3288's two whole workflow blocks must
   // recover the prior #3176 authority, while reverting both owners must recover
@@ -1794,7 +1825,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   // re-pin from hiding either side of the combined tree.
   //
   // [TEST-MOD-APPROVED #3095] RECEIPT CHAIN RETIRED (IA-6 REVISED ruling on
-  // #3095). The three notes above are kept as history; the code they describe
+  // #3095). The four notes above are kept as history; the code they describe
   // is gone. Each receipt rebuilt a partly restored tree and compared its
   // WHOLE-DOCUMENT digest to a literal, so any paths, step or comment edit to
   // any PR-family lane turned it red and needed one more restoration layer:
@@ -1802,15 +1833,18 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   //   - IA-6', superseding IA-6: the #3176, #3288 and combined receipt
   //     literals (a24d680b..., b1b5f757..., aadaaea7...);
   //   - IA-7: the #3325 before3325 receipt literal (330740ba...);
-  //   - the restoration scaffolding: the before3325, before3176, before3288
-  //     and beforeBoth trees, their exact-block removals, and IA-6's authority
-  //     checks. With every literal removed it was still content-sensitive: a
-  //     comment-only edit inside the #3176 block or a #3288 block broke its
-  //     exact-block removal and turned this test red.
+  //   - IA-8: the #3313 before3313 receipt literal (1d728bae...);
+  //   - the restoration scaffolding: the before3313, before3325, before3176,
+  //     before3288 and beforeBoth trees, their exact-block removals, and
+  //     IA-6's authority checks. With every literal removed it was still
+  //     content-sensitive: a comment-only edit inside the #3176 block, a
+  //     #3288 block or a #3313 block broke its exact-block removal and turned
+  //     this test red.
   // Nothing they protected is lost. Each executable line those blocks carried
   // is a row in the revert-sensitivity table above, which fails when the line
   // is missing or duplicated: #3176's IndexNow skip, #3288's gallery suite
-  // target and replay re-apply, and #3325's baseline paths entry. A later
+  // target and replay re-apply, #3325's baseline paths entry, and #3313's SQL
+  // suite target, edge node suite, re-apply and two replay skips. A later
   // receipt of the same shape is retired the same way: keep its note and its
   // rows, drop its literal and its restoration trees, and add its name here.
 

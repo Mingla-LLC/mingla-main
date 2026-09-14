@@ -67,6 +67,7 @@ import {
   type UpdateLiveEventResult,
 } from "../../store/liveEventStore";
 import { buildSoldCountContextFromOrders } from "../../services/eventOrdersService";
+import { isPerNightCapacity } from "../../utils/perNightCapacity";
 import { refundAllEventOrders } from "../../services/orderRefundService";
 import {
   computeRichFieldDiffs,
@@ -488,8 +489,15 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   const serverOrdersRead = useEventReconciliation(liveEvent.serverEventId);
   const serverOrders = serverOrdersRead.data ?? [];
   const soldCountCtx = useMemo(
-    () => buildSoldCountContextFromOrders(serverOrders),
-    [serverOrders],
+    () =>
+      buildSoldCountContextFromOrders(
+        serverOrders,
+        // issue #3313 — per-night capacity floor on a recurring event.
+        isPerNightCapacity(liveEvent.whenMode)
+          ? { eventId: liveEvent.serverEventId ?? liveEvent.id }
+          : null,
+      ),
+    [serverOrders, liveEvent.whenMode, liveEvent.serverEventId, liveEvent.id],
   );
 
   // Cycle 13a J-T6 G2: ticket price editability gated on EDIT_TICKET_PRICE
@@ -1451,7 +1459,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         showErrors,
         onShowToast: showToast,
         scrollToBottom,
-        editMode: { soldCountByTier: soldCountCtx.soldCountByTier },
+        editMode: {
+          soldCountByTier: soldCountCtx.soldCountByTier,
+          capacityFloorByTier: soldCountCtx.capacityFloorByTier,
+        },
         canEditTicketPrice,
         coverMediaEventId: liveEvent.serverEventId,
         // issue #2590 — from the LIVE event, not the draft: the draft's

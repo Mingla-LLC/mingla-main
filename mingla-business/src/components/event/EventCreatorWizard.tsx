@@ -181,6 +181,8 @@ export type WizardExitMode = "published" | "discarded" | "abandoned";
 export interface PublishedEventSlug {
   brandSlug: string;
   eventSlug: string;
+  /** issue #3313 — dates the server created (the publish response's count). */
+  occurrenceCount?: number;
 }
 
 export interface EventCreatorWizardProps {

@@ -87,6 +87,10 @@ import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { canPerformAction } from "../../../src/utils/permissionGates";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 import {
+  busiestNightSoldByTicketType,
+  isPerNightCapacity,
+} from "../../../src/utils/perNightCapacity";
+import {
   duplicateBusinessEventAsDraft,
   unpublishBusinessEventToDraft,
 } from "../../../src/services/businessEvents";
@@ -528,6 +532,17 @@ export default function EventDetailScreen(): React.ReactElement {
     return map;
   }, [allOrderEntries, event]);
 
+  // issue #3313 — on a recurring event capacity is PER NIGHT, so each ticket
+  // row compares its busiest night with its capacity, never the run's total.
+  const capacityPerNight = isPerNightCapacity(event?.whenMode);
+  const busiestNightSoldByTier = useMemo<Record<string, number>>(
+    () =>
+      event === null || !capacityPerNight
+        ? {}
+        : busiestNightSoldByTicketType(allOrderEntries, event.id),
+    [allOrderEntries, capacityPerNight, event],
+  );
+
   // Cycle 9c-2 — event edit log entries (raw subscription, mirrors orderStore pattern).
   const allEditEntries = useEventEditLogStore((s) => s.entries);
   // Cycle 11 — scan entries (raw subscription).
@@ -927,7 +942,14 @@ export default function EventDetailScreen(): React.ReactElement {
                 <EventDetailTicketTypeRow
                   key={ticket.id}
                   ticket={ticket}
-                  soldCount={ordersReady ? soldCountByTier[ticket.id] ?? 0 : null}
+                  soldCount={
+                    !ordersReady
+                      ? null
+                      : capacityPerNight
+                        ? busiestNightSoldByTier[ticket.id] ?? 0
+                        : soldCountByTier[ticket.id] ?? 0
+                  }
+                  capacityPerNight={capacityPerNight}
                 />
               ))}
           </View>

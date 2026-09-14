@@ -366,6 +366,19 @@ export interface TicketTierEditSheetProps {
    */
   soldCount?: number;
   /**
+   * issue #3313 — true on a recurring event, where capacity is PER NIGHT. The
+   * field is labelled "Capacity per night" and its floor copy names the
+   * busiest night. Defaults to false (every other event, byte-identical).
+   */
+  capacityPerNight?: boolean;
+  /**
+   * issue #3313 — the lowest capacity this ticket may be saved with once it
+   * has sales. Defaults to `soldCount`; a recurring event passes its busiest
+   * night's sold passes, since the run's total is not comparable with a
+   * per-night capacity.
+   */
+  capacityFloor?: number;
+  /**
    * Cycle 13a J-T6 G2: when false, the Price field is rendered uneditable
    * with a helper hint pointing the operator at a finance_manager+ ask.
    * Defaults to true so create-flow + non-rank-aware callers stay backward
@@ -410,6 +423,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   initial,
   nextOrder,
   soldCount = 0,
+  capacityPerNight = false,
+  capacityFloor,
   eventStartsAtIso = null,
   eventEndsAtIso = null,
   canEditPrice = true,
@@ -614,11 +629,13 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     (capacityText.trim().length === 0 ||
       !Number.isFinite(parsedCapacityValue) ||
       parsedCapacityValue <= 0);
+  // issue #3313 — the floor is the busiest night on a recurring event.
+  const minimumCapacity = capacityFloor ?? soldCount;
   const capacityBelowSold =
     isPriceLocked &&
     !isUnlimited &&
     Number.isFinite(parsedCapacityValue) &&
-    parsedCapacityValue < soldCount;
+    parsedCapacityValue < minimumCapacity;
 
   // Save is gated by name + ALL inline validation hints. The publish-gate
   // validator (validateTickets) catches the same conditions globally;
@@ -647,7 +664,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   }
   if (capacityBelowSold) {
     saveBlockers.push(
-      `Capacity is below the ${soldCount} ticket${soldCount === 1 ? "" : "s"} already sold.`,
+      capacityPerNight
+        ? `Capacity per night is below the ${minimumCapacity} ticket${minimumCapacity === 1 ? "" : "s"} already sold for the busiest night.`
+        : `Capacity is below the ${soldCount} ticket${soldCount === 1 ? "" : "s"} already sold.`,
     );
   }
   if (minTooLow) saveBlockers.push("Minimum per buyer must be at least 1.");
@@ -1042,7 +1061,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
           {/* Capacity (when not unlimited) — ORCH-0704 v2: floor at soldCount */}
           {!isUnlimited ? (
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Capacity</Text>
+              <Text style={styles.fieldLabel}>
+                {capacityPerNight ? "Capacity per night" : "Capacity"}
+              </Text>
               <View
                 style={[
                   styles.inputWrap,
@@ -1062,7 +1083,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                     reselectWebValueAfterPointer(event, capacityText)
                   }
                   style={styles.textInput}
-                  accessibilityLabel="Ticket capacity"
+                  accessibilityLabel={
+                    capacityPerNight ? "Ticket capacity per night" : "Ticket capacity"
+                  }
                 />
               </View>
               {capacityInvalid ? (
@@ -1072,12 +1095,19 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 </Text>
               ) : capacityBelowSold ? (
                 <Text style={styles.helperError}>
-                  Cannot go below {soldCount} tickets sold. Increase capacity or
-                  refund existing buyers first.
+                  {capacityPerNight
+                    ? `Cannot go below ${minimumCapacity} tickets sold for the busiest night. Increase capacity or refund existing buyers first.`
+                    : `Cannot go below ${soldCount} tickets sold. Increase capacity or refund existing buyers first.`}
                 </Text>
               ) : isPriceLocked ? (
                 <Text style={styles.helperHint}>
-                  Minimum capacity = {soldCount} (already sold).
+                  {capacityPerNight
+                    ? `Minimum capacity per night = ${minimumCapacity} (busiest night so far).`
+                    : `Minimum capacity = ${soldCount} (already sold).`}
+                </Text>
+              ) : capacityPerNight ? (
+                <Text style={styles.helperHint}>
+                  Each date of this event can sell this many.
                 </Text>
               ) : null}
             </View>
