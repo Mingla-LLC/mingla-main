@@ -6,6 +6,7 @@
 //   - empty invitee name refuses with zero invoke
 //   - manage_brand_people add is never read-only; bogus cursor fails closed
 //   - below-role auth pins stay exact
+//   - invitation_id containment uses the tool-correct table (not scanner-only)
 //
 // Run:
 //   deno test --allow-read supabase/functions/_shared/__tests__/issue_1982_ari_team_people.tester_adversarial.test.ts
@@ -16,7 +17,11 @@ import {
   assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { DOMAIN_TOOLS } from "../agentDomainTools.ts";
-import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
+import { AGENT_TOOLS } from "../agentTools.ts";
+import {
+  AGENT_TOOL_AUTHORIZATION,
+  authorizeAgentTool,
+} from "../agentToolAuthorization.ts";
 import { isReadOnlyAgentToolCall } from "../agentTools.ts";
 import { ToolError } from "../agentToolHelpers.ts";
 
@@ -31,13 +36,34 @@ function domainTool(name: string): any {
 }
 
 Deno.test("#1982 tester: role pins stay exact", () => {
-  assertEquals(AGENT_TOOL_AUTHORIZATION.invite_brand_member.requiredRole, "brand_admin");
-  assertEquals(AGENT_TOOL_AUTHORIZATION.revoke_brand_member.requiredRole, "brand_admin");
-  assertEquals(AGENT_TOOL_AUTHORIZATION.revoke_brand_invitation.requiredRole, "brand_admin");
-  assertEquals(AGENT_TOOL_AUTHORIZATION.list_brand_team.requiredRole, "brand_admin");
-  assertEquals(AGENT_TOOL_AUTHORIZATION.invite_scanner.requiredRole, "event_manager");
-  assertEquals(AGENT_TOOL_AUTHORIZATION.revoke_scanner_invitation.requiredRole, "event_manager");
-  assertEquals(AGENT_TOOL_AUTHORIZATION.manage_brand_people.requiredRole, "marketing_manager");
+  assertEquals(
+    AGENT_TOOL_AUTHORIZATION.invite_brand_member.requiredRole,
+    "brand_admin",
+  );
+  assertEquals(
+    AGENT_TOOL_AUTHORIZATION.revoke_brand_member.requiredRole,
+    "brand_admin",
+  );
+  assertEquals(
+    AGENT_TOOL_AUTHORIZATION.revoke_brand_invitation.requiredRole,
+    "brand_admin",
+  );
+  assertEquals(
+    AGENT_TOOL_AUTHORIZATION.list_brand_team.requiredRole,
+    "brand_admin",
+  );
+  assertEquals(
+    AGENT_TOOL_AUTHORIZATION.invite_scanner.requiredRole,
+    "event_manager",
+  );
+  assertEquals(
+    AGENT_TOOL_AUTHORIZATION.revoke_scanner_invitation.requiredRole,
+    "event_manager",
+  );
+  assertEquals(
+    AGENT_TOOL_AUTHORIZATION.manage_brand_people.requiredRole,
+    "marketing_manager",
+  );
 });
 
 Deno.test("#1982 tester: invite_scanner never posts invite-brand-member", async () => {
@@ -93,8 +119,8 @@ Deno.test("#1982 tester: revoke_brand_member source forbids hard DELETE", async 
   const source = await Deno.readTextFile(
     new URL("../agentDomainTools.ts", import.meta.url),
   );
-  const start = source.indexOf('const revokeBrandMember = writeTool(');
-  const end = source.indexOf('const revokeBrandInvitation = writeTool(');
+  const start = source.indexOf("const revokeBrandMember = writeTool(");
+  const end = source.indexOf("const revokeBrandInvitation = writeTool(");
   assert(start >= 0 && end > start);
   const block = source.slice(start, end);
   assert(block.includes("removed_at"));
@@ -125,8 +151,10 @@ Deno.test("#1982 tester: people add requires contact; bad cursor fails", async (
           eq: () => q,
           is: () => q,
           not: () => q,
-          then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-            Promise.resolve({ data, error: null }).then(resolve, reject),
+          then: (
+            resolve: (v: unknown) => unknown,
+            reject?: (e: unknown) => unknown,
+          ) => Promise.resolve({ data, error: null }).then(resolve, reject),
         };
         return q;
       }
@@ -165,4 +193,99 @@ Deno.test("#1982 tester: revoke_brand_invitation is registered", () => {
     AGENT_TOOL_AUTHORIZATION.revoke_brand_invitation.resource,
     "brand",
   );
+});
+
+const OTHER_BRAND = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const INVITE = "33333333-3333-4333-8333-333333333333";
+
+function securedTool(name: string) {
+  const found = AGENT_TOOLS.find((candidate) => candidate.name === name);
+  assert(found, `missing secured tool fixture: ${name}`);
+  return found;
+}
+
+function invitationAuthClient(opts: {
+  brandInvites?: Record<string, { brand_id: string } | null>;
+  scannerInvites?: Record<string, { brand_id: string } | null>;
+}) {
+  return {
+    from(table: string) {
+      let id = "";
+      // deno-lint-ignore no-explicit-any
+      const q: any = {
+        select: () => q,
+        eq: (key: string, value: unknown) => {
+          if (key === "id") id = String(value).toLowerCase();
+          return q;
+        },
+        is: () => q,
+        maybeSingle: () => {
+          const map = table === "brand_invitations"
+            ? opts.brandInvites
+            : table === "scanner_invitations"
+            ? opts.scannerInvites
+            : undefined;
+          return Promise.resolve({ data: map?.[id] ?? null, error: null });
+        },
+      };
+      return q;
+    },
+    rpc(name: string) {
+      if (name === "biz_brand_effective_rank_for_caller") {
+        return Promise.resolve({ data: 90, error: null });
+      }
+      if (name === "biz_role_rank") {
+        return Promise.resolve({ data: 80, error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+}
+
+Deno.test("#1982 tester: brand revoke cannot authorize via scanner_invitations alone", async () => {
+  const error = await assertRejects(
+    () =>
+      authorizeAgentTool(
+        securedTool("revoke_brand_invitation"),
+        { brand_id: BRAND, invitation_id: INVITE },
+        invitationAuthClient({
+          scannerInvites: { [INVITE]: { brand_id: BRAND } },
+        }) as never,
+        USER,
+      ),
+    ToolError,
+  );
+  assertEquals(error.code, "BRAND_ACCESS_DENIED");
+});
+
+Deno.test("#1982 tester: brand invitation from foreign brand fails closed", async () => {
+  const error = await assertRejects(
+    () =>
+      authorizeAgentTool(
+        securedTool("revoke_brand_invitation"),
+        { brand_id: BRAND, invitation_id: INVITE },
+        invitationAuthClient({
+          brandInvites: { [INVITE]: { brand_id: OTHER_BRAND } },
+        }) as never,
+        USER,
+      ),
+    ToolError,
+  );
+  assertEquals(error.code, "BRAND_ACCESS_DENIED");
+});
+
+Deno.test("#1982 tester: scanner revoke cannot authorize via brand_invitations alone", async () => {
+  const error = await assertRejects(
+    () =>
+      authorizeAgentTool(
+        securedTool("revoke_scanner_invitation"),
+        { brand_id: BRAND, invitation_id: INVITE },
+        invitationAuthClient({
+          brandInvites: { [INVITE]: { brand_id: BRAND } },
+        }) as never,
+        USER,
+      ),
+    ToolError,
+  );
+  assertEquals(error.code, "BRAND_ACCESS_DENIED");
 });

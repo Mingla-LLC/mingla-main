@@ -16,8 +16,12 @@ import {
   assertEquals,
   assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { DOMAIN_TOOLS, DOMAIN_READ_ONLY } from "../agentDomainTools.ts";
-import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
+import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "../agentDomainTools.ts";
+import { AGENT_TOOLS } from "../agentTools.ts";
+import {
+  AGENT_TOOL_AUTHORIZATION,
+  authorizeAgentTool,
+} from "../agentToolAuthorization.ts";
 import { TENANT_SCOPED_READ_TOOL_NAMES } from "../agentTenantScope.ts";
 import { isReadOnlyAgentToolCall } from "../agentTools.ts";
 import { buildSystemPrompt, PROMPT_VERSION } from "../agentSystemPrompt.ts";
@@ -179,7 +183,11 @@ Deno.test("#1982 implementor: list_brand_team returns members + invitations + sc
       throw new Error(table);
     },
   });
-  const result = await tool.executor({ brand_id: BRAND }, client as never, USER);
+  const result = await tool.executor(
+    { brand_id: BRAND },
+    client as never,
+    USER,
+  );
   assertEquals(result.members.length, 1);
   assertEquals(result.invitations.length, 1);
   assertEquals(result.scanner_invitations.length, 1);
@@ -287,7 +295,10 @@ Deno.test("#1982 implementor: revoke_brand_member soft-deletes membership", asyn
     USER,
   );
   assert(payload !== null);
-  assertEquals(typeof (payload as Record<string, unknown>).removed_at, "string");
+  assertEquals(
+    typeof (payload as Record<string, unknown>).removed_at,
+    "string",
+  );
   assertEquals(result, { member_id: MEMBER, revoked: true });
 });
 
@@ -297,7 +308,12 @@ Deno.test("#1982 implementor: invite_brand_member requires name and hits edge", 
   await assertRejects(
     () =>
       tool.executor(
-        { brand_id: BRAND, email: "a@b.com", name: "  ", role: "event_manager" },
+        {
+          brand_id: BRAND,
+          email: "a@b.com",
+          name: "  ",
+          role: "event_manager",
+        },
         client as never,
         USER,
       ),
@@ -442,4 +458,107 @@ Deno.test("#1982 implementor: manage_brand_people get + add", async () => {
   assertEquals(addRpc.args.p_display_name, "Pat");
   assertEquals(addRpc.args.p_client_request_id, PERSON);
   assertEquals(added.id, PERSON);
+});
+
+function securedTool(name: string) {
+  const found = AGENT_TOOLS.find((candidate) => candidate.name === name);
+  assert(found, `missing secured tool fixture: ${name}`);
+  return found;
+}
+
+/** Minimal client for authorizeAgentTool invitation containment. */
+function invitationAuthClient(opts: {
+  brandInvites?: Record<string, { brand_id: string } | null>;
+  scannerInvites?: Record<string, { brand_id: string } | null>;
+  // deno-lint-ignore no-explicit-any
+  tablesSeen?: string[];
+}) {
+  return {
+    from(table: string) {
+      opts.tablesSeen?.push(table);
+      let id = "";
+      // deno-lint-ignore no-explicit-any
+      const q: any = {
+        select: () => q,
+        eq: (key: string, value: unknown) => {
+          if (key === "id") id = String(value).toLowerCase();
+          return q;
+        },
+        is: () => q,
+        maybeSingle: () => {
+          const map = table === "brand_invitations"
+            ? opts.brandInvites
+            : table === "scanner_invitations"
+            ? opts.scannerInvites
+            : undefined;
+          return Promise.resolve({
+            data: map?.[id] ?? null,
+            error: null,
+          });
+        },
+      };
+      return q;
+    },
+    rpc(name: string) {
+      // brand_admin / event_manager ranks high enough for both revoke tools.
+      if (name === "biz_brand_effective_rank_for_caller") {
+        return Promise.resolve({ data: 90, error: null });
+      }
+      if (name === "biz_role_rank") {
+        return Promise.resolve({ data: 80, error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+}
+
+Deno.test("#1982 implementor: revoke_brand_invitation auth binds brand_invitations", async () => {
+  const seen: string[] = [];
+  const context = await authorizeAgentTool(
+    securedTool("revoke_brand_invitation"),
+    { brand_id: BRAND, invitation_id: INVITE },
+    invitationAuthClient({
+      brandInvites: { [INVITE]: { brand_id: BRAND } },
+      scannerInvites: {},
+      tablesSeen: seen,
+    }) as never,
+    USER,
+  );
+  assertEquals(context.brandId, BRAND);
+  assert(seen.includes("brand_invitations"));
+  assert(!seen.includes("scanner_invitations"));
+});
+
+Deno.test("#1982 implementor: revoke_brand_invitation auth fails if only scanner row exists", async () => {
+  const error = await assertRejects(
+    () =>
+      authorizeAgentTool(
+        securedTool("revoke_brand_invitation"),
+        { brand_id: BRAND, invitation_id: INVITE },
+        invitationAuthClient({
+          brandInvites: {},
+          scannerInvites: { [INVITE]: { brand_id: BRAND } },
+        }) as never,
+        USER,
+      ),
+    ToolError,
+  );
+  assertEquals(error.code, "BRAND_ACCESS_DENIED");
+});
+
+Deno.test("#1982 implementor: revoke_scanner_invitation auth still binds scanner_invitations", async () => {
+  const seen: string[] = [];
+  const context = await authorizeAgentTool(
+    securedTool("revoke_scanner_invitation"),
+    { brand_id: BRAND, invitation_id: INVITE },
+    invitationAuthClient({
+      brandInvites: {},
+      scannerInvites: { [INVITE]: { brand_id: BRAND } },
+      tablesSeen: seen,
+    }) as never,
+    USER,
+  );
+  assertEquals(context.brandId, BRAND);
+  assert(seen.includes("scanner_invitations"));
+  assert(!seen.includes("brand_invitations"));
 });
