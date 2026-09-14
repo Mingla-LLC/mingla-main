@@ -292,8 +292,21 @@ jobs:
               #
               # Matched by EXACT filename, never an issue-number infix.
               *20270628003285_issue_3285_event_dates_stable_identity.sql) continue ;;
+              # issue #3313 — SKIPPED for the same reasons as #2160, #2489 and #2879
+              # above. It re-emits `pg_direct_event_checkout_bundle` (a `LANGUAGE
+              # sql` body reaching `multi_date_pricing_mode`, created only by the
+              # skipped #2160, and the #2489 theme helpers) plus the #2879 session
+              # base, validated at CREATE time, so the replay would abort here.
+              # Nothing is removed from the migration to green this lane.
+              #
+              # Covered end-to-end by the unfiltered full-chain migrations lane,
+              # which replays every migration in filename order and runs the #3313
+              # suite against that terminal state.
+              #
+              # Matched by EXACT filename, never an issue-number infix.
+              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;
               # issue #3284 — SKIPPED FOR THE SAME REASON #2879 is. This phase replays
-              # the chain WITHOUT #1931, and 20270702003284 re-emits
+              # the chain WITHOUT #1931, and 20270703003284 re-emits
               # `pg_direct_event_checkout_bundle` to append one display key
               # (`refundPolicy`). That body reaches
               # `issue_1931_event_ordinary_read_blocked`, `multi_date_pricing_mode`
@@ -308,7 +321,7 @@ jobs:
               # #3284 suite against that terminal state.
               #
               # Matched by EXACT filename, never an issue-number infix.
-              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;
+              *20270703003284_issue_3284_offering_refund_terms.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
           done

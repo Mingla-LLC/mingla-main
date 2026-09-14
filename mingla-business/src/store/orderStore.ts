@@ -129,6 +129,12 @@ export interface RefundRecord {
  */
 export interface OrderTicketDayRecord {
   ticketId: string;
+  /**
+   * issue #3313 — the pass's ticket type, so a recurring event's organiser can
+   * see places sold PER NIGHT per ticket type. Optional: persisted records and
+   * fixtures from before #3313 carry none.
+   */
+  ticketTypeId?: string | null;
   /** `event_dates.id`s this pass admits. EMPTY means "not day-scoped". */
   eventDateIds: string[];
   status: string;

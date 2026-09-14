@@ -318,3 +318,67 @@ describe("ORCH-0792 publish RPC adapter sources dates from event_dates", () => {
     expect(published.event.date).not.toBe("STALE-DATE-IGNORE");
   });
 });
+
+// issue #3313 — a recurring publish returns EVERY date the server created, and
+// the organiser is told that number instead of a count made on the phone.
+describe("issue #3313 — recurring publish reports the server's dates", () => {
+  const recurringDates = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `ed-${i + 1}`,
+      event_id: "00000000-0000-4000-8000-000000000001",
+      start_at: new Date(Date.UTC(2026, 5, 16 + 7 * i, 23, 0, 0)).toISOString(),
+      end_at: new Date(Date.UTC(2026, 5, 17 + 7 * i, 3, 0, 0)).toISOString(),
+      timezone: "America/New_York",
+      is_master: i === 0,
+    }));
+
+  test("an 8-date recurring publish reports occurrenceCount 8 and the master as its date", async () => {
+    rpcMock.mockReset();
+    const recurringRow = baseEventRow();
+    recurringRow.is_recurring = true;
+    rpcMock.mockResolvedValueOnce({
+      data: {
+        event: recurringRow,
+        brand: { id: "brand-1", slug: "skyline", name: "Skyline" },
+        tickets: [baseTicketRow()],
+        eventDates: recurringDates(8),
+        client_revision: 1,
+      },
+      error: null,
+    });
+    const published = await publishBusinessEventDraft(
+      baseDraft({ whenMode: "recurring" }),
+    );
+    expect(published.occurrenceCount).toBe(8);
+    expect(published.event.date).toBe("2026-06-16");
+  });
+
+  test("a recurring draft never applies a stale 'all_days' pricing mode (only multi-date carries it)", async () => {
+    rpcMock.mockReset();
+    rpcMock.mockResolvedValue({
+      data: {
+        event: { ...baseEventRow(), is_recurring: true },
+        brand: { id: "brand-1", slug: "skyline", name: "Skyline" },
+        tickets: [baseTicketRow()],
+        eventDates: recurringDates(2),
+        client_revision: 1,
+      },
+      error: null,
+    });
+    await publishBusinessEventDraft({
+      ...baseDraft({ whenMode: "recurring" }),
+      multiDatePricingMode: "all_days",
+    } as DraftEvent);
+    const rpcNames = rpcMock.mock.calls.map((call) => call[0]);
+    expect(rpcNames).not.toContain("biz_set_event_multi_date_pricing_mode");
+
+    rpcMock.mockClear();
+    await publishBusinessEventDraft({
+      ...baseDraft({ whenMode: "multi_date" }),
+      multiDatePricingMode: "all_days",
+    } as DraftEvent);
+    expect(rpcMock.mock.calls.map((call) => call[0])).toContain(
+      "biz_set_event_multi_date_pricing_mode",
+    );
+  });
+});

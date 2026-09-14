@@ -159,7 +159,7 @@ function sourceContract() {
   const sellthrough = read('components/design-preview/host/host-sellthrough-chart.tsx')
   const contentBlocks = read('components/page-system/content-blocks.tsx')
   const legacyCityContent = read('content/page-system/city-lagos.ts')
-  assert.equal(packageJson.scripts['test:page-system'], 'node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs && node scripts/issue-2990-restructured-page-system.tester.adversarial.test.mjs')
+  assert.equal(packageJson.scripts['test:page-system'], 'MINGLA_HISTORICAL_2983_BUILD=1 node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs && MINGLA_HISTORICAL_2983_BUILD=1 node scripts/issue-2990-restructured-page-system.tester.adversarial.test.mjs')
   assert(packageJson.scripts.build.startsWith('node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs --source-only && '))
   assert.equal(packageJson.scripts.postbuild, 'node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs --built-only && node scripts/issue-2990-restructured-page-system.tester.adversarial.test.mjs')
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/)

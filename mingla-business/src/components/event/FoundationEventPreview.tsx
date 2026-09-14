@@ -38,6 +38,7 @@ import {
   type OfferingVariant,
   type PublicBrandProps,
   type PublicEventProps,
+  type RefundPolicyReadState,
   type ResolvedTheme,
   type SocialProofSummary,
   type ThemePalette,
@@ -122,6 +123,13 @@ export interface FoundationEventPreviewProps {
    * dead tap (DESIGN §1.5).
    */
   onSeeWhosGoing?: () => void;
+  /**
+   * issue #3284 — PURE PASSTHROUGH of the section 9 refund-terms read into the
+   * shared body. Required, like the body's own prop, so no mount can forget it.
+   */
+  refundPolicyState: RefundPolicyReadState;
+  /** issue #3284 — passthrough of the name guests are told to contact. */
+  refundHostName?: string | null;
   testID?: string;
 }
 
@@ -159,6 +167,8 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   submitting = false,
   socialProof = null,
   onSeeWhosGoing,
+  refundPolicyState,
+  refundHostName,
   testID,
 }) => {
   const { isDesktop } = useResponsiveLayout();
@@ -213,6 +223,9 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
       socialProof={socialProof}
       // ORCH-1342 — web-only "See who's going" → install gate (adapter-wired).
       onSeeWhosGoing={onSeeWhosGoing}
+      // issue #3284 — section 9 refund terms (adapter-mapped, props-only).
+      refundPolicyState={refundPolicyState}
+      refundHostName={refundHostName}
       testID="orch-1167-event-body"
     />
   );

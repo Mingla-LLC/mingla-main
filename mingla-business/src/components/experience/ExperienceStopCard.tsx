@@ -66,6 +66,8 @@ export interface ExperienceStopCardProps {
   onRemove: (clientId: string) => void;
   onRemovePhoto: (clientId: string, photoIdx: number) => void;
   onOpenPhotoSheet: (clientId: string) => void;
+  /** Issue #3291 — rank-only proximity "longitude,latitude" for the address field. */
+  addressSearchProximity?: string;
 }
 
 const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
@@ -82,6 +84,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
   onRemove,
   onRemovePhoto,
   onOpenPhotoSheet,
+  addressSearchProximity,
 }) => {
   const cid = stop.clientId;
   const isFirst = i === 0;
@@ -238,6 +241,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
               allowFreeText
               selectionState={selectionState}
               selectedLabel={stop.address}
+              proximity={addressSearchProximity}
               onChangeText={(v) => {
                 advanceLocationRequestGeneration(requestGenerationRef);
                 savedContextRef.current = { city: null, countryCode: null };

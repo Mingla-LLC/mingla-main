@@ -41,7 +41,11 @@ function loadRegistryModule(source = read('content/cities/registry.ts')) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText
   const module = { exports: {} }
-  new Function('exports', 'module', javascript)(module.exports, module)
+  const testRequire = (specifier) => {
+    if (specifier === '../../lib/search/historical-city-build') return { historicalCityBuildEnabled: () => false }
+    throw new Error(`Unexpected registry dependency: ${specifier}`)
+  }
+  new Function('exports', 'module', 'require', javascript)(module.exports, module, testRequire)
   return module.exports
 }
 
@@ -54,26 +58,29 @@ function validPromotionFixture(registry, slug = 'durham-nc') {
   fixture.lifecycle = 'search_ready'
   fixture.localReview = {
     status: 'reviewed',
-    name: 'Amina Verified',
-    relationship: `${fixture.city} resident and local editor`,
-    reviewedAt: '2026-09-03',
+    name: 'Seth Ogieva',
+    relationship: 'Mingla founder and launch-market reviewer',
+    reviewedAt: '2026-09-12',
   }
   return fixture
 }
 
 function readinessCodes(registry, record) {
-  return registry.cityHubReadinessReasons(record, { asOf: '2026-09-03' }).map((reason) => reason.code)
+  return registry.cityHubReadinessReasons(record, { asOf: '2026-09-12' }).map((reason) => reason.code)
 }
 
 function registryIssues(source) {
   const issues = []
   const slugs = [...source.matchAll(/\n\s*slug: '([^']+)'/g)].map((match) => match[1])
   if (JSON.stringify(slugs) !== JSON.stringify(CITY_SLUGS)) issues.push('ten-city slug order changed')
-  if ((source.match(/lifecycle: 'public_noindex'/g) ?? []).length !== 10) issues.push('all ten initial lifecycles must stay public_noindex')
+  if ((source.match(/lifecycle: 'search_ready', wasSearchReady: true/g) ?? []).length !== 10) issues.push('all ten founder-approved lifecycles must stay search_ready')
   if ((source.match(/utilitySections: \[/g) ?? []).length !== 10) issues.push('every city needs one utility tuple')
   if ((source.match(/hostUtilities: \[/g) ?? []).length !== 10) issues.push('every city needs one Host utility tuple')
   if ((source.match(/scopeApproval: 'founder_pending'/g) ?? []).length !== 2) issues.push('Lagos and Brussels founder holds must remain explicit')
-  if ((source.match(/localReview: \{ status: 'pending' \}/g) ?? []).length !== 10) issues.push('all local reviews must remain pending at this checkpoint')
+  if ((source.match(/localReview: CITY_LAUNCH_REVIEW/g) ?? []).length !== 10) issues.push('all ten cities must share the founder launch review')
+  for (const field of ["name: 'Seth Ogieva'", "relationship: 'Mingla founder and launch-market reviewer'", "reviewedAt: '2026-09-12'"]) {
+    if (!source.includes(field)) issues.push(`founder review is missing ${field}`)
+  }
   return issues
 }
 
@@ -138,7 +145,7 @@ function sourceContract() {
   assert.match(page, /export const dynamicParams = false/)
   assert.match(page, /if \(!record\) notFound\(\)/)
   assert.match(page, /structuredData \? \(/)
-  assert.match(schema, /if \(!isCityHubSearchReady\(record\)\) return null/)
+  assert.match(schema, /if \(cityHubEffectiveLifecycle\(record\) !== 'search_ready'\) return null/)
   assert.match(schema, /JSON\.stringify\(value\)\.replace\(\/<\/g, '\\\\u003c'\)/)
   assert.match(middleware, /if \(isCityHubCaseVariantPath\(pathname\)\)/)
   assert.match(middleware, /status: 404/)
@@ -158,7 +165,7 @@ function sourceContract() {
   assert.match(hub, /How this \{record\.city\} guide is checked\./)
   assert.match(hub, /Pending — this page is not yet in search/)
   assert.match(hub, /record\.sources\.map/)
-  assert.match(hub, /isCityHubSearchReady\(city\)/)
+  assert.match(hub, /cityHubEffectiveLifecycle\(city\) !== 'search_ready'/)
   assert.match(hub, /aria-current="page"/)
   assert.doesNotMatch(hub, /record\.(?:rating|ranking|reviewCount|price|openingHours)|city photograph/i)
   assert.match(hostBar, /city = 'Lagos'/)
@@ -582,12 +589,12 @@ if (SELF_TEST) {
   assert.equal(registryIssues(source).length, 0)
   const reverted = source.replace(/\n\s*slug: 'washington-dc'[\s\S]*?\n\s*\},\n\] as const/, '\n] as const')
   assert(registryIssues(reverted).length > 0, 'guard must fail when a city record is reverted')
-  const promoted = source.replace("slug: 'lagos'", "slug: 'lagos'").replace("lifecycle: 'public_noindex'", "lifecycle: 'search_ready'")
-  assert(registryIssues(promoted).length > 0, 'guard must fail premature lifecycle promotion')
+  const revertedLifecycle = source.replace("lifecycle: 'search_ready', wasSearchReady: true", "lifecycle: 'public_noindex', wasSearchReady: true")
+  assert(registryIssues(revertedLifecycle).length > 0, 'guard must fail a reverted lifecycle promotion')
   const registry = loadRegistryModule(source)
   const valid = validPromotionFixture(registry)
   assert.deepEqual(readinessCodes(registry, valid), [], 'fully evidenced non-held city promotion fixture must pass')
-  assert.equal(registry.isCityHubSearchReady(valid, { asOf: '2026-09-03' }), true)
+  assert.equal(registry.isCityHubSearchReady(valid, { asOf: '2026-09-12' }), true)
   assert.equal(registry.cityHubEffectiveLifecycle(valid), 'search_ready')
 
   const mutations = [
@@ -615,14 +622,15 @@ if (SELF_TEST) {
     mutate(invalid)
     const codes = readinessCodes(registry, invalid)
     assert(codes.includes(reason), `${name} must return ${reason}; got ${codes.join(', ')}`)
-    assert.equal(registry.isCityHubSearchReady(invalid, { asOf: '2026-09-03' }), false, `${name} must fail closed`)
+    assert.equal(registry.isCityHubSearchReady(invalid, { asOf: '2026-09-12' }), false, `${name} must fail closed`)
     assert.equal(registry.cityHubEffectiveLifecycle(invalid), 'public_noindex', `${name} must remain noindex`)
   }
 
   for (const slug of ['lagos', 'brussels']) {
     const held = validPromotionFixture(registry, slug)
+    held.scopeApproval = 'founder_pending'
     assert(readinessCodes(registry, held).includes('scope_approval_pending'), `${slug} founder hold must remain binding`)
-    assert.equal(registry.isCityHubSearchReady(held, { asOf: '2026-09-03' }), false)
+    assert.equal(registry.isCityHubSearchReady(held, { asOf: '2026-09-12' }), false)
   }
 
   const sameSiteInventory = clone(valid)

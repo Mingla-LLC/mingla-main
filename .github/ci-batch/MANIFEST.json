@@ -16168,7 +16168,7 @@
       "providerWorkflow": ".github/workflows/issue-1929-hidden-direct-checkout-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "8c374fd16a94e09387baf9115d9758128fc1bec6a90de3bae6e454855b95683e",
+        "sourceSha256": "14c9c2971935b326d9f5a22f2dd1793be4790a709fc6063b113903c8c5853cfc",
         "triggers": [
           "pull_request",
           "push"
@@ -16178,11 +16178,16 @@
           ".github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs",
           ".github/workflows/issue-1929-hidden-direct-checkout-tests.yml",
           "app-mobile/src/**/__tests__/issue_1929_hidden_direct_checkout*",
+          "app-mobile/src/hooks/__tests__/issue_3284_refund_policy_mapping*",
+          "app-mobile/src/hooks/useConsumerExperienceDetail.ts",
+          "app-mobile/src/hooks/useConsumerExperienceOfferingData.ts",
           "app-mobile/src/hooks/usePublicEventBySlug.ts",
           "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
           "app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source*",
+          "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx",
           "mingla-business/src/services/__tests__/issue_1929_hidden_direct_checkout*",
           "mingla-business/src/services/publicEventsService.ts",
+          "packages/offering-rendering/offeringRefundPolicy.ts",
           "supabase/functions/ticket-checkout-create/__tests__/issue_1929_hidden_checkout_edge*",
           "supabase/migrations/20270324001929_issue_1929_hidden_direct_checkout.sql",
           "supabase/migrations/__tests__/issue_1929_hidden_direct_checkout*",
@@ -16288,7 +16293,7 @@
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "1425193dee0fb5264d9b7f4a52616f4b60133463af1337506ab7ae516d83b202",
+        "sourceSha256": "50e48549c87dda746adc2962634cada372e2398d1f72957fdb704aa977100da6",
         "triggers": [
           "pull_request",
           "push"
@@ -17726,7 +17731,7 @@
       "providerWorkflow": ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e5169b4e150af60002b3a0aa26db87462783e8533de99c57be61e9383cc48a73",
+        "sourceSha256": "db7cbb028f65b37abdceaef227d2c5cad6d328e7f95873114748461a47d9b9b2",
         "triggers": [
           "pull_request",
           "push",
@@ -17744,6 +17749,7 @@
           "mingla-business/jest.issue2099.web.render.cjs",
           "mingla-business/playwright.issue2099.config.ts",
           "mingla-business/playwright/issue2099/**",
+          "mingla-business/scripts/ci/bundle-baseline.json",
           "mingla-business/src/components/venue/PendingVenueIdentityCorrectionDialog.web.tsx",
           "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.d.ts",
           "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.native.tsx",
@@ -17949,7 +17955,7 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5b46caa3fe3fdb50f9fd49696f9fa4431e143deb36ab5dd855f02fed8b8c3d6e",
+        "sourceSha256": "a4e0ef4ff5e8f7a7e0718ae6c41201321efeb10f6192562ee18fd1b4c5c851f9",
         "triggers": [
           "pull_request",
           "push"
@@ -19246,7 +19252,7 @@
       "providerWorkflow": ".github/workflows/issue-2333-online-event-publish.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "ec16943351cfa80764bc9e7540ba7cdec2a7236028fc5dbcf268d3a8b08c8a30",
+        "sourceSha256": "349a696a73d47fd0bc736e84d3bee48fa394063e6398778fd6b33bb684a96c9e",
         "triggers": [
           "pull_request",
           "push",

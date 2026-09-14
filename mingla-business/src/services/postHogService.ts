@@ -37,6 +37,7 @@ import Constants from "expo-constants";
 import { Platform } from "react-native";
 import type { PostHog } from "posthog-react-native";
 import { useAnalyticsPrefsStore } from "../store/analyticsPrefsStore";
+import { sanitizeSearchMeasurement } from "@mingla/search-measurement";
 // #2211 — the shared text-size bucketing, so both apps register byte-identical
 // property shapes and a single PostHog breakdown covers consumer and business.
 import { textSizeAnalyticsProperties } from "../constants/dynamicType";
@@ -212,6 +213,16 @@ class PostHogService {
     if (!this.isReady() || this.client === null) return;
     try {
       this.client.capture(event, clean(properties));
+      // AuthContext already owns the proven first-account-success boundary.
+      // Mirror that established event without changing the byte-pinned owner.
+      if (event === "signup_completed") {
+        const safe = sanitizeSearchMeasurement("sign_up", {
+          audience: "host",
+          page_family: "host_pillar",
+          action_state: "succeeded",
+        });
+        if (safe !== null) this.client.capture(safe.event, safe.properties);
+      }
     } catch {
       // Non-fatal — analytics never breaks the UI.
     }

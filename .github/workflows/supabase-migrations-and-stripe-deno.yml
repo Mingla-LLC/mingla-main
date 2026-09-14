@@ -833,6 +833,18 @@ jobs:
           # (T-01) and, separately, of the RESTRICT foreign key (T-10).
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3285_event_dates_stable_identity.implementor.happy.pg17.test.sql
+          # Issue #3313 — a recurring event published ONE date, a guest's order
+          # carried no night, and capacity was shared by every night of the run.
+          # Behavioural, against the real chain: publishes through the wizard's
+          # RPC, edits through the live When RPC, reserves and finalizes real
+          # checkouts, reads the real public bundle and patches real tiers. One
+          # transaction ending in ROLLBACK. Fails on revert of each of the six
+          # re-emitted functions (revert proof on the PR). The edge half — the
+          # 422 and the promoted lone eventDateId — is asserted from source by
+          # the node suite beside ticket-checkout-create.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3313_recurring_event_occurrences.implementor.happy.pg17.test.sql
+          node --test supabase/functions/ticket-checkout-create/__tests__/issue_3313_day_choice_required.test.mjs
           # Issue #3193 — the public resolver must read the LIVE brand row. A host
           # who deletes and recreates a brand leaves several rows under one slug,
           # `idx_brands_slug_active` only constrains the live ones, and the brand

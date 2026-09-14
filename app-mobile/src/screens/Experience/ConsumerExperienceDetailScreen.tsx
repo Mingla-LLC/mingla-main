@@ -792,6 +792,69 @@ export default function ConsumerExperienceDetailScreen({
     setInitialTicketTypeId(null);
   }, []);
 
+  /**
+   * #1708 — RIGHT NOW, for the experience's own location.
+   *
+   * Seth's decision after the routing correction: a business experience keeps its
+   * OWN page (it has ticketing, occurrence pickers, a guest list and a reserve
+   * flow a place sheet has no business carrying) and what crosses over from the
+   * place sheet is the INTELLIGENCE.
+   *
+   * Same two services the place sheet uses. Every row is independently optional
+   * and NOTHING is fabricated: no coordinates -> no weather; no viewer position
+   * -> no travel row, which is exactly the state the public web page is in
+   * permanently.
+   *
+   * issue #3321 — these hooks live ABOVE the seed/ticket-loading early returns.
+   * They used to sit below them, so the render after tickets finished loading
+   * called more hooks than the loading render and React threw "Rendered more
+   * hooks than during the previous render" on the first open of an experience.
+   */
+  // The experience's own coordinates: its geo point, or its first stop's. Both
+  // may be absent, and then there is no weather row — never a placeholder one.
+  const rightNowLat =
+    seed?.locationGeo?.lat ?? (seed?.experienceStops?.[0] as { lat?: number | null } | undefined)?.lat ?? null;
+  const rightNowLng =
+    seed?.locationGeo?.lng ?? (seed?.experienceStops?.[0] as { lng?: number | null } | undefined)?.lng ?? null;
+  const [rightNowWeather, setRightNowWeather] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (rightNowLat == null || rightNowLng == null) {
+      setRightNowWeather(null);
+      return () => { cancelled = true; };
+    }
+    weatherService
+      .getWeatherForecast(rightNowLat, rightNowLng)
+      .then((w) => {
+        if (cancelled || !w) return;
+        setRightNowWeather(`${w.condition}, ${Math.round(w.temperature)}\u00B0`);
+      })
+      .catch(() => {
+        // Non-fatal. A missing row is the honest outcome; a placeholder is not.
+        if (!cancelled) setRightNowWeather(null);
+      });
+    return () => { cancelled = true; };
+  }, [rightNowLat, rightNowLng]);
+
+  const rightNow = useMemo(() => {
+    let travel: string | null = null;
+    if (viewerLocation?.lat != null && viewerLocation?.lng != null
+      && rightNowLat != null && rightNowLng != null) {
+      const km = haversineKm(viewerLocation.lat, viewerLocation.lng, rightNowLat, rightNowLng);
+      travel = `${estimateTravelMinutes(km, 'driving')} min`;
+    }
+    if (!rightNowWeather && !travel) return null;
+    return {
+      weather: rightNowWeather,
+      travel,
+      // The travel figure is haversine, never a measurement. The disclosure is
+      // the condition of it being shown at all — see #1706 and the traffic
+      // deletion it refers to.
+      estimated: travel !== null,
+    };
+  }, [rightNowWeather, rightNowLat, rightNowLng, viewerLocation]);
+
   const chrome = (
     <View
       style={[styles.nativeChrome, { top: insets.top + 12 }]}
@@ -871,12 +934,23 @@ export default function ConsumerExperienceDetailScreen({
     (g) => typeof g?.url === "string" && g.url.length > 0,
   );
   const galleryActive = coverGallery.length >= 1;
+  // issue #3321 — name the hero from what this screen actually renders. #2774
+  // read an undeclared `detail` here (copied from the trip screen), which threw
+  // on every open. The heading, the sheet name and <EventCoverMedia> all come
+  // from the SEED, so the subject and the media type do too. Only the by-slug
+  // detail carries an alt, and it describes ITS cover: use it only while that
+  // cover is the one on screen, never as a description of a different picture.
+  const heroSubject = seed.title;
+  const heroCoverAlt =
+    freshDetail !== null && freshDetail.coverMediaUrl === seed.coverMediaUrl
+      ? freshDetail.coverMediaAlt
+      : null;
   const primaryHeroAccessibleLabel = buildHeroMediaAccessibleLabel({
-    subject: detail.title,
-    mediaType: detail.coverMediaType,
+    subject: heroSubject,
+    mediaType: coverMediaType,
     position: 1,
     total: coverGallery.length + 1,
-    description: detail.coverMediaAlt,
+    description: heroCoverAlt,
   });
   // issue #868 Pass 3 — the pager OWNS scrolling (settle-guard, BUG 1).
   const selectCoverIndex = (index: number): void => {
@@ -925,64 +999,6 @@ export default function ConsumerExperienceDetailScreen({
     sellableTicket.priceAllInGbp > 0
       ? Math.round(sellableTicket.priceAllInGbp * 100)
       : null;
-  /**
-   * #1708 — RIGHT NOW, for the experience's own location.
-   *
-   * Seth's decision after the routing correction: a business experience keeps its
-   * OWN page (it has ticketing, occurrence pickers, a guest list and a reserve
-   * flow a place sheet has no business carrying) and what crosses over from the
-   * place sheet is the INTELLIGENCE.
-   *
-   * Same two services the place sheet uses. Every row is independently optional
-   * and NOTHING is fabricated: no coordinates -> no weather; no viewer position
-   * -> no travel row, which is exactly the state the public web page is in
-   * permanently.
-   */
-  // The experience's own coordinates: its geo point, or its first stop's. Both
-  // may be absent, and then there is no weather row — never a placeholder one.
-  const rightNowLat =
-    seed.locationGeo?.lat ?? (seed.experienceStops?.[0] as { lat?: number | null } | undefined)?.lat ?? null;
-  const rightNowLng =
-    seed.locationGeo?.lng ?? (seed.experienceStops?.[0] as { lng?: number | null } | undefined)?.lng ?? null;
-  const [rightNowWeather, setRightNowWeather] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (rightNowLat == null || rightNowLng == null) {
-      setRightNowWeather(null);
-      return () => { cancelled = true; };
-    }
-    weatherService
-      .getWeatherForecast(rightNowLat, rightNowLng)
-      .then((w) => {
-        if (cancelled || !w) return;
-        setRightNowWeather(`${w.condition}, ${Math.round(w.temperature)}\u00B0`);
-      })
-      .catch(() => {
-        // Non-fatal. A missing row is the honest outcome; a placeholder is not.
-        if (!cancelled) setRightNowWeather(null);
-      });
-    return () => { cancelled = true; };
-  }, [rightNowLat, rightNowLng]);
-
-  const rightNow = useMemo(() => {
-    let travel: string | null = null;
-    if (viewerLocation?.lat != null && viewerLocation?.lng != null
-      && rightNowLat != null && rightNowLng != null) {
-      const km = haversineKm(viewerLocation.lat, viewerLocation.lng, rightNowLat, rightNowLng);
-      travel = `${estimateTravelMinutes(km, 'driving')} min`;
-    }
-    if (!rightNowWeather && !travel) return null;
-    return {
-      weather: rightNowWeather,
-      travel,
-      // The travel figure is haversine, never a measurement. The disclosure is
-      // the condition of it being shown at all — see #1706 and the traffic
-      // deletion it refers to.
-      estimated: travel !== null,
-    };
-  }, [rightNowWeather, rightNowLat, rightNowLng, viewerLocation]);
-
   const offeringData = buildExperienceOfferingDataFromSeed(seed, {
     ticket:
       sellableTicket !== undefined
@@ -1006,6 +1022,10 @@ export default function ConsumerExperienceDetailScreen({
       capacity: o.capacity,
     })),
     bookable: offeringCta.tappable || offeringCta.kind !== "unavailable",
+    // issue #3284 — section 10 refund terms come ONLY from the fresh by-slug read
+    // (the deck seed carries none). Before it arrives they stay unknown → hidden.
+    refundPolicyState: freshDetail?.refundPolicyState,
+    offeringClosed: freshDetail?.offeringClosed,
   });
   // ORCH-1187 FIX-3(a): the seed adapter derives openDaily from the (possibly
   // stale) SEED recurrence fields. Override with the screen's fresh-preferred
@@ -1121,9 +1141,9 @@ export default function ConsumerExperienceDetailScreen({
               gallery={coverGallery}
               activeIndex={coverIndex}
               onActiveIndexChange={setCoverIndex}
-              heroAccessibilitySubject={detail.title}
-              coverMediaAlt={detail.coverMediaAlt}
-              coverMediaType={detail.coverMediaType}
+              heroAccessibilitySubject={heroSubject}
+              coverMediaAlt={heroCoverAlt}
+              coverMediaType={coverMediaType}
             />
           ) : (
             coverMediaNode

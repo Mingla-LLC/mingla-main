@@ -23,18 +23,26 @@ interface EventDetailTicketTypeRowProps {
   /** Cycle 9c — derived in parent from useOrderStore (per-tier live count). */
   soldCount: number | null;
   capacityTestID?: string;
+  /**
+   * issue #3313 — true on a recurring event. `soldCount` is then the BUSIEST
+   * night's sold passes and capacity is per night, so the row reads
+   * "12 / 60 busiest night" and never claims SOLD OUT from one full night.
+   */
+  capacityPerNight?: boolean;
 }
 
 const EventDetailTicketTypeRowInner: React.FC<EventDetailTicketTypeRowProps> = ({
   ticket,
   soldCount,
   capacityTestID,
+  capacityPerNight = false,
 }) => {
   const sold = soldCount;
   const cap = ticket.isUnlimited
     ? Number.POSITIVE_INFINITY
     : (ticket.capacity ?? 0);
-  const isSoldOut = sold !== null && !ticket.isUnlimited && cap > 0 && sold >= cap;
+  const isSoldOut =
+    !capacityPerNight && sold !== null && !ticket.isUnlimited && cap > 0 && sold >= cap;
   // #962 G14 — hide the price ("—") when the ticket has no established currency
   // (pre-bank brand); never manufacture GBP. Mirrors G8 (ticketDisplay.ts).
   const ticketCode = currencyCodeOrNull(ticket.currency);
@@ -45,7 +53,9 @@ const EventDetailTicketTypeRowInner: React.FC<EventDetailTicketTypeRowProps> = (
       : "—";
   const capText = sold === null
     ? "—"
-    : ticket.isUnlimited ? `${sold} sold` : `${sold} / ${cap}`;
+    : ticket.isUnlimited
+      ? capacityPerNight ? `${sold} sold busiest night` : `${sold} sold`
+      : capacityPerNight ? `${sold} / ${cap} busiest night` : `${sold} / ${cap}`;
 
   return (
     <View style={styles.host}>

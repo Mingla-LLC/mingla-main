@@ -4,6 +4,7 @@ import { useEffect, useRef, type MouseEvent } from 'react'
 import { ArrowLeft, Sparkles, Star, X } from 'lucide-react'
 import { DeviceCta } from '@/components/cutout'
 import type { CataloguePlace, CataloguePlan } from '@/content/page-system/shared'
+import { CurrentPlacePhoto } from './current-place-photo'
 
 interface CatalogueDetailProps {
   readonly item: CataloguePlace | CataloguePlan
@@ -78,9 +79,9 @@ export function CatalogueDetail({ item, cityName, backHref, onClose }: Catalogue
           <a href={backHref} aria-label="Close details" onClick={close}><X aria-hidden="true" size={20} /></a>
         </header>
 
-        <div className="ps-detail-gallery" data-count={Math.min(item.photoUrls.length, 3)}>
-          {item.photoUrls.slice(0, 3).map((photo, index) => (
-            <img key={photo} src={photo} alt={index === 0 ? `${isPlace ? `${item.name}, in the Explorer ${cityName} pool` : `${item.title}, a Mingla ${cityName} plan`}` : ''} width="900" height="700" />
+        <div className="ps-detail-gallery" data-count={isPlace ? 1 : Math.min(item.photoUrls.length, 3)}>
+          {isPlace ? <CurrentPlacePhoto googlePlaceId={item.googlePlaceId} name={item.name} cityName={cityName} eager /> : item.photoUrls.slice(0, 3).map((photo, index) => (
+            <img key={photo} src={photo} alt={index === 0 ? `${item.title}, a Mingla ${cityName} plan` : ''} width="900" height="700" />
           ))}
         </div>
 
@@ -97,7 +98,7 @@ export function CatalogueDetail({ item, cityName, backHref, onClose }: Catalogue
               {item.rating && item.reviewCount ? <p className="ps-detail-rating"><Star aria-hidden="true" size={16} fill="currentColor" />{item.rating.toFixed(1)} from {item.reviewCount.toLocaleString()} Google reviews stored with this place.</p> : null}
               {item.oneLiner ? <p>{item.oneLiner}</p> : null}
               {item.address ? <address>{item.address}</address> : null}
-              <p className="ps-source-note">Score captured {new Date(item.scoredAt).toLocaleDateString('en-US', { dateStyle: 'long', timeZone: 'UTC' })}. Place record refreshed {new Date(item.sourceUpdatedAt).toLocaleDateString('en-US', { dateStyle: 'long', timeZone: 'UTC' })}.</p>
+              <p className="ps-source-note">Ranked #{item.rank} after the city boundary and serving checks. Score captured {new Date(item.scoredAt).toLocaleDateString('en-US', { dateStyle: 'long', timeZone: 'UTC' })}. Place record refreshed {new Date(item.sourceUpdatedAt).toLocaleDateString('en-US', { dateStyle: 'long', timeZone: 'UTC' })}.</p>
             </>
           ) : (
             <>

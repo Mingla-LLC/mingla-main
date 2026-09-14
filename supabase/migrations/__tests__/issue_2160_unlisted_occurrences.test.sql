@@ -195,13 +195,26 @@ BEGIN
   PERFORM pg_temp.u2160_assert(((v_b::jsonb) ->> 'isRecurring') = 'false',
     'U-4b the bundle reports isRecurring separately, so recurring stays out of scope');
 
+  -- [TEST-MOD-APPROVED #3313] U-4c used to pin that a recurring event is NOT
+  -- reported as multi-date ("#2145 stays out"). That deferral is exactly what
+  -- #3313 ends: `isMultiDate` now means "the guest must pick a day", so a
+  -- recurring event with more than one upcoming night reports true (and the
+  -- shipped day chooser mounts for it), while one with a single upcoming night
+  -- still reports false. isRecurring keeps riding separately.
   v_recurring := pg_temp.u2160_event('recurring', 'public', 2, false);
   UPDATE public.events SET is_recurring = true WHERE id = v_recurring;
   v_b := public.pg_direct_event_checkout_bundle(v_recurring, NULL, NULL);
   PERFORM pg_temp.u2160_assert(
-    ((v_b::jsonb) ->> 'isMultiDate') = 'false'
+    ((v_b::jsonb) ->> 'isMultiDate') = 'true'
     AND ((v_b::jsonb) ->> 'isRecurring') = 'true',
-    'U-4c a RECURRING event is not reported as multi-date (#2145 stays out)');
+    'U-4c a RECURRING event with 2 upcoming nights asks for a day (#3313 closes #2145)');
+  UPDATE public.event_dates SET start_at = now() - interval '3 days', end_at = now() - interval '2 days'
+   WHERE event_id = v_recurring AND NOT is_master;
+  v_b := public.pg_direct_event_checkout_bundle(v_recurring, NULL, NULL);
+  PERFORM pg_temp.u2160_assert(
+    ((v_b::jsonb) ->> 'isMultiDate') = 'false'
+    AND jsonb_array_length((v_b::jsonb) -> 'occurrences') = 1,
+    'U-4c2 ...and with ONE upcoming night there is no choice and one occurrence');
 
   -- ── U-5 — the pricing mode rides the bundle, defaulting to per_day. ───────
   v_b := public.pg_direct_event_checkout_bundle(v_public, NULL, NULL);

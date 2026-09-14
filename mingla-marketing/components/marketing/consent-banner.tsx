@@ -122,7 +122,7 @@ export function ConsentBanner(): React.ReactElement | null {
                 variant="primary"
                 size="sm"
                 onClick={() => choose('granted')}
-                className="min-w-[44px]"
+                className="min-w-[44px] bg-warm-ink hover:bg-warm-ink"
               >
                 Accept all
               </Button>

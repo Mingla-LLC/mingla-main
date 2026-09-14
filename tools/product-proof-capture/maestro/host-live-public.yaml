@@ -1,0 +1,16 @@
+appId: com.sethogieva.minglabusiness
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+- tapOn:
+    text: "Continue"
+    optional: true
+- tapOn:
+    text: "Close"
+    optional: true
+- assertVisible: "Your live events"
+- assertVisible: ".*Sample rooftop listening session.*"
+- tapOn: "Open sample public page"
+- assertVisible: ".*Sample rooftop listening session.*"
+- assertVisible: "Get free ticket"

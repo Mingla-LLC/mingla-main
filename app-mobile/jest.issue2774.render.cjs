@@ -23,5 +23,11 @@ module.exports = {
     "**/__tests__/publicHeroAccessibility.issue2774.happy.test.tsx",
     "**/__tests__/publicHeroAccessibility.issue2774.adversarial.test.tsx",
     "**/__tests__/publicHeroAccessibility.issue2788.singleReactOwner.test.cjs",
+    // issue #3321 — mounts the consumer experience detail through the #2774
+    // hero-label path that crashed every open; runs in this same CI step.
+    "**/__tests__/issue_3321_experience_detail_opens.render.test.tsx",
+    // issue #3321 — no undeclared name / missing property in the three consumer
+    // detail screens (a scoped type check; app-mobile has no typecheck gate).
+    "**/__tests__/consumerDetailScreens.issue3321.namesExist.test.cjs",
   ],
 };

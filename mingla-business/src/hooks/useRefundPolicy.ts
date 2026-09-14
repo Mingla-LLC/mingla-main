@@ -10,12 +10,16 @@
 
 import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 
+import type {
+  RefundPolicy,
+  RefundPolicyServiceError,
+} from "../services/refundPolicyModel";
+// issue #3284 [bundle budget] — the lazy writers (ORCH-1083); never a static
+// import of refundPolicyService.
 import {
   updateBookingDeadline,
   updateRefundPolicy,
-  type RefundPolicy,
-  type RefundPolicyServiceError,
-} from "../services/refundPolicyService";
+} from "../services/refundPolicyWrites";
 
 interface UpdateRefundPolicyInput {
   eventId: string;

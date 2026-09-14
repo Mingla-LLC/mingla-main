@@ -17,6 +17,7 @@ import {
 import type { PublishedBusinessEvent } from "../services/businessEvents";
 import type { DraftEvent } from "../store/draftEventStore";
 import type { RsvpUpdatePayload } from "../utils/serverDraftEventMapper";
+import { captureHostSearchOutcome } from "../analytics/searchOutcome";
 
 export function usePublishRsvpDraft() {
   return useMutation<
@@ -26,6 +27,15 @@ export function usePublishRsvpDraft() {
   >({
     mutationFn: ({ draft, clientRevision }) =>
       publishRsvpDraft(draft, clientRevision ?? draft.clientRevision ?? null),
+    onSuccess: () => {
+      captureHostSearchOutcome("listing_published", {
+        audience: "host",
+        page_family: "host_pillar",
+        icp: "event_promoter",
+        action_state: "succeeded",
+        content_kind: "event",
+      });
+    },
   });
 }
 

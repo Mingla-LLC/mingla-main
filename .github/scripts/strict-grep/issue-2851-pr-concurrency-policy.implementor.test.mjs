@@ -1056,6 +1056,11 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // suite 11/11 green against the value this pin replaces. The new value below
   // is identical across three derivations with this file's own RUBY_CANONICAL,
   // and was not copied from a PR run's printed `actual:` (#3015).
+  // [TEST-MOD-APPROVED #3176] The offering-visibility replay lane adds four
+  // explanatory shell-comment lines and one exact-filename skip for #3176's
+  // IndexNow migration. No workflow identity, trigger, concurrency block,
+  // group expression, cancellation policy, or timeout changes.
+  //
   // [TEST-MOD-APPROVED #1777] Re-derived after #1777 added only paths, test
   // commands, and PostgreSQL proof commands to the existing People lane. The
   // workflow delta is 19 additions and zero deletions, with no concurrency,
@@ -1073,7 +1078,7 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // deletions, and none of it touches concurrency, group: or cancel-in-progress.
   // PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED.
   //
-  // MEASURED, from the committed tree: restoring BOTH lanes to origin/main
+  // MEASURED, from the #3285 tree: restoring BOTH lanes to its origin/main
   // recomputes the prior pin 3b01e307b2ab9066864ae69314ca42eb243a0b169c451921cf54ebbebf039018;
   // restoring only one of them yields 21a7c17f... or c1c05dff..., so each delta
   // moves the digest on its own, and both exact lines are added to the
@@ -1128,27 +1133,90 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // changed; only the existing path scope widened. PR_FAMILY_COUNT (124) and
   // PR_FAMILY_IDENTITY_SHA256 are unchanged,
   // and the policy gate plus its mutation proofs remain untouched. Three local
-  // runs of this file's RUBY_CANONICAL produced the same value below.
+  // runs of this file's RUBY_CANONICAL produced the same main-only value.
   //
-  // [TEST-MOD-APPROVED #3284] Re-derived for three additive deltas in three
-  // existing PR-family lanes, all named by description: (1) the migrations-and-
-  // Stripe Deno lane gains one psql target for the #3284 refund-terms SQL suite
-  // plus its four-line comment; (2) the private-event lane and (3) the #2117
-  // offering-visibility lane each gain one exact-filename skip branch for
-  // 20270702003284 plus its comment, on the #2492 closure gate's own instruction
+  // [TEST-MOD-APPROVED #3176] Final combined-tree re-derivation preserves all
+  // three owners: #1778's Book-blast proof, #3288's two workflow blocks, and
+  // #3176's five-line exact IndexNow skip block. None changes a workflow
+  // identity, concurrency block, group expression, cancellation policy, or
+  // timeout.
+  //
+  // MEASURED FROM DISK with this file's extracted RUBY_CANONICAL algorithm:
+  // current combined tree 330740ba...; without #3176 a24d680b...; without
+  // #3288 b1b5f757...; without #3176 and #3288 aadaaea7...; without #1778
+  // d2f72965.... The count, identity and policy audit remain 124 /
+  // 9356c425... / zero errors. Whole-block assertions below lock the branch
+  // deltas independently while every receipt retains #1778's main truth.
+  //
+  // [TEST-MOD-APPROVED #3325] Re-derived after #3325 added ONE paths entry, the
+  // boot-payload baseline, to the #2099 pending-venue lane's shared paths anchor
+  // (push reuses the anchor, so both events widen). The lane is DESCRIBED, never
+  // spelled as a filename, for the #2148 provider-reference reason above. The
+  // workflow delta over origin/main c6efb21f6 is `1 file changed, 14
+  // insertions(+)`, zero deletions: 13 comment lines, which YAML drops before
+  // canonicalization, and the one entry. No concurrency, group:,
+  // cancel-in-progress, event kind or workflow identity changed. PR_FAMILY_COUNT
+  // (124) and PR_FAMILY_IDENTITY_SHA256 (9356c425...) are UNCHANGED.
+  //
+  // MEASURED from the committed tree 5e305731e (`git archive`), three
+  // derivations, identical, with this file's own RUBY_CANONICAL and block
+  // literals extracted rather than retyped, and not copied from a PR run's
+  // printed `actual:` (#3015): current tree 1d728bae...; restoring ONLY the
+  // #2099 lane to origin/main bytes, or removing only the one entry, recovers
+  // #3176's pin 330740ba... exactly. The #3176, #3288 and combined receipts below
+  // now start from that pre-#3325 tree, so their literals do not move, and the
+  // entry is in the revert-sensitivity loop.
+  //
+  // [TEST-MOD-APPROVED #3313] Re-derived on top of #3325's tree after #3313
+  // added four whole blocks: its recurring-event SQL suite and edge node suite
+  // on the migrations job, the end of the #2333 re-apply set, and its
+  // exact-filename skip in the #1931 and #2117 filtered replays (the #2492 gate
+  // named the file). No workflow identity, concurrency block, group expression,
+  // cancellation policy or timeout changed; count and identity stay 124 /
+  // 9356c425.... MEASURED FROM the committed merged tree with this file's own
+  // RUBY_CANONICAL and block literals (not a CI `actual:`): current tree
+  // 07682607...; removing the four #3313 blocks recovers #3325's
+  // pin 1d728bae... exactly (the before3313 receipt below), and the #3325,
+  // #3176 and #3288 receipts now start from that tree, so their literals do
+  // not move.
+  //
+  // [TEST-MOD-APPROVED #3284] Re-derived for three additive whole blocks in
+  // three existing PR-family lanes: (1) the migrations-and-Stripe Deno lane
+  // gains one psql target for the #3284 refund-terms SQL suite plus its
+  // four-line comment; (2) the private-event lane and (3) the #2117
+  // offering-visibility lane each gain one exact-filename skip branch for the
+  // #3284 migration plus its comment, on the #2492 closure gate's own instruction
   // (the migration re-emits the direct checkout bundle and the public experience
   // reader, whose `LANGUAGE sql` bodies reach objects each filtered phase lacks).
-  // None of it touches concurrency, group: or cancel-in-progress.
-  // PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 (9356c425...) are
-  // UNCHANGED.
+  // None of it touches a workflow identity, concurrency block, group expression,
+  // cancellation policy, or timeout. PR_FAMILY_COUNT (124) and
+  // PR_FAMILY_IDENTITY_SHA256 (9356c425...) are UNCHANGED.
   //
-  // MEASURED with this file's own RUBY_CANONICAL (extracted, not retyped): the
-  // origin/main 69af8bed5 workflow tree recomputes #1778's pin a24d680b...
-  // exactly, and the branch tree gives the value below. Removing any ONE of the
-  // three exact lines yields 889d23d8..., 5c56a710... or 62c64bf3..., so each
-  // delta moves the digest on its own, and all three lines are in the
-  // revert-sensitivity loop below. Not copied from a PR run's printed `actual:`.
-  "a82e1b1dda6ce912a2ecfa3e947cc80b152482cf9639bf508f66985750da9aca";
+  // MEASURED FROM DISK with this file's extracted RUBY_CANONICAL (not retyped),
+  // on the tree rebased onto origin/main a98202439: current tree a32a3073...;
+  // removing all three #3284 blocks recovers origin/main's pin 07682607...
+  // exactly; removing any ONE executable line yields 5087b2ea..., c7f32c30... or
+  // 8ced6268..., so each delta moves the digest on its own. The three lines join
+  // the revert-sensitivity loop. Not copied from a CI `actual:`.
+  //
+  // [TEST-MOD-APPROVED #3284] Re-derived again: the consumer refund-terms mapping
+  // suite was in no lane, so the existing #1929 hidden-direct-checkout lane now
+  // runs it beside the #1929 hook suites (one jest target appended to the
+  // clients job's app-mobile step) and triggers on its subjects (five
+  // pull_request paths and four push paths, with YAML comments). No job, trigger
+  // event, concurrency block, group expression, cancellation policy, or timeout
+  // changes. MEASURED the same way: current tree 3e75612e...; removing every #3284
+  // block in all four lanes recovers 07682607...; removing only the jest target
+  // yields 365d747a..., only the test-file trigger 8e4e13f0.... The
+  // #3313, #3325, #3176, #3288 and combined receipts below run on this branch
+  // tree, so their literals are re-derived with the #3284 additions present.
+  //
+  // [TEST-MOD-APPROVED #3284] Re-derived again after the migration was renamed
+  // to 20270703003284 so it sorts after #3313: the two filtered-lane skip lines
+  // now name that file. Current tree f5045a1d...; removing one executable line
+  // yields 621dbee9... (suite target), e3beed15... (#1931 skip), 33941960...
+  // (#2117 skip), 9b85465a... (#1929 jest target) or ff96a3e8... (#1929 trigger).
+  "f5045a1d5ff4986e17b14b151a2804962db8ad896c4b984f3c3339fa9acbdd1c";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1472,6 +1540,8 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "              *20270624003193_issue_3193_public_search_live_brand_row.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "            -f supabase/migrations/20270624003193_issue_3193_public_search_live_brand_row.sql\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270627003176_issue_3176_indexnow_outbox.sql) continue ;;\n"],
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "            -f supabase/migrations/__tests__/issue_3193_public_search_live_brand_row.implementor.happy.pg17.test.sql\n"],
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
@@ -1511,20 +1581,217 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "            -f supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql\n"],
     [liveWorkflow("issue", "2333", "online", "event", "publish"),
       "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql\n"],
+    // [TEST-MOD-APPROVED #3325] The boot-payload baseline entry #3325 added to
+    // the #2099 lane's shared paths anchor. It must independently move the
+    // digest, or the re-pin above would accept a change nothing proves.
+    [liveWorkflow("issue", "2099", "pending", "venue", "identity", "correction", "tests"),
+      '      - "mingla-business/scripts/ci/bundle-baseline.json"\n'],
+    // [TEST-MOD-APPROVED #3313] The #3313 suite targets on the migrations job,
+    // the #2333 re-apply of the #3313 migration, and its exact-filename skip in
+    // the #1931 and #2117 filtered replays. Each must independently move the
+    // digest.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3313_recurring_event_occurrences.implementor.happy.pg17.test.sql\n"],
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "          node --test supabase/functions/ticket-checkout-create/__tests__/issue_3313_day_choice_required.test.mjs\n"],
+    [liveWorkflow("issue", "2333", "online", "event", "publish"),
+      "            -f supabase/migrations/20270702003313_issue_3313_recurring_event_occurrences.sql\n"],
+    [liveWorkflow("issue", "1931", "private", "event", "access"),
+      "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
     // [TEST-MOD-APPROVED #3284] The #3284 refund-terms SQL suite target on the
     // migrations lane, and the exact-filename skip in each filtered replay lane.
     // Each must independently move the digest.
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "            -f supabase/migrations/__tests__/issue_3284_offering_refund_terms.test.sql\n"],
     [liveWorkflow("issue", "1931", "private", "event", "access"),
-      "              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
+      "              *20270703003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
-      "              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
+      "              *20270703003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
+    // [TEST-MOD-APPROVED #3284] The consumer mapping suite's jest target in the
+    // #1929 clients job, and its test-file trigger path.
+    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"),
+      " src/hooks/__tests__/issue_3284_refund_policy_mapping.implementor.test.ts"],
+    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"),
+      '      - "app-mobile/src/hooks/__tests__/issue_3284_refund_policy_mapping*"\n'],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
     assert.throws(() => assertCurrentTreeAuthority(reverted), /non-concurrency semantic digest drifted/);
   }
+
+  // [TEST-MOD-APPROVED #3176] The five lines live inside YAML's `run: |` block,
+  // so all five are semantic script bytes. Reverting the complete #3176 block
+  // must reproduce origin/main's independently measured combined-history pin;
+  // the loop above separately proves the executable skip cannot disappear while
+  // its explanation remains behind.
+  //
+  // [TEST-MOD-APPROVED #3325] Reverting #3325's single paths entry must recover
+  // #3176's combined-tree pin, and every older receipt starts from that
+  // pre-#3325 tree so their literals stay exactly as their owners measured them.
+  const issue2099Name = liveWorkflow(
+    "issue", "2099", "pending", "venue", "identity", "correction", "tests",
+  );
+  // [TEST-MOD-APPROVED #3313] Removing #3313's four whole workflow blocks must
+  // reproduce #3325's pin exactly. Every older receipt below now starts from
+  // that tree, so each owner's delta stays independently measured.
+  const recurringSuiteBlock3313 = [
+    "          # Issue #3313 — a recurring event published ONE date, a guest's order",
+    "          # carried no night, and capacity was shared by every night of the run.",
+    "          # Behavioural, against the real chain: publishes through the wizard's",
+    "          # RPC, edits through the live When RPC, reserves and finalizes real",
+    "          # checkouts, reads the real public bundle and patches real tiers. One",
+    "          # transaction ending in ROLLBACK. Fails on revert of each of the six",
+    "          # re-emitted functions (revert proof on the PR). The edge half — the",
+    "          # 422 and the promoted lone eventDateId — is asserted from source by",
+    "          # the node suite beside ticket-checkout-create.",
+    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\",
+    "            -f supabase/migrations/__tests__/issue_3313_recurring_event_occurrences.implementor.happy.pg17.test.sql",
+    "          node --test supabase/functions/ticket-checkout-create/__tests__/issue_3313_day_choice_required.test.mjs",
+    "",
+  ].join("\n");
+  const recurringReplayBlock3313 = [
+    "          # Issue #3313 re-emits `business_publish_event_draft` again (a recurring",
+    "          # publish materialises every rule date) and now owns its final",
+    "          # definition, so it ends the re-apply set.",
+    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\",
+    "            -f supabase/migrations/20270702003313_issue_3313_recurring_event_occurrences.sql",
+    "",
+  ].join("\n");
+  const privateReplaySkipBlock3313 = [
+    "              # issue #3313 — SKIPPED for the same reasons as #2160, #2489 and #2879",
+    "              # above. It re-emits `pg_direct_event_checkout_bundle` (a `LANGUAGE",
+    "              # sql` body reaching `multi_date_pricing_mode`, created only by the",
+    "              # skipped #2160, and the #2489 theme helpers) plus the #2879 session",
+    "              # base, validated at CREATE time, so the replay would abort here.",
+    "              # Nothing is removed from the migration to green this lane.",
+    "              #",
+    "              # Covered end-to-end by the unfiltered full-chain migrations lane,",
+    "              # which replays every migration in filename order and runs the #3313",
+    "              # suite against that terminal state.",
+    "              #",
+    "              # Matched by EXACT filename, never an issue-number infix.",
+    "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;",
+    "",
+  ].join("\n");
+  const offeringReplaySkipBlock3313 = [
+    "              # issue #3313 — same reason: it re-emits the bundle, whose body",
+    "              # reaches `issue_2489_address_withheld` / `issue_2489_public_theme`,",
+    "              # which this phase does not have. EXACT FILENAME.",
+    "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;",
+    "",
+  ].join("\n");
+  const before3313 = { ...sources };
+  for (const [name, block, label] of [
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"), recurringSuiteBlock3313, "#3313 migration-suite block"],
+    [liveWorkflow("issue", "2333", "online", "event", "publish"), recurringReplayBlock3313, "#3313 online-publish replay block"],
+    [liveWorkflow("issue", "1931", "private", "event", "access"), privateReplaySkipBlock3313, "#3313 private-event replay skip block"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"), offeringReplaySkipBlock3313, "#3313 offering-visibility replay skip block"],
+  ]) {
+    before3313[name] = removeExactLine(before3313[name], block, label);
+  }
+  const before3313Authority = currentTreeAuthority(before3313);
+  assert.equal(before3313Authority.names.length, 124);
+  assert.equal(before3313Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
+  // [TEST-MOD-APPROVED #3284] This receipt and the four after it run on the branch
+  // tree, which also carries #3284's four workflow additions, so each literal is
+  // re-derived with them present (main's values: #3313 1d728bae..., #3325
+  // 330740ba..., #3176 a24d680b..., #3288 b1b5f757..., combined aadaaea7...). No
+  // receipt, removal or assertion is added or dropped; only the five literals move.
+  assert.equal(
+    before3313Authority.withoutConcurrencySha256,
+    "04af0331a5be66146163e3d8fadbe1181809095ca590cad85e26ef4483a8d07d",
+  );
+
+  const before3325 = { ...before3313 };
+  before3325[issue2099Name] = removeExactLine(
+    before3325[issue2099Name],
+    '      - "mingla-business/scripts/ci/bundle-baseline.json"\n',
+    "#3325 baseline paths entry",
+  );
+  const before3325Authority = currentTreeAuthority(before3325);
+  assert.equal(before3325Authority.names.length, 124);
+  assert.equal(before3325Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
+  assert.equal(
+    before3325Authority.withoutConcurrencySha256,
+    "63dfb519c84c9db7882ea032a298c680d80153684b2b3739b8103ba1f7e9bfc5",
+  );
+
+  const before3176 = { ...before3325 };
+  const offeringVisibilityName = liveWorkflow(
+    "issue", "2117", "offering", "visibility", "gate", "tests",
+  );
+  const indexNowReplayBlock = [
+    "              # issue #3176 — the IndexNow outbox trigger targets #2986's",
+    "              # `public_search_documents`, which does not exist in this",
+    "              # pre-#2117 phase. The migration and its controls remain intact;",
+    "              # this filtered lane omits it by EXACT FILENAME.",
+    "              *20270627003176_issue_3176_indexnow_outbox.sql) continue ;;",
+    "",
+  ].join("\n");
+  before3176[offeringVisibilityName] = removeExactLine(
+    before3176[offeringVisibilityName],
+    indexNowReplayBlock,
+    "#3176 offering-visibility replay block",
+  );
+  const before3176Authority = currentTreeAuthority(before3176);
+  assert.equal(before3176Authority.names.length, 124);
+  assert.equal(before3176Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
+  assert.equal(
+    before3176Authority.withoutConcurrencySha256,
+    "5520ef000fb9e1aea312c11e7c6c1528b23aa4210ce84624535e81b36618526e",
+  );
+
+  // [TEST-MOD-APPROVED #3176] Current main and this branch both change the
+  // non-concurrency document. Reverting #3288's two whole workflow blocks must
+  // recover the prior #3176 authority, while reverting both owners must recover
+  // the shared pre-change authority. These exact receipts prevent a merge-time
+  // re-pin from hiding either side of the combined tree.
+  const migrationsName = liveWorkflow("supabase", "migrations", "and", "stripe", "deno");
+  const publishName = liveWorkflow("issue", "2333", "online", "event", "publish");
+  const gallerySuiteBlock = [
+    "          # Issue #3288 — a draft's additional photos were erased at publish. Every",
+    "          # gallery writer must keep the stored gallery when the key is ABSENT and",
+    "          # still honour an explicit []; removing a cover must not wipe it.",
+    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\",
+    "            -f supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql",
+    "",
+  ].join("\n");
+  const galleryReplayBlock = [
+    "          # Issue #3288 re-emits `business_publish_event_draft` (an absent gallery key",
+    "          # keeps the stored photos) and owns its final definition on a full replay,",
+    "          # so the re-apply set must end with it, per the instruction above.",
+    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\",
+    "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql",
+    "",
+  ].join("\n");
+  const before3288 = { ...before3325 };
+  before3288[migrationsName] = removeExactLine(
+    before3288[migrationsName], gallerySuiteBlock, "#3288 migration-suite block",
+  );
+  before3288[publishName] = removeExactLine(
+    before3288[publishName], galleryReplayBlock, "#3288 online-publish replay block",
+  );
+  const before3288Authority = currentTreeAuthority(before3288);
+  assert.equal(before3288Authority.names.length, 124);
+  assert.equal(before3288Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
+  assert.equal(
+    before3288Authority.withoutConcurrencySha256,
+    "bb66c9e123d6c47d453b48906cd88566db8ef3ec6927abd043e81753a793eed8",
+  );
+
+  const beforeBoth = { ...before3288 };
+  beforeBoth[offeringVisibilityName] = removeExactLine(
+    beforeBoth[offeringVisibilityName], indexNowReplayBlock, "combined pre-#3176 replay block",
+  );
+  const beforeBothAuthority = currentTreeAuthority(beforeBoth);
+  assert.equal(beforeBothAuthority.names.length, 124);
+  assert.equal(beforeBothAuthority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
+  assert.equal(
+    beforeBothAuthority.withoutConcurrencySha256,
+    "5176bd3418f0c8646907bcc825d7d9cfabfdd8afbebccfab1a8ca1831158f876",
+  );
 
   const sitesWithoutPullRequest = { ...sources };
   sitesWithoutPullRequest[sitesRecoveryName] = removeExactLine(

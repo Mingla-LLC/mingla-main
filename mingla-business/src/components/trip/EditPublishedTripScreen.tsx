@@ -713,6 +713,20 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   );
   const [editState, setEditState] = useState<LocalTripEditState>(initialState);
 
+  // Issue #3291 — rank-only proximity for both address fields. A published
+  // trip already holds its own departure + destination points (publish
+  // requires both), so they lead, then the trip's time zone. The brand point
+  // is not read here: this screen mounts no brand query (its route passes only
+  // `trip`), and the trip's own points outrank a brand HQ for trip search.
+  const editDeparturePoint = {
+    lat: editState.departureLat,
+    lng: editState.departureLng,
+  };
+  const editDestinationPoint = {
+    lat: editState.destinationLat,
+    lng: editState.destinationLng,
+  };
+
   const [departureSelectionState, setDepartureSelectionState] =
     useState<LocationSelectionState>(
       editState.departureLocationText?.trim() &&
@@ -1571,6 +1585,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   allowFreeText
                   selectionState={departureSelectionState}
                   selectedLabel={editState.departureLocationText ?? ""}
+                  proximitySources={{
+                    draftPoint: [editDeparturePoint, editDestinationPoint],
+                    timeZone: trip.timezone,
+                  }}
                   onChangeText={(v) => {
                     advanceLocationRequestGeneration(
                       departureRequestGenerationRef,
@@ -1666,6 +1684,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   allowFreeText
                   selectionState={destinationSelectionState}
                   selectedLabel={editState.destinationLocationText ?? ""}
+                  proximitySources={{
+                    draftPoint: [editDestinationPoint, editDeparturePoint],
+                    timeZone: trip.timezone,
+                  }}
                   onChangeText={(v) => {
                     advanceLocationRequestGeneration(
                       destinationRequestGenerationRef,

@@ -10,34 +10,29 @@ interface FooterColumn {
   links: Array<{ href: string; label: string; external?: boolean }>
 }
 
-const explorerColumns: FooterColumn[] = [
+const publicColumns: FooterColumn[] = [
   {
-    title: 'Company',
+    title: 'Explore',
     links: [
-      { href: '/support', label: 'Support' },
-      // #1003 — the free growth tools hub (Venue Website Grader et al.).
+      { href: '/', label: 'Home' },
+      { href: '/explorer', label: 'For Explorers' },
+      { href: '/cities', label: 'Cities' },
+    ],
+  },
+  {
+    title: 'Host',
+    links: [
+      { href: '/host', label: 'For Hosts' },
       { href: '/tools', label: 'Free tools' },
+      { href: '/help', label: 'Help centre' },
     ],
   },
-  {
-    title: 'Legal',
-    links: [
-      { href: '/privacy-policy', label: 'Privacy' },
-      { href: '/terms-of-service', label: 'Terms' },
-    ],
-  },
-]
-
-const organiserColumns: FooterColumn[] = [
   {
     title: 'Company',
-    // ORCH-1225 — Careers points at the careers subdomain. ABSOLUTE external
-    // URL: a relative `/careers` 404s on the apex (the marketing middleware
-    // host-rewrites `career.usemingla.com` only). Business footer ONLY.
     links: [
+      { href: '/about', label: 'About' },
       { href: 'https://career.usemingla.com', label: 'Careers', external: true },
-      // #1003 — the free growth tools hub (Venue Website Grader et al.).
-      { href: '/tools', label: 'Free tools' },
+      { href: '/support', label: 'Support' },
     ],
   },
   {
@@ -50,7 +45,6 @@ const organiserColumns: FooterColumn[] = [
 ]
 
 export function Footer({ surface }: FooterProps) {
-  const cols = surface === 'organiser' ? organiserColumns : explorerColumns
   const crossLink =
     surface === 'organiser'
       ? { href: '/', label: 'Looking for the consumer app? → Back to Mingla' }
@@ -70,7 +64,7 @@ export function Footer({ surface }: FooterProps) {
           </div>
 
           <div className="flex flex-wrap gap-x-16 gap-y-10 md:justify-end">
-            {cols.map((col) => (
+            {publicColumns.map((col) => (
               <div key={col.title} className="flex min-w-[7rem] flex-col gap-3">
                 <span className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
                   {col.title}

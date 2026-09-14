@@ -356,6 +356,10 @@ module.exports = {
   // / react-dom / @mingla/* siblings are untouched. A test's own jest.mock()
   // overrides any map for that file.
   moduleNameMapper: {
+    // #3176 — the shared privacy contract is source-owned at repository level;
+    // resolve that exact workspace package through the real TypeScript module.
+    "^@mingla/search-measurement$":
+      "<rootDir>/../packages/search-measurement/src/index.ts",
     // react is unresolvable FROM workspace packages/*.tsx in CI because the
     // Business install owns the peer dependency. Point the bare specifier at
     // that one real copy, matching the JSX-runtime repair immediately below.

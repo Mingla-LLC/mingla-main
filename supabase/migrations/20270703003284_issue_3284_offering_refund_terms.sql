@@ -23,9 +23,17 @@
 --      matches every other event live-edit sub-function.
 --
 --   2. The public EVENT page reader (the direct checkout bundle) re-emitted from
---      20270609002879_issue_2879_redirect_window_counts_as_held.sql BYTE FOR BYTE,
+--      20270702003313_issue_3313_recurring_event_occurrences.sql (its latest
+--      definition, which carries #3313's day-choice predicate, upcoming-night
+--      occurrences, per-night remaining and `recurrenceRule` key) BYTE FOR BYTE,
 --      plus exactly two textual edits: `e.refund_policy` in the `ev` CTE, and a
---      trailing `'refundPolicy'` output key after `'multiDatePricingMode'`.
+--      trailing `'refundPolicy'` output key after `'recurrenceRule'`. Its
+--      grants are left exactly as #3313 left them: a same-signature CREATE OR
+--      REPLACE keeps every existing grant.
+--
+--      ORDER MATTERS. This file is versioned 20270703… so it sorts, replays and
+--      applies AFTER 20270702003313: applied the other way round, one migration
+--      would silently revert the other's reader.
 --
 --   3. The public EXPERIENCE page reader re-emitted from
 --      20270607002774_issue_2774_public_hero_alt.sql BYTE FOR BYTE, plus exactly
@@ -242,7 +250,7 @@ REVOKE ALL ON FUNCTION public.business_patch_offering_refund_policy(uuid, jsonb,
 GRANT EXECUTE ON FUNCTION public.business_patch_offering_refund_policy(uuid, jsonb, text) TO authenticated, service_role;
 
 -- -------------------------------------------------------------------------------------
--- 2. Public event page reader — #2879 body plus the refund terms display key.
+-- 2. Public event page reader — #3313 body plus the refund terms display key.
 -- -------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.pg_direct_event_checkout_bundle(p_event_id uuid DEFAULT NULL::uuid, p_brand_slug text DEFAULT NULL::text, p_event_slug text DEFAULT NULL::text)
  RETURNS json
@@ -270,6 +278,9 @@ AS $function$
       e.is_recurring,
       e.multi_date_pricing_mode,
       e.refund_policy,
+      -- issue #3313 — the stored rule, and the one day-choice predicate.
+      e.recurrence_rules,
+      public.issue_3313_event_day_choice(e.id) AS day_choice,
       e.cover_media_url,
       e.cover_media_type,
       e.cover_media_provider,
@@ -411,6 +422,22 @@ AS $function$
       CASE
         WHEN COALESCE(tt.is_unlimited, false) THEN NULL
         WHEN tt.quantity_total IS NULL THEN NULL
+        -- issue #3313 — per-night capacity: the most places any UPCOMING night
+        -- still has, from the same per-night counter the checkout guard reads
+        -- (ONE OWNER FOR CAPACITY). "Sold out" only when every night is full.
+        WHEN COALESCE((ev.day_choice ->> 'perOccurrenceCapacity')::boolean, false)
+             AND EXISTS (
+               SELECT 1 FROM public.event_dates d
+                WHERE d.event_id = ev.id AND d.end_at > now()
+             )
+          THEN (
+            SELECT GREATEST(0, MAX(
+                     tt.quantity_total
+                     - public.issue_3313_ticket_type_occurrence_taken(tt.id, d.id)
+                   ))
+              FROM public.event_dates d
+             WHERE d.event_id = ev.id AND d.end_at > now()
+          )
         ELSE GREATEST(
           0,
           tt.quantity_total
@@ -568,6 +595,11 @@ AS $function$
                ) ORDER BY d.start_at, d.id), '[]'::json)
           FROM public.event_dates d
          WHERE d.event_id = ev.id
+           -- issue #3313 — a recurring event offers only nights still ahead,
+           -- which keeps `isMultiDate === (occurrences.length > 1)` true (the
+           -- shipped native shape check). Multi-date events are unchanged.
+           AND (NOT (COALESCE(ev.is_recurring, false) AND NOT COALESCE(ev.is_multi_date, false))
+                OR d.end_at > now())
       ),
       -- THE MULTI-DATE SIGNAL. Without these two keys the day chooser is
       -- UNREACHABLE, and it was: `detailFromDirectBundle` hard-codes
@@ -583,19 +615,28 @@ AS $function$
       -- `isRecurring` rides along because the gate is `multi_date` ONLY —
       -- deriving multi-date from `occurrences.length > 1` would sweep in
       -- recurring events, which #2145 keeps out of scope.
-      'isMultiDate', COALESCE(ev.is_multi_date, false),
+      -- issue #3313 — `isMultiDate` now means "the guest must pick a day":
+      -- unchanged for multi-date events, and true for a recurring event while
+      -- more than one night is ahead. Every shipped client already mounts the
+      -- day chooser from this key, so recurring events get it with no release.
+      'isMultiDate', COALESCE((ev.day_choice ->> 'requiresChoice')::boolean, false),
       'isRecurring', COALESCE(ev.is_recurring, false),
       -- The organiser's pricing choice, so the page can say "per day" or
       -- "for all days" BEFORE the guest sees a total (amendment §7).
       'multiDatePricingMode', COALESCE(ev.multi_date_pricing_mode, 'per_day'),
+      -- issue #3313 — APPENDED LAST. The stored repeat rule, so the public page
+      -- can say "Every Tuesday" over the real dates instead of "Recurring
+      -- (incomplete)".
+      'recurrenceRule', CASE
+        WHEN COALESCE(ev.is_recurring, false) AND jsonb_typeof(ev.recurrence_rules) = 'object'
+          THEN ev.recurrence_rules
+        ELSE NULL
+      END,
       'refundPolicy', ev.refund_policy
     ) END
   FROM ev;
-$function$
-;
+$function$;
 
-REVOKE ALL ON FUNCTION public.pg_direct_event_checkout_bundle(uuid, text, text) FROM PUBLIC, anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.pg_direct_event_checkout_bundle(uuid, text, text) TO anon, authenticated, service_role;
 
 -- -------------------------------------------------------------------------------------
 -- 3. Public experience page reader — #2774 body plus the refund terms display key.

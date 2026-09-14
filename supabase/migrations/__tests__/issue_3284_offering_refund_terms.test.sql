@@ -1,6 +1,6 @@
 -- Issue #3284 — refund terms on events and experiences: the server contract.
 --
--- WHAT IS PROVED (spec S6, R-01 … R-15). EVERY CASE EXECUTES THE REAL OBJECT against
+-- WHAT IS PROVED (spec S6, R-01 … R-16). EVERY CASE EXECUTES THE REAL OBJECT against
 -- the full applied migration chain, in its own transaction, and rolls back:
 --
 --   the gated writer `business_patch_offering_refund_policy`
@@ -21,6 +21,12 @@
 --     R-13  the experience reader carries refundPolicy
 --     R-15  ADDITIVE ONLY: every key either reader emitted before is still emitted,
 --           with an identical value, in the same order, and refundPolicy is last.
+--     R-16  BOTH deltas survive the full chain: #3313 (20270702003313) and #3284
+--           (20270703003284) each re-emit the event bundle, so after replay a
+--           recurring event with two upcoming nights still says the guest must
+--           pick a night (#3313's isMultiDate, occurrences and recurrenceRule)
+--           AND carries its refund terms (#3284's refundPolicy, after
+--           recurrenceRule); a one-night event says no choice, with its terms.
 --
 -- HOW R-15 SEES "BEFORE" WITHOUT A SECOND DATABASE. It reads the installed body of
 -- each reader from the catalog, removes exactly the two lines #3284 added, installs
@@ -31,7 +37,8 @@
 -- FAILS-ON-REVERT:
 --   delete the downgrade block from the writer   -> R-03 and R-06 fail
 --   delete the paid-orders filter total_cents > 0 -> R-07 fails
---   drop the refundPolicy key from either reader  -> R-12 / R-13 / R-15 fail
+--   drop the refundPolicy key from either reader  -> R-12 / R-13 / R-15 / R-16 fail
+--   rebuild the bundle from the pre-#3313 body     -> R-16 fails (no day choice)
 --   delete the migration                          -> every case fails (no function)
 --
 -- Run after the full migration chain on fresh PostgreSQL 17, as the database owner.
@@ -570,6 +577,67 @@ BEGIN
     'R-15i the experience payload is the pre-#3284 text with refundPolicy appended LAST');
 END
 $r15$;
+ROLLBACK;
+
+-- ─── R-16: after the full chain the bundle carries BOTH #3313's day choice and #3284's terms ─
+BEGIN;
+DO $r16$
+DECLARE
+  b record; v_rec uuid := gen_random_uuid(); v_one uuid := gen_random_uuid();
+  v_rule constant jsonb := '{"preset":"weekly","byDay":"TU","termination":{"kind":"count","count":4}}';
+  v_b jsonb; v_keys text[];
+BEGIN
+  SELECT * INTO b FROM pg_temp.r3284_brand('r16');
+
+  -- A scheduled recurring event (not multi-date) with two nights still ahead.
+  INSERT INTO public.events(id, brand_id, title, slug, event_type, status, visibility, timezone,
+                            currency, published_at, refund_policy, is_recurring, is_multi_date,
+                            recurrence_rules)
+    VALUES (v_rec, b.o_brand, 'Issue 3284 r16 recurring', 'issue-3284-r16-rec-' || v_rec, 'event',
+            'scheduled', 'public', 'UTC', 'USD', now(), pg_temp.r3284_policy('standard'),
+            true, false, v_rule);
+  INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
+    VALUES (v_rec, now() + interval '6 days', now() + interval '6 days 4 hours', 'UTC', true),
+           (v_rec, now() + interval '13 days', now() + interval '13 days 4 hours', 'UTC', false);
+
+  v_b := public.pg_direct_event_checkout_bundle(v_rec, NULL, NULL)::jsonb;
+  PERFORM pg_temp.r3284_assert(v_b IS NOT NULL, 'R-16 fixture: the bundle serves the recurring event');
+  PERFORM pg_temp.r3284_assert(v_b ->> 'isMultiDate' = 'true',
+    'R-16a #3313 kept: a recurring event with two upcoming nights requires a day choice (got '
+    || COALESCE(v_b ->> 'isMultiDate', 'ABSENT') || ')');
+  PERFORM pg_temp.r3284_assert(jsonb_array_length(v_b -> 'occurrences') = 2,
+    'R-16b #3313 kept: both upcoming nights are offered');
+  PERFORM pg_temp.r3284_assert(v_b -> 'recurrenceRule' = v_rule,
+    'R-16c #3313 kept: the stored repeat rule rides the reader');
+  PERFORM pg_temp.r3284_assert(v_b -> 'refundPolicy' = pg_temp.r3284_policy('standard'),
+    'R-16d #3284 kept: the same payload carries the refund terms (got '
+    || COALESCE(v_b ->> 'refundPolicy', 'ABSENT') || ')');
+  -- json (not jsonb) keeps the emitted key order.
+  SELECT array_agg(k) INTO v_keys
+    FROM json_object_keys(public.pg_direct_event_checkout_bundle(v_rec, NULL, NULL)) AS k;
+  PERFORM pg_temp.r3284_assert(
+    v_keys[array_length(v_keys, 1)] = 'refundPolicy'
+      AND v_keys[array_length(v_keys, 1) - 1] = 'recurrenceRule',
+    'R-16e refundPolicy is the LAST key, straight after #3313''s recurrenceRule (got '
+    || array_to_string(v_keys[greatest(array_length(v_keys, 1) - 1, 1):], ', ') || ')');
+
+  -- The same shape with one night ahead: no choice, terms still there.
+  INSERT INTO public.events(id, brand_id, title, slug, event_type, status, visibility, timezone,
+                            currency, published_at, refund_policy, is_recurring, is_multi_date,
+                            recurrence_rules)
+    VALUES (v_one, b.o_brand, 'Issue 3284 r16 one night', 'issue-3284-r16-one-' || v_one, 'event',
+            'scheduled', 'public', 'UTC', 'USD', now(), pg_temp.r3284_policy('none'),
+            true, false, v_rule);
+  INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
+    VALUES (v_one, now() - interval '8 days', now() - interval '8 days' + interval '4 hours', 'UTC', true),
+           (v_one, now() + interval '6 days', now() + interval '6 days 4 hours', 'UTC', false);
+  v_b := public.pg_direct_event_checkout_bundle(v_one, NULL, NULL)::jsonb;
+  PERFORM pg_temp.r3284_assert(v_b ->> 'isMultiDate' = 'false' AND jsonb_array_length(v_b -> 'occurrences') = 1,
+    'R-16f #3313 kept: one upcoming night means no day choice and one occurrence');
+  PERFORM pg_temp.r3284_assert(v_b -> 'refundPolicy' = pg_temp.r3284_policy('none'),
+    'R-16g #3284 kept: the one-night event still carries its terms');
+END
+$r16$;
 ROLLBACK;
 
 SELECT 'issue_3284_offering_refund_terms: PASS' AS result;

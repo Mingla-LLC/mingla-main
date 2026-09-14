@@ -136,6 +136,9 @@ import {
   type CanonicalPublicEvent,
   type PublicEventOccurrenceLike,
 } from "../../hooks/usePublicEventBySlug";
+// issue #3284 — the unknown refund-terms state, by DEEP specifier: the #1929 /
+// #2230 suites partially mock the package barrel.
+import { UNKNOWN_REFUND_POLICY_STATE } from "@mingla/offering-rendering/offeringRefundPolicy";
 import { useTripIntakeSchemas } from "../../hooks/useTripIntakeSchemas";
 import { useEventTheme } from "../../hooks/useEventTheme";
 import {
@@ -165,6 +168,7 @@ import { useAppStore } from "../../store/appStore";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion capture (PostHog
 // runs alongside the existing analytics; no Mixpanel call exists at this site).
 import { postHogService } from "../../services/postHogService";
+import { captureExplorerSearchOutcome } from "../../services/searchOutcome";
 import { shareContent } from "../../services/contentShareAdapter";
 import { glass } from "../../constants/designSystem";
 // ORCH-1162 Bug 2 — shared static-Mapbox builder (re-exported from
@@ -841,6 +845,14 @@ export default function ConsumerEventDetailScreen({
           phoneCountryIso: input.guestPhoneCountryIso,
         },
       );
+      if (result.status === "going") {
+        captureExplorerSearchOutcome("rsvp_complete", {
+          audience: "explorer",
+          page_family: "public_inventory",
+          action_state: "succeeded",
+          content_kind: "event",
+        });
+      }
       // Refresh the live going-count after a successful own-submit.
       void queryClient.invalidateQueries({
         queryKey: ["rsvpMomentum", seed.eventId],
@@ -1359,12 +1371,22 @@ export default function ConsumerEventDetailScreen({
     (g) => typeof g?.url === "string" && g.url.length > 0,
   );
   const galleryActive = coverGallery.length >= 1;
+  // issue #3321 — the foundation model has `title`, not `name`, and no alt.
+  // #2774 read `fnd.name` / `fnd.coverMediaAlt`, which are always undefined, so
+  // the hero never got a name. Only the cold-route canonical read carries an
+  // alt, and it describes the canonical cover: use it only while that cover is
+  // the one on screen. The warm deck card has no alt, so its hero names the
+  // event without a description rather than inventing one.
+  const heroCoverAlt =
+    canonical !== null && canonical.event.coverMediaUrl === fnd.coverMediaUrl
+      ? (canonical.event.coverMediaAlt ?? null)
+      : null;
   const primaryHeroAccessibleLabel = buildHeroMediaAccessibleLabel({
-    subject: fnd.name,
+    subject: fnd.title,
     mediaType: fnd.coverMediaType,
     position: 1,
     total: coverGallery.length + 1,
-    description: fnd.coverMediaAlt,
+    description: heroCoverAlt,
   });
   // issue #868 Pass 3 — the pager OWNS scrolling (it drives scrollTo from
   // activeIndex with a settle-guard, BUG 1). The row just sets the shown index.
@@ -1545,8 +1567,8 @@ export default function ConsumerEventDetailScreen({
               gallery={coverGallery}
               activeIndex={coverIndex}
               onActiveIndexChange={setCoverIndex}
-              heroAccessibilitySubject={fnd.name}
-              coverMediaAlt={fnd.coverMediaAlt}
+              heroAccessibilitySubject={fnd.title}
+              coverMediaAlt={heroCoverAlt}
               coverMediaType={fnd.coverMediaType}
             />
           ) : (
@@ -1650,6 +1672,15 @@ export default function ConsumerEventDetailScreen({
                     ? handleSeeWhosGoing
                     : undefined
                 }
+                // issue #3284 — section 9 refund terms from the SAME validated
+                // bundle that owns the days. Until it arrives (or when it came
+                // from an older build) the state is unknown and nothing renders:
+                // the deck seed carries no terms, and unknown is never "none".
+                refundPolicyState={
+                  validatedDayCanonical?.refundPolicyState ??
+                  UNKNOWN_REFUND_POLICY_STATE
+                }
+                refundHostName={seed.brandName}
                 testID="orch-1167-consumer-event-body"
               />
             ) : (

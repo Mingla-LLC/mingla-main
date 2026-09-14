@@ -105,9 +105,18 @@ jobs:
               # `issue_2489_address_withheld` / `issue_2489_public_theme`,
               # which this phase does not have. EXACT FILENAME.
               *20270609002879_issue_2879_redirect_window_counts_as_held.sql) continue ;;
+              # issue #3313 — same reason: it re-emits the bundle, whose body
+              # reaches `issue_2489_address_withheld` / `issue_2489_public_theme`,
+              # which this phase does not have. EXACT FILENAME.
+              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;
               # issue #2986 — this additive resolver delegates to #2117's
               # visibility authority. It is applied exactly once after phase 2.
               *20270614002986_issue_2986_public_search_documents.sql) continue ;;
+              # issue #3176 — the IndexNow outbox trigger targets #2986's
+              # `public_search_documents`, which does not exist in this
+              # pre-#2117 phase. The migration and its controls remain intact;
+              # this filtered lane omits it by EXACT FILENAME.
+              *20270627003176_issue_3176_indexnow_outbox.sql) continue ;;
               # issue #3193 — SKIPPED for the same reason as the line above. It
               # re-emits `public_search_source_facts`, one of #2986's readers,
               # and its closing DO block asserts the anonymous resolver's
@@ -118,14 +127,14 @@ jobs:
               # never an issue-number infix.
               *20270624003193_issue_3193_public_search_live_brand_row.sql) continue ;;
               # issue #3284 — SKIPPED for the same reason #2774 and #2879 are.
-              # 20270702003284 re-emits `pg_public_experience_by_slug`, whose body
+              # 20270703003284 re-emits `pg_public_experience_by_slug`, whose body
               # calls `pg_offering_visibility_gate` (defined only by the skipped
               # #2117), and `pg_direct_event_checkout_bundle`, whose body reaches
               # `issue_2489_address_withheld` / `issue_2489_public_theme`, which this
               # phase does not have. Both are `LANGUAGE sql`, validated at CREATE
               # time. Nothing is removed from the migration to green this lane.
               # Covered by the unfiltered full-chain lanes. EXACT FILENAME.
-              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;
+              *20270703003284_issue_3284_offering_refund_terms.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done

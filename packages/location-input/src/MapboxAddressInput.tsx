@@ -127,6 +127,58 @@ export function computeDropdownMaxHeight(params: {
   return Math.max(MIN_DROPDOWN_HEIGHT, Math.min(tokenMaxHeight, availableBelow));
 }
 
+// ── Issue #3291 — the saved address carries the tapped name ────────────────
+// A row shows a bold name ("Ozumba Mbadiwe Avenue") over a grey line. Mapbox
+// fills the grey line from `full_address` when the feature has one and
+// `place_formatted` otherwise — only the SURROUNDING AREA ("Lagos 10, Lagos,
+// Nigeria"), never the name; streets, cities and venues have no
+// `full_address`. Saving the grey line (#1407) dropped the street/city name.
+// One rule for the pending pill, the saved label and the row a11y label:
+//   grey line begins with the name → the grey line (no doubling)
+//   otherwise                      → "<name>, <grey line>"
+//   after retrieve, the looked-up full address wins ONLY when it begins with
+//   the name.
+// "Begins with" compares the leading comma-separated part, ignoring case and
+// spacing — a substring check would treat "Greater London" as "London".
+// Kept in this file (not a module of its own) because the picker ships in the
+// eager `__common` web chunk and every module costs a wrapper (ORCH-1083).
+
+const normaliseLabel = (value: string): string =>
+  value.replace(/\s*,\s*/g, ", ").replace(/\s+/g, " ").trim().toLowerCase();
+
+/** True when `address` leads with `name` as its first comma-separated part. */
+export function addressBeginsWithName(address: string, name: string): boolean {
+  const n = normaliseLabel(name);
+  const a = normaliseLabel(address);
+  return n.length > 0 && (a === n || a.startsWith(`${n},`));
+}
+
+/** The row's label: always carries the name, never repeats it. */
+export function composeSuggestionLabel(s: {
+  displayName: string;
+  fullAddress: string;
+}): string {
+  const name = (s.displayName ?? "").trim();
+  const secondary = (s.fullAddress ?? "").trim();
+  if (name.length === 0 || addressBeginsWithName(secondary, name)) {
+    return secondary || name;
+  }
+  return secondary.length > 0 ? `${name}, ${secondary}` : name;
+}
+
+/** The label saved after retrieve: the full address if it still names the row. */
+export function resolvePickedLabel(
+  s: { displayName: string; fullAddress: string },
+  retrievedAddress: string | null | undefined,
+): string {
+  const retrieved = (retrievedAddress ?? "").trim();
+  const name = (s.displayName ?? "").trim();
+  return retrieved.length > 0 &&
+    (name.length === 0 || addressBeginsWithName(retrieved, name))
+    ? retrieved
+    : composeSuggestionLabel(s);
+}
+
 type HapticsLike = {
   selectionAsync?: () => Promise<void>;
   notificationAsync?: (type: unknown) => Promise<void>;
@@ -437,8 +489,9 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       const generation = ++requestGeneration.current;
       clearDebounceTimer();
       fireHaptic("selection");
-      const label =
-        s.fullAddress.trim().length > 0 ? s.fullAddress : s.displayName;
+      // Issue #3291 — the label must carry the tapped name. The grey line alone
+      // is only the surrounding area for streets, cities and venues.
+      let label = composeSuggestionLabel(s);
       setPendingSelectedLabel(label);
       setStatus({ kind: "fetching_details" });
       try {
@@ -446,6 +499,9 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
           invoke,
         });
         if (generation !== requestGeneration.current) return;
+        // Issue #3291 — prefer the looked-up full address, but only when it
+        // still begins with the tapped name.
+        label = resolvePickedLabel(s, details.formattedAddress);
         onPick(details, label);
         // Issue #1363 — a completed pick hides the Tier-2 free-text row until
         // the next keystroke.
@@ -525,7 +581,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
         onPress={() => handlePickSuggestion(s)}
         disabled={status.kind === "fetching_details"}
         accessibilityRole="button"
-        accessibilityLabel={s.fullAddress || s.displayName}
+        accessibilityLabel={composeSuggestionLabel(s)}
         style={({ pressed }) => [
           {
             flexDirection: "row",
