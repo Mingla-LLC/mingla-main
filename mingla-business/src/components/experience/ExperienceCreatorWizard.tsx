@@ -43,6 +43,16 @@ import {
 import { supabase } from "../../services/supabase";
 // ORCH-1339 — guest-privacy leaf-write RPC (never the big experience RPCs).
 import { setEventGuestPrivacy } from "../../services/businessEvents";
+// issue #3284 — the one gated write owner for experience refund terms.
+import {
+  setOfferingRefundPolicy,
+  type RefundPolicy,
+} from "../../services/refundPolicyService";
+import {
+  firstRefundPolicyError,
+  refundPoliciesEqual,
+  refundTermsSaveFailureCopy,
+} from "../../utils/refundPolicyTerms";
 // META-ORCH-1187 [Growth Analytics Hub] — offering-published conversion (SC-6).
 import { postHogService } from "../../services/postHogService";
 import { captureHostSearchOutcome } from "../../analytics/searchOutcome";
@@ -185,6 +195,11 @@ export interface ExperienceWizardInitialDraft {
   pricingSwitches: PricingSwitchOverrides;
   /** #1022 — seed the theme control from the persisted override columns. */
   themeOverrides?: ThemeInput | null;
+  /**
+   * issue #3284 — seed the Pricing refund card from `events.refund_policy`
+   * (null = no terms). Optional so existing seeds stay valid.
+   */
+  refundPolicy?: RefundPolicy | null;
   when?: {
     whenMode: "single" | "recurring" | "multi_date";
     date: string | null;
@@ -337,6 +352,44 @@ export const ExperienceCreatorWizard: React.FC<
       passMinglaFee: null,
       passServiceFee: null,
     },
+  );
+
+  // issue #3284 — the refund terms (Pricing step). Seeded from the live row in
+  // live-edit and from the draft seed in draft-edit; null in create.
+  const initialRefundPolicy: RefundPolicy | null =
+    liveExperience?.refundPolicy ?? initialDraft?.refundPolicy ?? null;
+  const [refundPolicy, setRefundPolicy] = useState<RefundPolicy | null>(
+    initialRefundPolicy,
+  );
+  // What the server holds as far as this wizard knows: the seed, then every
+  // value the gated owner confirmed. A save writes the terms only when they
+  // differ from this, so an unchanged card never calls the owner (and never
+  // needs it to exist), while a retry after a later failure does not re-send.
+  const serverRefundPolicyRef = useRef<RefundPolicy | null>(initialRefundPolicy);
+  const refundValid = firstRefundPolicyError(refundPolicy) === null;
+
+  /**
+   * issue #3284 — write changed refund terms through the gated owner. Returns
+   * null when there was nothing to write or the write landed; otherwise the
+   * owner's refusal. Never throws.
+   */
+  const writeRefundPolicyIfChanged = useCallback(
+    async (
+      targetId: string,
+      reason: string | null,
+    ): Promise<Extract<
+      Awaited<ReturnType<typeof setOfferingRefundPolicy>>,
+      { ok: false }
+    > | null> => {
+      if (refundPoliciesEqual(refundPolicy, serverRefundPolicyRef.current)) {
+        return null;
+      }
+      const result = await setOfferingRefundPolicy(targetId, refundPolicy, reason);
+      if (!result.ok) return result;
+      serverRefundPolicyRef.current = result.refundPolicy;
+      return null;
+    },
+    [refundPolicy],
   );
 
   const [submitting, setSubmitting] = useState(false);
@@ -589,7 +642,8 @@ export const ExperienceCreatorWizard: React.FC<
       );
     if (step === 2) return stopsValid;
     if (step === 3) return whenAdapter.isValid;
-    if (step === 4) return pricingValid;
+    // issue #3284 — an invalid refund tier blocks Continue like a bad price.
+    if (step === 4) return pricingValid && refundValid;
     return true;
   }, [
     step,
@@ -599,6 +653,7 @@ export const ExperienceCreatorWizard: React.FC<
     stopsValid,
     whenAdapter.isValid,
     pricingValid,
+    refundValid,
   ]);
 
   const goBack = useCallback((): void => {
@@ -785,7 +840,8 @@ export const ExperienceCreatorWizard: React.FC<
         (intents.length === 0 ||
           !stopsValid ||
           !pricingValid ||
-          !whenAdapter.isValid)
+          !whenAdapter.isValid ||
+          !refundValid)
       ) {
         setShowStepErrors(true);
         whenAdapter.setShowErrors(true);
@@ -798,8 +854,15 @@ export const ExperienceCreatorWizard: React.FC<
               ? "Finish your stops (each needs a name, description, and address) before publishing."
               : !whenAdapter.isValid
                 ? "Set the date and time on the When step before publishing."
-                : "Set a valid price (or mark it free) before publishing.";
+                : !pricingValid
+                  ? "Set a valid price (or mark it free) before publishing."
+                  : "Fix your refund policy tiers on the Pricing step before publishing.";
         setToast(reason);
+        return;
+      }
+      // issue #3284 — a draft save still needs valid terms: the owner would refuse.
+      if (!publish && !refundValid) {
+        setToast("Fix your refund policy tiers on the Pricing step before saving.");
         return;
       }
       setSubmitting(true);
@@ -810,6 +873,14 @@ export const ExperienceCreatorWizard: React.FC<
         const targetId = await ensureDraft();
         if (targetId === null) {
           throw new Error("Couldn't save experience. Tap to retry.");
+        }
+        // issue #3284 — refund terms FIRST, fail closed. The draft row takes them
+        // with no reason and no sales gate; a refusal stops the publish (or the
+        // draft save) with a visible message, so an experience never goes public
+        // without the terms the organiser chose. Unchanged terms make no call.
+        const refundRefusal = await writeRefundPolicyIfChanged(targetId, null);
+        if (refundRefusal !== null) {
+          throw new Error(refundTermsSaveFailureCopy(refundRefusal.reason));
         }
         const { data, error } = await supabase.rpc("issue_1719_publish_experience_with_poster", {
           p_event_id: targetId,
@@ -892,9 +963,11 @@ export const ExperienceCreatorWizard: React.FC<
       intents,
       onComplete,
       pricingValid,
+      refundValid,
       stopsValid,
       user?.id,
       whenAdapter,
+      writeRefundPolicyIfChanged,
     ],
   );
 
@@ -978,7 +1051,8 @@ export const ExperienceCreatorWizard: React.FC<
       intents.length === 0 ||
       !stopsValid ||
       !pricingValid ||
-      !whenAdapter.isValid
+      !whenAdapter.isValid ||
+      !refundValid
     ) {
       setShowStepErrors(true);
       whenAdapter.setShowErrors(true);
@@ -989,7 +1063,9 @@ export const ExperienceCreatorWizard: React.FC<
             ? "Finish your stops (each needs a name, description, and address) before saving."
             : !whenAdapter.isValid
               ? "Set the date and time on the When step before saving."
-              : "Set a valid price (or mark it free) before saving.";
+              : !pricingValid
+                ? "Set a valid price (or mark it free) before saving."
+                : "Fix your refund policy tiers on the Pricing step before saving.";
       setToast(reason);
       return;
     }
@@ -1029,6 +1105,30 @@ export const ExperienceCreatorWizard: React.FC<
 
     setSubmitting(true);
     try {
+      // issue #3284 — changed refund terms go FIRST, through the gated owner with
+      // the organiser's reason. Once someone has paid it refuses terms worse for
+      // them; on that — or any other refusal — nothing else is sent, and the
+      // edited terms stay in the wizard so they can be adjusted and saved again.
+      // [TRANSITIONAL] issue #3284 — NON-ATOMIC TAIL: if biz_update_live_experience
+      // then fails, its existing error shows and the (never-worse) terms stay
+      // saved. Exit condition: biz_update_live_experience takes refund_policy in
+      // the same transaction.
+      const refundRefusal = await writeRefundPolicyIfChanged(
+        liveExperience.id,
+        guard.trimmedReason,
+      );
+      if (refundRefusal !== null) {
+        const copy =
+          refundRefusal.reason === "refund_policy_downgrade_with_sales"
+            ? liveExperienceRejectCopy(
+                "refund_policy_downgrade_with_sales",
+                refundRefusal.affectedOrderCount ?? liveSoldCount ?? 0,
+              )
+            : refundTermsSaveFailureCopy(refundRefusal.reason);
+        setLiveEditError(copy);
+        setToast(copy);
+        return;
+      }
       const { data, error } = await supabase.rpc("biz_update_live_experience", {
         p_event_id: liveExperience.id,
         p_payload: buildPayload(true),
@@ -1113,12 +1213,14 @@ export const ExperienceCreatorWizard: React.FC<
     onComplete,
     pricingMode,
     pricingValid,
+    refundValid,
     resolvedTotalMajor,
     stops,
     stopsValid,
     unlimited,
     user?.id,
     whenAdapter,
+    writeRefundPolicyIfChanged,
   ]);
 
   return (
@@ -1312,6 +1414,11 @@ export const ExperienceCreatorWizard: React.FC<
             setHideRemainingCount={(v: boolean) =>
               setGuestPrivacy((prev) => ({ ...prev, hideRemainingCount: v }))
             }
+            // issue #3284 — refund terms (same card in all three modes); the
+            // sales warning only in live-edit.
+            refundPolicy={refundPolicy}
+            setRefundPolicy={setRefundPolicy}
+            liveSoldCount={isLiveEdit ? (liveSoldCount ?? 0) : 0}
             brandDefaults={{
               passTax: brand.defaultPassTax ?? false,
               passMinglaFee: brand.defaultPassMinglaFee ?? false,

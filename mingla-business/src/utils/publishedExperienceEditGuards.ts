@@ -36,7 +36,12 @@ export type UpdateLiveExperienceRejectReason =
   | "capacity_below_sold"
   | "dates_shifted_with_sales"
   | "price_change_with_sales"
-  | "stop_removed_with_sales";
+  | "stop_removed_with_sales"
+  // issue #3284 — returned by the refund-terms owner
+  // (business_patch_offering_refund_policy), which the live-edit save calls
+  // BEFORE biz_update_live_experience. Server-only: the client guard below never
+  // classifies refund terms (a client copy of the money rule would false-block).
+  | "refund_policy_downgrade_with_sales";
 
 /**
  * The proposed live-experience patch. Mirrors the payload shape the wizard
@@ -261,6 +266,8 @@ export const liveExperienceRejectCopy = (
       return `You can't change the price — ${buyers} already paid the current price. The ticket is locked after the first sale.`;
     case "stop_removed_with_sales":
       return `You can't remove a stop — ${buyers} booked the full itinerary. You can edit or add stops instead.`;
+    case "refund_policy_downgrade_with_sales":
+      return `You can't lower the refund terms — ${buyers} already booked under them. More-generous terms save instantly; to lower them, refund those buyers first.`;
     default: {
       const _exhaustive: never = reason;
       return _exhaustive;
