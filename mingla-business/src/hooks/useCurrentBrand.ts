@@ -29,6 +29,9 @@ import { useEffect } from "react";
 
 import { useAuth } from "../context/AuthContext";
 import { useBrand } from "./useBrands";
+// issue #3345 — the brand-list cache lookup, imported from its leaf module (not
+// the useBrands barrel, which many suites mock with partial shapes).
+import { getBrandFromCache } from "./brandCache";
 import { useCurrentBrandStore } from "../store/currentBrandStore";
 import type { Brand } from "../types/brand";
 // ORCH-1100 Wave 1A (RC-1) — hardened auto-clear predicate lives in a leaf util
@@ -71,5 +74,15 @@ export const useCurrentBrand = (): Brand | null => {
     setCurrentBrandId,
   ]);
 
-  return brand ?? null;
+  // The detail read has answered for this id (a Brand, or null = gone).
+  if (brand !== undefined) return brand;
+  // issue #3345 — the detail read has not answered yet. That is the whole window
+  // after a brand switch: `getBrand` re-reads the row plus sales totals, which
+  // took 1–19s on camera, and returning null here painted "Create brand" and the
+  // brandless Home for all of it. The switcher was showing this exact brand from
+  // the brand-list query a moment earlier, so use that React Query copy (the
+  // same shape: `getBrands` maps rows and stats identically). Nothing is
+  // persisted (I-PROPOSED-J holds); the detail read replaces it when it lands.
+  // Before auth is ready the caches may belong to a previous session: no copy.
+  return isAuthReady ? getBrandFromCache(currentBrandId) : null;
 };
