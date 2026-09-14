@@ -116,6 +116,10 @@ describe("#3343 ticket card sub-line", () => {
     const { tree, shown } = await mountCard(draftTicket(), "NGN");
     expect(shown).toContain("₦25,000 · max 6 / buyer");
     expect(shown.filter(startsWithDashSeparator)).toEqual([]);
+    // Positive witness for the empty case below: the sub-line is findable.
+    expect(
+      tree.root.findAll((node) => node.props.testID === "ticket-tier-card-subline").length,
+    ).toBeGreaterThan(0);
     await TestRenderer.act(() => tree.unmount());
   });
 
@@ -130,13 +134,15 @@ describe("#3343 ticket card sub-line", () => {
   });
 
   test("nothing to show: the card renders no sub-line at all, not a lone dash", async () => {
-    const { tree } = await mountCard(
+    const { tree, shown } = await mountCard(
       draftTicket({ priceGbp: null, maxPurchaseQty: null }),
     );
     const sublines = tree.root.findAll(
       (node) => node.props.testID === "ticket-tier-card-subline",
     );
     expect(sublines).toEqual([]);
+    // Nothing sits between the ticket name and the Price box label.
+    expect(shown.slice(0, 2)).toEqual(["General Admission", "Price"]);
     await TestRenderer.act(() => tree.unmount());
   });
 
