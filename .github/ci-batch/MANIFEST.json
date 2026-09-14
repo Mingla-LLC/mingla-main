@@ -16288,7 +16288,7 @@
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5676a168286599f2c25c2ba1c3dfd08354e127c59b7d38172cc99463d2ef8fd7",
+        "sourceSha256": "762cfc9fd9d33fca0164cff356797ddc97d5903fe41ca03228a5fd1a63e7df90",
         "triggers": [
           "pull_request",
           "push"
@@ -17950,7 +17950,7 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "9e69adc53846038f214ca701bb7cd91ad0bde678fa513f6fbaca5bffb06c0356",
+        "sourceSha256": "78f3e6fa7c54dad5937cda8584ccaf80823016ecb3ac2fbc14a7896a27aae2ae",
         "triggers": [
           "pull_request",
           "push"
