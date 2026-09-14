@@ -58,6 +58,7 @@ import { createThemePalette } from "../../../../packages/offering-rendering/them
 import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
+import { buildDraftThemePreview } from "../theme/themePreviewContent";
 import { type StepBodyProps } from "./types";
 
 // #1742 / ORCH-1083 — the enriched intelligence presentation is Review-only.
@@ -210,6 +211,7 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
         onChange={handleThemeChange}
         scope="offering"
         brandTheme={brandTheme}
+        preview={buildDraftThemePreview(draft)}
         testID="event-review-theme-sheet"
       />
 

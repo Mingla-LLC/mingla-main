@@ -104,6 +104,7 @@ import { CreatorStep3Where } from "./CreatorStep3Where";
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
+import { buildDraftThemePreview } from "../theme/themePreviewContent";
 import { CreatorStep5Tickets } from "./CreatorStep5Tickets";
 import { CreatorStep6Settings } from "./CreatorStep6Settings";
 // issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers" card.
@@ -1800,6 +1801,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         onChange={(themeOverrides) => handleUpdateDraft({ themeOverrides })}
         scope="offering"
         brandTheme={brandQuery.data?.theme ?? null}
+        preview={buildDraftThemePreview(editState)}
         testID="edit-published-theme-sheet"
       />
 

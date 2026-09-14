@@ -265,6 +265,31 @@ export const themeResetLabel = (
 };
 
 /**
+ * issue #3348 — the Font tab's top row, e.g. "Brand default — Inter".
+ *
+ * That row is the INHERIT choice: tapping it writes `font: null`, and it is
+ * ticked only while the font axis is inherited. Its name must therefore be the
+ * font inheriting GIVES you — the brand's font (or Mingla's, for a brand) —
+ * and never the organiser's override. It used to read the resolved font, which
+ * already includes the override, so picking Space Grotesk turned the row into
+ * "Brand default — Space Grotesk" and the pick looked as if it hadn't taken.
+ *
+ * The override is deliberately NOT a parameter: nothing the organiser picks can
+ * change this label.
+ */
+export const themeDefaultFontLabel = (
+  scope: ThemeControlScope,
+  brandTheme: ThemeInput | null | undefined,
+): string => {
+  const inherited =
+    scope === "brand"
+      ? resolveTheme(null, null)
+      : resolveTheme(brandTheme ?? null, null);
+  const name = FONT_DISPLAY_NAMES[inherited.font] ?? inherited.font;
+  return `${scope === "brand" ? "Mingla default" : "Brand default"} — ${name}`;
+};
+
+/**
  * The collapsed row's value line, e.g. "Brand default · Poppins · Confetti".
  *
  * C-1 LIVES HERE. `resolveTheme(brandTheme, offeringOverride)` — the BRAND
