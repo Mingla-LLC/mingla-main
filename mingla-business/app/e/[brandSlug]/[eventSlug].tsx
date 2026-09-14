@@ -29,6 +29,8 @@ import {
 import { usePublicEventBySlug } from "../../../src/hooks/usePublicEvents";
 import { PublicEventPage } from "../../../src/components/event/PublicEventPage";
 import { PublicEventNotFound } from "../../../src/components/event/PublicEventNotFound";
+// issue #3284 — the refund ladder's chunk starts with this page's data fetch.
+import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
 
 export default function PublicEventRoute(): React.ReactElement {
   const params = useLocalSearchParams<{
@@ -46,6 +48,14 @@ export default function PublicEventRoute(): React.ReactElement {
     typeof brandSlug === "string" ? brandSlug : null,
     typeof eventSlug === "string" ? eventSlug : null,
   );
+  // issue #3284 — start the refund ladder's chunk in the same mount that starts the
+  // page data fetch above, so when the data lands the body usually paints the
+  // ladder on its first frame. Nothing waits on it: if the data wins, the body
+  // shows the ladder's reserved space until the chunk arrives. Never at module
+  // evaluation, so no other route fetches it.
+  useEffect(() => {
+    loadOfferingRefundLadder().catch(() => undefined);
+  }, []);
 
   // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount
   // (top of the web acquisition funnel). Web-only (no-op on native).
