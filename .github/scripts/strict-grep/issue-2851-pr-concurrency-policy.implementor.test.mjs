@@ -1188,26 +1188,29 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // function of the filename, and the concurrency-only drift assertion in the
   // second test requires this pin to ignore it.
   //
-  // Derived on the .github/workflows tree c925c13c8a36 (main c6efb21f6).
+  // Derived on the .github/workflows tree d68483eb9da5 (main 411596c8a).
   // Identical across three derivations with this file's own RUBY_CANONICAL,
   // and not copied from a CI run. It is the value the projection already had
-  // on 779c1c9d0: the five re-pins that landed while #3095 was in review
-  // (#3285, #3055, #3288, #1778 and #3176, noted above) each moved the old
-  // digest, and none moved the projection. The run-time document digest on
-  // this tree is 330740ba..., exactly the value this literal replaces, so the
-  // pre-#3095 computation survives intact as the run-time check.
+  // on 779c1c9d0: the six re-pins that landed while #3095 was in review
+  // (#3285, #3055, #3288, #1778, #3176 and #3325, noted above) each moved the
+  // old digest, and none moved the projection. The run-time document digest
+  // on this tree is 1d728bae..., exactly the value this literal replaces, so
+  // the pre-#3095 computation survives intact as the run-time check.
   // PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are UNCHANGED.
-  // Replayed through this derivation over those 54 commits plus the five, the
-  // old digest moved 53 times in 59 and the projection 3 times, each a real
+  // Replayed through this derivation over those 54 commits plus the six, the
+  // old digest moved 54 times in 60 and the projection 3 times, each a real
   // policy change: #2899 (Sites recovery joined the PR family), #3072 (push
   // added to six lanes) and #3078 (schedule added). It does not move for any
   // of the 2026-09-03 collisions, the five green-again re-pins, #2947's
-  // two-line registration, or the five in-review re-pins.
+  // two-line registration, or the six in-review re-pins.
   //
   // RULE FOR THE NEXT READER: re-pin only when PR-family membership, a trigger
   // event key, a job-level concurrency block or a job uses: value changed, and
   // name in your note which one and why the #2851 policy still holds for it. If
   // this fails and your branch changed none of those, rebase; do not re-pin.
+  // Do not add a receipt either (a restored tree compared to a literal): a
+  // registration line is protected by its row in the revert-sensitivity table,
+  // and the receipt chain that did otherwise was retired under #3095.
   // Every earlier re-derivation is preserved above, not replaced.
   "6d801614096e869746862f804ed347ad58054820403a11d6a50efd77bdf1e3e7";
 const DENIED_FULL_SHA256 = [
@@ -1471,9 +1474,16 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   const occurrences = (source, pattern) => (source.match(new RegExp(pattern.source, "gm")) || []).length;
   const exactlyOnce = (source, pattern, label) =>
     assert.equal(occurrences(source, pattern), 1, `${label}: expected exactly one mutation target`);
+  // [TEST-MOD-APPROVED #3095] F-7 hardening, applied to every inserting control:
+  // a target that already declares what a control inserts (a workflow_run or
+  // pull_request_target event, the probe job id) would get a duplicate key that
+  // YAML resolves last-wins, so the control would fail for a reason unrelated to
+  // the pin. Such lanes are never chosen.
   const probeName = authority.names.find((name) =>
     occurrences(sources[name], /^on:\n/) === 1 && occurrences(sources[name], /^jobs:\n/) === 1
-      && occurrences(sources[name], /^  pull_request:\n/) === 1);
+      && occurrences(sources[name], /^  pull_request:\n/) === 1
+      && occurrences(sources[name], /^  issue-3095-probe:/) === 0
+      && !liveDigests.canonical[name].events.some((event) => event === "workflow_run" || event === "pull_request_target"));
   const scheduledName = authority.names.find((name) =>
     liveDigests.canonical[name].events.includes("schedule") && occurrences(sources[name], /^  schedule:\n/) === 1);
   assert.ok(probeName, "policy controls need a PR-family workflow with one on, jobs and pull_request block");
@@ -1531,18 +1541,46 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   // mutation above: a job WITHOUT concurrency, and pull_request activity types
   // (the recorded #3095 residual: types changes neither PR-family membership
   // nor the audited obligation).
+  //
+  // [TEST-MOD-APPROVED #3095] F-7: the activity-types control never inserts a
+  // second types key. It targets a lane whose parsed pull_request event declares
+  // no types and inserts one; only if no such lane exists does it take a lane
+  // with exactly one inline types list and REPLACE that list. Either way the
+  // applied check proves the parsed pull_request.types is exactly the new list.
+  const pullRequestOf = (name) => {
+    const document = liveDigests.canonical[name].withoutConcurrency;
+    const on = Object.hasOwn(document, "on") ? document.on : document.true;
+    return on !== null && typeof on === "object" && !Array.isArray(on) && Object.hasOwn(on, "pull_request")
+      ? on.pull_request : undefined;
+  };
+  const typesList = ["opened", "synchronize", "reopened", "closed"];
+  const typesInsertName = authority.names.find((name) => {
+    const pullRequest = pullRequestOf(name);
+    return occurrences(sources[name], /^  pull_request:\n/) === 1
+      && (pullRequest === null
+        || (typeof pullRequest === "object" && !Array.isArray(pullRequest) && !Object.hasOwn(pullRequest, "types")));
+  });
+  const typesReplaceName = typesInsertName ? undefined : authority.names.find((name) =>
+    occurrences(sources[name], /^ {4}types: \[[^\]\n]*\]\n/) === 1 && Array.isArray(pullRequestOf(name)?.types));
+  const typesName = typesInsertName ?? typesReplaceName;
+  assert.ok(typesName, "the activity-types control needs a PR-family lane it can give a types list without a duplicate key");
   const policyInsensitive = [
     ["job without concurrency added", probeName, (source) => {
       exactlyOnce(source, /^jobs:\n/, "jobs block");
       return source.replace(/^jobs:\n/m, probeJob(runnerJob));
     }, (digests, name) => assert.deepEqual(probeJobOf(digests, name),
       { "runs-on": "ubuntu-latest", steps: [{ run: true }] })],
-    ["pull_request activity types added", probeName, (source) => {
-      exactlyOnce(source, /^  pull_request:\n/, "pull_request event");
-      return source.replace(/^  pull_request:\n/m, "  pull_request:\n    types: [opened, synchronize, reopened, closed]\n");
+    ["pull_request activity types added", typesName, (source) => {
+      const list = `    types: [${typesList.join(", ")}]\n`;
+      if (typesInsertName) {
+        exactlyOnce(source, /^  pull_request:\n/, "pull_request event");
+        return source.replace(/^  pull_request:\n/m, () => `  pull_request:\n${list}`);
+      }
+      exactlyOnce(source, /^ {4}types: \[[^\]\n]*\]\n/, "pull_request types list");
+      return source.replace(/^ {4}types: \[[^\]\n]*\]\n/m, () => list);
     }, (digests, name) => {
       const on = digests.canonical[name].withoutConcurrency.on ?? digests.canonical[name].withoutConcurrency.true;
-      assert.deepEqual(on.pull_request.types, ["opened", "synchronize", "reopened", "closed"]);
+      assert.deepEqual(on.pull_request.types, typesList);
     }],
   ];
   for (const [label, name, mutate, applied] of policyInsensitive) {
@@ -1748,108 +1786,33 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   // [TEST-MOD-APPROVED #3325] Reverting #3325's single paths entry must recover
   // #3176's combined-tree pin, and every older receipt starts from that
   // pre-#3325 tree so their literals stay exactly as their owners measured them.
-  const issue2099Name = liveWorkflow(
-    "issue", "2099", "pending", "venue", "identity", "correction", "tests",
-  );
-  const before3325 = { ...sources };
-  before3325[issue2099Name] = removeExactLine(
-    before3325[issue2099Name],
-    '      - "mingla-business/scripts/ci/bundle-baseline.json"\n',
-    "#3325 baseline paths entry",
-  );
-  const before3325Authority = currentTreeAuthority(before3325);
-  assert.equal(before3325Authority.names.length, 124);
-  assert.equal(before3325Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
-  assert.equal(
-    before3325Authority.withoutConcurrencySha256,
-    "330740baa866dd1013a9047498c746effbb6808e4e0a5a3cb13df02c8b78447a",
-  );
-
-  const before3176 = { ...before3325 };
-  const offeringVisibilityName = liveWorkflow(
-    "issue", "2117", "offering", "visibility", "gate", "tests",
-  );
-  const indexNowReplayBlock = [
-    "              # issue #3176 — the IndexNow outbox trigger targets #2986's",
-    "              # `public_search_documents`, which does not exist in this",
-    "              # pre-#2117 phase. The migration and its controls remain intact;",
-    "              # this filtered lane omits it by EXACT FILENAME.",
-    "              *20270627003176_issue_3176_indexnow_outbox.sql) continue ;;",
-    "",
-  ].join("\n");
-  before3176[offeringVisibilityName] = removeExactLine(
-    before3176[offeringVisibilityName],
-    indexNowReplayBlock,
-    "#3176 offering-visibility replay block",
-  );
-  // [TEST-MOD-APPROVED #3095] IA-6 (x3: this receipt and the two below). Each
-  // recorded the pre-#3095 WHOLE-DOCUMENT digest of a partly restored tree.
-  // That computation is now the run-time documentSha256, so the receipt reads
-  // it there and its literal is byte-identical. The pinned policy projection
-  // must not move for any of these non-policy restorations.
-  const before3176Digests = canonicalDigests(before3176);
-  const before3176Authority = before3176Digests.authority;
-  assert.equal(before3176Authority.names.length, 124);
-  assert.equal(before3176Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
-  assert.equal(
-    before3176Digests.documentSha256,
-    "a24d680bd5fc50d7dae67f67c0f6b95536be0b28e3acfd21c970cf09a901d491",
-  );
-  assert.deepEqual(before3176Authority, authority);
-
+  //
   // [TEST-MOD-APPROVED #3176] Current main and this branch both change the
   // non-concurrency document. Reverting #3288's two whole workflow blocks must
   // recover the prior #3176 authority, while reverting both owners must recover
   // the shared pre-change authority. These exact receipts prevent a merge-time
   // re-pin from hiding either side of the combined tree.
-  const migrationsName = liveWorkflow("supabase", "migrations", "and", "stripe", "deno");
-  const publishName = liveWorkflow("issue", "2333", "online", "event", "publish");
-  const gallerySuiteBlock = [
-    "          # Issue #3288 — a draft's additional photos were erased at publish. Every",
-    "          # gallery writer must keep the stored gallery when the key is ABSENT and",
-    "          # still honour an explicit []; removing a cover must not wipe it.",
-    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\",
-    "            -f supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql",
-    "",
-  ].join("\n");
-  const galleryReplayBlock = [
-    "          # Issue #3288 re-emits `business_publish_event_draft` (an absent gallery key",
-    "          # keeps the stored photos) and owns its final definition on a full replay,",
-    "          # so the re-apply set must end with it, per the instruction above.",
-    "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\",
-    "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql",
-    "",
-  ].join("\n");
-  const before3288 = { ...before3325 };
-  before3288[migrationsName] = removeExactLine(
-    before3288[migrationsName], gallerySuiteBlock, "#3288 migration-suite block",
-  );
-  before3288[publishName] = removeExactLine(
-    before3288[publishName], galleryReplayBlock, "#3288 online-publish replay block",
-  );
-  const before3288Digests = canonicalDigests(before3288);
-  const before3288Authority = before3288Digests.authority;
-  assert.equal(before3288Authority.names.length, 124);
-  assert.equal(before3288Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
-  assert.equal(
-    before3288Digests.documentSha256,
-    "b1b5f75759ecb8ae6dd12d005b2583ac8414eb1c86c110b6c5585684f013f8a3",
-  );
-  assert.deepEqual(before3288Authority, authority);
-
-  const beforeBoth = { ...before3288 };
-  beforeBoth[offeringVisibilityName] = removeExactLine(
-    beforeBoth[offeringVisibilityName], indexNowReplayBlock, "combined pre-#3176 replay block",
-  );
-  const beforeBothDigests = canonicalDigests(beforeBoth);
-  const beforeBothAuthority = beforeBothDigests.authority;
-  assert.equal(beforeBothAuthority.names.length, 124);
-  assert.equal(beforeBothAuthority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
-  assert.equal(
-    beforeBothDigests.documentSha256,
-    "aadaaea7efdbd00254fa460f07f64be589cd0773d0e7f8aab42d25788cf5af6c",
-  );
-  assert.deepEqual(beforeBothAuthority, authority);
+  //
+  // [TEST-MOD-APPROVED #3095] RECEIPT CHAIN RETIRED (IA-6 REVISED ruling on
+  // #3095). The three notes above are kept as history; the code they describe
+  // is gone. Each receipt rebuilt a partly restored tree and compared its
+  // WHOLE-DOCUMENT digest to a literal, so any paths, step or comment edit to
+  // any PR-family lane turned it red and needed one more restoration layer:
+  // the churn #3095 exists to end. Retired, by name:
+  //   - IA-6', superseding IA-6: the #3176, #3288 and combined receipt
+  //     literals (a24d680b..., b1b5f757..., aadaaea7...);
+  //   - IA-7: the #3325 before3325 receipt literal (330740ba...);
+  //   - the restoration scaffolding: the before3325, before3176, before3288
+  //     and beforeBoth trees, their exact-block removals, and IA-6's authority
+  //     checks. With every literal removed it was still content-sensitive: a
+  //     comment-only edit inside the #3176 block or a #3288 block broke its
+  //     exact-block removal and turned this test red.
+  // Nothing they protected is lost. Each executable line those blocks carried
+  // is a row in the revert-sensitivity table above, which fails when the line
+  // is missing or duplicated: #3176's IndexNow skip, #3288's gallery suite
+  // target and replay re-apply, and #3325's baseline paths entry. A later
+  // receipt of the same shape is retired the same way: keep its note and its
+  // rows, drop its literal and its restoration trees, and add its name here.
 
   const sitesWithoutPullRequest = { ...sources };
   sitesWithoutPullRequest[sitesRecoveryName] = removeExactLine(
