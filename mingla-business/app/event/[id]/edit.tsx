@@ -76,6 +76,7 @@ import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
 // triggered by the first dirty autosave, not on route mount. Pure helper.
 import { isDraftDirty } from "../../../src/utils/draftDirtyCheck";
 import { brandPaymentOnboardingRoute } from "../../../src/utils/paidPublishGuards";
+import { formatEventLiveToast } from "../../../src/utils/eventPublishCopy";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -490,12 +491,16 @@ export default function EventEditRoute(): React.ReactElement {
       mode: WizardExitMode,
       ctx?: {
         name?: string;
-        slug?: { brandSlug: string; eventSlug: string };
+        slug?: { brandSlug: string; eventSlug: string; occurrenceCount?: number };
       },
     ): void => {
       if (mode === "published") {
         const name = ctx?.name ?? "Event";
-        setToast({ visible: true, message: `${name} is live.` });
+        // issue #3313 — say how many dates the server actually created.
+        setToast({
+          visible: true,
+          message: formatEventLiveToast(name, ctx?.slug?.occurrenceCount),
+        });
         // Cycle 6 — route to the new public event page when slug is
         // provided. Falls back to home tab when slug missing (e.g.
         // pre-Cycle-6 draft or publish-failed-but-flagged-published).
@@ -882,6 +887,7 @@ export default function EventEditRoute(): React.ReactElement {
         return {
           brandSlug: published.brand.slug,
           eventSlug: published.event.eventSlug,
+          occurrenceCount: published.occurrenceCount,
         };
       }}
       serverSaveState={{

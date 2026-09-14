@@ -1761,6 +1761,15 @@ const directBundleTicketToStub = (
   };
 };
 
+// issue #3313 — the bundle's `recurrenceRule`: an object with a preset, or null.
+const asRecurrenceRuleOrNull = (value: unknown): RecurrenceRule | null =>
+  value !== null &&
+  typeof value === "object" &&
+  !Array.isArray(value) &&
+  typeof (value as { preset?: unknown }).preset === "string"
+    ? (value as RecurrenceRule)
+    : null;
+
 const detailFromDirectBundle = async (
   payload: JsonRecord,
 ): Promise<PublicEventDetail> => {
@@ -1815,7 +1824,10 @@ const detailFromDirectBundle = async (
     // silently re-anchors that audit onto the wrong function body.
     is_recurring: payload.isRecurring === true,
     is_multi_date: payload.isMultiDate === true,
-    recurrence_rules: null,
+    // issue #3313 — was hard-coded `null`, so a recurring event's page said
+    // "Recurring (incomplete)". The bundle now carries the stored rule (and
+    // null for every other event).
+    recurrence_rules: asRecurrenceRuleOrNull(payload.recurrenceRule),
     cover_media_url: asStringOrNull(payload.coverMediaUrl),
     cover_media_type: payload.coverMediaType,
     cover_media_gallery: Array.isArray(payload.coverGallery)

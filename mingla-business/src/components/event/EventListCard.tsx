@@ -36,6 +36,7 @@ import type { DraftEvent } from "../../store/draftEventStore";
 import type { Brand } from "../../store/currentBrandStore";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 import { buildEventSalesSummary } from "../../utils/eventSalesSummary";
+import { isPerNightCapacity } from "../../utils/perNightCapacity";
 import { formatRsvpGoingLabel } from "../../utils/rsvpHubMetrics";
 import { useEventOrders } from "../../hooks/useEventOrders";
 
@@ -140,6 +141,9 @@ const EventListCardBody: React.FC<EventListCardProps> = ({
         orders: eventOrdersQuery.data,
         readStatus: eventOrdersQuery.status,
         isRefreshing: eventOrdersQuery.isRefreshing,
+        // issue #3313 — per-night capacity on a live recurring event.
+        capacityPerNight:
+          isLiveEvent(event, kind) && isPerNightCapacity(event.whenMode),
       }),
     [
       brand.defaultCurrency,

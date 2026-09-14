@@ -66,6 +66,7 @@ const TicketTierEditSheet = React.lazy(() =>
   })),
 );
 import { errorForKey, type StepBodyProps } from "./types";
+import { isPerNightCapacity } from "../../utils/perNightCapacity";
 
 // ---- Main component (Step 5 body) -----------------------------------
 
@@ -410,6 +411,14 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
             editingTicket !== null
               ? (soldCountByTier[editingTicket.id] ?? 0)
               : 0
+          }
+          // issue #3313 — on a recurring event capacity is PER NIGHT: the
+          // label says so and the floor is the busiest night, not the run.
+          capacityPerNight={isPerNightCapacity(draft.whenMode)}
+          capacityFloor={
+            editingTicket !== null
+              ? editMode?.capacityFloorByTier?.[editingTicket.id]
+              : undefined
           }
           canEditPrice={canEditTicketPrice}
           eventCurrency={hasDisplayCurrency ? displayCurrency : undefined}
