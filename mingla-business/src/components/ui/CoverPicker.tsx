@@ -1744,15 +1744,15 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           activeMediaType={activeMediaType}
           alt={localCover.coverMediaAlt}
           credit={selectedCredit}
-          // issue #3318 — the Replace/Image SPINNER is the cover's own upload
-          // only; a photo add used to make the cover look like it was
-          // uploading.
-          uploading={uploading}
           // issue #3280 — the Image / Video / Remove / retry buttons are cover
-          // actions, so an in-flight gallery upload still makes them busy
-          // (disabled, not spinning): a cover emit and a gallery commit are
-          // never both in flight from user actions.
-          coverBusy={uploading || galleryUploading}
+          // actions, so an in-flight gallery upload makes them busy too. This is
+          // the same set of buttons that was busy before the gallery got its own
+          // flag, when the gallery upload still set `uploading`.
+          uploading={uploading || galleryUploading}
+          // issue #3318 — the Replace/Image SPINNER is the cover's own upload
+          // only (the buttons above stay disabled, not spinning, during a photo
+          // add); a photo add used to make the cover look like it was uploading.
+          spinning={uploading}
           activeVideoUpload={lockedVideoOperation}
           videoStage={projectedVideoStage}
           videoStatus={videoUpload.status}
@@ -2030,12 +2030,13 @@ const LibraryTab: React.FC<{
   activeMediaType: EventCoverMediaType | null;
   alt: string | null;
   credit: string | null;
+  /** Disables the cover buttons: a cover upload OR a gallery photo upload. */
   uploading: boolean;
   /**
-   * issue #3318 — the cover buttons are disabled while this is true (a cover
-   * upload OR a gallery photo upload); `uploading` alone drives the spinner.
+   * issue #3318 — the Replace/Image spinner: the COVER's own upload only, so a
+   * gallery photo add never makes the cover look like it is uploading.
    */
-  coverBusy: boolean;
+  spinning: boolean;
   activeVideoUpload: boolean;
   videoStage: EventCoverVideoUploadStage;
   videoStatus: EventCoverVideoStatus | null;
@@ -2063,7 +2064,7 @@ const LibraryTab: React.FC<{
   alt,
   credit,
   uploading,
-  coverBusy,
+  spinning,
   activeVideoUpload,
   videoStage,
   videoStatus,
@@ -2131,8 +2132,8 @@ const LibraryTab: React.FC<{
             size="md"
             shape="square"
             onPress={onPickImage}
-            loading={uploading}
-            disabled={coverBusy || disabled}
+            loading={spinning}
+            disabled={uploading || disabled}
             style={styles.actionButton}
           />
           <Button
@@ -2142,7 +2143,7 @@ const LibraryTab: React.FC<{
             size="md"
             shape="square"
             onPress={onPickVideo}
-            disabled={coverBusy || disabled}
+            disabled={uploading || disabled}
             style={styles.actionButton}
           />
           {hasCover ? (
@@ -2153,7 +2154,7 @@ const LibraryTab: React.FC<{
               size="md"
               shape="square"
               onPress={onRemove}
-              disabled={coverBusy || disabled}
+              disabled={uploading || disabled}
               style={styles.removeButton}
             />
           ) : null}
@@ -2171,7 +2172,7 @@ const LibraryTab: React.FC<{
                 size="sm"
                 shape="square"
                 onPress={onRetryVideo}
-                disabled={coverBusy || disabled}
+                disabled={uploading || disabled}
                 style={styles.retryButton}
               />
             ) : null}

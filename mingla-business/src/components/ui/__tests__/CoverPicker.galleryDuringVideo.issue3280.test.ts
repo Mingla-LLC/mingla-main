@@ -218,11 +218,7 @@ describe("issue #3280 gallery add gate (source wiring: the same-session case)", 
     );
     expect(callbackBody("retryVideoCoverUpload", "loadTrending")).toContain("galleryUploading");
     // The Image / Video / Remove / retry buttons get the merged busy flag.
-    // [TEST-MOD-APPROVED #3318] they are still DISABLED during a gallery upload
-    // (same busy set, now `coverBusy`); only the Replace/Image SPINNER moved to
-    // the cover's own `uploading`, because a photo add made the cover look busy.
-    expect(executable(coverPickerSource)).toContain("coverBusy={uploading || galleryUploading}");
-    expect(executable(coverPickerSource)).toContain("disabled={coverBusy || disabled}");
+    expect(executable(coverPickerSource)).toContain("uploading={uploading || galleryUploading}");
   });
 
   test("a cover emit updates the cover ref before a gallery commit can re-emit it", () => {

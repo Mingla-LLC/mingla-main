@@ -550,10 +550,11 @@ describe("issue #3318 source wiring", () => {
 
   test("the cover spinner is the cover's own upload; the section renders tiles and its own busy state", () => {
     const code = executable(coverPickerSource);
-    expect(code).toContain("uploading={uploading}");
-    expect(code).not.toContain("uploading={uploading || galleryUploading}");
-    expect(code).toContain("coverBusy={uploading || galleryUploading}");
-    expect(code).toContain("loading={uploading}");
+    // Busy (disabled) still includes a photo upload; the spinner does not.
+    expect(code).toContain("uploading={uploading || galleryUploading}");
+    expect(code).toContain("spinning={uploading}");
+    expect(code).toContain("loading={spinning}");
+    expect(code).not.toContain("loading={uploading}");
     expect(code).toContain('testID="cover-gallery-uploading"');
     expect(code).toContain('testID="cover-gallery-pending-tile"');
     expect(code).toContain('testID="cover-gallery-failed-tile"');
