@@ -17,15 +17,16 @@
  *     LOAD-BEARING ORCH-1016/1043/1138 scroll structure — the body must NEVER wrap
  *     ParallaxCoverShell as its scroll root, which re-triggers the gorhom freeze).
  * The cover (section 1) is a pinned sibling the surface scaffold owns; the floating
- * Get-tickets button (section 9) is exposed as <EventOfferingFloatingBar> for the
- * surface to position as a pinned overlay. The 9-section CONTENT order (sections
- * 2–8 + the inline ticket box at 5) is rendered here, identically, every surface.
+ * Get-tickets button (section 10) is exposed as <EventOfferingFloatingBar> for the
+ * surface to position as a pinned overlay. The CONTENT order (sections 2–9 + the
+ * inline ticket box at 5) is rendered here, identically, every surface.
  *
  * Pure-presentational, props-only, NO app-src imports (I-MOR-0827-PACKAGE-ISOLATION
  * — enforced by the META-ORCH-0827 packages gate that already covers this file).
  * Renders on react-native-web AND native RN.
  *
- * Canonical 9-section order (SPEC §3A):
+ * Canonical section order (SPEC §3A; #3284 adds section 9 —
+ * I-3284-CANONICAL-10-SECTION-ORDER):
  *   1. Cover            (surface scaffold — pinned sibling, not here)
  *   2. Event Name       (lead block: date eyebrow + bold title)
  *   3. Date & Time      (meta chips, AM/PM via the host's dateLine/dateSubline)
@@ -38,7 +39,12 @@
  *   8. Where you'll be  (server-proxied static map via injected staticMapUrl +
  *                        "view on map" card; city-level when address hidden; text
  *                        venue card when no geo — rule 9)
- *   9. Floating button  (<EventOfferingFloatingBar>, surface-pinned)
+ *   9. Cancellation policy (#3284 — the shared OfferingRefundLadder fed by real
+ *                        events.refund_policy; the LAST body section, so the
+ *                        always-visible floating bar stays the commitment. Hidden
+ *                        when the offering is cancelled or ended, when the read
+ *                        state is unknown, and on a free event with no terms)
+ *  10. Floating button  (<EventOfferingFloatingBar>, surface-pinned)
  */
 
 import React, {
@@ -109,6 +115,11 @@ import {
   VenueCopyAddressButton,
 } from "./VenueMapsActions";
 import { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
+// #3284 — section 9: the shared refund ladder + the three-state read it is gated on.
+// #3284 [bundle budget] — the ladder loads in its own chunk (ORCH-1083); never
+// import ./OfferingRefundLadder statically here.
+import { LazyOfferingRefundLadder as OfferingRefundLadder } from "./LazyOfferingRefundLadder";
+import { type RefundPolicyReadState } from "./offeringRefundPolicy";
 
 // Re-export the pure totals so a single import surface stays one place.
 export { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
@@ -333,8 +344,32 @@ export interface EventOfferingBodyProps {
    * cluster, no dead tap (ORCH-1341/1342 wire the per-surface handlers).
    */
   onSeeWhosGoing?: () => void;
+  /**
+   * #3284 — the refund-terms read for section 9 (I-3284-UNKNOWN-IS-NOT-NONE).
+   * REQUIRED on purpose: app-mobile has no typecheck gate, so a surface that forgot
+   * to map the bundle's `refundPolicy` key must fail loudly in review, not render
+   * silently. `unknown` renders nothing; `none` renders the paid disclosure only.
+   */
+  refundPolicyState: RefundPolicyReadState;
+  /**
+   * #3284 — the name guests are told to contact ("To cancel, contact {host}").
+   * Absent → the brand's display name; null or blank → "the organizer".
+   */
+  refundHostName?: string | null;
   testID?: string;
 }
+
+/**
+ * #3284 — an event is PAID for refund purposes when any of its ticket types
+ * carries a price above zero and is not marked free. Refund terms cannot apply to
+ * a free ticket, so a free event shows no section 9 at all.
+ */
+const eventHasPaidTicket = (tickets: readonly PublicTicketProps[]): boolean =>
+  tickets.some(
+    (ticket) =>
+      !ticket.isFree &&
+      ((ticket.priceGbp ?? 0) > 0 || (ticket.priceAllInGbp ?? 0) > 0),
+  );
 
 export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   event,
@@ -360,6 +395,8 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   purchaseBlockedLabel = null,
   socialProof = null,
   onSeeWhosGoing,
+  refundPolicyState,
+  refundHostName,
   testID,
 }: EventOfferingBodyProps) => {
   const surface = offeringSurfaceStyles(palette);
@@ -461,6 +498,25 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   const aboutText = event.description.trim();
   const canCollapseAbout = aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
   const aboutCollapsedNow = canCollapseAbout && aboutCollapsed;
+
+  // #3284 — section 9 gating (design part 1 §3.10). The cancelled banner owns the
+  // refund message on a cancelled event, and nobody can cancel a past one, so a
+  // closed offering shows no terms. `unknown` (absent key, unreadable value) is
+  // never shown as "no policy". A free event has nothing to refund.
+  const eventIsPaid = eventHasPaidTicket(event.tickets);
+  const offeringClosed =
+    acquisitionClosed || variant === "cancelled" || variant === "past";
+  // Optional chaining on a required prop on purpose: a host rendering a payload
+  // cached by an older build must degrade to "unknown", never crash the page.
+  const refundReadStatus = refundPolicyState?.status ?? "unknown";
+  const refundPolicy =
+    refundPolicyState?.status === "set" ? refundPolicyState.policy : null;
+  const showRefundTerms =
+    !offeringClosed &&
+    eventIsPaid &&
+    (refundReadStatus === "set" || refundReadStatus === "none");
+  const refundHost =
+    refundHostName !== undefined ? refundHostName : (brand?.displayName ?? null);
 
   // ORCH-1167-R2 — the inline-box CTA/total math moved INTO <EventTicketBox> (the
   // shared box now used both inline on phone/native AND in the desktop sticky
@@ -844,6 +900,24 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           />
         </View>
       ) : null}
+
+      {/* (9) Cancellation policy — shared OfferingRefundLadder (renders its own
+          heading). #3284: the LAST body section. The wrapper always mounts as the
+          section-order gate anchor and has zero height when hidden. */}
+      <View testID="orch-1167-cancellation">
+        {showRefundTerms ? (
+          <OfferingRefundLadder
+            policy={refundPolicy}
+            offeringType="event"
+            isPaid={eventIsPaid}
+            hostName={refundHost}
+            palette={palette}
+            surface={surface}
+            fontFamily={boldFamily}
+            testID="orch-1167-cancellation-ladder"
+          />
+        ) : null}
+      </View>
     </View>
   );
 };

@@ -103,6 +103,8 @@ import {
 } from "../../../src/components/trip/tripOfferingAdapter";
 import { collapseTripPlanChoice } from "../../../src/components/trip/tripCartPlanChoice";
 import { recordShareDestination } from "../../../src/analytics/shareDestination";
+// issue #3284 — the refund ladder's chunk starts with this page's data fetch.
+import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
 
 export default function PublicTripRoute(): React.ReactElement {
   const router = useRouter();
@@ -133,6 +135,14 @@ export default function PublicTripRoute(): React.ReactElement {
     typeof brandSlug === "string" ? brandSlug : null,
     typeof tripSlug === "string" ? tripSlug : null,
   );
+  // issue #3284 — start the refund ladder's chunk in the same mount that starts the
+  // page data fetch above, so when the data lands the body usually paints the
+  // ladder on its first frame. Nothing waits on it: if the data wins, the body
+  // shows the ladder's reserved space until the chunk arrives. Never at module
+  // evaluation, so no other route fetches it.
+  useEffect(() => {
+    loadOfferingRefundLadder().catch(() => undefined);
+  }, []);
 
   // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount.
   // Web-only (no-op on native).

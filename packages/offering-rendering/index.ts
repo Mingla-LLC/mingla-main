@@ -289,8 +289,31 @@ export { TripReserveBar } from "./TripReserveBar";
 export type { TripReserveBarProps } from "./TripReserveBar";
 export { TripPaymentChoice as TripOfferingPaymentChoice } from "./TripPaymentChoice";
 export type { TripPaymentChoiceProps as TripOfferingPaymentChoiceProps } from "./TripPaymentChoice";
-export { TripRefundLadder } from "./TripRefundLadder";
-export type { TripRefundLadderProps } from "./TripRefundLadder";
+// #3284 — the ladder is OfferingRefundLadder now (trip + event + experience). The
+// trip name stays exported as an alias for one release so any import the build
+// has not moved yet still resolves.
+// #3284 [bundle budget] — both names resolve to the lazily loaded ladder
+// (LazyOfferingRefundLadder: same props, same output), so importing the barrel
+// never puts the ladder chunk back in the boot payload (ORCH-1083).
+export {
+  LazyOfferingRefundLadder as OfferingRefundLadder,
+  LazyOfferingRefundLadder as TripRefundLadder,
+} from "./LazyOfferingRefundLadder";
+export type {
+  OfferingRefundLadderProps,
+  OfferingRefundLadderType,
+  TripRefundLadderProps,
+} from "./OfferingRefundLadder";
+// #3284 — the three-state refund-terms reader (I-3284-UNKNOWN-IS-NOT-NONE). Apps
+// import its functions by the DEEP specifier
+// `@mingla/offering-rendering/offeringRefundPolicy` (a partial barrel mock cannot
+// blank it), so the barrel carries only its types: re-exporting the values here
+// added boot-payload bytes no import used (ORCH-1083).
+export type {
+  OfferingRefundPolicy,
+  OfferingRefundTier,
+  RefundPolicyReadState,
+} from "./offeringRefundPolicy";
 export { DayByDay } from "./DayByDay";
 export type { DayByDayProps } from "./DayByDay";
 export { TripCountdownPill } from "./TripCountdownPill";

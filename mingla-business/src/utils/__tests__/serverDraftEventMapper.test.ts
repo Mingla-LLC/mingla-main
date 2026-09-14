@@ -9,6 +9,7 @@
 // [TEST-MOD-APPROVED ORCH-0962]
 import { describe, expect, test } from "@jest/globals";
 
+import type { RefundPolicy } from "../../services/refundPolicyService";
 import type { DraftEvent, TicketStub } from "../../store/draftEventStore";
 import { validatePublish } from "../draftEventValidation";
 import {
@@ -584,6 +585,9 @@ const DRAFT_EVENT_KEY_CLASS = {
   currency: "roundtrip",
   tickets: "roundtrip",
   pricingSwitches: "roundtrip",
+  // [TEST-MOD-APPROVED #3284] The Settings step's refund terms round-trip through
+  // business_draft so an autosave echo cannot wipe them.
+  refundPolicy: "roundtrip",
   visibility: "roundtrip",
   requireApproval: "roundtrip",
   allowTransfers: "roundtrip",
@@ -754,6 +758,17 @@ describe("#3287 — multi-day pricing choice survives the draft save round-trip"
         }),
       ],
       pricingSwitches: { passTax: true, passMinglaFee: false, passServiceFee: true },
+      // [TEST-MOD-APPROVED #3284] Non-default terms (the default is null). These are
+      // EVENT_STANDARD_POLICY's values, written out because importing the service
+      // would load the Supabase client under this node config.
+      refundPolicy: {
+        kind: "standard",
+        tiers: [
+          { days_before_start: 14, refund_pct: 100 },
+          { days_before_start: 7, refund_pct: 50 },
+          { days_before_start: 0, refund_pct: 0 },
+        ],
+      } satisfies RefundPolicy,
       visibility: "private",
       requireApproval: true,
       allowTransfers: false,

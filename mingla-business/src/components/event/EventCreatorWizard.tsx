@@ -89,6 +89,9 @@ import {
   describeUnmappedPublishGuard,
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
+// issue #3284 — publish writes the refund terms first and throws this if they
+// did not land; its message is organiser copy.
+import { OfferingRefundTermsError } from "../../utils/refundPolicyTerms";
 import { expandRecurrenceToDates } from "../../utils/recurrenceRule";
 
 import { Button } from "../ui/Button";
@@ -140,7 +143,8 @@ const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
   { title: "Where", subtitle: "Venue or online link" },
   { title: "Cover", subtitle: "Pick a cover style" },
   { title: "Tickets", subtitle: "Types, prices, capacity" },
-  { title: "Settings", subtitle: "Visibility, approvals, transfers" },
+  // issue #3284 — the refund policy is now the first Settings block.
+  { title: "Settings", subtitle: "Refunds, visibility, approvals" },
   { title: "Preview", subtitle: "How it looks to guests" },
 ];
 
@@ -695,6 +699,16 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       // on error.message; surface the locked copy + route (payments onboarding
       // for the two money-setup reasons, When step for the date) instead of a
       // generic failure.
+      // issue #3284 — the refund terms did not save, so nothing was published.
+      // Say why; invalid terms jump back to Settings (index 5), where they live.
+      if (error instanceof OfferingRefundTermsError) {
+        handleShowToast(error.message);
+        if (error.reason === "policy_invalid") {
+          setShowStepErrors(true);
+          setCurrentStep(5);
+        }
+        return;
+      }
       const code = error instanceof Error ? error.message : String(error ?? "");
       const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(code);
       if (guardCopy !== null) {

@@ -15,64 +15,27 @@
  */
 
 import { supabase } from "./supabase";
+import type {
+  OfferingRefundPolicyFailureReason,
+  RefundPolicy,
+  RefundPolicyServiceError,
+  SetOfferingRefundPolicyResult,
+} from "./refundPolicyModel";
 
-export interface RefundPolicyTier {
-  /** Integer >= 0 — days before trip start. */
-  days_before_start: number;
-  /** Integer 0-100 — refund percentage at this tier. */
-  refund_pct: number;
-}
-
-export type RefundPolicyKind = "flexible" | "standard" | "strict" | "custom";
-
-export interface RefundPolicy {
-  kind: RefundPolicyKind;
-  /** Sorted DESC by days_before_start; refund_pct non-increasing. */
-  tiers: RefundPolicyTier[];
-}
-
-// Locked defaults per SPEC §10 Q1 + DESIGN §5.1 — operator-overridable
-// at any time via the custom builder.
-export const FLEXIBLE_POLICY: RefundPolicy = {
-  kind: "flexible",
-  tiers: [
-    { days_before_start: 30, refund_pct: 100 },
-    { days_before_start: 14, refund_pct: 50 },
-    { days_before_start: 0, refund_pct: 0 },
-  ],
-};
-
-export const STANDARD_POLICY: RefundPolicy = {
-  kind: "standard",
-  tiers: [
-    { days_before_start: 60, refund_pct: 100 },
-    { days_before_start: 30, refund_pct: 50 },
-    { days_before_start: 0, refund_pct: 0 },
-  ],
-};
-
-export const STRICT_POLICY: RefundPolicy = {
-  kind: "strict",
-  tiers: [
-    { days_before_start: 90, refund_pct: 100 },
-    { days_before_start: 0, refund_pct: 0 },
-  ],
-};
-
-export interface RefundPolicyServiceError extends Error {
-  code:
-    | "policy_invalid"
-    | "monotonicity_violation"
-    | "days_not_descending"
-    | "tier_pct_out_of_range"
-    | "tier_count_invalid"
-    | "kind_invalid"
-    | "unauthorized"
-    | "not_found"
-    | "network_error"
-    | "internal_error";
-  detail?: string;
-}
+// issue #3284 [bundle budget] — this module holds ONLY the network writers. The
+// types and presets live in refundPolicyModel.ts (re-exported below as TYPES only,
+// which the build erases), and the pre-fill tier rule lives in
+// utils/refundPolicyPrefill.ts. App code reaches these writers only through the
+// lazy services/refundPolicyWrites.ts; a static value import of this file from
+// app code puts the writers back in the boot payload (ORCH-1083).
+export type {
+  OfferingRefundPolicyFailureReason,
+  RefundPolicy,
+  RefundPolicyKind,
+  RefundPolicyServiceError,
+  RefundPolicyTier,
+  SetOfferingRefundPolicyResult,
+} from "./refundPolicyModel";
 
 const makeError = (
   code: RefundPolicyServiceError["code"],
@@ -255,4 +218,152 @@ export async function updateBookingDeadline(
       "Trip not found or you don't have permission to update it.",
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Issue #3284 — refund terms on events and experiences.
+// ---------------------------------------------------------------------------
+
+const SERVER_RETURN_REASONS: ReadonlySet<string> = new Set<
+  OfferingRefundPolicyFailureReason
+>([
+  "refund_policy_downgrade_with_sales",
+  "missing_edit_reason",
+  "invalid_edit_reason",
+  "offering_not_found",
+  "offering_type_not_supported",
+  "offering_not_editable_status",
+]);
+
+const isServerReturnReason = (
+  value: string,
+): value is OfferingRefundPolicyFailureReason => SERVER_RETURN_REASONS.has(value);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isRefundPolicyShape = (value: unknown): value is RefundPolicy => {
+  if (!isRecord(value) || !Array.isArray(value.tiers)) return false;
+  if (!["flexible", "standard", "strict", "custom"].includes(String(value.kind))) {
+    return false;
+  }
+  return value.tiers.every(
+    (tier: unknown) =>
+      isRecord(tier) &&
+      typeof tier.days_before_start === "number" &&
+      typeof tier.refund_pct === "number",
+  );
+};
+
+/** Map a PostgREST error from the writer's RPC call to a typed failure. */
+function offeringRefundRpcFailure(error: {
+  code?: string | null;
+  message?: string | null;
+}): SetOfferingRefundPolicyResult {
+  const code = error.code ?? "";
+  const message = error.message ?? "";
+  const lower = message.toLowerCase();
+  if (code === "PGRST202") {
+    return { ok: false, reason: "unavailable", detail: message };
+  }
+  // A signed-out caller reaches the function as `anon`, whose EXECUTE is revoked
+  // (42501); a signed-in caller with no session identity gets the RAISE.
+  if (code === "42501" || lower.includes("authentication_required")) {
+    return { ok: false, reason: "authentication_required", detail: message };
+  }
+  if (lower.includes("insufficient_event_permission")) {
+    return { ok: false, reason: "insufficient_event_permission", detail: message };
+  }
+  // The shape validator RAISEs with `refund_policy.` / `tier ` / monotonicity
+  // messages; the CHECK constraint is 23514. Either way the terms were refused.
+  // (Match `refund_policy.` WITH the dot: the function's own name contains
+  // `refund_policy` and must never make an unrelated error read as bad terms.)
+  if (
+    code === "23514" ||
+    lower.includes("refund_policy.") ||
+    lower.includes("events_refund_policy_valid") ||
+    lower.includes("i-proposed-tr4-refund-cascade-monotonicity") ||
+    lower.startsWith("tier ")
+  ) {
+    return { ok: false, reason: "policy_invalid", detail: message };
+  }
+  return { ok: false, reason: "internal_error", detail: `${code} ${message}`.trim() };
+}
+
+/**
+ * Issue #3284 — write refund terms on an EVENT or EXPERIENCE through the one gated
+ * server owner, `business_patch_offering_refund_policy`.
+ *
+ * - Drafts: pass `reason: null`; the server writes with no gate.
+ * - Scheduled or live: pass the organiser's 10–200 character edit reason. Once a
+ *   paid order exists the server refuses any change that is worse for buyers and
+ *   returns `refund_policy_downgrade_with_sales` with `affectedOrderCount`.
+ * - `policy: null` clears the terms.
+ *
+ * Never throws for a server or network failure — every outcome is a typed result,
+ * and on `ok: false` nothing was written. Trips do NOT use this: they keep
+ * `updateRefundPolicy` and their own live-edit owner.
+ */
+export async function setOfferingRefundPolicy(
+  eventId: string,
+  policy: RefundPolicy | null,
+  reason: string | null,
+): Promise<SetOfferingRefundPolicyResult> {
+  if (!eventId) {
+    return { ok: false, reason: "offering_not_found", detail: "missing event id" };
+  }
+
+  let data: unknown;
+  let error: { code?: string | null; message?: string | null } | null;
+  try {
+    const response = await supabase.rpc("business_patch_offering_refund_policy", {
+      p_event_id: eventId,
+      p_policy: policy,
+      p_reason: reason,
+    });
+    data = response.data;
+    error = response.error ?? null;
+  } catch (thrown) {
+    return {
+      ok: false,
+      reason: "network_error",
+      detail: thrown instanceof Error ? thrown.message : String(thrown),
+    };
+  }
+
+  if (error !== null) {
+    return offeringRefundRpcFailure(error);
+  }
+  if (!isRecord(data)) {
+    return { ok: false, reason: "internal_error", detail: "unreadable reply" };
+  }
+
+  if (data.ok === true) {
+    const written = data.refundPolicy;
+    if (written === null || written === undefined) {
+      return { ok: true, refundPolicy: null };
+    }
+    if (!isRefundPolicyShape(written)) {
+      return { ok: false, reason: "internal_error", detail: "unreadable refundPolicy" };
+    }
+    return { ok: true, refundPolicy: written };
+  }
+
+  const serverReason = typeof data.reason === "string" ? data.reason : "";
+  if (!isServerReturnReason(serverReason)) {
+    return {
+      ok: false,
+      reason: "internal_error",
+      detail: serverReason === "" ? "missing reason" : serverReason,
+    };
+  }
+  if (serverReason === "refund_policy_downgrade_with_sales") {
+    const count = Number(data.affected_order_count);
+    return {
+      ok: false,
+      reason: serverReason,
+      ...(Number.isInteger(count) && count >= 0 ? { affectedOrderCount: count } : {}),
+    };
+  }
+  return { ok: false, reason: serverReason };
 }

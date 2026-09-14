@@ -44,6 +44,8 @@ export interface ExperienceOfferingStop {
   media: Array<{ url: string; type: "image" | "video" }>;
 }
 
+import type { RefundPolicyReadState } from "./offeringRefundPolicy";
+
 /** The ONE sellable ticket — a single all-in charge (no installments/deposit). */
 export interface ExperienceOfferingTicket {
   ticketTypeId: string;
@@ -133,6 +135,21 @@ export interface ExperienceOfferingData {
   // gating
   /** false → PAID experience whose brand can't charge → CTA disabled. */
   bookable: boolean;
+
+  // refund terms (#3284)
+  /**
+   * The three-state refund-terms read for section 10
+   * (I-3284-UNKNOWN-IS-NOT-NONE). REQUIRED: every adapter must say what it knows.
+   * A read path that never carries the key (the deck-card seed, the by-id
+   * checkout read) maps to `unknown`, which renders nothing.
+   */
+  refundPolicyState: RefundPolicyReadState;
+  /**
+   * true when the experience is `ended` or `cancelled`: nobody can cancel a past
+   * booking, and a cancelled experience's banner owns the refund message, so
+   * section 10 hides. Default false.
+   */
+  offeringClosed?: boolean;
 }
 
 /** The body's action callbacks (all navigation/reservation owned by the surface). */

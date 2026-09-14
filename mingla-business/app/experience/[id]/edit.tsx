@@ -207,6 +207,8 @@ function detailToInitialDraft(
     // #1022 — seed the Theme control from the persisted override columns so
     // reopening an experience shows what is actually set.
     themeOverrides: exp.themeOverrides ?? null,
+    // issue #3284 — seed the Pricing refund card with the saved terms.
+    refundPolicy: exp.refundPolicy ?? null,
     intents: exp.experienceIntents,
     locationMode: exp.locationMode ?? "single",
     pricingMode: exp.pricingMode ?? "whole",
