@@ -33,6 +33,9 @@ jest.mock("../supabase", () => ({
   },
 }));
 
+// [TEST-MOD-APPROVED #3284] Import paths only: the presets and types moved to
+// refundPolicyModel.ts and the tier rule to utils/refundPolicyPrefill.ts (bundle
+// budget, ORCH-1083). Every assertion below is unchanged.
 import {
   EVENT_FLEXIBLE_POLICY,
   EVENT_STANDARD_POLICY,
@@ -41,11 +44,10 @@ import {
   NO_REFUNDS_POLICY,
   STANDARD_POLICY,
   STRICT_POLICY,
-  realizedRefundPct,
-  setOfferingRefundPolicy,
-  updateRefundPolicy,
   type RefundPolicy,
-} from "../refundPolicyService";
+} from "../refundPolicyModel";
+import { setOfferingRefundPolicy, updateRefundPolicy } from "../refundPolicyService";
+import { realizedRefundPct } from "../../utils/refundPolicyPrefill";
 
 const EVENT_ID = "32840000-0000-4000-8000-000000000001";
 

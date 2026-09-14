@@ -44,10 +44,8 @@ import { supabase } from "../../services/supabase";
 // ORCH-1339 — guest-privacy leaf-write RPC (never the big experience RPCs).
 import { setEventGuestPrivacy } from "../../services/businessEvents";
 // issue #3284 — the one gated write owner for experience refund terms.
-import {
-  setOfferingRefundPolicy,
-  type RefundPolicy,
-} from "../../services/refundPolicyService";
+import type { RefundPolicy } from "../../services/refundPolicyModel";
+import { setOfferingRefundPolicy } from "../../services/refundPolicyWrites";
 import {
   firstRefundPolicyError,
   refundPoliciesEqual,

@@ -187,7 +187,7 @@ import {
   FLEXIBLE_POLICY,
   NO_REFUNDS_POLICY,
   type RefundPolicy,
-} from "../../../services/refundPolicyService";
+} from "../../../services/refundPolicyModel"; // [TEST-MOD-APPROVED #3284] path only
 import {
   fetchBusinessEventById,
   publishBusinessEventDraft,

@@ -144,7 +144,7 @@ import {
 } from "../../services/businessEvents";
 import { refreshBrandTaxRegistrationAttestation } from "../../services/pricingSwitchesService";
 // issue #3284 — the one gated write owner for event refund terms.
-import { setOfferingRefundPolicy } from "../../services/refundPolicyService";
+import { setOfferingRefundPolicy } from "../../services/refundPolicyWrites";
 import { refundTermsSaveFailureCopy } from "../../utils/refundPolicyTerms";
 import { updateLiveRsvp } from "../../services/rsvpEvents";
 import { buildRsvpUpdatePayloadDiff } from "../../utils/serverDraftEventMapper";

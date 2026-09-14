@@ -39,12 +39,11 @@ import {
 } from "../utils/serverDraftEventMapper";
 // ORCH-0808 — organizer-funnel instrumentation.
 import { logAppsFlyerEvent } from "./appsFlyerService";
-// issue #3284 — the gated refund-terms owner and the pure shape check (deep
+// issue #3284 — the gated refund-terms owner (its writer chunk loads lazily
+// through refundPolicyWrites, ORCH-1083) and the pure shape check (deep
 // specifier: a partial barrel mock cannot blank it).
-import {
-  setOfferingRefundPolicy,
-  type RefundPolicy,
-} from "./refundPolicyService";
+import type { RefundPolicy } from "./refundPolicyModel";
+import { setOfferingRefundPolicy } from "./refundPolicyWrites";
 import { parseOfferingRefundPolicy } from "@mingla/offering-rendering/offeringRefundPolicy";
 import { OfferingRefundTermsError } from "../utils/refundPolicyTerms";
 

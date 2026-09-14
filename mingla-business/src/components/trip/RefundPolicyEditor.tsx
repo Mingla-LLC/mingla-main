@@ -60,7 +60,7 @@ import {
   STANDARD_POLICY,
   STRICT_POLICY,
   type RefundPolicy,
-} from "../../services/refundPolicyService";
+} from "../../services/refundPolicyModel";
 import {
   REFUND_POLICY_MAX_TIERS,
   isNoRefundsPolicy,

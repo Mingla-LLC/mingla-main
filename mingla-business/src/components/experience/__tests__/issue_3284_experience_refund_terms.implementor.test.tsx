@@ -166,7 +166,7 @@ import {
   EVENT_STANDARD_POLICY,
   EVENT_STRICT_POLICY,
   type RefundPolicy,
-} from "../../../services/refundPolicyService";
+} from "../../../services/refundPolicyModel"; // [TEST-MOD-APPROVED #3284] path only
 import {
   getExperienceDetail,
   type ExperienceDetail,

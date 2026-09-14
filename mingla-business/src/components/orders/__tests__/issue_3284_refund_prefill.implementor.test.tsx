@@ -75,7 +75,7 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
 import {
   EVENT_STANDARD_POLICY,
   NO_REFUNDS_POLICY,
-} from "../../../services/refundPolicyService";
+} from "../../../services/refundPolicyModel"; // [TEST-MOD-APPROVED #3284] path only
 import type { OrderRecord } from "../../../store/orderStore";
 import {
   computeRefundPolicySuggestion,

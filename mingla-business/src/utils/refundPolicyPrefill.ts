@@ -14,11 +14,38 @@
  * currency → no suggestion at all (Constitution #9: missing is hidden).
  */
 
-import {
-  realizedRefundPct,
-  type RefundPolicy,
-} from "../services/refundPolicyService";
+import type {
+  RefundPolicy,
+  RefundPolicyTier,
+} from "../services/refundPolicyModel";
 import { formatCurrency } from "./currency";
+
+// issue #3284 [bundle budget] — the tier rule moved here from
+// refundPolicyService.ts, verbatim: this module is its only app consumer, so it
+// rides in the Orders chunk instead of the boot payload (ORCH-1083).
+/**
+ * Issue #3284 — the refund % a policy gives with `daysRemaining` whole days left
+ * before the offering starts. The SAME tier rule as the server (the #3284 writer's
+ * downgrade classifier and biz_compute_refund_for_cancel): the tier with the
+ * largest `days_before_start <= daysRemaining` wins, otherwise 0. A null policy
+ * refunds 0% at every point, and so does any time after the start (negative days).
+ *
+ * Used only to PRE-FILL the organiser's refund sheet. It never moves money.
+ */
+export function realizedRefundPct(
+  policy: RefundPolicy | null,
+  daysRemaining: number,
+): number {
+  if (policy === null || !Number.isFinite(daysRemaining)) return 0;
+  let winner: RefundPolicyTier | null = null;
+  for (const tier of policy.tiers) {
+    if (tier.days_before_start > daysRemaining) continue;
+    if (winner === null || tier.days_before_start > winner.days_before_start) {
+      winner = tier;
+    }
+  }
+  return winner === null ? 0 : winner.refund_pct;
+}
 
 export type RefundPrefillOfferingType = "event" | "experience";
 
