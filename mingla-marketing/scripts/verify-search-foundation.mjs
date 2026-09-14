@@ -31,6 +31,13 @@ const SEARCH_READY_PATHS = [
   '/help/getting-the-apps',
   '/help/sign-up-and-create-a-brand',
   '/help/connect-a-bank-and-get-paid',
+  '/help/sell-tickets-to-a-one-night-event',
+  '/help/sell-tickets-to-an-event-in-nigeria',
+  '/help/sell-tickets-to-a-multi-day-event',
+  '/help/sell-tickets-to-a-multi-day-event-in-nigeria',
+  '/help/sell-tickets-to-a-weekly-event',
+  '/help/sell-tickets-to-an-online-event',
+  '/help/sell-tickets-to-an-online-event-from-nigeria',
 ]
 
 const releaseRouteScope = JSON.parse(
@@ -49,6 +56,13 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/help/getting-the-apps',
   '/help/sign-up-and-create-a-brand',
   '/help/connect-a-bank-and-get-paid',
+  '/help/sell-tickets-to-a-one-night-event',
+  '/help/sell-tickets-to-an-event-in-nigeria',
+  '/help/sell-tickets-to-a-multi-day-event',
+  '/help/sell-tickets-to-a-multi-day-event-in-nigeria',
+  '/help/sell-tickets-to-a-weekly-event',
+  '/help/sell-tickets-to-an-online-event',
+  '/help/sell-tickets-to-an-online-event-from-nigeria',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [

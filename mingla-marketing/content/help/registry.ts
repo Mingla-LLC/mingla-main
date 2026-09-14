@@ -239,6 +239,374 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'sell-tickets-to-a-one-night-event',
+    episode: 4,
+    title: 'Sell tickets to a one-night event',
+    blurb:
+      'A one-night event from start to finish: the seven steps, a ticket priced in dollars, and the live page it ends on.',
+    duration: '2:38',
+    durationIso: 'PT2M38S',
+    chapter: 'creating',
+    intents: ['Sell tickets'],
+    surfaces: ['iOS'],
+    bambooEntryId: '0_n8x2zpdb',
+    uploadedAt: '2026-09-14',
+    // Nothing is burned into this render, so the sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Start from your brand’s Home',
+        body:
+          'In Mingla Host, tap +, choose Create event, then Ticketed event. Every paid event goes through the same seven steps.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+      {
+        title: 'Step 1 — the basics',
+        body:
+          'Give it a name and choose the format: in person, online, or both. Pick a party type, the vibe tags and every genre you will play — they all show up as tags on your event page — then write a short description of the night.',
+      },
+      {
+        title: 'Step 2 — when',
+        body:
+          'Choose a single date, then when doors open and when it ends. A night can run past midnight: doors at 9 PM and an end at 3 AM is one six-hour event, and Mingla works out the length for you.',
+      },
+      {
+        title: 'Step 3 — where',
+        body:
+          'Name the venue and search for the address. With Hide address on, only people with a ticket see where it is.',
+      },
+      {
+        title: 'Step 4 — cover, photos and theme',
+        body:
+          'Add a video cover of up to fifteen seconds; Mingla uploads it and gets it ready. Add up to eight more photos under it, which guests swipe through after the video. Then choose a colour, a typeface and a little motion — the preview changes as you pick.',
+      },
+      {
+        title: 'Step 5 — tickets',
+        body:
+          'Name the ticket and set the price — it is in your brand’s currency, dollars here — and how many you are selling. Turn on a waitlist for when it sells out, and allow transfers so a guest can pass a ticket on. Save it to see the tickets available and the maximum revenue.',
+      },
+      {
+        title: 'Steps 6 and 7 — check, then publish',
+        body:
+          'Keep the event public so anyone on Mingla can find it. Step seven checks demand and competition and gives a likely turnout — a band, not a promise. Publish, and sales open straight away.',
+      },
+      {
+        title: 'Your live page',
+        body:
+          'The cover plays, your photos sit underneath, your tags are right there, and it shows how many tickets are left. Every customer Mingla drives your way lands on this page.',
+      },
+    ],
+  },
+  {
+    slug: 'sell-tickets-to-an-event-in-nigeria',
+    episode: 5,
+    title: 'Sell tickets to an event in Nigeria',
+    blurb:
+      'The same seven steps on a Nigerian brand — a Lagos timezone, a ticket priced in naira, and Paystack underneath.',
+    duration: '2:37',
+    durationIso: 'PT2M37S',
+    chapter: 'creating',
+    intents: ['Sell tickets'],
+    surfaces: ['iOS'],
+    bambooEntryId: '0_une8ejmf',
+    uploadedAt: '2026-09-14',
+    // Nothing is burned into this render, so the sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Switch to your Nigerian brand',
+        body:
+          'A brand belongs to one country. On Home, tap the brand name and pick your Nigerian brand, then tap +, Create event and Ticketed event.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+      {
+        title: 'The basics don’t change',
+        body:
+          'Name it, set the format and the party type, then the vibe tags and every genre you will play — afrobeats, afro house, amapiano. They all show up as tags on your event page. Add a line or two about the night.',
+      },
+      {
+        title: 'Date, doors and a Lagos timezone',
+        body:
+          'Pick the date, when doors open and when it ends. Then check the timezone: this night is in Lagos, so set it to Lagos.',
+      },
+      {
+        title: 'Venue and a hidden address',
+        body:
+          'Name the venue, search for the address and pick it. Hide address keeps it for ticket holders only.',
+      },
+      {
+        title: 'Keep working while the cover processes',
+        body:
+          'Choose a video cover. Processing can take a while and you do not have to watch it: close the sheet and set the theme in the meantime. Come back and the cover is ready — then add up to eight photos and tap Use this cover.',
+      },
+      {
+        title: 'Price it in naira',
+        body:
+          'Tickets work exactly as they do on a Stripe brand, but the price is in naira. That is the one real difference: this brand is set up in Nigeria, so it runs on Paystack. Add a waitlist, allow transfers and save.',
+      },
+      {
+        title: 'Check and publish',
+        body:
+          'Keep it public with transfers on. Step seven checks demand and competition and gives a likely range, not a promise. Publish, and sales open straight away — every customer Mingla drives your way lands on the live page.',
+      },
+    ],
+  },
+  {
+    slug: 'sell-tickets-to-a-multi-day-event',
+    episode: 6,
+    title: 'Sell tickets to a multi-day event',
+    blurb:
+      'Three dates on one event page, priced per day, so a guest buys a pass for each day they choose.',
+    duration: '3:16',
+    durationIso: 'PT3M16S',
+    chapter: 'creating',
+    intents: ['Sell tickets'],
+    surfaces: ['iOS'],
+    bambooEntryId: '0_qqf5oi21',
+    uploadedAt: '2026-09-14',
+    // Nothing is burned into this render, so the sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Start a ticketed event',
+        body:
+          'From your brand’s Home, tap +, choose Create event, then Ticketed event. Step one is the same as any event; use the description to say how the days work.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+      {
+        title: 'Choose Multi-date and add each day',
+        body:
+          'In step two, choose Multi-date and add each day with its own start and end — Sunday can start in the afternoon while Friday and Saturday run late. You need at least two dates.',
+      },
+      {
+        title: 'Per day: a pass for each day',
+        body:
+          'Once there are two dates, Mingla asks how guests pay for multiple days. Per day means a guest buys a pass for each day they choose.',
+      },
+      {
+        title: 'Venue and cover',
+        body:
+          'Name the venue, search for the address and pick it; with Hide address on, only ticket holders see where it is. Add a video cover, close the sheet once it has uploaded, and set the theme while Mingla gets it ready in the background.',
+      },
+      {
+        title: 'Price one day',
+        body:
+          'Because you chose Per day, the ticket price is for one day. Say in the ticket description that guests pick their nights at checkout, set how many, turn on the waitlist, allow transfers and save. In settings, keep it public and turn on in-person payments if you will sell at the door.',
+      },
+      {
+        title: 'Preview what a guest sees',
+        body:
+          'Step seven gives a likely turnout — a band, not a promise. The preview shows each date in its own box: tick Friday and Saturday and, priced per day, the total is two passes.',
+      },
+      {
+        title: 'Publish every date at once',
+        body:
+          'Publish, and all three dates go on sale at once, on one page for the whole weekend. Every customer Mingla drives your way lands right here.',
+      },
+    ],
+  },
+  {
+    slug: 'sell-tickets-to-a-multi-day-event-in-nigeria',
+    episode: 7,
+    title: 'Sell tickets to a multi-day event in Nigeria',
+    blurb:
+      'A two-night weekend in Lagos on one page — a Lagos timezone, per-day passes in naira, and guests picking their days.',
+    duration: '3:15',
+    durationIso: 'PT3M15S',
+    chapter: 'creating',
+    intents: ['Sell tickets'],
+    surfaces: ['iOS'],
+    bambooEntryId: '0_bwrlkp2u',
+    uploadedAt: '2026-09-14',
+    // Nothing is burned into this render, so the sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Start from your Nigerian brand',
+        body:
+          'From its Home, tap +, choose Create event, then Ticketed event. The basics don’t change: name, format, party type, vibe tags and genres. Use the description to say how the nights differ.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+      {
+        title: 'Multi-date, in Lagos time',
+        body:
+          'In step two, choose Multi-date and set the timezone first — this weekend is in Lagos. Then add each day with its own hours; you need at least two.',
+      },
+      {
+        title: 'Choose Per day',
+        body:
+          'With two dates in, choose how guests pay. Per day means a separate pass for each day a guest picks.',
+      },
+      {
+        title: 'Venue, cover and photos',
+        body:
+          'Name the venue, search for the address and pick it, with Hide address on. Add a video cover, close the sheet and set the theme while Mingla finishes it in the background. Come back, add up to eight photos and tap Use this cover.',
+      },
+      {
+        title: 'A per-day price in naira',
+        body:
+          'In the ticket description, say guests can pick Saturday, Sunday or both. The price is in naira, per day. Set the capacity, turn on the waitlist and transfers, and save.',
+      },
+      {
+        title: 'Door sales, check, publish',
+        body:
+          'Keep it public with transfers on, and turn on in-person payments for door sales. Step seven checks demand and competition and gives a likely range, not a promise. Publish, and both dates go on sale at once.',
+      },
+      {
+        title: 'Guests pick their days',
+        body:
+          'On the live page, down in tickets, a guest ticks the days they want — tick both and the total covers two passes. Every customer Mingla drives your way lands right here.',
+      },
+    ],
+  },
+  {
+    slug: 'sell-tickets-to-a-weekly-event',
+    episode: 8,
+    title: 'Sell tickets to a weekly event',
+    blurb:
+      'An event that happens every week: choose Recurring, set a weekly pattern, and decide when the run ends.',
+    duration: '3:09',
+    durationIso: 'PT3M9S',
+    chapter: 'creating',
+    intents: ['Sell tickets'],
+    surfaces: ['iOS'],
+    bambooEntryId: '0_rblje1is',
+    uploadedAt: '2026-09-14',
+    // Nothing is burned into this render, so the sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Start on the brand that is hosting',
+        body:
+          'Switch to it from Home, then tap +, Create event and Ticketed event. The basics are the same as any event; add a short description so guests know what a night looks like.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+      {
+        title: 'Choose Recurring',
+        body:
+          'In step two, choose Recurring. Set the first date, then when doors open and when the night ends, then the repeat pattern — weekly, on the night it happens.',
+      },
+      {
+        title: 'Choose when the run ends',
+        body:
+          'A recurring event always needs an end: after a set number of nights, or on a date. The summary shows the whole schedule, in your timezone.',
+      },
+      {
+        title: 'Venue, cover and photos',
+        body:
+          'Name the venue and search for the address; with Hide address on, only ticket holders see it. Add a video cover — the sheet updates on its own when it is ready — then up to eight photos and a theme.',
+      },
+      {
+        title: 'Tickets and door sales',
+        body:
+          'Name and describe the ticket, set the price and how many seats you have, turn on a waitlist and allow transfers. Keep it public, and turn on in-person payments if you sell at the door.',
+      },
+      {
+        title: 'Check and publish',
+        body:
+          'Step seven checks demand for your next date and gives a likely range, not a promise. Publish, and sales open straight away.',
+      },
+    ],
+  },
+  {
+    slug: 'sell-tickets-to-an-online-event',
+    episode: 9,
+    title: 'Sell tickets to an online event',
+    blurb:
+      'A ticketed stream: the format set to Online, a link instead of an address, and an unlimited pass sold online only.',
+    duration: '3:13',
+    durationIso: 'PT3M13S',
+    chapter: 'creating',
+    intents: ['Sell tickets'],
+    surfaces: ['iOS'],
+    bambooEntryId: '0_sjuzje7s',
+    uploadedAt: '2026-09-14',
+    // Nothing is burned into this render, so the sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Set the format to Online',
+        body:
+          'From your brand’s Home, tap +, Create event, then Ticketed event. Name it and set the format to Online. Pick a party type, vibe tags and genres, then say what the stream is and what guests get from it.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+      {
+        title: 'Date and times',
+        body:
+          'In step two, pick the date, when the stream starts and when it ends.',
+      },
+      {
+        title: 'A link, not an address',
+        body:
+          'Because it is online, step three asks for the link instead of an address. Only ticket holders get it.',
+      },
+      {
+        title: 'Cover, photos and theme',
+        body:
+          'Add a video cover, then up to eight more photos that guests swipe through after the video, then a colour, a typeface and a little motion.',
+      },
+      {
+        title: 'An unlimited pass sold online only',
+        body:
+          'Name the pass, describe it and set the price. A stream has no room to fill, so turn on unlimited capacity. Under Available at, choose Online only. Set how many one person can buy, allow transfers and save.',
+      },
+      {
+        title: 'Settings, preview, publish',
+        body:
+          'Keep it public. A private guest list hides who is going but still shows how many. Step seven shows the event the way guests will see it — publish, and sales open straight away. Every customer Mingla drives your way lands on the live page.',
+      },
+    ],
+  },
+  {
+    slug: 'sell-tickets-to-an-online-event-from-nigeria',
+    episode: 10,
+    title: 'Sell tickets to an online event from Nigeria',
+    blurb:
+      'A live-streamed event on a Nigerian brand — Lagos time, a stream link, and a pass priced in naira and sold online only.',
+    duration: '2:48',
+    durationIso: 'PT2M48S',
+    chapter: 'creating',
+    intents: ['Sell tickets'],
+    surfaces: ['iOS'],
+    bambooEntryId: '0_u4q5mdaj',
+    uploadedAt: '2026-09-14',
+    // Nothing is burned into this render, so the sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Switch to your Nigerian brand',
+        body:
+          'Switch to it from Home first, then tap +, Create event and Ticketed event. Name it and set the format to Online, then pick the party type, vibe tags and genres.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+      {
+        title: 'Lagos time',
+        body:
+          'In step two, set the timezone first: search for Lagos and pick it. Then the date and when the stream starts and ends — it can run past midnight, and Mingla works out the length.',
+      },
+      {
+        title: 'A link, not an address',
+        body:
+          'Step three is the stream link. Only ticket holders see it.',
+      },
+      {
+        title: 'Cover, photos and theme',
+        body:
+          'Add a video cover, then up to eight photos underneath, then a colour, a typeface and a little motion.',
+      },
+      {
+        title: 'Price in naira, sell online only',
+        body:
+          'Name and describe the pass, set the price in naira and how many you are selling. Under Available at, choose Online only so it is not sold at the door. Add a waitlist, allow transfers and save.',
+      },
+      {
+        title: 'Preview and publish',
+        body:
+          'Keep it public. Step seven shows the event the way guests will see it — publish, and sales open straight away. Every customer Mingla drives your way lands on the live page.',
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>
