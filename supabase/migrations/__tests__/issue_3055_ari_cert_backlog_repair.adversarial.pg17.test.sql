@@ -1,3 +1,4 @@
+-- [TEST-MOD-APPROVED #1982] X3 expected abort moves with tip census 137→138.
 -- =====================================================================================
 -- #3055 adversarial proof — the backlog repair refuses a state it does not own, and
 -- leaves it exactly as it found it.
@@ -200,7 +201,8 @@ BEGIN
     DISABLE TRIGGER ari_cert_capability_requirements_immutable_trigger;
   DELETE FROM public.ari_cert_capability_requirements
   WHERE capability_id IN ('ari.rsvp.update', 'ari.marketing.update_draft', 'ari.marketing.delete_draft',
-                          'ari.growth.read_report', 'ari.order.refund_preview', 'ari.installment.list');
+                          'ari.growth.read_report', 'ari.order.refund_preview', 'ari.installment.list',
+                          'ari.team.revoke_invitation');
   INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode)
   VALUES ('ari.guests.set_approval', 'write');
   UPDATE public.ari_cert_capability_requirements SET evidence_mode = 'unsupported'
@@ -253,7 +255,7 @@ ROLLBACK TO SAVEPOINT x2;
 SAVEPOINT x3;
 INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode) VALUES ('ari.stray.unknown_capability', 'read');
 SELECT pg_temp.issue_3055_adv_expect_abort('T-3055-X3',
-  'issue_3055_preflight_requirements_disagree_with_live_finalizer: 138 requirement rows but ari_cert_finalize_run demands 137 capabilities',
+  'issue_3055_preflight_requirements_disagree_with_live_finalizer: 139 requirement rows but ari_cert_finalize_run demands 138 capabilities',
   true);
 ROLLBACK TO SAVEPOINT x3;
 
@@ -348,6 +350,8 @@ BEGIN;
 DROP TRIGGER issue_3055_adv_interference ON public.ari_cert_capability_requirements;
 COMMIT;
 \ir ../20270630003055_issue_3055_ari_cert_backlog_repair.sql
+-- [TEST-MOD-APPROVED #1982] Tip census after #3055 is #1982 (137→138).
+\ir ../20270704001982_issue_1982_ari_cert_capability_census.sql
 
 DO $restored$
 BEGIN
