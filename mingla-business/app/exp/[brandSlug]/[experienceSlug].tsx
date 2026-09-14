@@ -85,6 +85,8 @@ import { ExperiencePreview } from "../../../src/components/experience/Experience
 // re-enters the eager __common chunk and fails the budget gate.
 import type { GuestFunnelEntity } from "../../../src/services/guestFunnelLink";
 import { recordShareDestination } from "../../../src/analytics/shareDestination";
+// issue #3284 — the refund ladder's chunk starts with this page's data fetch.
+import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
 
 const SeeWhosGoingGate = React.lazy(
   () => import("../../../src/components/event/SeeWhosGoingGate"),
@@ -156,6 +158,14 @@ export default function PublicExperienceRoute(): React.ReactElement {
     typeof brandSlug === "string" ? brandSlug : null,
     typeof experienceSlug === "string" ? experienceSlug : null,
   );
+  // issue #3284 — start the refund ladder's chunk in the same mount that starts the
+  // page data fetch above, so when the data lands the body usually paints the
+  // ladder on its first frame. Nothing waits on it: if the data wins, the body
+  // shows the ladder's reserved space until the chunk arrives. Never at module
+  // evaluation, so no other route fetches it.
+  useEffect(() => {
+    loadOfferingRefundLadder().catch(() => undefined);
+  }, []);
   // ORCH-1339 — social proof keyed by the resolved experience's event id.
   // Error/missing → data stays undefined → the momentum unit is omitted (page
   // renders as today).

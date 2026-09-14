@@ -3,6 +3,7 @@
 // Implementor happy path: compile the complete actual registry, preserve the
 // canonical execution schemas, and normalize Google's typed int64 fields.
 
+// [TEST-MOD-APPROVED #1982] census pin / ledger snapshot authorized for revoke_brand_invitation.
 import {
   assert,
   assertEquals,
@@ -93,7 +94,7 @@ function actualRegistry(): GeminiToolDef[] {
   }));
 }
 
-Deno.test("#1999 happy: all 125 actual Ari tools compile for Gemini typed parameters", () => {
+Deno.test("#1999 happy: all 126 actual Ari tools compile for Gemini typed parameters", () => {
   // [TEST-MOD-APPROVED #1975+#1978+#1979] Stay + venue listing + venue manage tools; 77→80.
   // [TEST-MOD-APPROVED #1971] Five trip tools; 85→86. Only the registry-size
   // baseline moves — every schema-compilation assertion is unchanged and now
@@ -107,10 +108,11 @@ Deno.test("#1999 happy: all 125 actual Ari tools compile for Gemini typed parame
   // [TEST-MOD-APPROVED #1980] update_campaign_draft + delete_campaign_draft +
   // get_growth_tool_report; 120→123.
   // [TEST-MOD-APPROVED #1981] get_order_refund_preview + list_trip_installments; 123→125.
+  // [TEST-MOD-APPROVED #1982] revoke_brand_invitation; 125→126.
   const tools = actualRegistry();
   assertEquals(
     tools.length,
-    125,
+    126,
     "registry baseline changed; provider coverage must be reviewed",
   );
 
@@ -212,4 +214,3 @@ Deno.test("#1999 happy: numeric enums normalize narrowly and invalid enum member
     );
   }
 });
-

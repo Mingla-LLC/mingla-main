@@ -1796,6 +1796,25 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
+    // [TEST-MOD-APPROVED #3284] The #3284 refund-terms SQL suite target on the
+    // migrations lane, and the exact-filename skip in the #1931 and #2117
+    // filtered replays. Under #3095's inverted loop each row must be present
+    // exactly once, change the parsed document when removed, and leave the
+    // policy projection where it is: none adds a trigger event key, a job-level
+    // concurrency block or a job `uses:`, so PR_FAMILY_WITHOUT_CONCURRENCY_SHA256
+    // (the policy projection since #3095) is not re-pinned.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3284_offering_refund_terms.test.sql\n"],
+    [liveWorkflow("issue", "1931", "private", "event", "access"),
+      "              *20270703003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270703003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
+    // [TEST-MOD-APPROVED #3284] The consumer mapping suite's jest target in the
+    // #1929 clients job, and its test-file trigger path. Same three proofs.
+    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"),
+      " src/hooks/__tests__/issue_3284_refund_policy_mapping.implementor.test.ts"],
+    [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"),
+      '      - "app-mobile/src/hooks/__tests__/issue_3284_refund_policy_mapping*"\n'],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);

@@ -16168,7 +16168,7 @@
       "providerWorkflow": ".github/workflows/issue-1929-hidden-direct-checkout-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "8c374fd16a94e09387baf9115d9758128fc1bec6a90de3bae6e454855b95683e",
+        "sourceSha256": "14c9c2971935b326d9f5a22f2dd1793be4790a709fc6063b113903c8c5853cfc",
         "triggers": [
           "pull_request",
           "push"
@@ -16178,11 +16178,16 @@
           ".github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs",
           ".github/workflows/issue-1929-hidden-direct-checkout-tests.yml",
           "app-mobile/src/**/__tests__/issue_1929_hidden_direct_checkout*",
+          "app-mobile/src/hooks/__tests__/issue_3284_refund_policy_mapping*",
+          "app-mobile/src/hooks/useConsumerExperienceDetail.ts",
+          "app-mobile/src/hooks/useConsumerExperienceOfferingData.ts",
           "app-mobile/src/hooks/usePublicEventBySlug.ts",
           "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
           "app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source*",
+          "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx",
           "mingla-business/src/services/__tests__/issue_1929_hidden_direct_checkout*",
           "mingla-business/src/services/publicEventsService.ts",
+          "packages/offering-rendering/offeringRefundPolicy.ts",
           "supabase/functions/ticket-checkout-create/__tests__/issue_1929_hidden_checkout_edge*",
           "supabase/migrations/20270324001929_issue_1929_hidden_direct_checkout.sql",
           "supabase/migrations/__tests__/issue_1929_hidden_direct_checkout*",
@@ -16288,7 +16293,7 @@
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5676a168286599f2c25c2ba1c3dfd08354e127c59b7d38172cc99463d2ef8fd7",
+        "sourceSha256": "50e48549c87dda746adc2962634cada372e2398d1f72957fdb704aa977100da6",
         "triggers": [
           "pull_request",
           "push"
@@ -17950,7 +17955,7 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "9e69adc53846038f214ca701bb7cd91ad0bde678fa513f6fbaca5bffb06c0356",
+        "sourceSha256": "a4e0ef4ff5e8f7a7e0718ae6c41201321efeb10f6192562ee18fd1b4c5c851f9",
         "triggers": [
           "pull_request",
           "push"

@@ -544,6 +544,14 @@ export const semantic = {
   warning: "#f59e0b",
   warningTint: "rgba(245, 158, 11, 0.18)",
   error: "#ef4444",
+  /**
+   * issue #3284 — error TEXT on dark surfaces. `error` (#ef4444) measures
+   * 4.37:1 on the Android opaque glass card (#1f1f23), below AA for body text;
+   * #f87171 measures 6.58:1 (iOS glass) / 5.94:1 (Android). Borders and fills
+   * keep `error` (non-text needs only 3:1). Makes the literal already used in
+   * three dark-surface files an official token.
+   */
+  errorText: "#f87171",
   errorTint: "rgba(239, 68, 68, 0.18)",
   info: "#3b82f6",
   infoTint: "rgba(59, 130, 246, 0.18)",

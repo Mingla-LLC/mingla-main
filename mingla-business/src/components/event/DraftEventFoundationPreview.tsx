@@ -19,6 +19,8 @@ import type { MultiDatePricingMode } from "../../services/publicEventsService";
 import { multiDatePricingNote } from "../../utils/multiDatePricingMode";
 import { useThemeFont } from "../../theme/useThemeFont";
 import { scheduleDayChooserFocusAfterNotice } from "../../utils/publicEventDayRecovery";
+import { readRefundPolicyState } from "@mingla/offering-rendering/offeringRefundPolicy";
+import type { RefundPolicy } from "../../services/refundPolicyService";
 import { FoundationEventPreview } from "./FoundationEventPreview";
 import { MultiDateDayChooser } from "./MultiDateDayChooser";
 
@@ -28,6 +30,13 @@ interface DraftEventFoundationPreviewProps {
   occurrences: readonly PublicEventOccurrence[];
   isMultiDate: boolean;
   multiDatePricingMode: MultiDatePricingMode;
+  /**
+   * issue #3284 — the organiser's draft refund terms (DraftEvent.refundPolicy).
+   * Required so the preview's section 9 always shows what guests will see:
+   * null → "none" (a paid draft previews the no-policy disclosure), a policy →
+   * its ladder.
+   */
+  refundPolicy: RefundPolicy | null;
   onClose: () => void;
   onShare: () => void;
   onCheckout: () => void;
@@ -42,6 +51,7 @@ export const DraftEventFoundationPreview: React.FC<
   occurrences,
   isMultiDate,
   multiDatePricingMode,
+  refundPolicy,
   onClose,
   onShare,
   onCheckout,
@@ -59,6 +69,10 @@ export const DraftEventFoundationPreview: React.FC<
   useThemeFont(boldFamily);
 
   const [muted, setMuted] = useState(true);
+  const refundPolicyState = useMemo(
+    () => readRefundPolicyState({ refundPolicy }),
+    [refundPolicy],
+  );
   const [ticketQuantities, setTicketQuantities] = useState<Record<string, number>>({});
   const [selectedOccurrenceIds, setSelectedOccurrenceIds] = useState<readonly string[]>([]);
   const [dayChoiceMissing, setDayChoiceMissing] = useState(false);
@@ -204,6 +218,10 @@ export const DraftEventFoundationPreview: React.FC<
       ticketQuantities={ticketQuantities}
       onChangeTicketQuantity={handleChangeTicketQuantity}
       onProceedToCart={handleProceed}
+      // issue #3284 — the draft's own terms through the SAME three-state reader
+      // the public pages use: null → none, a valid policy → set.
+      refundPolicyState={refundPolicyState}
+      refundHostName={brand?.displayName ?? null}
       testID="issue-2399-draft-foundation-preview"
     />
   );

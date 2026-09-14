@@ -15,6 +15,10 @@ import { supabase } from "./supabase";
 import type { ThemeInput } from "@mingla/offering-rendering";
 import { themeOverridesFromColumns } from "./offeringTheme";
 import type { RecurrenceRule } from "../store/draftEventStore";
+import type { RefundPolicy } from "./refundPolicyService";
+// issue #3284 — the pure refund-terms shape check (deep specifier: a partial
+// barrel mock cannot blank it).
+import { parseOfferingRefundPolicy } from "@mingla/offering-rendering/offeringRefundPolicy";
 import {
   asExperienceIntent,
   normalizeExperienceIntents,
@@ -127,6 +131,13 @@ export interface ExperienceDetail {
    * treats `undefined` and `null` identically as "fully inherited".
    */
   themeOverrides?: ThemeInput | null;
+  /**
+   * issue #3284 [refund terms] — `events.refund_policy`: the organiser's refund
+   * terms, or null for none. Seeds the wizard's Pricing refund card in draft-edit
+   * and live-edit. OPTIONAL for the same reason as `themeOverrides` (existing
+   * append-only constructions stay valid); the wizard reads `?? null`.
+   */
+  refundPolicy?: RefundPolicy | null;
 }
 
 interface RawEventRow {
@@ -156,6 +167,8 @@ interface RawEventRow {
   theme_color_override?: string | null;
   theme_font_override?: string | null;
   theme_animation_override?: string | null;
+  // issue #3284 — events.refund_policy (jsonb).
+  refund_policy?: unknown;
   brands: { slug: string | null } | { slug: string | null }[] | null;
 }
 
@@ -255,7 +268,7 @@ export async function getExperienceDetail(
     .select(
       // #1022 — this select is EXPLICIT (not a star), so the three theme override
       // columns must be named here or the wizard cannot display what is set.
-      "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_poster_url, cover_media_type, location_mode, pricing_mode, experience_intent, experience_intents, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, theme_color_override, theme_font_override, theme_animation_override, brands(slug)",
+      "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_poster_url, cover_media_type, location_mode, pricing_mode, experience_intent, experience_intents, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, theme_color_override, theme_font_override, theme_animation_override, refund_policy, brands(slug)",
     )
     .eq("id", eventId)
     .eq("event_type", "experience")
@@ -320,6 +333,10 @@ export async function getExperienceDetail(
     coverMediaType: normalizeCoverType(raw.cover_media_type),
     // #1022 — read the theme back off the columns so the wizard can display it.
     themeOverrides: themeOverridesFromColumns(raw),
+    // issue #3284 — the refund terms. A value the database could never store
+    // reads as null here; the server owner still gates every write against the
+    // real stored value.
+    refundPolicy: parseOfferingRefundPolicy(raw.refund_policy ?? null),
     locationMode:
       raw.location_mode === "single" || raw.location_mode === "per_stop"
         ? raw.location_mode

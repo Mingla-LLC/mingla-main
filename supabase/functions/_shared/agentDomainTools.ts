@@ -4547,7 +4547,7 @@ const inviteScanner = writeTool(
 
 const revokeBrandMember = writeTool(
   "revoke_brand_member",
-  "Revoke a brand team member by soft-deleting their brand_team_members row (sets removed_at). Admin-gated by RLS.",
+  "Revoke a brand team member by soft-deleting their brand_team_members row (sets removed_at). Admin-gated by RLS. Pending invites use revoke_brand_invitation.",
   { brand_id: UUID, member_id: UUID },
   ["brand_id", "member_id"],
   async (args, client, userId) => {
@@ -4579,17 +4579,47 @@ const revokeBrandMember = writeTool(
   },
 );
 
-// #1982 — Team screen list (listBrandTeamMembers + listBrandInvitations).
+// #1982 — same Host verb as brandInvitationsService.revokeBrandInvitation.
+const revokeBrandInvitation = writeTool(
+  "revoke_brand_invitation",
+  "Revoke a pending brand team invitation (brand_invitations.status=revoked). Admin-gated by RLS. Accepted members use revoke_brand_member.",
+  { brand_id: UUID, invitation_id: UUID },
+  ["brand_id", "invitation_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.invitation_id)) {
+      throw new ToolError("INVALID_ARGS", "invitation_id must be a uuid");
+    }
+    const { data, error } = await client
+      .from("brand_invitations")
+      .update({ status: "revoked", revoked_at: new Date().toISOString() })
+      .eq("id", args.invitation_id)
+      .eq("brand_id", args.brand_id)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (data === null) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "That brand invitation was not found, is not pending, or you lack permission.",
+      );
+    }
+    return { invitation_id: args.invitation_id, revoked: true };
+  },
+);
+
+// #1982 — Team screen list (members + brand invites + scanner invites).
 // Role changes are invite-time only on Host; invite_brand_member already covers that.
 const listBrandTeam = writeTool(
   "list_brand_team",
-  "List active brand team members and pending brand invitations (roles included). Admin-gated by RLS.",
+  "List active brand team members, brand invitations (all statuses), and scanner invitations (roles/scopes included). Use pending invitation ids from this list for revoke_brand_invitation / revoke_scanner_invitation. Admin-gated by RLS.",
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
-    const [members, invitations] = await Promise.all([
+    const [members, invitations, scanners] = await Promise.all([
       client
         .from("brand_team_members")
         .select("id, user_id, role, invited_at, accepted_at")
@@ -4602,15 +4632,28 @@ const listBrandTeam = writeTool(
         )
         .eq("brand_id", args.brand_id)
         .order("expires_at", { ascending: false }),
+      // #1982 — brand-scoped scanner discovery so revoke_scanner_invitation
+      // never invents UUIDs (event-scoped list remains manage_event_scanners).
+      client
+        .from("scanner_invitations")
+        .select(
+          "id, brand_id, event_id, scope, email, invitee_name, permissions, status, expires_at, accepted_at, revoked_at, created_at",
+        )
+        .eq("brand_id", args.brand_id)
+        .order("created_at", { ascending: false }),
     ]);
     if (members.error) throw new ToolError("RPC_FAILED", members.error.message);
     if (invitations.error) {
       throw new ToolError("RPC_FAILED", invitations.error.message);
     }
+    if (scanners.error) {
+      throw new ToolError("RPC_FAILED", scanners.error.message);
+    }
     return {
       brand_id: args.brand_id,
       members: members.data ?? [],
       invitations: invitations.data ?? [],
+      scanner_invitations: scanners.data ?? [],
     };
   },
 );
@@ -4646,23 +4689,62 @@ const revokeScannerInvitation = writeTool(
 );
 
 // #1982 — Brand People book list/detail/add via the same RPCs Host uses.
+const PEOPLE_BOOK_CURSOR = {
+  type: "object",
+  additionalProperties: false,
+  required: ["updatedAt", "personId"],
+  properties: {
+    // Host RPC casts updatedAt to timestamptz; reject non-date-times before RPC.
+    updatedAt: { type: "string", format: "date-time" },
+    personId: { type: "string", format: "uuid" },
+  },
+};
+
+function normalizePeopleBookCursor(
+  value: unknown,
+): Record<string, unknown> | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "cursor must be passed back exactly as it was returned — never edited or rebuilt.",
+    );
+  }
+  const cursor = value as Record<string, unknown>;
+  const keys = Object.keys(cursor).sort();
+  if (
+    keys.length !== 2 ||
+    keys[0] !== "personId" ||
+    keys[1] !== "updatedAt" ||
+    typeof cursor.updatedAt !== "string" ||
+    Number.isNaN(Date.parse(cursor.updatedAt)) ||
+    !isUuid(cursor.personId)
+  ) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "cursor must be passed back exactly as it was returned — never edited or rebuilt.",
+    );
+  }
+  return { updatedAt: cursor.updatedAt, personId: cursor.personId };
+}
+
 const manageBrandPeople = writeTool(
   "manage_brand_people",
-  "List, inspect, or manually add Brand People via biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person. Marketing-gated.",
+  "List, inspect, or manually add Brand People via biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person. Marketing-gated. Add requires display_name plus email and/or phone_e164 (Host people_contact_required). For list: when the response has hasMore=true, call again with cursor set to the returned nextCursor unchanged.",
   {
     brand_id: UUID,
     action: { type: "string", enum: ["list", "get", "add"] },
     person_id: UUID,
-    search: { type: "string", maxLength: 200 },
+    search: { type: "string", maxLength: 120 },
+    cursor: PEOPLE_BOOK_CURSOR,
     limit: { type: "integer", minimum: 1, maximum: 100 },
-    display_name: { type: "string", minLength: 1, maxLength: 200 },
+    display_name: { type: "string", minLength: 1, maxLength: 120 },
     email: { type: "string", maxLength: 320 },
     phone_e164: { type: "string", maxLength: 32 },
     phone_country_iso: { type: "string", minLength: 2, maxLength: 2 },
-    client_request_id: UUID,
   },
   ["brand_id", "action"],
-  async (args, client, userId) => {
+  async (args, client, userId, context) => {
     await requireBrand(args, client, userId);
     const action = String(args.action);
     if (action === "list") {
@@ -4670,12 +4752,25 @@ const manageBrandPeople = writeTool(
       const limit = typeof args.limit === "number" && args.limit >= 1
         ? Math.min(100, Math.floor(args.limit))
         : 25;
-      return await callRpc(client, "biz_get_brand_people_book", {
-        p_brand_id: args.brand_id,
-        p_search: typeof args.search === "string" ? args.search : null,
-        p_cursor: null,
-        p_limit: limit,
-      });
+      // #1982 — forward Host book cursor (updatedAt + personId). Never invent
+      // or rebuild a cursor; pass nextCursor back unchanged when hasMore.
+      const cursor = normalizePeopleBookCursor(args.cursor);
+      const result = await callRpc<Record<string, unknown>>(
+        client,
+        "biz_get_brand_people_book",
+        {
+          p_brand_id: args.brand_id,
+          p_search: typeof args.search === "string" ? args.search : null,
+          p_cursor: cursor,
+          p_limit: limit,
+        },
+      );
+      const nextCursor = result?.nextCursor ?? result?.next_cursor ?? null;
+      return {
+        ...result,
+        hasMore: nextCursor != null,
+        nextCursor,
+      };
     }
     if (action === "get") {
       await assertAgentReadBrand(client, userId, args.brand_id);
@@ -4691,22 +4786,33 @@ const manageBrandPeople = writeTool(
       const displayName = typeof args.display_name === "string"
         ? args.display_name.trim()
         : "";
-      if (displayName.length < 1) {
+      if (displayName.length < 1 || displayName.length > 120) {
         throw new ToolError(
           "INVALID_ARGS",
-          "display_name is required to add a person",
+          "display_name is required (1–120 characters) to add a person",
         );
       }
-      const clientRequestId = isUuid(args.client_request_id)
-        ? args.client_request_id
-        : newIdempotencyKey();
+      const email = typeof args.email === "string" && args.email.trim()
+        ? args.email.trim()
+        : null;
+      const phone =
+        typeof args.phone_e164 === "string" && args.phone_e164.trim()
+          ? args.phone_e164.trim()
+          : null;
+      if (email === null && phone === null) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Add requires email and/or phone_e164 (Host people_contact_required).",
+        );
+      }
+      // Confirmed Ari writes use the immutable operation id as Host's
+      // p_client_request_id so retries cannot mint a second Brand Person.
+      const clientRequestId = requireAgentOperationId(context);
       return await callRpc(client, "biz_add_brand_person", {
         p_brand_id: args.brand_id,
         p_display_name: displayName,
-        p_email: typeof args.email === "string" ? args.email : null,
-        p_phone_e164: typeof args.phone_e164 === "string"
-          ? args.phone_e164
-          : null,
+        p_email: email,
+        p_phone_e164: phone,
         p_phone_country_iso: typeof args.phone_country_iso === "string"
           ? args.phone_country_iso
           : null,
@@ -6578,6 +6684,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   inviteBrandMember,
   inviteScanner,
   revokeBrandMember,
+  revokeBrandInvitation,
   listBrandTeam,
   revokeScannerInvitation,
   manageBrandPeople,

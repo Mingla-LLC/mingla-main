@@ -532,6 +532,7 @@ concurrency:
 #   orch-1385-workspace-deps-declared  ->  orch-1385-workspace-deps-declared.mjs, orch-1385-workspace-deps-declared.test.mjs
 #   orch-1387-wallet-config-threaded  ->  orch-1387-wallet-config-threaded.mjs, walletConfigThreading.orch1387.test.mjs, wallet_config_threading.orch1387.test.mjs
 #   orch-1398-expo-pinned-54  ->  orch-1398-expo-pinned-54.mjs
+#   orch-3284-experience-section-order  ->  orch-3284-experience-section-order.mjs
 #   regression-test-backfill-warning  ->  regression-test-backfill-warning.mjs
 #   trip-capacity-single-source  ->  i-proposed-trip-canonical-columns.mjs, i-proposed-trip-canonical-columns.test.mjs
 

@@ -27,6 +27,11 @@ import type {
   EditableLiveEventFields,
   LiveEvent,
 } from "../store/liveEventStore";
+import type { RefundPolicy } from "../services/refundPolicyService";
+import {
+  refundPoliciesEqual,
+  refundPolicyDisplayName,
+} from "./refundPolicyTerms";
 
 // ---- Adapter (LiveEvent → DraftEvent view) --------------------------
 
@@ -90,6 +95,11 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   // and editableDraftToPatch refuses to diff — or save — against unknown.
   coverGallery: e.coverGallery,
   tickets: e.tickets,
+  // issue #3284 — the published refund terms seed the Settings refund card. An
+  // UNKNOWN value (not read) opens as "no terms"; editableDraftToPatch compares
+  // both sides normalised, so an untouched card never forges a diff, and any terms
+  // the organiser does set are gated by the server against the REAL stored value.
+  refundPolicy: e.refundPolicy ?? null,
   visibility: e.visibility,
   requireApproval: e.requireApproval,
   allowTransfers: e.allowTransfers,
@@ -182,6 +192,8 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   locationGeo: "Map location",
   // ORCH-1006
   pricingSwitches: "Who covers costs",
+  // issue #3284
+  refundPolicy: "Refund policy",
   // ORCH-1172 — RSVP host-control labels (surface in the ChangeSummaryModal
   // + drive the rsvp-setup "Edited" indicator).
   rsvpCapacity: "Guest limit",
@@ -214,6 +226,9 @@ export const MATERIAL_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "recurrenceRule",
   "multiDates",
   "tickets",
+  // issue #3284 — buyers' money terms: a change notifies ticket buyers through the
+  // same material-change path as a date or ticket change.
+  "refundPolicy",
 ];
 
 /**
@@ -364,6 +379,11 @@ export const editableDraftToPatch = (
     patch.coverGallery = edited.coverGallery;
   }
   if (!deepEqual(original.tickets, edited.tickets)) patch.tickets = edited.tickets;
+  // issue #3284 — the refund terms, compared with undefined and null both meaning
+  // "no terms" (the adapter seeds null for an unknown original).
+  if (!refundPoliciesEqual(original.refundPolicy, edited.refundPolicy)) {
+    patch.refundPolicy = edited.refundPolicy ?? null;
+  }
   if (original.visibility !== edited.visibility) {
     patch.visibility = edited.visibility;
   }
@@ -563,6 +583,19 @@ const formatValueForKey = (
   return truncate(JSON.stringify(value));
 };
 
+/** issue #3284 — "Flexible" / "No refunds" / "Custom (3 tiers)" / "No policy". */
+const formatRefundPolicyForDiff = (value: unknown): string =>
+  refundPolicyDisplayName(value as RefundPolicy | null | undefined);
+
+/** Field display value, with the refund terms named instead of "(empty)" / JSON. */
+const formatDiffValue = (
+  key: keyof EditableLiveEventFields,
+  value: unknown,
+): string => {
+  if (key === "refundPolicy") return formatRefundPolicyForDiff(value);
+  return formatValueForKey(key, value);
+};
+
 /**
  * Compute per-key field diffs between original LiveEvent and edited
  * DraftEvent view. Only includes keys that actually changed.
@@ -603,12 +636,23 @@ export const computeRichFieldDiffs = (
       ) {
         continue;
       }
+    } else if (key === "refundPolicy") {
+      // issue #3284 — mirror editableDraftToPatch: undefined and null are both
+      // "no terms", so an untouched card never shows a phantom change row.
+      if (
+        refundPoliciesEqual(
+          a as RefundPolicy | null | undefined,
+          b as RefundPolicy | null | undefined,
+        )
+      ) {
+        continue;
+      }
     } else if (deepEqual(a, b)) continue;
     diffs.push({
       fieldKey: String(key),
       fieldLabel: FIELD_LABELS[key],
-      oldValue: formatValueForKey(key, a),
-      newValue: formatValueForKey(key, b),
+      oldValue: formatDiffValue(key, a),
+      newValue: formatDiffValue(key, b),
       severity: MATERIAL_KEYS.includes(key) ? "material" : "safe",
     });
   }

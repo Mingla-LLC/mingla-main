@@ -38,6 +38,13 @@ import {
   type ThemeInput,
   type OfferingGalleryImage,
 } from "@mingla/offering-rendering";
+// issue #3284 — the three-state refund-terms reader. DEEP specifier on purpose: it
+// is pure, and a partial barrel mock cannot blank it.
+import {
+  readRefundPolicyState,
+  UNKNOWN_REFUND_POLICY_STATE,
+  type RefundPolicyReadState,
+} from "@mingla/offering-rendering/offeringRefundPolicy";
 
 export type PublicExperienceWhenMode = "single" | "recurring" | "multi_date";
 
@@ -133,6 +140,14 @@ export interface PublicExperience {
    * Defaults to true when absent (back-compat).
    */
   bookable: boolean;
+  /**
+   * issue #3284 — the organiser's published refund terms, read from the reader's
+   * `refundPolicy` key into set / none / unknown (I-3284-UNKNOWN-IS-NOT-NONE).
+   * `unknown` when the key is absent (a pre-#3284 server or cached body) and on
+   * the by-id checkout read, which never selects the column — so no surface ever
+   * claims "no policy" for an experience that has one.
+   */
+  refundPolicyState: RefundPolicyReadState;
 }
 
 export interface PublicExperienceBrand {
@@ -418,6 +433,8 @@ function mapExperience(input: MapInput): PublicExperience {
     ),
     // ORCH-1076 — default true when the caller did not resolve readiness.
     bookable: input.bookable !== false,
+    // issue #3284 — this direct-read path selects no refund terms: unknown.
+    refundPolicyState: UNKNOWN_REFUND_POLICY_STATE,
   };
 }
 
@@ -586,6 +603,11 @@ interface RpcExpPayload {
   ticket: RpcExpTicket | null;
   dates: RpcExpDate[];
   bookable: boolean;
+  /**
+   * issue #3284 — `null` = no published terms; ABSENT (a pre-#3284 server or a
+   * cached body) = unknown. Read only through readRefundPolicyState.
+   */
+  refundPolicy?: unknown;
 }
 
 function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
@@ -673,6 +695,8 @@ function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
       p.themeAnimationOverride,
     ),
     bookable: p.bookable !== false,
+    // issue #3284 — absent key → unknown; null → none; a valid policy → set.
+    refundPolicyState: readRefundPolicyState(p),
   };
 
   return { experience, brand };

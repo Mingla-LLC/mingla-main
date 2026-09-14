@@ -23,6 +23,12 @@ import { supabase } from "../services/supabase";
 // issue #868 [cover-gallery] — ADDITIONAL image/GIF items (pg_public_experience_by_slug
 // already returns coverGallery from Pass 1 §C.1).
 import type { OfferingGalleryImage } from "@mingla/offering-rendering";
+// issue #3284 — the three-state refund-terms reader, by DEEP specifier (pure; a
+// partial barrel mock cannot blank it).
+import {
+  readRefundPolicyState,
+  type RefundPolicyReadState,
+} from "@mingla/offering-rendering/offeringRefundPolicy";
 
 export type ConsumerExperienceWhenMode = "single" | "recurring" | "multi_date";
 
@@ -96,6 +102,18 @@ export interface ConsumerExperienceDetail {
   occurrences: ConsumerExperienceOccurrence[];
   /** false → PAID experience whose brand can't charge → CTA disabled. */
   bookable: boolean;
+  /**
+   * issue #3284 — the organiser's published refund terms: set / none / unknown
+   * (I-3284-UNKNOWN-IS-NOT-NONE). An absent `refundPolicy` key — a server from
+   * before #3284 — is unknown and renders nothing.
+   */
+  refundPolicyState: RefundPolicyReadState;
+  /**
+   * issue #3284 — true when the reader's status is `ended` or `cancelled`, so the
+   * refund terms hide (nobody can cancel a past booking; a cancelled experience's
+   * banner owns the refund message).
+   */
+  offeringClosed: boolean;
   // anon-safe brand theme (for the synchronous palette).
   brandTheme: {
     color: string | null;
@@ -175,6 +193,10 @@ interface RpcPayload {
   ticket: RpcTicket | null;
   dates: RpcDate[];
   bookable: boolean;
+  /** issue #3284 — the reader's lifecycle status (scheduled/live/ended/cancelled). */
+  status?: string | null;
+  /** issue #3284 — null = no published terms; ABSENT = unknown. */
+  refundPolicy?: unknown;
 }
 
 function coverType(raw: string | null): "image" | "video" | "gif" | null {
@@ -264,6 +286,9 @@ function mapPayload(p: RpcPayload): ConsumerExperienceDetail {
       remaining: d.ticketsRemaining ?? null,
     })),
     bookable: p.bookable !== false,
+    // issue #3284 — absent key → unknown; null → none; a valid policy → set.
+    refundPolicyState: readRefundPolicyState(p),
+    offeringClosed: p.status === "ended" || p.status === "cancelled",
     brandTheme: {
       color: p.brand.themeColor ?? null,
       font: p.brand.themeFont ?? null,

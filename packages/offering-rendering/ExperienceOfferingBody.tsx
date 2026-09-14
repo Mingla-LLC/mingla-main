@@ -38,8 +38,18 @@
  *   7.  About               (collapsible)
  *   8.  The itinerary       (shared StopSpine)
  *   9.  Where you'll start  (stop-1 map — lat/lng-gated)
- *   10. Price card          (ONE all-in price — phone inline)
- *   11. Floating/docked bar (surface-pinned sibling — NOT here; docked passed in)
+ *   10. Cancellation policy (#3284 — the shared OfferingRefundLadder, immediately
+ *                            before the price card: the last content section
+ *                            before this page's commitment block. Hidden when the
+ *                            experience is ended or cancelled, when the read state
+ *                            is unknown, and on a free experience)
+ *   11. Price card          (ONE all-in price — phone inline)
+ *       [all-in reassurance line — the price card's footnote]
+ *       [dockedReserve — always the LAST child]
+ *   12. Floating/docked bar (surface-pinned sibling — NOT here; docked passed in)
+ *
+ * The order is pinned by orch-3284-experience-section-order.mjs
+ * (I-3284-CANONICAL-10-SECTION-ORDER).
  */
 
 import React, { useCallback, useState } from "react";
@@ -94,6 +104,10 @@ import type {
   ExperienceOfferingCallbacks,
   ExperienceOfferingData,
 } from "./experienceOfferingTypes";
+// #3284 — section 10: the shared refund ladder.
+// #3284 [bundle budget] — the ladder loads in its own chunk (ORCH-1083); never
+// import ./OfferingRefundLadder statically here.
+import { LazyOfferingRefundLadder as OfferingRefundLadder } from "./LazyOfferingRefundLadder";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
@@ -284,6 +298,20 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
 
   const vibeLabels = experienceVibeLabels(data.intents);
   const { label: priceLabel, isFree } = experiencePriceLabel(data);
+  // #3284 — section 10 gating (design part 1 §3.10). PAID uses the SAME rule as
+  // experiencePriceLabel: a missing ticket or a free / zero-priced ticket is not
+  // paid. Closed (ended or cancelled) and unknown render nothing.
+  // Optional chaining on a required field on purpose: data mapped from a payload
+  // cached by an older build must degrade to "unknown", never crash the page.
+  const refundState = data.refundPolicyState;
+  const refundReadStatus = refundState?.status ?? "unknown";
+  const experienceIsPaid =
+    data.ticket !== null && !(data.ticket.isFree || data.ticket.priceCents === 0);
+  const showRefundTerms =
+    data.offeringClosed !== true &&
+    experienceIsPaid &&
+    (refundReadStatus === "set" || refundReadStatus === "none");
+  const refundPolicy = refundState?.status === "set" ? refundState.policy : null;
   // ORCH-1186 Fix 1 — the ONE adaptive availability banner (computed in-body so
   // consumer + business/web render identical copy; closes the consumer gap).
   const availability = experienceAvailabilityBanner(data);
@@ -582,7 +610,26 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
         </View>
       ) : null}
 
-      {/* (10) Price card — ONE combined all-in price (phone inline; desktop in panel). */}
+      {/* (10) Cancellation policy — shared OfferingRefundLadder (renders its own
+          heading). #3284: immediately before the price card, never between the
+          price and its footnote. The wrapper always mounts as the section-order
+          gate anchor and has zero height when hidden. */}
+      <View testID="experience-body-cancellation">
+        {showRefundTerms ? (
+          <OfferingRefundLadder
+            policy={refundPolicy}
+            offeringType="experience"
+            isPaid={experienceIsPaid}
+            hostName={brand.name}
+            palette={palette}
+            surface={surface}
+            fontFamily={boldFamily}
+            testID="experience-body-cancellation-ladder"
+          />
+        ) : null}
+      </View>
+
+      {/* (11) Price card — ONE combined all-in price (phone inline; desktop in panel). */}
       {!isDesktop && data.ticket !== null ? (
         <View style={[styles.pricingCard, surface.card]} testID="experience-body-price-card">
           <Text style={[styles.pricingLabel, surface.secondaryText]}>
