@@ -143,11 +143,6 @@ import {
 } from "./coverPickerGalleryAdd";
 import { reportGalleryAddFailure } from "./coverPickerGalleryTelemetry";
 import { createStorageUploadWithRetry } from "../../services/storageUploadWithRetry";
-
-// issue #3318 — Additional photos' storage runner: a size-scaled deadline per
-// attempt and one retry on a network failure. Imported HERE (CoverPicker is its
-// own lazy web chunk), never by the upload services, which sit in the boot chunk.
-const galleryStorageUpload = createStorageUploadWithRetry();
 import { findSelectedProviderId } from "./coverPickerSelection";
 import { Icon } from "./Icon";
 import { EventCoverMedia, type EventCoverMediaErrorEvent } from "./EventCoverMedia";
@@ -158,6 +153,11 @@ import type { CoverTarget } from "./coverTarget";
 import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 
 export type { CoverTarget } from "./coverTarget";
+
+// issue #3318 — Additional photos' storage runner: a size-scaled deadline per
+// attempt and one retry on a network failure. Imported HERE (CoverPicker is its
+// own lazy web chunk), never by the upload services, which sit in the boot chunk.
+const galleryStorageUpload = createStorageUploadWithRetry();
 
 // LOCKED tab ids (SPEC §4.3); display labels are designer-owned copy (DESIGN §3.1).
 type CoverTabId = "library" | "gif" | "stock";
@@ -2665,7 +2665,7 @@ const AdditionalPhotosSection: React.FC<{
               />
               <View style={styles.galleryTileOverlay} pointerEvents="none">
                 <Icon name="close" size={16} color={textTokens.inverse} />
-                <Text style={styles.galleryTileFailedLabel}>Couldn't upload</Text>
+                <Text style={styles.galleryTileFailedLabel}>{"Couldn't upload"}</Text>
               </View>
               <View style={styles.galleryMenu}>
                 <GalleryMenuItem
