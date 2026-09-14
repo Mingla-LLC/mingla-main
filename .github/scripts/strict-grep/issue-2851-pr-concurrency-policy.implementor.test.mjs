@@ -1148,6 +1148,25 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // 9356c425... / zero errors. Whole-block assertions below lock the branch
   // deltas independently while every receipt retains #1778's main truth.
   //
+  // [TEST-MOD-APPROVED #3325] Re-derived after #3325 added ONE paths entry, the
+  // boot-payload baseline, to the #2099 pending-venue lane's shared paths anchor
+  // (push reuses the anchor, so both events widen). The lane is DESCRIBED, never
+  // spelled as a filename, for the #2148 provider-reference reason above. The
+  // workflow delta over origin/main c6efb21f6 is `1 file changed, 14
+  // insertions(+)`, zero deletions: 13 comment lines, which YAML drops before
+  // canonicalization, and the one entry. No concurrency, group:,
+  // cancel-in-progress, event kind or workflow identity changed. PR_FAMILY_COUNT
+  // (124) and PR_FAMILY_IDENTITY_SHA256 (9356c425...) are UNCHANGED.
+  //
+  // MEASURED from the committed tree 5e305731e (`git archive`), three
+  // derivations, identical, with this file's own RUBY_CANONICAL and block
+  // literals extracted rather than retyped, and not copied from a PR run's
+  // printed `actual:` (#3015): current tree 1d728bae...; restoring ONLY the
+  // #2099 lane to origin/main bytes, or removing only the one entry, recovers
+  // #3176's pin 330740ba... exactly. The #3176, #3288 and combined receipts below
+  // now start from that pre-#3325 tree, so their literals do not move, and the
+  // entry is in the revert-sensitivity loop.
+  //
   // [TEST-MOD-APPROVED #3095] IA-1. Re-derived because this digest now hashes a
   // DIFFERENT THING, not because a workflow changed. Until #3095 it hashed each
   // PR-family workflow's whole parsed document minus top-level concurrency, so
@@ -1707,6 +1726,11 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "            -f supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql\n"],
     [liveWorkflow("issue", "2333", "online", "event", "publish"),
       "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql\n"],
+    // [TEST-MOD-APPROVED #3325] The boot-payload baseline entry #3325 added to
+    // the #2099 lane's shared paths anchor. It must independently move the
+    // digest, or the re-pin above would accept a change nothing proves.
+    [liveWorkflow("issue", "2099", "pending", "venue", "identity", "correction", "tests"),
+      '      - "mingla-business/scripts/ci/bundle-baseline.json"\n'],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
@@ -1720,7 +1744,28 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   // must reproduce origin/main's independently measured combined-history pin;
   // the loop above separately proves the executable skip cannot disappear while
   // its explanation remains behind.
-  const before3176 = { ...sources };
+  //
+  // [TEST-MOD-APPROVED #3325] Reverting #3325's single paths entry must recover
+  // #3176's combined-tree pin, and every older receipt starts from that
+  // pre-#3325 tree so their literals stay exactly as their owners measured them.
+  const issue2099Name = liveWorkflow(
+    "issue", "2099", "pending", "venue", "identity", "correction", "tests",
+  );
+  const before3325 = { ...sources };
+  before3325[issue2099Name] = removeExactLine(
+    before3325[issue2099Name],
+    '      - "mingla-business/scripts/ci/bundle-baseline.json"\n',
+    "#3325 baseline paths entry",
+  );
+  const before3325Authority = currentTreeAuthority(before3325);
+  assert.equal(before3325Authority.names.length, 124);
+  assert.equal(before3325Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
+  assert.equal(
+    before3325Authority.withoutConcurrencySha256,
+    "330740baa866dd1013a9047498c746effbb6808e4e0a5a3cb13df02c8b78447a",
+  );
+
+  const before3176 = { ...before3325 };
   const offeringVisibilityName = liveWorkflow(
     "issue", "2117", "offering", "visibility", "gate", "tests",
   );
@@ -1775,7 +1820,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql",
     "",
   ].join("\n");
-  const before3288 = { ...sources };
+  const before3288 = { ...before3325 };
   before3288[migrationsName] = removeExactLine(
     before3288[migrationsName], gallerySuiteBlock, "#3288 migration-suite block",
   );

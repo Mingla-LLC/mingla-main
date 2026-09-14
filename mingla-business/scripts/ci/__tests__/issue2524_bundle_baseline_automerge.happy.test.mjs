@@ -785,6 +785,14 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
     // exception at a time. That contract is worth more than the one job saved,
     // so the exclusion was reverted rather than the assertion weakened.
     ["issue-1614-onconflict-arbiter-audit", "yml"].join("."),
+    // #3325. #2099's SC-4 reads the baseline at run time on a push to main, so a
+    // baseline-only MERGE must start it (see the push test below). This PR-side
+    // start is the forced companion of that entry, not a convenience: #2648's
+    // guard in the #2855 implementor suite pins push to reuse the pull_request
+    // paths anchor ("never a second copy"). On a baseline-only PR its "SC-4
+    // scope" step matches none of the six product paths and skips the
+    // measurement, which the #3325 test below asserts.
+    ["issue-2099-pending-venue-identity-correction-tests", "yml"].join("."),
   ]);
 
   function globToRe(glob) {
@@ -910,6 +918,11 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
       // Always-run by their own pinned contracts; see KEEP above.
       ["issue-1614-onconflict-arbiter-audit", "yml"].join("."),
       ["ci-batch", "yml"].join("."),
+      // #3325. Its SC-4 measures main's __common against this very file, so a
+      // baseline-only commit CHANGES this lane's verdict. Leaving it out let
+      // #3324's recording merge start no run, and main-health (push and schedule
+      // runs only) kept #3279's stale red from SC-4 on main.
+      ["issue-2099-pending-venue-identity-correction-tests", "yml"].join("."),
     ].sort());
   });
 
@@ -920,5 +933,57 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
     assert.ok(ordinary.size > 20, `a real source change must still fan out; got ${ordinary.size}`);
     const sibling = startedBy("mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs", ["pull_request"]);
     assert.ok(sibling.size > 1, `the baseline's SIBLINGS are not excluded; got ${sibling.size}`);
+  });
+
+  test("#3325 — a baseline-only merge re-runs #2099's SC-4 on main, and nothing about the budget moved", () => {
+    // Assembled, never literal — see the #2148 registry note at the top of this file.
+    const name = ["issue-2099-pending-venue-identity-correction-tests", "yml"].join(".");
+    const workflow = readFileSync(join(WORKFLOWS, name), "utf8");
+
+    // 1. The EXACT baseline path sits in the shared anchor, once, as a literal
+    //    entry rather than something a glob happens to cover. Removing it reds here
+    //    and in the push test above.
+    const lines = workflow.split("\n");
+    const anchorStart = lines.findIndex((line) => /^\s+paths: &issue2099Paths\s*$/.test(line));
+    assert.notEqual(anchorStart, -1, "the shared #2099 paths anchor is missing");
+    const pushAt = lines.indexOf("  push:");
+    assert.ok(pushAt > anchorStart, "the push trigger must follow the anchor it reuses");
+    const declared = lines.slice(anchorStart + 1, pushAt)
+      .map((line) => /^\s+- "([^"]+)"\s*$/.exec(line)?.[1])
+      .filter(Boolean);
+    assert.deepEqual(declared.filter((entry) => entry === BASELINE_PATH), [BASELINE_PATH],
+      "#3325: the anchor must list the baseline path exactly once");
+    assert.match(workflow, /\n  push:\n    branches: \[main\]\n    paths: \*issue2099Paths\n/,
+      "push to main must reuse that anchor, so the entry reaches the push trigger");
+    assert.ok(startedBy(BASELINE_PATH, ["push"]).has(name), "a baseline-only push must start #2099");
+
+    // 2. On push, SC-4 measures unconditionally: the non-PR branch sets run=true
+    //    and exits before any changed-file listing is read.
+    const scope = workflow.slice(workflow.indexOf("id: sc4scope"), workflow.indexOf("SC-4 outer guard"));
+    assert.ok(scope.length > 0, "the SC-4 scope step is missing");
+    assert.match(scope,
+      /if \[ "\$\{\{ github\.event_name \}\}" != "pull_request" \]; then\n\s+echo "run=true" >> "\$GITHUB_OUTPUT"\n\s+echo "[^"\n]*"\n\s+exit 0\n\s+fi\n/,
+      "a push must reach the SC-4 measurement without consulting the PR file list");
+    assert.ok(scope.indexOf("exit 0") < scope.indexOf("pulls/"), "the push exit must precede the PR file listing");
+
+    // 3. On a pull request, a baseline-only change still skips the measurement:
+    //    the baseline is NOT one of SC-4's exact product paths (#2193 / #2855).
+    const productBlock = /sc4_product_paths=\(\n([\s\S]*?)\n\s+\)/.exec(scope);
+    assert.ok(productBlock, "SC-4's exact product-path list is missing");
+    const productPaths = [...productBlock[1].matchAll(/'([^']+)'/g)].map((match) => match[1]);
+    assert.equal(productPaths.length, 6, "SC-4 must stay scoped to its six product paths");
+    assert.ok(!productPaths.includes(BASELINE_PATH), "a baseline-only PR must never be charged #2099's budget");
+    assert.match(scope, /if \[ "\$path" = "\$product_path" \]; then/, "product paths must match by exact equality");
+
+    // 4. The fix is a TRIGGER, not a relaxation. SC-4 still reads the baseline at
+    //    run time and still fails above 1,024 B, and the shared ceiling mirror is
+    //    still derived from the budget source rather than copied.
+    const guard = workflow.slice(workflow.indexOf("SC-4 outer guard"));
+    assert.match(guard, /readFileSync\("\.\/scripts\/ci\/bundle-baseline\.json", "utf8"\)/);
+    assert.match(guard, /if \(delta > 1024\) \{/, "#2099's private tripwire must stay at 1,024 B");
+    assert.match(guard, /process\.exit\(1\);/);
+    assert.ok(!/continue-on-error|\|\| true/.test(guard.slice(0, guard.indexOf("issue-2099-postgres-contract"))),
+      "SC-4 must stay fail-closed");
+    assertCeilingMirrorMatchesBudgetSource();
   });
 });
