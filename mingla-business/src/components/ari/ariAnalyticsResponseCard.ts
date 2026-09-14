@@ -36,9 +36,11 @@ export const formatCentsByCurrency = (value: unknown): string | null => {
   const map = asRecord(value);
   if (!map) return null;
   const parts: string[] = [];
-  for (const [currency, cents] of Object.entries(map).sort(([a], [b]) =>
-    a.localeCompare(b),
-  )) {
+  for (
+    const [currency, cents] of Object.entries(map).sort(([a], [b]) =>
+      a.localeCompare(b)
+    )
+  ) {
     if (typeof cents !== "number" || !Number.isFinite(cents)) continue;
     const code = currency.trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(code)) continue;
@@ -62,16 +64,26 @@ const unauthorizedOrError = (
   title: string,
 ): AnalyticsCardModel | null => {
   if (!payload) {
-    return { eyebrow, title, rows: [], state: "error" };
+    return {
+      eyebrow,
+      title,
+      rows: [{ label: "Status", value: "Couldn't load analytics" }],
+      state: "default",
+    };
   }
   if (payload.error !== undefined) {
-    return { eyebrow, title, rows: [], state: "error" };
+    return {
+      eyebrow,
+      title,
+      rows: [{ label: "Status", value: "Couldn't load analytics" }],
+      state: "default",
+    };
   }
   if (payload.authorized === false) {
     return {
       eyebrow,
       title,
-      rows: [{ label: "Access", value: "Not authorized for this brand" }],
+      rows: [{ label: "Access", value: "Not authorized for this resource" }],
       state: "default",
     };
   }
@@ -84,16 +96,15 @@ const topSourceLabel = (bySource: unknown): string | null => {
   for (const entry of bySource) {
     const row = asRecord(entry);
     if (!row || typeof row.source !== "string") continue;
-    const score =
-      typeof row.customers === "number"
-        ? row.customers
-        : typeof row.reservations === "number"
-          ? row.reservations
-          : typeof row.covers === "number"
-            ? row.covers
-            : typeof row.conversions === "number"
-              ? row.conversions
-              : 0;
+    const score = typeof row.customers === "number"
+      ? row.customers
+      : typeof row.reservations === "number"
+      ? row.reservations
+      : typeof row.covers === "number"
+      ? row.covers
+      : typeof row.conversions === "number"
+      ? row.conversions
+      : 0;
     if (!best || score > best.score) best = { source: row.source, score };
   }
   return best ? `${best.source} (${best.score})` : null;
@@ -108,35 +119,46 @@ export function buildBrandAnalyticsCard(
   const title = "Brand performance";
   const conversion = asRecord(root.conversion);
   const venue = asRecord(root.venue);
-  const conversionFailed =
-    conversion === null ||
+  const conversionFailed = conversion === null ||
     conversion.authorized === false ||
     conversion.error !== undefined;
-  const venueFailed =
-    venue === null ||
+  const venueFailed = venue === null ||
     venue.authorized === false ||
     venue.error !== undefined;
   if (conversion?.authorized === false) {
     return {
       eyebrow,
       title,
-      rows: [{ label: "Access", value: "Not authorized for this brand" }],
+      rows: [{ label: "Access", value: "Not authorized for this resource" }],
       state: "default",
     };
   }
   if (conversionFailed && venueFailed) {
-    return { eyebrow, title, rows: [], state: "error" };
+    return {
+      eyebrow,
+      title,
+      rows: [{ label: "Status", value: "Couldn't load analytics" }],
+      state: "default",
+    };
   }
 
   const rows: AnalyticsResponseRow[] = [];
   if (conversion && conversion.authorized !== false && !conversion.error) {
-    pushRow(rows, "Driven customers (30d)", formatCount(conversion.customers_driven_30d));
+    pushRow(
+      rows,
+      "Driven customers (30d)",
+      formatCount(conversion.customers_driven_30d),
+    );
     pushRow(
       rows,
       "Driven customers (lifetime)",
       formatCount(conversion.customers_driven_lifetime),
     );
-    pushRow(rows, "Value (30d)", formatCentsByCurrency(conversion.value_cents_30d));
+    pushRow(
+      rows,
+      "Value (30d)",
+      formatCentsByCurrency(conversion.value_cents_30d),
+    );
     pushRow(
       rows,
       "Value (lifetime)",
@@ -146,20 +168,32 @@ export function buildBrandAnalyticsCard(
       ? conversion.by_platform
       : [];
     if (platforms.length > 0) {
-      pushRow(rows, "Top platform", topSourceLabel(
-        platforms.map((p) => {
-          const row = asRecord(p);
-          return row
-            ? { source: row.platform, conversions: row.conversions }
-            : null;
-        }).filter(Boolean),
-      ));
+      pushRow(
+        rows,
+        "Top platform",
+        topSourceLabel(
+          platforms.map((p) => {
+            const row = asRecord(p);
+            return row
+              ? { source: row.platform, conversions: row.conversions }
+              : null;
+          }).filter(Boolean),
+        ),
+      );
     }
   }
   if (venue && venue.authorized !== false && !venue.error) {
     pushRow(rows, "Orders", formatCount(venue.order_count));
-    pushRow(rows, "Revenue (7d)", formatCentsByCurrency(venue.rev7d_by_currency));
-    pushRow(rows, "Revenue (all)", formatCentsByCurrency(venue.revenue_by_currency));
+    pushRow(
+      rows,
+      "Revenue (7d)",
+      formatCentsByCurrency(venue.rev7d_by_currency),
+    );
+    pushRow(
+      rows,
+      "Revenue (all)",
+      formatCentsByCurrency(venue.revenue_by_currency),
+    );
   }
   if (rows.length === 0) {
     return {
@@ -192,7 +226,14 @@ export function buildListingConversionCard(
   const title = "Listing conversion";
   const blocked = unauthorizedOrError(conversion, eyebrow, title);
   if (blocked) return blocked;
-  if (!conversion) return { eyebrow, title, rows: [], state: "error" };
+  if (!conversion) {
+    return {
+      eyebrow,
+      title,
+      rows: [{ label: "Status", value: "Couldn't load conversion" }],
+      state: "default",
+    };
+  }
 
   const rows: AnalyticsResponseRow[] = [];
   pushRow(rows, "Customers", formatCount(conversion.mingla_drove_count));
@@ -224,13 +265,23 @@ export function buildReservationMetricsCard(
   const title = "Reservation metrics";
   const blocked = unauthorizedOrError(metrics, eyebrow, title);
   if (blocked) return blocked;
-  if (!metrics) return { eyebrow, title, rows: [], state: "error" };
+  if (!metrics) {
+    return {
+      eyebrow,
+      title,
+      rows: [{ label: "Status", value: "Couldn't load reservation metrics" }],
+      state: "default",
+    };
+  }
 
   const rows: AnalyticsResponseRow[] = [];
   pushRow(rows, "Covers (30d)", formatCount(metrics.covers_30d));
   pushRow(rows, "Covers (lifetime)", formatCount(metrics.covers_lifetime));
   pushRow(rows, "No-show rate", formatRate(metrics.no_show_rate));
-  if (typeof metrics.avg_party_size === "number" && Number.isFinite(metrics.avg_party_size)) {
+  if (
+    typeof metrics.avg_party_size === "number" &&
+    Number.isFinite(metrics.avg_party_size)
+  ) {
     pushRow(
       rows,
       "Avg party size",
@@ -269,7 +320,12 @@ export function buildOrderReconciliationCard(
   pushRow(rows, "Refunded", money(root.refunded_cents));
   pushRow(rows, "Net", money(root.net_revenue_cents));
   if (rows.length === 0) {
-    return { eyebrow, title, rows: [], state: "error" };
+    return {
+      eyebrow,
+      title,
+      rows: [{ label: "Status", value: "Couldn't load reconciliation" }],
+      state: "default",
+    };
   }
   return {
     eyebrow,

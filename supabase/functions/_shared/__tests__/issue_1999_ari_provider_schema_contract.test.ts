@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #1984] census pin bump authorized for listing_conversion + reservation_metrics.
 // [TEST-MOD-APPROVED #1981] census pin bump authorized in the CI-fix commit.
 // #1999 — provider-compatible Ari tool declarations.
 // Implementor happy path: compile the complete actual registry, preserve the

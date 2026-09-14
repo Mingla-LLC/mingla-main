@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #1984] census pin / ledger snapshot authorized for listing_conversion + reservation_metrics.
 // [TEST-MOD-APPROVED #1982] census pin / ledger snapshot authorized for revoke_brand_invitation.
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

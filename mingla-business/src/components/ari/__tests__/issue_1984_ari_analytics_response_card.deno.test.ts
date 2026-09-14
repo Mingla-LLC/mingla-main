@@ -1,3 +1,5 @@
+// @ts-nocheck — Deno-runtime contract test; the app TypeScript project does not
+// include Deno globals. Same pattern as issue_2321_business_retained_copy.
 // #1984 — ResponseCard mapping for analytics tool_results (happy + adversarial).
 // Pure helper coverage — MessageList source-contract is asserted separately.
 //
@@ -96,7 +98,14 @@ Deno.test("#1984 card: missing / unauthorized payloads do not throw", () => {
       conversion: { error: "boom" },
       venue: { error: "boom" },
     })?.state,
-    "error",
+    "default",
+  );
+  assertEquals(
+    buildAnalyticsCardForTool("get_brand_analytics", {
+      conversion: { error: "boom" },
+      venue: { error: "boom" },
+    })?.rows[0]?.value,
+    "Couldn't load analytics",
   );
 
   assertEquals(buildAnalyticsCardForTool("unknown_tool", {}), null);

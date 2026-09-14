@@ -4374,8 +4374,10 @@ function slimAnalyticsObject(
   raw: unknown,
   allowKeys: ReadonlySet<string>,
 ): Record<string, unknown> | { error: string } {
-  if (raw && typeof raw === "object" && !Array.isArray(raw) &&
-    "error" in (raw as Record<string, unknown>)) {
+  if (
+    raw && typeof raw === "object" && !Array.isArray(raw) &&
+    "error" in (raw as Record<string, unknown>)
+  ) {
     return { error: String((raw as Record<string, unknown>).error) };
   }
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -4448,14 +4450,22 @@ const getBrandAnalytics = writeTool(
   { brand_id: UUID, question: { type: "string" } },
   ["brand_id"],
   async (args, client, userId) => {
-    await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
+    await assertAgentReadBrand(client, userId, args.brand_id);
     const [conv, intel] = await Promise.all([
       callRpc(client, "brand_conversion_rollup", { p_brand_id: args.brand_id })
         .catch((e) => ({ error: String(e) })),
+      // venue_intelligence_overview is owner-only (deed account_id). Members
+      // still get conversion; map 42501 to authorized:false (not a hard error).
       callRpc(client, "venue_intelligence_overview", {
         p_brand_id: args.brand_id,
-      }).catch((e) => ({ error: String(e) })),
+      }).catch((e) => {
+        const msg = String(e);
+        if (/not authorized|42501/i.test(msg)) {
+          return { authorized: false, brand_id: args.brand_id };
+        }
+        return { error: msg };
+      }),
     ]);
     return {
       brand_id: args.brand_id,
@@ -4496,13 +4506,14 @@ const getReservationMetrics = writeTool(
   { brand_id: UUID, venue_id: UUID, question: { type: "string" } },
   ["brand_id"],
   async (args, client, userId) => {
-    await assertAgentReadBrand(client, userId, args.brand_id);
+    // Validate args before any tenant I/O (Copilot #3361).
     await requireBrand(args, client, userId);
     if (args.venue_id !== undefined && args.venue_id !== null) {
       if (!isUuid(args.venue_id)) {
         throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
       }
     }
+    await assertAgentReadBrand(client, userId, args.brand_id);
     const rpcArgs: Record<string, unknown> = { p_brand_id: args.brand_id };
     if (typeof args.venue_id === "string" && isUuid(args.venue_id)) {
       rpcArgs.p_venue_id = args.venue_id;
