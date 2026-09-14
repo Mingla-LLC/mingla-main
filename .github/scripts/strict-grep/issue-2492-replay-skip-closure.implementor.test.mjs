@@ -211,7 +211,7 @@ test("T-1 — the guard is clean on the repository as shipped", () => {
 // move: T-10 12/1/3/9 -> 13/1/3/10 (and the #1931 skipped-file count 12 -> 13),
 // T-23 13 -> 14, T-24 12 -> 13, T-2723 12 -> 13. No assertion logic changed.
 // [TEST-MOD-APPROVED #3284] BOTH filtered lanes gain one exact skip for
-// 20270702003284, which re-emits the direct checkout bundle and the public
+// 20270703003284, which re-emits the direct checkout bundle and the public
 // experience reader to append one display key; those `LANGUAGE sql` bodies reach
 // objects each lane's phase lacks, and the #2492 guard named the exact filename
 // for each. ONLY counts move: T-10 13/10 -> 14/11 (and the #1931 skipped-file count

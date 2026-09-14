@@ -1210,7 +1210,13 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // yields 365d747a..., only the test-file trigger 8e4e13f0.... The
   // #3313, #3325, #3176, #3288 and combined receipts below run on this branch
   // tree, so their literals are re-derived with the #3284 additions present.
-  "3e75612ed1dcaf6dad53350901f28ccc1be8add45d838db7ece1a9eca23aadb5";
+  //
+  // [TEST-MOD-APPROVED #3284] Re-derived again after the migration was renamed
+  // to 20270703003284 so it sorts after #3313: the two filtered-lane skip lines
+  // now name that file. Current tree f5045a1d...; removing one executable line
+  // yields 621dbee9... (suite target), e3beed15... (#1931 skip), 33941960...
+  // (#2117 skip), 9b85465a... (#1929 jest target) or ff96a3e8... (#1929 trigger).
+  "f5045a1d5ff4986e17b14b151a2804962db8ad896c4b984f3c3339fa9acbdd1c";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1600,9 +1606,9 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "            -f supabase/migrations/__tests__/issue_3284_offering_refund_terms.test.sql\n"],
     [liveWorkflow("issue", "1931", "private", "event", "access"),
-      "              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
+      "              *20270703003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
-      "              *20270702003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
+      "              *20270703003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
     // [TEST-MOD-APPROVED #3284] The consumer mapping suite's jest target in the
     // #1929 clients job, and its test-file trigger path.
     [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"),
@@ -1695,7 +1701,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   // receipt, removal or assertion is added or dropped; only the five literals move.
   assert.equal(
     before3313Authority.withoutConcurrencySha256,
-    "f7e1f66ee1395fa4e95329f06ce0d9c77bf540d68a0d1959750c653e227f6a81",
+    "04af0331a5be66146163e3d8fadbe1181809095ca590cad85e26ef4483a8d07d",
   );
 
   const before3325 = { ...before3313 };
@@ -1709,7 +1715,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(before3325Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     before3325Authority.withoutConcurrencySha256,
-    "f38c1c07e74ae64f64431d2fa211f1806a49af68d3eb63b58bf322b369e049f4",
+    "63dfb519c84c9db7882ea032a298c680d80153684b2b3739b8103ba1f7e9bfc5",
   );
 
   const before3176 = { ...before3325 };
@@ -1734,7 +1740,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(before3176Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     before3176Authority.withoutConcurrencySha256,
-    "d576e8ec2747f18d59becf4ddffa6c48f441c0663945d89b398ed0e11cd49f94",
+    "5520ef000fb9e1aea312c11e7c6c1528b23aa4210ce84624535e81b36618526e",
   );
 
   // [TEST-MOD-APPROVED #3176] Current main and this branch both change the
@@ -1772,7 +1778,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(before3288Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     before3288Authority.withoutConcurrencySha256,
-    "de6d17031b01c457868f178cc38efdba50f78467c308e2a229a2c8fce79b928f",
+    "bb66c9e123d6c47d453b48906cd88566db8ef3ec6927abd043e81753a793eed8",
   );
 
   const beforeBoth = { ...before3288 };
@@ -1784,7 +1790,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(beforeBothAuthority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     beforeBothAuthority.withoutConcurrencySha256,
-    "a4d397553ceebf0d80287eeb24e745bc58be5f46e7fc52e1dbfe550650a51b2f",
+    "5176bd3418f0c8646907bcc825d7d9cfabfdd8afbebccfab1a8ca1831158f876",
   );
 
   const sitesWithoutPullRequest = { ...sources };

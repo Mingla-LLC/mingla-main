@@ -814,7 +814,7 @@ function selfTest() {
   // M-9 12 -> 13, M-10 13 -> 14; every mutant and BAD fixture is unchanged.
   // [TEST-MOD-APPROVED #3284] BOTH filtered lanes gain one exact skip: the
   // private-event lane THIRTEEN -> FOURTEEN and the #2117 lane TEN -> ELEVEN.
-  // 20270702003284 re-emits the direct checkout bundle and the public experience
+  // 20270703003284 re-emits the direct checkout bundle and the public experience
   // reader to append one display key; those `LANGUAGE sql` bodies reach objects
   // each lane's phase deliberately lacks (#1931's read-block predicate and
   // #2160's column on one, #2117's visibility gate and #2489's helpers on both).

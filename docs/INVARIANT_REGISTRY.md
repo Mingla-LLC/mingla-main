@@ -10189,7 +10189,7 @@ All four #2796 rules were established ACTIVE after independent web, iOS AX5, and
 ### I-3284-POLICY-IS-A-PUBLISHED-PROMISE (DRAFT)
 
 - **Rule:** once an event or experience has a paid order (`payment_status IN ('paid','partial_refund') AND total_cents > 0`), its `refund_policy` only moves in the buyer-favourable direction. A change that is worse for buyers at any threshold is refused with `refund_policy_downgrade_with_sales`, and a `null` policy counts as 0%.
-- **Enforcement:** `business_patch_offering_refund_policy` (migration `20270702003284_issue_3284_offering_refund_terms.sql`) and `supabase/migrations/__tests__/issue_3284_offering_refund_terms.test.sql` (R-03, R-06 and R-07). `i-proposed-1120-published-refund-via-gated-rpc.mjs` stops the event and experience create and edit files from calling the ungated trip write.
+- **Enforcement:** `business_patch_offering_refund_policy` (migration `20270703003284_issue_3284_offering_refund_terms.sql`) and `supabase/migrations/__tests__/issue_3284_offering_refund_terms.test.sql` (R-03, R-06 and R-07). `i-proposed-1120-published-refund-via-gated-rpc.mjs` stops the event and experience create and edit files from calling the ungated trip write.
 - **Established:** DRAFT at #3284; flips ACTIVE on CLOSE.
 
 ### I-3284-CANONICAL-10-SECTION-ORDER (DRAFT)
