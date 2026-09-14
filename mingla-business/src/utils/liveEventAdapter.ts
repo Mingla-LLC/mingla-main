@@ -85,6 +85,10 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   coverMediaCredit: e.coverMediaCredit ?? null,
   coverMediaCreditUrl: e.coverMediaCreditUrl ?? null,
   coverMediaAlt: e.coverMediaAlt ?? null,
+  // #3288 — carry the stored additional photos into the editor. Passed through
+  // as-is: `undefined` means the LiveEvent never loaded the column (UNKNOWN),
+  // and editableDraftToPatch refuses to diff — or save — against unknown.
+  coverGallery: e.coverGallery,
   tickets: e.tickets,
   visibility: e.visibility,
   requireApproval: e.requireApproval,
@@ -160,6 +164,7 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   coverMediaCredit: "Cover media credit",
   coverMediaCreditUrl: "Cover media credit URL",
   coverMediaAlt: "Cover media alt text",
+  coverGallery: "Additional photos",
   tickets: "Tickets",
   visibility: "Visibility",
   requireApproval: "Require approval",
@@ -228,6 +233,8 @@ export const SAFE_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "coverMediaCredit",
   "coverMediaCreditUrl",
   "coverMediaAlt",
+  // #3288 — additional photos are cosmetic (banner-only when changed alone).
+  "coverGallery",
   "hideAddressUntilTicket",
   "requireApproval",
   "hideRemainingCount",
@@ -344,6 +351,17 @@ export const editableDraftToPatch = (
   }
   if (original.coverMediaAlt !== edited.coverMediaAlt) {
     patch.coverMediaAlt = edited.coverMediaAlt ?? null;
+  }
+  // #3288 — the additional photos. Emitted ONLY when the original gallery is
+  // KNOWN (loaded from the server) and the edit differs. Against an unknown
+  // original the editor's list may be a fabricated empty seed, and saving it
+  // would erase the stored photos — the exact loss this issue fixes.
+  if (
+    original.coverGallery !== undefined &&
+    edited.coverGallery !== undefined &&
+    !deepEqual(original.coverGallery, edited.coverGallery)
+  ) {
+    patch.coverGallery = edited.coverGallery;
   }
   if (!deepEqual(original.tickets, edited.tickets)) patch.tickets = edited.tickets;
   if (original.visibility !== edited.visibility) {
@@ -530,6 +548,12 @@ const formatValueForKey = (
   }
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (key === "tickets") return formatTicketsSummary(value as TicketStub[]);
+  // #3288 — "3 photos", not a truncated JSON blob of image URLs.
+  if (key === "coverGallery" && Array.isArray(value)) {
+    return value.length === 0
+      ? "(empty)"
+      : `${value.length} photo${value.length === 1 ? "" : "s"}`;
+  }
   if (key === "multiDates") {
     return formatMultiDatesSummary(value as MultiDateEntry[] | null);
   }
@@ -566,6 +590,10 @@ export const computeRichFieldDiffs = (
     // override never shows up as a change against `null`.
     if (key === "coverMediaPosterUrl") {
       if ((a ?? null) === (b ?? null)) continue;
+    } else if (key === "coverGallery") {
+      // #3288 — mirror editableDraftToPatch: no diff row against an UNKNOWN
+      // original, so the summary never promises a change the save won't send.
+      if (a === undefined || b === undefined || deepEqual(a, b)) continue;
     } else if (key === "themeOverrides") {
       if (
         deepEqual(

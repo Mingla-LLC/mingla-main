@@ -763,6 +763,14 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     // this contract is proven against the code under review, not against HEAD.
     fs.cpSync(path.join(ROOT, ".github/scripts"), path.join(temp, ".github/scripts"), { recursive: true });
     fs.cpSync(path.join(ROOT, ".github/ci-batch"), path.join(temp, ".github/ci-batch"), { recursive: true });
+    // [TEST-MOD-APPROVED #3176] The prior reconstruction was correct while every
+    // workflow byte named by the overlaid registry also lived at HEAD. Current
+    // main changed #2333's replay inventory and its derived sourceSha256 together;
+    // overlay that one merge-touched workflow as part of the same authority. The
+    // removal mutant below proves this is not an exemption: restoring the prior
+    // workflow bytes must still fail closed against the current registry.
+    const onlinePublishWorkflow = ".github/workflows/issue-2333-online-event-publish.yml";
+    fs.copyFileSync(path.join(ROOT, onlinePublishWorkflow), path.join(temp, onlinePublishWorkflow));
     const terminal = JSON.parse(fs.readFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), "utf8"));
     const writeManifest = (value) => fs.writeFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), `${JSON.stringify(value, null, 2)}\n`);
     const withPhase3b = (mutate) => { const copy = structuredClone(terminal); mutate(copy); writeManifest(copy); return validateRegistry(copy, { root: temp }); };
@@ -772,6 +780,23 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     //    state; it must PASS and must reach a clean verdict rather than throwing.
     for (const name of wrapperNames) assert.equal(fs.existsSync(wrapperPath(name)), false, `${name} must be absent`);
     assert.deepEqual(validateRegistry(terminal, { root: temp }), [], "terminal state must validate clean");
+    const onlinePublishSource = fs.readFileSync(path.join(temp, onlinePublishWorkflow), "utf8");
+    const currentMainReplayStep = [
+      "          # Issue #3288 re-emits `business_publish_event_draft` (an absent gallery key",
+      "          # keeps the stored photos) and owns its final definition on a full replay,",
+      "          # so the re-apply set must end with it, per the instruction above.",
+      "          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \\",
+      "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql",
+      "",
+    ].join("\n");
+    assert.equal(onlinePublishSource.split(currentMainReplayStep).length, 2,
+      "the merge-touched #3288 replay step must have one exact current-main owner");
+    fs.writeFileSync(path.join(temp, onlinePublishWorkflow), onlinePublishSource.replace(currentMainReplayStep, ""));
+    assert.match(validateRegistry(terminal, { root: temp }).join("\n"),
+      /issue-2333-online-event-publish\.yml: runtime\/setup\/trust\/trigger inventory drifted/,
+      "reverting the current-main #2333 workflow while retaining its registry authority must be RED");
+    fs.writeFileSync(path.join(temp, onlinePublishWorkflow), onlinePublishSource);
+    assert.deepEqual(validateRegistry(terminal, { root: temp }), [], "restoring the current workflow must restore PASS");
     for (const relative of GUARDS) assert.equal(guard(relative), 0, `${relative} must pass at terminal`);
     siblingIsIntact();
 

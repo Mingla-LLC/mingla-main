@@ -153,10 +153,18 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
         coverMediaAlt: patch.coverMediaAlt,
         // issue #868 [cover-gallery] — persist the ADDITIONAL photos into the
         // draft (autosave + publish carry cover_media_gallery independently).
-        coverGallery: patch.coverGallery ?? [],
+        // #3288 — the picker seeds an UNKNOWN gallery as [], and re-emits that
+        // seed on every cover change. Writing it back would turn "unknown"
+        // into "no photos" and the next save would erase the stored gallery,
+        // so an untouched empty seed over an unknown gallery stays unknown.
+        coverGallery:
+          draft.coverGallery === undefined &&
+          (patch.coverGallery ?? []).length === 0
+            ? undefined
+            : (patch.coverGallery ?? []),
       });
     },
-    [updateDraft],
+    [draft.coverGallery, updateDraft],
   );
 
   const hasCover =

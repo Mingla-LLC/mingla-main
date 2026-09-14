@@ -1023,11 +1023,24 @@ export const useDraftEventStore = create<DraftEventState>()(
             return s;
           }
           accepted = true;
+          // #3288 — merge-on-read for the additional-photos gallery. A server
+          // draft whose read did not carry the gallery column has
+          // `coverGallery: undefined` (UNKNOWN). Replacing the local draft
+          // wholesale turned that into "no photos", the next autosave sent
+          // the empty list and publish wrote it over the real gallery. Unknown
+          // keeps the local copy; a KNOWN server gallery (any array, [] too)
+          // still wins, so server truth is never overridden when it is known.
+          const incoming =
+            draft.coverGallery === undefined &&
+            existing !== null &&
+            existing.coverGallery !== undefined
+              ? { ...draft, coverGallery: existing.coverGallery }
+              : draft;
           const idx = s.drafts.findIndex((d) => d.id === draft.id);
           const nextDrafts =
             idx === -1
-              ? [...s.drafts, draft]
-              : s.drafts.map((d) => (d.id === draft.id ? draft : d));
+              ? [...s.drafts, incoming]
+              : s.drafts.map((d) => (d.id === draft.id ? incoming : d));
           const serverRevision = draftClientRevision(draft);
           const nextMeta = {
             ...s.draftEditMeta,
