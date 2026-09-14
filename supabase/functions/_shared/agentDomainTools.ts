@@ -4728,15 +4728,15 @@ function normalizePeopleBookCursor(
 
 const manageBrandPeople = writeTool(
   "manage_brand_people",
-  "List, inspect, or manually add Brand People via biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person. Marketing-gated. For list: when the response has hasMore=true, call again with cursor set to the returned nextCursor unchanged.",
+  "List, inspect, or manually add Brand People via biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person. Marketing-gated. Add requires display_name plus email and/or phone_e164 (Host people_contact_required). For list: when the response has hasMore=true, call again with cursor set to the returned nextCursor unchanged.",
   {
     brand_id: UUID,
     action: { type: "string", enum: ["list", "get", "add"] },
     person_id: UUID,
-    search: { type: "string", maxLength: 200 },
+    search: { type: "string", maxLength: 120 },
     cursor: PEOPLE_BOOK_CURSOR,
     limit: { type: "integer", minimum: 1, maximum: 100 },
-    display_name: { type: "string", minLength: 1, maxLength: 200 },
+    display_name: { type: "string", minLength: 1, maxLength: 120 },
     email: { type: "string", maxLength: 320 },
     phone_e164: { type: "string", maxLength: 32 },
     phone_country_iso: { type: "string", minLength: 2, maxLength: 2 },
@@ -4785,10 +4785,22 @@ const manageBrandPeople = writeTool(
       const displayName = typeof args.display_name === "string"
         ? args.display_name.trim()
         : "";
-      if (displayName.length < 1) {
+      if (displayName.length < 1 || displayName.length > 120) {
         throw new ToolError(
           "INVALID_ARGS",
-          "display_name is required to add a person",
+          "display_name is required (1–120 characters) to add a person",
+        );
+      }
+      const email = typeof args.email === "string" && args.email.trim()
+        ? args.email.trim()
+        : null;
+      const phone = typeof args.phone_e164 === "string" && args.phone_e164.trim()
+        ? args.phone_e164.trim()
+        : null;
+      if (email === null && phone === null) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Add requires email and/or phone_e164 (Host people_contact_required).",
         );
       }
       const clientRequestId = isUuid(args.client_request_id)
@@ -4797,10 +4809,8 @@ const manageBrandPeople = writeTool(
       return await callRpc(client, "biz_add_brand_person", {
         p_brand_id: args.brand_id,
         p_display_name: displayName,
-        p_email: typeof args.email === "string" ? args.email : null,
-        p_phone_e164: typeof args.phone_e164 === "string"
-          ? args.phone_e164
-          : null,
+        p_email: email,
+        p_phone_e164: phone,
         p_phone_country_iso: typeof args.phone_country_iso === "string"
           ? args.phone_country_iso
           : null,

@@ -102,25 +102,10 @@ Deno.test("#1982 tester: revoke_brand_member source forbids hard DELETE", async 
   assert(!/\.from\(\s*"brand_members"\s*\)/.test(block));
 });
 
-Deno.test("#1982 tester: people add is confirmed write; bad cursor fails", async () => {
+Deno.test("#1982 tester: people add requires contact; bad cursor fails", async () => {
   assert(!isReadOnlyAgentToolCall("manage_brand_people", { action: "add" }));
   const tool = domainTool("manage_brand_people");
   let rpcCalled = false;
-  const client = {
-    from() {
-      return {
-        select: () => ({
-          eq: () => ({
-            is: () => Promise.resolve({ data: [], error: null }),
-          }),
-        }),
-      };
-    },
-    rpc: () => {
-      rpcCalled = true;
-      return Promise.resolve({ data: {}, error: null });
-    },
-  };
   // assertAgentReadBrand needs owned brands — provide a minimal thenable brand list.
   const ownedClient = {
     from(table: string) {
@@ -145,7 +130,7 @@ Deno.test("#1982 tester: people add is confirmed write; bad cursor fails", async
         };
         return q;
       }
-      return client.from();
+      throw new Error(table);
     },
     rpc: () => {
       rpcCalled = true;
@@ -156,6 +141,16 @@ Deno.test("#1982 tester: people add is confirmed write; bad cursor fails", async
     () =>
       tool.executor(
         { brand_id: BRAND, action: "list", cursor: "not-an-object" },
+        ownedClient as never,
+        USER,
+      ),
+    ToolError,
+  );
+  assert(!rpcCalled);
+  await assertRejects(
+    () =>
+      tool.executor(
+        { brand_id: BRAND, action: "add", display_name: "No Contact" },
         ownedClient as never,
         USER,
       ),

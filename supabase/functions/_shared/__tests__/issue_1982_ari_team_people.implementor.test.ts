@@ -416,6 +416,16 @@ Deno.test("#1982 implementor: manage_brand_people get + add", async () => {
     ToolError,
   );
 
+  await assertRejects(
+    () =>
+      tool.executor(
+        { brand_id: BRAND, action: "add", display_name: "Pat" },
+        client as never,
+        USER,
+      ),
+    ToolError,
+  );
+
   const added = await tool.executor(
     {
       brand_id: BRAND,
