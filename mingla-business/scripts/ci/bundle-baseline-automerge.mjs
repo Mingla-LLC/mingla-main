@@ -163,6 +163,13 @@ export const STALE_REFUSAL_MINUTES = 360;
  * (three jobs plus three third-party app checks); twelve leaves room for
  * another integration without leaving room for the fan-out to come back.
  *
+ * #3325 deliberately adds one workflow to every recording PR: the #2099 lane's
+ * four jobs. Its SC-4 reads this baseline on push, and #2648 pins its push and
+ * pull_request triggers to one shared paths list, so the PR start comes with
+ * it (see the KEEP set in the #2524 suite). Count the checks on a live
+ * recording PR before moving this ceiling; do not re-derive the number from
+ * this comment.
+ *
  * It NEVER refuses the merge — a diagnostic that re-creates the stale-baseline
  * jam would be worse than the fan-out it is reporting. The merge happens, then
  * the job goes red.
