@@ -79,6 +79,7 @@ import {
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
+import { isCurrentBrandPending } from "../../src/utils/currentBrandPending";
 import { useBusinessTodos } from "../../src/hooks/useBusinessTodos";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { useBusinessRecent } from "../../src/hooks/useBusinessRecentHome";
@@ -213,6 +214,17 @@ export default function HomeTab(): React.ReactElement {
     !role.isLoading && !isScannerOnlyRank(callerRank),
   );
   const brandRecovery = useCurrentBrandRecovery();
+  // issue #3345 — after a brand switch (or on a cold start) the selected brand's
+  // record can still be on its way. That window is LOADING: it must never paint
+  // "Create brand" or the brandless Home, which it did for 1–19s on camera.
+  const selectedBrandId = useCurrentBrandStore((s) => s.currentBrandId);
+  const brandStoreHydrated = useCurrentBrandStore((s) => s.hasHydrated);
+  const brandPending = isCurrentBrandPending({
+    brandPresent: currentBrand !== null,
+    currentBrandId: selectedBrandId,
+    hasHydrated: brandStoreHydrated,
+    recoveryResolving: brandRecovery.isResolving,
+  });
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
   const showFullRecent = params.recent === "all";
   const [recentPageCount, setRecentPageCount] = useState(1);
@@ -859,6 +871,7 @@ export default function HomeTab(): React.ReactElement {
         <TopBar
           leftKind="brand"
           onBrandTap={handleOpenSwitcher}
+          brandLoading={brandPending}
           extraRightSlot={
             <IconChrome
               icon="plus"
@@ -896,7 +909,11 @@ export default function HomeTab(): React.ReactElement {
             />
           }
         >
-          {currentBrand === null ? null : (
+          {currentBrand === null ? (
+            brandPending ? (
+              <HomeBrandLoading />
+            ) : null
+          ) : (
             <>
               <View style={styles.desktopKpiGrid}>
                 {showRevenueTile ? (
@@ -984,6 +1001,8 @@ export default function HomeTab(): React.ReactElement {
             </>
           )}
         </ScrollView>
+      ) : currentBrand === null && brandPending ? (
+        <HomeBrandLoading />
       ) : currentBrand === null ? (
         <FlatList
           testID="home-mobile-scroll"
@@ -1159,9 +1178,31 @@ export default function HomeTab(): React.ReactElement {
   );
 }
 
+// issue #3345 — Home while the selected brand loads: the same calm skeleton
+// language as Recent's loading state, never the brandless empty Home.
+const HomeBrandLoading: React.FC = () => (
+  <View
+    style={styles.brandLoading}
+    testID="home-brand-loading"
+    accessible
+    accessibilityRole="progressbar"
+    accessibilityLabel="Loading your brand"
+    accessibilityState={{ busy: true }}
+  >
+    {[0, 1, 2].map((value) => (
+      <View key={value} style={styles.recentSkeleton} />
+    ))}
+  </View>
+);
+
 const styles = StyleSheet.create({
   host: {
     flex: 1,
+  },
+  brandLoading: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+    gap: spacing.md,
   },
   barWrap: {
     paddingHorizontal: spacing.md,

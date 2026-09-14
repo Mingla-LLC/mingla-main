@@ -28,12 +28,17 @@ import type { StyleProp, ViewStyle } from "react-native";
 import { useRouter } from "expo-router";
 
 import {
+  glass,
+  radius as radiusTokens,
   shadows,
   spacing,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+// issue #3345 — loading vs absent. Store selectors only (no new query mounts).
+import { useCurrentBrandStore } from "../../store/currentBrandStore";
+import { isCurrentBrandPending } from "../../utils/currentBrandPending";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useAuth } from "../../context/AuthContext";
 import { useBusinessNotificationsInbox } from "../../hooks/useBusinessNotifications";
@@ -101,6 +106,12 @@ export interface TopBarProps {
    * Anchor: line 11 header comment marks the Toast as Cycle 0a-transitional.
    */
   onBrandTap?: () => void;
+  /**
+   * issue #3345 — the host knows the active brand is still being resolved
+   * (Home passes its recovery state). The top bar also derives the id-selected
+   * and not-yet-hydrated windows itself, so every screen is covered without it.
+   */
+  brandLoading?: boolean;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
@@ -168,10 +179,23 @@ export const TopBar: React.FC<TopBarProps> = ({
   extraRightSlot,
   unreadCount,
   onBrandTap,
+  brandLoading = false,
   testID,
   style,
 }) => {
   const currentBrand = useCurrentBrand();
+  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
+  const hasBrandHydrated = useCurrentBrandStore((s) => s.hasHydrated);
+  // issue #3345 — "no brand yet" is not "no brand". A selected brand whose record
+  // is still on its way must never read "Create brand".
+  const brandPending =
+    currentBrand === null &&
+    (brandLoading ||
+      isCurrentBrandPending({
+        brandPresent: false,
+        currentBrandId,
+        hasHydrated: hasBrandHydrated,
+      }));
   const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -212,6 +236,21 @@ export const TopBar: React.FC<TopBarProps> = ({
   const renderLeft = (): React.ReactNode => {
     switch (leftKind) {
       case "brand": {
+        if (brandPending) {
+          return (
+            <Pressable
+              onPress={handleBrandTap}
+              accessibilityRole="button"
+              accessibilityLabel="Brand: loading"
+              accessibilityState={{ busy: true }}
+              style={styles.brandRow}
+              testID="topbar-brand-loading"
+            >
+              <View style={styles.brandLabelPlaceholder} />
+              <Icon name="chevD" size={16} color={textTokens.tertiary} />
+            </Pressable>
+          );
+        }
         const label =
           currentBrand === null
             ? "Create brand"
@@ -356,6 +395,17 @@ const styles = StyleSheet.create({
     fontSize: typography.bodyLg.fontSize,
     lineHeight: typography.bodyLg.lineHeight,
     fontWeight: "600",
+  },
+  // issue #3345 — the calm stand-in while the selected brand loads; the same
+  // glass tint as Home's Recent skeletons, one label-line tall.
+  brandLabelPlaceholder: {
+    width: 112,
+    height: typography.bodyLg.fontSize,
+    borderRadius: radiusTokens.sm,
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    opacity: 0.55,
   },
   backRow: {
     flexDirection: "row",
