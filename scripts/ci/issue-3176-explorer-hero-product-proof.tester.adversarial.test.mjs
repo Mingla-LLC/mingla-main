@@ -127,6 +127,14 @@ function assertHero(evidence, width) {
 }
 
 async function runtimeContract() {
+  const chromeUnavailable = process.env.MINGLA_TEST_FORCE_CHROMELESS === '1' || !CHROME
+  if (process.env.VERCEL === '1' && chromeUnavailable) {
+    process.stdout.write('SKIP #3322 Explorer hero browser runtime on Chrome-less Vercel; source, artifact, GitHub CI and local browser proofs remain mandatory\n')
+    return
+  }
+  if (process.env.MINGLA_TEST_FORCE_CHROMELESS === '1') {
+    assert.fail('Chrome/Chromium is required for the Explorer hero runtime guard outside Vercel')
+  }
   assert(CHROME, 'Chrome/Chromium is required for the Explorer hero runtime guard')
   assert(fs.existsSync(path.join(MARKETING, '.next/BUILD_ID')), 'run the current production build before this test')
   const appPort = await freePort()
