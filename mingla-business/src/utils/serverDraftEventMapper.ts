@@ -18,6 +18,10 @@ import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 import type { LiveEvent } from "../store/liveEventStore";
 import { currencyCodeOrNull } from "./currency";
 import {
+  draftMultiDatePricingMode,
+  type MultiDatePricingMode,
+} from "./multiDatePricingMode";
+import {
   themeOverridesFromColumns,
   themeOverridesToColumns,
 } from "../services/offeringTheme";
@@ -204,6 +208,8 @@ export interface BusinessDraftPayload {
   };
   recurrenceRule: RecurrenceRule | null;
   multiDates: MultiDateEntry[] | null;
+  // #3287 — the organiser's multi-day pricing choice. Always a concrete value.
+  multiDatePricingMode: MultiDatePricingMode;
   location: {
     venueName: string | null;
     address: string | null;
@@ -369,6 +375,12 @@ const buildBusinessDraftPayload = (
   },
   recurrenceRule: draft.recurrenceRule,
   multiDates: draft.multiDates,
+  // #3287 — the multi-day pricing choice MUST round-trip through business_draft.
+  // Omitting it let every autosave wipe "One price for all days" ~700ms after
+  // the tap; it never once reached production. Never read the events column
+  // here (per_day until publish). Coerced so the blob never carries undefined,
+  // which JSON.stringify would drop.
+  multiDatePricingMode: draftMultiDatePricingMode(draft.multiDatePricingMode),
   location: {
     venueName: draft.venueName,
     address: draft.address,
@@ -852,6 +864,11 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     multiDates: Array.isArray(businessDraft.multiDates)
       ? (businessDraft.multiDates as MultiDateEntry[])
       : null,
+    // #3287 — the multi-day pricing choice MUST round-trip through business_draft.
+    // Omitting it let every autosave wipe "One price for all days" ~700ms after
+    // the tap; it never once reached production. Never read the events column
+    // here (per_day until publish). A legacy blob without the key reads per_day.
+    multiDatePricingMode: draftMultiDatePricingMode(businessDraft.multiDatePricingMode),
     venueName: asStringOrNull(location.venueName),
     address: asStringOrNull(location.address),
     // ORCH-0824: city from top-level column. locationGeo is parsed from

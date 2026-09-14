@@ -17,6 +17,7 @@ import {
   publishedVisibilityForDraft,
   serverRowToDraft,
   type ServerDraftEventRow,
+  type ServerDraftEventUpdate,
 } from "../serverDraftEventMapper";
 
 const ticket = (patch: Partial<TicketStub> = {}): TicketStub => ({
@@ -509,5 +510,310 @@ describe("serverDraftEventMapper", () => {
     expect((update.theme.business_draft as { currency: string | null }).currency).toBe(
       "USD",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3287 [multi-day pricing snap-back] — the organiser's "One price for all days"
+// choice (DraftEvent.multiDatePricingMode) must survive the draft save
+// round-trip. Before the fix, buildBusinessDraftPayload never WROTE it into
+// theme.business_draft and serverRowToDraft never READ it back, so the ~700ms
+// autosave echo wholesale-replaced the local draft with a copy that lacked it
+// and the control snapped back to "Per day". The field is OPTIONAL on
+// DraftEvent, so `satisfies DraftEvent` (the #1026 guard) could not see the
+// omission — the key-parity record below closes that hole for optional keys.
+// Guards I-PROPOSED-3287-DRAFT-PRICING-MODE-ROUNDTRIP and
+// I-PROPOSED-3287-DRAFT-MAPPER-KEY-PARITY. Append-only.
+//
+// FAILS-ON-REVERT (proven in the #3287 implementation record):
+//   remove the write leg (buildBusinessDraftPayload) → T-1..T-5 FAIL (+ store T-7)
+//   remove the read leg  (serverRowToDraft)          → T-1..T-6 FAIL (+ store T-7)
+//   add a DraftEvent key without classifying it      → TS1360, file fails to compile
+//   leave a key DraftEvent no longer has             → TS2353, file fails to compile
+// ---------------------------------------------------------------------------
+
+type DraftKeyClass = "roundtrip" | "server-derived" | "excluded";
+
+// EVERY top-level DraftEvent key, optional ones included, classified exactly
+// once. `satisfies Record<keyof DraftEvent, …>` makes an unclassified new key a
+// type error (missing property) and a key removed from DraftEvent a type error
+// (excess property). ts-jest type-checks this file inside the required
+// `mingla-business jest (full suite)` gate, so either one turns CI red.
+const DRAFT_EVENT_KEY_CLASS = {
+  // Server-derived: produced by the row / RPC, not by the organiser's input.
+  id: "server-derived",
+  serverSlug: "server-derived",
+  endsAtUtc: "server-derived",
+  status: "server-derived",
+  createdAt: "server-derived",
+  updatedAt: "server-derived",
+  // Excluded: event wizard never sets it; round-trip gap recorded as #3287 D-2.
+  coordinatePrecision: "excluded",
+  // Round-trip: must come back from the server copy equal to what was saved.
+  brandId: "roundtrip",
+  name: "roundtrip",
+  description: "roundtrip",
+  format: "roundtrip",
+  partyTypes: "roundtrip",
+  vibeTags: "roundtrip",
+  musicGenres: "roundtrip",
+  whenMode: "roundtrip",
+  date: "roundtrip",
+  doorsOpen: "roundtrip",
+  endsAt: "roundtrip",
+  timezone: "roundtrip",
+  recurrenceRule: "roundtrip",
+  multiDates: "roundtrip",
+  multiDatePricingMode: "roundtrip",
+  venueName: "roundtrip",
+  address: "roundtrip",
+  city: "roundtrip",
+  locationGeo: "roundtrip",
+  onlineUrl: "roundtrip",
+  hideAddressUntilTicket: "roundtrip",
+  coverHue: "roundtrip",
+  coverMediaUrl: "roundtrip",
+  coverMediaPosterUrl: "roundtrip",
+  coverMediaType: "roundtrip",
+  coverMediaProvider: "roundtrip",
+  coverMediaSourceUrl: "roundtrip",
+  coverMediaCredit: "roundtrip",
+  coverMediaCreditUrl: "roundtrip",
+  coverMediaAlt: "roundtrip",
+  coverGallery: "roundtrip",
+  currency: "roundtrip",
+  tickets: "roundtrip",
+  pricingSwitches: "roundtrip",
+  visibility: "roundtrip",
+  requireApproval: "roundtrip",
+  allowTransfers: "roundtrip",
+  hideRemainingCount: "roundtrip",
+  passwordProtected: "roundtrip",
+  themeOverrides: "roundtrip",
+  privateGuestList: "roundtrip",
+  isRsvp: "roundtrip",
+  rsvpCapacity: "roundtrip",
+  rsvpAllowPlusOnes: "roundtrip",
+  rsvpPlusOnesMax: "roundtrip",
+  rsvpWaitlistEnabled: "roundtrip",
+  rsvpApprovalMode: "roundtrip",
+  rsvpDiscoverable: "roundtrip",
+  rsvpContributionEnabled: "roundtrip",
+  rsvpContributionSuggestedCents: "roundtrip",
+  rsvpContributionMinCents: "roundtrip",
+  inPersonPaymentsEnabled: "roundtrip",
+  lastStepReached: "roundtrip",
+  clientRevision: "roundtrip",
+} satisfies Record<keyof DraftEvent, DraftKeyClass>;
+
+// The server row exactly as the live business_update_event_draft stores it: every
+// column of the real update payload, plus the theme blob after a JSON wire hop
+// (JSON.stringify drops undefined — the very thing the write leg must not rely on).
+// rowFromPayload() above carries only the blob-backed fields, so the key-parity
+// round-trip needs this faithful row to avoid false failures on column-backed keys.
+const rowFromServerUpdate = (
+  source: DraftEvent,
+  payload: ServerDraftEventUpdate,
+): ServerDraftEventRow => ({
+  ...payload,
+  theme: JSON.parse(JSON.stringify(payload.theme)) as Record<string, unknown>,
+  id: source.id,
+  brand_id: source.brandId,
+  created_by: "user-1",
+  slug: "draft-3287",
+  created_at: source.createdAt,
+  updated_at: source.updatedAt,
+  published_at: null,
+  deleted_at: null,
+});
+
+const blobPricingMode = (theme: Record<string, unknown>): unknown =>
+  (theme.business_draft as Record<string, unknown>).multiDatePricingMode;
+
+describe("#3287 — multi-day pricing choice survives the draft save round-trip", () => {
+  // T-1 (happy, fails-on-revert of EITHER leg): all_days survives save → echo.
+  test("T-1 all_days is written into business_draft and read back from the server copy", () => {
+    const source = draft({ multiDatePricingMode: "all_days" });
+    const payload = draftToServerUpdate(source, {});
+
+    // Write leg: the choice lands in the blob the RPC stores verbatim.
+    expect(blobPricingMode(payload.theme)).toBe("all_days");
+
+    // Read leg: the server copy that replaces the local draft still carries it.
+    const hydrated = serverRowToDraft(rowFromServerUpdate(source, payload));
+    expect(hydrated.multiDatePricingMode).toBe("all_days");
+  });
+
+  // T-2 (both directions): switching back to per_day also survives.
+  test("T-2 per_day round-trips as a concrete value in both directions", () => {
+    const source = draft({ multiDatePricingMode: "per_day" });
+    const payload = draftToServerUpdate(source, {});
+
+    expect(blobPricingMode(payload.theme)).toBe("per_day");
+    const hydrated = serverRowToDraft(rowFromServerUpdate(source, payload));
+    expect(hydrated.multiDatePricingMode).toBe("per_day");
+  });
+
+  // T-3 (legacy / edge): pre-#3287 blobs never carried the key, and pre-#2160
+  // local drafts carry undefined. Neither may surface undefined.
+  test("T-3 a legacy blob without the key reads per_day, and an absent local value writes per_day", () => {
+    const source = draft({ multiDatePricingMode: "all_days" });
+    const payload = draftToServerUpdate(source, {});
+    delete (payload.theme.business_draft as Record<string, unknown>)
+      .multiDatePricingMode;
+
+    const hydrated = serverRowToDraft(rowFromServerUpdate(source, payload));
+    expect(hydrated.multiDatePricingMode).toBe("per_day");
+    expect(hydrated.multiDatePricingMode).not.toBeUndefined();
+    expect(
+      Object.prototype.hasOwnProperty.call(hydrated, "multiDatePricingMode"),
+    ).toBe(true);
+
+    // A pre-#2160 persisted local draft has no value at all: the write leg still
+    // emits a concrete per_day that survives JSON serialization.
+    const legacyLocal = draft();
+    delete legacyLocal.multiDatePricingMode;
+    const legacyPayload = draftToServerUpdate(legacyLocal, {});
+    const wire = JSON.parse(JSON.stringify(legacyPayload.theme)) as Record<
+      string,
+      unknown
+    >;
+    expect(blobPricingMode(wire)).toBe("per_day");
+  });
+
+  // T-4 (insert / lazy-promote path): the first save of a local-only d_* draft.
+  test("T-4 all_days survives the draftToServerInsert (promote) leg", () => {
+    const source = draft({ multiDatePricingMode: "all_days" });
+    const insert = draftToServerInsert(source, "user-1", "draft-x");
+
+    expect(blobPricingMode(insert.theme)).toBe("all_days");
+    const hydrated = serverRowToDraft(rowFromPayload(source, insert.theme));
+    expect(hydrated.multiDatePricingMode).toBe("all_days");
+  });
+
+  // T-5 (structural): every "roundtrip" key survives a faithful save → echo.
+  test("T-5 every round-trip DraftEvent key survives the server copy (key parity)", () => {
+    const source: DraftEvent = draft({
+      // Deliberately non-default values, so a dropped read that falls back to a
+      // default cannot pass by coincidence.
+      name: "Wythe Weekender Parity",
+      description: "Every field set on purpose.",
+      format: "hybrid",
+      partyTypes: ["club-night"],
+      vibeTags: ["energetic"],
+      musicGenres: ["house"],
+      whenMode: "multi_date",
+      date: "2026-10-02",
+      doorsOpen: "21:00",
+      endsAt: "03:00",
+      endsAtUtc: "2026-10-03T07:00:00.000Z",
+      timezone: "America/New_York",
+      recurrenceRule: {
+        preset: "weekly",
+        byDay: "FR",
+        termination: { kind: "count", count: 4 },
+      },
+      multiDatePricingMode: "all_days",
+      venueName: "Lantern Room",
+      address: "1 Wythe Avenue",
+      city: "Brooklyn",
+      locationGeo: { lat: 40.72, lng: -73.96 },
+      coordinatePrecision: "approximate",
+      onlineUrl: "https://example.com/stream",
+      hideAddressUntilTicket: false,
+      coverHue: 300,
+      coverMediaUrl: "https://cdn.example.com/cover.gif",
+      coverMediaPosterUrl: "https://cdn.example.com/cover-poster.jpg",
+      coverMediaType: "gif",
+      coverMediaProvider: "giphy",
+      coverMediaSourceUrl: "https://giphy.com/gifs/cover",
+      coverMediaCredit: "GIPHY",
+      coverMediaCreditUrl: "https://giphy.com",
+      coverMediaAlt: "Weekend cover",
+      coverGallery: [{ url: "https://cdn.example.com/gallery-1.jpg", type: "image" }],
+      currency: "USD",
+      tickets: [
+        ticket({
+          id: "ticket-weekend",
+          name: "Weekend pass",
+          priceGbp: 40,
+          currency: "USD",
+          capacity: 120,
+          visibility: "hidden",
+          displayOrder: 0,
+          approvalRequired: true,
+          passwordConfigured: false,
+          waitlistEnabled: true,
+          minPurchaseQty: 2,
+          maxPurchaseQty: 6,
+          allowTransfers: false,
+          description: "Valid every day",
+          saleStartAt: "2026-09-20T12:00:00.000Z",
+          saleEndAt: "2026-10-01T12:00:00.000Z",
+          availableAt: "online",
+        }),
+      ],
+      pricingSwitches: { passTax: true, passMinglaFee: false, passServiceFee: true },
+      visibility: "private",
+      requireApproval: true,
+      allowTransfers: false,
+      hideRemainingCount: true,
+      passwordProtected: true,
+      themeOverrides: { color: "#2563eb", font: "poppins", animation: "confetti" },
+      privateGuestList: true,
+      isRsvp: true,
+      rsvpCapacity: 80,
+      rsvpAllowPlusOnes: true,
+      rsvpPlusOnesMax: 2,
+      rsvpWaitlistEnabled: true,
+      rsvpApprovalMode: "manual",
+      rsvpDiscoverable: true,
+      rsvpContributionEnabled: true,
+      rsvpContributionSuggestedCents: 2500,
+      rsvpContributionMinCents: 500,
+      inPersonPaymentsEnabled: true,
+      lastStepReached: 4,
+      clientRevision: 95,
+    });
+
+    const classified = Object.keys(DRAFT_EVENT_KEY_CLASS).sort();
+    const roundtripKeys = (
+      Object.keys(DRAFT_EVENT_KEY_CLASS) as (keyof DraftEvent)[]
+    ).filter((key) => DRAFT_EVENT_KEY_CLASS[key] === "roundtrip");
+
+    // Denominator guard: the fixture sets EVERY classified key (a zero-key
+    // comparison would pass vacuously), and there is a real set to compare.
+    expect(Object.keys(source).sort()).toEqual(classified);
+    for (const key of roundtripKeys) {
+      expect({ key, value: source[key] }).not.toEqual({ key, value: undefined });
+    }
+    expect(roundtripKeys.length).toBeGreaterThanOrEqual(50);
+
+    const payload = draftToServerUpdate(source, {});
+    const hydrated = serverRowToDraft(rowFromServerUpdate(source, payload));
+
+    for (const key of roundtripKeys) {
+      // Wrapped with the key name so a failure says WHICH field was dropped.
+      expect({
+        key,
+        ownProperty: Object.prototype.hasOwnProperty.call(hydrated, key),
+        value: hydrated[key],
+      }).toEqual({ key, ownProperty: true, value: source[key] });
+    }
+  });
+
+  // T-6 (garbage): a corrupt blob value can never produce a third state.
+  test("T-6 corrupt blob values hydrate to per_day", () => {
+    const source = draft({ multiDatePricingMode: "all_days" });
+    for (const corrupt of ["weekly", "ALL_DAYS", 42, null, {}, true]) {
+      const payload = draftToServerUpdate(source, {});
+      (payload.theme.business_draft as Record<string, unknown>).multiDatePricingMode =
+        corrupt;
+      const hydrated = serverRowToDraft(rowFromServerUpdate(source, payload));
+      expect({ corrupt, mode: hydrated.multiDatePricingMode }).toEqual({
+        corrupt,
+        mode: "per_day",
+      });
+    }
   });
 });
