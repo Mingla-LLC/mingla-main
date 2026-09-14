@@ -4,7 +4,7 @@
  *
  * The shared `EventOfferingBody` renders the canonical structure in the locked
  * order. This gate asserts the body emits the section markers in the SPEC §3A order
- * (2..8 inside the body; cover=1 + floating bar=9 are surface-owned), so a reorder
+ * (2..9 inside the body; cover=1 + floating bar=10 surface-owned), so a reorder
  * trips CI. It anchors on stable section comments/testIDs in
  * packages/offering-rendering/EventOfferingBody.tsx:
  *   (2) Event name lead block
@@ -14,9 +14,14 @@
  *   (6) Presented By           → "Presented by"
  *   (7) About                  → secTitle "About"
  *   (8) Where you'll be        → "Where you" (Where you'll be)
+ *   (9) Cancellation policy    → testID "orch-1167-cancellation" (#3284 — the last
+ *                                body section; I-3284-CANONICAL-10-SECTION-ORDER,
+ *                                which supersedes I-PROPOSED-1167-CANONICAL-9-SECTION-ORDER)
+ *
+ * The filename keeps its "9" because the MANIFEST and the invariant registry name it.
  *
  * Fails if any anchor is missing OR they appear out of order. Self-test proves a
- * reordered body trips the gate.
+ * reordered body trips the gate — including cancellation placed before (8).
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -36,6 +41,8 @@ const ANCHORS = [
   ["(6) Presented By", "(6) Presented By"],
   ["(7) About", "(7) About"],
   ["(8) Where", "(8) Where you'll be"],
+  // #3284 — section 9, the shared refund ladder, closes the body.
+  ["(9) Cancellation", 'testID="orch-1167-cancellation"'],
 ];
 
 function check(src, label) {
@@ -51,7 +58,7 @@ function check(src, label) {
     if (idx < prev) {
       failures.push(
         `${label}: section ${name} appears BEFORE ${prevName} — the canonical ` +
-          "9-section order (SPEC §3A) was reordered.",
+          "section order (SPEC §3A; #3284 section 9) was reordered.",
       );
     }
     prev = idx;
@@ -71,15 +78,40 @@ function runSelfTest() {
     "// (6) Presented By",
     "// (7) About",
     "// (8) Where you'll be",
+    '// testID="orch-1167-cancellation"',
   ].join("\n");
+  // #3284 — cancellation (9) placed BEFORE Where you'll be (8) must also trip.
+  const cancellationEarly = [
+    "// (2) Event name lead block",
+    "// (3) Date & time meta chips",
+    '// testID="orch-1167-pills-row"',
+    '// testID="orch-1167-ticket-box"',
+    "// (6) Presented By",
+    "// (7) About",
+    '// testID="orch-1167-cancellation"',
+    "// (8) Where you'll be",
+  ].join("\n");
+  // #3284 — a body with no cancellation anchor at all must trip too.
+  const cancellationMissing = ANCHORS.slice(0, -1).map(([, n]) => `// ${n}`).join("\n");
   const goodPasses = check(good, "synthetic-good").length === 0;
   const badFails = check(reordered, "synthetic-bad").length > 0;
+  const cancellationEarlyFails = check(cancellationEarly, "synthetic-cancellation-early").length > 0;
+  const cancellationMissingFails =
+    check(cancellationMissing, "synthetic-cancellation-missing").length > 0;
   if (!goodPasses) {
     console.error("SELF-TEST FAIL: ordered anchors wrongly tripped the gate.");
     process.exit(1);
   }
   if (!badFails) {
     console.error("SELF-TEST FAIL: reordered sections did not trip the gate.");
+    process.exit(1);
+  }
+  if (!cancellationEarlyFails) {
+    console.error("SELF-TEST FAIL: cancellation placed before (8) Where you'll be did not trip the gate.");
+    process.exit(1);
+  }
+  if (!cancellationMissingFails) {
+    console.error("SELF-TEST FAIL: a body with no cancellation anchor did not trip the gate.");
     process.exit(1);
   }
   console.log("ORCH-1167 canonical-9-section-order gate SELF-TEST PASS.");
