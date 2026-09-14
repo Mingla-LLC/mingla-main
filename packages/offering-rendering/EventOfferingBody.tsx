@@ -116,7 +116,9 @@ import {
 } from "./VenueMapsActions";
 import { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
 // #3284 — section 9: the shared refund ladder + the three-state read it is gated on.
-import { OfferingRefundLadder } from "./OfferingRefundLadder";
+// #3284 [bundle budget] — the ladder loads in its own chunk (ORCH-1083); never
+// import ./OfferingRefundLadder statically here.
+import { LazyOfferingRefundLadder as OfferingRefundLadder } from "./LazyOfferingRefundLadder";
 import { type RefundPolicyReadState } from "./offeringRefundPolicy";
 
 // Re-export the pure totals so a single import surface stays one place.

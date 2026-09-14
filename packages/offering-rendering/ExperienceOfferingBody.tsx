@@ -105,7 +105,9 @@ import type {
   ExperienceOfferingData,
 } from "./experienceOfferingTypes";
 // #3284 — section 10: the shared refund ladder.
-import { OfferingRefundLadder } from "./OfferingRefundLadder";
+// #3284 [bundle budget] — the ladder loads in its own chunk (ORCH-1083); never
+// import ./OfferingRefundLadder statically here.
+import { LazyOfferingRefundLadder as OfferingRefundLadder } from "./LazyOfferingRefundLadder";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
