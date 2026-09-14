@@ -59,6 +59,66 @@ export const STRICT_POLICY: RefundPolicy = {
   ],
 };
 
+// Issue #3284 — event and experience presets. Trip presets above assume booking
+// months ahead; events and experiences are bought days to weeks ahead, so these
+// count in days (Seth-approved 2026-09-12). Ordered most to least generous:
+// Flexible >= Standard >= Strict >= No refunds at every threshold.
+export const EVENT_FLEXIBLE_POLICY: RefundPolicy = {
+  kind: "flexible",
+  tiers: [
+    { days_before_start: 7, refund_pct: 100 },
+    { days_before_start: 2, refund_pct: 50 },
+    { days_before_start: 0, refund_pct: 0 },
+  ],
+};
+
+export const EVENT_STANDARD_POLICY: RefundPolicy = {
+  kind: "standard",
+  tiers: [
+    { days_before_start: 14, refund_pct: 100 },
+    { days_before_start: 7, refund_pct: 50 },
+    { days_before_start: 0, refund_pct: 0 },
+  ],
+};
+
+export const EVENT_STRICT_POLICY: RefundPolicy = {
+  kind: "strict",
+  tiers: [
+    { days_before_start: 30, refund_pct: 100 },
+    { days_before_start: 0, refund_pct: 0 },
+  ],
+};
+
+/** "No refunds" — one 0% tier from the moment of purchase. */
+export const NO_REFUNDS_POLICY: RefundPolicy = {
+  kind: "custom",
+  tiers: [{ days_before_start: 0, refund_pct: 0 }],
+};
+
+/**
+ * Issue #3284 — the refund % a policy gives with `daysRemaining` whole days left
+ * before the offering starts. The SAME tier rule as the server (the #3284 writer's
+ * downgrade classifier and biz_compute_refund_for_cancel): the tier with the
+ * largest `days_before_start <= daysRemaining` wins, otherwise 0. A null policy
+ * refunds 0% at every point, and so does any time after the start (negative days).
+ *
+ * Used only to PRE-FILL the organiser's refund sheet. It never moves money.
+ */
+export function realizedRefundPct(
+  policy: RefundPolicy | null,
+  daysRemaining: number,
+): number {
+  if (policy === null || !Number.isFinite(daysRemaining)) return 0;
+  let winner: RefundPolicyTier | null = null;
+  for (const tier of policy.tiers) {
+    if (tier.days_before_start > daysRemaining) continue;
+    if (winner === null || tier.days_before_start > winner.days_before_start) {
+      winner = tier;
+    }
+  }
+  return winner === null ? 0 : winner.refund_pct;
+}
+
 export interface RefundPolicyServiceError extends Error {
   code:
     | "policy_invalid"
@@ -255,4 +315,192 @@ export async function updateBookingDeadline(
       "Trip not found or you don't have permission to update it.",
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Issue #3284 — refund terms on events and experiences.
+// ---------------------------------------------------------------------------
+
+/**
+ * Why a refund-terms save on an event or experience did not land.
+ *
+ * - Server reasons, verbatim from `business_patch_offering_refund_policy`:
+ *   `refund_policy_downgrade_with_sales` (paid buyers exist and the new terms are
+ *   worse at some threshold — carries `affectedOrderCount`), `missing_edit_reason`,
+ *   `invalid_edit_reason`, `offering_not_found`, `offering_type_not_supported`,
+ *   `offering_not_editable_status`.
+ * - Server exceptions: `authentication_required`, `insufficient_event_permission`,
+ *   and `policy_invalid` (the shape validator or its CHECK constraint refused).
+ * - `unavailable` — the server does not have the function yet (PostgREST PGRST202).
+ *   Callers must NOT continue the rest of a save on this: nothing was written.
+ * - `network_error` — the request never produced a server answer.
+ * - `internal_error` — anything else, including a reply this client cannot read.
+ */
+export type OfferingRefundPolicyFailureReason =
+  | "refund_policy_downgrade_with_sales"
+  | "missing_edit_reason"
+  | "invalid_edit_reason"
+  | "offering_not_found"
+  | "offering_type_not_supported"
+  | "offering_not_editable_status"
+  | "authentication_required"
+  | "insufficient_event_permission"
+  | "policy_invalid"
+  | "unavailable"
+  | "network_error"
+  | "internal_error";
+
+export type SetOfferingRefundPolicyResult =
+  | { ok: true; refundPolicy: RefundPolicy | null }
+  | {
+      ok: false;
+      reason: OfferingRefundPolicyFailureReason;
+      /** Present only for `refund_policy_downgrade_with_sales`. */
+      affectedOrderCount?: number;
+      /** The raw server message or reason, for logs. Never shown to guests. */
+      detail?: string;
+    };
+
+const SERVER_RETURN_REASONS: ReadonlySet<string> = new Set<
+  OfferingRefundPolicyFailureReason
+>([
+  "refund_policy_downgrade_with_sales",
+  "missing_edit_reason",
+  "invalid_edit_reason",
+  "offering_not_found",
+  "offering_type_not_supported",
+  "offering_not_editable_status",
+]);
+
+const isServerReturnReason = (
+  value: string,
+): value is OfferingRefundPolicyFailureReason => SERVER_RETURN_REASONS.has(value);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isRefundPolicyShape = (value: unknown): value is RefundPolicy => {
+  if (!isRecord(value) || !Array.isArray(value.tiers)) return false;
+  if (!["flexible", "standard", "strict", "custom"].includes(String(value.kind))) {
+    return false;
+  }
+  return value.tiers.every(
+    (tier: unknown) =>
+      isRecord(tier) &&
+      typeof tier.days_before_start === "number" &&
+      typeof tier.refund_pct === "number",
+  );
+};
+
+/** Map a PostgREST error from the writer's RPC call to a typed failure. */
+function offeringRefundRpcFailure(error: {
+  code?: string | null;
+  message?: string | null;
+}): SetOfferingRefundPolicyResult {
+  const code = error.code ?? "";
+  const message = error.message ?? "";
+  const lower = message.toLowerCase();
+  if (code === "PGRST202") {
+    return { ok: false, reason: "unavailable", detail: message };
+  }
+  // A signed-out caller reaches the function as `anon`, whose EXECUTE is revoked
+  // (42501); a signed-in caller with no session identity gets the RAISE.
+  if (code === "42501" || lower.includes("authentication_required")) {
+    return { ok: false, reason: "authentication_required", detail: message };
+  }
+  if (lower.includes("insufficient_event_permission")) {
+    return { ok: false, reason: "insufficient_event_permission", detail: message };
+  }
+  // The shape validator RAISEs with `refund_policy.` / `tier ` / monotonicity
+  // messages; the CHECK constraint is 23514. Either way the terms were refused.
+  // (Match `refund_policy.` WITH the dot: the function's own name contains
+  // `refund_policy` and must never make an unrelated error read as bad terms.)
+  if (
+    code === "23514" ||
+    lower.includes("refund_policy.") ||
+    lower.includes("events_refund_policy_valid") ||
+    lower.includes("i-proposed-tr4-refund-cascade-monotonicity") ||
+    lower.startsWith("tier ")
+  ) {
+    return { ok: false, reason: "policy_invalid", detail: message };
+  }
+  return { ok: false, reason: "internal_error", detail: `${code} ${message}`.trim() };
+}
+
+/**
+ * Issue #3284 — write refund terms on an EVENT or EXPERIENCE through the one gated
+ * server owner, `business_patch_offering_refund_policy`.
+ *
+ * - Drafts: pass `reason: null`; the server writes with no gate.
+ * - Scheduled or live: pass the organiser's 10–200 character edit reason. Once a
+ *   paid order exists the server refuses any change that is worse for buyers and
+ *   returns `refund_policy_downgrade_with_sales` with `affectedOrderCount`.
+ * - `policy: null` clears the terms.
+ *
+ * Never throws for a server or network failure — every outcome is a typed result,
+ * and on `ok: false` nothing was written. Trips do NOT use this: they keep
+ * `updateRefundPolicy` and their own live-edit owner.
+ */
+export async function setOfferingRefundPolicy(
+  eventId: string,
+  policy: RefundPolicy | null,
+  reason: string | null,
+): Promise<SetOfferingRefundPolicyResult> {
+  if (!eventId) {
+    return { ok: false, reason: "offering_not_found", detail: "missing event id" };
+  }
+
+  let data: unknown;
+  let error: { code?: string | null; message?: string | null } | null;
+  try {
+    const response = await supabase.rpc("business_patch_offering_refund_policy", {
+      p_event_id: eventId,
+      p_policy: policy,
+      p_reason: reason,
+    });
+    data = response.data;
+    error = response.error ?? null;
+  } catch (thrown) {
+    return {
+      ok: false,
+      reason: "network_error",
+      detail: thrown instanceof Error ? thrown.message : String(thrown),
+    };
+  }
+
+  if (error !== null) {
+    return offeringRefundRpcFailure(error);
+  }
+  if (!isRecord(data)) {
+    return { ok: false, reason: "internal_error", detail: "unreadable reply" };
+  }
+
+  if (data.ok === true) {
+    const written = data.refundPolicy;
+    if (written === null || written === undefined) {
+      return { ok: true, refundPolicy: null };
+    }
+    if (!isRefundPolicyShape(written)) {
+      return { ok: false, reason: "internal_error", detail: "unreadable refundPolicy" };
+    }
+    return { ok: true, refundPolicy: written };
+  }
+
+  const serverReason = typeof data.reason === "string" ? data.reason : "";
+  if (!isServerReturnReason(serverReason)) {
+    return {
+      ok: false,
+      reason: "internal_error",
+      detail: serverReason === "" ? "missing reason" : serverReason,
+    };
+  }
+  if (serverReason === "refund_policy_downgrade_with_sales") {
+    const count = Number(data.affected_order_count);
+    return {
+      ok: false,
+      reason: serverReason,
+      ...(Number.isInteger(count) && count >= 0 ? { affectedOrderCount: count } : {}),
+    };
+  }
+  return { ok: false, reason: serverReason };
 }
