@@ -187,6 +187,11 @@ jobs:
           # so the re-apply set must end with it, per the instruction above.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
             -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql
+          # Issue #3313 re-emits `business_publish_event_draft` again (a recurring
+          # publish materialises every rule date) and now owns its final
+          # definition, so it ends the re-apply set.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270702003313_issue_3313_recurring_event_occurrences.sql
           after="$(snapshot)"
           test "$before" = "$after"
           echo "OK — replay is definition- and grant-equivalent."

@@ -1129,7 +1129,16 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // PR_FAMILY_IDENTITY_SHA256 are unchanged,
   // and the policy gate plus its mutation proofs remain untouched. Three local
   // runs of this file's RUBY_CANONICAL produced the same value below.
-  "a24d680bd5fc50d7dae67f67c0f6b95536be0b28e3acfd21c970cf09a901d491";
+  //
+  // [TEST-MOD-APPROVED #3313] Re-derived after #3313 added its recurring-event
+  // SQL suite and edge node test to the migrations job, ended the #2333
+  // re-apply set with its migration, and registered that migration by exact
+  // filename in the #1931 and #2117 filtered replays (the #2492 gate named the
+  // file). No concurrency, group:, cancel-in-progress, event kind or workflow
+  // identity changed: PR_FAMILY_COUNT (124) and PR_FAMILY_IDENTITY_SHA256 are
+  // unchanged. Old a24d680b…d491 -> new 720eba24…6871, from this file's own
+  // RUBY_CANONICAL; each added line is in the revert-sensitivity loop below.
+  "720eba245912d1ca11b6a93b5033d483923fbd9c5cc812ca6b253d9e56136871";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1492,6 +1501,20 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "            -f supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql\n"],
     [liveWorkflow("issue", "2333", "online", "event", "publish"),
       "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql\n"],
+    // [TEST-MOD-APPROVED #3313] The #3313 suite targets on the migrations job,
+    // the #2333 re-apply of the #3313 migration, and its exact-filename skip in
+    // the #1931 and #2117 filtered replays. Each must independently move the
+    // digest.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3313_recurring_event_occurrences.implementor.happy.pg17.test.sql\n"],
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "          node --test supabase/functions/ticket-checkout-create/__tests__/issue_3313_day_choice_required.test.mjs\n"],
+    [liveWorkflow("issue", "2333", "online", "event", "publish"),
+      "            -f supabase/migrations/20270702003313_issue_3313_recurring_event_occurrences.sql\n"],
+    [liveWorkflow("issue", "1931", "private", "event", "access"),
+      "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
