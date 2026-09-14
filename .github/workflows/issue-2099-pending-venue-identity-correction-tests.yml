@@ -63,6 +63,20 @@ on:
       - "mingla-admin/src/__tests__/issue2099_pending_identity_correction.test.js"
       - "mingla-admin/src/components/entity/HighRiskActionModal.jsx"
       - ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml"
+      # issue #3325 — the boot-payload baseline IS listed, because SC-4 READS it at
+      # run time: on a push to main it measures main's __common against this file.
+      # When a merge grows __common past #2099's 1,024 B tripwire (#3279 added
+      # 6,707 B, inside the shared 12,000 B allowance), that push run goes red and
+      # the ratchet records the growth in a one-file baseline merge (#3324). That
+      # merge changes this lane's verdict, but without this entry it started no run
+      # here, so main-health kept reading the older red. main-health admits only
+      # push and schedule runs, never a manual dispatch, so nothing else could
+      # clear it. The same anchor feeds pull_request: a baseline-only PR starts this
+      # workflow, and "SC-4 scope" finds none of its six product paths and skips the
+      # measurement, exactly as before. The contract jobs run and cannot be moved
+      # by a baseline value. Do NOT drop this entry, and never clear a red SC-4 by
+      # editing the baseline by hand.
+      - "mingla-business/scripts/ci/bundle-baseline.json"
       # issue #2193 — MANIFEST.json is DELIBERATELY ABSENT from this filter.
       # Registering a strict-grep gate edits it, which nearly every substantial PR
       # does, so listing it here fired this workflow on unrelated branches. SC-4 then
