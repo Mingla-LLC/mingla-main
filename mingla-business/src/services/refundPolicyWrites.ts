@@ -18,11 +18,10 @@
  * - `updateRefundPolicy` / `updateBookingDeadline` throw a RefundPolicyServiceError.
  *   A chunk that cannot load throws the writer's own fallback for a failed
  *   request (`internal_error`, "Couldn't save policy. Try again.").
- * The failure is reported through reportNonFatal. Nothing is written, and the next
- * save loads the chunk again.
+ * The failure is reported through reportNonFatal (loaded on that path only).
+ * Nothing is written, and the next save loads the chunk again.
  */
 
-import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import type {
   RefundPolicy,
   RefundPolicyServiceError,
@@ -39,7 +38,13 @@ async function withWriters<T>(
   try {
     writers = await import("./refundPolicyService");
   } catch (thrown) {
-    reportNonFatal("refundPolicyWrites", thrown);
+    // The reporter loads only on this failure path: statically it would pull the
+    // native Sentry SDK into every screen that saves refund terms, including the
+    // native render suites that mount them.
+    await import("../diagnostics/reportNonFatal").then(
+      ({ reportNonFatal }) => reportNonFatal("refundPolicyWrites", thrown),
+      () => undefined,
+    );
     return onLoadFailure(
       `writer chunk failed to load: ${
         thrown instanceof Error ? thrown.message : String(thrown)

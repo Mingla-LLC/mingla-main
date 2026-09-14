@@ -26,7 +26,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { accent, radius, spacing } from "../../constants/designSystem";
-import { reportNonFatal } from "../../diagnostics/reportNonFatal";
 import { DefaultFallback } from "../ui/ErrorBoundary";
 import type { RefundPolicyEditorProps } from "./RefundPolicyEditor";
 
@@ -61,7 +60,12 @@ export const LazyRefundPolicyEditor: React.FC<RefundPolicyEditorProps> = (props)
         if (live) setEditorModule(module);
       },
       (error: unknown) => {
-        reportNonFatal("LazyRefundPolicyEditor", error);
+        // Loaded on this failure path only: statically the reporter pulls the
+        // native Sentry SDK into all four screens that show the editor.
+        void import("../../diagnostics/reportNonFatal").then(
+          ({ reportNonFatal }) => reportNonFatal("LazyRefundPolicyEditor", error),
+          () => undefined,
+        );
         if (live) setFailure(error ?? "load failed");
       },
     );

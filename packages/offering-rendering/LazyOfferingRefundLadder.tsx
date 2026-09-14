@@ -23,7 +23,7 @@
  * tries again. This file adds no copy.
  */
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { View } from "react-native";
 
 import type { OfferingRefundLadderProps } from "./OfferingRefundLadder";
@@ -75,7 +75,7 @@ export function reservedLadderHeight({
   );
 }
 
-export const LazyOfferingRefundLadder: React.FC<OfferingRefundLadderProps> = (props) => {
+export const LazyOfferingRefundLadder = (props: OfferingRefundLadderProps) => {
   const [ladderModule, setLadderModule] = useState(loadedLadder);
   const [failed, setFailed] = useState(false);
 

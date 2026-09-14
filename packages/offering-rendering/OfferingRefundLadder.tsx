@@ -37,7 +37,11 @@
  * "Cancellation policy" section heading (so a body just drops it in).
  */
 
-import React from "react";
+// No React import: JSX compiles through the automatic runtime on every consumer
+// (as in VenueMapsActions). #3284 dropped it with `React.FC`: in the business
+// typecheck graph this package cannot resolve `react`, so `React.FC` read as
+// `any` and left every destructured prop implicitly typed. The props are typed
+// where they are destructured instead; the rendered output is unchanged.
 import { StyleSheet, Text, View } from "react-native";
 
 import type { OfferingSurfaceStyles, ThemePalette } from "./themePalette";
@@ -134,7 +138,7 @@ export interface OfferingRefundLadderProps {
 /** Kept for one release so trip-named imports still type-check. */
 export type TripRefundLadderProps = OfferingRefundLadderProps;
 
-export const OfferingRefundLadder: React.FC<OfferingRefundLadderProps> = ({
+export const OfferingRefundLadder = ({
   policy,
   bookingDeadline = null,
   offeringType = "trip",
@@ -144,7 +148,7 @@ export const OfferingRefundLadder: React.FC<OfferingRefundLadderProps> = ({
   surface,
   fontFamily,
   testID,
-}) => {
+}: OfferingRefundLadderProps) => {
   const isTrip = offeringType === "trip";
   const tiers = policy !== null ? policy.tiers : [];
   const deadlineLabel = isTrip ? formatDeadline(bookingDeadline) : null;
