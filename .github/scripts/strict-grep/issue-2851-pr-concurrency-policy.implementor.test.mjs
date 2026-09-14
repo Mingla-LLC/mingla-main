@@ -1141,13 +1141,18 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // identity, concurrency block, group expression, cancellation policy, or
   // timeout.
   //
+  // [TEST-MOD-APPROVED #3325] Re-derived after #3325 added only
+  // mingla-business/scripts/ci/bundle-baseline.json to #2099's existing shared
+  // pull_request/push path anchor. The workflow identity, concurrency block,
+  // group expression, cancellation policy and event family are unchanged.
+  //
   // MEASURED FROM DISK with this file's extracted RUBY_CANONICAL algorithm:
-  // current combined tree 330740ba...; without #3176 a24d680b...; without
+  // current combined tree 1d728bae...; before #3325 330740ba...; without #3176 a24d680b...; without
   // #3288 b1b5f757...; without #3176 and #3288 aadaaea7...; without #1778
   // d2f72965.... The count, identity and policy audit remain 124 /
   // 9356c425... / zero errors. Whole-block assertions below lock the branch
   // deltas independently while every receipt retains #1778's main truth.
-  "330740baa866dd1013a9047498c746effbb6808e4e0a5a3cb13df02c8b78447a";
+  "1d728baea721b73f78b3ce43646c19f61a21b8160267999239c1f70b5bf2fbed";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1545,7 +1550,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(before3176Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     before3176Authority.withoutConcurrencySha256,
-    "a24d680bd5fc50d7dae67f67c0f6b95536be0b28e3acfd21c970cf09a901d491",
+    "f0cffd7c65f34433f3d3899df4feada9ab994e38b82c1965b5926e92c94ada45",
   );
 
   // [TEST-MOD-APPROVED #3176] Current main and this branch both change the
@@ -1583,7 +1588,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(before3288Authority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     before3288Authority.withoutConcurrencySha256,
-    "b1b5f75759ecb8ae6dd12d005b2583ac8414eb1c86c110b6c5585684f013f8a3",
+    "be030b21587ab7f2b8122886d5271b3b249115babbdef14daed2f5289dc46571",
   );
 
   const beforeBoth = { ...before3288 };
@@ -1595,7 +1600,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.equal(beforeBothAuthority.identitySha256, PR_FAMILY_IDENTITY_SHA256);
   assert.equal(
     beforeBothAuthority.withoutConcurrencySha256,
-    "aadaaea7efdbd00254fa460f07f64be589cd0773d0e7f8aab42d25788cf5af6c",
+    "5a3c8ca52e116c44d76c003b7fb478f8b4eaa92c4f33af011a33d230f4d25e26",
   );
 
   const sitesWithoutPullRequest = { ...sources };
