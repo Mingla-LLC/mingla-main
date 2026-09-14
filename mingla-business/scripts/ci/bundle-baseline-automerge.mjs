@@ -159,9 +159,10 @@ export const STALE_REFUSAL_MINUTES = 360;
  * A path filter is a thing a future workflow can silently omit, and nothing
  * else in the repo would notice. This ceiling is the reader for that: it counts
  * the checks GitHub actually reports on the live recording PR, so a workflow
- * added without the exclusion reds this job. Six is the expected count today
- * (three jobs plus three third-party app checks); twelve leaves room for
- * another integration without leaving room for the fan-out to come back.
+ * added without the exclusion reds this job. Six was the original expected
+ * count (three jobs plus three third-party app checks). #3325 deliberately adds
+ * the five-job workflow whose SC-4 reads this baseline, so eleven is the current
+ * expected count; twelve still leaves no room for the old fan-out to come back.
  *
  * It NEVER refuses the merge — a diagnostic that re-creates the stale-baseline
  * jam would be worse than the fan-out it is reporting. The merge happens, then
