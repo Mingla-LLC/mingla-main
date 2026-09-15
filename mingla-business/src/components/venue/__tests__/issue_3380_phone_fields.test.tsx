@@ -200,6 +200,14 @@ describe("#3380 guest table reservation on a venue page", () => {
     tree.unmount();
   });
 
+  test("the venue page passes no country, and a naira venue still starts on +234", async () => {
+    // The public venue route hands the form only its currency (a new prop there
+    // would move the #1559 render-parity baseline), so the currency decides.
+    const tree = await renderReservation(null);
+    expect(phoneInput(tree).props.countryCode).toBe("NG");
+    tree.unmount();
+  });
+
   test("0803… on the UK flag is refused, names Nigeria, and is never submitted", async () => {
     const tree = await renderReservation("GB");
     await TestRenderer.act(async () => {
@@ -420,7 +428,6 @@ describe("#3380 menu ordering 'Who's ordering?'", () => {
     expect(field).toMatch(/<PhoneInput\s+smartEntry/);
     const route = read("mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx");
     expect(route).toContain("countryCode={venue.countryCode}");
-    expect(route).toContain("countryCode={venueCountryCode}");
   });
 });
 
