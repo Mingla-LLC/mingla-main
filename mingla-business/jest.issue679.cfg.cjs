@@ -70,6 +70,11 @@ module.exports = {
     // optional — the manifest validator resolves this testMatch and requires
     // the two to agree exactly, so each half fails closed without the other.
     "**/__tests__/issue_3188_socials_one_line.test.tsx",
+    // #3426 [brand page Past tab + Happening now] — implementor RENDER proof of
+    // the Past tab, the Happening now block, tab visibility, load more and the
+    // no-longer-discarded `pastEvents`. Named here for reason #1 in this file's
+    // header, exactly as #3188 was, with its paired MANIFEST expectedFiles entry.
+    "**/__tests__/issue_3426_brand_sections.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|react-native-web|@react-native-community|react-native-svg|lucide-react-native|expo|@expo)",
