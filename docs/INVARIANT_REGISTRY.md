@@ -1,5 +1,14 @@
 # Invariant Registry
 
+## ACTIVE — issue #3426 (public brand offerings are grouped by time)
+
+### I-3426-PUBLIC-BRAND-OFFERINGS-HAVE-ONE-DATE-DRIVEN-SECTION (ACTIVE)
+
+- **Rule:** Every public, eligible, non-cancelled event, RSVP, trip, and experience on a public brand page belongs to exactly one section based on its complete occurrence schedule: `Happening now` while any occurrence has started and not ended, `Upcoming` when its next occurrence is in the future, otherwise `Past` when every occurrence has ended. Database status labels never override occurrence time. `Happening now` and `Past` are omitted when empty; items are soonest-first in active/future sections and most-recent-first in Past; prices are not shown in Past. Buyer web, Mingla Host, and Mingla Explorer consume the same classification contract.
+- **Enforcement:** migration `20270707003426_issue_3426_brand_offering_sections.sql`; the public brand sections service and hooks; the shared brand-page rendering path; PostgreSQL 17 happy and adversarial suites; and focused service, hook, and cross-surface Jest regressions. The regression corpus covers mixed offering kinds, multiple occurrences, boundary time, cancelled/private/ineligible rows, stable ordering, empty-section omission, and the absence of production fixtures for currently-running or public trip/experience offerings.
+- **Regression:** The implementor and independent tester both recorded fail-on-revert evidence on #3426; removing the section reader/classifier or restoring status-driven grouping turns the targeted PostgreSQL/Jest suites red.
+- **Status:** ACTIVE on 2026-09-15. PR #3427 merged as `1bb4934f5`; migration and buyer web were applied first and browser-smoked on Smoke & Rhythm and Lantern Room. Mingla Host and Mingla Explorer then shipped per-platform production OTAs on runtime 1.1.6 from that exact commit, with all four CDN-served manifests independently verified. Production has no currently-running or public trip/experience fixture, so those cases are regression-test-proven rather than live-data-demonstrated.
+
 ## ACTIVE — issue #3184 (Ari website questions for brands without a website)
 
 ### I-PROPOSED-3184-SITES-REFUSAL-IS-NOT-AN-OUTAGE (ACTIVE)
