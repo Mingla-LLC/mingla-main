@@ -19,10 +19,10 @@ function verify(
   assert.doesNotMatch(menu, /allCoreTrustPagesSearchReady|allCityHubsSearchReady|explorerFallback|coreReady\s*\?/, 'approved navigation must not disappear behind an indexing-readiness gate')
 
   const orderedLinks = [
-    "href: '/explorer', label: 'Explorer'",
+    "href: '/', label: 'Explorer'",
     "href: '/host', label: 'Host'",
-    "href: '/', label: 'Home'",
     "href: '/cities', label: 'Cities'",
+    "href: '/going-out', label: 'Going out'",
     "href: '/about', label: 'About'",
     "href: '/tools', label: 'Free tools'",
   ]
@@ -33,13 +33,14 @@ function verify(
     assert.equal(menu.indexOf(link, linkIndex + 1), -1, `${link} must not be duplicated`)
     priorIndex = linkIndex
   }
+  assert.doesNotMatch(menu, /label: 'Home'/, '#3371: Explorer is the home link, so the menu must not carry a separate Home item')
 
   assert.match(menu, /aria-current=\{active \? 'page' : undefined\}/, 'all menu links must expose their current route')
   assert.match(menu, /const menuButtonClass = 'cut-btn flex min-h-14 w-full justify-start[^']*font-display text-base focus-ring'/, 'every primary menu destination must inherit the same full-width moulded button anatomy')
   assert.match(menu, /supportingDestinations\.map\([\s\S]*\? `\$\{menuButtonClass\} cut-btn-brand text-white`[\s\S]*: `\$\{menuButtonClass\} cut-btn-light text-\[var\(--cut-ink\)\]`/, 'supporting destinations must use the same active and inactive button treatments as Explorer and Host')
   assert.match(menu, /label="Explore Your City"[\s\S]*label="Host Your City"/, 'device-aware audience actions must remain stacked at the bottom')
 
-  const requiredFooterRoutes = ['/', '/explorer', '/cities', '/host', '/tools', '/help', '/about']
+  const requiredFooterRoutes = ['/', '/going-out', '/cities', '/host', '/tools', '/help', '/about']
   for (const [owner, source] of [[CUTOUT_FOOTER_PATH, cutoutFooter], [MARKETING_FOOTER_PATH, marketingFooter]]) {
     assert.doesNotMatch(source, /allCoreTrustPagesSearchReady|allCityHubsSearchReady|coreReady/, `${owner} must not hide approved public links behind indexing readiness`)
     for (const route of requiredFooterRoutes) {
