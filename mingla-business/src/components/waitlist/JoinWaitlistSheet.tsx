@@ -18,7 +18,9 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useJoinWaitlistMutation } from "../../hooks/useJoinWaitlistMutation";
+import { phoneStartCountryForCurrency } from "../../utils/phoneStartCountryForCurrency";
 import { Button } from "../ui/Button";
+import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
 import { Sheet } from "../ui/Sheet";
 import { Toast } from "../ui/Toast";
 
@@ -33,6 +35,11 @@ interface JoinWaitlistSheetProps {
   eventId: string;
   ticket: JoinWaitlistTicket | null;
   onClose: () => void;
+  /**
+   * issue #3380 — the event's currency, so the phone picker starts on the
+   * event's country (a naira event opens on +234).
+   */
+  currency?: string | null;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -42,10 +49,15 @@ export const JoinWaitlistSheet: React.FC<JoinWaitlistSheetProps> = ({
   eventId,
   ticket,
   onClose,
+  currency = null,
 }) => {
   const mutation = useJoinWaitlistMutation();
   const [email, setEmail] = useState<string>("");
-  const [phone, setPhone] = useState<string>("");
+  // issue #3380 — was a free-text box ("+1 555 0100") stored exactly as typed.
+  const phone = usePhoneEntry({
+    startCountries: [phoneStartCountryForCurrency(currency)],
+  });
+  const resetPhone = phone.reset;
   const [name, setName] = useState<string>("");
   const [qty, setQty] = useState<number>(1);
   const [consent, setConsent] = useState<boolean>(false);
@@ -65,25 +77,27 @@ export const JoinWaitlistSheet: React.FC<JoinWaitlistSheetProps> = ({
     [ticket?.maxPurchaseQty],
   );
   const cleanEmail = email.trim().toLowerCase();
-  const cleanPhone = phone.trim();
+  const cleanPhone = phone.isEmpty ? "" : (phone.e164 ?? "");
+  const phoneValid = phone.isEmpty || phone.e164 !== null;
   const hasContact = cleanEmail.length > 0 || cleanPhone.length > 0;
   const emailValid = cleanEmail.length === 0 || EMAIL_RE.test(cleanEmail);
   const canSubmit =
     ticket !== null &&
     hasContact &&
     emailValid &&
+    phoneValid &&
     consent &&
     !mutation.isPending;
 
   useEffect(() => {
     if (!visible) return;
     setEmail("");
-    setPhone("");
+    resetPhone();
     setName("");
     setQty(1);
     setConsent(false);
     setToast({ visible: false, message: "", kind: "success" });
-  }, [visible, ticket?.id]);
+  }, [visible, ticket?.id, resetPhone]);
 
   useEffect(() => {
     // orch-strict-grep-allow orch-0892 — SPEC §8.3 mandated Cycle 3 wizard pattern (Keyboard.addListener + dynamic paddingBottom) per memory rule feedback_keyboard_never_blocks_input.md; SmartScrollView migration belongs in a follow-up ORCH covering all bespoke-keyboard sites uniformly.
@@ -179,14 +193,11 @@ export const JoinWaitlistSheet: React.FC<JoinWaitlistSheetProps> = ({
 
         <View style={styles.field}>
           <Text style={styles.label}>Phone</Text>
-          <TextInput
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="+1 555 0100"
-            placeholderTextColor={textTokens.quaternary}
-            keyboardType="phone-pad"
-            style={styles.input}
+          <PhoneField
+            entry={phone}
+            placeholder="Mobile number"
             accessibilityLabel="Waitlist phone"
+            testID="waitlist-join-phone"
           />
         </View>
 

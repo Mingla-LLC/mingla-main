@@ -830,14 +830,17 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               onChangeText={(v) =>
                 setDraft({ ...draft, contact: { ...draft.contact, phone: v } })
               }
-              defaultCountryIso={draft.contact?.phoneCountryIso ?? "GB"}
+              // issue #3380 — the brand's own country, not a fixed UK flag.
+              defaultCountryIso={
+                draft.contact?.phoneCountryIso ?? draft.countryCode ?? "GB"
+              }
               onCountryChange={(country) =>
                 setDraft({
                   ...draft,
                   contact: { ...draft.contact, phoneCountryIso: country.iso },
                 })
               }
-              placeholder="7700 900 312"
+              placeholder="Phone number"
               accessibilityLabel="Contact phone"
             />
           </View>

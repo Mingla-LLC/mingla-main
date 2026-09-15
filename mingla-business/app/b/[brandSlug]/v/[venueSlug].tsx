@@ -480,6 +480,8 @@ export default function PublicVenueRoute(): React.ReactElement {
     { totalMinor: string; currencyCode: string } | null
   >(null);
 
+  // issue #3380 — the guest's phone picker starts on the venue's own country.
+  const venueCountryCode = venue?.countryCode ?? null;
   const renderBookingBody = useCallback(
     (context: PublicVenueBookingSlotContext): React.ReactNode =>
       context.kind === "stay" ? (
@@ -498,6 +500,7 @@ export default function PublicVenueRoute(): React.ReactElement {
           venueId={context.venueId}
           brandId={context.brandId}
           currency={context.currency}
+          countryCode={venueCountryCode}
           analyticsSurface={analyticsSurface}
           // issue #1564 — the slot has always carried the resolved palette (the
           // Stay branch two lines up already used it); the table branch simply
@@ -505,7 +508,7 @@ export default function PublicVenueRoute(): React.ReactElement {
           palette={context.palette}
         />
       ),
-    [],
+    [venueCountryCode],
   );
 
   const renderReservationSheet = useCallback(
@@ -698,6 +701,8 @@ export default function PublicVenueRoute(): React.ReactElement {
               entrySource={entrySource}
               menu={context.menu}
               timezone={venue.timezone}
+              // issue #3380 — "Who's ordering?" starts on the venue's country.
+              countryCode={venue.countryCode}
             />
           </React.Suspense>
         ),

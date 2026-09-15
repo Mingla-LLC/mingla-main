@@ -24,10 +24,12 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useAvailableSlots } from "../../hooks/useVenueAvailability";
+import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { useVenueListing } from "../../hooks/useVenueListings";
 import { useVenueTables } from "../../hooks/useVenueTables";
-import { isValidE164 } from "../../utils/phone";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
+import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
 import { Sheet } from "../ui/Sheet";
 import {
   RESERVATION_TAGS,
@@ -103,7 +105,17 @@ export function ReservationCreateSheet({
   const [source, setSource] = useState<ReservationSource>("phone");
   const [occasion, setOccasion] = useState<string>("");
   const [tags, setTags] = useState<ReservationTag[]>([]);
-  const [phone, setPhone] = useState<string>("");
+  // issue #3380 — country picker, starting on the venue's (then brand's)
+  // country. The field used to demand a typed "+15551234567"; a host in Lagos
+  // writing down 0803 123 4567 was refused. `any`: a guest's contact line may
+  // be a landline.
+  const venueForPhone = useVenueListing(venueId).data ?? null;
+  const brandForPhone = useCurrentBrand();
+  const phone = usePhoneEntry({
+    startCountries: [venueForPhone?.countryCode, brandForPhone?.countryCode],
+    mode: "any",
+  });
+  const resetPhone = phone.reset;
   const [notes, setNotes] = useState<string>("");
 
   const dates = useMemo(() => nextDates(14), []);
@@ -118,9 +130,9 @@ export function ReservationCreateSheet({
     setSource("phone");
     setOccasion("");
     setTags([]);
-    setPhone("");
+    resetPhone();
     setNotes("");
-  }, [visible, dates]);
+  }, [visible, dates, resetPhone]);
 
   const tablesQuery = useVenueTables(brandId, venueId);
   const tables = (tablesQuery.data ?? []).filter((t) => t.isActive);
@@ -129,7 +141,7 @@ export function ReservationCreateSheet({
   const slotsQuery = useAvailableSlots(brandId, venueId, date, partySize);
   const slots = slotsQuery.data ?? [];
 
-  const phoneValid = phone.trim().length === 0 || isValidE164(phone.trim());
+  const phoneValid = phone.isEmpty || phone.e164 !== null;
   const canSave =
     guestName.trim().length > 0 &&
     slotIso !== null &&
@@ -143,7 +155,7 @@ export function ReservationCreateSheet({
       partySize,
       source,
       guestName: guestName.trim(),
-      guestPhoneE164: phone.trim().length > 0 ? phone.trim() : null,
+      guestPhoneE164: phone.isEmpty ? null : phone.e164,
       guestEmail: null,
       tableId,
       occasion: occasion.trim().length > 0 ? occasion.trim() : null,
@@ -156,7 +168,8 @@ export function ReservationCreateSheet({
     partySize,
     source,
     guestName,
-    phone,
+    phone.isEmpty,
+    phone.e164,
     tableId,
     occasion,
     notes,
@@ -367,18 +380,12 @@ export function ReservationCreateSheet({
           </View>
 
           <Text style={styles.groupLabel}>Contact &amp; details (optional)</Text>
-          <Input
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="+1 555 123 4567"
-            accessibilityLabel="Guest phone, E.164 format"
+          <PhoneField
+            entry={phone}
+            placeholder="Guest's phone"
+            accessibilityLabel="Guest's phone number"
             testID="reservation-phone"
           />
-          {!phoneValid ? (
-            <Text style={styles.errorText} testID="reservation-phone-error">
-              Enter a valid phone like +15551234567.
-            </Text>
-          ) : null}
           <Input
             value={occasion}
             onChangeText={setOccasion}
@@ -440,11 +447,6 @@ const styles = StyleSheet.create({
   helper: {
     ...typography.bodySm,
     color: textTokens.secondary,
-  },
-  errorText: {
-    ...typography.bodySm,
-    color: "#ff6b6b",
-    marginTop: spacing.xxs,
   },
   stepper: {
     flexDirection: "row",
