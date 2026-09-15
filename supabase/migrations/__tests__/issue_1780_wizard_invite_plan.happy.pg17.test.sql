@@ -482,6 +482,19 @@ BEGIN
   PERFORM public.issue_1780_seal_wizard_invite_execution_v1(
     (v_job->>'outboxJobId')::uuid,(v_job->>'sealedSelectionId')::uuid,
     (v_job->>'leaseToken')::uuid,v_snapshot);
+  -- [TEST-MOD-APPROVED #1780] Simulate a worker crash after the durable
+  -- zero-reachable seal commits but before its no-recipient completion RPC.
+  UPDATE private.brand_offering_invite_outbox SET lease_expires_at=now()-interval '1 second'
+  WHERE id=(v_job->>'outboxJobId')::uuid;
+  v_claim:=public.issue_1780_claim_wizard_invite_outbox_v1(10);
+  v_job:=v_claim->0;
+  IF jsonb_array_length(v_claim)<>1
+     OR (v_job->>'executionSealed')::boolean IS NOT TRUE
+     OR (v_job->>'sealedQueuedCount')::integer<>0
+     OR v_job->>'committedGroupId' IS NOT NULL
+     OR (v_job->>'attemptCount')::integer<>2 THEN
+    RAISE EXCEPTION 'T-1780-11 FAIL: reclaimed zero seal omitted safe completion truth: %',v_claim;
+  END IF;
   PERFORM public.issue_1780_complete_wizard_invite_outbox_no_recipients_v1(
     (v_job->>'outboxJobId')::uuid,(v_job->>'sealedSelectionId')::uuid,
     (v_job->>'leaseToken')::uuid);
