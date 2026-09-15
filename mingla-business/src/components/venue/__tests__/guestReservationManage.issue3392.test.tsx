@@ -15,6 +15,8 @@
  * file first pinned ("Cancelling won't refund them automatically") is replaced
  * by the refund it now performs — "This refunds {amount} to the guest." The
  * two host-sheet assertions below were updated for that, and nothing else.
+ * The full host-cancel refund contract lives in
+ * venueStaffCancelRefund.issue3391.test.tsx.
  */
 
 import React from "react";
