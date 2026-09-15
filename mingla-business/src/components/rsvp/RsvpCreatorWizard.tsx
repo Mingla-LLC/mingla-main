@@ -519,6 +519,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     [draftId, markDraftDirty, queueAutosave, updateDraft],
   );
 
+  const handleShowToast = useCallback((message: string): void => {
+    setToast({ visible: true, message });
+  }, []);
+
   // A cover video picked on the Cover step finishes on the SERVER, often after
   // its sheet closed. Adopt it into the draft (card + Preview + next autosave)
   // unless the host changed the cover since; keep checking while it processes.
@@ -537,10 +541,6 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     pulse: currentStep,
     onAdopt: handleAdoptServerCover,
   });
-
-  const handleShowToast = useCallback((message: string): void => {
-    setToast({ visible: true, message });
-  }, []);
 
   const handleDismissToast = useCallback((): void => {
     setToast((prev) => ({ ...prev, visible: false }));

@@ -21,19 +21,19 @@
  * store can share it.
  */
 
-import type { DraftEvent } from "../store/draftEventStore";
+import type { EventCoverMediaType } from "@mingla/offering-rendering";
+import type { EventCoverMediaProvider } from "../types/eventCoverProvider";
 
 /** Every cover field a draft carries, as the server currently holds them. */
 export type ServerDraftCover = {
-  [K in
-    | "coverMediaUrl"
-    | "coverMediaPosterUrl"
-    | "coverMediaType"
-    | "coverMediaProvider"
-    | "coverMediaSourceUrl"
-    | "coverMediaCredit"
-    | "coverMediaCreditUrl"
-    | "coverMediaAlt"]-?: Exclude<DraftEvent[K], undefined>;
+  coverMediaUrl: string | null;
+  coverMediaPosterUrl: string | null;
+  coverMediaType: EventCoverMediaType | null;
+  coverMediaProvider: EventCoverMediaProvider | null;
+  coverMediaSourceUrl: string | null;
+  coverMediaCredit: string | null;
+  coverMediaCreditUrl: string | null;
+  coverMediaAlt: string | null;
 };
 
 const bases = new Map<string, string | null>();

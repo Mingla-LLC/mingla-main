@@ -1,5 +1,5 @@
 -- Draft autosave keeps a cover the server applied. Pins the applied-cover guard
--- in 20270706000000_draft_autosave_keeps_pin_and_applied_cover.sql.
+-- in 20270708003439_draft_autosave_keeps_pin_and_applied_cover.sql.
 --
 -- The production symptom (RSVP draft, 2026-09-15): the host picks a cover video,
 -- the sheet says "You can close this sheet—we'll finish automatically", the host

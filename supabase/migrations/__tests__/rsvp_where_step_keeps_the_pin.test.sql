@@ -1,6 +1,6 @@
 -- RSVP Where step — the picked address keeps its map pin, and the published
 -- RSVP carries it. Pins the Where-step pin in
--- 20270706000000_draft_autosave_keeps_pin_and_applied_cover.sql.
+-- 20270708003439_draft_autosave_keeps_pin_and_applied_cover.sql.
 --
 -- The production symptom: pick an address on an RSVP draft, the map preview
 -- renders, and ~1 s later (the 700 ms autosave plus the round trip) it falls

@@ -52,9 +52,11 @@
 --
 -- Idempotent: CREATE OR REPLACE only; grants and ownership are preserved.
 --
--- MONOTONIC VERSION 20270706000000 — above the production applied head
--- 20270704003314 and above 20270705001984 (on main, not yet applied), so a
--- `supabase db push` after either apply order still reaches this file.
+-- VERSION 20270708003439 — reserved for #3439 by the release coordinator after
+-- read-only production-history verification on 2026-09-15: applied head
+-- 20270707003426, original version 20270706000000 absent. This unmerged file
+-- was renumbered, not re-applied. Recheck current history AND function-body
+-- drift before applying only this migration; do not run a blind db push.
 -- ---------------------------------------------------------------------------
 
 BEGIN;
