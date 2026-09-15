@@ -32,7 +32,6 @@ import type {
   PublicEventRecord,
 } from "../../services/publicEventsService";
 import type { Brand } from "../../store/currentBrandStore";
-import type { LiveEvent } from "../../store/liveEventStore";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicPageOnWeb";
 import { useThemeFont } from "../../theme/useThemeFont";
@@ -42,12 +41,21 @@ import { ShareModal } from "../ui/ShareModal";
 interface PublicBrandPageProps {
   brand: Brand;
   events: PublicEventRecord[];
-  pastEvents?: LiveEvent[];
+  // #3426 — mapped and passed through; the shared page renders it on its Past
+  // tab when no server `past` feed is supplied (it was discarded before).
+  pastEvents?: PublicEventRecord[];
   trips: PublicTripCard[];
   pastTrips?: PublicTripCard[];
   experiences?: PublicExperienceCard[];
   upcoming?: PublicUpcomingRow[];
   upcomingHasMore?: boolean;
+  /** #3426 — offerings in progress now (server-decided), top of the Upcoming tab. */
+  happeningNow?: PublicUpcomingRow[];
+  /** #3426 — the Past tab rows, most recent first. undefined while the first page loads. */
+  past?: PublicUpcomingRow[];
+  pastHasMore?: boolean;
+  pastLoadState?: "ready" | "loading_more" | "error";
+  onLoadMorePast?: () => void;
   venue?: PublicVenueDetail | null;
   /**
    * Issue #1365 — verified venues for the Reservations tab, mapped from the
@@ -164,6 +172,7 @@ const mapUpcoming = (item: PublicUpcomingRow): PublicBrandUpcoming => ({
   coverMediaType: item.coverMediaType,
   theme: item.theme,
   startsAt: item.startsAt,
+  endsAt: item.endsAt ?? null,
   priceFromMinorUnits: item.priceFromMinorUnits,
   currency: item.currency,
   isFree: item.isFree,
@@ -179,6 +188,11 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   experiences = [],
   upcoming = [],
   upcomingHasMore = false,
+  happeningNow = [],
+  past,
+  pastHasMore = false,
+  pastLoadState = "ready",
+  onLoadMorePast,
   venue = null,
   venues = [],
   venuesLoadState = "ready",
@@ -198,7 +212,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   useThemeFont(theme.fontFamilyValue);
   const sharedBrand = useMemo(() => mapBrand(brand), [brand]);
   const sharedEvents = useMemo(() => events.map(mapEvent), [events]);
-  void pastEvents;
+  const sharedPastEvents = useMemo(() => pastEvents.map(mapEvent), [pastEvents]);
   const sharedTrips = useMemo(() => trips.map(mapTrip), [trips]);
   const sharedPastTrips = useMemo(() => pastTrips.map(mapTrip), [pastTrips]);
   const sharedExperiences = useMemo(
@@ -206,6 +220,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     [experiences],
   );
   const sharedUpcoming = useMemo(() => upcoming.map(mapUpcoming), [upcoming]);
+  const sharedHappeningNow = useMemo(
+    () => happeningNow.map(mapUpcoming),
+    [happeningNow],
+  );
+  // undefined stays undefined: the shared page reads that as "no server feed".
+  const sharedPast = useMemo(() => past?.map(mapUpcoming), [past]);
 
   const handleClose = useCallback((): void => {
     if (router.canGoBack()) {
@@ -383,11 +403,16 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         brand={sharedBrand}
         useDirectionCIdentity={useDirectionCIdentity}
         events={sharedEvents}
+        pastEvents={sharedPastEvents}
         trips={sharedTrips}
         pastTrips={sharedPastTrips}
         experiences={sharedExperiences}
         upcoming={sharedUpcoming}
         upcomingHasMore={upcomingHasMore}
+        happeningNow={sharedHappeningNow}
+        past={sharedPast}
+        pastHasMore={pastHasMore}
+        pastLoadState={pastLoadState}
         menu={menu}
         venues={venues}
         venuesLoadState={venuesLoadState}
@@ -413,6 +438,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           onOpenVenue: handleOpenVenue,
           onOpenExternal: handleOpenExternal,
           onRetryVenues,
+          onLoadMorePast,
           onReservationsTabViewed: () => {
             captureWeb("brand_reservations_tab_viewed", {
               surface: Platform.OS === "web" ? "buyer_web" : "business_preview",

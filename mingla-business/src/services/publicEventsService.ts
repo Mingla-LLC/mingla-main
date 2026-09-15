@@ -683,6 +683,12 @@ export interface PublicUpcomingRow {
   coverMediaType: "image" | "video" | "gif" | null;
   theme: JsonRecord;
   startsAt: string;
+  /**
+   * #3426 — only on rows from the date-decided section reader: the end of the
+   * occurrence in progress (Happening now) or of the last occurrence (Past).
+   * Absent on `pg_public_brand_upcoming` rows, which carry no end.
+   */
+  endsAt?: string | null;
   priceFromMinorUnits: number | null;
   currency: string;
   isFree: boolean;
