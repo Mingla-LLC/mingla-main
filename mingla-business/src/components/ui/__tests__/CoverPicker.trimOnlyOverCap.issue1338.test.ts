@@ -70,11 +70,15 @@ describe("CoverPicker trim-only-over-cap + in-sheet feedback (issue #1338)", () 
     // setVideoPickNotice (nearest preceding), never onShowToast.
     // [TEST-MOD-APPROVED #2715 A14] Every duration notice uses the binding
     // 15-second copy, including the distinct web path where no trimmer exists.
+    // [TEST-MOD-APPROVED rsvp-creator-host-bugs] '"Video cover added."' removed
+    // from this list: it was a duplicate success confirmation under the video
+    // status card's own `applied` state and no longer exists as a notice. The
+    // success confirmation is still in-sheet (never a Toast) — see the
+    // videoReadyIdempotency test.
     const videoFlowCopy = [
       '"Trim it to 15 seconds or less, then choose it again."',
       '"Choose a video that is 15 seconds or shorter."',
       '"No video added — trim to 15 seconds or pick a shorter clip."',
-      '"Video cover added."',
       "\"Could not read this video's duration. Try another clip.\"",
       "\"Could not read this video's size. Try another clip.\"",
     ];

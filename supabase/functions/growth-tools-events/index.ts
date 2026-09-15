@@ -196,6 +196,24 @@ interface EventInput {
 function asStr(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
+/**
+ * Cap model PROSE at `max` characters without cutting a word in half.
+ *
+ * The storage caps below used to be a bare `.slice(0, max)`, so a long
+ * recommendation reached the organiser as "…allows for realistic plannin" —
+ * cut mid-word with no sign anything was missing. Over the cap, this backs up
+ * to the last word boundary (unless that would throw away more than ~40% of
+ * the room) and ends with a single "…". The result, ellipsis included, never
+ * exceeds `max`. Identifiers and codes keep their plain `.slice`.
+ */
+export function clipProse(v: unknown, max: number): string {
+  const text = asStr(v).trim();
+  if (text.length <= max) return text;
+  const room = text.slice(0, Math.max(0, max - 1));
+  const boundary = room.search(/\s\S*$/);
+  const cut = boundary >= Math.floor(max * 0.6) ? room.slice(0, boundary) : room;
+  return `${cut.replace(/[\s,;:.\-–—]+$/u, "")}…`;
+}
 function asNum(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) {
@@ -716,8 +734,8 @@ function normalizeResearch(p: Record<string, unknown> | null): EventResearch {
     return {
       name: asStr(o.name).slice(0, 120),
       platform: asStr(o.platform).slice(0, 40),
-      date_note: asStr(o.date_note).slice(0, 120),
-      scale_note: asStr(o.scale_note).slice(0, 160),
+      date_note: clipProse(o.date_note, 120),
+      scale_note: clipProse(o.scale_note, 160),
     };
   }).filter((c) => c.name.length > 0);
   const comparables = arr(p.comparables).slice(0, 4).map((c) => {
@@ -725,16 +743,16 @@ function normalizeResearch(p: Record<string, unknown> | null): EventResearch {
     return {
       name: asStr(o.name).slice(0, 120),
       city: asStr(o.city).slice(0, 80),
-      turnout_note: asStr(o.turnout_note).slice(0, 160),
-      source_note: asStr(o.source_note).slice(0, 120),
+      turnout_note: clipProse(o.turnout_note, 160),
+      source_note: clipProse(o.source_note, 120),
     };
   }).filter((c) => c.name.length > 0);
   let weather: EventResearch["weather"] = null;
   const w = rec(p.weather);
   if (asStr(w.summary).length > 0) {
     weather = {
-      summary: asStr(w.summary).slice(0, 200),
-      impact: asStr(w.impact).slice(0, 200),
+      summary: clipProse(w.summary, 200),
+      impact: clipProse(w.impact, 200),
       kind: asStr(w.kind) === "forecast" ? "forecast" : "seasonal",
     };
   }
@@ -742,10 +760,10 @@ function normalizeResearch(p: Record<string, unknown> | null): EventResearch {
   return {
     competitors,
     comparables,
-    demand_read: asStr(p.demand_read).slice(0, 400),
+    demand_read: clipProse(p.demand_read, 400),
     weather,
     cpc: cpcRaw !== null && cpcRaw > 0 ? cpcRaw : null,
-    cpc_note: asStr(p.cpc_note).slice(0, 200),
+    cpc_note: clipProse(p.cpc_note, 200),
   };
 }
 
@@ -942,6 +960,10 @@ function strArr(v: unknown, max: number, cap: number): string[] {
   if (!Array.isArray(v)) return [];
   return v.map((x) => asStr(x).slice(0, cap)).filter((x) => x.length > 0).slice(0, max);
 }
+function proseArr(v: unknown, max: number, cap: number): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.map((x) => clipProse(x, cap)).filter((x) => x.length > 0).slice(0, max);
+}
 
 function normalizeSynthesis(
   parsed: unknown,
@@ -958,8 +980,8 @@ function normalizeSynthesis(
   if (hi < lo) [lo, hi] = [hi, lo];
   const conf = asStr(p.confidence);
   const confidence = (conf === "low" || conf === "high") ? conf : "medium";
-  const headline_read = asStr(p.headline_read).slice(0, 240);
-  const narrative = asStr(p.narrative).slice(0, 800);
+  const headline_read = clipProse(p.headline_read, 240);
+  const narrative = clipProse(p.narrative, 800);
   if (headline_read.length < 3) return null;
 
   const factors = (Array.isArray(p.factors) ? p.factors : []).map((f) => {
@@ -967,9 +989,9 @@ function normalizeSynthesis(
     const st = asStr(o.status);
     return {
       key: asStr(o.key).slice(0, 40),
-      label: asStr(o.label).slice(0, 60),
+      label: clipProse(o.label, 60),
       status: (st === "help" || st === "hurt") ? st : "watch" as const,
-      detail: asStr(o.detail).slice(0, 240),
+      detail: clipProse(o.detail, 240),
     };
   }).filter((f) => f.label.length > 0).slice(0, 8) as Synthesis["factors"];
 
@@ -977,20 +999,20 @@ function normalizeSynthesis(
     const o = rec(f);
     const ef = asStr(o.effort);
     return {
-      title: asStr(o.title).slice(0, 90),
-      why: asStr(o.why).slice(0, 220),
-      change: asStr(o.change).slice(0, 220),
-      lift_note: asStr(o.lift_note).slice(0, 120),
+      title: clipProse(o.title, 90),
+      why: clipProse(o.why, 220),
+      change: clipProse(o.change, 220),
+      lift_note: clipProse(o.lift_note, 120),
       effort: (ef === "this_week" || ef === "project") ? ef : "this_month" as const,
     };
   }).filter((f) => f.title.length > 0).slice(0, 5) as Synthesis["fixes"];
 
   const lp = rec(p.listing_preview);
   const listing_preview = {
-    title: asStr(lp.title).slice(0, 90) || "",
-    tagline: asStr(lp.tagline).slice(0, 160),
+    title: clipProse(lp.title, 90),
+    tagline: clipProse(lp.tagline, 160),
     vibe_tags: strArr(lp.vibe_tags, 5, 30),
-    why_go: strArr(lp.why_go, 4, 160),
+    why_go: proseArr(lp.why_go, 4, 160),
     best_for: strArr(lp.best_for, 3, 40),
   };
   if (listing_preview.title.length === 0 || factors.length === 0) return null;

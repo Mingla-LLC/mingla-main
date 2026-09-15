@@ -20,6 +20,8 @@ import {
   formatTurnoutDate,
   formatTurnoutMoney,
   humanizeTurnoutCopy,
+  repairCappedTurnoutCopy,
+  TURNOUT_FIX_COPY_CAPS,
   turnoutReportCurrency,
 } from "../../utils/turnoutDisplayCopy";
 
@@ -27,6 +29,10 @@ const safePromoCopy = (value: string): string =>
   // Issue #1008 positioning rail: display transform only. Engine truth stays
   // untouched; Mingla describes the instrument as promo spend, never "ads".
   value.replace(/\bad spend\b/gi, "promo spend").replace(/\bads?\b/gi, "promo");
+
+// Saved reports can carry fix copy cut mid-word at the engine's old caps.
+const fixCopy = (value: string | undefined, cap: number): string | undefined =>
+  value === undefined ? undefined : repairCappedTurnoutCopy(value, cap);
 
 const Row: React.FC<{ title: string; body?: string }> = ({ title, body }) => (
   <View style={styles.row}>
@@ -187,11 +193,23 @@ export const EventsReportSections: React.FC<{ report: TurnoutReport }> = ({
             <Row
               key={`${fix.title ?? "fix"}-${index}`}
               title={
-                copy([fix.title, fix.lift_note].filter(Boolean).join(" · ")) ||
-                "Recommendation"
+                copy(
+                  [
+                    fixCopy(fix.title, TURNOUT_FIX_COPY_CAPS.title),
+                    fixCopy(fix.lift_note, TURNOUT_FIX_COPY_CAPS.lift_note),
+                  ]
+                    .filter(Boolean)
+                    .join(" · "),
+                ) || "Recommendation"
               }
               body={copy(
-                [fix.why, fix.change, fix.effort].filter(Boolean).join(" · "),
+                [
+                  fixCopy(fix.why, TURNOUT_FIX_COPY_CAPS.why),
+                  fixCopy(fix.change, TURNOUT_FIX_COPY_CAPS.change),
+                  fix.effort,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
               )}
             />
           ))}

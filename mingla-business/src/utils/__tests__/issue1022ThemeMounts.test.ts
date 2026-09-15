@@ -110,9 +110,23 @@ describe("A/F-12 — the review previews render the THEMED palette, not accent.w
   ])("%s paints the mini-card from createThemePalette", (_label, file) => {
     const s = src(file);
     expect(s).toContain("createThemePalette");
+    // [TEST-MOD-APPROVED rsvp-creator-host-bugs] Repointed from the literal
+    // `color: themePalette.accent` / `backgroundColor: themePalette.page` pair.
+    // The card's colours now come from themedPreviewCardColors(themePalette),
+    // which is still the themed palette (surface === palette.page) but also
+    // nudges the 11px date accent to AA and routes the venue line, pills and
+    // Going / Not going labels through the palette — the RSVP card's venue line
+    // and "Not going" had kept the dark-chrome text token and were invisible on
+    // a light theme. Contrast is pinned by themedPreviewCardColors.test.ts.
+    expect(s).toContain("themedPreviewCardColors(themePalette)");
     // the date line was the hardcoded accent.warm offender
-    expect(s).toMatch(/color: themePalette\.accent/);
-    expect(s).toMatch(/backgroundColor: themePalette\.page/);
+    expect(s).toMatch(/color: card\.dateText/);
+    expect(s).toMatch(/backgroundColor: card\.surface/);
+    expect(s).toMatch(/color: card\.venueText/);
+    // No dark-chrome colour inside the themed mini-card styles.
+    const cardStyles = s.slice(s.indexOf("  miniCard: {"), s.indexOf("  statusCardWrap"));
+    expect(cardStyles.length).toBeGreaterThan(0);
+    expect(cardStyles).not.toMatch(/textTokens\.|accent\.warm|accent\.tint|glass\./);
   });
 });
 
