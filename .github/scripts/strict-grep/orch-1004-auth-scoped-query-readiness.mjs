@@ -247,6 +247,7 @@ const PUBLIC_HOOK_ALLOWLIST = [
   ["usePublicVenueAvailability.ts", "anon-safe availability read via the canonical self-authorizing venue edge function on public venue pages (#1365)"],
   ["usePublicStayDetail.ts", "anon-safe verified Stay detail via the STAY_PUBLIC_PAGES-gated SECURITY DEFINER projection (#1390)"],
   ["usePublicMenuBundle.ts", "anon-safe verified-venue menu + its service windows via public_menus_view (SECURITY DEFINER, claim_status='verified'); the guest ordering surface reads it with no account at all (#1793)"],
+  ["usePublicBrandSections.ts", "anon-safe brand page Happening now / Past via pg_public_brand_offering_section (SECURITY DEFINER, public + published only, no auth.uid() read); buyer-web renders it with no account (#3426)"],
   // ── #2101 [named-buyer checkout] — the platform-resolved route access
   //    adapter. Neither half calls useQuery: the web half DELEGATES to
   //    useEventTicketCheckoutAccess (registered above as auth-scoped, and the

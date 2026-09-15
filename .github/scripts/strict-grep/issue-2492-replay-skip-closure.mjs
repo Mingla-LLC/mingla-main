@@ -72,7 +72,7 @@
 //
 //   lane    loop spelling                              case subject                       globs
 //   #1931   for f in $(find supabase/migrations …)     case "$f" in            full path  8
-//   #2117   for f in $(find supabase/migrations …)     case "$f" in            full path  13
+//   #2117   for f in $(find supabase/migrations …)     case "$f" in            full path  14
 //   #1644   for migration in supabase/migrations/*.sql case "$(basename …)" in basename   1
 //   #1647   for migration in supabase/migrations/*.sql case "$(basename …)" in basename   3 (alternation)
 //
@@ -833,11 +833,18 @@ function selfTest() {
   // validator, which that lane's phase 1 omits, so the lane skips it by EXACT
   // filename and applies it once straight after #3193. Only the GOOD #2117
   // count moves; every mutant targets the #1931 lane and is unchanged.
+  // [TEST-MOD-APPROVED #3426] BOTH filtered lanes gain one exact skip for
+  // 20270707003426, which re-emits `pg_public_brand_upcoming` and adds the brand
+  // section reader; both `LANGUAGE sql` bodies reach `issue_1931_event_ordinary_read_blocked`
+  // and `issue_2489_public_theme`, which each lane's phase lacks, and this gate named
+  // the exact filename for each. Only counts move with the base:
+  // GOOD 15/13 -> 16/14, M-5 15 -> 16, M-6 17 -> 18, M-9 15 -> 16, M-10 16 -> 17;
+  // every mutant and BAD fixture is unchanged.
   const expectedInventory = {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
-    "issue-1931-private-event-access.yml": 15,
-    "issue-2117-offering-visibility-gate-tests.yml": 13,
+    "issue-1931-private-event-access.yml": 16,
+    "issue-2117-offering-visibility-gate-tests.yml": 14,
   };
   if (JSON.stringify(inventory) !== JSON.stringify(expectedInventory)) {
     record("GOOD", `lane inventory is ${JSON.stringify(inventory)}, expected ${JSON.stringify(expectedInventory)}`);
@@ -890,7 +897,7 @@ function selfTest() {
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
       if (!lane) record("M-5", "the #1931 lane VANISHED when rewritten to the basename nested-quote form (R-2)");
       else if (lane.subjectKind !== "basename") record("M-5", `subject read as "${lane.subjectKind}", expected "basename"`);
-      else if (lane.globs.length !== 15) record("M-5", `${lane.globs.length} globs extracted, expected 15`);
+      else if (lane.globs.length !== 16) record("M-5", `${lane.globs.length} globs extracted, expected 16`);
       else if (out.lanes.length !== 4) record("M-5", `inventory collapsed to ${out.lanes.length} lanes, expected 4`);
       else if (out.violations.length) record("M-5", `clean tree flagged after a semantics-preserving rewrite: ${out.violations.map((v) => v.check).join(",")}`);
     }
@@ -909,7 +916,7 @@ function selfTest() {
     if (ok) {
       const lane = analyseTrees(tree).lanes.find((l) => l.workflow === PINNED_LANE);
       if (!lane) record("M-6", "lane vanished");
-      else if (lane.globs.length !== 17) record("M-6", `alternation under-read: ${lane.globs.length} globs from ${lane.branchCount} branches, expected 17`);
+      else if (lane.globs.length !== 18) record("M-6", `alternation under-read: ${lane.globs.length} globs from ${lane.branchCount} branches, expected 18`);
     }
   }
 
@@ -950,7 +957,7 @@ function selfTest() {
     if (mutate("M-9", tree, PINNED_LANE, "            esac", "              *_issue_0001_unreadable_*)\n                continue\n                ;;\n            esac")) {
       const out = analyseTrees(tree);
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 15) record("M-9", `expected the 3-line branch to stay unread (branchCount 15), got ${lane.branchCount}`);
+      if (lane.branchCount !== 16) record("M-9", `expected the 3-line branch to stay unread (branchCount 16), got ${lane.branchCount}`);
       else if (!fired(out, "C-4c")) {
         record("M-9", "C-4c did NOT fire on a lane whose case region holds a branch the parser cannot read — under-counting is invisible");
       } else if (fired(out, "C-4b")) {
@@ -966,8 +973,8 @@ function selfTest() {
     if (mutate("M-10", tree, PINNED_LANE, "            esac", "              *20270522002463_issue_2462_phone_backfill.sql)\n                continue ;;\n            esac")) {
       const out = analyseTrees(tree);
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 16) record("M-10", `two-line branch form not read: branchCount ${lane.branchCount}, expected 16 (R-5)`);
-      else if (lane.globs.length !== 16) record("M-10", `${lane.globs.length} globs, expected 16`);
+      if (lane.branchCount !== 17) record("M-10", `two-line branch form not read: branchCount ${lane.branchCount}, expected 17 (R-5)`);
+      else if (lane.globs.length !== 17) record("M-10", `${lane.globs.length} globs, expected 17`);
       else if (out.violations.length) record("M-10", `a readable two-line branch flagged: ${out.violations.map((v) => v.check).join(",")}`);
     }
   }
@@ -976,7 +983,7 @@ function selfTest() {
     console.error(`#2492 SELF-TEST FAILED:\n  - ${failures.join("\n  - ")}`);
     process.exit(1);
   }
-  console.log("#2492 self-test PASS (1 good tree with the 15/1/3/13 lane inventory, 10 mutants M-1…M-10 all behaving).");
+  console.log("#2492 self-test PASS (1 good tree with the 16/1/3/14 lane inventory, 10 mutants M-1…M-10 all behaving).");
 }
 
 // ---------------------------------------------------------------------------
