@@ -19977,7 +19977,7 @@
       "providerWorkflow": ".github/workflows/issue-873-guest-status-roster-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "b7235c22f04d7e51daaddceefd19929f0f20bbbaf03d6ed53c4d6177f8403ae1",
+        "sourceSha256": "00c38ef5678a31021dec5ac03b168f402c044be9e1909b92d85d6ba7695e61eb",
         "triggers": [
           "pull_request",
           "push"
@@ -19991,10 +19991,12 @@
           "mingla-business/jest.issue1780.web.render.cjs",
           "mingla-business/package.json",
           "mingla-business/src/components/event/EventCreatorWizard.tsx",
+          "mingla-business/src/components/experience/ExperienceCoverStep.tsx",
           "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx",
           "mingla-business/src/components/invites/**",
           "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx",
           "mingla-business/src/components/trip/TripCreatorWizard.tsx",
+          "mingla-business/src/components/ui/Button.tsx",
           "mingla-business/src/hooks/marketing/marketingKeys.ts",
           "mingla-business/src/hooks/useBusinessEvents.ts",
           "mingla-business/src/hooks/useOfferingInvitePlan.ts",
