@@ -38,13 +38,13 @@ export const EmptyState: React.FC = () => (
     <View
       style={styles.hintRow}
       accessibilityRole="text"
-      accessibilityLabel="Tap the plus button for things to try"
+      accessibilityLabel="Tap the plus button to attach context"
     >
       <Text style={styles.hintText}>Tap </Text>
       <View style={styles.hintChip} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         <Plus size={13} color={textTokens.tertiary} strokeWidth={2.25} />
       </View>
-      <Text style={styles.hintText}> for things to try</Text>
+      <Text style={styles.hintText}> to attach context</Text>
     </View>
   </View>
 );

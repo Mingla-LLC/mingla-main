@@ -13,8 +13,8 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { AlertTriangle } from "lucide-react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { AlertTriangle, Ellipsis, Sparkles } from "lucide-react-native";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -29,9 +29,29 @@ import {
 import { Sheet } from "../ui/Sheet";
 import {
   deleteConversation,
+  regenerateAgentConversationTitle,
+  renameAgentConversation,
   type AgentConversation,
 } from "../../services/agentChatService";
 import { agentQueryKeys } from "../../hooks/agentQueryKeys";
+import { captureAriTitleAction } from "../../services/ariPolishAnalytics";
+
+export function conversationDisplayTitle(conversation: AgentConversation): string {
+  const title = conversation.title?.trim();
+  if (title && title.toLowerCase() !== "untitled conversation") return title;
+  return `Conversation · ${new Date(conversation.updated_at).toLocaleDateString()}`;
+}
+
+function friendlyDate(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const value = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const days = Math.round((start - value) / 86_400_000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 export interface ConversationDrawerProps {
   visible: boolean;
@@ -44,6 +64,7 @@ export interface ConversationDrawerProps {
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  surface?: "main" | "website";
 }
 
 export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
@@ -57,16 +78,23 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   isLoading,
   isError,
   onRetry,
+  surface = "main",
 }) => {
   const qc = useQueryClient();
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [menuConversation, setMenuConversation] = useState<AgentConversation | null>(null);
+  const [renameConversation, setRenameConversation] = useState<AgentConversation | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
 
   // Reset select state every time the drawer closes
   React.useEffect(() => {
     if (!visible) {
       setSelectMode(false);
       setSelectedIds(new Set());
+      setMenuConversation(null);
+      setRenameConversation(null);
     }
   }, [visible]);
 
@@ -92,14 +120,14 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
     [qc],
   );
 
-  const handleLongPressSingle = useCallback(
+  const handleDeleteSingle = useCallback(
     (c: AgentConversation): void => {
       if (selectMode) {
         toggleSelect(c.id);
         return;
       }
       Alert.alert(
-        c.title ?? "Untitled conversation",
+        conversationDisplayTitle(c),
         "Delete this conversation? This can't be undone.",
         [
           { text: "Cancel", style: "cancel" },
@@ -120,6 +148,7 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
                 return;
               }
               qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
+              captureAriTitleAction(surface, "deleted");
               if (c.id === activeId) {
                 qc.invalidateQueries({ queryKey: agentQueryKeys.messages(c.id) });
                 onSelect(null);
@@ -129,8 +158,37 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         ],
       );
     },
-    [activeId, onSelect, optimisticDelete, qc, selectMode, toggleSelect],
+    [activeId, onSelect, optimisticDelete, qc, selectMode, surface, toggleSelect],
   );
+
+  const regenerateTitle = useCallback(async (c: AgentConversation, confirmed = false): Promise<void> => {
+    setRegeneratingId(c.id);
+    try {
+      await regenerateAgentConversationTitle(c.id, confirmed);
+      captureAriTitleAction(surface, "regenerated");
+      await qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
+      setMenuConversation(null);
+    } catch {
+      Alert.alert("Couldn’t update the title", "Couldn’t update the title. Your previous title is unchanged.");
+    } finally {
+      setRegeneratingId(null);
+    }
+  }, [qc, surface]);
+
+  const handleRegenerate = useCallback((c: AgentConversation): void => {
+    if (c.title_source === "manual") {
+      Alert.alert(
+        "Replace your name with a new Ari title?",
+        "Your current name will stay unless Ari creates a replacement.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Regenerate", onPress: () => void regenerateTitle(c, true) },
+        ],
+      );
+      return;
+    }
+    void regenerateTitle(c);
+  }, [regenerateTitle]);
 
   const handleBulkDelete = useCallback((): void => {
     const ids = Array.from(selectedIds);
@@ -151,6 +209,8 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
               ids.map((id) => deleteConversation(id)),
             );
             const failed = results.filter((r) => r.status === "rejected");
+            const deletedCount = ids.length - failed.length;
+            if (deletedCount > 0) captureAriTitleAction(surface, "deleted");
             qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
             if (deletedActive) {
               qc.invalidateQueries({ queryKey: agentQueryKeys.messages(activeId) });
@@ -168,7 +228,7 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         },
       ],
     );
-  }, [activeId, onSelect, optimisticDelete, qc, selectedIds]);
+  }, [activeId, onSelect, optimisticDelete, qc, selectedIds, surface]);
 
   const handleRowPress = useCallback(
     (c: AgentConversation): void => {
@@ -193,6 +253,7 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Exit select mode"
           hitSlop={8}
+          style={styles.headerControl}
         >
           <Text style={styles.headerAction}>Done</Text>
         </Pressable>
@@ -203,6 +264,7 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Select multiple conversations to delete"
           hitSlop={8}
+          style={styles.headerControl}
         >
           <Text style={styles.headerAction}>Select</Text>
         </Pressable>
@@ -214,31 +276,55 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   const renderRow = (c: AgentConversation, readOnly: boolean): React.ReactNode => {
     const isActive = c.id === activeId;
     const isSelected = selectedIds.has(c.id);
-    const date = new Date(c.updated_at).toLocaleDateString();
-    const title = c.title ?? "Untitled conversation";
+    const date = friendlyDate(c.updated_at);
+    const title = conversationDisplayTitle(c);
     return (
       <Pressable
         key={c.id}
         onPress={() => handleRowPress(c)}
-        onLongPress={() => handleLongPressSingle(c)}
+        onLongPress={() => selectMode ? toggleSelect(c.id) : setMenuConversation(c)}
         delayLongPress={400}
         style={({ pressed }) => [styles.row, isActive && !selectMode && styles.rowActive, isSelected && styles.rowSelected, pressed && styles.btnPressed]}
         accessibilityRole="button"
         accessibilityLabel={readOnly ? `${title}, older read-only conversation, updated ${date}` : `${title}, updated ${date}`}
-        accessibilityHint={selectMode ? "Tap to toggle selection" : "Tap to open; long-press to delete"}
+        accessibilityHint={selectMode ? "Tap to toggle selection" : "Tap to open; long-press for conversation actions"}
         accessibilityState={{ selected: selectMode ? isSelected : isActive }}
       >
         {selectMode ? (
           <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>{isSelected ? <Text style={styles.checkboxTick}>✓</Text> : null}</View>
         ) : readOnly ? <AlertTriangle size={16} color={textTokens.tertiary} accessibilityElementsHidden /> : null}
-        <Text style={styles.rowTitle} numberOfLines={2}>{title}</Text>
-        <Text style={styles.rowDate}>{date}</Text>
+        <View style={styles.rowCopy}>
+          <View style={styles.titleWithStatus}>
+            <Text style={styles.rowTitle} numberOfLines={3}>{title}</Text>
+            {c.title_source === "provisional" ? (
+              typeof Sparkles === "function"
+                ? <Sparkles size={16} color={ariPalette.flame} accessibilityLabel="Ari is naming this conversation" />
+                : <Text accessibilityLabel="Ari is naming this conversation">···</Text>
+            ) : null}
+          </View>
+          <Text style={styles.rowDate}>{date}</Text>
+        </View>
+        {!selectMode ? (
+          <Pressable
+            style={styles.moreControl}
+            accessibilityRole="button"
+            accessibilityLabel={`More actions for ${title}`}
+            disabled={regeneratingId === c.id}
+            onPress={(event) => { event.stopPropagation(); setMenuConversation(c); }}
+          >
+            {regeneratingId === c.id
+              ? <ActivityIndicator color={ariPalette.flame} />
+              : typeof Ellipsis === "function"
+                ? <Ellipsis size={20} color={textTokens.secondary} />
+                : <Text style={styles.moreFallback}>...</Text>}
+          </Pressable>
+        ) : null}
       </Pressable>
     );
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint="half">
+    <Sheet visible={visible} onClose={onClose} snapPoint={0.82} style={Platform.OS === "web" ? styles.webSheet : undefined}>
       <View style={styles.host}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>Conversations</Text>
@@ -305,6 +391,53 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
             </Pressable>
           </View>
         ) : null}
+
+        <Sheet visible={!!menuConversation} onClose={() => setMenuConversation(null)} snapPoint={310}>
+          {menuConversation ? (
+            <View style={styles.menuBody}>
+              <Text style={styles.menuTitle} numberOfLines={2}>{conversationDisplayTitle(menuConversation)}</Text>
+              <Pressable style={styles.menuAction} accessibilityRole="button" onPress={() => { setRenameDraft(conversationDisplayTitle(menuConversation)); setRenameConversation(menuConversation); setMenuConversation(null); }}><Text style={styles.menuActionText}>Rename conversation</Text></Pressable>
+              <Pressable style={styles.menuAction} accessibilityRole="button" disabled={regeneratingId === menuConversation.id} onPress={() => handleRegenerate(menuConversation)}><Text style={styles.menuActionText}>Regenerate title</Text></Pressable>
+              <Pressable style={styles.menuAction} accessibilityRole="button" onPress={() => { const target = menuConversation; setMenuConversation(null); handleDeleteSingle(target); }}><Text style={styles.deleteActionText}>Delete</Text></Pressable>
+            </View>
+          ) : null}
+        </Sheet>
+
+        <Sheet visible={!!renameConversation} onClose={() => setRenameConversation(null)} snapPoint={300}>
+          <View style={styles.menuBody}>
+            <Text style={styles.menuTitle}>Rename conversation</Text>
+            <TextInput
+              value={renameDraft}
+              onChangeText={setRenameDraft}
+              maxLength={60}
+              autoFocus
+              placeholder="Conversation name"
+              placeholderTextColor={textTokens.tertiary}
+              style={styles.renameInput}
+              accessibilityLabel="Conversation name"
+            />
+            <View style={styles.renameActions}>
+              <Pressable style={styles.menuAction} accessibilityRole="button" onPress={() => setRenameConversation(null)}><Text style={styles.menuActionText}>Cancel</Text></Pressable>
+              <Pressable
+                style={[styles.saveAction, !renameDraft.trim() && styles.btnDisabled]}
+                accessibilityRole="button"
+                accessibilityLabel="Save conversation name"
+                disabled={!renameDraft.trim()}
+                onPress={async () => {
+                  if (!renameConversation || !renameDraft.trim()) return;
+                  try {
+                    await renameAgentConversation(renameConversation.id, renameDraft.trim());
+                    captureAriTitleAction(surface, "renamed");
+                    await qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
+                    setRenameConversation(null);
+                  } catch {
+                    Alert.alert("Couldn’t rename", "Your previous title is unchanged.");
+                  }
+                }}
+              ><Text style={styles.saveActionText}>Save</Text></Pressable>
+            </View>
+          </View>
+        </Sheet>
       </View>
     </Sheet>
   );
@@ -318,6 +451,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     gap: spacing.sm,
   },
+  webSheet: { width: 440, maxHeight: "80%" },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -326,8 +460,8 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   title: {
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 20,
+    lineHeight: 32,
     fontWeight: "600",
     color: textTokens.primary,
     letterSpacing: -0.2,
@@ -338,6 +472,7 @@ const styles = StyleSheet.create({
     color: ariPalette.flame,
     letterSpacing: -0.1,
   },
+  headerControl: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
   newBtn: {
     paddingVertical: 10,
     paddingHorizontal: spacing.md,
@@ -346,7 +481,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
-    minHeight: 44,
+    minHeight: 52,
     justifyContent: "center",
     marginBottom: spacing.xs,
   },
@@ -366,14 +501,14 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    minHeight: 44,
+    minHeight: 64,
     gap: spacing.sm,
   },
   rowActive: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: Platform.OS === "android" ? "#16181b" : glass.tint.profileBase,
     borderWidth: 1,
     borderColor: glass.border.profileBase,
   },
@@ -384,12 +519,16 @@ const styles = StyleSheet.create({
   },
   rowTitle: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "600",
     color: textTokens.primary,
     letterSpacing: -0.1,
   },
   rowDate: {
     fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "500",
     color: textTokens.tertiary,
   },
   checkbox: {
@@ -418,7 +557,11 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   sectionCaption: { fontSize: 12, color: textTokens.secondary, paddingHorizontal: spacing.sm, paddingTop: spacing.sm },
-  loadingRow: { minHeight: 44, borderRadius: radius.md, backgroundColor: glass.tint.profileBase, marginBottom: 4 },
+  rowCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
+  titleWithStatus: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  moreControl: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  moreFallback: { color: textTokens.secondary, fontSize: 16 },
+  loadingRow: { minHeight: 64, borderRadius: 12, backgroundColor: Platform.OS === "android" ? "#16181b" : glass.tint.profileBase, marginBottom: 4, overflow: "hidden" },
   errorState: { alignItems: "center", gap: spacing.sm },
   retryBtn: { minHeight: 44, minWidth: 120, alignItems: "center", justifyContent: "center", borderRadius: radius.md, borderWidth: 1, borderColor: glass.border.profileBase },
   bulkBar: {
@@ -444,7 +587,7 @@ const styles = StyleSheet.create({
     backgroundColor: semantic.errorTint,
     borderWidth: 1,
     borderColor: "rgba(239, 68, 68, 0.5)",
-    minHeight: 36,
+    minHeight: 44,
     justifyContent: "center",
   },
   bulkDeleteText: {
@@ -459,6 +602,15 @@ const styles = StyleSheet.create({
   btnDisabled: {
     opacity: 0.4,
   },
+  menuBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.sm },
+  menuTitle: { color: textTokens.primary, fontSize: 20, lineHeight: 32, fontWeight: "600" },
+  menuAction: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: radius.md },
+  menuActionText: { color: textTokens.primary, fontSize: 15, lineHeight: 20, fontWeight: "600" },
+  deleteActionText: { color: semantic.error, fontSize: 15, lineHeight: 20, fontWeight: "600" },
+  renameInput: { minHeight: 52, color: textTokens.primary, fontSize: 16, lineHeight: 24, borderWidth: 1, borderColor: glass.border.profileBase, borderRadius: radius.md, backgroundColor: Platform.OS === "android" ? "#191c21" : glass.tint.profileBase, paddingHorizontal: spacing.md },
+  renameActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
+  saveAction: { minHeight: 44, minWidth: 88, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: ariPalette.userBubble },
+  saveActionText: { color: "#0c0e12", fontSize: 14, fontWeight: "700" },
 });
 
 export default ConversationDrawer;

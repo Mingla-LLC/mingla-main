@@ -12,7 +12,7 @@
  *   - Toast (canonical app-wide toast — supports tap, close button, swipe-up to dismiss)
  */
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Keyboard,
@@ -20,6 +20,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -45,8 +46,10 @@ import { EmptyState } from "../../components/ari/EmptyState";
 import { InputBar } from "../../components/ari/InputBar";
 import { MessageList } from "../../components/ari/MessageList";
 import type { ConfirmOutcome } from "../../components/ari/toolProposalTypes";
-import { QuickReplyChips } from "../../components/ari/QuickReplyChips";
 import { StreamingText } from "../../components/ari/StreamingText";
+import { AriActivity } from "../../components/ari/AriActivity";
+import { AriAttachmentTray } from "../../components/ari/AriAttachmentCards";
+import { AriAttachmentSourceSheet } from "../../components/ari/AriAttachmentSourceSheet";
 import { Toast } from "../../components/ui/Toast";
 import { useShareNetworkState } from "../../components/ui/useShareNetworkState";
 import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
@@ -54,6 +57,7 @@ import { BrandSwitcherSheet } from "../../components/brand/BrandSwitcherSheet";
 import { ariChatErrorCopy, shouldReportAriChatError } from "./ariChatErrorCopy";
 
 import { useAgentChat } from "../../hooks/useAgentChat";
+import { useAriAttachments } from "../../hooks/useAriAttachments";
 import { useAriPreferences } from "../../hooks/useAriPreferences";
 import { useConfirmPendingAction } from "../../hooks/useConfirmPendingAction";
 import { useConversationList } from "../../hooks/useConversationList";
@@ -181,7 +185,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // #1841 — library-backed; 0 on web and while the keyboard is closed. Same
   // value, same timing as the deleted listener pair; no bespoke plumbing.
   const keyboardHeight = useKeyboardHeight();
-  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [attachmentSourceOpen, setAttachmentSourceOpen] = useState(false);
+  const [draftText, setDraftText] = useState("");
+  const composerInputRef = useRef<React.ElementRef<typeof TextInput> | null>(null);
   const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
   const [retryText, setRetryText] = useState<string | null>(null);
   const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
@@ -234,7 +240,14 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       setStoredConversationSelection(conversationScopeKey, conversationId);
     }
   }, [conversationScopeKey, setStoredConversationSelection]);
+  const surface = websiteSplit ? "website" as const : "main" as const;
   const chat = useAgentChat(null, selectedBrandId, persistConversationSelection);
+  React.useEffect(() => chat.setSurface(surface), [chat.setSurface, surface]);
+  const attachments = useAriAttachments({
+    brandId: selectedBrandId,
+    conversationId: chat.conversationId,
+    surface,
+  });
   const [restoredConversationScope, setRestoredConversationScope] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -281,7 +294,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     if (previousBrandId.current === selectedBrandId) return;
     previousBrandId.current = selectedBrandId;
     setDrawerOpen(false);
-    setSuggestionsOpen(false);
+    setAttachmentSourceOpen(false);
+    setDraftText("");
     setLocalError(null);
     setRetryText(null);
     setRateLimitUntil(null);
@@ -307,14 +321,19 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     });
   };
 
-  const handleSend = async (text: string): Promise<boolean> => {
+  const handleSend = (text: string): boolean => {
     if (!online) {
-      setLocalError("You're offline. Reconnect to continue this plan.");
+      setLocalError("You’re offline. Reconnect to send.");
       return false;
     }
     if (rateLimitUntil !== null && rateLimitUntil > Date.now()) return false;
+    const selectedFiles = attachments.consumeReady();
+    if (selectedFiles === null) return false;
+    if (!text.trim() && selectedFiles.length === 0) return false;
+    // Composer ownership transfers to one local row in this synchronous event.
+    setDraftText("");
     setLocalError(null);
-    const result = await chat.sendMessage(text);
+    void chat.sendMessage(text, selectedFiles).then((result) => {
     if (result.kind === "error") {
       if (["BRAND_CONTEXT_REQUIRED", "BRAND_ACCESS_DENIED", "CONVERSATION_BRAND_MISMATCH", "LEGACY_CONVERSATION_UNSCOPED", "TENANT_SCOPE_UNAVAILABLE", "UNAUTHORIZED"].includes(result.code)) {
         setRetryText(text);
@@ -356,10 +375,13 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         }
         setLocalError(ariChatErrorCopy(result.code));
       }
-      return false;
+      return;
     }
     if (result.kind === "text" && result.handoff_route) router.push(result.handoff_route as never);
     setRetryText(null);
+    }).catch((error: unknown) => {
+      setLocalError(error instanceof Error ? error.message : "Message not sent. Check your connection and try again.");
+    });
     return true;
   };
 
@@ -389,6 +411,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   ): Promise<ConfirmOutcome> => {
     if (!chat.pendingAction) return { ok: false };
     setLocalError(null);
+    try {
     let result: Awaited<ReturnType<typeof confirm.confirm>>;
     try {
       result = await confirm.confirm(chat.pendingAction.pending_action_id, editedArgs);
@@ -436,6 +459,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     }
     if (!keepPending) chat.clearPendingAction();
     return { ok: true, brandId };
+    } finally {
+      chat.finishConfirmedActivity();
+    }
   };
 
   const handleCancelProposal = async (): Promise<void> => {
@@ -497,7 +523,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
 
   const handleRecovery = (): void => {
     if (recovery?.code === "TENANT_SCOPE_UNAVAILABLE" && retryText) {
-      void handleSend(retryText);
+      handleSend(retryText);
     } else if (recovery?.code === "UNAUTHORIZED") {
       router.replace("/" as never);
     } else if (recovery?.code === "BRAND_CONTEXT_REQUIRED" || recovery?.code === "BRAND_ACCESS_DENIED") {
@@ -539,6 +565,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           </Pressable>
         </View>
       ) : null}
+      <View style={[styles.ariPane, websiteSplit && isWideDesktop ? styles.websiteAriPane : null]}>
       {/* Header — the embedding host owns the page title, so it is dropped
           there rather than stacking two headers in one column. */}
       <View style={[styles.header, embedded ? styles.headerEmbedded : null]}>
@@ -614,11 +641,18 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
             isExecuting={confirm.isExecuting}
             onConfirm={handleConfirm}
             onCancel={handleCancelProposal}
-            isThinking={chat.isSending && !chat.pendingAction}
-            renderThinking={() => <StreamingText visible />}
+            isThinking={!!chat.activeTurn}
+            renderThinking={() => chat.activeTurn ? (
+              <AriActivity
+                turn={chat.activeTurn}
+                surface={surface}
+                onStop={() => chat.stopTurn(chat.activeTurn!.clientTurnId)}
+                onRetry={() => chat.retryTurn(chat.activeTurn!.clientTurnId)}
+              />
+            ) : null}
             brandNamesById={brandNamesById}
             accountId={accountId}
-            onSeedMessage={(text) => void handleSend(text)}
+            onSeedMessage={(text) => { setDraftText(text); composerInputRef.current?.focus(); }}
             // ORCH-1103 REWORK 2 — a disambiguation / no-brand-handoff chip tap
             // sends the chip label as a normal user turn (Q2 conversational
             // feedback; Gemini re-proposes with the resolved target).
@@ -629,13 +663,24 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 return;
               }
               void chat.retryTurn(clientTurnId).then((result) => {
-                if (result?.kind === "error") setLocalError(result.message);
+                if (result?.kind === "error" && result.code === "OFFLINE") {
+                  setLocalError(result.message);
+                }
               }).catch((error: unknown) => {
                 setLocalError(error instanceof Error
                   ? error.message
                   : "Ari could not retry that message. Try again.");
               });
             }}
+            onEditTurn={(clientTurnId) => {
+              const restored = chat.editTurn(clientTurnId);
+              if (!restored) return;
+              setDraftText(restored.text);
+              attachments.restoreDrafts(restored.attachments);
+              requestAnimationFrame(() => composerInputRef.current?.focus());
+            }}
+            onDiscardTurn={chat.discardTurn}
+            surface={surface}
             choicesDisabled={chat.isSending || !online}
             attachedCovers={attachedCovers}
             onAttachDone={(cover) => {
@@ -690,22 +735,6 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
             },
           ]}
         >
-          {suggestionsOpen && online && !recovery && !rateLimited ? (
-            <View style={styles.suggestionsPanel}>
-              <QuickReplyChips
-                chips={[
-                  "Create a brand called Sample Events",
-                  "What events do I have this week?",
-                  "Help me schedule a Friday event",
-                ]}
-                onSelect={(chip) => {
-                  setSuggestionsOpen(false);
-                  void handleSend(chip);
-                }}
-                layout="stack"
-              />
-            </View>
-          ) : null}
           {/* #1890 — the measuring wrapper is gone with the double count it fed.
               `inputWrap`'s paddingBottom already positions this pill's bottom
               edge; nothing needs the pill's own height. */}
@@ -713,7 +742,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
             <>
               {!online ? (
                 <RecoveryPanel
-                  recovery={{ code: "OFFLINE", title: "You're offline", body: "Reconnect to continue this plan." }}
+                  recovery={{ code: "OFFLINE", title: "You’re offline", body: "Reconnect to send." }}
                   onAction={() => undefined}
                 />
               ) : null}
@@ -727,15 +756,45 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   onAction={() => undefined}
                 />
               ) : null}
+              {attachments.errorMessage ? (
+                <View style={styles.attachmentError} accessibilityRole="alert">
+                  <Text style={styles.attachmentErrorText}>{attachments.errorMessage}</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Dismiss attachment message"
+                    onPress={attachments.clearError}
+                    style={styles.attachmentErrorDismiss}
+                  >
+                    <Text style={styles.attachmentErrorDismissText}>Dismiss</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              <AriAttachmentTray
+                attachments={attachments.attachments}
+                onRemove={attachments.removeAttachment}
+                onRetry={(localId) => void attachments.retryAttachment(localId)}
+                onRemoveAll={attachments.removeAll}
+              />
+              {chat.isSending ? <Text style={styles.composerHelper}>Ari is finishing your last message.</Text> : null}
               <InputBar
                 onSend={handleSend}
-                disabled={chat.isSending || brands.isLoading || rateLimited || !conversationSelectionReady}
+                value={draftText}
+                onChangeText={setDraftText}
+                inputRef={composerInputRef}
+                hasReadyAttachments={attachments.attachments.length > 0 && attachments.allReady}
+                disabled={brands.isLoading || !conversationSelectionReady}
+                sendDisabled={chat.isSending || rateLimited || !online || !attachments.allReady}
+                attachDisabled={!online || !attachments.canAttachMore}
                 placeholder={!conversationSelectionReady ? "Restoring your chat…" : !online ? "Reconnect to continue…" : brands.isLoading ? "Checking brand access…" : rateLimited ? "Sending paused…" : "Ask Ari…"}
-                onShowSuggestions={() => setSuggestionsOpen((v) => !v)}
+                onAttach={() => {
+                  if (Platform.OS === "web") void attachments.addFiles("all");
+                  else setAttachmentSourceOpen(true);
+                }}
               />
             </>
           )}
         </View>
+      </View>
       </View>
 
       <ConversationDrawer
@@ -749,9 +808,16 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         isLoading={conversations.isLoading}
         isError={conversations.isError}
         onRetry={conversations.refetch}
+        surface={surface}
       />
 
       <BrandSwitcherSheet visible={brandSwitcherOpen} onClose={() => setBrandSwitcherOpen(false)} />
+
+      <AriAttachmentSourceSheet
+        visible={attachmentSourceOpen}
+        onClose={() => setAttachmentSourceOpen(false)}
+        onSelect={(source) => void attachments.addFiles(source)}
+      />
 
       <AiDisclosureModal
         visible={disclosureNeeded}
@@ -765,6 +831,14 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
     backgroundColor: canvas.discover,
+  },
+  ariPane: { flex: 1, minWidth: 0 },
+  websiteAriPane: {
+    flexGrow: 0,
+    flexShrink: 1,
+    flexBasis: 500,
+    minWidth: ariThread.websiteAriMinWidth,
+    maxWidth: ariThread.websiteAriMaxWidth,
   },
   websiteSplitHost: { flexDirection: "row", gap: spacing.lg, padding: spacing.md },
   websiteDraftPane: {
@@ -837,10 +911,23 @@ const styles = StyleSheet.create({
   inputWrap: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
+    width: "100%",
+    maxWidth: ariThread.threadMaxWidth,
+    alignSelf: "center",
   },
-  suggestionsPanel: {
-    marginBottom: spacing.sm,
+  composerHelper: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16, marginBottom: spacing.xs },
+  attachmentError: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingLeft: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: Platform.OS === "android" ? "#2b1d15" : "rgba(235, 120, 37, 0.12)",
   },
+  attachmentErrorText: { flex: 1, color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
+  attachmentErrorDismiss: { minWidth: 64, minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.sm },
+  attachmentErrorDismissText: { color: accent.warm, fontSize: 14, fontWeight: "600" },
   recoveryPanel: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -855,7 +942,7 @@ const styles = StyleSheet.create({
   recoveryBody: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
   recoveryAction: { minHeight: 44, width: "100%", alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: ariPalette.userBubble },
   recoveryActionFocused: Platform.OS === "web" ? ({ outlineWidth: 2, outlineStyle: "solid", outlineColor: ariPalette.flame, outlineOffset: 2 } as object) : {},
-  recoveryActionText: { color: textTokens.inverse, fontWeight: "700", textAlign: "center" },
+  recoveryActionText: { color: ariThread.onUserBubble, fontWeight: "700", textAlign: "center" },
 });
 
 export default AriChatScreen;

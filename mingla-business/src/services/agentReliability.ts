@@ -61,6 +61,10 @@ export type AriErrorCode =
   | "PAID_ORDER_MUST_REFUND"
   | "REFUND_PREVIEW_UNPRICED"
   | "DOMAIN_ACTION_REFUSED"
+  | "ATTACHMENT_INVALID"
+  | "ATTACHMENT_CONTEXT_LIMIT"
+  | "TURN_STOPPED"
+  | "ACCEPTED_RESPONSE_FAILED"
   | "INTERNAL";
 
 type AriErrorTuple = Readonly<{
@@ -168,6 +172,26 @@ export const ARI_CLIENT_ERROR_REGISTRY: Readonly<
     retryability: "never",
     safeToRetry: false,
     operationState: "none",
+  },
+  ATTACHMENT_INVALID: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "failed",
+  },
+  ATTACHMENT_CONTEXT_LIMIT: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "failed",
+  },
+  TURN_STOPPED: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "cancelled",
+  },
+  ACCEPTED_RESPONSE_FAILED: {
+    retryability: "after_backoff",
+    safeToRetry: true,
+    operationState: "failed",
   },
   INTERNAL: {
     retryability: "after_backoff",

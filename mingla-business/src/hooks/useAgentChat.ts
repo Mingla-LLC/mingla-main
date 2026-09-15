@@ -1,27 +1,42 @@
 /**
- * ORCH-0821 — useAgentChat
- * Manages chat state for one conversation: message history (React Query),
- * sendMessage mutation, pending-action tracking.
- * Issue #2060: gates Send through canDispatchAriIntent / reduceAriClientIntent.
+ * Issue #3429 — one-owner Ari delivery state.
+ * One immutable client_turn_id owns the local row, retry payload, activity,
+ * cancellation, and reconciliation. Text is presentation, never identity.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState } from "react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { useShareNetworkState } from "../components/ui/useShareNetworkState";
 import { useAuth } from "../context/AuthContext";
 import {
-  AgentChoiceSubmissionV2,
-  AgentChatResponse,
-  AgentMessage,
+  type AgentChoiceSubmissionV2,
+  type AgentChatResponse,
+  type AgentMessage,
   fetchMessages,
   sendAgentMessage,
 } from "../services/agentChatService";
 import {
-  AriClientIntentRecord,
+  type AriAttachmentDraft,
+  type AriSentAttachment,
+  discardAriAttachment,
+} from "../services/ariAttachmentService";
+import {
+  type AriActivityEvent,
+  type AriAttemptStatus,
+  fetchAriTurnStatus,
+  retryAriTurn,
+  stopAriTurn,
+  subscribeAriTurnActivity,
+} from "../services/ariTurnService";
+import { captureAriActivityDisplayed, captureAriTurnOutcome } from "../services/ariPolishAnalytics";
+import {
+  type AriClientIntentRecord,
   canDispatchAriIntent,
   createAriClientIntent,
   reduceAriClientIntent,
 } from "../services/agentReliability";
-import { useShareNetworkState } from "../components/ui/useShareNetworkState";
 import { agentQueryKeys } from "./agentQueryKeys";
 
 export { agentQueryKeys };
@@ -32,12 +47,36 @@ export interface PendingActionView {
   tool_args: Record<string, unknown>;
 }
 
+type AriSurface = "main" | "website";
+
+export interface AriEditableTurn {
+  text: string;
+  attachments: AriAttachmentDraft[];
+}
+
+export interface AriActiveTurn {
+  clientTurnId: string;
+  accepted: boolean;
+  delivery: "sending" | "sent" | "failed" | "stopped";
+  event: AriActivityEvent | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  reconciling: boolean;
+  startedAt: number;
+}
+
 export interface UseAgentChatResult {
   messages: AgentMessage[];
   isLoadingMessages: boolean;
-  sendMessage: (text: string) => Promise<AgentChatResponse>;
+  sendMessage: (text: string, attachments?: AriAttachmentDraft[]) => Promise<AgentChatResponse>;
   sendChoice: (submission: AgentChoiceSubmissionV2, label: string) => Promise<AgentChatResponse>;
   retryTurn: (clientTurnId: string) => Promise<AgentChatResponse | null>;
+  editTurn: (clientTurnId: string) => AriEditableTurn | null;
+  discardTurn: (clientTurnId: string) => void;
+  stopTurn: (clientTurnId: string) => Promise<void>;
+  finishConfirmedActivity: () => void;
+  reconcileActiveTurns: () => Promise<void>;
+  activeTurn: AriActiveTurn | null;
   isSending: boolean;
   pendingAction: PendingActionView | null;
   clearPendingAction: () => void;
@@ -47,13 +86,37 @@ export interface UseAgentChatResult {
   errorMessage: string | null;
   errorCode: string | null;
   clearErrorMessage: () => void;
+  setSurface: (surface: AriSurface) => void;
 }
 
-// ORCH-1101 REWORK Bug #2 — optimistic user message. Built crash-safe to the
-// exact AgentMessage shape MessageList consumes (role "user", content.text set,
-// tool_calls/tool_results null) so it renders as a normal user ChatBubble with
-// zero special-casing. The id is prefixed `optimistic-` so it can be removed on
-// reconcile and never collides with a real DB uuid.
+type TurnPayload = {
+  message?: string;
+  choice_response?: AgentChoiceSubmissionV2;
+  attachment_ids?: string[];
+};
+
+interface LocalTurn {
+  clientTurnId: string;
+  localId: string;
+  conversationId: string | null;
+  displayText: string;
+  payload: TurnPayload;
+  attachments: AriAttachmentDraft[];
+  delivery: "sending" | "sent" | "failed" | "stopped";
+  accepted: boolean;
+  attemptStatus: AriAttemptStatus | null;
+  attemptNumber: number;
+  events: AriActivityEvent[];
+  errorCode: string | null;
+  errorMessage: string | null;
+  reconciling: boolean;
+  confirmationActive: boolean;
+  confirmationFinished: boolean;
+  startedAt: number;
+  createdAt: string;
+  epoch: number;
+}
+
 function newClientTurnId(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
@@ -63,34 +126,47 @@ function newClientTurnId(): string {
   });
 }
 
-function makeOptimisticMessage(text: string, conversationId: string | null): AgentMessage {
+function sentAttachment(draft: AriAttachmentDraft, index: number): AriSentAttachment {
   return {
-    id: `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    conversation_id: conversationId ?? "new",
-    role: "user",
-    content: { text },
-    client_turn_id: null,
-    tool_calls: null,
-    tool_results: null,
-    created_at: new Date().toISOString(),
+    id: draft.attachmentId ?? draft.localId,
+    original_filename: draft.name,
+    verified_mime: draft.mimeType,
+    file_type: draft.fileType === "unsupported" ? "text" : draft.fileType,
+    verified_size_bytes: draft.sizeBytes,
+    display_order: index,
+    state: "ready",
   };
 }
 
-function makeFailedMessage(
-  text: string,
-  conversationId: string | null,
-  clientTurnId: string,
-): AgentMessage {
+function turnMessage(turn: LocalTurn): AgentMessage {
+  const attachmentCount = turn.attachments.length;
+  const text = turn.displayText || (attachmentCount === 1 ? "1 attachment" : `${attachmentCount} attachments`);
   return {
-    id: `failed-${clientTurnId}`,
-    conversation_id: conversationId ?? "new",
+    id: turn.localId,
+    conversation_id: turn.conversationId ?? "new",
     role: "user",
-    content: { text, local_delivery: "failed" },
-    client_turn_id: clientTurnId,
+    content: {
+      text,
+      local_delivery: turn.delivery,
+      ...(turn.errorMessage ? { local_error: turn.errorMessage } : {}),
+      ...(attachmentCount ? { attachments: turn.attachments.map(sentAttachment) } : {}),
+    },
+    client_turn_id: turn.clientTurnId,
     tool_calls: null,
     tool_results: null,
-    created_at: new Date().toISOString(),
+    created_at: turn.createdAt,
   };
+}
+
+function canonicalIdentityMatch(server: AgentMessage, local: AgentMessage): boolean {
+  if (server.role !== "user" || local.role !== "user") return false;
+  if (server.client_turn_id && local.client_turn_id) return server.client_turn_id === local.client_turn_id;
+  // Compatibility for historical pre-#3429 records only. New turns always
+  // have ids and can never reconcile by text equality.
+  if (!server.client_turn_id || !local.client_turn_id) {
+    return (server.content as { text?: string }).text === (local.content as { text?: string }).text;
+  }
+  return false;
 }
 
 export function reconcileAgentDeliveryMessages(
@@ -99,20 +175,19 @@ export function reconcileAgentDeliveryMessages(
   failedMessages: AgentMessage[],
   currentScope: boolean,
 ): AgentMessage[] {
-  const liveOptimistic = optimisticMessages.filter(
-    (o) =>
-      currentScope && !serverMessages.some(
-        (s) => s.role === "user" && (s.content as { text?: string })?.text === (o.content as { text?: string })?.text,
-      ),
-  );
-  const mergedMessages: AgentMessage[] = [...serverMessages, ...liveOptimistic];
-  const liveFailed = failedMessages.filter(
-    (failed) => currentScope && !serverMessages.some(
-      (server) => server.role === "user" && server.client_turn_id === failed.client_turn_id,
-    ),
-  );
-  mergedMessages.push(...liveFailed);
-  return mergedMessages;
+  if (!currentScope) return serverMessages;
+  const locals = [...optimisticMessages, ...failedMessages];
+  const live = locals.filter((local, index) =>
+    locals.findIndex((candidate) => candidate.client_turn_id === local.client_turn_id) === index &&
+    !serverMessages.some((server) => canonicalIdentityMatch(server, local)));
+  return [...serverMessages, ...live];
+}
+
+function mergeEvents(current: AriActivityEvent[], incoming: AriActivityEvent[]): AriActivityEvent[] {
+  const byId = new Map(current.map((event) => [event.id, event]));
+  for (const event of incoming) byId.set(event.id, event);
+  return [...byId.values()].sort((a, b) =>
+    a.attempt_number - b.attempt_number || a.sequence - b.sequence || a.id.localeCompare(b.id));
 }
 
 export function useAgentChat(
@@ -121,274 +196,503 @@ export function useAgentChat(
   onConversationIdChange?: (conversationId: string | null) => void,
 ): UseAgentChatResult {
   const qc = useQueryClient();
-  // ORCH-1004 — agent conversation messages are RLS auth.uid()-scoped; gate on
-  // auth readiness so a pre-auth fire can't cache an empty thread as success.
   const { isAuthReady } = useAuth();
   const online = useShareNetworkState();
-  const sendIntentRef = useRef<AriClientIntentRecord | null>(null);
-  const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
+  const [conversationId, setConversationId] = useState(initialConversationId);
+  const [stateBrandId, setStateBrandId] = useState(brandId);
   const [pendingAction, setPendingAction] = useState<PendingActionView | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
-  // ORCH-1101 REWORK Bug #2 — optimistic user messages awaiting server echo.
-  // Rendered immediately so the user's bubble appears the instant they hit send,
-  // not after the edge round-trip. Reconciled (cleared) once the real thread
-  // refetch lands, or dropped on send error.
-  const [optimisticMessages, setOptimisticMessages] = useState<AgentMessage[]>([]);
-  // Failed delivery is a separate terminal local state. The sending placeholder
-  // is always removed on failure; this row alone owns retry retention.
-  const [failedMessages, setFailedMessages] = useState<AgentMessage[]>([]);
-  const turnPayloads = useRef(new Map<string, { message?: string; choice_response?: AgentChoiceSubmissionV2 }>());
-  const previousBrandId = useRef(brandId);
-  const [stateBrandId, setStateBrandId] = useState(brandId);
+  const [turns, setTurns] = useState<LocalTurn[]>([]);
+  const turnsRef = useRef<LocalTurn[]>([]);
+  const subscriptions = useRef(new Map<string, () => void>());
+  const sendIntentRef = useRef<AriClientIntentRecord | null>(null);
+  const surfaceRef = useRef<AriSurface>("main");
   const brandEpoch = useRef(0);
+  const previousBrandId = useRef(brandId);
+  const sameFrameLock = useRef(false);
+
+  const replaceTurns = useCallback((producer: (current: LocalTurn[]) => LocalTurn[]): void => {
+    const next = producer(turnsRef.current);
+    turnsRef.current = next;
+    setTurns(next);
+  }, []);
+
+  const patchTurn = useCallback((clientTurnId: string, patch: Partial<LocalTurn>): void => {
+    replaceTurns((current) => current.map((turn) => turn.clientTurnId === clientTurnId ? { ...turn, ...patch } : turn));
+  }, [replaceTurns]);
 
   const selectConversation = useCallback((id: string | null): void => {
     setConversationId(id);
     onConversationIdChange?.(id);
   }, [onConversationIdChange]);
+  const setSurface = useCallback((nextSurface: AriSurface): void => {
+    surfaceRef.current = nextSurface;
+  }, []);
 
   useEffect(() => {
     if (previousBrandId.current === brandId) return;
     previousBrandId.current = brandId;
-    setStateBrandId(brandId);
     brandEpoch.current += 1;
+    subscriptions.current.forEach((unsubscribe) => unsubscribe());
+    subscriptions.current.clear();
+    sendIntentRef.current = null;
+    turnsRef.current = [];
+    setTurns([]);
+    setStateBrandId(brandId);
     setConversationId(null);
     setPendingAction(null);
-    setOptimisticMessages([]);
-    setFailedMessages([]);
-    turnPayloads.current.clear();
     setErrorMessage(null);
     setErrorCode(null);
-    sendMutation.reset();
-  // The mutation object is intentionally excluded: only a selected-brand change resets a thread.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brandId]);
+
+  useEffect(() => () => {
+    subscriptions.current.forEach((unsubscribe) => unsubscribe());
+    subscriptions.current.clear();
+  }, []);
 
   const messagesQuery = useQuery({
     queryKey: agentQueryKeys.messages(conversationId),
-    queryFn: () => (conversationId ? fetchMessages(conversationId) : Promise.resolve([])),
+    queryFn: () => conversationId ? fetchMessages(conversationId) : Promise.resolve([]),
     enabled: isAuthReady && !!conversationId,
     staleTime: 0,
   });
 
-  const sendMutation = useMutation({
-    mutationFn: (vars: { displayText: string; optimisticId: string; clientTurnId: string; epoch: number; message?: string; choice_response?: AgentChoiceSubmissionV2 }) =>
-      sendAgentMessage({
-        conversation_id: conversationId,
-        ...(vars.message ? { message: vars.message } : {}),
-        ...(vars.choice_response ? { choice_response: vars.choice_response } : {}),
-        client_turn_id: vars.clientTurnId,
+  const installSubscription = useCallback((clientTurnId: string): void => {
+    if (subscriptions.current.has(clientTurnId)) return;
+    const unsubscribe = subscribeAriTurnActivity(clientTurnId, (event) => {
+      replaceTurns((current) => current.map((turn) => {
+        if (turn.clientTurnId !== clientTurnId || event.attempt_number < turn.attemptNumber) return turn;
+        const events = event.attempt_number > turn.attemptNumber ? [event] : mergeEvents(turn.events, [event]);
+        const confirmationEvent = event.event_type === "approved_action_started" ||
+          event.event_type === "finalizing_started";
+        captureAriActivityDisplayed({ surface: surfaceRef.current, phase: event.event_type });
+        return {
+          ...turn,
+          attemptNumber: event.attempt_number,
+          events,
+          accepted: true,
+          delivery: event.event_type === "stopped" ? "stopped" : turn.delivery,
+          attemptStatus: event.event_type === "stopped" ? "stopped" : event.event_type === "failed" ? "failed" : turn.attemptStatus,
+          confirmationActive: confirmationEvent && !turn.confirmationFinished
+            ? true
+            : turn.confirmationActive,
+        };
+      }));
+    });
+    subscriptions.current.set(clientTurnId, unsubscribe);
+  }, [replaceTurns]);
+
+  const refreshCanonicalMessages = useCallback(async (targetConversationId: string): Promise<void> => {
+    qc.setQueryData(agentQueryKeys.messages(targetConversationId), await fetchMessages(targetConversationId));
+  }, [qc]);
+
+  const reconcileOne = useCallback(async (clientTurnId: string): Promise<void> => {
+    const before = turnsRef.current.find((turn) => turn.clientTurnId === clientTurnId);
+    if (!before) return;
+    patchTurn(clientTurnId, { reconciling: true });
+    try {
+      const canonical = await fetchAriTurnStatus(clientTurnId);
+      const status = canonical.attempt.status;
+      const delivery = status === "stopped" ? "stopped" as const
+        : status === "failed" || status === "completed" ? "sent" as const
+        : before.delivery === "failed" ? "sending" as const : before.delivery;
+      patchTurn(clientTurnId, {
+        conversationId: canonical.attempt.conversation_id,
+        accepted: true,
+        delivery,
+        attemptStatus: status,
+        attemptNumber: canonical.attempt.attempt_number,
+        events: mergeEvents(before.events, canonical.events),
+        reconciling: false,
+        ...(status === "failed"
+          ? { errorCode: canonical.attempt.error_code ?? "ACCEPTED_RESPONSE_FAILED", errorMessage: "Ari couldn’t finish this response. Your message is safe." }
+          : status === "stopped"
+            ? { errorCode: "TURN_STOPPED", errorMessage: "Ari stopped. Your message is still here." }
+            : { errorCode: null, errorMessage: null }),
+      });
+      if (canonical.attempt.conversation_id !== conversationId) selectConversation(canonical.attempt.conversation_id);
+      if (status === "completed") await refreshCanonicalMessages(canonical.attempt.conversation_id);
+    } catch {
+      patchTurn(clientTurnId, { reconciling: false });
+    }
+  }, [conversationId, patchTurn, refreshCanonicalMessages, selectConversation]);
+
+  const reconcileActiveTurns = useCallback(async (): Promise<void> => {
+    const candidates = turnsRef.current.filter((turn) =>
+      turn.delivery === "sending" || turn.reconciling || turn.attemptStatus === "reconciliation_required");
+    await Promise.all(candidates.map((turn) => reconcileOne(turn.clientTurnId)));
+  }, [reconcileOne]);
+
+  useEffect(() => { if (online === true) void reconcileActiveTurns(); }, [online, reconcileActiveTurns]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void reconcileActiveTurns();
+    });
+    return () => subscription.remove();
+  }, [reconcileActiveTurns]);
+
+  const executeTurn = useCallback(async (turn: LocalTurn): Promise<AgentChatResponse> => {
+    const { payload, clientTurnId } = turn;
+    try {
+      const response = await sendAgentMessage({
+        conversation_id: turn.conversationId,
+        ...payload,
+        client_turn_id: clientTurnId,
         client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
         locale: Intl.DateTimeFormat().resolvedOptions().locale || "en-US",
         brand_id: brandId,
-      }),
-    onSuccess: async (response, vars) => {
-      if (vars.epoch !== brandEpoch.current) return;
-      setErrorMessage(null);
-      setErrorCode(null);
+      });
+      if (turn.epoch !== brandEpoch.current) return response;
       if (response.kind === "error") {
-        setErrorMessage(response.message);
-        setErrorCode(response.code);
-        setOptimisticMessages((prev) => prev.filter((m) => m.id !== vars.optimisticId));
-        setFailedMessages((prev) => [
-          ...prev.filter((m) => m.client_turn_id !== vars.clientTurnId),
-          makeFailedMessage(vars.displayText, conversationId, vars.clientTurnId),
-        ]);
-        if (
-          response.code === "TASK_STATE_CONFLICT" ||
-          response.code === "CHOICE_STALE" ||
-          response.code === "STALE_PROPOSAL" ||
-          response.code === "CONFLICT"
-        ) {
-          void qc.invalidateQueries({ queryKey: agentQueryKeys.messages(conversationId) });
+        await reconcileOne(clientTurnId);
+        const reconciled = turnsRef.current.find((candidate) => candidate.clientTurnId === clientTurnId);
+        if (!reconciled?.accepted) {
+          const stoppedBeforeAcceptance = response.code === "TURN_STOPPED" &&
+            response.message.startsWith("Message not sent.");
+          patchTurn(clientTurnId, {
+            delivery: stoppedBeforeAcceptance ? "failed" : response.code === "TURN_STOPPED" ? "stopped" : "failed",
+            attemptStatus: stoppedBeforeAcceptance ? null : response.code === "TURN_STOPPED" ? "stopped" : null,
+            errorCode: stoppedBeforeAcceptance ? "STOP_BEFORE_ACCEPTANCE" : response.code,
+            errorMessage: response.code === "TRANSPORT_UNAVAILABLE"
+              ? "Message not sent. Check your connection and try again." : response.message,
+            reconciling: false,
+          });
         }
-        return;
+        const ownsScreenRecovery = [
+          "BRAND_CONTEXT_REQUIRED",
+          "BRAND_ACCESS_DENIED",
+          "CONVERSATION_BRAND_MISMATCH",
+          "LEGACY_CONVERSATION_UNSCOPED",
+          "TENANT_SCOPE_UNAVAILABLE",
+          "UNAUTHORIZED",
+        ].includes(response.code);
+        setErrorCode(ownsScreenRecovery ? response.code : null);
+        setErrorMessage(null);
+        captureAriTurnOutcome({ surface: surfaceRef.current, outcome: "failed", errorCode: response.code });
+        return response;
       }
-      // Adopt the conversation id if the server created one
+      const targetConversationId = response.conversation_id;
+      patchTurn(clientTurnId, {
+        conversationId: targetConversationId,
+        accepted: true,
+        delivery: "sent",
+        attemptStatus: response.attempt_status,
+        errorCode: null,
+        errorMessage: null,
+        reconciling: false,
+      });
       if (response.conversation_id !== conversationId) {
         selectConversation(response.conversation_id);
         void qc.invalidateQueries({ queryKey: agentQueryKeys.conversations(brandId) });
       }
       if (response.kind === "pending_action") {
-        setPendingAction({
-          pending_action_id: response.pending_action_id,
-          tool_name: response.tool_name,
-          tool_args: response.tool_args,
+        setPendingAction({ pending_action_id: response.pending_action_id, tool_name: response.tool_name, tool_args: response.tool_args });
+      }
+      await refreshCanonicalMessages(targetConversationId);
+      setErrorCode(null);
+      setErrorMessage(null);
+      captureAriTurnOutcome({ surface: surfaceRef.current, outcome: "accepted" });
+      return response;
+    } catch {
+      if (turn.epoch !== brandEpoch.current) {
+        return { kind: "error", code: "SCOPE_CHANGED", message: "Brand changed." };
+      }
+      patchTurn(clientTurnId, { reconciling: true });
+      await reconcileOne(clientTurnId);
+      const canonical = turnsRef.current.find((candidate) => candidate.clientTurnId === clientTurnId);
+      if (!canonical?.accepted) {
+        patchTurn(clientTurnId, {
+          delivery: "failed",
+          errorCode: "TRANSPORT_UNAVAILABLE",
+          errorMessage: "Message not sent. Check your connection and try again.",
+          reconciling: false,
         });
       }
-      // Refetch the canonical thread, THEN drop the optimistic echo. Awaiting the
-      // invalidation (which refetches the active query) guarantees the real
-      // user+assistant rows are in the cache before we remove the placeholder, so
-      // the user's bubble never blinks out between optimistic-clear and refetch.
-      await qc.invalidateQueries({ queryKey: agentQueryKeys.messages(response.conversation_id) });
-      setOptimisticMessages((prev) => prev.filter((m) => m.id !== vars.optimisticId));
-      setFailedMessages((prev) => prev.filter((m) => m.client_turn_id !== vars.clientTurnId));
-      turnPayloads.current.delete(vars.clientTurnId);
-    },
-    onError: (err: unknown, vars) => {
-      if (vars.epoch !== brandEpoch.current) return;
-      const message = err instanceof Error ? err.message : "Couldn't send — try again";
-      setErrorMessage(message);
-      setErrorCode("EDGE_ERROR");
-      setOptimisticMessages((prev) => prev.filter((m) => m.id !== vars.optimisticId));
-      setFailedMessages((prev) => [
-        ...prev.filter((m) => m.client_turn_id !== vars.clientTurnId),
-        makeFailedMessage(vars.displayText, conversationId, vars.clientTurnId),
-      ]);
-    },
-  });
+      setErrorCode(null);
+      setErrorMessage(null);
+      captureAriTurnOutcome({ surface: surfaceRef.current, outcome: "failed", errorCode: "TRANSPORT_UNAVAILABLE" });
+      return { kind: "error", code: "TRANSPORT_UNAVAILABLE", message: "Message not sent. Check your connection and try again." };
+    }
+  }, [brandId, conversationId, patchTurn, qc, reconcileOne, refreshCanonicalMessages, selectConversation]);
 
-  const sendTurn = useCallback(async (
+  const sendTurn = useCallback((
     displayText: string,
-    payload: { message?: string; choice_response?: AgentChoiceSubmissionV2 },
+    payload: TurnPayload,
+    attachments: AriAttachmentDraft[] = [],
     clientTurnId = newClientTurnId(),
   ): Promise<AgentChatResponse> => {
-    setErrorMessage(null);
-    setErrorCode(null);
+    if (sameFrameLock.current) return Promise.resolve({ kind: "error", code: "IN_FLIGHT", message: "Ari is already sending that message." });
+    sameFrameLock.current = true;
+    queueMicrotask(() => { sameFrameLock.current = false; });
+
     const intent = createAriClientIntent({
       intent: "send",
       conversationId,
       brandId,
       draftText: displayText,
     }, () => clientTurnId);
-    const current = sendIntentRef.current?.stableId === clientTurnId
+    const currentIntent = sendIntentRef.current?.stableId === clientTurnId
       ? sendIntentRef.current
       : intent;
-    const gate = canDispatchAriIntent(current, online !== false);
-    if (!gate.allowed) {
-      const blocked: AgentChatResponse = {
+    const dispatchGate = canDispatchAriIntent(currentIntent, online !== false);
+    if (!dispatchGate.allowed) {
+      return Promise.resolve({
         kind: "error",
-        code: gate.reason === "offline"
-          ? "OFFLINE"
-          : gate.reason === "server_reconcile"
-          ? "RECONCILIATION_REQUIRED"
-          : "IN_FLIGHT",
-        message: gate.reason === "offline"
-          ? "You are offline. Your request is still here for you to retry."
-          : gate.reason === "server_reconcile"
+        code: dispatchGate.reason === "offline" ? "OFFLINE" : dispatchGate.reason === "server_reconcile" ? "RECONCILIATION_REQUIRED" : "IN_FLIGHT",
+        message: dispatchGate.reason === "offline"
+          ? "You’re offline. Reconnect to send."
+          : dispatchGate.reason === "server_reconcile"
           ? "Ari is verifying the result before showing it as complete."
-          : "Ari is already working on that request.",
-      };
-      setErrorMessage(blocked.message);
-      setErrorCode(blocked.code);
-      return blocked;
-    }
-    sendIntentRef.current = reduceAriClientIntent(current, { type: "dispatch_started" });
-    turnPayloads.current.set(clientTurnId, payload);
-    setFailedMessages((prev) => prev.filter((m) => m.client_turn_id !== clientTurnId));
-    const optimistic = makeOptimisticMessage(displayText, conversationId);
-    setOptimisticMessages((prev) => [...prev, optimistic]);
-    try {
-      const response = await sendMutation.mutateAsync({
-        displayText,
-        optimisticId: optimistic.id,
-        clientTurnId,
-        epoch: brandEpoch.current,
-        ...payload,
+          : "Ari is already sending that message.",
       });
+    }
+    sendIntentRef.current = reduceAriClientIntent(currentIntent, { type: "dispatch_started" });
+    const existing = turnsRef.current.find((turn) => turn.clientTurnId === clientTurnId);
+    const turn: LocalTurn = existing ? {
+      ...existing,
+      delivery: "sending",
+      errorCode: null,
+      errorMessage: null,
+      reconciling: false,
+      confirmationActive: false,
+      confirmationFinished: false,
+      startedAt: Date.now(),
+    } : {
+      clientTurnId,
+      localId: `local-turn-${clientTurnId}`,
+      conversationId,
+      displayText,
+      payload,
+      attachments,
+      delivery: "sending",
+      accepted: false,
+      attemptStatus: null,
+      attemptNumber: 1,
+      events: [],
+      errorCode: null,
+      errorMessage: null,
+      reconciling: false,
+      confirmationActive: false,
+      confirmationFinished: false,
+      startedAt: Date.now(),
+      createdAt: new Date().toISOString(),
+      epoch: brandEpoch.current,
+    };
+    replaceTurns((current) => current.some((candidate) => candidate.clientTurnId === clientTurnId)
+      ? current.map((candidate) => candidate.clientTurnId === clientTurnId ? turn : candidate)
+      : [...current, turn]);
+    setErrorMessage(null);
+    setErrorCode(null);
+    installSubscription(clientTurnId);
+    captureAriTurnOutcome({ surface: surfaceRef.current, outcome: existing ? "retried" : "started" });
+    return executeTurn(turn).then((response) => {
       if (sendIntentRef.current?.stableId === clientTurnId) {
-        if (response.kind === "error") {
-          sendIntentRef.current = reduceAriClientIntent(sendIntentRef.current, {
-            type: "transport_uncertain",
-            code: response.code,
-          });
-        } else {
-          // Terminal success for this turn — retries must mint a new turn.
-          sendIntentRef.current = {
-            ...sendIntentRef.current,
-            state: "terminal",
-            lastCode: response.kind === "pending_action"
-              ? "PROPOSAL_READY"
-              : "PROPOSAL_READY",
-            retryAt: null,
-          };
-        }
+        sendIntentRef.current = response.kind === "error"
+          ? reduceAriClientIntent(sendIntentRef.current, { type: "transport_uncertain", code: response.code })
+          : { ...sendIntentRef.current, state: "terminal", lastCode: "PROPOSAL_READY", retryAt: null };
       }
       return response;
-    } catch (err) {
+    }).catch((error: unknown) => {
       if (sendIntentRef.current?.stableId === clientTurnId) {
         sendIntentRef.current = reduceAriClientIntent(sendIntentRef.current, {
           type: "transport_uncertain",
           code: "TRANSPORT_UNAVAILABLE",
         });
       }
-      throw err;
-    }
-  }, [brandId, conversationId, online, sendMutation]);
+      throw error;
+    });
+  }, [brandId, conversationId, executeTurn, installSubscription, online, replaceTurns]);
 
-  const sendMessage = useCallback(
-    async (text: string): Promise<AgentChatResponse> => {
-      return sendTurn(text, { message: text });
-    },
-    [sendTurn],
-  );
+  const sendMessage = useCallback((text: string, attachments: AriAttachmentDraft[] = []) => {
+    const attachmentIds = attachments.map((attachment) => attachment.attachmentId).filter((id): id is string => !!id);
+    return sendTurn(text, {
+      ...(text.trim() ? { message: text.trim() } : {}),
+      ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
+    }, attachments);
+  }, [sendTurn]);
 
-  const sendChoice = useCallback(
-    (submission: AgentChoiceSubmissionV2, label: string) => sendTurn(label, { choice_response: submission }),
-    [sendTurn],
-  );
+  const sendChoice = useCallback((submission: AgentChoiceSubmissionV2, label: string) =>
+    sendTurn(label, { choice_response: submission }), [sendTurn]);
 
   const retryTurn = useCallback(async (clientTurnId: string): Promise<AgentChatResponse | null> => {
-    const payload = turnPayloads.current.get(clientTurnId);
-    const failed = failedMessages.find((message) => message.client_turn_id === clientTurnId);
-    if (!payload || !failed) return null;
-    return sendTurn((failed.content as { text?: string }).text ?? "Retry", payload, clientTurnId);
-  }, [failedMessages, sendTurn]);
+    const turn = turnsRef.current.find((candidate) => candidate.clientTurnId === clientTurnId);
+    if (!turn || !["failed", "stopped"].includes(turn.delivery)) return null;
+    if (turn.accepted || turn.errorCode === "STOP_BEFORE_ACCEPTANCE") {
+      try {
+        const retried = await retryAriTurn(clientTurnId);
+        patchTurn(clientTurnId, {
+          accepted: retried.accepted !== false,
+          attemptNumber: Math.max(1, retried.attempt.attempt_number),
+          attemptStatus: retried.accepted === false ? null : retried.attempt.status,
+          events: [],
+          delivery: "sending",
+          errorCode: null,
+          errorMessage: null,
+          startedAt: Date.now(),
+        });
+      } catch {
+        await reconcileOne(clientTurnId);
+        return null;
+      }
+    }
+    const latest = turnsRef.current.find((candidate) => candidate.clientTurnId === clientTurnId) ?? turn;
+    const failed = turnMessage(latest);
+    const payload = latest.payload;
+    return sendTurn((failed.content as { text?: string }).text ?? latest.displayText, payload, latest.attachments, clientTurnId);
+  }, [patchTurn, reconcileOne, sendTurn]);
 
-  const clearPendingAction = useCallback((): void => {
-    setPendingAction(null);
-  }, []);
+  const editTurn = useCallback((clientTurnId: string): AriEditableTurn | null => {
+    const turn = turnsRef.current.find((candidate) => candidate.clientTurnId === clientTurnId);
+    if (!turn || turn.accepted || turn.delivery !== "failed") return null;
+    replaceTurns((current) => current.filter((candidate) => candidate.clientTurnId !== clientTurnId));
+    subscriptions.current.get(clientTurnId)?.();
+    subscriptions.current.delete(clientTurnId);
+    captureAriTurnOutcome({ surface: surfaceRef.current, outcome: "edited" });
+    return { text: turn.displayText, attachments: turn.attachments };
+  }, [replaceTurns]);
 
-  // Required so the parent screen can fully dismiss the error toast.
-  // Without this, the toast UI fires onDismiss → setLocalError(null) in the
-  // screen, but the next render still has `chat.errorMessage` set and
-  // `displayError = localError ?? chat.errorMessage` becomes truthy again,
-  // re-mounting the toast. Both state sources MUST clear on dismiss.
-  const clearErrorMessage = useCallback((): void => {
-    setErrorMessage(null);
-    setErrorCode(null);
-  }, []);
+  const discardTurn = useCallback((clientTurnId: string): void => {
+    const turn = turnsRef.current.find((candidate) => candidate.clientTurnId === clientTurnId);
+    if (!turn || turn.accepted) return;
+    replaceTurns((current) => current.filter((candidate) => candidate.clientTurnId !== clientTurnId));
+    subscriptions.current.get(clientTurnId)?.();
+    subscriptions.current.delete(clientTurnId);
+    turn.attachments.forEach((attachment) => {
+      if (attachment.attachmentId) void discardAriAttachment(attachment.attachmentId).catch(() => undefined);
+    });
+    captureAriTurnOutcome({ surface: surfaceRef.current, outcome: "discarded" });
+  }, [replaceTurns]);
 
-  // ORCH-1101 REWORK Bug #2 — render server thread + any not-yet-reconciled
-  // optimistic bubbles. Defensive dedupe: if the refetched thread already
-  // contains a user row with identical text (the real echo landed before the
-  // optimistic clear ran), drop the placeholder so the bubble never doubles.
+  const stopTurn = useCallback(async (clientTurnId: string): Promise<void> => {
+    const turn = turnsRef.current.find((candidate) => candidate.clientTurnId === clientTurnId);
+    if (!turn || !["sending", "sent"].includes(turn.delivery)) return;
+    patchTurn(clientTurnId, { reconciling: true });
+    let stopResult: Awaited<ReturnType<typeof stopAriTurn>> | null = null;
+    let stopped = false;
+    for (let attempt = 0; attempt < 3 && !stopped; attempt += 1) {
+      try {
+        stopResult = await stopAriTurn(clientTurnId);
+        stopped = true;
+      } catch {
+        if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+    }
+    if (!stopped) {
+      patchTurn(clientTurnId, {
+        delivery: "failed",
+        reconciling: false,
+        errorCode: "STOP_BEFORE_ACCEPTANCE",
+        errorMessage: "Message not sent. Check your connection and try again.",
+      });
+      return;
+    }
+    if (stopResult?.accepted === false) {
+      patchTurn(clientTurnId, {
+        accepted: false,
+        delivery: "failed",
+        attemptStatus: null,
+        reconciling: false,
+        errorCode: "STOP_BEFORE_ACCEPTANCE",
+        errorMessage: "Message not sent. Check your connection and try again.",
+      });
+      captureAriTurnOutcome({ surface: surfaceRef.current, outcome: "cancelled" });
+      return;
+    }
+    patchTurn(clientTurnId, {
+      accepted: true,
+      delivery: "stopped",
+      attemptStatus: "stopped",
+      reconciling: false,
+      errorCode: "TURN_STOPPED",
+      errorMessage: "Ari stopped. Your message is still here.",
+    });
+    captureAriTurnOutcome({ surface: surfaceRef.current, outcome: "cancelled" });
+    await reconcileOne(clientTurnId);
+  }, [patchTurn, reconcileOne]);
+
+  const clearPendingAction = useCallback(() => setPendingAction(null), []);
+  const finishConfirmedActivity = useCallback((): void => {
+    const proposalTurnId = [...(messagesQuery.data ?? [])].reverse().find((message) =>
+      message.role === "assistant" &&
+      message.tool_calls?.pending_action_id === pendingAction?.pending_action_id
+    )?.client_turn_id ?? null;
+    const fallbackTurnId = [...turnsRef.current].reverse().find((turn) =>
+      turn.confirmationActive || turn.attemptStatus === "completed"
+    )?.clientTurnId ?? null;
+    const targetId = proposalTurnId ?? fallbackTurnId;
+    if (!targetId) return;
+    patchTurn(targetId, { confirmationActive: false, confirmationFinished: true });
+    subscriptions.current.get(targetId)?.();
+    subscriptions.current.delete(targetId);
+  }, [messagesQuery.data, patchTurn, pendingAction?.pending_action_id]);
+  const clearErrorMessage = useCallback(() => { setErrorMessage(null); setErrorCode(null); }, []);
   const currentScope = stateBrandId === brandId;
   const serverMessages = currentScope ? messagesQuery.data ?? [] : [];
+
   useEffect(() => {
     if (!currentScope) return;
-    let unresolved: PendingActionView | null = null;
-    const resolved = new Set(serverMessages
-      .filter((message) => message.role === "tool")
+    const resolved = new Set(serverMessages.filter((message) => message.role === "tool")
       .map((message) => (message.tool_results as { pending_action_id?: unknown } | null)?.pending_action_id)
       .filter((id): id is string => typeof id === "string"));
+    let unresolved: PendingActionView | null = null;
     for (const message of serverMessages) {
       const call = message.role === "assistant" ? message.tool_calls : null;
       if (call && !resolved.has(call.pending_action_id)) {
-        unresolved = {
-          pending_action_id: call.pending_action_id,
-          tool_name: call.tool_name,
-          tool_args: call.args,
-        };
+        unresolved = { pending_action_id: call.pending_action_id, tool_name: call.tool_name, tool_args: call.args };
       }
     }
     setPendingAction(unresolved);
   }, [currentScope, serverMessages]);
-  const mergedMessages = reconcileAgentDeliveryMessages(
-    serverMessages,
-    optimisticMessages,
-    failedMessages,
-    currentScope,
-  );
+
+  const localMessages = currentScope ? turns.map(turnMessage) : [];
+  const liveLocalMessages = localMessages.filter((local) => !serverMessages.some((server) => canonicalIdentityMatch(server, local)));
+  const turnById = new Map(turns.map((turn) => [turn.clientTurnId, turn]));
+  const decoratedServerMessages = serverMessages.map((message) => {
+    if (!message.client_turn_id) return message;
+    const turn = turnById.get(message.client_turn_id);
+    if (!turn) return message;
+    if (message.role === "assistant" && turn.attemptStatus === "completed") {
+      return { ...message, content: { ...message.content, local_reveal: true } };
+    }
+    if (message.role !== "user") return message;
+    return { ...message, content: { ...message.content, local_delivery: turn.delivery === "failed" ? "sent" : turn.delivery, ...(turn.errorMessage ? { local_error: turn.errorMessage } : {}) } };
+  });
+  const messages = [...decoratedServerMessages, ...liveLocalMessages];
+
+  const activeTurn = useMemo<AriActiveTurn | null>(() => {
+    const candidate = [...turns].reverse().find((turn) =>
+      turn.delivery === "sending" || turn.delivery === "stopped" || turn.confirmationActive ||
+      (turn.accepted && turn.attemptStatus === "failed"));
+    if (!candidate) return null;
+    const event = [...candidate.events].reverse().find((item) =>
+      item.attempt_number === candidate.attemptNumber &&
+      !["accepted", "response_ready", "reconciliation_finished", "stopped", "failed"].includes(item.event_type)) ?? null;
+    return {
+      clientTurnId: candidate.clientTurnId,
+      accepted: candidate.accepted,
+      delivery: candidate.delivery,
+      event,
+      errorCode: candidate.errorCode,
+      errorMessage: candidate.errorMessage,
+      reconciling: candidate.reconciling,
+      startedAt: candidate.startedAt,
+    };
+  }, [turns]);
 
   return {
-    messages: mergedMessages,
+    messages,
     isLoadingMessages: messagesQuery.isLoading,
     sendMessage,
     sendChoice,
     retryTurn,
-    isSending: currentScope ? sendMutation.isPending : false,
+    editTurn,
+    discardTurn,
+    stopTurn,
+    finishConfirmedActivity,
+    reconcileActiveTurns,
+    activeTurn,
+    isSending: currentScope && turns.some((turn) => turn.delivery === "sending"),
     pendingAction: currentScope ? pendingAction : null,
     clearPendingAction,
     conversationId: currentScope ? conversationId : null,
@@ -397,5 +701,6 @@ export function useAgentChat(
     errorMessage: currentScope ? errorMessage : null,
     errorCode: currentScope ? errorCode : null,
     clearErrorMessage,
+    setSurface,
   };
 }

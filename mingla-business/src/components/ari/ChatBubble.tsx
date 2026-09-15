@@ -28,6 +28,7 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { AriOrb } from "./AriOrb";
+import { SemanticRevealText } from "./SemanticRevealText";
 
 export interface ChatBubbleProps {
   role: "user" | "assistant";
@@ -40,6 +41,9 @@ export interface ChatBubbleProps {
    *  cluster reads as one smooth column. Default true (last/only bubble). */
   tail?: boolean;
   accessibilityLabel?: string;
+  reveal?: boolean;
+  revealSkipSignal?: number;
+  surface?: "main" | "website";
 }
 
 interface Segment {
@@ -102,6 +106,9 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
   hideOrb = false,
   tail = true,
   accessibilityLabel,
+  reveal = false,
+  revealSkipSignal = 0,
+  surface = "main",
 }) => {
   if (role === "user") {
     return (
@@ -124,8 +131,9 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
   return (
     <View
       style={styles.ariRow}
+      accessible={!reveal}
       accessibilityRole="text"
-      accessibilityLabel={accessibilityLabel ?? `Ari said: ${text}`}
+      accessibilityLabel={!reveal ? accessibilityLabel ?? `Ari said: ${text}` : undefined}
     >
       <View style={styles.orbWrap}>
         {!hideOrb ? <AriOrb size="sm" decorative /> : <View style={styles.orbSpacer} />}
@@ -133,7 +141,14 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
       <View
         style={[styles.ariBubble, tail ? styles.ariTail : styles.noTail]}
       >
-        <BubbleText text={text} style={styles.ariText} />
+        {reveal ? (
+          <SemanticRevealText
+            text={text}
+            textStyle={styles.ariText}
+            skipSignal={revealSkipSignal}
+            surface={surface}
+          />
+        ) : <BubbleText text={text} style={styles.ariText} />}
       </View>
     </View>
   );
@@ -161,7 +176,7 @@ const styles = StyleSheet.create({
     borderRadius: ariThread.bubbleRadius, // 16 base on all corners
     paddingHorizontal: ariThread.bubblePadH, // 12
     paddingVertical: ariThread.bubblePadV, // 8
-    maxWidth: "80%",
+    maxWidth: "84%",
     // iOS: subtle ember lift. Android/web: no shadow (opaque fill carries it).
     ...Platform.select({
       ios: {
@@ -187,7 +202,8 @@ const styles = StyleSheet.create({
     borderRadius: ariThread.bubbleRadius, // 16 base
     paddingHorizontal: ariThread.bubblePadH,
     paddingVertical: ariThread.bubblePadV,
-    maxWidth: "80%",
+    maxWidth: ariThread.bubbleMaxWidth,
+    flexShrink: 1,
     overflow: "hidden",
     ...Platform.select({
       android: {},
@@ -206,7 +222,7 @@ const styles = StyleSheet.create({
   userText: {
     fontSize: ariThread.bodyFont,
     lineHeight: ariThread.bodyLine,
-    color: textTokens.inverse,
+    color: ariThread.onUserBubble,
     letterSpacing: -0.1,
   },
   ariText: {

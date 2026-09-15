@@ -42,6 +42,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { ArrowUp } from "lucide-react-native";
+import { Plus } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 
 import {
@@ -50,6 +51,7 @@ import {
   glass,
   radius,
   spacing,
+  canvas,
   text as textTokens,
 } from "../../constants/designSystem";
 
@@ -69,22 +71,34 @@ const WEB_INPUT_PROPS =
 export interface InputBarProps {
   onSend: (text: string) => void | boolean | Promise<void | boolean>;
   disabled?: boolean;
+  sendDisabled?: boolean;
+  attachDisabled?: boolean;
   placeholder?: string;
-  /** Called when the user taps the "suggestions" button. When provided, a
-   *  small + icon renders to the left of the send button. */
-  onShowSuggestions?: () => void;
+  onAttach?: () => void;
+  value?: string;
+  onChangeText?: (text: string) => void;
+  hasReadyAttachments?: boolean;
+  inputRef?: React.RefObject<React.ElementRef<typeof TextInput> | null>;
 }
 
 export const InputBar: React.FC<InputBarProps> = ({
   onSend,
   disabled = false,
+  sendDisabled = false,
+  attachDisabled = false,
   placeholder = "Ask Ari…",
-  onShowSuggestions,
+  onAttach,
+  value,
+  onChangeText,
+  hasReadyAttachments = false,
+  inputRef,
 }) => {
-  const [text, setText] = useState("");
+  const [internalText, setInternalText] = useState("");
+  const text = value ?? internalText;
+  const setText = onChangeText ?? setInternalText;
   const reduceMotion = useReducedMotion();
 
-  const canSend = text.trim().length > 0 && !disabled;
+  const canSend = (text.trim().length > 0 || hasReadyAttachments) && !disabled && !sendDisabled;
 
   // Send-moment micro-interaction (A1 "ember flicker + lift").
   const sendScale = useSharedValue(1);
@@ -97,9 +111,9 @@ export const InputBar: React.FC<InputBarProps> = ({
     ...(Platform.OS === "ios" ? { shadowOpacity: glowOpacity.value } : {}),
   }));
 
-  const handleSend = async (): Promise<void> => {
+  const handleSend = (): void => {
     const t = text.trim();
-    if (!t) return;
+    if (!t && !hasReadyAttachments) return;
 
     if (reduceMotion) {
       // Reduced motion: simple dim → restore, no spring/flicker.
@@ -123,13 +137,30 @@ export const InputBar: React.FC<InputBarProps> = ({
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 
-    const accepted = await onSend(t);
+    const accepted = onSend(t);
+    // Transfer ownership synchronously. Once Send is accepted locally the one
+    // outgoing row owns this draft; transport completion never controls the
+    // composer value.
     if (accepted !== false) setText("");
   };
 
   return (
     <View style={styles.host}>
+      {onAttach ? (
+        <Pressable
+          onPress={onAttach}
+          disabled={disabled || attachDisabled}
+          style={({ pressed }) => [styles.attachBtn, (disabled || attachDisabled) && styles.btnDisabled, pressed && !disabled && !attachDisabled && styles.btnPressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Attach images or documents"
+          accessibilityState={{ disabled: disabled || attachDisabled }}
+          hitSlop={6}
+        >
+          <Plus size={22} color={textTokens.secondary} strokeWidth={2.25} />
+        </Pressable>
+      ) : null}
       <TextInput
+        ref={inputRef}
         value={text}
         onChangeText={setText}
         placeholder={placeholder}
@@ -140,24 +171,19 @@ export const InputBar: React.FC<InputBarProps> = ({
         accessibilityLabel="Ask Ari"
         maxLength={4096}
         {...(Platform.OS === "web" ? { rows: WEB_INPUT_PROPS.rows } : {})}
+        onKeyPress={(event) => {
+          if (Platform.OS !== "web") return;
+          const native = event.nativeEvent as unknown as {
+            key?: string;
+            shiftKey?: boolean;
+            isComposing?: boolean;
+          };
+          if (native.key === "Enter" && !native.shiftKey && !native.isComposing) {
+            (event as unknown as { preventDefault?: () => void }).preventDefault?.();
+            handleSend();
+          }
+        }}
       />
-      {onShowSuggestions ? (
-        <Pressable
-          onPress={onShowSuggestions}
-          disabled={disabled}
-          style={({ pressed }) => [
-            styles.suggestBtn,
-            disabled && styles.btnDisabled,
-            pressed && !disabled && styles.btnPressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Show example prompts"
-          hitSlop={6}
-        >
-          <View style={styles.plusH} />
-          <View style={styles.plusV} />
-        </Pressable>
-      ) : null}
       <Pressable
         onPress={handleSend}
         disabled={!canSend}
@@ -176,7 +202,7 @@ export const InputBar: React.FC<InputBarProps> = ({
               child (no SVG gradient, no two-layer composition) — renders
               identically on iOS/Android/web. lucide-react-native is a
               single-path stroke glyph; with no gradient sibling it never blobs. */}
-          <ArrowUp size={18} color="#ffffff" strokeWidth={2.75} />
+          <ArrowUp size={20} color={canvas.depth} strokeWidth={2.75} />
         </Animated.View>
       </Pressable>
     </View>
@@ -196,11 +222,11 @@ const styles = StyleSheet.create({
     borderColor: glass.border.profileBase,
     borderRadius: radius.xl,
     overflow: "hidden",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: ariThread.composerPadH,
     // Web has no soft keyboard + tighter chrome → 6; native keeps 8.
     paddingVertical: Platform.OS === "web" ? 6 : ariThread.composerPadV,
     gap: spacing.sm,
-    minHeight: ariThread.composerMinH, // 48 (was 52)
+    minHeight: ariThread.composerMinH, // #3429 premium composer: 60px minimum
   },
   input: {
     flex: 1,
@@ -212,7 +238,7 @@ const styles = StyleSheet.create({
     maxHeight: 120,
   },
   sendBtn: {
-    width: ariThread.sendSize, // 34 (was 38)
+    width: ariThread.sendSize, // #3429: 44px accessible control
     height: ariThread.sendSize,
     borderRadius: ariThread.sendSize / 2,
     // ORCH-1101: flat deepened ember disc (no SVG gradient). Same fill as the
@@ -239,30 +265,16 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  suggestBtn: {
-    width: 30, // ORCH-1101: 30 to pair with the 34 send + tighter composer (was 32)
-    height: 30,
-    borderRadius: 15,
+  attachBtn: {
+    width: ariThread.controlSize,
+    height: ariThread.controlSize,
+    borderRadius: ariThread.controlSize / 2,
     backgroundColor: "transparent",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
-  },
-  plusH: {
-    position: "absolute",
-    width: 12,
-    height: 1.5,
-    backgroundColor: textTokens.secondary,
-    borderRadius: 1,
-  },
-  plusV: {
-    position: "absolute",
-    width: 1.5,
-    height: 12,
-    backgroundColor: textTokens.secondary,
-    borderRadius: 1,
   },
   btnDisabled: {
     opacity: 0.4,
