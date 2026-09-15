@@ -5,7 +5,8 @@
  * machine, and a durable deduplicated alert outbox drained through the shared
  * sendOpsAlertEmail helper. This guard accepts either pattern, but it requires
  * the #1780 owner to be scheduled/reachable and to calculate every signal the
- * binding SPEC names. A comment or an unscheduled read helper is not an alert.
+ * binding SPEC names. A comment, an in-transaction console/RAISE log, or an
+ * unscheduled read helper is not commit-truthful observability.
  */
 
 import fs from "node:fs";
@@ -69,23 +70,71 @@ function healthOwner(): { name: string; body: string } | null {
 }
 
 describe("#1780 operational observability", () => {
-  test("atomic enqueue emits the required aggregate event after its outbox insert", () => {
+  test("atomic enqueue persists the required aggregate event beside its outbox insert", () => {
     const helper = sqlFunctionBlocks(executableMigration).find(({ name }) =>
       name === "private.enqueue_wizard_invites_on_publish_v1");
     expect(helper).toBeDefined();
+    expect(executableMigration).toMatch(
+      /CREATE\s+TABLE\s+private\.brand_offering_invite_observability_events/i,
+    );
     const insertAt = helper!.body.indexOf(
       "INSERT INTO private.brand_offering_invite_publish_outbox",
+    );
+    const durableEventAt = helper!.body.indexOf(
+      "INSERT INTO private.brand_offering_invite_observability_events",
     );
     const eventAt = helper!.body.indexOf("wizard_invite_outbox_enqueued");
 
     expect(insertAt).toBeGreaterThanOrEqual(0);
+    expect(durableEventAt).toBeGreaterThan(insertAt);
     expect(eventAt).toBeGreaterThan(insertAt);
-    const eventPayload = helper!.body.slice(eventAt, eventAt + 900);
+    expect(helper!.body).not.toMatch(
+      /RAISE\s+(?:DEBUG|LOG|INFO|NOTICE|WARNING)[\s\S]{0,300}wizard_invite_outbox_enqueued/i,
+    );
+    const eventInsertEnd = helper!.body.indexOf(
+      "ON CONFLICT(outbox_job_id) DO NOTHING;",
+      durableEventAt,
+    );
+    expect(eventInsertEnd).toBeGreaterThan(eventAt);
+    const eventPayload = helper!.body.slice(
+      durableEventAt,
+      eventInsertEnd + "ON CONFLICT(outbox_job_id) DO NOTHING;".length,
+    );
     expect(eventPayload).toMatch(/selection[_A-Za-z]*revision/i);
     expect(eventPayload).toMatch(/selected[_A-Za-z]*count/i);
     expect(eventPayload).not.toMatch(
       /person[_A-Za-z]*ids|group[_A-Za-z]*ids|email|phone|destination|raw[_A-Za-z]*payload|search[_A-Za-z]*text|auth[_A-Za-z]*token/i,
     );
+  });
+
+  test("the worker emits and acknowledges only a committed durable enqueue event", () => {
+    const claimName = "issue_1780_claim_wizard_invite_observability_v1";
+    const completeName = "issue_1780_complete_wizard_invite_observability_v1";
+    const claim = sqlFunctionBlocks(executableMigration).find(({ name }) =>
+      name === `public.${claimName}`);
+    const complete = sqlFunctionBlocks(executableMigration).find(({ name }) =>
+      name === `public.${completeName}`);
+
+    expect(claim).toBeDefined();
+    expect(complete).toBeDefined();
+    expect(claim!.body).toMatch(/brand_offering_invite_observability_events/i);
+    expect(claim!.body).toMatch(/FOR\s+UPDATE\s+SKIP\s+LOCKED/i);
+    expect(claim!.body).toMatch(/lease_token/i);
+    expect(complete!.body).toMatch(/emitted_at\s*=\s*now\s*\(\s*\)/i);
+    expect(complete!.body).toMatch(/lease_token\s*=\s*p_lease_token/i);
+
+    const workerClaimAt = executableWorker.indexOf(`"${claimName}"`);
+    const workerEventAt = executableWorker.indexOf(
+      "wizard_invite_outbox_enqueued",
+      workerClaimAt,
+    );
+    const workerCompleteAt = executableWorker.indexOf(
+      `"${completeName}"`,
+      workerEventAt,
+    );
+    expect(workerClaimAt).toBeGreaterThanOrEqual(0);
+    expect(workerEventAt).toBeGreaterThan(workerClaimAt);
+    expect(workerCompleteAt).toBeGreaterThan(workerEventAt);
   });
 
   test("one aggregate health owner detects all six required failure classes", () => {
@@ -141,7 +190,14 @@ describe("#1780 operational observability", () => {
   test("health output remains aggregate and excludes recipient data", () => {
     const owner = healthOwner();
     expect(owner).not.toBeNull();
-    expect(owner!.body).not.toMatch(
+    const outputAt = owner!.body.lastIndexOf(
+      "SELECT COALESCE(jsonb_agg(jsonb_build_object(",
+    );
+    const outputEnd = owner!.body.indexOf("INTO v_result", outputAt);
+    expect(outputAt).toBeGreaterThanOrEqual(0);
+    expect(outputEnd).toBeGreaterThan(outputAt);
+    const publicOutputShape = owner!.body.slice(outputAt, outputEnd);
+    expect(publicOutputShape).not.toMatch(
       /brand_person_ids|person_ids|group_ids|display_name|recipient_email|recipient_phone|normalized_contact|contact_method_id|recipient_user_id|provider_message_id|raw_payload|search_text|auth_token/i,
     );
   });
