@@ -89,7 +89,7 @@ function verifyOneBadReviewFailsTheWholeCohort(registrySource = read('mingla-mar
     Object.values(corePages).map((record) => [record.pathname, record.lifecycle]),
     [
       ['/about', 'public_noindex'],
-      ['/for-explorers', 'public_noindex'],
+      ['/going-out', 'public_noindex'],
       ['/cities', 'public_noindex'],
     ],
     'all three approved core routes must fail closed with the city cohort',

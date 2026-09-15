@@ -10,7 +10,7 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
 
 function verify(overrides = {}) {
   const source = (relative) => overrides[relative] ?? read(relative)
-  const explorer = source('mingla-marketing/app/(core)/for-explorers/page.tsx')
+  const explorer = source('mingla-marketing/app/(core)/going-out/page.tsx')
   const css = source('mingla-marketing/components/core-pages/core-pages.css')
   const manifest = JSON.parse(source('tools/product-proof-capture/rights-manifest.json'))
   const proof = manifest.outputs.find((entry) => entry.scene === 'explorer_saved_details')
@@ -23,14 +23,14 @@ function verify(overrides = {}) {
   assert.match(css, /\.core-explorer-hero-proof\s*\{[^}]*aspect-ratio:1206\/2050;[^}]*overflow:hidden;[^}]*border-radius:2rem;[^}]*box-shadow:var\(--cut-mould-dark\);/, 'Explorer hero proof must keep the approved rounded, cropped card treatment')
   assert.match(css, /\.core-explorer-hero-proof img\s*\{[^}]*height:100%;[^}]*object-fit:cover;[^}]*object-position:top;/, 'Explorer hero proof must crop the real capture intentionally')
   assert(proof, 'Explorer saved-details proof must remain registered')
-  assert(proof.allowedSurfaces.includes('usemingla.com/for-explorers'), 'Explorer saved-details proof must remain approved for /for-explorers')
+  assert(proof.allowedSurfaces.includes('usemingla.com/going-out'), 'Explorer saved-details proof must remain approved for /going-out')
   assert.equal(proof.altText, 'Mingla Explorer showing the saved Sample sunset gallery plan open in its details sheet.')
 }
 
 verify()
 
 if (process.argv.includes('--self-test')) {
-  const relative = 'mingla-marketing/app/(core)/for-explorers/page.tsx'
+  const relative = 'mingla-marketing/app/(core)/going-out/page.tsx'
   const reverted = read(relative).replace(
     '<figure className="core-explorer-hero-proof"><Image src="/product-proof/explorer-saved-details.png" alt="Mingla Explorer showing the saved Sample sunset gallery plan open in its details sheet." width={1206} height={2622} sizes="(min-width: 1024px) 21rem, 18rem" priority /></figure>',
     '<div className="core-proof-mark"><img src="/brand/mingla-logo-white-on-orange.png" alt="Mingla Explorer app icon" /></div>',

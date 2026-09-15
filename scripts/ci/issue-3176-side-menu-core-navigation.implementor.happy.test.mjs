@@ -22,7 +22,7 @@ function verify(
     "href: '/', label: 'Explorer'",
     "href: '/host', label: 'Host'",
     "href: '/cities', label: 'Cities'",
-    "href: '/for-explorers', label: 'For Explorers'",
+    "href: '/going-out', label: 'Going out'",
     "href: '/about', label: 'About'",
     "href: '/tools', label: 'Free tools'",
   ]
@@ -40,7 +40,7 @@ function verify(
   assert.match(menu, /supportingDestinations\.map\([\s\S]*\? `\$\{menuButtonClass\} cut-btn-brand text-white`[\s\S]*: `\$\{menuButtonClass\} cut-btn-light text-\[var\(--cut-ink\)\]`/, 'supporting destinations must use the same active and inactive button treatments as Explorer and Host')
   assert.match(menu, /label="Explore Your City"[\s\S]*label="Host Your City"/, 'device-aware audience actions must remain stacked at the bottom')
 
-  const requiredFooterRoutes = ['/', '/for-explorers', '/cities', '/host', '/tools', '/help', '/about']
+  const requiredFooterRoutes = ['/', '/going-out', '/cities', '/host', '/tools', '/help', '/about']
   for (const [owner, source] of [[CUTOUT_FOOTER_PATH, cutoutFooter], [MARKETING_FOOTER_PATH, marketingFooter]]) {
     assert.doesNotMatch(source, /allCoreTrustPagesSearchReady|allCityHubsSearchReady|coreReady/, `${owner} must not hide approved public links behind indexing readiness`)
     for (const route of requiredFooterRoutes) {

@@ -40,7 +40,7 @@ function verifySource(overrides = {}) {
   assert.doesNotMatch(corePages, /editorial-standards|Editorial Standards/, 'core-page lifecycle still owns the deleted route')
   assert.doesNotMatch(navigation, /editorial-standards|Editorial Standards/, 'public navigation still links the deleted route')
   assert.doesNotMatch(searchOwners, /editorial-standards|Editorial Standards/, 'search or measurement tooling still treats the deleted route as live')
-  assert.match(corePages, /export type CorePageSlug = 'about' \| 'for-explorers' \| 'cities'/)
+  assert.match(corePages, /export type CorePageSlug = 'about' \| 'going-out' \| 'cities'/)
   assert.match(corePages, /CORE_PAGES\.cities\.lifecycle === 'search_ready'/, 'the three retained core routes must promote atomically')
   assert.match(packageJson.scripts.prebuild, /issue-3176-editorial-route-removal\.implementor\.happy\.test\.mjs --source-only/, 'the removal guard must run before production builds')
   assert.match(packageJson.scripts.build, /next build && node \.\.\/scripts\/ci\/issue-3176-editorial-route-removal\.implementor\.happy\.test\.mjs --built-only/, 'the 404 guard must run against the final production build')
@@ -101,7 +101,7 @@ async function runtimeContract() {
       assert.equal(response.status, 404, `deleted editorial route must return 404 to ${userAgent}`)
       assert.doesNotMatch(response.body, /How Mingla chooses, verifies and updates content|Mingla Editorial Standards/, 'former editorial page content still renders')
     }
-    for (const pathname of ['/about', '/for-explorers', '/cities']) {
+    for (const pathname of ['/about', '/going-out', '/cities']) {
       assert.equal((await request(port, pathname)).status, 200, `${pathname} regressed while deleting the editorial route`)
     }
     const sitemap = await request(port, '/sitemap.xml')

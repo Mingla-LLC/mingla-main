@@ -17,16 +17,16 @@ function verify(
   const routeRegistry = read('mingla-marketing/lib/search/route-registry.ts')
   const sitemap = read('mingla-marketing/app/sitemap.ts')
 
-  for (const slug of ['about', 'for-explorers', 'cities']) {
+  for (const slug of ['about', 'going-out', 'cities']) {
     assert.match(corePages, new RegExp(`slug: '${slug}', pathname: '/${slug}', lifecycle: CORE_PAGE_RELEASE_LIFECYCLE`), `${slug} must share the founder-approved release lifecycle`)
-    assert.match(menu, new RegExp(`href: '/${slug}', label: '(?:${slug === 'about' ? 'About' : slug === 'cities' ? 'Cities' : 'For Explorers'})'`), `${slug} must remain reachable independently from sitemap state`)
+    assert.match(menu, new RegExp(`href: '/${slug}', label: '(?:${slug === 'about' ? 'About' : slug === 'cities' ? 'Cities' : 'Going out'})'`), `${slug} must remain reachable independently from sitemap state`)
   }
   assert.match(corePages, /CORE_PAGE_RELEASE_LIFECYCLE = allCityHubsSearchReady\(\) \? 'search_ready' : 'public_noindex'/, 'core promotion must fail closed with the ten-city cohort')
   assert.doesNotMatch(menu, /coreReady\s*\?|allCityHubsSearchReady\(\).*Cities|allCoreTrustPagesSearchReady/, 'navigation visibility must not be coupled back to publication readiness')
   assert.match(menu, /const menuButtonClass = 'cut-btn[^']*min-h-14[^']*w-full[^']*justify-start/, 'the shared menu must give every destination one full-width moulded button owner')
-  assert.match(menu, /supportingDestinations\.map\([\s\S]*menuButtonClass[\s\S]*cut-btn-brand[\s\S]*cut-btn-light/, 'Cities, For Explorers, About and Free tools must receive the same selected/unselected treatment as the audience links')
+  assert.match(menu, /supportingDestinations\.map\([\s\S]*menuButtonClass[\s\S]*cut-btn-brand[\s\S]*cut-btn-light/, 'Cities, Going out, About and Free tools must receive the same selected/unselected treatment as the audience links')
 
-  const requiredFooterRoutes = ['/', '/for-explorers', '/cities', '/host', '/tools', '/help', '/about']
+  const requiredFooterRoutes = ['/', '/going-out', '/cities', '/host', '/tools', '/help', '/about']
   for (const [name, footer] of [['Cutout footer', cutoutFooter], ['marketing/tools footer', marketingFooter]]) {
     assert.doesNotMatch(footer, /allCoreTrustPagesSearchReady|allCityHubsSearchReady|coreReady/, `${name} must stay visible independently from sitemap promotion`)
     for (const route of requiredFooterRoutes) {
