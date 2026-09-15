@@ -1,5 +1,19 @@
 # Invariant Registry
 
+## ACTIVE — issue #3184 (Ari website questions for brands without a website)
+
+### I-PROPOSED-3184-SITES-REFUSAL-IS-NOT-AN-OUTAGE (ACTIVE)
+
+- **Rule:** A non-2xx `brand-site-control` response carrying a `SITES_SAFE_CUSTOMER_CODES` body reaches Ari as that exact code; only a fetch or relay failure, or a non-2xx without a safe Sites body, becomes `SITE_SERVICE_UNAVAILABLE`. A brand without a website is a successful `get_brand_site` read (`website_state` `not_set_up` or `not_available`), never an error. No code a Sites tool can raise maps to `INTERNAL`. Ari never offers or claims to create a website from chat. A read result never carries a top-level `handoff_route` or `choices` key.
+- **Enforcement:** `supabase/functions/_shared/__tests__/issue_3184_ari_no_site_website.implementor.test.ts` and `issue_3184_ari_sites_refusals.tester_adversarial.test.ts`, run through the real pinned functions-js and the in-process `brand-site-control` handler.
+- **Status:** ACTIVE on 2026-09-15. PR #3367 merged as `5867e651d` after tester CONDITIONAL PASS (conditions were live checks only). The implementor and tester suites both fail on revert (`7d80dc986`, `f5ebf801a`). `agent-chat` v571/v572 and `agent-confirm-action` v570 serve `release_sha` from the merged lineage. `brand-site-control` v20 was deployed from `335fbd21f` with its source byte-identical to main (#3381). Live on 2026-09-15: Seth's "create a website" turn on a no-site brand returned `agent-chat` 200, with `brand-site-control` 404 `NOT_FOUND` then 200 on route "/" and no `sites control unavailable` line.
+
+### I-PROPOSED-3184-ARI-CONNECTION-COPY-IS-TRANSPORT-ONLY (ACTIVE)
+
+- **Rule:** In the Business Ari chat, "check your connection" copy is shown only for `TRANSPORT_UNAVAILABLE` (a `FunctionsFetchError`). Every `AriErrorCode` has explicit non-network copy; an unknown code falls back to non-network copy and is reported.
+- **Enforcement:** `mingla-business/src/screens/ari/__tests__/issue_3184_ari_chat_error_copy.implementor.test.ts` and the tester's adversarial suite.
+- **Status:** ACTIVE on 2026-09-15. Web shipped via the Vercel `mingla-business` release of `5867e651d`. The Host production OTA is on runtime 1.1.6 from `84e1618b7`: iOS group `1e57ff3b-d569-4864-9e4b-419596afda8f`, Android group `55dc9006-bf8c-4a8e-be8f-b11b800f3bb5`. Served manifests were verified, and the published bundle contains the new `ariChatErrorCopy` strings.
+
 ## ACTIVE — issue #3095 (a CI policy pin hashes only the policy's inputs)
 
 ### I-PROPOSED-3095-POLICY-PIN-IS-A-PROJECTION (ACTIVE)
@@ -159,20 +173,6 @@
 - **Rule:** On `brand_team_members`, `brands`, `event_dates`, `event_rsvps`, `events`, `orders`, `reservations`, and `venue_availability_config`, the complete canonical index inventory is exactly 61 / `6070f6b1331ff498899cfd34d77e3e61`; removing only `orders_attendance_claim_unconsumed_digest_uniq` reconstructs the #1406 authority exactly at 60 / `6b03ce0a69d76988b1f13c367f396547`; that #871 index retains its exact unique partial definition; and the seven unrelated RPC definition+ACL fingerprints remain frozen at the values in the issue #2854 binding SPEC.
 - **Enforcement:** the existing #1406 A-7 adversarial assertion plus the new #2854 independent tester guard, both executed by `.github/workflows/issue-1406-customer-patterns-performance-tests.yml`.
 - **Status:** ACTIVE after independent P0–P4-zero PASS at tester commit `511060e02` on 2026-08-30: all 546 migrations and five workflow suites passed on pinned PostgreSQL 17, while both the true old-authority revert and a non-unique #871 index mutant failed closed before exact restoration returned green. Any future intentional inventory change requires a reviewed issue, provenance proof, independent expected-value derivation, explicit append-only authorization for an existing-test edit, and deliberate re-bank; never loosen the guard to avoid that process.
-
-## DRAFT — issue #3184 (Ari website questions for brands without a website)
-
-### I-PROPOSED-3184-SITES-REFUSAL-IS-NOT-AN-OUTAGE (DRAFT)
-
-- **Rule:** A non-2xx `brand-site-control` response carrying a `SITES_SAFE_CUSTOMER_CODES` body reaches Ari as that exact code; only a fetch or relay failure, or a non-2xx without a safe Sites body, becomes `SITE_SERVICE_UNAVAILABLE`. A brand without a website is a successful `get_brand_site` read (`website_state` `not_set_up` or `not_available`), never an error. No code a Sites tool can raise maps to `INTERNAL`. Ari never offers or claims to create a website from chat. A read result never carries a top-level `handoff_route` or `choices` key.
-- **Enforcement:** `supabase/functions/_shared/__tests__/issue_3184_ari_no_site_website.implementor.test.ts` and `issue_3184_ari_sites_refusals.tester_adversarial.test.ts`, run through the real pinned functions-js and the in-process `brand-site-control` handler.
-- **Status:** DRAFT until independent tester PASS, merged main, deploy of `agent-chat`, `agent-confirm-action` and `brand-site-control`, and a live HTTP 200 turn for a brand without a website.
-
-### I-PROPOSED-3184-ARI-CONNECTION-COPY-IS-TRANSPORT-ONLY (DRAFT)
-
-- **Rule:** In the Business Ari chat, "check your connection" copy is shown only for `TRANSPORT_UNAVAILABLE` (a `FunctionsFetchError`). Every `AriErrorCode` has explicit non-network copy; an unknown code falls back to non-network copy and is reported.
-- **Enforcement:** `mingla-business/src/screens/ari/__tests__/issue_3184_ari_chat_error_copy.implementor.test.ts` and the tester's adversarial suite.
-- **Status:** DRAFT until tester PASS and the Host OTA plus web deploy are verified.
 
 ## DRAFT — issue #2830 (Mingla Sites foundation and Gogi pilot)
 
