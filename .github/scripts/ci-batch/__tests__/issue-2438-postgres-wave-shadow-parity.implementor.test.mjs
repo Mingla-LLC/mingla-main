@@ -616,25 +616,34 @@ test("provider discovery work accounting stays inside its reviewed count bounds"
   assert.ok(accounting.filesPatternScanned >= 120, `filesPatternScanned ${accounting.filesPatternScanned} below the 120 floor`);
   assert.ok(accounting.filesPatternScanned <= 400, `filesPatternScanned ${accounting.filesPatternScanned} above the 400 ceiling`);
   assert.equal(Object.isFrozen(accounting), true);
-  // (d) structural, suite-scaled bound outside any scope. A fixed number here is
-  //     a cannot-pass check waiting to be inherited: the dominant term is one
-  //     listing per suite, so Phase 3C raises it by construction.
-  const suiteCount = value.suites.length;
+  // (d) [#3336 SPEC §7.1] Each otherwise-unscoped validation now owns one
+  //     fresh exact-root scope. This replaces the obsolete per-suite process
+  //     expectation while preserving the committed registry's exact output.
   const unscopedBefore = trackedFilesProcessInvocations();
   assert.deepEqual(validateRegistry(value, { root: ROOT }), []);
-  const unscoped = trackedFilesProcessInvocations() - unscopedBefore;
-  assert.ok(unscoped >= suiteCount, `unscoped validateRegistry listed ${unscoped} times, below the per-suite floor ${suiteCount}`);
-  assert.ok(unscoped <= suiteCount + 25, `unscoped validateRegistry listed ${unscoped} times, above the bound ${suiteCount + 25}`);
-  // (e) one listing for the whole validation inside an entered scope, with
-  //     identical results — the scope removes spawns, never observations.
+  assert.equal(trackedFilesProcessInvocations() - unscopedBefore, 1,
+    "one unwrapped validation must list tracked files exactly once");
+
+  const sequentialBefore = trackedFilesProcessInvocations();
+  assert.deepEqual(validateRegistry(value, { root: ROOT }), []);
+  assert.deepEqual(validateRegistry(value, { root: ROOT }), []);
+  assert.equal(trackedFilesProcessInvocations() - sequentialBefore, 2,
+    "two unwrapped validations must each obtain a fresh tracked-file listing");
+
+  // (e) An explicitly entered immutable same-root scope remains caller-owned:
+  //     multiple validations share one listing, and leaving it restores a fresh
+  //     per-validation listing rather than an ambient or process-lifetime cache.
   const scopedBefore = trackedFilesProcessInvocations();
-  const scopedErrors = withTrackedFilesScope(ROOT, () => validateRegistry(value, { root: ROOT }));
-  const scoped = trackedFilesProcessInvocations() - scopedBefore;
-  assert.deepEqual(scopedErrors, []);
-  assert.ok(scoped <= 1, `scoped validateRegistry listed ${scoped} times, above the in-scope bound of 1`);
-  // The scope must be EXITED, not ambient: the next call outside it spawns again.
+  const scopedErrors = withTrackedFilesScope(ROOT, () => [
+    validateRegistry(value, { root: ROOT }),
+    validateRegistry(value, { root: ROOT }),
+  ]);
+  assert.deepEqual(scopedErrors, [[], []]);
+  assert.equal(trackedFilesProcessInvocations() - scopedBefore, 1,
+    "same-root validations inside one explicit immutable scope must share one listing");
+
   const exitedBefore = trackedFilesProcessInvocations();
-  discoverWorkflowProviders(ROOT);
+  assert.deepEqual(validateRegistry(value, { root: ROOT }), []);
   assert.equal(trackedFilesProcessInvocations() - exitedBefore, 1, "leaving the scope must restore uncached listing");
   // No wall-clock threshold anywhere in the modules this contract governs. The
   // needles are assembled at runtime so this assertion cannot match itself.
