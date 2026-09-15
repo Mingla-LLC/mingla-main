@@ -207,3 +207,71 @@ Deno.test("chip-in link: both rails persist the server-resolved rsvp_id, never t
   assert(source.indexOf('provider: "paystack"') > resolved);
   assert(source.indexOf('provider: "stripe"') > resolved);
 });
+
+// #3436 implementor rework: exercise the actual production payer predicate,
+// independently of the tester's complete-handler infrastructure harness.
+const retryGuardStart = source.indexOf("function optionalTrimmed(");
+const retryGuardEnd = source.indexOf("async function contributionStillAuthorized(");
+assert(retryGuardStart > 0 && retryGuardEnd > retryGuardStart);
+const retryGuardModule = await import(`data:application/typescript,${encodeURIComponent(
+  source.slice(retryGuardStart, retryGuardEnd) +
+    "\nexport { contributionRetryBelongsToBuyer };",
+)}`);
+const ownsRetry = retryGuardModule.contributionRetryBelongsToBuyer as (
+  stored: { user_id: string | null; guest_email: string | null },
+  userId: string | null,
+  email: string | null,
+) => boolean;
+
+Deno.test("#3436 implementor: legitimate account retry belongs to the original account even without an email", () => {
+  const stored = { user_id: USER, guest_email: null };
+  assertEquals(ownsRetry(stored, USER, null), true);
+  assertEquals(ownsRetry(stored, USER, "changed@example.com"), true);
+  assertEquals(ownsRetry(stored, OTHER_USER, null), false);
+  assertEquals(ownsRetry(stored, null, null), false);
+});
+
+Deno.test("#3436 implementor: anonymous retry preserves normalized email but cannot become an account retry", () => {
+  const stored = { user_id: null, guest_email: "  Guest@Example.COM " };
+  assertEquals(ownsRetry(stored, null, "guest@example.com"), true);
+  assertEquals(ownsRetry(stored, null, "  GUEST@example.com  "), true);
+  assertEquals(ownsRetry(stored, USER, "guest@example.com"), false);
+  assertEquals(ownsRetry(stored, null, "other@example.com"), false);
+  assertEquals(ownsRetry(stored, null, null), false);
+  assertEquals(ownsRetry({ user_id: null, guest_email: " " }, null, " "), false);
+});
+
+Deno.test("#3436 implementor: matching email never substitutes for the stored account", () => {
+  const stored = { user_id: USER, guest_email: "guest@example.com" };
+  assertEquals(ownsRetry(stored, USER, null), true);
+  assertEquals(ownsRetry(stored, OTHER_USER, "guest@example.com"), false);
+  assertEquals(ownsRetry(stored, null, "guest@example.com"), false);
+});
+
+Deno.test("#3436 implementor: payer guard precedes retry disclosure, RSVP writes and both payment rails", () => {
+  const readStart = source.indexOf("const { data: existingContribution }");
+  const guard = source.indexOf("!contributionRetryBelongsToBuyer(existingContribution, userId, guestEmail)");
+  const rejected = source.indexOf('error: "contribution_retry_identity_mismatch"', guard);
+  assert(readStart > 0 && guard > readStart && rejected > guard);
+  assertStringIncludes(source.slice(readStart, guard), "user_id,guest_email,rsvp_id");
+  for (const boundary of [
+    'error: "contribution_already_submitted"',
+    "const rsvpLink = await resolveContributionRsvpId(",
+    ".update({ rsvp_id: rsvpId })",
+    "const paystackClaim = await claimRsvpProviderAttempt(",
+    "const stripeWebClaim = await claimRsvpProviderAttempt(",
+    "const stripeNativeClaim = await claimRsvpProviderAttempt(",
+  ]) assert(source.indexOf(boundary) > rejected, boundary);
+});
+
+Deno.test("#3436 implementor: retry resolution and compare-and-set retain original payer identity", () => {
+  const resolution = source.slice(source.indexOf("const rsvpLink ="), source.indexOf("const rsvpId ="));
+  assert(/guestEmail:\s*existingContribution\s*\? existingContribution\.guest_email\s*: guestEmail/.test(resolution));
+  const update = source.slice(source.indexOf("let linkUpdate ="), source.indexOf("if (linkErr)"));
+  assertStringIncludes(update, '.eq("event_id", eventId)');
+  assertStringIncludes(update, '.is("rsvp_id", null)');
+  assertStringIncludes(update, '.is("user_id", null)');
+  assertStringIncludes(update, '.eq("user_id", existingContribution.user_id)');
+  assertStringIncludes(update, '.is("guest_email", null)');
+  assertStringIncludes(update, '.eq("guest_email", existingContribution.guest_email)');
+});

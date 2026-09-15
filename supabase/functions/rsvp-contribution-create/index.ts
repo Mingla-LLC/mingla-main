@@ -101,6 +101,21 @@ function optionalTrimmed(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function contributionRetryBelongsToBuyer(
+  stored: { user_id: string | null; guest_email: string | null },
+  userId: string | null,
+  guestEmail: string | null,
+): boolean {
+  if (stored.user_id !== null) {
+    return userId !== null && stored.user_id === userId;
+  }
+  // A caller-supplied email cannot promote an anonymous contribution into an
+  // account-held retry. Anonymous identity stays the original normalized email.
+  const originalEmail = optionalTrimmed(stored.guest_email)?.toLowerCase();
+  return userId === null && originalEmail !== undefined &&
+    originalEmail === optionalTrimmed(guestEmail)?.toLowerCase();
+}
+
 async function contributionStillAuthorized(
   client: ReturnType<typeof serviceClient>,
   contributionId: string,
@@ -289,11 +304,19 @@ serve(async (req: Request): Promise<Response> => {
   const { data: existingContribution } = await supabase
     .from("event_rsvp_contributions")
     .select(
-      "id,status,provider,stripe_payment_intent_id,provider_attempt_state",
+      "id,status,provider,stripe_payment_intent_id,provider_attempt_state,user_id,guest_email,rsvp_id",
     )
     .eq("event_id", eventId)
     .eq("caller_idempotency_key", callerIdempotencyKey)
     .maybeSingle();
+  // The unique key is (event_id, caller_idempotency_key), NOT a payer key.
+  // Establish ownership before linking, returning row state, or either rail.
+  if (
+    existingContribution &&
+    !contributionRetryBelongsToBuyer(existingContribution, userId, guestEmail)
+  ) {
+    return jsonResponse({ error: "contribution_retry_identity_mismatch" }, 409);
+  }
   if (
     existingContribution &&
     existingContribution.status !== "pending" &&
@@ -425,7 +448,16 @@ serve(async (req: Request): Promise<Response> => {
   // a failed lookup never blocks the chip-in.
   const rsvpLink = await resolveContributionRsvpId(
     supabaseRsvpLinkReader(supabase),
-    { eventId, userId, guestEmail, claimedRsvpId },
+    {
+      eventId,
+      userId,
+      // A same-account retry may supply a changed email. It must not redirect
+      // the original payer's link-guest fallback to that replacement identity.
+      guestEmail: existingContribution
+        ? existingContribution.guest_email
+        : guestEmail,
+      claimedRsvpId,
+    },
   );
   const rsvpId = rsvpLink.rsvpId;
   console.info(JSON.stringify({
@@ -438,11 +470,21 @@ serve(async (req: Request): Promise<Response> => {
   // A retried pending row written before the link existed gets it now. Only
   // ever fills a NULL; never re-points an existing link.
   if (existingContribution && rsvpId !== null) {
-    const { error: linkErr } = await supabase
+    let linkUpdate = supabase
       .from("event_rsvp_contributions")
       .update({ rsvp_id: rsvpId })
       .eq("id", contributionId)
+      .eq("event_id", eventId)
       .is("rsvp_id", null);
+    // Keep the original identity check true at write time as well: a concurrent
+    // account deletion/identity change must not acquire this stale link.
+    linkUpdate = existingContribution.user_id === null
+      ? linkUpdate.is("user_id", null)
+      : linkUpdate.eq("user_id", existingContribution.user_id);
+    linkUpdate = existingContribution.guest_email === null
+      ? linkUpdate.is("guest_email", null)
+      : linkUpdate.eq("guest_email", existingContribution.guest_email);
+    const { error: linkErr } = await linkUpdate;
     if (linkErr) {
       console.warn(
         "[rsvp-contribution-create] rsvp link on retry failed (non-fatal)",
