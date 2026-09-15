@@ -17,6 +17,7 @@ on:
       - "supabase/migrations/__tests__/issue_1780_outbox_contract.tester_adversarial.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_publish_tail.tester_adversarial.pg17.test.sql"
       - "supabase/functions/offering-invite-dispatch/issue_1780_wizard_worker.happy.test.ts"
+      - "supabase/functions/offering-invite-dispatch/issue_1780_zero_reachable_resume.tester_adversarial.test.ts"
       - "supabase/functions/_shared/offeringInviteQuote.ts"
       - "supabase/functions/_shared/offeringInviteQuote.test.ts"
       - "mingla-business/src/components/invites/**"
@@ -66,6 +67,7 @@ on:
       - "supabase/migrations/__tests__/issue_1780_outbox_contract.tester_adversarial.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_publish_tail.tester_adversarial.pg17.test.sql"
       - "supabase/functions/offering-invite-dispatch/issue_1780_wizard_worker.happy.test.ts"
+      - "supabase/functions/offering-invite-dispatch/issue_1780_zero_reachable_resume.tester_adversarial.test.ts"
       - "supabase/functions/_shared/offeringInviteQuote.ts"
       - "supabase/functions/_shared/offeringInviteQuote.test.ts"
       - "mingla-business/src/components/invites/**"
@@ -123,6 +125,7 @@ jobs:
           supabase/functions/guest-roster-actions/issue_873_actions.tester_adversarial.test.ts
           supabase/functions/offering-invite-dispatch/issue_1770_dispatch.happy.test.ts
           supabase/functions/offering-invite-dispatch/issue_1780_wizard_worker.happy.test.ts
+          supabase/functions/offering-invite-dispatch/issue_1780_zero_reachable_resume.tester_adversarial.test.ts
           supabase/functions/_shared/offeringInviteQuote.test.ts
 
   business-render:
