@@ -410,9 +410,14 @@ describe("#3380 menu ordering 'Who's ordering?'", () => {
 
   test("buyer web mounts the picker, starting on the venue's country", () => {
     const slots = read("mingla-business/src/components/venueOrdering/BuyerVenueOrderingSlots.tsx");
-    expect(slots).toContain("renderPhoneField={(args) => (");
+    expect(slots).toContain("renderPhoneField={(args) => {");
     expect(slots).toContain("<BuyerVenueOrderPhoneField");
-    expect(slots).toContain("smartEntry");
+    // Required where the review renders it, never at module scope: mounting the
+    // menu must not load the picker's keyboard stack (#2735 suites mount it).
+    expect(slots).not.toMatch(/^import[^;]*BuyerVenueOrderPhoneField/m);
+    expect(slots).not.toMatch(/^import[^;]*from "@mingla\/phone-input";/m);
+    const field = read("mingla-business/src/components/venueOrdering/BuyerVenueOrderPhoneField.tsx");
+    expect(field).toMatch(/<PhoneInput\s+smartEntry/);
     const route = read("mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx");
     expect(route).toContain("countryCode={venue.countryCode}");
     expect(route).toContain("countryCode={venueCountryCode}");
