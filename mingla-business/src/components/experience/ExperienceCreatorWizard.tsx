@@ -1574,6 +1574,8 @@ export const ExperienceCreatorWizard: React.FC<
             brandId={brandId}
             experienceId={experienceId}
             preparingDraft={creatingDraft}
+            isLiveEdit={isLiveEdit}
+            hasInviteStep={inviteEnabled}
             cover={cover}
             // issue #3373 — the Theme sheet previews this experience. `title` is
             // a string and `whenState` is React state, so neither changes
