@@ -97,7 +97,7 @@ BEGIN
     );
     IF NOT EXISTS(
       SELECT 1 FROM private.brand_offering_invite_observability_events e
-      JOIN private.brand_offering_invite_publish_outbox o
+      JOIN private.brand_offering_invite_outbox o
         ON o.id=e.outbox_job_id
       WHERE o.event_id='00000000-1780-4000-8000-000000000903'
         AND e.event_name='wizard_invite_outbox_enqueued'
@@ -111,14 +111,14 @@ BEGIN
   END;
 
   IF EXISTS(
-      SELECT 1 FROM private.brand_offering_invite_publish_outbox
+      SELECT 1 FROM private.brand_offering_invite_outbox
       WHERE event_id='00000000-1780-4000-8000-000000000903'
     ) OR EXISTS(
       SELECT 1 FROM private.brand_offering_invite_selections
       WHERE event_id='00000000-1780-4000-8000-000000000903'
     ) OR EXISTS(
       SELECT 1 FROM private.brand_offering_invite_observability_events e
-      JOIN private.brand_offering_invite_publish_outbox o
+      JOIN private.brand_offering_invite_outbox o
         ON o.id=e.outbox_job_id
       WHERE o.event_id='00000000-1780-4000-8000-000000000903'
     ) OR (SELECT state FROM private.brand_offering_invite_plans
@@ -129,11 +129,11 @@ BEGIN
   PERFORM private.enqueue_wizard_invites_on_publish_v1(
     '00000000-1780-4000-8000-000000000903',1,true
   );
-  IF (SELECT count(*) FROM private.brand_offering_invite_publish_outbox
+  IF (SELECT count(*) FROM private.brand_offering_invite_outbox
       WHERE event_id='00000000-1780-4000-8000-000000000903')<>1
      OR (SELECT count(*)
          FROM private.brand_offering_invite_observability_events e
-         JOIN private.brand_offering_invite_publish_outbox o
+         JOIN private.brand_offering_invite_outbox o
            ON o.id=e.outbox_job_id
          WHERE o.event_id='00000000-1780-4000-8000-000000000903'
            AND e.event_name='wizard_invite_outbox_enqueued')<>1 THEN
