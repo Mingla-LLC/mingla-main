@@ -450,6 +450,10 @@ jobs:
           # the save runs the real owners; a deliberate pick or removal still saves.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql
+          # #3439 — publish reconciles URL/type/poster under the same locked row;
+          # actual inner and caller, intentional edits and cross-tenant rejection.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3439_publish_cover_reconciliation.test.sql
           # Issue #3284 — refund terms on events and experiences. The gated writer
           # refuses terms that are worse for buyers once a paid order exists, and
           # both public readers append refundPolicy without moving any existing key.

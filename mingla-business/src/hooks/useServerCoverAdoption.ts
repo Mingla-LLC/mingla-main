@@ -22,7 +22,7 @@
  * a local-only `d_*` draft, which has no server row to read.
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 
 import {
@@ -34,6 +34,7 @@ import {
 
 export const SERVER_COVER_POLL_INTERVAL_MS = 5_000;
 export const SERVER_COVER_WATCH_LIMIT_MS = 30 * 60_000;
+export const SERVER_COVER_READ_TIMEOUT_MS = 15_000;
 
 export type FetchServerCover = (
   draftId: string,
@@ -50,19 +51,41 @@ export const checkServerCoverOnce = async (args: {
   fetchServerCover: FetchServerCover;
   getLocalCoverUrl: () => string | null;
   onAdopt: (cover: ServerDraftCover) => void;
+  onReconciled?: (cover: ServerDraftCover | null) => void;
+  isCurrent?: () => boolean;
+  onReadError?: () => void;
 }): Promise<boolean> => {
   const { draftId, fetchServerCover, getLocalCoverUrl, onAdopt } = args;
   let server: ServerDraftCover | null;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    server = await fetchServerCover(draftId);
+    server = await Promise.race([
+      fetchServerCover(draftId),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("cover_read_timeout")),
+          SERVER_COVER_READ_TIMEOUT_MS,
+        );
+      }),
+    ]);
   } catch {
+    args.onReadError?.();
+    return false;
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+  if (args.isCurrent?.() === false) return false;
+  if (server === null) {
+    args.onReconciled?.(null);
     return false;
   }
-  if (server === null) return false;
   const localUrl = getLocalCoverUrl();
   if (server.coverMediaUrl === localUrl) {
     // Already in agreement: that is now the base both sides merge against.
     recordServerCoverBase(draftId, server.coverMediaUrl);
+    // Agreement can arrive through an accepted autosave echo. Completion is
+    // not a user edit: do not call onAdopt or manufacture another autosave.
+    args.onReconciled?.(server);
     return false;
   }
   if (
@@ -72,10 +95,12 @@ export const checkServerCoverOnce = async (args: {
       localUrl,
     })
   ) {
+    args.onReconciled?.(null);
     return false;
   }
   recordServerCoverBase(draftId, server.coverMediaUrl);
   onAdopt(server);
+  args.onReconciled?.(server);
   return true;
 };
 
@@ -86,7 +111,10 @@ export const useServerCoverAdoption = (args: {
   watching: boolean;
   pulse: unknown;
   onAdopt: (cover: ServerDraftCover) => void;
-}): void => {
+  onReconciled?: (cover: ServerDraftCover | null) => void;
+  getCoverIntentVersion?: () => number;
+  onReadError?: () => void;
+}): { isReady: boolean } => {
   const { draftId, fetchServerCover, localCoverUrl, watching, pulse, onAdopt } =
     args;
   const localRef = useRef(localCoverUrl);
@@ -94,19 +122,38 @@ export const useServerCoverAdoption = (args: {
   const onAdoptRef = useRef(onAdopt);
   onAdoptRef.current = onAdopt;
   const inFlightRef = useRef(false);
+  const callbacksRef = useRef(args);
+  callbacksRef.current = args;
+  const [resolvedDraftId, setResolvedDraftId] = useState<string | null>(null);
+  const activeDraftRef = useRef<string | null>(draftId);
+  useEffect(() => {
+    activeDraftRef.current = draftId;
+    return () => { activeDraftRef.current = null; };
+  }, [draftId]);
 
   const enabled = fetchServerCover !== undefined && !draftId.startsWith("d_");
+  const isReady = !enabled || resolvedDraftId === draftId;
 
   const check = useCallback((): void => {
     if (!enabled || fetchServerCover === undefined || inFlightRef.current) {
       return;
     }
     inFlightRef.current = true;
+    const intent = callbacksRef.current.getCoverIntentVersion?.();
     void checkServerCoverOnce({
       draftId,
       fetchServerCover,
       getLocalCoverUrl: () => localRef.current,
       onAdopt: (cover) => onAdoptRef.current(cover),
+      isCurrent: () => activeDraftRef.current === draftId &&
+        intent === callbacksRef.current.getCoverIntentVersion?.(),
+      onReconciled: (cover) => {
+        setResolvedDraftId(draftId);
+        callbacksRef.current.onReconciled?.(cover);
+      },
+      onReadError: () => {
+        if (activeDraftRef.current === draftId) callbacksRef.current.onReadError?.();
+      },
     }).finally(() => {
       inFlightRef.current = false;
     });
@@ -126,17 +173,20 @@ export const useServerCoverAdoption = (args: {
     return () => subscription.remove();
   }, [check, enabled]);
 
-  // Poll while a cover video is still processing server-side.
+  // Processing watches stay bounded. Initial authority must keep retrying
+  // while mounted, even without a picker callback, until a read settles.
   useEffect(() => {
-    if (!enabled || !watching) return undefined;
+    if (!enabled || (!watching && isReady)) return undefined;
     const startedAt = Date.now();
     const timer = setInterval(() => {
-      if (Date.now() - startedAt > SERVER_COVER_WATCH_LIMIT_MS) {
+      if (isReady && Date.now() - startedAt > SERVER_COVER_WATCH_LIMIT_MS) {
         clearInterval(timer);
         return;
       }
       check();
     }, SERVER_COVER_POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [check, enabled, watching]);
+  }, [check, enabled, isReady, watching]);
+
+  return { isReady };
 };

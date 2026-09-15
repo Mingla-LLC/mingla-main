@@ -264,6 +264,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const [isDiscarding, setIsDiscarding] = useState<boolean>(false);
   const [coverVideoProcessing, setCoverVideoProcessing] =
     useState<boolean>(false);
+  const coverIntentVersionRef = useRef(0);
+  const processingCoverRef = useRef<{ active: boolean; started: boolean; base: string | null }>({
+    active: false, started: false, base: null,
+  });
   const [discardError, setDiscardError] = useState<string | null>(null);
   // issue #3047 [rsvp-publish-reachable] — the publish dialog's OWN inline error,
   // rendered by ConfirmDialog's errorMessage slot. Mirrors discardError exactly.
@@ -498,6 +502,9 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     (
       patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>,
     ): void => {
+      if (Object.prototype.hasOwnProperty.call(patch, "coverMediaUrl")) {
+        coverIntentVersionRef.current += 1;
+      }
       const nextRevision = clientRevisionRef.current + 1;
       clientRevisionRef.current = nextRevision;
       const revisionedPatch = {
@@ -529,10 +536,29 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const handleAdoptServerCover = useCallback(
     (cover: ServerDraftCover): void => {
       handleUpdate({ ...cover });
-      if (cover.coverMediaType === "video") setCoverVideoProcessing(false);
     },
     [handleUpdate],
   );
+  const handleCoverProcessingChange = useCallback((processing: boolean): void => {
+    const tracked = processingCoverRef.current;
+    if (processing && !tracked.active) {
+      // A later upload must not be completed by an earlier in-flight read.
+      if (tracked.started) coverIntentVersionRef.current += 1;
+      tracked.base = latestDraftRef.current.coverMediaUrl ?? null;
+    }
+    // An idle/ready notification also establishes the previous job boundary.
+    tracked.started = true;
+    tracked.active = processing;
+    setCoverVideoProcessing(processing);
+  }, []);
+  const handleCoverReconciled = useCallback((cover: ServerDraftCover | null): void => {
+    const tracked = processingCoverRef.current;
+    if (tracked.active && cover?.coverMediaType === "video" &&
+        cover.coverMediaUrl !== null && cover.coverMediaUrl !== tracked.base) {
+      tracked.active = false;
+      setCoverVideoProcessing(false);
+    }
+  }, []);
   useServerCoverAdoption({
     draftId,
     fetchServerCover,
@@ -540,6 +566,9 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     watching: coverVideoProcessing,
     pulse: currentStep,
     onAdopt: handleAdoptServerCover,
+    onReconciled: handleCoverReconciled,
+    getCoverIntentVersion: () => coverIntentVersionRef.current,
+    onReadError: () => handleShowToast("Couldn't refresh your cover. Retrying shortly."),
   });
 
   const handleDismissToast = useCallback((): void => {
@@ -797,7 +826,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       // Issue #3291 — first source of the Where step's rank-only proximity.
       brandLocation: brand,
       coverMediaApplyMode: "draft_auto" as const,
-      onCoverVideoProcessingChange: setCoverVideoProcessing,
+      onCoverVideoProcessingChange: handleCoverProcessingChange,
       // ORCH-1335 — RsvpStep5Setup reads this to swap its chip-in bank callout.
       chipInPayoutReady,
     };
