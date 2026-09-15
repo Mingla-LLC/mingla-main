@@ -150,31 +150,48 @@ export const STALE_REFUSAL_MINUTES = 360;
  *
  * Measured 2026-08-31 on PR #2884: 53 jobs across 20 workflow runs, ~113
  * job-minutes, for a pull request that changes one machine-written JSON file.
- * The workflows are now path-scoped so a baseline-only change starts three:
- * the two checks main's rulesets REQUIRE and cannot be bypassed by this App
+ * #2885 path-scoped the rest, so a baseline-only change now starts only the
+ * workflows in the KEEP set of the #2524 suite, each there for a pinned reason:
+ * the two checks main's rulesets REQUIRE and this App cannot bypass
  * (`Framework Major Guard`, ruleset 19508605, bypass actors: none; and
  * `mingla-business jest (full suite)`, ruleset 19583754, bypass:
- * OrganizationAdmin only), plus #2058's provenance guard.
+ * OrganizationAdmin only), #2058's provenance guard, the two always-run lanes
+ * whose own suites forbid a paths filter (ci-batch, pinned by #2148's
+ * runner-v2 tester; #1614's arbiter audit), and #2099 (see #3325 below).
  *
  * A path filter is a thing a future workflow can silently omit, and nothing
  * else in the repo would notice. This ceiling is the reader for that: it counts
  * the checks GitHub actually reports on the live recording PR, so a workflow
- * added without the exclusion reds this job. Six is the expected count today
- * (three jobs plus three third-party app checks); twelve leaves room for
- * another integration without leaving room for the fan-out to come back.
+ * added without the exclusion reds this job.
  *
- * #3325 deliberately adds one workflow to every recording PR: the #2099 lane's
- * four jobs. Its SC-4 reads this baseline on push, and #2648 pins its push and
- * pull_request triggers to one shared paths list, so the PR start comes with
- * it (see the KEEP set in the #2524 suite). Count the checks on a live
- * recording PR before moving this ceiling; do not re-derive the number from
- * this comment.
+ * #3400 — WHY THIS WAS 12 AND WHY THAT WAS WRONG FROM THE DAY IT MERGED. #2885
+ * first scoped ci-batch and #1614 too, and derived "six checks expected
+ * (three jobs plus three third-party app checks), twelve for room" from that
+ * shape. Before merging, it reverted both exclusions because their own suites
+ * pin them as always-run, and added both to KEEP — but the six stayed. Every
+ * recording PR since has reported 22 checks, so every merge this App made went
+ * red and was cleared by re-running once no recording PR was open (first
+ * proven on #3227, 2026-09-11). #3325 then added #2099's four jobs on purpose,
+ * taking it to 26, and left the number alone.
+ *
+ * MEASURED 2026-09-15, identical on #3338, #3356, #3368 and #3400: 26 checks.
+ * 23 are GitHub Actions jobs from the six KEEP workflows (ci-batch 15: fourteen
+ * matrix classes plus the bounded-dispatch job, which reports as skipped;
+ * #2099 4; Framework Major Guard, the jest suite, the provenance guard and
+ * #1614 one each) and 3 are app checks (GitGuardian Security Checks, Vercel
+ * Preview Comments, Supabase Preview). The ceiling keeps #2885's own room of
+ * six above that: enough for another integration, far below the 56 checks the
+ * unscoped fan-out cost. The #2524 suite derives the 23 from the KEEP
+ * workflows' job lists and holds this constant between 26 and 32, so a KEEP
+ * workflow that gains jobs reds that suite on its own pull request instead of
+ * reddening main after the next recording merge. Still count the checks on a
+ * live recording PR before moving it.
  *
  * It NEVER refuses the merge — a diagnostic that re-creates the stale-baseline
  * jam would be worse than the fan-out it is reporting. The merge happens, then
  * the job goes red.
  */
-export const CHECK_FANOUT_CEILING = 12;
+export const CHECK_FANOUT_CEILING = 32;
 
 export const SCOPES = Object.freeze(["common", "eager"]);
 export const METRICS = Object.freeze(["raw", "brotli"]);
@@ -781,9 +798,10 @@ async function main() {
     problems.push(
       `CI SCOPING REGRESSED. The recording PR reported ${JSON.stringify(result.fanout.count)} checks against a `
       + `ceiling of ${result.fanout.ceiling} (${result.fanout.reason}). A pull request that changes one `
-      + `machine-written baseline file should start three jobs. Something now runs on it that should not — `
-      + `find the workflow whose pull_request filter does not exclude ${BASELINE_PATH}, or raise the ceiling `
-      + `deliberately if the new check is genuinely required.`,
+      + `machine-written baseline file should start only the KEEP workflows of the #2524 suite (26 checks `
+      + `measured 2026-09-15). Compare this PR's check names with an earlier recording PR's: find the workflow `
+      + `whose pull_request filter does not exclude ${BASELINE_PATH}, or raise the ceiling deliberately if the `
+      + `new check is genuinely required.`,
     );
   }
 
