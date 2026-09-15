@@ -18,7 +18,7 @@ describe("CoverPicker video-ready idempotency", () => {
   // last assertion pins changed from the Toast literal to the in-sheet notice.
   // [TEST-MOD-APPROVED #2715 A14] The ready URL is durable before ack, remembered
   // only after both awaits, and remains retryable when either durable step fails.
-  // [TEST-MOD-APPROVED rsvp-creator-host-bugs] The success step no longer SETS the
+  // [TEST-MOD-APPROVED #3409] The success step no longer SETS the
   // in-sheet "Video cover added." notice — the video status card's `applied`
   // state ("Video cover added / Your new cover is ready.") already confirms it, and
   // the sheet showed both. The success step now CLEARS the notice

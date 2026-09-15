@@ -110,7 +110,7 @@ describe("A/F-12 — the review previews render the THEMED palette, not accent.w
   ])("%s paints the mini-card from createThemePalette", (_label, file) => {
     const s = src(file);
     expect(s).toContain("createThemePalette");
-    // [TEST-MOD-APPROVED rsvp-creator-host-bugs] Repointed from the literal
+    // [TEST-MOD-APPROVED #3409] Repointed from the literal
     // `color: themePalette.accent` / `backgroundColor: themePalette.page` pair.
     // The card's colours now come from themedPreviewCardColors(themePalette),
     // which is still the themed palette (surface === palette.page) but also

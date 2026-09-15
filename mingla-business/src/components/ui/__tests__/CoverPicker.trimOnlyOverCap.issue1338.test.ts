@@ -70,7 +70,7 @@ describe("CoverPicker trim-only-over-cap + in-sheet feedback (issue #1338)", () 
     // setVideoPickNotice (nearest preceding), never onShowToast.
     // [TEST-MOD-APPROVED #2715 A14] Every duration notice uses the binding
     // 15-second copy, including the distinct web path where no trimmer exists.
-    // [TEST-MOD-APPROVED rsvp-creator-host-bugs] '"Video cover added."' removed
+    // [TEST-MOD-APPROVED #3409] '"Video cover added."' removed
     // from this list: it was a duplicate success confirmation under the video
     // status card's own `applied` state and no longer exists as a notice. The
     // success confirmation is still in-sheet (never a Toast) — see the
