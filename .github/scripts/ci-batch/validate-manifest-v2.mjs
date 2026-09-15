@@ -2359,7 +2359,7 @@ export function validateRegistry(
   const packageAuthorities = {
     "app-mobile/package.json": "e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542",
     "app-mobile/package-lock.json": "f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27",
-    "mingla-business/package.json": "aef2609be770477105746ae118da0381450c0ddf3b2f7ddc9e127d49eedc595a",
+    "mingla-business/package.json": "b1c48e11a2509f2ec0a5b55780303d21357f585122eaac4b194514979d3bbc39",
     "mingla-business/package-lock.json": "71449617f9cd6133da0395f3dcf780a3170da5d49b1e2eff2876a7afeb92addc",
   };
   for (const [relative, expected] of Object.entries(packageAuthorities)) {
