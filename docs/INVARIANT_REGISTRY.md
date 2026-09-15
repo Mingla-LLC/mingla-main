@@ -1,12 +1,14 @@
 # Invariant Registry
 
-## DRAFT — issue #3430 (public brand section kind labels are human-readable)
+## ACTIVE — issue #3430 (public brand section kind labels are human-readable)
 
-### I-PROPOSED-3430-PUBLIC-BRAND-SECTION-KIND-LABELS-HUMAN-READABLE (DRAFT)
+### I-3430-PUBLIC-BRAND-SECTION-KIND-LABELS-HUMAN-READABLE (ACTIVE)
 
 - **Rule:** When a shared public-brand section card presents an offering kind to a person, its visible and accessibility strings resolve through the single `OFFERING_KIND_LABEL` owner: `Event`, `RSVP`, `Trip`, `Experience`. The raw lowercase discriminator remains the data/control value for keys, callbacks and routing. Implementor and tester render guards protect both channels.
 - **Relationship:** This extends presentation consistency around active `I-3426-PUBLIC-BRAND-OFFERINGS-HAVE-ONE-DATE-DRIVEN-SECTION`; it does not alter that invariant's classification contract.
-- **Status:** DRAFT during issue #3430 implementation. Activate only after independent tester proof, all-green merge, and release verification.
+- **Enforcement:** `packages/brand-rendering/PublicBrandPage.tsx` owns the canonical display mapping and applies it to both visible metadata and accessibility labels. Focused implementor and independent tester render suites cover all four offering kinds, while the existing #3426 cross-surface render suite protects section behavior.
+- **Regression:** Both #3430 suites passed and independently proved fail-on-revert by restoring the raw lowercase discriminator. The full shared-brand lane passed 9 suites / 63 tests; CI manifest validation passed 85 suites / 241 assertions / 93 providers; append-only validation passed 3/3.
+- **Status:** ACTIVE on 2026-09-15. PR #3432 merged as `01480c38b`; buyer web was verified in a real browser with canonical visible and accessibility labels, correct RSVP navigation, and zero console errors. Mingla Host and Mingla Explorer then shipped separate iOS and Android production OTAs on runtime 1.1.6 from that exact commit; all four canonical CDN verifiers and independent EAS readbacks passed.
 
 ## ACTIVE — issue #3426 (public brand offerings are grouped by time)
 
