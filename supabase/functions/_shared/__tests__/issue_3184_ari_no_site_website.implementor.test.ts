@@ -329,14 +329,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "#3184 T-I5 prompt v21 carries the four no-website rules verbatim",
+  name: "#3184 T-I5 prompt carries the four no-website rules verbatim",
   // Pure prompt read, but Supabase Auth timers started by the fixture tests
   // above (or by an earlier file in the same deno test run) can complete
   // while this test runs, which the op sanitizer would misreport as a leak.
   sanitizeOps: false,
   sanitizeResources: false,
   fn: () => {
-    assertEquals(PROMPT_VERSION, "v21");
+    assertEquals(PROMPT_VERSION, "v22"); // [TEST-MOD-APPROVED #1984] prompt bumped for analytics ads
     const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
     for (
       const line of [

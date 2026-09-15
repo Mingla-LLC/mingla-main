@@ -6,7 +6,7 @@
 //   - revoke_brand_member soft-deletes brand_team_members (no hard DELETE)
 //   - invite_brand_member / invite_scanner require name; scanner → invite-scanner
 //   - manage_brand_people list forwards p_cursor; get/add call book RPCs
-//   - auth pins + PROMPT_VERSION v20 ads
+//   - auth pins + PROMPT_VERSION v21 ads
 //
 // Run:
 //   deno test --allow-read supabase/functions/_shared/__tests__/issue_1982_ari_team_people.implementor.test.ts
@@ -147,8 +147,8 @@ Deno.test("#1982 implementor: auth + read-only pins", () => {
   assert(!isReadOnlyAgentToolCall("invite_brand_member", {}));
 });
 
-Deno.test("#1982 implementor: PROMPT_VERSION v20 ads team surface", () => {
-  assertEquals(PROMPT_VERSION, "v21"); // [TEST-MOD-APPROVED #3184] prompt bumped for no-website handoff rule
+Deno.test("#1982 implementor: PROMPT_VERSION v22 ads team surface", () => {
+  assertEquals(PROMPT_VERSION, "v22"); // [TEST-MOD-APPROVED #1984] prompt bumped for analytics ads
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assert(prompt.includes("revoke_brand_invitation"));
   assert(prompt.includes("scanner invitations"));

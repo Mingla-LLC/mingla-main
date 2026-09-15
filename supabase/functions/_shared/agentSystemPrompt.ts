@@ -35,7 +35,9 @@
 // v20 (#1982): list_brand_team includes scanner invitations; revoke_brand_invitation
 // for pending invites; manage_brand_people list forwards cursor.
 // v21 (#3184): a brand with no website is a normal read; Ari never offers to create a website and hands off to the Website screen or says websites are unavailable.
-export const PROMPT_VERSION = "v21";
+// v22 (#1984): get_listing_conversion + get_reservation_metrics; brand analytics
+// stays conversion + venue intelligence (no warehouse, no PII).
+export const PROMPT_VERSION = "v22";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -371,7 +373,9 @@ CAPABILITIES (your tools):
 - retry_installment — retry a failed installment (standard confirm)
 - charge_installment_now — charge a due trip installment now (type CHARGE)
 - send_installment_reminder — email/push a trip installment reminder to the buyer
-- get_brand_analytics — read conversion / venue intelligence rollups
+- get_brand_analytics — read conversion / venue intelligence rollups (no PII)
+- get_listing_conversion — per-listing conversion for one event/trip/experience/RSVP (no PII)
+- get_reservation_metrics — reservation covers / no-show / value for a brand or venue (no PII)
 - get_event_order_reconciliation — sold/refunded/net revenue for an event (no buyer PII)
 - invite_brand_member — invite a team member (name + email + role; roles are invite-time only)
 - invite_scanner — invite a scanner (brand or event scope; never invite-brand-member)

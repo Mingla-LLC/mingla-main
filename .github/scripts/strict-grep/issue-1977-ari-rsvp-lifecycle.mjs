@@ -252,11 +252,12 @@ export function audit(base) {
     // [TEST-MOD-APPROVED #1980] Draft mutate + growth report read; 120→123.
     // [TEST-MOD-APPROVED #1981] Refund preview + trip installments reads; 123→125.
     // [TEST-MOD-APPROVED #1982] revoke_brand_invitation; 125→126.
-    if (parsed.audit?.registered_tool_count !== 126) {
-      failures.push("ledger audit registered_tool_count is not 126");
+    // [TEST-MOD-APPROVED #1984] get_listing_conversion + get_reservation_metrics; 126→128.
+    if (parsed.audit?.registered_tool_count !== 128) {
+      failures.push("ledger audit registered_tool_count is not 128");
     }
-    if (mapped.length !== 126 || new Set(mapped).size !== 126) {
-      failures.push("ledger mapped tool census is not 126 unique tools");
+    if (mapped.length !== 128 || new Set(mapped).size !== 128) {
+      failures.push("ledger mapped tool census is not 128 unique tools");
     }
     if (!mapped.includes("update_rsvp") || !mapped.includes("update_rsvp_contribution_settings")) {
       failures.push("ledger lost the #1977 RSVP write mappings");

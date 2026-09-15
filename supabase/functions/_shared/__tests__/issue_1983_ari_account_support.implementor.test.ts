@@ -6,7 +6,7 @@
 //   - request_account_deletion invokes delete-user with { side: "business" } only
 //   - wrong legal_name never invokes; confirm_phrase DELETE required
 //   - create_support_ticket RPC args; update_ari_prefs patch keys
-//   - PROMPT_VERSION v20 account/notification ads
+//   - PROMPT_VERSION v21 account/notification ads
 //
 // Run:
 //   deno test --allow-read supabase/functions/_shared/__tests__/issue_1983_ari_account_support.implementor.test.ts
@@ -380,8 +380,8 @@ Deno.test("#1983 implementor: update_ari_prefs patch keys", async () => {
   assert(!("email_enabled" in row));
 });
 
-Deno.test("#1983 implementor: PROMPT_VERSION v20 advertises prefs + business deletion", () => {
-  assertEquals(PROMPT_VERSION, "v21"); // [TEST-MOD-APPROVED #3184] prompt bumped for no-website handoff rule
+Deno.test("#1983 implementor: PROMPT_VERSION v22 advertises prefs + business deletion", () => {
+  assertEquals(PROMPT_VERSION, "v22"); // [TEST-MOD-APPROVED #1984] prompt bumped for analytics ads
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assert(prompt.includes("push or in_app") || prompt.includes("push|in_app"));
   assert(prompt.includes("business.*"));

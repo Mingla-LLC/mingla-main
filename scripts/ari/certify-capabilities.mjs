@@ -82,7 +82,7 @@ export function loadCertificationInputs() {
 
 export function buildCertificationPlan(ledger, owners) {
   if (
-    !Array.isArray(ledger.capabilities) || ledger.capabilities.length !== 138
+    !Array.isArray(ledger.capabilities) || ledger.capabilities.length !== 140
   ) {
     throw new Error(
       `ledger_capability_count:${ledger.capabilities?.length ?? "missing"}`,
@@ -273,12 +273,15 @@ export function canonicalCertificationTuple(kind, values) {
   if (typeof kind !== "string" || !Array.isArray(values)) {
     throw new TypeError("ari_cert_invalid_canonical_tuple");
   }
-  return Buffer.from([
-    ARI_CERT_CANONICALIZATION,
-    canonicalScalar(kind),
-    String(values.length),
-    ...values.map(canonicalScalar),
-  ].join("\n"), "utf8");
+  return Buffer.from(
+    [
+      ARI_CERT_CANONICALIZATION,
+      canonicalScalar(kind),
+      String(values.length),
+      ...values.map(canonicalScalar),
+    ].join("\n"),
+    "utf8",
+  );
 }
 
 export function canonicalCertificationDigest(kind, values) {
@@ -287,7 +290,10 @@ export function canonicalCertificationDigest(kind, values) {
     .digest("hex");
 }
 
-export function inspectNativeArtifactManifest(nativeArtifacts, releaseArtifacts) {
+export function inspectNativeArtifactManifest(
+  nativeArtifacts,
+  releaseArtifacts,
+) {
   const failures = [];
   const bySurface = new Map();
   const items = Array.isArray(nativeArtifacts) ? nativeArtifacts : [];
@@ -299,11 +305,13 @@ export function inspectNativeArtifactManifest(nativeArtifacts, releaseArtifacts)
     if (keys.join("|") !== "artifact_id|device|runtime_version|surface") {
       failures.push(`native_artifact_shape:${item?.surface ?? "unknown"}`);
     }
-    for (const [field, maxBytes] of [
-      ["artifact_id", 256],
-      ["runtime_version", 128],
-      ["device", 256],
-    ]) {
+    for (
+      const [field, maxBytes] of [
+        ["artifact_id", 256],
+        ["runtime_version", 128],
+        ["device", 256],
+      ]
+    ) {
       const value = item?.[field];
       if (
         typeof value !== "string" || value.trim().length === 0 ||
@@ -633,7 +641,7 @@ export function validateCertificationEvidence(
     ? evidence.capabilities
     : [];
   requireValue(
-    rows.length === 138,
+    rows.length === 140,
     `evidence_capability_count:${rows.length}`,
     failures,
   );

@@ -168,6 +168,9 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   // event resource so EVENT_TYPE_BY_TOOL rejects non-trip events.
   list_trip_installments: role("finance_manager", "event"),
   get_brand_analytics: role("scanner", "brand"),
+  // #1984 — listing conversion + reservation metrics (read-only analytics).
+  get_listing_conversion: role("scanner", "event"),
+  get_reservation_metrics: role("scanner", "brand"),
   invite_brand_member: role("brand_admin", "brand"),
   invite_scanner: role("event_manager", "brand"),
   revoke_brand_member: role("brand_admin", "brand"),

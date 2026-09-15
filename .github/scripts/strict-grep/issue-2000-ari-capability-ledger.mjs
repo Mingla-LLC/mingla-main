@@ -89,6 +89,8 @@ ari.trip.cancel_booking
 ari.installment.retry
 ari.installment.list
 ari.analytics.brand
+ari.analytics.listing_conversion
+ari.analytics.reservation_metrics
 ari.team.invite_member
 ari.team.invite_scanner
 ari.team.revoke_member
