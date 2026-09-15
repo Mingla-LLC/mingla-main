@@ -128,6 +128,7 @@ jest.mock("../FoundationRsvpPreview", () => ({
         <Text testID="probe-restored">{props.restoredRsvp?.rsvpId ?? "none"}</Text>
         <Pressable
           testID="probe-resolve"
+          accessibilityLabel="Resolve guest RSVP for the page-state test"
           onPress={() =>
             props.onRsvpResolved({
               version: 1,
