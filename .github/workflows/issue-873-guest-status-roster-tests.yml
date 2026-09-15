@@ -14,6 +14,8 @@ on:
       - "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_normalized_plan_members.tester_adversarial.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_observability_rollback.tester_adversarial.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1780_outbox_contract.tester_adversarial.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1780_publish_tail.tester_adversarial.pg17.test.sql"
       - "supabase/functions/offering-invite-dispatch/issue_1780_wizard_worker.happy.test.ts"
       - "supabase/functions/_shared/offeringInviteQuote.ts"
       - "supabase/functions/_shared/offeringInviteQuote.test.ts"
@@ -39,6 +41,7 @@ on:
       - "mingla-business/src/services/__tests__/issue_1780_feature_flag_rollback.tester_adversarial.test.ts"
       - "mingla-business/src/services/__tests__/issue_1780_stale_group_intent.tester_adversarial.test.ts"
       - "mingla-business/src/services/__tests__/issue_1780_observability.tester_adversarial.test.ts"
+      - "mingla-business/src/services/__tests__/issue_1780_outbox_contract.tester_adversarial.test.ts"
       - "supabase/functions/brand-people-export/index.ts"
       - "supabase/config.toml"
       - ".github/workflows/issue-873-guest-status-roster-tests.yml"
@@ -59,6 +62,8 @@ on:
       - "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_normalized_plan_members.tester_adversarial.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_observability_rollback.tester_adversarial.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1780_outbox_contract.tester_adversarial.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1780_publish_tail.tester_adversarial.pg17.test.sql"
       - "supabase/functions/offering-invite-dispatch/issue_1780_wizard_worker.happy.test.ts"
       - "supabase/functions/_shared/offeringInviteQuote.ts"
       - "supabase/functions/_shared/offeringInviteQuote.test.ts"
@@ -84,6 +89,7 @@ on:
       - "mingla-business/src/services/__tests__/issue_1780_feature_flag_rollback.tester_adversarial.test.ts"
       - "mingla-business/src/services/__tests__/issue_1780_stale_group_intent.tester_adversarial.test.ts"
       - "mingla-business/src/services/__tests__/issue_1780_observability.tester_adversarial.test.ts"
+      - "mingla-business/src/services/__tests__/issue_1780_outbox_contract.tester_adversarial.test.ts"
       - "supabase/functions/brand-people-export/index.ts"
       - "supabase/config.toml"
       - ".github/workflows/issue-873-guest-status-roster-tests.yml"
@@ -140,6 +146,7 @@ jobs:
           src/services/__tests__/issue_1780_feature_flag_rollback.tester_adversarial.test.ts
           src/services/__tests__/issue_1780_stale_group_intent.tester_adversarial.test.ts
           src/services/__tests__/issue_1780_observability.tester_adversarial.test.ts
+          src/services/__tests__/issue_1780_outbox_contract.tester_adversarial.test.ts
       - run: npx jest --config jest.issue1780.render.cjs --runInBand
 
   issue-873-pg17:
@@ -202,3 +209,15 @@ jobs:
         run: >-
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
           -f supabase/migrations/__tests__/issue_1780_observability_rollback.tester_adversarial.pg17.test.sql
+      - name: Reject every forbidden invite tail before publisher side effects
+        env:
+          PGPASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1780_publish_tail.tester_adversarial.pg17.test.sql
+      - name: Prove canonical metadata-only invite outbox
+        env:
+          PGPASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1780_outbox_contract.tester_adversarial.pg17.test.sql

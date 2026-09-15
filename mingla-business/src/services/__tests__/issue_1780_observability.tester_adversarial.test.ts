@@ -78,7 +78,7 @@ describe("#1780 operational observability", () => {
       /CREATE\s+TABLE\s+private\.brand_offering_invite_observability_events/i,
     );
     const insertAt = helper!.body.indexOf(
-      "INSERT INTO private.brand_offering_invite_publish_outbox",
+      "INSERT INTO private.brand_offering_invite_outbox",
     );
     const durableEventAt = helper!.body.indexOf(
       "INSERT INTO private.brand_offering_invite_observability_events",
@@ -142,13 +142,13 @@ describe("#1780 operational observability", () => {
     expect(owner).not.toBeNull();
     const body = owner!.body;
 
-    expect(body).toMatch(/brand_offering_invite_publish_outbox/i);
-    expect(body).toMatch(/leased_until[\s\S]{0,120}(?:now\s*\(|current_timestamp)/i);
-    expect(body).toMatch(/(?:available_at|created_at)[\s\S]{0,180}interval/i);
+    expect(body).toMatch(/brand_offering_invite_outbox/i);
+    expect(body).toMatch(/lease_expires_at[\s\S]{0,120}(?:now\s*\(|current_timestamp)/i);
+    expect(body).toMatch(/(?:next_attempt_at|created_at)[\s\S]{0,180}interval/i);
     expect(body).toMatch(/state[\s\S]{0,80}terminal/i);
     expect(body).toMatch(/(?:23505|unique_violation|duplicate)/i);
     expect(body).toMatch(/brand_offering_invite_plans/i);
-    expect(body).toMatch(/(?:NOT\s+EXISTS|LEFT\s+JOIN)[\s\S]{0,300}brand_offering_invite_publish_outbox/i);
+    expect(body).toMatch(/(?:NOT\s+EXISTS|LEFT\s+JOIN)[\s\S]{0,300}brand_offering_invite_outbox/i);
     expect(body).toMatch(/business_wizard_invite_dispatch_v1/i);
     expect(body).toMatch(/brand_offering_invite_delivery_attempts/i);
     expect(body).toMatch(/count\s*\(/i);
