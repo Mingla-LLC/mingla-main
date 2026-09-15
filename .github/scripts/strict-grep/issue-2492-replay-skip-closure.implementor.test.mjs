@@ -6,7 +6,7 @@
 // T-3  error      synthetic migration reading a skipped column from
 //                 a `LANGUAGE sql` body                              -> non-zero
 // T-5  negative   the SAME reference inside a plpgsql body           -> exit 0
-// T-10 INVENTORY  exactly 4 filtered lanes, glob counts 13/1/3/10,
+// T-10 INVENTORY  exactly 4 filtered lanes, glob counts 15/1/3/13,
 //                 zero violations
 //
 // T-10 is the non-vacuous one. "Real chain -> exit 0" passes just as happily
@@ -226,7 +226,12 @@ test("T-1 — the guard is clean on the repository as shipped", () => {
 // (branchCount and globs), T-24 14 -> 15 (branchCount), T-2723 14 -> 15 (globs and
 // skipped). Every assertion, parser scenario and the exact inventory deepEqual are
 // unchanged.
-test("T-10 — lane inventory is exactly 4 lanes at 15/1/3/12 (a blind parser reds here)", () => {
+// [TEST-MOD-APPROVED #3197] The #2117 lane gains ONE exact skip for
+// 20270706003197, whose closing DO block asserts on #2986's readers and
+// validator that the lane's phase 1 omits; it is applied once straight after
+// #3193. ONLY T-10's #2117 count moves, 12 -> 13. Every assertion, parser
+// scenario and the exact inventory deepEqual are unchanged.
+test("T-10 — lane inventory is exactly 4 lanes at 15/1/3/13 (a blind parser reds here)", () => {
   const { lanes, violations } = analyseLanes();
   assert.equal(violations.length, 0);
 
@@ -235,7 +240,7 @@ test("T-10 — lane inventory is exactly 4 lanes at 15/1/3/12 (a blind parser re
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
     [LANE]: 15,
-    "issue-2117-offering-visibility-gate-tests.yml": 12,
+    "issue-2117-offering-visibility-gate-tests.yml": 13,
   });
   assert.equal(lanes.length, 4, "exactly four filtered replay lanes exist on this base");
 
