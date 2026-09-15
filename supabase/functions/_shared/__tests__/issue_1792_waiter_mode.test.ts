@@ -325,3 +325,28 @@ Deno.test("#1792: the shipped error table only GREW", () => {
   );
   assert(Object.keys(VENUE_ORDER_ERRORS).length >= 24);
 });
+
+// ---------------------------------------------------------------------------
+// T-3380-P2 — "Send the bill to their phone" reads the country the pad chose.
+//
+// The pad sent free text and the rail guessed "+1" for ten digits, so a Lagos
+// guest's bill went to a US number. fails-on-revert: restore
+// `normalizePhoneE164(input.buyer.phone)` in venue-order-staff and this dies.
+// ---------------------------------------------------------------------------
+Deno.test("T-3380-P2 — the bill-to-phone rail converts with the pad's country", async () => {
+  const { resolveBuyerPhone } = await import("../buyerPhone.ts");
+  assertEquals(resolveBuyerPhone("0803 123 4567", "NG").e164, "+2348031234567");
+  assertEquals(resolveBuyerPhone("07700 900123", "GB").e164, "+447700900123");
+
+  const staff = Deno.readTextFileSync(
+    new URL("../../venue-order-staff/index.ts", import.meta.url),
+  );
+  assert(
+    /resolveBuyerPhone\(\s*input\.buyer\.phone,\s*input\.buyer\.phoneCountryIso,?\s*\)/.test(staff),
+    "venue-order-staff must read the pad's country with the number",
+  );
+  assert(!staff.includes("normalizePhoneE164("), "the US-assuming normaliser is gone");
+  const pricingRead = staff.indexOf("const pricing = pricingRows[0]");
+  const guard = staff.indexOf("legacyNanpGuessAllowed(pricing.payment_country)");
+  assert(pricingRead > -1 && guard > pricingRead, "the legacy guess is judged against the venue's country");
+});
