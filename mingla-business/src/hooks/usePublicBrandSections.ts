@@ -12,14 +12,17 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import { useMemo } from "react";
+import type { PublicBrandUpcoming } from "@mingla/brand-rendering";
+import {
+  mergeBrandSectionPages,
+  type BrandSectionCursor,
+  type BrandSectionPage,
+} from "@mingla/brand-rendering/brandSectionFeed";
 
 import {
   fetchPublicBrandHappeningNow,
   fetchPublicBrandOfferingSection,
-  type PublicBrandSectionCursor,
-  type PublicBrandSectionPage,
 } from "../services/publicBrandSectionsService";
-import type { PublicUpcomingRow } from "../services/publicEventsService";
 
 const PUBLIC_SECTION_STALE_TIME_MS = 45 * 1000;
 const DISABLED_KEY = ["public-events-disabled"] as const;
@@ -37,15 +40,15 @@ export const publicBrandSectionKeys = {
 
 export const usePublicBrandHappeningNow = (
   brandSlug: string | null,
-): UseQueryResult<PublicUpcomingRow[]> => {
+): UseQueryResult<PublicBrandUpcoming[]> => {
   const enabled = brandSlug !== null;
-  return useQuery<PublicUpcomingRow[]>({
+  return useQuery<PublicBrandUpcoming[]>({
     queryKey: enabled
       ? publicBrandSectionKeys.happeningNow(brandSlug)
       : DISABLED_KEY,
     enabled,
     staleTime: PUBLIC_SECTION_STALE_TIME_MS,
-    queryFn: async (): Promise<PublicUpcomingRow[]> => {
+    queryFn: async (): Promise<PublicBrandUpcoming[]> => {
       if (!enabled || brandSlug === null) return [];
       return fetchPublicBrandHappeningNow(brandSlug);
     },
@@ -54,7 +57,7 @@ export const usePublicBrandHappeningNow = (
 
 export interface PublicBrandPastFeed {
   /** undefined until the first page settles, so the page never flashes "no Past". */
-  rows: PublicUpcomingRow[] | undefined;
+  rows: PublicBrandUpcoming[] | undefined;
   hasMore: boolean;
   loadState: "ready" | "loading_more" | "error";
   loadMore: () => void;
@@ -65,17 +68,17 @@ export const usePublicBrandPast = (
 ): PublicBrandPastFeed => {
   const enabled = brandSlug !== null;
   const query = useInfiniteQuery<
-    PublicBrandSectionPage,
+    BrandSectionPage,
     Error,
-    InfiniteData<PublicBrandSectionPage, PublicBrandSectionCursor | null>,
+    InfiniteData<BrandSectionPage, BrandSectionCursor | null>,
     readonly unknown[],
-    PublicBrandSectionCursor | null
+    BrandSectionCursor | null
   >({
     queryKey: enabled ? publicBrandSectionKeys.past(brandSlug) : DISABLED_KEY,
     enabled,
     staleTime: PUBLIC_SECTION_STALE_TIME_MS,
     initialPageParam: null,
-    queryFn: async ({ pageParam }): Promise<PublicBrandSectionPage> => {
+    queryFn: async ({ pageParam }): Promise<BrandSectionPage> => {
       if (!enabled || brandSlug === null) {
         return { rows: [], hasMore: false, nextCursor: null };
       }
@@ -87,22 +90,12 @@ export const usePublicBrandPast = (
         : undefined,
   });
 
-  const rows = useMemo<PublicUpcomingRow[] | undefined>(() => {
+  const rows = useMemo<PublicBrandUpcoming[] | undefined>(() => {
     if (query.data === undefined) {
       // First page failed: no Past tab rather than an error for the whole page.
       return query.isError ? [] : undefined;
     }
-    const seen = new Set<string>();
-    const out: PublicUpcomingRow[] = [];
-    for (const page of query.data.pages) {
-      for (const row of page.rows) {
-        const key = `${row.offeringType}:${row.offeringId}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push(row);
-      }
-    }
-    return out;
+    return mergeBrandSectionPages(query.data.pages);
   }, [query.data, query.isError]);
 
   const { fetchNextPage, hasNextPage, isFetchingNextPage } = query;

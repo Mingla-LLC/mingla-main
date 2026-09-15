@@ -49,10 +49,14 @@ interface PublicBrandPageProps {
   experiences?: PublicExperienceCard[];
   upcoming?: PublicUpcomingRow[];
   upcomingHasMore?: boolean;
-  /** #3426 — offerings in progress now (server-decided), top of the Upcoming tab. */
-  happeningNow?: PublicUpcomingRow[];
-  /** #3426 — the Past tab rows, most recent first. undefined while the first page loads. */
-  past?: PublicUpcomingRow[];
+  /**
+   * #3426 — offerings in progress now (server-decided), top of the Upcoming tab.
+   * Already in the shared shape (`@mingla/brand-rendering/brandSectionFeed`
+   * maps them), so they pass straight through.
+   */
+  happeningNow?: PublicBrandUpcoming[];
+  /** #3426 — the Past tab rows, most recent first. undefined = no server feed. */
+  past?: PublicBrandUpcoming[];
   pastHasMore?: boolean;
   pastLoadState?: "ready" | "loading_more" | "error";
   onLoadMorePast?: () => void;
@@ -172,7 +176,6 @@ const mapUpcoming = (item: PublicUpcomingRow): PublicBrandUpcoming => ({
   coverMediaType: item.coverMediaType,
   theme: item.theme,
   startsAt: item.startsAt,
-  endsAt: item.endsAt ?? null,
   priceFromMinorUnits: item.priceFromMinorUnits,
   currency: item.currency,
   isFree: item.isFree,
@@ -220,12 +223,6 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     [experiences],
   );
   const sharedUpcoming = useMemo(() => upcoming.map(mapUpcoming), [upcoming]);
-  const sharedHappeningNow = useMemo(
-    () => happeningNow.map(mapUpcoming),
-    [happeningNow],
-  );
-  // undefined stays undefined: the shared page reads that as "no server feed".
-  const sharedPast = useMemo(() => past?.map(mapUpcoming), [past]);
 
   const handleClose = useCallback((): void => {
     if (router.canGoBack()) {
@@ -409,8 +406,8 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         experiences={sharedExperiences}
         upcoming={sharedUpcoming}
         upcomingHasMore={upcomingHasMore}
-        happeningNow={sharedHappeningNow}
-        past={sharedPast}
+        happeningNow={happeningNow}
+        past={past}
         pastHasMore={pastHasMore}
         pastLoadState={pastLoadState}
         menu={menu}
