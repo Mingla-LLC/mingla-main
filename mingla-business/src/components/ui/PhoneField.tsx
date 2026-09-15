@@ -102,8 +102,10 @@ export function usePhoneEntry({
   const [text, setTextState] = useState("");
   const [touched, setTouched] = useState(false);
   const personChose = useRef(false);
+  const latestStart = useRef(start);
 
   useEffect(() => {
+    latestStart.current = start;
     if (!personChose.current) setCountry(start);
   }, [start]);
 
@@ -116,12 +118,14 @@ export function usePhoneEntry({
     setTextState(next);
   }, []);
   const markTouched = useCallback((): void => setTouched(true), []);
+  // #3396: callers reset entire forms when opening. A late venue query must
+  // not change this callback's identity and accidentally reopen/reset them.
   const reset = useCallback((): void => {
     personChose.current = false;
     setTextState("");
     setTouched(false);
-    setCountry(start);
-  }, [start]);
+    setCountry(latestStart.current);
+  }, []);
 
   const result = useMemo(
     () =>
@@ -139,7 +143,7 @@ export function usePhoneEntry({
     touched,
     result,
     e164: result.ok ? result.e164 : null,
-    isEmpty: text.replace(/\D/g, "").length === 0,
+    isEmpty: text.trim().length === 0,
     setCountryIso,
     setText,
     markTouched,
