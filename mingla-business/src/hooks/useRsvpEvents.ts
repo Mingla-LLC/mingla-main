@@ -23,10 +23,13 @@ export function usePublishRsvpDraft() {
   return useMutation<
     PublishedBusinessEvent,
     Error,
-    { draft: DraftEvent; clientRevision?: number | null }
+    { draft: DraftEvent; clientRevision?: number | null; invites?: {
+      selectionRevision: number | null;
+      confirmed: boolean;
+    } }
   >({
-    mutationFn: ({ draft, clientRevision }) =>
-      publishRsvpDraft(draft, clientRevision ?? draft.clientRevision ?? null),
+    mutationFn: ({ draft, clientRevision, invites }) =>
+      publishRsvpDraft(draft, clientRevision ?? draft.clientRevision ?? null, invites),
     onSuccess: () => {
       captureHostSearchOutcome("listing_published", {
         audience: "host",

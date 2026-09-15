@@ -54,6 +54,11 @@ export interface TripCommandOptions {
    * different commands is an `idempotency_conflict`, not a replay.
    */
   saveOperationId?: string;
+  /** Exact persisted invite-plan receipt confirmed on the final review step. */
+  invites?: {
+    selectionRevision: number;
+    selectionConfirmed: true;
+  };
 }
 
 export function newTripOperationId(): string {
@@ -1486,11 +1491,19 @@ export async function publishTrip(
     }
   }
 
-  const { data, error } = await supabase.rpc("biz_publish_trip_command", {
+  const publishArgs: Record<string, unknown> = {
     p_event_id: eventId,
     p_expected_updated_at: await readTripRevision(eventId),
     p_operation_id: options?.operationId ?? newTripOperationId(),
-  });
+  };
+  if (options?.invites !== undefined) {
+    publishArgs.p_invite_selection_revision = options.invites.selectionRevision;
+    publishArgs.p_invite_selection_confirmed = options.invites.selectionConfirmed;
+  }
+  const { data, error } = await supabase.rpc(
+    "biz_publish_trip_command",
+    publishArgs,
+  );
 
   if (error) {
     // RPC raised — surface code so wizard can show inline error pointing to failing step
