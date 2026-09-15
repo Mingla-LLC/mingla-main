@@ -518,6 +518,7 @@ BEGIN
     'selectionHash',s.selection_hash,'selectionRevision',s.selection_revision,
     'leaseToken',c.lease_token,'attemptCount',c.attempt_count,
     'executionSealed',xs.id IS NOT NULL,
+    'sealedQueuedCount',xs.queued_count,
     'committedGroupId',g.id,'committedChannels',to_jsonb(g.channels))
     ORDER BY c.created_at,c.id),'[]'::jsonb) INTO v_rows
   FROM claimed c

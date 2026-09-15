@@ -72,6 +72,7 @@ interface WizardOutboxJob {
   leaseToken: string;
   attemptCount: number;
   executionSealed: boolean;
+  sealedQueuedCount: number | null;
   committedGroupId: string | null;
   committedChannels: Array<"email" | "sms" | "push"> | null;
 }
@@ -456,6 +457,37 @@ export async function handleWizardWorker(
         selectionHash: job.selectionHash,
       };
       let group: { groupId: string; campaignIds: string[] };
+      if (
+        job.executionSealed && job.sealedQueuedCount === 0 &&
+        job.committedGroupId === null
+      ) {
+        const { error: completionError } = await service.rpc(
+          "issue_1780_complete_wizard_invite_outbox_no_recipients_v1",
+          {
+            p_outbox_job_id: job.outboxJobId,
+            p_sealed_selection_id: job.sealedSelectionId,
+            p_lease_token: job.leaseToken,
+          },
+        );
+        if (completionError) {
+          throw new Error("zero_reachable_completion_failed");
+        }
+        observeWizardInvite("wizard_invite_outbox_succeeded", {
+          offering_kind: job.eventType,
+          selection_revision: job.selectionRevision,
+          selected_count: job.brandPersonIds.length,
+          can_receive: 0,
+          skipped: job.brandPersonIds.length,
+          job_state: "succeeded",
+          attempt_count: job.attemptCount,
+        });
+        outcomes.push({
+          outboxJobId: job.outboxJobId,
+          status: "succeeded_no_recipients",
+          providerIo: false,
+        });
+        continue;
+      }
       if (job.committedGroupId !== null) {
         channels = job.committedChannels ?? policy.channels;
         const { data: campaignRows, error: campaignError } = await service.from(
