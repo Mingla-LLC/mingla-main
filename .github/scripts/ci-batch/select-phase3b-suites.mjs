@@ -21,6 +21,30 @@ export const SELECTOR_VERSION = "phase3b-local-git-v1";
 const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
 const byteSort = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b));
 
+/**
+ * [#3262] Events that carry NO diff and therefore run every Phase 3B suite a
+ * host owns, cleanly, as a selection rather than as a failure.
+ *
+ * #3078 added the nightly `schedule` trigger on the premise that "selection is
+ * already the identity function on every non-pull_request event". That was true
+ * of the PRIMARY router (`ROUTED_EVENTS` in run-suite-batch.mjs) and false here:
+ * `deriveChangedPaths` knows only `pull_request` and `push`, so every scheduled
+ * run threw `unsupported selector event: schedule`, the `--select` step exited 1
+ * with no output, and the fail-safe decision it wrote carried `deferredError`.
+ * The fail-safe host then ran — and passed — every suite, and reconciliation
+ * failed all fourteen jobs on the deferred error alone, every night.
+ *
+ * A scheduled run has nothing to diff: it exists to run the full corpus. So it
+ * gets its own mode, `full-host`, which selects exactly what `fail-safe-host`
+ * selects but is bound to this event set, to an empty changed-path list, to the
+ * checked-out commit, and to `deferredError: false`. `push` and `pull_request`
+ * are NOT in this set and never reach it: their derivation, their `selected`
+ * validation, and their fail-safe-on-any-doubt behaviour are unchanged.
+ */
+export const FULL_HOST_EVENTS = new Set(["schedule"]);
+export const FULL_HOST_PATH_SOURCE = "no-diff-full-host-v1";
+const SHA40 = /^[0-9a-f]{40}$/;
+
 export function parseOriginPattern(value) {
   if (typeof value !== "string" || !value || /[\0\r\n?]/.test(value) || value.startsWith("/")
       || value.split("/").some((part) => !part || part === "." || part === "..")) {
@@ -370,17 +394,20 @@ export function reconcilePhase3bReports(manifest, host, rawDecision, primary, se
   return errors;
 }
 
-export function selectionDocument(manifest, hostClass, changedPaths, { failSafe = false, error = null, source = {} } = {}) {
+export function selectionDocument(manifest, hostClass, changedPaths, { failSafe = false, full = false, error = null, source = {} } = {}) {
+  if (failSafe && full) throw new Error("a Phase 3B selection cannot be both fail-safe and full-host");
   const owned = suitesForHost(manifest, hostClass);
-  const matched = failSafe ? owned : owned.filter((suite) => changedPaths.some((file) => suite.originPaths.some((pattern) => pathMatches(pattern, file))));
+  // [#3262] Both whole-host modes select every owned suite; only fail-safe carries an error.
+  const wholeHost = failSafe || full;
+  const matched = wholeHost ? owned : owned.filter((suite) => changedPaths.some((file) => suite.originPaths.some((pattern) => pathMatches(pattern, file))));
   const sortedPaths = [...changedPaths].sort(byteSort);
   const body = { schema: DOC_SCHEMA, selectorVersion: SELECTOR_VERSION, wave: WAVE, hostClass,
     eventName: source.eventName || null, baseSha: source.baseSha || null, headSha: source.headSha || null,
     mergeBaseSha: source.mergeBaseSha || null, pathSource: source.pathSource || null,
     changedPathSha256: sha256(Buffer.concat(sortedPaths.map((value) => Buffer.from(`${value}\0`, "utf8")))),
-    mode: failSafe ? "fail-safe-host" : "selected", changedPaths: sortedPaths,
+    mode: failSafe ? "fail-safe-host" : full ? "full-host" : "selected", changedPaths: sortedPaths,
     originDecisions: owned.map((suite) => ({ suiteId: suite.id, origin: suite.origin, patterns: suite.originPaths,
-      matched: failSafe || sortedPaths.some((file) => suite.originPaths.some((pattern) => pathMatches(pattern, file))) })),
+      matched: wholeHost || sortedPaths.some((file) => suite.originPaths.some((pattern) => pathMatches(pattern, file))) })),
     selectedSuiteIds: matched.map((suite) => suite.id), selectedClassIds: [...new Set(matched.map((suite) => suite.executionClass))],
     ownedSuiteIds: owned.map((suite) => suite.id), staticHostOwnership: phase3bSuites(manifest).map((suite) => ({ suiteId: suite.id, hostClass: suite.hostClass, executionClass: suite.executionClass })),
     deferredError: Boolean(error), error };
@@ -396,11 +423,21 @@ export function validateDecision(manifest, document, hostClass) {
   if (!Array.isArray(document.changedPaths) || JSON.stringify(document.changedPaths) !== JSON.stringify([...document.changedPaths].sort(byteSort))) throw new Error("changed path ordering mismatch");
   for (const changedPath of document.changedPaths) parseOriginPattern(changedPath);
   const expectedDecisions = ownedSuites.map((suite) => ({ suiteId: suite.id, origin: suite.origin, patterns: suite.originPaths,
-    matched: document.mode === "fail-safe-host" || document.changedPaths.some((file) => suite.originPaths.some((pattern) => pathMatches(pattern, file))) }));
+    matched: document.mode === "fail-safe-host" || document.mode === "full-host" || document.changedPaths.some((file) => suite.originPaths.some((pattern) => pathMatches(pattern, file))) }));
   if (JSON.stringify(document.ownedSuiteIds) !== JSON.stringify(owned)
       || document.selectedSuiteIds.some((id) => !owned.includes(id))
       || new Set(document.selectedSuiteIds).size !== document.selectedSuiteIds.length) throw new Error("selection ownership mismatch");
   if (document.mode === "fail-safe-host" && JSON.stringify(document.selectedSuiteIds) !== JSON.stringify(owned)) throw new Error("fail-safe must select the complete host");
+  // [#3262] full-host is the no-diff event's clean whole-host selection. Every
+  // field that would let it stand in for a push or pull request is pinned: the
+  // event, an empty diff, no base or merge-base, the checked-out commit, and no
+  // error. It can only ever select MORE than `selected` would, never less.
+  if (document.mode === "full-host" && JSON.stringify(document.selectedSuiteIds) !== JSON.stringify(owned)) throw new Error("full-host must select the complete host");
+  if (document.mode === "full-host" && (!FULL_HOST_EVENTS.has(document.eventName) || document.changedPaths.length !== 0
+      || document.baseSha !== null || document.mergeBaseSha !== null || !SHA40.test(document.headSha || "")
+      || document.pathSource !== FULL_HOST_PATH_SOURCE || document.deferredError !== false || document.error !== null)) {
+    throw new Error("full-host selection source identity mismatch");
+  }
   if (document.mode === "selected" && (!['pull_request','push'].includes(document.eventName)
       || !/^[0-9a-f]{40}$/.test(document.baseSha || "") || !/^[0-9a-f]{40}$/.test(document.headSha || "")
       || !/^[0-9a-f]{40}$/.test(document.mergeBaseSha || "")
@@ -414,17 +451,42 @@ export function validateDecision(manifest, document, hostClass) {
       || JSON.stringify(document.originDecisions) !== JSON.stringify(expectedDecisions)
       || JSON.stringify(document.selectedSuiteIds) !== JSON.stringify(expectedDecisions.filter((decision) => decision.matched).map((decision) => decision.suiteId))
       || identities.outerIds.length < document.selectedSuiteIds.length) throw new Error("selection evidence inventory mismatch");
-  if (!['selected','fail-safe-host'].includes(document.mode)) throw new Error("selection mode is invalid");
+  if (!['selected','fail-safe-host','full-host'].includes(document.mode)) throw new Error("selection mode is invalid");
   return document;
 }
 
-export function normalizeDecision(manifest, raw, hostClass, selectorOutcome = "success") {
+/**
+ * [#3262] `eventName`, when supplied, is the live event of the job doing the
+ * normalising. A `full-host` document is honoured only when that live event is
+ * the one the document names, so a whole-host selection written for a schedule
+ * cannot be carried into any other run. Documents in the other two modes are
+ * validated exactly as before.
+ */
+export function normalizeDecision(manifest, raw, hostClass, selectorOutcome = "success", { eventName } = {}) {
   try {
     if (selectorOutcome !== "success") throw new Error(`selector outcome ${selectorOutcome}`);
-    return validateDecision(manifest, raw, hostClass);
+    const document = validateDecision(manifest, raw, hostClass);
+    if (document.mode === "full-host" && eventName !== undefined && document.eventName !== eventName) {
+      throw new Error("full-host selection does not belong to this run's event");
+    }
+    return document;
   } catch (error) {
     return selectionDocument(manifest, hostClass, [], { failSafe: true, error: error.message });
   }
+}
+
+/**
+ * [#3262] The selection source for the live event: a no-diff event takes the
+ * full-host source; every other event goes through `deriveChangedPaths`
+ * unchanged, including its refusal of events it does not support.
+ */
+export function deriveSelectionSource({ root = ROOT, eventName, event }) {
+  if (!FULL_HOST_EVENTS.has(eventName)) return { ...deriveChangedPaths({ root, eventName, event }), full: false };
+  // The event name and the payload must agree: a scheduled payload names its cron.
+  if (typeof event?.schedule !== "string" || !event.schedule.trim()) throw new Error(`${eventName} event payload carries no schedule`);
+  const headSha = execFileSync("git", ["rev-parse", "--verify", "HEAD^{commit}"], { cwd: root, encoding: "utf8" }).trim();
+  if (!SHA40.test(headSha)) throw new Error(`${eventName} run could not resolve the checked-out commit`);
+  return { full: true, changedPaths: [], eventName, baseSha: null, headSha, mergeBaseSha: null, pathSource: FULL_HOST_PATH_SOURCE };
 }
 
 export function deriveChangedPaths({ root = ROOT, eventName, event }) {
@@ -479,19 +541,25 @@ async function main() {
   if (options.select) {
     try {
       const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
-      const source = deriveChangedPaths({ eventName: process.env.GITHUB_EVENT_NAME, event });
-      const document = selectionDocument(manifest, host, source.changedPaths, { source });
+      const source = deriveSelectionSource({ eventName: process.env.GITHUB_EVENT_NAME, event });
+      const document = selectionDocument(manifest, host, source.changedPaths, { full: source.full, source });
       atomicWrite(destination, document); output({ document: destination, digest: document.digest, runSecondary: document.selectedSuiteIds.length > 0, deferredError: false });
+      console.log(`Phase 3B selection host=${host} mode=${document.mode} changed=${document.changedPaths.length} selected=${document.selectedSuiteIds.length} of ${document.ownedSuiteIds.length}`);
     } catch (error) {
       const document = selectionDocument(manifest, host, [], { failSafe: true, error: error.message });
       atomicWrite(destination, document); output({ document: destination, digest: document.digest, runSecondary: true, deferredError: true }); process.exitCode = 1;
+      // [#3262] This exit used to be SILENT: a red step with no line saying why.
+      // The fail-safe behaviour is unchanged; it now names its reason.
+      console.error(`FAIL Phase 3B selection host=${host}: ${error.message}\n- running all ${document.ownedSuiteIds.length} Phase 3B suite(s) this host owns; reconciliation will fail this job (deferred selector failure)`);
     }
     return;
   }
   if (options.normalize) {
     let raw = null; try { raw = JSON.parse(fs.readFileSync(String(options.input), "utf8")); } catch {}
-    const document = normalizeDecision(manifest, raw, host, String(options.outcome || "missing")); atomicWrite(destination, document);
-    output({ document: destination, digest: document.digest, runSecondary: document.selectedSuiteIds.length > 0, deferredError: document.deferredError }); return;
+    const document = normalizeDecision(manifest, raw, host, String(options.outcome || "missing"), { eventName: process.env.GITHUB_EVENT_NAME || "" }); atomicWrite(destination, document);
+    output({ document: destination, digest: document.digest, runSecondary: document.selectedSuiteIds.length > 0, deferredError: document.deferredError });
+    if (document.deferredError) console.error(`FAIL Phase 3B decision host=${host} normalised to fail-safe-host: ${document.error}`);
+    return;
   }
   if (options.reconcile) {
     let decision = null; let primary = null; let secondary = null; const readErrors = [];

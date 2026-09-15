@@ -383,6 +383,13 @@ jobs:
       # That proof has to execute on the nightly run itself, because the run
       # that would go unreported is exactly the one whose reporting path nobody
       # else exercises.
+      # #3262 rides on it because #3078's premise was half true: the PRIMARY
+      # router takes every suite on a schedule, but the Phase 3B selector knew
+      # only pull_request and push, so every nightly exited its select step 1
+      # with no output and reconciled all fourteen jobs red while every suite
+      # passed. This proof executes this job's own select and normalize steps
+      # under a schedule-shaped event for every host class, so it runs on every
+      # pull request that could re-break the nightly — and on the nightly itself.
       - name: Batch runner self-test (proves a vanished suite fails the run)
         if: always()
         run: >-
@@ -394,6 +401,7 @@ jobs:
           .github/scripts/ci-batch/__tests__/issue-3072-live-provider-routing.implementor.test.mjs
           .github/scripts/ci-batch/__tests__/issue-3078-nightly-full-corpus.implementor.test.mjs
           .github/scripts/ci-batch/__tests__/issue-3078-scheduled-red-reaches-a-human.implementor.test.mjs
+          .github/scripts/ci-batch/__tests__/issue-3262-scheduled-selection.implementor.test.mjs
 
       - name: Run the ${{ matrix.class }} suites
         if: always()
