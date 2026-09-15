@@ -436,6 +436,14 @@ jobs:
           # still honour an explicit []; removing a cover must not wipe it.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql
+          # RSVP Where step — a picked address kept its map pin for about a
+          # second: the RSVP draft owner never wrote location_geo, the wizard
+          # adopted that row, and publish never promoted a pin. The draft and
+          # live owners now write it, publish promotes it with its precision,
+          # and the public RSVP page still withholds it while the address is
+          # hidden. Behavioural against the real chain; every case rolls back.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/rsvp_where_step_keeps_the_pin.test.sql
           # Issue #3284 — refund terms on events and experiences. The gated writer
           # refuses terms that are worse for buyers once a paid order exists, and
           # both public readers append refundPolicy without moving any existing key.

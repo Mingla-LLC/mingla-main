@@ -57,6 +57,7 @@ import type { LocationSelectionState } from "@mingla/location-input";
 import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
 
 import { errorForKey, type StepBodyProps } from "./types";
+import { whereStepAddressCopy } from "./whereStepCopy";
 
 export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   draft,
@@ -73,7 +74,12 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
 
   const [selectionState, setSelectionState] =
     React.useState<LocationSelectionState>(
-      draft.address?.trim() && draft.city ? "selected" : "editing",
+      // A saved address without its pin (drafts hit by the autosave echo that
+      // dropped locationGeo) opens editable, so the host re-picks it instead of
+      // seeing a "selected" address over an empty map.
+      draft.address?.trim() && draft.city && draft.locationGeo
+        ? "selected"
+        : "editing",
     );
   // Issue #1363 P3-2 — latest-wins guard: the address text currently committed
   // to the field, so a superseded free-text geocode can't patch a stale city.
@@ -139,6 +145,12 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   const showInPerson =
     draft.format === "in_person" || draft.format === "hybrid";
   const showOnline = draft.format === "online" || draft.format === "hybrid";
+  // RSVP drafts (the RSVP wizard and the published-RSVP editor) have no
+  // tickets, so the privacy copy speaks RSVP; the info card follows the toggle.
+  const addressCopy = whereStepAddressCopy(
+    draft.isRsvp === true,
+    draft.hideAddressUntilTicket,
+  );
 
   return (
     <View
@@ -253,18 +265,12 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
             }
             accessibilityRole="switch"
             accessibilityState={{ checked: draft.hideAddressUntilTicket }}
-            accessibilityLabel="Hide address until ticket purchase"
+            accessibilityLabel={addressCopy.toggleTitle}
             style={styles.toggleRow}
           >
             <View style={styles.toggleLabelCol}>
-              <Text style={styles.toggleLabel}>
-                Hide address until ticket purchase
-              </Text>
-              <Text style={styles.toggleSub}>
-                {draft.hideAddressUntilTicket
-                  ? "Address only revealed to ticketed guests."
-                  : "Address visible on the public event page."}
-              </Text>
+              <Text style={styles.toggleLabel}>{addressCopy.toggleTitle}</Text>
+              <Text style={styles.toggleSub}>{addressCopy.toggleSubtitle}</Text>
             </View>
             <View
               style={[
@@ -345,10 +351,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               <View style={styles.infoIconWrap}>
                 <Icon name="location" size={14} color={accent.warm} />
               </View>
-              <Text style={styles.infoText}>
-                Address appears in tickets and confirmation emails — not on the
-                public page until the guest checks out.
-              </Text>
+              <Text style={styles.infoText}>{addressCopy.infoCard}</Text>
             </View>
           </GlassCard>
         </>
@@ -370,9 +373,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
             accessibilityLabel="Online conferencing link"
             style={onlineError !== undefined ? styles.inputError : undefined}
           />
-          <Text style={styles.helperHint}>
-            Link is shared with ticketed guests only — never posted publicly.
-          </Text>
+          <Text style={styles.helperHint}>{addressCopy.onlineLinkHint}</Text>
           {onlineError !== undefined ? (
             <Text style={styles.helperError}>{onlineError}</Text>
           ) : null}

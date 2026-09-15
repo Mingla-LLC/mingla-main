@@ -1064,6 +1064,13 @@ export const publishBusinessEventDraft = async (
       p_draft_payload: {
         ...payload,
         visibility: publishedVisibilityForDraft(draft.visibility),
+        // #1653 — business_publish_event_draft promotes the pin AND its
+        // precision from these top-level keys. The payload never carried them,
+        // so the precision half never ran: every published event has
+        // coordinate_precision NULL (the pin itself arrived via the autosave
+        // column, which has no precision). Same values the draft already holds.
+        locationGeo: draft.locationGeo,
+        coordinatePrecision: draft.coordinatePrecision ?? null,
       },
       p_client_revision: clientRevision,
     },
