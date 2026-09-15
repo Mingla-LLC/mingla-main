@@ -19977,7 +19977,7 @@
       "providerWorkflow": ".github/workflows/issue-873-guest-status-roster-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "886afc681103afbd9ec7f83e3f1bff7efd5b293389d086ab170dfefd3e70c67c",
+        "sourceSha256": "0342ef360fdd7035865bd78594653d3b8fb963c22e45bd1aeb93c0d0c79070dc",
         "triggers": [
           "pull_request",
           "push"
@@ -20001,6 +20001,7 @@
           "mingla-business/src/hooks/useTrips.ts",
           "mingla-business/src/services/__tests__/issue_1780_feature_flag_rollback.tester_adversarial.test.ts",
           "mingla-business/src/services/__tests__/issue_1780_observability.tester_adversarial.test.ts",
+          "mingla-business/src/services/__tests__/issue_1780_outbox_contract.tester_adversarial.test.ts",
           "mingla-business/src/services/__tests__/issue_1780_stale_group_intent.tester_adversarial.test.ts",
           "mingla-business/src/services/__tests__/issue_1780_wizard_invites.implementor.test.ts",
           "mingla-business/src/services/businessEvents.ts",
@@ -20019,6 +20020,8 @@
           "supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql",
           "supabase/migrations/__tests__/issue_1780_normalized_plan_members.tester_adversarial.pg17.test.sql",
           "supabase/migrations/__tests__/issue_1780_observability_rollback.tester_adversarial.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_1780_outbox_contract.tester_adversarial.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_1780_publish_tail.tester_adversarial.pg17.test.sql",
           "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql"
         ],
         "jobKeys": [
