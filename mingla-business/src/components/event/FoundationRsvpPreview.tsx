@@ -150,7 +150,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     defaultPhoneCountry,
     onDownloadPass,
     contentBottomInset = 96,
-    onScroll,
+    onScroll: onScrollProp,
     onScrollViewLayout,
     safeAreaTop = 0,
     safeAreaBottom = 0,
@@ -296,13 +296,14 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     const timer = setInterval(measureInlineDecision, VISIBILITY_POLL_MS);
     return () => clearInterval(timer);
   }, [phoneBarEligible, measureInlineDecision]);
-  const handleScroll = useCallback(
+  // Tracks the offset for field reveal + re-checks the bar, then forwards.
+  const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
       scrollYRef.current = e.nativeEvent.contentOffset.y;
       measureInlineDecision();
-      onScroll?.(e);
+      onScrollProp?.(e);
     },
-    [measureInlineDecision, onScroll],
+    [measureInlineDecision, onScrollProp],
   );
   const showFloatingBar = shouldShowRsvpFloatingBar({
     isPhoneLayout: !isDesktop,
@@ -363,7 +364,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
         stickyPanel={stickyPanel}
         contentBottomInset={resolvedBottomInset}
         safeAreaTop={safeAreaTop}
-        onScroll={handleScroll}
+        onScroll={onScroll}
         onScrollViewLayout={onScrollViewLayout}
         scrollRef={scrollRef}
         testID={testID}
