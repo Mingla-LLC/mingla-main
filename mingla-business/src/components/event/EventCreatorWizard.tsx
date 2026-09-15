@@ -70,6 +70,11 @@ import {
 } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import {
+  useServerCoverAdoption,
+  type FetchServerCover,
+} from "../../hooks/useServerCoverAdoption";
+import type { ServerDraftCover } from "../../utils/draftCoverBase";
+import {
   type Brand,
   type BrandStripeStatus,
 } from "../../store/currentBrandStore";
@@ -208,6 +213,12 @@ export interface EventCreatorWizardProps {
   onOpenPaymentOnboarding: () => void;
   onAutosaveDraft?: (draft: DraftEvent) => void;
   /**
+   * Reads the server draft's cover, so a cover video that finishes after its
+   * Cover sheet closed lands on the draft (see useServerCoverAdoption). The
+   * route passes `fetchServerDraftCover`; absent = adoption is off.
+   */
+  fetchServerCover?: FetchServerCover;
+  /**
    * issue #3040 — resolve (creating if necessary) the SERVER `events` row this
    * draft maps to, and reconcile the route onto it. Owned by the route because
    * the route owns route state and the URL. Resolves with the server uuid;
@@ -237,6 +248,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   onOpenPreview,
   onOpenPaymentOnboarding,
   onAutosaveDraft,
+  fetchServerCover,
   onRequireServerDraft,
   onDiscardServerDraft,
   onPublishDraft,
@@ -532,6 +544,25 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     },
     [draftId, markDraftDirty, queueAutosave, updateDraft],
   );
+
+  // A cover video picked on the Cover step finishes on the SERVER, often after
+  // its sheet closed. Adopt it into the draft (card + Preview + next autosave)
+  // unless the host changed the cover since; keep checking while it processes.
+  const handleAdoptServerCover = useCallback(
+    (cover: ServerDraftCover): void => {
+      handleUpdate({ ...cover });
+      if (cover.coverMediaType === "video") setCoverVideoProcessing(false);
+    },
+    [handleUpdate],
+  );
+  useServerCoverAdoption({
+    draftId,
+    fetchServerCover,
+    localCoverUrl: liveDraft.coverMediaUrl ?? null,
+    watching: coverVideoProcessing,
+    pulse: currentStep,
+    onAdopt: handleAdoptServerCover,
+  });
 
   const handleShowToast = useCallback((message: string): void => {
     setToast({ visible: true, message });

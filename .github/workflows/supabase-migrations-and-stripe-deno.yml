@@ -444,6 +444,12 @@ jobs:
           # hidden. Behavioural against the real chain; every case rolls back.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/rsvp_where_step_keeps_the_pin.test.sql
+          # Draft autosave keeps a cover the server applied — a cover video that
+          # finishes after its sheet closed was erased by the next autosave on RSVP
+          # and ticketed drafts. The job applies through cover_video_apply_once and
+          # the save runs the real owners; a deliberate pick or removal still saves.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql
           # Issue #3284 — refund terms on events and experiences. The gated writer
           # refuses terms that are worse for buyers once a paid order exists, and
           # both public readers append refundPolicy without moving any existing key.

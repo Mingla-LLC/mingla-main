@@ -56,6 +56,11 @@ import {
   DESKTOP_WIZARD_RAIL_WIDTH,
 } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import {
+  useServerCoverAdoption,
+  type FetchServerCover,
+} from "../../hooks/useServerCoverAdoption";
+import type { ServerDraftCover } from "../../utils/draftCoverBase";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { type Brand } from "../../store/currentBrandStore";
 import {
@@ -186,6 +191,12 @@ export interface RsvpCreatorWizardProps {
    *  the provider-neutral payments onboarding. */
   onOpenStripeOnboard?: () => void;
   onAutosaveDraft?: (draft: DraftEvent) => void;
+  /**
+   * Reads the server draft's cover, so a cover video that finishes after its
+   * Cover sheet closed lands on the draft (see useServerCoverAdoption). The
+   * route passes `fetchServerDraftCover`; absent = adoption is off.
+   */
+  fetchServerCover?: FetchServerCover;
   /** issue #3040 — see EventCreatorWizard. Route-owned server-row resolver. */
   onRequireServerDraft?: () => Promise<string>;
   onDiscardServerDraft?: (draft: DraftEvent) => Promise<void>;
@@ -211,6 +222,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   onOpenPreview,
   onOpenStripeOnboard,
   onAutosaveDraft,
+  fetchServerCover,
   onRequireServerDraft,
   onDiscardServerDraft,
   onPublishDraft,
@@ -506,6 +518,25 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     },
     [draftId, markDraftDirty, queueAutosave, updateDraft],
   );
+
+  // A cover video picked on the Cover step finishes on the SERVER, often after
+  // its sheet closed. Adopt it into the draft (card + Preview + next autosave)
+  // unless the host changed the cover since; keep checking while it processes.
+  const handleAdoptServerCover = useCallback(
+    (cover: ServerDraftCover): void => {
+      handleUpdate({ ...cover });
+      if (cover.coverMediaType === "video") setCoverVideoProcessing(false);
+    },
+    [handleUpdate],
+  );
+  useServerCoverAdoption({
+    draftId,
+    fetchServerCover,
+    localCoverUrl: liveDraft.coverMediaUrl ?? null,
+    watching: coverVideoProcessing,
+    pulse: currentStep,
+    onAdopt: handleAdoptServerCover,
+  });
 
   const handleShowToast = useCallback((message: string): void => {
     setToast({ visible: true, message });

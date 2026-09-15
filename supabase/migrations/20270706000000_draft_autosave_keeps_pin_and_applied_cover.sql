@@ -1,41 +1,54 @@
 -- ---------------------------------------------------------------------------
--- RSVP Where step — the picked address keeps its map pin, and the published
--- RSVP carries it.
+-- Draft autosave stops erasing what the server holds: the RSVP Where-step map
+-- pin, and a cover video the server applied after its sheet closed.
 --
--- On an RSVP draft the organiser picks "61 Wythe Avenue, Brooklyn…", the map
--- preview renders, and about a second later it falls back to "Pick an address
--- to preview the map" while the address label stays. The wizard autosaves
--- 700 ms after the pick through business_update_rsvp_graph; that owner's draft
--- branch writes `city` but never `location_geo`, and its response (the events
--- row, location_geo NULL) replaces the local draft wholesale. The coordinate is
--- gone from the wizard, the next autosave writes the blob's locationGeo as null
--- too, and business_publish_rsvp_draft never promoted a coordinate anyway.
+-- 1. THE PIN. On an RSVP draft the organiser picks "61 Wythe Avenue, Brooklyn…",
+--    the map preview renders, and about a second later it falls back to "Pick
+--    an address to preview the map" while the address label stays. The wizard
+--    autosaves 700 ms after the pick through business_update_rsvp_graph; that
+--    owner's draft branch writes `city` but never `location_geo`, and its
+--    response (the events row, location_geo NULL) replaces the local draft
+--    wholesale. business_publish_rsvp_draft never promoted a coordinate either.
+--    Production, read-only (2026-09-15): 2 of 2 in-person RSVPs published in the
+--    last 60 days have no coordinate; 3 of 4 RSVP drafts with an address have
+--    none. Ticketed drafts keep theirs (their owner writes location_geo).
 --
--- Production, read-only (2026-09-15): in-person RSVP drafts created in the last
--- 60 days — 4 of 5 with an address have no coordinate; published RSVPs with an
--- address — 1 of 2 has none. Ticketed event drafts are unaffected
--- (business_update_event_draft writes location_geo): 0 of 5 without.
+-- 2. THE COVER. A cover video picked on the Cover step is applied by the Bunny
+--    webhook (cover_video_apply_once, draft_auto) straight to events.cover_media_*
+--    — often minutes after the host closed the sheet ("we'll finish
+--    automatically"). Both draft owners then wrote the client's stale cover over
+--    it. Production, read-only, RSVP draft 6efa617e: job 1a73f753 'applied' at
+--    10:14:52 (only reachable when its events UPDATE hit exactly one row); the
+--    next RSVP update receipt, 10:16:31, returns cover_media_url NULL.
 --
---   business_update_rsvp_graph   draft branch writes location_geo when sent
---                                (the wizard sends it on every save, null when
---                                the address is cleared); live branch writes
---                                location_geo + coordinate_precision when a
---                                re-picked address sends them
+--   business_update_rsvp_graph   draft branch writes location_geo when sent; live
+--                                branch writes location_geo + coordinate_precision
+--                                when a re-picked address sends them; draft branch
+--                                keeps a server-applied cover (applied-cover guard)
 --   business_publish_rsvp_draft  promotes business_draft.locationGeo +
---                                coordinatePrecision (mirror of #1653 for
---                                ticketed events); keeps the row's pin when the
---                                blob has none
+--                                coordinatePrecision (mirror of #1653); keeps the
+--                                row's pin when the blob has none
+--   business_update_event_draft  keeps a server-applied cover (applied-cover guard)
 --
--- Both functions are full CREATE OR REPLACE copies of their LATEST definition,
--- 20270701003288_issue_3288_gallery_absent_key_preserves.sql, which was read back
--- from production and compared body-for-body before copying (identical apart
--- from the signature default spelling `NULL` vs `NULL::integer`). ONLY the
--- lines marked "Where-step pin" differ. Public readers already withhold the
--- coordinate while the address is hidden (pg_public_rsvp_by_slug and
--- pg_discover_business_events gate on issue_2489_address_withheld), exactly as
--- they do for ticketed events, which have always stored it.
+-- APPLIED-COVER GUARD. The client sends `__coverBase`, the cover it last
+-- received from the server. Keep the stored cover when the client's cover is
+-- still its base but the stored one has moved (a three-way merge: a deliberate
+-- pick or removal still saves). A client that does not send the key (installed
+-- builds before the OTA) is protected once: the stored cover is the video of an
+-- applied draft_auto job and no save has landed since that job applied — the
+-- echo of that save hands the video to the app. `__coverBase` is never stored.
 --
--- Pinned by supabase/migrations/__tests__/rsvp_where_step_keeps_the_pin.test.sql.
+-- All three functions are full CREATE OR REPLACE copies of their LATEST
+-- definition, 20270701003288_issue_3288_gallery_absent_key_preserves.sql, read
+-- back from production and compared body-for-body before copying (identical
+-- apart from the signature default spelling `NULL` vs `NULL::integer`). ONLY the
+-- lines marked "Where-step pin" or "applied-cover guard" differ. Public readers
+-- already withhold the coordinate while the address is hidden
+-- (pg_public_rsvp_by_slug and pg_discover_business_events gate on
+-- issue_2489_address_withheld), exactly as for ticketed events.
+--
+-- Pinned by supabase/migrations/__tests__/rsvp_where_step_keeps_the_pin.test.sql
+-- and supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql.
 --
 -- Idempotent: CREATE OR REPLACE only; grants and ownership are preserved.
 --
@@ -402,6 +415,7 @@ DECLARE v_actor uuid:=auth.uid(); v public.events%ROWTYPE; v_draft jsonb; v_patc
   v_theme jsonb; v_result jsonb; v_hash text; v_prior public.rsvp_domain_operation_receipts%ROWTYPE;
   v_live_payload jsonb; v_update_result jsonb; v_current_revision integer; v_expected_revision integer;
   v_suggested integer; v_minimum integer;
+  v_keep_cover boolean;  -- applied-cover guard
 BEGIN
   IF v_actor IS NULL OR p_payload IS NULL OR jsonb_typeof(p_payload)<>'object' THEN
     RAISE EXCEPTION 'rsvp_payload_invalid' USING ERRCODE='22023';
@@ -432,7 +446,27 @@ BEGIN
     IF v_expected_revision IS NOT NULL AND v_expected_revision<v_current_revision THEN
       RAISE EXCEPTION 'rsvp_revision_conflict' USING ERRCODE='40001';
     END IF;
-    v_patch:=v_patch-'__expectedClientRevision';
+    -- Applied-cover guard — a cover the server put on this row (a draft_auto
+    -- cover-video job finishing after the host closed the sheet) must survive
+    -- a save from a client that has not seen it. With `__coverBase` (the
+    -- cover the client last received) it is a three-way merge: keep the
+    -- stored cover when the client's cover is still its base and the server's
+    -- has moved since. A client without the key falls back to: the stored
+    -- cover is an applied draft_auto job's video and no save has landed since
+    -- that job applied.
+    v_keep_cover := (CASE WHEN p_payload ? '__coverBase' THEN
+        NULLIF(p_payload->>'cover_media_url','') IS NOT DISTINCT FROM NULLIF(p_payload->>'__coverBase','')
+        AND v.cover_media_url IS DISTINCT FROM NULLIF(p_payload->>'__coverBase','')
+      ELSE
+        v.cover_media_url IS NOT NULL
+        AND NULLIF(p_payload->>'cover_media_url','') IS DISTINCT FROM v.cover_media_url
+        AND EXISTS (SELECT 1 FROM public.event_cover_video_jobs j
+          WHERE j.event_id = p_event_id AND j.target_kind = 'event'
+            AND j.apply_mode = 'draft_auto' AND j.status = 'applied'
+            AND j.processed_url = v.cover_media_url
+            AND j.applied_at >= v.updated_at)
+      END);
+    v_patch:=v_patch-'__expectedClientRevision'-'__coverBase';
     v_merged:=jsonb_set(v_draft||v_patch,'{clientRevision}',to_jsonb(COALESCE(v_expected_revision,v_current_revision+1)),true);
     IF v_patch?'when' THEN v_merged:=jsonb_set(v_merged,'{when}',COALESCE(v_draft->'when','{}'::jsonb)||(v_patch->'when'),true); END IF;
     IF v_patch?'settings' THEN v_merged:=jsonb_set(v_merged,'{settings}',COALESCE(v_draft->'settings','{}'::jsonb)||(v_patch->'settings'),true); END IF;
@@ -457,14 +491,14 @@ BEGIN
       description=CASE WHEN p_payload?'description' THEN NULLIF(p_payload->>'description','') ELSE v.description END,
       location_text=CASE WHEN p_payload?'location_text' THEN NULLIF(p_payload->>'location_text','') ELSE v.location_text END,
       online_url=CASE WHEN p_payload?'online_url' THEN NULLIF(p_payload->>'online_url','') ELSE v.online_url END,
-      cover_media_url=CASE WHEN p_payload?'cover_media_url' THEN NULLIF(p_payload->>'cover_media_url','') ELSE v.cover_media_url END,
-      cover_media_poster_url=CASE WHEN p_payload?'cover_media_poster_url' THEN NULLIF(p_payload->>'cover_media_poster_url','') ELSE v.cover_media_poster_url END,
-      cover_media_type=CASE WHEN p_payload?'cover_media_type' THEN NULLIF(p_payload->>'cover_media_type','') ELSE v.cover_media_type END,
-      cover_media_provider=CASE WHEN p_payload?'cover_media_provider' THEN NULLIF(p_payload->>'cover_media_provider','') ELSE v.cover_media_provider END,
-      cover_media_source_url=CASE WHEN p_payload?'cover_media_source_url' THEN NULLIF(p_payload->>'cover_media_source_url','') ELSE v.cover_media_source_url END,
-      cover_media_credit=CASE WHEN p_payload?'cover_media_credit' THEN NULLIF(p_payload->>'cover_media_credit','') ELSE v.cover_media_credit END,
-      cover_media_credit_url=CASE WHEN p_payload?'cover_media_credit_url' THEN NULLIF(p_payload->>'cover_media_credit_url','') ELSE v.cover_media_credit_url END,
-      cover_media_alt=CASE WHEN p_payload?'cover_media_alt' THEN NULLIF(p_payload->>'cover_media_alt','') ELSE v.cover_media_alt END,
+      cover_media_url=CASE WHEN v_keep_cover THEN v.cover_media_url WHEN p_payload?'cover_media_url' THEN NULLIF(p_payload->>'cover_media_url','') ELSE v.cover_media_url END,
+      cover_media_poster_url=CASE WHEN v_keep_cover THEN v.cover_media_poster_url WHEN p_payload?'cover_media_poster_url' THEN NULLIF(p_payload->>'cover_media_poster_url','') ELSE v.cover_media_poster_url END,
+      cover_media_type=CASE WHEN v_keep_cover THEN v.cover_media_type WHEN p_payload?'cover_media_type' THEN NULLIF(p_payload->>'cover_media_type','') ELSE v.cover_media_type END,
+      cover_media_provider=CASE WHEN v_keep_cover THEN v.cover_media_provider WHEN p_payload?'cover_media_provider' THEN NULLIF(p_payload->>'cover_media_provider','') ELSE v.cover_media_provider END,
+      cover_media_source_url=CASE WHEN v_keep_cover THEN v.cover_media_source_url WHEN p_payload?'cover_media_source_url' THEN NULLIF(p_payload->>'cover_media_source_url','') ELSE v.cover_media_source_url END,
+      cover_media_credit=CASE WHEN v_keep_cover THEN v.cover_media_credit WHEN p_payload?'cover_media_credit' THEN NULLIF(p_payload->>'cover_media_credit','') ELSE v.cover_media_credit END,
+      cover_media_credit_url=CASE WHEN v_keep_cover THEN v.cover_media_credit_url WHEN p_payload?'cover_media_credit_url' THEN NULLIF(p_payload->>'cover_media_credit_url','') ELSE v.cover_media_credit_url END,
+      cover_media_alt=CASE WHEN v_keep_cover THEN v.cover_media_alt WHEN p_payload?'cover_media_alt' THEN NULLIF(p_payload->>'cover_media_alt','') ELSE v.cover_media_alt END,
       cover_media_gallery=CASE WHEN p_payload?'cover_media_gallery' THEN p_payload->'cover_media_gallery' ELSE v.cover_media_gallery END,
       timezone=COALESCE(NULLIF(p_payload->>'timezone',''),v.timezone),
       is_online=CASE WHEN v_patch?'format' THEN (v_patch->>'format') IN ('online','hybrid') ELSE v.is_online END,
@@ -512,6 +546,87 @@ BEGIN
     VALUES(v_actor,'update',p_client_request_id,p_event_id,v_hash,v_result);
   END IF;
   RETURN v_result||jsonb_build_object('replayed',false);
+END;
+$function$;
+
+
+CREATE OR REPLACE FUNCTION public.business_update_event_draft(p_event_id uuid, p_payload jsonb, p_client_revision integer DEFAULT NULL::integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_event public.events%ROWTYPE;
+  v_stored_revision integer;
+  v_geo point;
+  v_keep_cover boolean;  -- applied-cover guard
+BEGIN
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
+  SELECT * INTO v_event FROM public.events WHERE id=p_event_id FOR UPDATE;
+  IF NOT FOUND OR v_event.deleted_at IS NOT NULL OR v_event.event_type <> 'event' THEN
+    RAISE EXCEPTION 'event_draft_not_found';
+  END IF;
+  IF v_event.status <> 'draft' THEN RAISE EXCEPTION 'event_draft_not_editable'; END IF;
+  IF public.biz_brand_effective_rank(v_event.brand_id,v_uid) < public.biz_role_rank('event_manager') THEN
+    RAISE EXCEPTION 'insufficient_event_permission';
+  END IF;
+  v_stored_revision := COALESCE((v_event.theme#>>'{business_draft,clientRevision}')::integer,0);
+  IF p_client_revision IS NULL OR p_client_revision < v_stored_revision THEN
+    RAISE EXCEPTION 'stale_client_revision';
+  END IF;
+  PERFORM public.business_assert_event_visibility(
+    p_payload#>'{theme,business_draft,requestedVisibility}'
+  );
+  IF NULLIF(p_payload->>'location_geo','') IS NOT NULL THEN v_geo := (p_payload->>'location_geo')::point; END IF;
+  -- Applied-cover guard — a cover the server put on this row (a draft_auto
+  -- cover-video job finishing after the host closed the sheet) must survive a
+  -- save from a client that has not seen it. With `__coverBase` (the cover the
+  -- client last received) it is a three-way merge: keep the stored cover when
+  -- the client's cover is still its base and the server's has moved since. A
+  -- client without the key falls back to: the stored cover is an applied
+  -- draft_auto job's video and no save has landed since that job applied.
+  v_keep_cover := (CASE WHEN p_payload ? '__coverBase' THEN
+      NULLIF(p_payload->>'cover_media_url','') IS NOT DISTINCT FROM NULLIF(p_payload->>'__coverBase','')
+      AND v_event.cover_media_url IS DISTINCT FROM NULLIF(p_payload->>'__coverBase','')
+    ELSE
+      v_event.cover_media_url IS NOT NULL
+      AND NULLIF(p_payload->>'cover_media_url','') IS DISTINCT FROM v_event.cover_media_url
+      AND EXISTS (SELECT 1 FROM public.event_cover_video_jobs j
+        WHERE j.event_id = p_event_id AND j.target_kind = 'event'
+          AND j.apply_mode = 'draft_auto' AND j.status = 'applied'
+          AND j.processed_url = v_event.cover_media_url
+          AND j.applied_at >= v_event.updated_at)
+    END);
+  PERFORM public.assert_cover_media_triplet(NULLIF(p_payload->>'cover_media_url',''),
+    NULLIF(p_payload->>'cover_media_type',''),NULLIF(p_payload->>'cover_media_poster_url',''));
+
+  UPDATE public.events SET
+    title=COALESCE(NULLIF(btrim(p_payload->>'title'),''),'Untitled draft'),
+    description=NULLIF(p_payload->>'description',''), location_text=NULLIF(p_payload->>'location_text',''),
+    online_url=NULLIF(p_payload->>'online_url',''), cover_media_url=CASE WHEN v_keep_cover THEN v_event.cover_media_url ELSE NULLIF(p_payload->>'cover_media_url','') END,
+    cover_media_poster_url=CASE WHEN v_keep_cover THEN v_event.cover_media_poster_url ELSE NULLIF(p_payload->>'cover_media_poster_url','') END, cover_media_type=CASE WHEN v_keep_cover THEN v_event.cover_media_type ELSE NULLIF(p_payload->>'cover_media_type','') END,
+    cover_media_provider=CASE WHEN v_keep_cover THEN v_event.cover_media_provider ELSE NULLIF(p_payload->>'cover_media_provider','') END, cover_media_source_url=CASE WHEN v_keep_cover THEN v_event.cover_media_source_url ELSE NULLIF(p_payload->>'cover_media_source_url','') END,
+    cover_media_credit=CASE WHEN v_keep_cover THEN v_event.cover_media_credit ELSE NULLIF(p_payload->>'cover_media_credit','') END, cover_media_credit_url=CASE WHEN v_keep_cover THEN v_event.cover_media_credit_url ELSE NULLIF(p_payload->>'cover_media_credit_url','') END,
+    cover_media_alt=CASE WHEN v_keep_cover THEN v_event.cover_media_alt ELSE NULLIF(p_payload->>'cover_media_alt','') END, cover_media_gallery=CASE WHEN p_payload?'cover_media_gallery' THEN COALESCE(p_payload->'cover_media_gallery','[]'::jsonb) ELSE v_event.cover_media_gallery END,
+    currency=NULLIF(p_payload->>'currency','')::character(3), is_online=COALESCE((p_payload->>'is_online')::boolean,false),
+    is_recurring=COALESCE((p_payload->>'is_recurring')::boolean,false), is_multi_date=COALESCE((p_payload->>'is_multi_date')::boolean,false),
+    recurrence_rules=p_payload->'recurrence_rules',
+    theme=jsonb_set(COALESCE(p_payload->'theme','{}'::jsonb),
+      '{business_draft,clientRevision}',to_jsonb(p_client_revision),true),
+    visibility='draft', status='draft', timezone=COALESCE(NULLIF(p_payload->>'timezone',''),'UTC'),
+    party_types=COALESCE(ARRAY(SELECT jsonb_array_elements_text(COALESCE(p_payload->'party_types','[]'::jsonb))),ARRAY[]::text[]),
+    vibe_tags=COALESCE(ARRAY(SELECT jsonb_array_elements_text(COALESCE(p_payload->'vibe_tags','[]'::jsonb))),ARRAY[]::text[]),
+    music_genres=COALESCE(ARRAY(SELECT jsonb_array_elements_text(COALESCE(p_payload->'music_genres','[]'::jsonb))),ARRAY[]::text[]),
+    city=NULLIF(p_payload->>'city',''), location_geo=v_geo,
+    pass_tax=(p_payload->>'pass_tax')::boolean, pass_mingla_fee=(p_payload->>'pass_mingla_fee')::boolean,
+    pass_service_fee=(p_payload->>'pass_service_fee')::boolean,
+    theme_color_override=NULLIF(p_payload->>'theme_color_override',''), theme_font_override=NULLIF(p_payload->>'theme_font_override',''),
+    theme_animation_override=NULLIF(p_payload->>'theme_animation_override',''), updated_at=now()
+  WHERE id=p_event_id RETURNING * INTO v_event;
+  RETURN jsonb_build_object('event',to_jsonb(v_event),'client_revision',
+    p_client_revision);
 END;
 $function$;
 

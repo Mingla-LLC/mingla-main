@@ -1,5 +1,6 @@
 -- RSVP Where step — the picked address keeps its map pin, and the published
--- RSVP carries it. Pins 20270706000000_rsvp_where_step_keeps_the_pin.sql.
+-- RSVP carries it. Pins the Where-step pin in
+-- 20270706000000_draft_autosave_keeps_pin_and_applied_cover.sql.
 --
 -- The production symptom: pick an address on an RSVP draft, the map preview
 -- renders, and ~1 s later (the 700 ms autosave plus the round trip) it falls
@@ -12,7 +13,7 @@
 -- the payload shape the Business client sends (draftToServerUpdate: top-level
 -- snake_case columns + theme.business_draft). Each case rolls back.
 --
--- FAILS-ON-REVERT (delete 20270706000000_rsvp_where_step_keeps_the_pin.sql):
+-- FAILS-ON-REVERT (restore the #3288 bodies of the two RSVP owners):
 --   W-01 — the autosave response carries no location_geo (the wizard's map
 --          blanks); W-03 — the column is never written, so there is no pin to
 --          keep; W-04 / W-06 — the published RSVP has no pin and no precision;
