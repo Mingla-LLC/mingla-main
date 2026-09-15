@@ -5,8 +5,12 @@ const read = (file) => fs.readFileSync(file, "utf8");
 const files = {
   migration:
     "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql",
+  turnMigration:
+    "supabase/migrations/20270708003429_issue_3429_ari_chat_context.sql",
   implementorPg:
     "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql",
+  turnAuthorityPg:
+    "supabase/migrations/__tests__/issue_3429_ari_turn_authority.tester_adversarial.pg17.test.sql",
   messageRolePg:
     "supabase/migrations/__tests__/issue_1985_message_role_authority.implementor.pg17.test.sql",
   testerChoicePg:
@@ -21,6 +25,7 @@ const files = {
   service: "mingla-business/src/services/agentChatService.ts",
   hook: "mingla-business/src/hooks/useAgentChat.ts",
   screen: "mingla-business/src/screens/ari/AriChatScreen.tsx",
+  input: "mingla-business/src/components/ari/InputBar.tsx",
   list: "mingla-business/src/components/ari/MessageList.tsx",
   clientChoices: "mingla-business/src/components/ari/agentChoices.ts",
   choiceTest:
@@ -225,7 +230,6 @@ export function check(s) {
   if (
     s.chat.includes("detectChoices") ||
     !s.chat.includes(": validateChoiceSubmission(body.choice_response)") ||
-    !s.chat.includes("recoveredTurn?.conversation_id") ||
     !s.chat.includes("existingAssistant") ||
     !s.chat.includes("response_message_id")
   ) {
@@ -234,7 +238,6 @@ export function check(s) {
   for (
     const token of [
       "appendSafeSummary",
-      '.select("task_state, task_state_revision")',
       "TASK_STATE_CONFLICT",
       "beginInterruption",
       "resumeInterruption",
@@ -244,10 +247,14 @@ export function check(s) {
       failures.push(`chat state ownership missing ${token}`);
     }
   }
+  if (!/\.select\(\s*"summary,brand_id,title,task_state,task_state_revision"\s*\)[\s\S]{0,180}\.eq\("id", conversationId\)[\s\S]{0,120}\.eq\("user_id", userId\)/.test(s.chat)) {
+    failures.push("canonical conversation read is not id/user scoped with state and revision");
+  }
   for (
     const token of [
-      "claim_agent_first_turn",
-      "commit_agent_task_assistant_turn",
+      "claim_agent_chat_turn",
+      "commit_agent_chat_assistant_turn",
+      "append_agent_chat_tool_result",
       "buildServiceClient",
       "server_proposed_at",
       "TASK_REPLACED_BY_NEW_TASK",
@@ -258,6 +265,40 @@ export function check(s) {
     if (!s.chat.includes(token)) {
       failures.push(`chat serialized/attested turn contract missing ${token}`);
     }
+  }
+  if ((s.chat.match(/"append_agent_chat_tool_result"/g) ?? []).length !== 2) {
+    failures.push("tool-result paths no longer use exactly the service-owned append RPC");
+  }
+  const claim = s.turnMigration.slice(
+    s.turnMigration.indexOf("CREATE OR REPLACE FUNCTION public.claim_agent_chat_turn"),
+    s.turnMigration.indexOf("CREATE OR REPLACE FUNCTION public.commit_agent_chat_assistant_turn"),
+  );
+  const commit = s.turnMigration.slice(
+    s.turnMigration.indexOf("CREATE OR REPLACE FUNCTION public.commit_agent_chat_assistant_turn"),
+    s.turnMigration.indexOf("CREATE OR REPLACE FUNCTION public.append_agent_chat_tool_result"),
+  );
+  const tool = s.turnMigration.slice(
+    s.turnMigration.indexOf("CREATE OR REPLACE FUNCTION public.append_agent_chat_tool_result"),
+    s.turnMigration.indexOf("CREATE OR REPLACE FUNCTION public.queue_agent_attachment_cleanup"),
+  );
+  for (const token of [
+    "p_request_digest", "p_manifest_digest", "v_attempt.request_digest <> p_request_digest",
+    "v_attempt.manifest_digest <> p_manifest_digest", "turn_attempt.user_id = p_user_id",
+    "turn_attempt.client_turn_id = p_client_turn_id", "TO service_role",
+  ]) if (!claim.includes(token)) failures.push(`digest-bound service claim missing ${token}`);
+  for (const token of [
+    "v_attempt.status <> 'running'", "v_attempt.attempt_number <> p_attempt_number",
+    "AND turn_attempt.user_id = p_user_id", "AND turn_attempt.conversation_id = p_conversation_id",
+    "AND turn_attempt.client_turn_id = p_client_turn_id", "AND task_state_revision = p_expected_revision",
+    "INSERT INTO public.agent_messages", "status = 'completed'", "response_ready", "title_source = CASE",
+  ]) if (!commit.includes(token)) failures.push(`current-attempt assistant commit missing ${token}`);
+  for (const token of [
+    "v_attempt.status <> 'running'", "v_attempt.attempt_number <> p_attempt_number",
+    "AND turn_attempt.user_id = p_user_id", "AND turn_attempt.conversation_id = p_conversation_id",
+    "AND turn_attempt.client_turn_id = p_client_turn_id", "INSERT INTO public.agent_messages",
+  ]) if (!tool.includes(token)) failures.push(`current-attempt tool append missing ${token}`);
+  if (!s.hook.includes('!["failed", "stopped"].includes(turn.delivery)')) {
+    failures.push("retry no longer preserves the failed/stopped in-place transition boundary");
   }
   const authorization = s.confirm.indexOf(
     "await authorizeAgentTool(tool, finalArgs",
@@ -303,15 +344,9 @@ export function check(s) {
       `#1972 terminalization owner bypassed: expected 1 direct confirmation assistant writer, found ${confirmationMessageInserts}`,
     );
   }
-  for (
-    const token of [
-      'await serviceClient\n          .from("agent_messages")',
-      'await serviceClient.from("agent_messages").insert({',
-    ]
-  ) {
-    if (!s.chat.includes(token)) {
-      failures.push(`server-owned chat message writer missing ${token}`);
-    }
+  const chatDirectWrites = s.chat.match(/\.from\(\s*"agent_messages"\s*\)[\s\S]{0,80}\.insert\(/g) ?? [];
+  if (chatDirectWrites.length !== 1) {
+    failures.push("chat bypasses #3429 RPC turn authority outside the protected #1972 terminalization");
   }
   for (
     const token of [
@@ -327,6 +362,7 @@ export function check(s) {
   for (
     const token of [
       "legitimate owner metadata update failed",
+      "authenticated title provenance update was accepted",
       "authenticated state RPC execution was accepted",
       "SET LOCAL ROLE service_role",
       "service assistant CAS did not commit",
@@ -338,6 +374,11 @@ export function check(s) {
       failures.push(`implementor PG17 authority proof missing ${token}`);
     }
   }
+  for (const token of [
+    "same id/digest did not recover one logical turn", "digest mismatch wrote or recovered authority",
+    "authenticated client bypassed service turn authority", "issue_3429 stale revision committed",
+    "assistant commit was not exactly once", "title provenance or summary ownership regressed",
+  ]) if (!s.turnAuthorityPg.includes(token)) failures.push(`#3429 PG17 authority proof missing ${token}`);
   for (
     const token of [
       "legitimate user-message append failed",
@@ -433,9 +474,8 @@ export function check(s) {
   for (
     const token of [
       "newClientTurnId",
-      "turnPayloads",
-      "payload, clientTurnId",
-      'local_delivery: "failed"',
+      "interface LocalTurn",
+      "latest.attachments, clientTurnId",
       "setPendingAction(unresolved)",
     ]
   ) {
@@ -545,6 +585,16 @@ export function check(s) {
       `#1985 workflow expected 3 implementor PG17 references, found ${implementorPgWorkflowRefs}`,
     );
   }
+  for (const testPath of [
+    "issue_3429_ari_chat_context.implementor.pg17.test.sql",
+    "issue_3429_ari_turn_authority.tester_adversarial.pg17.test.sql",
+    "issue_3429_ari_turn_scope.tester.adversarial.test.tsx",
+  ]) if (s.workflow.split(testPath).length - 1 !== 3) {
+    failures.push(`#3429 workflow routing incomplete for ${testPath}`);
+  }
+  if (!s.input.includes("(text.trim().length > 0 || hasReadyAttachments) && !disabled && !sendDisabled")) {
+    failures.push("#3429 InputBar does not require both disabled gates for text/file sends");
+  }
   return failures;
 }
 
@@ -560,15 +610,40 @@ if (process.argv.includes("--self-test")) {
       to: "removed_revision",
     },
     {
-      key: "migration",
-      from: "CREATE OR REPLACE FUNCTION public.claim_agent_first_turn",
-      to: "CREATE OR REPLACE FUNCTION public.removed_first_turn_claim",
+      key: "turnMigration",
+      from: "CREATE OR REPLACE FUNCTION public.claim_agent_chat_turn",
+      to: "CREATE OR REPLACE FUNCTION public.removed_chat_turn_claim",
     },
     {
-      key: "migration",
+      key: "turnMigration",
+      from: "v_attempt.request_digest <> p_request_digest",
+      to: "false",
+    },
+    {
+      key: "turnMigration",
+      from: "v_attempt.manifest_digest <> p_manifest_digest",
+      to: "false",
+    },
+    {
+      key: "turnMigration",
+      from: "turn_attempt.user_id = p_user_id",
+      to: "turn_attempt.user_id = turn_attempt.user_id",
+    },
+    {
+      key: "turnMigration",
+      from: "turn_attempt.client_turn_id = p_client_turn_id",
+      to: "turn_attempt.client_turn_id = turn_attempt.client_turn_id",
+    },
+    {
+      key: "chat",
+      from: "summary,brand_id,title,task_state,task_state_revision",
+      to: "summary,brand_id,title,task_state",
+    },
+    {
+      key: "turnMigration",
       from:
-        "CREATE OR REPLACE FUNCTION public.commit_agent_task_assistant_turn",
-      to: "CREATE OR REPLACE FUNCTION public.removed_task_turn_commit",
+        "CREATE OR REPLACE FUNCTION public.commit_agent_chat_assistant_turn",
+      to: "CREATE OR REPLACE FUNCTION public.removed_chat_turn_commit",
     },
     {
       key: "migration",
@@ -636,8 +711,8 @@ if (process.argv.includes("--self-test")) {
     },
     {
       key: "chat",
-      from: '"claim_agent_first_turn"',
-      to: '"removed_first_turn_claim"',
+      from: '"claim_agent_chat_turn"',
+      to: '"removed_chat_turn_claim"',
     },
     {
       key: "chat",
@@ -646,19 +721,22 @@ if (process.argv.includes("--self-test")) {
     },
     {
       key: "chat",
-      from: "p_user_id: args.userId",
-      to: "p_user_id: removedUserScope",
-    },
-    {
-      key: "chat",
       from: "client: serviceClient",
       to: "client: userClient",
     },
     {
       key: "chat",
-      from: 'await serviceClient.from("agent_messages").insert({',
-      to: 'await userClient.from("agent_messages").insert({',
+      from: '"append_agent_chat_tool_result"',
+      to: '"direct_agent_messages_tool_write"',
     },
+    { key: "turnMigration", from: "v_attempt.status <> 'running'", to: "false" },
+    {
+      key: "turnMigration",
+      from: "IF NOT FOUND OR v_attempt.attempt_number <> p_attempt_number\n    OR v_attempt.status <> 'running'",
+      to: "IF NOT FOUND OR false\n    OR v_attempt.status <> 'running'",
+    },
+    { key: "turnMigration", from: "AND turn_attempt.conversation_id = p_conversation_id", to: "AND true" },
+    { key: "turnMigration", from: "AND task_state_revision = p_expected_revision", to: "AND true" },
     {
       key: "chat",
       from: "TASK_REPLACED_BY_NEW_TASK",
@@ -688,8 +766,13 @@ if (process.argv.includes("--self-test")) {
     },
     {
       key: "hook",
-      from: "payload, clientTurnId",
-      to: "payload, newClientTurnId()",
+      from: "latest.attachments, clientTurnId",
+      to: "latest.attachments, newClientTurnId()",
+    },
+    {
+      key: "hook",
+      from: '!["failed", "stopped"].includes(turn.delivery)',
+      to: '!["failed"].includes(turn.delivery)',
     },
     {
       key: "activeSelectionStore",

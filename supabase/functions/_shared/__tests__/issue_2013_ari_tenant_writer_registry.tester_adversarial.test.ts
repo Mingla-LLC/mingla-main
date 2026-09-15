@@ -1,141 +1,75 @@
-// #2013 retest — every agent_messages writer must carry authenticated
-// tenant provenance. This scans every insert object rather than checking that
-// each file contains the trusted token somewhere.
-import {
-  assert,
-  assertEquals,
-} from "https://deno.land/std@0.224.0/assert/mod.ts";
+// #2013 retest — register actual same-chain Edge writers and the named SQL
+// authority functions. A read must never inherit a later unrelated insert.
+import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
-function findInsertBodies(source: string): string[] {
-  const bodies: string[] = [];
+function directInsertStatements(source: string): string[] {
+  const statements: string[] = [];
   const owner = '.from("agent_messages")';
   let cursor = 0;
   while (true) {
     const ownerAt = source.indexOf(owner, cursor);
-    if (ownerAt < 0) break;
+    if (ownerAt < 0) return statements;
+    const statementEnd = source.indexOf(";", ownerAt);
     const insertAt = source.indexOf(".insert(", ownerAt + owner.length);
-    const nextOwner = source.indexOf(owner, ownerAt + owner.length);
-    if (insertAt < 0 || (nextOwner >= 0 && nextOwner < insertAt)) {
-      cursor = ownerAt + owner.length;
-      continue;
+    if (insertAt >= 0 && (statementEnd < 0 || insertAt < statementEnd)) {
+      statements.push(source.slice(ownerAt, statementEnd < 0 ? source.length : statementEnd));
     }
-    const objectAt = source.indexOf("{", insertAt + ".insert(".length);
-    assert(
-      objectAt >= 0,
-      "agent_messages insert must receive an object literal",
-    );
-
-    let depth = 0;
-    let quote: "'" | '"' | "`" | null = null;
-    let escaped = false;
-    let lineComment = false;
-    let blockComment = false;
-    let end = -1;
-    for (let index = objectAt; index < source.length; index += 1) {
-      const char = source[index];
-      const next = source[index + 1];
-      if (lineComment) {
-        if (char === "\n") lineComment = false;
-        continue;
-      }
-      if (blockComment) {
-        if (char === "*" && next === "/") {
-          blockComment = false;
-          index += 1;
-        }
-        continue;
-      }
-      if (quote) {
-        if (escaped) escaped = false;
-        else if (char === "\\") escaped = true;
-        else if (char === quote) quote = null;
-        continue;
-      }
-      if (char === "/" && next === "/") {
-        lineComment = true;
-        index += 1;
-        continue;
-      }
-      if (char === "/" && next === "*") {
-        blockComment = true;
-        index += 1;
-        continue;
-      }
-      if (char === "'" || char === '"' || char === "`") {
-        quote = char;
-        continue;
-      }
-      if (char === "{") depth += 1;
-      if (char === "}") {
-        depth -= 1;
-        if (depth === 0) {
-          end = index + 1;
-          break;
-        }
-      }
-    }
-    assert(end > objectAt, "agent_messages insert object must be balanced");
-    bodies.push(source.slice(objectAt, end));
-    cursor = end;
+    cursor = ownerAt + owner.length;
   }
-  return bodies;
 }
 
-Deno.test("#2013 tester retest: every chat and confirmation message writer emits tenant-v1 provenance", async () => {
-  const writers = [
-    [
-      "agent-chat",
-      await Deno.readTextFile("supabase/functions/agent-chat/index.ts"),
-    ],
-    [
-      "agent-confirm-action",
-      await Deno.readTextFile(
-        "supabase/functions/agent-confirm-action/index.ts",
-      ),
-    ],
-  ] as const;
+function sqlFunction(source: string, name: string, next: string): string {
+  const start = source.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
+  const end = source.indexOf(`CREATE OR REPLACE FUNCTION public.${next}`, start);
+  assert(start >= 0 && end > start, `${name} function window must be present`);
+  return source.slice(start, end);
+}
 
-  const observed: Record<string, number> = {};
-  for (const [name, source] of writers) {
-    const bodies = findInsertBodies(source);
-    assert(
-      bodies.length > 0,
-      `${name} must expose at least one agent_messages writer`,
-    );
-    observed[name] = bodies.length;
-    for (const [index, body] of bodies.entries()) {
-      assertEquals(
-        body.match(/\bprompt_version\s*:/g)?.length ?? 0,
-        1,
-        `${name} writer ${index + 1} must have exactly one provenance field`,
-      );
-      assert(
-        /\bprompt_version\s*:\s*TENANT_CONTEXT_VERSION\b/.test(body),
-        `${name} writer ${
-          index + 1
-        } can persist replayable data without tenant-v1 provenance`,
-      );
+Deno.test("#2013 tester retest: direct writers and #3429 RPC writers each carry one scoped provenance path", async () => {
+  const chat = await Deno.readTextFile("supabase/functions/agent-chat/index.ts");
+  const confirm = await Deno.readTextFile("supabase/functions/agent-confirm-action/index.ts");
+  const turnMigration = await Deno.readTextFile(
+    "supabase/migrations/20270708003429_issue_3429_ari_chat_context.sql",
+  );
+
+  // [TEST-MOD-APPROVED #3429] The old four chat direct inserts are superseded
+  // by service-only claim/commit/tool RPCs. Retained invariant: every real
+  // writer has exactly one provenance field and an explicit tenant scope.
+  const direct = {
+    "agent-chat": directInsertStatements(chat),
+    "agent-confirm-action": directInsertStatements(confirm),
+  };
+  assertEquals(Object.fromEntries(Object.entries(direct).map(([name, rows]) => [name, rows.length])), {
+    "agent-chat": 1,
+    "agent-confirm-action": 1,
+  });
+  for (const [name, rows] of Object.entries(direct)) {
+    for (const row of rows) {
+      assertEquals(row.match(/\bprompt_version\s*:/g)?.length ?? 0, 1, `${name} direct writer has one provenance field`);
+      assert(/\bprompt_version\s*:\s*TENANT_CONTEXT_VERSION\b/.test(row), `${name} direct writer has tenant provenance`);
+      assert(/\buser_id\s*:/.test(row) && /\bconversation_id\s*:/.test(row), `${name} direct writer has explicit scope`);
     }
   }
 
-  // [TEST-MOD-APPROVED #1985] #1972 still owns terminal tool rows atomically,
-  // and #1985 moves one chat assistant writer into its service-only state CAS.
-  // Edge retains four chat writers and one confirmation follow-up writer.
-  assertEquals(observed, { "agent-chat": 4, "agent-confirm-action": 1 });
+  const functions = [
+    ["claim_agent_chat_turn", "commit_agent_chat_assistant_turn"],
+    ["commit_agent_chat_assistant_turn", "append_agent_chat_tool_result"],
+    ["append_agent_chat_tool_result", "queue_agent_attachment_cleanup"],
+  ] as const;
+  for (const [name, next] of functions) {
+    const window = sqlFunction(turnMigration, name, next);
+    assert(window.includes("INSERT INTO public.agent_messages"), `${name} registers its real message writer`);
+    assert(window.includes("p_prompt_version"), `${name} carries supplied provenance exactly once`);
+    assertEquals(window.match(/INSERT INTO public\.agent_messages/g)?.length ?? 0, 1, `${name} has one message writer`);
+    assert(window.includes("p_user_id") && window.includes("p_conversation_id"), `${name} requires explicit tenant scope`);
+    assert(window.includes("TO service_role"), `${name} is service-only`);
+  }
+});
 
-  const taskStateMigration = await Deno.readTextFile(
-    "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql",
-  );
-  const assistantWriter = taskStateMigration.slice(
-    taskStateMigration.indexOf(
-      "CREATE OR REPLACE FUNCTION public.commit_agent_task_assistant_turn",
-    ),
-    taskStateMigration.indexOf(
-      "CREATE OR REPLACE FUNCTION public.commit_agent_task_outcome",
-    ),
-  );
-  assert(assistantWriter.includes("INSERT INTO public.agent_messages"));
-  assert(assistantWriter.includes("p_prompt_version"));
-  assert(assistantWriter.includes("AND user_id = p_user_id"));
-  assert(assistantWriter.includes(") TO service_role;"));
+Deno.test("#2013 tester retest: a read cannot be paired with a later unrelated insert", () => {
+  const readThenLaterInsert = [
+    'client.from("agent_messages").select("id");',
+    'client.from("other_table").insert({ prompt_version: TENANT_CONTEXT_VERSION });',
+  ].join("\n");
+  assertEquals(directInsertStatements(readThenLaterInsert), []);
 });
