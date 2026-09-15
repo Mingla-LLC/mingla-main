@@ -100,6 +100,8 @@ import type {
   PublicExperience,
   PublicExperienceDate,
 } from "../../../src/services/publicExperienceService";
+// #3372 — naira shows "₦", not "NGN", on the public experience page (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 function allDatesPast(isos: string[], nowMs: number = Date.now()): boolean {
   const valid = isos
@@ -735,11 +737,14 @@ function ctaUnavailableLabel(cta: CtaState): string {
 
 function formatExpPrice(priceCents: number, currency: string): string {
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-      maximumFractionDigits: 0,
-    }).format(priceCents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+        maximumFractionDigits: 0,
+      }).format(priceCents / 100),
+      currency,
+    );
   } catch {
     return `${(priceCents / 100).toFixed(0)} ${currency}`;
   }

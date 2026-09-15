@@ -48,6 +48,8 @@ import type {
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+// #3372 — naira trip package price changes show "₦", not "NGN" (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 const REASON_MIN = 10;
 const REASON_MAX = 200;
@@ -485,10 +487,13 @@ const formatCentsMinor = (
 ): string => {
   if (cents === null) return "—";
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency,
+      }).format(cents / 100),
       currency,
-    }).format(cents / 100);
+    );
   } catch {
     return `${(cents / 100).toFixed(2)} ${currency}`;
   }

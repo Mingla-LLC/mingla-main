@@ -75,6 +75,8 @@ import { resolveRsvpCta, type RsvpCtaState } from "./offeringCta";
 import { type SocialProofSampleEntry } from "./socialProofTypes";
 import { type PublicBrandProps, type PublicEventProps } from "./types";
 import { type ResolvedTheme } from "./designTokens";
+// #3372 — naira chip-in copy shows "₦", not "NGN" (#3341 rule).
+import { withCurrencyGlyph } from "./currencyGlyph";
 import { normalizeCityCountry } from "./normalizeCityCountry";
 // issue #2468 — the ONE privacy gate + label composer for the venue card.
 import {
@@ -708,11 +710,14 @@ export const useRsvpOfferingState = (
   // ── ORCH-1291 — server-code → gift-framed copy (DESIGN §4.7). ──
   const fmtChipWhole = useCallback((cents: number): string => {
     try {
-      return new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: chipCurrency || "USD",
-        maximumFractionDigits: 0,
-      }).format(cents / 100);
+      return withCurrencyGlyph(
+        new Intl.NumberFormat(undefined, {
+          style: "currency",
+          currency: chipCurrency || "USD",
+          maximumFractionDigits: 0,
+        }).format(cents / 100),
+        chipCurrency,
+      );
     } catch {
       return `${Math.round(cents / 100)} ${chipCurrency}`;
     }

@@ -52,6 +52,9 @@ import {
   typography,
 } from "./designTokens";
 import { resolveTheme } from "./themeResolver";
+// #3372 — naira ticket prices show "₦", not "NGN" (#3341 rule). This legacy page
+// still renders a password-protected event's tickets once the password is entered.
+import { withCurrencyGlyph } from "./currencyGlyph";
 // ORCH-1117 — the single buy/unavailable gate logic. PublicTicketRow reuses the
 // shared per-tier sub-predicates so the inline row and the host floating bar
 // can never disagree about sold-out / sale-ended / door-only.
@@ -188,12 +191,15 @@ const formatTicketPrice = (
   // issue #1014 — defensive: never fabricate a symbol for a null code.
   if (currency === null) return price.toFixed(2);
   try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
+    return withCurrencyGlyph(
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      }).format(price),
       currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(price);
+    );
   } catch {
     return `${currency} ${price.toFixed(2)}`;
   }

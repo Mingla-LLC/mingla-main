@@ -103,6 +103,8 @@ import {
 } from "../../../src/components/trip/tripOfferingAdapter";
 import { collapseTripPlanChoice } from "../../../src/components/trip/tripCartPlanChoice";
 import { recordShareDestination } from "../../../src/analytics/shareDestination";
+// #3372 — naira shows "₦", not "NGN", on the public trip page (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 // issue #3284 — the refund ladder's chunk starts with this page's data fetch.
 import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
 
@@ -777,11 +779,14 @@ function ctaUnavailableLabel(cta: CtaState): string {
 // recomputes fees).
 function formatTripPrice(priceCents: number, currency: string): string {
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-      maximumFractionDigits: 0,
-    }).format(priceCents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+        maximumFractionDigits: 0,
+      }).format(priceCents / 100),
+      currency,
+    );
   } catch {
     return `${(priceCents / 100).toFixed(0)} ${currency}`;
   }

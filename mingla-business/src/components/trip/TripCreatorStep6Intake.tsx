@@ -37,6 +37,8 @@ import { createEmptyIntakeSchema } from "../../services/intakeSchemaService";
 import type { TripPricingTier } from "../../services/tripsService";
 import { IntakeQuestionPreview } from "./IntakeQuestionPreview";
 import { IntakeSchemaBuilder } from "./IntakeSchemaBuilder";
+// #3372 — naira package prices show "₦", not "NGN" (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 export interface TripCreatorStep6IntakeProps {
   /** All ticket tiers on the trip (from Trip.pricingTiers). */
@@ -52,12 +54,14 @@ const WIDE_BREAKPOINT_PT = 768;
 
 function formatPriceLabel(tier: TripPricingTier): string {
   try {
-    const formatter = new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: tier.currency,
-      maximumFractionDigits: 0,
-    });
-    return formatter.format(tier.priceCents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: tier.currency,
+        maximumFractionDigits: 0,
+      }).format(tier.priceCents / 100),
+      tier.currency,
+    );
   } catch {
     return `${(tier.priceCents / 100).toFixed(0)} ${tier.currency}`;
   }

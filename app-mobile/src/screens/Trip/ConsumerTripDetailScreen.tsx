@@ -92,6 +92,9 @@ import {
   type TripReserveLine,
   type TripTierLike,
 } from "@mingla/offering-rendering";
+// #3372 — naira reads "₦", not "NGN", on the trip screen (the shared #3341 rule).
+// Deep specifier, not the barrel, so suites that mock the barrel stay untouched.
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 // ORCH-1138 Leg 1C — the shared Direction-A foundation primitives. The consumer
 // trip detail converges on the business/web trip page (TripPreview FOUNDATION
 // mode) by REUSING these (NOT importing TripPreview, which is business-local).
@@ -240,11 +243,14 @@ function formatMoney(cents: number | null, currency: string | null): string | nu
   if (cents === null) return null;
   const code = currency ?? "USD";
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: code,
-      maximumFractionDigits: 0,
-    }).format(cents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: code,
+        maximumFractionDigits: 0,
+      }).format(cents / 100),
+      code,
+    );
   } catch {
     return `${(cents / 100).toFixed(0)} ${code}`;
   }
@@ -677,10 +683,13 @@ export default function ConsumerTripDetailScreen({
         (value, currency) =>
           (() => {
             try {
-              return new Intl.NumberFormat(undefined, {
-                style: "currency",
-                currency: currency || "USD",
-              }).format(value);
+              return withCurrencyGlyph(
+                new Intl.NumberFormat(undefined, {
+                  style: "currency",
+                  currency: currency || "USD",
+                }).format(value),
+                currency,
+              );
             } catch {
               return `${value.toFixed(2)} ${currency}`;
             }

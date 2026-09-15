@@ -72,6 +72,8 @@ import type {
   PublicExperience,
   PublicExperienceBrand,
 } from "../../services/publicExperienceService";
+// #3372 — naira shows "₦", not "NGN", in the experience preview (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 export interface ExperiencePreviewProps {
   experience: PublicExperience;
@@ -140,10 +142,13 @@ function formatFromPrice(experience: PublicExperience): string {
   if (t === null) return "Pricing TBD";
   if (t.isFree || t.priceCents === 0) return "Free";
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: t.currency || "USD",
-    }).format(t.priceCents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: t.currency || "USD",
+      }).format(t.priceCents / 100),
+      t.currency,
+    );
   } catch {
     return `${(t.priceCents / 100).toFixed(2)} ${t.currency}`;
   }

@@ -38,6 +38,8 @@ import {
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { installmentReassuranceText } from "../../copy/installmentReassurance";
+// #3372 — naira instalments show "₦", not "NGN" (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 export interface InstallmentScheduleDisplaySchedule {
   fullPriceCents: number;
@@ -76,10 +78,13 @@ export interface InstallmentScheduleDisplayProps {
 
 function formatCurrency(cents: number, currency: string): string {
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency.toUpperCase(),
-    }).format(cents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency.toUpperCase(),
+      }).format(cents / 100),
+      currency,
+    );
   } catch {
     return `${(cents / 100).toFixed(2)} ${currency.toUpperCase()}`;
   }

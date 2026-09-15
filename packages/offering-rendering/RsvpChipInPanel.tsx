@@ -33,6 +33,9 @@ import {
   type ThemePalette,
 } from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
+// #3372 — naira chip-ins show "₦", not "NGN", whatever the engine or locale
+// (#3341 rule). The amount-field prefix below reads the same formatter.
+import { withCurrencyGlyph } from "./currencyGlyph";
 
 const DANGER = "#ef4444";
 
@@ -47,21 +50,27 @@ const opaqueAccentFill = (palette: ThemePalette): string =>
 // Intl.NumberFormat pattern with a try/catch fallback.
 const fmtWhole = (cents: number, currency: string): string => {
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-      maximumFractionDigits: 0,
-    }).format(cents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+        maximumFractionDigits: 0,
+      }).format(cents / 100),
+      currency,
+    );
   } catch {
     return `${Math.round(cents / 100)} ${currency}`;
   }
 };
 const fmtExact = (cents: number, currency: string): string => {
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-    }).format(cents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+      }).format(cents / 100),
+      currency,
+    );
   } catch {
     return `${(cents / 100).toFixed(2)} ${currency}`;
   }

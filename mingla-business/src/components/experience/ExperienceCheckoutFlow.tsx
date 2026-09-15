@@ -38,6 +38,8 @@ import type {
 // restricted sale, mounted in the content flow (Amendment 1 §A7). Renders null
 // when the sale is unrestricted or the viewer is allowed.
 import { TicketCheckoutAccessNotice } from "../event/TicketCheckoutAccessNotice";
+// #3372 — naira shows "₦", not "NGN" (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 export interface ExperienceCheckoutFlowProps {
   experience: PublicExperience;
@@ -48,10 +50,13 @@ export interface ExperienceCheckoutFlowProps {
 function formatPriceMajor(priceCents: number, currency: string): string {
   if (priceCents === 0) return "Free";
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-    }).format(priceCents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+      }).format(priceCents / 100),
+      currency,
+    );
   } catch {
     return `${(priceCents / 100).toFixed(2)} ${currency}`;
   }

@@ -66,6 +66,8 @@ import {
 
 import { boldFontFamily, offeringSurfaceStyles, type ThemePalette } from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
+// #3372 — naira shows "₦", not "NGN", whatever the engine or locale (#3341 rule).
+import { withCurrencyGlyph } from "./currencyGlyph";
 import { EventCoverMedia } from "./EventCoverMedia";
 import { StopSpine } from "./StopSpine";
 import { BadgeCheck, Calendar, Clock, MapPin, Sparkles, Users } from "./LucideIcons";
@@ -176,10 +178,13 @@ export function experiencePriceLabel(
       : t.priceCents;
   try {
     return {
-      label: new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: t.currency || "USD",
-      }).format(cents / 100),
+      label: withCurrencyGlyph(
+        new Intl.NumberFormat(undefined, {
+          style: "currency",
+          currency: t.currency || "USD",
+        }).format(cents / 100),
+        t.currency,
+      ),
       isFree: false,
     };
   } catch {

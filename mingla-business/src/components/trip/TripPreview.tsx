@@ -87,6 +87,8 @@ import type {
   TripPricingTier,
 } from "../../services/tripsService";
 import type { BrandStripeStatus } from "../../store/currentBrandStore";
+// #3372 — naira shows "₦", not "NGN", in the trip preview (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 export interface TripPreviewBrand {
   id: string;
@@ -222,10 +224,13 @@ function formatPrice(tier: TripPricingTier | undefined): string {
   if (tier.priceCents === 0) return "Free";
   try {
     const major = tier.priceCents / 100;
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: tier.currency || "USD",
-    }).format(major);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: tier.currency || "USD",
+      }).format(major),
+      tier.currency,
+    );
   } catch {
     return `${(tier.priceCents / 100).toFixed(2)} ${tier.currency}`;
   }

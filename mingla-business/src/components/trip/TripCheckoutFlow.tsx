@@ -42,6 +42,8 @@ import {
 // trip page is byte-identical to today. Purchase authority stays with the route
 // owner and, authoritatively, with the server.
 import { TicketCheckoutAccessNotice } from "../event/TicketCheckoutAccessNotice";
+// #3372 — naira shows "₦", not "NGN" (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 export interface TripCheckoutFlowProps {
   trip: Trip;
@@ -75,10 +77,13 @@ export interface TripCheckoutFlowProps {
 function formatPriceMajor(priceCents: number, currency: string): string {
   if (priceCents === 0) return "Free";
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-    }).format(priceCents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+      }).format(priceCents / 100),
+      currency,
+    );
   } catch {
     return `${(priceCents / 100).toFixed(2)} ${currency}`;
   }

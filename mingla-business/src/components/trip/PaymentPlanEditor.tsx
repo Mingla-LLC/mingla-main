@@ -43,6 +43,8 @@ import { GlassCard } from "../ui/GlassCard";
 // Class 2 fix: @react-native-community/datetimepicker has NO web build, so the
 // installment fixed-due-date picker was broken on web.
 import { WebDateTimeInput } from "../ui/WebDateTimeInput";
+// #3372 — naira plan amounts show "₦", not "NGN" (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 // ---------- shape ----------
 
@@ -91,10 +93,13 @@ const LOCKED_BANNER_COPY =
 
 function formatCurrency(cents: number, currency: string): string {
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency.toUpperCase(),
-    }).format(cents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency.toUpperCase(),
+      }).format(cents / 100),
+      currency,
+    );
   } catch {
     return `${(cents / 100).toFixed(2)} ${currency.toUpperCase()}`;
   }

@@ -106,6 +106,8 @@ import {
 } from "../../utils/paidPublishGuards";
 import type { ExperienceDetail } from "../../services/experienceDetailService";
 import type { ThemeInput } from "@mingla/offering-rendering";
+// #3372 — the price-field symbol reads "₦", not "NGN " (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import {
   normalizeThemeOverrides,
   patchOfferingTheme,
@@ -249,14 +251,15 @@ const RPC_ERROR_COPY: Record<string, string> = {
     "This experience can't be edited in its current state.",
 };
 
-const currencySymbolFor = (currency: string): string =>
-  currency === "GBP"
-    ? "£"
-    : currency === "EUR"
-      ? "€"
-      : currency === "USD"
-        ? "$"
-        : `${currency} `;
+const currencySymbolFor = (currency: string): string => {
+  if (currency === "GBP") return "£";
+  if (currency === "EUR") return "€";
+  if (currency === "USD") return "$";
+  // #3372 — a currency with a local glyph (naira) reads "₦", hugging the amount
+  // the way "$" does; any other code keeps "CODE ".
+  const glyph = withCurrencyGlyph(currency, currency);
+  return glyph !== currency ? glyph : `${currency} `;
+};
 
 const EMPTY_COVER: CoverPatch = {
   coverMediaUrl: null,

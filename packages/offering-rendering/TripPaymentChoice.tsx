@@ -19,17 +19,22 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { ThemePalette } from "./themePalette";
+// #3372 — naira shows "₦", not "NGN", whatever the engine or locale (#3341 rule).
+import { withCurrencyGlyph } from "./currencyGlyph";
 import type { ProjectedTripSchedule } from "./tripOfferingTypes";
 
 export type TripPaymentPlanChoice = "full" | "installments";
 
 function formatMoneyExact(cents: number, currency: string): string {
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-      maximumFractionDigits: 2,
-    }).format(cents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+        maximumFractionDigits: 2,
+      }).format(cents / 100),
+      currency,
+    );
   } catch {
     return `${(cents / 100).toFixed(2)} ${currency}`;
   }

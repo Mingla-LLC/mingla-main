@@ -67,6 +67,9 @@ import {
   tripTierDepositTodayCents,
   type TripTierLike,
 } from "@mingla/offering-rendering";
+// #3372 — naira reads "₦", not "NGN", in the cart (the shared #3341 rule).
+// Deep specifier, not the barrel, so suites that mock the barrel stay untouched.
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 // issue #2265 — TYPE ONLY. A value import here would pull the Stripe native SDK
 // into the cart sheet's module graph; `import type` is erased at compile time.
@@ -144,10 +147,13 @@ const CONSUMER_TICKET_CART_THEME: QuantityRowTheme = {
  */
 const formatMajorCurrency = (value: number, currency: string): string => {
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-    }).format(value);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+      }).format(value),
+      currency,
+    );
   } catch {
     return `${value.toFixed(2)} ${currency}`;
   }
@@ -159,10 +165,13 @@ const formatMajorCurrency = (value: number, currency: string): string => {
  */
 const formatCentsCurrency = (cents: number, currency: string): string => {
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-    }).format(cents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+      }).format(cents / 100),
+      currency,
+    );
   } catch {
     return `${(cents / 100).toFixed(2)} ${currency}`;
   }
