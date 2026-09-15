@@ -36,6 +36,7 @@ on:
       - "mingla-business/src/services/__tests__/issue_1780_wizard_invites.implementor.test.ts"
       - "mingla-business/src/services/__tests__/issue_1780_feature_flag_rollback.tester_adversarial.test.ts"
       - "mingla-business/src/services/__tests__/issue_1780_stale_group_intent.tester_adversarial.test.ts"
+      - "mingla-business/src/services/__tests__/issue_1780_observability.tester_adversarial.test.ts"
       - "supabase/functions/brand-people-export/index.ts"
       - "supabase/config.toml"
       - ".github/workflows/issue-873-guest-status-roster-tests.yml"
@@ -78,6 +79,7 @@ on:
       - "mingla-business/src/services/__tests__/issue_1780_wizard_invites.implementor.test.ts"
       - "mingla-business/src/services/__tests__/issue_1780_feature_flag_rollback.tester_adversarial.test.ts"
       - "mingla-business/src/services/__tests__/issue_1780_stale_group_intent.tester_adversarial.test.ts"
+      - "mingla-business/src/services/__tests__/issue_1780_observability.tester_adversarial.test.ts"
       - "supabase/functions/brand-people-export/index.ts"
       - "supabase/config.toml"
       - ".github/workflows/issue-873-guest-status-roster-tests.yml"
@@ -133,6 +135,7 @@ jobs:
           src/services/__tests__/issue_1780_wizard_invites.implementor.test.ts
           src/services/__tests__/issue_1780_feature_flag_rollback.tester_adversarial.test.ts
           src/services/__tests__/issue_1780_stale_group_intent.tester_adversarial.test.ts
+          src/services/__tests__/issue_1780_observability.tester_adversarial.test.ts
       - run: npx jest --config jest.issue1780.render.cjs --runInBand
 
   issue-873-pg17:
