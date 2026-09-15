@@ -47,7 +47,6 @@ import { formatEventLevelTicketBadges } from "../../utils/ticketDisplay";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
-import { Pill } from "../ui/Pill";
 // ORCH-1076 Stream B — the Stripe-blocked status card is now the shared
 // offering primitive; this Step-7 render is a byte-identical refactor (the
 // shared card's defaults reproduce the event copy + look). Pinned by
@@ -59,6 +58,7 @@ import { resolveTheme } from "../../../../packages/offering-rendering/themeResol
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 import { buildDraftThemePreview } from "../theme/themePreviewContent";
+import { themedPreviewCardColors } from "../theme/themedPreviewCardColors";
 import { type StepBodyProps } from "./types";
 
 // #1742 / ORCH-1083 — the enriched intelligence presentation is Review-only.
@@ -132,6 +132,13 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
     () => createThemePalette(resolveTheme(brandTheme, draft.themeOverrides ?? null)),
     [brandTheme, draft.themeOverrides],
   );
+  // The card paints the THEMED page as its surface, so every text on it must
+  // come from the palette too — never the dark app-chrome tokens (near-white
+  // text, glass Pill) that vanish on a light theme. See themedPreviewCardColors.
+  const card = useThemeMemo(
+    () => themedPreviewCardColors(themePalette),
+    [themePalette],
+  );
   const [themeSheetOpen, setThemeSheetOpen] = React.useState(false);
   const handleThemeChange = useCallback(
     (next: Parameters<typeof updateDraft>[0]["themeOverrides"]): void => {
@@ -162,7 +169,11 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
         onPress={handleMiniCardPress}
         accessibilityRole="button"
         accessibilityLabel="Preview public page"
-        style={[styles.miniCard, { backgroundColor: themePalette.page }]}
+        style={[
+          styles.miniCard,
+          { backgroundColor: card.surface, borderColor: card.border },
+        ]}
+        testID="event-preview-mini-card"
       >
         <View style={styles.miniCover}>
           <EventCoverMedia
@@ -175,29 +186,49 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
           />
         </View>
         <View style={styles.miniBody}>
-          <Text style={[styles.miniDate, { color: themePalette.accent }]}>{dateLine}</Text>
+          <Text style={[styles.miniDate, { color: card.dateText }]}>{dateLine}</Text>
           <Text
-            style={[styles.miniTitle, { color: themePalette.primaryText }]}
+            style={[styles.miniTitle, { color: card.titleText }]}
             numberOfLines={1}
           >
             {titleLine}
           </Text>
-          <Text style={styles.miniVenue} numberOfLines={1}>
+          <Text
+            style={[styles.miniVenue, { color: card.venueText }]}
+            numberOfLines={1}
+          >
             {venueLine} · {priceLine}
           </Text>
           {subline !== null ? (
             <View style={styles.recurrencePillRow}>
-              <View style={styles.recurrencePill}>
-                <Text style={styles.recurrencePillLabel}>{subline}</Text>
+              <View
+                style={[
+                  styles.recurrencePill,
+                  { backgroundColor: card.pillFill, borderColor: card.pillBorder },
+                ]}
+              >
+                <Text style={[styles.recurrencePillLabel, { color: card.pillText }]}>
+                  {subline}
+                </Text>
               </View>
             </View>
           ) : null}
           {ticketBadges.length > 0 ? (
+            // Themed pills, not the glass <Pill variant="info">: that primitive
+            // draws near-white text for the dark app canvas.
             <View style={styles.ticketBadgesRow}>
               {ticketBadges.map((b) => (
-                <Pill key={b.label} variant="info">
-                  {b.label}
-                </Pill>
+                <View
+                  key={b.label}
+                  style={[
+                    styles.recurrencePill,
+                    { backgroundColor: card.pillFill, borderColor: card.pillBorder },
+                  ]}
+                >
+                  <Text style={[styles.recurrencePillLabel, { color: card.pillText }]}>
+                    {b.label}
+                  </Text>
+                </View>
               ))}
             </View>
           ) : null}
@@ -309,9 +340,9 @@ const styles = StyleSheet.create({
   miniCard: {
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileElevated,
+    // Colours for the card and everything inside it are applied inline from
+    // themedPreviewCardColors — the card sits on the THEMED surface.
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
     marginBottom: spacing.md,
   },
   miniCover: {
@@ -326,18 +357,15 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: accent.warm,
     marginBottom: 4,
   },
   miniTitle: {
     fontSize: 18,
     fontWeight: "700",
     letterSpacing: -0.2,
-    color: textTokens.primary,
   },
   miniVenue: {
     fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
     marginTop: 2,
   },
   recurrencePillRow: {
@@ -355,14 +383,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: accent.tint,
     borderWidth: 1,
-    borderColor: accent.border,
   },
   recurrencePillLabel: {
     fontSize: typography.caption.fontSize,
     fontWeight: "600",
-    color: accent.warm,
   },
   statusCardWrap: {
     marginBottom: spacing.sm,

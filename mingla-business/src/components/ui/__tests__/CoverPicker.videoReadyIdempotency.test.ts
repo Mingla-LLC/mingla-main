@@ -18,6 +18,12 @@ describe("CoverPicker video-ready idempotency", () => {
   // last assertion pins changed from the Toast literal to the in-sheet notice.
   // [TEST-MOD-APPROVED #2715 A14] The ready URL is durable before ack, remembered
   // only after both awaits, and remains retryable when either durable step fails.
+  // [TEST-MOD-APPROVED #3409] The success step no longer SETS the
+  // in-sheet "Video cover added." notice — the video status card's `applied`
+  // state ("Video cover added / Your new cover is ready.") already confirms it, and
+  // the sheet showed both. The success step now CLEARS the notice
+  // (`setVideoPickNotice(null)`). The ordering this test protects is unchanged;
+  // only the success-feedback literal it anchors on moved.
   test("persists then acknowledges a ready upload before remembering success, and retries failures", () => {
     const pickerSource = repoFile("src/components/ui/CoverPicker.tsx");
     const persistStartIndex = pickerSource.indexOf(
@@ -33,7 +39,7 @@ describe("CoverPicker video-ready idempotency", () => {
       durableAckIndex,
     );
     const successNoticeIndex = pickerSource.indexOf(
-      'setVideoPickNotice({ tone: "info", text: "Video cover added." });',
+      "setVideoPickNotice(null);",
       rememberUrlIndex,
     );
     const catchIndex = pickerSource.indexOf("} catch {", successNoticeIndex);
@@ -64,5 +70,10 @@ describe("CoverPicker video-ready idempotency", () => {
     expect(retryActionIndex).toBeGreaterThan(retryCopyIndex);
     // The success feedback no longer flows through the root Toast.
     expect(pickerSource).not.toContain('onShowToast("Video cover updated.");');
+    // …nor through a second in-sheet notice under the status card.
+    expect(pickerSource).not.toContain('text: "Video cover added."');
+    expect(pickerSource).toContain(
+      'case "applied": return { title: "Video cover added", body: "Your new cover is ready.",',
+    );
   });
 });
