@@ -1,10 +1,122 @@
 import {
+  drainWizardInviteHealthAlerts,
+  drainWizardInviteObservability,
   handler,
   handleWizardWorker,
   resolveWizardQuoteCurrency,
 } from "./index.ts";
 
 const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+
+Deno.test("issue #1780 durable enqueue telemetry emits before acknowledgement and retries failed emission", async () => {
+  const originalInfo = console.info;
+  const calls: string[] = [];
+  const row = {
+    eventOccurrenceId: 1780,
+    eventName: "wizard_invite_outbox_enqueued",
+    offeringKind: "event",
+    selectionRevision: 3,
+    selectedCount: 12,
+    jobState: "pending",
+    leaseToken: "00000000-1780-4000-8000-000000000301",
+  };
+  try {
+    console.info = () => calls.push("emit");
+    const success = {
+      rpc: async (name: string) => {
+        calls.push(name);
+        if (name === "issue_1780_claim_wizard_invite_observability_v1") {
+          return { data: [row], error: null };
+        }
+        if (name === "issue_1780_complete_wizard_invite_observability_v1") {
+          if (calls.indexOf("emit") > calls.indexOf(name)) {
+            throw new Error("event was acknowledged before emission");
+          }
+          return { data: true, error: null };
+        }
+        throw new Error(`unexpected rpc ${name}`);
+      },
+    };
+    if (await drainWizardInviteObservability(success as never) !== 1) {
+      throw new Error(
+        "committed enqueue event was not emitted and acknowledged",
+      );
+    }
+    if (
+      calls.indexOf("emit") < 0 ||
+      calls.indexOf("emit") >
+        calls.indexOf("issue_1780_complete_wizard_invite_observability_v1")
+    ) {
+      throw new Error(`enqueue event ordering is unsafe: ${calls.join(",")}`);
+    }
+
+    calls.length = 0;
+    console.info = () => {
+      calls.push("emit_failed");
+      throw new Error("log sink unavailable");
+    };
+    const failed = {
+      rpc: async (name: string) => {
+        calls.push(name);
+        if (name === "issue_1780_claim_wizard_invite_observability_v1") {
+          return { data: [row], error: null };
+        }
+        throw new Error("failed emission must not be acknowledged");
+      },
+    };
+    if (await drainWizardInviteObservability(failed as never) !== 0) {
+      throw new Error("failed telemetry emission was reported as complete");
+    }
+    if (calls.includes("issue_1780_complete_wizard_invite_observability_v1")) {
+      throw new Error("failed telemetry emission was acknowledged");
+    }
+  } finally {
+    console.info = originalInfo;
+  }
+});
+
+Deno.test("issue #1780 health alert acknowledgement follows successful shared transport only", async () => {
+  const calls: string[] = [];
+  const alert = {
+    signalKey: "expired_lease",
+    occurrenceCount: 2,
+    firstDetectedAt: "2026-09-15T12:00:00.000Z",
+    notificationToken: "00000000-1780-4000-8000-000000000302",
+  };
+  const service = {
+    rpc: async (name: string) => {
+      calls.push(name);
+      if (name === "issue_1780_claim_wizard_invite_health_v1") {
+        return { data: [alert], error: null };
+      }
+      if (name === "issue_1780_complete_wizard_invite_health_alert_v1") {
+        return { data: true, error: null };
+      }
+      throw new Error(`unexpected rpc ${name}`);
+    },
+  };
+  const failedSend = async () => ({ attempted: 1, succeeded: 0, failed: 1 });
+  if (
+    await drainWizardInviteHealthAlerts(service as never, failedSend) !== 0 ||
+    calls.includes("issue_1780_complete_wizard_invite_health_alert_v1")
+  ) {
+    throw new Error("failed ops alert was acknowledged");
+  }
+
+  calls.length = 0;
+  const successfulSend = async () => ({
+    attempted: 1,
+    succeeded: 1,
+    failed: 0,
+  });
+  if (
+    await drainWizardInviteHealthAlerts(service as never, successfulSend) !==
+      1 ||
+    !calls.includes("issue_1780_complete_wizard_invite_health_alert_v1")
+  ) {
+    throw new Error("successful ops alert was not acknowledged");
+  }
+});
 
 Deno.test("issue #1780 worker owns channels and performs no provider I/O before commit", () => {
   for (
@@ -120,14 +232,18 @@ Deno.test("issue #1780 empty and all-suppressed jobs succeed without provider I/
                 selectionRevision: 2,
                 leaseToken: "00000000-1780-4000-8000-000000000044",
                 attemptCount: 1,
-                sendGroupId: null,
-                executionSnapshot: null,
+                executionSealed: false,
+                committedGroupId: null,
+                committedChannels: null,
               }],
               error: null,
             };
           }
           if (name === "biz_offering_send_quote_candidates") {
             return { data: { brandId, candidates }, error: null };
+          }
+          if (name === "issue_1780_seal_wizard_invite_execution_v1") {
+            return { data: { queuedCount: 0 }, error: null };
           }
           if (
             name === "issue_1780_complete_wizard_invite_outbox_no_recipients_v1"
@@ -208,8 +324,9 @@ Deno.test("issue #1780 crash recovery resumes stored group without requote or du
             selectionRevision: 2,
             leaseToken: "00000000-1780-4000-8000-000000000044",
             attemptCount: 2,
-            sendGroupId: groupId,
-            executionSnapshot: { channels: ["email"] },
+            executionSealed: true,
+            committedGroupId: groupId,
+            committedChannels: ["email"],
           }],
           error: null,
         };
@@ -306,8 +423,9 @@ Deno.test("issue #1780 partial provider handoff retries the stable group then te
               ? "00000000-1780-4000-8000-000000000064"
               : "00000000-1780-4000-8000-000000000065",
             attemptCount: claimNumber,
-            sendGroupId: groupId,
-            executionSnapshot: { channels: ["email"] },
+            executionSealed: true,
+            committedGroupId: groupId,
+            committedChannels: ["email"],
           }],
           error: null,
         };

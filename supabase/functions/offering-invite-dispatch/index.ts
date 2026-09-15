@@ -12,8 +12,16 @@ import {
   OfferingInviteTokenPepperError,
   resolveOfferingInviteTokenPepper,
 } from "../_shared/offeringInviteToken.ts";
-import { resolveDeliveryFlagValue } from "../_shared/secretBundle.ts";
+import {
+  resolveAlertRecipientValue,
+  resolveDeliveryFlagValue,
+} from "../_shared/secretBundle.ts";
 import { countryFromE164 } from "../_shared/e164Country.ts";
+import {
+  type OpsAlertEmailInput,
+  type OpsAlertEmailResult,
+  sendOpsAlertEmail,
+} from "../_shared/stripeOpsAlertEmail.ts";
 
 type Channel = "email" | "push" | "sms";
 interface DispatchBody {
@@ -63,10 +71,32 @@ interface WizardOutboxJob {
   selectionRevision: number;
   leaseToken: string;
   attemptCount: number;
-  sendGroupId: string | null;
-  executionSnapshot:
-    | Awaited<ReturnType<typeof buildOfferingExecutionSnapshot>>
-    | null;
+  executionSealed: boolean;
+  committedGroupId: string | null;
+  committedChannels: Array<"email" | "sms" | "push"> | null;
+}
+
+interface WizardObservabilityEvent {
+  eventOccurrenceId: number;
+  eventName: "wizard_invite_outbox_enqueued";
+  offeringKind: "event" | "rsvp" | "experience" | "trip";
+  selectionRevision: number;
+  selectedCount: number;
+  jobState: string;
+  leaseToken: string;
+}
+
+interface WizardHealthAlert {
+  signalKey:
+    | "expired_lease"
+    | "retry_backlog_age"
+    | "terminal_failure_rate"
+    | "duplicate_constraint"
+    | "publish_without_job"
+    | "provider_attempt_dispatch_disabled";
+  occurrenceCount: number;
+  firstDetectedAt: string;
+  notificationToken: string;
 }
 
 // The repository does not generate Database types for Edge clients. Pin the
@@ -173,6 +203,117 @@ function observeWizardInvite(
   console.info(JSON.stringify({ event, ...properties }));
 }
 
+function wizardInviteAlertRecipients(): string[] {
+  const configured = resolveAlertRecipientValue(
+    "api_health",
+    "API_HEALTH_ALERT_EMAILS",
+  );
+  if (Array.isArray(configured)) return configured;
+  return (configured ?? "seth@usemingla.com").split(",").map((value) =>
+    value.trim()
+  ).filter(Boolean);
+}
+
+export async function drainWizardInviteObservability(
+  service: WizardServiceClient,
+): Promise<number> {
+  try {
+    const { data, error } = await service.rpc(
+      "issue_1780_claim_wizard_invite_observability_v1",
+      { p_limit: 25 },
+    );
+    if (error) throw new Error("observability_claim_failed");
+    let emitted = 0;
+    for (const row of (data ?? []) as WizardObservabilityEvent[]) {
+      if (
+        row.eventName !== "wizard_invite_outbox_enqueued" ||
+        !Number.isSafeInteger(row.eventOccurrenceId) ||
+        !Number.isSafeInteger(row.selectionRevision) ||
+        !Number.isSafeInteger(row.selectedCount) ||
+        typeof row.leaseToken !== "string" || !UUID.test(row.leaseToken)
+      ) {
+        continue;
+      }
+      observeWizardInvite(row.eventName, {
+        offering_kind: row.offeringKind,
+        selection_revision: row.selectionRevision,
+        selected_count: row.selectedCount,
+        job_state: row.jobState,
+      });
+      const { error: completionError } = await service.rpc(
+        "issue_1780_complete_wizard_invite_observability_v1",
+        {
+          p_event_occurrence_id: row.eventOccurrenceId,
+          p_lease_token: row.leaseToken,
+        },
+      );
+      if (!completionError) emitted += 1;
+    }
+    return emitted;
+  } catch {
+    console.warn("[wizard-invite] aggregate observability drain unavailable");
+    return 0;
+  }
+}
+
+const WIZARD_HEALTH_LABELS: Record<WizardHealthAlert["signalKey"], string> = {
+  expired_lease: "Jobs stuck past lease expiry",
+  retry_backlog_age: "Retry backlog is aging",
+  terminal_failure_rate: "Terminal failure rate is elevated",
+  duplicate_constraint: "Duplicate constraint violations detected",
+  publish_without_job: "Published invite plans are missing jobs",
+  provider_attempt_dispatch_disabled:
+    "Provider attempts were created while dispatch was disabled",
+};
+
+export async function drainWizardInviteHealthAlerts(
+  service: WizardServiceClient,
+  send: (input: OpsAlertEmailInput) => Promise<OpsAlertEmailResult> =
+    sendOpsAlertEmail,
+): Promise<number> {
+  try {
+    const { data, error } = await service.rpc(
+      "issue_1780_claim_wizard_invite_health_v1",
+    );
+    if (error) throw new Error("health_claim_failed");
+    let sent = 0;
+    for (const row of (data ?? []) as WizardHealthAlert[]) {
+      const label = WIZARD_HEALTH_LABELS[row.signalKey];
+      if (
+        label === undefined || !Number.isSafeInteger(row.occurrenceCount) ||
+        row.occurrenceCount < 1 || typeof row.firstDetectedAt !== "string" ||
+        typeof row.notificationToken !== "string" ||
+        !UUID.test(row.notificationToken)
+      ) {
+        continue;
+      }
+      const result = await send({
+        subject: `⚠️ [WIZARD INVITES] ${label}`,
+        paragraphs: [
+          `${label}.`,
+          `Current aggregate count: ${row.occurrenceCount}.`,
+          `First detected at ${row.firstDetectedAt} UTC.`,
+        ],
+        recipients: wizardInviteAlertRecipients(),
+        cta: null,
+      });
+      if (result.succeeded < 1) continue;
+      const { error: completionError } = await service.rpc(
+        "issue_1780_complete_wizard_invite_health_alert_v1",
+        {
+          p_signal_key: row.signalKey,
+          p_notification_token: row.notificationToken,
+        },
+      );
+      if (!completionError) sent += 1;
+    }
+    return sent;
+  } catch {
+    console.warn("[wizard-invite] aggregate health alert drain unavailable");
+    return 0;
+  }
+}
+
 export function resolveWizardQuoteCurrency(
   estimatedCostMinor: number,
   snapshotCurrency: string | null,
@@ -277,13 +418,22 @@ export async function handleWizardWorker(
   url: string,
   serviceKey: string,
 ): Promise<Response> {
+  // Both drains read only durable rows committed by earlier transactions.
+  // This prevents rolled-back publisher work from appearing as an enqueue.
+  const observabilityEmitted = await drainWizardInviteObservability(service);
+  const healthAlertsSent = await drainWizardInviteHealthAlerts(service);
   const { data, error } = await service.rpc(
     "issue_1780_claim_wizard_invite_outbox_v1",
     { p_limit: 10 },
   );
   if (error) {
     return json(
-      { error: "wizard_worker_claim_failed", providerIo: false },
+      {
+        error: "wizard_worker_claim_failed",
+        providerIo: false,
+        observabilityEmitted,
+        healthAlertsSent,
+      },
       503,
     );
   }
@@ -306,55 +456,51 @@ export async function handleWizardWorker(
         selectionHash: job.selectionHash,
       };
       let group: { groupId: string; campaignIds: string[] };
-      if (job.sendGroupId !== null && job.executionSnapshot !== null) {
-        channels = job.executionSnapshot.channels;
+      if (job.committedGroupId !== null) {
+        channels = job.committedChannels ?? policy.channels;
         const { data: campaignRows, error: campaignError } = await service.from(
           "marketing_send_group_campaigns",
-        ).select("campaign_id").eq("send_group_id", job.sendGroupId);
+        ).select("campaign_id").eq("send_group_id", job.committedGroupId);
         if (campaignError) throw new Error("resume_group_failed");
         group = {
-          groupId: job.sendGroupId,
+          groupId: job.committedGroupId,
           campaignIds: (campaignRows ?? []).map((
             row: { campaign_id: string },
           ) => row.campaign_id),
         };
       } else {
-        const { data: quoteData, error: quoteError } = await service.rpc(
-          "biz_offering_send_quote_candidates",
-          {
-            p_actor_id: job.actorId,
-            p_event_id: job.eventId,
-            p_purpose: "invitation",
-            p_selection: selection,
-            p_channels: channels,
-          },
-        );
-        if (quoteError) throw new Error("quote_failed");
-        const candidates = quoteData as {
-          brandId: string;
-          candidates: QuoteCandidateRow[];
-        };
-        candidates.candidates = applyWizardSmsMarketFlags(
-          candidates.candidates,
-          policy,
-        );
-        const snapshot = await buildOfferingExecutionSnapshot({
-          eventId: job.eventId,
-          brandId: candidates.brandId,
-          purpose: "invitation",
-          channels,
-          selectionHash: await hashOfferingSelection(selection),
-          candidates: candidates.candidates,
-          content: {},
-          allowEmptyPreview: true,
-        });
-        if (
-          !snapshot.candidates.some((candidate) =>
-            candidate.outcome === "queued"
-          )
-        ) {
-          const { error: completionError } = await service.rpc(
-            "issue_1780_complete_wizard_invite_outbox_no_recipients_v1",
+        if (!job.executionSealed) {
+          const { data: quoteData, error: quoteError } = await service.rpc(
+            "biz_offering_send_quote_candidates",
+            {
+              p_actor_id: job.actorId,
+              p_event_id: job.eventId,
+              p_purpose: "invitation",
+              p_selection: selection,
+              p_channels: channels,
+            },
+          );
+          if (quoteError) throw new Error("quote_failed");
+          const candidates = quoteData as {
+            brandId: string;
+            candidates: QuoteCandidateRow[];
+          };
+          candidates.candidates = applyWizardSmsMarketFlags(
+            candidates.candidates,
+            policy,
+          );
+          const snapshot = await buildOfferingExecutionSnapshot({
+            eventId: job.eventId,
+            brandId: candidates.brandId,
+            purpose: "invitation",
+            channels,
+            selectionHash: await hashOfferingSelection(selection),
+            candidates: candidates.candidates,
+            content: {},
+            allowEmptyPreview: true,
+          });
+          const { error: sealError } = await service.rpc(
+            "issue_1780_seal_wizard_invite_execution_v1",
             {
               p_outbox_job_id: job.outboxJobId,
               p_sealed_selection_id: job.sealedSelectionId,
@@ -362,27 +508,42 @@ export async function handleWizardWorker(
               p_execution_snapshot: snapshot,
             },
           );
-          if (completionError) {
-            throw new Error("zero_reachable_completion_failed");
+          if (sealError) throw new Error("execution_seal_failed");
+          if (
+            !snapshot.candidates.some((candidate) =>
+              candidate.outcome === "queued"
+            )
+          ) {
+            const { error: completionError } = await service.rpc(
+              "issue_1780_complete_wizard_invite_outbox_no_recipients_v1",
+              {
+                p_outbox_job_id: job.outboxJobId,
+                p_sealed_selection_id: job.sealedSelectionId,
+                p_lease_token: job.leaseToken,
+              },
+            );
+            if (completionError) {
+              throw new Error("zero_reachable_completion_failed");
+            }
+            observeWizardInvite("wizard_invite_outbox_succeeded", {
+              offering_kind: job.eventType,
+              selection_revision: job.selectionRevision,
+              selected_count: job.brandPersonIds.length,
+              can_receive: 0,
+              skipped: job.brandPersonIds.length,
+              job_state: "succeeded",
+              attempt_count: job.attemptCount,
+            });
+            outcomes.push({
+              outboxJobId: job.outboxJobId,
+              status: "succeeded_no_recipients",
+              providerIo: false,
+            });
+            continue;
           }
-          observeWizardInvite("wizard_invite_outbox_succeeded", {
-            offering_kind: job.eventType,
-            selection_revision: job.selectionRevision,
-            selected_count: job.brandPersonIds.length,
-            can_receive: 0,
-            skipped: job.brandPersonIds.length,
-            job_state: "succeeded",
-            attempt_count: job.attemptCount,
-          });
-          outcomes.push({
-            outboxJobId: job.outboxJobId,
-            status: "succeeded_no_recipients",
-            providerIo: false,
-          });
-          continue;
         }
-        // Token crypto is required only for a job that will create executable
-        // delivery attempts. Zero-reachable jobs complete before this point.
+        // Token crypto is required only for a sealed job that will create
+        // executable delivery attempts. Zero-reachable jobs complete above.
         await resolveOfferingInviteTokenPepper();
         const { data: executionData, error: executionError } = await service
           .rpc(
@@ -391,11 +552,25 @@ export async function handleWizardWorker(
               p_outbox_job_id: job.outboxJobId,
               p_sealed_selection_id: job.sealedSelectionId,
               p_lease_token: job.leaseToken,
-              p_execution_snapshot: snapshot,
             },
           );
-        if (executionError) throw new Error("execute_failed");
-        group = executionData as { groupId: string; campaignIds: string[] };
+        if (executionError) {
+          throw new Error(
+            executionError.code === "23505"
+              ? "duplicate_constraint_violation"
+              : "execute_failed",
+          );
+        }
+        const executed = executionData as {
+          groupId: string;
+          campaignIds: string[];
+          channels?: Array<"email" | "sms" | "push">;
+        };
+        channels = executed.channels ?? channels;
+        group = {
+          groupId: executed.groupId,
+          campaignIds: executed.campaignIds,
+        };
       }
       // The execution RPC has committed before either provider-capable path.
       providerIo = true;
@@ -470,6 +645,8 @@ export async function handleWizardWorker(
     claimed: jobs.length,
     outcomes,
     providerIo: outcomes.some((row) => row.providerIo),
+    observabilityEmitted,
+    healthAlertsSent,
   });
 }
 

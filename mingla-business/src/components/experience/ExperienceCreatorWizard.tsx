@@ -302,7 +302,7 @@ export const ExperienceCreatorWizard: React.FC<
   liveSoldCount,
 }) => {
   const isLiveEdit = liveExperience !== undefined;
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const brand = useCurrentBrand();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -433,9 +433,15 @@ export const ExperienceCreatorWizard: React.FC<
   const persistedInvite = useOfferingInvitePlanSummary({
     eventId: experienceId,
     enabled: !isLiveEdit,
+    quoteWhenEmpty: inviteFlag.data === true,
   });
   const inviteEnabled = !isLiveEdit && (inviteFlag.data === true ||
     (persistedInvite.plan.data?.selectedCount ?? 0) > 0);
+  const inviteRollbackReady = isLiveEdit || (inviteFlag.data === false &&
+    !inviteFlag.isPending && !inviteFlag.isFetching && !inviteFlag.isError &&
+    persistedInvite.plan.data?.selectedCount === 0 &&
+    !persistedInvite.plan.isPending && !persistedInvite.plan.isFetching &&
+    !persistedInvite.plan.isError);
   const steps = inviteEnabled ? CREATION_STEPS : LIVE_EDIT_STEPS;
   const finalStep: StepIndex = inviteEnabled ? 7 : 5;
   useEffect(() => {
@@ -445,12 +451,13 @@ export const ExperienceCreatorWizard: React.FC<
   useEffect(() => {
     if (!inviteEnabled) setStep((value) => value > 5 ? 5 : value);
   }, [inviteEnabled]);
-  const inviteSummaryReady = isLiveEdit || (invitePlan !== null && inviteQuote !== null &&
+  const inviteSummaryReady = !inviteEnabled || (invitePlan !== null && inviteQuote !== null &&
     inviteQuote.selectionRevision === invitePlan.selectionRevision &&
     inviteQuote.selectionHash === invitePlan.selectionHash &&
     !persistedInvite.plan.isPending && !persistedInvite.plan.isFetching &&
     !persistedInvite.plan.isError && !persistedInvite.quote.isPending &&
     !persistedInvite.quote.isFetching && !persistedInvite.quote.isError);
+  const invitePublishReady = inviteEnabled ? inviteSummaryReady : inviteRollbackReady;
   const handleInvitePlanChange = useCallback((
     plan: WizardInvitePlan | null,
     quote: WizardInviteQuote | null,
@@ -946,7 +953,8 @@ export const ExperienceCreatorWizard: React.FC<
           p_event_id: targetId,
           p_payload: {
             ...buildPayload(publish),
-            ...(publish && invitePlan?.selectionRevision !== undefined && invitePlan.selectionRevision !== null
+            ...(publish && inviteEnabled && invitePlan?.selectionRevision !== undefined &&
+              invitePlan.selectionRevision !== null
               ? {
                   invite_selection_revision: invitePlan.selectionRevision,
                   invite_selection_confirmed: invitePlan.selectedCount > 0,
@@ -1028,6 +1036,7 @@ export const ExperienceCreatorWizard: React.FC<
       experienceNeedsStripe,
       guestPrivacy,
       handlePaidPublishGuard,
+      inviteEnabled,
       invitePlan,
       intents,
       onComplete,
@@ -1084,11 +1093,27 @@ export const ExperienceCreatorWizard: React.FC<
   }, [currentIntelGateKey, handleSubmit, isLiveEdit]);
 
   const beginPublish = useCallback(async (): Promise<void> => {
+    if (!inviteEnabled) {
+      if (!inviteRollbackReady) {
+        setToast("Checking saved invite plans before publishing.");
+        return;
+      }
+      maybeOpenIntelGate();
+      return;
+    }
     setCheckingInvitePublish(true);
     try {
       const latest = await persistedInvite.refreshAuthoritative();
       setInvitePlan(latest.plan);
       setInviteQuote(latest.quote);
+      if (latest.quote === null) {
+        if (inviteFlag.data === false && latest.plan.selectedCount === 0) {
+          maybeOpenIntelGate();
+        } else {
+          setToast("Refresh the invite estimate before publishing.");
+        }
+        return;
+      }
       if (latest.quote.selectionRevision !== latest.plan.selectionRevision ||
           latest.quote.selectionHash !== latest.plan.selectionHash) {
         setToast("Checking the latest invite delivery estimate…");
@@ -1104,7 +1129,8 @@ export const ExperienceCreatorWizard: React.FC<
     } finally {
       setCheckingInvitePublish(false);
     }
-  }, [maybeOpenIntelGate, persistedInvite]);
+  }, [maybeOpenIntelGate, persistedInvite, inviteEnabled, inviteRollbackReady,
+    inviteFlag.data]);
 
   const closeIntelGate = useCallback((): void => {
     intelSessionRef.current?.dismissGate(currentIntelGateKey());
@@ -1567,6 +1593,11 @@ export const ExperienceCreatorWizard: React.FC<
         {inviteEnabled && step === 6 ? (
           <InvitePeopleStep eventId={experienceId} brandId={brandId} eventType="experience"
             enabled={inviteEnabled}
+            onProtectedFlowExit={onCancel}
+            onReauthenticate={async () => {
+              await signOut();
+              router.replace("/auth");
+            }}
             onPlanChange={handleInvitePlanChange} />
         ) : null}
 
@@ -1642,7 +1673,7 @@ export const ExperienceCreatorWizard: React.FC<
               // ORCH-1076 Stream B — disable Publish for a paid experience on a
               // Stripe-unready brand (proactive gate; "Save as draft" stays
               // enabled because drafts are server-exempt).
-              disabled={experienceNeedsStripe || !inviteSummaryReady || checkingInvitePublish}
+              disabled={experienceNeedsStripe || !invitePublishReady || checkingInvitePublish}
               style={styles.footerButton}
               testID="experience-footer-publish"
             />

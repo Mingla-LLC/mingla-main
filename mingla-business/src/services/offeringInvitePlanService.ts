@@ -97,16 +97,53 @@ function parseQuote(value: unknown): WizardInviteQuote {
   return value as unknown as WizardInviteQuote;
 }
 
-function serviceError(error: { message?: string; details?: string }): WizardInvitePlanError {
-  const code = error.message?.match(/wizard_invite_[a-z0-9_]+/)?.[0] ??
-    "wizard_invite_temporarily_unavailable";
+type ServiceErrorLike = {
+  code?: string;
+  message?: string;
+  details?: string;
+  status?: number;
+  context?: {
+    status?: number;
+    clone?: () => { json?: () => Promise<unknown> };
+  };
+};
+
+function serviceError(error: ServiceErrorLike): WizardInvitePlanError {
+  const messageCode = `${error.message ?? ""} ${error.details ?? ""}`
+    .match(/wizard_invite_[a-z0-9_]+/)?.[0];
+  const authRequired = error.code === "PGRST301" || error.status === 401 ||
+    error.context?.status === 401 ||
+    /(?:jwt[^a-z0-9]*(?:expired|invalid)|unauthorized)/i.test(error.message ?? "");
+  const code = messageCode ?? (authRequired
+    ? "wizard_invite_auth_required"
+    : "wizard_invite_temporarily_unavailable");
   const currentRevisionMatch = error.details?.match(/"currentRevision"\s*:\s*(\d+)/);
   return new WizardInvitePlanError(code,
     !["wizard_invite_forbidden", "wizard_invite_not_found_or_forbidden",
       "wizard_invite_selection_invalid", "wizard_invite_selection_too_large",
       "wizard_invite_plan_locked", "wizard_invite_feature_disabled",
-      "wizard_invite_offering_not_draft"].includes(code),
+      "wizard_invite_offering_not_draft", "wizard_invite_auth_required"].includes(code),
     currentRevisionMatch ? Number(currentRevisionMatch[1]) : null);
+}
+
+async function edgeServiceError(error: unknown): Promise<WizardInvitePlanError> {
+  const candidate = record(error) ? error as ServiceErrorLike : {};
+  const cloned = candidate.context?.clone?.();
+  if (cloned?.json) {
+    try {
+      const body = await cloned.json();
+      if (record(body)) {
+        const bodyMessage = [body.error, body.message]
+          .find((value): value is string => typeof value === "string");
+        if (bodyMessage) {
+          return serviceError({ ...candidate, message: bodyMessage });
+        }
+      }
+    } catch {
+      // The transport status below remains authoritative when a body is not JSON.
+    }
+  }
+  return serviceError(candidate);
 }
 
 async function rpc<T>(name: string, args: Record<string, unknown>, parse: (value: unknown) => T): Promise<T> {
@@ -161,7 +198,7 @@ export async function quoteWizardInvitePlan(
     "offering-invite-dispatch",
     { body: { mode: "wizard_preview", eventId, selectionRevision } },
   );
-  if (error) throw serviceError(error);
+  if (error) throw await edgeServiceError(error);
   return parseQuote(data);
 }
 

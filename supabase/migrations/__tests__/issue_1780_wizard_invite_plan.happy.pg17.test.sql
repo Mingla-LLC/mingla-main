@@ -14,9 +14,13 @@ BEGIN
   END IF;
   FOREACH v_name IN ARRAY ARRAY[
     'brand_offering_invite_plans',
+    'brand_offering_invite_plan_members',
     'brand_offering_invite_mutation_receipts',
     'brand_offering_invite_selections',
-    'brand_offering_invite_publish_outbox'
+    'brand_offering_invite_outbox',
+    'brand_offering_invite_execution_seals',
+    'brand_offering_invite_observability_events',
+    'wizard_invite_alert_state'
   ] LOOP
     IF NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname='private' AND c.relname=v_name AND c.relrowsecurity AND c.relforcerowsecurity) THEN
@@ -25,20 +29,36 @@ BEGIN
     IF has_table_privilege('authenticated',format('private.%I',v_name),'SELECT') THEN
       RAISE EXCEPTION 'T-1780-00 FAIL: authenticated can project private %',v_name;
     END IF;
-    IF EXISTS(
-      SELECT 1
-      FROM pg_constraint con
+  END LOOP;
+  -- [TEST-MOD-APPROVED #1780] Binding SPEC §6 requires plan actor/member
+  -- attribution to be constrained to canonical auth.users rows.
+  IF NOT EXISTS(
+      SELECT 1 FROM pg_constraint con
       JOIN pg_class c ON c.oid=con.conrelid
       JOIN pg_namespace n ON n.oid=c.relnamespace
-      JOIN pg_class foreign_c ON foreign_c.oid=con.confrelid
-      JOIN pg_namespace foreign_n ON foreign_n.oid=foreign_c.relnamespace
-      WHERE n.nspname='private' AND c.relname=v_name
-        AND con.contype='f' AND foreign_n.nspname='auth'
-        AND foreign_c.relname='users'
+      JOIN pg_namespace fn ON fn.oid=(SELECT relnamespace FROM pg_class WHERE oid=con.confrelid)
+      WHERE n.nspname='private' AND c.relname='brand_offering_invite_plans'
+        AND con.contype='f' AND fn.nspname='auth'
+    ) OR NOT EXISTS(
+      SELECT 1 FROM pg_constraint con
+      JOIN pg_class c ON c.oid=con.conrelid
+      JOIN pg_namespace n ON n.oid=c.relnamespace
+      JOIN pg_namespace fn ON fn.oid=(SELECT relnamespace FROM pg_class WHERE oid=con.confrelid)
+      WHERE n.nspname='private' AND c.relname='brand_offering_invite_plan_members'
+        AND con.contype='f' AND fn.nspname='auth'
     ) THEN
-      RAISE EXCEPTION 'T-1780-00 FAIL: private % blocks auth-user erasure',v_name;
-    END IF;
-  END LOOP;
+    RAISE EXCEPTION 'T-1780-00 FAIL: required canonical actor/member FKs are missing';
+  END IF;
+  IF has_sequence_privilege(
+      'authenticated',
+      'private.brand_offering_invite_observability_events_id_seq',
+      'USAGE')
+     OR has_sequence_privilege(
+      'anon',
+      'private.brand_offering_invite_observability_events_id_seq',
+      'SELECT') THEN
+    RAISE EXCEPTION 'T-1780-00 FAIL: observability identity sequence is exposed';
+  END IF;
   IF EXISTS(
     SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE p.prosecdef AND (
@@ -55,10 +75,15 @@ BEGIN
   END IF;
   FOREACH v_signature IN ARRAY ARRAY[
     'public.issue_1780_claim_wizard_invite_outbox_v1(integer)',
-    'public.issue_1780_execute_wizard_invite_outbox_v1(uuid,uuid,uuid,jsonb)',
+    'public.issue_1780_seal_wizard_invite_execution_v1(uuid,uuid,uuid,jsonb)',
+    'public.issue_1780_execute_wizard_invite_outbox_v1(uuid,uuid,uuid)',
     'public.issue_1780_fail_wizard_invite_outbox_v1(uuid,uuid,text,boolean)',
     'public.issue_1780_complete_wizard_invite_outbox_v1(uuid,uuid,uuid)',
-    'public.issue_1780_complete_wizard_invite_outbox_no_recipients_v1(uuid,uuid,uuid,jsonb)'
+    'public.issue_1780_complete_wizard_invite_outbox_no_recipients_v1(uuid,uuid,uuid)',
+    'public.issue_1780_claim_wizard_invite_observability_v1(integer)',
+    'public.issue_1780_complete_wizard_invite_observability_v1(bigint,uuid)',
+    'public.issue_1780_claim_wizard_invite_health_v1()',
+    'public.issue_1780_complete_wizard_invite_health_alert_v1(text,uuid)'
   ] LOOP
     IF has_function_privilege('authenticated',v_signature,'EXECUTE')
        OR has_function_privilege('anon',v_signature,'EXECUTE')
@@ -283,9 +308,9 @@ BEGIN
     RAISE EXCEPTION 'T-1780-05 FAIL: no-plan old-client behavior changed: %',v_none;
   END IF;
   INSERT INTO private.brand_offering_invite_plans(
-    event_id,brand_id,event_type,selection_revision,brand_person_ids,selection_hash,created_by,updated_by
+    event_id,brand_id,event_type,selection_revision,selection_hash,created_by,updated_by
   ) VALUES('00000000-1780-4000-8000-000000000012','00000000-1780-4000-8000-000000000002','trip',1,
-    '{}',private.issue_1780_selection_hash('{}'),'00000000-1780-4000-8000-000000000001','00000000-1780-4000-8000-000000000001');
+    private.issue_1780_selection_hash('{}'),'00000000-1780-4000-8000-000000000001','00000000-1780-4000-8000-000000000001');
   v_empty:=private.enqueue_wizard_invites_on_publish_v1(
     '00000000-1780-4000-8000-000000000012',NULL,false);
   IF v_empty#>>'{inviteDelivery,status}'<>'empty' THEN
@@ -303,7 +328,7 @@ BEGIN
   IF v_locked#>>'{inviteDelivery,status}'<>'pending'
      OR (SELECT state FROM private.brand_offering_invite_plans
        WHERE event_id='00000000-1780-4000-8000-000000000010')<>'locked'
-     OR (SELECT count(*) FROM private.brand_offering_invite_publish_outbox
+     OR (SELECT count(*) FROM private.brand_offering_invite_outbox
        WHERE event_id='00000000-1780-4000-8000-000000000010')<>1
      OR EXISTS(SELECT 1 FROM public.marketing_send_groups
        WHERE event_id='00000000-1780-4000-8000-000000000010') THEN
@@ -354,14 +379,18 @@ BEGIN
   );
   -- Restore the apostrophe used by the Deno vector without changing its hash.
   v_snapshot:=jsonb_set(v_snapshot,'{campaigns,push,title}',to_jsonb('You''re invited'::text));
-  v_result:=public.issue_1780_execute_wizard_invite_outbox_v1(
+  PERFORM public.issue_1780_seal_wizard_invite_execution_v1(
     (v_job->>'outboxJobId')::uuid,(v_job->>'sealedSelectionId')::uuid,
     (v_job->>'leaseToken')::uuid,v_snapshot);
+  v_result:=public.issue_1780_execute_wizard_invite_outbox_v1(
+    (v_job->>'outboxJobId')::uuid,(v_job->>'sealedSelectionId')::uuid,
+    (v_job->>'leaseToken')::uuid);
   v_group:=(v_result->>'groupId')::uuid;
-  IF (SELECT state FROM private.brand_offering_invite_publish_outbox
+  IF (SELECT state FROM private.brand_offering_invite_outbox
         WHERE id=(v_job->>'outboxJobId')::uuid)<>'leased'
-     OR (SELECT send_group_id FROM private.brand_offering_invite_publish_outbox
-        WHERE id=(v_job->>'outboxJobId')::uuid) IS DISTINCT FROM v_group
+     OR NOT EXISTS(SELECT 1 FROM public.marketing_send_groups
+        WHERE brand_id='00000000-1780-4000-8000-000000000002'
+          AND client_request_id=(v_job->>'outboxJobId')::uuid AND id=v_group)
      OR (SELECT count(*) FROM public.marketing_send_groups
         WHERE event_id='00000000-1780-4000-8000-000000000010')<>1 THEN
     RAISE EXCEPTION 'T-1780-08 FAIL: DB execute marked success before provider handoff or duplicated the group';
@@ -386,15 +415,15 @@ END;
 $execute_before_handoff$;
 
 RESET ROLE;
-UPDATE private.brand_offering_invite_publish_outbox SET leased_until=now()-interval '1 second'
+UPDATE private.brand_offering_invite_outbox SET lease_expires_at=now()-interval '1 second'
 WHERE event_id='00000000-1780-4000-8000-000000000010';
 DO $resume_after_crash$
 DECLARE v_claim jsonb; v_job jsonb; v_group uuid;
 BEGIN
   v_claim:=public.issue_1780_claim_wizard_invite_outbox_v1(10);
   v_job:=v_claim->0;
-  v_group:=(v_job->>'sendGroupId')::uuid;
-  IF jsonb_array_length(v_claim)<>1 OR v_job->'executionSnapshot' IS NULL
+  v_group:=(v_job->>'committedGroupId')::uuid;
+  IF jsonb_array_length(v_claim)<>1 OR (v_job->>'executionSealed')::boolean IS NOT TRUE
      OR v_group IS NULL OR (v_job->>'attemptCount')::integer<>2
      OR (SELECT count(*) FROM public.marketing_send_groups
        WHERE event_id='00000000-1780-4000-8000-000000000010')<>1 THEN
@@ -404,7 +433,7 @@ BEGIN
   PERFORM public.issue_1780_complete_wizard_invite_outbox_v1(
     (v_job->>'outboxJobId')::uuid,(v_job->>'sealedSelectionId')::uuid,
     (v_job->>'leaseToken')::uuid);
-  IF (SELECT state FROM private.brand_offering_invite_publish_outbox
+  IF (SELECT state FROM private.brand_offering_invite_outbox
       WHERE id=(v_job->>'outboxJobId')::uuid)<>'succeeded' THEN
     RAISE EXCEPTION 'T-1780-10 FAIL: provider-handoff completion did not terminalize success';
   END IF;
@@ -415,12 +444,19 @@ $resume_after_crash$;
 -- authoritative snapshot and succeeds without creating delivery rows.
 RESET ROLE;
 INSERT INTO private.brand_offering_invite_plans(
-  event_id,brand_id,event_type,selection_revision,brand_person_ids,selection_hash,created_by,updated_by
+  id,event_id,brand_id,event_type,selection_revision,selection_hash,created_by,updated_by
 ) VALUES(
-  '00000000-1780-4000-8000-000000000011','00000000-1780-4000-8000-000000000002','rsvp',1,
-  ARRAY['00000000-1780-4000-8000-000000000022'::uuid],
+  '00000000-1780-4000-8000-000000000090','00000000-1780-4000-8000-000000000011',
+  '00000000-1780-4000-8000-000000000002','rsvp',1,
   private.issue_1780_selection_hash(ARRAY['00000000-1780-4000-8000-000000000022'::uuid]),
   '00000000-1780-4000-8000-000000000001','00000000-1780-4000-8000-000000000001'
+);
+INSERT INTO private.brand_offering_invite_plan_members(
+  plan_id,brand_person_id,added_by
+) VALUES(
+  '00000000-1780-4000-8000-000000000090',
+  '00000000-1780-4000-8000-000000000022',
+  '00000000-1780-4000-8000-000000000001'
 );
 SELECT private.enqueue_wizard_invites_on_publish_v1(
   '00000000-1780-4000-8000-000000000011',1,true);
@@ -435,7 +471,7 @@ BEGIN
   );
   v_snapshot:=jsonb_set(v_snapshot,'{campaigns,push,title}',to_jsonb('You''re invited'::text));
   BEGIN
-    PERFORM public.issue_1780_complete_wizard_invite_outbox_no_recipients_v1(
+    PERFORM public.issue_1780_seal_wizard_invite_execution_v1(
       (v_job->>'outboxJobId')::uuid,(v_job->>'sealedSelectionId')::uuid,
       (v_job->>'leaseToken')::uuid,jsonb_set(v_snapshot,'{selectionHash}',to_jsonb(repeat('f',64))));
     RAISE EXCEPTION 'T-1780-11 FAIL: mismatched empty snapshot was accepted';
@@ -443,10 +479,13 @@ BEGIN
     GET STACKED DIAGNOSTICS v_state=RETURNED_SQLSTATE;
     IF v_state<>'22023' THEN RAISE; END IF;
   END;
-  PERFORM public.issue_1780_complete_wizard_invite_outbox_no_recipients_v1(
+  PERFORM public.issue_1780_seal_wizard_invite_execution_v1(
     (v_job->>'outboxJobId')::uuid,(v_job->>'sealedSelectionId')::uuid,
     (v_job->>'leaseToken')::uuid,v_snapshot);
-  IF (SELECT state FROM private.brand_offering_invite_publish_outbox
+  PERFORM public.issue_1780_complete_wizard_invite_outbox_no_recipients_v1(
+    (v_job->>'outboxJobId')::uuid,(v_job->>'sealedSelectionId')::uuid,
+    (v_job->>'leaseToken')::uuid);
+  IF (SELECT state FROM private.brand_offering_invite_outbox
       WHERE id=(v_job->>'outboxJobId')::uuid)<>'succeeded'
      OR EXISTS(SELECT 1 FROM public.brand_offering_invites
         WHERE event_id='00000000-1780-4000-8000-000000000011')
@@ -456,5 +495,213 @@ BEGIN
   END IF;
 END;
 $zero_candidates$;
+
+-- Aggregate health is service-only, deduplicated, and covers every SPEC §14
+-- condition. Repeated crash/reclaim cycles keep the expired-lease signal
+-- active even though each claim writes a fresh lease deadline.
+INSERT INTO public.events(
+  id,brand_id,created_by,event_type,title,slug,status,visibility,currency,
+  timezone,party_types,rsvp_approval_mode,rsvp_discoverable,theme,created_at,updated_at
+)
+SELECT id,'00000000-1780-4000-8000-000000000002',
+  '00000000-1780-4000-8000-000000000001','event',title,slug,
+  'draft','draft','USD','UTC','{}','auto',false,'{}',now(),now()
+FROM (VALUES
+  ('00000000-1780-4000-8000-000000000201'::uuid,'Health expired lease','issue-1780-health-lease'),
+  ('00000000-1780-4000-8000-000000000202'::uuid,'Health retry backlog','issue-1780-health-retry'),
+  ('00000000-1780-4000-8000-000000000203'::uuid,'Health terminal one','issue-1780-health-terminal-1'),
+  ('00000000-1780-4000-8000-000000000204'::uuid,'Health terminal two','issue-1780-health-terminal-2'),
+  ('00000000-1780-4000-8000-000000000205'::uuid,'Health terminal three','issue-1780-health-terminal-3'),
+  ('00000000-1780-4000-8000-000000000206'::uuid,'Health missing job','issue-1780-health-missing-job')
+) AS fixture(id,title,slug);
+
+INSERT INTO private.brand_offering_invite_selections(
+  id,event_id,brand_id,event_type,selection_revision,brand_person_ids,
+  selection_hash,actor_id,sealed_at
+)
+SELECT selection_id,event_id,'00000000-1780-4000-8000-000000000002',
+  'event',1,ARRAY['00000000-1780-4000-8000-000000000020'::uuid],
+  private.issue_1780_selection_hash(
+    ARRAY['00000000-1780-4000-8000-000000000020'::uuid]
+  ),'00000000-1780-4000-8000-000000000001',now()
+FROM (VALUES
+  ('00000000-1780-4000-8000-000000000211'::uuid,'00000000-1780-4000-8000-000000000201'::uuid),
+  ('00000000-1780-4000-8000-000000000212'::uuid,'00000000-1780-4000-8000-000000000202'::uuid),
+  ('00000000-1780-4000-8000-000000000213'::uuid,'00000000-1780-4000-8000-000000000203'::uuid),
+  ('00000000-1780-4000-8000-000000000214'::uuid,'00000000-1780-4000-8000-000000000204'::uuid),
+  ('00000000-1780-4000-8000-000000000215'::uuid,'00000000-1780-4000-8000-000000000205'::uuid)
+) AS fixture(selection_id,event_id);
+
+INSERT INTO private.brand_offering_invite_plans(
+  id,event_id,brand_id,event_type,selection_revision,selection_hash,
+  state,published_selection_revision,created_by,updated_by,locked_at
+)
+SELECT plan_id,event_id,'00000000-1780-4000-8000-000000000002','event',1,
+  private.issue_1780_selection_hash(
+    ARRAY['00000000-1780-4000-8000-000000000020'::uuid]
+  ),'locked',1,'00000000-1780-4000-8000-000000000001',
+  '00000000-1780-4000-8000-000000000001',now()
+FROM (VALUES
+  ('00000000-1780-4000-8000-000000000241'::uuid,'00000000-1780-4000-8000-000000000201'::uuid),
+  ('00000000-1780-4000-8000-000000000242'::uuid,'00000000-1780-4000-8000-000000000202'::uuid),
+  ('00000000-1780-4000-8000-000000000243'::uuid,'00000000-1780-4000-8000-000000000203'::uuid),
+  ('00000000-1780-4000-8000-000000000244'::uuid,'00000000-1780-4000-8000-000000000204'::uuid),
+  ('00000000-1780-4000-8000-000000000245'::uuid,'00000000-1780-4000-8000-000000000205'::uuid)
+) AS fixture(plan_id,event_id);
+
+INSERT INTO private.brand_offering_invite_outbox(
+  id,plan_id,brand_id,event_id,event_type,selection_revision,operation_key,
+  sealed_selection_id,state,attempt_count,next_attempt_at,
+  lease_token,lease_expires_at,last_error_code,created_at,updated_at,completed_at
+) VALUES
+('00000000-1780-4000-8000-000000000221','00000000-1780-4000-8000-000000000241',
+ '00000000-1780-4000-8000-000000000002','00000000-1780-4000-8000-000000000201','event',1,
+ 'wizard:v1:event:00000000-1780-4000-8000-000000000201:1',
+ '00000000-1780-4000-8000-000000000211','leased',1,now()-interval '1 hour',
+ '00000000-1780-4000-8000-000000000231',now()-interval '1 second',NULL,now(),now(),NULL),
+('00000000-1780-4000-8000-000000000222','00000000-1780-4000-8000-000000000242',
+ '00000000-1780-4000-8000-000000000002','00000000-1780-4000-8000-000000000202','event',1,
+ 'wizard:v1:event:00000000-1780-4000-8000-000000000202:1',
+ '00000000-1780-4000-8000-000000000212','retryable',2,now()-interval '20 minutes',
+ NULL,NULL,NULL,now(),now(),NULL),
+('00000000-1780-4000-8000-000000000223','00000000-1780-4000-8000-000000000243',
+ '00000000-1780-4000-8000-000000000002','00000000-1780-4000-8000-000000000203','event',1,
+ 'wizard:v1:event:00000000-1780-4000-8000-000000000203:1',
+ '00000000-1780-4000-8000-000000000213','terminal',8,now(),NULL,NULL,
+ 'duplicate_constraint_violation',now(),now(),now()),
+('00000000-1780-4000-8000-000000000224','00000000-1780-4000-8000-000000000244',
+ '00000000-1780-4000-8000-000000000002','00000000-1780-4000-8000-000000000204','event',1,
+ 'wizard:v1:event:00000000-1780-4000-8000-000000000204:1',
+ '00000000-1780-4000-8000-000000000214','terminal',8,now(),NULL,NULL,
+ 'execute_failed',now(),now(),now()),
+('00000000-1780-4000-8000-000000000225','00000000-1780-4000-8000-000000000245',
+ '00000000-1780-4000-8000-000000000002','00000000-1780-4000-8000-000000000205','event',1,
+ 'wizard:v1:event:00000000-1780-4000-8000-000000000205:1',
+ '00000000-1780-4000-8000-000000000215','terminal',8,now(),NULL,NULL,
+ 'execute_failed',now(),now(),now());
+
+INSERT INTO private.brand_offering_invite_plans(
+  id,event_id,brand_id,event_type,selection_revision,selection_hash,
+  state,published_selection_revision,created_by,updated_by,locked_at
+) VALUES(
+  '00000000-1780-4000-8000-000000000216','00000000-1780-4000-8000-000000000206',
+  '00000000-1780-4000-8000-000000000002','event',1,
+  private.issue_1780_selection_hash(
+    ARRAY['00000000-1780-4000-8000-000000000020'::uuid]
+  ),'draft',NULL,'00000000-1780-4000-8000-000000000001',
+  '00000000-1780-4000-8000-000000000001',NULL
+);
+INSERT INTO private.brand_offering_invite_plan_members(
+  plan_id,brand_person_id,added_by
+) VALUES(
+  '00000000-1780-4000-8000-000000000216',
+  '00000000-1780-4000-8000-000000000020',
+  '00000000-1780-4000-8000-000000000001'
+);
+UPDATE private.brand_offering_invite_plans SET state='locked',
+  published_selection_revision=1,locked_at=now()
+WHERE id='00000000-1780-4000-8000-000000000216';
+
+SELECT set_config('request.jwt.claim.role','service_role',true);
+DO $health_before_reclaim$
+DECLARE v_alerts jsonb; v_signal text; v_token uuid;
+BEGIN
+  v_alerts:=public.issue_1780_claim_wizard_invite_health_v1();
+  FOREACH v_signal IN ARRAY ARRAY[
+    'expired_lease','retry_backlog_age','terminal_failure_rate',
+    'duplicate_constraint','publish_without_job'
+  ] LOOP
+    IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_alerts) a
+        WHERE a->>'signalKey'=v_signal) THEN
+      RAISE EXCEPTION 'T-1780-12 FAIL: health signal % was not claimed: %',v_signal,v_alerts;
+    END IF;
+  END LOOP;
+  SELECT (a->>'notificationToken')::uuid INTO v_token
+  FROM jsonb_array_elements(v_alerts) a WHERE a->>'signalKey'='expired_lease';
+  PERFORM set_config('mingla.issue_1780_test_expired_alert_token',v_token::text,true);
+END;
+$health_before_reclaim$;
+
+-- The worker reclaims the expired row and crashes again after receiving the
+-- new lease. The next health calculation must still observe the fresh expiry.
+DO $repeated_crash_reclaim$
+DECLARE v_jobs jsonb;
+BEGIN
+  v_jobs:=public.issue_1780_claim_wizard_invite_outbox_v1(10);
+  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_jobs) j
+      WHERE j->>'eventId'='00000000-1780-4000-8000-000000000201') THEN
+    RAISE EXCEPTION 'T-1780-13 FAIL: expired job was not reclaimable';
+  END IF;
+  UPDATE private.brand_offering_invite_outbox
+  SET lease_expires_at=now()-interval '1 second'
+  WHERE event_id='00000000-1780-4000-8000-000000000201';
+  PERFORM public.issue_1780_claim_wizard_invite_health_v1();
+  IF NOT EXISTS(SELECT 1 FROM private.wizard_invite_alert_state
+      WHERE signal_key='expired_lease' AND active AND occurrence_count>0) THEN
+    RAISE EXCEPTION 'T-1780-13 FAIL: repeated crash/reclaim cleared expired-lease health';
+  END IF;
+  PERFORM public.issue_1780_complete_wizard_invite_health_alert_v1(
+    'expired_lease',
+    current_setting('mingla.issue_1780_test_expired_alert_token')::uuid
+  );
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(
+      public.issue_1780_claim_wizard_invite_health_v1()) a
+      WHERE a->>'signalKey'='expired_lease') THEN
+    RAISE EXCEPTION 'T-1780-13 FAIL: cooldown did not deduplicate expired-lease alert';
+  END IF;
+END;
+$repeated_crash_reclaim$;
+
+-- Compare attempts against the dispatch flag transition so old successful
+-- wizard sends do not become false positives when the kill switch turns off.
+UPDATE public.brand_offering_invite_delivery_attempts a
+SET created_at=now()-interval '1 hour',updated_at=now()-interval '1 hour'
+FROM public.brand_offering_invites i
+WHERE i.id=a.invite_id AND i.origin='wizard';
+UPDATE public.feature_flags SET is_enabled=false,updated_at=clock_timestamp()-interval '1 millisecond'
+WHERE flag_key='business_wizard_invite_dispatch_v1';
+INSERT INTO auth.users(id) VALUES('00000000-1780-4000-8000-000000000103');
+INSERT INTO public.brand_people(
+  id,brand_id,display_name,record_status,linked_user_id
+) VALUES(
+  '00000000-1780-4000-8000-000000000024',
+  '00000000-1780-4000-8000-000000000002','Health Provider Race','active',
+  '00000000-1780-4000-8000-000000000103'
+);
+INSERT INTO public.brand_offering_invites(
+  id,brand_id,event_id,brand_person_id,status,origin,created_by
+) VALUES(
+  '00000000-1780-4000-8000-000000000061',
+  '00000000-1780-4000-8000-000000000002',
+  '00000000-1780-4000-8000-000000000010',
+  '00000000-1780-4000-8000-000000000024','active','wizard',
+  '00000000-1780-4000-8000-000000000001'
+);
+INSERT INTO public.brand_offering_invite_delivery_attempts(
+  id,invite_id,send_group_id,recipient_user_id,channel,attempt_kind,status,created_at,updated_at
+) VALUES(
+  '00000000-1780-4000-8000-000000000071',
+  '00000000-1780-4000-8000-000000000061',
+  (SELECT id FROM public.marketing_send_groups
+    WHERE event_id='00000000-1780-4000-8000-000000000010' LIMIT 1),
+  '00000000-1780-4000-8000-000000000103','push','initial','queued',
+  clock_timestamp(),clock_timestamp()
+);
+DO $provider_after_flag_off$
+DECLARE v_alerts jsonb;
+BEGIN
+  v_alerts:=public.issue_1780_claim_wizard_invite_health_v1();
+  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_alerts) a
+      WHERE a->>'signalKey'='provider_attempt_dispatch_disabled') THEN
+    RAISE EXCEPTION 'T-1780-14 FAIL: post-disable provider attempt was not alerted: %',v_alerts;
+  END IF;
+  IF (SELECT occurrence_count FROM private.wizard_invite_alert_state
+      WHERE signal_key='provider_attempt_dispatch_disabled')<>1 THEN
+    RAISE EXCEPTION 'T-1780-14 FAIL: historical pre-disable attempts caused false positives: %',
+      (SELECT occurrence_count FROM private.wizard_invite_alert_state
+       WHERE signal_key='provider_attempt_dispatch_disabled');
+  END IF;
+END;
+$provider_after_flag_off$;
 
 ROLLBACK;

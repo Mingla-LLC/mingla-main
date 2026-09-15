@@ -13,7 +13,11 @@ const worker = read("../supabase/functions/offering-invite-dispatch/index.ts");
 describe("issue #1780 — wizard invite plan implementation", () => {
   test("private plan owns selection while outbox alone owns delivery state", () => {
     expect(migration).toContain("CREATE TABLE private.brand_offering_invite_plans");
-    expect(migration).toContain("CREATE TABLE private.brand_offering_invite_publish_outbox");
+    // [TEST-MOD-APPROVED #1780] The binding metadata-only contract names the
+    // canonical table without the superseded publish_outbox suffix.
+    expect(migration).toContain("CREATE TABLE private.brand_offering_invite_plan_members");
+    expect(migration).toContain("CREATE TABLE private.brand_offering_invite_outbox");
+    expect(migration).not.toContain("CREATE TABLE private.brand_offering_invite_publish_outbox");
     expect(migration).toContain("FORCE ROW LEVEL SECURITY");
     expect(migration).toContain("state text NOT NULL DEFAULT 'pending'");
     const planTable = migration.slice(
@@ -153,8 +157,10 @@ describe("issue #1780 — wizard invite plan implementation", () => {
   });
 
   test("worker resumes a sealed group and zero-reachable jobs before crypto/provider work", () => {
-    const resume = worker.indexOf("job.sendGroupId !== null && job.executionSnapshot !== null");
-    const quote = worker.indexOf('service.rpc(\n          "biz_offering_send_quote_candidates"', resume);
+    // [TEST-MOD-APPROVED #1780] Resume truth is derived from #1770 by the
+    // stable outbox client_request_id; no group/snapshot lives on the outbox.
+    const resume = worker.indexOf("job.committedGroupId !== null");
+    const quote = worker.indexOf('"biz_offering_send_quote_candidates"', resume);
     const zero = worker.indexOf('"issue_1780_complete_wizard_invite_outbox_no_recipients_v1"', quote);
     const pepper = worker.indexOf("await resolveOfferingInviteTokenPepper()", zero);
     const execution = worker.indexOf('"issue_1780_execute_wizard_invite_outbox_v1"', pepper);
@@ -172,18 +178,28 @@ describe("issue #1780 — wizard invite plan implementation", () => {
       migration.indexOf("CREATE OR REPLACE FUNCTION private.execute_brand_offering_invite_wizard_v1"),
       migration.indexOf("CREATE OR REPLACE FUNCTION private.issue_1780_stamp_new_wizard_invite_origin"),
     );
-    expect(execute).toContain("send_group_id=(v_result->>'groupId')::uuid");
+    // [TEST-MOD-APPROVED #1780] The metadata-only outbox may not persist a
+    // group id; #1770 owns it under client_request_id=v_job.id.
+    expect(execute).toContain("public.biz_execute_offering_send_group(");
+    expect(execute).toContain("v_job.id,v_seal.execution_snapshot");
+    expect(execute).not.toMatch(/UPDATE private\.brand_offering_invite_outbox/);
+    expect(execute).not.toContain("send_group_id");
     expect(execute).not.toContain("state='succeeded'");
     expect(migration.indexOf("CREATE OR REPLACE FUNCTION public.issue_1780_complete_wizard_invite_outbox_v1"))
       .toBeGreaterThan(migration.indexOf("CREATE OR REPLACE FUNCTION public.issue_1780_execute_wizard_invite_outbox_v1"));
   });
 
-  test("private actor audit UUIDs do not block account erasure", () => {
+  test("binding actor audit columns retain canonical auth-user foreign keys", () => {
     const privateSchema = migration.slice(
       migration.indexOf("CREATE TABLE private.brand_offering_invite_plans"),
       migration.indexOf("CREATE OR REPLACE FUNCTION private.issue_1780_selection_hash"),
     );
-    expect(privateSchema).not.toMatch(/REFERENCES auth\.users/);
+    // [TEST-MOD-APPROVED #1780] The binding SPEC requires these three actor
+    // columns to retain canonical auth.users references; the old assertion
+    // directly contradicted that approved retention contract.
+    expect(privateSchema).toMatch(/created_by uuid NOT NULL REFERENCES auth\.users\(id\) ON DELETE RESTRICT/);
+    expect(privateSchema).toMatch(/updated_by uuid NOT NULL REFERENCES auth\.users\(id\) ON DELETE RESTRICT/);
+    expect(privateSchema).toMatch(/added_by uuid NOT NULL REFERENCES auth\.users\(id\) ON DELETE RESTRICT/);
   });
 
   test("non-target surfaces do not import selection or outbox truth", () => {
@@ -203,5 +219,41 @@ describe("issue #1780 — wizard invite plan implementation", () => {
         }
       }
     }
+  });
+
+  test("flag rollback skips empty-plan Edge quotes but preserves selected-plan recovery", () => {
+    const summaryHook = hook.slice(hook.indexOf("export function useOfferingInvitePlanSummary"));
+    const emptyGuard = summaryHook.indexOf(
+      "input.quoteWhenEmpty === false && nextPlan.selectedCount === 0",
+    );
+    const quoteCall = summaryHook.indexOf("quoteWizardInvitePlan", emptyGuard);
+    expect(summaryHook).toContain("input.quoteWhenEmpty !== false || plan.data.selectedCount > 0");
+    expect(emptyGuard).toBeGreaterThan(0);
+    expect(quoteCall).toBeGreaterThan(emptyGuard);
+
+    for (const file of [
+      "src/components/event/EventCreatorWizard.tsx",
+      "src/components/rsvp/RsvpCreatorWizard.tsx",
+      "src/components/experience/ExperienceCreatorWizard.tsx",
+      "src/components/trip/TripCreatorWizard.tsx",
+    ]) {
+      const source = read(file);
+      expect(source).toContain("quoteWhenEmpty: inviteFlag.data === true");
+      expect(source).toContain("const inviteRollbackReady =");
+      expect(source).toContain("inviteFlag.data === false");
+      expect(source).toContain("selectedCount === 0");
+    }
+  });
+
+  test("experience legacy publish cannot serialize a stale invite receipt", () => {
+    const experience = read("src/components/experience/ExperienceCreatorWizard.tsx");
+    const publishPayload = experience.slice(
+      experience.indexOf('supabase.rpc("issue_1719_publish_experience_with_poster"'),
+      experience.indexOf("if (error !== null)", experience.indexOf(
+        'supabase.rpc("issue_1719_publish_experience_with_poster"',
+      )),
+    );
+    expect(publishPayload).toContain("publish && inviteEnabled && invitePlan?.selectionRevision");
+    expect(publishPayload).toContain("invite_selection_confirmed: invitePlan.selectedCount > 0");
   });
 });
