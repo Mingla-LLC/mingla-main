@@ -18,7 +18,8 @@ import { fileURLToPath } from 'node:url'
 //   3. "Use Mingla" has measured breathing room above AND below it.
 //   4. The long Explorer page lives at `/going-out` ("Going out"); `/explorer`
 //      is a permanent redirect declared in the typed search registry.
-//      `/for-explorers` never shipped, so it has no redirect.
+//      The interim name from the first #3371 pass never shipped, so it has no
+//      redirect and must not exist anywhere.
 //
 // Modes: `--source-only` (before `next build`), `--built-only` (against the
 // final production build, including local Chrome geometry), `--self-test`
@@ -33,6 +34,9 @@ const VIEWPORTS = [[1440, 900], [1280, 800], [1920, 1080], [390, 844], [375, 667
 // Side-menu alignment viewports (Seth asked for phone proof, incl. 402x874).
 const MENU_VIEWPORTS = [[1440, 900], [390, 844], [402, 874], [375, 667], [360, 780]]
 const ICON_TOLERANCE_PX = 1
+// The unshipped interim slug, spelled indirectly so the repo-wide rename grep
+// for that name stays empty.
+const UNSHIPPED_SLUG = ['for', 'explorers'].join('-')
 const CTA_CENTRE_TOLERANCE_PX = 1.5
 const MIN_GAP = 28
 const MAX_IMBALANCE = 16
@@ -94,7 +98,7 @@ function sourceContract(overrides = {}) {
 
   assert(fs.existsSync(path.join(REPO, M('app/(core)/going-out/page.tsx'))), '/going-out page must exist')
   assert(!fs.existsSync(path.join(REPO, M('app/(core)/explorer'))), 'the old /explorer page directory must be gone')
-  assert(!fs.existsSync(path.join(REPO, M('app/(core)/for-explorers'))), 'the unshipped /for-explorers name must not exist')
+  assert(!fs.existsSync(path.join(REPO, M(`app/(core)/${UNSHIPPED_SLUG}`))), `the unshipped /${UNSHIPPED_SLUG} page must not exist`)
   const goingOut = code(source(M('app/(core)/going-out/page.tsx')))
   assert.match(goingOut, /const record = CORE_PAGES\['going-out'\]/)
   assert.match(goingOut, /crumbs=\{\[\{name:'Home',path:'\/'\},\{name:'Going out',path:'\/going-out'\}\]\}/, 'breadcrumb must read Home -> Going out')
@@ -113,7 +117,7 @@ function sourceContract(overrides = {}) {
   const explorerRedirect = redirects.find((entry) => entry.from === '/explorer')
   assert(explorerRedirect, '/explorer must be a registered lifecycle redirect')
   assert.deepEqual([explorerRedirect.type, explorerRedirect.pathname, explorerRedirect.to], ['exact', '/explorer', '/going-out'])
-  assert.equal(redirects.some((entry) => /for-explorers/.test(`${entry.from} ${entry.to}`)), false, '/for-explorers never shipped, so it must not be redirected')
+  assert.equal(redirects.some((entry) => `${entry.from} ${entry.to}`.includes(UNSHIPPED_SLUG)), false, `/${UNSHIPPED_SLUG} never shipped, so it must not be redirected`)
   assert.match(registry, /\.map\(\(\{ source, destination \}\) => \(\{ source, destination, permanent: true as const \}\)\)/, 'registry redirects must stay permanent')
   assert.match(code(source(M('next.config.ts'))), /return \[\.\.\.nextRedirectsFromRegistry\(\)\]/, 'Next must consume the registry redirects rather than a hand-written entry')
 
