@@ -319,7 +319,11 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   chromeTopOffset,
   contentBottomInset = 24,
   callbacks,
-}) => {
+  // #3426 — the parameter carries its type DIRECTLY (not only via React.FC):
+  // under a tsc graph where `react` does not resolve from packages/, React.FC is
+  // `any` and every binding here would be implicitly any (TS7031) — the same
+  // reason FollowButton annotates its own parameter.
+}: PublicBrandPageProps) => {
   void hideFloatingChrome;
   const { isDesktop } = useResponsiveLayout();
   const [activeTab, setActiveTab] = useState<Tab>("about");
@@ -1766,14 +1770,16 @@ interface SectionCardProps {
   callbacks: PublicBrandCallbacks;
 }
 
-const SectionMiniCard = ({
+// React.FC for JSX `key` under every consumer graph + an explicit parameter
+// type so no binding is implicitly any (the FollowButton pattern).
+const SectionMiniCard: React.FC<SectionCardProps> = ({
   card,
   theme,
   palette,
   surface,
   isDesktop,
   callbacks,
-}: SectionCardProps): React.ReactElement => {
+}: SectionCardProps) => {
   const kindLabel = OFFERING_KIND_LABEL[card.kind];
   const dateLine = sectionDateLine(card);
   return (
@@ -1786,7 +1792,7 @@ const SectionMiniCard = ({
         ...(card.priceLabel !== null ? [card.priceLabel] : []),
       ].join(". ")}.`}
       testID={`brand-section-card-${card.section}`}
-      style={({ pressed }) => [
+      style={({ pressed }: { pressed: boolean }) => [
         styles.oCard,
         surface.card,
         isDesktop && styles.oCardDesktop,
@@ -1826,21 +1832,23 @@ const SectionMiniCard = ({
 
 // A visually distinct block (accent border + wash, live dot, its own heading)
 // at the TOP of the Upcoming tab.
-const HappeningNowBlock = ({
-  cards,
-  theme,
-  palette,
-  surface,
-  isDesktop,
-  callbacks,
-}: {
+interface HappeningNowBlockProps {
   cards: SectionCardModel[];
   theme: ResolvedTheme;
   palette: ThemePalette;
   surface: Surface;
   isDesktop: boolean;
   callbacks: PublicBrandCallbacks;
-}): React.ReactElement => (
+}
+
+const HappeningNowBlock: React.FC<HappeningNowBlockProps> = ({
+  cards,
+  theme,
+  palette,
+  surface,
+  isDesktop,
+  callbacks,
+}: HappeningNowBlockProps) => (
   <View
     testID="brand-happening-now"
     style={[
@@ -1858,7 +1866,7 @@ const HappeningNowBlock = ({
       </Text>
     </View>
     <OfferingGrid isDesktop={isDesktop}>
-      {cards.map((card) => (
+      {cards.map((card: SectionCardModel) => (
         <SectionMiniCard
           key={card.key}
           card={card}
@@ -1873,16 +1881,7 @@ const HappeningNowBlock = ({
   </View>
 );
 
-const PastList = ({
-  cards,
-  hasMore,
-  loadState,
-  theme,
-  palette,
-  surface,
-  isDesktop,
-  callbacks,
-}: {
+interface PastListProps {
   cards: SectionCardModel[];
   hasMore: boolean;
   loadState: "ready" | "loading_more" | "error";
@@ -1891,7 +1890,18 @@ const PastList = ({
   surface: Surface;
   isDesktop: boolean;
   callbacks: PublicBrandCallbacks;
-}): React.ReactElement => {
+}
+
+const PastList: React.FC<PastListProps> = ({
+  cards,
+  hasMore,
+  loadState,
+  theme,
+  palette,
+  surface,
+  isDesktop,
+  callbacks,
+}: PastListProps) => {
   if (cards.length === 0 && !hasMore) {
     return <EmptyPane copy="No past offerings yet" palette={palette} />;
   }
@@ -1900,7 +1910,7 @@ const PastList = ({
   return (
     <View>
       <OfferingGrid isDesktop={isDesktop}>
-        {cards.map((card) => (
+        {cards.map((card: SectionCardModel) => (
           <SectionMiniCard
             key={card.key}
             card={card}
@@ -1930,7 +1940,7 @@ const PastList = ({
             }
             accessibilityState={{ disabled: loading, busy: loading }}
             testID="brand-past-load-more"
-            style={({ pressed }) => [
+            style={({ pressed }: { pressed: boolean }) => [
               styles.loadMoreBtn,
               surface.card,
               pressed && styles.cardPressed,
