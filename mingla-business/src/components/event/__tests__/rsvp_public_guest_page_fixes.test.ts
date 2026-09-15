@@ -17,11 +17,10 @@
  *   4. A blocked Going / Maybe tap names what is missing, next to the control.
  *   5. The anonymous guest's reply survives the chip-in redirect (tab-scoped).
  *   6. The floating decision bar only shows once the inline row is scrolled past.
- *   7. Wiring: the page, the wrapper and the shared components actually use 1–6.
+ *
+ * The rendered components are exercised in rsvp_public_guest_page_render.test.tsx
+ * and the page adapter in rsvp_public_page_status_and_restore.test.tsx.
  */
-
-import { readFileSync } from "fs";
-import { join } from "path";
 
 import {
   DAY_MS,
@@ -227,6 +226,7 @@ describe("4. a blocked decision tap says what is missing, next to the control", 
     expect(hint({ name: "", email: "", phone: "" })).toBe("Add your name, email and phone number above to RSVP.");
     expect(hint({ name: "", email: "", phone: "+1 555 123 4567" })).toBe("Add your name and email above to RSVP.");
     expect(hint({ name: "Ada", email: "ada@", phone: "+1 555 123 4567" })).toBe("Add a valid email above to RSVP.");
+    expect(hint({ name: "Ada", email: "ada@", phone: "" })).toBe("Add a valid email and your phone number above to RSVP.");
     expect(hint({ name: "", email: "", phone: "12" })).toBe(
       "Add your name, email and a valid phone number above to RSVP.",
     );
@@ -342,66 +342,5 @@ describe("6. the floating decision bar never doubles the inline row", () => {
   it("scrolls a revealed field to a quarter of the way down the viewport", () => {
     expect(rsvpRevealScrollOffset({ y: 1500, height: 48 }, viewport, 900)).toBe(2197);
     expect(rsvpRevealScrollOffset({ y: 10, height: 48 }, viewport, 0)).toBe(0);
-  });
-});
-
-describe("7. wiring", () => {
-  const root = join(__dirname, "..", "..", "..", "..", "..");
-  const read = (...parts: string[]): string => readFileSync(join(root, ...parts), "utf8");
-  const strip = (src: string): string =>
-    src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
-
-  const page = strip(read("mingla-business", "src", "components", "event", "PublicEventPage.tsx"));
-  const wrapper = strip(read("mingla-business", "src", "components", "event", "FoundationRsvpPreview.tsx"));
-  const body = strip(read("packages", "offering-rendering", "RsvpOfferingBody.tsx"));
-  const decision = strip(read("packages", "offering-rendering", "RsvpMomentumDecision.tsx"));
-
-  it("the page gives RSVP events the RSVP pill before it ever consults the ticket CTA", () => {
-    expect(page).toMatch(/\) : isRsvp \? \(\s*<RsvpStatusBanner[\s\S]*?\) : offeringCta\.kind === "unavailable"/);
-  });
-
-  it("the page keeps the guest's reply in sessionStorage only, and never in the URL", () => {
-    expect(page).toContain("window.sessionStorage");
-    expect(page).not.toContain("localStorage");
-    expect(page).toContain("restoredRsvp={restoredRsvp}");
-    expect(page).toContain("onRsvpResolved={handleRsvpResolved}");
-    expect(page).not.toMatch(/searchParams\.set\([^)]*recovery/i);
-  });
-
-  it("the page threads visibility + discoverability into the RSVP config", () => {
-    expect(page).toContain("visibility: event.visibility");
-    expect(page).toContain("discoverable: event.rsvpDiscoverable ?? null");
-  });
-
-  it("the wrapper gates the floating bar on inline visibility and reveals fields through its scroll ref", () => {
-    expect(wrapper).toMatch(/const showFloatingBar = shouldShowRsvpFloatingBar\(/);
-    expect(wrapper).toMatch(/\{showFloatingBar \? \(/);
-    expect(wrapper).toContain("scrollRef={scrollRef}");
-    expect(wrapper).toContain("onRevealField: revealField");
-    expect(wrapper).toMatch(/bottom: 24 \+ safeAreaBottom/);
-  });
-
-  it("the floating bar sits in a solid themed card", () => {
-    expect(body).toMatch(/testID="rsvp-floating-decision-card"/);
-    expect(body).toMatch(/opaqueSurfaceColor\(palette\)/);
-  });
-
-  it("the check mark is reserved for the guest's own confirmed 'going'", () => {
-    expect(decision).toMatch(/\) : goingResolved \? \(\s*<CheckGlyph/);
-    expect(decision).toMatch(/<UserPlusGlyph/);
-    expect(decision).toContain("selected: goingResolved");
-    // Missing details no longer paint Going / Maybe disabled.
-    expect(decision).not.toMatch(/\|\|\s*!contactReady;/);
-  });
-
-  it("the momentum card renders the capacity-aware sub-line", () => {
-    expect(decision).toContain("{momentumSubLabel}");
-    expect(decision).not.toContain("{momentum.subLabel}");
-  });
-
-  it("the body routes a blocked tap through the reveal + hint, not the old off-screen error line", () => {
-    expect(body).not.toContain("Add your name, email, and phone to RSVP.");
-    expect(body).toMatch(/onGoingTap[\s\S]*?if \(!contactReady\) \{[\s\S]*?revealFirstIssue\(\);/);
-    expect(body).toContain("validationHint={state.validationHint}");
   });
 });

@@ -759,7 +759,7 @@ export const useRsvpOfferingState = (
     }
     if (Platform.OS !== "web") {
       const hint = buildRsvpValidationHint(contactIssues);
-      if (hint !== null) AccessibilityInfo.announceForAccessibility?.(hint);
+      if (hint !== null) AccessibilityInfo?.announceForAccessibility?.(hint);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactIssues, guests, props.onRevealField]);

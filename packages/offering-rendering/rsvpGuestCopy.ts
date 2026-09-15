@@ -133,6 +133,7 @@ const FIELD_NOUN: Record<RsvpContactFieldKey, string> = {
  *   primary name + email empty       → "Add your name and email above to RSVP."
  *   primary email malformed          → "Add a valid email above to RSVP."
  *   name + email empty, phone bad    → "Add your name, email and a valid phone number above to RSVP."
+ *   email malformed, phone empty     → "Add a valid email and your phone number above to RSVP."
  *   primary done, guest 1 unfinished → "Finish Guest 1's details above to RSVP."
  */
 export const buildRsvpValidationHint = (
@@ -143,18 +144,18 @@ export const buildRsvpValidationHint = (
   if (first.guestIndex !== null) {
     return `Finish Guest ${first.guestIndex + 1}'s details above to RSVP.`;
   }
-  const primary = issues.filter((issue) => issue.guestIndex === null);
-  const missing = primary
-    .filter((issue) => issue.problem === "missing")
-    .map((issue) => FIELD_NOUN[issue.field]);
-  const invalid = primary
-    .filter((issue) => issue.problem === "invalid")
-    .map((issue) => `a valid ${FIELD_NOUN[issue.field]}`);
-  // One flat list so there is only ever one "and": the first missing noun
-  // carries "your" ("your name, email and a valid phone number").
-  const parts: string[] = [
-    ...missing.map((noun, index) => (index === 0 ? `your ${noun}` : noun)),
-    ...invalid,
-  ];
+  // One flat list in on-screen order, so there is only ever one "and"; the
+  // first missing field carries "your" ("your name, email and a valid phone
+  // number", "a valid email and your phone number").
+  let yourUsed = false;
+  const parts = issues
+    .filter((issue) => issue.guestIndex === null)
+    .map((issue) => {
+      const noun = FIELD_NOUN[issue.field];
+      if (issue.problem === "invalid") return `a valid ${noun}`;
+      if (yourUsed) return noun;
+      yourUsed = true;
+      return `your ${noun}`;
+    });
   return `Add ${joinList(parts)} above to RSVP.`;
 };

@@ -62,6 +62,8 @@ import type { RsvpGuestSnapshot } from "@mingla/offering-rendering/rsvpGuestSnap
 
 /** How often the inline-decision visibility is re-measured between scroll events. */
 const VISIBILITY_POLL_MS = 400;
+/** The floating card's padding (10 × 2) + border (1 × 2) around the decision block. */
+const FLOATING_CARD_CHROME = 22;
 
 type WindowMeasurable = {
   measureInWindow?: (
@@ -274,6 +276,10 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     row.measureInWindow((_rx, ry, _rw, rh) => {
       host.measureInWindow?.((_hx, hy, _hw, hh) => {
         measurePendingRef.current = 0;
+        // Reserve the bar's runway before it first appears: the floating card
+        // is the same decision block plus its 10px padding and 1px border, so
+        // the page's last section is never under the bar on its first showing.
+        if (rh > 0) setFloatBarHeight((prev) => (prev > 0 ? prev : rh + FLOATING_CARD_CHROME));
         const position = rsvpInlineDecisionPosition(
           { y: ry, height: rh },
           { y: hy, height: hh },
