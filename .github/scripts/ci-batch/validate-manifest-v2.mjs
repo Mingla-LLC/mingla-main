@@ -2375,7 +2375,7 @@ function validateRegistryInTrackedFilesScope(
   const packageAuthorities = {
     "app-mobile/package.json": "e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542",
     "app-mobile/package-lock.json": "f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27",
-    "mingla-business/package.json": "9cc55aaa74e87d3d778f93f689c923300899787f41968dfddb9c19219cc8e0e7",
+    "mingla-business/package.json": "50e430fa13aac9da65ec75b084d2beb1ddd67240545ccd8f279f8bf1bb81e598",
     "mingla-business/package-lock.json": "71449617f9cd6133da0395f3dcf780a3170da5d49b1e2eff2876a7afeb92addc",
   };
   for (const [relative, expected] of Object.entries(packageAuthorities)) {
