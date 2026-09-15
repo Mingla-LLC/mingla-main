@@ -93,6 +93,8 @@ jobs:
         run: deno test --allow-read supabase/functions/rsvp-pass-fetch/__tests__/issue_1447_pass_boundary.tester_adversarial.test.ts
       - name: Prove SMS and push crash-window safety
         run: deno test --allow-read supabase/functions/rsvp-notify/__tests__/issue_1447_delivery_crash_window.test.ts
+      - name: Approved guests of an unlisted RSVP get their pass (unlisted RSVP invite link)
+        run: deno test --allow-read supabase/functions/rsvp-notify/__tests__/unlisted_rsvp_pass_eligibility.test.ts
       - name: Type-check issue Edge Functions
         run: >-
           deno check

@@ -143,6 +143,13 @@ jobs:
               # migration to green this lane. Covered by the unfiltered full-chain
               # lanes. EXACT FILENAME.
               *20270704003314_issue_3314_bundle_hide_remaining.sql) continue ;;
+              # Unlisted RSVP invite link — SKIPPED for the same reason #3314 is.
+              # 20270707000000 re-emits `pg_public_rsvp_by_slug`, whose body reaches
+              # `issue_2489_address_withheld` / `issue_2489_public_theme`, which this
+              # phase does not have. `LANGUAGE sql`, validated at CREATE time.
+              # Nothing is removed from the migration to green this lane. Covered by
+              # the unfiltered full-chain lanes. EXACT FILENAME.
+              *20270707000000_unlisted_rsvp_invite_link.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done

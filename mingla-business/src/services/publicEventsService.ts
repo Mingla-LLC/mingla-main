@@ -2017,6 +2017,74 @@ const readDirectEventBundle = async (args: {
   return payload === null ? "fallback" : detailFromDirectBundle(payload);
 };
 
+// ═══ Unlisted RSVP invite link ══════════════════════════════════════════════
+// An RSVP never has a ticketed bundle, and business_public_events_view lists only
+// PUBLIC events, so an UNLISTED RSVP missed both reads and its own invite link
+// rendered "This event isn't live" — for guests, and for the host straight after
+// publishing. pg_public_rsvp_by_slug admits public and unlisted RSVPs by exact
+// slug (never private) and carries the same event as ONE view-shaped row,
+// `publicEventRow`, which goes through detailFromRow exactly like a view hit.
+//
+// Only asked AFTER the view misses, so a public RSVP page reads exactly as
+// before. Web goes through the cached endpoint first (the #2879 / #426 shield,
+// so bad-link traffic stays off the database); native, and web when that
+// endpoint is unavailable, call the RPC.
+const RSVP_ENDPOINT_MISS = "miss" as const;
+
+// A payload without a well-formed row is "not visible here": a database from
+// before the change carries no row, and it only ever served public RSVPs, which
+// the view already answered.
+export const rsvpEventRowFromPayload = (
+  payload: unknown,
+): BusinessPublicEventViewRow | null => {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const row = (payload as JsonRecord).publicEventRow;
+  if (row === null || typeof row !== "object" || Array.isArray(row)) return null;
+  const candidate = row as JsonRecord;
+  return typeof candidate.id === "string" &&
+    typeof candidate.brand_id === "string" &&
+    typeof candidate.brand_slug === "string" &&
+    typeof candidate.slug === "string" &&
+    candidate.event_type === "rsvp"
+    ? (candidate as unknown as BusinessPublicEventViewRow)
+    : null;
+};
+
+const readCachedRsvpPayload = async (
+  brandSlug: string,
+  eventSlug: string,
+): Promise<unknown> => {
+  if (!isWebRuntime()) return RSVP_ENDPOINT_MISS;
+  try {
+    const response = await fetch(
+      `/api/rsvp-event-bundle?brandSlug=${encodeURIComponent(brandSlug)}`
+        + `&eventSlug=${encodeURIComponent(eventSlug)}`,
+    );
+    // 404 is the endpoint rendering the reader's SQL NULL.
+    if (response.status === 404) return null;
+    if (!response.ok) return RSVP_ENDPOINT_MISS;
+    return (await response.json()) as unknown;
+  } catch {
+    return RSVP_ENDPOINT_MISS;
+  }
+};
+
+const fetchDirectRsvpEventRow = async (
+  brandSlug: string,
+  eventSlug: string,
+): Promise<BusinessPublicEventViewRow | null> => {
+  const cached = await readCachedRsvpPayload(brandSlug, eventSlug);
+  if (cached !== RSVP_ENDPOINT_MISS) return rsvpEventRowFromPayload(cached);
+  const { data, error } = await supabase.rpc("pg_public_rsvp_by_slug", {
+    p_brand_slug: brandSlug,
+    p_event_slug: eventSlug,
+  });
+  if (error !== null) throw error;
+  return rsvpEventRowFromPayload(data);
+};
+
 export const getPublicEventBySlug = async (
   brandSlug: string,
   eventSlug: string,
@@ -2031,7 +2099,7 @@ export const getPublicEventBySlug = async (
   // `/e/{brandSlug}/{slug}` MUST resolve only to event offerings. Trips
   // and experiences have their own public surfaces.
   // orch-strict-grep-allow events-type-filter — view doesn't expose event_type; trip exclusion via probe below
-  const { data, error } = await supabase
+  const { data: viewData, error } = await supabase
     .from("business_public_events_view")
     .select("*")
     .eq("brand_slug", brandSlug)
@@ -2039,6 +2107,10 @@ export const getPublicEventBySlug = async (
     .maybeSingle();
 
   if (error !== null) throw error;
+  // Unlisted RSVP invite link — the view lists PUBLIC events only. On a miss the
+  // exact-link RSVP row (see fetchDirectRsvpEventRow) takes its place and passes
+  // the SAME trip/RSVP guards below, so it can only ever admit an RSVP.
+  const data = viewData ?? (await fetchDirectRsvpEventRow(brandSlug, eventSlug));
   if (data === null) return null;
   const row = data as BusinessPublicEventViewRow;
   if (row.event_type === "trip") {

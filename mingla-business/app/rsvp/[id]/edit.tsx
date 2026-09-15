@@ -69,6 +69,9 @@ import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
 // the migration from a client `d_<ts36>` id to a server-issued id is now
 // triggered by the first dirty autosave, not on route mount. Pure helper.
 import { isDraftDirty } from "../../../src/utils/draftDirtyCheck";
+// Unlisted RSVP invite link — a private RSVP lands on its dashboard, not on a
+// public page nobody can open without an invite.
+import { rsvpPostPublishRoute } from "../../../src/utils/rsvpPostPublishRoute";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -210,6 +213,11 @@ export default function RsvpEditRoute(): React.ReactElement {
   const autosave = useServerDraftAutosave();
   const discardServerDraft = useDiscardServerDraft();
   const publishServerDraft = usePublishRsvpDraft();
+  // What the publish RPC actually wrote, read by handleExit to pick the landing.
+  const publishedLandingRef = React.useRef<{
+    visibility: DraftEvent["visibility"] | null;
+    eventId: string | null;
+  } | null>(null);
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const migratingLegacyIdRef = React.useRef<string | null>(null);
   // #1022 A/F-7 — set when an autosave is requested while a d_* promotion
@@ -534,13 +542,17 @@ export default function RsvpEditRoute(): React.ReactElement {
         // Cycle 6 — route to the new public event page when slug is
         // provided. Falls back to home tab when slug missing (e.g.
         // pre-Cycle-6 draft or publish-failed-but-flagged-published).
-        if (ctx?.slug !== undefined) {
-          router.replace(
-            `/e/${ctx.slug.brandSlug}/${ctx.slug.eventSlug}` as never,
-          );
-        } else {
-          router.replace(safeEventsExitRoute() as never);
-        }
+        // Unlisted RSVP invite link — public and unlisted open the public page
+        // (the invite link); private opens the RSVP dashboard. See
+        // rsvpPostPublishRoute for why.
+        const landing = publishedLandingRef.current;
+        publishedLandingRef.current = null;
+        const route = rsvpPostPublishRoute({
+          visibility: landing?.visibility ?? null,
+          eventId: landing?.eventId ?? null,
+          slug: ctx?.slug ?? null,
+        });
+        router.replace((route ?? safeEventsExitRoute()) as never);
       } else {
         // Discarded / abandoned (chrome X close) — route to Events tab
         // so the founder lands where they can see drafts + start a new
@@ -923,6 +935,10 @@ export default function RsvpEditRoute(): React.ReactElement {
         const published = await publishServerDraft.mutateAsync({
           draft: draftToPublish,
         });
+        publishedLandingRef.current = {
+          visibility: published.event.visibility ?? null,
+          eventId: published.event.serverEventId ?? published.event.id,
+        };
         return {
           brandSlug: published.brand.slug,
           eventSlug: published.event.eventSlug,
