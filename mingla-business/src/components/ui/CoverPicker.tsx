@@ -55,7 +55,10 @@ import {
 } from "./coverPickerDeviceMedia";
 import { getCoverPickerFileInfoAsync } from "./coverPickerFileInfo";
 import { useElapsedSince } from "./coverPickerElapsed";
-import { trimVideoWithDedicatedEditor } from "./coverPickerVideoTrimEditor";
+import {
+  trimVideoWithDedicatedEditor,
+  waitForTrimEditorToClose,
+} from "./coverPickerVideoTrimEditor";
 
 import {
   accent,
@@ -142,6 +145,14 @@ import {
   type GalleryPhotoTile,
 } from "./coverPickerGalleryAdd";
 import { reportGalleryAddFailure } from "./coverPickerGalleryTelemetry";
+// issue #3280 — after the native trim editor, continue in a FRESH sheet.
+import {
+  canContinueAfterNativeEditor,
+  nextNativeEditorCarryId,
+  returnsThroughFreshSheet,
+  type NativeEditorCarry,
+  type NativeEditorNotice,
+} from "./coverPickerNativeEditorReturn";
 import { createStorageUploadWithRetry } from "../../services/storageUploadWithRetry";
 import { findSelectedProviderId } from "./coverPickerSelection";
 import { Icon } from "./Icon";
@@ -230,6 +241,17 @@ export interface CoverPickerProps {
    * the photos an organiser adds there upload and are silently never saved.
    */
   galleryEnabled?: boolean;
+  /**
+   * issue #3280 — the sheet can close and come back as a fresh sheet. When set
+   * (iOS), a picker that has shown the native trim editor hands its outcome
+   * here instead of carrying on inside the native window the editor was stacked
+   * on. See `coverPickerNativeEditorReturn.ts`.
+   */
+  onNativeEditorClosed?: (carry: NativeEditorCarry) => void;
+  /** issue #3280 — the hand-off a fresh sheet continues from (once per id). */
+  resumeAfterNativeEditor?: NativeEditorCarry | null;
+  /** issue #3280 — tells the sheet this picker has taken the hand-off. */
+  onResumeAfterNativeEditorConsumed?: (carryId: number) => void;
 }
 
 const TAB_DEFS: ReadonlyArray<{ id: CoverTabId; label: string; icon: Parameters<typeof Icon>[0]["name"] }> = [
@@ -318,6 +340,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   isWideDesktop = false,
   onCoverVideoProcessingChange,
   galleryEnabled = false,
+  onNativeEditorClosed,
+  resumeAfterNativeEditor = null,
+  onResumeAfterNativeEditorConsumed,
 }) => {
   const { isAuthReady } = useAuth();
   const isBrand = target.kind === "brand";
@@ -347,10 +372,17 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // issue #1338 — in-sheet feedback channel for the cover-VIDEO flow. Rendered
   // INSIDE LibraryTab (never a root-portal Toast, which iOS drops while the
   // CoverPickerSheet modal is up). tone drives info (warm) vs error (semantic).
-  const [videoPickNotice, setVideoPickNotice] = useState<{
-    tone: "info" | "error";
-    text: string;
-  } | null>(null);
+  const [videoPickNotice, setVideoPickNoticeState] = useState<NativeEditorNotice | null>(null);
+  // issue #3280 — the notice as of NOW, so a hand-off to a fresh sheet carries
+  // the message this sheet was about to show (state lags a render behind).
+  const videoPickNoticeRef = useRef<NativeEditorNotice | null>(null);
+  const setVideoPickNotice = useCallback((next: NativeEditorNotice | null): void => {
+    videoPickNoticeRef.current = next;
+    setVideoPickNoticeState(next);
+  }, []);
+  // issue #3280 — identifies THIS mount on a hand-off, so it never continues
+  // from its own carry (a fresh native window must).
+  const nativeEditorInstanceRef = useRef<object>({});
 
   // Video upload hook — event/trip writes events.cover_media_url; brand writes
   // brands.cover_media_url (via the apply step on ready). For brand, eventRowId
@@ -602,6 +634,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   }, [
     emitChange,
     isVenue,
+    setVideoPickNotice,
     videoUpload.acknowledgeApplied,
     videoUpload.processedPosterUrl,
     videoUpload.processedUrl,
@@ -1151,6 +1184,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     isAuthReady,
     localCover.coverMediaUrl,
     onShowToast,
+    setVideoPickNotice,
     showUploadError,
     target,
     uploading,
@@ -1181,6 +1215,29 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     setVideoPickNotice(null);
     const previousPickedVideoAssets = pickedVideoAssetsRef.current;
     let selectedReplacementAssets: Parameters<typeof revokeCoverPickedAssets>[0] | null = null;
+    // issue #3280 — once the native trim editor has been shown on top of this
+    // sheet, the outcome goes to a FRESH sheet (iOS) instead of this one.
+    const handOffAfterNativeEditor = returnsThroughFreshSheet(
+      Platform.OS,
+      onNativeEditorClosed !== undefined,
+    );
+    let presentedNativeEditor = false;
+    let nativeEditorUpload: NativeEditorCarry["upload"] = null;
+    // Every outcome after the native editor (clip, cancel, a too-long or
+    // unreadable clip, a trim failure) continues in a fresh sheet. Wait for the
+    // editor to finish dismissing first: closing this sheet while the editor is
+    // still on top of it would dismiss the editor instead.
+    const handOffToFreshSheet = async (): Promise<void> => {
+      if (onNativeEditorClosed === undefined) return;
+      await waitForTrimEditorToClose();
+      onNativeEditorClosed({
+        id: nextNativeEditorCarryId(),
+        handedOffBy: nativeEditorInstanceRef.current,
+        notice: videoPickNoticeRef.current,
+        upload: nativeEditorUpload,
+        failedGalleryPhotos: galleryAdd.handOffFailed(),
+      });
+    };
     try {
       const result = await launchCoverVideoPicker();
       if (result.canceled || result.assets.length === 0) return;
@@ -1207,6 +1264,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         // issue #1338 — present the trim editor ONLY after the OS photo picker
         // has fully dismissed, so iOS New Arch never refuses a 2nd stacked modal.
         await waitForPickerDismissal();
+        presentedNativeEditor = true;
         // The single-line trim call is pinned by the orch-0978 strict-grep C1
         // gate (exact substring match); prettier-ignore stops printWidth (80)
         // from re-wrapping it across lines and re-breaking the gate.
@@ -1279,6 +1337,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         return;
       }
       lastVideoUploadFileRef.current = uploadFile;
+      if (presentedNativeEditor && handOffAfterNativeEditor) {
+        // issue #3280 — do NOT start here. The fresh sheet starts this upload
+        // (see `resumeAfterNativeEditor`), so its progress and its result land
+        // in a native window nothing was stacked on.
+        nativeEditorUpload = { file: uploadFile, replacing };
+        return;
+      }
       if (replacing) {
         await videoUpload.replace(uploadFile);
         revokeCoverPickedAssets(previousPickedVideoAssets);
@@ -1295,6 +1360,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         text: friendlyVideoCoverError(error),
       });
     } finally {
+      // issue #3280 — hand off to a fresh sheet (see `handOffToFreshSheet`).
+      if (presentedNativeEditor && handOffAfterNativeEditor) await handOffToFreshSheet();
       // ORCH-1308: do NOT revoke the picked blob here — the "try again" retry
       // re-reads it (web fetch(blob:uri)). It is retained via
       // pickedVideoAssetsRef and freed on the next pick / on unmount instead.
@@ -1303,13 +1370,72 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   }, [
     disabled,
     ensureMediaPermission,
+    galleryAdd,
     galleryUploading,
     isAuthReady,
     isNative,
     lockedVideoOperation,
+    onNativeEditorClosed,
+    setVideoPickNotice,
     uploading,
     validateEventRowId,
     videoUpload,
+  ]);
+
+  // ----- issue #3280: continue after the native trim editor ----------------
+  // This picker is the FRESH sheet. `armed` is set by this first effect in the
+  // same batch as the video hook's mount-time reconnect ("reattaching"), so a
+  // clip upload starts only once that reconnect has settled — exactly like a
+  // host who opens the sheet and then picks a clip.
+  const [nativeEditorResumeArmed, setNativeEditorResumeArmed] = useState(false);
+  useEffect(() => {
+    setNativeEditorResumeArmed(true);
+  }, []);
+  const consumedNativeEditorCarryRef = useRef<number | null>(null);
+
+  const continueVideoUploadAfterNativeEditor = useCallback(
+    async (upload: NonNullable<NativeEditorCarry["upload"]>): Promise<void> => {
+      lastVideoUploadFileRef.current = upload.file;
+      setUploading(true);
+      try {
+        if (upload.replacing) await videoUpload.replace(upload.file);
+        else await videoUpload.start(upload.file);
+      } catch (error) {
+        setVideoPickNotice({ tone: "error", text: friendlyVideoCoverError(error) });
+      } finally {
+        setUploading(false);
+      }
+    },
+    [setVideoPickNotice, videoUpload],
+  );
+
+  useEffect(() => {
+    const carry = resumeAfterNativeEditor;
+    if (carry === null || consumedNativeEditorCarryRef.current === carry.id) return;
+    // The picker that handed off never continues: a new native window must.
+    if (carry.handedOffBy === nativeEditorInstanceRef.current) return;
+    if (
+      !canContinueAfterNativeEditor({
+        armed: nativeEditorResumeArmed,
+        videoPhase: videoUpload.stage.phase,
+        hasUpload: carry.upload !== null,
+      })
+    ) {
+      return;
+    }
+    consumedNativeEditorCarryRef.current = carry.id;
+    onResumeAfterNativeEditorConsumed?.(carry.id);
+    if (carry.failedGalleryPhotos.length > 0) galleryAdd.adoptFailed(carry.failedGalleryPhotos);
+    if (carry.notice !== null) setVideoPickNotice(carry.notice);
+    if (carry.upload !== null) void continueVideoUploadAfterNativeEditor(carry.upload);
+  }, [
+    continueVideoUploadAfterNativeEditor,
+    galleryAdd,
+    nativeEditorResumeArmed,
+    onResumeAfterNativeEditorConsumed,
+    resumeAfterNativeEditor,
+    setVideoPickNotice,
+    videoUpload.stage.phase,
   ]);
 
   const cancelVideoCoverUpload = useCallback((): void => {
@@ -1576,7 +1702,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       coverMediaAlt: null,
     });
     onShowToast("Cover removed.");
-  }, [disabled, emitChange, onShowToast]);
+  }, [disabled, emitChange, onShowToast, setVideoPickNotice]);
 
   const handleMediaRenderError = useCallback(
     (event: EventCoverMediaErrorEvent): void => {

@@ -44,6 +44,10 @@ type VideoTrimSpec = {
   // when the trim editor actually presents. Optional here so a stale dev build
   // that predates the event degrades gracefully (watchdog simply stays unarmed).
   onShow?: (callback: () => void) => VideoTrimSubscription;
+  // issue #3280 — fires once the editor's own dismissal has COMPLETED
+  // (`closeEditor` completion, NativeVideoTrim.d.ts `readonly onHide`). Optional
+  // for the same stale-build reason as `onShow`.
+  onHide?: (callback: () => void) => VideoTrimSubscription;
 };
 
 // issue #2968 — every field below is a real `EditorConfig` key on
@@ -139,6 +143,34 @@ const unavailableNativeTrimError = (cause?: unknown): Error => {
 // still failing fast enough to show an actionable in-sheet error.
 const PRESENTATION_WATCHDOG_MS = 2500;
 
+// issue #3280 — how long `waitForTrimEditorToClose` waits for `onHide` before
+// giving up. The editor sends its finish/cancel event to JavaScript BEFORE it
+// dismisses its progress alert and then itself (two animated dismissals, well
+// under a second together). A build without `onHide` simply waits this long.
+export const TRIM_EDITOR_CLOSE_WAIT_MS = 2000;
+
+// The latest editor session's "fully dismissed" signal. Resolved at once when
+// no editor is on screen (never presented, or the module is unavailable).
+let trimEditorClosed: Promise<void> = Promise.resolve();
+
+/**
+ * issue #3280 — resolves once the most recent trim editor has finished
+ * dismissing (its `onHide`), or after `maxWaitMs`. The cover sheet waits for
+ * this before it closes and comes back as a fresh sheet: dismissing the sheet's
+ * native modal while the editor is still on top of it would dismiss the editor
+ * instead and strand the sheet (facebook/react-native#55005).
+ */
+export const waitForTrimEditorToClose = (
+  maxWaitMs: number = TRIM_EDITOR_CLOSE_WAIT_MS,
+): Promise<void> =>
+  new Promise((resolve) => {
+    const timer = setTimeout(resolve, maxWaitMs);
+    void trimEditorClosed.then(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+
 const presentationFailedError = (): Error =>
   new Error("The trim screen didn't open. Try again, or pick a shorter clip.");
 
@@ -178,11 +210,25 @@ export const trimVideoWithDedicatedEditor = (
     try {
       nativeVideoTrim = loadNativeVideoTrim();
     } catch (error) {
+      trimEditorClosed = Promise.resolve();
       reject(error);
       return;
     }
 
     const { showEditor, videoTrim } = nativeVideoTrim;
+    // issue #3280 — this session's "fully dismissed" signal. Kept apart from
+    // `subscriptions`: `settle` runs on finish/cancel, which the editor sends
+    // BEFORE its dismissal, so `onHide` must outlive it.
+    let markClosed: () => void = () => undefined;
+    trimEditorClosed = new Promise<void>((resolveClosed) => {
+      markClosed = resolveClosed;
+    });
+    let hideSubscription: VideoTrimSubscription | null = null;
+    const closeSession = (): void => {
+      hideSubscription?.remove();
+      hideSubscription = null;
+      markClosed();
+    };
     const subscriptions: VideoTrimSubscription[] = [];
     // issue #1338 — presentation state + watchdog. `presented` flips true the
     // instant the native editor is visible (onShow); the watchdog only fires
@@ -242,9 +288,14 @@ export const trimVideoWithDedicatedEditor = (
         );
         watchdog = setTimeout(() => {
           if (!presented) {
+            // Nothing is on screen, so there is no dismissal to wait for.
+            closeSession();
             settle(() => reject(presentationFailedError()));
           }
         }, PRESENTATION_WATCHDOG_MS);
+      }
+      if (typeof videoTrim.onHide === "function") {
+        hideSubscription = videoTrim.onHide(closeSession);
       }
       // react-native-video-trim docs:
       // https://github.com/maitrungduc1410/react-native-video-trim
@@ -310,6 +361,7 @@ export const trimVideoWithDedicatedEditor = (
         cancelTrimmingDialogConfirmText: "Stop",
       });
     } catch (error) {
+      closeSession();
       settle(() => reject(error));
     }
   });

@@ -18,7 +18,7 @@
  * Per SPEC_ORCH-0989 §3.1/§4.1 + SPEC_ORCH-0989_..._DESIGN.md §2.
  */
 
-import React, { Suspense, useCallback, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -43,6 +43,13 @@ import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Button } from "./Button";
 import { type CoverPatch } from "./CoverPicker";
 import type { CoverTarget } from "./coverTarget";
+// issue #3280 — after the native trim editor the sheet comes back FRESH.
+import {
+  discardNativeEditorCarry,
+  NATIVE_EDITOR_RETURN_SETTLE_MS,
+  releaseCarryOwner,
+  type NativeEditorCarry,
+} from "./coverPickerNativeEditorReturn";
 import { Icon } from "./Icon";
 import { Sheet } from "./Sheet";
 // issue #1356 [cover-nested-toast] — Tier 1 of #1342. The cover feedback Toast
@@ -81,6 +88,24 @@ const COVER_TOAST_ERROR_SIGNALS: readonly string[] = [
   "needs a server",
   "try again",
 ];
+
+// issue #3280 — if the sheet's content has not unmounted by now (it normally
+// unmounts ~280 ms after the sheet hides), come back anyway and let the picker
+// that is still mounted continue, rather than leave the host with no sheet.
+export const NATIVE_EDITOR_RETURN_FALLBACK_MS = 2000;
+
+type NativeEditorReturn = {
+  phase: "closing" | "reopening";
+  carry: NativeEditorCarry;
+};
+
+/** Reports when the sheet's content unmounts (its native modal is going away). */
+const SheetContentPresence: React.FC<{ onUnmount: () => void }> = ({ onUnmount }) => {
+  const onUnmountRef = useRef(onUnmount);
+  onUnmountRef.current = onUnmount;
+  useEffect(() => () => onUnmountRef.current(), []);
+  return null;
+};
 
 export const inferKind = (message: string): ToastKind => {
   const lower = message.toLowerCase();
@@ -165,6 +190,78 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
     [onCoverChange],
   );
 
+  // issue #3280 — the native trim editor was stacked on this sheet's native
+  // modal; the picker handed its outcome over. The sheet hides ("closing"), and
+  // once its content has unmounted — the old native window is gone — it comes
+  // back ("reopening") and a FRESH picker continues from the carry.
+  const [nativeEditorReturn, setNativeEditorReturnState] =
+    useState<NativeEditorReturn | null>(null);
+  const nativeEditorReturnRef = useRef<NativeEditorReturn | null>(null);
+  const setNativeEditorReturn = useCallback((next: NativeEditorReturn | null): void => {
+    nativeEditorReturnRef.current = next;
+    setNativeEditorReturnState(next);
+  }, []);
+
+  const reopenAfterNativeEditor = useCallback(
+    (carryId: number, releaseOwner: boolean): void => {
+      const current = nativeEditorReturnRef.current;
+      if (current === null || current.carry.id !== carryId || current.phase !== "closing") return;
+      setNativeEditorReturn({
+        phase: "reopening",
+        carry: releaseOwner ? releaseCarryOwner(current.carry) : current.carry,
+      });
+    },
+    [setNativeEditorReturn],
+  );
+
+  const handleNativeEditorClosed = useCallback(
+    (carry: NativeEditorCarry): void => {
+      const previous = nativeEditorReturnRef.current;
+      if (previous !== null) discardNativeEditorCarry(previous.carry);
+      setNativeEditorReturn({ phase: "closing", carry });
+      setTimeout(() => reopenAfterNativeEditor(carry.id, true), NATIVE_EDITOR_RETURN_FALLBACK_MS);
+    },
+    [reopenAfterNativeEditor, setNativeEditorReturn],
+  );
+
+  const handleSheetContentUnmounted = useCallback((): void => {
+    const current = nativeEditorReturnRef.current;
+    if (current === null || current.phase !== "closing") return;
+    const carryId = current.carry.id;
+    // Present the fresh sheet only once the old native modal has torn down
+    // (the same settle #1360 uses before presenting a modal after a sheet).
+    setTimeout(() => reopenAfterNativeEditor(carryId, false), NATIVE_EDITOR_RETURN_SETTLE_MS);
+  }, [reopenAfterNativeEditor]);
+
+  const handleNativeEditorReturnConsumed = useCallback(
+    (carryId: number): void => {
+      if (nativeEditorReturnRef.current?.carry.id === carryId) setNativeEditorReturn(null);
+    },
+    [setNativeEditorReturn],
+  );
+
+  // The host closed the sheet mid-return: drop the carry. A trimmed clip must
+  // never start uploading the next time the host opens the sheet.
+  useEffect(() => {
+    if (visible) return;
+    const current = nativeEditorReturnRef.current;
+    if (current === null) return;
+    discardNativeEditorCarry(current.carry);
+    setNativeEditorReturn(null);
+  }, [setNativeEditorReturn, visible]);
+
+  useEffect(
+    () => () => {
+      const current = nativeEditorReturnRef.current;
+      if (current !== null) discardNativeEditorCarry(current.carry);
+      nativeEditorReturnRef.current = null;
+    },
+    [],
+  );
+
+  // issue #3280 — hidden while it hands over to a fresh sheet.
+  const sheetVisible = visible && nativeEditorReturn?.phase !== "closing";
+
   const hasSelection = currentPatch.coverMediaUrl !== null;
   // Images + GIFs render a thumbnail; video covers show a play glyph instead of
   // a still (the processed URL is not an image source).
@@ -172,8 +269,9 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
     hasSelection && currentPatch.coverMediaType !== "video";
 
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint="full">
+    <Sheet visible={sheetVisible} onClose={onClose} snapPoint="full">
       <View style={styles.host}>
+        <SheetContentPresence onUnmount={handleSheetContentUnmounted} />
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>Cover</Text>
           <Pressable
@@ -225,6 +323,11 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
                 setVideoProcessing(processing);
                 onCoverVideoProcessingChange?.(processing);
               }}
+              onNativeEditorClosed={handleNativeEditorClosed}
+              resumeAfterNativeEditor={
+                nativeEditorReturn?.phase === "reopening" ? nativeEditorReturn.carry : null
+              }
+              onResumeAfterNativeEditorConsumed={handleNativeEditorReturnConsumed}
             />
           </Suspense>
         </ScrollView>
