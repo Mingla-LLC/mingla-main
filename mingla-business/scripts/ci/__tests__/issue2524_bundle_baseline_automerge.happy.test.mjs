@@ -986,4 +986,155 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
       "SC-4 must stay fail-closed");
     assertCeilingMirrorMatchesBudgetSource();
   });
+
+  // #3400 — KEEP (above) and CHECK_FANOUT_CEILING are two readers of ONE fact:
+  // what a baseline-only pull request starts. Nothing tied them together, so
+  // #2885 reverted two exclusions into KEEP and #3325 added a four-job lane to it
+  // while the ceiling stayed at the "three jobs plus three app checks" it was
+  // derived from. This suite stayed green; main went red after every recording
+  // merge instead, where nobody on the causing PR could see it.
+  //
+  // Checks a pull_request run of one workflow reports. Every job reports one,
+  // INCLUDING a job whose `if:` is false — GitHub lists it as skipped, and
+  // ci-batch's bounded-dispatch job does exactly that on every recording PR. A
+  // matrix job reports one per `include:` entry. Validated against live
+  // behaviour: over the six KEEP workflows it reproduces the 23 GitHub Actions
+  // check runs on PR #3400, no more and no fewer. Anything it cannot count with
+  // certainty throws — an uncountable job list is a failure, never a pass.
+  function checkRunsPerPullRequest(text, name) {
+    const lines = text.split("\n");
+    const start = lines.indexOf("jobs:");
+    if (start === -1) throw new Error(`${name}: no top-level jobs: block`);
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i += 1) {
+      if (lines[i] && !/^[\s#]/.test(lines[i])) { end = i; break; }
+    }
+    const heads = [];
+    for (let i = start + 1; i < end; i += 1) {
+      if (/^  [A-Za-z0-9_-]+:\s*$/.test(lines[i])) heads.push(i);
+      else if (/^  [^\s#]/.test(lines[i])) throw new Error(`${name}: unreadable job header "${lines[i].trim()}"`);
+    }
+    if (heads.length === 0) throw new Error(`${name}: jobs: lists no jobs`);
+    let total = 0;
+    heads.forEach((at, index) => {
+      const id = lines[at].trim().slice(0, -1);
+      const body = lines.slice(at + 1, heads[index + 1] ?? end);
+      if (body.some((line) => /^    uses:/.test(line))) {
+        throw new Error(`${name}/${id}: a reusable-workflow call reports its callee's jobs, which this cannot see`);
+      }
+      const strategyAt = body.findIndex((line) => /^    strategy:/.test(line));
+      if (strategyAt === -1) { total += 1; return; }
+      let strategyEnd = body.length;
+      for (let j = strategyAt + 1; j < body.length; j += 1) {
+        if (body[j].trim() === "" || /^\s*#/.test(body[j])) continue;
+        if (!/^     /.test(body[j])) { strategyEnd = j; break; }
+      }
+      const strategy = body.slice(strategyAt + 1, strategyEnd);
+      if (strategy.some((line) => /^      matrix:\s*\S/.test(line))) {
+        throw new Error(`${name}/${id}: an inline or computed matrix cannot be counted`);
+      }
+      const matrixAt = strategy.findIndex((line) => /^      matrix:\s*$/.test(line));
+      if (matrixAt === -1) { total += 1; return; }
+      let sawInclude = false;
+      let entries = 0;
+      for (let j = matrixAt + 1; j < strategy.length; j += 1) {
+        const line = strategy[j];
+        if (line.trim() === "" || /^\s*#/.test(line)) continue;
+        if (!/^       /.test(line)) break;
+        if (/^        include:\s*$/.test(line)) { sawInclude = true; continue; }
+        if (/^        \S/.test(line)) {
+          throw new Error(`${name}/${id}: matrix key "${line.trim()}" multiplies jobs; only include: entries are counted`);
+        }
+        if (/^          - /.test(line)) entries += 1;
+      }
+      if (!sawInclude || entries === 0) throw new Error(`${name}/${id}: the matrix has no readable include: entries`);
+      total += entries;
+    });
+    return total;
+  }
+
+  // Checks from GitHub Apps rather than from any workflow, so the counter cannot
+  // see them. Measured on #3338, #3356, #3368 and #3400, whose check-name sets are
+  // identical: GitGuardian Security Checks, Vercel Preview Comments, Supabase Preview.
+  const APP_CHECKS_ON_RECORDING_PR = 3;
+  // #2885's own margin above the count it expected (twelve for six). Only the
+  // count was wrong; the margin is kept as that PR decided it.
+  const FANOUT_ROOM = 6;
+
+  test("#3400 — the job counter counts what GitHub reports, and refuses what it cannot count", () => {
+    const workflowWith = (jobs) => ["name: fixture", "on:", "  pull_request:", "jobs:", ...jobs, ""].join("\n");
+    const matrixJob = (matrixLines) => [
+      "  batch:",
+      "    name: \"batch ${{ matrix.class }}\"",
+      "    strategy:",
+      "      fail-fast: false",
+      ...matrixLines,
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - run: |",
+      "          - not a matrix entry",
+    ];
+    const include = [
+      "      matrix:",
+      "        include:",
+      "          # a comment is not a job",
+      "          - class: a",
+      "            node: \"20\"",
+      "          - class: b",
+      "          - class: c",
+    ];
+    const others = [
+      "  dispatch-only:",
+      "    if: github.event_name == 'workflow_dispatch'",
+      "    runs-on: ubuntu-latest",
+      "  plain:",
+      "    runs-on: ubuntu-latest",
+    ];
+    assert.equal(checkRunsPerPullRequest(workflowWith([...matrixJob(include), ...others]), "fixture"), 5,
+      "three include entries, one job skipped by its if:, one plain job");
+    assert.equal(checkRunsPerPullRequest(workflowWith(others), "fixture"), 2, "a job whose if: is false still reports");
+
+    const refusals = [
+      workflowWith(matrixJob(["      matrix:", "        node: [20, 22]"])),
+      workflowWith(matrixJob(["      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}"])),
+      workflowWith(matrixJob([...include, "        exclude:", "          - class: a"])),
+      workflowWith(["  called:", "    uses: ./reusable-workflow"]),
+      workflowWith([]),
+      "name: fixture\non:\n  pull_request:\n",
+    ];
+    for (const text of refusals) {
+      assert.throws(() => checkRunsPerPullRequest(text, "fixture"), /fixture/, "an uncountable shape must throw, never guess");
+    }
+  });
+
+  test("#3400 — the live fan-out ceiling fits every check KEEP is pinned to start, within #2885's room", () => {
+    const perWorkflow = {};
+    let actionsChecks = 0;
+    for (const name of [...KEEP].sort()) {
+      let count;
+      try {
+        count = checkRunsPerPullRequest(readFileSync(join(WORKFLOWS, name), "utf8"), name);
+      } catch (error) {
+        assert.fail(`${error.message}. An uncountable KEEP workflow is a failure, not a pass.`);
+      }
+      perWorkflow[name] = count;
+      actionsChecks += count;
+    }
+    const expected = actionsChecks + APP_CHECKS_ON_RECORDING_PR;
+    const shape = `${actionsChecks} GitHub Actions checks ${JSON.stringify(perWorkflow)} + ${APP_CHECKS_ON_RECORDING_PR} app checks`;
+    assert.ok(
+      CHECK_FANOUT_CEILING >= expected,
+      `A baseline-only pull request now starts ${expected} checks (${shape}) but CHECK_FANOUT_CEILING is `
+      + `${CHECK_FANOUT_CEILING}, so the next recording merge turns main red. If the new jobs are genuinely required, `
+      + "raise the ceiling in this pull request after counting the checks on a live recording PR; otherwise exclude "
+      + "the baseline from the workflow that grew.",
+    );
+    assert.ok(
+      CHECK_FANOUT_CEILING <= expected + FANOUT_ROOM,
+      `CHECK_FANOUT_CEILING is ${CHECK_FANOUT_CEILING}, more than ${FANOUT_ROOM} above the ${expected} checks a `
+      + `baseline-only pull request starts (${shape}). A ceiling that loose lets the fan-out come back unread; lower it.`,
+    );
+    assert.equal(assessCheckFanout(expected).ok, true, "the pinned shape itself must read as scoped");
+    assert.equal(assessCheckFanout(expected + FANOUT_ROOM + 1).reason, "FANOUT_REGRESSED");
+  });
 });
