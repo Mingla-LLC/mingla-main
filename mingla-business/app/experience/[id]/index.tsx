@@ -73,13 +73,18 @@ import { summarizeEventMoney } from "../../../src/utils/moneySummary";
 import { offeringActivityFromOrders } from "../../../src/utils/offeringActivityFromOrders";
 import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
 import { unpublishExperienceToDraft } from "../../../src/services/experienceDetailService";
+// #3372 — naira shows "₦", not "NGN", on the host experience screen (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 function formatCurrency(cents: number, currency: string): string {
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-    }).format(cents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+      }).format(cents / 100),
+      currency,
+    );
   } catch {
     return `${(cents / 100).toFixed(2)} ${currency}`;
   }

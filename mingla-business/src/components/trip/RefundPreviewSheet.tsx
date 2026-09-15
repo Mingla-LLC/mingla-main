@@ -41,6 +41,8 @@ import type {
 } from "../../services/cancelTripBookingService";
 import { Sheet } from "../ui/Sheet";
 import { RefundPreviewBody } from "./RefundPreviewBody";
+// #3372 — a naira refund confirmation shows "₦", not "NGN" (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 export interface RefundPreviewSheetProps {
   visible: boolean;
@@ -274,10 +276,13 @@ export const RefundPreviewSheet: React.FC<RefundPreviewSheetProps> = ({
             <Text style={styles.successTitle}>Cancellation processed</Text>
             <Text style={styles.successBody}>
               Refund of{" "}
-              {new Intl.NumberFormat(undefined, {
-                style: "currency",
-                currency: successResult.currency.toUpperCase(),
-              }).format(successResult.refundAmountCents / 100)}{" "}
+              {withCurrencyGlyph(
+                new Intl.NumberFormat(undefined, {
+                  style: "currency",
+                  currency: successResult.currency.toUpperCase(),
+                }).format(successResult.refundAmountCents / 100),
+                successResult.currency,
+              )}{" "}
               issued to the buyer.{" "}
               {successResult.installmentsCancelled > 0 &&
                 `${successResult.installmentsCancelled} scheduled installment${successResult.installmentsCancelled === 1 ? "" : "s"} cancelled.`}

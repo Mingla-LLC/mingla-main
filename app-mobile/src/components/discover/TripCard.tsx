@@ -19,6 +19,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { EventCoverMedia, formatTripDateRange } from "@mingla/offering-rendering";
+// #3372 — naira reads "₦", not "NGN", on the trip card (the shared #3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 import { Icon } from "../ui/Icon";
 import {
@@ -45,11 +47,14 @@ function formatPrice(minPriceCents: number | null, currency: string | null): str
   if (minPriceCents === null) return null;
   const code = currency ?? "USD";
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: code,
-      maximumFractionDigits: 0,
-    }).format(minPriceCents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: code,
+        maximumFractionDigits: 0,
+      }).format(minPriceCents / 100),
+      code,
+    );
   } catch {
     return `${(minPriceCents / 100).toFixed(0)} ${code}`;
   }

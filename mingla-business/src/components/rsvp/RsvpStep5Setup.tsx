@@ -37,6 +37,8 @@ import { type StepBodyProps } from "../event/types";
 import { Icon } from "../ui/Icon";
 import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
 import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
+// #3372 — the chip-in money prefix reads "₦", not "NGN" (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 const ROW_BG = Platform.select({
   ios: glass.tint.profileBase,
@@ -144,12 +146,13 @@ const NumberStepper: React.FC<StepperRowProps> = ({
 const currencySymbol = (currency: string): string => {
   try {
     return (
-      new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: currency || "USD",
-      })
-      .format(0)
-        .replace(/[\d.,\s]/g, "") || "$"
+      withCurrencyGlyph(
+        new Intl.NumberFormat(undefined, {
+          style: "currency",
+          currency: currency || "USD",
+        }).format(0),
+        currency,
+      ).replace(/[\d.,\s]/g, "") || "$"
     );
   } catch {
     return "$";

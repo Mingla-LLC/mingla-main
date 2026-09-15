@@ -27,6 +27,8 @@
 import { useMemo } from "react";
 
 import type { CtaState } from "./offeringCta";
+// #3372 — naira shows "₦", not "NGN", whatever the engine or locale (#3341 rule).
+import { withCurrencyGlyph } from "./currencyGlyph";
 import {
   clampTripTierQuantity,
   tripAnyLineOnPlan,
@@ -164,11 +166,14 @@ export function projectTripSchedule(
 
 function formatTripPrice(priceCents: number, currency: string): string {
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-      maximumFractionDigits: 0,
-    }).format(priceCents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+        maximumFractionDigits: 0,
+      }).format(priceCents / 100),
+      currency,
+    );
   } catch {
     return `${(priceCents / 100).toFixed(0)} ${currency}`;
   }

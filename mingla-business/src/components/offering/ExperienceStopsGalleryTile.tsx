@@ -27,6 +27,8 @@ import {
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import type { ExperienceStopRow } from "../../services/experienceDetailService";
+// #3372 — naira stop prices show "₦", not "NGN" (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 export interface ExperienceStopsGalleryTileProps {
   stops: ExperienceStopRow[];
@@ -38,10 +40,13 @@ export interface ExperienceStopsGalleryTileProps {
 
 function formatPrice(cents: number, currency: string): string {
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-    }).format(cents / 100);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+      }).format(cents / 100),
+      currency,
+    );
   } catch {
     return `${(cents / 100).toFixed(2)} ${currency}`;
   }
