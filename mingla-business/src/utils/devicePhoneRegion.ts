@@ -6,7 +6,10 @@
  * "US" — the browser's own locale is the honest answer there. Only ever the
  * LAST candidate: a venue's or brand's country always comes first.
  */
-import { getDefaultCountryCode } from "@mingla/phone-input";
+// Deep import: the country directory only. The package barrel also loads the
+// PhoneInput component (and its keyboard library), which a plain helper must
+// not drag into every module and test that asks for a region.
+import { getDefaultCountryCode } from "@mingla/phone-input/countries";
 
 export const devicePhoneRegion = (): string | null => {
   try {
