@@ -19977,7 +19977,7 @@
       "providerWorkflow": ".github/workflows/issue-873-guest-status-roster-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5107dbea4ff777aaad5574cb0a5d95ce1524b170b80b28d2545361477a0752c8",
+        "sourceSha256": "9d58c4c9c2a68899a555778b975beb652192cf1a7018f118e9eea19cddb16408",
         "triggers": [
           "pull_request",
           "push"
@@ -20017,6 +20017,7 @@
           "supabase/migrations/20270319000873_issue_0873_guest_status_roster.sql",
           "supabase/migrations/20270709001780_issue_1780_wizard_invite_plans.sql",
           "supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql",
+          "supabase/migrations/__tests__/issue_1780_observability_rollback.tester_adversarial.pg17.test.sql",
           "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql"
         ],
         "jobKeys": [
