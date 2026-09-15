@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 644,
-  "selfTestWiredFloor": 414,
+  "expectedStrictGrepMjsFiles": 646,
+  "selfTestWiredFloor": 415,
   "unenforcedCap": 2,
   "fixtureCap": 9,
   "capableUnwiredCap": 23,
@@ -494,6 +494,17 @@
     },
     {
       "script": ".github/scripts/strict-grep/__tests__/issue-2534-lucide-gate-perimeter.tester.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-3197-search-promotion-has-a-caller.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node --test",
@@ -9562,6 +9573,18 @@
       "modes": ["plain"],
       "selfTest": "none",
       "jobKeys": ["issue-3095-policy-projection-adversarial-tester"]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-3197-search-promotion-has-a-caller.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/issue-2981-marketing-search-foundation.mjs",
