@@ -1,20 +1,16 @@
 // #3197 — node --test companion for issue-3197-search-promotion-has-a-caller.mjs.
 //
-// The gate's --self-test proves its detector on synthetic SQL. This file proves
-// it on the REAL migration chain: green as shipped, and red — naming the right
-// function — for each in-memory reversion of the #3197 migration.
+// The gate's own self-test mode (run by class A) proves its detector on
+// synthetic SQL. This file proves it on the REAL migration chain: green as
+// shipped, and red — naming the right function — for each in-memory reversion
+// of the #3197 migration.
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
 import { cronReachability } from "../issue-2290-queue-worker-has-cron-caller.mjs";
 import { analyze, loadMigrations } from "../issue-3197-search-promotion-has-a-caller.mjs";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const GATE = path.join(HERE, "..", "issue-3197-search-promotion-has-a-caller.mjs");
 const MIGRATION = "20270706003197_issue_3197_public_search_auto_promotion.sql";
 
 // Read the chain once; every test below analyses an in-memory copy.
@@ -107,10 +103,4 @@ test("the #3197 migration adds no dynamic cron.unschedule to the frozen #2290 co
     "issue_3197_public_search_converged",
     "issue_3197_public_search_reconcile",
   ]);
-});
-
-test("--self-test exits 0", () => {
-  const run = spawnSync(process.execPath, [GATE, "--self-test"], { encoding: "utf8" });
-  assert.equal(run.status, 0, run.stderr);
-  assert.match(run.stdout, /#3197 self-test PASS/);
 });
