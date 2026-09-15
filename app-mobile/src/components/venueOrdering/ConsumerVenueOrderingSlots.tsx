@@ -48,6 +48,12 @@ import { VenueOrderReviewPane } from "@mingla/brand-rendering/venueOrdering/Venu
 import { VenueOrderStatusPane } from "@mingla/brand-rendering/venueOrdering/VenueOrderStatusPane";
 
 import { BaseBottomSheet, BottomSheetTextInput } from "../ui/BaseBottomSheet";
+// issue #3380 — pure phone helpers only at module scope; the picker is required
+// where the review sheet renders it (see renderPhoneField).
+import {
+  consumerOrderPhoneFailure,
+  consumerOrderPhoneStartCountry,
+} from "./consumerOrderPhone";
 import { useConsumerVenueOrdering } from "./useConsumerVenueOrdering";
 import type { ConsumerVenueOrdering } from "./useConsumerVenueOrdering";
 
@@ -58,6 +64,8 @@ export interface ConsumerVenueOrderingSlotProps {
   palette: ThemePalette;
   surface: Surface;
   theme: ResolvedTheme;
+  /** issue #3380 — the venue's country; the guest's phone picker starts here. */
+  countryCode?: string | null;
 }
 
 /** The venue's OWN clock — never the visitor's — resolved for the menu windows. */
@@ -104,6 +112,8 @@ export const ConsumerVenueOrderingSurface: React.FC<{
     { start: string | null; end: string | null; days: number[] | null }
   >;
   timezone: string | null;
+  /** issue #3380 — the venue's country, for the guest's phone picker. */
+  countryCode?: string | null;
 }> = ({
   palette,
   surface,
@@ -115,6 +125,7 @@ export const ConsumerVenueOrderingSurface: React.FC<{
   menu,
   menuWindows,
   timezone,
+  countryCode = null,
 }) => {
   const ordering = useConsumerVenueOrdering({
     brandSlug,
@@ -135,7 +146,7 @@ export const ConsumerVenueOrderingSurface: React.FC<{
     }
     return map;
   }, [menu]);
-  const slotProps = { ordering, palette, surface, theme };
+  const slotProps = { ordering, palette, surface, theme, countryCode };
 
   const notice = venueOrderingNotice(ordering.config, {
     scanned: ordering.scanned,
@@ -301,7 +312,7 @@ export const ConsumerVenueOrderingSheet: React.FC<
   ConsumerVenueOrderingSlotProps & {
     notesAllowedByItemId: Record<string, boolean | undefined>;
   }
-> = ({ ordering, palette, surface, notesAllowedByItemId }) => {
+> = ({ ordering, palette, surface, notesAllowedByItemId, countryCode = null }) => {
   const view = ordering.cart.state.view;
   const visible = view === "review" || view === "status";
   return (
@@ -360,6 +371,28 @@ export const ConsumerVenueOrderingSheet: React.FC<
           onBuyerChange={ordering.cart.patchBuyer}
           onSetQuantity={ordering.cart.setQuantity}
           onSetNotes={ordering.cart.setNotes}
+          // issue #3380 — the country picker instead of a free-text box.
+          renderPhoneField={(args) => {
+            // Required here, not at module scope: only the review step needs
+            // the picker, and the menu (and the suites that mount it) must not
+            // load its keyboard stack.
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const { ConsumerVenueOrderPhoneField } = require("./ConsumerVenueOrderPhoneField") as typeof import("./ConsumerVenueOrderPhoneField");
+            return (
+              <ConsumerVenueOrderPhoneField
+                args={args}
+                palette={palette}
+                countryCode={countryCode}
+              />
+            );
+          }}
+          phoneFailure={
+            consumerOrderPhoneFailure(
+              ordering.cart.state.buyer.phone,
+              ordering.cart.state.buyer.phoneCountryIso ??
+                consumerOrderPhoneStartCountry(countryCode),
+            )?.message ?? null
+          }
           submitting={ordering.submitting}
           submitError={ordering.submitError}
           onSubmit={ordering.submit}
