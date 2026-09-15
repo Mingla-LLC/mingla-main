@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-15 — Menu-ordering and staff bill-to-phone services now interpret local numbers using the guest's country and reject malformed numbers without guessing a US number; both production functions are source-verified live, with Host and Explorer country-picker releases tracked separately (#3395, PR #3411)
 - 2026-09-15 — Upcoming cards now use polished human labels — Event, RSVP, Trip and Experience — in both visible text and screen-reader descriptions across buyer web, Mingla Host and Mingla Explorer, instead of exposing lowercase internal data values (#3430, PR #3432)
 - 2026-09-15 — Public brand pages now sort every event, RSVP, trip and experience into one truthful Happening now, Upcoming or Past section across the web, Mingla Host and Mingla Explorer, so ended listings no longer pretend to be upcoming (#3426, PR #3427)
 - 2026-09-15 — On usemingla.com the side menu's Explorer now opens the home page (Home is gone), every menu item is left-aligned, the home page is one screen again with room around "Use Mingla" and no city guides list, and the long Explorer page is now "Going out" at /going-out with old /explorer links forwarding there (#3371, PR #3394)
