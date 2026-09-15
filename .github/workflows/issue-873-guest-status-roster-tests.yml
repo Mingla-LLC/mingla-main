@@ -12,6 +12,7 @@ on:
       # four Business creation flows extend this lane's existing invite rail.
       - "supabase/migrations/20270709001780_issue_1780_wizard_invite_plans.sql"
       - "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1780_normalized_plan_members.tester_adversarial.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_observability_rollback.tester_adversarial.pg17.test.sql"
       - "supabase/functions/offering-invite-dispatch/issue_1780_wizard_worker.happy.test.ts"
       - "supabase/functions/_shared/offeringInviteQuote.ts"
@@ -56,6 +57,7 @@ on:
       # four Business creation flows extend this lane's existing invite rail.
       - "supabase/migrations/20270709001780_issue_1780_wizard_invite_plans.sql"
       - "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1780_normalized_plan_members.tester_adversarial.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_observability_rollback.tester_adversarial.pg17.test.sql"
       - "supabase/functions/offering-invite-dispatch/issue_1780_wizard_worker.happy.test.ts"
       - "supabase/functions/_shared/offeringInviteQuote.ts"
@@ -188,6 +190,12 @@ jobs:
         run: >-
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
           -f supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql
+      - name: Prove plan selection uses normalized constrained rows
+        env:
+          PGPASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1780_normalized_plan_members.tester_adversarial.pg17.test.sql
       - name: Prove enqueue observability is commit truthful
         env:
           PGPASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}
