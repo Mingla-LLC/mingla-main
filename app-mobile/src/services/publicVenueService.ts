@@ -47,6 +47,11 @@ export interface ConsumerPublicVenue {
   venueCategory: "restaurant" | "play" | "creative_and_arts" | "stay" | null;
   address: string | null;
   city: string | null;
+  /**
+   * issue #3380 — the venue's ISO country, on the wire (`select("*")`) and
+   * dropped by this mapper until now. Phone pickers on this page start here.
+   */
+  countryCode: string | null;
   /** #1560 — on the wire since day one; dropped by this mapper until now. */
   lat: number;
   lng: number;
@@ -109,6 +114,7 @@ interface VenueRow {
     | null;
   address: string | null;
   city: string | null;
+  country_code?: string | null;
   lat: number;
   lng: number;
   cover_media_url: string | null;
@@ -342,6 +348,10 @@ export async function fetchConsumerPublicVenue(
     venueCategory: row.venue_category,
     address: row.address,
     city: row.city,
+    countryCode:
+      typeof row.country_code === "string" && /^[A-Za-z]{2}$/.test(row.country_code.trim())
+        ? row.country_code.trim().toUpperCase()
+        : null,
     lat: row.lat,
     lng: row.lng,
     placePoolId: row.place_pool_id,
