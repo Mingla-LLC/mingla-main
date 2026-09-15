@@ -12,7 +12,6 @@ import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -99,9 +98,14 @@ export const VenueStep7Review: React.FC<VenueStep7ReviewProps> = ({
         <Row k="Category" v={d.venueCategory ? CAT_LABEL[d.venueCategory] : "—"} />
         <Row k="Address" v={d.formattedAddress || "—"} />
         {pitch.length === 0 ? (
-          <View style={styles.row}>
+          // #3384 — there is no pitch step (ORCH-1304): Mingla writes the
+          // pitch when it approves the venue, and the host edits it on the
+          // venue page once live. Never ask for something the wizard can't take.
+          <View style={styles.row} testID="venue-review-pitch-pending">
             <Text style={styles.k}>Pitch</Text>
-            <Text style={styles.warnV}>Add a pitch (optional)</Text>
+            <Text style={styles.mutedV}>
+              Mingla writes your pitch when your venue is approved
+            </Text>
           </View>
         ) : (
           <View style={styles.row}>
@@ -206,9 +210,9 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     color: textTokens.primary,
   },
-  warnV: {
+  mutedV: {
     fontSize: typography.body.fontSize,
-    color: semantic.warning,
+    color: textTokens.secondary,
   },
   err: {
     fontSize: typography.caption.fontSize,
