@@ -49,7 +49,14 @@ export type ThemePreviewDraft = Pick<
   | "coverMediaUrl"
   | "coverMediaType"
 > &
-  Partial<Pick<DraftEvent, "isRsvp" | "coverMediaPosterUrl">>;
+  Partial<Pick<DraftEvent, "isRsvp" | "coverMediaPosterUrl">> & {
+    /**
+     * issue #3373 — set by the experience creator, which has no DraftEvent of
+     * its own and builds these fields from its wizard state. Omitted for events
+     * and RSVPs (told apart by `isRsvp`), so their preview is unchanged.
+     */
+    kind?: "experience";
+  };
 
 const DEFAULT_COVER_HUE = 25;
 
@@ -89,22 +96,38 @@ const coverStill = (draft: ThemePreviewDraft): string | null => {
 };
 
 /**
+ * The fallback name and the accent button's label for each kind of draft.
+ * issue #3373 — an experience's public page books with "Reserve" (the one verb
+ * every experience surface uses), so its preview button says the same.
+ */
+const draftWording = (
+  draft: ThemePreviewDraft,
+): { untitled: string; ctaLabel: string } => {
+  if (draft.kind === "experience") {
+    return { untitled: "Untitled experience", ctaLabel: "Reserve" };
+  }
+  return draft.isRsvp === true
+    ? { untitled: "Untitled RSVP", ctaLabel: "Going" }
+    : { untitled: "Untitled event", ctaLabel: "Get tickets" };
+};
+
+/**
  * The preview for the draft being created or edited, with fallbacks for every
  * field that can still be empty: "Untitled event" / "Untitled RSVP" (the same
- * words the Review step's mini card uses), "Date TBD", and the draft's cover
- * colour when there is no media.
+ * words the Review step's mini card uses) / "Untitled experience", "Date TBD",
+ * and the draft's cover colour when there is no media.
  */
 export const buildDraftThemePreview = (
   draft: ThemePreviewDraft,
 ): ThemePreviewContent => {
-  const isRsvp = draft.isRsvp === true;
+  const wording = draftWording(draft);
   const name = draft.name.trim();
   const start = firstStart(draft);
   return {
     // "Date TBD" when there is no date; the date alone when there is no time.
     dateLine: formatSingleDateLine(start.date, start.time, null),
-    title: name.length > 0 ? name : isRsvp ? "Untitled RSVP" : "Untitled event",
-    ctaLabel: isRsvp ? "Going" : "Get tickets",
+    title: name.length > 0 ? name : wording.untitled,
+    ctaLabel: wording.ctaLabel,
     cover: {
       hue: Number.isFinite(draft.coverHue) ? draft.coverHue : DEFAULT_COVER_HUE,
       imageUrl: coverStill(draft),
