@@ -1612,14 +1612,23 @@ const UpcomingList: React.FC<{
   );
 };
 
-const OfferingMiniCard: React.FC<{
+interface OfferingMiniCardProps {
   item: PublicBrandUpcoming;
   theme: ResolvedTheme;
   palette: ThemePalette;
   surface: Surface;
   isDesktop: boolean;
   onPress: (item: PublicBrandUpcoming) => void;
-}> = ({ item, theme, palette, surface, isDesktop, onPress }) => {
+}
+
+const OfferingMiniCard: React.FC<OfferingMiniCardProps> = ({
+  item,
+  theme,
+  palette,
+  surface,
+  isDesktop,
+  onPress,
+}: OfferingMiniCardProps) => {
   const price = offeringPriceLabel(item);
   const kindLabel = OFFERING_KIND_LABEL[item.offeringType];
   return (
