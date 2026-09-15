@@ -107,7 +107,9 @@ const topSourceLabel = (bySource: unknown): string | null => {
       : 0;
     if (!best || score > best.score) best = { source: row.source, score };
   }
-  return best ? `${best.source} (${best.score})` : null;
+  // Zero-valued by_source rows are always emitted by the rollup; do not treat
+  // a zero score as a "top source" (shows "ad (0)" on empty listings).
+  return best && best.score > 0 ? `${best.source} (${best.score})` : null;
 };
 
 export function buildBrandAnalyticsCard(
@@ -305,20 +307,31 @@ export function buildOrderReconciliationCard(
   if (!root) return null;
   const eyebrow = "Orders";
   const title = "Event reconciliation";
-  const currency =
-    typeof root.currency === "string" && /^[A-Za-z]{3}$/.test(root.currency)
-      ? root.currency.toUpperCase()
-      : null;
-  const money = (cents: unknown): string | null => {
-    if (typeof cents !== "number" || !Number.isFinite(cents)) return null;
-    const amount = (cents / 100).toFixed(2);
-    return currency ? `${currency} ${amount}` : amount;
-  };
+  const revenueBy = asRecord(root.revenue_cents_by_currency);
+  const refundedBy = asRecord(root.refunded_cents_by_currency);
+  const netBy = asRecord(root.net_revenue_cents_by_currency);
   const rows: AnalyticsResponseRow[] = [];
   pushRow(rows, "Sold", formatCount(root.sold_count));
-  pushRow(rows, "Gross", money(root.revenue_cents));
-  pushRow(rows, "Refunded", money(root.refunded_cents));
-  pushRow(rows, "Net", money(root.net_revenue_cents));
+  // Prefer per-currency maps (never cross-sum). Fall back to single-currency
+  // scalars for older payloads that only carried currency + totals.
+  if (revenueBy || refundedBy || netBy) {
+    pushRow(rows, "Gross", formatCentsByCurrency(revenueBy ?? {}));
+    pushRow(rows, "Refunded", formatCentsByCurrency(refundedBy ?? {}));
+    pushRow(rows, "Net", formatCentsByCurrency(netBy ?? {}));
+  } else {
+    const currency =
+      typeof root.currency === "string" && /^[A-Za-z]{3}$/.test(root.currency)
+        ? root.currency.toUpperCase()
+        : null;
+    const money = (cents: unknown): string | null => {
+      if (typeof cents !== "number" || !Number.isFinite(cents)) return null;
+      const amount = (cents / 100).toFixed(2);
+      return currency ? `${currency} ${amount}` : amount;
+    };
+    pushRow(rows, "Gross", money(root.revenue_cents));
+    pushRow(rows, "Refunded", money(root.refunded_cents));
+    pushRow(rows, "Net", money(root.net_revenue_cents));
+  }
   if (rows.length === 0) {
     return {
       eyebrow,

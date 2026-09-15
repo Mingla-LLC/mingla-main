@@ -4553,18 +4553,21 @@ const getEventOrderReconciliation = writeTool(
       .eq("event_id", args.event_id);
     if (error) throw new ToolError("RPC_FAILED", error.message);
     let soldCount = 0;
-    let revenueCents = 0;
-    let refundedCents = 0;
-    let currency: string | null = null;
+    const revenueByCurrency: Record<string, number> = {};
+    const refundedByCurrency: Record<string, number> = {};
     for (const row of (data ?? []) as Array<Record<string, unknown>>) {
       const status = String(row.payment_status ?? "");
       // Mirror eventOrdersService.getEventOrderRevenue: paid + partial refund.
       if (status !== "paid" && status !== "partial_refund") continue;
-      if (currency === null && typeof row.currency === "string") {
-        currency = row.currency;
-      }
-      revenueCents += Number(row.total_cents ?? 0);
-      refundedCents += Number(row.refunded_amount_cents ?? 0);
+      const rawCurrency = typeof row.currency === "string"
+        ? row.currency.trim().toUpperCase()
+        : "";
+      // Skip unusable currency codes rather than cross-summing into a fake total.
+      if (!/^[A-Z]{3}$/.test(rawCurrency)) continue;
+      revenueByCurrency[rawCurrency] = (revenueByCurrency[rawCurrency] ?? 0) +
+        Number(row.total_cents ?? 0);
+      refundedByCurrency[rawCurrency] = (refundedByCurrency[rawCurrency] ?? 0) +
+        Number(row.refunded_amount_cents ?? 0);
       const refundedQtyByLine: Record<string, number> = {};
       const refunds = Array.isArray(row.refunds)
         ? row.refunds as Array<Record<string, unknown>>
@@ -4590,13 +4593,36 @@ const getEventOrderReconciliation = writeTool(
         soldCount += Math.max(0, qty - (refundedQtyByLine[lineId] ?? 0));
       }
     }
+    const currencies = [
+      ...new Set([
+        ...Object.keys(revenueByCurrency),
+        ...Object.keys(refundedByCurrency),
+      ]),
+    ].sort();
+    const netByCurrency: Record<string, number> = {};
+    for (const code of currencies) {
+      netByCurrency[code] = (revenueByCurrency[code] ?? 0) -
+        (refundedByCurrency[code] ?? 0);
+    }
     return {
       event_id: args.event_id,
       sold_count: soldCount,
-      revenue_cents: revenueCents,
-      refunded_cents: refundedCents,
-      net_revenue_cents: revenueCents - refundedCents,
-      currency,
+      // Per-currency maps — never cross-sum mixed currencies (#1984 Copilot).
+      revenue_cents_by_currency: revenueByCurrency,
+      refunded_cents_by_currency: refundedByCurrency,
+      net_revenue_cents_by_currency: netByCurrency,
+      // Convenience single-currency scalars when exactly one currency is present.
+      revenue_cents: currencies.length === 1
+        ? (revenueByCurrency[currencies[0]!] ?? 0)
+        : null,
+      refunded_cents: currencies.length === 1
+        ? (refundedByCurrency[currencies[0]!] ?? 0)
+        : null,
+      net_revenue_cents: currencies.length === 1
+        ? (netByCurrency[currencies[0]!] ?? 0)
+        : null,
+      currency: currencies.length === 1 ? currencies[0]! : null,
+      currencies,
     };
   },
 );

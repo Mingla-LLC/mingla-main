@@ -93,11 +93,12 @@ Deno.test("#1984 tester: select clause never asks for buyer PII columns", async 
 Deno.test("#1984 tester: invalid event_id fails closed before I/O", async () => {
   const tool = domainTool("get_event_order_reconciliation");
   await assertRejects(
-    () => tool.executor({ event_id: "not-a-uuid" }, {
-      from: () => {
-        throw new Error("orders I/O must not run for an invalid event_id");
-      },
-    } as never, USER),
+    () =>
+      tool.executor({ event_id: "not-a-uuid" }, {
+        from: () => {
+          throw new Error("orders I/O must not run for an invalid event_id");
+        },
+      } as never, USER),
   );
 });
 
@@ -115,5 +116,7 @@ Deno.test("#1984 tester: cancelled orders do not inflate sold_count", async () =
   ]);
   const result = await tool.executor({ event_id: EVENT }, client, USER);
   assertEquals(result.sold_count, 0);
-  assertEquals(result.revenue_cents, 0);
+  assertEquals(result.revenue_cents, null);
+  assertEquals(result.currency, null);
+  assertEquals(result.revenue_cents_by_currency, {});
 });

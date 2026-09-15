@@ -13,7 +13,7 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { DOMAIN_TOOLS, DOMAIN_READ_ONLY } from "../agentDomainTools.ts";
+import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "../agentDomainTools.ts";
 import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
 import { TENANT_SCOPED_READ_TOOL_NAMES } from "../agentTenantScope.ts";
 
@@ -127,9 +127,62 @@ Deno.test("#1984 implementor: aggregates sold/refunded/net without buyer PII fie
   assertEquals(result, {
     event_id: EVENT,
     sold_count: 1,
+    revenue_cents_by_currency: { USD: 2000 },
+    refunded_cents_by_currency: { USD: 500 },
+    net_revenue_cents_by_currency: { USD: 1500 },
     revenue_cents: 2000,
     refunded_cents: 500,
     net_revenue_cents: 1500,
-    currency: "usd",
+    currency: "USD",
+    currencies: ["USD"],
   });
+});
+
+Deno.test("#1984 implementor: mixed-currency orders never cross-sum into one total", async () => {
+  const tool = domainTool("get_event_order_reconciliation");
+  const brandRow = {
+    id: BRAND,
+    name: "Test",
+    slug: "test",
+    default_currency: "usd",
+    cover_media_url: null,
+  };
+  const eventRow = { id: EVENT, brand_id: BRAND, event_type: "ticketed" };
+  const orderRows = [
+    {
+      payment_status: "paid",
+      total_cents: 2000,
+      refunded_amount_cents: 0,
+      currency: "usd",
+      order_line_items: [{ id: "u1", quantity: 1 }],
+      refunds: [],
+    },
+    {
+      payment_status: "paid",
+      total_cents: 5000,
+      refunded_amount_cents: 1000,
+      currency: "gbp",
+      order_line_items: [{ id: "g1", quantity: 2 }],
+      refunds: [],
+    },
+  ];
+  const client = {
+    from(table: string) {
+      if (table === "brands") return chain([brandRow]);
+      if (table === "brand_team_members") return chain([]);
+      if (table === "events") return chain(eventRow);
+      if (table === "orders") return chain(orderRows);
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+  const result = await tool.executor({ event_id: EVENT }, client, USER);
+  assertEquals(result.sold_count, 3);
+  assertEquals(result.currency, null);
+  assertEquals(result.revenue_cents, null);
+  assertEquals(result.refunded_cents, null);
+  assertEquals(result.net_revenue_cents, null);
+  assertEquals(result.revenue_cents_by_currency, { GBP: 5000, USD: 2000 });
+  assertEquals(result.refunded_cents_by_currency, { GBP: 1000, USD: 0 });
+  assertEquals(result.net_revenue_cents_by_currency, { GBP: 4000, USD: 2000 });
+  assertEquals(result.currencies, ["GBP", "USD"]);
 });

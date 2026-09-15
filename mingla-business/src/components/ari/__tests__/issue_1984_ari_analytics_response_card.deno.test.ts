@@ -73,10 +73,10 @@ Deno.test("#1984 card: listing / reservation / reconciliation shapes", () => {
   assertEquals(
     buildAnalyticsCardForTool("get_event_order_reconciliation", {
       sold_count: 1,
-      revenue_cents: 2000,
-      refunded_cents: 500,
-      net_revenue_cents: 1500,
-      currency: "usd",
+      revenue_cents_by_currency: { USD: 2000 },
+      refunded_cents_by_currency: { USD: 500 },
+      net_revenue_cents_by_currency: { USD: 1500 },
+      currency: "USD",
     })?.rows,
     [
       { label: "Sold", value: "1" },
@@ -84,6 +84,28 @@ Deno.test("#1984 card: listing / reservation / reconciliation shapes", () => {
       { label: "Refunded", value: "USD 5.00" },
       { label: "Net", value: "USD 15.00" },
     ],
+  );
+
+  assertEquals(
+    buildAnalyticsCardForTool("get_event_order_reconciliation", {
+      sold_count: 3,
+      revenue_cents_by_currency: { GBP: 5000, USD: 2000 },
+      refunded_cents_by_currency: { GBP: 1000, USD: 0 },
+      net_revenue_cents_by_currency: { GBP: 4000, USD: 2000 },
+      currency: null,
+    })?.rows.find((r) => r.label === "Gross")?.value,
+    "GBP 50.00 · USD 20.00",
+  );
+
+  assertEquals(
+    buildAnalyticsCardForTool("get_listing_conversion", {
+      conversion: {
+        authorized: true,
+        customers_driven_30d: 0,
+        by_source: [{ source: "ad", customers: 0 }],
+      },
+    })?.rows.find((r) => r.label === "Top source"),
+    undefined,
   );
 });
 
