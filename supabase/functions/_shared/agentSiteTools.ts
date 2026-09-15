@@ -10,6 +10,10 @@ import {
   ToolError,
 } from "./agentToolHelpers.ts";
 import { assertAgentReadBrand } from "./agentTenantScope.ts";
+import {
+  SITES_SAFE_CUSTOMER_CODES,
+  type SitesSafeCustomerCode,
+} from "./sitesContracts.ts";
 
 const UUID = { type: "string", format: "uuid" };
 const REVISION = { type: "string", minLength: 1, maxLength: 200 };
@@ -286,36 +290,155 @@ function requiredIds(args: Record<string, unknown>): {
   return { brandId: args.brand_id, siteId: args.site_id };
 }
 
+type SitesControlOutcome =
+  | { kind: "ok"; data: unknown }
+  | { kind: "refused"; code: SitesSafeCustomerCode; status: number }
+  | {
+    kind: "unavailable";
+    reason:
+      | "fetch"
+      | "relay"
+      | "http_unrecognized"
+      | "body_unrecognized"
+      | "threw";
+    status: number | null;
+  };
+
+const SITES_SAFE_CODE_SET = new Set<string>(SITES_SAFE_CUSTOMER_CODES);
+
+// Copied verbatim from sitesFailure (sitesContracts.ts) so a refusal reaches
+// Ari with the Sites service's own customer-safe wording, never echoed text.
+const SITES_TOOL_MESSAGES: Record<SitesSafeCustomerCode, string> = {
+  FORBIDDEN: "This Website action is not available for your role.",
+  NOT_FOUND: "Website information is not available.",
+  INVALID_STATE: "The website is not ready for that action.",
+  VALIDATION_FAILED: "Review the highlighted Website fields and try again.",
+  REVISION_CONFLICT: "The draft changed. Refresh it before trying again.",
+  SESSION_EXPIRED: "This Mingla Studio session has expired.",
+  OPERATION_IN_PROGRESS: "This Website operation is still working.",
+  PUBLISH_FAILED_LAST_GOOD_PRESERVED:
+    "Publishing failed. Your last verified website is still live.",
+  MEDIA_REJECTED: "That image could not be accepted.",
+  MEDIA_PROCESSING: "That image is still being prepared.",
+  SERVICE_TEMPORARILY_UNAVAILABLE:
+    "Website tools are temporarily unavailable. Please try again.",
+  IDEMPOTENCY_CONFLICT: "That request was already used for another action.",
+};
+
+const SITE_SERVICE_UNAVAILABLE_MESSAGE =
+  "Ari could not reach Website tools right now.";
+
+function safeRefusalCode(body: unknown): SitesSafeCustomerCode | null {
+  if (!body || typeof body !== "object") return null;
+  const candidate = body as { ok?: unknown; error?: { code?: unknown } };
+  const code = candidate.error?.code;
+  return candidate.ok === false && typeof code === "string" &&
+      SITES_SAFE_CODE_SET.has(code)
+    ? code as SitesSafeCustomerCode
+    : null;
+}
+
+function isResponseLike(
+  value: unknown,
+): value is { json: () => Promise<unknown>; status: number } {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as { json?: unknown; status?: unknown };
+  return typeof candidate.json === "function" &&
+    typeof candidate.status === "number";
+}
+
+/*
+ * #3184 — why a non-2xx must be read through `error.context`.
+ *
+ * `functions.invoke` never throws and never reads the body of a non-2xx
+ * response: it returns `{ data: null, error: FunctionsHttpError }` with the
+ * unread Response on `error.context`. brand-site-control answers expected
+ * refusals (404 NOT_FOUND for a brand with no website, 403, 409) with a safe
+ * JSON body, so treating every `error` as an outage laundered each of them
+ * into SITE_SERVICE_UNAVAILABLE and a 500. Only a fetch or relay failure, or
+ * a non-2xx without a safe Sites body, is a real outage. Errors are matched by
+ * `name`, not class identity, because esm.sh URLs do not share classes.
+ */
+async function readControl(
+  client: SupabaseClient,
+  input: Record<string, unknown>,
+): Promise<SitesControlOutcome> {
+  let outcome: SitesControlOutcome;
+  try {
+    const { data, error } = await client.functions.invoke(
+      "brand-site-control",
+      { body: input },
+    );
+    if (error) {
+      const failure = error as { name?: unknown; context?: unknown };
+      const context = failure.context;
+      if (failure.name === "FunctionsHttpError" && isResponseLike(context)) {
+        let body: unknown = null;
+        try {
+          body = await context.json();
+        } catch {
+          body = null;
+        }
+        const code = safeRefusalCode(body);
+        const status = context.status;
+        if (code) {
+          outcome = { kind: "refused", code, status };
+        } else {
+          outcome = {
+            kind: "unavailable",
+            reason: "http_unrecognized",
+            status,
+          };
+        }
+      } else if (failure.name === "FunctionsRelayError") {
+        const status = (context as { status?: unknown } | null | undefined)
+          ?.status;
+        outcome = {
+          kind: "unavailable",
+          reason: "relay",
+          status: typeof status === "number" ? status : null,
+        };
+      } else {
+        outcome = { kind: "unavailable", reason: "fetch", status: null };
+      }
+    } else {
+      const response = data as { ok?: unknown; data?: unknown } | null;
+      const code = safeRefusalCode(response);
+      outcome = response?.ok === true
+        ? { kind: "ok", data: response.data }
+        : code
+        ? { kind: "refused", code, status: 200 }
+        : { kind: "unavailable", reason: "body_unrecognized", status: null };
+    }
+  } catch {
+    outcome = { kind: "unavailable", reason: "threw", status: null };
+  }
+  if (outcome.kind === "unavailable") {
+    console.warn(
+      "[agentSiteTools] sites control unavailable",
+      JSON.stringify({
+        fn: "agentSiteTools",
+        reason: outcome.reason,
+        http_status: outcome.status,
+      }),
+    );
+  }
+  return outcome;
+}
+
 async function invokeControl(
   client: SupabaseClient,
   input: Record<string, unknown>,
 ): Promise<unknown> {
-  const { data, error } = await client.functions.invoke("brand-site-control", {
-    body: input,
-  });
-  if (error) {
-    throw new ToolError(
-      "SITE_SERVICE_UNAVAILABLE",
-      "Ari could not reach Website tools right now.",
-    );
+  const outcome = await readControl(client, input);
+  if (outcome.kind === "ok") return outcome.data;
+  if (outcome.kind === "refused") {
+    throw new ToolError(outcome.code, SITES_TOOL_MESSAGES[outcome.code]);
   }
-  const response = data as
-    | {
-      ok?: boolean;
-      data?: unknown;
-      error?: { code?: string; message?: string };
-    }
-    | null;
-  if (!response?.ok) {
-    throw new ToolError(
-      String(response?.error?.code || "SITE_OPERATION_FAILED"),
-      String(
-        response?.error?.message ||
-          "The Website action could not be completed.",
-      ),
-    );
-  }
-  return response.data;
+  throw new ToolError(
+    "SITE_SERVICE_UNAVAILABLE",
+    SITE_SERVICE_UNAVAILABLE_MESSAGE,
+  );
 }
 
 async function cmsTool(
@@ -337,7 +460,7 @@ async function cmsTool(
 
 const getBrandSite = tool(
   "get_brand_site",
-  "Read one accessible brand's Restaurant Website v1 status and draft summary. Never reveals a Website to ranks below marketing manager.",
+  "Read one accessible brand's Restaurant Website v1 status and draft summary. When the brand has no website it returns website_state not_set_up or not_available instead of an error. Ari cannot create a website. Never reveals a Website to ranks below marketing manager.",
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
@@ -345,10 +468,98 @@ const getBrandSite = tool(
       throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
     }
     await assertAgentReadBrand(client, userId, args.brand_id);
-    return await invokeControl(client, {
-      route: `/v1/brands/${args.brand_id}/site`,
+    const brandId = args.brand_id;
+    const site = await readControl(client, {
+      route: `/v1/brands/${brandId}/site`,
       method: "GET",
     });
+    if (site.kind === "ok") return site.data;
+    if (site.kind === "unavailable") {
+      throw new ToolError(
+        "SITE_SERVICE_UNAVAILABLE",
+        SITE_SERVICE_UNAVAILABLE_MESSAGE,
+      );
+    }
+    if (site.code !== "NOT_FOUND") {
+      throw new ToolError(site.code, SITES_TOOL_MESSAGES[site.code]);
+    }
+    /*
+     * #3184 — a brand with no website is a successful read, not an error.
+     *
+     * brand-site-control answers 404 NOT_FOUND when the brand has no
+     * brand_sites row, which is the normal state for almost every brand.
+     * Reporting it as a failure made every website question a 500. The
+     * availability read decides which honest answer Ari gives: websites are
+     * not available for this brand, or not set up yet (a brand admin or owner
+     * sets one up on the Website screen). Ari cannot create a website.
+     *
+     * The result never carries a top-level handoff_route or choices key:
+     * agent-chat spreads a read result into the stored structured content,
+     * replay lifts structured.handoff_route into the response, and the app
+     * auto-navigates on it. The Website route is informational only and stays
+     * nested under setup_screen.
+     */
+    const availability = await readControl(client, {
+      route: `/v1/brands/${brandId}/site-availability`,
+      method: "GET",
+    });
+    if (availability.kind === "unavailable") {
+      throw new ToolError(
+        "SITE_SERVICE_UNAVAILABLE",
+        SITE_SERVICE_UNAVAILABLE_MESSAGE,
+      );
+    }
+    if (availability.kind === "refused") {
+      if (availability.code === "NOT_FOUND") {
+        throw new ToolError(
+          "SITE_SERVICE_UNAVAILABLE",
+          SITE_SERVICE_UNAVAILABLE_MESSAGE,
+        );
+      }
+      throw new ToolError(
+        availability.code,
+        SITES_TOOL_MESSAGES[availability.code],
+      );
+    }
+    const state = availability.data as
+      | { available?: unknown; site?: unknown }
+      | null;
+    if (state?.available === false) {
+      return {
+        website_state: "not_available",
+        brand_id: brandId,
+        can_create_from_chat: false,
+        setup_role: null,
+        setup_screen: null,
+      };
+    }
+    if (state?.available === true && state.site === null) {
+      return {
+        website_state: "not_set_up",
+        brand_id: brandId,
+        can_create_from_chat: false,
+        setup_role: "brand_admin_or_owner",
+        setup_screen: {
+          name: "Website",
+          location: "Brand profile → Website",
+          route: `/brand/${brandId}/website`,
+        },
+      };
+    }
+    if (
+      state?.available === true && state.site !== null &&
+      typeof state.site === "object"
+    ) {
+      // The site appeared between the two reads; never fabricate its fields.
+      throw new ToolError(
+        "REVISION_CONFLICT",
+        SITES_TOOL_MESSAGES.REVISION_CONFLICT,
+      );
+    }
+    throw new ToolError(
+      "SITE_SERVICE_UNAVAILABLE",
+      SITE_SERVICE_UNAVAILABLE_MESSAGE,
+    );
   },
 );
 

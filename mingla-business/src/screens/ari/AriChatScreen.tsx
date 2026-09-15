@@ -51,6 +51,7 @@ import { Toast } from "../../components/ui/Toast";
 import { useShareNetworkState } from "../../components/ui/useShareNetworkState";
 import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
 import { BrandSwitcherSheet } from "../../components/brand/BrandSwitcherSheet";
+import { ariChatErrorCopy, shouldReportAriChatError } from "./ariChatErrorCopy";
 
 import { useAgentChat } from "../../hooks/useAgentChat";
 import { useAriPreferences } from "../../hooks/useAriPreferences";
@@ -323,28 +324,14 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         setRateLimitUntil(Number.isFinite(parsedUntil) && parsedUntil > Date.now() ? parsedUntil : Date.now() + fallbackMs);
         setCooldownNow(Date.now());
       } else {
-        const copy: Record<string, string> = {
-          TASK_STATE_CONFLICT: "This plan changed on another device. Ari refreshed it; choose again.",
-          CHOICE_STALE: "That choice is no longer active. Ari refreshed the current step.",
-          TIMEZONE_REQUIRED: "Ari needs your timezone before choosing an exact date and time.",
-          PLANNER_UNAVAILABLE: "Ari couldn't safely plan that step. Your progress is saved; try again.",
-          TASK_STATE_INVALID: "Ari couldn't safely read this plan. Nothing was changed.",
-          TASK_STATE_OVERSIZED: "This plan is too large to continue safely. Start a new Ari chat.",
-          TASK_RECOVERY_REQUIRED: "The action finished, but Ari needs to reconcile the plan before continuing.",
-          // #3186 — a misconfiguration is NOT a network error and must never be
-          // reported as one. `ENVELOPE_INVALID` means the server answered and
-          // this app refused the answer: exactly what #3185 was, and for nine
-          // days every user was told to check a connection that was fine.
-          ENVELOPE_INVALID: "Ari replied but this app couldn't verify the response. That's on us — it's been reported.",
-          DEPENDENCY_UNAVAILABLE: "Ari can't reach part of Mingla right now. Nothing was changed; try again shortly.",
-          PROVIDER_UNAVAILABLE: "Ari is temporarily unavailable. Nothing was changed; try again shortly.",
-          INTERNAL: "Ari couldn't finish that request. Nothing was changed; try again shortly.",
-        };
+        // #3184 — every code has honest copy in ariChatErrorCopy; "check your
+        // connection" is shown only for TRANSPORT_UNAVAILABLE, a request that
+        // never reached Mingla. A refusal is never blamed on the network.
         // #3186 — the generic fallback used to swallow this class entirely: the
         // user saw a toast, nothing reached Sentry, and a total outage looked
         // like flaky wifi. Anything we have no copy for is by definition a code
         // we did not anticipate, which is precisely what must be reported.
-        if (result.code === "ENVELOPE_INVALID" || copy[result.code] === undefined) {
+        if (shouldReportAriChatError(result.code)) {
           // Loaded LAZILY, on purpose. A module-scope import of the diagnostics
           // barrel pulls @sentry/react-native's ESM build into every render
           // suite that imports this screen, and the #1890 jest config does not
@@ -367,7 +354,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
             }
           })();
         }
-        setLocalError(copy[result.code] ?? "Ari could not connect — check your connection and try again.");
+        setLocalError(ariChatErrorCopy(result.code));
       }
       return false;
     }

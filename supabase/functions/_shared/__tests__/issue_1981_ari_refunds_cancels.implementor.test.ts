@@ -195,7 +195,7 @@ Deno.test("#1981 implementor: money tools finance-gated; discovery read-only", (
 });
 
 Deno.test("#1981 implementor: PROMPT_VERSION v20 advertises discovery + trip-cancel confirm", () => {
-  assertEquals(PROMPT_VERSION, "v20"); // [TEST-MOD-APPROVED #1982] prompt bumped for team/people ads
+  assertEquals(PROMPT_VERSION, "v21"); // [TEST-MOD-APPROVED #3184] prompt bumped for no-website handoff rule
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assert(prompt.includes("get_order_refund_preview"));
   assert(prompt.includes("list_trip_installments"));
