@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Compass, House, Info, MapPinned, Store, Wrench } from 'lucide-react'
+import { BookOpen, Compass, Info, MapPinned, Store, Wrench } from 'lucide-react'
 import { DeviceCta, type CutoutSurface } from './device-cta'
 
 const EXPLORER_PAGE_SYSTEM_PATHS = new Set([
@@ -16,8 +16,12 @@ const HOST_PATHS = new Set([
   '/internal/page-system/host-event-promoter-guide',
 ])
 
+// #3371 — `/` is the Explorer home, so the Explorer item is the one lit there.
+// `/for-explorers` is still an Explorer-surface page, but it has its own
+// supporting item; a current supporting item always wins the highlight (see
+// `activeSurface` below), so Explorer is never lit there.
 function surfaceForPath(pathname: string): CutoutSurface | null {
-  if (pathname === '/' || pathname === '/explorer' || pathname.startsWith('/explorer/') || EXPLORER_PAGE_SYSTEM_PATHS.has(pathname)) return 'explorer'
+  if (pathname === '/' || pathname === '/for-explorers' || EXPLORER_PAGE_SYSTEM_PATHS.has(pathname)) return 'explorer'
   if (HOST_PATHS.has(pathname) || pathname.startsWith('/host/')) return 'host'
   return null
 }
@@ -37,12 +41,12 @@ export function AudienceMenuContent({
 }) {
   const pathname = usePathname()
   const audienceDestinations = [
-    { href: '/explorer', label: 'Explorer', surface: 'explorer' as const, Icon: Compass },
+    { href: '/', label: 'Explorer', surface: 'explorer' as const, Icon: Compass },
     { href: '/host', label: 'Host', surface: 'host' as const, Icon: Store },
   ]
   const supportingDestinations = [
-    { href: '/', label: 'Home', Icon: House },
     { href: '/cities', label: 'Cities', Icon: MapPinned },
+    { href: '/for-explorers', label: 'For Explorers', Icon: BookOpen },
     { href: '/about', label: 'About', Icon: Info },
     { href: '/tools', label: 'Free tools', Icon: Wrench },
   ]

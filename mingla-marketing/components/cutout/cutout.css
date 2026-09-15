@@ -319,9 +319,16 @@
   /* On desktop the deck bottom sat 30px off the hero's own pill row, which read
      as crowding. Scaling from `center bottom` could not fix that -- it pins the
      bottom edge -- so the origin flips to `center top` here: the top stays put
-     under the action and the bottom lifts away from the pills. */
+     under the action and the bottom lifts away from the pills.
+
+     #3371: at 65px / 0.86 the band between the headline text and the first
+     visible card was only ~97-100px at 768-900px tall, which leaves under 28px
+     either side of the 42px action (27.2px below it at 1280x800). 73px / 0.84
+     moves the card tops down ~8px while the extra 0.02 of shrink lifts the
+     bottom by the same amount, so the gap to the pill row is unchanged
+     (measured 39.1px at 1280x800, 80.6px at 1440x900). */
   [data-cut-deck] div:has(> .group.absolute) {
-    transform: translateY(65px) scale(0.86);
+    transform: translateY(73px) scale(0.84);
     transform-origin: center top;
   }
 }

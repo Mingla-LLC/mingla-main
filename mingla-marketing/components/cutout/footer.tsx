@@ -13,7 +13,7 @@ import { DeviceCta, type CutoutSurface } from './device-cta'
 // when they land they get their entries back.
 export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
   const columns = [
-    { title: 'Explore', links: [{ href: '/', label: 'Home' }, { href: '/explorer', label: 'For Explorers' }, { href: '/cities', label: 'Cities' }] },
+    { title: 'Explore', links: [{ href: '/', label: 'Home' }, { href: '/for-explorers', label: 'For Explorers' }, { href: '/cities', label: 'Cities' }] },
     { title: 'Host', links: [{ href: '/host', label: 'For Hosts' }, { href: '/tools', label: 'Free tools' }, { href: '/help', label: 'Help centre' }] },
     { title: 'Company', links: [{ href: '/about', label: 'About' }, { href: 'https://career.usemingla.com', label: 'Careers', external: true as const }] },
     { title: 'Legal', links: [{ href: '/privacy-policy', label: 'Privacy' }, { href: '/terms-of-service', label: 'Terms' }, { href: '/support', label: 'Support' }] },

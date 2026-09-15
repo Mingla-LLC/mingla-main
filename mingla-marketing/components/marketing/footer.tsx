@@ -15,7 +15,7 @@ const publicColumns: FooterColumn[] = [
     title: 'Explore',
     links: [
       { href: '/', label: 'Home' },
-      { href: '/explorer', label: 'For Explorers' },
+      { href: '/for-explorers', label: 'For Explorers' },
       { href: '/cities', label: 'Cities' },
     ],
   },
