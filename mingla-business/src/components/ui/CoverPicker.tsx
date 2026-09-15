@@ -634,6 +634,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   }, [
     emitChange,
     isVenue,
+    setVideoPickNotice,
     videoUpload.acknowledgeApplied,
     videoUpload.processedPosterUrl,
     videoUpload.processedUrl,
@@ -1183,6 +1184,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     isAuthReady,
     localCover.coverMediaUrl,
     onShowToast,
+    setVideoPickNotice,
     showUploadError,
     target,
     uploading,
@@ -1700,7 +1702,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       coverMediaAlt: null,
     });
     onShowToast("Cover removed.");
-  }, [disabled, emitChange, onShowToast]);
+  }, [disabled, emitChange, onShowToast, setVideoPickNotice]);
 
   const handleMediaRenderError = useCallback(
     (event: EventCoverMediaErrorEvent): void => {
