@@ -18,3 +18,10 @@ export const trimVideoWithDedicatedEditor = (
   _uri: string,
   _maxDurationMs: number,
 ): Promise<VideoTrimFinishPayload | null> => Promise.resolve(null);
+
+/** issue #3280 — the web never shows the native editor, so nothing to wait for. */
+export const TRIM_EDITOR_CLOSE_WAIT_MS = 0;
+
+export const waitForTrimEditorToClose = (
+  _maxWaitMs: number = TRIM_EDITOR_CLOSE_WAIT_MS,
+): Promise<void> => Promise.resolve();

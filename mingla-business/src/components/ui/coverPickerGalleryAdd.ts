@@ -259,6 +259,19 @@ export type GalleryAddControllerDeps = {
   makeKey?: () => string;
 };
 
+/**
+ * issue #3280 — a failed photo handed from one mount of the picker to the next,
+ * when the cover sheet comes back as a fresh sheet after the native trim editor.
+ * It keeps its file (for Retry), its photo copy and its attempt count.
+ */
+export type GalleryAddHandOffEntry = {
+  key: string;
+  asset: GalleryAddAsset;
+  message: string | null;
+  stage: GalleryAddStage;
+  attempts: number;
+};
+
 export type GalleryAddController = {
   /** Starts uploading a picked photo. Refused while another photo uploads. */
   add: (asset: GalleryAddAsset) => Promise<void>;
@@ -274,6 +287,14 @@ export type GalleryAddController = {
   attach: () => void;
   /** Stops UI notifications (unmount). An in-flight photo still saves if it lands. */
   dispose: () => void;
+  /**
+   * issue #3280 — takes the FAILED photos out WITHOUT freeing their files, for
+   * the next mount to adopt. An uploading photo stays (it still saves if it
+   * lands). Tiles are not re-emitted: this mount is about to close.
+   */
+  handOffFailed: () => readonly GalleryAddHandOffEntry[];
+  /** issue #3280 — shows photos handed off by the previous mount as failed tiles. */
+  adoptFailed: (entries: readonly GalleryAddHandOffEntry[]) => void;
 };
 
 type Entry = {
@@ -443,6 +464,34 @@ export const createGalleryAddController = (deps: GalleryAddControllerDeps): Gall
       const failed = entries.filter((entry) => entry.status === "failed");
       entries = entries.filter((entry) => entry.status !== "failed");
       failed.forEach(release);
+    },
+    handOffFailed: () => {
+      const failed = entries.filter((entry) => entry.status === "failed");
+      entries = entries.filter((entry) => entry.status !== "failed");
+      return failed.map(({ key, asset, message, stage, attempts }) => ({
+        key,
+        asset,
+        message,
+        stage,
+        attempts,
+      }));
+    },
+    adoptFailed: (handedOff) => {
+      const known = new Set(entries.map((entry) => entry.key));
+      const adopted: Entry[] = handedOff
+        .filter((photo) => !known.has(photo.key))
+        .map((photo) => ({
+          key: photo.key,
+          asset: photo.asset,
+          status: "failed",
+          message: photo.message,
+          stage: photo.stage,
+          attempts: photo.attempts,
+          token: 0,
+        }));
+      if (adopted.length === 0) return;
+      entries = [...entries, ...adopted];
+      emitTiles();
     },
   };
 };
