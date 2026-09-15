@@ -263,6 +263,46 @@ const initial: DraftVenueState = {
   step: 0,
 };
 
+/**
+ * Issue #2721 / #3380 — the contact phone starts on the venue's OWN country.
+ *
+ * A venue created from scratch in Lagos opened its phone on UK +44: the address
+ * country was captured two steps earlier, but only the claim path (ORCH-1269)
+ * ever copied a country into `contactPhoneCountryIso`, so a from-scratch draft
+ * fell through to the picker's GB default — and validation used GB as well.
+ *
+ * Seeded whenever the address step sets an ISO alpha-2 country (the geocoder
+ * returns one, upper-cased). Anything else — free text, a name — seeds nothing
+ * and the picker keeps its default: no country is ever derived by slicing or
+ * guessing (I-1269-NO-FABRICATED-PHONE-COUNTRY). A patch that sets the phone
+ * country itself (the claim prefill, even to null) is left alone, and so is an
+ * operator's own pick: only an unset picker, or one still showing the PREVIOUS
+ * address's country, follows the address.
+ *
+ * Deliberately no country-name mapper here: this store is in the web boot
+ * payload, and the mapper's name tables are not (#3380 bundle budget).
+ */
+const addressPhoneIso = (code: string | null | undefined): string | null => {
+  if (typeof code !== "string") return null;
+  const iso = code.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(iso) ? iso : null;
+};
+
+export const seedContactPhoneCountry = (
+  state: Pick<DraftVenueState, "countryCode" | "contactPhoneCountryIso">,
+  patch: Partial<DraftVenueState>,
+): Partial<DraftVenueState> => {
+  if (patch.countryCode === undefined || patch.contactPhoneCountryIso !== undefined) {
+    return patch;
+  }
+  const current = state.contactPhoneCountryIso ?? null;
+  if (current !== null && current !== addressPhoneIso(state.countryCode)) {
+    return patch;
+  }
+  const next = addressPhoneIso(patch.countryCode);
+  return next === null ? patch : { ...patch, contactPhoneCountryIso: next };
+};
+
 const blankDraft = (): DraftVenueState => ({
   ...initial,
   hours: defaultBrandHoursWeek(),
@@ -805,7 +845,7 @@ export const useDraftVenueStore = create<DraftVenueStore>()(
           }
           return { drafts };
         }),
-      patch: (p) => set(p),
+      patch: (p) => set((s) => seedContactPhoneCountry(s, p)),
       setStep: (step) => set({ step }),
       setHoursRow: (weekday, part) =>
         set((s) => ({

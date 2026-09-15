@@ -16,6 +16,7 @@
 
 export type {
   VenueOrderBuyerDraft,
+  VenueOrderPhoneFieldArgs,
   VenueOrderCartLine,
   VenueOrderFulfillmentStatus,
   VenueOrderHandover,

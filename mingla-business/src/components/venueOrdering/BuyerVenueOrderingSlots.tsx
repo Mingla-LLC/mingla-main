@@ -14,12 +14,23 @@
  */
 
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import type {
   offeringSurfaceStyles,
   ResolvedTheme,
   ThemePalette,
 } from "@mingla/offering-rendering";
+
+import {
+  PhoneInput,
+  getCountryByCode,
+  type PhoneInputIconName,
+} from "@mingla/phone-input";
+import {
+  parsePhoneEntry,
+  resolvePhoneStartCountry,
+} from "@mingla/phone-input/phoneNumber";
+import type { VenueOrderPhoneFieldArgs } from "@mingla/brand-rendering/venueOrdering";
 
 import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
@@ -40,6 +51,9 @@ import { VenueOrderReviewPane } from "@mingla/brand-rendering/venueOrdering/Venu
 import { VenueOrderStatusPane } from "@mingla/brand-rendering/venueOrdering/VenueOrderStatusPane";
 
 import { usePublicMenuBundle } from "../../hooks/usePublicMenuBundle";
+import { devicePhoneRegion } from "../../utils/devicePhoneRegion";
+import { businessRsvpPhoneTheme } from "../event/useBusinessRsvpPhoneField";
+import { Icon } from "../ui/Icon";
 import { useBuyerVenueOrdering } from "./useBuyerVenueOrdering";
 import type { BuyerVenueOrdering } from "./useBuyerVenueOrdering";
 
@@ -73,7 +87,149 @@ export interface BuyerVenueOrderingSlotProps {
   palette: ThemePalette;
   surface: Surface;
   theme: ResolvedTheme;
+  /** issue #3380 — the venue's country; the guest's phone picker starts here. */
+  countryCode?: string | null;
 }
+
+const phoneCountryKnown = (iso: string): boolean => {
+  try {
+    return getCountryByCode(iso) !== undefined;
+  } catch {
+    return false;
+  }
+};
+
+/** issue #3380 — venue country, then the visitor's browser region. */
+export const buyerOrderPhoneStartCountry = (
+  venueCountry: string | null | undefined,
+): string | null =>
+  resolvePhoneStartCountry([venueCountry, devicePhoneRegion()], phoneCountryKnown);
+
+/**
+ * issue #3380 — the verdict on the guest's number, in words, or null. Mobile
+ * rules, because the order's "it's ready" message is a text.
+ */
+export const buyerOrderPhoneFailure = (
+  phone: string,
+  countryIso: string | null,
+): { message: string; suggestedCountryIso: string | null } | null => {
+  if (phone.replace(/\D/g, "").length === 0) return null;
+  const result = parsePhoneEntry(phone, {
+    countryIso,
+    dialCode:
+      countryIso === null ? null : (getCountryByCode(countryIso)?.dialCode ?? null),
+    mode: "mobile",
+  });
+  return result.ok
+    ? null
+    : { message: result.message, suggestedCountryIso: result.suggestedCountryIso };
+};
+
+/**
+ * issue #3380 — "Who's ordering?" phone, with the country picker.
+ *
+ * Replaces the free-text "Phone, with country code" box. Starts on the venue's
+ * country and writes that country into the draft straight away, so the order
+ * carries it even if the guest never touches the flag.
+ */
+export const BuyerVenueOrderPhoneField: React.FC<{
+  args: VenueOrderPhoneFieldArgs;
+  palette: ThemePalette;
+  theme: ResolvedTheme;
+  countryCode: string | null;
+}> = ({ args, palette, theme, countryCode }) => {
+  const { onChange, phone, phoneCountryIso } = args;
+  const [touched, setTouched] = React.useState(false);
+  const start = buyerOrderPhoneStartCountry(countryCode);
+  const chosen = React.useRef(false);
+  React.useEffect(() => {
+    if (chosen.current || start === null) return;
+    if (phoneCountryIso !== start && phone.replace(/\D/g, "").length === 0) {
+      onChange({ phoneCountryIso: start });
+    }
+  }, [onChange, phone, phoneCountryIso, start]);
+  const countryIso = phoneCountryIso ?? start;
+  const failure = buyerOrderPhoneFailure(phone, countryIso);
+  const suggested =
+    touched && failure?.suggestedCountryIso != null
+      ? getCountryByCode(failure.suggestedCountryIso)
+      : undefined;
+  const phoneTheme = React.useMemo(
+    () => businessRsvpPhoneTheme(palette, theme),
+    [palette, theme],
+  );
+  return (
+    <View>
+      <PhoneInput
+        smartEntry
+        required
+        pickerPresentation="overlay"
+        value={phone}
+        countryCode={countryIso}
+        onChangePhone={(next: string) => {
+          if (next.length > 0) chosen.current = true;
+          // The country is NOT re-sent here: a pasted "+44 …" has just switched
+          // it through onChangeCountry, and this closure still holds the old one.
+          onChange({ phone: next });
+        }}
+        onChangeCountry={(iso: string) => {
+          chosen.current = true;
+          onChange({ phoneCountryIso: iso });
+        }}
+        onBlur={() => setTouched(true)}
+        error={touched && failure !== null ? failure.message : null}
+        disabled={args.disabled}
+        testID="venue-order-buyer-phone"
+        iconRenderer={(
+          name: PhoneInputIconName,
+          iconProps: { size: number; color: string },
+        ) => (
+          <Icon
+            name={
+              name === "chevronDown"
+                ? "chevD"
+                : name === "checkmark"
+                  ? "check"
+                  : name === "close"
+                    ? "close"
+                    : "search"
+            }
+            size={iconProps.size}
+            color={iconProps.color}
+          />
+        )}
+        labels={{
+          phonePlaceholder: "Mobile number",
+          countryButtonAccessibilityLabel: (name: string) =>
+            `Country code, ${name}, tap to change`,
+          phoneInputAccessibilityLabel: "Mobile number for order updates",
+          doneButton: "Done",
+          pickerTitle: "Select country",
+          pickerSearchPlaceholder: "Search country or dial code",
+          pickerCloseAccessibilityLabel: "Close country picker",
+          pickerNoResults: "No countries found",
+        }}
+        theme={phoneTheme}
+      />
+      {suggested !== undefined ? (
+        <Pressable
+          onPress={() => {
+            chosen.current = true;
+            onChange({ phoneCountryIso: suggested.code });
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`Switch the country code to ${suggested.name} ${suggested.dialCode}`}
+          hitSlop={8}
+          style={styles.phoneSwitch}
+        >
+          <Text style={[styles.phoneSwitchText, { color: palette.accent }]}>
+            {`Switch to ${suggested.flag} ${suggested.name} (${suggested.dialCode})`}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+};
 
 /** The venue's OWN clock — never the visitor's. */
 function localClock(timezone: string | null): {
@@ -137,6 +293,7 @@ export const BuyerVenueOrderingMenu: React.FC<
   palette,
   surface,
   theme,
+  countryCode = null,
   menu,
   menuWindows,
   timezone,
@@ -181,6 +338,22 @@ export const BuyerVenueOrderingMenu: React.FC<
         onBuyerChange={ordering.cart.patchBuyer}
         onSetQuantity={ordering.cart.setQuantity}
         onSetNotes={ordering.cart.setNotes}
+        // issue #3380 — the country picker instead of a free-text box.
+        renderPhoneField={(args) => (
+          <BuyerVenueOrderPhoneField
+            args={args}
+            palette={palette}
+            theme={theme}
+            countryCode={countryCode}
+          />
+        )}
+        phoneFailure={
+          buyerOrderPhoneFailure(
+            ordering.cart.state.buyer.phone,
+            ordering.cart.state.buyer.phoneCountryIso ??
+              buyerOrderPhoneStartCountry(countryCode),
+          )?.message ?? null
+        }
         submitting={ordering.submitting}
         submitError={ordering.submitError}
         onSubmit={ordering.submit}
@@ -255,6 +428,8 @@ export const BuyerVenueOrderingSurface: React.FC<{
   entrySource: string | null;
   menu: PublicMenuGroup[];
   timezone: string | null;
+  /** issue #3380 — the venue's country, for the guest's phone picker. */
+  countryCode?: string | null;
 }> = ({
   palette,
   surface,
@@ -265,6 +440,7 @@ export const BuyerVenueOrderingSurface: React.FC<{
   entrySource,
   menu,
   timezone,
+  countryCode = null,
 }) => {
   /**
    * The service WINDOWS are read HERE rather than by the route, and that is not
@@ -303,7 +479,7 @@ export const BuyerVenueOrderingSurface: React.FC<{
     // they cannot order. Someone reading the menu out of curiosity is not.
     scanned: spotCode !== null || entrySource === "qr",
   });
-  const slotProps = { ordering, palette, surface, theme };
+  const slotProps = { ordering, palette, surface, theme, countryCode };
   const notice = venueOrderingNotice(ordering.config, {
     scanned: ordering.scanned,
   });
@@ -419,4 +595,6 @@ export const BuyerVenueOrderingBar: React.FC<BuyerVenueOrderingSlotProps> = ({
 const styles = StyleSheet.create({
   surface: { gap: 16 },
   menuWrap: { gap: 24 },
+  phoneSwitch: { alignSelf: "flex-start", paddingVertical: 4, marginTop: 4 },
+  phoneSwitchText: { fontSize: 14, fontWeight: "600" },
 });
