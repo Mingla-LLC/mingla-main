@@ -179,7 +179,8 @@ describe("ORCH-1355 symptom 2 — tester adversarial (single-patch + burst-coale
     await act(async () => {
       fireEvent.press(screen.getByTestId("rsvp-capacity-toggle"));
     });
-    expect(useDraftEventStore.getState().getDraft(id)?.rsvpCapacity).toBe(1);
+    // Default guest limit when switched on (RSVP_DEFAULT_GUEST_LIMIT; was 1).
+    expect(useDraftEventStore.getState().getDraft(id)?.rsvpCapacity).toBe(50);
 
     // Isolate the OFF tap.
     spy.mockClear();
@@ -248,7 +249,7 @@ describe("ORCH-1355 symptom 2 — tester adversarial (single-patch + burst-coale
     // Three taps, NO timer advance between them → the 700ms debounce keeps
     // resetting, so only the LAST queued autosave will ever fire.
     await act(async () => {
-      fireEvent.press(screen.getByTestId("rsvp-capacity-toggle")); // ON  → cap=1
+      fireEvent.press(screen.getByTestId("rsvp-capacity-toggle")); // ON  → cap=50
     });
     await act(async () => {
       fireEvent.press(screen.getByTestId("rsvp-capacity-toggle")); // OFF → cap=null, waitlist=false

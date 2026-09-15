@@ -189,11 +189,13 @@ describe("ORCH-1355 — capacity toggle snap-back (autosave must NOT drop the OF
     // Precondition: capacity is OFF.
     expect(getCap()).toBeNull();
 
-    // Tap "Limit the guest list" → ON. Store capacity becomes 1.
+    // Tap "Limit the guest list" → ON. Store capacity becomes the default
+    // guest limit (RSVP_DEFAULT_GUEST_LIMIT = 50; it was 1 before the guest
+    // limit became typeable).
     await act(async () => {
       fireEvent.press(screen.getByTestId("rsvp-capacity-toggle"));
     });
-    expect(getCap()).toBe(1);
+    expect(getCap()).toBe(50);
 
     // Tap again → OFF. C-2 makes this ONE combined write (cap:null +
     // waitlist:false). The client store MUST end at cap=null.
