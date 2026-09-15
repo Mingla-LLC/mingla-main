@@ -9,25 +9,21 @@
  * Lives in the Business jest suite (the required gate) because no existing Deno
  * lane lists a new file and new workflow wrappers are forbidden (#2148).
  *
- * FAILS ON REVERT: restore `normalizePhoneE164(buyer.phone)` in either function
- * and the source assertions fail; delete `_shared/buyerPhone.ts` and the suite
- * cannot import.
+ * The wiring of both functions is proven in the Deno ordering suites
+ * (T-3380-P1 in issue_1793_guest_ordering, T-3380-P2 in issue_1792_waiter_mode),
+ * which run the edge-function source; this file proves the resolver's behaviour.
+ *
+ * FAILS ON REVERT: delete `_shared/buyerPhone.ts` and the suite cannot import;
+ * restore a "ten digits are American" reading with a known country and the
+ * country cases fail.
  */
 import { describe, expect, test } from "@jest/globals";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 import {
   LEGACY_NANP_REFUSAL,
   legacyNanpGuessAllowed,
   resolveBuyerPhone,
 } from "../../../../supabase/functions/_shared/buyerPhone";
-
-const repoRoot = join(__dirname, "..", "..", "..", "..");
-const source = (relative: string): string =>
-  readFileSync(join(repoRoot, relative), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
 
 describe("#3380 resolveBuyerPhone — new clients send the country", () => {
   test.each([
@@ -114,44 +110,5 @@ describe("#3380 resolveBuyerPhone — deployed clients keep working", () => {
     expect(legacyNanpGuessAllowed(null)).toBe(true);
     expect(legacyNanpGuessAllowed("NG")).toBe(false);
     expect(legacyNanpGuessAllowed("GB")).toBe(false);
-  });
-});
-
-describe("#3380 both ordering rails use it", () => {
-  const create = source("supabase/functions/venue-order-create/index.ts");
-  const staff = source("supabase/functions/venue-order-staff/index.ts");
-
-  test("venue-order-create reads the guest's country", () => {
-    expect(create).toContain(
-      "resolveBuyerPhone(buyer.phone, buyer.phoneCountryIso)",
-    );
-    expect(create).not.toContain("normalizePhoneE164(");
-    expect(create).toContain("legacyNanpGuessAllowed(pricing.payment_country)");
-  });
-
-  test("venue-order-staff reads the country the pad chose", () => {
-    expect(staff).toMatch(
-      /resolveBuyerPhone\(\s*input\.buyer\.phone,\s*input\.buyer\.phoneCountryIso,?\s*\)/,
-    );
-    expect(staff).not.toContain("normalizePhoneE164(");
-    expect(staff).toContain("legacyNanpGuessAllowed(pricing.payment_country)");
-  });
-
-  test("the legacy guess is refused only AFTER the venue's country is known", () => {
-    const pricingRead = create.indexOf("const pricing = pricingRows[0]");
-    const guard = create.indexOf("legacyNanpGuessAllowed(pricing.payment_country)");
-    expect(pricingRead).toBeGreaterThan(-1);
-    expect(guard).toBeGreaterThan(pricingRead);
-    const staffPricing = staff.indexOf("const pricing = pricingRows[0]");
-    const staffGuard = staff.indexOf("legacyNanpGuessAllowed(pricing.payment_country)");
-    expect(staffGuard).toBeGreaterThan(staffPricing);
-  });
-
-  test("the refusal keeps the code clients already map", () => {
-    for (const code of [create, staff]) {
-      expect(code).toMatch(
-        /function failPhone\(message: string\): Response \{\s*return jsonResponse\(\s*\{ error: "buyer_phone_required", message \}/,
-      );
-    }
   });
 });
