@@ -120,7 +120,7 @@ import {
   submitPublicRsvp,
   submitRsvpContribution,
 } from "../../services/rsvpEvents";
-import { fetchPublicRsvpPassPdf } from "../../services/rsvpPassRecoveryService";
+import * as RsvpPassRecovery from "../../services/rsvpPassRecoveryService";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
 // anon-safe RPC — this page is anon-tolerant). Keys from the entity factory.
 import { useQuery } from "@tanstack/react-query";
@@ -164,6 +164,16 @@ import {
   UNKNOWN_REFUND_POLICY_STATE,
   type RefundPolicyReadState,
 } from "@mingla/offering-rendering/offeringRefundPolicy";
+// Anonymous-guest reply restore after the chip-in payment redirect (deep
+// specifier, same reason as above).
+import {
+  parseRsvpGuestSnapshot,
+  rsvpGuestSnapshotStorageKey,
+  rsvpGuestSnapshotVerification,
+  serializeRsvpGuestSnapshot,
+  type RsvpGuestSnapshot,
+} from "@mingla/offering-rendering/rsvpGuestSnapshot";
+import { RsvpStatusBanner } from "./RsvpStatusBanner";
 import { isLegacyUnsafeEventCoverVideoUrl } from "../../utils/eventCoverMediaRules";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicPageOnWeb";
@@ -1146,6 +1156,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // ORCH-1138 — state banner (sold-out / sales-ended / pre-sale / not-bookable),
   // rendered above the body by the shared FOUNDATION body. Driven by the same
   // offeringCta state (one owner) so the banner never disagrees with the CTA.
+  //
+  // RSVP events NEVER read offeringCta here: it is the TICKET machine, an RSVP
+  // row has zero tickets, and its "no visible tickets" branch told every guest
+  // "Not on sale yet" on a free event that was open for replies. They get the
+  // RSVP countdown / happening-now / full state instead.
   const stateBanner =
     acquisitionState.kind !== "current" ? (
       <EventAcquisitionNotice
@@ -1155,6 +1170,19 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         palette={palette}
         theme={resolvedTheme}
         focusOnMount={serverAcquisitionOverride !== null}
+      />
+    ) : isRsvp ? (
+      <RsvpStatusBanner
+        palette={palette}
+        startAtUtc={event.masterStartAtUtc ?? null}
+        endAtUtc={event.masterEndAtUtc ?? null}
+        capacityFull={
+          event.rsvpCapacity !== null &&
+          event.rsvpCapacity !== undefined &&
+          (event.rsvpGoingCount ?? 0) >= event.rsvpCapacity
+        }
+        waitlistEnabled={event.rsvpWaitlistEnabled ?? false}
+        manualApproval={event.rsvpApprovalMode === "manual"}
       />
     ) : offeringCta.kind === "unavailable" ? (
       <View style={[styles.banner, { backgroundColor: palette.card }]}>
@@ -1300,6 +1328,78 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [event.id],
   );
 
+  // ── An anonymous guest's own reply, kept for this browser tab ──
+  //
+  // The chip-in hands the guest to Stripe / Paystack with a full-page
+  // navigation. Their reply, pass QR and pass recovery token only lived in
+  // React state, so the return reload showed a fresh invite ("Going / Maybe /
+  // Can't go", no pass) even though the server had them as going. The accepted
+  // reply is now written to sessionStorage (same tab only: the redirect comes
+  // back to this tab, and a later visitor on a shared device does not inherit
+  // someone else's pass) and read back on mount. Nothing goes in the URL.
+  const rsvpSnapshotKey = rsvpGuestSnapshotStorageKey(event.id);
+  const readTabStorage = useCallback((): Storage | null => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return null;
+    try {
+      return window.sessionStorage ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+  const [restoredRsvp, setRestoredRsvp] = useState<RsvpGuestSnapshot | null>(() => {
+    if (!isRsvp) return null;
+    const storage = readTabStorage();
+    if (storage === null) return null;
+    try {
+      return parseRsvpGuestSnapshot(storage.getItem(rsvpSnapshotKey), event.id, Date.now());
+    } catch {
+      return null;
+    }
+  });
+  const handleRsvpResolved = useCallback(
+    (snapshot: RsvpGuestSnapshot): void => {
+      const storage = readTabStorage();
+      if (storage === null) return;
+      try {
+        storage.setItem(rsvpSnapshotKey, serializeRsvpGuestSnapshot(snapshot));
+      } catch {
+        // Storage full / blocked: the reply still stands server-side and the
+        // guest can recover their pass from the confirmation email.
+      }
+    },
+    [readTabStorage, rsvpSnapshotKey],
+  );
+  // Confirm a restored Going reply still stands (the host may have removed the
+  // guest). Only a definitive "no" clears it; a network failure keeps it.
+  const restoredRsvpId = restoredRsvp?.rsvpId ?? null;
+  useEffect(() => {
+    if (restoredRsvp === null) return undefined;
+    const verification = rsvpGuestSnapshotVerification(restoredRsvp);
+    const fetchMetadata = RsvpPassRecovery.fetchPublicRsvpPassMetadata;
+    if (verification === null || typeof fetchMetadata !== "function") return undefined;
+    let cancelled = false;
+    fetchMetadata(
+      verification.entityType,
+      verification.entityId,
+      verification.recoveryToken,
+    ).catch((error: unknown) => {
+      if (cancelled) return;
+      const status = (error as { context?: { status?: number } } | null)?.context?.status;
+      if (status !== 403 && status !== 404 && status !== 409) return;
+      try {
+        readTabStorage()?.removeItem(rsvpSnapshotKey);
+      } catch {
+        // Nothing else to clean up.
+      }
+      setRestoredRsvp(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Verify once per restored reply, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoredRsvpId]);
+
   const handleDownloadRsvpPass = useCallback(async (
     credential: import("@mingla/offering-rendering").RsvpPassCredential,
     recovery: import("@mingla/offering-rendering").RsvpAnonymousRecovery | null,
@@ -1307,7 +1407,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     const surface = "anonymous_web_success";
     captureWeb("rsvp_pass_pdf_requested", { surface });
     try {
-      const pdf = await fetchPublicRsvpPassPdf(
+      const pdf = await RsvpPassRecovery.fetchPublicRsvpPassPdf(
         credential.entityType,
         credential.entityId,
         recovery?.recoveryToken ?? null,
@@ -1495,6 +1595,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           theme={resolvedTheme}
           stateBanner={stateBanner}
           onAcquisitionClosed={setServerAcquisitionOverride}
+          restoredRsvp={restoredRsvp}
+          onRsvpResolved={handleRsvpResolved}
+          // A Stripe return lands with ?contribution=paid: show the inline
+          // chip-in thank-you instead of asking the guest to chip in again.
+          contributionState={returnBanner === "paid" ? "paid" : "idle"}
           config={{
             capacity: event.rsvpCapacity ?? null,
             goingCount: event.rsvpGoingCount ?? 0,
@@ -1502,6 +1607,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             plusOnesMax: event.rsvpPlusOnesMax ?? 0,
             waitlistEnabled: event.rsvpWaitlistEnabled ?? false,
             manualApproval: event.rsvpApprovalMode === "manual",
+            // The line under the decision follows "Who can find this".
+            visibility: event.visibility,
+            discoverable: event.rsvpDiscoverable ?? null,
             // ORCH-1157 Issue 4 [doors] — start_at/end_at (event_dates) → tz-aware
             // doors labels. No new field/schema.
             doorsOpenLabel: rsvpDoors.open,

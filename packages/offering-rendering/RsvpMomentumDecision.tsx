@@ -83,7 +83,7 @@ import { GuestAvatarCluster } from "./GuestAvatarCluster";
 import { type SocialProofSampleEntry } from "./socialProofTypes";
 
 // Pure, dep-free momentum derivation (Deno/node-testable; no renderer).
-import { deriveMomentum } from "./rsvpMomentum";
+import { deriveMomentum, rsvpMomentumSubLabel } from "./rsvpMomentum";
 // ORCH-1292 — the party chips now resolve to CANONICAL labels (via the shared
 // in-package resolver), matching the pills row — not the humanized partyTypeLabel.
 import { taxonomyLabel } from "./taxonomyLabels";
@@ -191,6 +191,24 @@ export interface RsvpMomentumDecisionProps {
   onSeeWhosGoing?: () => void;
   /** Optional microcopy under the decision (e.g. "Anyone with the link can RSVP"). */
   micro?: string;
+  /**
+   * A short "what's still missing" message shown directly above the buttons
+   * after a Going / Maybe tap could not go through (e.g. "Add your name and
+   * email above to RSVP."). Rendered next to the control the guest tapped
+   * because the contact fields are usually scrolled far above it. Announced on
+   * web through role="alert"; native hosts announce it once themselves.
+   */
+  validationHint?: string | null;
+  /**
+   * An optional secondary action under the decision — the resolved guest's
+   * "View your pass". Absent ⇒ nothing renders.
+   */
+  secondaryAction?: { label: string; onPress: () => void; testID?: string } | null;
+  /**
+   * Ref to the decision block, so a surface can tell whether this inline copy
+   * is on screen (the phone floating bar only shows while it is not).
+   */
+  decisionRef?: React.Ref<View>;
   /** testID prefix for the going / maybe / not-going buttons + nodes. */
   goingTestID?: string;
   maybeTestID?: string;
@@ -223,6 +241,16 @@ const ClockGlyph: React.FC<{ color: string }> = ({ color }) => (
   <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
     <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={2.2} />
     <Path d="M12 7v5l3 2" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+// The UNRESOLVED Going glyph ("add me"). The check mark is reserved for the
+// guest's own confirmed state ("You're going") so a guest who has not replied
+// never sees a control that looks already selected.
+const UserPlusGlyph: React.FC<{ color: string }> = ({ color }: { color: string }) => (
+  <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+    <Path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+    <Circle cx={9} cy={7} r={4} stroke={color} strokeWidth={2.2} />
+    <Path d="M19 8v6M22 11h-6" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
   </Svg>
 );
 const ListGlyph: React.FC<{ color: string }> = ({ color }) => (
@@ -280,14 +308,29 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   onSeeWhosGoing,
   hostRow,
   micro,
+  validationHint = null,
+  secondaryAction = null,
+  decisionRef = undefined,
   goingTestID,
   maybeTestID,
   notGoingTestID,
   testID,
 }) => {
   const boldFamily = boldFontFamily(theme);
+  // Explicitly typed: a `= null` default alone narrows these to `null` in
+  // hosts whose type-check cannot resolve react (mingla-business's tsconfig).
+  const hintText = validationHint as string | null;
+  const passAction = secondaryAction as RsvpMomentumDecisionProps["secondaryAction"];
   // ORCH-1339 (D2) — hideRemainingCount nulls the DISPLAY capacity only.
   const momentum = deriveMomentum(goingCount, hideRemainingCount ? null : capacity);
+  // The rendered sub-line adds the real capacity to the zero-state ("Be the
+  // first to RSVP · 80 spots") and says "Full" when the waitlist is off. The
+  // same DISPLAY capacity rule applies, so "Hide the spots-left count" hides it.
+  const momentumSubLabel = rsvpMomentumSubLabel(
+    goingCount,
+    hideRemainingCount ? null : capacity,
+    { waitlistEnabled },
+  );
 
   // Kicker dot pulse (1.8s) + meter fill width transition (0.5s ease) — subtle.
   // isInteraction:false — a looping/animating timing on the RSVP page must NOT hold an
@@ -336,15 +379,22 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   const maybeResolved = guestStatus === "maybe";
 
   const goingIsWaitlist = ctaState === "waitlist" && !waitlistedResolved && !goingResolved;
+  // Missing contact details do NOT disable Going / Maybe: the tap is how the
+  // guest is shown what is missing (the host scrolls to the first unfinished
+  // field and shows `validationHint`). Painting them disabled while they still
+  // respond was both misleading and announced as "dimmed" to screen readers.
   const goingDisabled =
     submitting ||
     goingResolved ||
     pendingResolved ||
     waitlistedResolved ||
-    (ctaState === "full" && !waitlistEnabled) ||
-    !contactReady;
+    (ctaState === "full" && !waitlistEnabled);
   const maybeDisabled =
-    submitting || goingResolved || pendingResolved || waitlistedResolved || maybeResolved || !contactReady;
+    submitting || goingResolved || pendingResolved || waitlistedResolved || maybeResolved;
+  const needsDetailsHint = contactReady ? undefined : "Add your details above first";
+  // The guest's OWN confirmed "going" is the only selected state: accent fill +
+  // check mark. An unresolved Going is a primary action with an "add me" glyph.
+  const goingFilled = goingResolved || !goingDisabled;
 
   const goingLabel = goingResolved
     ? "You're going"
@@ -403,7 +453,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
         <Text style={[styles.momLabel, { color: palette.secondaryText }]}>going</Text>
       </View>
       <Text style={[styles.momSub, { color: palette.tertiaryText }]} testID="orch-1157-rsvp-momentum-sub">
-        {momentum.subLabel}
+        {momentumSubLabel}
       </Text>
       {/* capacity meter — accent-gradient fill (theme dial), empty at goingCount=0 */}
       <View style={[styles.meterTrack, { backgroundColor: palette.panelBorder }]}>
@@ -447,25 +497,28 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       onPress={onGoing}
       disabled={submitting || goingResolved || pendingResolved || waitlistedResolved || (ctaState === "full" && !waitlistEnabled)}
       accessibilityRole="button"
-      accessibilityState={{ disabled: goingDisabled }}
+      accessibilityState={{ disabled: goingDisabled, selected: goingResolved }}
       accessibilityLabel={goingLabel}
+      accessibilityHint={goingDisabled ? undefined : needsDetailsHint}
       style={[
         styles.dbtn,
-        goingDisabled
-          ? { backgroundColor: opaqueCardFill(palette), borderColor: palette.panelBorder }
-          : { backgroundColor: palette.accent, borderColor: palette.accent },
+        goingFilled
+          ? { backgroundColor: palette.accent, borderColor: palette.accent }
+          : { backgroundColor: opaqueCardFill(palette), borderColor: palette.panelBorder },
       ]}
       testID={goingTestID ?? "orch-1157-rsvp-going"}
     >
-      {goingIsWaitlist ? (
-        <ListGlyph color={goingDisabled ? palette.tertiaryText : palette.accentText} />
+      {goingIsWaitlist || waitlistedResolved ? (
+        <ListGlyph color={goingFilled ? palette.accentText : palette.tertiaryText} />
       ) : pendingResolved ? (
-        <ClockGlyph color={goingDisabled ? palette.tertiaryText : palette.accentText} />
+        <ClockGlyph color={goingFilled ? palette.accentText : palette.tertiaryText} />
+      ) : goingResolved ? (
+        <CheckGlyph color={palette.accentText} />
       ) : (
-        <CheckGlyph color={goingDisabled ? palette.tertiaryText : palette.accentText} />
+        <UserPlusGlyph color={goingFilled ? palette.accentText : palette.tertiaryText} />
       )}
       <Text
-        style={[styles.dbtnText, { color: goingDisabled ? palette.tertiaryText : palette.accentText, fontFamily: boldFamily }]}
+        style={[styles.dbtnText, { color: goingFilled ? palette.accentText : palette.tertiaryText, fontFamily: boldFamily }]}
         numberOfLines={1}
       >
         {goingLabel}
@@ -480,6 +533,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       accessibilityRole="button"
       accessibilityState={{ disabled: maybeDisabled }}
       accessibilityLabel="Maybe"
+      accessibilityHint={maybeDisabled ? undefined : needsDetailsHint}
       style={[
         styles.dbtn,
         maybeDisabled
@@ -614,8 +668,20 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   ) : null;
 
   const decisionBlock = (
-    <View testID="orch-1157-rsvp-decision">
+    // The ref is spread so hosts that type-check this file without react's JSX
+    // types (no `ref` on ViewProps there) see no new diagnostic.
+    <View testID="orch-1157-rsvp-decision" {...{ ref: decisionRef }}>
       {stepper}
+      {hintText !== null && hintText !== undefined && hintText.length > 0 ? (
+        <Text
+          style={[styles.validationHint, { color: palette.primaryText, borderColor: palette.accent }]}
+          accessibilityRole={Platform.OS === "web" ? "alert" : undefined}
+          accessibilityLiveRegion="polite"
+          testID="rsvp-decision-validation-hint"
+        >
+          {hintText}
+        </Text>
+      ) : null}
       {decisionButtons}
       {micro !== undefined && micro.length > 0 ? (
         // ORCH-1163 R4 — the microcopy sits in a thin self-sizing PILL that HUGS
@@ -630,6 +696,19 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
         >
           <Text style={[styles.micro, { color: palette.secondaryText }]}>{micro}</Text>
         </View>
+      ) : null}
+      {passAction !== null && passAction !== undefined ? (
+        <Pressable
+          onPress={passAction.onPress}
+          accessibilityRole="button"
+          accessibilityLabel={passAction.label}
+          style={styles.secondaryAction}
+          testID={passAction.testID ?? "rsvp-decision-secondary-action"}
+        >
+          <Text style={[styles.secondaryActionText, { color: palette.accent, fontFamily: boldFamily }]}>
+            {passAction.label}
+          </Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -724,6 +803,22 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   micro: { textAlign: "center", fontSize: 11 },
+  validationHint: {
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+    borderLeftWidth: 3,
+    paddingLeft: 10,
+    marginBottom: 10,
+  },
+  secondaryAction: {
+    alignSelf: "center",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    marginTop: 4,
+  },
+  secondaryActionText: { fontSize: 14, fontWeight: "800", textDecorationLine: "underline" },
 
   plusRow: {
     flexDirection: "row",

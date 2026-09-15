@@ -52,6 +52,7 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   Image,
   LayoutAnimation,
   Platform,
@@ -66,7 +67,12 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 
-import { boldFontFamily, offeringSurfaceStyles, type ThemePalette } from "./themePalette";
+import {
+  boldFontFamily,
+  offeringSurfaceStyles,
+  opaqueSurfaceColor,
+  type ThemePalette,
+} from "./themePalette";
 import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
 // ORCH-1292 — resolve party/vibe/music slugs to canonical labels at the pills row.
 import { taxonomyLabel } from "./taxonomyLabels";
@@ -93,6 +99,18 @@ import {
   VenueCopyAddressButton,
 } from "./VenueMapsActions";
 import { RsvpMomentumDecision } from "./RsvpMomentumDecision";
+// Guest-facing copy that follows the event's real settings + the "what is still
+// missing" hint shown next to a decision tap that could not go through.
+import {
+  buildRsvpValidationHint,
+  rsvpAudienceMicrocopy,
+  rsvpContactIssues,
+  type RsvpContactFieldKey,
+  type RsvpContactIssue,
+} from "./rsvpGuestCopy";
+// Type-only: the snapshot parser stays out of this shared (eager) chunk; only
+// the web page that restores a reply pays for it.
+import type { RsvpGuestSnapshot } from "./rsvpGuestSnapshot";
 import { markRsvpPhoneTouchedById } from "./rsvpPhoneValidation";
 import type {
   RsvpAnonymousRecovery,
@@ -173,6 +191,14 @@ export interface RsvpOfferingConfig {
   /** Present ⇒ the momentum cluster gains its "See who's going" affordance
    * (ORCH-1341/1342 wire handlers). Absent ⇒ inert cluster, no dead tap. */
   onSeeWhosGoing?: () => void;
+  /**
+   * events.visibility + events.rsvp_discoverable. Drive the line under the
+   * decision buttons so a public, feed-listed event no longer tells guests
+   * "Anyone with the link can RSVP." Absent ⇒ the link-only line (the only
+   * claim that is true without knowing the setting).
+   */
+  visibility?: "public" | "unlisted" | "private" | null;
+  discoverable?: boolean | null;
 }
 
 // ORCH-1291 — the payment hand-off contract (DESIGN §1.3). The body is
@@ -312,8 +338,32 @@ export interface RsvpOfferingBodyProps {
   /** ISO 3166-1 alpha-2 seed for the phone picker's initial country. */
   defaultPhoneCountry?: string;
   onAcquisitionClosed?: (kind: "ended" | "unavailable") => void;
+  /**
+   * Scrolls the page so `node` (a contact field, or the wrapper of an injected
+   * phone field) is on screen. Called when a Going / Maybe / Can't go tap could
+   * not go through because details are missing. The surface owns the scroll
+   * view, so it owns the scroll. Absent on web ⇒ the body scrolls the DOM node
+   * itself; absent on native ⇒ the floating bar keeps its details modal.
+   */
+  onRevealField?: (node: unknown) => void;
+  /**
+   * An anonymous guest's own reply restored after a full-page round trip (the
+   * chip-in payment redirect). Seeds the resolved state so the page shows
+   * "You're going" and the pass instead of a fresh invite. Setting it back to
+   * null (the host could not verify it) returns the page to the invite.
+   */
+  restoredRsvp?: RsvpGuestSnapshot | null;
+  /** Called with the reply the server just accepted, for the host to keep. */
+  onRsvpResolved?: (snapshot: RsvpGuestSnapshot) => void;
   testID?: string;
 }
+
+/** The reveal/focus handles for one contact field (a TextInput or a wrapper View). */
+type RsvpFieldHandle = {
+  focus?: (options?: { preventScroll?: boolean }) => void;
+  querySelector?: (selector: string) => { focus?: (options?: { preventScroll?: boolean }) => void } | null;
+  scrollIntoView?: (options?: { block?: string; behavior?: string }) => void;
+};
 
 // ───────────────────────────────────────────────────────────────────────────
 // Shared state machine. The body owns submit/contact/guests/dialog state and
@@ -342,6 +392,14 @@ interface RsvpDecisionState {
   onFloatingGoing: () => void;
   onFloatingMaybe: () => void;
   onFloatingNotGoing: () => void;
+  /** "Add your name and email above to RSVP." after a blocked tap; else null. */
+  validationHint: string | null;
+  /** "View your pass" for a going guest whose pass is known; else null. */
+  passAction: { label: string; onPress: () => void; testID?: string } | null;
+  /** The INLINE decision block, so the surface can hide the floating copy while it is on screen. */
+  inlineDecisionRef: React.RefObject<View | null>;
+  /** A decision tap was blocked by missing details (the hint is showing). */
+  decisionAttempted: boolean;
 }
 
 export interface RsvpOfferingState extends RsvpDecisionState {
@@ -407,12 +465,43 @@ export const useRsvpOfferingState = (
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // An anonymous guest's reply restored after the chip-in redirect seeds the
+  // resolved state, so the returning page shows their reply, not a fresh invite.
+  const restoredRsvp = props.restoredRsvp ?? null;
   const [guestStatus, setGuestStatus] = useState<
     "going" | "not_going" | "waitlisted" | "maybe" | null
-  >(null);
+  >(restoredRsvp?.guestStatus ?? null);
   const [guestApproval, setGuestApproval] = useState<"pending" | "approved" | null>(
-    null,
+    restoredRsvp?.guestApproval ?? null,
   );
+  // The last confirmed Going details (pass QR + recovery), kept after the
+  // success popup closes so "View your pass" can reopen it.
+  const [passDetails, setPassDetails] = useState<RsvpConfirmationDetails | null>(
+    restoredRsvp?.details ?? null,
+  );
+  // True while the resolved state on screen came from `restoredRsvp` and the
+  // guest has not replied again since.
+  const stateFromRestoreRef = useRef(restoredRsvp !== null);
+  useEffect(() => {
+    if (restoredRsvp !== null) {
+      if (stateFromRestoreRef.current || guestStatus === null) {
+        setGuestStatus(restoredRsvp.guestStatus);
+        setGuestApproval(restoredRsvp.guestApproval);
+        setPassDetails(restoredRsvp.details);
+        stateFromRestoreRef.current = true;
+      }
+      return;
+    }
+    if (stateFromRestoreRef.current) {
+      // The host could not verify the restored reply: back to the invite.
+      setGuestStatus(null);
+      setGuestApproval(null);
+      setPassDetails(null);
+      stateFromRestoreRef.current = false;
+    }
+    // Only a change of the restored snapshot itself re-runs this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoredRsvp]);
 
   // FLOW A — Going confirmation dialog + success popup state (body-owned).
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -531,6 +620,22 @@ export const useRsvpOfferingState = (
     event.venueName,
   ]);
 
+  const reportResolved = useCallback(
+    (result: RsvpSubmitResult, details: RsvpConfirmationDetails | null): void => {
+      props.onRsvpResolved?.({
+        version: 1,
+        eventId: event.id,
+        rsvpId: result.rsvpId,
+        guestStatus: result.status,
+        guestApproval: result.approvalStatus,
+        details,
+        savedAtMs: Date.now(),
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [event.id, props.onRsvpResolved],
+  );
+
   const runSubmit = useCallback(
     async (
       rsvpStatus: "going" | "not_going" | "maybe",
@@ -550,26 +655,132 @@ export const useRsvpOfferingState = (
           phoneCountryIso: g.phoneCountryIso,
         })),
       });
+      stateFromRestoreRef.current = false;
       setGuestStatus(result.status);
       setGuestApproval(result.approvalStatus);
+      if (result.status !== "going") setPassDetails(null);
       return result;
     },
     [guests, onSubmit, guestName, guestEmail, guestPhone, phoneCountry, plusCount],
   );
+
+  // ── what is still missing, in on-screen order (primary, then each +1) ──
+  const primaryNameRef = useRef<TextInput | null>(null);
+  const primaryEmailRef = useRef<TextInput | null>(null);
+  // A TextInput, or the wrapper View around a host-injected phone field.
+  const primaryPhoneRef = useRef<TextInput | View | null>(null);
+  const guestFieldRefs = useRef<
+    Record<string, Partial<Record<RsvpContactFieldKey, TextInput | View | null>>>
+  >({});
+  const inlineDecisionRef = useRef<View | null>(null);
+  const contactIssues: RsvpContactIssue[] = useMemo(() => {
+    const issues = rsvpContactIssues({
+      primary: { name: guestName, email: guestEmail, phone: guestPhone },
+      primaryRequired: !(isLoggedIn && props.requirePrimaryContact !== true),
+      guests,
+      emailPattern: EMAIL_RE,
+      phonePattern: PHONE_RE,
+    });
+    if (renderPhoneField === undefined) return issues;
+    // The injected phone field only reports a composed number once it is valid,
+    // so "typed something that is not a number yet" must read as invalid.
+    return issues.map((issue) => {
+      if (issue.field !== "phone" || issue.problem !== "missing") return issue;
+      const raw =
+        issue.guestIndex === null
+          ? phoneRawValue
+          : (guests[issue.guestIndex]?.rawPhone ?? "");
+      return raw.trim().length > 0 ? { ...issue, problem: "invalid" as const } : issue;
+    });
+  }, [
+    guestName,
+    guestEmail,
+    guestPhone,
+    isLoggedIn,
+    props.requirePrimaryContact,
+    guests,
+    renderPhoneField,
+    phoneRawValue,
+  ]);
+  const validationHint =
+    showValidationErrors && !contactReady
+      ? buildRsvpValidationHint(contactIssues)
+      : null;
+  // Web can always scroll the DOM itself; native needs the surface's scroll view.
+  const canRevealFields =
+    Platform.OS === "web" || props.onRevealField !== undefined;
+
+  // Bring the first unfinished field on screen and put the cursor in it. The
+  // hint stays next to the tapped control, so the guest sees both.
+  const revealFirstIssue = useCallback((): void => {
+    const first = contactIssues[0];
+    if (first === undefined) return;
+    const target =
+      first.guestIndex === null
+        ? first.field === "name"
+          ? primaryNameRef.current
+          : first.field === "email"
+            ? primaryEmailRef.current
+            : primaryPhoneRef.current
+        : (() => {
+            const guest = guests[first.guestIndex];
+            return guest === undefined
+              ? null
+              : (guestFieldRefs.current[guest.id]?.[first.field] ?? null);
+          })();
+    if (target === null || target === undefined) return;
+    // RN TextInput / View refs (and, on web, the DOM element behind them).
+    const handle = target as unknown as RsvpFieldHandle;
+    try {
+      // Focus synchronously inside the tap so mobile Safari opens the keyboard.
+      // On web a wrapper View is a <div> (which also has .focus()), so reach
+      // the <input> inside it rather than focusing the unfocusable wrapper.
+      const tagName = (target as unknown as { tagName?: unknown }).tagName;
+      const isWebWrapper =
+        Platform.OS === "web" &&
+        typeof handle.querySelector === "function" &&
+        tagName !== "INPUT" &&
+        tagName !== "TEXTAREA";
+      if (isWebWrapper) {
+        handle.querySelector?.("input")?.focus?.({ preventScroll: true });
+      } else if (typeof handle.focus === "function") {
+        handle.focus(Platform.OS === "web" ? { preventScroll: true } : undefined);
+      }
+    } catch {
+      // Focus is a nicety; the scroll + hint below still guide the guest.
+    }
+    if (props.onRevealField !== undefined) {
+      props.onRevealField(handle);
+    } else if (Platform.OS === "web" && typeof handle.scrollIntoView === "function") {
+      const reduceMotion =
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+      handle.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
+    }
+    if (Platform.OS !== "web") {
+      const hint = buildRsvpValidationHint(contactIssues);
+      if (hint !== null) AccessibilityInfo.announceForAccessibility?.(hint);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactIssues, guests, props.onRevealField]);
 
   // Maybe / Not-going → record DIRECTLY (no dialog).
   const submitDirect = useCallback(
     async (rsvpStatus: "not_going" | "maybe"): Promise<void> => {
       if (submitting) return;
       if (rsvpStatus === "maybe" && !contactReady) {
+        // The hint beside the tapped control replaces the old error line that
+        // rendered far below the fields (and under the floating bar).
         setShowValidationErrors(true);
-        setErrorMsg("Add your name, email, and phone to RSVP.");
+        setErrorMsg(null);
+        revealFirstIssue();
         return;
       }
       setErrorMsg(null);
       setSubmitting(true);
       try {
-        await runSubmit(rsvpStatus);
+        const result = await runSubmit(rsvpStatus);
+        if (result !== null) reportResolved(result, null);
       } catch (err) {
         const code = err instanceof Error ? err.message : String(err);
         handleAcquisitionError(code);
@@ -578,7 +789,15 @@ export const useRsvpOfferingState = (
         setSubmitting(false);
       }
     },
-    [submitting, contactReady, runSubmit, mapErrorCode, handleAcquisitionError],
+    [
+      submitting,
+      contactReady,
+      runSubmit,
+      mapErrorCode,
+      handleAcquisitionError,
+      revealFirstIssue,
+      reportResolved,
+    ],
   );
 
   // Going → open the confirmation dialog (when contactReady); else surface errors.
@@ -586,13 +805,14 @@ export const useRsvpOfferingState = (
     if (submitting) return;
     if (!contactReady) {
       setShowValidationErrors(true);
-      setErrorMsg("Add your name, email, and phone to RSVP.");
+      setErrorMsg(null);
+      revealFirstIssue();
       return;
     }
     setErrorMsg(null);
     setConfirmError(null);
     setConfirmOpen(true);
-  }, [submitting, contactReady]);
+  }, [submitting, contactReady, revealFirstIssue]);
 
   // ── ORCH-1163-R3 — floating-bar entry handlers ──
   // The floating bar forces contactReady=true on its DecisionUnit so the buttons
@@ -606,10 +826,17 @@ export const useRsvpOfferingState = (
       onGoingTap();
       return;
     }
+    if (canRevealFields) {
+      // Missing details on web / a surface that can scroll: the same guidance as
+      // the inline tap (scroll to the first unfinished field + the hint beside
+      // this control). The details modal below stays for surfaces that cannot.
+      onGoingTap();
+      return;
+    }
     setErrorMsg(null);
     setPendingDecision("going");
     setDetailsOpen(true);
-  }, [submitting, contactReady, onGoingTap]);
+  }, [submitting, contactReady, canRevealFields, onGoingTap]);
 
   const onFloatingMaybe = useCallback((): void => {
     if (submitting) return;
@@ -617,10 +844,14 @@ export const useRsvpOfferingState = (
       void submitDirect("maybe");
       return;
     }
+    if (canRevealFields) {
+      void submitDirect("maybe");
+      return;
+    }
     setErrorMsg(null);
     setPendingDecision("maybe");
     setDetailsOpen(true);
-  }, [submitting, contactReady, submitDirect]);
+  }, [submitting, contactReady, canRevealFields, submitDirect]);
 
   const onFloatingNotGoing = useCallback((): void => {
     if (submitting) return;
@@ -630,10 +861,16 @@ export const useRsvpOfferingState = (
       void submitDirect("not_going");
       return;
     }
+    if (canRevealFields) {
+      setShowValidationErrors(true);
+      setErrorMsg(null);
+      revealFirstIssue();
+      return;
+    }
     setErrorMsg(null);
     setPendingDecision("not_going");
     setDetailsOpen(true);
-  }, [submitting, isLoggedIn, contactReady, submitDirect]);
+  }, [submitting, isLoggedIn, contactReady, canRevealFields, submitDirect, revealFirstIssue]);
 
   // Continue inside the details modal — dispatch the pinned decision. Disabled in
   // the UI until contactReady, so values are valid here.
@@ -665,7 +902,7 @@ export const useRsvpOfferingState = (
       const result = await runSubmit("going");
       if (result === null) return;
       setConfirmOpen(false);
-      setSuccessDetails({
+      const details: RsvpConfirmationDetails = {
         eventName: event.name,
         dateLine: event.dateLine,
         venueLine: venueLineForPopup,
@@ -684,7 +921,10 @@ export const useRsvpOfferingState = (
         confirmationToken: result.confirmationToken,
         credentials: result.credentials ?? [],
         anonymousRecovery: result.anonymousRecovery ?? [],
-      });
+      };
+      setSuccessDetails(details);
+      setPassDetails(details);
+      reportResolved(result, details);
     } catch (err) {
       const code = err instanceof Error ? err.message : String(err);
       handleAcquisitionError(code);
@@ -705,6 +945,7 @@ export const useRsvpOfferingState = (
     guests,
     mapErrorCode,
     handleAcquisitionError,
+    reportResolved,
   ]);
 
   // ── ORCH-1291 — server-code → gift-framed copy (DESIGN §4.7). ──
@@ -789,9 +1030,11 @@ export const useRsvpOfferingState = (
               ? config.waitlistEnabled
                 ? "Join the waitlist and we'll move you in if a spot opens."
                 : "The guest list is full for now."
-              : config.manualApproval
-                ? "The host approves each guest after you reply."
-                : "Anyone with the link can RSVP.";
+              : rsvpAudienceMicrocopy({
+                  visibility: config.visibility,
+                  discoverable: config.discoverable,
+                  manualApproval: config.manualApproval,
+                });
 
   const showContactForm =
     (!isLoggedIn ||
@@ -838,31 +1081,52 @@ export const useRsvpOfferingState = (
     [],
   );
 
+  // Callback refs keyed by guest id, so a blocked tap can reveal a +1's field.
+  const guestFieldRef = useCallback(
+    (guestId: string, field: RsvpContactFieldKey) =>
+      (node: View | TextInput | null): void => {
+        const row = (guestFieldRefs.current[guestId] ??= {});
+        row[field] = node;
+      },
+    [],
+  );
+
   const contactForm = showContactForm ? (
     <View style={[styles.formCard, surface.card]} testID="orch-1157-rsvp-contact">
       <Text style={[styles.formMicro, surface.tertiaryText]}>
         We'll only use this to update you about this event.
       </Text>
       <RsvpField
+        ref={primaryNameRef}
         label="Your name"
         value={guestName}
         onChangeText={setGuestName}
         placeholder="First and last name"
         palette={palette}
-        invalid={guestName.length > 0 && guestName.trim().length === 0}
-        invalidMsg="Required"
+        invalid={
+          guestName.trim().length === 0 &&
+          (guestName.length > 0 || showValidationErrors)
+        }
+        invalidMsg={guestName.length > 0 ? "Required" : "Add your name"}
         autoCapitalize="words"
         testID="orch-1150-rsvp-name"
         disabled={submitting}
       />
       <RsvpField
+        ref={primaryEmailRef}
         label="Email"
         value={guestEmail}
         onChangeText={setGuestEmail}
         placeholder="you@email.com"
         palette={palette}
-        invalid={guestEmail.length > 0 && !EMAIL_RE.test(guestEmail.trim())}
-        invalidMsg="Enter a valid email"
+        invalid={
+          guestEmail.trim().length === 0
+            ? showValidationErrors
+            : !EMAIL_RE.test(guestEmail.trim())
+        }
+        invalidMsg={
+          guestEmail.trim().length === 0 ? "Add your email" : "Enter a valid email"
+        }
         keyboardType="email-address"
         autoCapitalize="none"
         testID="orch-1150-rsvp-email"
@@ -872,7 +1136,11 @@ export const useRsvpOfferingState = (
           country-code-aware phone field (@mingla/phone-input). Absent → the plain
           text field (native fallback, unchanged). */}
       {renderPhoneField
-        ? renderPhoneField({
+        ? (
+          // The injected field exposes no ref; this wrapper is what a blocked
+          // decision tap scrolls to (and, on web, focuses the input inside).
+          <View {...{ ref: primaryPhoneRef }} collapsable={false}>
+          {renderPhoneField({
             countryCode: phoneCountry,
             rawValue: phoneRawValue,
             role: "primary",
@@ -894,16 +1162,27 @@ export const useRsvpOfferingState = (
             required: true,
             emptyRequired: (showValidationErrors || primaryPhoneTouched) && phoneRawValue.trim().length === 0,
             onBlur: () => setPrimaryPhoneTouched(true),
-          })
+          })}
+          </View>
+        )
         : (
           <RsvpField
+            ref={primaryPhoneRef as unknown as React.Ref<TextInput>}
             label="Phone"
             value={guestPhone}
             onChangeText={setGuestPhone}
             placeholder="+1 555 123 4567"
             palette={palette}
-            invalid={guestPhone.length > 0 && !PHONE_RE.test(guestPhone.trim())}
-            invalidMsg="Enter a valid phone number"
+            invalid={
+              guestPhone.trim().length === 0
+                ? showValidationErrors
+                : !PHONE_RE.test(guestPhone.trim())
+            }
+            invalidMsg={
+              guestPhone.trim().length === 0
+                ? "Add your phone number"
+                : "Enter a valid phone number"
+            }
             keyboardType="phone-pad"
             autoCapitalize="none"
             testID="orch-1150-rsvp-phone"
@@ -968,31 +1247,41 @@ export const useRsvpOfferingState = (
               Guest {i + 1}
             </Text>
             <RsvpField
+              ref={guestFieldRef(g.id, "name")}
               label="Name"
               value={g.name}
               onChangeText={(v) => updateGuest(i, "name", v)}
               placeholder="First and last name"
               palette={palette}
-              invalid={g.name.length > 0 && g.name.trim().length === 0}
+              invalid={
+                g.name.trim().length === 0 && (g.name.length > 0 || showValidationErrors)
+              }
               invalidMsg="Required"
               autoCapitalize="words"
               testID={`orch-1163-rsvp-guest-${i}-name`}
               disabled={submitting}
             />
             <RsvpField
+              ref={guestFieldRef(g.id, "email")}
               label="Email"
               value={g.email}
               onChangeText={(v) => updateGuest(i, "email", v)}
               placeholder="guest@email.com"
               palette={palette}
-              invalid={g.email.length > 0 && !EMAIL_RE.test(g.email.trim())}
-              invalidMsg="Enter a valid email"
+              invalid={
+                g.email.trim().length === 0
+                  ? showValidationErrors
+                  : !EMAIL_RE.test(g.email.trim())
+              }
+              invalidMsg={g.email.trim().length === 0 ? "Required" : "Enter a valid email"}
               keyboardType="email-address"
               autoCapitalize="none"
               testID={`orch-1163-rsvp-guest-${i}-email`}
               disabled={submitting}
             />
-            {renderPhoneField ? renderPhoneField({
+            {renderPhoneField ? (
+              <View {...{ ref: guestFieldRef(g.id, "phone") }} collapsable={false}>
+              {renderPhoneField({
               role: "plus_one",
               guestId: g.id,
               index: i,
@@ -1018,15 +1307,24 @@ export const useRsvpOfferingState = (
               onBlur: () => {
                 setGuests((rows: RsvpGuestDraft[]) => markRsvpPhoneTouchedById(rows, g.id));
               },
-            }) : (
+            })}
+              </View>
+            ) : (
               <RsvpField
+                ref={guestFieldRef(g.id, "phone")}
                 label="Phone"
                 value={g.phone}
                 onChangeText={(v) => updateGuest(i, "phone", v)}
                 placeholder="+1 555 123 4567"
                 palette={palette}
-                invalid={g.phone.length > 0 && !PHONE_RE.test(g.phone.trim())}
-                invalidMsg="Enter a valid phone number"
+                invalid={
+                  g.phone.trim().length === 0
+                    ? showValidationErrors
+                    : !PHONE_RE.test(g.phone.trim())
+                }
+                invalidMsg={
+                  g.phone.trim().length === 0 ? "Required" : "Enter a valid phone number"
+                }
                 keyboardType="phone-pad"
                 autoCapitalize="none"
                 testID={`orch-1163-rsvp-guest-${i}-phone`}
@@ -1174,6 +1472,19 @@ export const useRsvpOfferingState = (
     </Suspense>
   );
 
+  // A going guest can always get back to their pass (the success popup closes,
+  // and a restored reply has no popup of its own).
+  const passAction =
+    goingResolved &&
+    passDetails !== null &&
+    passDetails.credentials.some((c: RsvpPassCredential) => c.qrCode !== null)
+      ? {
+          label: "View your pass",
+          onPress: () => setSuccessDetails(passDetails),
+          testID: "rsvp-view-pass",
+        }
+      : null;
+
   return {
     surface,
     boldFamily,
@@ -1185,6 +1496,10 @@ export const useRsvpOfferingState = (
     plusCount,
     errorNode,
     subcopy,
+    validationHint,
+    passAction,
+    inlineDecisionRef,
+    decisionAttempted: showValidationErrors,
     onGoingTap,
     onMaybe: () => void submitDirect("maybe"),
     onNotGoing: () => void submitDirect("not_going"),
@@ -1226,6 +1541,8 @@ const DecisionUnit: React.FC<{
   onGoing?: () => void;
   onMaybe?: () => void;
   onNotGoing?: () => void;
+  /** Ref for the INLINE mount only (the floating bar's visibility gate reads it). */
+  decisionRef?: React.Ref<View>;
   testID?: string;
 }> = ({
   palette,
@@ -1237,6 +1554,7 @@ const DecisionUnit: React.FC<{
   onGoing,
   onMaybe,
   onNotGoing,
+  decisionRef = undefined,
   testID,
 }) => {
   return (
@@ -1272,6 +1590,9 @@ const DecisionUnit: React.FC<{
       variant="floating-dock"
       showMomentum={showMomentum}
       micro={state.subcopy ?? undefined}
+      validationHint={state.validationHint}
+      secondaryAction={state.passAction}
+      decisionRef={decisionRef}
       goingTestID="orch-1150-rsvp-going"
       maybeTestID="orch-1150-rsvp-maybe"
       notGoingTestID="orch-1150-rsvp-not-going"
@@ -1314,6 +1635,7 @@ export const RsvpDecisionBox: React.FC<RsvpDecisionBoxProps> = ({
       theme={theme}
       config={config}
       state={state}
+      decisionRef={state.inlineDecisionRef}
       showMomentum
       testID="orch-1157-rsvp-inline-momentum"
     />
@@ -1346,22 +1668,38 @@ export const RsvpOfferingFloatingBar: React.FC<RsvpOfferingFloatingBarProps> = (
   state,
   testID,
 }) => (
-  // ORCH-1163-R3 — the floating bar is SELF-SUFFICIENT: force contactReady so
-  // Going/Maybe are never disabled into a dead end, and route through the floating
-  // entry handlers (which open the details modal when contact info is missing).
-  // The inline RsvpDecisionBox is untouched (real contactReady + inline handlers).
-  <DecisionUnit
-    palette={palette}
-    theme={theme}
-    config={config}
-    state={state}
-    showMomentum={false}
-    contactReadyOverride
-    onGoing={state.onFloatingGoing}
-    onMaybe={state.onFloatingMaybe}
-    onNotGoing={state.onFloatingNotGoing}
-    testID={testID ?? "orch-1157-rsvp-floating-dock"}
-  />
+  // A SOLID themed card around the three buttons. Without it the page showed
+  // through the gaps between them and the bar read as loose buttons laid over
+  // the date card, the vibe chips and the About text.
+  <View
+    style={[
+      styles.floatingCard,
+      {
+        backgroundColor:
+          Platform.OS === "android" ? palette.page : opaqueSurfaceColor(palette),
+        borderColor: palette.panelBorder,
+      },
+    ]}
+    testID="rsvp-floating-decision-card"
+  >
+    {/* ORCH-1163-R3 — the floating bar is SELF-SUFFICIENT: force contactReady so
+        Going/Maybe are never disabled into a dead end, and route through the
+        floating entry handlers (which reveal the missing field, or open the
+        details modal on a surface that cannot scroll to it). The inline
+        RsvpDecisionBox is untouched (real contactReady + inline handlers). */}
+    <DecisionUnit
+      palette={palette}
+      theme={theme}
+      config={config}
+      state={state}
+      showMomentum={false}
+      contactReadyOverride
+      onGoing={state.onFloatingGoing}
+      onMaybe={state.onFloatingMaybe}
+      onNotGoing={state.onFloatingNotGoing}
+      testID={testID ?? "orch-1157-rsvp-floating-dock"}
+    />
+  </View>
 );
 
 // Back-compat alias — RsvpOfferingDecisionDock IS the floating bar (kept so the
@@ -1479,6 +1817,11 @@ export const RsvpOfferingBody: React.FC<
     onOpenMaps,
     onCopyAddress,
   });
+
+  // A static map that fails to load hides itself instead of leaving an empty
+  // black box above the address card (the card + "Open maps" still work).
+  const [mapFailed, setMapFailed] = useState(false);
+  useEffect(() => setMapFailed(false), [staticMapUrl]);
 
   const aboutText = event.description.trim();
   const canCollapseAbout = aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
@@ -1748,11 +2091,15 @@ export const RsvpOfferingBody: React.FC<
           >
             Where you&rsquo;ll be
           </Text>
-          {staticMapUrl !== null ? (
+          {staticMapUrl !== null && !mapFailed ? (
             <Image
               source={{ uri: staticMapUrl }}
               style={[styles.whereMap, { borderColor: palette.panelBorder }]}
               resizeMode="cover"
+              onError={() => setMapFailed(true)}
+              accessibilityLabel={
+                event.venueName !== null ? `Map of ${event.venueName}` : "Map"
+              }
               testID="orch-1167-where-map"
             />
           ) : null}
@@ -1850,7 +2197,7 @@ const Pill: React.FC<{
   </View>
 );
 
-const RsvpField: React.FC<{
+interface RsvpFieldProps {
   label: string;
   value: string;
   onChangeText: (v: string) => void;
@@ -1862,7 +2209,10 @@ const RsvpField: React.FC<{
   autoCapitalize?: "none" | "words";
   testID?: string;
   disabled?: boolean;
-}> = ({
+}
+
+// forwardRef so a blocked decision tap can scroll to and focus this field.
+const RsvpField = React.forwardRef<TextInput, RsvpFieldProps>(({
   label,
   value,
   onChangeText,
@@ -1874,12 +2224,13 @@ const RsvpField: React.FC<{
   autoCapitalize = "none",
   testID,
   disabled = false,
-}) => {
+}: RsvpFieldProps, ref: React.Ref<TextInput>) => {
   const surface = offeringSurfaceStyles(palette);
   return (
     <View style={styles.field}>
       <Text style={[styles.fieldLabel, surface.tertiaryText]}>{label}</Text>
       <TextInput
+        {...{ ref }}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -1902,7 +2253,8 @@ const RsvpField: React.FC<{
       {invalid ? <Text style={styles.fieldError}>{invalidMsg}</Text> : null}
     </View>
   );
-};
+});
+RsvpField.displayName = "RsvpField";
 
 const styles = StyleSheet.create({
   leadBlock: { marginBottom: 4 },
@@ -2053,6 +2405,23 @@ const styles = StyleSheet.create({
   venueAddr: { fontSize: 13, marginTop: 2 },
   venueUnlockCaption: { fontSize: 12, marginTop: 4 },
   venuePill: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
+  // The phone floating decision card (opaque; see RsvpOfferingFloatingBar).
+  floatingCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 10,
+    ...Platform.select({
+      // No Android shadow under a rounded fill (opaque-glass policy); clip there.
+      android: { overflow: "hidden" as const },
+      // iOS drops a shadow on a view that clips, so web/iOS do not clip.
+      default: {
+        shadowColor: "#000",
+        shadowOpacity: 0.18,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 6 },
+      },
+    }),
+  },
   venuePillText: { fontSize: 12, fontWeight: "800" },
 });
 
