@@ -560,13 +560,13 @@ test("#1902 typed Business Jest exposure is lock-pinned and resolves exact offli
   // The three that moved are the already-merged Dependabot bumps: browserslist
   // 4.28.1→4.28.8 in /app-mobile (#3013), browserslist 4.28.2→4.28.8 in
   // /mingla-business (#3024), and the npm_and_yarn group of 7 carrying fast-uri
-  // ^3.1.5→^3.1.7 (#3168). mingla-business/package.json never moved and keeps
-  // its original pin.
+  // ^3.1.5→^3.1.7 (#3168). [TEST-MOD-APPROVED #1780] The Business package
+  // authority now also includes the governed local #1780 tester harness.
   // [TEST-MOD-APPROVED #3176] All four pins move together because the two app
   // manifests and npm-generated locks now declare the same exact local
   // search-measurement package. This remains an independent restatement of
   // the validator's authority; no setup or exposure assertion is relaxed.
-  const hashes={"app-mobile/package.json":"e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542","app-mobile/package-lock.json":"f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27","mingla-business/package.json":"98105e8ce8c3d17fa2e0c2640f7cdb721a782498fca79886ce01d8a8b5a0f19e","mingla-business/package-lock.json":"71449617f9cd6133da0395f3dcf780a3170da5d49b1e2eff2876a7afeb92addc"};
+  const hashes={"app-mobile/package.json":"e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542","app-mobile/package-lock.json":"f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27","mingla-business/package.json":"9cc55aaa74e87d3d778f93f689c923300899787f41968dfddb9c19219cc8e0e7","mingla-business/package-lock.json":"71449617f9cd6133da0395f3dcf780a3170da5d49b1e2eff2876a7afeb92addc"};
   for(const [relative,expected] of Object.entries(hashes)) assert.equal(digest(fs.readFileSync(path.join(ROOT,relative))),expected);
 });
 
