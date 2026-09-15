@@ -419,7 +419,18 @@ function verifyJpeg(bytes: Uint8Array): void {
   throw new AriAttachmentError("UPLOAD_INCOMPLETE");
 }
 
-function verifyPng(bytes: Uint8Array): void {
+function pngCrc(bytes: Uint8Array, start: number, end: number): number {
+  let crc = 0xffffffff;
+  for (let index = start; index < end; index += 1) {
+    crc ^= bytes[index];
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ ((crc & 1) === 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+async function verifyPng(bytes: Uint8Array): Promise<void> {
   if (
     !startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
   ) {
@@ -428,6 +439,10 @@ function verifyPng(bytes: Uint8Array): void {
   let cursor = 8;
   let sawHeader = false;
   let sawImageData = false;
+  let width = 0;
+  let height = 0;
+  let bytesPerRow = 0;
+  const idat: Uint8Array[] = [];
   while (cursor < bytes.length) {
     const length = readU32BE(bytes, cursor);
     const typeStart = cursor + 4;
@@ -437,20 +452,57 @@ function verifyPng(bytes: Uint8Array): void {
     if (chunkEnd > bytes.length || !Number.isSafeInteger(chunkEnd)) {
       throw new AriAttachmentError("UPLOAD_INCOMPLETE");
     }
+    if (pngCrc(bytes, typeStart, dataEnd) !== readU32BE(bytes, dataEnd)) {
+      throw new AriAttachmentError("CORRUPT_FILE");
+    }
     const type = String.fromCharCode(...bytes.slice(typeStart, typeStart + 4));
     if (!sawHeader) {
       if (type !== "IHDR" || length !== 13) {
         throw new AriAttachmentError("CORRUPT_FILE");
       }
-      assertImageDimensions(
-        readU32BE(bytes, dataStart),
-        readU32BE(bytes, dataStart + 4),
-      );
+      width = readU32BE(bytes, dataStart);
+      height = readU32BE(bytes, dataStart + 4);
+      assertImageDimensions(width, height);
+      const bitDepth = bytes[dataStart + 8];
+      const colorType = bytes[dataStart + 9];
+      const channels =
+        ({ 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 } as Record<number, number>)[colorType];
+      if (
+        !channels || ![1, 2, 4, 8, 16].includes(bitDepth) ||
+        bytes[dataStart + 12] !== 0
+      ) {
+        throw new AriAttachmentError("CORRUPT_FILE");
+      }
+      bytesPerRow = Math.ceil(width * channels * bitDepth / 8);
       sawHeader = true;
     } else if (type === "IDAT") {
       sawImageData = true;
+      idat.push(bytes.slice(dataStart, dataEnd));
     } else if (type === "IEND") {
       if (length !== 0 || !sawImageData || chunkEnd !== bytes.length) {
+        throw new AriAttachmentError("CORRUPT_FILE");
+      }
+      try {
+        const compressedBytes = new Uint8Array(
+          idat.reduce((total, part) => total + part.length, 0),
+        );
+        let offset = 0;
+        for (const part of idat) {
+          compressedBytes.set(part, offset);
+          offset += part.length;
+        }
+        const compressed = new Blob([compressedBytes.buffer]).stream()
+          .pipeThrough(
+            new DecompressionStream("deflate"),
+          );
+        const decoded = new Uint8Array(
+          await new Response(compressed).arrayBuffer(),
+        );
+        if (decoded.length !== height * (bytesPerRow + 1)) {
+          throw new AriAttachmentError("CORRUPT_FILE");
+        }
+      } catch (error: unknown) {
+        if (error instanceof AriAttachmentError) throw error;
         throw new AriAttachmentError("CORRUPT_FILE");
       }
       return;
@@ -522,7 +574,7 @@ function verifyHeic(bytes: Uint8Array): string | null {
   return mime;
 }
 
-function detectImage(bytes: Uint8Array): string | null {
+async function detectImage(bytes: Uint8Array): Promise<string | null> {
   if (startsWithBytes(bytes, [0xff, 0xd8])) {
     verifyJpeg(bytes);
     return "image/jpeg";
@@ -530,7 +582,7 @@ function detectImage(bytes: Uint8Array): string | null {
   if (
     startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
   ) {
-    verifyPng(bytes);
+    await verifyPng(bytes);
     return "image/png";
   }
   if (
@@ -538,7 +590,7 @@ function detectImage(bytes: Uint8Array): string | null {
     findAscii(bytes.slice(8, 16), "WEBP") === 0
   ) {
     const declaredRiffSize = readU32LE(bytes, 4) + 8;
-    if (declaredRiffSize > bytes.length) {
+    if (declaredRiffSize !== bytes.length || bytes.length < 20) {
       throw new AriAttachmentError("UPLOAD_INCOMPLETE");
     }
     return "image/webp";
@@ -554,6 +606,11 @@ function verifyPdf(bytes: Uint8Array): { pageCount: number } {
   const latin = new TextDecoder("latin1").decode(bytes);
   if (/\/Encrypt\b/.test(latin)) throw new AriAttachmentError("ENCRYPTED_FILE");
   if (!/\d+\s+\d+\s+obj\b/.test(latin)) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+  if (
+    !/^xref\s*$/m.test(latin) || !/\bstartxref\s+\d+\s+%%EOF\s*$/m.test(latin)
+  ) {
     throw new AriAttachmentError("CORRUPT_FILE");
   }
   let totalStreams = 0;
@@ -613,7 +670,7 @@ export async function verifyAriAttachment(
   let fileType: AriAttachmentFileType = declaredType;
   let derivativeText: string | null = null;
   const processingMetadata: Record<string, string | number | boolean> = {};
-  const imageMime = detectImage(bytes);
+  const imageMime = await detectImage(bytes);
 
   if (imageMime !== null) {
     verifiedMime = imageMime;

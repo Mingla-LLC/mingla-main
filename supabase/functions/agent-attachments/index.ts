@@ -367,9 +367,16 @@ Deno.serve(async (request) => {
           const { error: cleanupError } = await admin.storage
             .from(ARI_ATTACHMENT_BUCKET).remove([derivedStoragePath]);
           if (cleanupError) {
+            const { error: queueError } = await admin
+              .from("agent_attachment_cleanup_jobs")
+              .upsert({ storage_path: derivedStoragePath }, {
+                onConflict: "storage_path",
+                ignoreDuplicates: true,
+              });
             console.error("ari_attachment_derivative_cleanup_failed", {
               attachmentId,
               code: cleanupError.message,
+              cleanupQueued: queueError === null,
             });
           }
         }

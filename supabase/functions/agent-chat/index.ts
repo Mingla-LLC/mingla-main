@@ -213,6 +213,42 @@ async function failAttempt(args: {
   }
 }
 
+// An invocation can fail validation after the claim RPC has durably accepted
+// the turn but before it owns accepted -> running. Only that still-accepted
+// row may be terminalized here; a duplicate loser observing a running winner
+// cannot change the winner's outcome.
+async function failUnstartedAttempt(args: {
+  client: SupabaseClient;
+  attemptId: string;
+  userId: string;
+  attemptNumber: number;
+  errorCode: string;
+}): Promise<void> {
+  const now = new Date().toISOString();
+  const { data } = await args.client.from("agent_turn_attempts")
+    .update({
+      status: "failed",
+      error_code: args.errorCode.slice(0, 80),
+      terminal_at: now,
+      updated_at: now,
+    })
+    .eq("id", args.attemptId)
+    .eq("user_id", args.userId)
+    .eq("attempt_number", args.attemptNumber)
+    .eq("status", "accepted")
+    .select("id")
+    .maybeSingle();
+  if (data) {
+    await appendActivity({
+      client: args.client,
+      attemptId: args.attemptId,
+      userId: args.userId,
+      attemptNumber: args.attemptNumber,
+      eventType: "failed",
+    });
+  }
+}
+
 function taskStateResponse(err: TaskStateError): Response {
   const status = err.code === "TASK_STATE_INVALID" ? 500 : 409;
   const messages: Record<string, string> = {
@@ -2366,6 +2402,14 @@ async function handle(req: Request): Promise<Response> {
         userId,
         attemptNumber,
         errorCode: "TURN_ABORTED",
+      });
+    } else {
+      await failUnstartedAttempt({
+        client: serviceClient,
+        attemptId,
+        userId,
+        attemptNumber,
+        errorCode: "PRE_EXECUTION_ABORTED",
       });
     }
   }

@@ -37,7 +37,15 @@ function be32(value: number): Uint8Array {
 }
 
 function pngChunk(type: string, payload: Uint8Array): Uint8Array {
-  return concat(be32(payload.length), encoder.encode(type), payload, be32(0));
+  const source = concat(encoder.encode(type), payload);
+  let crc = 0xffffffff;
+  for (const value of source) {
+    crc ^= value;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+  }
+  return concat(be32(payload.length), source, be32((crc ^ 0xffffffff) >>> 0));
 }
 
 function png(width: number, height: number): Uint8Array {
@@ -47,7 +55,10 @@ function png(width: number, height: number): Uint8Array {
       "IHDR",
       concat(be32(width), be32(height), new Uint8Array([8, 2, 0, 0, 0])),
     ),
-    pngChunk("IDAT", new Uint8Array([0])),
+    pngChunk(
+      "IDAT",
+      new Uint8Array([0x78, 0x9c, 0x63, 0x60, 0x60, 0x60, 0, 0, 0, 4, 0, 1]),
+    ),
     pngChunk("IEND", new Uint8Array()),
   );
 }
@@ -118,7 +129,7 @@ Deno.test("#3429 rejects corrupt PNG chunks and oversized PDF streams before pro
   );
   await rejectsWith(truncatedPng, "image/png", "UPLOAD_INCOMPLETE");
   const pdfBomb = encoder.encode(
-    "%PDF-1.7\n1 0 obj << /Length 20971521 >>\nstream\nx\nendstream\nendobj\nstartxref\n0\n%%EOF",
+    "%PDF-1.7\n1 0 obj << /Length 20971521 >>\nstream\nx\nendstream\nendobj\nxref\n0 1\n0000000000 65535 f\nstartxref\n0\n%%EOF",
   );
   await rejectsWith(pdfBomb, "application/pdf", "DECOMPRESSION_BOMB");
 });

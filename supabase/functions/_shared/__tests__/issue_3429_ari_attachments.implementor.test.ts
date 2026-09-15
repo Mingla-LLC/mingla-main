@@ -52,7 +52,15 @@ function u32be(value: number): Uint8Array {
 }
 
 function pngChunk(type: string, data: Uint8Array): Uint8Array {
-  return concat(u32be(data.length), encoder.encode(type), data, u32be(0));
+  const source = concat(encoder.encode(type), data);
+  let crc = 0xffffffff;
+  for (const value of source) {
+    crc ^= value;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+  }
+  return concat(u32be(data.length), source, u32be((crc ^ 0xffffffff) >>> 0));
 }
 
 /**
@@ -66,14 +74,17 @@ function validPng(): Uint8Array {
       "IHDR",
       concat(u32be(1), u32be(1), new Uint8Array([8, 2, 0, 0, 0])),
     ),
-    pngChunk("IDAT", new Uint8Array([0])),
+    pngChunk(
+      "IDAT",
+      new Uint8Array([0x78, 0x9c, 0x63, 0x60, 0x60, 0x60, 0, 0, 0, 4, 0, 1]),
+    ),
     pngChunk("IEND", new Uint8Array()),
   );
 }
 
 function validPdf(): Uint8Array {
   return encoder.encode(
-    "%PDF-1.7\n1 0 obj << /Type /Page >>\nendobj\nstartxref\n0\n%%EOF",
+    "%PDF-1.7\n1 0 obj << /Type /Page >>\nendobj\nxref\n0 1\n0000000000 65535 f\nstartxref\n0\n%%EOF",
   );
 }
 

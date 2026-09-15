@@ -89,8 +89,11 @@ export const AriActivity: React.FC<{
   const phase: VisiblePhase = turn.event?.event_type && turn.event.event_type in PHASES
     ? turn.event.event_type as VisiblePhase
     : "sending";
-  const label = turn.reconciling ? "Reconnecting to Ari…" : PHASES[phase].label;
-  const terminal = turn.delivery === "stopped" || (!!turn.accepted && !!turn.errorMessage && turn.delivery === "sent");
+  const label = turn.reconciling
+    ? "Ari is checking the latest result…"
+    : PHASES[phase].label;
+  const terminal = turn.delivery === "stopped" || turn.delivery === "failed" ||
+    (!!turn.accepted && !!turn.errorMessage && turn.delivery === "sent");
 
   useEffect(() => {
     setLongWait(false);

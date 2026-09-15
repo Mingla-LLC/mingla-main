@@ -299,7 +299,8 @@ export function useAgentChat(
       if (!isCurrentAriTurnEpoch(before.epoch, scopeEpoch, brandEpoch.current)) return;
       const status = canonical.attempt.status;
       const delivery = status === "stopped" ? "stopped" as const
-        : status === "failed" || status === "completed" ? "sent" as const
+        : status === "failed" ? "failed" as const
+        : status === "completed" ? "sent" as const
         : before.delivery === "failed" ? "sending" as const : before.delivery;
       patchTurn(clientTurnId, {
         conversationId: canonical.attempt.conversation_id,
@@ -322,7 +323,12 @@ export function useAgentChat(
       }
     } catch {
       if (!isCurrentAriTurnEpoch(before.epoch, scopeEpoch, brandEpoch.current)) return;
-      patchTurn(clientTurnId, { reconciling: false });
+      patchTurn(clientTurnId, {
+        reconciling: true,
+        attemptStatus: "reconciliation_required",
+        errorCode: before.errorCode ?? "RECONCILIATION_REQUIRED",
+        errorMessage: before.errorMessage ?? "Ari is checking the latest result before changing this message.",
+      });
     }
   }, [conversationId, patchTurn, refreshCanonicalMessages, selectConversation]);
 
