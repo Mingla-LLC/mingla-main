@@ -71,6 +71,7 @@ on:
       - "mingla-business/scripts/ci/bundle-baseline-update.mjs"
       - "mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs"
       - "mingla-business/scripts/ci/__tests__/issue2524_bundle_baseline_automerge.happy.test.mjs"
+      - "mingla-business/scripts/ci/__tests__/issue3403_bundle_baseline_fanout.tester.adversarial.test.mjs"
       # #2885 AC-4. `bundle-baseline.json` is deliberately NOT here: its VALUE
       # cannot change what the merge machinery does, and starting two jobs to
       # prove that on every recording PR is the waste this scoping removes.
@@ -115,11 +116,16 @@ jobs:
       # and reports success, which is the unfalsifiable-gate class these guards
       # exist to close. The existence check makes a renamed or deleted suite a
       # RED, not a silent skip.
-      - name: The guard suite exists
-        run: test -f scripts/ci/__tests__/issue2524_bundle_baseline_automerge.happy.test.mjs
+      - name: Both guard suites exist
+        run: |
+          test -f scripts/ci/__tests__/issue2524_bundle_baseline_automerge.happy.test.mjs
+          test -f scripts/ci/__tests__/issue3403_bundle_baseline_fanout.tester.adversarial.test.mjs
 
-      - name: Run the #2524 guard suite
-        run: node --test scripts/ci/__tests__/issue2524_bundle_baseline_automerge.happy.test.mjs
+      - name: Run the #2524 and #3403 guard suites
+        run: >-
+          node --test
+          scripts/ci/__tests__/issue2524_bundle_baseline_automerge.happy.test.mjs
+          scripts/ci/__tests__/issue3403_bundle_baseline_fanout.tester.adversarial.test.mjs
 
   automerge:
     name: "Merge the current baseline recording PR, if it is safe and green"

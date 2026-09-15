@@ -587,8 +587,11 @@ describe("#2524 the module and its workflow stay wired the way they are document
 
   test("the guard suite is named in full — never a glob or a -t pattern", () => {
     assert.match(workflow, /scripts\/ci\/__tests__\/issue2524_bundle_baseline_automerge\.happy\.test\.mjs/);
+    assert.match(workflow, /scripts\/ci\/__tests__\/issue3403_bundle_baseline_fanout\.tester\.adversarial\.test\.mjs/);
     assert.ok(!/issue2524_\*/.test(workflow), "a glob can silently match zero files and exit 0");
     assert.match(workflow, /test -f scripts\/ci\/__tests__\/issue2524_bundle_baseline_automerge\.happy\.test\.mjs/);
+    assert.match(workflow, /test -f scripts\/ci\/__tests__\/issue3403_bundle_baseline_fanout\.tester\.adversarial\.test\.mjs/);
+    assert.equal(workflow.match(/node --test/g)?.length, 1, "both suites must run in one explicit Node invocation");
   });
 
   test("the automation holds no approval, review or force path", () => {
@@ -1024,6 +1027,10 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
       }
       const strategyAt = body.findIndex((line) => /^    strategy:/.test(line));
       if (strategyAt === -1) { total += 1; return; }
+      const strategyHead = /^    strategy:(.*)$/.exec(body[strategyAt]);
+      if (!strategyHead || strategyHead[1].trim() !== "") {
+        throw new Error(`${name}/${id}: a non-empty strategy value cannot be counted safely`);
+      }
       let strategyEnd = body.length;
       for (let j = strategyAt + 1; j < body.length; j += 1) {
         if (body[j].trim() === "" || /^\s*#/.test(body[j])) continue;
@@ -1093,6 +1100,17 @@ describe("#2885 AC-4 — the workflow path filters that produce that fan-out", (
     assert.equal(checkRunsPerPullRequest(workflowWith([...matrixJob(include), ...others]), "fixture"), 5,
       "three include entries, one job skipped by its if:, one plain job");
     assert.equal(checkRunsPerPullRequest(workflowWith(others), "fixture"), 2, "a job whose if: is false still reports");
+
+    const inlineThreeValueMatrix = workflowWith([
+      "  fanout:",
+      "    strategy: { matrix: { node: [20, 22, 24] } }",
+      "    runs-on: ubuntu-latest",
+    ]);
+    assert.throws(
+      () => checkRunsPerPullRequest(inlineThreeValueMatrix, "fixture"),
+      /fixture\/fanout: a non-empty strategy value cannot be counted safely/,
+      "an inline three-value matrix must fail closed instead of being counted as one job",
+    );
 
     const refusals = [
       workflowWith(matrixJob(["      matrix:", "        node: [20, 22]"])),
