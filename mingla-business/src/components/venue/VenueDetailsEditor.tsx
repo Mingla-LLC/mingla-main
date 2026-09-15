@@ -243,31 +243,6 @@ export function VenueDetailsEditor({
     [patchDraft],
   );
 
-  const onPickAddress = useCallback(
-    (details: PlaceDetails, selectedLabel?: string): void => {
-      advanceLocationRequestGeneration(requestGenerationRef);
-      const place = parseVenuePlaceResult(details);
-      const label = selectedLabel ?? place.formattedAddress;
-      committedAddressRef.current = label;
-      savedContextRef.current = { city: place.city, countryCode: place.countryCode };
-      // Pin and precision travel with the label, from the pick itself (#1629,
-      // #3407). The Mapbox place id is never stored (ORCH-1079).
-      patchDraft({
-        addressText: label,
-        address: {
-          address: label,
-          city: place.city,
-          countryCode: place.countryCode,
-          lat: place.lat,
-          lng: place.lng,
-          coordinatePrecision: precisionFromPlaceDetails(details),
-        },
-      });
-      setSelectionState("selected");
-    },
-    [patchDraft],
-  );
-
   const clearAddress = useCallback((text: string): void => {
     advanceLocationRequestGeneration(requestGenerationRef);
     committedAddressRef.current = text;
@@ -549,7 +524,31 @@ export function VenueDetailsEditor({
             }}
             onChangeText={(text) => clearAddress(text)}
             onFreeText={resolveTypedAddress}
-            onPick={onPickAddress}
+            onPick={(details: PlaceDetails, selectedLabel?: string): void => {
+              advanceLocationRequestGeneration(requestGenerationRef);
+              const place = parseVenuePlaceResult(details);
+              // #3291: the picker's own label first, the retrieved address second.
+              const label = selectedLabel ?? place.formattedAddress;
+              committedAddressRef.current = label;
+              savedContextRef.current = {
+                city: place.city,
+                countryCode: place.countryCode,
+              };
+              // Pin and precision travel with the label, from the pick itself
+              // (#1629, #3407). The Mapbox place id is never stored (ORCH-1079).
+              patchDraft({
+                addressText: label,
+                address: {
+                  address: label,
+                  city: place.city,
+                  countryCode: place.countryCode,
+                  lat: place.lat,
+                  lng: place.lng,
+                  coordinatePrecision: precisionFromPlaceDetails(details),
+                },
+              });
+              setSelectionState("selected");
+            }}
             onChangeSelected={() => clearAddress(identityDraft.addressText)}
             onClear={() => clearAddress("")}
             placeholder="Search address"
