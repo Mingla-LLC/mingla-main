@@ -198,6 +198,13 @@
 .cut-btn-dark { background: var(--cut-btn-dark-bg); box-shadow: var(--cut-btn-dark-shadow); color: #fff; }
 .cut-btn-light { background: var(--cut-btn-light-bg); box-shadow: var(--cut-btn-light-shadow); color: var(--cut-ink); }
 .cut-btn-brand { background: var(--cut-btn-brand-bg); box-shadow: var(--cut-btn-brand-shadow); color: #fff; }
+/* #3371 — side-menu destinations are a list, so their icon and label start at
+   the row's left padding. `justify-start` on the element could not do it: this
+   file is unlayered, Tailwind v4 utilities live in `@layer utilities`, and
+   unlayered CSS always beats a layer, so `.cut-btn { justify-content: center }`
+   won. The two-class selector is scoped to the menu rows only; every other
+   `.cut-btn` on the site, including the menu's own bottom CTAs, stays centred. */
+.cut-btn.cut-menu-item { justify-content: flex-start; }
 
 /* Gradient headline fill — AIgocy .text-gradient-1, warmed.
    ---------------------------------------------------------------------------

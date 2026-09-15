@@ -52,7 +52,10 @@ export function AudienceMenuContent({
   ]
   const supportingDestinationIsCurrent = supportingDestinations.some(({ href }) => destinationIsCurrent(pathname, href))
   const activeSurface = supportingDestinationIsCurrent ? null : surfaceForPath(pathname) ?? surface
-  const menuButtonClass = 'cut-btn flex min-h-14 w-full justify-start gap-3.5 rounded-2xl px-5 font-display text-base focus-ring'
+  // `cut-menu-item` is what actually left-aligns these rows: `.cut-btn` in
+  // cutout.css centres its content and, being unlayered CSS, beats the
+  // `justify-start` utility. See the #3371 rule beside `.cut-btn`.
+  const menuButtonClass = 'cut-btn flex min-h-14 w-full justify-start cut-menu-item gap-3.5 rounded-2xl px-5 font-display text-base focus-ring'
 
   return (
     <>

@@ -9,13 +9,16 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// #3371 [explorer home one screen] — Seth's approved decisions, 2026-09-14:
+// #3371 [explorer home one screen] — Seth's approved decisions, 2026-09-14,
+// amended after screenshot review on 2026-09-15 (issue #3371, latest comment):
 //   1. Side menu: Explorer -> `/` (lit on `/`), no Home item, and a supporting
-//      "For Explorers" -> `/for-explorers` directly after Cities.
+//      "Going out" -> `/going-out` directly after Cities. Every menu row is
+//      left-aligned: its icon starts at the row's left padding.
 //   2. `/` is hero only, one screen, no scroll — no city guides section.
 //   3. "Use Mingla" has measured breathing room above AND below it.
-//   4. The long Explorer page lives at `/for-explorers`; `/explorer` is a
-//      permanent redirect declared in the typed search registry.
+//   4. The long Explorer page lives at `/going-out` ("Going out"); `/explorer`
+//      is a permanent redirect declared in the typed search registry.
+//      `/for-explorers` never shipped, so it has no redirect.
 //
 // Modes: `--source-only` (before `next build`), `--built-only` (against the
 // final production build, including local Chrome geometry), `--self-test`
@@ -27,6 +30,10 @@ const SOURCE_ONLY = process.argv.includes('--source-only')
 const BUILT_ONLY = process.argv.includes('--built-only')
 const SELF_TEST = process.argv.includes('--self-test')
 const VIEWPORTS = [[1440, 900], [1280, 800], [1920, 1080], [390, 844], [375, 667]]
+// Side-menu alignment viewports (Seth asked for phone proof, incl. 402x874).
+const MENU_VIEWPORTS = [[1440, 900], [390, 844], [402, 874], [375, 667], [360, 780]]
+const ICON_TOLERANCE_PX = 1
+const CTA_CENTRE_TOLERANCE_PX = 1.5
 const MIN_GAP = 28
 const MAX_IMBALANCE = 16
 const MIN_PILL_CLEARANCE = 24
@@ -58,13 +65,21 @@ function sourceContract(overrides = {}) {
   assert.deepEqual(destinations(menu, 'audienceDestinations'), [['/', 'Explorer'], ['/host', 'Host']], 'Explorer must open the home page, followed by Host')
   assert.deepEqual(
     destinations(menu, 'supportingDestinations'),
-    [['/cities', 'Cities'], ['/for-explorers', 'For Explorers'], ['/about', 'About'], ['/tools', 'Free tools']],
-    'supporting items must be exactly Cities, For Explorers, About, Free tools',
+    [['/cities', 'Cities'], ['/going-out', 'Going out'], ['/about', 'About'], ['/tools', 'Free tools']],
+    'supporting items must be exactly Cities, Going out, About, Free tools',
   )
   assert.doesNotMatch(menu, /label: 'Home'|\bHouse\b/, 'the menu must not carry a separate Home item or its icon')
+  assert.doesNotMatch(menu, /label: '[^']*[Ee]xplorers?[^']*', Icon: (?!Compass)/, 'no supporting menu label may say explorer')
+  assert.match(menu, /\{ href: '\/going-out', label: 'Going out', Icon: Footprints \}/, 'Going out must use the Footprints icon')
+  assert.match(menu, /const menuButtonClass = '[^']*\bcut-btn\b[^']*\bcut-menu-item\b[^']*'/, 'every menu row must opt into the left-aligned cut-menu-item treatment')
+  assert.match(menu, /label="Explore Your City"[\s\S]*label="Host Your City"/, 'bottom device CTAs must stay')
+  assert.doesNotMatch(menu.slice(menu.indexOf('<div className="mt-auto')), /cut-menu-item|menuButtonClass/, 'bottom CTAs must not receive the left-aligned row treatment')
+  const cutoutCss = source(M('components/cutout/cutout.css')).replace(/\/\*[\s\S]*?\*\//g, '')
+  assert.match(cutoutCss, /\.cut-btn\s*\{[^}]*justify-content:\s*center;/, 'every other cut-btn must stay centred')
+  assert.match(cutoutCss, /\.cut-btn\.cut-menu-item\s*\{\s*justify-content:\s*flex-start;\s*\}/, 'the menu rows must override the centred cut-btn justify with a scoped two-class rule')
   assert.doesNotMatch(menu, /'\/explorer'/, 'the menu must not reference the retired /explorer path')
-  assert.match(menu, /if \(pathname === '\/' \|\| pathname === '\/for-explorers'/, 'surfaceForPath must map the home and the renamed page to Explorer')
-  assert.match(menu, /const activeSurface = supportingDestinationIsCurrent \? null : surfaceForPath\(pathname\) \?\? surface/, 'a current supporting item must win the highlight so Explorer is not lit on /for-explorers')
+  assert.match(menu, /if \(pathname === '\/' \|\| pathname === '\/going-out'/, 'surfaceForPath must map the home and the renamed page to Explorer')
+  assert.match(menu, /const activeSurface = supportingDestinationIsCurrent \? null : surfaceForPath\(pathname\) \?\? surface/, 'a current supporting item must win the highlight so Explorer is not lit on /going-out')
   assert.match(menu, /label="Explore Your City"[\s\S]*label="Host Your City"/, 'bottom device CTAs must be unchanged')
 
   const home = code(source(M('app/(explorer)/page.tsx')))
@@ -77,15 +92,16 @@ function sourceContract(overrides = {}) {
   assert.doesNotMatch(code(source(M('app/(explorer)/layout.tsx'))), /city-hubs\.css/, 'the one-screen home has no city module to style')
   assert.match(code(source(M('app/host/page.tsx'))), /<RootCityGrid surface="host"/, 'the Host page keeps its city list')
 
-  assert(fs.existsSync(path.join(REPO, M('app/(core)/for-explorers/page.tsx'))), '/for-explorers page must exist')
+  assert(fs.existsSync(path.join(REPO, M('app/(core)/going-out/page.tsx'))), '/going-out page must exist')
   assert(!fs.existsSync(path.join(REPO, M('app/(core)/explorer'))), 'the old /explorer page directory must be gone')
-  const forExplorers = code(source(M('app/(core)/for-explorers/page.tsx')))
-  assert.match(forExplorers, /const record = CORE_PAGES\['for-explorers'\]/)
-  assert.match(forExplorers, /crumbs=\{\[\{name:'Home',path:'\/'\},\{name:'For Explorers',path:'\/for-explorers'\}\]\}/, 'breadcrumb must read Home -> For Explorers')
+  assert(!fs.existsSync(path.join(REPO, M('app/(core)/for-explorers'))), 'the unshipped /for-explorers name must not exist')
+  const goingOut = code(source(M('app/(core)/going-out/page.tsx')))
+  assert.match(goingOut, /const record = CORE_PAGES\['going-out'\]/)
+  assert.match(goingOut, /crumbs=\{\[\{name:'Home',path:'\/'\},\{name:'Going out',path:'\/going-out'\}\]\}/, 'breadcrumb must read Home -> Going out')
   const corePages = code(source(M('content/core-pages.ts')))
-  assert.match(corePages, /slug: 'for-explorers', pathname: '\/for-explorers', lifecycle: CORE_PAGE_RELEASE_LIFECYCLE/)
-  assert.match(corePages, /title: 'For Explorers: Date Plans, Events & City Gems \| Mingla'/)
-  assert.match(corePages, /eyebrow: 'For Explorers'/)
+  assert.match(corePages, /slug: 'going-out', pathname: '\/going-out', lifecycle: CORE_PAGE_RELEASE_LIFECYCLE/)
+  assert.match(corePages, /title: 'Going out: Date Plans, Events & City Gems \| Mingla'/)
+  assert.match(corePages, /eyebrow: 'Going out'/)
   assert.match(corePages, /h1: 'Find a plan that fits the moment\.'/, 'the H1 must be unchanged')
   assert.doesNotMatch(corePages, /pathname: '\/explorer'/)
 
@@ -96,30 +112,31 @@ function sourceContract(overrides = {}) {
     .map(([, id, type, pathname, from, to]) => ({ id, type, pathname, from, to }))
   const explorerRedirect = redirects.find((entry) => entry.from === '/explorer')
   assert(explorerRedirect, '/explorer must be a registered lifecycle redirect')
-  assert.deepEqual([explorerRedirect.type, explorerRedirect.pathname, explorerRedirect.to], ['exact', '/explorer', '/for-explorers'])
+  assert.deepEqual([explorerRedirect.type, explorerRedirect.pathname, explorerRedirect.to], ['exact', '/explorer', '/going-out'])
+  assert.equal(redirects.some((entry) => /for-explorers/.test(`${entry.from} ${entry.to}`)), false, '/for-explorers never shipped, so it must not be redirected')
   assert.match(registry, /\.map\(\(\{ source, destination \}\) => \(\{ source, destination, permanent: true as const \}\)\)/, 'registry redirects must stay permanent')
   assert.match(code(source(M('next.config.ts'))), /return \[\.\.\.nextRedirectsFromRegistry\(\)\]/, 'Next must consume the registry redirects rather than a hand-written entry')
 
   const verifier = source(M('scripts/verify-search-foundation.mjs'))
-  assert.match(verifier, /\['\/explorer', '\/for-explorers'\],/, 'search verification must request the permanent redirect')
-  assert.match(verifier, /'\/terms-of-service',[\s\S]*'\/for-explorers',\s*'\/help\/getting-the-apps'/, 'search verification must run the full contract on /for-explorers in registry order')
+  assert.match(verifier, /\['\/explorer', '\/going-out'\],/, 'search verification must request the permanent redirect')
+  assert.match(verifier, /'\/terms-of-service',[\s\S]*'\/going-out',\s*'\/help\/getting-the-apps'/, 'search verification must run the full contract on /going-out in registry order')
   const scope = JSON.parse(source('scripts/search/fixtures/release-route-scope.json'))
-  assert.equal(scope.marketing.find((record) => record.path === '/for-explorers')?.lifecycle, 'search_ready', 'release route scope must plan /for-explorers as search_ready')
+  assert.equal(scope.marketing.find((record) => record.path === '/going-out')?.lifecycle, 'search_ready', 'release route scope must plan /going-out as search_ready')
   assert.equal(scope.marketing.some((record) => record.path === '/explorer'), false, 'release route scope must not plan the redirected path')
-  assert.match(source('scripts/search/workbook-contract.mjs'), /const isExplorer = record\.path === '\/for-explorers'/)
+  assert.match(source('scripts/search/workbook-contract.mjs'), /const isExplorer = record\.path === '\/going-out'/)
   const rights = JSON.parse(source('tools/product-proof-capture/rights-manifest.json'))
-  assert(rights.outputs.find((row) => row.scene === 'explorer_saved_details').allowedSurfaces.includes('usemingla.com/for-explorers'))
+  assert(rights.outputs.find((row) => row.scene === 'explorer_saved_details').allowedSurfaces.includes('usemingla.com/going-out'))
   assert.doesNotMatch(JSON.stringify(rights), /usemingla\.com\/explorer"/, 'product-proof rights must follow the page to its new path')
 
   for (const footer of [M('components/cutout/footer.tsx'), M('components/marketing/footer.tsx')]) {
     const footerCode = code(source(footer))
-    assert.match(footerCode, /\{ href: '\/for-explorers', label: 'For Explorers' \}/, `${footer} must link For Explorers to its new path`)
+    assert.match(footerCode, /\{ href: '\/going-out', label: 'Going out' \}/, `${footer} must link Going out to its new path`)
     assert.match(footerCode, /\{ href: '\/', label: 'Home' \}/, `${footer} keeps its Home link`)
     assert.doesNotMatch(footerCode, /'\/explorer'/, `${footer} must not link the redirected path`)
   }
   const posthog = code(source(M('components/marketing/posthog-provider.tsx')))
-  assert.match(posthog, /pathname === '\/for-explorers' \|\| pathname\.startsWith\('\/cities\/'\) \? 'explorer' : 'neutral'/, 'audience continuity')
-  assert.match(posthog, /pathname === '\/for-explorers' \? 'explorer_pillar'/, 'page-family continuity')
+  assert.match(posthog, /pathname === '\/going-out' \|\| pathname\.startsWith\('\/cities\/'\) \? 'explorer' : 'neutral'/, 'audience continuity')
+  assert.match(posthog, /pathname === '\/going-out' \? 'explorer_pillar'/, 'page-family continuity')
   assert.doesNotMatch(posthog, /'\/explorer'/)
 
   const scripts = JSON.parse(source(M('package.json'))).scripts
@@ -128,7 +145,7 @@ function sourceContract(overrides = {}) {
   assert(scripts.build.includes(sourceCommand) && scripts.build.indexOf(sourceCommand) < scripts.build.indexOf('next build'), 'source guard must run before the first production build')
   assert(scripts.build.endsWith(` && ${builtCommand}`) && scripts.build.lastIndexOf(builtCommand) > scripts.build.lastIndexOf('next build'), 'geometry guard must run against the final production build')
   assert.equal(scripts['test:issue-3371'], `node --experimental-websocket scripts/${SELF}`, 'focused command must remain available')
-  process.stdout.write('PASS #3371 source: menu order/hrefs without Home, one-screen home without city grid, /for-explorers rename, registry redirect, footers, analytics and build wiring\n')
+  process.stdout.write('PASS #3371 source: menu order/hrefs without Home, one-screen home without city grid, /going-out rename, registry redirect, footers, analytics and build wiring\n')
 }
 
 function assertHomeGeometry(sample, label) {
@@ -140,16 +157,87 @@ function assertHomeGeometry(sample, label) {
   assert.equal(sample.cityGrid, false, `${label}: home renders the city guides module`)
 }
 
+// Visible geometry of the open side menu. Icon/text edges come from the SVG box
+// and a Range over the label's text nodes; the bottom CTAs' content is the union
+// of their text ranges and SVG boxes, compared with the button's centre.
+const MENU_GEOMETRY = `(()=>{
+  const dialog=document.querySelector('[role="dialog"]')
+  const card=dialog.firstElementChild
+  const box=(el)=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height}}
+  const textRects=(el)=>{const out=[];const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);for(let node=walker.nextNode();node;node=walker.nextNode()){if(!node.textContent.trim())continue;const range=document.createRange();range.selectNodeContents(node);for(const rect of range.getClientRects()){if(rect.width>0&&rect.height>0)out.push(rect)}}return out}
+  const items=[...dialog.querySelectorAll('nav[aria-label="Primary"] a')].map((a)=>{
+    const style=getComputedStyle(a),icon=a.querySelector('svg').getBoundingClientRect(),texts=textRects(a)
+    return {label:a.textContent.trim(),current:a.getAttribute('aria-current'),box:box(a),paddingLeft:parseFloat(style.paddingLeft),paddingRight:parseFloat(style.paddingRight),
+      iconLeft:icon.left,iconRight:icon.right,textLeft:Math.min(...texts.map((r)=>r.left)),textRight:Math.max(...texts.map((r)=>r.right)),
+      lines:new Set(texts.map((r)=>Math.round(r.top))).size,scrollWidth:a.scrollWidth,clientWidth:a.clientWidth}
+  })
+  const ctas=[...new Set(card.querySelectorAll('.mt-auto .cut-btn'))].map((button)=>{
+    const parts=[...textRects(button),...[...button.querySelectorAll('svg')].map((svg)=>svg.getBoundingClientRect())]
+    const b=box(button),left=Math.min(...parts.map((r)=>r.left)),right=Math.max(...parts.map((r)=>r.right))
+    return {label:button.textContent.trim(),centreOffset:(left+right)/2-(b.left+b.right)/2}
+  })
+  const panel=box(dialog)
+  return {items,ctas,panel,innerWidth,scrollWidth:document.documentElement.scrollWidth,cardScrollHeight:card.scrollHeight,cardClientHeight:card.clientHeight,cardOverflowY:getComputedStyle(card).overflowY}
+})()`
+
+function spread(values) {
+  return Math.max(...values) - Math.min(...values)
+}
+
+function assertMenuAlignment(sample, label) {
+  assert.equal(sample.items.length, 6, `${label}: the menu must render six destinations`)
+  for (const item of sample.items) {
+    const offset = item.iconLeft - (item.box.left + item.paddingLeft)
+    assert(Math.abs(offset) <= ICON_TOLERANCE_PX, `${label}: "${item.label}" icon starts ${offset.toFixed(1)}px from its row's left padding (expected <=${ICON_TOLERANCE_PX}px; a centred row puts it far to the right)`)
+    assert(item.textLeft > item.iconRight, `${label}: "${item.label}" text must start after its icon`)
+    assert.equal(item.lines, 1, `${label}: "${item.label}" label wraps`)
+    assert(item.scrollWidth <= item.clientWidth && item.textRight <= item.box.right - item.paddingRight + ICON_TOLERANCE_PX, `${label}: "${item.label}" label is truncated`)
+  }
+  assert(spread(sample.items.map((item) => item.iconLeft)) <= ICON_TOLERANCE_PX, `${label}: the six icons do not share one left edge (${sample.items.map((item) => item.iconLeft.toFixed(1)).join(', ')})`)
+  for (const [key, read] of [['width', (item) => item.box.width], ['height', (item) => item.box.height], ['icon-to-text gap', (item) => item.textLeft - item.iconRight]]) {
+    assert(spread(sample.items.map(read)) <= ICON_TOLERANCE_PX, `${label}: active and inactive rows differ in ${key}`)
+  }
+  assert.equal(sample.ctas.length, 2, `${label}: the menu must keep its two bottom CTAs`)
+  for (const cta of sample.ctas) {
+    assert(Math.abs(cta.centreOffset) <= CTA_CENTRE_TOLERANCE_PX, `${label}: bottom CTA "${cta.label}" is no longer centred (${cta.centreOffset.toFixed(1)}px off)`)
+  }
+  assert.equal(sample.scrollWidth, sample.innerWidth, `${label}: the open menu overflows horizontally`)
+  assert(sample.panel.left >= -0.5 && sample.panel.right <= sample.innerWidth + 0.5, `${label}: the drawer does not fit the viewport`)
+  // Short phones (e.g. 375x667) are taller-than-drawer by design, as on main: the
+  // drawer card scrolls vertically, so every row and CTA must stay reachable.
+  if (sample.cardScrollHeight > sample.cardClientHeight) {
+    assert(['auto', 'scroll'].includes(sample.cardOverflowY), `${label}: drawer content is ${sample.cardScrollHeight - sample.cardClientHeight}px taller than the drawer and cannot scroll`)
+  }
+}
+
+async function openMenuGeometry(page, url, width, height) {
+  const label = `${new URL(url).pathname} ${width}x${height}`
+  await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 768 })
+  await page.send('Page.navigate', { url })
+  await waitFor(() => page.evaluate(`location.pathname===${JSON.stringify(new URL(url).pathname)}&&document.readyState==='complete'&&!!document.querySelector('button[aria-label="Open menu"]')`), `${label}: page did not load`)
+  await page.evaluate(`(async()=>{await document.fonts.ready;document.querySelector('button[aria-label="Open menu"]').click();return true})()`)
+  await waitFor(() => page.evaluate(`document.querySelectorAll('[role="dialog"] nav[aria-label="Primary"] a').length===6`), `${label}: side menu did not open`)
+  let previous = null
+  await waitFor(async () => {
+    const left = await page.evaluate(`document.querySelector('[role="dialog"]').getBoundingClientRect().left`)
+    const stable = previous !== null && Math.abs(left - previous) < 0.1
+    previous = left
+    if (!stable) await sleep(150)
+    return stable
+  }, `${label}: side menu did not settle`)
+  return { label, sample: await page.evaluate(MENU_GEOMETRY) }
+}
+
 function artifactContract() {
   assert(fs.existsSync(path.join(ROOT, '.next/BUILD_ID')), 'run a production build before the #3371 built guard')
   const routes = JSON.parse(fs.readFileSync(path.join(ROOT, '.next/routes-manifest.json'), 'utf8'))
   const redirect = routes.redirects.find((entry) => entry.source === '/explorer')
   assert(redirect, 'built routes manifest lacks the /explorer redirect')
-  assert.deepEqual([redirect.destination, redirect.statusCode], ['/for-explorers', 308], '/explorer must be a permanent redirect in the build')
+  assert.deepEqual([redirect.destination, redirect.statusCode], ['/going-out', 308], '/explorer must be a permanent redirect in the build')
   const appPaths = fs.readFileSync(path.join(ROOT, '.next/server/app-paths-manifest.json'), 'utf8')
-  assert.match(appPaths, /"\/\(core\)\/for-explorers\/page"/, 'built artifact lacks /for-explorers')
+  assert.match(appPaths, /"\/\(core\)\/going-out\/page"/, 'built artifact lacks /going-out')
   assert.doesNotMatch(appPaths, /"\/\(core\)\/explorer\/page"/, 'built artifact still contains the old /explorer page')
-  process.stdout.write('PASS #3371 artifact: 308 /explorer -> /for-explorers and only the renamed page is built\n')
+  process.stdout.write('PASS #3371 artifact: 308 /explorer -> /going-out and only the renamed page is built\n')
 }
 
 async function freePort() {
@@ -291,22 +379,22 @@ async function runtimeContract() {
 
     const redirect = await request(serverPort, '/explorer?utm_source=3371')
     assert.equal(redirect.status, 308, '/explorer must be a permanent redirect')
-    assert.equal(redirect.headers.location, '/for-explorers?utm_source=3371', '/explorer must land on /for-explorers with its query')
-    const renamed = await request(serverPort, '/for-explorers')
-    assert.equal(renamed.status, 200, '/for-explorers must render')
-    assert.match(renamed.body, /<title>For Explorers: Date Plans, Events &amp; City Gems \| Mingla<\/title>/, '/for-explorers browser title')
-    assert.match(renamed.body, /<h1\b[^>]*>Find a plan that fits the moment\.<\/h1>/, '/for-explorers keeps its H1')
-    assert.doesNotMatch(renamed.body, /href="\/explorer"/, '/for-explorers links the redirected path')
+    assert.equal(redirect.headers.location, '/going-out?utm_source=3371', '/explorer must land on /going-out with its query')
+    const renamed = await request(serverPort, '/going-out')
+    assert.equal(renamed.status, 200, '/going-out must render')
+    assert.match(renamed.body, /<title>Going out: Date Plans, Events &amp; City Gems \| Mingla<\/title>/, '/going-out browser title')
+    assert.match(renamed.body, /<h1\b[^>]*>Find a plan that fits the moment\.<\/h1>/, '/going-out keeps its H1')
+    assert.doesNotMatch(renamed.body, /href="\/explorer"/, '/going-out links the redirected path')
     const home = await request(serverPort, '/')
     assert.equal(home.status, 200)
     assert.doesNotMatch(home.body, /city-root-module|Mingla city guides/, 'home must not server-render the city guides module')
     assert.doesNotMatch(home.body, /href="\/explorer"/, 'home links the redirected path')
     const sitemap = (await request(serverPort, '/sitemap.xml')).body
     assert.doesNotMatch(sitemap, /usemingla\.com\/explorer</, 'sitemap must not list the redirected path')
-    assert.equal(sitemap.includes('usemingla.com/for-explorers<'), sitemap.includes('usemingla.com/about<'), '/for-explorers must share the core-page sitemap state')
+    assert.equal(sitemap.includes('usemingla.com/going-out<'), sitemap.includes('usemingla.com/about<'), '/going-out must share the core-page sitemap state')
     const host = (await request(serverPort, '/host')).body
     assert.equal(host.includes('city-root-module'), sitemap.includes('/cities/lagos<'), 'the Host page keeps its city list whenever the city launch is live')
-    process.stdout.write('PASS #3371 runtime HTTP: 308 with query, /for-explorers title/H1, home without city guides, sitemap and Host list\n')
+    process.stdout.write('PASS #3371 runtime HTTP: 308 with query, /going-out title/H1, home without city guides, sitemap and Host list\n')
 
     if (process.env.VERCEL === '1') {
       process.stdout.write('SKIP #3371 browser geometry on Vercel only; source, artifact and HTTP gates executed\n')
@@ -348,15 +436,34 @@ async function runtimeContract() {
     await waitFor(() => page.evaluate(SETTLED), 'home hero did not settle before the menu check')
     assert.deepEqual(await openMenuItems(page), [
       ['Explorer', '/', 'page'], ['Host', '/host', null], ['Cities', '/cities', null],
-      ['For Explorers', '/for-explorers', null], ['About', '/about', null], ['Free tools', '/tools', null],
+      ['Going out', '/going-out', null], ['About', '/about', null], ['Free tools', '/tools', null],
     ], 'on / the menu must light Explorer only, with no Home item')
     await page.send('Page.navigate', { url: `${base}/explorer` })
-    await waitFor(() => page.evaluate(`location.pathname==='/for-explorers'&&document.readyState==='complete'&&!!document.querySelector('button[aria-label="Open menu"]')`), 'browser did not follow /explorer to /for-explorers')
+    await waitFor(() => page.evaluate(`location.pathname==='/going-out'&&document.readyState==='complete'&&!!document.querySelector('button[aria-label="Open menu"]')`), 'browser did not follow /explorer to /going-out')
     assert.deepEqual(await openMenuItems(page), [
       ['Explorer', '/', null], ['Host', '/host', null], ['Cities', '/cities', null],
-      ['For Explorers', '/for-explorers', 'page'], ['About', '/about', null], ['Free tools', '/tools', null],
-    ], 'on /for-explorers the menu must light For Explorers, not Explorer')
-    process.stdout.write(`PASS #3371 browser: ${VIEWPORTS.map(([w, h]) => `${w}x${h}`).join(', ')} keep >=${MIN_GAP}px above and below Use Mingla (imbalance <=${MAX_IMBALANCE}px), >=${MIN_PILL_CLEARANCE}px deck-to-pills, no scroll; menu highlight on / and /for-explorers\n`)
+      ['Going out', '/going-out', 'page'], ['About', '/about', null], ['Free tools', '/tools', null],
+    ], 'on /going-out the menu must light Going out, not Explorer')
+
+    for (const [width, height] of MENU_VIEWPORTS) {
+      const { label, sample } = await openMenuGeometry(page, `${base}/`, width, height)
+      assertMenuAlignment(sample, label)
+      assert.equal(sample.items.find((item) => item.current === 'page')?.label, 'Explorer', `${label}: Explorer must be the lit row`)
+      process.stdout.write(`EVIDENCE #3371 menu ${label} iconOffset=${Math.max(...sample.items.map((item) => Math.abs(item.iconLeft - item.box.left - item.paddingLeft))).toFixed(2)}px iconLeftSpread=${spread(sample.items.map((item) => item.iconLeft)).toFixed(2)}px ctaCentreOffset=${sample.ctas.map((cta) => cta.centreOffset.toFixed(2)).join('/')}px scrollWidth=${sample.scrollWidth}/${sample.innerWidth} drawerOverflowY=${Math.max(0, sample.cardScrollHeight - sample.cardClientHeight)}px\n`)
+    }
+    const goingOutMenu = await openMenuGeometry(page, `${base}/going-out`, 402, 874)
+    assertMenuAlignment(goingOutMenu.sample, goingOutMenu.label)
+    assert.equal(goingOutMenu.sample.items.find((item) => item.current === 'page')?.label, 'Going out', `${goingOutMenu.label}: Going out must be the lit row`)
+    for (const [width, height] of MENU_VIEWPORTS.filter(([width]) => width < 768)) {
+      await page.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true })
+      await page.send('Page.navigate', { url: `${base}/going-out` })
+      await waitFor(() => page.evaluate(`location.pathname==='/going-out'&&document.readyState==='complete'`), `/going-out ${width}x${height}: page did not load`)
+      await page.evaluate(`document.fonts.ready.then(()=>true)`)
+      const overflow = await page.evaluate(`document.documentElement.scrollWidth-innerWidth`)
+      assert.equal(overflow, 0, `/going-out ${width}x${height}: page overflows horizontally by ${overflow}px`)
+    }
+    process.stdout.write(`PASS #3371 menu: ${MENU_VIEWPORTS.map(([w, h]) => `${w}x${h}`).join(', ')} rows left-aligned (icon at padding <=${ICON_TOLERANCE_PX}px, one icon column, text after icon, no wrap/truncation, identical active/inactive rows), bottom CTAs centred, drawer inside the viewport (content scrolls where taller); lit Going out on /going-out; /going-out no horizontal overflow on phones\n`)
+    process.stdout.write(`PASS #3371 browser: ${VIEWPORTS.map(([w, h]) => `${w}x${h}`).join(', ')} keep >=${MIN_GAP}px above and below Use Mingla (imbalance <=${MAX_IMBALANCE}px), >=${MIN_PILL_CLEARANCE}px deck-to-pills, no scroll; menu highlight on / and /going-out\n`)
   } finally {
     try { if (page) await page.send('Browser.close', {}, 2_000) } catch { /* the owned Chrome is force-stopped below */ }
     page?.close()
@@ -374,9 +481,22 @@ function selfTest() {
   const menu = readRepo(menuPath)
   const oldMenu = menu
     .replace("{ href: '/', label: 'Explorer', surface: 'explorer' as const, Icon: Compass },", "{ href: '/explorer', label: 'Explorer', surface: 'explorer' as const, Icon: Compass },")
-    .replace("    { href: '/cities', label: 'Cities', Icon: MapPinned },\n    { href: '/for-explorers', label: 'For Explorers', Icon: BookOpen },", "    { href: '/', label: 'Home', Icon: House },\n    { href: '/cities', label: 'Cities', Icon: MapPinned },")
+    .replace("    { href: '/cities', label: 'Cities', Icon: MapPinned },\n    { href: '/going-out', label: 'Going out', Icon: Footprints },", "    { href: '/', label: 'Home', Icon: House },\n    { href: '/cities', label: 'Cities', Icon: MapPinned },")
   assert.notEqual(oldMenu, menu, 'self-test must rebuild the pre-#3371 menu')
   assert.throws(() => sourceContract({ [menuPath]: oldMenu }), /Explorer must open the home page/, 'the pre-#3371 menu must prove RED')
+  const centredMenu = menu.replace(' cut-menu-item', '')
+  assert.notEqual(centredMenu, menu, 'self-test must remove the left-aligned row class')
+  assert.throws(() => sourceContract({ [menuPath]: centredMenu }), /left-aligned cut-menu-item/, 'centred menu rows must prove RED')
+  const cssPath = M('components/cutout/cutout.css')
+  const css = readRepo(cssPath)
+  const noOverride = css.replace('.cut-btn.cut-menu-item { justify-content: flex-start; }', '')
+  assert.notEqual(noOverride, css, 'self-test must remove the scoped justify override')
+  assert.throws(() => sourceContract({ [cssPath]: noOverride }), /scoped two-class rule/, 'a missing justify override must prove RED')
+  const centredRow = (index) => ({ label: `Row ${index}`, current: index === 0 ? 'page' : null, box: { left: 36, right: 259, width: 223, height: 56 }, paddingLeft: 20, paddingRight: 20, iconLeft: 36 + 20 + 50 - index * 4, iconRight: 36 + 20 + 70 - index * 4, textLeft: 36 + 20 + 84 - index * 4, textRight: 200, lines: 1, scrollWidth: 223, clientWidth: 223 })
+  const centredSample = { items: [0, 1, 2, 3, 4, 5].map(centredRow), ctas: [{ label: 'Explore Your City', centreOffset: 0 }, { label: 'Host Your City', centreOffset: 0 }], panel: { left: 65, right: 390 }, innerWidth: 390, scrollWidth: 390, cardScrollHeight: 700, cardClientHeight: 820, cardOverflowY: 'auto' }
+  assert.throws(() => assertMenuAlignment(centredSample, 'centred rows'), /icon starts 50\.0px from its row's left padding/, 'centred menu geometry must prove RED')
+  const leftSample = { ...centredSample, items: centredSample.items.map((item) => ({ ...item, iconLeft: 56, iconRight: 76, textLeft: 90 })), ctas: [{ label: 'Explore Your City', centreOffset: -60 }, centredSample.ctas[1]] }
+  assert.throws(() => assertMenuAlignment(leftSample, 'left CTA'), /bottom CTA "Explore Your City" is no longer centred/, 'a left-aligned bottom CTA must prove RED')
   const home = readRepo(homePath)
   const scrollingHome = home
     .replace('<CutoutShell dark noScroll>', "<CutoutShell dark noScroll={!showCityLaunch}>")
@@ -394,7 +514,7 @@ function selfTest() {
   }
   assert.throws(() => assertHomeGeometry(before['375x667'], '375x667'), /gap below Use Mingla/, 'the crowded small-phone action must prove RED')
   assert.throws(() => assertHomeGeometry(before['1280x800'], '1280x800'), /gap below Use Mingla is 27\.2px/, 'the 27px desktop gap must prove RED')
-  process.stdout.write('RED proof: pre-#3371 menu, scrolling home with city grid, missing redirect and the measured crowded gaps were rejected\n')
+  process.stdout.write('RED proof: pre-#3371 menu, centred menu rows (source and geometry), a left-aligned bottom CTA, scrolling home with city grid, missing redirect and the measured crowded gaps were rejected\n')
 }
 
 assert(!(SOURCE_ONLY && BUILT_ONLY), 'choose only one #3371 guard mode')
