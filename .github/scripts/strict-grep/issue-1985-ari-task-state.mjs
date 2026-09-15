@@ -588,6 +588,9 @@ export function check(s) {
   for (const testPath of [
     "issue_3429_ari_chat_context.implementor.pg17.test.sql",
     "issue_3429_ari_turn_authority.tester_adversarial.pg17.test.sql",
+    "issue_3429_ari_attachments.implementor.test.ts",
+    "issue_3429_ari_attachment_structure.adversarial.test.ts",
+    "issue_3429_ari_rework_races.implementor.test.tsx",
     "issue_3429_ari_turn_scope.tester.adversarial.test.tsx",
   ]) if (s.workflow.split(testPath).length - 1 !== 3) {
     failures.push(`#3429 workflow routing incomplete for ${testPath}`);
@@ -842,6 +845,21 @@ if (process.argv.includes("--self-test")) {
       key: "workflow",
       from: "issue_1985_rework2_integrity.test.ts",
       to: "removed_rework2_integrity.test.ts",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_attachments.implementor.test.ts",
+      to: "removed_ari_attachments.implementor.test.ts",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_attachment_structure.adversarial.test.ts",
+      to: "removed_ari_attachment_structure.adversarial.test.ts",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_rework_races.implementor.test.tsx",
+      to: "removed_ari_rework_races.implementor.test.tsx",
     },
     {
       key: "workflow",

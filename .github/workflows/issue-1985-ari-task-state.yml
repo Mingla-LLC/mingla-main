@@ -3,6 +3,7 @@ name: Issue 1985 Ari task state
 on:
   push:
     paths:
+      - "supabase/config.toml"
       - "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql"
       - "supabase/migrations/20270708003429_issue_3429_ari_chat_context.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql"
@@ -18,8 +19,17 @@ on:
       - "supabase/functions/_shared/agentChoices.ts"
       - "supabase/functions/_shared/agentSystemPrompt.ts"
       - "supabase/functions/_shared/agentRateLimit.ts"
+      - "supabase/functions/_shared/agentAttachments.ts"
+      - "supabase/functions/_shared/agentGemini.ts"
+      - "supabase/functions/_shared/agentReliability.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachments.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_structure.adversarial.test.ts"
+      - "supabase/functions/agent-attachment-cleanup/**"
+      - "supabase/functions/agent-attachments/**"
       - "supabase/functions/agent-chat/**"
       - "supabase/functions/agent-confirm-action/**"
+      - "supabase/functions/agent-conversation/**"
+      - "supabase/functions/agent-turn-control/**"
       - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts"
@@ -31,10 +41,14 @@ on:
       - "mingla-business/src/hooks/useAgentChat.ts"
       - "mingla-business/src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts"
       - "mingla-business/src/hooks/__tests__/issue_3429_ari_chat_polish.implementor.test.ts"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_rework_races.implementor.test.tsx"
       - "mingla-business/src/hooks/__tests__/issue_3429_ari_turn_scope.tester.adversarial.test.tsx"
+      - "mingla-business/src/hooks/useAriAttachments.ts"
       - "mingla-business/src/screens/ari/AriChatScreen.tsx"
       - "mingla-business/src/services/agentChatService.ts"
+      - "mingla-business/src/services/agentReliability.ts"
       - "mingla-business/src/services/ariAttachmentService.ts"
+      - "mingla-business/src/services/ariPolishAnalytics.ts"
       - "mingla-business/src/services/ariTurnService.ts"
       - "mingla-business/src/store/ariConversationSelectionStore.ts"
       - "mingla-business/src/store/__tests__/issue_1985_active_conversation_persistence.test.ts"
@@ -49,6 +63,7 @@ on:
     # issue #2881 — ready_for_review is required wherever the draft gate is set.
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - "supabase/config.toml"
       - "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql"
       - "supabase/migrations/20270708003429_issue_3429_ari_chat_context.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql"
@@ -64,8 +79,17 @@ on:
       - "supabase/functions/_shared/agentChoices.ts"
       - "supabase/functions/_shared/agentSystemPrompt.ts"
       - "supabase/functions/_shared/agentRateLimit.ts"
+      - "supabase/functions/_shared/agentAttachments.ts"
+      - "supabase/functions/_shared/agentGemini.ts"
+      - "supabase/functions/_shared/agentReliability.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachments.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_structure.adversarial.test.ts"
+      - "supabase/functions/agent-attachment-cleanup/**"
+      - "supabase/functions/agent-attachments/**"
       - "supabase/functions/agent-chat/**"
       - "supabase/functions/agent-confirm-action/**"
+      - "supabase/functions/agent-conversation/**"
+      - "supabase/functions/agent-turn-control/**"
       - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts"
@@ -77,10 +101,14 @@ on:
       - "mingla-business/src/hooks/useAgentChat.ts"
       - "mingla-business/src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts"
       - "mingla-business/src/hooks/__tests__/issue_3429_ari_chat_polish.implementor.test.ts"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_rework_races.implementor.test.tsx"
       - "mingla-business/src/hooks/__tests__/issue_3429_ari_turn_scope.tester.adversarial.test.tsx"
+      - "mingla-business/src/hooks/useAriAttachments.ts"
       - "mingla-business/src/screens/ari/AriChatScreen.tsx"
       - "mingla-business/src/services/agentChatService.ts"
+      - "mingla-business/src/services/agentReliability.ts"
       - "mingla-business/src/services/ariAttachmentService.ts"
+      - "mingla-business/src/services/ariPolishAnalytics.ts"
       - "mingla-business/src/services/ariTurnService.ts"
       - "mingla-business/src/store/ariConversationSelectionStore.ts"
       - "mingla-business/src/store/__tests__/issue_1985_active_conversation_persistence.test.ts"
@@ -154,9 +182,9 @@ jobs:
         with:
           deno-version: "1.46.x"
       - name: Run task reducer and planning regressions
-        run: deno test --allow-read supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts supabase/functions/_shared/__tests__/issue_1985_rework2_integrity.test.ts supabase/functions/_shared/__tests__/issue_1985_dst_boundaries.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts
+        run: deno test --allow-read supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts supabase/functions/_shared/__tests__/issue_1985_rework2_integrity.test.ts supabase/functions/_shared/__tests__/issue_1985_dst_boundaries.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_attachments.implementor.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_attachment_structure.adversarial.test.ts
       - name: Type-check edge and shared task boundaries
-        run: deno check supabase/functions/_shared/agentConversationState.ts supabase/functions/_shared/agentRelativeTime.ts supabase/functions/_shared/agentConversationPlanner.ts supabase/functions/_shared/agentChoices.ts supabase/functions/_shared/agentSystemPrompt.ts supabase/functions/_shared/agentRateLimit.ts supabase/functions/agent-chat/index.ts supabase/functions/agent-confirm-action/index.ts
+        run: deno check supabase/functions/_shared/agentConversationState.ts supabase/functions/_shared/agentRelativeTime.ts supabase/functions/_shared/agentConversationPlanner.ts supabase/functions/_shared/agentChoices.ts supabase/functions/_shared/agentSystemPrompt.ts supabase/functions/_shared/agentRateLimit.ts supabase/functions/_shared/agentAttachments.ts supabase/functions/_shared/agentGemini.ts supabase/functions/_shared/agentReliability.ts supabase/functions/agent-attachment-cleanup/index.ts supabase/functions/agent-attachments/index.ts supabase/functions/agent-chat/index.ts supabase/functions/agent-confirm-action/index.ts supabase/functions/agent-conversation/index.ts supabase/functions/agent-turn-control/index.ts
       - name: Prove Class A task-state guard and protected security guards
         run: node .github/scripts/strict-grep/issue-1985-ari-task-state.mjs --self-test && node .github/scripts/strict-grep/issue-1985-ari-task-state.mjs && node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs && node .github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs
       - uses: actions/setup-node@v4
@@ -167,7 +195,7 @@ jobs:
       - run: npm ci --ignore-scripts
         working-directory: mingla-business
       - name: Run Business typed-choice and superseded-V1 contracts
-        run: npx jest src/components/ari/__tests__/issue_1985_choice_payloads.test.tsx src/components/ari/__tests__/issue_1985_value_choices.adversarial.test.tsx src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts src/components/ari/__tests__/orch_1103_choices_chips.test.ts src/store/__tests__/issue_1985_active_conversation_persistence.test.ts src/store/__tests__/issue_1985_first_created_conversation_selection.tester_adversarial.test.ts src/hooks/__tests__/issue_3429_ari_chat_polish.implementor.test.ts src/hooks/__tests__/issue_3429_ari_turn_scope.tester.adversarial.test.tsx --runInBand
+        run: npx jest src/components/ari/__tests__/issue_1985_choice_payloads.test.tsx src/components/ari/__tests__/issue_1985_value_choices.adversarial.test.tsx src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts src/components/ari/__tests__/orch_1103_choices_chips.test.ts src/store/__tests__/issue_1985_active_conversation_persistence.test.ts src/store/__tests__/issue_1985_first_created_conversation_selection.tester.adversarial.test.ts src/hooks/__tests__/issue_3429_ari_chat_polish.implementor.test.ts src/hooks/__tests__/issue_3429_ari_rework_races.implementor.test.tsx src/hooks/__tests__/issue_3429_ari_turn_scope.tester.adversarial.test.tsx --runInBand
         working-directory: mingla-business
       - name: Type-check Business client
         run: node .github/scripts/strict-grep/issue-1985-business-typecheck.mjs
