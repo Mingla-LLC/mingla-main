@@ -42,6 +42,7 @@ on:
       - "mingla-business/src/services/__tests__/issue_1780_stale_group_intent.tester_adversarial.test.ts"
       - "mingla-business/src/services/__tests__/issue_1780_observability.tester_adversarial.test.ts"
       - "mingla-business/src/services/__tests__/issue_1780_outbox_contract.tester_adversarial.test.ts"
+      - "mingla-business/src/services/__tests__/issue_1780_auth_recovery.tester_adversarial.test.ts"
       - "supabase/functions/brand-people-export/index.ts"
       - "supabase/config.toml"
       - ".github/workflows/issue-873-guest-status-roster-tests.yml"
@@ -90,6 +91,7 @@ on:
       - "mingla-business/src/services/__tests__/issue_1780_stale_group_intent.tester_adversarial.test.ts"
       - "mingla-business/src/services/__tests__/issue_1780_observability.tester_adversarial.test.ts"
       - "mingla-business/src/services/__tests__/issue_1780_outbox_contract.tester_adversarial.test.ts"
+      - "mingla-business/src/services/__tests__/issue_1780_auth_recovery.tester_adversarial.test.ts"
       - "supabase/functions/brand-people-export/index.ts"
       - "supabase/config.toml"
       - ".github/workflows/issue-873-guest-status-roster-tests.yml"
@@ -147,6 +149,7 @@ jobs:
           src/services/__tests__/issue_1780_stale_group_intent.tester_adversarial.test.ts
           src/services/__tests__/issue_1780_observability.tester_adversarial.test.ts
           src/services/__tests__/issue_1780_outbox_contract.tester_adversarial.test.ts
+          src/services/__tests__/issue_1780_auth_recovery.tester_adversarial.test.ts
       - run: npx jest --config jest.issue1780.render.cjs --runInBand
 
   issue-873-pg17:
