@@ -24,10 +24,12 @@
  * them, so the write and read legs meet on the same blob.
  *
  * FAILS-ON-REVERT:
- *   - read leg (serverRowToDraft blob fallback) → E-1, E-2 fail: locationGeo null.
- *   - precision write/read legs → E-2, E-3, E-4 fail: coordinatePrecision null.
- *   - publish payload keys (businessEvents.ts) → P-1 fails.
- *   - RSVP edit diff (buildRsvpUpdatePayloadDiff) → R-1 fails.
+ *   - read leg (serverRowToDraft blob fallback) → E-1, E-4, E-6 fail
+ *     (measured: locationGeo comes back null).
+ *   - precision write/read legs → E-2, E-3, E-4 assert coordinatePrecision
+ *     survives; without either leg it reads null.
+ *   - publish payload keys (businessEvents.ts) → P-1 asserts them directly.
+ *   - RSVP edit diff (buildRsvpUpdatePayloadDiff) → R-1 asserts the keys.
  * The server half is pinned by
  * supabase/migrations/__tests__/rsvp_where_step_keeps_the_pin.test.sql.
  */
