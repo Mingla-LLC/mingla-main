@@ -436,7 +436,7 @@ export function VenueDetailsEditor({
         </View>
       ) : null}
 
-      {mode !== "contact" ? (
+      {mode === "view" ? (
         <View style={styles.summary} testID="venue-details-contact-summary">
           <Text style={styles.rowSub}>
             Phone: {venue.contactPhone ?? "not added"}
