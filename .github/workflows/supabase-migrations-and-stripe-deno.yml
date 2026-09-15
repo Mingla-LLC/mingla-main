@@ -899,6 +899,20 @@ jobs:
             -f supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.implementor.happy.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.tester.adversarial.pg17.test.sql
+          # Issue #3426 — a public brand page puts every offering (event, RSVP,
+          # trip, experience) in exactly ONE of Happening now / Upcoming / Past,
+          # decided by its event_dates and never by events.status. The happy suite
+          # drives all four kinds through every date boundary (before, at start,
+          # mid-run, at end, after, multi-day, between nights) as anon, proves the
+          # legacy Upcoming reader agrees with the new section reader, and walks
+          # keyset pagination; the adversarial suite proves cancelled, hidden,
+          # private, unpublished, deleted, read-blocked, paid-not-ready and corrupt
+          # offerings never leak, and pins the reader's grant posture. Both are
+          # fixture-scoped and roll back; neither is plan-sensitive.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.adversarial.pg17.test.sql
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
