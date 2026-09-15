@@ -39,6 +39,7 @@ import {
 } from "../../services/venueOrganicCaptureService";
 import { runBuyerVenueOrganicCapture } from "../../services/venueOrganicCapturePolicy";
 import { devicePhoneRegion } from "../../utils/devicePhoneRegion";
+import { phoneStartCountryForCurrency } from "../../utils/phoneStartCountryForCurrency";
 import { composeE164 } from "../../utils/phone";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -49,9 +50,10 @@ interface GuestVenueReservationProps {
   brandId: string;
   currency: string | null;
   /**
-   * issue #3380 — the venue's country (ISO alpha-2). The phone picker starts
-   * here, so a Lagos venue's guest opens on +234 and a US venue's on +1. Only
-   * when it is unknown does the visitor's own browser region decide.
+   * issue #3380 — the venue's country (ISO alpha-2), when a host has it. The
+   * phone picker starts here; without it, on the country the venue CHARGES in
+   * (`currency`: a naira venue opens on +234, a dollar venue on +1). Only when
+   * neither names a country does the visitor's own browser region decide.
    */
   countryCode?: string | null;
   analyticsSurface: "buyer_web" | "business_preview";
@@ -109,9 +111,12 @@ const phoneCountryKnown = (iso: string): boolean => {
   }
 };
 
-const phoneStartCountry = (venueCountry: string | null | undefined): string =>
+const phoneStartCountry = (
+  venueCountry: string | null | undefined,
+  currency: string | null,
+): string =>
   resolvePhoneStartCountry(
-    [venueCountry, devicePhoneRegion()],
+    [venueCountry, phoneStartCountryForCurrency(currency), devicePhoneRegion()],
     phoneCountryKnown,
   ) ?? "US";
 
@@ -171,7 +176,7 @@ export function GuestVenueReservation({
   const [emailTouched, setEmailTouched] = useState(false);
   const [emailServerInvalid, setEmailServerInvalid] = useState(false);
   const [phoneCountry, setPhoneCountry] = useState(() =>
-    phoneStartCountry(countryCode),
+    phoneStartCountry(countryCode, currency),
   );
   const [phoneLocal, setPhoneLocal] = useState("");
   const [phoneTouched, setPhoneTouched] = useState(false);
@@ -241,8 +246,8 @@ export function GuestVenueReservation({
 
   useEffect(() => {
     if (phoneCountryChosen.current) return;
-    setPhoneCountry(phoneStartCountry(countryCode));
-  }, [countryCode]);
+    setPhoneCountry(phoneStartCountry(countryCode, currency));
+  }, [countryCode, currency]);
 
   useEffect(() => {
     if (!availabilitySettled || selectedUtc === null) return;
