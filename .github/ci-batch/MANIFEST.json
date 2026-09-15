@@ -16809,7 +16809,7 @@
       "providerWorkflow": ".github/workflows/issue-1985-ari-task-state.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "cda6c00b154a3ddbcc31dac61d150fde05ed95557abf5350d097ad1f44fab876",
+        "sourceSha256": "75c559c705eef06717d7314f8928bc94f3e23eb3686292ca54562b76ce5479e5",
         "triggers": [
           "pull_request",
           "push"

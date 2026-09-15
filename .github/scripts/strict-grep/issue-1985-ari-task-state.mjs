@@ -595,6 +595,19 @@ export function check(s) {
   ]) if (s.workflow.split(testPath).length - 1 !== 3) {
     failures.push(`#3429 workflow routing incomplete for ${testPath}`);
   }
+  const vaultUrlFixture = s.workflow.indexOf(
+    "vault.create_secret('http://127.0.0.1:54321', 'supabase_url', 'CI fixture only')",
+  );
+  const vaultKeyFixture = s.workflow.indexOf(
+    "vault.create_secret('ci-service-role-fixture', 'service_role_key', 'CI fixture only')",
+  );
+  const migrationReplay = s.workflow.indexOf('-f "$migration"', vaultKeyFixture);
+  if (
+    vaultUrlFixture < 0 || vaultKeyFixture < vaultUrlFixture ||
+    migrationReplay < vaultKeyFixture
+  ) {
+    failures.push("#3429 PG17 Vault fixtures are absent or ordered after migration apply");
+  }
   if (!s.input.includes("(text.trim().length > 0 || hasReadyAttachments) && !disabled && !sendDisabled")) {
     failures.push("#3429 InputBar does not require both disabled gates for text/file sends");
   }
@@ -860,6 +873,12 @@ if (process.argv.includes("--self-test")) {
       key: "workflow",
       from: "issue_3429_ari_rework_races.implementor.test.tsx",
       to: "removed_ari_rework_races.implementor.test.tsx",
+    },
+    {
+      key: "workflow",
+      from:
+        "vault.create_secret('ci-service-role-fixture', 'service_role_key', 'CI fixture only')",
+      to: "removed_ci_service_role_fixture()",
     },
     {
       key: "workflow",
