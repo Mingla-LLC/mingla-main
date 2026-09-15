@@ -16,6 +16,11 @@
  * says the organiser allows it. Unknown means hidden. Hiding an optional number
  * can never break the organiser's promise; showing one can.
  *
+ * Follow-up (migration 20270704003314): the bundle now carries the setting as
+ * `hideRemainingCount`, for public AND unlisted events. Pages read that first
+ * (`readBundleHideRemainingCount`) and keep social proof as the fallback for a
+ * payload from before the migration.
+ *
  * DISPLAY ONLY (the sealed ORCH-1339 D2 posture): capacity still travels in the
  * payload because the quantity stepper clamp and the sold-out gate need it.
  * "Sold out" and "Unlimited" are states, not counts, and stay visible.
@@ -33,6 +38,12 @@ export interface RemainingCountVisibilityInput {
    */
   organiserSetting: boolean | null | undefined;
   /**
+   * The bundle's own `hideRemainingCount` key (`readBundleHideRemainingCount`).
+   * `null`/`undefined` = the payload does not carry it: a server or cached
+   * payload from before migration 20270704003314, or a host with no bundle.
+   */
+  bundleSetting?: boolean | null | undefined;
+  /**
    * The `pg_public_social_proof` payload. `undefined` = still loading or the
    * read failed; `null` = the server holds no summary for this viewer (an
    * unlisted event, for example).
@@ -46,16 +57,34 @@ export interface RemainingCountVisibilityInput {
 /** True when a remaining ticket count must NOT be shown. */
 export const resolveHideRemainingCount = ({
   organiserSetting,
+  bundleSetting,
   socialProof,
 }: RemainingCountVisibilityInput): boolean => {
-  // Either authority saying "hide" wins.
+  // Any authority saying "hide" wins.
   if (organiserSetting === true) return true;
+  if (bundleSetting === true) return true;
   if (socialProof?.hideRemainingCount === true) return true;
-  // An authority positively allowing the count is the only way to show it.
+  // An authority positively allowing the count is the only way to show it. The
+  // bundle's answer needs no second read, so an unlisted event (which social
+  // proof never answers for) can show its count.
   if (organiserSetting === false) return false;
+  if (bundleSetting === false) return false;
   if (socialProof?.hideRemainingCount === false) return false;
   // Unknown → hidden.
   return true;
+};
+
+/**
+ * The public event bundle's `hideRemainingCount` key: the boolean when present,
+ * `null` when the payload does not carry a boolean (a server or a cached payload
+ * from before migration 20270704003314). `null` is "unknown", never "allowed".
+ */
+export const readBundleHideRemainingCount = (payload: unknown): boolean | null => {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const value = (payload as { hideRemainingCount?: unknown }).hideRemainingCount;
+  return typeof value === "boolean" ? value : null;
 };
 
 /**

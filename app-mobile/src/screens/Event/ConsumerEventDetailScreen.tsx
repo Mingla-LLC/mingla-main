@@ -1438,7 +1438,18 @@ export default function ConsumerEventDetailScreen({
   // value. Fail-closed, the same rule as the shared `resolveHideRemainingCount`
   // (inlined: this screen's jest mocks of the package barrel are partial): a
   // count renders only once the server says the organiser allows it.
-  const hideRemainingCount = socialProofQuery.data?.hideRemainingCount !== false;
+  //
+  // Follow-up (migration 20270704003314): the direct bundle now carries the
+  // setting for public AND unlisted events, so its answer (only once it is
+  // confirmed to be THIS event) comes first. Any source saying "hide" wins;
+  // social proof is the fallback for a payload from before the migration.
+  const bundleHideRemainingCount =
+    validatedDayCanonical?.hideRemainingCount ?? null;
+  const hideRemainingCount =
+    bundleHideRemainingCount === true ||
+    socialProofQuery.data?.hideRemainingCount === true ||
+    (bundleHideRemainingCount !== false &&
+      socialProofQuery.data?.hideRemainingCount !== false);
   const publicEventForBody: PublicEventProps =
     canonical === null
       ? {

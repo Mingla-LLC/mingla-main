@@ -57,6 +57,13 @@ export interface CanonicalPublicEvent {
    * absent key — a server from before #3284 — is unknown and renders nothing.
    */
   refundPolicyState: RefundPolicyReadState;
+  /**
+   * issue #3314 — the organiser's "Hide remaining count" from the bundle's
+   * `hideRemainingCount` key, for public AND unlisted events. `null` when the
+   * key is absent (a server from before migration 20270704003314): the screen
+   * then falls back to the social-proof read, still fail-closed.
+   */
+  hideRemainingCount: boolean | null;
 }
 
 export interface PublicEventOccurrenceLike {
@@ -365,6 +372,13 @@ export const mapRpcPayloadToPublicEvent = (
     terminalSource,
     // issue #3284 — absent key → unknown; null → none; a valid policy → set.
     refundPolicyState: readRefundPolicyState(payload),
+    // issue #3314 — a boolean only when the bundle carries one; absent → null
+    // (unknown, never "allowed"). Inlined like the screen's rule: the #1929 /
+    // #2230 suites partially mock the package barrel.
+    hideRemainingCount:
+      typeof payload.hideRemainingCount === "boolean"
+        ? payload.hideRemainingCount
+        : null,
   };
 };
 

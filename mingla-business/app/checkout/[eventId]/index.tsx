@@ -156,8 +156,13 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           "socialProof",
           eventId,
         ]);
+  // Follow-up (migration 20270704003314): the bundle behind this step now carries
+  // the setting itself, public or unlisted, so a deep link straight here can show
+  // an allowed count without the event page's cache. The cached social proof is
+  // the fallback for a payload from before the migration.
   const hideRemainingCount = resolveHideRemainingCount({
     organiserSetting: event?.hideRemainingCount === true ? true : null,
+    bundleSetting: publicEventQuery.data?.hideRemainingCount ?? null,
     socialProof: cachedSocialProof,
   });
   // ORCH-1162 Bug 3 — the CTA brand accent (same source/derivation as the public

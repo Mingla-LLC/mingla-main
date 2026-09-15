@@ -442,6 +442,12 @@ jobs:
           # Behavioural against the real chain; every case rolls back.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3284_offering_refund_terms.test.sql
+          # Issue #3314 — the event bundle carries the organiser's "Hide remaining
+          # count" for public AND unlisted events, agrees with the social-proof
+          # read, never breaks the page on a malformed value, and keeps #3284's
+          # key contract. Behavioural against the real chain; every case rolls back.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3314_bundle_hide_remaining.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \

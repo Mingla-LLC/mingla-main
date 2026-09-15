@@ -1815,6 +1815,17 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       " src/hooks/__tests__/issue_3284_refund_policy_mapping.implementor.test.ts"],
     [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"),
       '      - "app-mobile/src/hooks/__tests__/issue_3284_refund_policy_mapping*"\n'],
+    // [TEST-MOD-APPROVED #3314] The #3314 bundle hide-remaining SQL suite target on
+    // the migrations lane, and the exact-filename skip in the #1931 and #2117
+    // filtered replays. Same three proofs as #3284's rows: present exactly once,
+    // removal changes the parsed document, and the policy projection does not move
+    // (no trigger event key, job-level concurrency block or job `uses:` is added).
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3314_bundle_hide_remaining.test.sql\n"],
+    [liveWorkflow("issue", "1931", "private", "event", "access"),
+      "              *20270704003314_issue_3314_bundle_hide_remaining.sql) continue ;;\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270704003314_issue_3314_bundle_hide_remaining.sql) continue ;;\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);

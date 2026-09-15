@@ -130,6 +130,8 @@ export default function PublicEventRoute(): React.ReactElement {
       }}
       // issue #3284 — the refund terms ride the SAME bundle as the days above.
       refundPolicyState={publicEventQuery.data.refundPolicyState}
+      // issue #3314 — and so does the organiser's "Hide remaining count".
+      bundleHideRemainingCount={publicEventQuery.data.hideRemainingCount}
     />
   );
 }
