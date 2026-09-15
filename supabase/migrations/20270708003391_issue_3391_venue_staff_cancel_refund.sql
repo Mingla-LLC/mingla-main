@@ -43,9 +43,12 @@
 --       host's edge action and the */5 sweep never run one refund at once.
 --   (7) the guest's cancellation notice carries the refund amount.
 --
--- MONOTONIC VERSION 20270706003391 > 20270705001984 (frontier at implement
--- time). DO NOT run `supabase db push`; apply via the Management API after
--- review. No data is rewritten.
+-- MONOTONIC VERSION 20270708003391: above main's frontier
+-- (20270706003197_issue_3197) and above every open PR's migration at rebase
+-- time (#3407 20270706000000, #3420 20270707003386, #3421 20270707000000).
+-- Renamed from 20270706003391 on the rebase onto main. DO NOT run
+-- `supabase db push`; apply via the Management API after review. No data is
+-- rewritten.
 -- ===========================================================================
 
 BEGIN;

@@ -693,7 +693,7 @@ Deno.test("V8 the edge function routes the venue actor here, as the host, withou
 Deno.test("V9 every refusal the RPC can raise has an HTTP mapping", async () => {
   const migration = await Deno.readTextFile(
     new URL(
-      "../../../migrations/20270706003391_issue_3391_venue_staff_cancel_refund.sql",
+      "../../../migrations/20270708003391_issue_3391_venue_staff_cancel_refund.sql",
       import.meta.url,
     ),
   );
