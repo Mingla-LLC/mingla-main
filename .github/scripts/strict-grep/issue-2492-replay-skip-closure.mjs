@@ -72,7 +72,7 @@
 //
 //   lane    loop spelling                              case subject                       globs
 //   #1931   for f in $(find supabase/migrations …)     case "$f" in            full path  8
-//   #2117   for f in $(find supabase/migrations …)     case "$f" in            full path  10
+//   #2117   for f in $(find supabase/migrations …)     case "$f" in            full path  13
 //   #1644   for migration in supabase/migrations/*.sql case "$(basename …)" in basename   1
 //   #1647   for migration in supabase/migrations/*.sql case "$(basename …)" in basename   3 (alternation)
 //
@@ -828,11 +828,16 @@ function selfTest() {
   // gate named the exact filename for each. Only counts move with the base:
   // GOOD 14/11 -> 15/12, M-5 14 -> 15, M-6 16 -> 17, M-9 14 -> 15, M-10 15 -> 16;
   // every mutant and BAD fixture is unchanged.
+  // [TEST-MOD-APPROVED #3197] The #2117 lane gains one exact skip, TWELVE ->
+  // THIRTEEN. 20270706003197's closing DO block asserts on #2986's readers and
+  // validator, which that lane's phase 1 omits, so the lane skips it by EXACT
+  // filename and applies it once straight after #3193. Only the GOOD #2117
+  // count moves; every mutant targets the #1931 lane and is unchanged.
   const expectedInventory = {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
     "issue-1931-private-event-access.yml": 15,
-    "issue-2117-offering-visibility-gate-tests.yml": 12,
+    "issue-2117-offering-visibility-gate-tests.yml": 13,
   };
   if (JSON.stringify(inventory) !== JSON.stringify(expectedInventory)) {
     record("GOOD", `lane inventory is ${JSON.stringify(inventory)}, expected ${JSON.stringify(expectedInventory)}`);
@@ -971,7 +976,7 @@ function selfTest() {
     console.error(`#2492 SELF-TEST FAILED:\n  - ${failures.join("\n  - ")}`);
     process.exit(1);
   }
-  console.log("#2492 self-test PASS (1 good tree with the 15/1/3/12 lane inventory, 10 mutants M-1…M-10 all behaving).");
+  console.log("#2492 self-test PASS (1 good tree with the 15/1/3/13 lane inventory, 10 mutants M-1…M-10 all behaving).");
 }
 
 // ---------------------------------------------------------------------------

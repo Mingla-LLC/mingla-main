@@ -890,6 +890,21 @@ jobs:
           # plan-dependent pre-fix outcome that flips once `brands` is vacuumed.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3193_public_search_live_row_ledger_consumers.tester.adversarial.pg17.test.sql
+          # Issue #3197 — nothing ever promoted a public page, so every Host page
+          # served noindex and the sitemap was empty. The per-minute reconciler
+          # now indexes every brand, event, trip, experience and verified venue
+          # that passes the public-search content floor. The implementor suite
+          # drives every kind through promotion, refresh and demotion and reads
+          # the result back through the anonymous resolver, the sitemap and the
+          # IndexNow queue; the adversarial suite covers qualified inventory,
+          # slug heirs, operator holds, mixed-case paths, test records, ACL, a
+          # poisoned write and the convergence monitor. Both assert
+          # fixture-scoped outcomes only, and neither is plan-sensitive, so the
+          # ledger suite above stays last among the plan-sensitive suites.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.implementor.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.tester.adversarial.pg17.test.sql
           # Issue #3391 — a venue cancelling a PAID booking refunds the guest in
           # full, Mingla's fee included. CALLS the functions as a real rank-40
           # manager: the exact refund and three ledger legs, an idempotent retry,
@@ -898,9 +913,8 @@ jobs:
           # one full refund per charge, and the payout proven both ways — never
           # attached before release, recovered as a debt after it. Group R derives
           # the pre-fix database from the live definitions and reproduces the
-          # no-refund cancel. Runs AFTER the #3193 suites on purpose: its
-          # rolled-back fixtures leave dead brand tuples as well, and it asserts
-          # nothing plan-dependent.
+          # no-refund cancel. Runs after the #3193 and #3197 suites; it asserts
+          # fixture-scoped outcomes only and nothing plan-dependent.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3391_venue_staff_cancel_refund.test.sql
 

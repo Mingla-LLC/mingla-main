@@ -22,7 +22,7 @@ const CHROME = [
 
 function sourceContract(overrides = {}) {
   const source = (relative) => overrides[relative] ?? read(relative)
-  const explorer = source('mingla-marketing/app/(core)/explorer/page.tsx')
+  const explorer = source('mingla-marketing/app/(core)/going-out/page.tsx')
   const packageJson = JSON.parse(source('mingla-marketing/package.json'))
 
   assert.equal((explorer.match(/className="core-explorer-hero-proof"/g) ?? []).length, 1, 'Explorer hero must render exactly one product-proof frame')
@@ -151,7 +151,7 @@ async function runtimeContract() {
   ], { stdio: 'ignore' })
   let page
   try {
-    await waitFor(async () => (await fetch(`http://127.0.0.1:${appPort}/explorer`)).status === 200, 'Next server did not start')
+    await waitFor(async () => (await fetch(`http://127.0.0.1:${appPort}/going-out`)).status === 200, 'Next server did not start')
     let target
     await waitFor(async () => {
       const response = await fetch(`http://127.0.0.1:${debugPort}/json`)
@@ -162,7 +162,7 @@ async function runtimeContract() {
     page = new CdpPage(target.webSocketDebuggerUrl)
     await page.send('Page.enable')
     await page.send('Runtime.enable')
-    await page.send('Page.navigate', { url: `http://127.0.0.1:${appPort}/explorer` })
+    await page.send('Page.navigate', { url: `http://127.0.0.1:${appPort}/going-out` })
     await waitFor(() => page.evaluate("document.readyState === 'complete' && document.querySelectorAll('.core-explorer-hero-proof img').length === 1"), 'Explorer hero did not settle')
     for (const width of [320, 390, 768, 1440]) {
       await page.send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false })
@@ -185,7 +185,7 @@ async function runtimeContract() {
 if (!BUILT_ONLY) sourceContract()
 
 if (process.argv.includes('--self-test')) {
-  const relative = 'mingla-marketing/app/(core)/explorer/page.tsx'
+  const relative = 'mingla-marketing/app/(core)/going-out/page.tsx'
   const reverted = read(relative).replace('className="core-explorer-hero-proof"', 'className="core-proof-mark"')
   assert.throws(() => sourceContract({ [relative]: reverted }), /exactly one product-proof frame/, 'removing the rounded proof owner must prove RED')
   assert.throws(() => assertHero({ count: 1, src: '/brand/mingla-logo-white-on-orange.png', alt: 'Mingla Explorer app icon', width: 330, height: 330, left: 100, right: 430, radius: '0px', objectFit: 'fill', objectPosition: '50% 50%', overflow: 0 }, 1440), /approved real capture|intentional crop ratio|rounded card treatment/, 'the former flat logo tile must prove RED at runtime')
