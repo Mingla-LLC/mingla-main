@@ -1612,20 +1612,30 @@ const UpcomingList: React.FC<{
   );
 };
 
-const OfferingMiniCard: React.FC<{
+interface OfferingMiniCardProps {
   item: PublicBrandUpcoming;
   theme: ResolvedTheme;
   palette: ThemePalette;
   surface: Surface;
   isDesktop: boolean;
   onPress: (item: PublicBrandUpcoming) => void;
-}> = ({ item, theme, palette, surface, isDesktop, onPress }) => {
+}
+
+const OfferingMiniCard: React.FC<OfferingMiniCardProps> = ({
+  item,
+  theme,
+  palette,
+  surface,
+  isDesktop,
+  onPress,
+}: OfferingMiniCardProps) => {
   const price = offeringPriceLabel(item);
+  const kindLabel = OFFERING_KIND_LABEL[item.offeringType];
   return (
     <Pressable
       onPress={() => onPress(item)}
       accessibilityRole="button"
-      accessibilityLabel={`Open ${item.offeringType} ${item.name}`}
+      accessibilityLabel={`Open ${kindLabel} ${item.name}`}
       style={({ pressed }) => [
         styles.oCard,
         surface.card,
@@ -1652,7 +1662,7 @@ const OfferingMiniCard: React.FC<{
           {item.name.length > 0 ? item.name : "Untitled offering"}
         </Text>
         <Text style={[styles.oCardMeta, { color: palette.tertiaryText }]}>
-          {item.offeringType}
+          {kindLabel}
         </Text>
         {price !== null ? (
           <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>

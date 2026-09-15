@@ -1,5 +1,13 @@
 # Invariant Registry
 
+## DRAFT — issue #3430 (public brand section kind labels are human-readable)
+
+### I-PROPOSED-3430-PUBLIC-BRAND-SECTION-KIND-LABELS-HUMAN-READABLE (DRAFT)
+
+- **Rule:** When a shared public-brand section card presents an offering kind to a person, its visible and accessibility strings resolve through the single `OFFERING_KIND_LABEL` owner: `Event`, `RSVP`, `Trip`, `Experience`. The raw lowercase discriminator remains the data/control value for keys, callbacks and routing. Implementor and tester render guards protect both channels.
+- **Relationship:** This extends presentation consistency around active `I-3426-PUBLIC-BRAND-OFFERINGS-HAVE-ONE-DATE-DRIVEN-SECTION`; it does not alter that invariant's classification contract.
+- **Status:** DRAFT during issue #3430 implementation. Activate only after independent tester proof, all-green merge, and release verification.
+
 ## ACTIVE — issue #3426 (public brand offerings are grouped by time)
 
 ### I-3426-PUBLIC-BRAND-OFFERINGS-HAVE-ONE-DATE-DRIVEN-SECTION (ACTIVE)

@@ -343,7 +343,7 @@ describe("#3426 brand page — Happening now and Past", () => {
     const json = JSON.stringify(tree.toJSON());
     const blockHeader = json.indexOf('"Happening now"');
     const upcomingHeader = json.indexOf('"Upcoming"', blockHeader);
-    const upcomingCard = json.indexOf("Open event Name up-event");
+    const upcomingCard = json.indexOf("Open Event Name up-event");
     expect(blockHeader).toBeGreaterThanOrEqual(0);
     expect(upcomingHeader).toBeGreaterThan(blockHeader);
     expect(upcomingCard).toBeGreaterThan(upcomingHeader);
