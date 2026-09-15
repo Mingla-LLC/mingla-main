@@ -430,6 +430,48 @@ function pngCrc(bytes: Uint8Array, start: number, end: number): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+async function readStreamBounded(
+  stream: ReadableStream<Uint8Array>,
+  expectedBytes: number,
+): Promise<void> {
+  const reader = stream.getReader();
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > expectedBytes) {
+        throw new AriAttachmentError("DECOMPRESSION_BOMB");
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (total !== expectedBytes) throw new AriAttachmentError("CORRUPT_FILE");
+}
+
+async function readStreamAtMost(
+  stream: ReadableStream<Uint8Array>,
+  maximumBytes: number,
+): Promise<number> {
+  const reader = stream.getReader();
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maximumBytes) {
+        throw new AriAttachmentError("DECOMPRESSION_BOMB");
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return total;
+}
+
 async function verifyPng(bytes: Uint8Array): Promise<void> {
   if (
     !startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -495,12 +537,7 @@ async function verifyPng(bytes: Uint8Array): Promise<void> {
           .pipeThrough(
             new DecompressionStream("deflate"),
           );
-        const decoded = new Uint8Array(
-          await new Response(compressed).arrayBuffer(),
-        );
-        if (decoded.length !== height * (bytesPerRow + 1)) {
-          throw new AriAttachmentError("CORRUPT_FILE");
-        }
+        await readStreamBounded(compressed, height * (bytesPerRow + 1));
       } catch (error: unknown) {
         if (error instanceof AriAttachmentError) throw error;
         throw new AriAttachmentError("CORRUPT_FILE");
@@ -526,6 +563,13 @@ function verifyHeic(bytes: Uint8Array): string | null {
   } else return null;
 
   let sawIspe = false;
+  const itemExtents: Array<{
+    offset: number;
+    length: number;
+    source: "absolute" | "idat";
+  }> = [];
+  const mediaDataRanges: Array<{ start: number; end: number }> = [];
+  const itemDataRanges: Array<{ start: number; end: number }> = [];
   let boxCount = 0;
   const containers = new Set([
     "meta",
@@ -559,6 +603,92 @@ function verifyHeic(bytes: Uint8Array): string | null {
           readU32BE(bytes, cursor + 16),
         );
         sawIspe = true;
+      } else if (type === "iloc") {
+        if (declaredSize < 16) throw new AriAttachmentError("CORRUPT_FILE");
+        const payload = cursor + 8;
+        const version = bytes[payload];
+        if (version > 2) throw new AriAttachmentError("CORRUPT_FILE");
+        const offsetSize = bytes[payload + 4] >>> 4;
+        const lengthSize = bytes[payload + 4] & 0x0f;
+        const baseOffsetSize = bytes[payload + 5] >>> 4;
+        const indexSize = version > 0 ? bytes[payload + 5] & 0x0f : 0;
+        if (
+          offsetSize > 4 || lengthSize < 1 || lengthSize > 4 ||
+          baseOffsetSize > 4 || indexSize > 4
+        ) {
+          throw new AriAttachmentError("CORRUPT_FILE");
+        }
+        const itemCount = version < 2
+          ? readU16BE(bytes, payload + 6)
+          : readU32BE(bytes, payload + 6);
+        if (itemCount < 1 || itemCount > 1_000) {
+          throw new AriAttachmentError("CORRUPT_FILE");
+        }
+        let itemCursor = payload + (version < 2 ? 8 : 10);
+        const readVariableUInt = (size: number): number => {
+          if (itemCursor + size > cursor + declaredSize) {
+            throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+          }
+          let value = 0;
+          for (let index = 0; index < size; index += 1) {
+            value = value * 256 + bytes[itemCursor++];
+          }
+          return value;
+        };
+        for (let item = 0; item < itemCount; item += 1) {
+          const itemIdSize = version < 2 ? 2 : 4;
+          const fixedBytes = itemIdSize + (version > 0 ? 2 : 0) + 4;
+          if (itemCursor + fixedBytes > cursor + declaredSize) {
+            throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+          }
+          itemCursor += itemIdSize; // item_ID
+          let constructionMethod = 0;
+          if (version > 0) {
+            constructionMethod = readU16BE(bytes, itemCursor) & 0x000f;
+            itemCursor += 2;
+            if (constructionMethod > 1) {
+              throw new AriAttachmentError("CORRUPT_FILE");
+            }
+          }
+          const dataReferenceIndex = readU16BE(bytes, itemCursor);
+          itemCursor += 2;
+          if (dataReferenceIndex !== 0) {
+            throw new AriAttachmentError("CORRUPT_FILE");
+          }
+          const baseOffset = readVariableUInt(baseOffsetSize);
+          const extentCount = readU16BE(bytes, itemCursor);
+          itemCursor += 2;
+          if (extentCount < 1 || extentCount > 1_000) {
+            throw new AriAttachmentError("CORRUPT_FILE");
+          }
+          for (let extent = 0; extent < extentCount; extent += 1) {
+            if (version > 0 && indexSize > 0) readVariableUInt(indexSize);
+            const offset = readVariableUInt(offsetSize);
+            const length = readVariableUInt(lengthSize);
+            if (
+              length < 1 || !Number.isSafeInteger(baseOffset + offset + length)
+            ) {
+              throw new AriAttachmentError("CORRUPT_FILE");
+            }
+            itemExtents.push({
+              offset: baseOffset + offset,
+              length,
+              source: constructionMethod === 1 ? "idat" : "absolute",
+            });
+            if (itemExtents.length > 10_000) {
+              throw new AriAttachmentError("DECOMPRESSION_BOMB");
+            }
+          }
+        }
+        if (itemCursor !== cursor + declaredSize) {
+          throw new AriAttachmentError("CORRUPT_FILE");
+        }
+      } else if (type === "mdat") {
+        if (declaredSize <= 8) throw new AriAttachmentError("CORRUPT_FILE");
+        mediaDataRanges.push({ start: cursor + 8, end: cursor + declaredSize });
+      } else if (type === "idat") {
+        if (declaredSize <= 8) throw new AriAttachmentError("CORRUPT_FILE");
+        itemDataRanges.push({ start: cursor + 8, end: cursor + declaredSize });
       } else if (containers.has(type)) {
         const childStart = cursor + 8 + (type === "meta" ? 4 : 0);
         if (childStart > cursor + declaredSize) {
@@ -570,8 +700,71 @@ function verifyHeic(bytes: Uint8Array): string | null {
     }
   };
   visit(0, bytes.length, 0);
-  if (!sawIspe) throw new AriAttachmentError("CORRUPT_FILE");
+  if (!sawIspe || itemExtents.length === 0) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+  if (
+    !itemExtents.every((extent) =>
+      (extent.source === "absolute" ? mediaDataRanges : itemDataRanges).some((
+        range,
+      ) =>
+        extent.source === "absolute"
+          ? extent.offset >= range.start &&
+            extent.offset + extent.length <= range.end
+          : range.start + extent.offset + extent.length <= range.end
+      )
+    )
+  ) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
   return mime;
+}
+
+function verifyWebp(bytes: Uint8Array): void {
+  if (readU32LE(bytes, 4) + 8 !== bytes.length || bytes.length < 20) {
+    throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+  }
+  let cursor = 12;
+  let dimensionsFound = false;
+  let codedPayloadFound = false;
+  while (cursor < bytes.length) {
+    if (cursor + 8 > bytes.length) throw new AriAttachmentError("CORRUPT_FILE");
+    const type = textDecoder.decode(bytes.slice(cursor, cursor + 4));
+    const length = readU32LE(bytes, cursor + 4);
+    const data = cursor + 8;
+    const end = data + length;
+    if (end > bytes.length) throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+    if (type === "VP8X" && length === 10) {
+      const width = 1 + bytes[data + 4] + (bytes[data + 5] << 8) +
+        (bytes[data + 6] << 16);
+      const height = 1 + bytes[data + 7] + (bytes[data + 8] << 8) +
+        (bytes[data + 9] << 16);
+      assertImageDimensions(width, height);
+      dimensionsFound = true;
+    } else if (type === "VP8L" && length >= 5 && bytes[data] === 0x2f) {
+      const packed = readU32LE(bytes, data + 1);
+      assertImageDimensions(
+        (packed & 0x3fff) + 1,
+        ((packed >>> 14) & 0x3fff) + 1,
+      );
+      dimensionsFound = true;
+      codedPayloadFound = true;
+    } else if (
+      type === "VP8 " && length >= 10 && bytes[data + 3] === 0x9d &&
+      bytes[data + 4] === 0x01 && bytes[data + 5] === 0x2a
+    ) {
+      assertImageDimensions(
+        readU16LE(bytes, data + 6) & 0x3fff,
+        readU16LE(bytes, data + 8) & 0x3fff,
+      );
+      dimensionsFound = true;
+      codedPayloadFound = true;
+    }
+    cursor = end + (length % 2);
+  }
+  if (cursor !== bytes.length || !dimensionsFound || !codedPayloadFound) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
 }
 
 async function detectImage(bytes: Uint8Array): Promise<string | null> {
@@ -589,16 +782,13 @@ async function detectImage(bytes: Uint8Array): Promise<string | null> {
     findAscii(bytes.slice(0, 16), "RIFF") === 0 &&
     findAscii(bytes.slice(8, 16), "WEBP") === 0
   ) {
-    const declaredRiffSize = readU32LE(bytes, 4) + 8;
-    if (declaredRiffSize !== bytes.length || bytes.length < 20) {
-      throw new AriAttachmentError("UPLOAD_INCOMPLETE");
-    }
+    verifyWebp(bytes);
     return "image/webp";
   }
   return verifyHeic(bytes);
 }
 
-function verifyPdf(bytes: Uint8Array): { pageCount: number } {
+async function verifyPdf(bytes: Uint8Array): Promise<{ pageCount: number }> {
   const tail = bytes.slice(Math.max(0, bytes.length - 2048));
   if (findAscii(tail, "%%EOF") < 0 || findAscii(tail, "startxref") < 0) {
     throw new AriAttachmentError("UPLOAD_INCOMPLETE");
@@ -608,12 +798,29 @@ function verifyPdf(bytes: Uint8Array): { pageCount: number } {
   if (!/\d+\s+\d+\s+obj\b/.test(latin)) {
     throw new AriAttachmentError("CORRUPT_FILE");
   }
+  const startXref = /(?:^|\r?\n)startxref\s+(\d+)\s+%%EOF\s*$/.exec(latin);
+  if (!startXref) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+  const xrefOffset = Number(startXref[1]);
   if (
-    !/^xref\s*$/m.test(latin) || !/\bstartxref\s+\d+\s+%%EOF\s*$/m.test(latin)
+    !Number.isSafeInteger(xrefOffset) ||
+    (latin.slice(xrefOffset, xrefOffset + 4) !== "xref" &&
+      !/^\d+\s+\d+\s+obj\b/.test(latin.slice(xrefOffset)))
   ) {
     throw new AriAttachmentError("CORRUPT_FILE");
   }
+  const xrefBody = latin.slice(xrefOffset);
+  const classicXref =
+    /^xref\r?\n\d+\s+\d+\r?\n(?:\d{10}\s+\d{5}\s+[fn]\s*\r?\n)+/.test(xrefBody);
+  const xrefStream =
+    /^\d+\s+\d+\s+obj\s*<<[\s\S]{0,4096}?\/Type\s*\/XRef\b[\s\S]{0,4096}?\/W\s*\[\s*\d+\s+\d+\s+\d+\s*\][\s\S]{0,4096}?\r?\nstream\r?\n/
+      .test(xrefBody);
+  if (!classicXref && !xrefStream) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
   let totalStreams = 0;
+  let totalDecodedStreams = 0;
   const streamPattern = /(?:\r?\n)stream\r?\n/g;
   for (const stream of latin.matchAll(streamPattern)) {
     const start = (stream.index ?? 0) + stream[0].length;
@@ -625,7 +832,10 @@ function verifyPdf(bytes: Uint8Array): { pageCount: number } {
     );
     const declaredLength = Array.from(header.matchAll(/\/Length\s+(\d+)/g))
       .at(-1);
-    const actualLength = end - start;
+    const dataEnd = bytes[end - 1] === 0x0a
+      ? (bytes[end - 2] === 0x0d ? end - 2 : end - 1)
+      : end;
+    const actualLength = dataEnd - start;
     const boundedLength = declaredLength
       ? Number(declaredLength[1])
       : actualLength;
@@ -638,6 +848,27 @@ function verifyPdf(bytes: Uint8Array): { pageCount: number } {
     totalStreams += boundedLength;
     if (totalStreams > MAX_PDF_STREAM_BYTES) {
       throw new AriAttachmentError("DECOMPRESSION_BOMB");
+    }
+    if (declaredLength && actualLength !== boundedLength) {
+      throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+    }
+    if (/\/FlateDecode\b/.test(header)) {
+      try {
+        const encodedBytes = bytes.slice(start, dataEnd);
+        const compressed = new Blob([encodedBytes.buffer.slice(
+          encodedBytes.byteOffset,
+          encodedBytes.byteOffset + encodedBytes.byteLength,
+        ) as ArrayBuffer]).stream().pipeThrough(
+          new DecompressionStream("deflate"),
+        );
+        totalDecodedStreams += await readStreamAtMost(
+          compressed,
+          MAX_PDF_STREAM_BYTES - totalDecodedStreams,
+        );
+      } catch (error: unknown) {
+        if (error instanceof AriAttachmentError) throw error;
+        throw new AriAttachmentError("CORRUPT_FILE");
+      }
     }
   }
   const pageCount = Array.from(latin.matchAll(/\/Type\s*\/Page\b/g)).length;
@@ -676,7 +907,7 @@ export async function verifyAriAttachment(
     verifiedMime = imageMime;
     fileType = "image";
   } else if (startsWithBytes(bytes, [0x25, 0x50, 0x44, 0x46, 0x2d])) {
-    const { pageCount } = verifyPdf(bytes);
+    const { pageCount } = await verifyPdf(bytes);
     verifiedMime = "application/pdf";
     fileType = "pdf";
     processingMetadata.page_count = pageCount;

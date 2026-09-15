@@ -138,7 +138,10 @@ export function check(sources) {
   for (const token of ["rateLimitUntil", "cooldown_until", "retry_after_seconds", "disabled={brands.isLoading || !conversationSelectionReady}", "sendDisabled={chat.isSending || rateLimited || !online || !attachments.allReady}"]) {
     if (!(screen + chat).includes(token)) failures.push(`persistent cooldown missing ${token}`);
   }
-  if (!input.includes("(text.trim().length > 0 || hasReadyAttachments) && !disabled && !sendDisabled")) {
+  if (
+    !/const canSend\s*=\s*isAriSendReady\(\s*text,\s*hasReadyAttachments,\s*disabled,\s*sendDisabled,?\s*\)/m
+      .test(input)
+  ) {
     failures.push("InputBar effective canSend does not fail closed on both readiness gates");
   }
   for (const token of ["Older chats · Read-only", "Could not load conversations.", "loadingRow", "older read-only conversation"]) {
@@ -226,7 +229,13 @@ if (process.argv.includes("--self-test")) {
   const shadowRevertDetected = shadowReverted.some((failure) => failure.includes("typed shadow provider"));
   const scopeReverted = check({ ...sources, scopeMigration: sources.scopeMigration.replace("NEW.brand_id IS DISTINCT FROM OLD.brand_id", "false") });
   const scopeRevertDetected = scopeReverted.some((failure) => failure.includes("database scope immutability"));
-  const composerReverted = check({ ...sources, input: sources.input.replace("&& !disabled && !sendDisabled", "") });
+  const composerReverted = check({
+    ...sources,
+    input: sources.input.replace(
+      "isAriSendReady(text, hasReadyAttachments, disabled, sendDisabled)",
+      "true",
+    ),
+  });
   const composerRevertDetected = composerReverted.some((failure) => failure.includes("InputBar effective canSend"));
   const siteRegistryReverted = check({ ...sources, helper: sources.helper.replace('  "get_brand_site",\n', "") });
   const siteRegistryRevertDetected = siteRegistryReverted.some((failure) => failure.includes("six-read Sites registry"));

@@ -26,6 +26,7 @@ const files = {
   hook: "mingla-business/src/hooks/useAgentChat.ts",
   screen: "mingla-business/src/screens/ari/AriChatScreen.tsx",
   input: "mingla-business/src/components/ari/InputBar.tsx",
+  reliability: "mingla-business/src/services/agentReliability.ts",
   list: "mingla-business/src/components/ari/MessageList.tsx",
   clientChoices: "mingla-business/src/components/ari/agentChoices.ts",
   choiceTest:
@@ -590,6 +591,7 @@ export function check(s) {
     "issue_3429_ari_turn_authority.tester_adversarial.pg17.test.sql",
     "issue_3429_ari_attachments.implementor.test.ts",
     "issue_3429_ari_attachment_structure.adversarial.test.ts",
+    "issue_3429_ari_delivery_state.implementor.test.ts",
     "issue_3429_ari_rework_races.implementor.test.tsx",
     "issue_3429_ari_turn_scope.tester.adversarial.test.tsx",
   ]) if (s.workflow.split(testPath).length - 1 !== 3) {
@@ -608,7 +610,12 @@ export function check(s) {
   ) {
     failures.push("#3429 PG17 Vault fixtures are absent or ordered after migration apply");
   }
-  if (!s.input.includes("(text.trim().length > 0 || hasReadyAttachments) && !disabled && !sendDisabled")) {
+  if (
+    !/const canSend\s*=\s*isAriSendReady\(\s*text,\s*hasReadyAttachments,\s*disabled,\s*sendDisabled,?\s*\)/m
+      .test(s.input) ||
+    !/export function isAriSendReady\([\s\S]*?return \(text\.trim\(\)\.length > 0 \|\| hasReadyAttachments\) && !disabled\s*&&\s*!sendDisabled;/m
+      .test(s.reliability)
+  ) {
     failures.push("#3429 InputBar does not require both disabled gates for text/file sends");
   }
   return failures;
@@ -868,6 +875,16 @@ if (process.argv.includes("--self-test")) {
       key: "workflow",
       from: "issue_3429_ari_attachment_structure.adversarial.test.ts",
       to: "removed_ari_attachment_structure.adversarial.test.ts",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_delivery_state.implementor.test.ts",
+      to: "removed_ari_delivery_state.implementor.test.ts",
+    },
+    {
+      key: "reliability",
+      from: "&& !disabled &&\n    !sendDisabled",
+      to: "&& !disabled ||\n    !sendDisabled",
     },
     {
       key: "workflow",

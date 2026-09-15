@@ -17,6 +17,10 @@ import {
   prepareAriAttachments,
 } from "../services/ariAttachmentService";
 import { captureAriAttachmentOutcome } from "../services/ariPolishAnalytics";
+import {
+  existingAriAttachmentBytes,
+  nextAriAttachmentBytes,
+} from "../services/agentReliability";
 import { randomId } from "../utils/randomId";
 
 export interface UseAriAttachmentsResult {
@@ -124,7 +128,7 @@ export function useAriAttachments(args: {
       return;
     }
     if (picked.length === 0) return;
-    const existingBytes = current.reduce((sum, item) => sum + item.sizeBytes, 0);
+    const existingBytes = existingAriAttachmentBytes(current);
     let acceptedBytes = existingBytes;
     const drafts: AriAttachmentDraft[] = [];
     for (const file of picked.slice(0, remaining)) {
@@ -143,9 +147,8 @@ export function useAriAttachments(args: {
         draft.errorMessage = draft.sizeBytes > ARI_ATTACHMENT_MAX_FILE_BYTES
           ? "That file is larger than 10 MB. Choose a smaller file."
           : "You can attach up to 5 files and 25 MB in one message.";
-      } else if (draft.state !== "failed") {
-        acceptedBytes += draft.sizeBytes;
       }
+      acceptedBytes = nextAriAttachmentBytes(acceptedBytes, draft);
       drafts.push(draft);
       captureAriAttachmentOutcome({
         surface: args.surface,

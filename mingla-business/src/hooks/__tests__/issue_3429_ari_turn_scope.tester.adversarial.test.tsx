@@ -19,6 +19,7 @@ import { reconcileAgentDeliveryMessages } from "../useAgentChat";
 
 const hookPath = path.resolve(__dirname, "../useAgentChat.ts");
 const inputPath = path.resolve(__dirname, "../../components/ari/InputBar.tsx");
+const reliabilityPath = path.resolve(__dirname, "../../services/agentReliability.ts");
 const screenPath = path.resolve(__dirname, "../../screens/ari/AriChatScreen.tsx");
 
 function userMessage(id: string, clientTurnId: string, text = "same text"): AgentMessage {
@@ -68,8 +69,10 @@ describe("#3429 LocalTurn ownership and scope adversarial seams", () => {
 
   it("requires each readiness condition while accepting text-only and ready-file-only sends", () => {
     const input = fs.readFileSync(inputPath, "utf8");
+    const reliability = fs.readFileSync(reliabilityPath, "utf8");
     const screen = fs.readFileSync(screenPath, "utf8");
-    expect(input).toContain("(text.trim().length > 0 || hasReadyAttachments) && !disabled && !sendDisabled");
+    expect(input).toContain("isAriSendReady(text, hasReadyAttachments, disabled, sendDisabled)");
+    expect(reliability).toMatch(/return \(text\.trim\(\)\.length > 0 \|\| hasReadyAttachments\) && !disabled\s*&&\s*!sendDisabled;/);
     expect(screen).toContain("disabled={brands.isLoading || !conversationSelectionReady}");
     expect(screen).toContain("sendDisabled={chat.isSending || rateLimited || !online || !attachments.allReady}");
     expect(screen).toContain("hasReadyAttachments={attachments.attachments.length > 0 && attachments.allReady}");

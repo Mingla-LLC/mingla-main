@@ -44,6 +44,7 @@ import Animated, {
 import { ArrowUp } from "lucide-react-native";
 import { Plus } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
+import { isAriSendReady } from "../../services/agentReliability";
 
 import {
   ariPalette,
@@ -98,7 +99,7 @@ export const InputBar: React.FC<InputBarProps> = ({
   const setText = onChangeText ?? setInternalText;
   const reduceMotion = useReducedMotion();
 
-  const canSend = (text.trim().length > 0 || hasReadyAttachments) && !disabled && !sendDisabled;
+  const canSend = isAriSendReady(text, hasReadyAttachments, disabled, sendDisabled);
 
   // Send-moment micro-interaction (A1 "ember flicker + lift").
   const sendScale = useSharedValue(1);

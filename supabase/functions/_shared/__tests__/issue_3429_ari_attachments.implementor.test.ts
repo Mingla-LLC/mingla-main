@@ -83,8 +83,9 @@ function validPng(): Uint8Array {
 }
 
 function validPdf(): Uint8Array {
+  const prefix = "%PDF-1.7\n1 0 obj << /Type /Page >>\nendobj\n";
   return encoder.encode(
-    "%PDF-1.7\n1 0 obj << /Type /Page >>\nendobj\nxref\n0 1\n0000000000 65535 f\nstartxref\n0\n%%EOF",
+    `${prefix}xref\n0 1\n0000000000 65535 f\nstartxref\n${prefix.length}\n%%EOF`,
   );
 }
 

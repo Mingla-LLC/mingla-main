@@ -24,6 +24,34 @@ export type AriOperationState =
   | "expired"
   | "reconciliation_required";
 
+export function isAriSendReady(
+  text: string,
+  hasReadyAttachments: boolean,
+  disabled: boolean,
+  sendDisabled: boolean,
+): boolean {
+  return (text.trim().length > 0 || hasReadyAttachments) && !disabled &&
+    !sendDisabled;
+}
+
+export function nextAriAttachmentBytes(
+  acceptedBytes: number,
+  draft: { state: string; sizeBytes: number },
+): number {
+  return draft.state === "failed"
+    ? acceptedBytes
+    : acceptedBytes + draft.sizeBytes;
+}
+
+export function existingAriAttachmentBytes(
+  drafts: ReadonlyArray<{ state: string; sizeBytes: number }>,
+): number {
+  return drafts.reduce(
+    (total, draft) => nextAriAttachmentBytes(total, draft),
+    0,
+  );
+}
+
 export interface AriResponseEnvelope<T = unknown> {
   protocol_version: 1;
   kind: "success" | "error";

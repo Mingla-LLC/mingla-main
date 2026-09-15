@@ -16809,7 +16809,7 @@
       "providerWorkflow": ".github/workflows/issue-1985-ari-task-state.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "75c559c705eef06717d7314f8928bc94f3e23eb3686292ca54562b76ce5479e5",
+        "sourceSha256": "c166495d430885824354ae909a1d94e85e6c93a977ef92301c9c5bb889e53796",
         "triggers": [
           "pull_request",
           "push"
@@ -16821,6 +16821,7 @@
           "mingla-business/src/components/ari/**",
           "mingla-business/src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts",
           "mingla-business/src/hooks/__tests__/issue_3429_ari_chat_polish.implementor.test.ts",
+          "mingla-business/src/hooks/__tests__/issue_3429_ari_delivery_state.implementor.test.ts",
           "mingla-business/src/hooks/__tests__/issue_3429_ari_rework_races.implementor.test.tsx",
           "mingla-business/src/hooks/__tests__/issue_3429_ari_turn_scope.tester.adversarial.test.tsx",
           "mingla-business/src/hooks/useAgentChat.ts",
