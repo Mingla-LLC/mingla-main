@@ -19977,7 +19977,7 @@
       "providerWorkflow": ".github/workflows/issue-873-guest-status-roster-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "b52a4c5e57d27da4e1a5cb1eb40aab82b239370cf563d70e1e30b441ecd94b93",
+        "sourceSha256": "73e4b06f5dd9ef587751a0217342c7048af88c7051f7052bc0d6cb7bd088b13a",
         "triggers": [
           "pull_request",
           "push"
@@ -19999,6 +19999,7 @@
           "mingla-business/src/hooks/useOfferingInvitePlan.ts",
           "mingla-business/src/hooks/useRsvpEvents.ts",
           "mingla-business/src/hooks/useTrips.ts",
+          "mingla-business/src/services/__tests__/issue_1780_feature_flag_rollback.tester_adversarial.test.ts",
           "mingla-business/src/services/__tests__/issue_1780_wizard_invites.implementor.test.ts",
           "mingla-business/src/services/businessEvents.ts",
           "mingla-business/src/services/offeringInvitePlanService.ts",
