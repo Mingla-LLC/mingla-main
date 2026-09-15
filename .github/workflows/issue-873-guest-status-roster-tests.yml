@@ -33,6 +33,7 @@ on:
       - "mingla-business/src/hooks/useRsvpEvents.ts"
       - "mingla-business/src/hooks/useTrips.ts"
       - "mingla-business/jest.issue1780.render.cjs"
+      - "mingla-business/jest.issue1780.web.render.cjs"
       - "mingla-business/package.json"
       - "mingla-business/src/services/offeringInvitePlanService.ts"
       - "mingla-business/src/services/businessEvents.ts"
@@ -83,6 +84,7 @@ on:
       - "mingla-business/src/hooks/useRsvpEvents.ts"
       - "mingla-business/src/hooks/useTrips.ts"
       - "mingla-business/jest.issue1780.render.cjs"
+      - "mingla-business/jest.issue1780.web.render.cjs"
       - "mingla-business/package.json"
       - "mingla-business/src/services/offeringInvitePlanService.ts"
       - "mingla-business/src/services/businessEvents.ts"
@@ -154,6 +156,7 @@ jobs:
           src/services/__tests__/issue_1780_outbox_contract.tester_adversarial.test.ts
           src/services/__tests__/issue_1780_auth_recovery.tester_adversarial.test.ts
       - run: npx jest --config jest.issue1780.render.cjs --runInBand
+      - run: npx jest --config jest.issue1780.web.render.cjs --runInBand
 
   issue-873-pg17:
     if: ${{ github.event.pull_request.draft != true }}
