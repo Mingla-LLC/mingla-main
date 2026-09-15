@@ -18,7 +18,7 @@ const ABOUT_PROOFS = {
     sha256: 'b8adad52781a036985bd2e1099e831c0776e9f855d53c811197e50a9ddc7b478',
     privacyState: 'Synthetic sample fixtures only; no real account, person, place, order, payment or contact data.',
     altText: 'Mingla Explorer showing the saved Sample sunset gallery plan open in its details sheet.',
-    allowedSurfaces: ['usemingla.com/explorer', 'usemingla.com/about'],
+    allowedSurfaces: ['usemingla.com/for-explorers', 'usemingla.com/about'],
   },
   host_live_listing_public_page: {
     path: 'mingla-marketing/public/product-proof/host-live-public-page.png',

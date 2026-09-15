@@ -199,8 +199,11 @@ function sourceContract() {
   assert.match(footer, /size="md" className="min-h-11"/)
   assert.equal((footer.match(/inline-flex min-h-11 min-w-11 items-center/g) ?? []).length, 3)
 
-  assert.match(explorerRoot, /showCityLaunch = allCityHubsSearchReady\(\)/)
-  assert.match(explorerRoot, /<RootCityGrid surface="explorer"/)
+  // #3371: the Explorer home is one non-scrolling screen again (Seth, 2026-09-14),
+  // so the root gate is inverted there; the Host root keeps its city grid below.
+  assert.doesNotMatch(explorerRoot, /showCityLaunch = allCityHubsSearchReady\(\)/)
+  assert.doesNotMatch(explorerRoot, /<RootCityGrid\b/)
+  assert.match(explorerRoot, /<CutoutShell dark noScroll>/)
   assert.match(hostRoot, /showCityLaunch = allCityHubsSearchReady\(\)/)
   assert.match(hostRoot, /<RootCityGrid surface="host"/)
   assert(packageJson.scripts.build.includes('issue-2983-city-hubs.implementor.happy.test.mjs --source-only'))

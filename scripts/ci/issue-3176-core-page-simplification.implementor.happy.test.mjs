@@ -62,7 +62,7 @@ function visibleText(html) {
 function verifySource(overrides = {}) {
   const source = (relative) => overrides[relative] ?? read(relative)
   const about = source('mingla-marketing/app/(core)/about/page.tsx')
-  const explorer = source('mingla-marketing/app/(core)/explorer/page.tsx')
+  const explorer = source('mingla-marketing/app/(core)/for-explorers/page.tsx')
   const cities = source('mingla-marketing/app/(core)/cities/page.tsx')
   const directory = source('mingla-marketing/components/core-pages/city-directory.tsx')
   const hero = source('mingla-marketing/components/core-pages/cities-hero.tsx')
@@ -408,7 +408,7 @@ async function verifyRuntime() {
       try { if ((await request(port, '/robots.txt')).status === 200) break } catch {}
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
-    for (const pathname of ['/about', '/explorer', '/cities']) {
+    for (const pathname of ['/about', '/for-explorers', '/cities']) {
       const response = await request(port, pathname)
       assert.equal(response.status, 200, `${pathname} must render`)
       const text = visibleText(response.body)

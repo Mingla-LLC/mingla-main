@@ -49,7 +49,7 @@ function sourceContract() {
 
   const packageJson = JSON.parse(read('mingla-marketing/package.json'))
   assert.match(packageJson.scripts.build, /export MINGLA_HISTORICAL_2983_BUILD=1/)
-  assert.match(packageJson.scripts.build, /unset MINGLA_HISTORICAL_2983_BUILD && node scripts\/clear-historical-city-build\.mjs && next build && node \.\.\/scripts\/ci\/issue-3176-editorial-route-removal\.implementor\.happy\.test\.mjs --built-only && node \.\.\/scripts\/ci\/issue-3176-editorial-route-removal\.tester\.adversarial\.test\.mjs --built-only && node \.\.\/scripts\/ci\/issue-3176-rework\.implementor\.happy\.test\.mjs --built-only$/)
+  assert.match(packageJson.scripts.build, /unset MINGLA_HISTORICAL_2983_BUILD && node scripts\/clear-historical-city-build\.mjs && next build && node \.\.\/scripts\/ci\/issue-3176-editorial-route-removal\.implementor\.happy\.test\.mjs --built-only && node \.\.\/scripts\/ci\/issue-3176-editorial-route-removal\.tester\.adversarial\.test\.mjs --built-only && node \.\.\/scripts\/ci\/issue-3176-rework\.implementor\.happy\.test\.mjs --built-only && node --experimental-websocket scripts\/issue-3371-explorer-home-one-screen\.implementor\.happy\.test\.mjs --built-only$/)
   assert.equal(packageJson.scripts.postbuild, 'node scripts/issue-2990-restructured-page-system.implementor.happy.test.mjs --built-only && node scripts/issue-2990-restructured-page-system.tester.adversarial.test.mjs')
   assert.match(read('mingla-marketing/lib/search/historical-city-build.ts'), /process\.env\.MINGLA_HISTORICAL_2983_BUILD === '1'[\s\S]*?process\.env\.npm_lifecycle_event === 'postbuild'/)
 
