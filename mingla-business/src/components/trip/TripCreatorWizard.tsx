@@ -35,6 +35,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "../../context/AuthContext";
 
 import {
   accent,
@@ -474,6 +475,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { signOut } = useAuth();
   const { isWideDesktop } = useResponsiveLayout();
   const [step, setStep] = useState<StepIndex>(1);
   const [step1Draft, setStep1Draft] = useState<Step1Draft>(tripToStep1Draft(trip));
@@ -608,17 +610,24 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   const inviteSummary = useOfferingInvitePlanSummary({
     eventId: trip.id,
     enabled: true,
+    quoteWhenEmpty: inviteFlag.data === true,
   });
   const invitePlan = inviteSummary.plan.data ?? null;
   const inviteQuote = inviteSummary.quote.data ?? null;
   const inviteEnabled = inviteFlag.data === true ||
     (invitePlan?.selectedCount ?? 0) > 0;
-  const inviteSummaryReady = invitePlan !== null && inviteQuote !== null &&
+  const inviteRollbackReady = inviteFlag.data === false &&
+    !inviteFlag.isPending && !inviteFlag.isFetching && !inviteFlag.isError &&
+    invitePlan?.selectedCount === 0 &&
+    !inviteSummary.plan.isPending && !inviteSummary.plan.isFetching &&
+    !inviteSummary.plan.isError;
+  const inviteSummaryReady = !inviteEnabled || (invitePlan !== null && inviteQuote !== null &&
     inviteQuote.selectionRevision === invitePlan.selectionRevision &&
     inviteQuote.selectionHash === invitePlan.selectionHash &&
     !inviteSummary.plan.isPending && !inviteSummary.plan.isFetching &&
     !inviteSummary.plan.isError && !inviteSummary.quote.isPending &&
-    !inviteSummary.quote.isFetching && !inviteSummary.quote.isError;
+    !inviteSummary.quote.isFetching && !inviteSummary.quote.isError);
+  const invitePublishReady = inviteEnabled ? inviteSummaryReady : inviteRollbackReady;
   const handleInvitePlanChange = useCallback((
     _plan: WizardInvitePlan | null,
     _quote: WizardInviteQuote | null,
@@ -1237,9 +1246,25 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       showToast(packagesValidation.reason ?? "Fix your packages before publishing.");
       return;
     }
+    if (!inviteEnabled) {
+      if (!inviteRollbackReady) {
+        showToast("Checking saved invite plans before publishing.");
+        return;
+      }
+      setPublishConfirmVisible(true);
+      return;
+    }
     setCheckingInvitePublish(true);
     try {
       const latest = await inviteSummary.refreshAuthoritative();
+      if (latest.quote === null) {
+        if (inviteFlag.data === false && latest.plan.selectedCount === 0) {
+          setPublishConfirmVisible(true);
+        } else {
+          showToast("Refresh the invite estimate before publishing.");
+        }
+        return;
+      }
       if (latest.quote.selectionRevision !== latest.plan.selectionRevision ||
           latest.quote.selectionHash !== latest.plan.selectionHash) {
         showToast("Refresh the invite estimate before publishing.");
@@ -1255,7 +1280,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     } finally {
       setCheckingInvitePublish(false);
     }
-  }, [tripLocationValid, tripNeedsStripe, packagesValidation, showToast, inviteSummary]);
+  }, [tripLocationValid, tripNeedsStripe, packagesValidation, showToast, inviteSummary,
+    inviteEnabled, inviteRollbackReady, inviteFlag.data]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     setPublishError(null);
@@ -1673,6 +1699,11 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               eventId={trip.id}
               brandId={trip.brandId}
               eventType="trip"
+              onProtectedFlowExit={onExit}
+              onReauthenticate={async () => {
+                await signOut();
+                router.replace("/auth");
+              }}
               onPlanChange={handleInvitePlanChange}
             />
           ) : null}
@@ -1754,7 +1785,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                     tripNeedsStripe ||
                     !tripLocationValid ||
                     !packagesValidation.ok ||
-                    !inviteSummaryReady ||
+                    !invitePublishReady ||
                     checkingInvitePublish
                   }
                   fullWidth

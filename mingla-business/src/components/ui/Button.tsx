@@ -18,6 +18,8 @@
 import React, { forwardRef, useCallback } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type {
+  AccessibilityRole,
+  AccessibilityState,
   GestureResponderEvent,
   PressableStateCallbackType,
   StyleProp,
@@ -87,6 +89,8 @@ export interface ButtonProps {
   disabled?: boolean;
   fullWidth?: boolean;
   accessibilityLabel?: string;
+  accessibilityRole?: AccessibilityRole;
+  accessibilityState?: AccessibilityState;
   testID?: string;
   style?: StyleProp<ViewStyle>;
   labelStyle?: StyleProp<TextStyle>;
@@ -162,6 +166,8 @@ export const Button = forwardRef<
     disabled = false,
     fullWidth = false,
     accessibilityLabel,
+    accessibilityRole = "button",
+    accessibilityState,
     testID,
     style,
     labelStyle,
@@ -324,8 +330,8 @@ export const Button = forwardRef<
       onPressIn={interactive ? handlePressIn : undefined}
       onPressOut={interactive ? handlePressOut : undefined}
       disabled={disabled || loading}
-      accessibilityRole="button"
-      accessibilityState={{ disabled, busy: loading }}
+      accessibilityRole={accessibilityRole}
+      accessibilityState={{ ...accessibilityState, disabled, busy: loading }}
       accessibilityLabel={accessibilityLabel ?? label}
       testID={testID}
       style={[fullWidth ? styles.fullWidth : undefined, style]}

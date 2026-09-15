@@ -96,6 +96,7 @@ export function useOfferingInvitePlan(input: {
 export function useOfferingInvitePlanSummary(input: {
   eventId: string | null;
   enabled: boolean;
+  quoteWhenEmpty?: boolean;
 }) {
   const client = useQueryClient();
   const plan = useQuery({
@@ -109,7 +110,8 @@ export function useOfferingInvitePlanSummary(input: {
       input.eventId ?? "pending",
       plan.data?.selectionRevision ?? 0,
     ),
-    enabled: input.enabled && input.eventId !== null && plan.data !== undefined,
+    enabled: input.enabled && input.eventId !== null && plan.data !== undefined &&
+      (input.quoteWhenEmpty !== false || plan.data.selectedCount > 0),
     queryFn: () => quoteWizardInvitePlan(input.eventId!, plan.data!.selectionRevision),
     staleTime: 10_000,
   });
@@ -117,13 +119,16 @@ export function useOfferingInvitePlanSummary(input: {
     if (input.eventId === null) throw new Error("wizard_invite_event_required");
     const nextPlan = await getWizardInvitePlan(input.eventId);
     client.setQueryData(marketingKeys.offeringInvites.plan(input.eventId), nextPlan);
+    if (input.quoteWhenEmpty === false && nextPlan.selectedCount === 0) {
+      return { plan: nextPlan, quote: null };
+    }
     const nextQuote = await quoteWizardInvitePlan(input.eventId, nextPlan.selectionRevision);
     client.setQueryData(
       marketingKeys.offeringInvites.quote(input.eventId, nextPlan.selectionRevision),
       nextQuote,
     );
     return { plan: nextPlan, quote: nextQuote };
-  }, [client, input.eventId]);
+  }, [client, input.eventId, input.quoteWhenEmpty]);
   const appState = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (next) => {
