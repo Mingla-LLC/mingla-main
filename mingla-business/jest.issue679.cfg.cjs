@@ -80,6 +80,10 @@ module.exports = {
     // in both visible metadata and accessibility copy, while callbacks retain
     // the original object. Paired with the MANIFEST expectedFiles registration.
     "**/__tests__/issue_3430_upcoming_kind_labels.implementor.render.test.tsx",
+    // #3430 TESTER adversarial RENDER proof: hostile lowercase enums never leak
+    // into visible/a11y copy, section labels stay mapped, and callbacks retain
+    // their original object identity and lowercase routing discriminator.
+    "**/__tests__/issue_3430_upcoming_kind_labels.tester.adversarial.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|react-native-web|@react-native-community|react-native-svg|lucide-react-native|expo|@expo)",
