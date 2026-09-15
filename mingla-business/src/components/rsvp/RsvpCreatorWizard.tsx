@@ -767,6 +767,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       brandLocation: brand,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: setCoverVideoProcessing,
+      coverVideoProcessing,
       // ORCH-1335 — RsvpStep5Setup reads this to swap its chip-in bank callout.
       chipInPayoutReady,
     };
