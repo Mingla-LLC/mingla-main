@@ -27,6 +27,9 @@ const ORIGIN = ".github/workflows/issue-2019-ari-delegated-auth.yml";
 const GUARD = ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs";
 const TESTER_SUITE = "supabase/functions/_shared/__tests__/issue_2019_agent_authorization.tester-adversarial.test.ts";
 const IMPLEMENTOR_SUITE = "supabase/functions/_shared/__tests__/issue_2019_agent_authorization.test.ts";
+// [TEST-MOD-APPROVED #3429] Match the Deno-formatted production call while
+// preserving the exact function and first two argument identities.
+const PROPOSAL_AUTHORIZATION_PATTERN = /await\s+authorizeAgentTool\s*\(\s*tool\s*,\s*gemini\.toolCall\.args\s*,/;
 const DENO_1_46_ACTION = "denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d";
 // The exact ordered argv of every leaf, in order. Options and permission flags
 // are part of this: `deno test --allow-read <files>` and nothing wider.
@@ -129,7 +132,7 @@ function check(s, manifest) {
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }
-  const proposal = s.chat.indexOf("await authorizeAgentTool(tool, gemini.toolCall.args");
+  const proposal = s.chat.search(PROPOSAL_AUTHORIZATION_PATTERN);
   const pending = s.chat.indexOf('.from("agent_pending_actions")', proposal);
   if (proposal < 0 || pending < proposal) failures.push("proposal authorization ordering broken");
   const finalArgs = s.confirm.indexOf("const finalArgs");
@@ -153,7 +156,7 @@ if (process.argv.includes("--self-test")) {
   const mutations = [
     // Pre-existing source mutants, unchanged.
     [{ ...sources, auth: sources.auth.replaceAll("biz_brand_effective_rank_for_caller", "removed_rank_rpc") }, registry],
-    [{ ...sources, chat: sources.chat.replace("await authorizeAgentTool(tool, gemini.toolCall.args", "await removed(tool, gemini.toolCall.args") }, registry],
+    [{ ...sources, chat: sources.chat.replace(PROPOSAL_AUTHORIZATION_PATTERN, "await removed(tool, gemini.toolCall.args,") }, registry],
     [{ ...sources, confirm: sources.confirm.replace('status: "executing"', 'status: "removed"') }, registry],
     [{ ...sources, auth: sources.auth.replace(/:\s*role\("/, ": removed(") }, registry],
     // [#2439 SC-15.1] Registry mutants: missing suite, wrong provider, lost push
