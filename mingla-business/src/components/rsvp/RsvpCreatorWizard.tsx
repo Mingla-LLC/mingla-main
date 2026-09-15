@@ -89,6 +89,15 @@ import { Stepper } from "../ui/Stepper";
 import type { StepperStep } from "../ui/Stepper";
 import { TopBar } from "../ui/TopBar";
 import { Toast } from "../ui/Toast";
+import {
+  InvitePeoplePublishConfirmation,
+  InvitePeopleStep,
+  InvitePlanReviewSummary,
+  type InviteNavigationState,
+} from "../invites/InvitePeopleStep";
+import type { WizardInvitePlan, WizardInviteQuote } from "../../services/offeringInvitePlanService";
+import { useOfferingInvitePlanSummary } from "../../hooks/useOfferingInvitePlan";
+import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 
 /*
  * Desktop web wizard contract restored after regression:
@@ -128,15 +137,11 @@ const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
   { title: "Where", subtitle: "Venue or online link" },
   { title: "Cover", subtitle: "Pick a cover style" },
   { title: "RSVP", subtitle: "Capacity, plus-ones, approvals" },
+  { title: "Invite people", subtitle: "Choose people from Your Book" },
   { title: "Preview", subtitle: "How it looks to guests" },
 ];
 
 const TOTAL_STEPS = STEP_DEFS.length;
-
-const STEPPER_STEPS: StepperStep[] = STEP_DEFS.map((s, i) => ({
-  id: `step-${i}`,
-  label: s.title,
-}));
 
 const DESKTOP_WIZARD_NAV_ITEMS = [
   { label: "Home", icon: "home", href: "/(tabs)/home", active: false },
@@ -200,7 +205,10 @@ export interface RsvpCreatorWizardProps {
   /** issue #3040 — see EventCreatorWizard. Route-owned server-row resolver. */
   onRequireServerDraft?: () => Promise<string>;
   onDiscardServerDraft?: (draft: DraftEvent) => Promise<void>;
-  onPublishDraft?: (draft: DraftEvent) => Promise<PublishedEventSlug>;
+  onPublishDraft?: (draft: DraftEvent, invites: {
+    selectionRevision: number | null;
+    confirmed: boolean;
+  }) => Promise<PublishedEventSlug>;
   serverSaveState?: {
     isSaving: boolean;
     hasError: boolean;
@@ -273,6 +281,54 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   // rendered by ConfirmDialog's errorMessage slot. Mirrors discardError exactly.
   // See handleConfirmPublish for why this is not a Toast.
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [invitePlan, setInvitePlan] = useState<WizardInvitePlan | null>(null);
+  const [inviteQuote, setInviteQuote] = useState<WizardInviteQuote | null>(null);
+  const [inviteNavigation, setInviteNavigation] = useState<InviteNavigationState | null>(null);
+  const [checkingInvitePublish, setCheckingInvitePublish] = useState(false);
+  const inviteFlag = useFeatureFlag("business_wizard_invite_selection_v1");
+  const persistedInvite = useOfferingInvitePlanSummary({
+    eventId: /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(liveDraft.id) ? liveDraft.id : null,
+    enabled: true,
+  });
+  const inviteEnabled = inviteFlag.data === true ||
+    (persistedInvite.plan.data?.selectedCount ?? 0) > 0;
+  useEffect(() => {
+    if (persistedInvite.plan.data !== undefined) setInvitePlan(persistedInvite.plan.data);
+    if (persistedInvite.quote.data !== undefined) setInviteQuote(persistedInvite.quote.data);
+  }, [persistedInvite.plan.data, persistedInvite.quote.data]);
+  useEffect(() => {
+    if (inviteFlag.data === false && persistedInvite.plan.data?.selectedCount === 0) {
+      setCurrentStep((value) => value === 5 ? 6 : value);
+    }
+  }, [inviteFlag.data, persistedInvite.plan.data?.selectedCount]);
+  const inviteSummaryReady = invitePlan !== null && inviteQuote !== null &&
+    inviteQuote.selectionRevision === invitePlan.selectionRevision &&
+    inviteQuote.selectionHash === invitePlan.selectionHash &&
+    !persistedInvite.plan.isPending && !persistedInvite.plan.isFetching &&
+    !persistedInvite.plan.isError && !persistedInvite.quote.isPending &&
+    !persistedInvite.quote.isFetching && !persistedInvite.quote.isError;
+  const handleInvitePlanChange = useCallback((
+    plan: WizardInvitePlan | null,
+    quote: WizardInviteQuote | null,
+    navigation: InviteNavigationState,
+  ) => {
+    setInvitePlan(plan);
+    setInviteQuote(quote);
+    setInviteNavigation(navigation);
+  }, []);
+  const visibleStepDefs = useMemo(
+    () => STEP_DEFS.map((definition, index) => ({ definition, index }))
+      .filter(({ index }) => inviteEnabled || index !== 5),
+    [inviteEnabled],
+  );
+  const visibleStepperSteps = useMemo<StepperStep[]>(
+    () => visibleStepDefs.map(({ definition, index }) => ({
+      id: `step-${index + 1}`,
+      label: definition.title,
+    })),
+    [visibleStepDefs],
+  );
+  const visibleStepNumber = !inviteEnabled && currentStep === 6 ? 6 : currentStep + 1;
   const [toast, setToast] = useState<ToastState>({
     visible: false,
     message: "",
@@ -634,9 +690,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   // Dock "Back" button — decrement step. Step 1's dock has no Back
   // (chrome X handles wizard exit instead).
   const handleStepBack = useCallback((): void => {
+    if (currentStep === 5 && inviteNavigation?.phase !== "ready") return;
     setShowStepErrors(false);
-    setCurrentStep((prev) => Math.max(0, prev - 1));
-  }, []);
+    setCurrentStep((prev) => prev === 6 && !inviteEnabled ? 4 : Math.max(0, prev - 1));
+  }, [currentStep, inviteEnabled, inviteNavigation?.phase]);
 
   const handleCloseDiscardDialog = useCallback((): void => {
     if (isDiscarding) return;
@@ -659,6 +716,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   }, [discardDraft, liveDraft, onExit]);
 
   const handleContinue = useCallback((): void => {
+    if (currentStep === 5) {
+      if (inviteNavigation?.phase === "error") inviteNavigation.retry();
+      if (inviteNavigation?.phase !== "ready") return;
+    }
     const errs = validateRsvpStep(currentStep, liveDraft);
     if (errs.length > 0) {
       setShowStepErrors(true);
@@ -666,22 +727,38 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     }
     // Advance.
     setShowStepErrors(false);
-    setCurrentStep((prev) => Math.min(TOTAL_STEPS - 1, prev + 1));
-  }, [currentStep, liveDraft]);
+    setCurrentStep((prev) => prev === 4 && !inviteEnabled
+      ? 6
+      : Math.min(TOTAL_STEPS - 1, prev + 1));
+  }, [currentStep, liveDraft, inviteEnabled, inviteNavigation]);
 
   // ---- Publish gate (no Stripe — RSVP is moneyless) ----
 
-  const handlePublishTap = useCallback((): void => {
+  const handlePublishTap = useCallback(async (): Promise<void> => {
     const errs = validateRsvpPublish(liveDraft);
     if (errs.length > 0) {
       setPendingErrors(errs);
       setErrorsSheetVisible(true);
       return;
     }
-    // Happy path → confirm dialog. Clear any error left by a previous attempt.
-    setPublishError(null);
-    setPublishConfirmVisible(true);
-  }, [liveDraft]);
+    setCheckingInvitePublish(true);
+    try {
+      const latest = await persistedInvite.refreshAuthoritative();
+      setInvitePlan(latest.plan);
+      setInviteQuote(latest.quote);
+      if (latest.quote.selectionRevision !== latest.plan.selectionRevision ||
+          latest.quote.selectionHash !== latest.plan.selectionHash) {
+        handleShowToast("Checking the latest invite delivery estimate…");
+        return;
+      }
+      setPublishError(null);
+      setPublishConfirmVisible(true);
+    } catch {
+      handleShowToast("Refresh the invite estimate before publishing.");
+    } finally {
+      setCheckingInvitePublish(false);
+    }
+  }, [liveDraft, handleShowToast, persistedInvite]);
 
   const handleClosePublishDialog = useCallback((): void => {
     if (isPublishing) return;
@@ -736,7 +813,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         clearTimeout(autosaveTimerRef.current);
         autosaveTimerRef.current = null;
       }
-      const slug = await onPublishDraft(draftToPublish);
+      const slug = await onPublishDraft(draftToPublish, {
+        selectionRevision: invitePlan?.selectionRevision ?? null,
+        confirmed: (invitePlan?.selectedCount ?? 0) > 0,
+      });
       deleteDraft(draftToPublish.id);
       setIsPublishing(false);
       setPublishConfirmVisible(false);
@@ -796,6 +876,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     deleteDraft,
     handleShowToast,
     onOpenStripeOnboard,
+    invitePlan,
   ]);
 
   const handleFixJump = useCallback((step: number): void => {
@@ -805,7 +886,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   }, []);
 
   // RSVP publish is gated ONLY on a still-processing cover video (no Stripe gate).
-  const publishDisabled = coverVideoProcessing;
+  const publishDisabled = coverVideoProcessing || !inviteSummaryReady || checkingInvitePublish;
 
   // Single-date only (steering #4) → static modal copy.
   const publishModalTitle = "Publish RSVP?";
@@ -843,12 +924,14 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       case 4:
         return <RsvpStep5Setup {...baseProps} />;
       case 5:
+        return <InvitePeopleStep eventId={/^[0-9a-f-]{36}$/.test(liveDraft.id) ? liveDraft.id : null}
+          brandId={liveDraft.brandId} eventType="rsvp"
+          enabled={inviteEnabled}
+          onPlanChange={handleInvitePlanChange} />;
+      case 6:
         return (
-          <RsvpStep7Preview
-            {...baseProps}
-            brand={brand}
-            onTapMiniCard={onOpenPreview}
-          />
+          <><RsvpStep7Preview {...baseProps} brand={brand} onTapMiniCard={onOpenPreview} />
+          <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote} /></>
         );
       default:
         return <CreatorStep1Basics {...baseProps} />;
@@ -918,7 +1001,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         </Text>
       </View>
       <View style={styles.desktopStepList}>
-        {STEP_DEFS.map((step, index) => {
+        {visibleStepDefs.map(({ definition: step, index }, ordinal) => {
           const active = index === currentStep;
           return (
             <View
@@ -940,7 +1023,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
                     active ? styles.desktopStepIndexTextActive : null,
                   ]}
                 >
-                  {index + 1}
+                  {ordinal + 1}
                 </Text>
               </View>
               <View style={styles.desktopStepCopy}>
@@ -982,7 +1065,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
               ? "rsvp_setup"
               : "preview"
       }
-      previewActive={currentStep === 5}
+      previewActive={currentStep === 6}
       keyboardVisible={keyboardVisible}
       navigateTo={(step, _focus) => {
         setCurrentStep(step);
@@ -1027,13 +1110,13 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
           />
           <View style={styles.stepperWrap}>
             <Stepper
-              steps={STEPPER_STEPS}
-              currentIndex={currentStep}
+              steps={visibleStepperSteps}
+              currentIndex={visibleStepNumber - 1}
               showCaption={false}
             />
           </View>
           <Text style={styles.stepCounter}>
-            {currentStep + 1}/{TOTAL_STEPS}
+            {visibleStepNumber}/{visibleStepDefs.length}
           </Text>
         </View>
       )}
@@ -1042,8 +1125,8 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       {isWideDesktop ? null : (
       <View style={styles.subtitleRow}>
         <Text style={styles.subtitle}>
-              {brand?.displayName ?? "Brand"} · Step {currentStep + 1} of{" "}
-              {TOTAL_STEPS}
+              {brand?.displayName ?? "Brand"} · Step {visibleStepNumber} of{" "}
+              {visibleStepDefs.length}
         </Text>
         {serverSaveState !== undefined ? (
           <Text
@@ -1090,7 +1173,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.eyebrow}>
-          Step {currentStep + 1} of {TOTAL_STEPS}
+          Step {visibleStepNumber} of {visibleStepDefs.length}
         </Text>
               <Text style={styles.stepTitle}>
                 {STEP_DEFS[currentStep].title}
@@ -1139,8 +1222,8 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
                 label="Publish RSVP"
                 variant="primary"
                 size="md"
-                onPress={handlePublishTap}
-                loading={isPublishing}
+                onPress={() => void handlePublishTap()}
+                loading={isPublishing || checkingInvitePublish}
                 disabled={publishDisabled || isPublishing}
                 fullWidth
               />
@@ -1164,15 +1247,18 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
                 variant="ghost"
                 size="md"
                 onPress={handleStepBack}
+                disabled={currentStep === 5 && inviteNavigation?.phase !== "ready"}
                 fullWidth
               />
             </View>
             <View style={styles.dockPrimaryCell}>
               <Button
-                label="Continue"
+                label={currentStep === 5 ? inviteNavigation?.primaryLabel ?? "Checking…" : "Continue"}
                 variant="primary"
                 size="md"
                 onPress={handleContinue}
+                loading={currentStep === 5 && inviteNavigation?.phase === "saving"}
+                disabled={currentStep === 5 && inviteNavigation?.blocked === true}
                 fullWidth
               />
             </View>
@@ -1199,22 +1285,17 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         destructive
       />
 
-      <ConfirmDialog
-        visible={publishConfirmVisible}
-        onClose={handleClosePublishDialog}
-        onConfirm={handleConfirmPublish}
-        title={publishModalTitle}
-        description="Your invite link goes live immediately. Guests can RSVP right away. You can edit details after publishing."
-        confirmLabel="Publish"
-        confirmLoading={isPublishing}
-        confirmDisabled={isPublishing}
-        closeDisabled={isPublishing}
-        // issue #3047 — the failure surface. A publish that fails keeps this
-        // dialog up and shows the reason right here; the Confirm button is the
-        // retry. Presenting a Toast instead loses the message to the iOS
-        // modal-dismiss race (see handleConfirmPublish).
-        errorMessage={publishError}
-      />
+      {(invitePlan?.selectedCount ?? 0) > 0 ? (
+        <InvitePeoplePublishConfirmation visible={publishConfirmVisible} eventType="rsvp"
+          plan={invitePlan} quote={inviteQuote} publishing={isPublishing} errorMessage={publishError}
+          onClose={handleClosePublishDialog} onConfirm={handleConfirmPublish} />
+      ) : (
+        <ConfirmDialog visible={publishConfirmVisible} onClose={handleClosePublishDialog}
+          onConfirm={handleConfirmPublish} title={publishModalTitle}
+          description="Your invite link goes live immediately. Guests can RSVP right away. You can edit details after publishing."
+          confirmLabel="Publish" confirmLoading={isPublishing} confirmDisabled={isPublishing}
+          closeDisabled={isPublishing} errorMessage={publishError} />
+      )}
 
       <PublishErrorsSheet
         visible={errorsSheetVisible}

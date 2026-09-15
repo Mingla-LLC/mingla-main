@@ -109,6 +109,18 @@ import type { StepperStep } from "../ui/Stepper";
 import { TopBar } from "../ui/TopBar";
 import { Toast } from "../ui/Toast";
 import { createDeferredTurnoutIntelProvider } from "../intel/createDeferredTurnoutIntelProvider";
+import {
+  InvitePeoplePublishConfirmation,
+  InvitePeopleStep,
+  InvitePlanReviewSummary,
+  type InviteNavigationState,
+} from "../invites/InvitePeopleStep";
+import type {
+  WizardInvitePlan,
+  WizardInviteQuote,
+} from "../../services/offeringInvitePlanService";
+import { useOfferingInvitePlanSummary } from "../../hooks/useOfferingInvitePlan";
+import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 
 /*
  * Desktop web wizard contract restored after regression:
@@ -150,15 +162,11 @@ const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
   { title: "Tickets", subtitle: "Types, prices, capacity" },
   // issue #3284 — the refund policy is now the first Settings block.
   { title: "Settings", subtitle: "Refunds, visibility, approvals" },
+  { title: "Invite people", subtitle: "Choose people from Your Book" },
   { title: "Preview", subtitle: "How it looks to guests" },
 ];
 
 const TOTAL_STEPS = STEP_DEFS.length;
-
-const STEPPER_STEPS: StepperStep[] = STEP_DEFS.map((s, i) => ({
-  id: `step-${i}`,
-  label: s.title,
-}));
 
 const DESKTOP_WIZARD_NAV_ITEMS = [
   { label: "Home", icon: "home", href: "/(tabs)/home", active: false },
@@ -194,6 +202,11 @@ export interface PublishedEventSlug {
   occurrenceCount?: number;
 }
 
+export interface WizardInvitePublishReceipt {
+  selectionRevision: number | null;
+  confirmed: boolean;
+}
+
 export interface EventCreatorWizardProps {
   /** Resolved draft from useDraftById in the route handler. */
   draft: DraftEvent;
@@ -226,7 +239,10 @@ export interface EventCreatorWizardProps {
    */
   onRequireServerDraft?: () => Promise<string>;
   onDiscardServerDraft?: (draft: DraftEvent) => Promise<void>;
-  onPublishDraft?: (draft: DraftEvent) => Promise<PublishedEventSlug>;
+  onPublishDraft?: (
+    draft: DraftEvent,
+    invites: WizardInvitePublishReceipt,
+  ) => Promise<PublishedEventSlug>;
   serverSaveState?: {
     isSaving: boolean;
     hasError: boolean;
@@ -295,6 +311,54 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     active: false, started: false, base: null,
   });
   const [discardError, setDiscardError] = useState<string | null>(null);
+  const [invitePlan, setInvitePlan] = useState<WizardInvitePlan | null>(null);
+  const [inviteQuote, setInviteQuote] = useState<WizardInviteQuote | null>(null);
+  const [inviteNavigation, setInviteNavigation] = useState<InviteNavigationState | null>(null);
+  const [checkingInvitePublish, setCheckingInvitePublish] = useState(false);
+  const inviteFlag = useFeatureFlag("business_wizard_invite_selection_v1");
+  const persistedInvite = useOfferingInvitePlanSummary({
+    eventId: /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(liveDraft.id) ? liveDraft.id : null,
+    enabled: true,
+  });
+  const inviteEnabled = inviteFlag.data === true ||
+    (persistedInvite.plan.data?.selectedCount ?? 0) > 0;
+  useEffect(() => {
+    if (persistedInvite.plan.data !== undefined) setInvitePlan(persistedInvite.plan.data);
+    if (persistedInvite.quote.data !== undefined) setInviteQuote(persistedInvite.quote.data);
+  }, [persistedInvite.plan.data, persistedInvite.quote.data]);
+  useEffect(() => {
+    if (inviteFlag.data === false && persistedInvite.plan.data?.selectedCount === 0) {
+      setCurrentStep((value) => value === 6 ? 7 : value);
+    }
+  }, [inviteFlag.data, persistedInvite.plan.data?.selectedCount]);
+  const inviteSummaryReady = invitePlan !== null && inviteQuote !== null &&
+    inviteQuote.selectionRevision === invitePlan.selectionRevision &&
+    inviteQuote.selectionHash === invitePlan.selectionHash &&
+    !persistedInvite.plan.isPending && !persistedInvite.plan.isFetching &&
+    !persistedInvite.plan.isError && !persistedInvite.quote.isPending &&
+    !persistedInvite.quote.isFetching && !persistedInvite.quote.isError;
+  const handleInvitePlanChange = useCallback((
+    plan: WizardInvitePlan | null,
+    quote: WizardInviteQuote | null,
+    navigation: InviteNavigationState,
+  ) => {
+    setInvitePlan(plan);
+    setInviteQuote(quote);
+    setInviteNavigation(navigation);
+  }, []);
+  const visibleStepDefs = useMemo(
+    () => STEP_DEFS.map((definition, index) => ({ definition, index }))
+      .filter(({ index }) => inviteEnabled || index !== 6),
+    [inviteEnabled],
+  );
+  const visibleStepperSteps = useMemo<StepperStep[]>(
+    () => visibleStepDefs.map(({ definition, index }) => ({
+      id: `step-${index + 1}`,
+      label: definition.title,
+    })),
+    [visibleStepDefs],
+  );
+  const visibleStepNumber = !inviteEnabled && currentStep === 7 ? 7 : currentStep + 1;
   const [toast, setToast] = useState<ToastState>({
     visible: false,
     message: "",
@@ -660,9 +724,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // Dock "Back" button — decrement step. Step 1's dock has no Back
   // (chrome X handles wizard exit instead).
   const handleStepBack = useCallback((): void => {
+    if (currentStep === 6 && inviteNavigation?.phase !== "ready") return;
     setShowStepErrors(false);
-    setCurrentStep((prev) => Math.max(0, prev - 1));
-  }, []);
+    setCurrentStep((prev) => prev === 7 && !inviteEnabled ? 5 : Math.max(0, prev - 1));
+  }, [currentStep, inviteEnabled, inviteNavigation?.phase]);
 
   const handleCloseDiscardDialog = useCallback((): void => {
     if (isDiscarding) return;
@@ -685,6 +750,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   }, [discardDraft, liveDraft, onExit]);
 
   const handleContinue = useCallback((): void => {
+    if (currentStep === 6) {
+      if (inviteNavigation?.phase === "error") inviteNavigation.retry();
+      if (inviteNavigation?.phase !== "ready") return;
+    }
     const errs = validateStep(currentStep, liveDraft);
     if (errs.length > 0) {
       setShowStepErrors(true);
@@ -692,12 +761,14 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     }
     // Advance.
     setShowStepErrors(false);
-    setCurrentStep((prev) => Math.min(TOTAL_STEPS - 1, prev + 1));
-  }, [currentStep, liveDraft]);
+    setCurrentStep((prev) => prev === 5 && !inviteEnabled
+      ? 7
+      : Math.min(TOTAL_STEPS - 1, prev + 1));
+  }, [currentStep, liveDraft, inviteEnabled, inviteNavigation]);
 
   // ---- Publish gate ----
 
-  const handlePublishTap = useCallback((): void => {
+  const handlePublishTap = useCallback(async (): Promise<void> => {
     if (!coverAuthority.isReady) return;
     const errs = validatePublish(liveDraft, stripeStatus);
     const stripeBlocking = errs.find(
@@ -722,9 +793,24 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       handleShowToast("Connect a bank to publish paid tickets.");
       return;
     }
-    // J-E2: happy path → confirm dialog.
-    setPublishConfirmVisible(true);
-  }, [liveDraft, stripeStatus, handleShowToast, coverAuthority.isReady]);
+    setCheckingInvitePublish(true);
+    try {
+      const latest = await persistedInvite.refreshAuthoritative();
+      setInvitePlan(latest.plan);
+      setInviteQuote(latest.quote);
+      if (latest.quote.selectionRevision !== latest.plan.selectionRevision ||
+          latest.quote.selectionHash !== latest.plan.selectionHash) {
+        handleShowToast("Checking the latest invite delivery estimate…");
+        return;
+      }
+      setPublishConfirmVisible(true);
+    } catch {
+      handleShowToast("Refresh the invite estimate before publishing.");
+    } finally {
+      setCheckingInvitePublish(false);
+    }
+  }, [liveDraft, stripeStatus, handleShowToast, persistedInvite,
+    coverAuthority.isReady]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     if (isPublishing) return;
@@ -745,7 +831,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         clearTimeout(autosaveTimerRef.current);
         autosaveTimerRef.current = null;
       }
-      const slug = await onPublishDraft(draftToPublish);
+      const slug = await onPublishDraft(draftToPublish, {
+        selectionRevision: invitePlan?.selectionRevision ?? null,
+        confirmed: (invitePlan?.selectedCount ?? 0) > 0,
+      });
       deleteDraft(draftToPublish.id);
       setIsPublishing(false);
       setPublishConfirmVisible(false);
@@ -819,6 +908,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     handleShowToast,
     onOpenPaymentOnboarding,
     coverAuthority.isReady,
+    invitePlan,
   ]);
 
   const handleFixJump = useCallback((step: number): void => {
@@ -842,7 +932,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // connected. The Stripe-blocked-card in Step 7 body owns the
   // "Connect Stripe" CTA — the dock banner was removed for cleaner UX.
   const publishDisabled =
-    publishability.status === "blocked-stripe" || coverVideoProcessing || !coverAuthority.isReady;
+    publishability.status === "blocked-stripe" || coverVideoProcessing ||
+    !coverAuthority.isReady || !inviteSummaryReady || checkingInvitePublish;
 
   // Publish modal copy varies per whenMode (Cycle 4 spec §3.8.2).
   const publishModalTitle = useMemo<string>(() => {
@@ -915,13 +1006,15 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       case 5:
         return <CreatorStep6Settings {...baseProps} />;
       case 6:
+        return <InvitePeopleStep eventId={/^[0-9a-f-]{36}$/.test(liveDraft.id) ? liveDraft.id : null}
+          brandId={liveDraft.brandId} eventType="event"
+          enabled={inviteEnabled}
+          onPlanChange={handleInvitePlanChange} />;
+      case 7:
         return (
-          <CreatorStep7Preview
-            {...baseProps}
-            brand={brand}
-            onTapMiniCard={onOpenPreview}
-            onConnectStripe={handleConnectStripe}
-          />
+          <><CreatorStep7Preview {...baseProps} brand={brand} onTapMiniCard={onOpenPreview}
+            onConnectStripe={handleConnectStripe} />
+          <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote} /></>
         );
       default:
         return <CreatorStep1Basics {...baseProps} />;
@@ -991,7 +1084,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         </Text>
       </View>
       <View style={styles.desktopStepList}>
-        {STEP_DEFS.map((step, index) => {
+        {visibleStepDefs.map(({ definition: step, index }, ordinal) => {
           const active = index === currentStep;
           return (
             <View
@@ -1013,7 +1106,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
                     active ? styles.desktopStepIndexTextActive : null,
                   ]}
                 >
-                  {index + 1}
+                  {ordinal + 1}
                 </Text>
               </View>
               <View style={styles.desktopStepCopy}>
@@ -1055,7 +1148,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
               ? "tickets"
               : "preview"
       }
-      previewActive={currentStep === 6}
+      previewActive={currentStep === 7}
       keyboardVisible={keyboardVisible}
       navigateTo={(step, _focus) => {
         setCurrentStep(step);
@@ -1100,13 +1193,13 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
           />
           <View style={styles.stepperWrap}>
             <Stepper
-              steps={STEPPER_STEPS}
-              currentIndex={currentStep}
+              steps={visibleStepperSteps}
+              currentIndex={visibleStepNumber - 1}
               showCaption={false}
             />
           </View>
           <Text style={styles.stepCounter}>
-            {currentStep + 1}/{TOTAL_STEPS}
+            {visibleStepNumber}/{visibleStepDefs.length}
           </Text>
         </View>
       )}
@@ -1115,8 +1208,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       {isWideDesktop ? null : (
       <View style={styles.subtitleRow}>
         <Text style={styles.subtitle}>
-              {brand?.displayName ?? "Brand"} · Step {currentStep + 1} of{" "}
-              {TOTAL_STEPS}
+              {brand?.displayName ?? "Brand"} · Step {visibleStepNumber} of{" "}
+              {visibleStepDefs.length}
         </Text>
         {serverSaveState !== undefined ? (
           <Text
@@ -1166,7 +1259,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.eyebrow}>
-          Step {currentStep + 1} of {TOTAL_STEPS}
+          Step {visibleStepNumber} of {visibleStepDefs.length}
         </Text>
               <Text style={styles.stepTitle}>
                 {STEP_DEFS[currentStep].title}
@@ -1215,8 +1308,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
                 label="Publish event"
                 variant="primary"
                 size="md"
-                onPress={handlePublishTap}
-                loading={isPublishing}
+                onPress={() => void handlePublishTap()}
+                loading={isPublishing || checkingInvitePublish}
                 disabled={publishDisabled || isPublishing}
                 fullWidth
               />
@@ -1240,15 +1333,18 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
                 variant="ghost"
                 size="md"
                 onPress={handleStepBack}
+                disabled={currentStep === 6 && inviteNavigation?.phase !== "ready"}
                 fullWidth
               />
             </View>
             <View style={styles.dockPrimaryCell}>
               <Button
-                label="Continue"
+                label={currentStep === 6 ? inviteNavigation?.primaryLabel ?? "Checking…" : "Continue"}
                 variant="primary"
                 size="md"
                 onPress={handleContinue}
+                loading={currentStep === 6 && inviteNavigation?.phase === "saving"}
+                disabled={currentStep === 6 && inviteNavigation?.blocked === true}
                 fullWidth
               />
             </View>
@@ -1275,17 +1371,17 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         destructive
       />
 
-      <ConfirmDialog
-        visible={publishConfirmVisible}
-        onClose={() => setPublishConfirmVisible(false)}
-        onConfirm={handleConfirmPublish}
-        title={publishModalTitle}
-        description="Public sale starts immediately. You can edit details after publishing."
-        confirmLabel="Publish"
-        confirmLoading={isPublishing}
-        confirmDisabled={isPublishing}
-        closeDisabled={isPublishing}
-      />
+      {(invitePlan?.selectedCount ?? 0) > 0 ? (
+        <InvitePeoplePublishConfirmation visible={publishConfirmVisible} eventType="event"
+          plan={invitePlan} quote={inviteQuote} publishing={isPublishing}
+          onClose={() => setPublishConfirmVisible(false)} onConfirm={handleConfirmPublish} />
+      ) : (
+        <ConfirmDialog visible={publishConfirmVisible} onClose={() => setPublishConfirmVisible(false)}
+          onConfirm={handleConfirmPublish} title={publishModalTitle}
+          description="Public sale starts immediately. You can edit details after publishing."
+          confirmLabel="Publish" confirmLoading={isPublishing} confirmDisabled={isPublishing}
+          closeDisabled={isPublishing} />
+      )}
 
       <PublishErrorsSheet
         visible={errorsSheetVisible}

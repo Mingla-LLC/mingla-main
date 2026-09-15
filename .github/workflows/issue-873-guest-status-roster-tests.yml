@@ -8,6 +8,32 @@ on:
       - "supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql"
       - "supabase/functions/guest-roster-actions/**"
       - "supabase/functions/offering-invite-dispatch/index.ts"
+      # #1780 — wizard-selection migration, worker/quote contracts, and the
+      # four Business creation flows extend this lane's existing invite rail.
+      - "supabase/migrations/20270709001780_issue_1780_wizard_invite_plans.sql"
+      - "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql"
+      - "supabase/functions/offering-invite-dispatch/issue_1780_wizard_worker.happy.test.ts"
+      - "supabase/functions/_shared/offeringInviteQuote.ts"
+      - "supabase/functions/_shared/offeringInviteQuote.test.ts"
+      - "mingla-business/src/components/invites/**"
+      - "mingla-business/src/components/event/EventCreatorWizard.tsx"
+      - "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx"
+      - "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx"
+      - "mingla-business/src/components/trip/TripCreatorWizard.tsx"
+      - "mingla-business/app/event/[id]/edit.tsx"
+      - "mingla-business/app/rsvp/[id]/edit.tsx"
+      - "mingla-business/src/hooks/useOfferingInvitePlan.ts"
+      - "mingla-business/src/hooks/marketing/marketingKeys.ts"
+      - "mingla-business/src/hooks/useBusinessEvents.ts"
+      - "mingla-business/src/hooks/useRsvpEvents.ts"
+      - "mingla-business/src/hooks/useTrips.ts"
+      - "mingla-business/jest.issue1780.render.cjs"
+      - "mingla-business/package.json"
+      - "mingla-business/src/services/offeringInvitePlanService.ts"
+      - "mingla-business/src/services/businessEvents.ts"
+      - "mingla-business/src/services/rsvpEvents.ts"
+      - "mingla-business/src/services/tripsService.ts"
+      - "mingla-business/src/services/__tests__/issue_1780_wizard_invites.implementor.test.ts"
       - "supabase/functions/brand-people-export/index.ts"
       - "supabase/config.toml"
       - ".github/workflows/issue-873-guest-status-roster-tests.yml"
@@ -22,6 +48,32 @@ on:
       - "supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql"
       - "supabase/functions/guest-roster-actions/**"
       - "supabase/functions/offering-invite-dispatch/index.ts"
+      # #1780 — wizard-selection migration, worker/quote contracts, and the
+      # four Business creation flows extend this lane's existing invite rail.
+      - "supabase/migrations/20270709001780_issue_1780_wizard_invite_plans.sql"
+      - "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql"
+      - "supabase/functions/offering-invite-dispatch/issue_1780_wizard_worker.happy.test.ts"
+      - "supabase/functions/_shared/offeringInviteQuote.ts"
+      - "supabase/functions/_shared/offeringInviteQuote.test.ts"
+      - "mingla-business/src/components/invites/**"
+      - "mingla-business/src/components/event/EventCreatorWizard.tsx"
+      - "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx"
+      - "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx"
+      - "mingla-business/src/components/trip/TripCreatorWizard.tsx"
+      - "mingla-business/app/event/[id]/edit.tsx"
+      - "mingla-business/app/rsvp/[id]/edit.tsx"
+      - "mingla-business/src/hooks/useOfferingInvitePlan.ts"
+      - "mingla-business/src/hooks/marketing/marketingKeys.ts"
+      - "mingla-business/src/hooks/useBusinessEvents.ts"
+      - "mingla-business/src/hooks/useRsvpEvents.ts"
+      - "mingla-business/src/hooks/useTrips.ts"
+      - "mingla-business/jest.issue1780.render.cjs"
+      - "mingla-business/package.json"
+      - "mingla-business/src/services/offeringInvitePlanService.ts"
+      - "mingla-business/src/services/businessEvents.ts"
+      - "mingla-business/src/services/rsvpEvents.ts"
+      - "mingla-business/src/services/tripsService.ts"
+      - "mingla-business/src/services/__tests__/issue_1780_wizard_invites.implementor.test.ts"
       - "supabase/functions/brand-people-export/index.ts"
       - "supabase/config.toml"
       - ".github/workflows/issue-873-guest-status-roster-tests.yml"
@@ -48,9 +100,12 @@ jobs:
         with:
           deno-version: v2.x
       - run: >-
-          deno test --allow-env --allow-read
+          deno test --allow-env --allow-read --allow-net
           supabase/functions/guest-roster-actions/issue_0873_guest_roster_actions.test.ts
           supabase/functions/guest-roster-actions/issue_873_actions.tester_adversarial.test.ts
+          supabase/functions/offering-invite-dispatch/issue_1770_dispatch.happy.test.ts
+          supabase/functions/offering-invite-dispatch/issue_1780_wizard_worker.happy.test.ts
+          supabase/functions/_shared/offeringInviteQuote.test.ts
 
   business-render:
     if: ${{ github.event.pull_request.draft != true }}
@@ -69,6 +124,8 @@ jobs:
           cache-dependency-path: mingla-business/package-lock.json
       - run: npm ci
       - run: npx jest --config jest.issue873.render.cjs --runInBand
+      - run: npx jest --runInBand src/services/__tests__/issue_1780_wizard_invites.implementor.test.ts
+      - run: npx jest --config jest.issue1780.render.cjs --runInBand
 
   issue-873-pg17:
     if: ${{ github.event.pull_request.draft != true }}
@@ -112,3 +169,9 @@ jobs:
         run: >-
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
           -f supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql
+      - name: Prove creation-plan snapshots and atomic publish intent
+        env:
+          PGPASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql

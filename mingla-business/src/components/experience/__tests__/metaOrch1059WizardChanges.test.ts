@@ -140,7 +140,9 @@ describe("CHANGE 1 — validation errors are gated, never shown on step entry", 
   test("goNext resets showStepErrors to false before advancing (no carry-over on entry)", () => {
     const src = read("experience/ExperienceCreatorWizard.tsx");
     // The successful branch of goNext clears the flag, then advances.
-    expect(src).toMatch(/setShowStepErrors\(false\);[\s\S]*?setStep\(\(prev\) => Math\.min\(5/);
+    // [TEST-MOD-APPROVED #1780] Creation can now end at Step 7 while live edit
+    // retains five steps, so the bound is derived from the active flow.
+    expect(src).toMatch(/setShowStepErrors\(false\);[\s\S]*?setStep\(\(prev\) => Math\.min\(finalStep/);
   });
 
   test("draft create on leaving Step 1 does not toast premature stop errors (server gate is publish-only)", () => {
