@@ -722,8 +722,12 @@ describe("#3314 P — the Business draft preview carries the organiser's setting
 describe("#3314 S — the remaining hosts wire the same rule", () => {
   test("S-1 buyer-web checkout passes the resolved flag to every quantity row", () => {
     const code = codeOf("mingla-business/app/checkout/[eventId]/index.tsx");
+    // [TEST-MOD-APPROVED #3314] Follow-up (migration 20270704003314): the call
+    // gains exactly one input, `bundleSetting`, between the two it already had.
+    // Both original inputs are still pinned verbatim, in the same order; the new
+    // input is pinned here and in issue_3314_bundle_hide_remaining.implementor.
     expect(code).toMatch(
-      /resolveHideRemainingCount\(\{\s*organiserSetting: event\?\.hideRemainingCount === true \? true : null,\s*socialProof: cachedSocialProof,\s*\}\)/,
+      /resolveHideRemainingCount\(\{\s*organiserSetting: event\?\.hideRemainingCount === true \? true : null,\s*bundleSetting: publicEventQuery\.data\?\.hideRemainingCount \?\? null,\s*socialProof: cachedSocialProof,\s*\}\)/,
     );
     // It reads the entry the event page's social-proof query wrote: the key
     // literal must stay equal to `socialProofKeys.summary(eventId)`.
@@ -740,8 +744,13 @@ describe("#3314 S — the remaining hosts wire the same rule", () => {
     const code = codeOf(
       "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
     );
-    expect(code).toContain(
-      "const hideRemainingCount = socialProofQuery.data?.hideRemainingCount !== false;",
+    // [TEST-MOD-APPROVED #3314] Follow-up (migration 20270704003314): the screen
+    // now reads the id-checked bundle answer first. The #3360 property this line
+    // pinned — unknown (loading or no summary) hides the count — is kept by the
+    // final clause, and "any hide wins" is added. Pinned in full in
+    // issue_3314_bundle_hide_remaining.implementor (S-4).
+    expect(code).toMatch(
+      /const hideRemainingCount =\s*bundleHideRemainingCount === true \|\|\s*socialProofQuery\.data\?\.hideRemainingCount === true \|\|\s*\(bundleHideRemainingCount !== false &&\s*socialProofQuery\.data\?\.hideRemainingCount !== false\);/,
     );
     // Both branches of the body's event (deck seed and direct bundle) carry it.
     const bodyEvent = code.slice(

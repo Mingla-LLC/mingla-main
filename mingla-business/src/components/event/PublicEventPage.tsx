@@ -204,6 +204,13 @@ interface PublicEventPageAdapterProps {
    * bundle read.
    */
   refundPolicyState?: RefundPolicyReadState;
+  /**
+   * issue #3314 — the organiser's "Hide remaining count" read from the SAME
+   * bundle that served the event (`PublicEventDetail.hideRemainingCount`), public
+   * or unlisted. `null`/omitted = the payload did not carry it; the page then
+   * falls back to the social-proof read, still fail-closed.
+   */
+  bundleHideRemainingCount?: boolean | null;
 }
 
 const mapTicket = (t: TicketStub): PublicTicketProps => ({
@@ -456,6 +463,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   multiDatePricingMode = "per_day",
   onRetryOccurrences,
   refundPolicyState = UNKNOWN_REFUND_POLICY_STATE,
+  bundleHideRemainingCount = null,
 }) => {
   const router = useRouter();
   // ORCH-1295 [chip-in-post-payment-polish] — BUG 1: the chip-in web return lands
@@ -718,9 +726,17 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // count renders (pill, ticket box, desktop sticky panel). This is the shared
   // `resolveHideRemainingCount` rule with the organiser setting unknown unless
   // true — inlined because this adapter's close-button harness pins its imports.
+  //
+  // Follow-up (migration 20270704003314): the bundle now carries the setting
+  // itself, for public AND unlisted events, so its answer comes first and needs
+  // no second read. Any source saying "hide" still wins; social proof is only
+  // the fallback for a payload from before the migration.
   const hideRemainingCount =
     event.hideRemainingCount === true ||
-    socialProofQuery.data?.hideRemainingCount !== false;
+    bundleHideRemainingCount === true ||
+    socialProofQuery.data?.hideRemainingCount === true ||
+    (bundleHideRemainingCount !== false &&
+      socialProofQuery.data?.hideRemainingCount !== false);
   const publicEvent = useMemo(
     () => ({
       ...mapLiveEventToPublicEvent(event, acquisitionState, occurrences),

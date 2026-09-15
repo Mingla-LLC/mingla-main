@@ -14,6 +14,9 @@ import {
   UNKNOWN_REFUND_POLICY_STATE,
   type RefundPolicyReadState,
 } from "@mingla/offering-rendering/offeringRefundPolicy";
+// issue #3314 — the bundle's "Hide remaining count" reader, same deep specifier
+// and the same reason: pure, and out of reach of a partial barrel mock.
+import { readBundleHideRemainingCount } from "@mingla/offering-rendering/remainingCountVisibility";
 
 import { supabase } from "./supabase";
 // issue #2160 — the shared occurrence shape. The direct `event_dates` READ in
@@ -495,6 +498,14 @@ export interface PublicEventDetail {
    * shows no terms rather than claiming there are none.
    */
   refundPolicyState: RefundPolicyReadState;
+  /**
+   * issue #3314 — the organiser's "Hide remaining count" from the bundle's
+   * `hideRemainingCount` key, for public AND unlisted events. `null` when the
+   * payload does not carry it (a server or 5-second web cache entry from before
+   * migration 20270704003314, or the RSVP view fallback): the page then falls
+   * back to the social-proof read and stays fail-closed.
+   */
+  hideRemainingCount: boolean | null;
 }
 
 export interface PublicBrandDetail {
@@ -1660,6 +1671,8 @@ const detailFromRow = async (
     bookable,
     // issue #3284 — the view carries no refund terms: unknown, never "none".
     refundPolicyState: UNKNOWN_REFUND_POLICY_STATE,
+    // issue #3314 — no bundle key on this path: unknown.
+    hideRemainingCount: null,
   };
 };
 
@@ -1898,6 +1911,10 @@ const detailFromDirectBundle = async (
     // terms. An absent key (a pre-#3284 server, or a payload the 5-second web
     // cache stored before the migration) reads as unknown and renders nothing.
     refundPolicyState: readRefundPolicyState(payload),
+    // issue #3314 — the SAME bundle carries the organiser's "Hide remaining
+    // count", so an unlisted event (which social proof never answers for) can
+    // show its count when the organiser allows it. Absent key -> null.
+    hideRemainingCount: readBundleHideRemainingCount(payload),
   };
 };
 
