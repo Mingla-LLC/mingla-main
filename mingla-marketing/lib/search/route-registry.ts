@@ -242,7 +242,7 @@ const REDIRECTED_ROUTES = [
     source: '/tools/book',
     destination: '/schedule',
   },
-  // #3371 — the long Explorer page moved to /for-explorers so the side menu's
+  // #3371 — the long Explorer page moved to /going-out so the side menu's
   // Explorer item can mean the home page. Permanent, so shared links and search
   // signals follow the page to its new canonical.
   {
@@ -250,7 +250,7 @@ const REDIRECTED_ROUTES = [
     match: { type: 'exact', pathname: '/explorer' },
     lifecycle: 'redirected',
     source: '/explorer',
-    destination: '/for-explorers',
+    destination: '/going-out',
   },
 ] as const satisfies readonly RedirectedRouteContract[]
 

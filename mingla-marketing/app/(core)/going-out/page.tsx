@@ -10,7 +10,7 @@ import { CORE_PAGES } from '@/content/core-pages'
 import { corePageMetadata } from '@/lib/search/metadata'
 import { corePageStructuredData, serializeCorePageStructuredData } from '@/lib/search/core-page-schema'
 
-const record = CORE_PAGES['for-explorers']
+const record = CORE_PAGES['going-out']
 export const metadata: Metadata = corePageMetadata(record)
 const moment = ['People', 'Timing', 'Budget', 'Location', 'Mood', 'Required action'] as const
 const faqs = [
@@ -26,7 +26,7 @@ export default function ExplorerPage() {
   return <CorePageShell dark>
     {schema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeCorePageStructuredData(schema) }} /> : null}
     <CoreHero eyebrow={record.eyebrow} title={record.h1} answer={record.directAnswer} visual={<figure className="core-explorer-hero-proof"><Image src="/product-proof/explorer-saved-details.png" alt="Mingla Explorer showing the saved Sample sunset gallery plan open in its details sheet." width={1206} height={2622} sizes="(min-width: 1024px) 21rem, 18rem" priority /></figure>} primary="explorer" secondary="host" />
-    <AnswerBlock question={record.directQuestion} answer={record.directAnswer} crumbs={[{name:'Home',path:'/'},{name:'For Explorers',path:'/for-explorers'}]} />
+    <AnswerBlock question={record.directQuestion} answer={record.directAnswer} crumbs={[{name:'Home',path:'/'},{name:'Going out',path:'/going-out'}]} />
     <CutoutSection id="the-moment"><div className="core-section-heading"><h2>Start with the moment.</h2><p>The same place is not right for every plan. The goal is not to show the most results; it is to help you find a choice you can actually make.</p></div><div className="core-six">{moment.map((item,i)=><article className="core-card" key={item}><h3>{String(i+1).padStart(2,'0')} · {item}</h3><p>Use this part of the moment to narrow what actually fits.</p></article>)}</div></CutoutSection>
     <CutoutSection band="dark" id="product-proof"><div className="core-section-heading"><h2>From discovery to a real action.</h2><p>Keep useful ideas together and carry a decision forward without losing the plan.</p></div><ExplorerProofGrid /></CutoutSection>
     <CutoutSection id="complete-plan"><div className="core-section-heading"><h2>From one stop to a complete plan.</h2><p>Some outings are one clear destination. Others work because an activity, meal, show, walk or drink fit together. Mingla can present curated multi-stop ideas without claiming every stop has confirmed space.</p></div><ol className="core-flow"><li>Start with an activity or experience.</li><li>Add the meal, show, walk or drink that fits the moment.</li><li>Check current timing, distance, price and the available action.</li></ol></CutoutSection>

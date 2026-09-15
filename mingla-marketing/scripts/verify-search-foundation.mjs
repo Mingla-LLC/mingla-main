@@ -31,7 +31,7 @@ const SEARCH_READY_PATHS = [
   // #3371 — the renamed Explorer core page. Core routes project after the base
   // contracts and before the help-video family, so it sits here in registry
   // emission order; its title carries a single Mingla mention.
-  '/for-explorers',
+  '/going-out',
   '/help/getting-the-apps',
   '/help/sign-up-and-create-a-brand',
   '/help/connect-a-bank-and-get-paid',
@@ -104,7 +104,7 @@ const REDIRECTS = [
   ['/business', '/host'],
   ['/business/venues', '/host/venues'],
   ['/tools/book', '/schedule'],
-  ['/explorer', '/for-explorers'],
+  ['/explorer', '/going-out'],
 ]
 
 let passed = 0

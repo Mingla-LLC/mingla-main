@@ -14,7 +14,7 @@
     { "path": "/privacy-policy", "lifecycle": "search_ready" },
     { "path": "/terms-of-service", "lifecycle": "search_ready" },
     { "path": "/about", "lifecycle": "search_ready" },
-    { "path": "/for-explorers", "lifecycle": "search_ready" },
+    { "path": "/going-out", "lifecycle": "search_ready" },
     { "path": "/cities", "lifecycle": "search_ready" },
     { "path": "/cities/lagos", "lifecycle": "search_ready" },
     { "path": "/cities/durham-nc", "lifecycle": "search_ready" },
