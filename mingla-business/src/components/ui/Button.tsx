@@ -332,6 +332,9 @@ export const Button = forwardRef<
       disabled={disabled || loading}
       accessibilityRole={accessibilityRole}
       accessibilityState={{ ...accessibilityState, disabled, busy: loading }}
+      aria-checked={
+        accessibilityRole === "checkbox" ? accessibilityState?.checked : undefined
+      }
       accessibilityLabel={accessibilityLabel ?? label}
       testID={testID}
       style={[fullWidth ? styles.fullWidth : undefined, style]}

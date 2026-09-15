@@ -256,4 +256,26 @@ describe("issue #1780 — wizard invite plan implementation", () => {
     expect(publishPayload).toContain("publish && inviteEnabled && invitePlan?.selectionRevision");
     expect(publishPayload).toContain("invite_selection_confirmed: invitePlan.selectedCount > 0");
   });
+
+  test("experience Cover copy follows live-edit, invite-enabled, and rollback navigation", () => {
+    // [TEST-MOD-APPROVED #1780] Invite-enabled creation continues through
+    // Invite and Review; flag-off creation retains its legacy Cover-final copy;
+    // live edit saves an already-published offering from the Cover step.
+    const cover = read("src/components/experience/ExperienceCoverStep.tsx");
+    const experience = read("src/components/experience/ExperienceCreatorWizard.tsx");
+    expect(experience).toContain("isLiveEdit={isLiveEdit}");
+    expect(experience).toContain("hasInviteStep={inviteEnabled}");
+    expect(cover).toContain("isLiveEdit = false");
+    expect(cover).toContain("hasInviteStep = false");
+    expect(cover).toContain("hasInviteStep?: boolean;");
+    expect(cover).toContain("then save your changes.");
+    expect(cover).toContain("Next, invite people or skip invites, then review and publish.");
+    expect(cover).toContain("You can publish now to make this experience bookable");
+    expect(cover.indexOf(": hasInviteStep")).toBeGreaterThan(
+      cover.indexOf("{isLiveEdit"),
+    );
+    expect(cover.indexOf("You can publish now")).toBeGreaterThan(
+      cover.indexOf(": hasInviteStep"),
+    );
+  });
 });
