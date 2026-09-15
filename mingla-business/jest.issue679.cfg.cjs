@@ -75,6 +75,11 @@ module.exports = {
     // no-longer-discarded `pastEvents`. Named here for reason #1 in this file's
     // header, exactly as #3188 was, with its paired MANIFEST expectedFiles entry.
     "**/__tests__/issue_3426_brand_sections.render.test.tsx",
+    // #3430 [Upcoming brand kind labels] — implementor RENDER proof that the
+    // four raw lowercase control values become their exact human-facing labels
+    // in both visible metadata and accessibility copy, while callbacks retain
+    // the original object. Paired with the MANIFEST expectedFiles registration.
+    "**/__tests__/issue_3430_upcoming_kind_labels.implementor.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|react-native-web|@react-native-community|react-native-svg|lucide-react-native|expo|@expo)",
