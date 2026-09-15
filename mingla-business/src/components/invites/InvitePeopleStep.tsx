@@ -563,6 +563,7 @@ function PeoplePickerSheet(props: {
 function PersonRow(props: { person: BrandPersonSummary; selected: boolean; disabled: boolean; onPress: () => void }) {
   const contact = props.person.contacts.find((item) => item.isPrimary) ?? props.person.contacts[0];
   return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: props.selected, disabled: props.disabled }}
+    aria-checked={props.selected}
     disabled={props.disabled} onPress={props.onPress} style={[styles.personRow, props.selected && styles.personSelected]}>
     <View style={[styles.avatar, props.selected && styles.avatarSelected]}><Text style={styles.avatarText}>
       {props.person.displayName.trim().slice(0, 1).toUpperCase()}</Text></View>
