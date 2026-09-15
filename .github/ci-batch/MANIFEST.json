@@ -13109,7 +13109,7 @@
       "providerWorkflow": ".github/workflows/issue-1447-rsvp-admission-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "972151e65143872b35921bc519a7517242f43205e2f486c861e6fb141025f964",
+        "sourceSha256": "6d5b2efb2a9563cb43d51aad5da45368fd1ec8890e5329744184bccb079cfd34",
         "triggers": [
           "pull_request",
           "push"
@@ -16294,7 +16294,7 @@
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "118bebe0e8f656e0162afc46ff367f0a79230a4159dd45f134b6b38d203cc4f7",
+        "sourceSha256": "5be0d6a1f9180641e008ecb8c5f6da517fff5aa95bdf36f600e7dcb8d302e174",
         "triggers": [
           "pull_request",
           "push"
@@ -17956,7 +17956,7 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e7c0d3758ccb3ff68eb031925766fca0fcd49752c4e82d89aefb6104b73b44bd",
+        "sourceSha256": "f0a8ae3e5ed5fb9d614eb02ee340ac96b2da000389a2a7afedc7720fd64dd016",
         "triggers": [
           "pull_request",
           "push"
