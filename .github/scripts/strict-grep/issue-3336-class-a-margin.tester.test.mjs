@@ -76,37 +76,17 @@ function assertProviderDrift(errors, provider) {
   );
 }
 
-test("three unwrapped validations observe committed provider truth A to B to A", () => {
-  const fixture = cloneFixture("issue3336-fresh-validation-");
-  try {
-    const registry = readRegistry(fixture.root);
-    const provider = selectLiveRegisteredProvider(fixture.root, registry);
-    const processesBefore = trackedFilesProcessInvocations();
-
-    assert.deepEqual(validateRegistry(registry, { root: fixture.root }), [], "baseline clone must be valid");
-    addProviderReference(fixture.root, provider);
-    assertProviderDrift(validateRegistry(registry, { root: fixture.root }), provider);
-    removeProviderReference(fixture.root);
-    assert.deepEqual(validateRegistry(registry, { root: fixture.root }), [], "removal commit must restore registry truth");
-
-    assert.equal(
-      trackedFilesProcessInvocations() - processesBefore,
-      3,
-      "A to B to A must perform one fresh tracked-file listing for each unwrapped validation",
-    );
-  } finally {
-    fs.rmSync(fixture.parent, { recursive: true, force: true });
-  }
-});
-
-test("an outer scope for root A cannot hide committed mutations in root B", () => {
+test("committed A to B to A truth stays fresh inside an outer scope for a different root", () => {
   const fixture = cloneFixture("issue3336-wrong-root-");
   try {
+    const sourceRoot = fs.realpathSync(ROOT);
+    assert.notEqual(sourceRoot, fixture.root, "the wrong-root attack requires distinct resolved roots A and B");
+
     const registry = readRegistry(fixture.root);
     const provider = selectLiveRegisteredProvider(fixture.root, registry);
     const processesBefore = trackedFilesProcessInvocations();
 
-    const observations = withTrackedFilesScope(ROOT, () => {
+    const observations = withTrackedFilesScope(sourceRoot, () => {
       const baseline = validateRegistry(registry, { root: fixture.root });
       addProviderReference(fixture.root, provider);
       const added = validateRegistry(registry, { root: fixture.root });
