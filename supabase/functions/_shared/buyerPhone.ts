@@ -104,4 +104,3 @@ export function legacyNanpGuessAllowed(paymentCountry: unknown): boolean {
   const country = paymentCountry.trim().toUpperCase();
   return country === "US" || country === "CA";
 }
-
