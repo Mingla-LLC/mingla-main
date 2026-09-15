@@ -182,6 +182,7 @@ const KEEPS_LEADING_ZERO = new Set(["39", "378", "379"]);
 
 const E164_RE = /^\+[1-9][0-9]{1,14}$/;
 const ISO_RE = /^[A-Z]{2}$/;
+const SUPPORTED_PHONE_ENTRY_RE = /^\+?[0-9\s().-]+$/;
 
 const ruleForIso = (iso: string | null | undefined): NumberingRule | null => {
   if (typeof iso !== "string") return null;
@@ -383,6 +384,15 @@ export const parsePhoneEntry = (
       ? options.countryIso.trim().toUpperCase()
       : null;
   const text = typeof raw === "string" ? raw.trim() : "";
+  if (text === "") {
+    return refuse("empty", "Enter a phone number.");
+  }
+  if (!SUPPORTED_PHONE_ENTRY_RE.test(text)) {
+    return refuse(
+      "invalid",
+      "Enter a phone number using only digits and normal phone punctuation.",
+    );
+  }
   const digits = text.replace(/\D/g, "");
   if (digits.length === 0 || /^0+$/.test(digits)) {
     return refuse("empty", "Enter a phone number.");
@@ -487,18 +497,10 @@ export const composePhoneE164 = (
 ): string | null => {
   const dial = dialDigits(countryDialCode);
   if (dial === null) return null;
-  const digits = localDigits.replace(/\D/g, "");
-  if (digits.length === 0) return null;
   const rule = ruleForDial(dial);
-  if (rule === null) {
-    let nsn = digits;
-    if (!KEEPS_LEADING_ZERO.has(dial)) nsn = nsn.replace(/^0+/, "");
-    if (nsn.length === 0) return null;
-    const composed = `+${dial}${nsn}`;
-    return E164_RE.test(composed) ? composed : null;
-  }
-  const result = parsePhoneEntry(digits, {
-    countryIso: rule.isos[0],
+  const result = parsePhoneEntry(localDigits, {
+    countryIso: rule?.isos[0] ?? null,
+    dialCode: `+${dial}`,
     mode: "any",
   });
   return result.ok ? result.e164 : null;

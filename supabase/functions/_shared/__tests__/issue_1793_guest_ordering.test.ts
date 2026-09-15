@@ -351,12 +351,24 @@ Deno.test("T-3380-P1 — the guest order rail converts with the guest's country"
   });
   // …believed only at a North American venue.
   assertEquals(legacyNanpGuessAllowed("US"), true);
+  assertEquals(legacyNanpGuessAllowed("CA"), true);
+  assertEquals(legacyNanpGuessAllowed(null), false);
+  assertEquals(legacyNanpGuessAllowed(undefined), false);
   assertEquals(legacyNanpGuessAllowed("NG"), false);
   // A number that does not fit the chosen country says why; empty keeps the generic copy.
   assertEquals(
     resolveBuyerPhone("0803 123 45", "NG").message,
-    "Nigerian numbers have 10 digits after the 0 — you entered 8.",
+    "Nigerian mobile numbers have 10 digits after the 0 — you entered 8.",
   );
+  assertEquals(resolveBuyerPhone("0803 123 4567", "GB").e164, null);
+  assertEquals(resolveBuyerPhone("garbage4155550123", undefined).e164, null);
+  assertEquals(resolveBuyerPhone("+234abc8031234567", undefined).e164, null);
+  assertEquals(resolveBuyerPhone("00447700900123", undefined).e164, "+447700900123");
+  assertEquals(resolveBuyerPhone("8031234567", "NGA"), {
+    e164: null,
+    message: LEGACY_NANP_REFUSAL,
+    legacyNanpGuess: false,
+  });
   assertEquals(resolveBuyerPhone("", "NG").message, null);
   assertEquals(resolveBuyerPhone("08031234567", undefined).message, LEGACY_NANP_REFUSAL);
 

@@ -496,7 +496,10 @@ module.exports = {
     "^.+\\.(ts|tsx)$": [
       "ts-jest",
       {
-        tsconfig: { jsx: "react-jsx" },
+        // #3395 — Deno requires explicit `.ts` extensions for the shared phone
+        // owner. Expo's base already has `noEmit: true`, so TypeScript can check
+        // that exact import in Jest without a blanket suppression directive.
+        tsconfig: { jsx: "react-jsx", allowImportingTsExtensions: true },
         // #1560 — `**/app-mobile/**` joins for the IDENTICAL reason, one app
         // over. `consumerVenueAdoption.issue1560.happy.test.tsx` mounts the real
         // consumer venue route to prove what that app gained when its fork was

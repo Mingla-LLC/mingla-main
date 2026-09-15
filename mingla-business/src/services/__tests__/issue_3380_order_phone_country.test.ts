@@ -18,6 +18,8 @@
  * country cases fail.
  */
 import { describe, expect, test } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import {
   LEGACY_NANP_REFUSAL,
@@ -48,8 +50,39 @@ describe("#3380 resolveBuyerPhone — new clients send the country", () => {
     const result = resolveBuyerPhone("0803 123 45", "NG");
     expect(result.e164).toBeNull();
     expect(result.message).toBe(
-      "Nigerian numbers have 10 digits after the 0 — you entered 8.",
+      "Nigerian mobile numbers have 10 digits after the 0 — you entered 8.",
     );
+  });
+
+  test("a Nigerian mobile typed under GB is refused instead of becoming a UK number", () => {
+    const result = resolveBuyerPhone("0803 123 4567", "GB");
+    expect(result.e164).toBeNull();
+    expect(result.message).toContain("Nigerian number");
+  });
+
+  test.each([
+    "garbage4155550123",
+    "+234abc8031234567",
+  ])("unsupported characters are refused instead of erased: %s", (raw) => {
+    const result = resolveBuyerPhone(raw, undefined);
+    expect(result.e164).toBeNull();
+    expect(result.legacyNanpGuess).toBe(false);
+  });
+
+  test("00 international entry needs no country metadata", () => {
+    expect(resolveBuyerPhone("0044 7700 900123", undefined)).toEqual({
+      e164: "+447700900123",
+      message: null,
+      legacyNanpGuess: false,
+    });
+  });
+
+  test("malformed explicit country metadata never enables the legacy +1 guess", () => {
+    expect(resolveBuyerPhone("8031234567", "NGA")).toEqual({
+      e164: null,
+      message: LEGACY_NANP_REFUSAL,
+      legacyNanpGuess: false,
+    });
   });
 
   test("a country the rules do not characterise asks for the +code", () => {
@@ -107,8 +140,21 @@ describe("#3380 resolveBuyerPhone — deployed clients keep working", () => {
   test("the ten-digit guess is believed only at a North American venue", () => {
     expect(legacyNanpGuessAllowed("US")).toBe(true);
     expect(legacyNanpGuessAllowed("ca")).toBe(true);
-    expect(legacyNanpGuessAllowed(null)).toBe(true);
+    expect(legacyNanpGuessAllowed(null)).toBe(false);
+    expect(legacyNanpGuessAllowed(undefined)).toBe(false);
+    expect(legacyNanpGuessAllowed("")).toBe(false);
     expect(legacyNanpGuessAllowed("NG")).toBe(false);
     expect(legacyNanpGuessAllowed("GB")).toBe(false);
+  });
+
+  test("the Deno import is type-checked without a blanket suppression", () => {
+    const source = readFileSync(
+      resolve(
+        __dirname,
+        "../../../../supabase/functions/_shared/buyerPhone.ts",
+      ),
+      "utf8",
+    );
+    expect(source).not.toMatch(/^\s*\/\/\s*@ts-ignore\b/m);
   });
 });

@@ -159,6 +159,17 @@ describe("#3380 countries nobody has characterised still work", () => {
     if (result.ok) return;
     expect(result.problem).toBe("empty");
   });
+
+  test.each([
+    "0803abc1234567",
+    "+234abc8031234567",
+    "0803/123/4567",
+  ])("unsupported characters are refused instead of erased: %s", (raw) => {
+    const result = parsePhoneEntry(raw, { countryIso: "NG", mode: "any" });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.problem).toBe("invalid");
+  });
 });
 
 describe("#3380 checkout keeps every answer it gave (composeE164 is now a view)", () => {
@@ -183,6 +194,10 @@ describe("#3380 checkout keeps every answer it gave (composeE164 is now a view)"
     ["+234", "000"],
   ])("composePhoneE164(%s, %s) → null", (dial, local) => {
     expect(composePhoneE164(dial, local)).toBeNull();
+  });
+
+  test("composePhoneE164 never sanitises letters into a valid number", () => {
+    expect(composePhoneE164("+234", "0803abc1234567")).toBeNull();
   });
 });
 
