@@ -76,6 +76,7 @@ import {
   VENUE_MODULES,
   deriveVenueModules,
   isBookingModule,
+  shouldLeaveBookingModule,
 } from "./venueModules";
 
 /**
@@ -133,6 +134,10 @@ export function VenueSuiteShell({
 
   const settingsQuery = useVenueReservationSettings(brandId, venueId);
   const reservationsEnabled = settingsQuery.data?.reservationsEnabled ?? false;
+  // #3389 — `data` is `null` for "no settings row" (a resolved OFF) and
+  // `undefined` only while loading, so this is true once the answer is in.
+  const settingsResolved =
+    settingsQuery.data !== undefined || settingsQuery.isError;
   const setEnabled = useSetReservationsEnabled(brandId, venueId);
 
   const visibleModules = useMemo(
@@ -159,11 +164,19 @@ export function VenueSuiteShell({
   );
 
   // Guard: if the toggle flips OFF while on a booking module, snap to overview.
+  // #3389 — only once the settings have loaded, so a `?module=tables` deep
+  // link is not bounced on the loading frame of a venue that takes bookings.
   useEffect(() => {
-    if (isBookingModule(activeModule) && !reservationsEnabled) {
+    if (
+      shouldLeaveBookingModule({
+        activeModule,
+        reservationsEnabled,
+        settingsResolved,
+      })
+    ) {
       selectModule("overview");
     }
-  }, [activeModule, reservationsEnabled, selectModule]);
+  }, [activeModule, reservationsEnabled, settingsResolved, selectModule]);
 
   // Bridge to the layout's pill row (native/web-phone REPLACE the Hub pills).
   const syncStore = useVenueSuiteStore((s) => s.sync);
