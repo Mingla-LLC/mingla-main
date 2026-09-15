@@ -16233,7 +16233,7 @@
       "providerWorkflow": ".github/workflows/issue-1930-checkout-current-truth.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "b7333c7e19fd3f7cb34475056d63ff4f1e455321127316974a1123244932925a",
+        "sourceSha256": "0e02f88ea26a96ef159d5d2bbed1327b04ac85905987003b959c69f1de9c4b28",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
