@@ -727,7 +727,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   }, [liveDraft, stripeStatus, handleShowToast, coverAuthority.isReady]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
-    if (isPublishing || !coverAuthority.isReady) return;
+    if (isPublishing) return;
+    if (!coverAuthority.isReady) return;
     setIsPublishing(true);
     const draftName = liveDraft.name;
     // Simulated 1.2s submit per spec AC#28.
