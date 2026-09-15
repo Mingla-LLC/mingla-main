@@ -180,6 +180,87 @@ function client() {
   };
 }
 
+// Rework retest: additional actual-handler identity and compare-and-set cases.
+for (const provider of ["stripe", "paystack"] as const) {
+  Deno.test(`#3436 retest: ${provider} normalized anonymous retry remains the original guest`, async () => {
+    const { response, harness } = await run({
+      provider,
+      existing: pending({ provider, user_id: null, guest_email: " Guest@Example.COM " }),
+    }, { guestEmail: "  guest@example.com  " });
+    assertEquals(response.status, 202);
+    assertEquals(harness.existing?.rsvp_id, RSVP);
+    assertEquals(harness.inserted.length, 0);
+  });
+  Deno.test(`#3436 retest: ${provider} matching email cannot convert anonymous payer to authenticated retry`, async () => {
+    const { response, harness } = await run({
+      provider,
+      userId: USER,
+      existing: pending({ provider, user_id: null, guest_email: "guest@example.com" }),
+    });
+    assertEquals(response.status, 409);
+    assertEquals(await response.json(), { error: "contribution_retry_identity_mismatch" });
+    assertEquals(harness.updated, []);
+    assertEquals(harness.inserted, []);
+  });
+  Deno.test(`#3436 retest: ${provider} same-account retry uses original stored-email fallback`, async () => {
+    const { response, harness } = await run({
+      provider,
+      userId: USER,
+      existing: pending({ provider }),
+      rsvps: [guest({ guest_email: "owner@example.com" }), guest({ id: OTHER, guest_email: "replacement@example.com" })],
+    }, { guestEmail: "replacement@example.com", rsvpId: OTHER });
+    assertEquals(response.status, 202);
+    assertEquals(harness.existing?.rsvp_id, RSVP);
+    assertEquals(harness.updated.length, 1);
+  });
+}
+
+for (const changedField of ["user_id", "guest_email"] as const) {
+  Deno.test(`#3436 retest: concurrent original ${changedField} change prevents stale-link CAS`, async () => {
+    const previousHandler = handler;
+    const raceBoundary = {
+      ...boundary,
+      serviceClient: () => {
+        const base = client();
+        return {
+          ...base,
+          from(table: string) {
+            const query = base.from(table);
+            if (table === "event_rsvp_contributions") {
+              // Database reads produce a snapshot. Change the stored row after
+              // that read, immediately before the real handler's update builds
+              // its original-identity predicates.
+              const selectOne = query.maybeSingle;
+              query.maybeSingle = async () => {
+                const result = await selectOne();
+                return { ...result, data: result.data ? { ...result.data } : null };
+              };
+              const update = query.update;
+              query.update = (row: Row) => {
+                if (active.existing) active.existing[changedField] = changedField === "user_id" ? OTHER : "changed@example.com";
+                return update(row);
+              };
+            }
+            return query;
+          },
+        };
+      },
+    };
+    Reflect.set(globalThis, marker, raceBoundary);
+    try {
+      await import(`data:application/typescript,${encodeURIComponent(prelude + productionBody + `\n// race-${changedField}`)}`);
+      const { response, harness } = await run({ userId: USER, rsvps: [guest({ user_id: USER })], existing: pending() });
+      assertEquals(response.status, 202);
+      assertEquals(harness.existing?.rsvp_id, null);
+      assertEquals(harness.updated, []);
+      assertEquals(harness.inserted, []);
+    } finally {
+      handler = previousHandler;
+      Reflect.deleteProperty(globalThis, marker);
+    }
+  });
+}
+
 const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 const imports = [
   ...source.matchAll(/^import\s[\s\S]*?from\s+["'][^"']+["'];/gm),
