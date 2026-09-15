@@ -5,6 +5,7 @@ import {
   userClient,
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
+import { loadGuestReservationManageView } from "../_shared/guestReservationManageView.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return jsonResponse({}, 200);
@@ -34,13 +35,41 @@ serve(async (req) => {
   }
   const token = typeof body.guestToken === "string" ? body.guestToken : "";
   if (!token) return jsonResponse({ error: "reservation_not_found" }, 404);
-  const { data, error } = await serviceClient().rpc(
+  const service = serviceClient();
+
+  // #3392 — the manage link opens the BOOKING first. The refund summary RPC
+  // raises `reservation_not_found` whenever no refund row exists, which used to
+  // turn every free (and every not-yet-refunded paid) booking into "We couldn't
+  // open this reservation." The token is checked against the booking's own
+  // session hash; a mismatch stays a 404, identical to an unknown id.
+  let view;
+  try {
+    view = await loadGuestReservationManageView(service, {
+      reservationId,
+      guestToken: token,
+    });
+  } catch {
+    return jsonResponse({ error: "reservation_lookup_failed" }, 500);
+  }
+  if (view === null) {
+    return jsonResponse({ error: "reservation_not_found" }, 404);
+  }
+
+  const { data, error } = await service.rpc(
     "pg_guest_venue_refund_summary",
     {
       p_reservation_id: reservationId,
       p_guest_token: token,
     },
   );
-  if (error) return jsonResponse({ error: "reservation_not_found" }, 404);
-  return jsonResponse({ refund: data }, 200);
+  let refund = data ?? null;
+  if (error) {
+    const message = error.message ?? "";
+    // No refund row for this (already token-verified) booking: a normal state.
+    if (!message.includes("reservation_not_found")) {
+      return jsonResponse({ error: "refund_lookup_failed" }, 500);
+    }
+    refund = null;
+  }
+  return jsonResponse({ refund, reservation: view }, 200);
 });
