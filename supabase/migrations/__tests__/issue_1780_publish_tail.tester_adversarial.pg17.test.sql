@@ -9,7 +9,8 @@ BEGIN;
 
 CREATE OR REPLACE FUNCTION pg_temp.issue_1780_no_outbox_for(p_event_id uuid)
 RETURNS boolean
-LANGUAGE plpgsql
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=pg_catalog
 AS $fn$
 DECLARE v_count bigint;
 BEGIN
