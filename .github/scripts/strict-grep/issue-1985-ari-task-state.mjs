@@ -559,6 +559,11 @@ export function check(s) {
       "#1985 workflow does not run the issue-scoped Business typecheck",
     );
   }
+  const tenantGuardPair =
+    "node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs --self-test && node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs";
+  if (!s.workflow.includes(tenantGuardPair)) {
+    failures.push("#1985 workflow does not run the #2013 self-test immediately before plain mode");
+  }
   if (
     s.workflow.split("issue_1985_message_delivery_identity.test.ts").length - 1 !== 3
   ) {
@@ -860,6 +865,13 @@ if (process.argv.includes("--self-test")) {
       from:
         "node .github/scripts/strict-grep/issue-1985-business-typecheck.mjs",
       to: "npx tsc --noEmit",
+    },
+    {
+      key: "workflow",
+      from:
+        "node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs --self-test",
+      to:
+        "node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs",
     },
     {
       key: "workflow",

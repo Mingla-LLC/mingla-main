@@ -83,10 +83,38 @@ function validPng(): Uint8Array {
 }
 
 function validPdf(): Uint8Array {
-  const prefix = "%PDF-1.7\n1 0 obj << /Type /Page >>\nendobj\n";
+  const objects = [
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Count 1 /Kids [3 0 R] >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] >>\nendobj\n",
+  ];
+  let body = "%PDF-1.7\n";
+  const offsets = [0];
+  for (const object of objects) {
+    offsets.push(body.length);
+    body += object;
+  }
+  const xrefOffset = body.length;
+  const entries = ["0000000000 65535 f "];
+  for (let object = 1; object <= objects.length; object += 1) {
+    entries.push(`${String(offsets[object]).padStart(10, "0")} 00000 n `);
+  }
   return encoder.encode(
-    `${prefix}xref\n0 1\n0000000000 65535 f\nstartxref\n${prefix.length}\n%%EOF`,
+    `${body}xref\n0 4\n${
+      entries.join("\n")
+    }\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`,
   );
+}
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const value of bytes) {
+    crc ^= value;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function storedZip(files: Array<[string, string]>): Uint8Array {
@@ -96,6 +124,7 @@ function storedZip(files: Array<[string, string]>): Uint8Array {
   for (const [name, content] of files) {
     const nameBytes = encoder.encode(name);
     const data = encoder.encode(content);
+    const checksum = crc32(data);
     const local = concat(
       u32(0x04034b50),
       u16(20),
@@ -103,7 +132,7 @@ function storedZip(files: Array<[string, string]>): Uint8Array {
       u16(0),
       u16(0),
       u16(0),
-      u32(0),
+      u32(checksum),
       u32(data.length),
       u32(data.length),
       u16(nameBytes.length),
@@ -120,7 +149,7 @@ function storedZip(files: Array<[string, string]>): Uint8Array {
       u16(0),
       u16(0),
       u16(0),
-      u32(0),
+      u32(checksum),
       u32(data.length),
       u32(data.length),
       u16(nameBytes.length),

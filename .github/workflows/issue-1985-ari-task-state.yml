@@ -194,7 +194,7 @@ jobs:
       - name: Type-check edge and shared task boundaries
         run: deno check supabase/functions/_shared/agentConversationState.ts supabase/functions/_shared/agentRelativeTime.ts supabase/functions/_shared/agentConversationPlanner.ts supabase/functions/_shared/agentChoices.ts supabase/functions/_shared/agentSystemPrompt.ts supabase/functions/_shared/agentRateLimit.ts supabase/functions/_shared/agentAttachments.ts supabase/functions/_shared/agentGemini.ts supabase/functions/_shared/agentReliability.ts supabase/functions/agent-attachment-cleanup/index.ts supabase/functions/agent-attachments/index.ts supabase/functions/agent-chat/index.ts supabase/functions/agent-confirm-action/index.ts supabase/functions/agent-conversation/index.ts supabase/functions/agent-turn-control/index.ts
       - name: Prove Class A task-state guard and protected security guards
-        run: node .github/scripts/strict-grep/issue-1985-ari-task-state.mjs --self-test && node .github/scripts/strict-grep/issue-1985-ari-task-state.mjs && node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs && node .github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs
+        run: node .github/scripts/strict-grep/issue-1985-ari-task-state.mjs --self-test && node .github/scripts/strict-grep/issue-1985-ari-task-state.mjs && node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs --self-test && node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs && node .github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
