@@ -247,6 +247,15 @@ export interface AriClientIntentRecord {
   retryAt: number | null;
 }
 
+/** A deferred response may only mutate the brand epoch that dispatched it. */
+export function isCurrentAriTurnEpoch(
+  turnEpoch: number,
+  observedEpoch: number,
+  currentEpoch: number,
+): boolean {
+  return turnEpoch === currentEpoch && observedEpoch === currentEpoch;
+}
+
 export type AriRecoveryEvent =
   | { type: "dispatch_started" }
   | { type: "offline_detected" }

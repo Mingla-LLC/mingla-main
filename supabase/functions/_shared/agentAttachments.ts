@@ -10,6 +10,8 @@ export const ARI_ATTACHMENT_MAX_TURN_BYTES = 25 * 1024 * 1024;
 const MAX_TEXT_CONTEXT_CHARS = 250_000;
 const MAX_DOCX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024;
 const MAX_PDF_PAGES = 80;
+const MAX_PDF_STREAM_BYTES = 20 * 1024 * 1024;
+const MAX_IMAGE_PIXELS = 40_000_000;
 
 export const ARI_ATTACHMENT_MIMES = Object.freeze(
   [
@@ -113,6 +115,21 @@ function readU32LE(bytes: Uint8Array, offset: number): number {
     (bytes[offset + 1] << 8) |
     (bytes[offset + 2] << 16) |
     (bytes[offset + 3] << 24)
+  ) >>> 0;
+}
+
+function readU16BE(bytes: Uint8Array, offset: number): number {
+  if (offset + 2 > bytes.length) throw new AriAttachmentError("CORRUPT_FILE");
+  return (bytes[offset] << 8) | bytes[offset + 1];
+}
+
+function readU32BE(bytes: Uint8Array, offset: number): number {
+  if (offset + 4 > bytes.length) throw new AriAttachmentError("CORRUPT_FILE");
+  return (
+    (bytes[offset] << 24) |
+    (bytes[offset + 1] << 16) |
+    (bytes[offset + 2] << 8) |
+    bytes[offset + 3]
   ) >>> 0;
 }
 
@@ -333,17 +350,189 @@ async function digestHex(bytes: Uint8Array): Promise<string> {
     .join("");
 }
 
-function detectImage(bytes: Uint8Array): string | null {
+function assertImageDimensions(width: number, height: number): void {
   if (
-    startsWithBytes(bytes, [0xff, 0xd8, 0xff]) && bytes.at(-2) === 0xff &&
-    bytes.at(-1) === 0xd9
+    width < 1 || height < 1 || !Number.isSafeInteger(width * height) ||
+    width * height > MAX_IMAGE_PIXELS
   ) {
+    throw new AriAttachmentError("DECOMPRESSION_BOMB");
+  }
+}
+
+function verifyJpeg(bytes: Uint8Array): void {
+  if (!startsWithBytes(bytes, [0xff, 0xd8])) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+  let cursor = 2;
+  let foundFrame = false;
+  while (cursor < bytes.length) {
+    if (bytes[cursor] !== 0xff) throw new AriAttachmentError("CORRUPT_FILE");
+    while (bytes[cursor] === 0xff) cursor += 1;
+    const marker = bytes[cursor++];
+    if (marker === 0xd9) {
+      if (!foundFrame || cursor !== bytes.length) {
+        throw new AriAttachmentError("CORRUPT_FILE");
+      }
+      return;
+    }
+    if (
+      marker === 0x00 || marker === 0xd8 || marker === 0x01 ||
+      (marker >= 0xd0 && marker <= 0xd7)
+    ) {
+      throw new AriAttachmentError("CORRUPT_FILE");
+    }
+    const segmentLength = readU16BE(bytes, cursor);
+    if (segmentLength < 2 || cursor + segmentLength > bytes.length) {
+      throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+    }
+    if (marker === 0xda) {
+      cursor += segmentLength;
+      while (cursor < bytes.length) {
+        if (bytes[cursor] !== 0xff) {
+          cursor += 1;
+          continue;
+        }
+        const next = bytes[cursor + 1];
+        if (next === 0xd9 && foundFrame && cursor + 2 === bytes.length) return;
+        if (next === 0x00 || (next >= 0xd0 && next <= 0xd7)) {
+          cursor += 2;
+          continue;
+        }
+        throw new AriAttachmentError("CORRUPT_FILE");
+      }
+      throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+    }
+    const isFrame = (marker >= 0xc0 && marker <= 0xc3) ||
+      (marker >= 0xc5 && marker <= 0xc7) ||
+      (marker >= 0xc9 && marker <= 0xcb) ||
+      (marker >= 0xcd && marker <= 0xcf);
+    if (isFrame) {
+      if (segmentLength < 8) throw new AriAttachmentError("CORRUPT_FILE");
+      assertImageDimensions(
+        readU16BE(bytes, cursor + 5),
+        readU16BE(bytes, cursor + 3),
+      );
+      foundFrame = true;
+    }
+    cursor += segmentLength;
+  }
+  throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+}
+
+function verifyPng(bytes: Uint8Array): void {
+  if (
+    !startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  ) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+  let cursor = 8;
+  let sawHeader = false;
+  let sawImageData = false;
+  while (cursor < bytes.length) {
+    const length = readU32BE(bytes, cursor);
+    const typeStart = cursor + 4;
+    const dataStart = cursor + 8;
+    const dataEnd = dataStart + length;
+    const chunkEnd = dataEnd + 4;
+    if (chunkEnd > bytes.length || !Number.isSafeInteger(chunkEnd)) {
+      throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+    }
+    const type = String.fromCharCode(...bytes.slice(typeStart, typeStart + 4));
+    if (!sawHeader) {
+      if (type !== "IHDR" || length !== 13) {
+        throw new AriAttachmentError("CORRUPT_FILE");
+      }
+      assertImageDimensions(
+        readU32BE(bytes, dataStart),
+        readU32BE(bytes, dataStart + 4),
+      );
+      sawHeader = true;
+    } else if (type === "IDAT") {
+      sawImageData = true;
+    } else if (type === "IEND") {
+      if (length !== 0 || !sawImageData || chunkEnd !== bytes.length) {
+        throw new AriAttachmentError("CORRUPT_FILE");
+      }
+      return;
+    }
+    cursor = chunkEnd;
+  }
+  throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+}
+
+function verifyHeic(bytes: Uint8Array): string | null {
+  if (bytes.length < 16 || findAscii(bytes.slice(4, 8), "ftyp") !== 0) {
+    return null;
+  }
+  const brand = textDecoder.decode(bytes.slice(8, 12)).toLowerCase();
+  let mime: string;
+  if (["heic", "heix", "hevc", "hevx"].includes(brand)) mime = "image/heic";
+  else if (["heif", "heim", "heis", "mif1", "msf1"].includes(brand)) {
+    mime = "image/heif";
+  } else if (brand === "avif" || brand === "avis") {
+    throw new AriAttachmentError("UNSUPPORTED_TYPE");
+  } else return null;
+
+  let sawIspe = false;
+  let boxCount = 0;
+  const containers = new Set([
+    "meta",
+    "moov",
+    "trak",
+    "mdia",
+    "minf",
+    "stbl",
+    "dinf",
+    "edts",
+    "udta",
+    "iprp",
+    "ipco",
+  ]);
+  const visit = (start: number, end: number, depth: number): void => {
+    if (depth > 16) throw new AriAttachmentError("DECOMPRESSION_BOMB");
+    let cursor = start;
+    while (cursor < end) {
+      if (++boxCount > 10_000) {
+        throw new AriAttachmentError("DECOMPRESSION_BOMB");
+      }
+      const declaredSize = readU32BE(bytes, cursor);
+      if (declaredSize < 8 || cursor + declaredSize > end) {
+        throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+      }
+      const type = textDecoder.decode(bytes.slice(cursor + 4, cursor + 8));
+      if (type === "ispe") {
+        if (declaredSize < 20) throw new AriAttachmentError("CORRUPT_FILE");
+        assertImageDimensions(
+          readU32BE(bytes, cursor + 12),
+          readU32BE(bytes, cursor + 16),
+        );
+        sawIspe = true;
+      } else if (containers.has(type)) {
+        const childStart = cursor + 8 + (type === "meta" ? 4 : 0);
+        if (childStart > cursor + declaredSize) {
+          throw new AriAttachmentError("CORRUPT_FILE");
+        }
+        visit(childStart, cursor + declaredSize, depth + 1);
+      }
+      cursor += declaredSize;
+    }
+  };
+  visit(0, bytes.length, 0);
+  if (!sawIspe) throw new AriAttachmentError("CORRUPT_FILE");
+  return mime;
+}
+
+function detectImage(bytes: Uint8Array): string | null {
+  if (startsWithBytes(bytes, [0xff, 0xd8])) {
+    verifyJpeg(bytes);
     return "image/jpeg";
   }
   if (
-    startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) &&
-    findAscii(bytes.slice(Math.max(0, bytes.length - 32)), "IEND") >= 0
-  ) return "image/png";
+    startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  ) {
+    verifyPng(bytes);
+    return "image/png";
+  }
   if (
     findAscii(bytes.slice(0, 16), "RIFF") === 0 &&
     findAscii(bytes.slice(8, 16), "WEBP") === 0
@@ -354,17 +543,51 @@ function detectImage(bytes: Uint8Array): string | null {
     }
     return "image/webp";
   }
-  if (bytes.length >= 12 && findAscii(bytes.slice(4, 12), "ftyp") >= 0) {
-    const brand = textDecoder.decode(bytes.slice(8, 12)).toLowerCase();
-    if (brand === "avif" || brand === "avis") {
-      throw new AriAttachmentError("UNSUPPORTED_TYPE");
+  return verifyHeic(bytes);
+}
+
+function verifyPdf(bytes: Uint8Array): { pageCount: number } {
+  const tail = bytes.slice(Math.max(0, bytes.length - 2048));
+  if (findAscii(tail, "%%EOF") < 0 || findAscii(tail, "startxref") < 0) {
+    throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+  }
+  const latin = new TextDecoder("latin1").decode(bytes);
+  if (/\/Encrypt\b/.test(latin)) throw new AriAttachmentError("ENCRYPTED_FILE");
+  if (!/\d+\s+\d+\s+obj\b/.test(latin)) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+  let totalStreams = 0;
+  const streamPattern = /(?:\r?\n)stream\r?\n/g;
+  for (const stream of latin.matchAll(streamPattern)) {
+    const start = (stream.index ?? 0) + stream[0].length;
+    const end = latin.indexOf("endstream", start);
+    if (end < 0) throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+    const header = latin.slice(
+      Math.max(0, (stream.index ?? 0) - 1024),
+      stream.index,
+    );
+    const declaredLength = Array.from(header.matchAll(/\/Length\s+(\d+)/g))
+      .at(-1);
+    const actualLength = end - start;
+    const boundedLength = declaredLength
+      ? Number(declaredLength[1])
+      : actualLength;
+    if (
+      !Number.isSafeInteger(boundedLength) || boundedLength < 0 ||
+      boundedLength > MAX_PDF_STREAM_BYTES || actualLength > boundedLength + 2
+    ) {
+      throw new AriAttachmentError("DECOMPRESSION_BOMB");
     }
-    if (["heic", "heix", "hevc", "hevx"].includes(brand)) return "image/heic";
-    if (["heif", "heim", "heis", "mif1", "msf1"].includes(brand)) {
-      return "image/heif";
+    totalStreams += boundedLength;
+    if (totalStreams > MAX_PDF_STREAM_BYTES) {
+      throw new AriAttachmentError("DECOMPRESSION_BOMB");
     }
   }
-  return null;
+  const pageCount = Array.from(latin.matchAll(/\/Type\s*\/Page\b/g)).length;
+  if (pageCount > MAX_PDF_PAGES) {
+    throw new AriAttachmentError("CONTEXT_LIMIT_EXCEEDED");
+  }
+  return { pageCount };
 }
 
 export async function verifyAriAttachment(
@@ -396,18 +619,7 @@ export async function verifyAriAttachment(
     verifiedMime = imageMime;
     fileType = "image";
   } else if (startsWithBytes(bytes, [0x25, 0x50, 0x44, 0x46, 0x2d])) {
-    const tail = bytes.slice(Math.max(0, bytes.length - 2048));
-    if (findAscii(tail, "%%EOF") < 0) {
-      throw new AriAttachmentError("UPLOAD_INCOMPLETE");
-    }
-    if (findAscii(bytes, "/Encrypt") >= 0) {
-      throw new AriAttachmentError("ENCRYPTED_FILE");
-    }
-    const latin = new TextDecoder("latin1").decode(bytes);
-    const pageCount = Array.from(latin.matchAll(/\/Type\s*\/Page\b/g)).length;
-    if (pageCount > MAX_PDF_PAGES) {
-      throw new AriAttachmentError("CONTEXT_LIMIT_EXCEEDED");
-    }
+    const { pageCount } = verifyPdf(bytes);
     verifiedMime = "application/pdf";
     fileType = "pdf";
     processingMetadata.page_count = pageCount;

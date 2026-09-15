@@ -42,6 +42,41 @@ function concat(...chunks: Uint8Array[]): Uint8Array {
   return output;
 }
 
+function u32be(value: number): Uint8Array {
+  return new Uint8Array([
+    (value >>> 24) & 0xff,
+    (value >>> 16) & 0xff,
+    (value >>> 8) & 0xff,
+    value & 0xff,
+  ]);
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+  return concat(u32be(data.length), encoder.encode(type), data, u32be(0));
+}
+
+/**
+ * [TEST-MOD-APPROVED #3429] The old signature-only placeholders are invalid
+ * under the approved structural validator; these are minimal bounded files.
+ */
+function validPng(): Uint8Array {
+  return concat(
+    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk(
+      "IHDR",
+      concat(u32be(1), u32be(1), new Uint8Array([8, 2, 0, 0, 0])),
+    ),
+    pngChunk("IDAT", new Uint8Array([0])),
+    pngChunk("IEND", new Uint8Array()),
+  );
+}
+
+function validPdf(): Uint8Array {
+  return encoder.encode(
+    "%PDF-1.7\n1 0 obj << /Type /Page >>\nendobj\nstartxref\n0\n%%EOF",
+  );
+}
+
 function storedZip(files: Array<[string, string]>): Uint8Array {
   const locals: Uint8Array[] = [];
   const central: Uint8Array[] = [];
@@ -167,13 +202,8 @@ Deno.test("#3429 accepts exactly the approved image/document MIME families", () 
 });
 
 Deno.test("#3429 verifies representative PNG, PDF, TXT, CSV, and DOCX bytes without truncation", async () => {
-  const png = concat(
-    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    encoder.encode("fixture-IEND"),
-  );
-  const pdf = encoder.encode(
-    "%PDF-1.7\n1 0 obj << /Type /Page >>\nendobj\n%%EOF",
-  );
+  const png = validPng();
+  const pdf = validPdf();
   const txt = encoder.encode("Line one\r\nLine two");
   const csv = encoder.encode("name,count\nAri,2\n");
   const docx = storedZip([
@@ -215,10 +245,7 @@ Deno.test("#3429 verifies representative PNG, PDF, TXT, CSV, and DOCX bytes with
 });
 
 Deno.test("#3429 fails closed on MIME spoofing and context overflow", async () => {
-  const png = concat(
-    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    encoder.encode("fixture-IEND"),
-  );
+  const png = validPng();
   const spoofed = await assertRejects(
     () => verifyAriAttachment(png, "application/pdf", png.length),
     AriAttachmentError,

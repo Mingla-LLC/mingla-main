@@ -189,7 +189,6 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const [draftText, setDraftText] = useState("");
   const composerInputRef = useRef<React.ElementRef<typeof TextInput> | null>(null);
   const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
-  const [retryText, setRetryText] = useState<string | null>(null);
   const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
   const [cooldownNow, setCooldownNow] = useState(() => Date.now());
   // ORCH-1101 REWORK Bug #6 — dismiss the AI-disclosure sheet the instant the
@@ -297,7 +296,6 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     setAttachmentSourceOpen(false);
     setDraftText("");
     setLocalError(null);
-    setRetryText(null);
     setRateLimitUntil(null);
     Keyboard.dismiss();
   }, [currentBrand?.displayName, selectedBrandId]);
@@ -336,7 +334,6 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     void chat.sendMessage(text, selectedFiles).then((result) => {
     if (result.kind === "error") {
       if (["BRAND_CONTEXT_REQUIRED", "BRAND_ACCESS_DENIED", "CONVERSATION_BRAND_MISMATCH", "LEGACY_CONVERSATION_UNSCOPED", "TENANT_SCOPE_UNAVAILABLE", "UNAUTHORIZED"].includes(result.code)) {
-        setRetryText(text);
       } else if (result.code === "RATE_LIMITED") {
         const parsedUntil = result.cooldown_until ? Date.parse(result.cooldown_until) : Number.NaN;
         const fallbackMs = Math.max(1, result.retry_after_seconds ?? 5) * 1000;
@@ -378,7 +375,6 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       return;
     }
     if (result.kind === "text" && result.handoff_route) router.push(result.handoff_route as never);
-    setRetryText(null);
     }).catch((error: unknown) => {
       setLocalError(error instanceof Error ? error.message : "Message not sent. Check your connection and try again.");
     });
@@ -522,8 +518,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   }, [recovery?.code]);
 
   const handleRecovery = (): void => {
-    if (recovery?.code === "TENANT_SCOPE_UNAVAILABLE" && retryText) {
-      handleSend(retryText);
+    if (recovery?.code === "TENANT_SCOPE_UNAVAILABLE") {
+      void chat.retryTenantRecovery().catch((error: unknown) => {
+        setLocalError(error instanceof Error ? error.message : "Ari couldn’t retry that message.");
+      });
     } else if (recovery?.code === "UNAUTHORIZED") {
       router.replace("/" as never);
     } else if (recovery?.code === "BRAND_CONTEXT_REQUIRED" || recovery?.code === "BRAND_ACCESS_DENIED") {
@@ -759,6 +757,26 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               {attachments.errorMessage ? (
                 <View style={styles.attachmentError} accessibilityRole="alert">
                   <Text style={styles.attachmentErrorText}>{attachments.errorMessage}</Text>
+                  {attachments.photoPermissionRecovery ? (
+                    <View style={styles.attachmentRecoveryActions}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Choose documents instead"
+                        onPress={() => void attachments.addFiles("documents")}
+                        style={styles.attachmentRecoveryAction}
+                      >
+                        <Text style={styles.attachmentRecoveryActionText}>Choose documents</Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Open photo permissions in Settings"
+                        onPress={() => void attachments.openPhotoPermissionSettings()}
+                        style={styles.attachmentRecoveryAction}
+                      >
+                        <Text style={styles.attachmentRecoveryActionText}>Open Settings</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Dismiss attachment message"
@@ -920,12 +938,16 @@ const styles = StyleSheet.create({
     minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: spacing.sm,
     paddingLeft: spacing.md,
     borderRadius: radius.md,
     backgroundColor: Platform.OS === "android" ? "#2b1d15" : "rgba(235, 120, 37, 0.12)",
   },
   attachmentErrorText: { flex: 1, color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
+  attachmentRecoveryActions: { flexDirection: "row", gap: spacing.xs, paddingLeft: spacing.md, paddingBottom: spacing.sm, width: "100%" },
+  attachmentRecoveryAction: { minHeight: 40, justifyContent: "center", paddingHorizontal: spacing.sm, borderRadius: radius.sm, backgroundColor: ariThread.composerSurface },
+  attachmentRecoveryActionText: { color: accent.warm, fontSize: 14, fontWeight: "600" },
   attachmentErrorDismiss: { minWidth: 64, minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.sm },
   attachmentErrorDismissText: { color: accent.warm, fontSize: 14, fontWeight: "600" },
   recoveryPanel: {

@@ -233,16 +233,7 @@ Deno.serve(async (request) => {
     .maybeSingle();
   if (retryError) return response(500, { code: "RETRY_FAILED" });
   if (!retried) return response(409, { code: "TURN_STATE_CHANGED" });
-  const { error: retryEventError } = await admin.rpc(
-    "append_agent_activity_event",
-    {
-      p_attempt_id: retried.id,
-      p_user_id: userId,
-      p_attempt_number: retried.attempt_number,
-      p_event_type: "automated_retry_started",
-      p_now: now,
-    },
-  );
-  if (retryEventError) return response(500, { code: "RETRY_EVENT_FAILED" });
+  // `accepted` only records retry intent. The execution function emits the
+  // retry-start event after it atomically owns accepted -> running.
   return response(200, { attempt: retried, accepted: true, changed: true });
 });

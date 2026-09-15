@@ -112,8 +112,8 @@ export const InputBar: React.FC<InputBarProps> = ({
   }));
 
   const handleSend = (): void => {
+    if (!canSend) return;
     const t = text.trim();
-    if (!t && !hasReadyAttachments) return;
 
     if (reduceMotion) {
       // Reduced motion: simple dim → restore, no spring/flicker.

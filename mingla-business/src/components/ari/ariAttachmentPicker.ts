@@ -10,6 +10,16 @@ export interface AriPickedFile {
   webFile?: File;
 }
 
+export class AriAttachmentPickerPermissionError extends Error {
+  readonly canOpenSettings: boolean;
+
+  constructor(canOpenSettings: boolean) {
+    super("Photo access is off.");
+    this.name = "AriAttachmentPickerPermissionError";
+    this.canOpenSettings = canOpenSettings;
+  }
+}
+
 export const ARI_ATTACHMENT_ACCEPT = [
   ".jpg",
   ".jpeg",

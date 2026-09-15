@@ -939,6 +939,10 @@ async function handle(req: Request): Promise<Response> {
   const userMessageId = claimed.message_id;
   const attemptId = claimed.attempt_id;
   const attemptNumber = claimed.attempt_number;
+  // A recovered same-id invocation may observe the winner already running.
+  // Only the invocation that atomically changes accepted -> running owns any
+  // failure finalization for this attempt.
+  let executionOwned = false;
   if (typeof claimed.title === "string" && claimed.title.trim().length > 0) {
     conversationTitle = claimed.title;
   }
@@ -1255,6 +1259,22 @@ async function handle(req: Request): Promise<Response> {
         currentAttempt?.status === "stopped"
           ? "Ari stopped. Your message is still here."
           : "Ari is verifying the result before showing it as complete.",
+      );
+    }
+    executionOwned = true;
+    if (
+      attemptNumber > 1 && !await appendActivity({
+        client: serviceClient,
+        attemptId,
+        userId,
+        attemptNumber,
+        eventType: "automated_retry_started",
+      })
+    ) {
+      return errorResponse(
+        500,
+        "INTERNAL",
+        "Failed to record this retry.",
       );
     }
 
@@ -2237,7 +2257,9 @@ async function handle(req: Request): Promise<Response> {
       // #2019: authorization precedes every persisted proposal.
       let proposalContext: Record<string, unknown> | null = null;
       try {
-        await authorizeAgentTool(tool, gemini.toolCall.args,
+        await authorizeAgentTool(
+          tool,
+          gemini.toolCall.args,
           userClient,
           userId,
         );
@@ -2337,13 +2359,15 @@ async function handle(req: Request): Promise<Response> {
     // Every claimed request must leave a terminal or explicitly reconciling
     // attempt. This catches validation/provider/tool exits without weakening
     // the atomic late-result gate used by successful commits.
-    await failAttempt({
-      client: serviceClient,
-      attemptId,
-      userId,
-      attemptNumber,
-      errorCode: "TURN_ABORTED",
-    });
+    if (executionOwned) {
+      await failAttempt({
+        client: serviceClient,
+        attemptId,
+        userId,
+        attemptNumber,
+        errorCode: "TURN_ABORTED",
+      });
+    }
   }
 }
 

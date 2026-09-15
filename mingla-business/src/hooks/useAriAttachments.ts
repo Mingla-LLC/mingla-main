@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Haptics from "expo-haptics";
+import { Linking } from "react-native";
 
 import {
+  AriAttachmentPickerPermissionError,
   type AriAttachmentSource,
   pickAriAttachmentFiles,
 } from "../components/ari/ariAttachmentPicker";
@@ -20,7 +22,9 @@ import { randomId } from "../utils/randomId";
 export interface UseAriAttachmentsResult {
   attachments: AriAttachmentDraft[];
   errorMessage: string | null;
+  photoPermissionRecovery: { canOpenSettings: boolean } | null;
   clearError: () => void;
+  openPhotoPermissionSettings: () => Promise<void>;
   addFiles: (source: AriAttachmentSource) => Promise<void>;
   retryAttachment: (localId: string) => Promise<void>;
   removeAttachment: (localId: string) => void;
@@ -39,6 +43,9 @@ export function useAriAttachments(args: {
   const [attachments, setAttachments] = useState<AriAttachmentDraft[]>([]);
   const attachmentsRef = useRef<AriAttachmentDraft[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [photoPermissionRecovery, setPhotoPermissionRecovery] = useState<{
+    canOpenSettings: boolean;
+  } | null>(null);
   const previousBrandId = useRef(args.brandId);
 
   const replaceAttachments = useCallback((next: AriAttachmentDraft[]): void => {
@@ -60,6 +67,7 @@ export function useAriAttachments(args: {
     previousBrandId.current = args.brandId;
     replaceAttachments([]);
     setErrorMessage(null);
+    setPhotoPermissionRecovery(null);
     stale.forEach((item) => {
       if (item.attachmentId) void discardAriAttachment(item.attachmentId).catch(() => undefined);
     });
@@ -96,6 +104,7 @@ export function useAriAttachments(args: {
 
   const addFiles = useCallback(async (source: AriAttachmentSource): Promise<void> => {
     setErrorMessage(null);
+    setPhotoPermissionRecovery(null);
     const current = attachmentsRef.current;
     const remaining = ARI_ATTACHMENT_MAX_FILES - current.length;
     if (remaining <= 0) {
@@ -106,7 +115,12 @@ export function useAriAttachments(args: {
     try {
       picked = await pickAriAttachmentFiles(source, remaining);
     } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "Couldn’t open files. Try again.");
+      if (error instanceof AriAttachmentPickerPermissionError) {
+        setPhotoPermissionRecovery({ canOpenSettings: error.canOpenSettings });
+        setErrorMessage("Photo access is off. Choose documents or open Settings to allow it.");
+      } else {
+        setErrorMessage(error instanceof Error ? error.message : "Couldn’t open files. Try again.");
+      }
       return;
     }
     if (picked.length === 0) return;
@@ -120,11 +134,8 @@ export function useAriAttachments(args: {
         draft.errorCode = "UNSUPPORTED_TYPE";
         draft.errorMessage = "That file isn’t supported. Add a JPG, PNG, WebP, HEIC, PDF, DOCX, TXT, or CSV file up to 10 MB.";
       }
-      if (
-        draft.state !== "failed" && (draft.sizeBytes < 1 || draft.sizeBytes > ARI_ATTACHMENT_MAX_FILE_BYTES ||
-        acceptedBytes + draft.sizeBytes > ARI_ATTACHMENT_MAX_TURN_BYTES
-        )
-      ) {
+      if (draft.state !== "failed" && (draft.sizeBytes < 1 || draft.sizeBytes > ARI_ATTACHMENT_MAX_FILE_BYTES ||
+        acceptedBytes + draft.sizeBytes > ARI_ATTACHMENT_MAX_TURN_BYTES)) {
         draft.state = "failed";
         draft.errorCode = draft.sizeBytes > ARI_ATTACHMENT_MAX_FILE_BYTES
           ? "FILE_TOO_LARGE"
@@ -132,7 +143,7 @@ export function useAriAttachments(args: {
         draft.errorMessage = draft.sizeBytes > ARI_ATTACHMENT_MAX_FILE_BYTES
           ? "That file is larger than 10 MB. Choose a smaller file."
           : "You can attach up to 5 files and 25 MB in one message.";
-      } else {
+      } else if (draft.state !== "failed") {
         acceptedBytes += draft.sizeBytes;
       }
       drafts.push(draft);
@@ -146,6 +157,19 @@ export function useAriAttachments(args: {
     const valid = drafts.filter((draft) => draft.state === "preparing");
     if (valid.length > 0) await prepare(valid);
   }, [args.surface, prepare, replaceAttachments]);
+
+  const openPhotoPermissionSettings = useCallback(async (): Promise<void> => {
+    try {
+      await Linking.openSettings();
+    } catch {
+      setErrorMessage("Couldn’t open Settings. Choose documents instead.");
+    }
+  }, []);
+
+  const clearError = useCallback((): void => {
+    setErrorMessage(null);
+    setPhotoPermissionRecovery(null);
+  }, []);
 
   const removeAttachment = useCallback((localId: string): void => {
     const target = attachmentsRef.current.find((item) => item.localId === localId);
@@ -206,7 +230,9 @@ export function useAriAttachments(args: {
   return {
     attachments,
     errorMessage,
-    clearError: () => setErrorMessage(null),
+    photoPermissionRecovery,
+    clearError,
+    openPhotoPermissionSettings,
     addFiles,
     retryAttachment,
     removeAttachment,

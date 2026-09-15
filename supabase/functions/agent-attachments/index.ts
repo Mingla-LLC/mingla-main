@@ -270,6 +270,7 @@ Deno.serve(async (request) => {
         });
         continue;
       }
+      let derivedStoragePath: string | null = null;
       try {
         await admin.from("agent_attachments").update({
           state: "uploaded",
@@ -304,7 +305,6 @@ Deno.serve(async (request) => {
           .limit(1)
           .maybeSingle();
         if (duplicate) throw new AriAttachmentError("DUPLICATE_FILE");
-        let derivedStoragePath: string | null = null;
         let derivedSizeBytes: number | null = null;
         let derivedSha256: string | null = null;
         if (verified.derivativeText !== null) {
@@ -328,7 +328,9 @@ Deno.serve(async (request) => {
             );
           if (derivativeError) throw new AriAttachmentError("UNREADABLE_FILE");
         }
-        const { error: readyError } = await admin.from("agent_attachments")
+        const { data: readyRow, error: readyError } = await admin.from(
+          "agent_attachments",
+        )
           .update({
             state: "ready",
             failure_code: null,
@@ -345,8 +347,10 @@ Deno.serve(async (request) => {
           }).eq("id", attachmentId).eq("user_id", userId).eq(
             "state",
             "processing",
-          );
-        if (readyError) throw new AriAttachmentError("UNREADABLE_FILE");
+          ).select("id").maybeSingle();
+        if (readyError || !readyRow) {
+          throw new AriAttachmentError("UNREADABLE_FILE");
+        }
         outcomes.push({
           attachment_id: attachmentId,
           filename: row.original_filename,
@@ -359,6 +363,16 @@ Deno.serve(async (request) => {
         const code = error instanceof AriAttachmentError
           ? error.code
           : "UNREADABLE_FILE";
+        if (derivedStoragePath !== null) {
+          const { error: cleanupError } = await admin.storage
+            .from(ARI_ATTACHMENT_BUCKET).remove([derivedStoragePath]);
+          if (cleanupError) {
+            console.error("ari_attachment_derivative_cleanup_failed", {
+              attachmentId,
+              code: cleanupError.message,
+            });
+          }
+        }
         await admin.from("agent_attachments").update({
           state: "failed",
           failure_code: code,

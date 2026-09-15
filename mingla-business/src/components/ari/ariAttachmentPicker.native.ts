@@ -4,7 +4,9 @@ import {
   requestMediaLibraryPermissionsAsync,
 } from "../../utils/platformImagePicker";
 
-import type {
+import {
+  AriAttachmentPickerPermissionError,
+  type
   AriAttachmentSource,
   AriPickedFile,
 } from "./ariAttachmentPicker";
@@ -24,8 +26,8 @@ export async function pickAriAttachmentFiles(
   if (source === "photos") {
     const permission = await requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      throw new Error(
-        "Photo access is off. Choose documents or allow photo access in Settings.",
+      throw new AriAttachmentPickerPermissionError(
+        permission.canAskAgain !== true,
       );
     }
     const result = await launchImageLibraryAsync({

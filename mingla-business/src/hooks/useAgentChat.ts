@@ -35,6 +35,7 @@ import {
   type AriClientIntentRecord,
   canDispatchAriIntent,
   createAriClientIntent,
+  isCurrentAriTurnEpoch,
   reduceAriClientIntent,
 } from "../services/agentReliability";
 import { agentQueryKeys } from "./agentQueryKeys";
@@ -71,6 +72,7 @@ export interface UseAgentChatResult {
   sendMessage: (text: string, attachments?: AriAttachmentDraft[]) => Promise<AgentChatResponse>;
   sendChoice: (submission: AgentChoiceSubmissionV2, label: string) => Promise<AgentChatResponse>;
   retryTurn: (clientTurnId: string) => Promise<AgentChatResponse | null>;
+  retryTenantRecovery: () => Promise<AgentChatResponse | null>;
   editTurn: (clientTurnId: string) => AriEditableTurn | null;
   discardTurn: (clientTurnId: string) => void;
   stopTurn: (clientTurnId: string) => Promise<void>;
@@ -290,9 +292,11 @@ export function useAgentChat(
   const reconcileOne = useCallback(async (clientTurnId: string): Promise<void> => {
     const before = turnsRef.current.find((turn) => turn.clientTurnId === clientTurnId);
     if (!before) return;
+    const scopeEpoch = brandEpoch.current;
     patchTurn(clientTurnId, { reconciling: true });
     try {
       const canonical = await fetchAriTurnStatus(clientTurnId);
+      if (!isCurrentAriTurnEpoch(before.epoch, scopeEpoch, brandEpoch.current)) return;
       const status = canonical.attempt.status;
       const delivery = status === "stopped" ? "stopped" as const
         : status === "failed" || status === "completed" ? "sent" as const
@@ -312,8 +316,12 @@ export function useAgentChat(
             : { errorCode: null, errorMessage: null }),
       });
       if (canonical.attempt.conversation_id !== conversationId) selectConversation(canonical.attempt.conversation_id);
-      if (status === "completed") await refreshCanonicalMessages(canonical.attempt.conversation_id);
+      if (status === "completed") {
+        await refreshCanonicalMessages(canonical.attempt.conversation_id);
+        if (!isCurrentAriTurnEpoch(before.epoch, scopeEpoch, brandEpoch.current)) return;
+      }
     } catch {
+      if (!isCurrentAriTurnEpoch(before.epoch, scopeEpoch, brandEpoch.current)) return;
       patchTurn(clientTurnId, { reconciling: false });
     }
   }, [conversationId, patchTurn, refreshCanonicalMessages, selectConversation]);
@@ -520,6 +528,9 @@ export function useAgentChat(
     if (!turn || !["failed", "stopped"].includes(turn.delivery)) return null;
     if (turn.accepted || turn.errorCode === "STOP_BEFORE_ACCEPTANCE") {
       try {
+        // The retry RPC creates the next server attempt; clear the old
+        // in-flight intent before dispatching that invocation.
+        if (sendIntentRef.current?.stableId === clientTurnId) sendIntentRef.current = null;
         const retried = await retryAriTurn(clientTurnId);
         patchTurn(clientTurnId, {
           accepted: retried.accepted !== false,
@@ -541,6 +552,13 @@ export function useAgentChat(
     const payload = latest.payload;
     return sendTurn((failed.content as { text?: string }).text ?? latest.displayText, payload, latest.attachments, clientTurnId);
   }, [patchTurn, reconcileOne, sendTurn]);
+
+  const retryTenantRecovery = useCallback(async (): Promise<AgentChatResponse | null> => {
+    const recoverable = [...turnsRef.current].reverse().find((turn) =>
+      turn.delivery === "failed" && turn.errorCode === "TENANT_SCOPE_UNAVAILABLE"
+    );
+    return recoverable ? retryTurn(recoverable.clientTurnId) : null;
+  }, [retryTurn]);
 
   const editTurn = useCallback((clientTurnId: string): AriEditableTurn | null => {
     const turn = turnsRef.current.find((candidate) => candidate.clientTurnId === clientTurnId);
@@ -580,11 +598,11 @@ export function useAgentChat(
     }
     if (!stopped) {
       patchTurn(clientTurnId, {
-        delivery: "failed",
-        reconciling: false,
-        errorCode: "STOP_BEFORE_ACCEPTANCE",
-        errorMessage: "Message not sent. Check your connection and try again.",
+        reconciling: true,
+        errorCode: "STOP_RECONCILING",
+        errorMessage: "Ari is checking whether your stop request reached the server.",
       });
+      await reconcileOne(clientTurnId);
       return;
     }
     if (stopResult?.accepted === false) {
@@ -686,6 +704,7 @@ export function useAgentChat(
     sendMessage,
     sendChoice,
     retryTurn,
+    retryTenantRecovery,
     editTurn,
     discardTurn,
     stopTurn,
