@@ -151,6 +151,9 @@ on:
       - "mingla-business/src/services/eventDrafts.ts"
       - "mingla-business/src/hooks/useRsvpApprovals.ts"
       - "supabase/functions/rsvp-contribution-refund/**"
+      # Issue #3391 — the host's paid-cancel route lives in this function; a
+      # change to it alone must re-run the #3391 SQL and Deno suites.
+      - "supabase/functions/venue-reservation-cancel/**"
       - ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
   pull_request:
@@ -262,6 +265,9 @@ on:
       - "mingla-business/src/services/eventDrafts.ts"
       - "mingla-business/src/hooks/useRsvpApprovals.ts"
       - "supabase/functions/rsvp-contribution-refund/**"
+      # Issue #3391 — the host's paid-cancel route lives in this function; a
+      # change to it alone must re-run the #3391 SQL and Deno suites.
+      - "supabase/functions/venue-reservation-cancel/**"
       - ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
 
@@ -899,6 +905,18 @@ jobs:
             -f supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.implementor.happy.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.tester.adversarial.pg17.test.sql
+          # Issue #3391 — a venue cancelling a PAID booking refunds the guest in
+          # full, Mingla's fee included. CALLS the functions as a real rank-40
+          # manager: the exact refund and three ledger legs, an idempotent retry,
+          # Stripe and Paystack, seated bookings left alone, the old transition
+          # still refunding, every other door (Ari, a direct RLS write) refused,
+          # one full refund per charge, and the payout proven both ways — never
+          # attached before release, recovered as a debt after it. Group R derives
+          # the pre-fix database from the live definitions and reproduces the
+          # no-refund cancel. Runs after the #3193 and #3197 suites; it asserts
+          # fixture-scoped outcomes only and nothing plan-dependent.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3391_venue_staff_cancel_refund.test.sql
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
@@ -1290,6 +1308,15 @@ jobs:
             # scoped to that reservation AND its token hash, and exposes booking
             # facts only. Registered in this existing lane, not a new workflow.
             supabase/functions/_shared/__tests__/issue_3392_guest_reservation_manage_view.test.ts
+            # Issue #3391 — a venue cancelling a PAID booking refunds the guest in
+            # full. Drives the real host-cancel handler and the real #1221 runner
+            # with the provider wire stubbed at fetch: the lease precedes any
+            # provider call, Stripe gets exactly one connected-account refund
+            # (refund_application_fee=false) and one fee refund, each with the
+            # attempt's idempotency key; Paystack reconciles before its one
+            # refund; a retry calls no provider. Registered in this existing
+            # lane, not a new workflow (I-2148-CI-TOPOLOGY-BOUNDED).
+            supabase/functions/_shared/__tests__/issue_3391_venue_staff_cancel_refund.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

@@ -10,6 +10,11 @@
  *     it opens a booking with NO refund, cancels it, shows the cancelled state
  *     without a second Cancel, and paints every text on the dark canvas;
  *   - the REAL ReservationDetailSheet arming Cancel on paid and free bookings.
+ *
+ * #3391 AMENDED (Seth's refund decision, 2026-09-15): the stopgap note this
+ * file first pinned ("Cancelling won't refund them automatically") is replaced
+ * by the refund it now performs — "This refunds {amount} to the guest." The
+ * two host-sheet assertions below were updated for that, and nothing else.
  */
 
 import React from "react";
@@ -118,10 +123,7 @@ import {
 import GuestReservationManageRoute from "../../../../app/reserve/[brandId]/manage";
 import { GuestVenueReservation } from "../GuestVenueReservation";
 import { ReservationDetailSheet } from "../ReservationDetailSheet";
-import {
-  PAID_CANCEL_REFUND_NOTE,
-  paidCancelNeedsRefundNote,
-} from "../reservationPaidCancelNote";
+import { paidCancelNote } from "../reservationPaidCancelNote";
 
 interface TestInstance {
   type: unknown;
@@ -350,7 +352,7 @@ describe("#3392 — the manage page opens, cancels and reads on the dark canvas"
 
 // ── #3391 host note ──────────────────────────────────────────────────────────
 
-describe("#3391 — arming Cancel on a paid booking says the guest isn't refunded", () => {
+describe("#3391 — arming Cancel on a paid booking says what the guest gets back", () => {
   const baseReservation = {
     id: "reservation-host",
     brandId: "brand-3392",
@@ -369,15 +371,17 @@ describe("#3391 — arming Cancel on a paid booking says the guest isn't refunde
     guestNotes: null,
     tags: [],
     feeCents: 2500,
+    feeCurrency: "USD",
     paymentStatus: "paid",
     refund: null,
   } as unknown as Reservation;
+  const REFUND_NOTE = "This refunds $25.00 to the guest.";
 
   test("the rule: only an armed cancel on a paid, unrefunded booking", () => {
-    expect(paidCancelNeedsRefundNote(baseReservation, "cancel")).toBe(true);
-    expect(paidCancelNeedsRefundNote(baseReservation, null)).toBe(false);
-    expect(paidCancelNeedsRefundNote(baseReservation, "no_show")).toBe(false);
-    expect(paidCancelNeedsRefundNote({ ...baseReservation, paymentStatus: "none" }, "cancel")).toBe(false);
+    expect(paidCancelNote(baseReservation, "cancel")?.text).toBe(REFUND_NOTE);
+    expect(paidCancelNote(baseReservation, null)).toBeNull();
+    expect(paidCancelNote(baseReservation, "no_show")).toBeNull();
+    expect(paidCancelNote({ ...baseReservation, paymentStatus: "none" }, "cancel")).toBeNull();
   });
 
   test.each([
@@ -401,7 +405,7 @@ describe("#3391 — arming Cancel on a paid booking says the guest isn't refunde
       (n) => n.props.testID === "reservation-paid-cancel-note" && typeof n.type === "string",
     );
     expect(notes.length > 0).toBe(shown);
-    if (shown) expect(textOf(notes[0])).toBe(PAID_CANCEL_REFUND_NOTE);
+    if (shown) expect(textOf(notes[0])).toBe(REFUND_NOTE);
     await TestRenderer.act(async () => tree.unmount());
   });
 });
