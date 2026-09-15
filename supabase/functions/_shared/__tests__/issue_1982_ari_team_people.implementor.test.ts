@@ -148,7 +148,7 @@ Deno.test("#1982 implementor: auth + read-only pins", () => {
 });
 
 Deno.test("#1982 implementor: PROMPT_VERSION v20 ads team surface", () => {
-  assertEquals(PROMPT_VERSION, "v20");
+  assertEquals(PROMPT_VERSION, "v21"); // [TEST-MOD-APPROVED #3184] prompt bumped for no-website handoff rule
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assert(prompt.includes("revoke_brand_invitation"));
   assert(prompt.includes("scanner invitations"));

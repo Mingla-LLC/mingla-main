@@ -437,6 +437,28 @@ export function mapLegacyAriErrorCode(legacy: string): AriErrorCode {
     case "CONVERSATION_NOT_FOUND":
     case "PRIVATE_VISIBILITY_UNAVAILABLE":
       return "VALIDATION_FAILED";
+    // #3184 — Sites refusals are not server faults.
+    // The Website service answers with a closed set of safe customer codes
+    // (SITES_SAFE_CUSTOMER_CODES). Each is an expected refusal, a conflict, or
+    // a dependency outage. Letting one fall to the default below turned a
+    // brand's ordinary "no website" answer into a 500 that the app reported as
+    // a broken connection. Every code a Sites tool can raise is mapped here on
+    // purpose, so none of them can reach INTERNAL.
+    case "MEDIA_REJECTED":
+      return "VALIDATION_FAILED";
+    case "INVALID_STATE":
+    case "SESSION_EXPIRED":
+    case "IDEMPOTENCY_CONFLICT":
+    case "OPERATION_ID_REQUIRED":
+      return "STALE_PROPOSAL";
+    case "REVISION_CONFLICT":
+    case "OPERATION_IN_PROGRESS":
+    case "MEDIA_PROCESSING":
+      return "CONFLICT";
+    case "SERVICE_TEMPORARILY_UNAVAILABLE":
+    case "PUBLISH_FAILED_LAST_GOOD_PRESERVED":
+    case "SITE_SERVICE_UNAVAILABLE":
+      return "DEPENDENCY_UNAVAILABLE";
     case "HANDLER_THREW":
     case "INTERNAL":
     default:

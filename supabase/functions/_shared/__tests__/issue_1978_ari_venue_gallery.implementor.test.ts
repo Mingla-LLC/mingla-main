@@ -114,7 +114,7 @@ Deno.test("#1978 implementor: PROMPT_VERSION advertises manage_venue_gallery", (
   // [TEST-MOD-APPROVED #1976] Prompt revision advanced for payout/tax connect-status ads.
   // [TEST-MOD-APPROVED #1980] Prompt revision advanced for marketing draft/growth report tools.
   // [TEST-MOD-APPROVED #1981] prompt v17→v18 for refund/cancel discovery (append-only auth).
-  assertEquals(PROMPT_VERSION, "v20"); // [TEST-MOD-APPROVED #1982] prompt bumped for team/people ads
+  assertEquals(PROMPT_VERSION, "v21"); // [TEST-MOD-APPROVED #3184] prompt bumped for no-website handoff rule
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assert(prompt.includes("manage_venue_gallery"));
 });
