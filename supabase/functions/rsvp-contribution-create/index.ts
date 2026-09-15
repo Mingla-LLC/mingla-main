@@ -76,6 +76,12 @@ import {
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackContributionSplitFields } from "./ngPaystackSplit.ts";
+// Chip-in → RSVP linkage: the server resolves and verifies rsvp_id (never a raw
+// client value). Sibling module so it is unit-testable.
+import {
+  resolveContributionRsvpId,
+  supabaseRsvpLinkReader,
+} from "./rsvpLink.ts";
 
 type ContributionSurface = "native" | "web" | "mobile-web";
 
@@ -228,7 +234,9 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   const eventId = typeof body.eventId === "string" ? body.eventId : "";
-  const rsvpId = optionalTrimmed(body.rsvpId) ?? null;
+  // Only a HINT. The persisted rsvp_id comes from resolveContributionRsvpId
+  // below, which verifies it belongs to this event and this buyer.
+  const claimedRsvpId = optionalTrimmed(body.rsvpId) ?? null;
   const amountCents = Number(body.amountCents);
   const guestName = optionalTrimmed(body.guestName) ?? null;
   const guestEmail = optionalTrimmed(body.guestEmail) ?? null;
@@ -409,6 +417,39 @@ serve(async (req: Request): Promise<Response> => {
   })();
 
   const contributionId = existingContribution?.id ?? crypto.randomUUID();
+
+  // Link the chip-in to the buyer's RSVP on this event. Before this, the raw
+  // body.rsvpId was persisted and no caller sent one, so every contribution
+  // was written with rsvp_id NULL: the host guest console could not attach it
+  // (or its refund control) to the guest. Exactly-one match or stay unlinked;
+  // a failed lookup never blocks the chip-in.
+  const rsvpLink = await resolveContributionRsvpId(
+    supabaseRsvpLinkReader(supabase),
+    { eventId, userId, guestEmail, claimedRsvpId },
+  );
+  const rsvpId = rsvpLink.rsvpId;
+  console.info(JSON.stringify({
+    event: "rsvp_contribution_rsvp_link",
+    contributionId,
+    linked: rsvpId !== null,
+    source: rsvpLink.source,
+    claimRejected: rsvpLink.claimRejected,
+  }));
+  // A retried pending row written before the link existed gets it now. Only
+  // ever fills a NULL; never re-points an existing link.
+  if (existingContribution && rsvpId !== null) {
+    const { error: linkErr } = await supabase
+      .from("event_rsvp_contributions")
+      .update({ rsvp_id: rsvpId })
+      .eq("id", contributionId)
+      .is("rsvp_id", null);
+    if (linkErr) {
+      console.warn(
+        "[rsvp-contribution-create] rsvp link on retry failed (non-fatal)",
+        linkErr.message,
+      );
+    }
+  }
 
   // WYSIWYG gift — FORCE organiser-absorbs regardless of the brand's ticket
   // switches (SPEC §10 Q-B): the buyer is charged EXACTLY the typed amount.
