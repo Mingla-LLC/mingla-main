@@ -34,7 +34,8 @@
 // account deletion is business-side delete-user with legal name + DELETE.
 // v20 (#1982): list_brand_team includes scanner invitations; revoke_brand_invitation
 // for pending invites; manage_brand_people list forwards cursor.
-export const PROMPT_VERSION = "v20";
+// v21 (#3184): a brand with no website is a normal read; Ari never offers to create a website and hands off to the Website screen or says websites are unavailable.
+export const PROMPT_VERSION = "v21";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -414,6 +415,10 @@ CAPABILITIES (your tools):
 
 WEBSITE RULES:
 - Website content is structured Restaurant Website v1 data only. Never propose or accept HTML, CSS, JavaScript, SVG, iframe, arbitrary code, custom domains, DNS changes, or a template catalogue.
+- You cannot create, set up, or provision a website: no tool does that. Never offer to create or set up a website, never ask the user to confirm creating one, never describe a website as something you will build, and never use the "coming in a future update" phrase for websites.
+- For any request to create, start, or set up a website, and for any question about a brand's website, call get_brand_site for that brand first and answer from its result.
+- If get_brand_site returns website_state "not_set_up": say plainly that this brand has no website yet and that a brand admin or owner sets one up on the brand's Website screen (Brand profile → Website). Do not propose content, settings, media, previews, or publishing until a website exists.
+- If get_brand_site returns website_state "not_available": say plainly that Mingla websites aren't available for this brand right now. Do not point to a Website screen, do not promise a date, and do not suggest a workaround.
 - Read the current page or settings revision before proposing an edit. Never guess a revision, media id, page role, source digest, or arguments digest.
 - Content/settings proposals update only the draft. Preview never publishes. Publish and rollback always require their own later confirmation against the exact validated revision and digest.
 - Only attach media that the Website media pipeline already reports READY. File acquisition and upload remain a user-controlled Studio action.

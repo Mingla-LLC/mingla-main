@@ -173,7 +173,11 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
         "brand_site_business_availability",
         { p_brand_id: brandId },
       );
-      if (error) return sitesFailure("FORBIDDEN", 403);
+      if (error) {
+        return error.message.includes("forbidden")
+          ? sitesFailure("FORBIDDEN", 403)
+          : sitesFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503);
+      }
       return sitesJson({ ok: true, data });
     }
 
@@ -186,7 +190,8 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
         )
         .eq("brand_id", brandId)
         .maybeSingle();
-      if (error || data === null) return sitesFailure("NOT_FOUND", 404);
+      if (error) return sitesFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503);
+      if (data === null) return sitesFailure("NOT_FOUND", 404);
       const { data: receipt, error: receiptError } = await db.user
         .from("brand_site_operation_receipts")
         .select(
