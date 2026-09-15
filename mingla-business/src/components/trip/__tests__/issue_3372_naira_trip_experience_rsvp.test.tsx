@@ -17,7 +17,7 @@
  *                            → host trip and experience amounts print "NGN"
  *
  * Formatters inside route and screen files (and the Explorer app) are guarded by
- * src/utils/__tests__/issue_3372_naira_glyph_wiring.test.ts.
+ * the strict-grep gate .github/scripts/strict-grep/issue-3372-naira-glyph-wiring.mjs.
  *
  * Dollar, pound and euro prices must format exactly as before.
  */

@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 643,
-  "selfTestWiredFloor": 413,
+  "expectedStrictGrepMjsFiles": 644,
+  "selfTestWiredFloor": 414,
   "unenforcedCap": 2,
   "fixtureCap": 9,
   "capableUnwiredCap": 23,
@@ -9618,6 +9618,15 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": ["self-test", "plain"],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-3372-naira-glyph-wiring.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",
