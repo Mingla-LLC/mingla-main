@@ -67,17 +67,24 @@ VALUES(
   'Commit Truth Tester','active'
 );
 INSERT INTO private.brand_offering_invite_plans(
-  event_id,brand_id,event_type,selection_revision,brand_person_ids,
+  id,event_id,brand_id,event_type,selection_revision,
   selection_hash,created_by,updated_by
 ) VALUES(
+  '00000000-1780-4000-8000-000000000905',
   '00000000-1780-4000-8000-000000000903',
   '00000000-1780-4000-8000-000000000902',
   'event',1,
-  ARRAY['00000000-1780-4000-8000-000000000904'::uuid],
   private.issue_1780_selection_hash(
     ARRAY['00000000-1780-4000-8000-000000000904'::uuid]
   ),
   '00000000-1780-4000-8000-000000000901',
+  '00000000-1780-4000-8000-000000000901'
+);
+INSERT INTO private.brand_offering_invite_plan_members(
+  plan_id,brand_person_id,added_by
+) VALUES(
+  '00000000-1780-4000-8000-000000000905',
+  '00000000-1780-4000-8000-000000000904',
   '00000000-1780-4000-8000-000000000901'
 );
 
