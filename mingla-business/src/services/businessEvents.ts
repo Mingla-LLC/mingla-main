@@ -1036,6 +1036,7 @@ export const setEventMultiDatePricingMode = async (
 export const publishBusinessEventDraft = async (
   draft: DraftEvent,
   clientRevision: number | null = draft.clientRevision ?? null,
+  invites?: { selectionRevision: number | null; confirmed: boolean },
 ): Promise<PublishedBusinessEvent> => {
   // ══ issue #3284 — refund terms FIRST, fail closed ════════════════════════
   // The organiser's terms are written to events.refund_policy through the one
@@ -1064,6 +1065,12 @@ export const publishBusinessEventDraft = async (
       p_draft_payload: {
         ...payload,
         visibility: publishedVisibilityForDraft(draft.visibility),
+        ...(invites?.selectionRevision !== null && invites?.selectionRevision !== undefined
+          ? {
+              invite_selection_revision: invites.selectionRevision,
+              invite_selection_confirmed: invites.confirmed,
+            }
+          : {}),
       },
       p_client_revision: clientRevision,
     },

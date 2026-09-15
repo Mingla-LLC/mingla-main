@@ -12,6 +12,8 @@ import {
   OfferingInviteTokenPepperError,
   resolveOfferingInviteTokenPepper,
 } from "../_shared/offeringInviteToken.ts";
+import { resolveDeliveryFlagValue } from "../_shared/secretBundle.ts";
+import { countryFromE164 } from "../_shared/e164Country.ts";
 
 type Channel = "email" | "push" | "sms";
 interface DispatchBody {
@@ -40,6 +42,38 @@ interface DispatchBody {
   };
 }
 
+interface WizardWorkerBody {
+  mode: "wizard_worker";
+}
+
+interface WizardPreviewBody {
+  mode: "wizard_preview";
+  eventId: string;
+  selectionRevision: number;
+}
+
+interface WizardOutboxJob {
+  outboxJobId: string;
+  sealedSelectionId: string;
+  eventId: string;
+  eventType: "event" | "rsvp" | "experience" | "trip";
+  actorId: string;
+  brandPersonIds: string[];
+  selectionHash: string;
+  selectionRevision: number;
+  leaseToken: string;
+  attemptCount: number;
+  sendGroupId: string | null;
+  executionSnapshot:
+    | Awaited<ReturnType<typeof buildOfferingExecutionSnapshot>>
+    | null;
+}
+
+// The repository does not generate Database types for Edge clients. Pin the
+// intentionally dynamic service client once instead of letting createClient's
+// empty-schema inference collapse every new RPC/table to `never`.
+type WizardServiceClient = ReturnType<typeof createClient<any, any, any>>;
+
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const HASH = /^[0-9a-f]{64}$/;
@@ -55,6 +89,492 @@ function json(body: Record<string, unknown>, status = 200): Response {
 
 function exactKeys(value: Record<string, unknown>, allowed: string[]): boolean {
   return Object.keys(value).every((key) => allowed.includes(key));
+}
+
+function isWizardWorkerBody(value: unknown): value is WizardWorkerBody {
+  return typeof value === "object" && value !== null && !Array.isArray(value) &&
+    exactKeys(value as Record<string, unknown>, ["mode"]) &&
+    (value as Record<string, unknown>).mode === "wizard_worker";
+}
+
+function isWizardPreviewBody(value: unknown): value is WizardPreviewBody {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const body = value as Record<string, unknown>;
+  return exactKeys(body, ["eventId", "mode", "selectionRevision"]) &&
+    body.mode === "wizard_preview" && typeof body.eventId === "string" &&
+    UUID.test(body.eventId) && Number.isSafeInteger(body.selectionRevision) &&
+    (body.selectionRevision as number) >= 0;
+}
+
+function deliveryFlagEnabled(
+  field:
+    | "marketing_send_live_enabled"
+    | "sms_live_enabled.ng"
+    | "sms_live_enabled.us",
+  legacyName:
+    | "MARKETING_SEND_LIVE_ENABLED"
+    | "SMS_LIVE_ENABLED_NG"
+    | "SMS_LIVE_ENABLED_US",
+): boolean {
+  const value = resolveDeliveryFlagValue(field, legacyName);
+  return typeof value === "boolean" ? value : value === "true" || value === "1";
+}
+
+function currentWizardDeliveryPolicy(): {
+  channels: Channel[];
+  smsNg: boolean;
+  smsUs: boolean;
+} {
+  const marketing = deliveryFlagEnabled(
+    "marketing_send_live_enabled",
+    "MARKETING_SEND_LIVE_ENABLED",
+  );
+  const smsNg = deliveryFlagEnabled(
+    "sms_live_enabled.ng",
+    "SMS_LIVE_ENABLED_NG",
+  );
+  const smsUs = deliveryFlagEnabled(
+    "sms_live_enabled.us",
+    "SMS_LIVE_ENABLED_US",
+  );
+  return {
+    channels: [
+      ...(marketing ? ["email" as const] : []),
+      "push" as const,
+      ...(marketing && (smsNg || smsUs) ? ["sms" as const] : []),
+    ].sort() as Channel[],
+    smsNg,
+    smsUs,
+  };
+}
+
+function applyWizardSmsMarketFlags(
+  rows: QuoteCandidateRow[],
+  policy: { smsNg: boolean; smsUs: boolean },
+): QuoteCandidateRow[] {
+  return rows.map((row) => {
+    if (row.channel !== "sms" || !row.allowed) return row;
+    const country = countryFromE164(row.normalizedContact);
+    const marketEnabled = country === "NG" ? policy.smsNg : policy.smsUs;
+    return marketEnabled
+      ? row
+      : { ...row, allowed: false, safeReasonCode: "suppressed" };
+  });
+}
+
+function observeWizardInvite(
+  event: string,
+  properties: Record<string, string | number | boolean | null>,
+): void {
+  // Aggregate-only structured logs. Never add person/group IDs, destinations,
+  // search text, message bodies, or provider payloads here.
+  console.info(JSON.stringify({ event, ...properties }));
+}
+
+export function resolveWizardQuoteCurrency(
+  estimatedCostMinor: number,
+  snapshotCurrency: string | null,
+  offeringCurrency: unknown,
+): string {
+  if (
+    typeof offeringCurrency !== "string" || !/^[A-Z]{3}$/.test(offeringCurrency)
+  ) {
+    throw new Error("wizard_invite_currency_unavailable");
+  }
+  if (estimatedCostMinor === 0) return offeringCurrency;
+  if (snapshotCurrency === null || !/^[A-Z]{3}$/.test(snapshotCurrency)) {
+    throw new Error("wizard_invite_currency_unavailable");
+  }
+  if (snapshotCurrency !== offeringCurrency) {
+    throw new Error("wizard_invite_currency_mismatch");
+  }
+  return snapshotCurrency;
+}
+
+async function dispatchCommittedWizardGroup(
+  service: WizardServiceClient,
+  url: string,
+  serviceKey: string,
+  group: { groupId: string; campaignIds: string[] },
+  channels: Channel[],
+): Promise<boolean> {
+  let ambiguous = false;
+  for (const campaignId of group.campaignIds ?? []) {
+    try {
+      const response = await fetch(url + "/functions/v1/" + "marketing-send", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer " + serviceKey,
+          apikey: serviceKey,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ campaign_id: campaignId }),
+      });
+      if (!response.ok) ambiguous = true;
+    } catch {
+      ambiguous = true;
+    }
+  }
+  if (channels.includes("push")) {
+    const { data: attempts, error: attemptsError } = await service.from(
+      "brand_offering_invite_delivery_attempts",
+    ).select("id").eq("send_group_id", group.groupId).eq("channel", "push")
+      .eq("status", "queued");
+    if (attemptsError) ambiguous = true;
+    for (const attempt of attempts ?? []) {
+      const { data: preflightData, error: preflightError } = await service.rpc(
+        "biz_preflight_offering_push_provider_io",
+        { p_attempt_id: attempt.id },
+      );
+      if (preflightError || !preflightData) {
+        ambiguous = true;
+        continue;
+      }
+      const claimed = preflightData as {
+        attemptId: string;
+        recipientUserId: string;
+        internalProviderClaimKey: string;
+        oneSignalIdempotencyKey: string;
+        pushPayload: PersistedOfferingPushV1;
+      };
+      const result = await dispatchV2(
+        service as unknown as MinimalClient,
+        {
+          user_id: claimed.recipientUserId,
+          category_key: "offering_invitation",
+          payload: {},
+          idempotency_key: claimed.internalProviderClaimKey,
+          requested_channel: "push",
+          persisted_offering_push: claimed.pushPayload,
+          offering_attempt_id: claimed.attemptId,
+          internal_provider_claim_key: claimed.internalProviderClaimKey,
+          onesignal_idempotency_key: claimed.oneSignalIdempotencyKey,
+        },
+      );
+      if (!result.success) ambiguous = true;
+    }
+  }
+  const intendedStatus = ambiguous ? "partial" : "running";
+  // A previous ambiguous handoff leaves the group partial. A reclaimed
+  // outbox lease resumes the same group/campaign operation keys and may
+  // reconcile partial back to running without creating a second group.
+  const eligibleStatuses = ["queued", "running", "partial"];
+  const { data: updatedGroup, error: groupUpdateError } = await service.from(
+    "marketing_send_groups",
+  ).update({ status: intendedStatus, started_at: new Date().toISOString() })
+    .eq("id", group.groupId).in("status", eligibleStatuses).select("status")
+    .maybeSingle();
+  if (!groupUpdateError && updatedGroup?.status !== undefined) {
+    return !ambiguous;
+  }
+  return false;
+}
+
+export async function handleWizardWorker(
+  service: WizardServiceClient,
+  url: string,
+  serviceKey: string,
+): Promise<Response> {
+  const { data, error } = await service.rpc(
+    "issue_1780_claim_wizard_invite_outbox_v1",
+    { p_limit: 10 },
+  );
+  if (error) {
+    return json(
+      { error: "wizard_worker_claim_failed", providerIo: false },
+      503,
+    );
+  }
+  const jobs = (data ?? []) as WizardOutboxJob[];
+  const outcomes: Array<Record<string, unknown>> = [];
+  const policy = currentWizardDeliveryPolicy();
+  for (const job of jobs) {
+    let providerIo = false;
+    try {
+      observeWizardInvite("wizard_invite_outbox_claimed", {
+        offering_kind: job.eventType,
+        selection_revision: job.selectionRevision,
+        attempt_count: job.attemptCount,
+      });
+      let channels = policy.channels;
+      const selection = {
+        kind: "resolved_brand_people_v1" as const,
+        source: "guest_roster_actions",
+        brandPersonIds: job.brandPersonIds,
+        selectionHash: job.selectionHash,
+      };
+      let group: { groupId: string; campaignIds: string[] };
+      if (job.sendGroupId !== null && job.executionSnapshot !== null) {
+        channels = job.executionSnapshot.channels;
+        const { data: campaignRows, error: campaignError } = await service.from(
+          "marketing_send_group_campaigns",
+        ).select("campaign_id").eq("send_group_id", job.sendGroupId);
+        if (campaignError) throw new Error("resume_group_failed");
+        group = {
+          groupId: job.sendGroupId,
+          campaignIds: (campaignRows ?? []).map((
+            row: { campaign_id: string },
+          ) => row.campaign_id),
+        };
+      } else {
+        const { data: quoteData, error: quoteError } = await service.rpc(
+          "biz_offering_send_quote_candidates",
+          {
+            p_actor_id: job.actorId,
+            p_event_id: job.eventId,
+            p_purpose: "invitation",
+            p_selection: selection,
+            p_channels: channels,
+          },
+        );
+        if (quoteError) throw new Error("quote_failed");
+        const candidates = quoteData as {
+          brandId: string;
+          candidates: QuoteCandidateRow[];
+        };
+        candidates.candidates = applyWizardSmsMarketFlags(
+          candidates.candidates,
+          policy,
+        );
+        const snapshot = await buildOfferingExecutionSnapshot({
+          eventId: job.eventId,
+          brandId: candidates.brandId,
+          purpose: "invitation",
+          channels,
+          selectionHash: await hashOfferingSelection(selection),
+          candidates: candidates.candidates,
+          content: {},
+          allowEmptyPreview: true,
+        });
+        if (
+          !snapshot.candidates.some((candidate) =>
+            candidate.outcome === "queued"
+          )
+        ) {
+          const { error: completionError } = await service.rpc(
+            "issue_1780_complete_wizard_invite_outbox_no_recipients_v1",
+            {
+              p_outbox_job_id: job.outboxJobId,
+              p_sealed_selection_id: job.sealedSelectionId,
+              p_lease_token: job.leaseToken,
+              p_execution_snapshot: snapshot,
+            },
+          );
+          if (completionError) {
+            throw new Error("zero_reachable_completion_failed");
+          }
+          observeWizardInvite("wizard_invite_outbox_succeeded", {
+            offering_kind: job.eventType,
+            selection_revision: job.selectionRevision,
+            selected_count: job.brandPersonIds.length,
+            can_receive: 0,
+            skipped: job.brandPersonIds.length,
+            job_state: "succeeded",
+            attempt_count: job.attemptCount,
+          });
+          outcomes.push({
+            outboxJobId: job.outboxJobId,
+            status: "succeeded_no_recipients",
+            providerIo: false,
+          });
+          continue;
+        }
+        // Token crypto is required only for a job that will create executable
+        // delivery attempts. Zero-reachable jobs complete before this point.
+        await resolveOfferingInviteTokenPepper();
+        const { data: executionData, error: executionError } = await service
+          .rpc(
+            "issue_1780_execute_wizard_invite_outbox_v1",
+            {
+              p_outbox_job_id: job.outboxJobId,
+              p_sealed_selection_id: job.sealedSelectionId,
+              p_lease_token: job.leaseToken,
+              p_execution_snapshot: snapshot,
+            },
+          );
+        if (executionError) throw new Error("execute_failed");
+        group = executionData as { groupId: string; campaignIds: string[] };
+      }
+      // The execution RPC has committed before either provider-capable path.
+      providerIo = true;
+      const clean = await dispatchCommittedWizardGroup(
+        service,
+        url,
+        serviceKey,
+        group,
+        channels,
+      );
+      if (!clean) throw new Error("provider_handoff_ambiguous");
+      const { error: completionError } = await service.rpc(
+        "issue_1780_complete_wizard_invite_outbox_v1",
+        {
+          p_outbox_job_id: job.outboxJobId,
+          p_sealed_selection_id: job.sealedSelectionId,
+          p_lease_token: job.leaseToken,
+        },
+      );
+      if (completionError) {
+        throw new Error("provider_handoff_completion_failed");
+      }
+      observeWizardInvite("wizard_invite_outbox_succeeded", {
+        offering_kind: job.eventType,
+        selection_revision: job.selectionRevision,
+        job_state: "succeeded",
+        attempt_count: job.attemptCount,
+      });
+      outcomes.push({
+        outboxJobId: job.outboxJobId,
+        status: "succeeded",
+        providerIo,
+      });
+    } catch (caught) {
+      const message = caught instanceof Error
+        ? caught.message
+        : "worker_failed";
+      const { data: failedState } = await service.rpc(
+        "issue_1780_fail_wizard_invite_outbox_v1",
+        {
+          p_outbox_job_id: job.outboxJobId,
+          p_lease_token: job.leaseToken,
+          p_error_code: /^[a-z0-9_]{1,80}$/.test(message)
+            ? message
+            : "worker_failed",
+          p_retryable: true,
+        },
+      );
+      const terminal = failedState === "terminal";
+      observeWizardInvite(
+        terminal
+          ? "wizard_invite_outbox_terminal_failed"
+          : "wizard_invite_outbox_retryable_failed",
+        {
+          offering_kind: job.eventType,
+          selection_revision: job.selectionRevision,
+          job_state: terminal ? "terminal" : "retryable",
+          attempt_count: job.attemptCount,
+          error_code: /^[a-z0-9_]{1,80}$/.test(message)
+            ? message
+            : "worker_failed",
+        },
+      );
+      outcomes.push({
+        outboxJobId: job.outboxJobId,
+        status: terminal ? "terminal" : "retryable",
+        providerIo,
+      });
+    }
+  }
+  return json({
+    claimed: jobs.length,
+    outcomes,
+    providerIo: outcomes.some((row) => row.providerIo),
+  });
+}
+
+async function handleWizardPreview(
+  user: WizardServiceClient,
+  service: WizardServiceClient,
+  actorId: string,
+  body: WizardPreviewBody,
+): Promise<Response> {
+  const { data: planData, error: planError } = await user.rpc(
+    "biz_get_offering_invite_plan_v1",
+    { p_event_id: body.eventId },
+  );
+  const plan = planData as Record<string, unknown> | null;
+  if (planError || plan === null) {
+    return json(
+      { error: "wizard_invite_preview_forbidden", providerIo: false },
+      403,
+    );
+  }
+  const personIds = plan.brandPersonIds;
+  const selectionHash = plan.selectionHash;
+  if (
+    plan.selectionRevision !== body.selectionRevision ||
+    !Array.isArray(personIds) || personIds.length > 500 ||
+    personIds.some((id) => typeof id !== "string" || !UUID.test(id)) ||
+    typeof selectionHash !== "string" || !HASH.test(selectionHash)
+  ) {
+    return json(
+      { error: "wizard_invite_revision_conflict", providerIo: false },
+      409,
+    );
+  }
+  const policy = currentWizardDeliveryPolicy();
+  const selection = {
+    kind: "resolved_brand_people_v1" as const,
+    source: "guest_roster_actions",
+    brandPersonIds: personIds,
+    selectionHash,
+  };
+  try {
+    const [{ data: quoteData, error: quoteError }, eventCurrency] =
+      await Promise
+        .all([
+          service.rpc("biz_offering_send_quote_candidates", {
+            p_actor_id: actorId,
+            p_event_id: body.eventId,
+            p_purpose: "invitation",
+            p_selection: selection,
+            p_channels: policy.channels,
+          }),
+          service.from("events").select("currency").eq("id", body.eventId)
+            .maybeSingle(),
+        ]);
+    if (quoteError || eventCurrency.error) throw new Error("quote_failed");
+    const quoted = quoteData as {
+      brandId: string;
+      selectedCount: number;
+      eligibleCount: number;
+      candidates: QuoteCandidateRow[];
+    };
+    quoted.candidates = applyWizardSmsMarketFlags(quoted.candidates, policy);
+    const snapshot = await buildOfferingExecutionSnapshot({
+      eventId: body.eventId,
+      brandId: quoted.brandId,
+      purpose: "invitation",
+      channels: policy.channels,
+      selectionHash,
+      candidates: quoted.candidates,
+      content: {},
+      allowEmptyPreview: true,
+    });
+    const preview = publicQuote(snapshot, quoted);
+    const currency = resolveWizardQuoteCurrency(
+      snapshot.quote.estimatedCostMinor,
+      snapshot.quote.currency,
+      eventCurrency.data?.currency,
+    );
+    const perChannelReachable = preview.perChannelReachable as Record<
+      string,
+      number
+    >;
+    return json({
+      ...preview,
+      perChannelReachable: {
+        email: Number(perChannelReachable.email ?? 0),
+        sms: Number(perChannelReachable.sms ?? 0),
+        push: Number(perChannelReachable.push ?? 0),
+      },
+      selectionRevision: body.selectionRevision,
+      selectionHash,
+      currency,
+      providerIo: false,
+    });
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : "wizard_invite_preview_unavailable";
+    return json({
+      error: message === "wizard_invite_currency_mismatch"
+        ? message
+        : "wizard_invite_preview_unavailable",
+      providerIo: false,
+    }, message === "wizard_invite_currency_mismatch" ? 409 : 503);
+  }
 }
 
 function isBody(value: unknown): value is DispatchBody {
@@ -78,21 +598,31 @@ function isBody(value: unknown): value is DispatchBody {
   ) return false;
   const selection = body.selection as Record<string, unknown> | null;
   if (selection === null || typeof selection !== "object") return false;
-  const ordinarySelection =
-    exactKeys(selection, ["kind"]) &&
-    (selection.kind === "all_brand_people" || selection.kind === "invited_people");
-  const resolvedSelection =
-    exactKeys(selection, ["brandPersonIds", "kind", "selectionHash", "source"]) &&
+  const ordinarySelection = exactKeys(selection, ["kind"]) &&
+    (selection.kind === "all_brand_people" ||
+      selection.kind === "invited_people");
+  const resolvedSelection = exactKeys(selection, [
+    "brandPersonIds",
+    "kind",
+    "selectionHash",
+    "source",
+  ]) &&
     selection.kind === "resolved_brand_people_v1" &&
     selection.source === "guest_roster_actions" &&
     Array.isArray(selection.brandPersonIds) &&
-    typeof selection.selectionHash === "string" && HASH.test(selection.selectionHash);
-  const retrySelection =
-    exactKeys(selection, ["failedAttemptIds", "kind", "selectionHash", "source"]) &&
+    typeof selection.selectionHash === "string" &&
+    HASH.test(selection.selectionHash);
+  const retrySelection = exactKeys(selection, [
+    "failedAttemptIds",
+    "kind",
+    "selectionHash",
+    "source",
+  ]) &&
     selection.kind === "failed_attempts_v1" &&
     selection.source === "guest_roster_actions" &&
     Array.isArray(selection.failedAttemptIds) &&
-    typeof selection.selectionHash === "string" && HASH.test(selection.selectionHash);
+    typeof selection.selectionHash === "string" &&
+    HASH.test(selection.selectionHash);
   if (!ordinarySelection && !resolvedSelection && !retrySelection) return false;
   const channels = body.channels;
   if (
@@ -155,6 +685,9 @@ function publicQuote(
       reachable.filter((row) => row.channel === channel).length,
     ],
   ));
+  const canReceiveCount = new Set(
+    reachable.map((candidate) => candidate.brandPersonId),
+  ).size;
   return {
     mode: "preview",
     quoteHash: snapshot.quote.quoteHash,
@@ -163,10 +696,10 @@ function publicQuote(
     eligibleCount: result.eligibleCount,
     reachableCount: reachable.length,
     suppressedCount: suppressed.length,
+    canReceiveCount,
     skippedCount: Math.max(
       0,
-      result.selectedCount * snapshot.channels.length -
-        snapshot.candidates.length,
+      result.selectedCount - canReceiveCount,
     ),
     skipReasonCounts: {},
     perChannelReachable,
@@ -190,12 +723,46 @@ export async function handler(request: Request): Promise<Response> {
   } catch {
     return json({ error: "invalid_json" }, 400);
   }
-  if (!isBody(untrusted)) return json({ error: "invalid_request" }, 400);
-  const body = untrusted;
   const url = Deno.env.get("SUPABASE_URL") ?? "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const authorization = request.headers.get("authorization") ?? "";
+  if (isWizardWorkerBody(untrusted)) {
+    if (
+      !url || !serviceKey || authorization !== `Bearer ${serviceKey}` ||
+      request.headers.get("x-mingla-internal-service-key") !== serviceKey
+    ) return json({ error: "forbidden", providerIo: false }, 403);
+    const service = createClient(url, serviceKey, {
+      auth: { persistSession: false },
+    });
+    return await handleWizardWorker(service, url, serviceKey);
+  }
+  if (isWizardPreviewBody(untrusted)) {
+    if (
+      !url || !anonKey || !serviceKey || !authorization.startsWith("Bearer ")
+    ) {
+      return json({ error: "unauthorized", providerIo: false }, 401);
+    }
+    const user = createClient(url, anonKey, {
+      global: { headers: { Authorization: authorization } },
+      auth: { persistSession: false },
+    });
+    const { data: actorData, error: actorError } = await user.auth.getUser();
+    if (actorError || actorData.user === null) {
+      return json({ error: "unauthorized", providerIo: false }, 401);
+    }
+    const service = createClient(url, serviceKey, {
+      auth: { persistSession: false },
+    });
+    return await handleWizardPreview(
+      user,
+      service,
+      actorData.user.id,
+      untrusted,
+    );
+  }
+  if (!isBody(untrusted)) return json({ error: "invalid_request" }, 400);
+  const body = untrusted;
   if (!url || !anonKey || !serviceKey || !authorization.startsWith("Bearer ")) {
     return json({ error: "unauthorized" }, 401);
   }
@@ -306,7 +873,8 @@ export async function handler(request: Request): Promise<Response> {
   }
   const executionRpc = body.purpose === "retry_delivery"
     ? "biz_execute_offering_delivery_retry"
-    : "source" in body.selection && body.selection.source === "guest_roster_actions"
+    : "source" in body.selection &&
+        body.selection.source === "guest_roster_actions"
     ? "biz_execute_guest_roster_send_group"
     : "biz_execute_offering_send_group";
   const executionArgs = body.purpose === "retry_delivery"

@@ -65,6 +65,15 @@ import type { TurnoutInputSource } from "../../utils/turnoutInput";
 import { shouldTrackGatePublishedAnyway } from "../../utils/turnoutGateAnalytics";
 import { Stepper } from "../ui/Stepper";
 import { Toast } from "../ui/Toast";
+import {
+  InvitePeoplePublishConfirmation,
+  InvitePeopleStep,
+  InvitePlanReviewSummary,
+  type InviteNavigationState,
+} from "../invites/InvitePeopleStep";
+import type { WizardInvitePlan, WizardInviteQuote } from "../../services/offeringInvitePlanService";
+import { useOfferingInvitePlanSummary } from "../../hooks/useOfferingInvitePlan";
+import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { CreatorStep2When } from "../event/CreatorStep2When";
 import { ExperienceCoverStep } from "./ExperienceCoverStep";
 import type { CoverPatch } from "../ui/CoverPicker";
@@ -211,14 +220,20 @@ export interface ExperienceWizardInitialDraft {
   };
 }
 
-type StepIndex = 1 | 2 | 3 | 4 | 5;
+type StepIndex = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
-const STEPS = [
+const LIVE_EDIT_STEPS = [
   { id: "identity", label: "Identity" },
   { id: "stops", label: "Stops" },
   { id: "when", label: "When" },
   { id: "pricing", label: "Pricing" },
   { id: "cover", label: "Cover" },
+];
+
+const CREATION_STEPS = [
+  ...LIVE_EDIT_STEPS,
+  { id: "invite", label: "Invite people" },
+  { id: "review", label: "Review" },
 ];
 
 const RPC_ERROR_COPY: Record<string, string> = {
@@ -399,6 +414,11 @@ export const ExperienceCreatorWizard: React.FC<
   // META-ORCH-1059 Sub-E — live-edit reason + inline rejection message.
   const [liveEditReason, setLiveEditReason] = useState("");
   const [liveEditError, setLiveEditError] = useState<string | null>(null);
+  const [invitePlan, setInvitePlan] = useState<WizardInvitePlan | null>(null);
+  const [inviteQuote, setInviteQuote] = useState<WizardInviteQuote | null>(null);
+  const [inviteConfirmVisible, setInviteConfirmVisible] = useState(false);
+  const [inviteNavigation, setInviteNavigation] = useState<InviteNavigationState | null>(null);
+  const [checkingInvitePublish, setCheckingInvitePublish] = useState(false);
 
   // META-ORCH-1059 Sub-B — draft-first lifecycle. A server draft row (and thus
   // an events-row id) is created UP FRONT so the Cover step has a real id for
@@ -406,6 +426,37 @@ export const ExperienceCreatorWizard: React.FC<
   const [experienceId, setExperienceId] = useState<string | null>(
     existingExperienceId ?? null,
   );
+  const inviteFlag = useFeatureFlag("business_wizard_invite_selection_v1");
+  const persistedInvite = useOfferingInvitePlanSummary({
+    eventId: experienceId,
+    enabled: !isLiveEdit,
+  });
+  const inviteEnabled = !isLiveEdit && (inviteFlag.data === true ||
+    (persistedInvite.plan.data?.selectedCount ?? 0) > 0);
+  const steps = inviteEnabled ? CREATION_STEPS : LIVE_EDIT_STEPS;
+  const finalStep: StepIndex = inviteEnabled ? 7 : 5;
+  useEffect(() => {
+    if (persistedInvite.plan.data !== undefined) setInvitePlan(persistedInvite.plan.data);
+    if (persistedInvite.quote.data !== undefined) setInviteQuote(persistedInvite.quote.data);
+  }, [persistedInvite.plan.data, persistedInvite.quote.data]);
+  useEffect(() => {
+    if (!inviteEnabled) setStep((value) => value > 5 ? 5 : value);
+  }, [inviteEnabled]);
+  const inviteSummaryReady = isLiveEdit || (invitePlan !== null && inviteQuote !== null &&
+    inviteQuote.selectionRevision === invitePlan.selectionRevision &&
+    inviteQuote.selectionHash === invitePlan.selectionHash &&
+    !persistedInvite.plan.isPending && !persistedInvite.plan.isFetching &&
+    !persistedInvite.plan.isError && !persistedInvite.quote.isPending &&
+    !persistedInvite.quote.isFetching && !persistedInvite.quote.isError);
+  const handleInvitePlanChange = useCallback((
+    plan: WizardInvitePlan | null,
+    quote: WizardInviteQuote | null,
+    navigation: InviteNavigationState,
+  ) => {
+    setInvitePlan(plan);
+    setInviteQuote(quote);
+    setInviteNavigation(navigation);
+  }, []);
   const [creatingDraft, setCreatingDraft] = useState(false);
   const draftCreateInFlight = useRef(false);
 
@@ -658,9 +709,10 @@ export const ExperienceCreatorWizard: React.FC<
   ]);
 
   const goBack = useCallback((): void => {
+    if (step === 6 && inviteNavigation?.phase !== "ready") return;
     if (step === 1) onCancel?.();
     else setStep((prev) => Math.max(1, prev - 1) as StepIndex);
-  }, [onCancel, step]);
+  }, [inviteNavigation?.phase, onCancel, step]);
 
   const buildPayload = useCallback(
     (publish: boolean) => {
@@ -785,6 +837,10 @@ export const ExperienceCreatorWizard: React.FC<
   }, [brandId, buildPayload, experienceId, flushThemeWrite]);
 
   const goNext = useCallback((): void => {
+    if (step === 6) {
+      if (inviteNavigation?.phase === "error") inviteNavigation.retry();
+      if (inviteNavigation?.phase !== "ready") return;
+    }
     if (!canContinue) {
       setShowStepErrors(true);
       if (step === 3) whenAdapter.setShowErrors(true);
@@ -797,8 +853,8 @@ export const ExperienceCreatorWizard: React.FC<
     if (step === 1 && experienceId === null) {
       void ensureDraft();
     }
-    setStep((prev) => Math.min(5, prev + 1) as StepIndex);
-  }, [canContinue, ensureDraft, experienceId, step, whenAdapter]);
+    setStep((prev) => Math.min(finalStep, prev + 1) as StepIndex);
+  }, [canContinue, ensureDraft, experienceId, finalStep, inviteNavigation, step, whenAdapter]);
 
   // ORCH-1075 — surface the two paid-publish guard reasons as actionable copy
   // and route to Stripe onboarding (Guard A) or the When step (Guard B).
@@ -885,7 +941,15 @@ export const ExperienceCreatorWizard: React.FC<
         }
         const { data, error } = await supabase.rpc("issue_1719_publish_experience_with_poster", {
           p_event_id: targetId,
-          p_payload: buildPayload(publish),
+          p_payload: {
+            ...buildPayload(publish),
+            ...(publish && invitePlan?.selectionRevision !== undefined && invitePlan.selectionRevision !== null
+              ? {
+                  invite_selection_revision: invitePlan.selectionRevision,
+                  invite_selection_confirmed: invitePlan.selectedCount > 0,
+                }
+              : {}),
+          },
           p_publish: publish,
         });
         if (error !== null) {
@@ -961,6 +1025,7 @@ export const ExperienceCreatorWizard: React.FC<
       experienceNeedsStripe,
       guestPrivacy,
       handlePaidPublishGuard,
+      invitePlan,
       intents,
       onComplete,
       pricingValid,
@@ -1014,6 +1079,29 @@ export const ExperienceCreatorWizard: React.FC<
       controller.gateAnalyticsProps(estimateUsed),
     );
   }, [currentIntelGateKey, handleSubmit, isLiveEdit]);
+
+  const beginPublish = useCallback(async (): Promise<void> => {
+    setCheckingInvitePublish(true);
+    try {
+      const latest = await persistedInvite.refreshAuthoritative();
+      setInvitePlan(latest.plan);
+      setInviteQuote(latest.quote);
+      if (latest.quote.selectionRevision !== latest.plan.selectionRevision ||
+          latest.quote.selectionHash !== latest.plan.selectionHash) {
+        setToast("Checking the latest invite delivery estimate…");
+        return;
+      }
+      if (latest.plan.selectedCount > 0) {
+        setInviteConfirmVisible(true);
+        return;
+      }
+      maybeOpenIntelGate();
+    } catch {
+      setToast("Refresh the invite estimate before publishing.");
+    } finally {
+      setCheckingInvitePublish(false);
+    }
+  }, [maybeOpenIntelGate, persistedInvite]);
 
   const closeIntelGate = useCallback((): void => {
     intelSessionRef.current?.dismissGate(currentIntelGateKey());
@@ -1230,7 +1318,7 @@ export const ExperienceCreatorWizard: React.FC<
       brandId={brandId}
       wizard="experience"
       surface="experience_cover"
-      previewActive={step === 5}
+      previewActive={step === finalStep}
       keyboardVisible={keyboardVisible}
       autoRunEnabled={false}
       controllerRef={intelControllerRef}
@@ -1246,6 +1334,7 @@ export const ExperienceCreatorWizard: React.FC<
       <View style={styles.header}>
         <Pressable
           onPress={goBack}
+          disabled={step === 6 && inviteNavigation?.phase !== "ready"}
           accessibilityRole="button"
             accessibilityLabel={
               step === 1 ? "Cancel experience creation" : "Back"
@@ -1258,7 +1347,7 @@ export const ExperienceCreatorWizard: React.FC<
               color={textTokens.secondary}
             />
         </Pressable>
-        <Stepper steps={STEPS} currentIndex={step - 1} />
+        <Stepper steps={steps} currentIndex={step - 1} />
       </View>
       {/* #1841 re-cover, NOT a new grant: the identical approved reason, moved
           from the file head to the occurrence it was always meant to cover.
@@ -1472,6 +1561,25 @@ export const ExperienceCreatorWizard: React.FC<
           />
         ) : null}
 
+        {inviteEnabled && step === 6 ? (
+          <InvitePeopleStep eventId={experienceId} brandId={brandId} eventType="experience"
+            enabled={inviteEnabled}
+            onPlanChange={handleInvitePlanChange} />
+        ) : null}
+
+        {inviteEnabled && step === 7 ? (
+          <View style={styles.stepBody}>
+            <Text style={styles.title}>Review experience</Text>
+            <Text style={styles.body}>Check the details and planned invitations before publishing.</Text>
+            <View style={styles.reviewCard}>
+              <Text style={styles.label}>Experience</Text><Text style={styles.reviewValue}>{title}</Text>
+              <Text style={styles.label}>Stops</Text><Text style={styles.reviewValue}>{stops.length}</Text>
+              <Text style={styles.label}>Price</Text><Text style={styles.reviewValue}>{isFree ? "Free" : `${currencySymbol}${resolvedTotalMajor.toFixed(2)}`}</Text>
+            </View>
+            <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote} />
+          </View>
+        ) : null}
+
         {/* ORCH-1076 Stream B — proactive Stripe banner on the FINAL (Cover)
             step, at the bottom of the scroll body so it sits directly above the
             footer Publish CTA. */}
@@ -1490,12 +1598,14 @@ export const ExperienceCreatorWizard: React.FC<
         <View
           style={[styles.footer, { paddingBottom: insets.bottom + spacing.lg }]}
         >
-        {step < 5 ? (
+        {step < finalStep ? (
             <Button
-              label="Continue"
+              label={step === 6 ? inviteNavigation?.primaryLabel ?? "Checking…" : "Continue"}
               onPress={goNext}
               variant="primary"
               size="lg"
+              loading={step === 6 && inviteNavigation?.phase === "saving"}
+              disabled={step === 6 && inviteNavigation?.blocked === true}
             />
         ) : isLiveEdit ? (
           // META-ORCH-1059 Sub-E — live experiences are already published, so
@@ -1522,14 +1632,14 @@ export const ExperienceCreatorWizard: React.FC<
             />
             <Button
               label="Publish"
-                onPress={maybeOpenIntelGate}
+                onPress={() => void beginPublish()}
               variant="primary"
               size="lg"
-              loading={submitting}
+              loading={submitting || checkingInvitePublish}
               // ORCH-1076 Stream B — disable Publish for a paid experience on a
               // Stripe-unready brand (proactive gate; "Save as draft" stays
               // enabled because drafts are server-exempt).
-              disabled={experienceNeedsStripe}
+              disabled={experienceNeedsStripe || !inviteSummaryReady || checkingInvitePublish}
               style={styles.footerButton}
               testID="experience-footer-publish"
             />
@@ -1551,6 +1661,12 @@ export const ExperienceCreatorWizard: React.FC<
             />
           </React.Suspense>
         ) : null}
+        <InvitePeoplePublishConfirmation visible={inviteConfirmVisible} eventType="experience"
+          plan={invitePlan} quote={inviteQuote} publishing={submitting}
+          onClose={() => setInviteConfirmVisible(false)} onConfirm={() => {
+            setInviteConfirmVisible(false);
+            maybeOpenIntelGate();
+          }} />
     </View>
     </LazyTurnoutIntelProvider>
   );
@@ -1661,6 +1777,8 @@ const styles = StyleSheet.create({
     color: semantic.error,
     marginTop: spacing.xxs,
   },
+  reviewCard: { borderRadius: radius.md, borderWidth: 1, borderColor: glass.border.profileBase, padding: spacing.md, gap: spacing.xs },
+  reviewValue: { ...typography.body, color: textTokens.primary, fontWeight: "600" },
   intelHighlight: { borderColor: accent.warm, borderWidth: 2 },
 });
 

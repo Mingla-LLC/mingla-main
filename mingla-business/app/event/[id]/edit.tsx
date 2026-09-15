@@ -882,8 +882,8 @@ export default function EventEditRoute(): React.ReactElement {
       onAutosaveDraft={handleAutosaveDraft}
       onRequireServerDraft={handleRequireServerDraft}
       onDiscardServerDraft={handleDiscardDraft}
-      onPublishDraft={async (draftToPublish) => {
-        const published = await publishServerDraft.publishDraft(draftToPublish);
+      onPublishDraft={async (draftToPublish, invites) => {
+        const published = await publishServerDraft.publishDraft(draftToPublish, invites);
         return {
           brandSlug: published.brand.slug,
           eventSlug: published.event.eventSlug,

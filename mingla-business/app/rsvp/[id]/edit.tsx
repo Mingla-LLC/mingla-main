@@ -919,9 +919,10 @@ export default function RsvpEditRoute(): React.ReactElement {
       onAutosaveDraft={handleAutosaveDraft}
       onRequireServerDraft={handleRequireServerDraft}
       onDiscardServerDraft={handleDiscardDraft}
-      onPublishDraft={async (draftToPublish) => {
+      onPublishDraft={async (draftToPublish, invites) => {
         const published = await publishServerDraft.mutateAsync({
           draft: draftToPublish,
+          invites,
         });
         return {
           brandSlug: published.brand.slug,
