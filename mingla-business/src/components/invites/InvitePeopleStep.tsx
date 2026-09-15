@@ -56,6 +56,8 @@ export interface InvitePeopleStepProps {
   brandId: string;
   eventType: WizardOfferingType;
   enabled?: boolean;
+  onProtectedFlowExit?: () => void;
+  onReauthenticate?: () => void;
   onPlanChange?: (
     plan: WizardInvitePlan | null,
     quote: WizardInviteQuote | null,
@@ -74,11 +76,23 @@ const sortedUnique = (values: string[]): string[] => [...new Set(values)].sort()
 const sameIds = (left: string[], right: string[]): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 
+type InviteAccessFailure = "authentication" | "permission";
+const accessFailureFor = (error: unknown): InviteAccessFailure | null => {
+  if (!(error instanceof WizardInvitePlanError)) return null;
+  if (error.code === "wizard_invite_auth_required") return "authentication";
+  if (["wizard_invite_forbidden", "wizard_invite_not_found_or_forbidden"].includes(error.code)) {
+    return "permission";
+  }
+  return null;
+};
+
 export function InvitePeopleStep({
   eventId,
   brandId,
   eventType,
   enabled = true,
+  onProtectedFlowExit,
+  onReauthenticate,
   onPlanChange,
 }: InvitePeopleStepProps) {
   const [search, setSearch] = useState("");
@@ -87,6 +101,8 @@ export function InvitePeopleStep({
   const [dirtyDescription, setDirtyDescription] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [ambiguous, setAmbiguous] = useState(false);
+  const [accessFailure, setAccessFailure] = useState<InviteAccessFailure | null>(null);
+  const [staleConflict, setStaleConflict] = useState(false);
   const pendingReceipt = useRef<PendingReceipt | null>(null);
   const observedQuote = useRef<string | null>(null);
   const model = useOfferingInvitePlan({ eventId, brandId, search, enabled });
@@ -252,7 +268,19 @@ export function InvitePeopleStep({
       });
       return true;
     } catch (error) {
-      const next = await model.refreshAuthoritative().catch(() => null);
+      let next: Awaited<ReturnType<typeof model.refreshAuthoritative>> | null = null;
+      let hydrationError: unknown = null;
+      try {
+        next = await model.refreshAuthoritative();
+      } catch (caught) {
+        hydrationError = caught;
+      }
+      const lostAccess = accessFailureFor(error) ?? accessFailureFor(hydrationError);
+      if (lostAccess !== null) {
+        setAccessFailure(lostAccess);
+        setAmbiguous(false);
+        return false;
+      }
       const authoritative = sortedUnique(next?.plan.brandPersonIds ?? []);
       const intended = localDesired === null ? null : sortedUnique(localDesired);
       if (next && intended !== null && sameIds(authoritative, intended)) {
@@ -266,8 +294,8 @@ export function InvitePeopleStep({
       const typed = error instanceof WizardInvitePlanError ? error : null;
       const definitive = typed !== null && !typed.retryable;
       if (typed?.code === "wizard_invite_revision_conflict") {
-        pendingReceipt.current = null;
         setAmbiguous(false);
+        setStaleConflict(true);
         captureWizardInvite("wizard_invite_plan_stale", {
           offering_kind: eventType,
           selection_revision: typed.currentRevision ?? undefined,
@@ -278,6 +306,8 @@ export function InvitePeopleStep({
       setSaveError(
         typed?.code === "wizard_invite_selection_too_large"
           ? "You can invite up to 500 people. Remove someone before adding more."
+          : typed?.code === "wizard_invite_revision_conflict"
+            ? "Your invite selection changed elsewhere. Review the refreshed selection before retrying your retained choice."
           : "We couldn’t save that selection. It is still here and has not been discarded.",
       );
       captureWizardInvite("wizard_invite_plan_save_failed", {
@@ -295,6 +325,7 @@ export function InvitePeopleStep({
     setDirtyDescription(null);
     setSaveError(null);
     setAmbiguous(false);
+    setStaleConflict(false);
     pendingReceipt.current = null;
     setPickerOpen(true);
   };
@@ -333,6 +364,16 @@ export function InvitePeopleStep({
   if (model.plan.isPending) {
     return <View style={styles.center}><ActivityIndicator color={accent.warm} /><Text style={styles.muted}>Loading your saved selection…</Text></View>;
   }
+  const resolvedAccessFailure = accessFailure ?? accessFailureFor(model.plan.error) ??
+    accessFailureFor(model.quote.error);
+  if (resolvedAccessFailure === "authentication") {
+    return <InviteStepState title="Your session expired" description="Sign in again before continuing with this protected draft."
+      actionLabel="Sign in again" onAction={onReauthenticate} />;
+  }
+  if (resolvedAccessFailure === "permission") {
+    return <InviteStepState title="Your access changed" description="You no longer have access to invite people for this draft."
+      actionLabel="Leave this flow" onAction={onProtectedFlowExit} />;
+  }
   if (model.plan.isError || plan === null) {
     return <InviteStepState title="We couldn’t load your invite list" description="Try again before continuing so your selection is not lost."
       actionLabel="Try again" onAction={() => void model.refreshAuthoritative()} />;
@@ -351,6 +392,9 @@ export function InvitePeopleStep({
       <InviteSourcePicker
         bookCount={bookCount}
         groups={model.groups.data ?? []}
+        groupsPending={model.groups.isPending}
+        groupsError={model.groups.isError}
+        onRetryGroups={() => void model.groups.refetch()}
         selectedCount={isDirty ? visibleIds.length : plan.selectedCount}
         disabled={isSaving || plan.state === "locked" || ambiguous}
         onSelectEveryone={() => void persistSelection(
@@ -376,7 +420,9 @@ export function InvitePeopleStep({
       />
       {dirtyDescription ? <Text accessibilityRole="alert" style={styles.dirty}>{dirtyDescription}</Text> : null}
       <InviteQuoteCard quote={quoteIsCurrent ? quote : null} loading={isChecking} error={model.quote.isError} />
-      {saveError ? <Text accessibilityRole="alert" style={styles.error}>{saveError}</Text> : null}
+      {saveError ? <View style={styles.inlineError}><Text accessibilityRole="alert" style={styles.error}>{saveError}</Text>
+        {staleConflict ? <Button label="Review changed selection" size="sm" variant="secondary"
+          onPress={() => { setPickerOpen(true); setStaleConflict(false); }} /> : null}</View> : null}
       <PeoplePickerSheet
         visible={pickerOpen}
         onClose={() => { if (!isSaving) setPickerOpen(false); }}
@@ -392,6 +438,7 @@ export function InvitePeopleStep({
         hasMore={model.people.hasNextPage}
         disabled={isSaving || plan.state === "locked" || ambiguous}
         onLoadMore={() => void model.people.fetchNextPage()}
+        onRetry={() => void model.people.refetch()}
         onToggle={togglePerson}
         onDone={() => void savePicker()}
         selectedCount={visibleIds.length}
@@ -405,19 +452,32 @@ export function InvitePeopleStep({
 export function InviteSourcePicker(props: {
   bookCount: number | null;
   groups: ManualGroupSummary[];
+  groupsPending?: boolean;
+  groupsError?: boolean;
+  onRetryGroups?: () => void;
   selectedCount: number;
   disabled: boolean;
   onSelectEveryone: () => void;
   onSelectGroup: (groupId: string, groupName: string) => void;
   onChoosePeople: () => void;
 }) {
+  const selectAllChecked: boolean | "mixed" = props.selectedCount === 0
+    ? false
+    : props.bookCount !== null && props.selectedCount >= props.bookCount
+      ? true
+      : "mixed";
   return (
     <View style={styles.sourceCard}>
       <SourceRow title="Everyone in Your Book" detail={props.bookCount === null ? "Checking count…" : `${props.bookCount} active people`}
-        action="Select all" disabled={props.disabled} onPress={props.onSelectEveryone} />
+        action="Select all" disabled={props.disabled} onPress={props.onSelectEveryone}
+        accessibilityRole="checkbox" accessibilityChecked={selectAllChecked} />
       <View style={styles.divider} />
       <Text style={styles.sourceTitle}>Saved groups</Text>
-      {props.groups.length === 0 ? <Text style={styles.muted}>No saved manual groups yet.</Text> :
+      {props.groupsPending ? <Text style={styles.muted}>Loading saved groups…</Text> :
+        props.groupsError ? <View style={styles.inlineError}><Text style={styles.error}>Saved groups are unavailable.</Text>
+          {props.onRetryGroups ? <Button label="Retry saved groups" size="sm" variant="secondary"
+            onPress={props.onRetryGroups} /> : null}</View> :
+        props.groups.length === 0 ? <Text style={styles.muted}>No saved manual groups yet.</Text> :
         props.groups.map((group) => <SourceRow key={group.groupId} title={group.name}
           detail={`${group.memberCount} people`} action="Add group" disabled={props.disabled}
           onPress={() => props.onSelectGroup(group.groupId, group.name)} />)}
@@ -429,9 +489,12 @@ export function InviteSourcePicker(props: {
   );
 }
 
-function SourceRow(props: { title: string; detail: string; action: string; disabled: boolean; onPress: () => void }) {
+function SourceRow(props: { title: string; detail: string; action: string; disabled: boolean; onPress: () => void;
+  accessibilityRole?: "button" | "checkbox"; accessibilityChecked?: boolean | "mixed" }) {
   return <View style={styles.sourceRow}><View style={styles.flex}><Text style={styles.sourceTitle}>{props.title}</Text>
     <Text style={styles.muted}>{props.detail}</Text></View><Button label={props.action} size="sm" variant="secondary"
+      accessibilityRole={props.accessibilityRole}
+      accessibilityState={props.accessibilityRole === "checkbox" ? { checked: props.accessibilityChecked } : undefined}
       disabled={props.disabled} onPress={props.onPress} /></View>;
 }
 
@@ -450,6 +513,7 @@ function PeoplePickerSheet(props: {
   hasMore: boolean;
   disabled: boolean;
   onLoadMore: () => void;
+  onRetry: () => void;
   onToggle: (personId: string) => void;
   onDone: () => void;
   selectedCount: number;
@@ -475,7 +539,8 @@ function PeoplePickerSheet(props: {
         </View>
         <ScrollView style={styles.peopleScroll} contentContainerStyle={styles.peopleContent} keyboardShouldPersistTaps="handled">
           {props.pending ? <ActivityIndicator color={accent.warm} /> :
-            props.error ? <Text style={styles.error}>People are unavailable. Try again.</Text> :
+            props.error ? <View style={styles.inlineError}><Text style={styles.error}>People are unavailable.</Text>
+              <Button label="Retry people" size="sm" variant="secondary" onPress={props.onRetry} /></View> :
               noBook ? <Text style={styles.muted}>Your Book is empty. Add people before choosing invitations.</Text> :
                 noMatch ? <Text style={styles.muted}>No people match this search.</Text> :
                   props.people.map((person) => (
@@ -650,5 +715,6 @@ const styles = StyleSheet.create({
   dirty: { ...typography.bodySm, color: accent.warm, fontWeight: "600" },
   muted: { ...typography.bodySm, color: textTokens.secondary },
   error: { ...typography.bodySm, color: semantic.error },
+  inlineError: { gap: spacing.sm, alignItems: "flex-start" },
   flex: { flex: 1 },
 });

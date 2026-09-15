@@ -51,6 +51,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "../../context/AuthContext";
 
 import {
   accent,
@@ -272,6 +273,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { signOut } = useAuth();
   const { isWideDesktop } = useResponsiveLayout();
 
   // We re-read draft from store on every render so updateDraft patches
@@ -319,9 +321,15 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const persistedInvite = useOfferingInvitePlanSummary({
     eventId: /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(liveDraft.id) ? liveDraft.id : null,
     enabled: true,
+    quoteWhenEmpty: inviteFlag.data === true,
   });
   const inviteEnabled = inviteFlag.data === true ||
     (persistedInvite.plan.data?.selectedCount ?? 0) > 0;
+  const inviteRollbackReady = inviteFlag.data === false &&
+    !inviteFlag.isPending && !inviteFlag.isFetching && !inviteFlag.isError &&
+    persistedInvite.plan.data?.selectedCount === 0 &&
+    !persistedInvite.plan.isPending && !persistedInvite.plan.isFetching &&
+    !persistedInvite.plan.isError;
   useEffect(() => {
     if (persistedInvite.plan.data !== undefined) setInvitePlan(persistedInvite.plan.data);
     if (persistedInvite.quote.data !== undefined) setInviteQuote(persistedInvite.quote.data);
@@ -331,12 +339,13 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       setCurrentStep((value) => value === 6 ? 7 : value);
     }
   }, [inviteFlag.data, persistedInvite.plan.data?.selectedCount]);
-  const inviteSummaryReady = invitePlan !== null && inviteQuote !== null &&
+  const inviteSummaryReady = !inviteEnabled || (invitePlan !== null && inviteQuote !== null &&
     inviteQuote.selectionRevision === invitePlan.selectionRevision &&
     inviteQuote.selectionHash === invitePlan.selectionHash &&
     !persistedInvite.plan.isPending && !persistedInvite.plan.isFetching &&
     !persistedInvite.plan.isError && !persistedInvite.quote.isPending &&
-    !persistedInvite.quote.isFetching && !persistedInvite.quote.isError;
+    !persistedInvite.quote.isFetching && !persistedInvite.quote.isError);
+  const invitePublishReady = inviteEnabled ? inviteSummaryReady : inviteRollbackReady;
   const handleInvitePlanChange = useCallback((
     plan: WizardInvitePlan | null,
     quote: WizardInviteQuote | null,
@@ -793,11 +802,29 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       handleShowToast("Connect a bank to publish paid tickets.");
       return;
     }
+    if (!inviteEnabled) {
+      if (!inviteRollbackReady) {
+        handleShowToast("Checking saved invite plans before publishing.");
+        return;
+      }
+      setInvitePlan(persistedInvite.plan.data ?? null);
+      setInviteQuote(null);
+      setPublishConfirmVisible(true);
+      return;
+    }
     setCheckingInvitePublish(true);
     try {
       const latest = await persistedInvite.refreshAuthoritative();
       setInvitePlan(latest.plan);
       setInviteQuote(latest.quote);
+      if (latest.quote === null) {
+        if (inviteFlag.data === false && latest.plan.selectedCount === 0) {
+          setPublishConfirmVisible(true);
+        } else {
+          handleShowToast("Refresh the invite estimate before publishing.");
+        }
+        return;
+      }
       if (latest.quote.selectionRevision !== latest.plan.selectionRevision ||
           latest.quote.selectionHash !== latest.plan.selectionHash) {
         handleShowToast("Checking the latest invite delivery estimate…");
@@ -809,8 +836,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     } finally {
       setCheckingInvitePublish(false);
     }
-  }, [liveDraft, stripeStatus, handleShowToast, persistedInvite,
-    coverAuthority.isReady]);
+  }, [liveDraft, stripeStatus, handleShowToast, persistedInvite, inviteEnabled,
+    inviteRollbackReady, inviteFlag.data, coverAuthority.isReady]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     if (isPublishing) return;
@@ -933,7 +960,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // "Connect Stripe" CTA — the dock banner was removed for cleaner UX.
   const publishDisabled =
     publishability.status === "blocked-stripe" || coverVideoProcessing ||
-    !coverAuthority.isReady || !inviteSummaryReady || checkingInvitePublish;
+    !coverAuthority.isReady || !invitePublishReady || checkingInvitePublish;
 
   // Publish modal copy varies per whenMode (Cycle 4 spec §3.8.2).
   const publishModalTitle = useMemo<string>(() => {
@@ -1009,6 +1036,11 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         return <InvitePeopleStep eventId={/^[0-9a-f-]{36}$/.test(liveDraft.id) ? liveDraft.id : null}
           brandId={liveDraft.brandId} eventType="event"
           enabled={inviteEnabled}
+          onProtectedFlowExit={() => onExit("abandoned")}
+          onReauthenticate={async () => {
+            await signOut();
+            router.replace("/auth");
+          }}
           onPlanChange={handleInvitePlanChange} />;
       case 7:
         return (
