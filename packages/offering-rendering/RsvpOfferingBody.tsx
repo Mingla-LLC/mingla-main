@@ -50,9 +50,10 @@
  * bar never diverge. The decision LOGIC stays in RsvpMomentumDecision (single owner).
  */
 
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
+  findNodeHandle,
   Image,
   LayoutAnimation,
   Platform,
@@ -276,6 +277,9 @@ export interface RsvpOfferingBodyProps {
   theme: ResolvedTheme;
   config: RsvpOfferingConfig;
   isLoggedIn: boolean;
+  /** Actual auth identity, not a boolean: account A and B are different owners. */
+  replyIdentity?: string | null;
+  recoveryNotice?: string | null;
   initialGuestName?: string;
   initialGuestEmail?: string;
   initialGuestPhone?: string;
@@ -284,6 +288,7 @@ export interface RsvpOfferingBodyProps {
   onDownloadPass?: (
     credential: RsvpPassCredential,
     recovery: RsvpAnonymousRecovery | null,
+    isCurrent?: () => boolean,
   ) => Promise<void>;
   onSubmit: (input: {
     rsvpStatus: "going" | "not_going" | "maybe";
@@ -398,6 +403,8 @@ interface RsvpDecisionState {
   passAction: { label: string; onPress: () => void; testID?: string } | null;
   /** The INLINE decision block, so the surface can hide the floating copy while it is on screen. */
   inlineDecisionRef: React.RefObject<View | null>;
+  floatingDecisionRef: React.RefObject<View | null>;
+  recoveryHint: boolean;
   /** A decision tap was blocked by missing details (the hint is showing). */
   decisionAttempted: boolean;
 }
@@ -432,6 +439,19 @@ export const useRsvpOfferingState = (
   const { renderPhoneField, defaultPhoneCountry } = props;
   const surface = offeringSurfaceStyles(palette);
   const boldFamily = boldFontFamily(theme);
+
+  const contextKey = JSON.stringify([event.id, props.replyIdentity ?? null, isLoggedIn]);
+  const contextRef = useRef({ key: contextKey, eventId: event.id });
+  if (contextRef.current.key !== contextKey) contextRef.current = { key: contextKey, eventId: event.id };
+  const context = contextRef.current;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const isCurrent = useCallback(() => mounted.current && contextRef.current === context, [context]);
+  const focusDecisionRequested = useRef(false);
+  const acceptedRevision = useRef(0);
 
   const [guestName, setGuestName] = useState(props.initialGuestName ?? "");
   const [guestEmail, setGuestEmail] = useState(props.initialGuestEmail ?? "");
@@ -479,10 +499,12 @@ export const useRsvpOfferingState = (
   const [passDetails, setPassDetails] = useState<RsvpConfirmationDetails | null>(
     restoredRsvp?.details ?? null,
   );
+  const currentPassRef = useRef(passDetails);
+  currentPassRef.current = passDetails;
   // True while the resolved state on screen came from `restoredRsvp` and the
   // guest has not replied again since.
   const stateFromRestoreRef = useRef(restoredRsvp !== null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (restoredRsvp !== null) {
       if (stateFromRestoreRef.current || guestStatus === null) {
         setGuestStatus(restoredRsvp.guestStatus);
@@ -497,6 +519,10 @@ export const useRsvpOfferingState = (
       setGuestStatus(null);
       setGuestApproval(null);
       setPassDetails(null);
+      // Only the still-restored reply owns this popup; a new accepted reply
+      // flips the flag before any older verification can reach this effect.
+      focusDecisionRequested.current = successDetails !== null;
+      setSuccessDetails(null);
       stateFromRestoreRef.current = false;
     }
     // Only a change of the restored snapshot itself re-runs this.
@@ -509,6 +535,15 @@ export const useRsvpOfferingState = (
   const [successDetails, setSuccessDetails] = useState<RsvpConfirmationDetails | null>(
     null,
   );
+  const visiblePassRef = useRef(successDetails);
+  visiblePassRef.current = successDetails;
+  const downloadPass = useCallback(async (
+    credential: RsvpPassCredential,
+    recovery: RsvpAnonymousRecovery | null,
+  ): Promise<void> => {
+    const ownsPass = () => isCurrent() && successDetails !== null && visiblePassRef.current === successDetails;
+    if (ownsPass()) await props.onDownloadPass?.(credential, recovery, ownsPass);
+  }, [isCurrent, successDetails, props.onDownloadPass]);
 
   // ORCH-1163-R3 — floating-bar details modal. The floating bar has no form host,
   // so when a guest taps a floating decision with no contact details, we open this
@@ -541,6 +576,37 @@ export const useRsvpOfferingState = (
     contributionState === "paid" ? "success" : "idle",
   );
   const [chipError, setChipError] = useState<string | null>(null);
+  const [renderedContext, setRenderedContext] = useState(context);
+  if (renderedContext !== context) {
+    acceptedRevision.current += 1;
+    // Adjust before children commit: old credentials never paint in the new
+    // event/account, even when a surface reuses the mounted hook.
+    focusDecisionRequested.current = renderedContext.eventId === event.id && successDetails !== null;
+    setRenderedContext(context);
+    setGuestName(props.initialGuestName ?? "");
+    setGuestEmail(props.initialGuestEmail ?? "");
+    setGuestPhone(props.initialGuestPhone ?? "");
+    setPhoneRawValue(props.initialGuestPhone ?? "");
+    setPhoneCountry(defaultPhoneCountry ?? null);
+    setGuests([]);
+    nextGuestId.current = 0;
+    setShowValidationErrors(false);
+    setPrimaryPhoneTouched(false);
+    setSubmitting(false);
+    setErrorMsg(null);
+    setGuestStatus(restoredRsvp?.guestStatus ?? null);
+    setGuestApproval(restoredRsvp?.guestApproval ?? null);
+    setPassDetails(restoredRsvp?.details ?? null);
+    stateFromRestoreRef.current = restoredRsvp !== null;
+    setConfirmOpen(false);
+    setConfirmError(null);
+    setSuccessDetails(null);
+    setDetailsOpen(false);
+    setPendingDecision(null);
+    setChipAmountCents(chipDefaultAmount);
+    setChipInState("idle");
+    setChipError(null);
+  }
   const handleAcquisitionError = useCallback(
     (code: string): boolean => {
       const kind =
@@ -622,6 +688,7 @@ export const useRsvpOfferingState = (
 
   const reportResolved = useCallback(
     (result: RsvpSubmitResult, details: RsvpConfirmationDetails | null): void => {
+      if (!isCurrent()) return;
       props.onRsvpResolved?.({
         version: 1,
         eventId: event.id,
@@ -633,13 +700,14 @@ export const useRsvpOfferingState = (
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [event.id, props.onRsvpResolved],
+    [event.id, props.onRsvpResolved, isCurrent],
   );
 
   const runSubmit = useCallback(
     async (
       rsvpStatus: "going" | "not_going" | "maybe",
     ): Promise<RsvpSubmitResult | null> => {
+      if (!isCurrent()) return null;
       const submittedGuests = rsvpStatus === "not_going" ? [] : guests;
       const result = await onSubmit({
         rsvpStatus,
@@ -655,13 +723,18 @@ export const useRsvpOfferingState = (
           phoneCountryIso: g.phoneCountryIso,
         })),
       });
+      if (!isCurrent()) return null;
       stateFromRestoreRef.current = false;
+      acceptedRevision.current += 1;
       setGuestStatus(result.status);
       setGuestApproval(result.approvalStatus);
-      if (result.status !== "going") setPassDetails(null);
+      if (result.status !== "going") {
+        setPassDetails(null);
+        setSuccessDetails(null);
+      }
       return result;
     },
-    [guests, onSubmit, guestName, guestEmail, guestPhone, phoneCountry, plusCount],
+    [guests, onSubmit, guestName, guestEmail, guestPhone, phoneCountry, plusCount, isCurrent],
   );
 
   // ── what is still missing, in on-screen order (primary, then each +1) ──
@@ -673,6 +746,23 @@ export const useRsvpOfferingState = (
     Record<string, Partial<Record<RsvpContactFieldKey, TextInput | View | null>>>
   >({});
   const inlineDecisionRef = useRef<View | null>(null);
+  const floatingDecisionRef = useRef<View | null>(null);
+  useEffect(() => {
+    if (!focusDecisionRequested.current) return;
+    focusDecisionRequested.current = false;
+    // A mounted floating control is the surface's visible shortcut. Otherwise
+    // use the existing inline/desktop owner, never an input or removed pass CTA.
+    const node = floatingDecisionRef.current ?? inlineDecisionRef.current;
+    if (node === null) return;
+    if (Platform.OS === "web") {
+      const element = node as unknown as { setAttribute?: (key: string, value: string) => void; focus?: (options: { preventScroll: boolean }) => void };
+      element.setAttribute?.("tabindex", "-1");
+      element.focus?.({ preventScroll: true });
+    } else {
+      const tag = findNodeHandle(node);
+      if (tag !== null) AccessibilityInfo.setAccessibilityFocus?.(tag);
+    }
+  });
   const contactIssues: RsvpContactIssue[] = useMemo(() => {
     const issues = rsvpContactIssues({
       primary: { name: guestName, email: guestEmail, phone: guestPhone },
@@ -705,7 +795,13 @@ export const useRsvpOfferingState = (
   const validationHint =
     showValidationErrors && !contactReady
       ? buildRsvpValidationHint(contactIssues)
-      : null;
+      : props.recoveryNotice ?? null;
+  const recoveryHint = validationHint !== null && validationHint === props.recoveryNotice;
+  useEffect(() => {
+    if (Platform.OS !== "web" && recoveryHint && validationHint !== null) {
+      AccessibilityInfo.announceForAccessibility?.(validationHint);
+    }
+  }, [recoveryHint, validationHint]);
   // Web can always scroll the DOM itself; native needs the surface's scroll view.
   const canRevealFields =
     Platform.OS === "web" || props.onRevealField !== undefined;
@@ -767,7 +863,7 @@ export const useRsvpOfferingState = (
   // Maybe / Not-going → record DIRECTLY (no dialog).
   const submitDirect = useCallback(
     async (rsvpStatus: "not_going" | "maybe"): Promise<void> => {
-      if (submitting) return;
+      if (submitting || !isCurrent()) return;
       if (rsvpStatus === "maybe" && !contactReady) {
         // The hint beside the tapped control replaces the old error line that
         // rendered far below the fields (and under the floating bar).
@@ -782,11 +878,12 @@ export const useRsvpOfferingState = (
         const result = await runSubmit(rsvpStatus);
         if (result !== null) reportResolved(result, null);
       } catch (err) {
+        if (!isCurrent()) return;
         const code = err instanceof Error ? err.message : String(err);
         handleAcquisitionError(code);
         setErrorMsg(mapErrorCode(code));
       } finally {
-        setSubmitting(false);
+        if (isCurrent()) setSubmitting(false);
       }
     },
     [
@@ -797,12 +894,13 @@ export const useRsvpOfferingState = (
       handleAcquisitionError,
       revealFirstIssue,
       reportResolved,
+      isCurrent,
     ],
   );
 
   // Going → open the confirmation dialog (when contactReady); else surface errors.
   const onGoingTap = useCallback((): void => {
-    if (submitting) return;
+    if (submitting || !isCurrent()) return;
     if (!contactReady) {
       setShowValidationErrors(true);
       setErrorMsg(null);
@@ -812,7 +910,7 @@ export const useRsvpOfferingState = (
     setErrorMsg(null);
     setConfirmError(null);
     setConfirmOpen(true);
-  }, [submitting, contactReady, revealFirstIssue]);
+  }, [submitting, contactReady, revealFirstIssue, isCurrent]);
 
   // ── ORCH-1163-R3 — floating-bar entry handlers ──
   // The floating bar forces contactReady=true on its DecisionUnit so the buttons
@@ -821,7 +919,7 @@ export const useRsvpOfferingState = (
   // to the inline behavior; otherwise open the self-sufficient details modal with
   // the decision pinned, to dispatch once the contact + +1 forms are filled.
   const onFloatingGoing = useCallback((): void => {
-    if (submitting) return;
+    if (submitting || !isCurrent()) return;
     if (contactReady) {
       onGoingTap();
       return;
@@ -836,10 +934,10 @@ export const useRsvpOfferingState = (
     setErrorMsg(null);
     setPendingDecision("going");
     setDetailsOpen(true);
-  }, [submitting, contactReady, canRevealFields, onGoingTap]);
+  }, [submitting, contactReady, canRevealFields, onGoingTap, isCurrent]);
 
   const onFloatingMaybe = useCallback((): void => {
-    if (submitting) return;
+    if (submitting || !isCurrent()) return;
     if (contactReady) {
       void submitDirect("maybe");
       return;
@@ -851,10 +949,10 @@ export const useRsvpOfferingState = (
     setErrorMsg(null);
     setPendingDecision("maybe");
     setDetailsOpen(true);
-  }, [submitting, contactReady, canRevealFields, submitDirect]);
+  }, [submitting, contactReady, canRevealFields, submitDirect, isCurrent]);
 
   const onFloatingNotGoing = useCallback((): void => {
-    if (submitting) return;
+    if (submitting || !isCurrent()) return;
     // Can't-go needs no +1s and no contact gate for a logged-in guest. Anon guests
     // still need a reachable identity so the host can attribute the decline.
     if (isLoggedIn || contactReady) {
@@ -870,16 +968,17 @@ export const useRsvpOfferingState = (
     setErrorMsg(null);
     setPendingDecision("not_going");
     setDetailsOpen(true);
-  }, [submitting, isLoggedIn, contactReady, canRevealFields, submitDirect, revealFirstIssue]);
+  }, [submitting, isLoggedIn, contactReady, canRevealFields, submitDirect, revealFirstIssue, isCurrent]);
 
   // Continue inside the details modal — dispatch the pinned decision. Disabled in
   // the UI until contactReady, so values are valid here.
   const closeDetails = useCallback((): void => {
+    if (!isCurrent()) return;
     setDetailsOpen(false);
     setPendingDecision(null);
-  }, []);
+  }, [isCurrent]);
   const onDetailsContinue = useCallback((): void => {
-    if (!contactReady) return;
+    if (!contactReady || !isCurrent()) return;
     const decision = pendingDecision;
     setDetailsOpen(false);
     setPendingDecision(null);
@@ -892,15 +991,15 @@ export const useRsvpOfferingState = (
     } else if (decision === "not_going") {
       void submitDirect("not_going");
     }
-  }, [contactReady, pendingDecision, submitDirect]);
+  }, [contactReady, pendingDecision, submitDirect, isCurrent]);
 
   const onConfirmGoing = useCallback(async (): Promise<void> => {
-    if (submitting) return;
+    if (submitting || !isCurrent()) return;
     setSubmitting(true);
     setConfirmError(null);
     try {
       const result = await runSubmit("going");
-      if (result === null) return;
+      if (result === null || !isCurrent()) return;
       setConfirmOpen(false);
       const details: RsvpConfirmationDetails = {
         eventName: event.name,
@@ -926,11 +1025,12 @@ export const useRsvpOfferingState = (
       setPassDetails(details);
       reportResolved(result, details);
     } catch (err) {
+      if (!isCurrent()) return;
       const code = err instanceof Error ? err.message : String(err);
       handleAcquisitionError(code);
       setConfirmError(mapErrorCode(code));
     } finally {
-      setSubmitting(false);
+      if (isCurrent()) setSubmitting(false);
     }
   }, [
     submitting,
@@ -946,6 +1046,7 @@ export const useRsvpOfferingState = (
     mapErrorCode,
     handleAcquisitionError,
     reportResolved,
+    isCurrent,
   ]);
 
   // ── ORCH-1291 — server-code → gift-framed copy (DESIGN §4.7). ──
@@ -965,7 +1066,7 @@ export const useRsvpOfferingState = (
   }, [chipCurrency]);
 
   const runChipIn = useCallback(async (): Promise<void> => {
-    if (onChipIn == null) return;
+    if (onChipIn == null || !isCurrent()) return;
     if (chipInState === "submitting") return;
     if (chipAmountCents <= 0) {
       setChipError("Enter an amount to chip in.");
@@ -981,6 +1082,7 @@ export const useRsvpOfferingState = (
     setChipError(null);
     try {
       const result = await onChipIn({ amountCents: chipAmountCents });
+      if (!isCurrent()) return;
       // "redirecting" → the surface is navigating to a hosted page; HOLD
       // submitting until it leaves (on return the surface passes
       // contributionState='paid'). "paid" → native sheet / paystack verified.
@@ -988,6 +1090,7 @@ export const useRsvpOfferingState = (
         setChipInState("success");
       }
     } catch (err) {
+      if (!isCurrent()) return;
       const code = err instanceof Error ? err.message : String(err);
       if (code.includes("brand_cannot_collect")) {
         setChipInState("paused");
@@ -1007,7 +1110,7 @@ export const useRsvpOfferingState = (
         setChipInState("error");
       }
     }
-  }, [onChipIn, chipInState, chipAmountCents, chipMinCents, fmtChipWhole]);
+  }, [onChipIn, chipInState, chipAmountCents, chipMinCents, fmtChipWhole, isCurrent]);
 
   // ── resolved-state subcopy (carried verbatim from RsvpPublicBody) ──
   const goingResolved = guestStatus === "going" && guestApproval === "approved";
@@ -1356,7 +1459,7 @@ export const useRsvpOfferingState = (
         submitting={submitting}
         errorText={confirmError}
         onConfirm={() => void onConfirmGoing()}
-        onCancel={() => setConfirmOpen(false)}
+        onCancel={() => { if (isCurrent()) setConfirmOpen(false); }}
       />
     </Suspense>
   );
@@ -1420,13 +1523,16 @@ export const useRsvpOfferingState = (
   const successPopup = (
     <Suspense fallback={null}>
       <RsvpSuccessPopup
+        key={`${contextKey}:${acceptedRevision.current}`}
         visible={successDetails !== null}
         palette={palette}
         theme={theme}
         details={successDetails}
         showCalendarNudge={isLoggedIn}
-        onDownloadPass={props.onDownloadPass}
-        onClose={() => setSuccessDetails(null)}
+        onDownloadPass={props.onDownloadPass === undefined ? undefined : downloadPass}
+        onClose={() => {
+          if (isCurrent() && visiblePassRef.current === successDetails) setSuccessDetails(null);
+        }}
         chipInPanel={
           popupChipEligible
             ? buildChipPanel("orch-1291-rsvp-chipin-panel-popup")
@@ -1480,7 +1586,9 @@ export const useRsvpOfferingState = (
     passDetails.credentials.some((c: RsvpPassCredential) => c.qrCode !== null)
       ? {
           label: "View your pass",
-          onPress: () => setSuccessDetails(passDetails),
+          onPress: () => {
+            if (isCurrent() && currentPassRef.current === passDetails) setSuccessDetails(passDetails);
+          },
           testID: "rsvp-view-pass",
         }
       : null;
@@ -1499,6 +1607,8 @@ export const useRsvpOfferingState = (
     validationHint,
     passAction,
     inlineDecisionRef,
+    floatingDecisionRef,
+    recoveryHint,
     decisionAttempted: showValidationErrors,
     onGoingTap,
     onMaybe: () => void submitDirect("maybe"),
@@ -1591,6 +1701,7 @@ const DecisionUnit: React.FC<{
       showMomentum={showMomentum}
       micro={state.subcopy ?? undefined}
       validationHint={state.validationHint}
+      announceHint={!state.recoveryHint || (showMomentum && Platform.OS === "web")}
       secondaryAction={state.passAction}
       decisionRef={decisionRef}
       goingTestID="orch-1150-rsvp-going"
@@ -1697,6 +1808,7 @@ export const RsvpOfferingFloatingBar: React.FC<RsvpOfferingFloatingBarProps> = (
       onGoing={state.onFloatingGoing}
       onMaybe={state.onFloatingMaybe}
       onNotGoing={state.onFloatingNotGoing}
+      decisionRef={state.floatingDecisionRef}
       testID={testID ?? "orch-1157-rsvp-floating-dock"}
     />
   </View>

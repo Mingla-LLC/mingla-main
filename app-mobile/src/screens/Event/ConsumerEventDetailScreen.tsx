@@ -1214,6 +1214,7 @@ export default function ConsumerEventDetailScreen({
   const handleDownloadRsvpPass = useCallback(async (
     credential: { entityId: string; entityType: "primary" | "guest" },
     recovery: { recoveryToken: string | null } | null,
+    isCurrent?: () => boolean,
   ): Promise<void> => {
     const surface = "explorer_success";
     postHogService.capture("rsvp_pass_pdf_requested", { surface });
@@ -1223,6 +1224,7 @@ export default function ConsumerEventDetailScreen({
         recovery?.recoveryToken ?? null,
         credential.entityType,
       );
+      if (isCurrent?.() === false) return;
       const safeName = result.pdf.filename.replace(/[^a-zA-Z0-9._-]/g, "-");
       const uri = `${FileSystem.cacheDirectory ?? ""}${safeName}`;
       await FileSystem.writeAsStringAsync(uri, result.pdf.contentBase64, {
@@ -1231,6 +1233,7 @@ export default function ConsumerEventDetailScreen({
       if (!(await Sharing.isAvailableAsync())) {
         throw new Error("sharing_unavailable");
       }
+      if (isCurrent?.() === false) return;
       await Sharing.shareAsync(uri, {
         mimeType: "application/pdf",
         dialogTitle: "Save RSVP invite",
@@ -1243,6 +1246,9 @@ export default function ConsumerEventDetailScreen({
     }
   }, []);
 
+  // A profile can briefly lag the auth store during an account transition.
+  // Only the current account's canonical defaults may seed its new RSVP owner.
+  const rsvpProfile = user !== null && profile?.id === user.id ? profile : null;
   const rsvpState = useRsvpOfferingState({
     event: rsvpPublicEvent,
     brand: rsvpBrand,
@@ -1250,9 +1256,10 @@ export default function ConsumerEventDetailScreen({
     theme,
     config: rsvpConfig,
     isLoggedIn: user !== null,
-    initialGuestName: profile?.display_name?.trim() || user?.email?.split("@")[0] || "",
-    initialGuestEmail: user?.email ?? profile?.email ?? "",
-    initialGuestPhone: profile?.phone ?? "",
+    replyIdentity: user?.id ?? null,
+    initialGuestName: rsvpProfile?.display_name?.trim() || user?.email?.split("@")[0] || "",
+    initialGuestEmail: user?.email ?? rsvpProfile?.email ?? "",
+    initialGuestPhone: rsvpProfile?.phone ?? "",
     requirePrimaryContact: user !== null,
     renderPhoneField: renderRsvpPhoneField,
     onDownloadPass: handleDownloadRsvpPass,

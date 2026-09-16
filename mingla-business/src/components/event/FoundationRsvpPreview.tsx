@@ -79,6 +79,8 @@ export interface FoundationRsvpPreviewProps {
   theme: ResolvedTheme;
   config: RsvpOfferingConfig;
   isLoggedIn: boolean;
+  replyIdentity?: string | null;
+  recoveryNotice?: string | null;
   muted: boolean;
   onToggleMute: () => void;
   onClose: () => void;
@@ -135,6 +137,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     theme,
     config,
     isLoggedIn,
+    replyIdentity,
+    recoveryNotice,
     muted,
     onToggleMute,
     onClose,
@@ -234,6 +238,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     theme,
     config,
     isLoggedIn,
+    replyIdentity,
+    recoveryNotice,
     onSubmit,
     onChipIn,
     contributionState,

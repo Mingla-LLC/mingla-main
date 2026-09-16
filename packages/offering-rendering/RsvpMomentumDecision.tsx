@@ -199,6 +199,8 @@ export interface RsvpMomentumDecisionProps {
    * web through role="alert"; native hosts announce it once themselves.
    */
   validationHint?: string | null;
+  /** Duplicated controls share one recovery announcement owner. */
+  announceHint?: boolean;
   /**
    * An optional secondary action under the decision — the resolved guest's
    * "View your pass". Absent ⇒ nothing renders.
@@ -309,6 +311,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   hostRow,
   micro,
   validationHint = null,
+  announceHint = true,
   secondaryAction = null,
   decisionRef = undefined,
   goingTestID,
@@ -675,8 +678,8 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       {hintText !== null && hintText !== undefined && hintText.length > 0 ? (
         <Text
           style={[styles.validationHint, { color: palette.primaryText, borderColor: palette.accent }]}
-          accessibilityRole={Platform.OS === "web" ? "alert" : undefined}
-          accessibilityLiveRegion="polite"
+          accessibilityRole={Platform.OS === "web" && announceHint ? "alert" : undefined}
+          accessibilityLiveRegion={announceHint ? "polite" : "none"}
           testID="rsvp-decision-validation-hint"
         >
           {hintText}
