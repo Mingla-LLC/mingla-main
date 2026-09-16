@@ -319,3 +319,73 @@ Deno.test("T-1793-M5 — the midnight-wrapping window rule is stated identically
   assert(server.includes(rule), "the server's wrap rule moved");
   assert(client.includes(rule), "the guest surface's wrap rule must match it");
 });
+
+// ---------------------------------------------------------------------------
+// T-3380-P1 — "Who's ordering?" reads the guest's phone WITH their country.
+//
+// `normalizePhoneE164` knew "+…" or ten digits it assumed were American, so a
+// Lagos guest's `0803 123 4567` was refused and `803 123 4567` became
+// +1 803 123 4567. The rail now resolves through `_shared/buyerPhone.ts`, which
+// converts with the country the guest's picker showed and passes an E.164
+// value through untouched for every client already in use.
+//
+// fails-on-revert: restore `normalizePhoneE164(buyer.phone)` in
+// venue-order-create and the wiring assertions die; drop the legacy guard and
+// the ordering assertion dies; break the resolver and the behaviour ones die.
+// ---------------------------------------------------------------------------
+Deno.test("T-3380-P1 — the guest order rail converts with the guest's country", async () => {
+  const { resolveBuyerPhone, legacyNanpGuessAllowed, LEGACY_NANP_REFUSAL } =
+    await import("../buyerPhone.ts");
+
+  assertEquals(resolveBuyerPhone("0803 123 4567", "NG").e164, "+2348031234567");
+  assertEquals(resolveBuyerPhone("803 123 4567", "NG").e164, "+2348031234567");
+  assertEquals(resolveBuyerPhone("8031234567", "NG").legacyNanpGuess, false);
+  // Deployed clients: E.164 is preserved byte-for-byte, with or without a country.
+  assertEquals(resolveBuyerPhone("+2348031234567", undefined).e164, "+2348031234567");
+  assertEquals(resolveBuyerPhone("+14155550123", "GB").e164, "+14155550123");
+  // The old ten-digit reading survives only as a flagged guess…
+  assertEquals(resolveBuyerPhone("4155550123", undefined), {
+    e164: "+14155550123",
+    message: null,
+    legacyNanpGuess: true,
+  });
+  // …believed only at a North American venue.
+  assertEquals(legacyNanpGuessAllowed("US"), true);
+  assertEquals(legacyNanpGuessAllowed("CA"), true);
+  assertEquals(legacyNanpGuessAllowed(null), false);
+  assertEquals(legacyNanpGuessAllowed(undefined), false);
+  assertEquals(legacyNanpGuessAllowed("NG"), false);
+  // A number that does not fit the chosen country says why; empty keeps the generic copy.
+  assertEquals(
+    resolveBuyerPhone("0803 123 45", "NG").message,
+    "Nigerian mobile numbers have 10 digits after the 0 — you entered 8.",
+  );
+  assertEquals(resolveBuyerPhone("0803 123 4567", "GB").e164, null);
+  assertEquals(resolveBuyerPhone("garbage4155550123", undefined).e164, null);
+  assertEquals(resolveBuyerPhone("+234abc8031234567", undefined).e164, null);
+  assertEquals(resolveBuyerPhone("00447700900123", undefined).e164, "+447700900123");
+  assertEquals(resolveBuyerPhone("8031234567", "NGA"), {
+    e164: null,
+    message: LEGACY_NANP_REFUSAL,
+    legacyNanpGuess: false,
+  });
+  assertEquals(resolveBuyerPhone("", "NG").message, null);
+  assertEquals(resolveBuyerPhone("08031234567", undefined).message, LEGACY_NANP_REFUSAL);
+
+  const create = Deno.readTextFileSync(
+    new URL("../../venue-order-create/index.ts", import.meta.url),
+  );
+  assert(
+    create.includes("resolveBuyerPhone(buyer.phone, buyer.phoneCountryIso)"),
+    "venue-order-create must read the guest's country with the number",
+  );
+  assert(!create.includes("normalizePhoneE164("), "the US-assuming normaliser is gone");
+  const pricingRead = create.indexOf("const pricing = pricingRows[0]");
+  const guard = create.indexOf("legacyNanpGuessAllowed(pricing.payment_country)");
+  assert(pricingRead > -1 && guard > pricingRead, "the legacy guess is judged against the venue's country");
+  assert(
+    /function failPhone\(message: string\): Response \{\s*return jsonResponse\(\s*\{ error: "buyer_phone_required", message \}/
+      .test(create),
+    "the refusal keeps the code every client already maps",
+  );
+});

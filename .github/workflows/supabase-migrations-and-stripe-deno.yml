@@ -891,6 +891,35 @@ jobs:
           # plan-dependent pre-fix outcome that flips once `brands` is vacuumed.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3193_public_search_live_row_ledger_consumers.tester.adversarial.pg17.test.sql
+          # Issue #3197 — nothing ever promoted a public page, so every Host page
+          # served noindex and the sitemap was empty. The per-minute reconciler
+          # now indexes every brand, event, trip, experience and verified venue
+          # that passes the public-search content floor. The implementor suite
+          # drives every kind through promotion, refresh and demotion and reads
+          # the result back through the anonymous resolver, the sitemap and the
+          # IndexNow queue; the adversarial suite covers qualified inventory,
+          # slug heirs, operator holds, mixed-case paths, test records, ACL, a
+          # poisoned write and the convergence monitor. Both assert
+          # fixture-scoped outcomes only, and neither is plan-sensitive, so the
+          # ledger suite above stays last among the plan-sensitive suites.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.implementor.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.tester.adversarial.pg17.test.sql
+          # Issue #3426 — a public brand page puts every offering (event, RSVP,
+          # trip, experience) in exactly ONE of Happening now / Upcoming / Past,
+          # decided by its event_dates and never by events.status. The happy suite
+          # drives all four kinds through every date boundary (before, at start,
+          # mid-run, at end, after, multi-day, between nights) as anon, proves the
+          # legacy Upcoming reader agrees with the new section reader, and walks
+          # keyset pagination; the adversarial suite proves cancelled, hidden,
+          # private, unpublished, deleted, read-blocked, paid-not-ready and corrupt
+          # offerings never leak, and pins the reader's grant posture. Both are
+          # fixture-scoped and roll back; neither is plan-sensitive.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.adversarial.pg17.test.sql
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
@@ -1277,6 +1306,11 @@ jobs:
             # object and rejects terminal, mismatched, or hostile continuations.
             supabase/functions/_shared/__tests__/issue_1793_payment_continuation.test.ts
             supabase/functions/_shared/__tests__/issue_1793_payment_continuation_tester_adversarial.test.ts
+            # Issue #3392 — a guest's private manage link opens the booking even
+            # when there is no refund row (the refund RPC raises for those), is
+            # scoped to that reservation AND its token hash, and exposes booking
+            # facts only. Registered in this existing lane, not a new workflow.
+            supabase/functions/_shared/__tests__/issue_3392_guest_reservation_manage_view.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

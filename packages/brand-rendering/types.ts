@@ -135,11 +135,25 @@ export interface PublicBrandUpcoming {
   coverMediaType: PublicMediaType | null;
   theme?: Record<string, unknown> | null;
   startsAt: string | null;
+  // #3426 — when the row's section is decided by the server
+  // (`pg_public_brand_offering_section`): the end of the occurrence in
+  // progress (Happening now) or of the LAST occurrence (Past). Optional so the
+  // older `pg_public_brand_upcoming` rows, which carry no end, stay assignable.
+  endsAt?: string | null;
   priceFromMinorUnits: number | null;
   currency: string;
   isFree: boolean;
   publishedAt: string;
 }
+
+/**
+ * #3426 — the three date-decided places an offering can sit on a brand page.
+ * Decided server-side by dates, never by `events.status` (#3422):
+ *   happening_now — an occurrence has started and not yet ended
+ *   upcoming      — nothing in progress, an occurrence starts later
+ *   past          — every occurrence has ended
+ */
+export type PublicBrandOfferingSection = "happening_now" | "upcoming" | "past";
 
 export interface PublicVenueDetail {
   isVerifiedVenue: true;
@@ -203,6 +217,8 @@ export interface PublicBrandCallbacks {
   onOpenVenue?: (venue: PublicBrandVenueSummary) => void;
   onReservationsTabViewed?: () => void;
   onRetryVenues?: () => void;
+  // #3426 — Past tab "load more". ABSENT ⇒ no load-more control renders.
+  onLoadMorePast?: () => void;
 }
 
 export interface PublicBrandPageProps {
@@ -214,6 +230,14 @@ export interface PublicBrandPageProps {
   experiences?: PublicBrandExperience[];
   upcoming?: PublicBrandUpcoming[];
   upcomingHasMore?: boolean;
+  // #3426 — offerings with an occurrence in progress right now. Rendered as a
+  // visually distinct block at the TOP of the Upcoming tab; never in Past.
+  happeningNow?: PublicBrandUpcoming[];
+  // #3426 — the Past tab, most recent first. ABSENT ⇒ the renderer falls back
+  // to `pastEvents` + `pastTrips` (hosts that predate the server section feed).
+  past?: PublicBrandUpcoming[];
+  pastHasMore?: boolean;
+  pastLoadState?: "ready" | "loading_more" | "error";
   venue?: PublicVenueDetail | null;
   // Issue #679 — server-truth follow state, host-owned (the renderer holds no
   // server state). Only read when callbacks.onToggleFollow is provided.

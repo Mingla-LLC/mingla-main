@@ -7432,6 +7432,9 @@
         "mingla-business/jest.issue679.cfg.cjs",
         "packages/brand-rendering/__tests__/issue_2539_avatar_clip_and_glow.test.tsx",
         "packages/brand-rendering/__tests__/issue_3188_socials_one_line.test.tsx",
+        "packages/brand-rendering/__tests__/issue_3426_brand_sections.render.test.tsx",
+        "packages/brand-rendering/__tests__/issue_3430_upcoming_kind_labels.implementor.render.test.tsx",
+        "packages/brand-rendering/__tests__/issue_3430_upcoming_kind_labels.tester.adversarial.render.test.tsx",
         "packages/brand-rendering/__tests__/issue_679_follow_gate.adversarial.render.test.tsx",
         "packages/brand-rendering/__tests__/issue_679_follow_gate.test.tsx",
         "packages/brand-rendering/__tests__/orch_1155_brand_redesign.adversarial.test.tsx",
@@ -16230,7 +16233,7 @@
       "providerWorkflow": ".github/workflows/issue-1930-checkout-current-truth.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "b7333c7e19fd3f7cb34475056d63ff4f1e455321127316974a1123244932925a",
+        "sourceSha256": "0e02f88ea26a96ef159d5d2bbed1327b04ac85905987003b959c69f1de9c4b28",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -16294,7 +16297,7 @@
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5be0d6a1f9180641e008ecb8c5f6da517fff5aa95bdf36f600e7dcb8d302e174",
+        "sourceSha256": "3427c2016217f6c5d07497a40b48c543597fda39c69827708fb6d2d5e0355702",
         "triggers": [
           "pull_request",
           "push"
@@ -17956,7 +17959,7 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "f0a8ae3e5ed5fb9d614eb02ee340ac96b2da000389a2a7afedc7720fd64dd016",
+        "sourceSha256": "74b7b4d253ee7ec4fe6f122b01e81241370953630fffd533b4424a1ff18f6896",
         "triggers": [
           "pull_request",
           "push"

@@ -333,6 +333,17 @@ jobs:
               #
               # Matched by EXACT filename, never an issue-number infix.
               *20270704003314_issue_3314_bundle_hide_remaining.sql) continue ;;
+              # issue #3426 — SKIPPED for the same reason #2489 is. 20270707003426
+              # re-emits `pg_public_brand_upcoming` (one of this lane's
+              # reader-equality objects) and adds the brand section reader; both
+              # are `LANGUAGE sql` and reach `issue_1931_event_ordinary_read_blocked`
+              # and `issue_2489_public_theme`, validated at CREATE time. Nothing is
+              # removed from the migration to green this lane. Covered end-to-end by
+              # the unfiltered full-chain lanes; the migrations-and-Stripe Deno lane
+              # runs the #3426 suites against that terminal state.
+              #
+              # Matched by EXACT filename, never an issue-number infix.
+              *20270707003426_issue_3426_brand_offering_sections.sql) continue ;;
               # Unlisted RSVP invite link — SKIPPED FOR THE SAME REASON #3314 is.
               # 20270707000000 re-emits `pg_public_rsvp_by_slug`, whose body reaches
               # `issue_1931_event_ordinary_read_blocked` and the #2489 theme/address
