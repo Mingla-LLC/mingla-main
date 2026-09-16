@@ -5,7 +5,9 @@ import React from "react";
 import { beforeEach, expect, jest, test } from "@jest/globals";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-const mockInvoke = jest.fn<any>();
+type InvokeResponse = { data: unknown; error: unknown };
+type Invoke = (name: string, options: { body: Record<string, unknown> }) => Promise<InvokeResponse>;
+const mockInvoke = jest.fn<Invoke>();
 const mockInit = jest.fn<any>();
 const mockPresent = jest.fn<any>();
 const mockOpen = jest.fn<any>();
@@ -14,7 +16,7 @@ const mockReserved = jest.fn<any>();
 const mockClose = jest.fn<any>();
 const mockHost = (name: string) => (props: any) => require("react").createElement(name, props, props.children);
 const mockSlot = { slotStartUtc: "2030-01-01T18:00:00Z", label: "18:00", remaining: 10, isFull: false };
-jest.mock("../../../../../app-mobile/src/services/supabase", () => ({ supabase: { functions: { invoke: (...args: any[]) => mockInvoke(...args) } } }));
+jest.mock("../../../../../app-mobile/src/services/supabase", () => ({ supabase: { functions: { invoke: (...args: Parameters<Invoke>) => mockInvoke(...args) } } }));
 jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: mockInvalidate }) }), { virtual: true });
 jest.mock("@mingla/payments-native", () => ({ useStripePaymentSheet: () => ({ initPaymentSheet: mockInit, presentPaymentSheet: mockPresent, isPaymentSheetSupported: true }) }), { virtual: true });
 jest.mock("@stripe/stripe-react-native", () => ({ initStripe: jest.fn() }), { virtual: true });
@@ -31,8 +33,27 @@ jest.mock("../../../../../app-mobile/src/store/appStore", () => ({ useAppStore: 
 jest.mock("../../../../../app-mobile/src/hooks/useVenueAvailability", () => ({ useVenueAvailability: () => ({ data: [mockSlot], isLoading: false, isError: false }) }));
 jest.mock("../../../../../app-mobile/src/components/expandedCard/VenueSlotPicker", () => ({ VenueSlotPicker: mockHost("SlotPicker") }));
 
-import { useReserveTable } from "../../../../../app-mobile/src/hooks/useReserveTable";
-import { VenueReserveSheet } from "../../../../../app-mobile/src/components/expandedCard/VenueReserveSheet";
+type NativeReserve = (input: {
+  venueId: string; brandId: string; reservedForUtc: string; partySize: number;
+  buyer: { name: string; email: string; phone: string; phoneCountryIso?: string | null; marketingOptIn?: boolean };
+  occasion?: string | null; guestNotes?: string | null;
+}, displayTitle?: string) => Promise<
+  { outcome: "succeeded"; reservationId: string } |
+  { outcome: "canceled" } | { outcome: "failed"; message: string }
+>;
+// Runtime boundary follows #2735: execute the real native owner without importing
+// the native dependency graph into Business's separate TypeScript program.
+const { useReserveTable } = require("../../../../../app-mobile/src/hooks/useReserveTable") as {
+  useReserveTable: (userId: string | null | undefined) => NativeReserve;
+};
+const { VenueReserveSheet } = require("../../../../../app-mobile/src/components/expandedCard/VenueReserveSheet") as {
+  VenueReserveSheet: React.ComponentType<{
+    visible: boolean; onClose: () => void; venueId: string; brandId: string;
+    venueName: string; currency: string | null; onReserved: (reservationId: string) => void;
+    onAvailabilityResultViewed?: () => void; onSlotSelected?: () => void;
+    onReservationFailed?: (resultClass: "phone_invalid" | "create_failed") => void;
+  }>;
+};
 import { DEPOSIT_UNCONFIGURED_COPY, guestReservationFailureCopy } from "@mingla/brand-rendering/venueGuestReservationErrorCopy";
 import { guestReservationFailureCopy as businessCopy } from "../venueGuestReservationErrorCopy";
 const Renderer = require("react-test-renderer");
@@ -167,7 +188,7 @@ test("mounted refusal allows party/time correction; next submit clears error and
     await press("Decrease party size");
     await press("See times");
     await Renderer.act(async () => { tree.root.findByType("SlotPicker").props.onSelect({ ...mockSlot, slotStartUtc: "2030-01-01T19:00:00Z", label: "19:00" }); });
-    let complete!: (value: unknown) => void;
+    let complete!: (value: InvokeResponse) => void;
     mockInvoke.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
     await press("Confirm reservation");
     expect(errors()).toHaveLength(0);

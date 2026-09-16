@@ -47,7 +47,14 @@ jest.mock("../../ui/Button", () => ({ Button: mockHost("Button") }));
 jest.mock("../../ui/Input", () => ({ Input: mockHost("Input") }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
 
-import { VenueReserveSheet } from "../../../../../app-mobile/src/components/expandedCard/VenueReserveSheet";
+const { VenueReserveSheet } = require("../../../../../app-mobile/src/components/expandedCard/VenueReserveSheet") as {
+  VenueReserveSheet: React.ComponentType<{
+    visible: boolean; onClose: () => void; venueId: string; brandId: string;
+    venueName: string; currency: string | null; onReserved: (reservationId: string) => void;
+    onAvailabilityResultViewed?: () => void; onSlotSelected?: () => void;
+    onReservationFailed?: (resultClass: "phone_invalid" | "create_failed") => void;
+  }>;
+};
 import { GuestVenueReservation } from "../GuestVenueReservation";
 import { DEPOSIT_UNCONFIGURED_COPY } from "../venueGuestReservationErrorCopy";
 // Same installed renderer used by the required business Jest suite.
