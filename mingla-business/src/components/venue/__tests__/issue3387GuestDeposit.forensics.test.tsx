@@ -33,6 +33,7 @@ jest.mock("../../../../../app-mobile/src/hooks/useAppLayout", () => ({ BOTTOM_NA
 jest.mock("../../../../../app-mobile/src/components/ui/BaseBottomSheet", () => ({ BaseBottomSheet: mockHost("BottomSheet") }));
 jest.mock("../../../../../app-mobile/src/components/ui/Icon", () => ({ Icon: () => null }));
 jest.mock("../../../../../app-mobile/src/components/onboarding/PhoneInput", () => ({ PhoneInput: mockHost("NativePhone") }));
+jest.mock("../../../../../app-mobile/src/constants/countries", () => ({ getCountryByCode: () => ({ dialCode: "+1" }), getDefaultCountryCode: () => "US" }));
 jest.mock("../../../../../app-mobile/src/store/appStore", () => ({ useAppStore: () => ({ user: { id: "user-3387", display_name: "Test Guest", email: "guest@example.test", phone: "+12025550123" }, profile: null }) }));
 const mockSlot = { slotStartUtc: "2030-01-01T18:00:00Z", label: "18:00", slotLocalLabel: "18:00", remaining: 10, isFull: false };
 jest.mock("../../../../../app-mobile/src/hooks/useVenueAvailability", () => ({ useVenueAvailability: () => ({ data: [mockSlot], isLoading: false, isError: false }) }));
@@ -41,7 +42,7 @@ jest.mock("../../../../../app-mobile/src/services/venueOrganicCaptureService", (
 jest.mock("../../../services/venueOrganicCaptureService", () => ({ getVenueOrganicJourneyToken: () => null, captureVenueOrganicEvent: jest.fn() }));
 jest.mock("../../../analytics/webAnalytics", () => ({ captureWeb: jest.fn(), getStoredClickAttribution: () => ({ clickId: null }) }));
 jest.mock("../../../hooks/usePublicVenueAvailability", () => ({ usePublicVenueAvailability: () => ({ data: [mockSlot], isLoading: false, isFetching: false, isError: false }) }));
-jest.mock("@mingla/phone-input", () => ({ PhoneInput: mockHost("PhoneInput"), getCountryByCode: () => ({ dialCode: "+1" }), getDefaultCountryCode: () => "US" }), { virtual: true });
+jest.mock("@mingla/phone-input", () => ({ PhoneInput: mockHost("PhoneInput"), getCountryByCode: () => ({ dialCode: "+1" }), getDefaultCountryCode: () => "US" }));
 jest.mock("../../ui/Button", () => ({ Button: mockHost("Button") }));
 jest.mock("../../ui/Input", () => ({ Input: mockHost("Input") }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
