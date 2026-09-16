@@ -12,7 +12,8 @@ jest.mock("../../../src/hooks/useVenueListings", () => ({ useVenueListing: () =>
 const mockContext = { tier2: { website: "https://example.test" }, coaching: [], gallery_urls: [], cover_media_url: null, cover_media_type: null };
 jest.mock("../../../src/hooks/useBrandPlacePipelineState", () => ({ useBrandPlaceAuthoringContext: () => ({ data: mockContext, isLoading: false }) }));
 jest.mock("../../../src/hooks/useBrandDiscoveryCurrency", () => ({ useBrandDiscoveryCurrency: () => ({ data: { currencyCode: "NGN", supportedCurrencies: [{ code: "NGN", minorUnitExponent: 2 }] } }) }));
-jest.mock("../../../src/hooks/usePlaceDiscoveryPriceRange", () => ({ usePlaceDiscoveryPriceRange: () => ({ data: null }) }));
+const mockRange = { status: "active", version: 1, source_min_minor: 1000, source_max_minor: null };
+jest.mock("../../../src/hooks/usePlaceDiscoveryPriceRange", () => ({ usePlaceDiscoveryPriceRange: () => ({ data: mockRange }) }));
 const mockSave = jest.fn((_input: unknown) => Promise.resolve());
 const mockPrice = jest.fn((_input: unknown) => Promise.resolve());
 jest.mock("../../../src/services/businessPlaceAuthoringService", () => ({ saveTier2: (value: unknown) => mockSave(value), commitExistingVenueDiscoveryRange: (value: unknown) => mockPrice(value), refreshDeckReadiness: jest.fn(), syncGallery: jest.fn(), syncHeroMedia: jest.fn() }));
@@ -46,6 +47,7 @@ test.each(["tier", "price"])("%s failure cannot navigate or claim success; retry
   expect(mockReplace).toHaveBeenCalledWith("/venue/venue-3393?module=settings");
   expect(mockReplace).toHaveBeenCalledTimes(1);
   expect(mockSave).toHaveBeenLastCalledWith(expect.objectContaining({ brandId: "brand-3393", venueId: "venue-3393", placePoolId: "place-3393" }));
+  expect(mockPrice).toHaveBeenLastCalledWith(expect.objectContaining({ expectedVersion: 1, priceMinInput: "10", priceMaxInput: "" }));
   const flash = useVenueSuiteStore.getState().savedFlash!;
   expect(useVenueSuiteStore.getState().takeSavedFlash("other-venue", flash.at)).toBeNull();
   expect(useVenueSuiteStore.getState().takeSavedFlash("venue-3393", flash.at)).toBe("Changes saved");
