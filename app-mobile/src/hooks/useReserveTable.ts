@@ -3,6 +3,7 @@ import { useStripePaymentSheet } from "@mingla/payments-native";
 import type { PaymentSheetInitInput } from "@mingla/payments-native";
 import { initStripe } from "@stripe/stripe-react-native";
 import * as WebBrowser from "expo-web-browser";
+import { guestReservationFailureCopy } from "@mingla/brand-rendering/venueGuestReservationErrorCopy";
 
 import {
   createVenueReservation,
@@ -69,9 +70,10 @@ export const useReserveTable = (
     try {
       created = await createVenueReservation(input);
     } catch (err) {
+      const originalMessage = err instanceof Error ? err.message : "Reservation failed.";
       return {
         outcome: "failed",
-        message: err instanceof Error ? err.message : "Reservation failed.",
+        message: guestReservationFailureCopy(originalMessage) ?? originalMessage,
       };
     }
 
