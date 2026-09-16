@@ -35,7 +35,7 @@ function find(tree: Tree, predicate: (node: Node) => boolean): Node {
 async function invoke(node: Node, prop: string, ...args: unknown[]): Promise<void> {
   await renderer.act(async () => { await (node.props[prop] as (...values: unknown[]) => unknown)(...args); });
 }
-beforeEach(() => mockCreate.mockClear());
+beforeEach(() => { mockCreate.mockClear(); });
 afterEach(async () => { await renderer.act(async () => mounted.splice(0).forEach((tree) => tree.unmount())); });
 
 test.each(["+234abc8031234567", "00234abc8031234567", "0803abc1234567"])("malformed %s never reaches booking transport, even when Confirm is invoked", async (malformed) => {
