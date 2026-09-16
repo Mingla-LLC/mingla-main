@@ -158,6 +158,25 @@ const treeText = (value: unknown): string => {
   return "";
 };
 
+const countExactText = (value: unknown, expected: string): number => {
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value) === expected ? 1 : 0;
+  }
+  if (Array.isArray(value)) {
+    return value.reduce(
+      (count, child) => count + countExactText(child, expected),
+      0,
+    );
+  }
+  if (value && typeof value === "object" && "children" in value) {
+    return countExactText(
+      (value as { children?: unknown }).children,
+      expected,
+    );
+  }
+  return 0;
+};
+
 const renderStep = (extraProps: Record<string, unknown> = {}) => {
   let renderer: any;
   act(() => {
@@ -182,6 +201,32 @@ describe("issue #1780 tester adversarial — required Invite people states", () 
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseOfferingInvitePlan.mockReturnValue(model());
+  });
+
+  test("shared header owns exactly one title and the offering-specific safety copy when visible", () => {
+    const renderer = renderStep({ eventType: "trip" });
+    const json = renderer.toJSON();
+    const text = treeText(json).replace(/\s+/g, " ").trim();
+    expect(countExactText(json, "Invite people")).toBe(1);
+    expect(text).toContain(
+      "Choose people from Your Book. Nothing sends until this trip is published.",
+    );
+    expect(text).toContain("Nothing sends yet");
+  });
+
+  test("parent-owned header hides only shared heading copy and preserves the full picker", () => {
+    const renderer = renderStep({ showHeader: false });
+    const json = renderer.toJSON();
+    const text = treeText(json);
+    expect(countExactText(json, "Invite people")).toBe(0);
+    expect(text).not.toContain(
+      "Choose people from Your Book. Nothing sends until this event is published.",
+    );
+    expect(text).toContain("Nothing sends yet");
+    expect(text).toContain("Saved groups");
+    expect(text).toContain("Launch circle");
+    expect(button(renderer, /^Select all$/i)).toBeDefined();
+    expect(button(renderer, /^(?:Choose people|Edit selection)$/i)).toBeDefined();
   });
 
   test.each([
