@@ -476,6 +476,13 @@ jobs:
           # Behavioural against the real chain; every case rolls back.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/unlisted_rsvp_invite_link.test.sql
+          # Issue #3386 — hosts edit venue contact directly, edit name/category/
+          # address while in review, and send a live venue's change to Mingla.
+          # Guests keep the live values until an admin approves; approval applies
+          # atomically; #2099's dependency pin still matches the live schema.
+          # Behavioural against the real chain; the whole file rolls back.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3386_venue_details_host_edit.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
