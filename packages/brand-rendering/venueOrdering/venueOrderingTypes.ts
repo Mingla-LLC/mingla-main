@@ -185,6 +185,22 @@ export interface VenueOrderBuyerDraft {
   name: string;
   email: string;
   phone: string;
+  /**
+   * issue #3380 — the ISO country the guest's phone picker shows. Sent with the
+   * number so the server reads `0803 123 4567` as Nigerian rather than guessing
+   * American. Absent on hosts that still render the plain text box.
+   */
+  phoneCountryIso?: string | null;
+}
+
+/** issue #3380 — what a host's country-aware phone field receives. */
+export interface VenueOrderPhoneFieldArgs {
+  phone: string;
+  phoneCountryIso: string | null;
+  onChange: (
+    patch: Partial<Pick<VenueOrderBuyerDraft, "phone" | "phoneCountryIso">>,
+  ) => void;
+  disabled: boolean;
 }
 
 /**

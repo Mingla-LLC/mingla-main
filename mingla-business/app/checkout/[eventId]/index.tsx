@@ -615,6 +615,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         eventId={event.id}
         ticket={waitlistTicket}
         onClose={() => setWaitlistTicketId(null)}
+        currency={event.currency ?? null}
       />
     </View>
   );

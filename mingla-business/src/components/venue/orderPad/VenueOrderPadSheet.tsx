@@ -57,7 +57,10 @@ import {
   useSettleStaffOrder,
 } from "../../../hooks/useVenueOrderPad";
 import { useCloseVenueTab, useOpenVenueTab } from "../../../hooks/useVenueOrderTabs";
+import { useCurrentBrand } from "../../../hooks/useCurrentBrand";
+import { useVenueListing } from "../../../hooks/useVenueListings";
 import { Button } from "../../ui/Button";
+import { PhoneField, usePhoneEntry } from "../../ui/PhoneField";
 import { Sheet } from "../../ui/Sheet";
 import {
   ORDER_PAD_MAX_NOTE_CHARS,
@@ -140,12 +143,33 @@ export function VenueOrderPadSheet({
   const [billContactOpen, setBillContactOpen] = useState(false);
   const [billName, setBillName] = useState("");
   const [billEmail, setBillEmail] = useState("");
-  const [billPhone, setBillPhone] = useState("");
-  const billContact = billContactReadiness({
+  // issue #3380 — the guest's phone, with a country picker that starts on the
+  // venue's country (then the brand's). The pad used to take free text and the
+  // server guessed "+1" for ten digits: a Lagos guest's bill went to America.
+  const venueForPhone = useVenueListing(venueId).data ?? null;
+  const brandForPhone = useCurrentBrand();
+  const billPhone = usePhoneEntry({
+    startCountries: [venueForPhone?.countryCode, brandForPhone?.countryCode],
+  });
+  const billPhoneProblem =
+    billPhone.isEmpty || billPhone.result.ok ? null : billPhone.result.message;
+  const billContactRules = billContactReadiness({
     name: billName,
     email: billEmail,
-    phone: billPhone,
+    phone: billPhone.e164 ?? billPhone.text,
   });
+  const billContact =
+    billContactRules.ready && billPhoneProblem !== null
+      ? { ready: false, blocker: billPhoneProblem }
+      : billContactRules;
+  const resetBillPhone = billPhone.reset;
+  const billBuyerPhone = useMemo(
+    () => ({
+      phone: billPhone.e164 ?? billPhone.text.trim(),
+      phoneCountryIso: billPhone.countryIso,
+    }),
+    [billPhone.e164, billPhone.text, billPhone.countryIso],
+  );
   // ONE key per SEND gesture. Re-minted only when the pad is reset, so a retry
   // after a dropped response resolves to the ticket that already exists.
   const [submitKey, setSubmitKey] = useState<string>(() => newSubmitKey());
@@ -246,9 +270,9 @@ export function VenueOrderPadSheet({
     setBillContactOpen(false);
     setBillName("");
     setBillEmail("");
-    setBillPhone("");
+    resetBillPhone();
     setSubmitKey(newSubmitKey());
-  }, [resumeTab, resumingTab]);
+  }, [resumeTab, resumingTab, resetBillPhone]);
 
   const handleClose = useCallback((): void => {
     reset();
@@ -367,7 +391,7 @@ export function VenueOrderPadSheet({
         buyer: {
           name: billName.trim(),
           email: billEmail.trim(),
-          phone: billPhone.trim(),
+          ...billBuyerPhone,
         },
       },
       {
@@ -383,7 +407,7 @@ export function VenueOrderPadSheet({
         },
       },
     );
-  }, [sentOrderId, billContact.ready, billName, billEmail, billPhone, settle]);
+  }, [sentOrderId, billContact.ready, billName, billEmail, billBuyerPhone, settle]);
 
   const handleSendTabBill = useCallback((): void => {
     if (billTab === null || !billContact.ready) return;
@@ -394,12 +418,12 @@ export function VenueOrderPadSheet({
         buyer: {
           name: billName.trim(),
           email: billEmail.trim(),
-          phone: billPhone.trim(),
+          ...billBuyerPhone,
         },
       },
       { onSuccess: (result) => setPayLink(result.authorizationUrl ?? "") },
     );
-  }, [billTab, billContact.ready, billName, billEmail, billPhone, closeTab]);
+  }, [billTab, billContact.ready, billName, billEmail, billBuyerPhone, closeTab]);
 
   const handleStartTab = useCallback((): void => {
     if (sentSessionId === null) return;
@@ -506,14 +530,11 @@ export function VenueOrderPadSheet({
                   accessibilityLabel="Guest's email"
                   testID="venue-order-pad-tab-bill-email"
                 />
-                <TextInput
-                  value={billPhone}
-                  onChangeText={setBillPhone}
-                  placeholder="Phone"
-                  placeholderTextColor={textTokens.quaternary}
-                  style={styles.input}
-                  keyboardType="phone-pad"
-                  accessibilityLabel="Guest's phone number"
+                <PhoneField
+                  entry={billPhone}
+                  required
+                  placeholder="Guest's mobile"
+                  accessibilityLabel="Guest's mobile number"
                   testID="venue-order-pad-tab-bill-phone"
                 />
                 {billContact.blocker !== null ? (
@@ -942,14 +963,11 @@ export function VenueOrderPadSheet({
                   accessibilityLabel="Guest's email"
                   testID="venue-order-pad-bill-email"
                 />
-                <TextInput
-                  value={billPhone}
-                  onChangeText={setBillPhone}
-                  placeholder="Phone"
-                  placeholderTextColor={textTokens.quaternary}
-                  style={styles.input}
-                  keyboardType="phone-pad"
-                  accessibilityLabel="Guest's phone number"
+                <PhoneField
+                  entry={billPhone}
+                  required
+                  placeholder="Guest's mobile"
+                  accessibilityLabel="Guest's mobile number"
                   testID="venue-order-pad-bill-phone"
                 />
                 {billContact.blocker !== null ? (
