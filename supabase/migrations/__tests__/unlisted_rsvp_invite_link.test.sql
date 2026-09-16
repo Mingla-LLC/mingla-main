@@ -1,4 +1,4 @@
--- Unlisted RSVP events open from their invite link (migration 20270707000000).
+-- Unlisted RSVP events open from their invite link (migration 20270709000000).
 --
 -- WHAT IS PROVED (U-00 … U-09). EVERY CASE EXECUTES THE REAL READER against the full
 -- applied migration chain, in its own transaction, and rolls back:

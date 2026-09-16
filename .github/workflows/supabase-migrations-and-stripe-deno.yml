@@ -448,7 +448,7 @@ jobs:
           # key contract. Behavioural against the real chain; every case rolls back.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3314_bundle_hide_remaining.test.sql
-          # Unlisted RSVP invite link (20270707000000) — an unlisted RSVP opens from its
+          # Unlisted RSVP invite link (20270709000000) — an unlisted RSVP opens from its
           # link as anon through pg_public_rsvp_by_slug and can be RSVPed; its appended
           # publicEventRow equals the business_public_events_view row for public RSVPs;
           # private stays NULL, unlisted stays unlisted, #2489 address withholding holds.
