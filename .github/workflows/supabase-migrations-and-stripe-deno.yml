@@ -1486,6 +1486,7 @@ jobs:
             # email without the button; a non-service caller cannot add one; and
             # no database write, outbox update or payload ever holds the token.
             supabase/functions/__tests__/issue_3392_confirmation_email_manage_link.test.ts
+            supabase/functions/__tests__/issue_3392_email_handler.tester.test.ts
             # Issue #1537 REWORK (tester P1-1) — the delivery ledger's ONLY live
             # reader. api-health-probe buckets notification_deliveries rows into
             # health tiles, and its provider ladder ended in a bare `: []`, so
