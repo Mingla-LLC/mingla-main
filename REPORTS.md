@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-15 — Business and public venue phone forms start on the venue's country, accept local numbers with a country picker, and preserve that country when booking, ordering, sending bills, or submitting a venue for review; native app delivery awaits an approved OTA (#3396, PR #3413)
 - 2026-09-15 — New RSVP chip-ins now link to the matching guest, and retries cannot reuse another payer's contribution; the production service is source-verified live, with no historical backfill or mobile update (#3436, PR #3415)
 - 2026-09-15 — Menu-ordering and staff bill-to-phone services now interpret local numbers using the guest's country and reject malformed numbers without guessing a US number; both production functions are source-verified live, with Host and Explorer country-picker releases tracked separately (#3395, PR #3411)
 - 2026-09-15 — Upcoming cards now use polished human labels — Event, RSVP, Trip and Experience — in both visible text and screen-reader descriptions across buyer web, Mingla Host and Mingla Explorer, instead of exposing lowercase internal data values (#3430, PR #3432)

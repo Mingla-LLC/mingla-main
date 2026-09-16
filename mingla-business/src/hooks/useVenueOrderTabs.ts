@@ -205,7 +205,13 @@ export function useOpenVenueTab(
 export interface CloseVenueTabVars {
   sessionId: string;
   method: "bill_to_phone" | "venue_collected";
-  buyer?: { name: string; email: string; phone: string };
+  /** issue #3380 — `phoneCountryIso` is the country the pad's picker showed. */
+  buyer?: {
+    name: string;
+    email: string;
+    phone: string;
+    phoneCountryIso?: string | null;
+  };
 }
 
 export interface VenueTabClosed {

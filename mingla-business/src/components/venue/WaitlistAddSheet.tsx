@@ -19,9 +19,11 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { isValidE164 } from "../../utils/phone";
+import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { useVenueListing } from "../../hooks/useVenueListings";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
+import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
 import { Sheet } from "../ui/Sheet";
 import type {
   VenueTableZone,
@@ -46,6 +48,8 @@ export interface WaitlistAddSheetProps {
   onClose: () => void;
   onSave: (input: WaitlistAddInput) => void;
   saving: boolean;
+  /** issue #3380 — the venue, so the phone picker starts on its country. */
+  venueId?: string | null;
   testID?: string;
 }
 
@@ -54,13 +58,21 @@ export function WaitlistAddSheet({
   onClose,
   onSave,
   saving,
+  venueId = null,
   testID,
 }: WaitlistAddSheetProps): React.ReactElement {
   const [guestName, setGuestName] = useState<string>("");
   const [partySize, setPartySize] = useState<number>(2);
   const [zone, setZone] = useState<VenueTableZone | null>(null);
   const [quotedWait, setQuotedWait] = useState<string>("");
-  const [phone, setPhone] = useState<string>("");
+  // issue #3380 — country picker starting on the venue's (then brand's)
+  // country; `mobile`, because this number receives the "table's ready" text.
+  const venueForPhone = useVenueListing(venueId).data ?? null;
+  const brandForPhone = useCurrentBrand();
+  const phone = usePhoneEntry({
+    startCountries: [venueForPhone?.countryCode, brandForPhone?.countryCode],
+  });
+  const resetPhone = phone.reset;
 
   useEffect(() => {
     if (!visible) return;
@@ -68,23 +80,23 @@ export function WaitlistAddSheet({
     setPartySize(2);
     setZone(null);
     setQuotedWait("");
-    setPhone("");
-  }, [visible]);
+    resetPhone();
+  }, [visible, resetPhone]);
 
-  const phoneValid = phone.trim().length === 0 || isValidE164(phone.trim());
+  const phoneValid = phone.isEmpty || phone.e164 !== null;
   const canSave = guestName.trim().length > 0 && phoneValid && !saving;
 
   const handleSave = useCallback((): void => {
     if (!canSave) return;
     onSave({
       guestName: guestName.trim(),
-      guestPhoneE164: phone.trim().length > 0 ? phone.trim() : null,
+      guestPhoneE164: phone.isEmpty ? null : phone.e164,
       guestEmail: null,
       partySize,
       preferredZone: zone,
       quotedWaitMinutes: parseIntOrNull(quotedWait),
     });
-  }, [canSave, guestName, phone, partySize, zone, quotedWait, onSave]);
+  }, [canSave, guestName, phone.isEmpty, phone.e164, partySize, zone, quotedWait, onSave]);
 
   return (
     <Sheet
@@ -168,18 +180,12 @@ export function WaitlistAddSheet({
           />
 
           <Text style={styles.groupLabel}>Phone for the “table’s ready” text</Text>
-          <Input
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="+1 555 123 4567"
-            accessibilityLabel="Guest phone, E.164 format"
+          <PhoneField
+            entry={phone}
+            placeholder="Guest's mobile"
+            accessibilityLabel="Guest's mobile number, for the table's ready text"
             testID="waitlist-phone"
           />
-          {!phoneValid ? (
-            <Text style={styles.errorText} testID="waitlist-phone-error">
-              Enter a valid phone like +15551234567.
-            </Text>
-          ) : null}
 
           <Button
             label="Add to waitlist"
@@ -223,11 +229,6 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     marginTop: spacing.md,
     marginBottom: spacing.xxs,
-  },
-  errorText: {
-    ...typography.bodySm,
-    color: "#ff6b6b",
-    marginTop: spacing.xxs,
   },
   stepper: {
     flexDirection: "row",
