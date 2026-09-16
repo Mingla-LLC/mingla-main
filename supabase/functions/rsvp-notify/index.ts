@@ -12,6 +12,7 @@ import { dispatchRsvpChannel } from "../_shared/notifyV2.ts";
 import { buildRsvpPassPdf } from "../_shared/ticketPdf.ts";
 import { qrTokenPepper } from "../_shared/ticketCheckout.ts";
 import { isRsvpNotifyServiceRequest } from "./rsvpNotifyAuth.ts";
+import { rsvpPassEventEligible } from "./passEligibility.ts";
 import {
   deriveRsvpRecoveryToken,
   rsvpRecoveryUrl,
@@ -140,9 +141,8 @@ async function passStillEligible(
     .select("status,visibility,deleted_at,event_type,brands(deleted_at)")
     .eq("id", rsvp.event_id).maybeSingle();
   const brand = Array.isArray(event?.brands) ? event.brands[0] : event?.brands;
-  return !!event && event.deleted_at === null && brand?.deleted_at === null &&
-    event.visibility === "public" && event.event_type === "rsvp" &&
-    ["scheduled", "live"].includes(event.status);
+  // Unlisted RSVP invite link — public AND unlisted RSVPs; see passEligibility.ts.
+  return rsvpPassEventEligible(event, brand?.deleted_at);
 }
 
 async function recoveryLinkFor(

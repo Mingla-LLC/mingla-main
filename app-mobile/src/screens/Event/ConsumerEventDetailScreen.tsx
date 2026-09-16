@@ -615,7 +615,15 @@ export default function ConsumerEventDetailScreen({
     queryKey: ["rsvpMomentum", eventId],
     enabled: isRsvp && eventId !== null,
     staleTime: 60 * 1000,
-    queryFn: () => fetchRsvpMomentum(eventId as string),
+    // Unlisted RSVP invite link — the exact slugs let an unlisted RSVP answer
+    // when the public view has no row for it.
+    queryFn: () =>
+      fetchRsvpMomentum(
+        eventId as string,
+        seed?.brandSlug && seed?.eventSlug
+          ? { brandSlug: seed.brandSlug, eventSlug: seed.eventSlug }
+          : undefined,
+      ),
   });
   const rsvpMomentum = rsvpMomentumQuery.data ?? null;
 
@@ -1115,8 +1123,12 @@ export default function ConsumerEventDetailScreen({
     // the social-proof payload (`?? false` until it resolves). Both the inline
     // RsvpOfferingBody and the RsvpOfferingFloatingBar read this SAME config
     // object, so the two mounts gate together.
-    privateGuestList: socialProofQuery.data?.privateGuestList ?? false,
-    hideRemainingCount: socialProofQuery.data?.hideRemainingCount ?? false,
+    // Unlisted RSVP invite link — the social-proof read answers NULL for an
+    // unlisted event, so the host's choices come from the exact-link row there.
+    privateGuestList:
+      socialProofQuery.data?.privateGuestList ?? rsvpMomentum?.privateGuestList ?? false,
+    hideRemainingCount:
+      socialProofQuery.data?.hideRemainingCount ?? rsvpMomentum?.hideRemainingCount ?? false,
     // ORCH-1340 — the server-filtered avatar sample rides the SAME payload;
     // photos fill the leading cluster disks ([] until it resolves — glyphs).
     guestSample: socialProofQuery.data?.sample ?? [],
@@ -1126,6 +1138,7 @@ export default function ConsumerEventDetailScreen({
     // survives package regressions. Absent handler ⇒ inert cluster (1340).
     onSeeWhosGoing:
       socialProofQuery.data?.privateGuestList !== true &&
+      rsvpMomentum?.privateGuestList !== true &&
       (rsvpMomentum?.goingCount ?? 0) > 0
         ? handleSeeWhosGoing
         : undefined,
