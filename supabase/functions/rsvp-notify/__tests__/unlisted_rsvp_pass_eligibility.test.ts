@@ -2,7 +2,9 @@
 //
 // fails-on-revert: put `event.visibility === "public"` back (drop "hidden" from
 // RSVP_PASS_VISIBILITIES) and P-02 reds; admit "private" and P-03 reds; unwire the
-// worker from the helper and P-06 reds.
+// worker from the helper, or let the #871 attendance link share the widened pass
+// gate, and P-06 reds. The real worker is exercised end to end in
+// unlisted_rsvp_pass_delivery.runtime.test.ts.
 import {
   RSVP_PASS_VISIBILITIES,
   rsvpPassEventEligible,
@@ -79,21 +81,61 @@ Deno.test("P-04 everything else is unchanged: deleted, deleted brand, not RSVP, 
   }
 });
 
-Deno.test("P-06 the worker asks the helper instead of its own public-only check", async () => {
+Deno.test("P-06 the pass asks the helper; the #871 attendance link keeps its own public-only gate", async () => {
   const worker = await Deno.readTextFile(
     new URL("../index.ts", import.meta.url),
   );
+  // One named function body, from its signature to the first closing brace at
+  // column 0. A rename or a moved body makes the slice empty and reds here.
+  const body = (signature: string): string => {
+    const at = worker.indexOf(signature);
+    assert(at >= 0, `${signature} must exist in the worker`);
+    const end = worker.indexOf("\n}\n", at);
+    assert(end > at, `${signature} must have a body`);
+    return worker.slice(at, end);
+  };
   assert(
     worker.includes(
       'import { rsvpPassEventEligible } from "./passEligibility.ts";',
-    ) &&
-      worker.includes(
-        "return rsvpPassEventEligible(event, brand?.deleted_at);",
-      ),
-    "passStillEligible must delegate to rsvpPassEventEligible",
+    ),
+    "the worker must import the pass helper",
+  );
+  const pass = body("async function passStillEligible(");
+  assert(
+    pass.includes("if (!rsvpPassEventEligible(event, brand?.deleted_at)) return null;"),
+    "passStillEligible must delegate the pass decision to rsvpPassEventEligible",
   );
   assert(
-    !worker.includes('event.visibility === "public"'),
-    "the public-only check must be gone",
+    !pass.includes('event.visibility === "public"'),
+    "the pass decision itself must not be public-only",
+  );
+  assert(
+    pass.includes(
+      "return { attendanceClaim: attendanceClaimStillEligible(event, brand) };",
+    ),
+    "the attendance link decision must be made separately, on the same event row",
+  );
+  // #871: the attendance link is redeemable only through
+  // claim_attendance_internal_v2, which admits public events only. Widening the
+  // pass must not widen it. (Behaviour: unlisted_rsvp_pass_delivery.runtime R-01.)
+  const attendance = body("function attendanceClaimStillEligible(");
+  assert(
+    attendance.includes('event.visibility === "public"') &&
+      !attendance.includes("rsvpPassEventEligible") &&
+      !attendance.includes('"hidden"'),
+    "the attendance link gate must stay exactly public-only",
+  );
+  const link = body("async function recoveryLinkFor(");
+  assert(
+    link.includes(
+      'if (table === "event_rsvps" && current?.event_id && attendanceClaimAllowed) {',
+    ),
+    "the attendance URL must only be built when that gate allows it",
+  );
+  assert(
+    worker.includes(
+      "? await recoveryLinkFor(admin, p, pass?.attendanceClaim === true)",
+    ),
+    "the worker must pass the attendance decision, not a constant",
   );
 });

@@ -125,29 +125,56 @@ function copyFor(
   }
 }
 
+/** #871 — may this pass also carry the "connect attendance" link?
+ *
+ * Its own decision, deliberately narrower than the pass: the link is only
+ * redeemable through `claim_attendance_internal_v2`, which admits public,
+ * undeleted, scheduled/live events only and returns `ineligible` for anything
+ * else. An unlisted RSVP's approved guest therefore gets the pass WITHOUT this
+ * link, instead of a promise ("see who's going") that ends in "This attendance
+ * link can't be used". Widening the pass must never widen this.
+ */
+function attendanceClaimStillEligible(
+  event: {
+    status: string;
+    visibility: string;
+    deleted_at: string | null;
+    event_type: string;
+  } | null | undefined,
+  brand: { deleted_at: string | null } | null | undefined,
+): boolean {
+  return !!event && event.deleted_at === null && brand?.deleted_at === null &&
+    event.visibility === "public" && event.event_type === "rsvp" &&
+    ["scheduled", "live"].includes(event.status);
+}
+
+/** null = the pass must not be sent. Otherwise the pass goes out, and
+ * `attendanceClaim` says whether it may carry the #871 attendance link. */
 async function passStillEligible(
   admin: AdminClient,
   p: Record<string, unknown>,
-): Promise<boolean> {
+): Promise<{ attendanceClaim: boolean } | null> {
   const rsvpId = text(p.rsvpId) ?? text(p.rsvp_id);
-  if (!rsvpId) return false;
+  if (!rsvpId) return null;
   const { data: rsvp } = await admin.from("event_rsvps")
     .select("event_id,rsvp_status,approval_status")
     .eq("id", rsvpId).maybeSingle();
   if (
     !rsvp || rsvp.rsvp_status !== "going" || rsvp.approval_status !== "approved"
-  ) return false;
+  ) return null;
   const { data: event } = await admin.from("events")
     .select("status,visibility,deleted_at,event_type,brands(deleted_at)")
     .eq("id", rsvp.event_id).maybeSingle();
   const brand = Array.isArray(event?.brands) ? event.brands[0] : event?.brands;
   // Unlisted RSVP invite link — public AND unlisted RSVPs; see passEligibility.ts.
-  return rsvpPassEventEligible(event, brand?.deleted_at);
+  if (!rsvpPassEventEligible(event, brand?.deleted_at)) return null;
+  return { attendanceClaim: attendanceClaimStillEligible(event, brand) };
 }
 
 async function recoveryLinkFor(
   admin: AdminClient,
   p: Record<string, unknown>,
+  attendanceClaimAllowed: boolean,
 ): Promise<{ passUrl: string; attendanceClaimUrl: string | null } | null> {
   const entityId = text(p.entityId);
   if (!entityId) return null;
@@ -186,7 +213,7 @@ async function recoveryLinkFor(
       entityId,
       token,
     );
-    if (table === "event_rsvps" && current?.event_id) {
+    if (table === "event_rsvps" && current?.event_id && attendanceClaimAllowed) {
       return {
         passUrl,
         attendanceClaimUrl: attendanceClaimUrls({
@@ -255,9 +282,10 @@ async function classifyFailure(
 
 async function processClaim(admin: AdminClient, claim: Claim): Promise<void> {
   const p = claim.payload ?? {};
-  if (
-    claim.template_key === "rsvp_pass" && !(await passStillEligible(admin, p))
-  ) {
+  const pass = claim.template_key === "rsvp_pass"
+    ? await passStillEligible(admin, p)
+    : null;
+  if (claim.template_key === "rsvp_pass" && !pass) {
     await complete(admin, claim, "failed_terminal", null, "rsvp_not_eligible");
     return;
   }
@@ -271,7 +299,7 @@ async function processClaim(admin: AdminClient, claim: Claim): Promise<void> {
   const needsRecoveryLink = claim.template_key === "rsvp_pass" &&
     (claim.channel === "email" || claim.channel === "sms");
   const recoveryLink = needsRecoveryLink
-    ? await recoveryLinkFor(admin, p)
+    ? await recoveryLinkFor(admin, p, pass?.attendanceClaim === true)
     : null;
   if (
     claim.template_key === "rsvp_pass" && needsRecoveryLink &&
