@@ -278,4 +278,43 @@ describe("issue #1780 — wizard invite plan implementation", () => {
       cover.indexOf(": hasInviteStep"),
     );
   });
+
+  test("each Invite step has one viewport-owned header with complete safety copy", () => {
+    // [TEST-MOD-APPROVED #1780] Parent-owned wizard headers suppress the
+    // shared visual header; Trip delegates header ownership to the shared step
+    // only on wide web, where its mobile header is absent. Compact rail copy
+    // remains short while each active header carries the full safety promise.
+    const event = read("src/components/event/EventCreatorWizard.tsx");
+    const rsvp = read("src/components/rsvp/RsvpCreatorWizard.tsx");
+    const trip = read("src/components/trip/TripCreatorWizard.tsx");
+    const experience = read("src/components/experience/ExperienceCreatorWizard.tsx");
+
+    expect(picker).toContain("showHeader?: boolean;");
+    expect(picker).toContain("showHeader = true");
+    expect(picker).toContain("{showHeader ? <>");
+    expect(picker).toContain('accessibilityRole="header" style={styles.title}');
+
+    expect(event).toContain("showHeader={false}");
+    expect(event).toContain(
+      "Choose people from Your Book. Nothing sends until this event is published.",
+    );
+    expect(event).toContain('{ title: "Invite people", subtitle: "Choose people from Your Book" }');
+    expect(event).toContain('accessibilityRole={currentStep === 6 ? "header" : undefined}');
+
+    expect(rsvp).toContain("showHeader={false}");
+    expect(rsvp).toContain(
+      "Choose people from Your Book. Nothing sends until this RSVP is published.",
+    );
+    expect(rsvp).toContain('{ title: "Invite people", subtitle: "Choose people from Your Book" }');
+    expect(rsvp).toContain('accessibilityRole={currentStep === 5 ? "header" : undefined}');
+
+    expect(trip).toContain("showHeader={isWideDesktop}");
+    expect(trip).toContain(
+      "Choose people from Your Book. Nothing sends until this trip is published.",
+    );
+    expect(trip).toContain('7: "Choose people from Your Book"');
+    expect(trip).toContain('accessibilityRole={step === 7 ? "header" : undefined}');
+
+    expect(experience).not.toMatch(/<InvitePeopleStep[\s\S]*?showHeader=/);
+  });
 });

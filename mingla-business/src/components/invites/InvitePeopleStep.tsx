@@ -56,6 +56,7 @@ export interface InvitePeopleStepProps {
   brandId: string;
   eventType: WizardOfferingType;
   enabled?: boolean;
+  showHeader?: boolean;
   onProtectedFlowExit?: () => void;
   onReauthenticate?: () => void;
   onPlanChange?: (
@@ -91,6 +92,7 @@ export function InvitePeopleStep({
   brandId,
   eventType,
   enabled = true,
+  showHeader = true,
   onProtectedFlowExit,
   onReauthenticate,
   onPlanChange,
@@ -381,10 +383,12 @@ export function InvitePeopleStep({
 
   return (
     <View style={styles.root} testID={`invite-people-${eventType}`}>
-      <Text style={styles.title}>Invite people</Text>
-      <Text style={styles.subtitle}>
-        Choose people from Your Book. Nothing sends until this {OFFERING_LABEL[eventType]} is published.
-      </Text>
+      {showHeader ? <>
+        <Text accessibilityRole="header" style={styles.title}>Invite people</Text>
+        <Text style={styles.subtitle}>
+          Choose people from Your Book. Nothing sends until this {OFFERING_LABEL[eventType]} is published.
+        </Text>
+      </> : null}
       <View style={styles.trustBanner} accessibilityRole="summary">
         <Text style={styles.trustTitle}>Nothing sends yet</Text>
         <Text style={styles.trustBody}>Your selections stay with this draft.</Text>
