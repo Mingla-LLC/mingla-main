@@ -31,6 +31,8 @@ const EXPECTED_READERS = [
   "supabase/functions/notify-outbox-drain/index.ts",
   READER,
   "supabase/functions/ticket-confirmation-dispatch/index.ts",
+  // #3392 — the venue booking manage-link key ring reader (appended).
+  "supabase/functions/_shared/venueReservationManageToken.ts",
 ];
 const EXPECTED_FIELDS = [
   ["APPSFLYER_API_V2_TOKEN", "Growth Engineering", "provider_dashboard_and_secure_vault"],
@@ -54,6 +56,11 @@ const EXPECTED_FIELDS = [
   ["META_COMPETITOR_ACCESS_TOKEN", "Growth Engineering", "provider_dashboard_and_secure_vault"],
   ["META_COMPETITOR_IG_USER_ID", "Growth Engineering", "provider_dashboard"],
   ["RESEND_WEBHOOK_SECRET", "Messaging Security", "secure_vault"],
+  // #3392 — four appended envelope fields; no new secret name (still 88).
+  ["VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KID", "Payments Engineering", "secure_vault"],
+  ["VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KEY_B64", "Payments Engineering", "secure_vault"],
+  ["VENUE_RESERVATION_MANAGE_TOKEN_PREVIOUS_KID", "Payments Engineering", "secure_vault"],
+  ["VENUE_RESERVATION_MANAGE_TOKEN_PREVIOUS_KEY_B64", "Payments Engineering", "secure_vault"],
 ].map(([name, owner, source_type]) => ({ name, owner, source_type }));
 
 // [TEST-MOD-APPROVED #2830] — Sites appends the approved slot-88 bundled

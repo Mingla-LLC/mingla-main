@@ -2166,6 +2166,7 @@
       ],
       "required_bundle_fields": {},
       "required_top_level": [
+        "AD_CONVERSION_TOKENS",
         "BUSINESS_WEB_ORIGIN",
         "SENTRY_DSN",
         "SENTRY_ENVIRONMENT",
