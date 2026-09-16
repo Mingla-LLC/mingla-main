@@ -44,6 +44,17 @@ import {
   normalizeVenueReviewBody,
   pushCopyForReview,
 } from "./reviewLogic.ts";
+// Issue #3386 — admin decision on a host's live-venue details change request.
+import {
+  normalizeVenueDetailsChangeReviewBody,
+  readVenueDetailsChangeDecision,
+  VENUE_DETAILS_CHANGE_NOTIFICATION_TYPE,
+  VENUE_DETAILS_CHANGE_REVIEW_ACTION,
+  venueDetailsChangeDecisionCopy,
+  venueDetailsChangeDeepLink,
+  venueDetailsChangeIdempotencyKey,
+  venueDetailsChangeRecipients,
+} from "./venueDetailsChangeReview.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -455,6 +466,93 @@ export async function handleAdminReviewVenueClaim(
       rawBody !== null && typeof rawBody === "object"
         ? String((rawBody as { action?: unknown }).action ?? "")
         : "";
+    // Issue #3386 — approve or reject a host's change to a LIVE venue's name,
+    // category or address. The RPC re-asserts is_admin_user() as its first
+    // statement, applies the change atomically (or records the reason) and
+    // writes admin_audit_log itself, so this wrapper adds no second audit row.
+    // It then tells the brand owner and the requester through notify-dispatch
+    // (inbox + business push), the business.claim_decision pattern. A failed
+    // notification never undoes the decision. Returns early.
+    if (rawAction === VENUE_DETAILS_CHANGE_REVIEW_ACTION) {
+      const parsed = normalizeVenueDetailsChangeReviewBody(rawBody);
+      if (!parsed.ok) return json({ error: parsed.error }, 400);
+
+      const { data: decisionRes, error: decisionErr } = await userClient.rpc(
+        "admin_review_venue_details_change",
+        {
+          p_venue_id: parsed.venueId,
+          p_request_id: parsed.requestId,
+          p_decision: parsed.decision,
+          p_reason: parsed.reason,
+        },
+      );
+      if (decisionErr) return json({ error: decisionErr.message }, 400);
+
+      const receipt = readVenueDetailsChangeDecision(decisionRes);
+      if (!receipt.ok) {
+        // Withdrawn, replaced by a newer request, or already decided.
+        return json({ ok: false, code: receipt.code }, 409);
+      }
+
+      let notified = 0;
+      if (!receipt.noop) {
+        const adminDecision = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        const { data: decisionBrand, error: decisionBrandErr } = await adminDecision
+          .from("brands")
+          .select("account_id")
+          .eq("id", receipt.brandId)
+          .maybeSingle();
+        if (decisionBrandErr) {
+          console.warn(
+            "[admin-review-venue-claim] review_details_change brand lookup",
+            decisionBrandErr.message,
+          );
+        }
+        const copy = venueDetailsChangeDecisionCopy(
+          receipt.decision,
+          receipt.venueName,
+          receipt.rejectionReason,
+        );
+        const recipients = venueDetailsChangeRecipients(
+          (decisionBrand as { account_id?: string | null } | null)?.account_id ?? null,
+          receipt.requestedBy,
+        );
+        for (const userId of recipients) {
+          try {
+            await dispatchNotification({
+              userId,
+              brandId: receipt.brandId,
+              type: VENUE_DETAILS_CHANGE_NOTIFICATION_TYPE,
+              title: copy.title,
+              body: copy.body,
+              data: {
+                decision: receipt.decision,
+                venueId: receipt.venueId,
+                requestId: receipt.requestId,
+                rejectionReason: receipt.rejectionReason ?? undefined,
+              },
+              relatedId: receipt.venueId,
+              relatedType: "venue",
+              idempotencyKey: venueDetailsChangeIdempotencyKey(
+                receipt.requestId,
+                receipt.decision,
+                userId,
+              ),
+              deepLink: venueDetailsChangeDeepLink(receipt.venueId),
+            });
+            notified += 1;
+          } catch (notifyErr) {
+            console.warn(
+              "[admin-review-venue-claim] venue details change notification failed (non-fatal):",
+              notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+            );
+          }
+        }
+      }
+
+      return json({ ok: true, result: decisionRes, notified });
+    }
+
     // ORCH-1064 — admin leaves a structured feedback round on a pending claim.
     // Like tweak_fields/score_override: call the dedicated SECURITY DEFINER RPC
     // (which re-asserts is_admin_user) through the user client, write an

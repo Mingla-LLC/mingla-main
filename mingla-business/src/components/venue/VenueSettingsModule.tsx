@@ -68,6 +68,7 @@ import {
   canEnablePaidReservationFee,
   paidFeeIsActive,
 } from "./venueFeeGate";
+import { VenueDetailsEditor } from "./VenueDetailsEditor";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 
@@ -81,14 +82,6 @@ const ROLE_LEGEND: readonly { label: string; perms: string }[] = [
   { label: "Finance", perms: "Payouts & reports" },
   { label: "Scanner", perms: "Check guests in" },
 ];
-
-/** ORCH-1186-A — human label for the venue category summary row. */
-const CATEGORY_LABEL: Record<string, string> = {
-  restaurant: "Restaurant",
-  play: "Play",
-  creative_and_arts: "Creative & Arts",
-  stay: "Stay",
-};
 
 interface SectionProps {
   title: string;
@@ -317,14 +310,11 @@ export function VenueSettingsModule({
   // ORCH-1304 — the client edit-cap readout is retired (the DB column stays,
   // dead-but-harmless). No edit-cap copy or disabled tie here.
 
-  const goToVenueEdit = useCallback((): void => {
-    if (brandId !== null) router.push(`/brand/${brandId}` as never);
-  }, [brandId, router]);
-
   const goToDeckReadiness = useCallback((): void => {
     if (brandId === null || placePoolId === null || venueId === null) return;
     router.push(
-      `/venue/deck-readiness?brand_id=${brandId}&place_pool_id=${placePoolId}&venue_id=${venueId}&focus=review&fix=review_pipeline` as never,
+      // #3385 — `from=venue` so Save returns here instead of leaving the venue.
+      `/venue/deck-readiness?brand_id=${brandId}&place_pool_id=${placePoolId}&venue_id=${venueId}&focus=review&fix=review_pipeline&from=venue` as never,
     );
   }, [brandId, placePoolId, venueId, router]);
 
@@ -546,32 +536,25 @@ export function VenueSettingsModule({
         ) : null}
       </Section>
 
-      {/* 5 — Venue details (live summary + working edit affordance). */}
+      {/* 5 — Venue details. #3386: a real editor. Contact is saved directly;
+          name, address and category are saved directly while the venue is in
+          review and sent to Mingla once it is live. "Request a change" (the
+          #3404 email) remains only where nothing else fits. */}
       <Section title="Venue details">
-        <Text style={styles.rowTitle}>
-          {venueQuery.data?.name ?? brand?.displayName ?? "Your venue"}
-        </Text>
-        {venueQuery.data?.address != null ? (
-          <Text style={styles.rowSub}>{venueQuery.data.address}</Text>
-        ) : null}
-        {venueQuery.data?.city != null ? (
-          <Text style={styles.rowSub}>{venueQuery.data.city}</Text>
-        ) : null}
-        {venueQuery.data?.venueCategory != null ? (
-          <Text style={styles.rowSub}>
-            {CATEGORY_LABEL[venueQuery.data.venueCategory]}
-          </Text>
-        ) : null}
-        {canMutate ? (
-          <Button
-            label="Edit venue details"
-            onPress={goToVenueEdit}
-            variant="secondary"
-            size="md"
-            style={styles.inlineBtn}
-            testID="venue-settings-edit-details"
+        {/* ORCH-1186-A T9c: the details stay reachable from Settings under the
+            same testID; it now holds the editor, never a brand-page button. */}
+        <View testID="venue-settings-edit-details">
+          <VenueDetailsEditor
+            brandId={brandId}
+            venueId={venueId}
+            canMutate={canMutate}
+            brandCountryCode={brand?.countryCode ?? null}
           />
-        ) : null}
+        </View>
+        <Text style={styles.rowSub} testID="venue-settings-details-self-serve">
+          You can change opening hours above, and photos, cover, website and
+          price in Edit photos &amp; details.
+        </Text>
       </Section>
 
       {/* 6 — Photos & vibes & AI (read-only readout + working entry point). */}
