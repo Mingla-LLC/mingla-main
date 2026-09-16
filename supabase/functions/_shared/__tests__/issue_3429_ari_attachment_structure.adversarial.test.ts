@@ -242,6 +242,12 @@ function validWebp(): Uint8Array {
   );
 }
 
+function validLosslessWebp(): Uint8Array {
+  return fromBase64(
+    "UklGRh4AAABXRUJQVlA4TBEAAAAvAUAAAAdQ4AIVsP+BiOh/AAA=",
+  );
+}
+
 function validJpeg(): Uint8Array {
   return fromBase64(
     "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAACAAIDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAABQf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCAAsJJ/9k=",
@@ -350,6 +356,25 @@ async function pngWithScanline(
       concat(be32(1), be32(1), new Uint8Array([bitDepth, colorType, 0, 0, 0])),
     ),
     pngChunk("IDAT", await deflate(scanline)),
+    pngChunk("IEND", new Uint8Array()),
+  );
+}
+
+async function validSubByteIndexedPng(): Promise<Uint8Array> {
+  return concat(
+    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk(
+      "IHDR",
+      concat(be32(2), be32(2), new Uint8Array([1, 3, 0, 0, 0])),
+    ),
+    pngChunk(
+      "PLTE",
+      new Uint8Array([0, 0, 0, 0xff, 0xff, 0xff]),
+    ),
+    pngChunk(
+      "IDAT",
+      await deflate(new Uint8Array([0, 0x40, 0, 0x80])),
+    ),
     pngChunk("IEND", new Uint8Array()),
   );
 }
@@ -528,6 +553,40 @@ Deno.test("#3429 accepts bounded structural JPEG and HEIC fixtures", async () =>
   );
 });
 
+Deno.test("#3429 rejects a structurally plausible JPEG with invalid entropy", async () => {
+  const jpeg = validJpeg().slice();
+  jpeg[198] = 0xff;
+  await rejectsWith(jpeg, "image/jpeg", "CORRUPT_FILE");
+});
+
+Deno.test("#3429 rejects a structurally plausible WebP with invalid coding data", async () => {
+  const webp = validWebp().slice();
+  webp.fill(0xff, 30, 64);
+  await rejectsWith(webp, "image/webp", "CORRUPT_FILE");
+});
+
+Deno.test("#3429 rejects a structurally plausible HEIC with invalid NAL data", async () => {
+  const heicFixture = validHeic().slice();
+  heicFixture.fill(0xff, 399, 447);
+  await rejectsWith(heicFixture, "image/heic", "CORRUPT_FILE");
+});
+
+Deno.test("#3429 rejects a decoded indexed PNG whose pixel exceeds its palette", async () => {
+  const invalidIndexedPng = fromBase64(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAMAAAAoyzS7AAAAA1BMVEUAAACnej3aAAAAEElEQVR4nGL4DwAAAP//AwABAQEAJGKcRAAAAABJRU5ErkJggg==",
+  );
+  await rejectsWith(invalidIndexedPng, "image/png", "CORRUPT_FILE");
+});
+
+Deno.test("#3429 accepts valid packed sub-byte indexed PNG pixels", async () => {
+  const indexedPng = await validSubByteIndexedPng();
+  assertEquals(
+    (await verifyAriAttachment(indexedPng, "image/png", indexedPng.length))
+      .verifiedMime,
+    "image/png",
+  );
+});
+
 Deno.test("#3429 rejects declared image decode bombs across PNG and HEIC", async () => {
   const oversizedPng = png(100_000, 100_000);
   await rejectsWith(oversizedPng, "image/png", "DECOMPRESSION_BOMB");
@@ -596,11 +655,20 @@ Deno.test("#3429 rejects metadata-only HEIC, token-shaped WebP, and bogus PDF xr
   await rejectsWith(
     headerOnlyLosslessWebp,
     "image/webp",
-    "UNSUPPORTED_TYPE",
+    "CORRUPT_FILE",
   );
   const webp = validWebp();
   assertEquals(
     (await verifyAriAttachment(webp, "image/webp", webp.length)).verifiedMime,
+    "image/webp",
+  );
+  const losslessWebp = validLosslessWebp();
+  assertEquals(
+    (await verifyAriAttachment(
+      losslessWebp,
+      "image/webp",
+      losslessWebp.length,
+    )).verifiedMime,
     "image/webp",
   );
   const bogusXref = encoder.encode(

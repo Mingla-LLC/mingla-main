@@ -12,6 +12,7 @@ const MAX_DOCX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024;
 const MAX_PDF_PAGES = 80;
 const MAX_PDF_STREAM_BYTES = 20 * 1024 * 1024;
 const MAX_IMAGE_PIXELS = 40_000_000;
+const MAX_IMAGE_DECODED_BYTES = 64 * 1024 * 1024;
 
 export const ARI_ATTACHMENT_MIMES = Object.freeze(
   [
@@ -446,16 +447,41 @@ async function digestHex(bytes: Uint8Array): Promise<string> {
     .join("");
 }
 
-function assertImageDimensions(width: number, height: number): void {
+interface ImageDimensions {
+  width: number;
+  height: number;
+}
+
+interface PngStructure extends ImageDimensions {
+  bitDepth: number;
+  channels: number;
+  colorType: number;
+  paletteEntries: number | null;
+}
+
+interface HeicStructure {
+  mime: string;
+  dimensions: ImageDimensions[];
+}
+
+function assertImageDimensions(
+  width: number,
+  height: number,
+  decodedBytesPerPixel = 4,
+): void {
+  const pixels = width * height;
+  const decodedBytes = pixels * decodedBytesPerPixel;
   if (
-    width < 1 || height < 1 || !Number.isSafeInteger(width * height) ||
-    width * height > MAX_IMAGE_PIXELS
+    width < 1 || height < 1 || !Number.isSafeInteger(pixels) ||
+    pixels > MAX_IMAGE_PIXELS || decodedBytesPerPixel < 1 ||
+    !Number.isSafeInteger(decodedBytes) ||
+    decodedBytes > MAX_IMAGE_DECODED_BYTES
   ) {
     throw new AriAttachmentError("DECOMPRESSION_BOMB");
   }
 }
 
-function verifyJpeg(bytes: Uint8Array): void {
+function verifyJpeg(bytes: Uint8Array): ImageDimensions {
   if (!startsWithBytes(bytes, [0xff, 0xd8])) {
     throw new AriAttachmentError("CORRUPT_FILE");
   }
@@ -464,6 +490,7 @@ function verifyJpeg(bytes: Uint8Array): void {
   let frameMarker = 0;
   let sawScan = false;
   let sawEntropy = false;
+  let dimensions: ImageDimensions | null = null;
   const quantizationTables = new Set<number>();
   const dcHuffmanTables = new Set<number>();
   const acHuffmanTables = new Set<number>();
@@ -483,7 +510,8 @@ function verifyJpeg(bytes: Uint8Array): void {
       ) {
         throw new AriAttachmentError("CORRUPT_FILE");
       }
-      return;
+      if (dimensions === null) throw new AriAttachmentError("CORRUPT_FILE");
+      return dimensions;
     }
     if (
       marker === 0x00 || marker === 0xd8 || marker === 0x01 ||
@@ -639,10 +667,10 @@ function verifyJpeg(bytes: Uint8Array): void {
       ) {
         throw new AriAttachmentError("CORRUPT_FILE");
       }
-      assertImageDimensions(
-        readU16BE(bytes, cursor + 5),
-        readU16BE(bytes, cursor + 3),
-      );
+      const width = readU16BE(bytes, cursor + 5);
+      const height = readU16BE(bytes, cursor + 3);
+      assertImageDimensions(width, height);
+      dimensions = { width, height };
       for (let index = 0; index < componentCount; index += 1) {
         const componentId = bytes[payloadStart + 6 + 3 * index];
         const sampling = bytes[payloadStart + 7 + 3 * index];
@@ -739,7 +767,7 @@ async function collectStreamAtMost(
   return output;
 }
 
-async function verifyPng(bytes: Uint8Array): Promise<void> {
+async function verifyPng(bytes: Uint8Array): Promise<PngStructure> {
   if (
     !startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
   ) {
@@ -754,6 +782,8 @@ async function verifyPng(bytes: Uint8Array): Promise<void> {
   let bitDepth = 0;
   let colorType = 0;
   let sawPalette = false;
+  let channels = 0;
+  let paletteEntries: number | null = null;
   const idat: Uint8Array[] = [];
   while (cursor < bytes.length) {
     const length = readU32BE(bytes, cursor);
@@ -777,7 +807,7 @@ async function verifyPng(bytes: Uint8Array): Promise<void> {
       assertImageDimensions(width, height);
       bitDepth = bytes[dataStart + 8];
       colorType = bytes[dataStart + 9];
-      const channels =
+      channels =
         ({ 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 } as Record<number, number>)[colorType];
       const legalDepths = ({
         0: [1, 2, 4, 8, 16],
@@ -793,6 +823,11 @@ async function verifyPng(bytes: Uint8Array): Promise<void> {
       ) {
         throw new AriAttachmentError("CORRUPT_FILE");
       }
+      assertImageDimensions(
+        width,
+        height,
+        Math.max(1, channels * Math.ceil(bitDepth / 8)),
+      );
       bytesPerRow = Math.ceil(width * channels * bitDepth / 8);
       sawHeader = true;
     } else if (type === "PLTE") {
@@ -804,6 +839,7 @@ async function verifyPng(bytes: Uint8Array): Promise<void> {
         throw new AriAttachmentError("CORRUPT_FILE");
       }
       sawPalette = true;
+      paletteEntries = length / 3;
     } else if (type === "IDAT") {
       if (colorType === 3 && !sawPalette) {
         throw new AriAttachmentError("CORRUPT_FILE");
@@ -832,7 +868,14 @@ async function verifyPng(bytes: Uint8Array): Promise<void> {
         if (error instanceof AriAttachmentError) throw error;
         throw new AriAttachmentError("CORRUPT_FILE");
       }
-      return;
+      return {
+        width,
+        height,
+        bitDepth,
+        channels,
+        colorType,
+        paletteEntries,
+      };
     } else if (type.charCodeAt(0) >= 0x41 && type.charCodeAt(0) <= 0x5a) {
       throw new AriAttachmentError("UNSUPPORTED_TYPE");
     }
@@ -922,7 +965,7 @@ function validateHevcItemPayload(
   if (!sawCodedSlice) throw new AriAttachmentError("CORRUPT_FILE");
 }
 
-function verifyHeic(bytes: Uint8Array): string | null {
+function verifyHeic(bytes: Uint8Array): HeicStructure | null {
   if (bytes.length < 16 || findAscii(bytes.slice(4, 8), "ftyp") !== 0) {
     return null;
   }
@@ -936,6 +979,7 @@ function verifyHeic(bytes: Uint8Array): string | null {
   } else return null;
 
   let sawIspe = false;
+  const dimensions: ImageDimensions[] = [];
   const itemExtents: Array<{
     itemId: number;
     offset: number;
@@ -974,11 +1018,31 @@ function verifyHeic(bytes: Uint8Array): string | null {
       const type = textDecoder.decode(bytes.slice(cursor + 4, cursor + 8));
       if (type === "ispe") {
         if (declaredSize < 20) throw new AriAttachmentError("CORRUPT_FILE");
-        assertImageDimensions(
-          readU32BE(bytes, cursor + 12),
-          readU32BE(bytes, cursor + 16),
-        );
+        const width = readU32BE(bytes, cursor + 12);
+        const height = readU32BE(bytes, cursor + 16);
+        assertImageDimensions(width, height);
+        dimensions.push({ width, height });
         sawIspe = true;
+      } else if (type === "clap") {
+        if (declaredSize !== 40) {
+          throw new AriAttachmentError("CORRUPT_FILE");
+        }
+        const widthNumerator = readU32BE(bytes, cursor + 8);
+        const widthDenominator = readU32BE(bytes, cursor + 12);
+        const heightNumerator = readU32BE(bytes, cursor + 16);
+        const heightDenominator = readU32BE(bytes, cursor + 20);
+        const width = widthNumerator / widthDenominator;
+        const height = heightNumerator / heightDenominator;
+        if (
+          widthDenominator === 0 || heightDenominator === 0 ||
+          readU32BE(bytes, cursor + 28) === 0 ||
+          readU32BE(bytes, cursor + 36) === 0 ||
+          !Number.isInteger(width) || !Number.isInteger(height)
+        ) {
+          throw new AriAttachmentError("CORRUPT_FILE");
+        }
+        assertImageDimensions(width, height);
+        dimensions.push({ width, height });
       } else if (type === "hvcC") {
         if (hevcConfigurations.length !== 0) {
           throw new AriAttachmentError("CORRUPT_FILE");
@@ -1172,15 +1236,16 @@ function verifyHeic(bytes: Uint8Array): string | null {
     validatedCodedItem = true;
   }
   if (!validatedCodedItem) throw new AriAttachmentError("CORRUPT_FILE");
-  return mime;
+  return { mime, dimensions };
 }
 
-function verifyWebp(bytes: Uint8Array): void {
+function verifyWebp(bytes: Uint8Array): ImageDimensions {
   if (readU32LE(bytes, 4) + 8 !== bytes.length || bytes.length < 20) {
     throw new AriAttachmentError("UPLOAD_INCOMPLETE");
   }
   let cursor = 12;
   let extendedDimensions: { width: number; height: number } | null = null;
+  let codedDimensions: ImageDimensions | null = null;
   let codedPayloadFound = false;
   while (cursor < bytes.length) {
     if (cursor + 8 > bytes.length) throw new AriAttachmentError("CORRUPT_FILE");
@@ -1206,7 +1271,23 @@ function verifyWebp(bytes: Uint8Array): void {
       assertImageDimensions(width, height);
       extendedDimensions = { width, height };
     } else if (type === "VP8L" && length >= 5 && bytes[data] === 0x2f) {
-      throw new AriAttachmentError("UNSUPPORTED_TYPE");
+      if (codedPayloadFound) throw new AriAttachmentError("CORRUPT_FILE");
+      const packedDimensions = readU32LE(bytes, data + 1);
+      if ((packedDimensions >>> 29) !== 0) {
+        throw new AriAttachmentError("CORRUPT_FILE");
+      }
+      const width = 1 + (packedDimensions & 0x3fff);
+      const height = 1 + ((packedDimensions >>> 14) & 0x3fff);
+      assertImageDimensions(width, height);
+      if (
+        extendedDimensions !== null &&
+        (extendedDimensions.width !== width ||
+          extendedDimensions.height !== height)
+      ) {
+        throw new AriAttachmentError("CORRUPT_FILE");
+      }
+      codedDimensions = { width, height };
+      codedPayloadFound = true;
     } else if (
       type === "VP8 " && length >= 10 && bytes[data + 3] === 0x9d &&
       bytes[data + 4] === 0x01 && bytes[data + 5] === 0x2a
@@ -1234,6 +1315,7 @@ function verifyWebp(bytes: Uint8Array): void {
       ) {
         throw new AriAttachmentError("CORRUPT_FILE");
       }
+      codedDimensions = { width, height };
       codedPayloadFound = true;
     } else if (["ANIM", "ANMF"].includes(type)) {
       throw new AriAttachmentError("UNSUPPORTED_TYPE");
@@ -1246,27 +1328,234 @@ function verifyWebp(bytes: Uint8Array): void {
   if (cursor !== bytes.length || !codedPayloadFound) {
     throw new AriAttachmentError("CORRUPT_FILE");
   }
+  if (codedDimensions === null) throw new AriAttachmentError("CORRUPT_FILE");
+  return codedDimensions;
+}
+
+function exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+}
+
+function assertDecodedRgba(
+  decoded: {
+    width: number;
+    height: number;
+    data: { byteLength: number };
+  },
+  expected: readonly ImageDimensions[],
+): void {
+  assertDecodedDimensions(decoded.width, decoded.height, expected);
+  if (decoded.data.byteLength !== decoded.width * decoded.height * 4) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+}
+
+function assertDecodedDimensions(
+  decodedWidth: number,
+  decodedHeight: number,
+  expected: readonly ImageDimensions[],
+): void {
+  if (
+    !expected.some(({ width, height }) =>
+      width === decodedWidth && height === decodedHeight
+    )
+  ) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+  assertImageDimensions(decodedWidth, decodedHeight);
+}
+
+async function decodeJpeg(
+  bytes: Uint8Array,
+  dimensions: ImageDimensions,
+): Promise<void> {
+  const jpegModule = await import("npm:jpeg-js@0.4.4");
+  try {
+    const decoded = jpegModule.decode(bytes, {
+      formatAsRGBA: true,
+      maxMemoryUsageInMB: 192,
+      maxResolutionInMP: 17,
+      tolerantDecoding: false,
+      useTArray: true,
+    });
+    assertDecodedRgba(decoded, [dimensions]);
+  } catch (error: unknown) {
+    if (error instanceof AriAttachmentError) throw error;
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+}
+
+async function decodePng(
+  bytes: Uint8Array,
+  structure: PngStructure,
+): Promise<void> {
+  const { decode } = await import("npm:fast-png@8.0.0");
+  try {
+    const decoded = decode(bytes);
+    if (
+      decoded.width !== structure.width ||
+      decoded.height !== structure.height ||
+      decoded.channels !== structure.channels
+    ) {
+      throw new AriAttachmentError("CORRUPT_FILE");
+    }
+    const bytesPerRow = Math.ceil(
+      structure.width * structure.channels * structure.bitDepth / 8,
+    );
+    const expectedBytes = bytesPerRow * structure.height;
+    if (
+      !Number.isSafeInteger(expectedBytes) ||
+      expectedBytes > MAX_IMAGE_DECODED_BYTES ||
+      decoded.data.byteLength !== expectedBytes
+    ) {
+      throw new AriAttachmentError("CORRUPT_FILE");
+    }
+    if (structure.colorType === 3) {
+      if (
+        !decoded.palette || decoded.palette.length !== structure.paletteEntries
+      ) {
+        throw new AriAttachmentError("CORRUPT_FILE");
+      }
+      const mask = (1 << structure.bitDepth) - 1;
+      for (let row = 0; row < structure.height; row += 1) {
+        for (let column = 0; column < structure.width; column += 1) {
+          const bitOffset = column * structure.bitDepth;
+          const packedByte = decoded.data[
+            row * bytesPerRow + Math.floor(bitOffset / 8)
+          ];
+          const shift = 8 - structure.bitDepth - (bitOffset % 8);
+          const paletteIndex = (packedByte >>> shift) & mask;
+          if (paletteIndex < decoded.palette.length) continue;
+          throw new AriAttachmentError("CORRUPT_FILE");
+        }
+      }
+    }
+  } catch (error: unknown) {
+    if (error instanceof AriAttachmentError) throw error;
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+}
+
+async function decodeWebp(
+  bytes: Uint8Array,
+  dimensions: ImageDimensions,
+): Promise<void> {
+  const { default: decode } = await import("npm:@jsquash/webp@1.5.0/decode.js");
+  try {
+    const decoded = await decode(exactArrayBuffer(bytes));
+    assertDecodedRgba(decoded, [dimensions]);
+  } catch (error: unknown) {
+    if (error instanceof AriAttachmentError) throw error;
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+}
+
+async function decodeHeic(
+  bytes: Uint8Array,
+  dimensions: readonly ImageDimensions[],
+): Promise<void> {
+  const { default: libheif } = await import(
+    "npm:libheif-js@1.23.2/wasm-bundle.js"
+  );
+  interface HeifImage {
+    display(
+      target: { data: Uint8ClampedArray; width: number; height: number },
+      callback: (
+        displayed: {
+          data: Uint8ClampedArray;
+          width: number;
+          height: number;
+        } | null,
+      ) => void,
+    ): void;
+    free(): void;
+    get_height(): number;
+    get_width(): number;
+    is_primary(): boolean;
+  }
+  interface HeifDecoder {
+    decode(source: Uint8Array): HeifImage[];
+    decoder: { delete(): void } | null;
+  }
+  await libheif.ready;
+  const decoder = new libheif.HeifDecoder() as HeifDecoder;
+  let images: HeifImage[] = [];
+  try {
+    images = decoder.decode(bytes);
+    const primaries = images.filter((image) => image.is_primary());
+    if (images.length === 0 || primaries.length > 1) {
+      throw new AriAttachmentError("CORRUPT_FILE");
+    }
+    const image = primaries[0] ?? images[0];
+    const width = image.get_width();
+    const height = image.get_height();
+    assertDecodedDimensions(width, height, dimensions);
+    const target = {
+      data: new Uint8ClampedArray(width * height * 4),
+      width,
+      height,
+    };
+    const decoded = await new Promise<{
+      data: { byteLength: number };
+      width: number;
+      height: number;
+    }>((resolve, reject) => {
+      image.display(target, (displayed) => {
+        if (displayed === null) {
+          reject(new AriAttachmentError("CORRUPT_FILE"));
+        } else {
+          resolve(displayed);
+        }
+      });
+    });
+    assertDecodedRgba(decoded, dimensions);
+  } catch (error: unknown) {
+    if (error instanceof AriAttachmentError) throw error;
+    throw new AriAttachmentError("CORRUPT_FILE");
+  } finally {
+    for (const image of images) {
+      try {
+        image.free();
+      } catch {
+        // Best-effort cleanup continues so one corrupt handle cannot leak others.
+      }
+    }
+    try {
+      decoder.decoder?.delete();
+    } catch {
+      // The underlying libheif context may already have been released on failure.
+    }
+  }
 }
 
 async function detectImage(bytes: Uint8Array): Promise<string | null> {
   if (startsWithBytes(bytes, [0xff, 0xd8])) {
-    verifyJpeg(bytes);
+    const dimensions = verifyJpeg(bytes);
+    await decodeJpeg(bytes, dimensions);
     return "image/jpeg";
   }
   if (
     startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
   ) {
-    await verifyPng(bytes);
+    const structure = await verifyPng(bytes);
+    await decodePng(bytes, structure);
     return "image/png";
   }
   if (
     findAscii(bytes.slice(0, 16), "RIFF") === 0 &&
     findAscii(bytes.slice(8, 16), "WEBP") === 0
   ) {
-    verifyWebp(bytes);
+    const dimensions = verifyWebp(bytes);
+    await decodeWebp(bytes, dimensions);
     return "image/webp";
   }
-  return verifyHeic(bytes);
+  const heic = verifyHeic(bytes);
+  if (heic === null) return null;
+  await decodeHeic(bytes, heic.dimensions);
+  return heic.mime;
 }
 
 interface PdfStreamRecord {
