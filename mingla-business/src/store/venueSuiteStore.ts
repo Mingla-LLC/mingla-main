@@ -37,6 +37,18 @@ interface VenueSuiteState {
   setPendingLeaveFocus: (restoreFocus: (() => void) | null) => void;
   takePendingLeaveFocus: () => (() => void) | null;
 
+  /**
+   * #3385 — a one-shot "Changes saved" confirmation handed from a venue
+   * sub-screen (deck readiness) to the venue page it returns to. Deliberately
+   * NOT cleared by `deactivate`: the sub-screen sets it and navigates, and the
+   * venue page may be mounting for the first time (replace) rather than
+   * resuming. Scoped to one venue and short-lived so it can never surface on a
+   * different venue or long after the save.
+   */
+  savedFlash: { venueId: string; message: string; at: number } | null;
+  setSavedFlash: (venueId: string, message: string, at: number) => void;
+  takeSavedFlash: (venueId: string, now: number) => string | null;
+
   /** Shell lifecycle. */
   activate: (initialModule: VenueModule) => void;
   deactivate: () => void;
@@ -48,6 +60,9 @@ interface VenueSuiteState {
   }) => void;
 }
 
+/** #3385 — a saved confirmation older than this is dropped, never shown. */
+export const VENUE_SAVED_FLASH_TTL_MS = 15_000;
+
 export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
   active: false,
   activeModule: "overview",
@@ -55,6 +70,20 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
   selectModule: null,
   pendingLeaveFocus: null,
   setPendingLeaveFocus: (pendingLeaveFocus) => set({ pendingLeaveFocus }),
+  savedFlash: null,
+  setSavedFlash: (venueId, message, at) =>
+    set({ savedFlash: { venueId, message, at } }),
+  takeSavedFlash: (venueId, now) => {
+    const flash = get().savedFlash;
+    if (flash === null) return null;
+    if (now - flash.at > VENUE_SAVED_FLASH_TTL_MS || now < flash.at) {
+      set({ savedFlash: null });
+      return null;
+    }
+    if (flash.venueId !== venueId) return null;
+    set({ savedFlash: null });
+    return flash.message;
+  },
   takePendingLeaveFocus: () => {
     const pending = get().pendingLeaveFocus;
     set({ pendingLeaveFocus: null });
