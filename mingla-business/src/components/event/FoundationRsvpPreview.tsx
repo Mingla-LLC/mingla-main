@@ -15,15 +15,23 @@
  *
  * Anon-tolerant: no useAuth, no fetch. The adapter (PublicEventPage) owns submit +
  * doors + SEO. Android: opaque glass via the shared primitives.
+ *
+ * The phone floating bar is a SHORTCUT, not a second copy of the decision: it
+ * shows only while the inline Going / Maybe / Can't go row is off screen. Before
+ * this, both rendered at once and the floating copy sat over the inline row, the
+ * About text and the date card. This wrapper owns the scroll view, so it also
+ * owns scrolling a blocked tap's first unfinished contact field into view.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Platform,
   StyleSheet,
   View,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type ScrollView,
 } from "react-native";
 
 import {
@@ -43,6 +51,26 @@ import {
   type RsvpPhoneFieldRenderer,
   type ThemePalette,
 } from "@mingla/offering-rendering";
+// Deep imports: pure modules, reachable without the mocked barrel in jest.
+import {
+  rsvpInlineDecisionPosition,
+  rsvpRevealScrollOffset,
+  shouldShowRsvpFloatingBar,
+  type RsvpInlineDecisionPosition,
+} from "@mingla/offering-rendering/rsvpFloatingDecision";
+import type { RsvpGuestSnapshot } from "@mingla/offering-rendering/rsvpGuestSnapshot";
+
+/** How often the inline-decision visibility is re-measured between scroll events. */
+const VISIBILITY_POLL_MS = 400;
+/** The floating card's padding (10 × 2) + border (1 × 2) around the decision block. */
+const FLOATING_CARD_CHROME = 22;
+
+type WindowMeasurable = {
+  measureInWindow?: (
+    callback: (x: number, y: number, width: number, height: number) => void,
+  ) => void;
+  scrollIntoView?: (options?: { block?: string; behavior?: string }) => void;
+};
 
 export interface FoundationRsvpPreviewProps {
   event: PublicEventProps;
@@ -51,6 +79,8 @@ export interface FoundationRsvpPreviewProps {
   theme: ResolvedTheme;
   config: RsvpOfferingConfig;
   isLoggedIn: boolean;
+  replyIdentity?: string | null;
+  recoveryNotice?: string | null;
   muted: boolean;
   onToggleMute: () => void;
   onClose: () => void;
@@ -93,6 +123,10 @@ export interface FoundationRsvpPreviewProps {
   testID?: string;
   stateBanner?: React.ReactNode;
   onAcquisitionClosed?: (kind: "ended" | "unavailable") => void;
+  /** An anonymous guest's own reply restored after the chip-in redirect. */
+  restoredRsvp?: RsvpGuestSnapshot | null;
+  /** Called with each reply the server accepts (the adapter keeps it for the tab). */
+  onRsvpResolved?: (snapshot: RsvpGuestSnapshot) => void;
 }
 
 export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (props) => {
@@ -103,6 +137,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     theme,
     config,
     isLoggedIn,
+    replyIdentity,
+    recoveryNotice,
     muted,
     onToggleMute,
     onClose,
@@ -118,13 +154,15 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     defaultPhoneCountry,
     onDownloadPass,
     contentBottomInset = 96,
-    onScroll,
+    onScroll: onScrollProp,
     onScrollViewLayout,
     safeAreaTop = 0,
     safeAreaBottom = 0,
     testID,
     stateBanner,
     onAcquisitionClosed,
+    restoredRsvp = null,
+    onRsvpResolved,
   } = props;
   const { isDesktop } = useResponsiveLayout();
   const acquisitionClosed =
@@ -148,9 +186,49 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
   }, []);
   const measuredBottomInset =
     floatBarHeight > 0 ? floatBarHeight + 24 + 16 + safeAreaBottom : 0;
+  // The runway stays reserved while the bar is hidden (its last measured height),
+  // so content never jumps when the bar appears at the end of the page.
   const resolvedBottomInset = isDesktop
     ? contentBottomInset
     : Math.max(contentBottomInset, measuredBottomInset);
+
+  // ── scroll + viewport handles (visibility gate + blocked-tap reveal) ──
+  const hostRef = useRef<View | null>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const scrollYRef = useRef(0);
+
+  // Scroll a blocked tap's first unfinished contact field about a quarter of the
+  // way down the screen (clear of the chrome and the software keyboard).
+  const revealField = useCallback((node: unknown): void => {
+    const field = node as WindowMeasurable | null;
+    const host = hostRef.current as unknown as WindowMeasurable | null;
+    const scroll = scrollRef.current;
+    if (field === null) return;
+    if (
+      scroll === null ||
+      typeof field.measureInWindow !== "function" ||
+      host === null ||
+      typeof host.measureInWindow !== "function"
+    ) {
+      // Desktop web has no body scroll ref: let the browser bring it into view.
+      if (Platform.OS === "web" && typeof field.scrollIntoView === "function") {
+        field.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+      return;
+    }
+    field.measureInWindow((_fx, fy, _fw, fh) => {
+      host.measureInWindow?.((_hx, hy, _hw, hh) => {
+        scroll.scrollTo({
+          y: rsvpRevealScrollOffset(
+            { y: fy, height: fh },
+            { y: hy, height: hh },
+            scrollYRef.current,
+          ),
+          animated: true,
+        });
+      });
+    });
+  }, []);
 
   // Lift the ONE decision/submit/dialog state machine; share it with body + dock.
   const state = useRsvpOfferingState({
@@ -160,6 +238,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     theme,
     config,
     isLoggedIn,
+    replyIdentity,
+    recoveryNotice,
     onSubmit,
     onChipIn,
     contributionState,
@@ -171,6 +251,71 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     onCopyAddress,
     staticMapUrl,
     onAcquisitionClosed,
+    onRevealField: revealField,
+    restoredRsvp,
+    onRsvpResolved,
+  });
+
+  // ── floating bar only once the inline decision has been scrolled past ──
+  const [inlineDecisionPosition, setInlineDecisionPosition] =
+    useState<RsvpInlineDecisionPosition>("unmeasured");
+  // When the in-flight measurement started (0 ⇒ none). A measurement whose
+  // callback never fires (node unmounted mid-flight) stops blocking after 1s.
+  const measurePendingRef = useRef(0);
+  const inlineDecisionRef = state.inlineDecisionRef;
+  const measureInlineDecision = useCallback((): void => {
+    if (measurePendingRef.current !== 0 && Date.now() - measurePendingRef.current < 1000) {
+      return;
+    }
+    const row = inlineDecisionRef.current as unknown as WindowMeasurable | null;
+    const host = hostRef.current as unknown as WindowMeasurable | null;
+    if (
+      row === null ||
+      host === null ||
+      typeof row.measureInWindow !== "function" ||
+      typeof host.measureInWindow !== "function"
+    ) {
+      setInlineDecisionPosition("unmeasured");
+      return;
+    }
+    measurePendingRef.current = Date.now();
+    row.measureInWindow((_rx, ry, _rw, rh) => {
+      host.measureInWindow?.((_hx, hy, _hw, hh) => {
+        measurePendingRef.current = 0;
+        // Reserve the bar's runway before it first appears: the floating card
+        // is the same decision block plus its 10px padding and 1px border, so
+        // the page's last section is never under the bar on its first showing.
+        if (rh > 0) setFloatBarHeight((prev) => (prev > 0 ? prev : rh + FLOATING_CARD_CHROME));
+        const position = rsvpInlineDecisionPosition(
+          { y: ry, height: rh },
+          { y: hy, height: hh },
+        );
+        setInlineDecisionPosition((prev) => (prev === position ? prev : position));
+      });
+    });
+  }, [inlineDecisionRef]);
+  const phoneBarEligible = !isDesktop && !acquisitionClosed;
+  useEffect(() => {
+    if (!phoneBarEligible) return undefined;
+    measureInlineDecision();
+    // Layout can move the row without a scroll (forms growing, fonts loading).
+    const timer = setInterval(measureInlineDecision, VISIBILITY_POLL_MS);
+    return () => clearInterval(timer);
+  }, [phoneBarEligible, measureInlineDecision]);
+  // Tracks the offset for field reveal + re-checks the bar, then forwards.
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      scrollYRef.current = e.nativeEvent.contentOffset.y;
+      measureInlineDecision();
+      onScrollProp?.(e);
+    },
+    [measureInlineDecision, onScrollProp],
+  );
+  const showFloatingBar = shouldShowRsvpFloatingBar({
+    isPhoneLayout: !isDesktop,
+    acquisitionOpen: !acquisitionClosed,
+    inlineDecisionPosition,
+    decisionAttempted: state.decisionAttempted,
   });
 
   const coverType: "image" | "video" | "gif" | null =
@@ -203,7 +348,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
   ) : undefined;
 
   return (
-    <View style={[styles.host, { backgroundColor: palette.page }]}>
+    <View style={[styles.host, { backgroundColor: palette.page }]} ref={hostRef}>
       <ParallaxCoverShell
         palette={palette}
         theme={shellTheme}
@@ -227,6 +372,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
         safeAreaTop={safeAreaTop}
         onScroll={onScroll}
         onScrollViewLayout={onScrollViewLayout}
+        scrollRef={scrollRef}
         testID={testID}
       >
         <RsvpOfferingBody
@@ -256,10 +402,13 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
           like the event page's floatWrap (PublicEventPage). This fixes the
           business-on-top / web-under layering: a positioned overlay below the chrome
           but ABOVE the scrolling body's content stacking context on BOTH surfaces.
-          Hidden on desktop (the sticky panel carries the decision). */}
-      {!isDesktop && !acquisitionClosed ? (
+          Hidden on desktop (the sticky panel carries the decision), while the
+          inline decision row is on screen (never two copies at once) and before
+          the guest has reached it (nothing covers the date card on first load).
+          Lifted by the device safe area so it clears the home indicator. */}
+      {showFloatingBar ? (
         <View
-          style={styles.floatWrap}
+          style={[styles.floatWrap, { bottom: 24 + safeAreaBottom }]}
           pointerEvents="box-none"
           onLayout={onFloatWrapLayout}
         >

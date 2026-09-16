@@ -427,6 +427,14 @@ const renderPublicEventPage = (
       // contract is unrelated and every close assertion below is untouched.
       case "@mingla/offering-rendering/offeringRefundPolicy":
         return jest.requireActual("@mingla/offering-rendering/offeringRefundPolicy");
+      // Harness registration only — ADDITION, no assertion changed. The public
+      // RSVP page keeps an anonymous guest's accepted reply for the tab (pure
+      // snapshot reader, returned real) and renders its RSVP status pill from a
+      // sibling component. Both are outside the close-callback contract.
+      case "@mingla/offering-rendering/rsvpGuestSnapshot":
+        return jest.requireActual("@mingla/offering-rendering/rsvpGuestSnapshot");
+      case "./RsvpStatusBanner":
+        return { RsvpStatusBanner: "RsvpStatusBanner" };
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }

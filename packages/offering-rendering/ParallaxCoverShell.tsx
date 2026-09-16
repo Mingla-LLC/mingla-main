@@ -132,6 +132,12 @@ export interface ParallaxCoverShellProps {
    */
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onScrollViewLayout?: (event: LayoutChangeEvent) => void;
+  /**
+   * OPTIONAL ref to the phone / native body scroll view, so a caller can scroll
+   * a field into view (the public RSVP page reveals the first unfinished
+   * contact field after a blocked Going tap). Absent ⇒ byte-identical.
+   */
+  scrollRef?: React.Ref<ScrollView>;
   closeAccessibilityLabel?: string;
   /**
    * ORCH-1159 — forwarded verbatim to OfferingChrome. When true, the floating
@@ -204,6 +210,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   safeAreaTop = 0,
   onScroll,
   onScrollViewLayout,
+  scrollRef,
   closeAccessibilityLabel,
   hideCloseOnWeb = false,
   coverAspectRatio = 4 / 5,
@@ -496,6 +503,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           onScroll={onScroll}
           scrollEventThrottle={16}
           onLayout={onScrollViewLayout}
+          {...(scrollRef !== undefined ? { ref: scrollRef } : {})}
         >
           {/* flow spacer holding the pinned cover height (matches the cover
               aspect ratio so the body seam sits at the cover's bottom edge).
@@ -562,6 +570,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
         onScroll={onScroll}
         scrollEventThrottle={16}
         onLayout={onScrollViewLayout}
+        {...(scrollRef !== undefined ? { ref: scrollRef } : {})}
       >
         {/* issue #868 — spacer is pointerEvents "none" in gallery mode so the
             pinned pager behind the body receives horizontal swipes; default
