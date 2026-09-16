@@ -957,6 +957,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         return <InvitePeopleStep eventId={/^[0-9a-f-]{36}$/.test(liveDraft.id) ? liveDraft.id : null}
           brandId={liveDraft.brandId} eventType="rsvp"
           enabled={inviteEnabled}
+          showHeader={false}
           onProtectedFlowExit={() => onExit("abandoned")}
           onReauthenticate={async () => {
             await signOut();
@@ -1210,11 +1211,13 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         <Text style={styles.eyebrow}>
           Step {visibleStepNumber} of {visibleStepDefs.length}
         </Text>
-              <Text style={styles.stepTitle}>
+              <Text accessibilityRole={currentStep === 5 ? "header" : undefined} style={styles.stepTitle}>
                 {STEP_DEFS[currentStep].title}
               </Text>
               <Text style={styles.stepSub}>
-                {STEP_DEFS[currentStep].subtitle}
+                {currentStep === 5
+                  ? "Choose people from Your Book. Nothing sends until this RSVP is published."
+                  : STEP_DEFS[currentStep].subtitle}
               </Text>
         <View style={styles.stepBodyWrap}>{renderStepBody()}</View>
       </ScrollView>

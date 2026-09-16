@@ -1036,6 +1036,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         return <InvitePeopleStep eventId={/^[0-9a-f-]{36}$/.test(liveDraft.id) ? liveDraft.id : null}
           brandId={liveDraft.brandId} eventType="event"
           enabled={inviteEnabled}
+          showHeader={false}
           onProtectedFlowExit={() => onExit("abandoned")}
           onReauthenticate={async () => {
             await signOut();
@@ -1293,11 +1294,13 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         <Text style={styles.eyebrow}>
           Step {visibleStepNumber} of {visibleStepDefs.length}
         </Text>
-              <Text style={styles.stepTitle}>
+              <Text accessibilityRole={currentStep === 6 ? "header" : undefined} style={styles.stepTitle}>
                 {STEP_DEFS[currentStep].title}
               </Text>
               <Text style={styles.stepSub}>
-                {STEP_DEFS[currentStep].subtitle}
+                {currentStep === 6
+                  ? "Choose people from Your Book. Nothing sends until this event is published."
+                  : STEP_DEFS[currentStep].subtitle}
               </Text>
         <View style={styles.stepBodyWrap}>{renderStepBody()}</View>
       </ScrollView>

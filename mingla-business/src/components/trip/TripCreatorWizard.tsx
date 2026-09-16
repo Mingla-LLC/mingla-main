@@ -1390,7 +1390,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   const visibleStepCount = inviteEnabled ? STEP_COUNT : STEP_COUNT - 1;
   const stepIdx = visibleStepNumber - 1;
   const stepTitle = STEP_TITLES[step];
-  const stepSubtitle = STEP_SUBTITLES[step];
+  const stepSubtitle = step === 7
+    ? "Choose people from Your Book. Nothing sends until this trip is published."
+    : STEP_SUBTITLES[step];
 
   // Autosave state copy for subtitle row.
   const autosaveStateText = useMemo<string>(() => {
@@ -1586,7 +1588,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         <Text style={styles.subtitle}>
           {brand.name} · Step {visibleStepNumber} of {visibleStepCount}
         </Text>
-        <Text style={styles.mobileStepTitle}>{stepTitle}</Text>
+        <Text accessibilityRole={step === 7 ? "header" : undefined} style={styles.mobileStepTitle}>{stepTitle}</Text>
         <Text style={styles.mobileStepSub}>{stepSubtitle}</Text>
         {autosaveStateText.length > 0 ? (
           <Text
@@ -1699,6 +1701,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               eventId={trip.id}
               brandId={trip.brandId}
               eventType="trip"
+              showHeader={isWideDesktop}
               onProtectedFlowExit={onExit}
               onReauthenticate={async () => {
                 await signOut();
