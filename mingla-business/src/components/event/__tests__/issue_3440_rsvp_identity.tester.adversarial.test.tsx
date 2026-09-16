@@ -379,3 +379,83 @@ test.each([403, 404, 409])('late %s must close an already opened invalidated pas
   expect(popup.props.children.props.visible).toBe(false);
   expect(popup.props.children.props.details).toBeNull();
 });
+
+// #3440 independent retest additions. Original 17 cases above remain byte-for-byte.
+test('actual page: failed denied-pass deletion must not reopen its QR on same-tab remount', async () => {
+  const pending = rejectable();
+  mockFetchPassMetadata.mockReturnValueOnce(pending.promise);
+  storage.set(STORAGE_KEY, goingSnapshot);
+  const tree = await mount();
+  await act(async () => { captured.state?.passAction?.onPress(); });
+  sessionStorageStub.removeItem.mockImplementationOnce(() => { throw new Error('storage removal denied'); });
+  await act(async () => { pending.reject({ context: { status: 403 } }); });
+  expect(captured.state?.passAction).toBeNull();
+  await act(async () => { tree.unmount(); });
+  trees.splice(trees.indexOf(tree), 1);
+  mockFetchPassMetadata.mockReturnValue(new Promise(() => undefined));
+  await mount();
+  await act(async () => { captured.state?.passAction?.onPress(); });
+  const popup = captured.state?.successPopup as React.ReactElement<{ children: React.ReactElement<{ visible: boolean; details: unknown }> }>;
+  expect(popup.props.children.props.details).toBeNull();
+  expect(popup.props.children.props.visible).toBe(false);
+  expect(captured.state?.passAction).toBeNull();
+});
+
+test('actual page: accepted decline with failed storage write must not reopen the old Going QR on remount', async () => {
+  storage.set(STORAGE_KEY, goingSnapshot);
+  const tree = await mount();
+  mockSubmitPublicRsvp.mockResolvedValue({ status: 'not_going', approvalStatus: 'approved', rsvpId: 'rsvp-restored', confirmationToken: null, credentials: [], anonymousRecovery: [] });
+  sessionStorageStub.setItem.mockImplementationOnce(() => { throw new Error('quota exceeded'); });
+  await act(async () => { captured.state?.onNotGoing(); });
+  expect(captured.state?.guestStatus).toBe('not_going');
+  await act(async () => { tree.unmount(); });
+  trees.splice(trees.indexOf(tree), 1);
+  mockFetchPassMetadata.mockReturnValue(new Promise(() => undefined));
+  await mount();
+  await act(async () => { captured.state?.passAction?.onPress(); });
+  const popup = captured.state?.successPopup as React.ReactElement<{ children: React.ReactElement<{ visible: boolean; details: unknown }> }>;
+  expect(popup.props.children.props.details).toBeNull();
+  expect(popup.props.children.props.visible).toBe(false);
+  expect(captured.state?.guestStatus).not.toBe('going');
+});
+
+test('actual page: changing event during unresolved verification must retain B invite after the old A denial', async () => {
+  const pending = rejectable(); mockFetchPassMetadata.mockReturnValue(pending.promise);
+  storage.set(STORAGE_KEY, goingSnapshot);
+  const tree = await mount();
+  await updatePage(tree, { id: 'event-b', eventSlug: 'event-b', name: 'Different event' });
+  const labelBeforeDenial = replyLabel(tree);
+  await act(async () => { pending.reject({ context: { status: 403 } }); });
+  await act(async () => { captured.state?.passAction?.onPress(); });
+  const opened = captured.state?.successPopup as React.ReactElement<{ children: React.ReactElement<{ details: unknown }> }>;
+  expect({ before: labelBeforeDenial, after: replyLabel(tree), privateDetails: opened.props.children.props.details })
+    .toEqual({ before: 'Going', after: 'Going', privateDetails: null });
+  expect(replyLabel(tree)).toBe('Going');
+  expect(nodes(tree, 'rsvp-view-pass')).toHaveLength(0);
+  expect(storage.get(STORAGE_KEY)).toBe(goingSnapshot);
+});
+
+test('actual page: failed identity marker and failed logout purge cannot reopen account A QR for anonymous visitor', async () => {
+  mockAuth.user = { id: 'account-a' };
+  sessionStorageStub.setItem.mockImplementationOnce(() => { throw new Error('identity marker write failed'); });
+  const tree = await mount();
+  mockSubmitPublicRsvp.mockResolvedValue({ status: 'going', approvalStatus: 'approved', rsvpId: 'rsvp-restored', confirmationToken: null,
+    credentials: [{ entityType: 'primary', entityId: 'rsvp-restored', displayName: 'Account A', qrCode: 'account-a-private-qr', pdfFetchRef: 'account-a-pdf' }], anonymousRecovery: [] });
+  await act(async () => { captured.state?.onGoingTap(); });
+  const confirm = captured.state?.confirmDialog as React.ReactElement<{ children: React.ReactElement<{ onConfirm: () => void }> }>;
+  await act(async () => { confirm.props.children.props.onConfirm(); });
+  expect(JSON.parse(storage.get(STORAGE_KEY)!).details.credentials[0].qrCode).toBe('account-a-private-qr');
+  expect(storage.has('mingla.rsvp.identity.v1')).toBe(false);
+  sessionStorageStub.removeItem.mockImplementationOnce(() => { throw new Error('logout purge failed'); });
+  mockAuth.user = null;
+  await updatePage(tree);
+  expect(captured.state?.passAction).toBeNull();
+  await act(async () => { tree.unmount(); });
+  trees.splice(trees.indexOf(tree), 1);
+  await mount();
+  await act(async () => { captured.state?.passAction?.onPress(); });
+  const popup = captured.state?.successPopup as React.ReactElement<{ children: React.ReactElement<{ visible: boolean; details: unknown }> }>;
+  expect(popup.props.children.props.details).toBeNull();
+  expect(popup.props.children.props.visible).toBe(false);
+  expect(captured.state?.passAction).toBeNull();
+});

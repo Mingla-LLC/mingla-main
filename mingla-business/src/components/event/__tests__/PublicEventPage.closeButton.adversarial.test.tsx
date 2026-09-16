@@ -275,6 +275,20 @@ const renderPublicEventPage = (
       // barrels. None affect the close-callback behavior under test.
       case "./FoundationRsvpPreview":
         return { FoundationRsvpPreview: "FoundationRsvpPreview" };
+      // [TEST-MOD-APPROVED #3440] Root review issuecomment-5690363981:
+      // additive registration for this non-RSVP close-only fixture. Recovery
+      // remains real in the dedicated RSVP suites; accidental use here is loud.
+      case "./useRsvpGuestRecovery":
+        return {
+          useRsvpGuestRecovery: (_eventId: string, _userId: string | null, enabled: boolean) => {
+            if (enabled) throw new Error("RSVP recovery is outside the close-button harness");
+            return {
+              restoredRsvp: null,
+              recoveryNotice: null,
+              onResolved: () => { throw new Error("RSVP acceptance is outside the close-button harness"); },
+            };
+          },
+        };
       case "./useBusinessRsvpPhoneField":
         return {
           resolvePrimaryRsvpPhoneCountry: () => "US",
