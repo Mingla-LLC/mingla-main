@@ -63,7 +63,7 @@ export const CAPACITY_RULE_CATALOG: Readonly<
     kind: "deposit_threshold",
     label: "Deposit for large parties",
     summary:
-      "Flag parties at or above a size for a deposit or reservation fee.",
+      "Ask parties at or above a size to pay a deposit when they book.",
     paramKey: "min_party_for_fee",
     paramLabel: "Party size that needs a deposit",
   },
@@ -97,4 +97,88 @@ export function depositThresholdMinParty(
     return Math.floor(raw);
   }
   return null;
+}
+
+/**
+ * #3387 — the deposit amount a rule carries, in minor units. Mirrors the server
+ * reader in `venue-reservation-create` (`params.fee_cents ?? params.amount_cents`,
+ * positive integers only), so the panel and the booking path agree on whether a
+ * rule has an amount. Pure.
+ */
+export function depositThresholdFeeCents(
+  params: Record<string, unknown> | null | undefined,
+): number | null {
+  if (params == null) return null;
+  const raw = params["fee_cents"] ?? params["amount_cents"];
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+    return Math.round(raw);
+  }
+  return null;
+}
+
+/**
+ * #3387 — true when an ACTIVE deposit rule would make `venue-reservation-create`
+ * refuse a large party with `deposit_amount_unconfigured`: the rule has no
+ * amount of its own and the venue's reservation fee is not charging either.
+ * The panel shows this as a warning so the host can fix it or switch it off.
+ */
+export function depositRuleBlocksGuests(input: {
+  isActive: boolean;
+  params: Record<string, unknown> | null | undefined;
+  reservationFeeActive: boolean;
+}): boolean {
+  return (
+    input.isActive &&
+    depositThresholdFeeCents(input.params) === null &&
+    !input.reservationFeeActive
+  );
+}
+
+export type DepositRuleProblem =
+  | "party_size_required"
+  | "amount_required"
+  | "payouts_not_ready";
+
+export type DepositRuleValidation =
+  | {
+      ok: true;
+      params: { min_party_for_fee: number; fee_cents?: number };
+    }
+  | { ok: false; problem: DepositRuleProblem };
+
+/**
+ * #3387 — can this deposit rule be switched ON as drafted?
+ *
+ *   - a whole party size of at least 1 is required;
+ *   - an amount is required UNLESS the venue's reservation fee is already
+ *     charging (the server then uses that fee for the large party);
+ *   - anything that charges money needs a ready payout rail, exactly like the
+ *     reservation fee toggle (I-PROPOSED-1148-PAID-FEE-REQUIRES-CHARGES-ENABLED).
+ *
+ * A rule that passes can never reach the `deposit_amount_unconfigured` refusal.
+ */
+export function validateDepositRule(input: {
+  partySizeInput: string;
+  amountCents: number;
+  reservationFeeActive: boolean;
+  payoutReady: boolean;
+}): DepositRuleValidation {
+  const trimmed = input.partySizeInput.trim();
+  const party = /^\d+$/.test(trimmed) ? Number.parseInt(trimmed, 10) : NaN;
+  if (!Number.isFinite(party) || party < 1 || party > 100) {
+    return { ok: false, problem: "party_size_required" };
+  }
+  const hasOwnAmount = Number.isFinite(input.amountCents) && input.amountCents > 0;
+  if (!hasOwnAmount && !input.reservationFeeActive) {
+    return { ok: false, problem: "amount_required" };
+  }
+  if (!input.payoutReady) {
+    return { ok: false, problem: "payouts_not_ready" };
+  }
+  return {
+    ok: true,
+    params: hasOwnAmount
+      ? { min_party_for_fee: party, fee_cents: Math.round(input.amountCents) }
+      : { min_party_for_fee: party },
+  };
 }
