@@ -12,6 +12,11 @@
  */
 
 import { getSupabaseFunctionHeaders, supabase, supabaseUrl } from "./supabase";
+// Unlisted RSVP invite link — the exact-link RSVP row, after the view misses.
+import {
+  fetchDirectRsvpEventRow,
+  rsvpHostDisplayGatesFromTheme,
+} from "./publicEventSeedService";
 import type {
   RsvpAnonymousRecovery,
   RsvpPassCredential,
@@ -46,6 +51,12 @@ export interface RsvpMomentumSnapshot {
   rsvpContributionEnabled: boolean;
   rsvpContributionSuggestedCents: number | null;
   rsvpContributionMinCents: number | null;
+  // Unlisted RSVP invite link — the host's guest-list / remaining-count choices,
+  // set ONLY when the snapshot came from the exact-link row (the social-proof
+  // read answers NULL for an unlisted event). NULL on the public view path, where
+  // the social-proof payload stays their source.
+  privateGuestList: boolean | null;
+  hideRemainingCount: boolean | null;
 }
 
 interface RsvpMomentumRow {
@@ -63,6 +74,9 @@ interface RsvpMomentumRow {
 
 export const fetchRsvpMomentum = async (
   eventId: string,
+  // Unlisted RSVP invite link — the page's exact slugs. When the public view has
+  // no row, the exact-link reader is asked with them; without them, unchanged.
+  exactLink?: { brandSlug: string; eventSlug: string },
 ): Promise<RsvpMomentumSnapshot | null> => {
   const { data, error } = await supabase
     .from("business_public_events_view")
@@ -72,7 +86,19 @@ export const fetchRsvpMomentum = async (
     .eq("id", eventId)
     .maybeSingle();
   if (error !== null) throw error;
-  const row = data as RsvpMomentumRow | null;
+  let row = data as RsvpMomentumRow | null;
+  let hostGates: { privateGuestList: boolean | null; hideRemainingCount: boolean | null } = {
+    privateGuestList: null,
+    hideRemainingCount: null,
+  };
+  if (row === null && exactLink !== undefined) {
+    const direct = await fetchDirectRsvpEventRow(exactLink.brandSlug, exactLink.eventSlug);
+    // Only the SAME event: slugs that now name a different row are not this page.
+    if (direct !== null && direct.id === eventId) {
+      row = direct as unknown as RsvpMomentumRow;
+      hostGates = rsvpHostDisplayGatesFromTheme(direct.public_theme);
+    }
+  }
   if (row === null) return null;
   return {
     goingCount: row.rsvp_going_count ?? 0,
@@ -86,6 +112,8 @@ export const fetchRsvpMomentum = async (
     rsvpContributionEnabled: row.rsvp_contribution_enabled ?? false,
     rsvpContributionSuggestedCents: row.rsvp_contribution_suggested_cents ?? null,
     rsvpContributionMinCents: row.rsvp_contribution_min_cents ?? null,
+    privateGuestList: hostGates.privateGuestList,
+    hideRemainingCount: hostGates.hideRemainingCount,
   };
 };
 

@@ -98,12 +98,21 @@ export const CLASS_A_TIMEOUT_CAP_SECONDS = 900;
 /** How far apart two cancellations may be and still count as the same instant. */
 export const SIMULTANEOUS_WINDOW_SECONDS = 2;
 
+/** #3336: a successful Class A job retains ten percent policy headroom. */
+export const READINESS_HEADROOM_RATIO = 0.1;
+
 export const VERDICTS = Object.freeze({
   PASS: "PASS",
   FAIL: "FAIL",
   NEUTRAL: "NEUTRAL",
   PASS_THROUGH: "PASS-THROUGH",
   INCONCLUSIVE: "INCONCLUSIVE",
+});
+
+export const READINESS_ROWS = Object.freeze({
+  PASS: "R0",
+  FAIL: "R1",
+  NOT_EVALUATED: "NOT-EVALUATED",
 });
 
 const EXIT_FOR_VERDICT = Object.freeze({
@@ -277,6 +286,43 @@ export function adjudicate({
   ]);
 }
 
+/**
+ * Compose #3336 readiness over the unchanged #2594 D0-D8 adjudication.
+ * Pure: no network, clock, filesystem, polling, or workflow-owned threshold.
+ */
+export function adjudicateWithReadiness(input) {
+  const core = adjudicate(input);
+  const readinessCeilingSeconds = round(input.budgetSeconds * (1 - READINESS_HEADROOM_RATIO));
+
+  if (core.row !== "D4") {
+    return {
+      core,
+      readiness: {
+        row: READINESS_ROWS.NOT_EVALUATED,
+        verdict: READINESS_ROWS.NOT_EVALUATED,
+        evaluated: false,
+        ceilingSeconds: readinessCeilingSeconds,
+        remainingHeadroomSeconds: null,
+      },
+      exit: core.exit,
+    };
+  }
+
+  const remainingHeadroomSeconds = round(input.budgetSeconds - core.durationSeconds);
+  const readinessPasses = core.durationSeconds <= readinessCeilingSeconds;
+  return {
+    core,
+    readiness: {
+      row: readinessPasses ? READINESS_ROWS.PASS : READINESS_ROWS.FAIL,
+      verdict: readinessPasses ? VERDICTS.PASS : VERDICTS.FAIL,
+      evaluated: true,
+      ceilingSeconds: readinessCeilingSeconds,
+      remainingHeadroomSeconds,
+    },
+    exit: readinessPasses ? 0 : 1,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Reporting
 // ---------------------------------------------------------------------------
@@ -290,6 +336,41 @@ export function formatVerdict(result, { jobName, budgetSeconds }) {
   ];
   for (const line of result.lines) out.push(`[issue-2594]   ${line}`);
   return out.join("\n");
+}
+
+export function formatCombinedVerdict(result, { jobName, budgetSeconds }) {
+  const coreReport = formatVerdict(result.core, { jobName, budgetSeconds });
+  if (!result.readiness.evaluated) {
+    const reason = result.core.row === "D3"
+      ? "the constitutional breach controls"
+      : result.core.row === "D6"
+        ? "the hard-timeout cancellation controls"
+        : `${result.core.row} ${result.core.verdict} controls`;
+    return [
+      coreReport,
+      `[issue-3336] readiness not evaluated; ${reason} (final exit ${result.exit}).`,
+    ].join("\n");
+  }
+
+  const label = result.readiness.row === READINESS_ROWS.PASS
+    ? "R0 READINESS PASS"
+    : "R1 READINESS-MARGIN FAIL";
+  const lines = [
+    coreReport,
+    `[issue-3336] ${label} (final exit ${result.exit})`,
+    `[issue-3336]   subject            : ${jobName}`,
+    `[issue-3336]   readiness ceiling  : ${result.readiness.ceilingSeconds}s ` +
+      `(90% of the ${budgetSeconds}s constitutional bound)`,
+    `[issue-3336]   elapsed            : ${result.core.durationSeconds}s`,
+    `[issue-3336]   remaining headroom : ${result.readiness.remainingHeadroomSeconds}s`,
+  ];
+  if (result.readiness.row === READINESS_ROWS.FAIL) {
+    lines.push(
+      `[issue-3336]   the ${budgetSeconds}s constitutional bound was not crossed; ` +
+        `D4 passed only that bound, but the final job exit is 1 because readiness failed.`,
+    );
+  }
+  return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -370,8 +451,8 @@ async function enforce() {
     return 2;
   }
 
-  const result = adjudicate({ jobs, run, jobName, budgetSeconds, timeoutKillSeconds });
-  const report = formatVerdict(result, { jobName, budgetSeconds });
+  const result = adjudicateWithReadiness({ jobs, run, jobName, budgetSeconds, timeoutKillSeconds });
+  const report = formatCombinedVerdict(result, { jobName, budgetSeconds });
   if (result.exit === 0) console.log(report);
   else console.error(report);
   return result.exit;
@@ -527,6 +608,68 @@ export const SELF_TEST_CASES = Object.freeze([
   },
 ]);
 
+export const READINESS_SELF_TEST_CASES = Object.freeze([
+  {
+    label: "R0 — exactly 540s retains the required 60s headroom",
+    input: { jobs: [job(CLASS_A, { completed_at: "2026-08-26T10:09:00Z" })], run: IN_FLIGHT_RUN },
+    coreRow: "D4", coreVerdict: VERDICTS.PASS, coreExit: 0,
+    readinessRow: READINESS_ROWS.PASS, finalExit: 0,
+    mustMention: ["R0 READINESS PASS", "540s", "60s", "final exit 0"],
+  },
+  {
+    label: "R1 — 541s is below the constitutional bound but outside readiness",
+    input: { jobs: [job(CLASS_A, { completed_at: "2026-08-26T10:09:01Z" })], run: IN_FLIGHT_RUN },
+    coreRow: "D4", coreVerdict: VERDICTS.PASS, coreExit: 0,
+    readinessRow: READINESS_ROWS.FAIL, finalExit: 1,
+    mustMention: ["R1 READINESS-MARGIN FAIL", "540s", "541s", "59s", "600s constitutional bound was not crossed", "final job exit is 1"],
+  },
+  {
+    label: "R1 — exactly 600s passes D4 but has no readiness headroom",
+    input: { jobs: [job(CLASS_A, { completed_at: "2026-08-26T10:10:00Z" })], run: IN_FLIGHT_RUN },
+    coreRow: "D4", coreVerdict: VERDICTS.PASS, coreExit: 0,
+    readinessRow: READINESS_ROWS.FAIL, finalExit: 1,
+    mustMention: ["R1 READINESS-MARGIN FAIL", "600s", "remaining headroom : 0s", "not crossed"],
+  },
+  {
+    label: "D3 — 601s remains a constitutional breach",
+    input: { jobs: [job(CLASS_A, { completed_at: "2026-08-26T10:10:01Z" })], run: IN_FLIGHT_RUN },
+    coreRow: "D3", coreVerdict: VERDICTS.FAIL, coreExit: 1,
+    readinessRow: READINESS_ROWS.NOT_EVALUATED, finalExit: 1,
+    mustMention: ["[issue-2594] D3 FAIL", "601s", "readiness not evaluated", "constitutional breach controls"],
+  },
+  {
+    label: "D6 — a lone timeout-shaped cancellation remains the hard-cap failure",
+    input: { jobs: [job(CLASS_A, { conclusion: "cancelled", completed_at: "2026-08-26T10:15:00Z" })], run: IN_FLIGHT_RUN },
+    coreRow: "D6", coreVerdict: VERDICTS.FAIL, coreExit: 1,
+    readinessRow: READINESS_ROWS.NOT_EVALUATED, finalExit: 1,
+    mustMention: ["[issue-2594] D6 FAIL", "890", "900", "readiness not evaluated", "hard-timeout cancellation controls"],
+  },
+  {
+    label: "D2 — Class A's own failure remains pass-through",
+    input: { jobs: [job(CLASS_A, { conclusion: "failure" })], run: IN_FLIGHT_RUN },
+    coreRow: "D2", coreVerdict: VERDICTS.PASS_THROUGH, coreExit: 0,
+    readinessRow: READINESS_ROWS.NOT_EVALUATED, finalExit: 0,
+    mustMention: ["[issue-2594] D2 PASS-THROUGH", "readiness not evaluated", "D2 PASS-THROUGH controls"],
+  },
+  {
+    label: "D5 — concurrency eviction remains neutral",
+    input: {
+      jobs: [job(CLASS_A, { conclusion: "cancelled", completed_at: "2026-08-26T10:05:13Z" })],
+      run: { status: "completed", conclusion: "cancelled" },
+    },
+    coreRow: "D5", coreVerdict: VERDICTS.NEUTRAL, coreExit: 0,
+    readinessRow: READINESS_ROWS.NOT_EVALUATED, finalExit: 0,
+    mustMention: ["[issue-2594] D5 NEUTRAL", "readiness not evaluated", "D5 NEUTRAL controls"],
+  },
+  {
+    label: "D0 — an unavailable subject remains inconclusive",
+    input: { jobs: [], run: IN_FLIGHT_RUN },
+    coreRow: "D0", coreVerdict: VERDICTS.INCONCLUSIVE, coreExit: 2,
+    readinessRow: READINESS_ROWS.NOT_EVALUATED, finalExit: 2,
+    mustMention: ["[issue-2594] D0 INCONCLUSIVE", "readiness not evaluated", "final exit 2"],
+  },
+]);
+
 export function runSelfTest(log = console.log) {
   const failures = [];
   const rowsSeen = new Set();
@@ -555,6 +698,37 @@ export function runSelfTest(log = console.log) {
       }
     }
     log(`  ${result.row.padEnd(3)} ${result.verdict.padEnd(12)} exit ${result.exit}  ${testCase.label}`);
+  }
+
+  for (const testCase of READINESS_SELF_TEST_CASES) {
+    const result = adjudicateWithReadiness({
+      ...testCase.input,
+      jobName: CLASS_A,
+      budgetSeconds: 600,
+      timeoutKillSeconds: 890,
+    });
+    if (result.core.row !== testCase.coreRow) {
+      failures.push(`${testCase.label}: expected core row ${testCase.coreRow}, got ${result.core.row}`);
+    }
+    if (result.core.verdict !== testCase.coreVerdict) {
+      failures.push(`${testCase.label}: expected core verdict ${testCase.coreVerdict}, got ${result.core.verdict}`);
+    }
+    if (result.core.exit !== testCase.coreExit) {
+      failures.push(`${testCase.label}: expected core exit ${testCase.coreExit}, got ${result.core.exit}`);
+    }
+    if (result.readiness.row !== testCase.readinessRow) {
+      failures.push(`${testCase.label}: expected readiness ${testCase.readinessRow}, got ${result.readiness.row}`);
+    }
+    if (result.exit !== testCase.finalExit) {
+      failures.push(`${testCase.label}: expected final exit ${testCase.finalExit}, got ${result.exit}`);
+    }
+    const report = formatCombinedVerdict(result, { jobName: CLASS_A, budgetSeconds: 600 });
+    for (const token of testCase.mustMention) {
+      if (!report.includes(token)) {
+        failures.push(`${testCase.label}: the combined log must name ${JSON.stringify(token)} and does not`);
+      }
+    }
+    log(`  ${result.core.row}/${result.readiness.row.padEnd(13)} final ${result.exit}  ${testCase.label}`);
   }
 
   // Every row of the table must have been driven by at least one fixture. A
@@ -588,7 +762,7 @@ async function main(argv) {
       for (const failure of failures) console.error(`[issue-2594] SELF-TEST FAIL: ${failure}`);
       return 1;
     }
-    console.log(`[issue-2594] self-test PASSED — ${SELF_TEST_CASES.length} fixtures across all 9 decision-table rows.`);
+    console.log(`[issue-2594] self-test PASSED — ${SELF_TEST_CASES.length} core fixtures across all 9 decision-table rows plus ${READINESS_SELF_TEST_CASES.length} readiness fixtures.`);
     return 0;
   }
 

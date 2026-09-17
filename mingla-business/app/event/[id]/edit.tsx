@@ -70,6 +70,7 @@ import {
   PromotionSourceMissingError,
 } from "../../../src/utils/draftPromotion";
 import { useAuth } from "../../../src/context/AuthContext";
+import { fetchServerDraftCover } from "../../../src/services/eventDrafts";
 import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
 // ORCH-0893 [Eager server-draft on creator entry — replace with client-id + lazy autosave]:
 // the migration from a client `d_<ts36>` id to a server-issued id is now
@@ -880,6 +881,8 @@ export default function EventEditRoute(): React.ReactElement {
       onOpenPreview={handleOpenPreview}
       onOpenPaymentOnboarding={handleOpenPaymentOnboarding}
       onAutosaveDraft={handleAutosaveDraft}
+      // A cover video that finishes after its sheet closed lands on the draft.
+      fetchServerCover={fetchServerDraftCover}
       onRequireServerDraft={handleRequireServerDraft}
       onDiscardServerDraft={handleDiscardDraft}
       onPublishDraft={async (draftToPublish) => {

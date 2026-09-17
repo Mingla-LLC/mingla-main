@@ -192,6 +192,10 @@ jobs:
           # definition, so it ends the re-apply set.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
             -f supabase/migrations/20270702003313_issue_3313_recurring_event_occurrences.sql
+          # Issue #3439 is the latest publish owner (applied-cover reconciliation).
+          # Replay it last so the exact definition and ACL comparison stays valid.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270708003439_draft_autosave_keeps_pin_and_applied_cover.sql
           after="$(snapshot)"
           test "$before" = "$after"
           echo "OK — replay is definition- and grant-equivalent."
