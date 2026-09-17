@@ -109,7 +109,7 @@ const looksLikeUrl = (v: string): boolean =>
  * Input phone variant exactly: null/unknown ISO → the GB default. Shared
  * directory truth (`packages/phone-input/countries.ts`), no new table.
  */
-const c6DialCode = (iso: string | null | undefined): string =>
+export const c6DialCode = (iso: string | null | undefined): string =>
   COUNTRIES.find((c) => c.code === (iso ?? "GB").toUpperCase())?.dialCode ??
   "+44";
 

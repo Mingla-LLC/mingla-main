@@ -199,6 +199,15 @@ function bundleInputs() {
       "SOURCE_REFUND_NOTIFICATION_RECIPIENT_PREVIOUS_KID",
       "SOURCE_REFUND_NOTIFICATION_RECIPIENT_PREVIOUS_KEY_B64",
     ],
+    // #3392 — the venue booking manage-link key ring joins the strict parser.
+    [
+      "VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KID",
+      "VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KEY_B64",
+    ],
+    [
+      "VENUE_RESERVATION_MANAGE_TOKEN_PREVIOUS_KID",
+      "VENUE_RESERVATION_MANAGE_TOKEN_PREVIOUS_KEY_B64",
+    ],
   ];
   sourceRefundSlots.forEach(([kidField, keyField], index) => {
     adObject[kidField] = `k${index + 1}`;
