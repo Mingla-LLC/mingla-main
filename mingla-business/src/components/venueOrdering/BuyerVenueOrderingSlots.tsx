@@ -21,6 +21,7 @@ import type {
   ThemePalette,
 } from "@mingla/offering-rendering";
 
+
 import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
 import {
@@ -40,6 +41,13 @@ import { VenueOrderReviewPane } from "@mingla/brand-rendering/venueOrdering/Venu
 import { VenueOrderStatusPane } from "@mingla/brand-rendering/venueOrdering/VenueOrderStatusPane";
 
 import { usePublicMenuBundle } from "../../hooks/usePublicMenuBundle";
+// issue #3380 — pure phone helpers only at module scope. The picker component
+// is required where the review step renders it (see renderPhoneField), so the
+// menu mounts without loading the phone field's native keyboard stack.
+import {
+  buyerOrderPhoneFailure,
+  buyerOrderPhoneStartCountry,
+} from "./buyerOrderPhone";
 import { useBuyerVenueOrdering } from "./useBuyerVenueOrdering";
 import type { BuyerVenueOrdering } from "./useBuyerVenueOrdering";
 
@@ -73,6 +81,8 @@ export interface BuyerVenueOrderingSlotProps {
   palette: ThemePalette;
   surface: Surface;
   theme: ResolvedTheme;
+  /** issue #3380 — the venue's country; the guest's phone picker starts here. */
+  countryCode?: string | null;
 }
 
 /** The venue's OWN clock — never the visitor's. */
@@ -137,6 +147,7 @@ export const BuyerVenueOrderingMenu: React.FC<
   palette,
   surface,
   theme,
+  countryCode = null,
   menu,
   menuWindows,
   timezone,
@@ -181,6 +192,29 @@ export const BuyerVenueOrderingMenu: React.FC<
         onBuyerChange={ordering.cart.patchBuyer}
         onSetQuantity={ordering.cart.setQuantity}
         onSetNotes={ordering.cart.setNotes}
+        // issue #3380 — the country picker instead of a free-text box.
+        renderPhoneField={(args) => {
+          // Required here, not at module scope: only the review step needs the
+          // picker, and a module-scope import would load its keyboard stack for
+          // every menu visit (and every suite that mounts the menu).
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const { BuyerVenueOrderPhoneField } = require("./BuyerVenueOrderPhoneField") as typeof import("./BuyerVenueOrderPhoneField");
+          return (
+            <BuyerVenueOrderPhoneField
+              args={args}
+              palette={palette}
+              theme={theme}
+              countryCode={countryCode}
+            />
+          );
+        }}
+        phoneFailure={
+          buyerOrderPhoneFailure(
+            ordering.cart.state.buyer.phone,
+            ordering.cart.state.buyer.phoneCountryIso ??
+              buyerOrderPhoneStartCountry(countryCode),
+          )?.message ?? null
+        }
         submitting={ordering.submitting}
         submitError={ordering.submitError}
         onSubmit={ordering.submit}
@@ -255,6 +289,8 @@ export const BuyerVenueOrderingSurface: React.FC<{
   entrySource: string | null;
   menu: PublicMenuGroup[];
   timezone: string | null;
+  /** issue #3380 — the venue's country, for the guest's phone picker. */
+  countryCode?: string | null;
 }> = ({
   palette,
   surface,
@@ -265,6 +301,7 @@ export const BuyerVenueOrderingSurface: React.FC<{
   entrySource,
   menu,
   timezone,
+  countryCode = null,
 }) => {
   /**
    * The service WINDOWS are read HERE rather than by the route, and that is not
@@ -303,7 +340,7 @@ export const BuyerVenueOrderingSurface: React.FC<{
     // they cannot order. Someone reading the menu out of curiosity is not.
     scanned: spotCode !== null || entrySource === "qr",
   });
-  const slotProps = { ordering, palette, surface, theme };
+  const slotProps = { ordering, palette, surface, theme, countryCode };
   const notice = venueOrderingNotice(ordering.config, {
     scanned: ordering.scanned,
   });

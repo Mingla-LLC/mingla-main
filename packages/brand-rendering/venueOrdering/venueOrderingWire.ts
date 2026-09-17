@@ -114,6 +114,12 @@ export function venueOrderCreateBody(input: {
       name: request.buyer.name.trim(),
       email: request.buyer.email.trim(),
       phone: request.buyer.phone.trim(),
+      // issue #3380 — only when a country picker supplied one, so a host still
+      // on the plain box sends exactly the body it always did.
+      ...(typeof request.buyer.phoneCountryIso === "string" &&
+          request.buyer.phoneCountryIso !== ""
+        ? { phoneCountryIso: request.buyer.phoneCountryIso }
+        : {}),
     },
     partySizeClaimed: request.partySizeClaimed,
     tipBps: request.tipBps,

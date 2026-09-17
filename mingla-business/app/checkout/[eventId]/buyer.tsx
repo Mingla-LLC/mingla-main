@@ -75,6 +75,7 @@ import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
 import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAccent";
 import { formatCurrency } from "../../../src/utils/currency";
+import { phoneStartCountryForCurrency } from "../../../src/utils/phoneStartCountryForCurrency";
 import {
   composeE164,
   isValidE164,
@@ -169,7 +170,7 @@ const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
  */
 const resolveInitialCountry = (
   existingFullE164: string,
-  _brandCountry: string | null,
+  brandCountry: string | null,
 ): string => {
   if (existingFullE164.length > 0) {
     // Sort by descending dialCode length so "+1268" matches before "+1".
@@ -177,6 +178,11 @@ const resolveInitialCountry = (
       .sort((a, b) => b.dialCode.length - a.dialCode.length)
       .find((c) => existingFullE164.startsWith(c.dialCode));
     if (found) return found.code;
+  }
+  // issue #3380 — the event's own country beats the visitor's locale: a naira
+  // event opens on +234 even on a phone set to US English.
+  if (brandCountry !== null && COUNTRIES.some((c) => c.code === brandCountry)) {
+    return brandCountry;
   }
   try {
     const locale = Intl.DateTimeFormat().resolvedOptions().locale;
@@ -319,10 +325,10 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   // component manages country code + local digits separately; we compose
   // them into the full E.164 on every change and write back to the cart.
   const [phoneCountry, setPhoneCountry] = useState<string>(() =>
-    resolveInitialCountry(buyer.phone, null),
+    resolveInitialCountry(buyer.phone, phoneStartCountryForCurrency(totals.currency)),
   );
   const [phoneLocal, setPhoneLocal] = useState<string>(() =>
-    splitExistingPhone(buyer.phone, resolveInitialCountry(buyer.phone, null)),
+    splitExistingPhone(buyer.phone, resolveInitialCountry(buyer.phone, phoneStartCountryForCurrency(totals.currency))),
   );
 
   const handlePhoneLocalChange = useCallback(
