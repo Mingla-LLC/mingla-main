@@ -69,17 +69,20 @@ describe("ORCH-0859 — trip create + wizard + publish contract", () => {
     expect(wizardSource).toMatch(/KeyboardAvoidingView/);
   });
 
-  test("TripCreatorWizard step 7 publish button uses handlePublishTap handler", () => {
-    // [TEST-MOD-APPROVED ORCH-0919] Refreshes stale pre-ORCH-0880 step-5
-    // assertion to the current 7-step wizard shape.
+  test("TripCreatorWizard step 8 publish button uses handlePublishTap handler", () => {
+    // [TEST-MOD-APPROVED #1780] Invite people is the new Step 7 and Review /
+    // Publish moves to Step 8. The tap wrapper awaits authoritative invite
+    // plan/quote refresh before it may open confirmation.
     expect(wizardSource).toMatch(
-      /step === 7[\s\S]{0,1200}onPress=\{handlePublishTap\}/,
+      /step === 8[\s\S]{0,1800}onPress=\{\(\) => void handlePublishTap\(\)\}/,
     );
   });
 
   test("TripCreatorWizard header owns step title and body does not repeat it", () => {
+    // [TEST-MOD-APPROVED #1780] The title is the accessibility header only on
+    // the new Invite people step (7); the header still owns the step title.
     expect(wizardSource).toMatch(
-      /<Text style=\{styles\.mobileStepTitle\}>\{stepTitle\}<\/Text>/,
+      /<Text accessibilityRole=\{step === 7 \? "header" : undefined\} style=\{styles\.mobileStepTitle\}>\{stepTitle\}<\/Text>/,
     );
     expect(wizardSource).toMatch(
       /<Text style=\{styles\.mobileStepSub\}>\{stepSubtitle\}<\/Text>/,

@@ -1858,6 +1858,18 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "              *20270707003426_issue_3426_brand_offering_sections.sql) continue ;;\n"],
     [liveWorkflow("issue", "1931", "private", "event", "access"),
       "              *20270707003426_issue_3426_brand_offering_sections.sql) continue ;;\n"],
+    // [TEST-MOD-APPROVED #1780] #1780 extends the existing roster/invite lane
+    // rather than adding a forbidden issue-specific workflow. Each executable
+    // registration is independently revert-sensitive; none changes a trigger
+    // event key, job-level concurrency block, or reusable-workflow call.
+    [liveWorkflow("issue", "873", "guest", "status", "roster", "tests"),
+      "          supabase/functions/offering-invite-dispatch/issue_1780_wizard_worker.happy.test.ts\n"],
+    // [TEST-MOD-APPROVED #1780] The Jest registration is a folded `run: >-`
+    // block, so the revert-sensitive byte line is the test path itself.
+    [liveWorkflow("issue", "873", "guest", "status", "roster", "tests"),
+      "          src/services/__tests__/issue_1780_wizard_invites.implementor.test.ts\n"],
+    [liveWorkflow("issue", "873", "guest", "status", "roster", "tests"),
+      "          -f supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);

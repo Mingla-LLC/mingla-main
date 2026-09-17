@@ -71,8 +71,11 @@ describe("ORCH-1076 — trip wizard gate + disabled Publish + toast (T-19)", () 
     // package validity) and is now multi-line formatted (TripCreatorWizard.tsx
     // :1637-1642). tripNeedsStripe is still a disabling term (ORCH-1076 Stream B).
     // Assert the exact current gate at the same (all-terms) strength.
+    // [TEST-MOD-APPROVED #1780] Publish also waits for a confirmed, refreshed
+    // invite plan (!invitePublishReady || checkingInvitePublish); every prior
+    // disabling term is still asserted.
     expect(src).toMatch(
-      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\}/,
+      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
     );
   });
 

@@ -10286,3 +10286,17 @@ All four #2796 rules were established ACTIVE after independent web, iOS AX5, and
 - **Rule:** the standard event page keeps the 1167 order and gains section 9, Cancellation (`testID="orch-1167-cancellation"`), directly after "Where you'll be". It is hidden when the offering is closed, the terms are unknown, or the offering is free.
 - **Enforcement:** `.github/scripts/strict-grep/orch-1167-canonical-9-section-order.mjs`, whose self-test fails when cancellation comes before "Where you'll be" or its anchor is missing.
 - **Established:** DRAFT at #3284; supersedes `I-PROPOSED-1167-CANONICAL-9-SECTION-ORDER` and flips ACTIVE on CLOSE.
+
+## DRAFT — issue #3446 (Android back steps back one screen in every Business creation wizard)
+
+### I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK (DRAFT)
+
+- **Rule:** every Business creation wizard (Event, RSVP, Experience, Trip) calls `useWizardHardwareBack` exactly once. While a wizard screen is focused on Android, hardware back never pops the wizard route directly:
+  - an open native overlay consumes it first;
+  - otherwise Step 1 runs the wizard's in-app close/cancel owner, and every later step runs its in-app Back owner;
+  - presses during publish, autosave or discard are swallowed;
+  - a second press never skips a step or re-runs an exit that is still in flight.
+
+  The listener subscribes once per focus, is removed on blur, and does not exist on iOS or web. No wizard file imports `BackHandler` directly.
+- **Enforcement:** `mingla-business/src/hooks/__tests__/issue_3446_wizard_hardware_back.implementor.test.tsx` (hook and latch behaviour), `mingla-business/src/components/__tests__/issue_3446_wizard_hardware_back_wiring.implementor.test.ts` (all four wizards wired, one owner), `mingla-business/src/components/experience/__tests__/issue_3446_experience_hardware_back.implementor.test.tsx` (runtime wiring).
+- **Established:** DRAFT at #3446; flips ACTIVE on CLOSE.
