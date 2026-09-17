@@ -14,6 +14,31 @@ import {
   type WizardInviteSelection,
 } from "../services/offeringInvitePlanService";
 
+// #1780 — ONE foreground refresh per event. The wizard-level summary hook and
+// the Invite step's hook each listen for the app returning to the foreground.
+// With both mounted for one event (the Invite step is on screen), both re-read
+// plan and quote, so every return from background cost two plan RPCs and two
+// quote calls (device-proven). Every wizard mounts one summary hook and, on the
+// Invite step, one step hook. While a step hook is mounted for an event with
+// its refresh armed (auth ready, enabled, real event id) it owns that event's
+// foreground refresh and the summary listener stands down; otherwise the
+// summary owns it.
+//
+// This only picks WHICH listener refreshes. refreshAuthoritative() never
+// consults it, and every call (Publish's pre-check, retry, save recovery)
+// makes its own fresh plan and quote reads. Publish must never join a read
+// that started before the latest selection change.
+const inviteStepForegroundOwners = new Map<string, number>();
+
+function holdInviteStepForegroundOwner(eventId: string): () => void {
+  inviteStepForegroundOwners.set(eventId, (inviteStepForegroundOwners.get(eventId) ?? 0) + 1);
+  return () => {
+    const remaining = (inviteStepForegroundOwners.get(eventId) ?? 1) - 1;
+    if (remaining > 0) inviteStepForegroundOwners.set(eventId, remaining);
+    else inviteStepForegroundOwners.delete(eventId);
+  };
+}
+
 export function useOfferingInvitePlan(input: {
   eventId: string | null;
   brandId: string;
@@ -82,6 +107,11 @@ export function useOfferingInvitePlan(input: {
   }, [client, eventId]);
   const appState = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
+    // #1780: armed on the same predicate as the refresh below, so a disabled
+    // or pre-auth step never silences the summary's refresh.
+    const releaseForegroundOwner = isAuthReady && input.enabled && eventId !== null
+      ? holdInviteStepForegroundOwner(eventId)
+      : null;
     const subscription = AppState.addEventListener("change", (next) => {
       const wasActive = appState.current === "active";
       appState.current = next;
@@ -95,7 +125,10 @@ export function useOfferingInvitePlan(input: {
         void refreshAuthoritative().catch(() => undefined);
       }
     });
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+      releaseForegroundOwner?.();
+    };
   }, [eventId, input.enabled, isAuthReady, refreshAuthoritative]);
   return { plan, people, groups, quote, replace, clear, refreshAuthoritative };
 }
@@ -148,7 +181,9 @@ export function useOfferingInvitePlanSummary(input: {
       // caller has the summary disabled.
       if (
         next === "active" && !wasActive &&
-        isAuthReady && input.enabled && input.eventId !== null
+        isAuthReady && input.enabled && input.eventId !== null &&
+        // #1780: a mounted Invite step owns this event's foreground refresh.
+        !inviteStepForegroundOwners.has(input.eventId)
       ) {
         void refreshAuthoritative().catch(() => undefined);
       }
