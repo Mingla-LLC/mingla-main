@@ -299,6 +299,7 @@
   window can return an older ancestor, and the gate then reports a clean added-set for a branch that
   genuinely adds a wrapper. Not reachable today; recorded so nobody reads the guarantee as unconditional
   if `main`'s history model ever changes.
+- **Comparison history isolation (DRAFT, issue #3455):** when the merge base is missing and the event yields refspecs, the recovery fetch (`--filter=blob:none --depth=1024`, unchanged) and every later merge-base, diff, log and show read run in a disposable bare repository under `os.tmpdir()`. That repository borrows the checkout's objects through alternates and a copy of its `shallow` file, and is removed afterwards. The checkout's git state is never written (`I-PROPOSED-3455-GATES-NEVER-MUTATE-THEIR-CHECKOUT`). Verdicts, messages and exit codes are unchanged. The isolation regressions run in strict-grep Class E, not Class A, to protect `I-PROPOSED-3336-CLASS-A-READINESS-MARGIN`.
 - **Status:** DRAFT until the full #2148 consolidation programme reaches its final topology, completeness, required-context, and performance budgets. Phase 0 prevents new wrappers without deleting any existing workflow or test.
 
 ## DRAFT — issue #2148 / Phase 1 issue #2435 (CI execution registry is complete)
@@ -10286,3 +10287,12 @@ All four #2796 rules were established ACTIVE after independent web, iOS AX5, and
 - **Rule:** the standard event page keeps the 1167 order and gains section 9, Cancellation (`testID="orch-1167-cancellation"`), directly after "Where you'll be". It is hidden when the offering is closed, the terms are unknown, or the offering is free.
 - **Enforcement:** `.github/scripts/strict-grep/orch-1167-canonical-9-section-order.mjs`, whose self-test fails when cancellation comes before "Where you'll be" or its anchor is missing.
 - **Established:** DRAFT at #3284; supersedes `I-PROPOSED-1167-CANONICAL-9-SECTION-ORDER` and flips ACTIVE on CLOSE.
+
+## DRAFT — issue #3455 (gates never mutate their checkout)
+
+### I-PROPOSED-3455-GATES-NEVER-MUTATE-THEIR-CHECKOUT (DRAFT)
+
+- **Rule:** A CI gate or test never writes to the git state of the checkout it runs in, or of any repository sharing that checkout's common directory. That state is config (including `core.repositoryformatversion`, `extensions.*`, `remote.*`), `shallow`, `HEAD`, refs and `packed-refs`, reflogs, `FETCH_HEAD`, loose objects, packs, `.promisor` markers and `objects/info/*`; a gate also never triggers maintenance there. History a gate needs but the checkout lacks is obtained only in a disposable bare repository created under the real, absolute `os.tmpdir()`, never inside the checkout or its common directory. That repository borrows the checkout's objects read-only through `objects/info/alternates`, carries a copy of the checkout's `shallow` file and a mirror of its refs, disables gc, auto-maintenance and hooks, and is removed on every JavaScript exit path. Checkout-side git reads run with lazy fetching disabled. Fail-closed exit 2 verdicts are unchanged. A signal kill may leave the disposable directory under the temp base, never in the checkout.
+- **Enforcement:** `.github/scripts/strict-grep/issue-2148-ci-topology-bounded.mjs` (disposable comparison repository). `.github/scripts/strict-grep/issue-3455-topology-gate-checkout-isolation.implementor.test.mjs` and the independently written `…tester.test.mjs` (strict-grep Class E) fingerprint push-shaped, PR-shaped, linked-worktree and full-clone-anchor checkouts before and after success, exit-2, fetch-failure and late-throw runs; they require an empty temp base and a successful `git clone --no-hardlinks <workspace>` afterwards, and fail when the pre-#3455 gate is restored. The frozen #2148/#2681 topology suites remain unchanged in Class A.
+- **Scope note:** today only the topology gate fetches history. Any future gate that needs history must use the same disposable-repository pattern. A runner-level mutation guard is a recorded follow-up (#3455 SPEC §15), not enforcement.
+- **Status:** DRAFT until #3455 CLOSE: post-merge push Class A green plus the network replica readback at the merged SHA.
