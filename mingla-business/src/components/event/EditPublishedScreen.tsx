@@ -47,7 +47,14 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Keyboard listener
 // + state + auto-insets DELETED. useKeyboardIsVisible() preserves dock-hide and
 // (issue #1027) drives the deferred description-reveal scroll — no bespoke
@@ -373,6 +380,33 @@ interface RejectDialogContent {
   destructive?: boolean;
 }
 
+// #3431 — the deferred scroll-to-bottom reveal (#1027) runs only for the
+// input that armed it, while that input still has focus.
+//
+// The armed flag used to be cleared only by a keyboard closing. A hardware
+// keyboard (the simulator used to film the RSVP tutorial on 2026-09-17, an
+// iPad, a Bluetooth keyboard) raises no keyboard for Description or the online
+// link, so the reveal stayed armed across steps and fired on the next field
+// that did raise a keyboard frame: RSVP Step 5's Max guests number pad threw
+// the page to the bottom, then the keyboard-aware scroll pulled it back.
+//
+// React Native marks an input focused BEFORE calling its onFocus prop, so
+// reading focus when the reveal is armed returns the field asking for it.
+// `undefined` = this runtime cannot tell: the reveal runs, as before #3431.
+const focusedTextInput = (): unknown => {
+  const state = (
+    TextInput as unknown as
+      | { State?: { currentlyFocusedInput?: () => unknown } }
+      | undefined
+  )?.State;
+  return typeof state?.currentlyFocusedInput === "function"
+    ? (state.currentlyFocusedInput() ?? null)
+    : undefined;
+};
+
+const revealStillOwnsFocus = (owner: unknown): boolean =>
+  owner === undefined || (owner !== null && focusedTextInput() === owner);
+
 export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   liveEvent,
   disableLocalSaveReason,
@@ -458,6 +492,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   // stays clean and the deferred effect is inert on web.
   // I-PROPOSED-1027-WIZARD-REVEAL-DEFERRED-TO-KEYBOARD-SHOWN.
   const pendingScrollToBottomRef = useRef<boolean>(false);
+  // #3431 — the input that armed the reveal (focusedTextInput above).
+  const revealOwnerRef = useRef<unknown>(undefined);
   const keyboardVisibleRef = useRef<boolean>(keyboardVisible);
 
   const performScrollToEnd = useCallback((): void => {
@@ -475,6 +511,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       performScrollToEnd();
       return;
     }
+    revealOwnerRef.current = focusedTextInput();
     pendingScrollToBottomRef.current = true;
   }, [performScrollToEnd]);
 
@@ -487,7 +524,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     if (keyboardVisible) {
       if (pendingScrollToBottomRef.current) {
         pendingScrollToBottomRef.current = false;
-        performScrollToEnd();
+        // #3431 — only for the field that armed it, while it still has focus.
+        if (revealStillOwnsFocus(revealOwnerRef.current)) {
+          performScrollToEnd();
+        }
       }
     } else {
       // keyboard dismissed — drop any stale pending reveal.
