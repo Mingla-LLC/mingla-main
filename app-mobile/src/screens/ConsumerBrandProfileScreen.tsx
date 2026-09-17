@@ -18,6 +18,10 @@ import {
   usePublicBrandVenues,
 } from "../hooks/useBrandBySlug";
 import { useBrandFollow } from "../hooks/useBrandFollow";
+import {
+  useBrandHappeningNow,
+  useBrandPast,
+} from "../hooks/useBrandOfferingSections";
 import { useAppStore } from "../store/appStore";
 import { postHogService } from "../services/postHogService";
 import { shareContent } from "../services/contentShareAdapter";
@@ -33,6 +37,10 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
   const publicSlug = typeof slug === "string" ? slug : null;
   const query = useBrandBySlug(publicSlug);
   const venuesQuery = usePublicBrandVenues(publicSlug);
+  // #3426 — the date-decided Happening now block and Past tab (parity with Host
+  // web: the same RPC, the same shapes).
+  const happeningNowQuery = useBrandHappeningNow(publicSlug);
+  const pastFeed = useBrandPast(publicSlug);
   // Issue #679 — Follow. Auth precedent: ConsumerTripDetailScreen.tsx.
   const user = useAppStore((s) => s.user);
   const brandFollow = useBrandFollow(
@@ -121,6 +129,10 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
         experiences={detail.experiences}
         upcoming={detail.upcoming}
         upcomingHasMore={detail.upcomingHasMore}
+        happeningNow={happeningNowQuery.data ?? []}
+        past={pastFeed.rows ?? []}
+        pastHasMore={pastFeed.hasMore}
+        pastLoadState={pastFeed.loadState}
         menu={detail.menu}
         isFollowing={brandFollow.isFollowing}
         followPending={brandFollow.isPending}
@@ -179,6 +191,7 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
           onRetryVenues: () => {
             venuesQuery.refetch();
           },
+          onLoadMorePast: pastFeed.loadMore,
           onOpenVenue: (venue: PublicBrandVenueSummary) => {
             postHogService.capture("brand_venue_selected", {
               surface: "consumer_native",

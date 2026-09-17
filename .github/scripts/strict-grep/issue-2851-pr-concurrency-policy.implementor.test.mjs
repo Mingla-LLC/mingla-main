@@ -1843,6 +1843,21 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "              *20270706003197_issue_3197_public_search_auto_promotion.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "            -f supabase/migrations/20270706003197_issue_3197_public_search_auto_promotion.sql\n"],
+    // [TEST-MOD-APPROVED #3426] The two #3426 brand-section SQL suite targets on
+    // the migrations lane, and the exact-filename phase-1 skip of the #3426
+    // migration in BOTH filtered replay lanes (private-event and
+    // offering-visibility). Same three proofs as the rows above. None adds a
+    // trigger event key, a job-level concurrency block or a job `uses:` — every
+    // line lands inside an existing `run:` script — so
+    // PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 is not re-pinned, per the #3095 rule.
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.happy.pg17.test.sql\n"],
+    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
+      "            -f supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.adversarial.pg17.test.sql\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270707003426_issue_3426_brand_offering_sections.sql) continue ;;\n"],
+    [liveWorkflow("issue", "1931", "private", "event", "access"),
+      "              *20270707003426_issue_3426_brand_offering_sections.sql) continue ;;\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);

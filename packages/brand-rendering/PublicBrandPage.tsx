@@ -13,8 +13,10 @@
 // Mingla_Artifacts/design/ORCH-1138/BRAND_DIRECTION_A_RESPONSIVE.html:
 //   • Phone/native: full-bleed pinned parallax cover + body sliding over the −28
 //     seam + body-level fixed chrome (X · Share · Mute; Mute only on video covers).
-//   • Tab bar: About · Upcoming? · Events? · Trips? · Experiences? — About FIRST
-//     + DEFAULT, horizontally scrollable (no clipping), only non-empty tabs.
+//   • Tab bar: About · Upcoming? · Past? · Events? · Trips? · Experiences? — About
+//     FIRST + DEFAULT, horizontally scrollable (no clipping), only non-empty tabs.
+//     #3426: Upcoming opens with a distinct "Happening now" block when anything is
+//     in progress; Past lists ended offerings of all four kinds, most recent first.
 //   • About pane: tagline → bio (4-line clamp + Read more) → contact (email/phone).
 //   • Desktop ≥1024px: contained 21:9 hero + two-column (tabs+2-col grid left,
 //     sticky Share + Next-up brand-summary panel right). No money/membership
@@ -95,8 +97,10 @@ import { solveSocialRow } from "./socialRowSizing";
 // the eager __common chunk (ORCH-1083 bundle budget). Composition unchanged.
 import type {
   PublicBrand,
+  PublicBrandCallbacks,
   PublicBrandEvent,
   PublicBrandExperience,
+  PublicBrandOfferingSection,
   PublicBrandPageProps,
   PublicBrandTicket,
   PublicBrandTrip,
@@ -105,8 +109,16 @@ import type {
   PublicMediaType,
 } from "./types";
 
+// #3426 — "past" is the date-decided Past tab (all four kinds). Happening now is
+// NOT a tab: it is a distinct block at the top of the Upcoming tab.
 type Tab =
-  "about" | "reservations" | "upcoming" | "events" | "trips" | "experiences";
+  | "about"
+  | "reservations"
+  | "upcoming"
+  | "past"
+  | "events"
+  | "trips"
+  | "experiences";
 type SocialKind =
   | "website"
   | "instagram"
@@ -220,6 +232,25 @@ const offeringPriceLabel = (item: {
   return item.isFree === true ? "Free" : null;
 };
 
+// #3426 — a past date carries its YEAR: "Ended 12 Sep" is ambiguous a year on.
+const formatPastDate = (iso: string | null | undefined): string | null => {
+  if (iso === null || iso === undefined) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const OFFERING_KIND_LABEL: Record<PublicBrandUpcoming["offeringType"], string> = {
+  event: "Event",
+  rsvp: "RSVP",
+  trip: "Trip",
+  experience: "Experience",
+};
+
 const formatUpcomingDateLine = (startsAt: string | null): string => {
   if (startsAt === null) return "Date TBA";
   const date = new Date(startsAt);
@@ -239,6 +270,7 @@ const tabLabel: Record<Tab, string> = {
   about: "About",
   reservations: "Reservations",
   upcoming: "Upcoming",
+  past: "Past",
   events: "Events",
   trips: "Trips",
   experiences: "Experiences",
@@ -264,6 +296,10 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   experiences = [],
   upcoming = [],
   upcomingHasMore = false,
+  happeningNow = [],
+  past,
+  pastHasMore = false,
+  pastLoadState = "ready",
   venue = null,
   // Inferable defaults (not bare bindings): under the #1403/#874 delta
   // harnesses' react-less tsc graph a bare binding here is TS7031; the
@@ -283,8 +319,11 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   chromeTopOffset,
   contentBottomInset = 24,
   callbacks,
-}) => {
-  void providedPastEvents;
+  // #3426 — the parameter carries its type DIRECTLY (not only via React.FC):
+  // under a tsc graph where `react` does not resolve from packages/, React.FC is
+  // `any` and every binding here would be implicitly any (TS7031) — the same
+  // reason FollowButton annotates its own parameter.
+}: PublicBrandPageProps) => {
   void hideFloatingChrome;
   const { isDesktop } = useResponsiveLayout();
   const [activeTab, setActiveTab] = useState<Tab>("about");
@@ -422,6 +461,21 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     [providedPastTrips, trips],
   );
 
+  // #3426 — the Past tab. The host's server-decided `past` rows (all four kinds,
+  // most recent first) are the source of truth. A host that predates the section
+  // feed passes no `past`; its `pastEvents` + `pastTrips` are then rendered
+  // instead of being discarded (they were fetched and dropped before #3426).
+  const pastCards = useMemo<SectionCardModel[]>(() => {
+    if (past !== undefined) {
+      return past.map((item) => offeringSectionCard(item, "past"));
+    }
+    return legacyPastCards(providedPastEvents ?? [], providedPastTrips ?? []);
+  }, [past, providedPastEvents, providedPastTrips]);
+  const happeningNowCards = useMemo<SectionCardModel[]>(
+    () => happeningNow.map((item) => offeringSectionCard(item, "happening_now")),
+    [happeningNow],
+  );
+
   // ORCH-1155 — About FIRST + default; offering tabs render ONLY when non-empty.
   // (I-PROPOSED-1155-ABOUT-FIRST-DEFAULT + I-PROPOSED-1155-TABS-HIDE-WHEN-EMPTY.)
   // ORCH-1186-C — total available menu items across all groups (chip count +
@@ -432,7 +486,10 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     if (venues.length > 0 || venuesLoadState !== "ready") {
       tabs.push("reservations");
     }
-    if (upcoming.length > 0 || upcomingHasMore) tabs.push("upcoming");
+    // #3426 — Happening now lives at the top of the Upcoming tab, so either
+    // bucket makes the tab appear.
+    if (happeningNow.length > 0 || upcoming.length > 0 || upcomingHasMore) tabs.push("upcoming");
+    if (pastCards.length > 0 || pastHasMore) tabs.push("past");
     // Historical ORCH-1155 source marker:
     // if (upcomingEvents.length > 0 || pastEvents.length > 0) tabs.push("events");
     if (upcomingEvents.length > 0) tabs.push("events");
@@ -441,6 +498,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     return tabs;
   }, [
     experiences.length,
+    happeningNow.length,
+    pastCards.length,
+    pastHasMore,
     pastTrips.length,
     upcoming.length,
     upcomingEvents.length,
@@ -542,7 +602,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 
   const countForTab = (tab: Tab): number | undefined => {
     if (tab === "reservations") return venues.length;
-    if (tab === "upcoming") return upcoming.length;
+    if (tab === "upcoming") return happeningNow.length + upcoming.length;
+    // #3426 — no number while more pages exist: "Past 30" would be a false total.
+    if (tab === "past") return pastHasMore ? undefined : pastCards.length;
     if (tab === "events") return upcomingEvents.length;
     if (tab === "trips") return upcomingTrips.length + pastTrips.length;
     if (tab === "experiences") return experiences.length;
@@ -627,14 +689,47 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         onRetry={callbacks.onRetryVenues}
       />
     ) : activeTab === "upcoming" ? (
-      <UpcomingList
-        rows={upcoming}
+      <View>
+        {happeningNowCards.length > 0 ? (
+          <HappeningNowBlock
+            cards={happeningNowCards}
+            theme={resolvedTheme}
+            palette={palette}
+            surface={surface}
+            isDesktop={isDesktop}
+            callbacks={callbacks}
+          />
+        ) : null}
+        {happeningNowCards.length > 0 && upcoming.length > 0 ? (
+          <Text
+            accessibilityRole="header"
+            style={[styles.sectionHead, { color: palette.tertiaryText }]}
+          >
+            Upcoming
+          </Text>
+        ) : null}
+        {happeningNowCards.length === 0 || upcoming.length > 0 ? (
+          <UpcomingList
+            rows={upcoming}
+            theme={resolvedTheme}
+            palette={palette}
+            surface={surface}
+            isDesktop={isDesktop}
+            emptyCopy="No upcoming offerings yet"
+            onPress={(item) => callbacks.onOpenUpcoming?.(item)}
+          />
+        ) : null}
+      </View>
+    ) : activeTab === "past" ? (
+      <PastList
+        cards={pastCards}
+        hasMore={pastHasMore}
+        loadState={pastLoadState}
         theme={resolvedTheme}
         palette={palette}
         surface={surface}
         isDesktop={isDesktop}
-        emptyCopy="No upcoming offerings yet"
-        onPress={(item) => callbacks.onOpenUpcoming?.(item)}
+        callbacks={callbacks}
       />
     ) : activeTab === "events" ? (
       <EventList
@@ -1517,20 +1612,30 @@ const UpcomingList: React.FC<{
   );
 };
 
-const OfferingMiniCard: React.FC<{
+interface OfferingMiniCardProps {
   item: PublicBrandUpcoming;
   theme: ResolvedTheme;
   palette: ThemePalette;
   surface: Surface;
   isDesktop: boolean;
   onPress: (item: PublicBrandUpcoming) => void;
-}> = ({ item, theme, palette, surface, isDesktop, onPress }) => {
+}
+
+const OfferingMiniCard: React.FC<OfferingMiniCardProps> = ({
+  item,
+  theme,
+  palette,
+  surface,
+  isDesktop,
+  onPress,
+}: OfferingMiniCardProps) => {
   const price = offeringPriceLabel(item);
+  const kindLabel = OFFERING_KIND_LABEL[item.offeringType];
   return (
     <Pressable
       onPress={() => onPress(item)}
       accessibilityRole="button"
-      accessibilityLabel={`Open ${item.offeringType} ${item.name}`}
+      accessibilityLabel={`Open ${kindLabel} ${item.name}`}
       style={({ pressed }) => [
         styles.oCard,
         surface.card,
@@ -1557,7 +1662,7 @@ const OfferingMiniCard: React.FC<{
           {item.name.length > 0 ? item.name : "Untitled offering"}
         </Text>
         <Text style={[styles.oCardMeta, { color: palette.tertiaryText }]}>
-          {item.offeringType}
+          {kindLabel}
         </Text>
         {price !== null ? (
           <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
@@ -1566,6 +1671,298 @@ const OfferingMiniCard: React.FC<{
         ) : null}
       </View>
     </Pressable>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// #3426 — Happening now + Past.
+//
+// Both render one card model so the three sources a section can be fed from —
+// the server's section rows (all four kinds), and a legacy host's `pastEvents`
+// / `pastTrips` — look and behave identically. Each card keeps the callback its
+// source already routes through: section rows open via onOpenUpcoming (which
+// routes by kind), legacy events via onOpenEvent, legacy trips via onOpenTrip.
+// ---------------------------------------------------------------------------
+interface SectionCardModel {
+  key: string;
+  kind: PublicBrandUpcoming["offeringType"];
+  name: string;
+  coverMediaUrl: string | null;
+  coverMediaType: PublicMediaType | null;
+  hueSeed: string;
+  section: Exclude<PublicBrandOfferingSection, "upcoming">;
+  startsAt: string | null;
+  endsAt: string | null;
+  priceLabel: string | null;
+  open: (callbacks: PublicBrandCallbacks) => void;
+}
+
+const offeringSectionCard = (
+  item: PublicBrandUpcoming,
+  section: SectionCardModel["section"],
+): SectionCardModel => ({
+  key: `${item.offeringType}:${item.offeringId}`,
+  kind: item.offeringType,
+  name: item.name,
+  coverMediaUrl: item.coverMediaUrl,
+  coverMediaType: item.coverMediaType,
+  hueSeed: item.offeringId,
+  section,
+  startsAt: item.startsAt,
+  endsAt: item.endsAt ?? null,
+  // A price on something that has ended is not an offer.
+  priceLabel: section === "past" ? null : offeringPriceLabel(item),
+  open: (callbacks) => callbacks.onOpenUpcoming?.(item),
+});
+
+const endSortKey = (card: SectionCardModel): number => {
+  const ms = Date.parse(card.endsAt ?? card.startsAt ?? "");
+  return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
+};
+
+// A host without the section feed: its own past events and trips, most recent
+// first. No date logic decides WHAT is past here — the host already did.
+const legacyPastCards = (
+  events: PublicBrandEvent[],
+  trips: PublicBrandTrip[],
+): SectionCardModel[] =>
+  [
+    ...events.map(
+      (event): SectionCardModel => ({
+        key: `${event.eventType}:${event.id}`,
+        kind: event.eventType,
+        name: event.name,
+        coverMediaUrl: event.coverMediaUrl,
+        coverMediaType: event.coverMediaType,
+        hueSeed: event.id,
+        section: "past",
+        startsAt: event.masterStartAtUtc,
+        endsAt: event.masterEndAtUtc,
+        priceLabel: null,
+        open: (callbacks) => callbacks.onOpenEvent(event),
+      }),
+    ),
+    ...trips.map(
+      (trip): SectionCardModel => ({
+        key: `trip:${trip.id}`,
+        kind: "trip",
+        name: trip.title,
+        coverMediaUrl: trip.coverMediaUrl,
+        coverMediaType: trip.coverMediaType,
+        hueSeed: trip.id,
+        section: "past",
+        startsAt: trip.startAt,
+        endsAt: trip.endAt,
+        priceLabel: null,
+        open: (callbacks) => callbacks.onOpenTrip(trip),
+      }),
+    ),
+  ].sort((a, b) => endSortKey(b) - endSortKey(a) || a.key.localeCompare(b.key));
+
+const sectionDateLine = (card: SectionCardModel): string => {
+  if (card.section === "past") {
+    const ended = formatPastDate(card.endsAt ?? card.startsAt);
+    return ended !== null ? `Ended ${ended}` : "Ended";
+  }
+  const until =
+    card.endsAt !== null ? formatUpcomingDateLine(card.endsAt) : null;
+  return until !== null && until !== "Date TBA"
+    ? `Happening now · until ${until}`
+    : "Happening now";
+};
+
+interface SectionCardProps {
+  card: SectionCardModel;
+  theme: ResolvedTheme;
+  palette: ThemePalette;
+  surface: Surface;
+  isDesktop: boolean;
+  callbacks: PublicBrandCallbacks;
+}
+
+// React.FC for JSX `key` under every consumer graph + an explicit parameter
+// type so no binding is implicitly any (the FollowButton pattern).
+const SectionMiniCard: React.FC<SectionCardProps> = ({
+  card,
+  theme,
+  palette,
+  surface,
+  isDesktop,
+  callbacks,
+}: SectionCardProps) => {
+  const kindLabel = OFFERING_KIND_LABEL[card.kind];
+  const dateLine = sectionDateLine(card);
+  return (
+    <Pressable
+      onPress={() => card.open(callbacks)}
+      accessibilityRole="button"
+      accessibilityLabel={`${[
+        `Open ${kindLabel} ${card.name}`,
+        dateLine,
+        ...(card.priceLabel !== null ? [card.priceLabel] : []),
+      ].join(". ")}.`}
+      testID={`brand-section-card-${card.section}`}
+      style={({ pressed }: { pressed: boolean }) => [
+        styles.oCard,
+        surface.card,
+        isDesktop && styles.oCardDesktop,
+        pressed && styles.cardPressed,
+      ]}
+    >
+      <CoverBlock
+        hue={hashHueFromString(card.hueSeed)}
+        mediaUrl={card.coverMediaUrl}
+        mediaType={card.coverMediaType}
+      />
+      <View style={styles.oCardBody}>
+        <Text style={[styles.oCardDate, { color: palette.accent }]}>
+          {dateLine}
+        </Text>
+        <Text
+          style={[
+            styles.oCardTitle,
+            { fontFamily: theme.fontFamilyValue, color: palette.primaryText },
+          ]}
+          numberOfLines={2}
+        >
+          {card.name.length > 0 ? card.name : "Untitled offering"}
+        </Text>
+        <Text style={[styles.oCardMeta, { color: palette.tertiaryText }]}>
+          {kindLabel}
+        </Text>
+        {card.priceLabel !== null ? (
+          <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
+            {card.priceLabel}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+};
+
+// A visually distinct block (accent border + wash, live dot, its own heading)
+// at the TOP of the Upcoming tab.
+interface HappeningNowBlockProps {
+  cards: SectionCardModel[];
+  theme: ResolvedTheme;
+  palette: ThemePalette;
+  surface: Surface;
+  isDesktop: boolean;
+  callbacks: PublicBrandCallbacks;
+}
+
+const HappeningNowBlock: React.FC<HappeningNowBlockProps> = ({
+  cards,
+  theme,
+  palette,
+  surface,
+  isDesktop,
+  callbacks,
+}: HappeningNowBlockProps) => (
+  <View
+    testID="brand-happening-now"
+    style={[
+      styles.nowBlock,
+      { borderColor: palette.accent, backgroundColor: palette.accentWash },
+    ]}
+  >
+    <View style={styles.nowHeadRow}>
+      <View style={[styles.nowDot, { backgroundColor: palette.accent }]} />
+      <Text
+        accessibilityRole="header"
+        style={[styles.nowHeadLabel, { color: palette.primaryText }]}
+      >
+        Happening now
+      </Text>
+    </View>
+    <OfferingGrid isDesktop={isDesktop}>
+      {cards.map((card: SectionCardModel) => (
+        <SectionMiniCard
+          key={card.key}
+          card={card}
+          theme={theme}
+          palette={palette}
+          surface={surface}
+          isDesktop={isDesktop}
+          callbacks={callbacks}
+        />
+      ))}
+    </OfferingGrid>
+  </View>
+);
+
+interface PastListProps {
+  cards: SectionCardModel[];
+  hasMore: boolean;
+  loadState: "ready" | "loading_more" | "error";
+  theme: ResolvedTheme;
+  palette: ThemePalette;
+  surface: Surface;
+  isDesktop: boolean;
+  callbacks: PublicBrandCallbacks;
+}
+
+const PastList: React.FC<PastListProps> = ({
+  cards,
+  hasMore,
+  loadState,
+  theme,
+  palette,
+  surface,
+  isDesktop,
+  callbacks,
+}: PastListProps) => {
+  if (cards.length === 0 && !hasMore) {
+    return <EmptyPane copy="No past offerings yet" palette={palette} />;
+  }
+  const loading = loadState === "loading_more";
+  const failed = loadState === "error";
+  return (
+    <View>
+      <OfferingGrid isDesktop={isDesktop}>
+        {cards.map((card: SectionCardModel) => (
+          <SectionMiniCard
+            key={card.key}
+            card={card}
+            theme={theme}
+            palette={palette}
+            surface={surface}
+            isDesktop={isDesktop}
+            callbacks={callbacks}
+          />
+        ))}
+      </OfferingGrid>
+      {hasMore && callbacks.onLoadMorePast !== undefined ? (
+        <View style={styles.loadMoreWrap}>
+          {failed ? (
+            <Text style={[styles.loadMoreError, { color: palette.secondaryText }]}>
+              Couldn’t load more past offerings.
+            </Text>
+          ) : null}
+          <Pressable
+            onPress={callbacks.onLoadMorePast}
+            disabled={loading}
+            accessibilityRole="button"
+            accessibilityLabel={
+              failed
+                ? "Try loading more past offerings again"
+                : "Show more past offerings"
+            }
+            accessibilityState={{ disabled: loading, busy: loading }}
+            testID="brand-past-load-more"
+            style={({ pressed }: { pressed: boolean }) => [
+              styles.loadMoreBtn,
+              surface.card,
+              pressed && styles.cardPressed,
+            ]}
+          >
+            <Text style={[styles.loadMoreLabel, { color: palette.primaryText }]}>
+              {loading ? "Loading…" : failed ? "Try again" : "Show more"}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
   );
 };
 
@@ -2099,6 +2496,58 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginTop: 24,
     marginBottom: 4,
+  },
+  // ---- #3426 happening now + past ----
+  sectionHead: {
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  nowBlock: {
+    borderRadius: 20,
+    borderWidth: 2,
+    padding: 14,
+  },
+  nowHeadRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  nowDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  nowHeadLabel: {
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
+  loadMoreWrap: {
+    alignItems: "center",
+    gap: 8,
+    marginTop: 20,
+  },
+  loadMoreBtn: {
+    minHeight: 44,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 12,
+    paddingHorizontal: 22,
+  },
+  loadMoreLabel: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  loadMoreError: {
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "center",
   },
   // ---- offering card ----
   oCard: {

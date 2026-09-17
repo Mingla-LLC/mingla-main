@@ -17,6 +17,7 @@ export type {
   PublicBrandEvent,
   PublicBrandExperience,
   PublicBrandLinks,
+  PublicBrandOfferingSection,
   PublicBrandPageProps,
   PublicBrandTicket,
   PublicBrandTrip,

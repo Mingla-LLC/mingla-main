@@ -76,6 +76,12 @@ import {
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackContributionSplitFields } from "./ngPaystackSplit.ts";
+// Chip-in → RSVP linkage: the server resolves and verifies rsvp_id (never a raw
+// client value). Sibling module so it is unit-testable.
+import {
+  resolveContributionRsvpId,
+  supabaseRsvpLinkReader,
+} from "./rsvpLink.ts";
 
 type ContributionSurface = "native" | "web" | "mobile-web";
 
@@ -93,6 +99,21 @@ function optionalTrimmed(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function contributionRetryBelongsToBuyer(
+  stored: { user_id: string | null; guest_email: string | null },
+  userId: string | null,
+  guestEmail: string | null,
+): boolean {
+  if (stored.user_id !== null) {
+    return userId !== null && stored.user_id === userId;
+  }
+  // A caller-supplied email cannot promote an anonymous contribution into an
+  // account-held retry. Anonymous identity stays the original normalized email.
+  const originalEmail = optionalTrimmed(stored.guest_email)?.toLowerCase();
+  return userId === null && originalEmail !== undefined &&
+    originalEmail === optionalTrimmed(guestEmail)?.toLowerCase();
 }
 
 async function contributionStillAuthorized(
@@ -228,7 +249,9 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   const eventId = typeof body.eventId === "string" ? body.eventId : "";
-  const rsvpId = optionalTrimmed(body.rsvpId) ?? null;
+  // Only a HINT. The persisted rsvp_id comes from resolveContributionRsvpId
+  // below, which verifies it belongs to this event and this buyer.
+  const claimedRsvpId = optionalTrimmed(body.rsvpId) ?? null;
   const amountCents = Number(body.amountCents);
   const guestName = optionalTrimmed(body.guestName) ?? null;
   const guestEmail = optionalTrimmed(body.guestEmail) ?? null;
@@ -281,11 +304,19 @@ serve(async (req: Request): Promise<Response> => {
   const { data: existingContribution } = await supabase
     .from("event_rsvp_contributions")
     .select(
-      "id,status,provider,stripe_payment_intent_id,provider_attempt_state",
+      "id,status,provider,stripe_payment_intent_id,provider_attempt_state,user_id,guest_email,rsvp_id",
     )
     .eq("event_id", eventId)
     .eq("caller_idempotency_key", callerIdempotencyKey)
     .maybeSingle();
+  // The unique key is (event_id, caller_idempotency_key), NOT a payer key.
+  // Establish ownership before linking, returning row state, or either rail.
+  if (
+    existingContribution &&
+    !contributionRetryBelongsToBuyer(existingContribution, userId, guestEmail)
+  ) {
+    return jsonResponse({ error: "contribution_retry_identity_mismatch" }, 409);
+  }
   if (
     existingContribution &&
     existingContribution.status !== "pending" &&
@@ -409,6 +440,58 @@ serve(async (req: Request): Promise<Response> => {
   })();
 
   const contributionId = existingContribution?.id ?? crypto.randomUUID();
+
+  // Link the chip-in to the buyer's RSVP on this event. Before this, the raw
+  // body.rsvpId was persisted and no caller sent one, so every contribution
+  // was written with rsvp_id NULL: the host guest console could not attach it
+  // (or its refund control) to the guest. Exactly-one match or stay unlinked;
+  // a failed lookup never blocks the chip-in.
+  const rsvpLink = await resolveContributionRsvpId(
+    supabaseRsvpLinkReader(supabase),
+    {
+      eventId,
+      userId,
+      // A same-account retry may supply a changed email. It must not redirect
+      // the original payer's link-guest fallback to that replacement identity.
+      guestEmail: existingContribution
+        ? existingContribution.guest_email
+        : guestEmail,
+      claimedRsvpId,
+    },
+  );
+  const rsvpId = rsvpLink.rsvpId;
+  console.info(JSON.stringify({
+    event: "rsvp_contribution_rsvp_link",
+    contributionId,
+    linked: rsvpId !== null,
+    source: rsvpLink.source,
+    claimRejected: rsvpLink.claimRejected,
+  }));
+  // A retried pending row written before the link existed gets it now. Only
+  // ever fills a NULL; never re-points an existing link.
+  if (existingContribution && rsvpId !== null) {
+    let linkUpdate = supabase
+      .from("event_rsvp_contributions")
+      .update({ rsvp_id: rsvpId })
+      .eq("id", contributionId)
+      .eq("event_id", eventId)
+      .is("rsvp_id", null);
+    // Keep the original identity check true at write time as well: a concurrent
+    // account deletion/identity change must not acquire this stale link.
+    linkUpdate = existingContribution.user_id === null
+      ? linkUpdate.is("user_id", null)
+      : linkUpdate.eq("user_id", existingContribution.user_id);
+    linkUpdate = existingContribution.guest_email === null
+      ? linkUpdate.is("guest_email", null)
+      : linkUpdate.eq("guest_email", existingContribution.guest_email);
+    const { error: linkErr } = await linkUpdate;
+    if (linkErr) {
+      console.warn(
+        "[rsvp-contribution-create] rsvp link on retry failed (non-fatal)",
+        linkErr.message,
+      );
+    }
+  }
 
   // WYSIWYG gift — FORCE organiser-absorbs regardless of the brand's ticket
   // switches (SPEC §10 Q-B): the buyer is charged EXACTLY the typed amount.

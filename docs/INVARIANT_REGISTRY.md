@@ -1,5 +1,24 @@
 # Invariant Registry
 
+## ACTIVE — issue #3430 (public brand section kind labels are human-readable)
+
+### I-3430-PUBLIC-BRAND-SECTION-KIND-LABELS-HUMAN-READABLE (ACTIVE)
+
+- **Rule:** When a shared public-brand section card presents an offering kind to a person, its visible and accessibility strings resolve through the single `OFFERING_KIND_LABEL` owner: `Event`, `RSVP`, `Trip`, `Experience`. The raw lowercase discriminator remains the data/control value for keys, callbacks and routing. Implementor and tester render guards protect both channels.
+- **Relationship:** This extends presentation consistency around active `I-3426-PUBLIC-BRAND-OFFERINGS-HAVE-ONE-DATE-DRIVEN-SECTION`; it does not alter that invariant's classification contract.
+- **Enforcement:** `packages/brand-rendering/PublicBrandPage.tsx` owns the canonical display mapping and applies it to both visible metadata and accessibility labels. Focused implementor and independent tester render suites cover all four offering kinds, while the existing #3426 cross-surface render suite protects section behavior.
+- **Regression:** Both #3430 suites passed and independently proved fail-on-revert by restoring the raw lowercase discriminator. The full shared-brand lane passed 9 suites / 63 tests; CI manifest validation passed 85 suites / 241 assertions / 93 providers; append-only validation passed 3/3.
+- **Status:** ACTIVE on 2026-09-15. PR #3432 merged as `01480c38b`; buyer web was verified in a real browser with canonical visible and accessibility labels, correct RSVP navigation, and zero console errors. Mingla Host and Mingla Explorer then shipped separate iOS and Android production OTAs on runtime 1.1.6 from that exact commit; all four canonical CDN verifiers and independent EAS readbacks passed.
+
+## ACTIVE — issue #3426 (public brand offerings are grouped by time)
+
+### I-3426-PUBLIC-BRAND-OFFERINGS-HAVE-ONE-DATE-DRIVEN-SECTION (ACTIVE)
+
+- **Rule:** Every public, eligible, non-cancelled event, RSVP, trip, and experience on a public brand page belongs to exactly one section based on its complete occurrence schedule: `Happening now` while any occurrence has started and not ended, `Upcoming` when its next occurrence is in the future, otherwise `Past` when every occurrence has ended. Database status labels never override occurrence time. `Happening now` and `Past` are omitted when empty; items are soonest-first in active/future sections and most-recent-first in Past; prices are not shown in Past. Buyer web, Mingla Host, and Mingla Explorer consume the same classification contract.
+- **Enforcement:** migration `20270707003426_issue_3426_brand_offering_sections.sql`; the public brand sections service and hooks; the shared brand-page rendering path; PostgreSQL 17 happy and adversarial suites; and focused service, hook, and cross-surface Jest regressions. The regression corpus covers mixed offering kinds, multiple occurrences, boundary time, cancelled/private/ineligible rows, stable ordering, empty-section omission, and the absence of production fixtures for currently-running or public trip/experience offerings.
+- **Regression:** The implementor and independent tester both recorded fail-on-revert evidence on #3426; removing the section reader/classifier or restoring status-driven grouping turns the targeted PostgreSQL/Jest suites red.
+- **Status:** ACTIVE on 2026-09-15. PR #3427 merged as `1bb4934f5`; migration and buyer web were applied first and browser-smoked on Smoke & Rhythm and Lantern Room. Mingla Host and Mingla Explorer then shipped per-platform production OTAs on runtime 1.1.6 from that exact commit, with all four CDN-served manifests independently verified. Production has no currently-running or public trip/experience fixture, so those cases are regression-test-proven rather than live-data-demonstrated.
+
 ## ACTIVE — issue #3184 (Ari website questions for brands without a website)
 
 ### I-PROPOSED-3184-SITES-REFUSAL-IS-NOT-AN-OUTAGE (ACTIVE)
@@ -9276,6 +9295,15 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 - **Rule:** The `static-gates` job runs no container and provisions no database. It declares no `services:`, invokes no `docker`, and installs no Supabase CLI. Database-backed contract proofs belong in `postgres-contract-suites.yml`, which owns the sole `supabase/postgres` service container and replays every migration from zero unconditionally.
 - **Enforcement:** the SC-11 assertion in `issue-2437-node-wave-shadow-parity.implementor.test.mjs`, scanning every `static-gates` step for container and CLI verbs with each forbidden literal assembled from fragments so the guard cannot match its own source; plus `STATIC_CLASS_A_STEP_SHA256`, deliberately re-cut at #2594 from the 9-step `d89bf992…` to the 7-step `982cd176…`, so any step returning to that job moves the seal and must be declared. Mutants proven: restoring the replay step reds both the container scan and the seal; restoring the CLI action reds; adding a job-level service container reds.
+
+---
+
+## ACTIVE — issue #3336 (Class A keeps a visible ten-percent readiness margin)
+
+### I-PROPOSED-3336-CLASS-A-READINESS-MARGIN (ACTIVE)
+
+- **Rule:** A successful Class A job is release-ready only at or below 540 seconds, preserving at least 60 seconds / 10% of its unchanged 600-second constitutional bound. A success above 540 through 600 seconds fails as `R1 READINESS-MARGIN FAIL`; a success above 600 remains the distinct #2594 `D3` constitutional failure; and a lone timeout-shaped cancellation remains the distinct #2594 `D6` failure against the 890-second kill floor and 900-second hard cap. Registry validation may reuse one exact-root tracked-file listing only within one validation or an explicit caller-owned immutable scope; the scope is discarded after the validation so sequential Git-index mutations are always observed.
+- **Enforcement:** `validateRegistry()` in `.github/scripts/ci-batch/validate-manifest-v2.mjs`; the deterministic owner accounting and immutable-scope proofs in `issue-2438-postgres-wave-shadow-parity.implementor.test.mjs`; the D4-only readiness composition and core-plus-readiness fixtures in `issue-2594-class-a-budget.mjs`; and the independently wired `issue-3336-class-a-margin.tester.test.mjs`, which commits A → B → A provider mutations, attacks wrong-root reuse, and distinguishes the 540/541/600/601/900-second outcomes. Class A remains manifest-complete and fail-closed; verification evidence lives on issue #3336 and PR #3433.
 
 ## ACTIVE — issue #1795 (venue order intelligence)
 

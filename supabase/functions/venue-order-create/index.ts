@@ -27,7 +27,6 @@ import {
   classifyStripeCheckoutSessionCreateFailure,
   classifyStripePaymentIntentCreateFailure,
   jsonResponse,
-  normalizePhoneE164,
   randomBuyerStatusToken,
   serviceClient,
   sha256Hex,
@@ -66,6 +65,12 @@ import { venueOrderPaystackReference } from "../_shared/venueOrderWebhook.ts";
 // that never reaches a webhook: a zero-total (free) round.
 import { fireVenueOrderPlacedForOrder } from "../_shared/venueOrderNotify.ts";
 import { venueOrderSplitFields } from "./ngPaystackSplit.ts";
+// Issue #3380 — the guest's phone is read WITH the country they chose.
+import {
+  LEGACY_NANP_REFUSAL,
+  legacyNanpGuessAllowed,
+  resolveBuyerPhone,
+} from "../_shared/buyerPhone.ts";
 import {
   resolveVenueOrderPaymentContinuation,
   stripeVenueOrderContinuationDependencies,
@@ -74,6 +79,18 @@ import {
 const ENABLED_PRICING_REGIONS = ["GB", "US", "EU", "CH"] as const;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Issue #3380 — the phone refusal keeps its machine code (every client already
+ * maps `buyer_phone_required`) but says what is actually wrong with the number
+ * the guest typed, instead of asking for a number they already gave.
+ */
+function failPhone(message: string): Response {
+  return jsonResponse(
+    { error: "buyer_phone_required", message },
+    venueOrderErrorStatus("buyer_phone_required"),
+  );
+}
 
 /** P-29 — the machine code AND the exact user-visible copy, together. */
 function fail(
@@ -121,7 +138,10 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   const buyerEmail = typeof buyer.email === "string"
     ? buyer.email.trim().toLowerCase()
     : "";
-  const buyerPhoneE164 = normalizePhoneE164(buyer.phone);
+  // Issue #3380 — `phoneCountryIso` is the country the guest's picker showed.
+  // An E.164 value (every client before this change) passes through unchanged.
+  const buyerPhone = resolveBuyerPhone(buyer.phone, buyer.phoneCountryIso);
+  const buyerPhoneE164 = buyerPhone.e164;
   const partySizeClaimed = Number.isInteger(body.partySizeClaimed)
     ? Number(body.partySizeClaimed)
     : null;
@@ -385,7 +405,21 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
     return fail("buyer_email_invalid");
   }
-  if (buyerPhoneE164 === null) return fail("buyer_phone_required");
+  if (buyerPhoneE164 === null) {
+    return buyerPhone.message === null
+      ? fail("buyer_phone_required")
+      : failPhone(buyerPhone.message);
+  }
+  // Issue #3380 — an app build from before the country picker sends bare
+  // national digits. "Ten digits are American" is only believable for a venue
+  // in North America; anywhere else it turned a Nigerian mobile into a
+  // stranger's US number, so it is refused with a way to fix it.
+  if (
+    buyerPhone.legacyNanpGuess &&
+    !legacyNanpGuessAllowed(pricing.payment_country)
+  ) {
+    return failPhone(LEGACY_NANP_REFUSAL);
+  }
 
   // ── Gate 9b — charge readiness, BEFORE any row is written. ───────────────
   const stripeAccountId = typeof pricing.stripe_account_id === "string"
