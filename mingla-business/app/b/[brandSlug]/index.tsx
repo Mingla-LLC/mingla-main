@@ -28,6 +28,10 @@ import {
   usePublicBrandBySlug,
   usePublicBrandVenues,
 } from "../../../src/hooks/usePublicEvents";
+import {
+  usePublicBrandHappeningNow,
+  usePublicBrandPast,
+} from "../../../src/hooks/usePublicBrandSections";
 import { PublicBrandPage } from "../../../src/components/brand/PublicBrandPage";
 import { PublicBrandNotFound } from "../../../src/components/brand/PublicBrandNotFound";
 
@@ -43,6 +47,14 @@ export default function PublicBrandRoute(): React.ReactElement {
   // Issue #1365 — Reservations venue list. A sibling query keeps its
   // loading/error/retry state independent from established Brand content.
   const brandVenuesQuery = usePublicBrandVenues(
+    typeof brandSlug === "string" ? brandSlug : null,
+  );
+  // #3426 — the date-decided Happening now block and Past tab, each its own
+  // query so neither can hold back the brand page.
+  const happeningNowQuery = usePublicBrandHappeningNow(
+    typeof brandSlug === "string" ? brandSlug : null,
+  );
+  const pastFeed = usePublicBrandPast(
     typeof brandSlug === "string" ? brandSlug : null,
   );
 
@@ -102,6 +114,11 @@ export default function PublicBrandRoute(): React.ReactElement {
       experiences={publicBrandQuery.data.experiences}
       upcoming={publicBrandQuery.data.upcoming}
       upcomingHasMore={publicBrandQuery.data.upcomingHasMore}
+      happeningNow={happeningNowQuery.data ?? []}
+      past={pastFeed.rows ?? []}
+      pastHasMore={pastFeed.hasMore}
+      pastLoadState={pastFeed.loadState}
+      onLoadMorePast={pastFeed.loadMore}
       menu={publicBrandQuery.data.menu}
       venue={publicBrandQuery.data.venue}
       venues={brandVenuesQuery.data ?? []}
