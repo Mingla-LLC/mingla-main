@@ -31,6 +31,7 @@ import {
 import { usePublicVenueAvailability } from "../../hooks/usePublicVenueAvailability";
 import { createGuestVenueReservation } from "../../services/venueGuestReservationService";
 import { guestReservationManagePath } from "../../utils/guestReservationManage";
+import { guestReservationFailureCopy } from "./venueGuestReservationErrorCopy";
 import {
   captureVenueOrganicEvent,
   getVenueOrganicJourneyToken,
@@ -285,7 +286,8 @@ export function GuestVenueReservation({
         setEmailServerInvalid(true);
         setError(null);
       } else {
-        setError(RESERVATION_FAILURE_COPY);
+        // #3387 — a refusal the guest can act on gets its own sentence.
+        setError(guestReservationFailureCopy(errorCode) ?? RESERVATION_FAILURE_COPY);
       }
       captureWeb("venue_reservation_failed", {
         surface: analyticsSurface,
