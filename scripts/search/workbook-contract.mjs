@@ -97,7 +97,7 @@ function routeIdentity(origin, record) {
   const citySlug = record.path.startsWith('/cities/') ? record.path.slice('/cities/'.length) : ''
   const routeKey = record.path === '/' ? 'home' : record.path.slice(1).replaceAll('/', '-')
   const isHost = record.path === '/host'
-  const isExplorer = record.path === '/explorer'
+  const isExplorer = record.path === '/going-out'
   const isTool = record.path === '/tools' || record.path.startsWith('/tools/')
   const isCity = citySlug.length > 0
   const pageFamily = isHost ? 'host_pillar' : isExplorer ? 'explorer_pillar' : isTool ? 'tools' : isCity ? 'city_hub' : 'brand_core'

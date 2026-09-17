@@ -31,6 +31,8 @@ pg_discover_business_events(p_cities text[], p_lower_bound timestamp with time z
 # #1929: exact-key public/hidden standard-event bundle; non-enumerable, NULL on denial, and contains no authoring/management fields.
 pg_direct_event_checkout_bundle(p_event_id uuid, p_brand_slug text, p_event_slug text)
 pg_public_brand_upcoming(p_brand_slug text, p_cursor_at timestamp with time zone, p_limit integer)
+# #3426: one date-decided section (happening_now/upcoming/past) of a public brand page; the same visibility, private-access and paid-supply guards as pg_public_brand_upcoming, no theme column, bounded page size.
+pg_public_brand_offering_section(p_brand_slug text, p_section text, p_cursor_at timestamp with time zone, p_cursor_id uuid, p_limit integer)
 pg_public_event_by_slug(p_brand_slug text, p_event_slug text)
 pg_public_event_tier_allin(p_event_id uuid)
 pg_public_experience_by_slug(p_brand_slug text, p_experience_slug text)

@@ -1,4 +1,5 @@
 import type { AvailableSlot } from "../types/venueReservation";
+import type { GuestManageReservation } from "../utils/guestReservationManage";
 import { supabase } from "./supabase";
 
 async function extractFunctionError(
@@ -65,6 +66,11 @@ export type GuestReservationResult =
     reservedForUtc: string;
     partySize: number;
     brandId: string;
+    /**
+     * #3392 — the private manage/cancel credential for a web booking. The
+     * server stores only its hash, so this response is the one place it exists.
+     */
+    guestCancelToken?: string;
   }
   | {
     kind: "requires_web_redirect";
@@ -114,6 +120,28 @@ export async function fetchGuestVenueRefund(input: {
   );
   if (error) throw error;
   return (data?.refund ?? null) as GuestVenueRefundSummary | null;
+}
+
+/**
+ * #3392 — the booking AND its refund for a guest's manage link. The refund
+ * alone could not open a booking that had no refund (every free booking).
+ */
+export async function fetchGuestReservationManage(input: {
+  reservationId: string;
+  guestToken: string;
+}): Promise<{
+  reservation: GuestManageReservation | null;
+  refund: GuestVenueRefundSummary | null;
+}> {
+  const { data, error } = await supabase.functions.invoke(
+    "venue-reservation-refund-status",
+    { body: input },
+  );
+  if (error) throw error;
+  return {
+    reservation: (data?.reservation ?? null) as GuestManageReservation | null,
+    refund: (data?.refund ?? null) as GuestVenueRefundSummary | null,
+  };
 }
 
 export async function cancelGuestVenueReservation(input: {

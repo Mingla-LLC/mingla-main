@@ -70,6 +70,20 @@ module.exports = {
     // optional — the manifest validator resolves this testMatch and requires
     // the two to agree exactly, so each half fails closed without the other.
     "**/__tests__/issue_3188_socials_one_line.test.tsx",
+    // #3426 [brand page Past tab + Happening now] — implementor RENDER proof of
+    // the Past tab, the Happening now block, tab visibility, load more and the
+    // no-longer-discarded `pastEvents`. Named here for reason #1 in this file's
+    // header, exactly as #3188 was, with its paired MANIFEST expectedFiles entry.
+    "**/__tests__/issue_3426_brand_sections.render.test.tsx",
+    // #3430 [Upcoming brand kind labels] — implementor RENDER proof that the
+    // four raw lowercase control values become their exact human-facing labels
+    // in both visible metadata and accessibility copy, while callbacks retain
+    // the original object. Paired with the MANIFEST expectedFiles registration.
+    "**/__tests__/issue_3430_upcoming_kind_labels.implementor.render.test.tsx",
+    // #3430 TESTER adversarial RENDER proof: hostile lowercase enums never leak
+    // into visible/a11y copy, section labels stay mapped, and callbacks retain
+    // their original object identity and lowercase routing discriminator.
+    "**/__tests__/issue_3430_upcoming_kind_labels.tester.adversarial.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|react-native-web|@react-native-community|react-native-svg|lucide-react-native|expo|@expo)",

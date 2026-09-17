@@ -1,7 +1,7 @@
 import type { RouteLifecycle } from '@/lib/search/route-registry'
 import { allCityHubsSearchReady } from './cities/registry'
 
-export type CorePageSlug = 'about' | 'explorer' | 'cities'
+export type CorePageSlug = 'about' | 'going-out' | 'cities'
 
 export interface CorePageRecord {
   readonly slug: CorePageSlug
@@ -32,11 +32,15 @@ export const CORE_PAGES: Readonly<Record<CorePageSlug, CorePageRecord>> = {
     directAnswer: 'Mingla is one platform with an Explorer experience for people choosing what to do and a Host experience for businesses and organisers creating, promoting and running the places, events and experiences they can choose.',
     reviewedAt: '2026-09-10',
   },
-  explorer: {
-    slug: 'explorer', pathname: '/explorer', lifecycle: CORE_PAGE_RELEASE_LIFECYCLE,
-    title: 'Mingla Explorer: Date Plans, Events & City Gems | Mingla',
+  // #3371 — moved from `/explorer` (which now permanently redirects here) so
+  // the menu's Explorer item can mean the home page, and named "Going out" so
+  // the label no longer says "explorer" (Seth, 2026-09-15). H1, description and
+  // body copy are unchanged; only the eyebrow and the title prefix changed.
+  'going-out': {
+    slug: 'going-out', pathname: '/going-out', lifecycle: CORE_PAGE_RELEASE_LIFECYCLE,
+    title: 'Going out: Date Plans, Events & City Gems | Mingla',
     description: 'Use Mingla to discover date ideas, events, restaurants, activities and city gems, compare what fits, and turn an idea into a shared plan.',
-    eyebrow: 'Mingla Explorer',
+    eyebrow: 'Going out',
     h1: 'Find a plan that fits the moment.',
     directQuestion: 'What does Mingla Explorer help you do?',
     directAnswer: 'Mingla helps you move from “what should we do?” to a plan that fits the people, timing, budget, location and mood—then save it, share it and take the real booking, RSVP or ticket action when one is available.',
@@ -57,6 +61,6 @@ export const CORE_PAGES: Readonly<Record<CorePageSlug, CorePageRecord>> = {
 export function allCoreTrustPagesSearchReady(): boolean {
   return allCityHubsSearchReady() &&
     CORE_PAGES.about.lifecycle === 'search_ready' &&
-    CORE_PAGES.explorer.lifecycle === 'search_ready' &&
+    CORE_PAGES['going-out'].lifecycle === 'search_ready' &&
     CORE_PAGES.cities.lifecycle === 'search_ready'
 }

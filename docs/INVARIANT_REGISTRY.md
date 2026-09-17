@@ -1,5 +1,24 @@
 # Invariant Registry
 
+## ACTIVE — issue #3430 (public brand section kind labels are human-readable)
+
+### I-3430-PUBLIC-BRAND-SECTION-KIND-LABELS-HUMAN-READABLE (ACTIVE)
+
+- **Rule:** When a shared public-brand section card presents an offering kind to a person, its visible and accessibility strings resolve through the single `OFFERING_KIND_LABEL` owner: `Event`, `RSVP`, `Trip`, `Experience`. The raw lowercase discriminator remains the data/control value for keys, callbacks and routing. Implementor and tester render guards protect both channels.
+- **Relationship:** This extends presentation consistency around active `I-3426-PUBLIC-BRAND-OFFERINGS-HAVE-ONE-DATE-DRIVEN-SECTION`; it does not alter that invariant's classification contract.
+- **Enforcement:** `packages/brand-rendering/PublicBrandPage.tsx` owns the canonical display mapping and applies it to both visible metadata and accessibility labels. Focused implementor and independent tester render suites cover all four offering kinds, while the existing #3426 cross-surface render suite protects section behavior.
+- **Regression:** Both #3430 suites passed and independently proved fail-on-revert by restoring the raw lowercase discriminator. The full shared-brand lane passed 9 suites / 63 tests; CI manifest validation passed 85 suites / 241 assertions / 93 providers; append-only validation passed 3/3.
+- **Status:** ACTIVE on 2026-09-15. PR #3432 merged as `01480c38b`; buyer web was verified in a real browser with canonical visible and accessibility labels, correct RSVP navigation, and zero console errors. Mingla Host and Mingla Explorer then shipped separate iOS and Android production OTAs on runtime 1.1.6 from that exact commit; all four canonical CDN verifiers and independent EAS readbacks passed.
+
+## ACTIVE — issue #3426 (public brand offerings are grouped by time)
+
+### I-3426-PUBLIC-BRAND-OFFERINGS-HAVE-ONE-DATE-DRIVEN-SECTION (ACTIVE)
+
+- **Rule:** Every public, eligible, non-cancelled event, RSVP, trip, and experience on a public brand page belongs to exactly one section based on its complete occurrence schedule: `Happening now` while any occurrence has started and not ended, `Upcoming` when its next occurrence is in the future, otherwise `Past` when every occurrence has ended. Database status labels never override occurrence time. `Happening now` and `Past` are omitted when empty; items are soonest-first in active/future sections and most-recent-first in Past; prices are not shown in Past. Buyer web, Mingla Host, and Mingla Explorer consume the same classification contract.
+- **Enforcement:** migration `20270707003426_issue_3426_brand_offering_sections.sql`; the public brand sections service and hooks; the shared brand-page rendering path; PostgreSQL 17 happy and adversarial suites; and focused service, hook, and cross-surface Jest regressions. The regression corpus covers mixed offering kinds, multiple occurrences, boundary time, cancelled/private/ineligible rows, stable ordering, empty-section omission, and the absence of production fixtures for currently-running or public trip/experience offerings.
+- **Regression:** The implementor and independent tester both recorded fail-on-revert evidence on #3426; removing the section reader/classifier or restoring status-driven grouping turns the targeted PostgreSQL/Jest suites red.
+- **Status:** ACTIVE on 2026-09-15. PR #3427 merged as `1bb4934f5`; migration and buyer web were applied first and browser-smoked on Smoke & Rhythm and Lantern Room. Mingla Host and Mingla Explorer then shipped per-platform production OTAs on runtime 1.1.6 from that exact commit, with all four CDN-served manifests independently verified. Production has no currently-running or public trip/experience fixture, so those cases are regression-test-proven rather than live-data-demonstrated.
+
 ## ACTIVE — issue #3184 (Ari website questions for brands without a website)
 
 ### I-PROPOSED-3184-SITES-REFUSAL-IS-NOT-AN-OUTAGE (ACTIVE)
@@ -22,6 +41,44 @@
 - **Enforcement:** subtest 2 of `.github/scripts/strict-grep/issue-2851-pr-concurrency-policy.implementor.test.mjs`, plus `.github/scripts/strict-grep/issue-3095-policy-projection-adversarial.tester.test.mjs` (test 9 refuses any undeclared digest literal). Both run in class A.
 - **Regression:** FR-1…FR-6 (widening, narrowing, a constant digest, including top-level concurrency, a lost registration line, undoing the inversion). The tester's 13 weakened-gate reverts. Test 9 goes red against any gate version that still carries a receipt literal (`1df3d458f`, `4b6442af6`, `a98202439`).
 - **Status:** ACTIVE on 2026-09-14. PR #3332 merged as `eb15e3d6f` after an independent tester FAIL, rework, and retest PASS. Verified on merged `main` in a clean archive: gate 11/11 and tester suite 9/9; an unrelated `paths:` edit leaves the gate green; a silently dropped registration line turns it red. Over 59 commits of history, the whole-document digest moved 53 times and the projection 3, each a real policy change. **Known residuals, recorded, not in scope:** `DENIED_FULL_SHA256` byte-pins the seven non-PR workflows. A `types:`, job `if:` or `branches:` edit can switch a PR lane off without any check going red (#3289). Two fixtures still text-match workflow bytes (#3339).
+
+## DRAFT — issue #3197 (every public Host page that passes the content floor is indexable within a minute)
+
+**POLICY CHANGE — supersedes the #2986 review model.** #2986 (`20270614002986_issue_2986_public_search_documents.sql`, whose text is pinned by CI and deliberately not edited) says existing public Host pages "remain public_noindex until an administrator or service job verifies the page and explicitly promotes it", and its table comment said "no publication side effect promotes a page". On 2026-09-12 Seth decided (#3197): *"All brands' public RSVP, events, trips, venue, experience public pages should be indexable on creation."* From `20270706003197_issue_3197_public_search_auto_promotion.sql` onward a per-minute pg_cron reconciler promotes every brand, event (including RSVP), trip, experience and verified venue that passes the unchanged #2986 content predicate, with no approval table and no allowlist. Every #2986 checklist key it writes is asserted `true` **by product policy, not individually verified** (four keys have no production data behind them: image rights, moderation, brand identity/ownership, trip and experience inclusions/fulfillment), and every such row says so in `change_source = 'issue_3197_auto_policy'` and its `change_reason`. The #2986 overlay table comment is replaced to record this. The #3176 operator path (`scripts/search/promote-public-document.mjs` → `upsert_public_search_document`) still exists and its rows take precedence for their entity; `docs/search/README.md` no longer claims every Host document needs an independent review receipt. The adjacent defect that made brand inventory untrustworthy — `events.status` never advances in production — is compensated for promotion only (see I-3197-BRAND-INVENTORY-IS-UPCOMING-AND-INDEXABLE), not fixed.
+
+### I-3197-SEARCH-PROMOTION-HAS-A-CALLER (DRAFT)
+
+- **Rule:** For every registered promotion surface `{table, column, indexableState, reader}` — today exactly one, `public_search_documents.lifecycle_state = 'search_ready'` read by `list_public_search_sitemap` — replaying `supabase/migrations/*.sql` in filename order with comments stripped: (A) at least one function body writes the literal indexable state into the table (a parameterised RPC that writes whatever its caller passes is a door, not a writer); (B) every such writer, and every function whose name says it reconciles, promotes or asserts convergence of public search, is reachable from a live `cron.schedule` (replayed by job name; a later literal `cron.unschedule` removes it) or a `CREATE TRIGGER`, transitively; (C) the reader still exists; (D) no migration promotes at apply time (top-level SQL, a `DO` block, or a direct call to a writer); (E) no anon-executable function filters the indexable state on an unregistered table.
+- **Why:** #2986 shipped the deny-by-default header, the sitemap reader, the validation trigger and the promotion RPC, and nothing ever called the RPC. Production held zero rows, every Host page served `noindex` and `/sitemap.xml` was an empty `<urlset>` from 2026-09-01 until #3197 — the fifth "switch with no caller" (#2168, #2222, #2290, #2305, #3197). I-2290's gate cannot see it: it only extracts `functions/v1/<name>` targets from cron commands, and a SQL function has none.
+- **Enforcement:** `.github/scripts/strict-grep/issue-3197-search-promotion-has-a-caller.mjs` (`batch:A`, `self-test` + `plain`, `selfTest: "wired"`; 3 good trees and 13 mutants) and `.github/scripts/strict-grep/__tests__/issue-3197-search-promotion-has-a-caller.test.mjs` (`node --test`, real chain: green as shipped; red when the reconcile or convergence `cron.schedule` is removed, when #3197 is absent, and when the migration calls the reconciler at apply time; and #3197 adds zero dynamic `cron.unschedule` calls to I-2290's frozen count).
+- **Fails-on-revert:** true line deletion of the reconcile `cron.schedule` from `20270706003197` exits 1 naming `writer issue_3197_reconcile_public_search has no live cron or trigger caller`; removing the #3197 migration exits 1 on rule A; byte-identical restore exits 0.
+
+### I-3197-RECONCILER-WRITES-ONLY-SEARCH-READY-OR-NOTHING (DRAFT)
+
+- **Rule:** At rest, every row with `change_source = 'issue_3197_auto_policy'` is `search_ready`. The reconciler's only other write is a transient `public_noindex` UPDATE that carries the demotion reason and is deleted in the same subtransaction. It never writes `draft`, `stale`, `expired_archived`, `gone` or `redirected`: the resolver returns those verbatim or before its integrity check, so they would 404 a republished page or hand a slug heir a 410/308. `review_due_at` is at most 48 hours and is refreshed below 24 hours, so if the job stops every page falls back to `stale` within 48 hours.
+- **Enforcement:** the reconciler body; adversarial pg17 A10 (every policy audit write across the suite is `search_ready` or a `public_noindex` immediately followed by DELETE, with anti-vacuity), happy H7/H8 (demoted pages come back on republish), H6 (review window).
+
+### I-3197-SEARCH-POLICY-IS-ENTITY-KEYED (DRAFT)
+
+- **Rule:** Eligibility is decided per `(entity_kind, entity_id)`. A row whose path is now owned by a different live entity (an heir that reused the slug) is rebound to the heir only when the heir itself qualifies, and otherwise deleted — including an operator `gone` or `redirected` row for the predecessor — so an heir is never served its predecessor's 410, 308 or 503 for longer than one tick. The audit keeps the predecessor in `before_row`.
+- **Enforcement:** adversarial pg17 A2 (rebind, with the pre-tick `dependency_failure` asserted so the fixture is real) and A3 (an operator `gone` row never 410s a visible heir).
+
+### I-3197-OPERATOR-OVERRIDE-WINS (DRAFT)
+
+- **Rule:** A row written through `upsert_public_search_document` (any other `change_source`) for the same entity is never modified by the reconciler, and an `is_test_record` row is never promoted. The convergence monitor reports such an entity as `held`, never as divergence. To release a hold an operator deletes the row, which the audit records.
+- **Enforcement:** adversarial pg17 A4 (three ticks, zero writes and zero audit rows on a qualifying held page) and A6a.
+
+### I-3197-BRAND-INVENTORY-IS-UPCOMING-AND-INDEXABLE (DRAFT)
+
+- **Rule:** A brand page qualifies only when it passes the #2986 brand floor AND at least one of its non-deleted offerings has a master `event_dates` row with `end_at > now()` AND passes its own #2986 content floor. `events.status` alone is never trusted as inventory.
+- **Why both halves:** production never advances `events.status`, so the literal #2986 predicate qualifies `/b/smokerhythm` and `/b/wegoagainexhibition` on events that ended in July and August. "end_at > now()" alone would still have qualified `/b/smokerhythm` through a future-dated QA event whose own page fails the floor.
+- **Enforcement:** `issue_3197_public_search_decide` (blocker `no_qualified_inventory`); adversarial pg17 A1a (both shapes, with the literal #2986 predicate asserted TRUE so the fixture is the real defect) and A1b (a promoted brand is demoted when its last indexable offering ends); happy H7.
+
+### I-3197-SEARCH-CONVERGENCE-IS-MONITORED (DRAFT)
+
+- **Rule:** `issue_3197_assert_public_search_converged` runs every 10 minutes and raises — which fails the job on the #1647 `pg_cron` health tile — when the reconcile job is not scheduled every minute with its literal command, when it has run history but no success in 5 minutes, or when a page that qualifies stays unindexed (or an indexed page stays unqualified, or a path is still bound to another entity) across a full reconcile cycle. A source token that moved in the last 2 minutes is `settling`, not divergent.
+- **Enforcement:** happy H4 (converged after a reconcile); adversarial A8 (a poisoned write is reported in `errors[]`, every other entity is still promoted in the same call, and the monitor raises naming the stuck page) and A9 (unscheduled, stalled, healthy and brand-new cases).
+- **Status (all #3197 entries):** DRAFT until independent tester PASS, merge, single-version apply of `20270706003197` to production, and production readback of the first ticks (rows, sitemap, `x-robots-tag`).
 
 ## DRAFT — issue #1777 (server-owned Brand Circle reach)
 
@@ -9238,6 +9295,15 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 - **Rule:** The `static-gates` job runs no container and provisions no database. It declares no `services:`, invokes no `docker`, and installs no Supabase CLI. Database-backed contract proofs belong in `postgres-contract-suites.yml`, which owns the sole `supabase/postgres` service container and replays every migration from zero unconditionally.
 - **Enforcement:** the SC-11 assertion in `issue-2437-node-wave-shadow-parity.implementor.test.mjs`, scanning every `static-gates` step for container and CLI verbs with each forbidden literal assembled from fragments so the guard cannot match its own source; plus `STATIC_CLASS_A_STEP_SHA256`, deliberately re-cut at #2594 from the 9-step `d89bf992…` to the 7-step `982cd176…`, so any step returning to that job moves the seal and must be declared. Mutants proven: restoring the replay step reds both the container scan and the seal; restoring the CLI action reds; adding a job-level service container reds.
+
+---
+
+## ACTIVE — issue #3336 (Class A keeps a visible ten-percent readiness margin)
+
+### I-PROPOSED-3336-CLASS-A-READINESS-MARGIN (ACTIVE)
+
+- **Rule:** A successful Class A job is release-ready only at or below 540 seconds, preserving at least 60 seconds / 10% of its unchanged 600-second constitutional bound. A success above 540 through 600 seconds fails as `R1 READINESS-MARGIN FAIL`; a success above 600 remains the distinct #2594 `D3` constitutional failure; and a lone timeout-shaped cancellation remains the distinct #2594 `D6` failure against the 890-second kill floor and 900-second hard cap. Registry validation may reuse one exact-root tracked-file listing only within one validation or an explicit caller-owned immutable scope; the scope is discarded after the validation so sequential Git-index mutations are always observed.
+- **Enforcement:** `validateRegistry()` in `.github/scripts/ci-batch/validate-manifest-v2.mjs`; the deterministic owner accounting and immutable-scope proofs in `issue-2438-postgres-wave-shadow-parity.implementor.test.mjs`; the D4-only readiness composition and core-plus-readiness fixtures in `issue-2594-class-a-budget.mjs`; and the independently wired `issue-3336-class-a-margin.tester.test.mjs`, which commits A → B → A provider mutations, attacks wrong-root reuse, and distinguishes the 540/541/600/601/900-second outcomes. Class A remains manifest-complete and fail-closed; verification evidence lives on issue #3336 and PR #3433.
 
 ## ACTIVE — issue #1795 (venue order intelligence)
 

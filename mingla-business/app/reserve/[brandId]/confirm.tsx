@@ -10,6 +10,7 @@ import {
   typography,
 } from "../../../src/constants/designSystem";
 import { confirmGuestVenueReservation } from "../../../src/services/venueGuestReservationService";
+import { guestReservationManagePath } from "../../../src/utils/guestReservationManage";
 import { Button } from "../../../src/components/ui/Button";
 
 type State = "loading" | "completed" | "pending" | "error";
@@ -119,7 +120,11 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
               onPress={() => {
                 if (typeof window !== "undefined") {
                   window.location.assign(
-                    `/reserve/${brandId}/manage#reservationId=${encodeURIComponent(manageReservationId)}&token=${encodeURIComponent(manageToken)}`,
+                    guestReservationManagePath({
+                      brandId: typeof brandId === "string" ? brandId : "",
+                      reservationId: manageReservationId,
+                      token: manageToken,
+                    }),
                   );
                 }
               }}
