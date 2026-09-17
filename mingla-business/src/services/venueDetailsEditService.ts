@@ -11,7 +11,7 @@
  *      request per venue; a new one replaces the old; the host can withdraw it.
  *
  * Every write is a SECURITY DEFINER RPC that checks event_manager+ on the brand
- * (supabase/migrations/20270707003386_issue_3386_venue_details_host_edit.sql).
+ * (supabase/migrations/20270710003386_issue_3386_venue_details_host_edit.sql).
  * The read goes through the existing brand-member SELECT policy on
  * `venue_listings`; guests never read this row, so the pending values never
  * reach a public surface.

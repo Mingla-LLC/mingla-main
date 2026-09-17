@@ -49,9 +49,10 @@
 -- precision, and a request that does not change the address never touches the
 -- stored pin (the address group is all-or-nothing, enforced by CHECK).
 --
--- Version: 20270707003386 — above every migration on origin/main
--- (20270705001984) and in every sibling worktree scanned on 2026-09-15
--- (20270706003197, 20270706000000).
+-- Version: 20270710003386 — renumbered on 2026-09-16 from 20270707003386,
+-- which sorted below versions already applied in production (20270708003439,
+-- 20270709000000). Above every migration on origin/main at that date
+-- (20270709000000). No later migration touches the objects defined here.
 --
 -- Apply from MERGED main through the Management API (blind `db push` is unsafe:
 -- migration-history drift). Additive: new nullable columns, constraints that
