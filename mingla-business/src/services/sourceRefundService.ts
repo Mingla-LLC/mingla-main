@@ -50,6 +50,68 @@ export async function requestSourceRefundAction(input: {
   return map((data?.refund ?? {}) as Record<string, unknown>);
 }
 
+/**
+ * #3391 — the host cancels a PAID venue booking and the guest is refunded in
+ * full, Mingla's fee included. The edge action commits the cancel and the
+ * refund obligation in one database transaction, then runs the #1221 refund
+ * runner. A retry replays the same refund; it never refunds twice.
+ *
+ * Throws `VenueCancelRefundError` carrying the server's refusal code
+ * (`payout_in_flight`, `already_refunded`, `seated_no_auto_refund`, ...).
+ */
+export class VenueCancelRefundError extends Error {
+  readonly code: string | null;
+  constructor(code: string | null) {
+    super(code ?? "venue_cancel_refund_failed");
+    this.name = "VenueCancelRefundError";
+    this.code = code;
+  }
+}
+
+async function edgeErrorCode(error: unknown): Promise<string | null> {
+  const context = (error as { context?: unknown } | null)?.context;
+  if (
+    context === null ||
+    typeof context !== "object" ||
+    typeof (context as { json?: unknown }).json !== "function"
+  ) {
+    return null;
+  }
+  try {
+    const body = (await (context as { json: () => Promise<unknown> }).json()) as {
+      error?: unknown;
+    };
+    return typeof body?.error === "string" ? body.error : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function cancelPaidVenueReservation(input: {
+  reservationId: string;
+  reason?: string | null;
+}): Promise<{ refund: SourceRefundSummary; replayed: boolean }> {
+  const { data, error } = await supabase.functions.invoke(
+    "venue-reservation-cancel",
+    {
+      body: {
+        reservationId: input.reservationId,
+        actor: "venue",
+        reason: input.reason ?? null,
+      },
+    },
+  );
+  if (error) throw new VenueCancelRefundError(await edgeErrorCode(error));
+  const refund = (data as { refund?: unknown } | null)?.refund;
+  if (refund === null || typeof refund !== "object") {
+    throw new VenueCancelRefundError(null);
+  }
+  return {
+    refund: map(refund as Record<string, unknown>),
+    replayed: (data as { replayed?: unknown }).replayed === true,
+  };
+}
+
 export async function requestRsvpContributionRefund(input: {
   eventId: string;
   contributionId: string;
