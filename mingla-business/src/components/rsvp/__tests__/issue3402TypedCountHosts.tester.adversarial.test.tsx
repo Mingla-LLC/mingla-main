@@ -63,6 +63,9 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     if (name.endsWith("/SmartScrollView")) return { ScrollView: React.forwardRef((props: any, _ref) => React.createElement("ScrollView", props, props.children)) };
     if (name.endsWith("/useKeyboardIsVisible")) return { useKeyboardIsVisible: () => false };
     if (name.endsWith("/useResponsiveLayout")) return { useResponsiveLayout: () => ({ isWideDesktop: false }) };
+    // #3409: the create host now runs the real step-change scroll hook
+    // (pure React, scrolls the harness ScrollView ref), registered as #3439 does.
+    if (name.endsWith("/useScrollToTopOnStepChange")) return require("../../../hooks/useScrollToTopOnStepChange");
     if (name.endsWith("/useBrandStripeStatus")) return { useBrandStripeStatus: () => ({ data: "active" }) };
     if (name.endsWith("/useBrands")) return { useBrand: () => ({ data: null }) };
     if (name.endsWith("/useCurrentBrandRole")) return { useCurrentBrandRole: () => ({ rank: "owner" }) };
