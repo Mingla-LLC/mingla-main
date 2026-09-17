@@ -71,6 +71,23 @@ type WindowMeasurable = {
   ) => void;
   scrollIntoView?: (options?: { block?: string; behavior?: string }) => void;
 };
+type WindowRect = { y: number; height: number };
+
+/** Measure `a`, then `b`, in window coordinates and hand both rects to `done`.
+ * False (nothing measured) when either node cannot be measured. */
+const measurePair = (
+  a: unknown,
+  b: unknown,
+  done: (a: WindowRect, b: WindowRect) => void,
+): boolean => {
+  const first = a as WindowMeasurable | null;
+  const second = b as WindowMeasurable | null;
+  if (first?.measureInWindow === undefined || second?.measureInWindow === undefined) return false;
+  first.measureInWindow((_ax, ay, _aw, ah) => {
+    second.measureInWindow?.((_bx, by, _bw, bh) => done({ y: ay, height: ah }, { y: by, height: bh }));
+  });
+  return true;
+};
 
 export interface FoundationRsvpPreviewProps {
   event: PublicEventProps;
@@ -204,33 +221,17 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
   // way down the screen (clear of the chrome and the software keyboard).
   const revealField = useCallback((node: unknown): void => {
     const field = node as WindowMeasurable | null;
-    const host = hostRef.current as unknown as WindowMeasurable | null;
     const scroll = scrollRef.current;
     if (field === null) return;
-    if (
-      scroll === null ||
-      typeof field.measureInWindow !== "function" ||
-      host === null ||
-      typeof host.measureInWindow !== "function"
-    ) {
-      // Desktop web has no body scroll ref: let the browser bring it into view.
-      if (Platform.OS === "web" && typeof field.scrollIntoView === "function") {
-        field.scrollIntoView({ block: "center", behavior: "smooth" });
-      }
-      return;
-    }
-    field.measureInWindow((_fx, fy, _fw, fh) => {
-      host.measureInWindow?.((_hx, hy, _hw, hh) => {
-        scroll.scrollTo({
-          y: rsvpRevealScrollOffset(
-            { y: fy, height: fh },
-            { y: hy, height: hh },
-            scrollYRef.current,
-          ),
-          animated: true,
-        });
+    const measured =
+      scroll !== null &&
+      measurePair(field, hostRef.current, (rect, host) => {
+        scroll.scrollTo({ y: rsvpRevealScrollOffset(rect, host, scrollYRef.current), animated: true });
       });
-    });
+    // Desktop web has no body scroll ref: let the browser bring it into view.
+    if (!measured && Platform.OS === "web" && typeof field.scrollIntoView === "function") {
+      field.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
   }, []);
 
   // Lift the ONE decision/submit/dialog state machine; share it with body + dock.
@@ -271,32 +272,20 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     if (measurePendingRef.current !== 0 && Date.now() - measurePendingRef.current < 1000) {
       return;
     }
-    const row = inlineDecisionRef.current as unknown as WindowMeasurable | null;
-    const host = hostRef.current as unknown as WindowMeasurable | null;
-    if (
-      row === null ||
-      host === null ||
-      typeof row.measureInWindow !== "function" ||
-      typeof host.measureInWindow !== "function"
-    ) {
-      setInlineDecisionPosition("unmeasured");
-      return;
-    }
     measurePendingRef.current = Date.now();
-    row.measureInWindow((_rx, ry, _rw, rh) => {
-      host.measureInWindow?.((_hx, hy, _hw, hh) => {
-        measurePendingRef.current = 0;
-        // Reserve the bar's runway before it first appears: the floating card
-        // is the same decision block plus its 10px padding and 1px border, so
-        // the page's last section is never under the bar on its first showing.
-        if (rh > 0) setFloatBarHeight((prev) => (prev > 0 ? prev : rh + FLOATING_CARD_CHROME));
-        const position = rsvpInlineDecisionPosition(
-          { y: ry, height: rh },
-          { y: hy, height: hh },
-        );
-        setInlineDecisionPosition((prev) => (prev === position ? prev : position));
-      });
+    const measured = measurePair(inlineDecisionRef.current, hostRef.current, (row, host) => {
+      measurePendingRef.current = 0;
+      // Reserve the bar's runway before it first appears: the floating card
+      // is the same decision block plus its 10px padding and 1px border, so
+      // the page's last section is never under the bar on its first showing.
+      if (row.height > 0) setFloatBarHeight((prev) => (prev > 0 ? prev : row.height + FLOATING_CARD_CHROME));
+      const position = rsvpInlineDecisionPosition(row, host);
+      setInlineDecisionPosition((prev) => (prev === position ? prev : position));
     });
+    if (!measured) {
+      measurePendingRef.current = 0;
+      setInlineDecisionPosition("unmeasured");
+    }
   }, [inlineDecisionRef]);
   const phoneBarEligible = !isDesktop && !acquisitionClosed;
   useEffect(() => {

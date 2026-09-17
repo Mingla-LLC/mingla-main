@@ -81,20 +81,16 @@ const draftIssues = (
   phonePattern: RegExp,
 ): RsvpContactIssue[] => {
   const issues: RsvpContactIssue[] = [];
-  const name = draft.name.trim();
-  const email = draft.email.trim();
-  const phone = draft.phone.trim();
-  if (name.length === 0) issues.push({ guestIndex, field: "name", problem: "missing" });
-  if (email.length === 0) {
-    issues.push({ guestIndex, field: "email", problem: "missing" });
-  } else if (!emailPattern.test(email)) {
-    issues.push({ guestIndex, field: "email", problem: "invalid" });
-  }
-  if (phone.length === 0) {
-    issues.push({ guestIndex, field: "phone", problem: "missing" });
-  } else if (!phonePattern.test(phone)) {
-    issues.push({ guestIndex, field: "phone", problem: "invalid" });
-  }
+  // Same order as on screen: name, email, phone. A blank field is "missing"; a
+  // filled one that fails its pattern (name has none) is "invalid".
+  const check = (field: RsvpContactFieldKey, pattern: RegExp | null): void => {
+    const value = draft[field].trim();
+    if (value.length === 0) issues.push({ guestIndex, field, problem: "missing" });
+    else if (pattern !== null && !pattern.test(value)) issues.push({ guestIndex, field, problem: "invalid" });
+  };
+  check("name", null);
+  check("email", emailPattern);
+  check("phone", phonePattern);
   return issues;
 };
 

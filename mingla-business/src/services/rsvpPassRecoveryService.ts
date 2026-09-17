@@ -21,10 +21,9 @@ export const fetchPublicRsvpPassMetadata = async (
   };
   const credential = result.credentials?.[0];
   if (!credential) throw new Error("rsvp_pass_metadata_missing");
-  // #3416 D4 — the pass's event, when the service states it (restore binding).
-  return typeof result.eventId === "string"
-    ? { ...credential, eventId: result.eventId }
-    : credential;
+  // #3416 D4 — the pass's event as the service states it (restore binding;
+  // the recovery hook validates it).
+  return { ...credential, eventId: result.eventId as string | undefined };
 };
 
 export const fetchPublicRsvpPassPdf = async (

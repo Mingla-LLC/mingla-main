@@ -1331,8 +1331,17 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // reply is now written to sessionStorage (same tab only: the redirect comes
   // back to this tab, and a later visitor on a shared device does not inherit
   // someone else's pass) and read back on mount. Nothing goes in the URL.
+  //
+  // #3416 FINDING-1 — a signed-in guest is never restored from the tab: when they
+  // have already replied (their own reply in this tab, or a chip-in return) the
+  // hook reads their RSVP and pass from the server before any decision is live.
   const { restoredRsvp, recoveryNotice, onResolved: handleRsvpResolved, retryRecovery } =
-    useRsvpGuestRecovery(event.id, user?.id ?? null, isRsvp);
+    useRsvpGuestRecovery(event.id, user?.id ?? null, isRsvp, {
+      chipInReturn: routeParams.contribution !== undefined,
+      eventName: publicEvent.name,
+      dateLine: publicEvent.dateLine,
+      venueLine: publicEvent.venueName ?? "",
+    });
   useEffect(() => {
     lastRsvpContactRef.current = null;
     chipInIdempotencyRef.current = null;

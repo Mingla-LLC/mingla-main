@@ -392,3 +392,14 @@ describe("the momentum card", () => {
     expect(textOf(byTestID(tree, "orch-1157-rsvp-momentum-sub")[0])).toBe("Full");
   });
 });
+
+describe("#3416 plus-one field copy", () => {
+  it("marks an empty plus-one's name, email and phone the way it marks the guest's own", async () => {
+    const tree = await mount({});
+    await press(byTestID(tree, "orch-1157-rsvp-plus-plus")[0]);
+    await press(byTestID(tree, "orch-1150-rsvp-going")[0]);
+    const texts = hostTexts(tree);
+    expect(texts).toEqual(expect.arrayContaining(["Add their name", "Add their email", "Add their phone number"]));
+    expect(texts).not.toContain("Required");
+  });
+});

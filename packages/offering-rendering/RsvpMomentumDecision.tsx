@@ -124,6 +124,8 @@ export interface RsvpMomentumDecisionProps {
   /** Waitlist is ON for this event (drives the Going→"Join waitlist" variant). */
   waitlistEnabled: boolean;
   submitting: boolean;
+  /** #3416 FINDING-1 — the guest's existing reply is still unknown: no decision is live. */
+  locked?: boolean;
   /**
    * Going / Maybe both need a reachable guest. On buyer-web the contact form
    * (RsvpPublicBody) gates this; on consumer the logged-in JWT supplies it.
@@ -296,6 +298,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   onPlusChange,
   waitlistEnabled,
   submitting,
+  locked = false,
   contactReady,
   onGoing,
   onMaybe,
@@ -388,12 +391,13 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   // respond was both misleading and announced as "dimmed" to screen readers.
   const goingDisabled =
     submitting ||
+    locked ||
     goingResolved ||
     pendingResolved ||
     waitlistedResolved ||
     (ctaState === "full" && !waitlistEnabled);
   const maybeDisabled =
-    submitting || goingResolved || pendingResolved || waitlistedResolved || maybeResolved;
+    submitting || locked || goingResolved || pendingResolved || waitlistedResolved || maybeResolved;
   const needsDetailsHint = contactReady ? undefined : "Add your details above first";
   // The guest's OWN confirmed "going" is the only selected state: accent fill +
   // check mark. An unresolved Going is a primary action with an "add me" glyph.
@@ -563,7 +567,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   const NotGoingButton = (
     <Pressable
       onPress={onNotGoing}
-      disabled={submitting}
+      disabled={submitting || locked}
       accessibilityRole="button"
       accessibilityLabel="Can't go"
       style={[...dbtnBase]}

@@ -13,6 +13,12 @@
  * I-5 fails if a service answer for another entity or event is not a denial (#3416 D4).
  * I-6 fails if an answer that cannot be bound shows the stored pass, or if the
  *     retry does not ask the service again (#3416 D1/D4).
+ * I-7 fails if a signed-in guest who already replied gets a live decision before
+ *     their own RSVP is read from the server, or if the server's pass is not shown
+ *     (#3416 FINDING-1).
+ * I-8 fails if a failed read unlocks the decision, or if the retry does not read
+ *     again and hand a guest with no RSVP back a working invite (#3416 FINDING-1).
+ * I-9 fails if a chip-in return without a tab reply is not read first (#3416 FINDING-1).
  */
 import React from "react";
 import { Platform, View } from "react-native";
@@ -21,10 +27,13 @@ import { createThemePalette } from "@mingla/offering-rendering/themePalette";
 import { resolveTheme } from "@mingla/offering-rendering/themeResolver";
 import { useRsvpGuestRecovery } from "../useRsvpGuestRecovery";
 import { RSVP_RECOVERY_DENIED, RSVP_RECOVERY_OFFLINE } from "../useRsvpGuestRecovery";
+import { RSVP_REPLY_CHECKING, RSVP_REPLY_CHECK_FAILED } from "../useRsvpGuestRecovery";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const mockVerify = jest.fn();
 jest.mock("../../../services/rsvpPassRecoveryService", () => ({ fetchPublicRsvpPassMetadata: (...args: unknown[]) => mockVerify(...args) }));
+const mockOwnRead = jest.fn();
+jest.mock("../../../services/rsvpOwnReplyService", () => ({ fetchOwnGoingRsvp: (...args: unknown[]) => mockOwnRead(...args) }));
 jest.mock("react-native", () => {
   const base = jest.requireActual("../../../../__manual_mocks__/react-native.js");
   const curve = (x: number) => x;
@@ -102,6 +111,7 @@ beforeEach(() => {
   storage.setItem.mockImplementation((key, value) => { values.set(key, value); });
   storage.removeItem.mockImplementation((key) => { values.delete(key); });
   mockVerify.mockReset().mockResolvedValue({});
+  mockOwnRead.mockReset().mockReturnValue(new Promise(() => undefined));
   submit.mockReset().mockResolvedValue({ status: "going", approvalStatus: "approved", rsvpId: "same-id", confirmationToken: null,
     credentials: [{ entityType: "primary", entityId: "same-id", displayName: "Account A", qrCode: "account-a-private-qr", pdfFetchRef: "account-a-pdf" }], anonymousRecovery: [] });
 });
@@ -218,4 +228,73 @@ test("I-6 an answer that cannot be bound to this event keeps the reply, never th
   expect(recoveryOut.retryRecovery).toBeNull();
   await act(async () => { current.passAction!.onPress(); });
   expect(popup().details.credentials[0].qrCode).toBe("served-qr");
+});
+
+function HintedHarness({ identity }: { identity: string | null }) {
+  const recovery = useRsvpGuestRecovery("night-a", identity, true, { chipInReturn: true, eventName: "Night A", dateLine: "Saturday", venueLine: "Test Venue" });
+  recoveryOut = recovery;
+  return <ReplyHarness identity={identity} recovery={recovery} />;
+}
+type Rendered = Tree & { root: { findAll: (p: (n: { type: unknown; props: Record<string, unknown> }) => boolean) => Array<{ props: Record<string, unknown> }> } };
+const goingButton = (tree: Tree) =>
+  (tree as Rendered).root.findAll((n) => typeof n.type === "string" && n.props.testID === "orch-1150-rsvp-going")[0];
+const confirmGoing = async () => {
+  await act(async () => { await (current.confirmDialog as React.ReactElement<{ children: React.ReactElement<any> }>).props.children.props.onConfirm(); });
+};
+
+test("I-7 a signed-in guest who already replied gets no live decision until their own RSVP is read, then sees the server's pass", async () => {
+  const accountA = await mount("account-a");
+  await acceptGoing();
+  await unmount(accountA);
+  reload(); // the chip-in return reload
+  const read = deferred(); mockOwnRead.mockReturnValue(read.promise);
+  const tree = await mount("account-a");
+  expect(mockOwnRead).toHaveBeenCalledWith("account-a", "night-a");
+  expect(recoveryOut.recoveryNotice).toBe(RSVP_REPLY_CHECKING);
+  expect(current.replyLocked).toBe(true);
+  expect(goingButton(tree).props.accessibilityState).toEqual({ disabled: true, selected: false });
+  submit.mockClear();
+  await act(async () => { current.onGoingTap(); });
+  await confirmGoing();
+  await act(async () => { current.onMaybe(); current.onNotGoing(); });
+  expect(submit).not.toHaveBeenCalled();
+  await act(async () => { read.resolve({ rsvpId: "rsvp-own", approvalStatus: "approved", qrCode: "server-qr", displayName: "Account A" }); });
+  expect(recoveryOut.recoveryNotice).toBeNull();
+  expect(current.replyLocked).toBe(false);
+  expect(current.guestStatus).toBe("going");
+  await act(async () => { current.passAction!.onPress(); });
+  expect(popup().details.credentials).toEqual([{ entityType: "primary", entityId: "rsvp-own", displayName: "Account A", qrCode: "server-qr", pdfFetchRef: "rsvp-own" }]);
+  expect(mockVerify).not.toHaveBeenCalled();
+});
+
+test("I-8 a failed read keeps the decision locked with a retry; a retry that finds no RSVP hands back a working invite", async () => {
+  const accountA = await mount("account-a");
+  await acceptGoing();
+  await unmount(accountA);
+  reload();
+  mockOwnRead.mockRejectedValueOnce(new Error("offline"));
+  await mount("account-a");
+  expect(recoveryOut.recoveryNotice).toBe(RSVP_REPLY_CHECK_FAILED);
+  expect(current.replyLocked).toBe(true);
+  expect(recoveryOut.retryRecovery).not.toBeNull();
+  submit.mockClear();
+  await act(async () => { current.onGoingTap(); });
+  expect(submit).not.toHaveBeenCalled();
+  mockOwnRead.mockResolvedValueOnce(null);
+  await act(async () => { recoveryOut.retryRecovery!(); });
+  expect(mockOwnRead).toHaveBeenCalledTimes(2);
+  expect(recoveryOut.recoveryNotice).toBeNull();
+  expect(current.replyLocked).toBe(false);
+  expect(current.guestStatus).toBeNull();
+  await acceptGoing();
+  expect(submit).toHaveBeenCalledTimes(1);
+});
+
+test("I-9 a signed-in chip-in return with nothing in the tab is still read before any decision is live", async () => {
+  let tree!: Tree;
+  await act(async () => { tree = create(<HintedHarness identity="account-a" />); });
+  trees.push(tree);
+  expect(mockOwnRead).toHaveBeenCalledWith("account-a", "night-a");
+  expect(current.replyLocked).toBe(true);
+  expect(recoveryOut.recoveryNotice).toBe(RSVP_REPLY_CHECKING);
 });

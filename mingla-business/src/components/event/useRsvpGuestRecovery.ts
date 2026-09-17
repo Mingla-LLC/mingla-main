@@ -14,6 +14,9 @@ const IDENTITY_KEY = "mingla.rsvp.identity.v1";
 const SNAPSHOT_PREFIX = "mingla.rsvp.guest.v1:";
 export const RSVP_RECOVERY_DENIED = "This saved pass is no longer available. Check your RSVP with the host.";
 export const RSVP_RECOVERY_OFFLINE = "We couldn't confirm your pass — try again.";
+/** #3416 FINDING-1 — a signed-in guest's existing reply is being read from the server. */
+export const RSVP_REPLY_CHECKING = "Checking your RSVP…";
+export const RSVP_REPLY_CHECK_FAILED = "We couldn't check your RSVP — try again.";
 
 const readStorage = (): Storage | null => {
   if (Platform.OS !== "web" || typeof window === "undefined") return null;
@@ -64,13 +67,15 @@ const isStale = (tab: TabRecovery, key: string, raw: string): boolean => {
 // restores for a signed-in guest (see the D2 gate in readSnapshot); for an
 // anonymous guest it restores the reply label only, and its pass only after the
 // service confirms that exact entity and this event (D1/D4).
-const ownerMismatch = (raw: string, identity: string): boolean => {
+const NO_OWNER = Symbol("no owner stamp");
+const ownerOf = (raw: string): unknown => {
   try {
     const record = JSON.parse(raw) as unknown;
-    if (typeof record !== "object" || record === null || !("owner" in record)) return false;
-    return (record as { owner: unknown }).owner !== identity;
+    return typeof record === "object" && record !== null && "owner" in record
+      ? (record as { owner: unknown }).owner
+      : NO_OWNER;
   } catch {
-    return false; // Unparseable bytes are rejected by the snapshot parser.
+    return NO_OWNER; // Unparseable bytes are rejected by the snapshot parser.
   }
 };
 const serializeOwned = (snapshot: RsvpGuestSnapshot, identity: string): string =>
@@ -99,7 +104,7 @@ const bindServiceCredential = (
   ) return "mismatch";
   if (
     c.entityType === undefined || c.entityId === undefined || c.eventId === undefined ||
-    typeof c.qrCode !== "string" || c.qrCode.length === 0
+    typeof c.qrCode !== "string" || c.qrCode.trim().length === 0
   ) return "unconfirmed";
   return {
     displayName: typeof c.displayName === "string" ? c.displayName : "Guest",
@@ -158,17 +163,18 @@ const readSnapshot = (eventId: string, identity: string): RsvpGuestSnapshot | nu
     if (purgeFailed) return null;
     storage.setItem(IDENTITY_KEY, identity);
     if (changed) return null;
-    // #3416 D2 — tab recovery is for anonymous, token-verified guests only. A
-    // signed-in guest's reply never comes back from tab storage (the service
-    // issues them no recovery token to check it with).
-    if (identity !== ANONYMOUS) return null;
     const raw = storage.getItem(key);
     if (raw === null) return null;
     if (isStale(tab, key, raw)) {
       try { storage.removeItem(key); } catch { /* Still never restored here. */ }
       return null;
     }
-    if (ownerMismatch(raw, identity)) return null;
+    const owner = ownerOf(raw);
+    // #3416 D2/D5 — for a signed-in viewer only a reply this identity stamped
+    // counts, and even then only as a HINT that they already replied (the hook
+    // never restores it; it asks the server instead). Anonymous: foreign
+    // stamps are refused, unstamped replies are only ever label + verify.
+    if (identity === ANONYMOUS ? owner !== NO_OWNER && owner !== identity : owner !== identity) return null;
     return parseRsvpGuestSnapshot(raw, eventId, Date.now());
   } catch {
     // Includes a failed identity-marker write: restore nothing.
@@ -177,8 +183,23 @@ const readSnapshot = (eventId: string, identity: string): RsvpGuestSnapshot | nu
   }
 };
 
+/** What the page knows about a signed-in guest's return (FINDING-1). */
+export interface RsvpOwnReplyHints {
+  /** `?contribution=paid|return`: the guest just chipped in, so they already replied. */
+  chipInReturn?: boolean;
+  /** Display text for a pass read back from the server. */
+  eventName?: string;
+  dateLine?: string;
+  venueLine?: string;
+}
+
 /** Web recovery is scoped by actual identity + event + accepted reply revision. */
-export const useRsvpGuestRecovery = (eventId: string, userId: string | null, enabled: boolean) => {
+export const useRsvpGuestRecovery = (
+  eventId: string,
+  userId: string | null,
+  enabled: boolean,
+  hints: RsvpOwnReplyHints = {},
+) => {
   const identity = JSON.stringify(userId);
   const contextKey = JSON.stringify([eventId, identity, enabled]);
   const contextRef = useRef({ key: contextKey });
@@ -192,14 +213,23 @@ export const useRsvpGuestRecovery = (eventId: string, userId: string | null, ena
   const revision = useRef(0);
   // Bumped only by a newer accepted reply, never by unmount or navigation.
   const accepted = useRef(0);
-  const fresh = () => ({
-    context,
-    snapshot: enabled ? readSnapshot(eventId, identity) : null,
-    // #3416 D1 — the pass the service confirmed; null until it has.
-    confirmed: null as RsvpGuestSnapshotDetails | null,
-    notice: null as string | null,
-    attempt: 0,
-  });
+  const fresh = () => {
+    const kept = enabled ? readSnapshot(eventId, identity) : null;
+    // #3416 FINDING-1 — a signed-in guest who already replied (their own stamped
+    // reply in this tab, or a chip-in return) must not be offered a live Going
+    // from an empty invite: their reply is read from the server first.
+    const checkOwn = enabled && userId !== null && (kept !== null || hints.chipInReturn === true);
+    return {
+      context,
+      // #3416 D2 — a signed-in reply is never restored from tab storage.
+      snapshot: userId === null ? kept : null,
+      // #3416 D1 — the pass the service confirmed; null until it has.
+      confirmed: null as RsvpGuestSnapshotDetails | null,
+      notice: checkOwn ? RSVP_REPLY_CHECKING : null as string | null,
+      attempt: 0,
+      checkOwn,
+    };
+  };
   const [state, setState] = useState(fresh);
   if (state.context !== context) {
     revision.current += 1;
@@ -236,10 +266,61 @@ export const useRsvpGuestRecovery = (eventId: string, userId: string | null, ena
       markStale(tab, key, ANY_BYTES);
     }
   }, [current, eventId, identity]);
-  const offline = state.context === context && state.notice === RSVP_RECOVERY_OFFLINE;
+  const offline = state.context === context &&
+    (state.notice === RSVP_RECOVERY_OFFLINE || state.notice === RSVP_REPLY_CHECK_FAILED);
   const retryRecovery = useCallback((): void => {
-    if (current()) setState((value) => ({ ...value, notice: null, attempt: value.attempt + 1 }));
+    if (current()) {
+      setState((value) => ({
+        ...value,
+        notice: value.checkOwn ? RSVP_REPLY_CHECKING : null,
+        attempt: value.attempt + 1,
+      }));
+    }
   }, [current]);
+
+  // #3416 FINDING-1 — read the signed-in guest's own reply and pass from the
+  // server. While it is unknown (checking or failed) the page shows a notice and
+  // no live decision; see RsvpOfferingBody's replyLocked.
+  const checkOwn = state.context === context && state.checkOwn;
+  useEffect(() => {
+    if (!checkOwn || userId === null) return undefined;
+    let cancelled = false;
+    const owns = () => !cancelled && current();
+    // Loaded on demand: only a signed-in guest who already replied needs it.
+    import("../../services/rsvpOwnReplyService").then(({ fetchOwnGoingRsvp }) => fetchOwnGoingRsvp(userId, eventId)).then((own) => {
+      if (!owns()) return;
+      if (own === null) {
+        setState((value) => ({ ...value, checkOwn: false, notice: null }));
+        return;
+      }
+      const details: RsvpGuestSnapshotDetails | null =
+        own.approvalStatus === "approved" && own.qrCode !== null
+          ? {
+              eventName: hints.eventName ?? "",
+              dateLine: hints.dateLine ?? "",
+              venueLine: hints.venueLine ?? "",
+              guestName: own.displayName ?? "You",
+              status: "going",
+              plusGuests: [],
+              confirmationToken: null,
+              credentials: [{ entityType: "primary", entityId: own.rsvpId, displayName: own.displayName ?? "You", qrCode: own.qrCode, pdfFetchRef: own.rsvpId }],
+              anonymousRecovery: [],
+            }
+          : null;
+      setState((value) => ({
+        ...value,
+        checkOwn: false,
+        notice: null,
+        snapshot: { version: 1, eventId, rsvpId: own.rsvpId, guestStatus: "going", guestApproval: own.approvalStatus, details, savedAtMs: Date.now() },
+        confirmed: details,
+      }));
+    }).catch(() => {
+      if (owns()) setState((value) => ({ ...value, notice: RSVP_REPLY_CHECK_FAILED }));
+    });
+    return () => { cancelled = true; };
+    // Display hints are read when the answer lands; they never restart the read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkOwn, state.attempt, current, eventId, userId]);
 
   useEffect(() => {
     if (snapshot === null) return undefined;

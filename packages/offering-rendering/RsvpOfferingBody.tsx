@@ -408,6 +408,8 @@ interface RsvpDecisionState {
   passAction: { label: string; onPress: () => void; testID?: string } | null;
   /** #3416 D1 — "Try again" while a restored pass could not be confirmed; else null. */
   recoveryAction: { label: string; onPress: () => void; testID?: string } | null;
+  /** #3416 FINDING-1 — a signed-in guest's existing reply is not known yet: no live decision. */
+  replyLocked: boolean;
   /** The INLINE decision block, so the surface can hide the floating copy while it is on screen. */
   inlineDecisionRef: React.RefObject<View | null>;
   floatingDecisionRef: React.RefObject<View | null>;
@@ -447,7 +449,7 @@ function useReplyOwnedState<T>(
   contextRef: { readonly current: object },
   context: object,
   unowned: T,
-): [T, (next: T) => void, (owner: object) => T | undefined] {
+): [T, (next: T) => void] {
   const [slot, setSlot] = useState<{ owner: object; value: T }>(() => ({
     owner: context,
     value: unowned,
@@ -460,9 +462,7 @@ function useReplyOwnedState<T>(
     },
     [contextRef],
   );
-  // The value a given (usually the previous) context wrote, if it wrote one.
-  const writtenBy = (owner: object): T | undefined => (slot.owner === owner ? slot.value : undefined);
-  return [slot.owner === context ? slot.value : unowned, set, writtenBy];
+  return [slot.owner === context ? slot.value : unowned, set];
 }
 
 /**
@@ -491,6 +491,10 @@ export const useRsvpOfferingState = (
     return () => { mounted.current = false; };
   }, []);
   const isCurrent = useCallback(() => mounted.current && contextRef.current === context, [context]);
+  // #3416 FINDING-1 — for a signed-in viewer a recovery notice means their own
+  // reply is still being read from the server (or that read failed). Until it is
+  // known nothing may submit: a re-submit would reset an approved guest.
+  const replyLocked = isLoggedIn && props.recoveryNotice != null;
   const focusDecisionRequested = useRef(false);
   const acceptedRevision = useRef(0);
 
@@ -577,12 +581,14 @@ export const useRsvpOfferingState = (
   // FLOW A — Going confirmation dialog + success popup state (body-owned).
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
-  const [successDetails, setSuccessDetails, successDetailsWrittenBy] = useReplyOwnedState<RsvpConfirmationDetails | null>(
+  const [successDetails, setSuccessDetails] = useReplyOwnedState<RsvpConfirmationDetails | null>(
     contextRef,
     context,
     null,
   );
   const visiblePassRef = useRef(successDetails);
+  // The pass popup the last render showed, read before this render replaces it.
+  const lastVisiblePass = visiblePassRef.current;
   visiblePassRef.current = successDetails;
   const downloadPass = useCallback(async (
     credential: RsvpPassCredential,
@@ -630,8 +636,7 @@ export const useRsvpOfferingState = (
     // event/account, even when a surface reuses the mounted hook.
     // Whether the context being left had its pass popup open (the value this
     // render sees for the NEW context is already unowned).
-    const leftOpenPopup = (successDetailsWrittenBy(renderedContext) ?? null) !== null;
-    focusDecisionRequested.current = renderedContext.eventId === event.id && leftOpenPopup;
+    focusDecisionRequested.current = renderedContext.eventId === event.id && lastVisiblePass !== null;
     setRenderedContext(context);
     setGuestName(props.initialGuestName ?? "");
     setGuestEmail(props.initialGuestEmail ?? "");
@@ -757,7 +762,7 @@ export const useRsvpOfferingState = (
     async (
       rsvpStatus: "going" | "not_going" | "maybe",
     ): Promise<RsvpSubmitResult | null> => {
-      if (!isCurrent()) return null;
+      if (!isCurrent() || replyLocked) return null;
       const submittedGuests = rsvpStatus === "not_going" ? [] : guests;
       const result = await onSubmit({
         rsvpStatus,
@@ -784,7 +789,7 @@ export const useRsvpOfferingState = (
       }
       return result;
     },
-    [guests, onSubmit, guestName, guestEmail, guestPhone, phoneCountry, plusCount, isCurrent],
+    [guests, onSubmit, guestName, guestEmail, guestPhone, phoneCountry, plusCount, isCurrent, replyLocked],
   );
 
   // ── what is still missing, in on-screen order (primary, then each +1) ──
@@ -950,7 +955,7 @@ export const useRsvpOfferingState = (
 
   // Going → open the confirmation dialog (when contactReady); else surface errors.
   const onGoingTap = useCallback((): void => {
-    if (submitting || !isCurrent()) return;
+    if (submitting || !isCurrent() || replyLocked) return;
     if (!contactReady) {
       setShowValidationErrors(true);
       setErrorMsg(null);
@@ -960,7 +965,7 @@ export const useRsvpOfferingState = (
     setErrorMsg(null);
     setConfirmError(null);
     setConfirmOpen(true);
-  }, [submitting, contactReady, revealFirstIssue, isCurrent]);
+  }, [submitting, contactReady, revealFirstIssue, isCurrent, replyLocked]);
 
   // ── ORCH-1163-R3 — floating-bar entry handlers ──
   // The floating bar forces contactReady=true on its DecisionUnit so the buttons
@@ -1235,6 +1240,13 @@ export const useRsvpOfferingState = (
   );
 
   // Callback refs keyed by guest id, so a blocked tap can reveal a +1's field.
+  // A contact field's error state. Blank: marked once a decision tap was blocked
+  // (a name that is only spaces is marked at once); filled: marked when it fails
+  // its pattern (a name has none).
+  const fieldError = (value: string, pattern: RegExp | null, blankMsg: string, badMsg: string) =>
+    value.trim().length === 0
+      ? { invalid: showValidationErrors || (pattern === null && value.length > 0), invalidMsg: blankMsg }
+      : { invalid: pattern !== null && !pattern.test(value.trim()), invalidMsg: badMsg };
   const guestFieldRef = useCallback(
     (guestId: string, field: RsvpContactFieldKey) =>
       (node: View | TextInput | null): void => {
@@ -1256,11 +1268,7 @@ export const useRsvpOfferingState = (
         onChangeText={setGuestName}
         placeholder="First and last name"
         palette={palette}
-        invalid={
-          guestName.trim().length === 0 &&
-          (guestName.length > 0 || showValidationErrors)
-        }
-        invalidMsg={guestName.length > 0 ? "Required" : "Add your name"}
+        {...fieldError(guestName, null, "Add your name", "")}
         autoCapitalize="words"
         testID="orch-1150-rsvp-name"
         disabled={submitting}
@@ -1272,14 +1280,7 @@ export const useRsvpOfferingState = (
         onChangeText={setGuestEmail}
         placeholder="you@email.com"
         palette={palette}
-        invalid={
-          guestEmail.trim().length === 0
-            ? showValidationErrors
-            : !EMAIL_RE.test(guestEmail.trim())
-        }
-        invalidMsg={
-          guestEmail.trim().length === 0 ? "Add your email" : "Enter a valid email"
-        }
+        {...fieldError(guestEmail, EMAIL_RE, "Add your email", "Enter a valid email")}
         keyboardType="email-address"
         autoCapitalize="none"
         testID="orch-1150-rsvp-email"
@@ -1326,16 +1327,7 @@ export const useRsvpOfferingState = (
             onChangeText={setGuestPhone}
             placeholder="+1 555 123 4567"
             palette={palette}
-            invalid={
-              guestPhone.trim().length === 0
-                ? showValidationErrors
-                : !PHONE_RE.test(guestPhone.trim())
-            }
-            invalidMsg={
-              guestPhone.trim().length === 0
-                ? "Add your phone number"
-                : "Enter a valid phone number"
-            }
+            {...fieldError(guestPhone, PHONE_RE, "Add your phone number", "Enter a valid phone number")}
             keyboardType="phone-pad"
             autoCapitalize="none"
             testID="orch-1150-rsvp-phone"
@@ -1406,10 +1398,7 @@ export const useRsvpOfferingState = (
               onChangeText={(v) => updateGuest(i, "name", v)}
               placeholder="First and last name"
               palette={palette}
-              invalid={
-                g.name.trim().length === 0 && (g.name.length > 0 || showValidationErrors)
-              }
-              invalidMsg="Required"
+              {...fieldError(g.name, null, "Add their name", "")}
               autoCapitalize="words"
               testID={`orch-1163-rsvp-guest-${i}-name`}
               disabled={submitting}
@@ -1421,12 +1410,7 @@ export const useRsvpOfferingState = (
               onChangeText={(v) => updateGuest(i, "email", v)}
               placeholder="guest@email.com"
               palette={palette}
-              invalid={
-                g.email.trim().length === 0
-                  ? showValidationErrors
-                  : !EMAIL_RE.test(g.email.trim())
-              }
-              invalidMsg={g.email.trim().length === 0 ? "Required" : "Enter a valid email"}
+              {...fieldError(g.email, EMAIL_RE, "Add their email", "Enter a valid email")}
               keyboardType="email-address"
               autoCapitalize="none"
               testID={`orch-1163-rsvp-guest-${i}-email`}
@@ -1470,14 +1454,7 @@ export const useRsvpOfferingState = (
                 onChangeText={(v) => updateGuest(i, "phone", v)}
                 placeholder="+1 555 123 4567"
                 palette={palette}
-                invalid={
-                  g.phone.trim().length === 0
-                    ? showValidationErrors
-                    : !PHONE_RE.test(g.phone.trim())
-                }
-                invalidMsg={
-                  g.phone.trim().length === 0 ? "Required" : "Enter a valid phone number"
-                }
+                {...fieldError(g.phone, PHONE_RE, "Add their phone number", "Enter a valid phone number")}
                 keyboardType="phone-pad"
                 autoCapitalize="none"
                 testID={`orch-1163-rsvp-guest-${i}-phone`}
@@ -1671,6 +1648,7 @@ export const useRsvpOfferingState = (
     validationHint,
     passAction,
     recoveryAction,
+    replyLocked,
     inlineDecisionRef,
     floatingDecisionRef,
     recoveryHint,
@@ -1758,6 +1736,7 @@ const DecisionUnit: React.FC<{
       onSeeWhosGoing={config.onSeeWhosGoing}
       waitlistEnabled={config.waitlistEnabled}
       submitting={state.submitting}
+      locked={state.replyLocked}
       contactReady={contactReadyOverride ?? state.contactReady}
       onGoing={onGoing ?? state.onGoingTap}
       onMaybe={onMaybe ?? state.onMaybe}
