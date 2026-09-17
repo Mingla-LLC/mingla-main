@@ -6819,11 +6819,18 @@ Two strict-grep gates run together:
 
 **Status:** ACTIVE — codified 2026-05-24 by ORCH-0945 [Collab deck dead-end UX polish] CLOSE.
 
-### I-COMMS-LEDGER-ENTRY-STANZA
+### I-COMMS-LEDGER-ENTRY-STANZA (RETIRED — #3476, 2026-09-17)
+> **RETIRED by #3476:** the COMMS.md coordination table is retired, so no agent reads a comms ledger on entry. Successor: I-CHAT-COORDINATION-STANZA below, enforced by the same gate file re-pinned to the new heading. Historical text preserved.
+
 Every Claude skill `SKILL.md` and the repo-root `AGENTS.md` contain the literal heading `## Read the Comms Ledger on entry (MANDATORY)`. Enforced by `.github/scripts/strict-grep/meta-orch-0954-comms-ledger-stanza.mjs`. Codified META-ORCH-0954 2026-05-24.
 
-### I-COMMS-LEDGER-WRITE-ON-DISCOVERY
+### I-COMMS-LEDGER-WRITE-ON-DISCOVERY (RETIRED — #3476, 2026-09-17)
+> **RETIRED by #3476:** there is no ledger to write. A discovery that affects another in-flight chat is messaged to that chat and noted on the issue; a lasting trap goes into the relevant doc under `docs/` in the same pull request; a rule that binds every chat goes into `AGENTS.md` § Standing holds (see `AGENTS.md` § Coordinate with other chats). Historical text preserved.
+
 Any skill that discovers something affecting another in-flight ORCH MUST add a `COMMS-NNNN` row to `/Users/sethogieva/Desktop/mingla-main/COMMS_LEDGER.md` in the same turn the discovery is made. Reviewer-enforced (no script). Codified META-ORCH-0954 2026-05-24.
+
+### I-CHAT-COORDINATION-STANZA
+The repo-root `AGENTS.md` contains the literal headings `## Coordinate with other chats (MANDATORY)` (start / blocked / done messages between live chats, with the GitHub issue as the Claude↔Codex channel) and `## Standing holds` (rules that bind every chat until their issue lifts them). Enforced by `.github/scripts/strict-grep/meta-orch-0954-comms-ledger-stanza.mjs` (historical filename kept). The Claude and Codex skill files carry the same protocol but are gitignored, so they are not CI-enforced. **Status:** ACTIVE — established by #3476, 2026-09-17; succeeds I-COMMS-LEDGER-ENTRY-STANZA and I-COMMS-LEDGER-WRITE-ON-DISCOVERY.
 
 ### I-RESPONSE-2-SECTION-SHAPE
 Every chat response from every skill uses Section A (what just happened) + Section B (handoff: B1 numbered Seth-todo / B2 paste paragraph for skill / B3 none). Section heading `## Standardized 2-Section Output (MANDATORY, every response, every turn)` present in every SKILL.md + AGENTS.md. Enforced by `.github/scripts/strict-grep/meta-orch-0954-comms-ledger-stanza.mjs`. Codified META-ORCH-0954 2026-05-24.
