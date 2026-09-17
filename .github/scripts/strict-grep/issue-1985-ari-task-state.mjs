@@ -599,6 +599,15 @@ export function check(s) {
     "issue_3429_ari_delivery_state.implementor.test.ts",
     "issue_3429_ari_rework_races.implementor.test.tsx",
     "issue_3429_ari_turn_scope.tester.adversarial.test.tsx",
+    "issue_3429_ari_attachment_processing_lease.implementor.pg17.test.sql",
+    "issue_3429_ari_attachment_rework1.implementor.test.ts",
+    "issue_3429_ari_picker_permission.implementor.test.ts",
+    "issue_3429_ari_web_dialogs.implementor.test.ts",
+    "issue_3429_ari_activity_terminal.implementor.test.tsx",
+    "issue_3429_ari_conversation_scope.implementor.test.tsx",
+    "issue_3429_ari_heic_metric.implementor.test.tsx",
+    "issue_3429_ari_upload_and_finalize.implementor.test.ts",
+    "issue_3429_ari_image_preparation.implementor.test.ts",
   ]) if (s.workflow.split(testPath).length - 1 !== 3) {
     failures.push(`#3429 workflow routing incomplete for ${testPath}`);
   }
@@ -914,6 +923,51 @@ if (process.argv.includes("--self-test")) {
       from:
         "issue_1985_task_state_authority.implementor.pg17.test.sql",
       to: "removed_task_state_authority.implementor.pg17.test.sql",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_attachment_processing_lease.implementor.pg17.test.sql",
+      to: "removed_3429_ari_attachment_processing_lease.implementor.pg17.test.sql",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_attachment_rework1.implementor.test.ts",
+      to: "removed_3429_ari_attachment_rework1.implementor.test.ts",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_picker_permission.implementor.test.ts",
+      to: "removed_3429_ari_picker_permission.implementor.test.ts",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_web_dialogs.implementor.test.ts",
+      to: "removed_3429_ari_web_dialogs.implementor.test.ts",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_activity_terminal.implementor.test.tsx",
+      to: "removed_3429_ari_activity_terminal.implementor.test.tsx",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_conversation_scope.implementor.test.tsx",
+      to: "removed_3429_ari_conversation_scope.implementor.test.tsx",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_heic_metric.implementor.test.tsx",
+      to: "removed_3429_ari_heic_metric.implementor.test.tsx",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_upload_and_finalize.implementor.test.ts",
+      to: "removed_3429_ari_upload_and_finalize.implementor.test.ts",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_image_preparation.implementor.test.ts",
+      to: "removed_3429_ari_image_preparation.implementor.test.ts",
     },
   ];
   for (const mutation of mutations) {
