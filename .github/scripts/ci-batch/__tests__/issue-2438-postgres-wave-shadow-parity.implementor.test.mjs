@@ -566,7 +566,9 @@ test("#1902 typed Business Jest exposure is lock-pinned and resolves exact offli
   // manifests and npm-generated locks now declare the same exact local
   // search-measurement package. This remains an independent restatement of
   // the validator's authority; no setup or exposure assertion is relaxed.
-  const hashes={"app-mobile/package.json":"e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542","app-mobile/package-lock.json":"f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27","mingla-business/package.json":"9618ab0288fae0ba1d38cfcff5bca39635de6e97460323fae96bc76dec87ec30","mingla-business/package-lock.json":"71449617f9cd6133da0395f3dcf780a3170da5d49b1e2eff2876a7afeb92addc"};
+  // [TEST-MOD-APPROVED #1780] Business package.json re-banked to the digest
+  // validate-manifest-v2.mjs already pins for the #1780 test:issue-1780 script.
+  const hashes={"app-mobile/package.json":"e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542","app-mobile/package-lock.json":"f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27","mingla-business/package.json":"ce8bbd0617ada3c453f047aaf8e4202bf8e01e233a8893c6e5bb952c323a203b","mingla-business/package-lock.json":"71449617f9cd6133da0395f3dcf780a3170da5d49b1e2eff2876a7afeb92addc"};
   for(const [relative,expected] of Object.entries(hashes)) assert.equal(digest(fs.readFileSync(path.join(ROOT,relative))),expected);
 });
 
