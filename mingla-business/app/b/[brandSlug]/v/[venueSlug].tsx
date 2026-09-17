@@ -698,6 +698,8 @@ export default function PublicVenueRoute(): React.ReactElement {
               entrySource={entrySource}
               menu={context.menu}
               timezone={venue.timezone}
+              // issue #3380 — "Who's ordering?" starts on the venue's country.
+              countryCode={venue.countryCode}
             />
           </React.Suspense>
         ),

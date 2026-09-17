@@ -70,6 +70,35 @@ export interface DispatchV2Input {
   offering_attempt_id?: string;
   internal_provider_claim_key?: string;
   onesignal_idempotency_key?: string;
+  /**
+   * #3392 — a button for the EMAIL channel only. Set solely by notify-dispatch
+   * after it validated a service-role caller's link. It is never copied into
+   * the payload, the inbox row, push data or the delivery ledger: the venue
+   * booking manage link it carries is a credential.
+   */
+  email_cta?: EmailCtaInput;
+}
+
+export interface EmailCtaInput {
+  label: string;
+  url: string;
+  /** A paragraph appended to the email body, above the button. */
+  note: string;
+}
+
+// #3392 — the email body and button for a send that carries `email_cta`.
+function emailContent(
+  rendered: RenderedMessage,
+  emailCta: EmailCtaInput | undefined,
+): { title: string; body: string; cta?: { label: string; url: string } } {
+  if (!emailCta) {
+    return { title: rendered.email.subject, body: rendered.email.body };
+  }
+  return {
+    title: rendered.email.subject,
+    body: `${rendered.email.body}\n\n${emailCta.note}`,
+    cta: { label: emailCta.label, url: emailCta.url },
+  };
 }
 
 export interface CategoryRow {
@@ -293,8 +322,7 @@ export async function dispatchV2(
       tasks.push((async () => {
         const r = await emailAdapter.send({
           to: contactEmail,
-          title: rendered.email.subject,
-          body: rendered.email.body,
+          ...emailContent(rendered, input.email_cta),
         });
         await writeDelivery(
           client,
@@ -1207,8 +1235,7 @@ async function dispatchAnon(
     if (channel === "email") {
       const r = await emailAdapter.send({
         to: contactEmail!,
-        title: rendered.email.subject,
-        body: rendered.email.body,
+        ...emailContent(rendered, input.email_cta),
       });
       await updateGuestDelivery(
         client,

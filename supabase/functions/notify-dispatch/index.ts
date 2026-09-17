@@ -29,6 +29,9 @@ import {
 import {
   resolveNotificationRecipientHmacSecret,
 } from "../_shared/notificationRecipientHmac.ts";
+// #3392 — the booking confirmation email's "Manage or cancel" button. Accepted
+// only from the service role, for that category, for that reservation.
+import { trustedReservationManageCta } from "../_shared/venueReservationManageLink.ts";
 
 // Phase-A compatibility reader for NOTIFICATION_RECIPIENT_HMAC_SECRET is
 // owned by resolveNotificationRecipientHmacSecret; the direct name remains
@@ -524,6 +527,15 @@ serve(async (req) => {
         ),
         country_code: payload.country_code ?? null,
         requested_channel: payload.requested_channel ?? null,
+        email_cta: trustedReservationManageCta({
+          serviceCaller: isExactServiceBearer(
+            authHeader,
+            SUPABASE_SERVICE_ROLE_KEY,
+          ),
+          categoryKey: payload.category_key,
+          payload: (payload.payload ?? {}) as Record<string, unknown>,
+          manageUrl: payload.reservation_manage_url,
+        }),
       };
       if (!v2Input.idempotency_key) {
         return jsonResponse({
