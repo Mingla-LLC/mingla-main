@@ -52,6 +52,7 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     if (name.endsWith("/SmartScrollView")) return { ScrollView: React.forwardRef((props: any, _ref) => React.createElement("ScrollView", props, props.children)) };
     if (name.endsWith("/useKeyboardIsVisible")) return { useKeyboardIsVisible: () => false };
     if (name.endsWith("/useResponsiveLayout")) return { useResponsiveLayout: () => ({ isWideDesktop: false }) };
+    if (name.endsWith("/useScrollToTopOnStepChange")) return require("../../../hooks/useScrollToTopOnStepChange");
     if (name.endsWith("/useBrandStripeStatus")) return { useBrandStripeStatus: () => ({ data: "ready" }) };
     if (name.endsWith("/draftEventValidation")) return { validatePublish: () => [], validateStep: () => [], computePublishability: () => ({ status: "ready" }) };
     if (name.endsWith("/draftRsvpValidation")) return { validateRsvpPublish: () => [], validateRsvpStep: () => [] };

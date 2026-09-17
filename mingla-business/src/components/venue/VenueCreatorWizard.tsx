@@ -56,6 +56,7 @@ import {
 } from "../../hooks/useBrands";
 import { useCreateVenueListing } from "../../hooks/useVenueListings";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { useScrollToTopOnStepChange } from "../../hooks/useScrollToTopOnStepChange";
 import {
   commitNewVenueDiscoveryRange,
   fetchVenuePipelineState,
@@ -216,6 +217,9 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
   const TOTAL = baseSteps.length;
   const clampedStep = Math.min(step, TOTAL - 1);
   const stepId = baseSteps[clampedStep]?.id ?? baseSteps[0].id;
+  // Each step opens at the top — the ScrollView is shared by every step.
+  const scrollRef = useRef<ScrollView | null>(null);
+  useScrollToTopOnStepChange(scrollRef, stepId);
   // DESIGN §5.2 — prefilled flags come from the immutable adopted snapshot.
   const stepperSteps: StepperStep[] = baseSteps.map((s) => ({
     ...s,
@@ -676,6 +680,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       ) : null}
 
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={{
           paddingBottom: insets.bottom + spacing.xl,
