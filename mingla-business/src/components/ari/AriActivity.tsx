@@ -12,8 +12,8 @@ import {
   Settings,
   Sparkles,
   Square,
-  type LucideIcon,
 } from "lucide-react-native";
+import type { LucideIcon } from "lucide-react-native";
 import Animated, {
   Easing,
   cancelAnimation,
@@ -89,8 +89,10 @@ export const AriActivity: React.FC<{
   const phase: VisiblePhase = turn.event?.event_type && turn.event.event_type in PHASES
     ? turn.event.event_type as VisiblePhase
     : "sending";
+  // P2-7: "Reconnecting to Ari…" only while canonical reconciliation is real;
+  // a pending Stop keeps the last truthful label.
   const label = turn.reconciling
-    ? "Ari is checking the latest result…"
+    ? "Reconnecting to Ari…"
     : PHASES[phase].label;
   const terminal = turn.delivery === "stopped" || turn.delivery === "failed" ||
     (!!turn.accepted && !!turn.errorMessage && turn.delivery === "sent");
@@ -140,7 +142,7 @@ export const AriActivity: React.FC<{
   return (
     <View style={styles.callout} accessibilityLiveRegion="polite">
       <View style={styles.labelRow}>{icon}<Text style={styles.label}>{label}</Text></View>
-      {longWait ? (
+      {!turn.stoppable ? null : longWait ? (
         <View style={styles.longWait}>
           <Text style={styles.longWaitText}>This is taking longer than usual. You can keep waiting or stop Ari.</Text>
           <View style={styles.actionRow}>

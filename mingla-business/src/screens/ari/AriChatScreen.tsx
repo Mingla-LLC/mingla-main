@@ -186,6 +186,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // value, same timing as the deleted listener pair; no bespoke plumbing.
   const keyboardHeight = useKeyboardHeight();
   const [attachmentSourceOpen, setAttachmentSourceOpen] = useState(false);
+  // P2-6: the empty-state hero clears the real composer column (tray, failure
+  // details, helper and pill), measured without the keyboard lift.
+  const [composerContentHeight, setComposerContentHeight] = useState(60);
   const [draftText, setDraftText] = useState("");
   const composerInputRef = useRef<React.ElementRef<typeof TextInput> | null>(null);
   const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
@@ -333,6 +336,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     setLocalError(null);
     void chat.sendMessage(text, selectedFiles).then((result) => {
     if (result.kind === "error") {
+      // P2-2: a stop the person asked for is represented only by its row or
+      // callout — never an error toast or a non-fatal report.
+      if (result.code === "TURN_STOPPED" || result.code === "STOP_BEFORE_ACCEPTANCE") return;
       if (["BRAND_CONTEXT_REQUIRED", "BRAND_ACCESS_DENIED", "CONVERSATION_BRAND_MISMATCH", "LEGACY_CONVERSATION_UNSCOPED", "TENANT_SCOPE_UNAVAILABLE", "UNAUTHORIZED"].includes(result.code)) {
       } else if (result.code === "RATE_LIMITED") {
         const parsedUntil = result.cooldown_until ? Date.parse(result.cooldown_until) : Number.NaN;
@@ -407,6 +413,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   ): Promise<ConfirmOutcome> => {
     if (!chat.pendingAction) return { ok: false };
     setLocalError(null);
+    // D-1: watch the proposal's own turn; its callout appears only once
+    // approved_action_started arrives and clears when this confirm resolves.
+    chat.beginConfirmedActivity(chat.pendingAction.pending_action_id);
     try {
     let result: Awaited<ReturnType<typeof confirm.confirm>>;
     try {
@@ -621,7 +630,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   paddingBottom:
                     Math.max(insets.bottom, spacing.md) +
                     BOTTOM_NAV_CLEARANCE_PX +
-                    60,
+                    60 +
+                    Math.max(0, composerContentHeight - 60),
                 },
               ]}
               onPress={() => Keyboard.dismiss()}
@@ -737,7 +747,13 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               `inputWrap`'s paddingBottom already positions this pill's bottom
               edge; nothing needs the pill's own height. */}
           {recovery ? <RecoveryPanel recovery={recovery} onAction={handleRecovery} /> : (
-            <>
+            <View
+              style={styles.composerColumn}
+              onLayout={(event) => {
+                const next = Math.round(event.nativeEvent.layout.height);
+                setComposerContentHeight((previous) => previous === next ? previous : next);
+              }}
+            >
               {!online ? (
                 <RecoveryPanel
                   recovery={{ code: "OFFLINE", title: "You’re offline", body: "Reconnect to send." }}
@@ -767,14 +783,16 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                       >
                         <Text style={styles.attachmentRecoveryActionText}>Choose documents</Text>
                       </Pressable>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Open photo permissions in Settings"
-                        onPress={() => void attachments.openPhotoPermissionSettings()}
-                        style={styles.attachmentRecoveryAction}
-                      >
-                        <Text style={styles.attachmentRecoveryActionText}>Open Settings</Text>
-                      </Pressable>
+                      {attachments.photoPermissionRecovery.canOpenSettings ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Open photo permissions in Settings"
+                          onPress={() => void attachments.openPhotoPermissionSettings()}
+                          style={styles.attachmentRecoveryAction}
+                        >
+                          <Text style={styles.attachmentRecoveryActionText}>Open Settings</Text>
+                        </Pressable>
+                      ) : null}
                     </View>
                   ) : null}
                   <Pressable
@@ -809,7 +827,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   else setAttachmentSourceOpen(true);
                 }}
               />
-            </>
+            </View>
           )}
         </View>
       </View>
@@ -933,6 +951,7 @@ const styles = StyleSheet.create({
     maxWidth: ariThread.threadMaxWidth,
     alignSelf: "center",
   },
+  composerColumn: { width: "100%" },
   composerHelper: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16, marginBottom: spacing.xs },
   attachmentError: {
     minHeight: 48,

@@ -32,6 +32,15 @@ import {
 } from "../services/ariTurnService";
 import { captureAriActivityDisplayed, captureAriTurnOutcome } from "../services/ariPolishAnalytics";
 import {
+  type AriActivityWatermark,
+  ariRowDelivery,
+  isAriTurnStoppable,
+  isOrdinaryTurnActivityVisible,
+  isTurnInSelectedConversation,
+  latestLabelledActivityEvent,
+  shouldFollowTurnConversation,
+} from "../services/ariTurnView";
+import {
   type AriClientIntentRecord,
   canDispatchAriIntent,
   createAriClientIntent,
@@ -64,6 +73,8 @@ export interface AriActiveTurn {
   errorMessage: string | null;
   reconciling: boolean;
   startedAt: number;
+  /** D-1: false for a completed attempt (e.g. an approved action), so no Stop is offered. */
+  stoppable: boolean;
 }
 
 export interface UseAgentChatResult {
@@ -76,6 +87,7 @@ export interface UseAgentChatResult {
   editTurn: (clientTurnId: string) => AriEditableTurn | null;
   discardTurn: (clientTurnId: string) => void;
   stopTurn: (clientTurnId: string) => Promise<void>;
+  beginConfirmedActivity: (pendingActionId: string) => void;
   finishConfirmedActivity: () => void;
   reconcileActiveTurns: () => Promise<void>;
   activeTurn: AriActiveTurn | null;
@@ -101,6 +113,8 @@ interface LocalTurn {
   clientTurnId: string;
   localId: string;
   conversationId: string | null;
+  /** The selection the turn was sent from; never changes (D-2 origin guard). */
+  originConversationId: string | null;
   displayText: string;
   payload: TurnPayload;
   attachments: AriAttachmentDraft[];
@@ -112,11 +126,23 @@ interface LocalTurn {
   errorCode: string | null;
   errorMessage: string | null;
   reconciling: boolean;
-  confirmationActive: boolean;
-  confirmationFinished: boolean;
   startedAt: number;
   createdAt: string;
   epoch: number;
+}
+
+/**
+ * D-1: an approved-action confirmation owns the activity callout only from
+ * `approved_action_started` (or Confirm) until the confirm call resolves.
+ * Events at or before the watermark belong to the original answer and never
+ * relabel it.
+ */
+interface ConfirmationActivity {
+  clientTurnId: string;
+  conversationId: string | null;
+  watermark: AriActivityWatermark;
+  events: AriActivityEvent[];
+  startedAt: number;
 }
 
 function newClientTurnId(): string {
@@ -149,7 +175,7 @@ function turnMessage(turn: LocalTurn): AgentMessage {
     role: "user",
     content: {
       text,
-      local_delivery: turn.delivery,
+      local_delivery: ariRowDelivery(turn.delivery, turn.accepted),
       ...(turn.errorMessage ? { local_error: turn.errorMessage } : {}),
       ...(attachmentCount ? { attachments: turn.attachments.map(sentAttachment) } : {}),
     },
@@ -207,6 +233,10 @@ export function useAgentChat(
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [turns, setTurns] = useState<LocalTurn[]>([]);
   const turnsRef = useRef<LocalTurn[]>([]);
+  const conversationIdRef = useRef<string | null>(initialConversationId);
+  const [confirmation, setConfirmationState] = useState<ConfirmationActivity | null>(null);
+  const confirmationRef = useRef<ConfirmationActivity | null>(null);
+  const confirmationSubscription = useRef<(() => void) | null>(null);
   const subscriptions = useRef(new Map<string, () => void>());
   const sendIntentRef = useRef<AriClientIntentRecord | null>(null);
   const surfaceRef = useRef<AriSurface>("main");
@@ -224,7 +254,13 @@ export function useAgentChat(
     replaceTurns((current) => current.map((turn) => turn.clientTurnId === clientTurnId ? { ...turn, ...patch } : turn));
   }, [replaceTurns]);
 
+  const setConfirmation = useCallback((next: ConfirmationActivity | null): void => {
+    confirmationRef.current = next;
+    setConfirmationState(next);
+  }, []);
+
   const selectConversation = useCallback((id: string | null): void => {
+    conversationIdRef.current = id;
     setConversationId(id);
     onConversationIdChange?.(id);
   }, [onConversationIdChange]);
@@ -238,19 +274,25 @@ export function useAgentChat(
     brandEpoch.current += 1;
     subscriptions.current.forEach((unsubscribe) => unsubscribe());
     subscriptions.current.clear();
+    confirmationSubscription.current?.();
+    confirmationSubscription.current = null;
+    setConfirmation(null);
     sendIntentRef.current = null;
     turnsRef.current = [];
     setTurns([]);
     setStateBrandId(brandId);
+    conversationIdRef.current = null;
     setConversationId(null);
     setPendingAction(null);
     setErrorMessage(null);
     setErrorCode(null);
-  }, [brandId]);
+  }, [brandId, setConfirmation]);
 
   useEffect(() => () => {
     subscriptions.current.forEach((unsubscribe) => unsubscribe());
     subscriptions.current.clear();
+    confirmationSubscription.current?.();
+    confirmationSubscription.current = null;
   }, []);
 
   const messagesQuery = useQuery({
@@ -260,40 +302,86 @@ export function useAgentChat(
     staleTime: 0,
   });
 
+  /** Records a confirmation-phase event, starting confirmation on approved_action_started. */
+  const routeConfirmationEvent = useCallback((clientTurnId: string, event: AriActivityEvent, currentAttempt: number | null): void => {
+    const active = confirmationRef.current;
+    if (active?.clientTurnId === clientTurnId) {
+      const afterWatermark = event.attempt_number > active.watermark.attemptNumber ||
+        (event.attempt_number === active.watermark.attemptNumber && event.sequence > active.watermark.sequence);
+      if (afterWatermark && !active.events.some((item) => item.id === event.id)) {
+        setConfirmation({ ...active, events: mergeEvents(active.events, [event]) });
+      }
+      return;
+    }
+    if (
+      event.event_type === "approved_action_started" &&
+      (currentAttempt === null || event.attempt_number === currentAttempt)
+    ) {
+      const owner = turnsRef.current.find((turn) => turn.clientTurnId === clientTurnId);
+      setConfirmation({
+        clientTurnId,
+        conversationId: owner?.conversationId ?? conversationIdRef.current,
+        watermark: { attemptNumber: event.attempt_number, sequence: event.sequence - 1 },
+        events: [event],
+        startedAt: Date.now(),
+      });
+    }
+  }, [setConfirmation]);
+
   const installSubscription = useCallback((clientTurnId: string): void => {
     if (subscriptions.current.has(clientTurnId)) return;
     const unsubscribe = subscribeAriTurnActivity(clientTurnId, (event) => {
       replaceTurns((current) => current.map((turn) => {
         if (turn.clientTurnId !== clientTurnId || event.attempt_number < turn.attemptNumber) return turn;
         const events = event.attempt_number > turn.attemptNumber ? [event] : mergeEvents(turn.events, [event]);
-        const confirmationEvent = event.event_type === "approved_action_started" ||
-          event.event_type === "finalizing_started";
+        const eventConversationId = (event as AriActivityEvent & { conversation_id?: unknown }).conversation_id;
         captureAriActivityDisplayed({ surface: surfaceRef.current, phase: event.event_type });
         return {
           ...turn,
+          // D-2: the claim is known once any event exists for the turn.
+          conversationId: typeof eventConversationId === "string" ? eventConversationId : turn.conversationId,
           attemptNumber: event.attempt_number,
           events,
           accepted: true,
           delivery: event.event_type === "stopped" ? "stopped" : turn.delivery,
-          attemptStatus: event.event_type === "stopped" ? "stopped" : event.event_type === "failed" ? "failed" : turn.attemptStatus,
-          confirmationActive: confirmationEvent && !turn.confirmationFinished
-            ? true
-            : turn.confirmationActive,
+          attemptStatus: event.event_type === "stopped"
+            ? "stopped"
+            : event.event_type === "failed"
+            ? "failed"
+            : event.event_type === "response_ready"
+            ? "completed"
+            : turn.attemptStatus,
         };
       }));
+      const owner = turnsRef.current.find((turn) => turn.clientTurnId === clientTurnId);
+      // D-2: a claim learned from an event follows the same origin guard as
+      // HTTP success, so an in-flight New conversation row never vanishes.
+      if (
+        owner && owner.conversationId !== null &&
+        owner.conversationId !== conversationIdRef.current &&
+        shouldFollowTurnConversation(conversationIdRef.current, owner.originConversationId)
+      ) {
+        selectConversation(owner.conversationId);
+      }
+      routeConfirmationEvent(clientTurnId, event, owner ? owner.attemptNumber : null);
     });
     subscriptions.current.set(clientTurnId, unsubscribe);
-  }, [replaceTurns]);
+  }, [replaceTurns, routeConfirmationEvent, selectConversation]);
 
   const refreshCanonicalMessages = useCallback(async (targetConversationId: string): Promise<void> => {
     qc.setQueryData(agentQueryKeys.messages(targetConversationId), await fetchMessages(targetConversationId));
   }, [qc]);
 
-  const reconcileOne = useCallback(async (clientTurnId: string): Promise<void> => {
+  /**
+   * Canonical reconciliation. `announce` shows "Reconnecting to Ari…" (P2-7):
+   * only after transport uncertainty, reconnect, foreground, or failed Stop
+   * transports — never for a definitive server answer.
+   */
+  const reconcileOne = useCallback(async (clientTurnId: string, announce = true): Promise<void> => {
     const before = turnsRef.current.find((turn) => turn.clientTurnId === clientTurnId);
     if (!before) return;
     const scopeEpoch = brandEpoch.current;
-    patchTurn(clientTurnId, { reconciling: true });
+    if (announce) patchTurn(clientTurnId, { reconciling: true });
     try {
       const canonical = await fetchAriTurnStatus(clientTurnId);
       if (!isCurrentAriTurnEpoch(before.epoch, scopeEpoch, brandEpoch.current)) return;
@@ -316,7 +404,12 @@ export function useAgentChat(
             ? { errorCode: "TURN_STOPPED", errorMessage: "Ari stopped. Your message is still here." }
             : { errorCode: null, errorMessage: null }),
       });
-      if (canonical.attempt.conversation_id !== conversationId) selectConversation(canonical.attempt.conversation_id);
+      if (
+        canonical.attempt.conversation_id !== conversationIdRef.current &&
+        shouldFollowTurnConversation(conversationIdRef.current, before.originConversationId)
+      ) {
+        selectConversation(canonical.attempt.conversation_id);
+      }
       if (status === "completed") {
         await refreshCanonicalMessages(canonical.attempt.conversation_id);
         if (!isCurrentAriTurnEpoch(before.epoch, scopeEpoch, brandEpoch.current)) return;
@@ -324,13 +417,13 @@ export function useAgentChat(
     } catch {
       if (!isCurrentAriTurnEpoch(before.epoch, scopeEpoch, brandEpoch.current)) return;
       patchTurn(clientTurnId, {
-        reconciling: true,
+        reconciling: announce,
         attemptStatus: "reconciliation_required",
         errorCode: before.errorCode ?? "RECONCILIATION_REQUIRED",
-        errorMessage: before.errorMessage ?? "Ari is checking the latest result before changing this message.",
+        errorMessage: before.errorMessage,
       });
     }
-  }, [conversationId, patchTurn, refreshCanonicalMessages, selectConversation]);
+  }, [patchTurn, refreshCanonicalMessages, selectConversation]);
 
   const reconcileActiveTurns = useCallback(async (): Promise<void> => {
     const candidates = turnsRef.current.filter((turn) =>
@@ -359,7 +452,8 @@ export function useAgentChat(
       });
       if (turn.epoch !== brandEpoch.current) return response;
       if (response.kind === "error") {
-        await reconcileOne(clientTurnId);
+        // A definitive answer, not transport uncertainty: reconcile quietly.
+        await reconcileOne(clientTurnId, false);
         const reconciled = turnsRef.current.find((candidate) => candidate.clientTurnId === clientTurnId);
         if (!reconciled?.accepted) {
           const stoppedBeforeAcceptance = response.code === "TURN_STOPPED" &&
@@ -396,9 +490,15 @@ export function useAgentChat(
         errorMessage: null,
         reconciling: false,
       });
-      if (response.conversation_id !== conversationId) {
-        selectConversation(response.conversation_id);
+      if (response.conversation_id !== turn.originConversationId) {
         void qc.invalidateQueries({ queryKey: agentQueryKeys.conversations(brandId) });
+      }
+      // D-2: never pull the person out of a conversation they navigated to.
+      if (
+        response.conversation_id !== conversationIdRef.current &&
+        shouldFollowTurnConversation(conversationIdRef.current, turn.originConversationId)
+      ) {
+        selectConversation(response.conversation_id);
       }
       if (response.kind === "pending_action") {
         setPendingAction({ pending_action_id: response.pending_action_id, tool_name: response.tool_name, tool_args: response.tool_args });
@@ -428,7 +528,7 @@ export function useAgentChat(
       captureAriTurnOutcome({ surface: surfaceRef.current, outcome: "failed", errorCode: "TRANSPORT_UNAVAILABLE" });
       return { kind: "error", code: "TRANSPORT_UNAVAILABLE", message: "Message not sent. Check your connection and try again." };
     }
-  }, [brandId, conversationId, patchTurn, qc, reconcileOne, refreshCanonicalMessages, selectConversation]);
+  }, [brandId, patchTurn, qc, reconcileOne, refreshCanonicalMessages, selectConversation]);
 
   const sendTurn = useCallback((
     displayText: string,
@@ -469,13 +569,12 @@ export function useAgentChat(
       errorCode: null,
       errorMessage: null,
       reconciling: false,
-      confirmationActive: false,
-      confirmationFinished: false,
       startedAt: Date.now(),
     } : {
       clientTurnId,
       localId: `local-turn-${clientTurnId}`,
       conversationId,
+      originConversationId: conversationId,
       displayText,
       payload,
       attachments,
@@ -487,8 +586,6 @@ export function useAgentChat(
       errorCode: null,
       errorMessage: null,
       reconciling: false,
-      confirmationActive: false,
-      confirmationFinished: false,
       startedAt: Date.now(),
       createdAt: new Date().toISOString(),
       epoch: brandEpoch.current,
@@ -561,7 +658,8 @@ export function useAgentChat(
 
   const retryTenantRecovery = useCallback(async (): Promise<AgentChatResponse | null> => {
     const recoverable = [...turnsRef.current].reverse().find((turn) =>
-      turn.delivery === "failed" && turn.errorCode === "TENANT_SCOPE_UNAVAILABLE"
+      turn.delivery === "failed" && turn.errorCode === "TENANT_SCOPE_UNAVAILABLE" &&
+      isTurnInSelectedConversation(turn.conversationId, conversationIdRef.current)
     );
     return recoverable ? retryTurn(recoverable.clientTurnId) : null;
   }, [retryTurn]);
@@ -590,8 +688,9 @@ export function useAgentChat(
 
   const stopTurn = useCallback(async (clientTurnId: string): Promise<void> => {
     const turn = turnsRef.current.find((candidate) => candidate.clientTurnId === clientTurnId);
-    if (!turn || !["sending", "sent"].includes(turn.delivery)) return;
-    patchTurn(clientTurnId, { reconciling: true });
+    // D-1 / SC-R1-D1-5: a completed attempt is never cancelled.
+    if (!turn || !isAriTurnStoppable(turn)) return;
+    // P2-7: while Stop is pending the callout keeps its last truthful label.
     let stopResult: Awaited<ReturnType<typeof stopAriTurn>> | null = null;
     let stopped = false;
     for (let attempt = 0; attempt < 3 && !stopped; attempt += 1) {
@@ -606,7 +705,7 @@ export function useAgentChat(
       patchTurn(clientTurnId, {
         reconciling: true,
         errorCode: "STOP_RECONCILING",
-        errorMessage: "Ari is checking whether your stop request reached the server.",
+        errorMessage: null,
       });
       await reconcileOne(clientTurnId);
       return;
@@ -632,24 +731,47 @@ export function useAgentChat(
       errorMessage: "Ari stopped. Your message is still here.",
     });
     captureAriTurnOutcome({ surface: surfaceRef.current, outcome: "cancelled" });
-    await reconcileOne(clientTurnId);
+    await reconcileOne(clientTurnId, false);
   }, [patchTurn, reconcileOne]);
 
   const clearPendingAction = useCallback(() => setPendingAction(null), []);
+  /**
+   * D-1 / SC-R1-D1-4: Confirm starts watching the proposal's own turn. The
+   * callout appears only once `approved_action_started` arrives for it; if the
+   * turn is not in this session's registry (for example after a reload), the
+   * screen subscribes to that turn now.
+   */
+  const beginConfirmedActivity = useCallback((pendingActionId: string): void => {
+    const proposal = [...(messagesQuery.data ?? [])].reverse().find((message) =>
+      message.role === "assistant" && message.tool_calls?.pending_action_id === pendingActionId
+    );
+    const clientTurnId = proposal?.client_turn_id ?? null;
+    if (!clientTurnId) return;
+    const local = turnsRef.current.find((turn) => turn.clientTurnId === clientTurnId);
+    const watermarkSequence = local
+      ? local.events.reduce((max, event) =>
+        event.attempt_number === local.attemptNumber ? Math.max(max, event.sequence) : max, 0)
+      : 0;
+    setConfirmation({
+      clientTurnId,
+      conversationId: proposal?.conversation_id ?? conversationIdRef.current,
+      watermark: { attemptNumber: local?.attemptNumber ?? 1, sequence: watermarkSequence },
+      events: [],
+      startedAt: Date.now(),
+    });
+    if (!local && !subscriptions.current.has(clientTurnId)) {
+      confirmationSubscription.current?.();
+      confirmationSubscription.current = subscribeAriTurnActivity(clientTurnId, (event) => {
+        routeConfirmationEvent(clientTurnId, event, null);
+      });
+    }
+  }, [messagesQuery.data, routeConfirmationEvent, setConfirmation]);
+
   const finishConfirmedActivity = useCallback((): void => {
-    const proposalTurnId = [...(messagesQuery.data ?? [])].reverse().find((message) =>
-      message.role === "assistant" &&
-      message.tool_calls?.pending_action_id === pendingAction?.pending_action_id
-    )?.client_turn_id ?? null;
-    const fallbackTurnId = [...turnsRef.current].reverse().find((turn) =>
-      turn.confirmationActive || turn.attemptStatus === "completed"
-    )?.clientTurnId ?? null;
-    const targetId = proposalTurnId ?? fallbackTurnId;
-    if (!targetId) return;
-    patchTurn(targetId, { confirmationActive: false, confirmationFinished: true });
-    subscriptions.current.get(targetId)?.();
-    subscriptions.current.delete(targetId);
-  }, [messagesQuery.data, patchTurn, pendingAction?.pending_action_id]);
+    confirmationSubscription.current?.();
+    confirmationSubscription.current = null;
+    setConfirmation(null);
+  }, [setConfirmation]);
   const clearErrorMessage = useCallback(() => { setErrorMessage(null); setErrorCode(null); }, []);
   const currentScope = stateBrandId === brandId;
   const serverMessages = currentScope ? messagesQuery.data ?? [] : [];
@@ -669,7 +791,11 @@ export function useAgentChat(
     setPendingAction(unresolved);
   }, [currentScope, serverMessages]);
 
-  const localMessages = currentScope ? turns.map(turnMessage) : [];
+  // D-2: only the selected conversation's local turns render anywhere.
+  const scopedTurns = useMemo(() => currentScope
+    ? turns.filter((turn) => isTurnInSelectedConversation(turn.conversationId, conversationId))
+    : [], [conversationId, currentScope, turns]);
+  const localMessages = scopedTurns.map(turnMessage);
   const liveLocalMessages = localMessages.filter((local) => !serverMessages.some((server) => canonicalIdentityMatch(server, local)));
   const turnById = new Map(turns.map((turn) => [turn.clientTurnId, turn]));
   const decoratedServerMessages = serverMessages.map((message) => {
@@ -680,29 +806,49 @@ export function useAgentChat(
       return { ...message, content: { ...message.content, local_reveal: true } };
     }
     if (message.role !== "user") return message;
-    return { ...message, content: { ...message.content, local_delivery: turn.delivery === "failed" ? "sent" : turn.delivery, ...(turn.errorMessage ? { local_error: turn.errorMessage } : {}) } };
+    return { ...message, content: { ...message.content, local_delivery: turn.delivery === "failed" ? "sent" : ariRowDelivery(turn.delivery, turn.accepted), ...(turn.errorMessage ? { local_error: turn.errorMessage } : {}) } };
   });
   const messages = [...decoratedServerMessages, ...liveLocalMessages];
 
   const activeTurn = useMemo<AriActiveTurn | null>(() => {
-    const candidate = [...turns].reverse().find((turn) =>
-      turn.delivery === "sending" || turn.delivery === "stopped" || turn.confirmationActive ||
-      (turn.accepted && turn.attemptStatus === "failed"));
+    if (!currentScope) return null;
+    if (
+      confirmation &&
+      isTurnInSelectedConversation(confirmation.conversationId, conversationId)
+    ) {
+      const confirmationEvent = latestLabelledActivityEvent(
+        confirmation.events,
+        confirmation.events[confirmation.events.length - 1]?.attempt_number ?? confirmation.watermark.attemptNumber,
+        confirmation.watermark,
+      );
+      if (confirmationEvent) {
+        return {
+          clientTurnId: confirmation.clientTurnId,
+          accepted: true,
+          delivery: "sent",
+          event: confirmationEvent,
+          errorCode: null,
+          errorMessage: null,
+          reconciling: false,
+          startedAt: confirmation.startedAt,
+          stoppable: false,
+        };
+      }
+    }
+    const candidate = [...scopedTurns].reverse().find(isOrdinaryTurnActivityVisible);
     if (!candidate) return null;
-    const event = [...candidate.events].reverse().find((item) =>
-      item.attempt_number === candidate.attemptNumber &&
-      !["accepted", "response_ready", "reconciliation_finished", "stopped", "failed"].includes(item.event_type)) ?? null;
     return {
       clientTurnId: candidate.clientTurnId,
       accepted: candidate.accepted,
       delivery: candidate.delivery,
-      event,
+      event: latestLabelledActivityEvent(candidate.events, candidate.attemptNumber),
       errorCode: candidate.errorCode,
       errorMessage: candidate.errorMessage,
       reconciling: candidate.reconciling,
       startedAt: candidate.startedAt,
+      stoppable: isAriTurnStoppable(candidate),
     };
-  }, [turns]);
+  }, [confirmation, conversationId, currentScope, scopedTurns]);
 
   return {
     messages,
@@ -714,6 +860,7 @@ export function useAgentChat(
     editTurn,
     discardTurn,
     stopTurn,
+    beginConfirmedActivity,
     finishConfirmedActivity,
     reconcileActiveTurns,
     activeTurn,

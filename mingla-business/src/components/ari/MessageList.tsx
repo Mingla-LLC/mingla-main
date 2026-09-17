@@ -421,7 +421,15 @@ export const MessageList: React.FC<MessageListProps> = ({
               />
             ) : null}
             {m.role === "user" && localDelivery && localDelivery !== "failed" ? (
-              <Text style={styles.deliveryMeta}>{localDelivery === "sending" ? "Sending…" : "Sent"}</Text>
+              localDelivery === "sending" ? (
+                <Text style={styles.deliveryMeta}>Sending…</Text>
+              ) : (
+                // P2-1: Sent (with its check) as soon as the turn is accepted.
+                <View style={styles.deliverySent} accessible accessibilityRole="text" accessibilityLabel="Sent">
+                  <Check size={12} color={ariThread.tertiaryText} strokeWidth={2.25} />
+                  <Text style={styles.deliverySentText}>Sent</Text>
+                </View>
+              )
             ) : null}
             {m.role === "user" && localDelivery === "failed" && m.client_turn_id ? (
               <View style={styles.deliveryFailure} accessibilityRole="alert">
@@ -716,6 +724,8 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   deliveryMeta: { alignSelf: "flex-end", color: ariThread.tertiaryText, fontSize: 12, lineHeight: 16, marginTop: spacing.xs },
+  deliverySent: { alignSelf: "flex-end", flexDirection: "row", alignItems: "center", gap: 4, marginTop: spacing.xs },
+  deliverySentText: { color: ariThread.tertiaryText, fontSize: 12, lineHeight: 16 },
   deliveryFailure: { alignSelf: "flex-end", width: "84%", borderWidth: 1, borderColor: semantic.error, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingTop: spacing.sm, marginTop: spacing.xs },
   deliveryFailureCopy: { color: ariThread.secondaryText, fontSize: 14, lineHeight: 20 },
   deliveryActions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end" },
