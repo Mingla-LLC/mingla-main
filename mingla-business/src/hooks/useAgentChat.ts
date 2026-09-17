@@ -493,12 +493,12 @@ export function useAgentChat(
       if (response.conversation_id !== turn.originConversationId) {
         void qc.invalidateQueries({ queryKey: agentQueryKeys.conversations(brandId) });
       }
-      // D-2: never pull the person out of a conversation they navigated to.
-      if (
-        response.conversation_id !== conversationIdRef.current &&
-        shouldFollowTurnConversation(conversationIdRef.current, turn.originConversationId)
-      ) {
-        selectConversation(response.conversation_id);
+      if (response.conversation_id !== conversationId) {
+        // D-2: never pull the person out of a conversation they navigated to
+        // while this turn was in flight; follow only from the turn's origin.
+        if (shouldFollowTurnConversation(conversationIdRef.current, turn.originConversationId)) {
+          selectConversation(response.conversation_id);
+        }
       }
       if (response.kind === "pending_action") {
         setPendingAction({ pending_action_id: response.pending_action_id, tool_name: response.tool_name, tool_args: response.tool_args });
@@ -528,7 +528,7 @@ export function useAgentChat(
       captureAriTurnOutcome({ surface: surfaceRef.current, outcome: "failed", errorCode: "TRANSPORT_UNAVAILABLE" });
       return { kind: "error", code: "TRANSPORT_UNAVAILABLE", message: "Message not sent. Check your connection and try again." };
     }
-  }, [brandId, patchTurn, qc, reconcileOne, refreshCanonicalMessages, selectConversation]);
+  }, [brandId, conversationId, patchTurn, qc, reconcileOne, refreshCanonicalMessages, selectConversation]);
 
   const sendTurn = useCallback((
     displayText: string,
