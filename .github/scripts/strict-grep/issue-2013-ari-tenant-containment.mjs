@@ -189,7 +189,7 @@ const SOURCE_FILES = {
   list: "mingla-business/src/hooks/useConversationList.ts",
   publicMigration: "supabase/migrations/20260729000000_meta_orch_0972_universal_authoring.sql",
   scopeMigration: "supabase/migrations/20270402002013_issue_2013_agent_conversation_brand_immutable.sql",
-  turnMigration: "supabase/migrations/20270708003429_issue_3429_ari_chat_context.sql",
+  turnMigration: "supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql",
   scopeTest: "supabase/migrations/__tests__/issue_2013_agent_conversation_brand_immutable.test.sql",
   migrationWorkflow: ".github/workflows/supabase-migrations-and-stripe-deno.yml",
   writerTest: writerTestPath,

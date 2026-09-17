@@ -203,6 +203,12 @@ CREATE TABLE public.agent_attachments (
   processing_metadata jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (
     jsonb_typeof(processing_metadata) = 'object'
   ),
+  -- REWORK-1 processing lease: one finalize owns a row at a time, every
+  -- terminal write is conditional on this token, and a row may be claimed at
+  -- most twice before it is terminally refused.
+  processing_token uuid,
+  processing_started_at timestamptz,
+  processing_attempts smallint NOT NULL DEFAULT 0 CHECK (processing_attempts BETWEEN 0 AND 2),
   expires_at timestamptz NOT NULL DEFAULT (now() + interval '24 hours'),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -210,6 +216,9 @@ CREATE TABLE public.agent_attachments (
   discarded_at timestamptz,
   CONSTRAINT agent_attachments_storage_path_opaque CHECK (
     storage_path = user_id::text || '/' || brand_id::text || '/' || id::text || '/source'
+  ),
+  CONSTRAINT agent_attachments_processing_lease CHECK (
+    state <> 'processing' OR (processing_token IS NOT NULL AND processing_started_at IS NOT NULL)
   ),
   CONSTRAINT agent_attachments_derived_path_opaque CHECK (
     derived_storage_path IS NULL OR
@@ -864,27 +873,37 @@ FROM repairable
 WHERE conversation.id = repairable.id;
 
 -- ---------------------------------------------------------------------------
--- Cleanup cron preflight and hourly worker trigger.
+-- Cleanup cron advisories and hourly worker trigger.
+--
+-- Issue #3429 REWORK-1 (orchestrator decision #issuecomment-5712808665): a
+-- migration may ADVISE, but never RAISE, on missing Vault secrets or the
+-- pg_net extension. Dozens of CI lanes replay the full migration chain on a
+-- Vault-less database; an exception here would turn every one of them red.
+-- Fail-closed enforcement lives in the release runbook step "apply #3429
+-- migration": a read-only pre-apply check that both Vault secrets and both
+-- extensions exist, and a post-apply check that the cleanup job is scheduled.
+-- House precedent: ORCH-0788, ORCH-0815-B, #1397.
 -- ---------------------------------------------------------------------------
-DO $preflight$
+DO $advisory$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
-    RAISE EXCEPTION 'Issue #3429: pg_cron extension required before migration apply.';
+    RAISE NOTICE 'Issue #3429 advisory: pg_cron extension is not installed; the attachment cleanup job cannot run until it is.';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_net') THEN
-    RAISE EXCEPTION 'Issue #3429: pg_net extension required before migration apply.';
+    RAISE NOTICE 'Issue #3429 advisory: pg_net extension is not installed; the attachment cleanup job cannot call its worker until it is.';
   END IF;
   IF to_regclass('vault.decrypted_secrets') IS NULL THEN
-    RAISE EXCEPTION 'Issue #3429: Vault decrypted_secrets is required before migration apply.';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM vault.decrypted_secrets WHERE name = 'supabase_url') THEN
-    RAISE EXCEPTION 'Issue #3429: Vault secret supabase_url is required before migration apply.';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM vault.decrypted_secrets WHERE name = 'service_role_key') THEN
-    RAISE EXCEPTION 'Issue #3429: Vault secret service_role_key is required before migration apply.';
+    RAISE NOTICE 'Issue #3429 advisory: Vault decrypted_secrets is unavailable; the attachment cleanup job cannot authenticate until it is.';
+  ELSE
+    IF NOT EXISTS (SELECT 1 FROM vault.decrypted_secrets WHERE name = 'supabase_url') THEN
+      RAISE NOTICE 'Issue #3429 advisory: Vault secret supabase_url is missing; the attachment cleanup job cannot reach its worker until it exists.';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM vault.decrypted_secrets WHERE name = 'service_role_key') THEN
+      RAISE NOTICE 'Issue #3429 advisory: Vault secret service_role_key is missing; the attachment cleanup job cannot authenticate until it exists.';
+    END IF;
   END IF;
 END
-$preflight$;
+$advisory$;
 
 DO $cron_replace$
 BEGIN

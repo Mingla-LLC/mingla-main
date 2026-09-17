@@ -5,7 +5,7 @@ on:
     paths:
       - "supabase/config.toml"
       - "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql"
-      - "supabase/migrations/20270708003429_issue_3429_ari_chat_context.sql"
+      - "supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.tester.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_first_turn_identity.tester_round2.pg17.test.sql"
@@ -66,7 +66,7 @@ on:
     paths:
       - "supabase/config.toml"
       - "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql"
-      - "supabase/migrations/20270708003429_issue_3429_ari_chat_context.sql"
+      - "supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.tester.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_first_turn_identity.tester_round2.pg17.test.sql"
@@ -157,7 +157,7 @@ jobs:
           find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
             | sort -z \
             | while IFS= read -r -d '' migration; do
-                if [[ "$(basename "$migration")" == "20270708003429_issue_3429_ari_chat_context.sql" ]]; then
+                if [[ "$(basename "$migration")" == "20270712003429_issue_3429_ari_chat_context.sql" ]]; then
                   psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
                     -c "SELECT vault.create_secret('http://127.0.0.1:54321', 'supabase_url', 'CI fixture only');" \
                     -c "SELECT vault.create_secret('ci-service-role-fixture', 'service_role_key', 'CI fixture only');" \

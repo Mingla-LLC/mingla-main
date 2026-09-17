@@ -16810,7 +16810,7 @@
       "providerWorkflow": ".github/workflows/issue-1985-ari-task-state.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "628246b3dc7b1094a23b00600769efb43e7b3a6aca0557d9b227ad315863c450",
+        "sourceSha256": "9b350392deaef9d0294a44a43cf97857a202846c3fbe6742c7caad41eb40600c",
         "triggers": [
           "pull_request",
           "push"
@@ -16865,14 +16865,14 @@
           "supabase/functions/agent-conversation/**",
           "supabase/functions/agent-turn-control/**",
           "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql",
-          "supabase/migrations/20270708003429_issue_3429_ari_chat_context.sql",
+          "supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql",
           "supabase/migrations/__tests__/issue_1985_choice_payload_authority.tester_round3.pg17.test.sql",
           "supabase/migrations/__tests__/issue_1985_first_turn_identity.tester_round2.pg17.test.sql",
           "supabase/migrations/__tests__/issue_1985_message_role_authority.implementor.pg17.test.sql",
           "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql",
-          "supabase/migrations/__tests__/issue_1985_task_state_authority.tester.pg17.test.sql"
-          ,"supabase/migrations/__tests__/issue_3429_ari_chat_context.implementor.pg17.test.sql"
-          ,"supabase/migrations/__tests__/issue_3429_ari_turn_authority.tester_adversarial.pg17.test.sql"
+          "supabase/migrations/__tests__/issue_1985_task_state_authority.tester.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_3429_ari_chat_context.implementor.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_3429_ari_turn_authority.tester_adversarial.pg17.test.sql"
         ],
         "jobKeys": [
           "ari-task-state",

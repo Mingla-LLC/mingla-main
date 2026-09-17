@@ -6,7 +6,7 @@ const files = {
   migration:
     "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql",
   turnMigration:
-    "supabase/migrations/20270708003429_issue_3429_ari_chat_context.sql",
+    "supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql",
   implementorPg:
     "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql",
   turnAuthorityPg:
