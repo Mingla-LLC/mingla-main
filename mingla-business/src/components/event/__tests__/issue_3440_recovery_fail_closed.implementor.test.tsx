@@ -4,10 +4,15 @@
  *
  * I-1 fails if the stored reply's owner check is removed: after a reload wipes the
  *     page's memory, account A's reply must not restore for an anonymous visitor.
+ *     It also fails if a signed-in account restores from tab storage (#3416 D2/D5).
  * I-2 fails if a successful accepted write does not clear the page's stale record:
  *     fail-closed must not swallow the guest's NEWER reply on a same-tab remount.
- * I-3 fails if a reply with no owner field stops restoring: the pre-existing
- *     anonymous restore contract stays intact.
+ * I-3 fails if an unconfirmed restore exposes a pass, or if the rendered pass is the
+ *     stored copy instead of the one the service returned (#3416 D1/D4/D5).
+ * I-4 fails if a denial that lands after the guest left is dropped (#3416 D3).
+ * I-5 fails if a service answer for another entity or event is not a denial (#3416 D4).
+ * I-6 fails if an answer that cannot be bound shows the stored pass, or if the
+ *     retry does not ask the service again (#3416 D1/D4).
  */
 import React from "react";
 import { Platform, View } from "react-native";
@@ -15,6 +20,7 @@ import { RsvpDecisionBox, useRsvpOfferingState, type RsvpOfferingState, type Rsv
 import { createThemePalette } from "@mingla/offering-rendering/themePalette";
 import { resolveTheme } from "@mingla/offering-rendering/themeResolver";
 import { useRsvpGuestRecovery } from "../useRsvpGuestRecovery";
+import { RSVP_RECOVERY_DENIED, RSVP_RECOVERY_OFFLINE } from "../useRsvpGuestRecovery";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const mockVerify = jest.fn();
@@ -48,10 +54,20 @@ const ownerlessSnapshot = () => ({ version: 1, eventId: "night-a", rsvpId: "same
     anonymousRecovery: [{ entityType: "primary", entityId: "same-id", recoveryToken: "old-secret", recoveryUrl: null }] } });
 
 let current: RsvpOfferingState;
+let recoveryOut: ReturnType<typeof useRsvpGuestRecovery>;
+/** #3416 D4: the pass service's answer, bound to the exact entity and event. */
+const served = (overrides: Record<string, unknown> = {}) => ({ entityType: "primary", entityId: "same-id", displayName: "Served guest", qrCode: "served-qr", pdfFetchRef: "served-pdf", eventId: "night-a", ...overrides });
+const deferred = () => {
+  let resolve!: (value: unknown) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<unknown>((ok, fail) => { resolve = ok; reject = fail; });
+  return { promise, resolve, reject };
+};
 const submit = jest.fn();
 const trees: Tree[] = [];
 function Harness({ identity = null }: { identity?: string | null }) {
   const recovery = useRsvpGuestRecovery("night-a", identity, true);
+  recoveryOut = recovery;
   return <ReplyHarness identity={identity} recovery={recovery} />;
 }
 function ReplyHarness({ identity, recovery }: { identity: string | null; recovery: ReturnType<typeof useRsvpGuestRecovery> }) {
@@ -91,7 +107,7 @@ beforeEach(() => {
 });
 afterEach(async () => { for (const tree of [...trees]) await unmount(tree); jest.restoreAllMocks(); });
 
-test("I-1 after a reload, account A's stored reply restores for A but never for an anonymous visitor", async () => {
+test("I-1 after a reload, account A's stored reply never restores for A's signed-in page nor for an anonymous visitor", async () => {
   // A's reply is written while the identity marker cannot be stored.
   storage.setItem.mockImplementation((key, value) => { if (key === IDENTITY) throw new Error("marker blocked"); values.set(key, value); });
   const accountA = await mount("account-a");
@@ -101,11 +117,12 @@ test("I-1 after a reload, account A's stored reply restores for A but never for 
   await unmount(accountA);
   storage.setItem.mockImplementation((key, value) => { values.set(key, value); });
 
-  // Not over-broad: the owner still gets their own reply back after a reload.
+  // #3416 D2: the signed-in owner gets the invite, never a tab-storage restore.
   reload();
   const returnedA = await mount("account-a");
-  expect(current.guestStatus).toBe("going");
-  expect(current.passAction).not.toBeNull();
+  expect(current.guestStatus).toBeNull();
+  expect(current.passAction).toBeNull();
+  expect(mockVerify).not.toHaveBeenCalled();
   await unmount(returnedA);
 
   // The marker is gone again (the page's memory too): only the reply's own
@@ -133,16 +150,72 @@ test("I-2 a failed write blocks the superseded bytes, and a later successful acc
   expect(JSON.parse(values.get(KEY)!).details.credentials[0].qrCode).toBe("newest-private-qr");
   await unmount(tree);
 
+  mockVerify.mockResolvedValue(served({ displayName: "New visitor", qrCode: "newest-private-qr", pdfFetchRef: "new-pdf" }));
   await mount();
   expect(current.guestStatus).toBe("going");
+  // The newest bytes are the ones restored and checked.
+  expect(mockVerify).toHaveBeenLastCalledWith("primary", "same-id", "new-secret");
   await act(async () => { current.passAction!.onPress(); });
   expect(popup().details.credentials[0].qrCode).toBe("newest-private-qr");
 });
 
-test("I-3 an ownerless anonymous reply still restores on a fresh page and is verified", async () => {
+test("I-3 an ownerless anonymous reply restores its label only, and its pass only as the service confirms it", async () => {
+  const check = deferred(); mockVerify.mockReturnValue(check.promise);
   values.set(KEY, JSON.stringify(ownerlessSnapshot()));
   await mount();
   expect(current.guestStatus).toBe("going");
-  expect(current.passAction).not.toBeNull();
+  expect(current.passAction).toBeNull();
   expect(mockVerify).toHaveBeenCalledWith("primary", "same-id", "old-secret");
+  await act(async () => { check.resolve(served()); });
+  expect(current.passAction).not.toBeNull();
+  await act(async () => { current.passAction!.onPress(); });
+  // Never the stored copy ("old-private-qr").
+  expect(popup().details.credentials).toEqual([{ entityType: "primary", entityId: "same-id", displayName: "Served guest", qrCode: "served-qr", pdfFetchRef: "served-pdf" }]);
+});
+
+test("I-4 a denial that lands after the guest left still blocks those bytes for this page, without touching storage", async () => {
+  const check = deferred(); mockVerify.mockReturnValueOnce(check.promise);
+  const raw = JSON.stringify(ownerlessSnapshot());
+  values.set(KEY, raw);
+  const tree = await mount();
+  expect(current.guestStatus).toBe("going");
+  await unmount(tree);
+  await act(async () => { check.reject({ context: { status: 403 } }); });
+  expect(values.get(KEY)).toBe(raw);
+  mockVerify.mockReturnValue(new Promise(() => undefined));
+  await mount();
+  expect(current.guestStatus).toBeNull();
+  expect(current.passAction).toBeNull();
+});
+
+test.each([
+  ["another entity", { entityId: "someone-else" }],
+  ["another event", { eventId: "night-b" }],
+])("I-5 a service answer for %s is a denial: no pass, the bytes are dropped, the guest is told", async (_label, overrides) => {
+  mockVerify.mockResolvedValue(served(overrides));
+  values.set(KEY, JSON.stringify(ownerlessSnapshot()));
+  await mount();
+  expect(current.guestStatus).toBeNull();
+  expect(current.passAction).toBeNull();
+  expect(recoveryOut.recoveryNotice).toBe(RSVP_RECOVERY_DENIED);
+  expect(values.has(KEY)).toBe(false);
+});
+
+test("I-6 an answer that cannot be bound to this event keeps the reply, never the stored pass, and the retry asks again", async () => {
+  const { eventId: _unbound, ...withoutEvent } = served();
+  mockVerify.mockResolvedValueOnce(withoutEvent);
+  values.set(KEY, JSON.stringify(ownerlessSnapshot()));
+  await mount();
+  expect(current.guestStatus).toBe("going");
+  expect(current.passAction).toBeNull();
+  expect(recoveryOut.recoveryNotice).toBe(RSVP_RECOVERY_OFFLINE);
+  expect(recoveryOut.retryRecovery).not.toBeNull();
+  expect(values.has(KEY)).toBe(true);
+  mockVerify.mockResolvedValueOnce(served());
+  await act(async () => { recoveryOut.retryRecovery!(); });
+  expect(mockVerify).toHaveBeenCalledTimes(2);
+  expect(recoveryOut.recoveryNotice).toBeNull();
+  expect(recoveryOut.retryRecovery).toBeNull();
+  await act(async () => { current.passAction!.onPress(); });
+  expect(popup().details.credentials[0].qrCode).toBe("served-qr");
 });

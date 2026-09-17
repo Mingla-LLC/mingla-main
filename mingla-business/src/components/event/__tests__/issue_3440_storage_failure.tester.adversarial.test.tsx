@@ -108,7 +108,8 @@ test.each([403, 404, 409])("failed removal after current %i cannot resurrect a d
   const check = deferred(); mockVerify.mockReturnValueOnce(check.promise);
   values.set(KEY, JSON.stringify(oldSnapshot()));
   const tree = await mount();
-  await act(async () => { current.passAction!.onPress(); });
+  // #3416 D1: an unconfirmed restored pass can no longer be opened; only the reply shows.
+  expect(current.guestStatus).toBe("going"); expect(current.passAction).toBeNull();
   storage.removeItem.mockImplementation(() => { throw new Error("storage removal unavailable"); });
   await act(async () => { check.reject({ context: { status } }); });
   expect(current.passAction).toBeNull(); expect(popup().visible).toBe(false); expect(popup().details).toBeNull();

@@ -212,6 +212,9 @@ const goingSnapshot = JSON.stringify({
   savedAtMs: NOW - 60_000,
 });
 
+// #3416 D4: the pass service's answer, bound to the exact entity and event.
+const servedPass = { entityType: 'primary', entityId: 'rsvp-restored', displayName: 'Ada', qrCode: 'served-q', pdfFetchRef: 'r', eventId: EVENT_ID };
+
 const storage = new Map<string, string>();
 const sessionStorageStub = {
   getItem: jest.fn((key: string) => storage.get(key) ?? null),
@@ -264,16 +267,18 @@ const mount = async (): Promise<Renderer> => {
   return tree;
 };
 
-test('tester guard: restored pass reopens with the original credential, without submitting again', async () => {
+test('tester guard: restored pass reopens with the service-confirmed credential, without submitting again', async () => {
+  mockFetchPassMetadata.mockResolvedValue(servedPass);
   storage.set(STORAGE_KEY, goingSnapshot);
   const tree = await mount();
   expect(replyLabel(tree)).toBe("You're going");
   const pass = nodes(tree, 'rsvp-view-pass')[0];
   expect(pass).toBeDefined();
   await act(async () => { (pass.props.onPress as () => void)(); });
-  const popup = captured.state?.successPopup as React.ReactElement<{ children: React.ReactElement<{ visible: boolean; details: { credentials: { entityId: string }[] } }> }>;
+  const popup = captured.state?.successPopup as React.ReactElement<{ children: React.ReactElement<{ visible: boolean; details: { credentials: { entityId: string; qrCode: string }[] } }> }>;
   expect(popup.props.children.props.visible).toBe(true);
   expect(popup.props.children.props.details.credentials[0].entityId).toBe('rsvp-restored');
+  expect(popup.props.children.props.details.credentials[0].qrCode).toBe('served-q');
   expect(mockSubmitPublicRsvp).not.toHaveBeenCalled();
 });
 
@@ -310,7 +315,10 @@ test('clearing the page on logout must not restore the previous account pass on 
   mockAuth.user = { id: 'account-a' };
   storage.set(STORAGE_KEY, goingSnapshot);
   const tree = await mount();
-  expect(replyLabel(tree)).toBe("You're going");
+  // #3416 D2: a signed-in account never restores from tab storage, so its pass never shows.
+  expect(replyLabel(tree)).toBe('Going');
+  expect(nodes(tree, 'rsvp-view-pass')).toHaveLength(0);
+  expect(mockFetchPassMetadata).not.toHaveBeenCalled();
   mockAuth.user = null;
   await updatePage(tree);
   await act(async () => { tree.unmount(); });
@@ -348,13 +356,18 @@ test.each([403, 404, 409])('definitive %s with no newer reply returns the mounte
   expect(storage.has(STORAGE_KEY)).toBe(false);
 });
 
-test('transient network failure retains the actual mounted pass', async () => {
+test('transient network failure keeps the reply and its storage, never shows the unconfirmed pass, and offers a retry', async () => {
   mockFetchPassMetadata.mockRejectedValue(new Error('offline'));
   storage.set(STORAGE_KEY, goingSnapshot);
   const tree = await mount();
   expect(replyLabel(tree)).toBe("You're going");
-  expect(nodes(tree, 'rsvp-view-pass').length).toBeGreaterThan(0);
+  expect(nodes(tree, 'rsvp-view-pass')).toHaveLength(0);
+  expect(nodes(tree, 'rsvp-recovery-retry').length).toBeGreaterThan(0);
   expect(storage.has(STORAGE_KEY)).toBe(true);
+  // The retry asks the service again; still offline, so still no pass.
+  await act(async () => { (nodes(tree, 'rsvp-recovery-retry')[0].props.onPress as () => void)(); });
+  expect(mockFetchPassMetadata).toHaveBeenCalledTimes(2);
+  expect(nodes(tree, 'rsvp-view-pass')).toHaveLength(0);
 });
 
 test.each(['ios', 'android'] as const)('%s shared reply owner never consumes web tab credentials', async (platform) => {
@@ -367,12 +380,17 @@ test.each(['ios', 'android'] as const)('%s shared reply owner never consumes web
   expect(mockFetchPassMetadata).not.toHaveBeenCalled();
 });
 
-test.each([403, 404, 409])('late %s must close an already opened invalidated pass', async (status) => {
+test.each([403, 404, 409])('late %s: the invalidated pass could never be opened before the answer, and the reply returns to the invite', async (status) => {
   const pending = rejectable();
   mockFetchPassMetadata.mockReturnValue(pending.promise);
   storage.set(STORAGE_KEY, goingSnapshot);
   const tree = await mount();
-  await act(async () => { (nodes(tree, 'rsvp-view-pass')[0].props.onPress as () => void)(); });
+  // #3416 D1: before the answer there is nothing to open.
+  expect(nodes(tree, 'rsvp-view-pass')).toHaveLength(0);
+  await act(async () => { captured.state?.passAction?.onPress(); });
+  const before = captured.state?.successPopup as React.ReactElement<{ children: React.ReactElement<{ visible: boolean; details: unknown }> }>;
+  expect(before.props.children.props.visible).toBe(false);
+  expect(before.props.children.props.details).toBeNull();
   await act(async () => { pending.reject({ context: { status } }); });
   expect(replyLabel(tree)).toBe('Going');
   const popup = captured.state?.successPopup as React.ReactElement<{ children: React.ReactElement<{ visible: boolean; details: unknown }> }>;
