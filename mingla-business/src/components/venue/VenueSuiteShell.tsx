@@ -134,10 +134,13 @@ export function VenueSuiteShell({
 
   const settingsQuery = useVenueReservationSettings(brandId, venueId);
   const reservationsEnabled = settingsQuery.data?.reservationsEnabled ?? false;
-  // #3389 — `data` is `null` for "no settings row" (a resolved OFF) and
-  // `undefined` only while loading, so this is true once the answer is in.
-  const settingsResolved =
-    settingsQuery.data !== undefined || settingsQuery.isError;
+  // #3389 — `data` is `null` for "no settings row" (a resolved OFF) and a
+  // settings object once the row loads. It stays `undefined` while loading AND
+  // when the first request fails: a failed request is NOT a confirmed OFF, so
+  // it must not bounce a `?module=tables` deep link to Overview — otherwise the
+  // requested module is lost by the time the retry succeeds. (A refetch that
+  // fails after a successful load keeps the last `data`, so that answer holds.)
+  const settingsResolved = settingsQuery.data !== undefined;
   const setEnabled = useSetReservationsEnabled(brandId, venueId);
 
   const visibleModules = useMemo(
