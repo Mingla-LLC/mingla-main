@@ -356,6 +356,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
   const [activeTab, setActiveTab] = useState<CoverTabId>("library");
   const [uploading, setUploading] = useState(false);
+  // Issue #3073 — WHICH cover button is busy. `uploading` is shared by the
+  // image and video flows (it is what disables every cover button), so on its
+  // own it cannot say where the spinner goes: a video pick used to spin the
+  // Image button while the iOS picker copied the clip and the upload started.
+  const [coverUploadKind, setCoverUploadKind] = useState<"image" | "video">("image");
   // issue #3280 — the Additional photos gallery's OWN in-flight flag, set and
   // cleared ONLY by `addGalleryPhoto`. It cannot share `uploading`: the cover
   // VIDEO flow holds `uploading` true for its whole processing window
@@ -1028,6 +1033,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     if (!validateEventRowId()) return;
 
     setUploading(true);
+    setCoverUploadKind("image");
     // issue #1338 — an image/GIF pick clears any stale video-flow notice.
     setVideoPickNotice(null);
     let pickedAssets: Parameters<typeof revokeCoverPickedAssets>[0] = [];
@@ -1211,6 +1217,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     if (!validateEventRowId()) return;
 
     setUploading(true);
+    setCoverUploadKind("video");
     // issue #1338 — clear any stale notice from a prior attempt.
     setVideoPickNotice(null);
     const previousPickedVideoAssets = pickedVideoAssetsRef.current;
@@ -1397,6 +1404,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     async (upload: NonNullable<NativeEditorCarry["upload"]>): Promise<void> => {
       lastVideoUploadFileRef.current = upload.file;
       setUploading(true);
+      setCoverUploadKind("video");
       try {
         if (upload.replacing) await videoUpload.replace(upload.file);
         else await videoUpload.start(upload.file);
@@ -1878,12 +1886,23 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           // issue #3318 — the Replace/Image SPINNER is the cover's own upload
           // only (the buttons above stay disabled, not spinning, during a photo
           // add); a photo add used to make the cover look like it was uploading.
-          spinning={uploading}
+          // Issue #3073 — and only an IMAGE cover upload: a video pick spins
+          // the Video button instead.
+          spinning={uploading && coverUploadKind === "image"}
+          videoSpinning={uploading && coverUploadKind === "video"}
           activeVideoUpload={lockedVideoOperation}
           videoStage={projectedVideoStage}
           videoStatus={videoUpload.status}
+          // Issue #3073 — ONE error, ONE retry. A failed video used to say the
+          // same sentence three times: in the status card (with Try again and
+          // Discard upload), again in red under the buttons, and a third time
+          // as an "Upload failed - try again" button. The card owns the error
+          // whenever it is showing it; this row is only for an error the card
+          // is not showing.
           videoErrorMessage={
-            videoUpload.stage.phase === "error" ? videoUpload.stage.message : null
+            videoUpload.stage.phase === "error" && projectedVideoStage.phase !== "error"
+              ? videoUpload.stage.message
+              : null
           }
           canRetryVideo={lastVideoUploadFileRef.current !== null}
           disabled={disabled}
@@ -2163,6 +2182,8 @@ const LibraryTab: React.FC<{
    * gallery photo add never makes the cover look like it is uploading.
    */
   spinning: boolean;
+  /** Issue #3073 — the Video button's spinner: a video pick in progress. */
+  videoSpinning: boolean;
   activeVideoUpload: boolean;
   videoStage: EventCoverVideoUploadStage;
   videoStatus: EventCoverVideoStatus | null;
@@ -2191,6 +2212,7 @@ const LibraryTab: React.FC<{
   credit,
   uploading,
   spinning,
+  videoSpinning,
   activeVideoUpload,
   videoStage,
   videoStatus,
@@ -2269,6 +2291,7 @@ const LibraryTab: React.FC<{
             size="md"
             shape="square"
             onPress={onPickVideo}
+            loading={videoSpinning}
             disabled={uploading || disabled}
             style={styles.actionButton}
           />
