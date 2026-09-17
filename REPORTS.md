@@ -3,15 +3,17 @@
 This is the single running log of what has been fixed, implemented, and shipped. It is the
 canonical record: if it shipped, it has a line here.
 
-**Going-forward format:** when an issue on the Mingla Avengers board reaches Done, ONE entry is
-appended at the top of the "Shipped" section:
+**Going-forward format:** ONE entry is added at the top of the "Shipped" section by the pull request
+that ships the change, before it merges. It is never appended afterwards in a docs-only follow-up
+pull request (#3476). Open the pull request first, then fill in its number with a follow-up commit
+on the same branch:
 
 ```
 - YYYY-MM-DD — <plain-English what changed for users/ops> (#<issue>, PR #<pr>)
 ```
 
-Detail (evidence, root cause, test notes) lives in the issue, not here. One line per ship,
-newest first, plain English first.
+Detail (evidence, root cause, test notes) and post-merge release records (OTA ids, deploy and live
+verification) live in the issue, not here. One line per ship, newest first, plain English first.
 
 History before 2026-07-19 is archived in full at git tag `pre-avengers-archive`. Entries below
 that date are a translated back-fill from the old ORCH/artifact system; old IDs are kept in

@@ -2,9 +2,13 @@
 """Check Mingla documentation placement invariants (Avengers era).
 
 Work documentation lives as issues on the Mingla Avengers board
-(https://github.com/orgs/Mingla-LLC/projects/4). The repo carries exactly
-four canonical docs at the root plus engineering references under docs/.
+(https://github.com/orgs/Mingla-LLC/projects/4). The repo carries a small
+set of canonical docs at the root plus engineering references under docs/.
 This gate keeps the retired artifact system from growing back.
+
+#3476 retired the COMMS.md coordination table (chats now follow AGENTS.md
+§ Coordinate with other chats), so COMMS.md is no longer a canonical doc. Its
+retirement stub is guarded by scripts/docs/check_ota_comms_authority.py.
 
 History pre-2026-07-19 is preserved at git tag `pre-avengers-archive`.
 """
@@ -24,7 +28,6 @@ CANONICAL_DOCS = (
     "AGENTS.md",
     "PRODUCT_AND_STRATEGY.md",
     "MARKETING.md",
-    "COMMS.md",
     "REPORTS.md",
 )
 
