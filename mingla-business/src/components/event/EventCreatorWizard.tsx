@@ -122,6 +122,7 @@ import type {
 } from "../../services/offeringInvitePlanService";
 import { useOfferingInvitePlanSummary } from "../../hooks/useOfferingInvitePlan";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
+import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
 
 /*
  * Desktop web wizard contract restored after regression:
@@ -737,6 +738,15 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     setShowStepErrors(false);
     setCurrentStep((prev) => prev === 7 && !inviteEnabled ? 5 : Math.max(0, prev - 1));
   }, [currentStep, inviteEnabled, inviteNavigation?.phase]);
+
+  // #3446 — Android back = this wizard's own Back (step > 1) or close (step 1). See I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK.
+  useWizardHardwareBack({
+    isFirstStep,
+    busy: isPublishing || checkingInvitePublish || isDiscarding,
+    exitSurfaced: discardDialogVisible || toast.visible,
+    onStepBack: handleStepBack,
+    onExit: handleClose,
+  });
 
   const handleCloseDiscardDialog = useCallback((): void => {
     if (isDiscarding) return;

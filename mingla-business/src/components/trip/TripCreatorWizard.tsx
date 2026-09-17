@@ -153,6 +153,7 @@ import {
 } from "../invites/InvitePeopleStep";
 import { useOfferingInvitePlanSummary } from "../../hooks/useOfferingInvitePlan";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
+import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
 import type {
   WizardInvitePlan,
   WizardInviteQuote,
@@ -1383,6 +1384,16 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
 
   // ----- Render -----
   const submitting = isAutosaving || publishMutation.isPending;
+
+  // #3446 — Android back = this wizard's own Back (step > 1) or close (step 1). See I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK.
+  useWizardHardwareBack({
+    isFirstStep: step === 1,
+    busy: submitting || checkingInvitePublish || isDiscarding,
+    exitSurfaced: discardDialogVisible,
+    onStepBack: handleStepBack,
+    onExit: handleClose,
+  });
+
   const visibleStepperSteps = inviteEnabled
     ? STEPPER_STEPS
     : STEPPER_STEPS.filter((item) => item.id !== "step-7");
