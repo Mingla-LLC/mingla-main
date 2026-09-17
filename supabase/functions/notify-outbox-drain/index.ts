@@ -14,6 +14,12 @@ import { sourceRefundPayloadFingerprint } from "../_shared/sourceRefundNotificat
 // #1529 — the source-refund pool is the ONE path whose outbox row can never
 // carry a country (see the derivation comment in processSource below).
 import { countryFromE164 } from "../_shared/e164Country.ts";
+// #3392 — the venue booking confirmation email's "Manage or cancel" link.
+import {
+  readVenueReservationManageKeyRing,
+  resolveVenueReservationManageLink,
+  type VenueReservationManageKeyRing,
+} from "../_shared/venueReservationManageToken.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -90,8 +96,65 @@ async function readBoundedSuccessEnvelope(
   }
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * #3392 — who a venue booking confirmation goes to, and its manage link.
+ *
+ * RECIPIENT. The reservation trigger addresses the outbox row to
+ * COALESCE(guest_phone_e164, guest_email). Since #1857 every booking carries a
+ * phone, and `buyer_reservation_confirmed` has no SMS channel (DEC-185), so a
+ * guest's confirmation EMAIL was skipped as "no contact": the dispatcher only
+ * emails a contact that is an email address. The trigger-written payload holds
+ * the booking's own guest email; this category is addressed to it.
+ *
+ * LINK. Re-derived here, at send time, from the governed key — never read from
+ * storage, never written to the outbox, the payload, the inbox or the delivery
+ * ledger. It rides only in this request's body to notify-dispatch, which
+ * accepts it from the service role alone and re-validates its shape. Any
+ * failure omits the link and the email still sends.
+ */
+export async function resolveReservationConfirmationDispatch(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  row: Record<string, unknown>,
+  ring: VenueReservationManageKeyRing = readVenueReservationManageKeyRing(),
+): Promise<{ contact: string | null; manageUrl: string | null }> {
+  const payload = (row.payload as Record<string, unknown> | null) ?? {};
+  const rowContact = typeof row.contact === "string" ? row.contact : null;
+  const guestEmail = typeof payload.guest_email === "string"
+    ? payload.guest_email.trim()
+    : "";
+  // The link is a credential: it only ever goes to the booking's own email.
+  if (!EMAIL_RE.test(guestEmail)) return { contact: rowContact, manageUrl: null };
+  const contact = guestEmail;
+  try {
+    const link = await resolveVenueReservationManageLink(admin, {
+      reservationId: String(payload.reservation_id ?? ""),
+      ring,
+    });
+    if (
+      link.reason === "manage_key_absent" ||
+      link.reason === "manage_key_invalid" ||
+      link.reason === "session_lookup_failed"
+    ) {
+      console.warn(
+        "[notify-outbox-drain] venue_reservation_manage_link_omitted",
+        { outbox_id: row.id ?? null, reason: link.reason },
+      );
+    }
+    return { contact, manageUrl: link.url };
+  } catch {
+    console.warn(
+      "[notify-outbox-drain] venue_reservation_manage_link_omitted",
+      { outbox_id: row.id ?? null, reason: "manage_link_failed" },
+    );
+    return { contact, manageUrl: null };
+  }
+}
+
 // deno-lint-ignore no-explicit-any
-async function processGeneric(
+export async function processGeneric(
   admin: any,
   row: Record<string, unknown>,
   url: string,
@@ -108,6 +171,16 @@ async function processGeneric(
     ...((row.payload as Record<string, unknown>) ?? {}),
     brand_name: brandName,
   };
+  let contact = (row.contact as string | null | undefined) ?? null;
+  let reservationManageUrl: string | null = null;
+  if (row.category_key === "buyer_reservation_confirmed") {
+    const confirmation = await resolveReservationConfirmationDispatch(
+      admin,
+      row,
+    );
+    contact = confirmation.contact;
+    reservationManageUrl = confirmation.manageUrl;
+  }
   try {
     const res = await fetch(`${url}/functions/v1/notify-dispatch`, {
       method: "POST",
@@ -118,10 +191,14 @@ async function processGeneric(
       body: JSON.stringify({
         category_key: row.category_key,
         user_id: row.user_id ?? null,
-        contact: row.contact ?? null,
+        contact,
         payload,
         idempotency_key: row.idempotency_key,
         country_code: row.country_code ?? null,
+        // #3392 — in transit only; see resolveReservationConfirmationDispatch.
+        ...(reservationManageUrl
+          ? { reservation_manage_url: reservationManageUrl }
+          : {}),
       }),
     });
     if (!res.ok) {

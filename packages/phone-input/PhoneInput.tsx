@@ -38,6 +38,11 @@ import {
 import { CountryPickerModal, CountryPickerOverlay } from "./CountryPickerModal";
 import { getCountryByCode } from "./countries";
 import {
+  countryFromInternationalEntry,
+  cursorAfterEdit,
+} from "./phoneEntryText";
+import { parsePhoneEntry, reformatPhoneEdit } from "./phoneNumber";
+import {
   pickerCloseFocusTarget,
   resolvePickerPresentation,
   type PhoneInputPickerPresentation,
@@ -111,6 +116,14 @@ export interface PhoneInputProps {
   required?: boolean;
   maxLength?: number;
   onBlur?: () => void;
+  /**
+   * Issue #3380 — the full entry experience. Formats the number the way the
+   * selected country writes it as the person types (keeping their cursor),
+   * follows a typed or pasted "+code" by switching the picker, and offers the
+   * device's phone autofill. Off by default so existing hosts that compose the
+   * raw value themselves are unchanged.
+   */
+  smartEntry?: boolean;
 }
 
 export const PhoneInput = ({
@@ -129,8 +142,9 @@ export const PhoneInput = ({
   countryButtonAccessibilityLabel,
   phoneInputAccessibilityLabel,
   required = false,
-  maxLength = 15,
+  maxLength,
   onBlur,
+  smartEntry = false,
 }: PhoneInputProps): React.ReactElement => {
   const [focused, setFocused] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -144,6 +158,11 @@ export const PhoneInput = ({
   const countryTriggerRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
   const phoneInputRef = useRef<TextInput>(null);
   const countryWasSelected = useRef(false);
+  // Issue #3380 — a cursor position owed to the field after a mid-number edit
+  // is reformatted. Edits at the end need none: the cursor stays at the end.
+  const [pendingSelection, setPendingSelection] = useState<
+    { start: number; end: number } | undefined
+  >(undefined);
 
   const t: Required<PhoneInputTheme> = useMemo(
     () => ({ ...DEFAULT_PHONE_INPUT_THEME, ...(theme ?? {}) }),
@@ -216,6 +235,64 @@ export const PhoneInput = ({
     countryWasSelected.current = false;
     setTimeout(() => target?.focus?.(), 0);
   }, []);
+
+  // Release the owed cursor position once it has been committed, so the field
+  // is never pinned and the person can tap anywhere afterwards.
+  useEffect(() => {
+    if (pendingSelection === undefined) return undefined;
+    const timer = setTimeout(() => setPendingSelection(undefined), 50);
+    return () => clearTimeout(timer);
+  }, [pendingSelection]);
+
+  const handleChangeText = useCallback(
+    (next: string): void => {
+      if (!smartEntry) {
+        onChangePhone(next);
+        return;
+      }
+      // #3396: validate BEFORE formatting discards characters. Keep rejected
+      // text editable so the shared parser can explain it, never silently turn
+      // a malformed paste into a different, accepted recipient.
+      const entry = parsePhoneEntry(next, { countryIso: countryCode, mode: "any" });
+      if (!entry.ok && entry.problem === "invalid") {
+        setPendingSelection(undefined);
+        onChangePhone(next);
+        return;
+      }
+      const international = countryFromInternationalEntry(next, countryCode);
+      if (international !== null) {
+        const formatted = reformatPhoneEdit({
+          countryIso: international.countryCode,
+          previousText: "",
+          nextText: international.national,
+        });
+        if (international.countryCode !== countryCode) {
+          onChangeCountry(international.countryCode);
+        }
+        setPendingSelection(undefined);
+        onChangePhone(formatted.text);
+        return;
+      }
+      if (/^\s*(\+|00)/.test(next)) {
+        // Still typing the country code — keep exactly what they typed.
+        onChangePhone(next);
+        return;
+      }
+      const formatted = reformatPhoneEdit({
+        countryIso: countryCode,
+        previousText: value,
+        nextText: next,
+        cursor: cursorAfterEdit(value, next),
+      });
+      setPendingSelection(
+        formatted.cursor < formatted.text.length
+          ? { start: formatted.cursor, end: formatted.cursor }
+          : undefined,
+      );
+      onChangePhone(formatted.text);
+    },
+    [countryCode, onChangeCountry, onChangePhone, smartEntry, value],
+  );
 
   const handleOpenPicker = useCallback((): void => {
     if (disabled) return;
@@ -314,10 +391,17 @@ export const PhoneInput = ({
           ref={phoneInputRef}
           style={textInputStyle}
           value={value}
-          onChangeText={onChangePhone}
+          onChangeText={handleChangeText}
           keyboardType="phone-pad"
           returnKeyType="done"
-          maxLength={maxLength}
+          maxLength={maxLength ?? (smartEntry ? 32 : 15)}
+          {...(smartEntry
+            ? {
+                textContentType: "telephoneNumber" as const,
+                autoComplete: "tel" as const,
+                selection: pendingSelection,
+              }
+            : {})}
           placeholder={labels.phonePlaceholder}
           placeholderTextColor={t.textTertiary}
           editable={!disabled}
