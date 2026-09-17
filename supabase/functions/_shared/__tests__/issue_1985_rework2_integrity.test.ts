@@ -181,7 +181,7 @@ Deno.test("#1985 R2-3 first-turn identity and task response commit are database-
   // superseded by the digest-bound logical-turn authority. Retained invariant:
   // one client id is claimed once and its current attempt commits atomically.
   const turnAuthority = await source(
-    "supabase/migrations/20270708003429_issue_3429_ari_chat_context.sql",
+    "supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql",
   );
   assertMatch(migration, /EXCEPTION WHEN unique_violation/);
   assertMatch(

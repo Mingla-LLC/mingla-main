@@ -29,7 +29,7 @@ Deno.test("#2013 tester retest: direct writers and #3429 RPC writers each carry 
   const chat = await Deno.readTextFile("supabase/functions/agent-chat/index.ts");
   const confirm = await Deno.readTextFile("supabase/functions/agent-confirm-action/index.ts");
   const turnMigration = await Deno.readTextFile(
-    "supabase/migrations/20270708003429_issue_3429_ari_chat_context.sql",
+    "supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql",
   );
 
   // [TEST-MOD-APPROVED #3429] The old four chat direct inserts are superseded
