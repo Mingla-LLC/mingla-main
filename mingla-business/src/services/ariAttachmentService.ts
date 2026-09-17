@@ -2,7 +2,8 @@
 
 import { Linking, Platform } from "react-native";
 
-import type { AriPickedFile } from "../components/ari/ariAttachmentPicker";
+import type { AriPickedFile } from "../components/ari/ariAttachmentPickerShared";
+import { readAriAttachmentBytes } from "./ariAttachmentFileReader";
 import { supabase } from "./supabase";
 
 export const ARI_ATTACHMENT_MAX_FILES = 5;
@@ -30,6 +31,10 @@ export interface AriAttachmentDraft {
   errorCode: string | null;
   errorMessage: string | null;
   webFile?: File;
+  /** REWORK-1: true once the image was re-encoded on this device/browser. */
+  prepared?: boolean;
+  /** REWORK-1: what the picker returned, kept so a lost prepared copy can be rebuilt. */
+  original?: AriPickedFile;
 }
 
 export interface AriSentAttachment {
@@ -51,16 +56,53 @@ interface PrepareOutcome {
   message?: string;
 }
 
-interface FinalizeOutcome {
+interface LifecycleOutcome {
   attachment_id: string;
   filename?: string;
-  state: "ready" | "failed";
+  state: "ready" | "failed" | "prepared" | "uploaded" | "processing";
   verified_mime?: string;
   file_type?: AriAttachmentFileType;
   size_bytes?: number;
   code?: string;
   message?: string;
 }
+
+/**
+ * REWORK-1 SC-R1-D4-2 — the one client copy table. It is identical to
+ * `ARI_ATTACHMENT_FAILURE_COPY` in `supabase/functions/_shared/agentAttachmentFinalize.ts`;
+ * both are pinned to `issue_3429_ari_failure_copy.snapshot.json`. Only
+ * ENCRYPTED_FILE may mention password protection.
+ */
+export const ARI_ATTACHMENT_FAILURE_COPY: Readonly<Record<string, string>> = Object.freeze({
+  UNSUPPORTED_TYPE: "That file isn’t supported. Add a JPG, PNG, WebP, HEIC, PDF, DOCX, TXT, or CSV file up to 10 MB.",
+  MIME_MISMATCH: "That file isn’t supported. Add a JPG, PNG, WebP, HEIC, PDF, DOCX, TXT, or CSV file up to 10 MB.",
+  FILE_TOO_LARGE: "That file is larger than 10 MB. Choose a smaller file.",
+  DUPLICATE_FILE: "{filename} is already attached.",
+  CONTEXT_LIMIT_EXCEEDED: "Ari couldn’t use this file because it contains too much information for one message. Remove it and attach a shorter version.",
+  ENCRYPTED_FILE: "Ari couldn’t read {filename}. Remove password protection or choose a different file.",
+  CORRUPT_FILE: "Ari couldn’t read {filename}. Choose a different file.",
+  UNREADABLE_FILE: "Ari couldn’t read {filename}. Choose a different file.",
+  DECOMPRESSION_BOMB: "Ari couldn’t read {filename}. Choose a different file.",
+  IMAGE_UNREADABLE: "Ari couldn’t read {filename}. Choose a different file.",
+  UPLOAD_INCOMPLETE: "{filename} couldn’t upload. Nothing was sent to Ari.",
+  SIZE_MISMATCH: "{filename} couldn’t upload. Nothing was sent to Ari.",
+  STORAGE_REJECTED: "Ari couldn’t save {filename}. Try again.",
+  PREPARE_FAILED: "Ari couldn’t save {filename}. Try again.",
+  PROCESSING_INTERRUPTED: "Ari couldn’t finish preparing {filename}. Try again.",
+  IMAGE_DIMENSIONS_EXCEEDED: "{filename} is too large for Ari to prepare. Choose a smaller image.",
+  IMAGE_SOURCE_TOO_LARGE: "{filename} is too large for Ari to prepare. Choose a smaller image.",
+  HEIC_NOT_SUPPORTED_IN_BROWSER: "This browser can’t open HEIC photos. Save {filename} as a JPG, or attach it from the Mingla Business app on your phone.",
+  ATTACHMENT_SCOPE_DENIED: "Ari couldn’t use {filename}. Remove it and attach it again.",
+});
+
+/** Unknown codes are infrastructure outcomes, never the person's file. */
+export function stableFailure(code: string, name: string): string {
+  const template = ARI_ATTACHMENT_FAILURE_COPY[code] ?? ARI_ATTACHMENT_FAILURE_COPY.PROCESSING_INTERRUPTED;
+  return template.split("{filename}").join(name);
+}
+
+/** REWORK-1 section 3.3: seconds between status polls (62 s > the 60 s lease). */
+export const ARI_ATTACHMENT_STATUS_POLL_DELAYS_MS = Object.freeze([2_000, 4_000, 8_000, 16_000, 32_000]);
 
 function inferMime(name: string, declared: string | null): string {
   const supplied = declared?.toLowerCase().split(";", 1)[0].trim();
@@ -105,31 +147,61 @@ export function normalizePickedAriFile(
     name: picked.name,
     mimeType,
     fileType,
-    sizeBytes: picked.size,
+    sizeBytes: picked.size ?? 0,
     state: "preparing",
     errorCode: null,
     errorMessage: null,
+    original: picked,
     ...(picked.webFile ? { webFile: picked.webFile } : {}),
   };
 }
 
-async function uploadBody(draft: AriAttachmentDraft): Promise<Blob | File> {
-  if (draft.webFile) return draft.webFile;
-  const result = await fetch(draft.uri);
-  if (!result.ok) throw new Error("local_file_read_failed");
-  return result.blob();
+function failurePatch(code: string, name: string, attachmentId: string | null = null): Partial<AriAttachmentDraft> {
+  return {
+    state: "failed",
+    attachmentId,
+    errorCode: code,
+    errorMessage: stableFailure(code, name),
+  };
 }
 
-function stableFailure(code: string, name: string): string {
-  if (code === "CONTEXT_LIMIT_EXCEEDED") {
-    return "Ari couldn’t use this file because it contains too much information for one message. Remove it and attach a shorter version.";
+function waitMs(duration: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, duration));
+}
+
+function isTerminal(outcome: LifecycleOutcome | null): outcome is LifecycleOutcome & { state: "ready" | "failed" } {
+  return outcome?.state === "ready" || outcome?.state === "failed";
+}
+
+async function invokeLifecycle(action: "finalize" | "status", attachmentId: string): Promise<LifecycleOutcome | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke<{ outcome?: LifecycleOutcome }>(
+      "agent-attachments",
+      { body: { action, attachment_id: attachmentId } },
+    );
+    if (error || !data?.outcome) return null;
+    return data.outcome;
+  } catch {
+    // Transport failure is not an outcome; the caller polls canonical status.
+    return null;
   }
-  if (code === "UNSUPPORTED_TYPE" || code === "MIME_MISMATCH") {
-    return "That file isn’t supported. Add a JPG, PNG, WebP, HEIC, PDF, DOCX, TXT, or CSV file up to 10 MB.";
+}
+
+/**
+ * Finalize one uploaded file. A non-2xx (including an edge CPU kill, 546) or a
+ * transport error keeps the card "Uploading…" and polls `status` at 2, 4, 8,
+ * 16 and 32 seconds, stopping at the first terminal state. If no terminal
+ * state is ever observed, the card fails PROCESSING_INTERRUPTED with Retry.
+ */
+async function finalizeOne(attachmentId: string): Promise<LifecycleOutcome & { state: "ready" | "failed" } | null> {
+  const finalized = await invokeLifecycle("finalize", attachmentId);
+  if (isTerminal(finalized)) return finalized;
+  for (const delay of ARI_ATTACHMENT_STATUS_POLL_DELAYS_MS) {
+    await waitMs(delay);
+    const polled = await invokeLifecycle("status", attachmentId);
+    if (isTerminal(polled)) return polled;
   }
-  if (code === "FILE_TOO_LARGE") return "That file is larger than 10 MB. Choose a smaller file.";
-  if (code === "DUPLICATE_FILE") return `${name} is already attached.`;
-  return `Ari couldn’t read ${name}. Remove password protection or choose a different file.`;
+  return null;
 }
 
 export async function prepareAriAttachments(args: {
@@ -159,93 +231,69 @@ export async function prepareAriAttachments(args: {
     },
   });
   if (error || !data?.outcomes) {
-    const message = data?.message ?? "Couldn’t prepare these files. Try again.";
-    args.drafts.forEach((draft) => args.onUpdate(draft.localId, {
-      state: "failed",
-      errorCode: data?.code ?? "PREPARE_FAILED",
-      errorMessage: message,
-    }));
+    args.drafts.forEach((draft) => args.onUpdate(draft.localId, data?.code === "ATTACHMENT_LIMIT_EXCEEDED"
+      ? { state: "failed", errorCode: data.code, errorMessage: data.message ?? "You can attach up to 5 files and 25 MB in one message." }
+      : failurePatch(data?.code && ARI_ATTACHMENT_FAILURE_COPY[data.code] ? data.code : "PREPARE_FAILED", draft.name)));
     return;
   }
 
-  const readyForFinalize: { draft: AriAttachmentDraft; attachmentId: string }[] = [];
+  // REWORK-1: strictly sequential, one file at a time: upload -> finalize ->
+  // next file. A sibling's failure never fails a valid file.
   for (let index = 0; index < args.drafts.length; index += 1) {
     const draft = args.drafts[index];
     const outcome = data.outcomes[index];
     if (!outcome || outcome.state !== "prepared" || !outcome.attachment_id || !outcome.upload_token) {
-      const code = outcome?.code ?? "PREPARE_FAILED";
-      args.onUpdate(draft.localId, {
-        state: "failed",
-        errorCode: code,
-        errorMessage: outcome?.message ?? stableFailure(code, draft.name),
-      });
+      args.onUpdate(draft.localId, failurePatch(outcome?.code ?? "PREPARE_FAILED", draft.name));
       continue;
     }
+    const attachmentId = outcome.attachment_id;
     args.onUpdate(draft.localId, {
-      attachmentId: outcome.attachment_id,
+      attachmentId,
       state: "uploading",
       errorCode: null,
       errorMessage: null,
     });
-    const storagePath = `${userId}/${args.brandId}/${outcome.attachment_id}/source`;
+    const storagePath = `${userId}/${args.brandId}/${attachmentId}/source`;
+    let bytes: Uint8Array;
     try {
-      const body = await uploadBody(draft);
+      bytes = await readAriAttachmentBytes({ uri: draft.uri, webFile: draft.webFile });
+    } catch {
+      args.onUpdate(draft.localId, failurePatch("UPLOAD_INCOMPLETE", draft.name, attachmentId));
+      continue;
+    }
+    // D-3: never send a body whose length differs from what was declared.
+    if (bytes.byteLength === 0 || bytes.byteLength !== draft.sizeBytes) {
+      args.onUpdate(draft.localId, failurePatch("UPLOAD_INCOMPLETE", draft.name, attachmentId));
+      continue;
+    }
+    try {
       const { error: uploadError } = await supabase.storage
         .from("ari-chat-attachments")
-        .uploadToSignedUrl(storagePath, outcome.upload_token, body, {
+        .uploadToSignedUrl(storagePath, outcome.upload_token, bytes, {
           contentType: draft.mimeType,
+          upsert: false,
         });
       if (uploadError) throw uploadError;
-      readyForFinalize.push({ draft, attachmentId: outcome.attachment_id });
     } catch {
-      args.onUpdate(draft.localId, {
-        state: "failed",
-        attachmentId: outcome.attachment_id,
-        errorCode: "UPLOAD_INCOMPLETE",
-        errorMessage: `${draft.name} couldn’t upload. Nothing was sent to Ari.`,
-      });
+      args.onUpdate(draft.localId, failurePatch("UPLOAD_INCOMPLETE", draft.name, attachmentId));
+      continue;
     }
-  }
-  if (readyForFinalize.length === 0) return;
-  const { data: finalized, error: finalizeError } = await supabase.functions.invoke<{
-    outcomes?: FinalizeOutcome[];
-  }>("agent-attachments", {
-    body: {
-      action: "finalize",
-      attachment_ids: readyForFinalize.map((entry) => entry.attachmentId),
-    },
-  });
-  if (finalizeError || !finalized?.outcomes) {
-    readyForFinalize.forEach(({ draft, attachmentId }) => args.onUpdate(draft.localId, {
-      state: "failed",
-      attachmentId,
-      errorCode: "FINALIZE_FAILED",
-      errorMessage: `Ari couldn’t read ${draft.name}. Remove password protection or choose a different file.`,
-    }));
-    return;
-  }
-  readyForFinalize.forEach(({ draft, attachmentId }) => {
-    const outcome = finalized.outcomes?.find((item) => item.attachment_id === attachmentId);
-    if (outcome?.state === "ready") {
+    const finalized = await finalizeOne(attachmentId);
+    if (finalized?.state === "ready") {
       args.onUpdate(draft.localId, {
         state: "ready",
         attachmentId,
-        mimeType: outcome.verified_mime ?? draft.mimeType,
-        fileType: outcome.file_type ?? draft.fileType,
-        sizeBytes: outcome.size_bytes ?? draft.sizeBytes,
+        mimeType: finalized.verified_mime ?? draft.mimeType,
+        fileType: finalized.file_type ?? draft.fileType,
+        sizeBytes: finalized.size_bytes ?? draft.sizeBytes,
         errorCode: null,
         errorMessage: null,
       });
     } else {
-      const code = outcome?.code ?? "FINALIZE_FAILED";
-      args.onUpdate(draft.localId, {
-        state: "failed",
-        attachmentId,
-        errorCode: code,
-        errorMessage: outcome?.message ?? stableFailure(code, draft.name),
-      });
+      const code = finalized?.code ?? "PROCESSING_INTERRUPTED";
+      args.onUpdate(draft.localId, failurePatch(code, draft.name, attachmentId));
     }
-  });
+  }
 }
 
 export async function discardAriAttachment(attachmentId: string): Promise<void> {

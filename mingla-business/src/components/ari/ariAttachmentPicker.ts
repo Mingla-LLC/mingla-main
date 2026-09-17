@@ -1,24 +1,5 @@
 import { pickBrowserFiles } from "../../utils/browserFilePicker";
-
-export type AriAttachmentSource = "all" | "photos" | "documents";
-
-export interface AriPickedFile {
-  uri: string;
-  name: string;
-  mimeType: string | null;
-  size: number;
-  webFile?: File;
-}
-
-export class AriAttachmentPickerPermissionError extends Error {
-  readonly canOpenSettings: boolean;
-
-  constructor(canOpenSettings: boolean) {
-    super("Photo access is off.");
-    this.name = "AriAttachmentPickerPermissionError";
-    this.canOpenSettings = canOpenSettings;
-  }
-}
+import type { AriAttachmentSource, AriPickedFile } from "./ariAttachmentPickerShared";
 
 export const ARI_ATTACHMENT_ACCEPT = [
   ".jpg",
