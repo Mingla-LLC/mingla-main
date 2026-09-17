@@ -128,13 +128,25 @@ const RevealChunk: React.FC<{
   );
 };
 
+/**
+ * P2-3 (web): Business web aliases `react-native-reanimated` to a static shim
+ * whose `useReducedMotion()` always returns true, so the reveal never animated
+ * there. On web the browser's own media query is the source of truth.
+ */
+function webPrefersReducedMotion(): boolean {
+  return typeof globalThis.matchMedia === "function"
+    ? globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches
+    : false;
+}
+
 export const SemanticRevealText: React.FC<SemanticRevealTextProps> = ({
   text,
   textStyle,
   skipSignal = 0,
   surface = "main",
 }) => {
-  const reduced = useReducedMotion();
+  const nativeReduced = useReducedMotion();
+  const reduced = Platform.OS === "web" ? webPrefersReducedMotion() : nativeReduced;
   const chunks = useMemo(() => splitSemanticChunks(text), [text]);
   const ChunkComponent = Platform.OS === "web" ? WebRevealChunk : RevealChunk;
   const [skipped, setSkipped] = useState(false);
