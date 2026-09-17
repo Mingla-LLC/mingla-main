@@ -4,7 +4,7 @@ import path from "node:path";
 const root = process.cwd();
 const read = (relative: string): string => fs.readFileSync(path.join(root, relative), "utf8");
 
-const migration = read("../supabase/migrations/20270709001780_issue_1780_wizard_invite_plans.sql");
+const migration = read("../supabase/migrations/20270711001780_issue_1780_wizard_invite_plans.sql"); // [TEST-MOD-APPROVED #1780] renumbered above the merge train
 const service = read("src/services/offeringInvitePlanService.ts");
 const hook = read("src/hooks/useOfferingInvitePlan.ts");
 const picker = read("src/components/invites/InvitePeopleStep.tsx");
