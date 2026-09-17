@@ -78,3 +78,82 @@ describe("#3429 LocalTurn ownership and scope adversarial seams", () => {
     expect(screen).toContain("hasReadyAttachments={attachments.attachments.length > 0 && attachments.allReady}");
   });
 });
+
+import ts from "typescript";
+
+/**
+ * Comment-immune view of a TS/TSX source. Every leaf token is re-emitted with
+ * its original text; the trivia before it (whitespace AND comments, including
+ * JSDoc and `{/* JSX *\/}` comments) collapses to one space. String literals and
+ * JSX text survive verbatim, so an assertion over this view can only be
+ * satisfied by executable code, never by a comment that quotes it.
+ */
+function executableSource(source: string, fileName: string): string {
+  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let code = "";
+  const visit = (node: ts.Node): void => {
+    if (node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode) return;
+    const children = node.getChildren(file);
+    if (children.length > 0) {
+      children.forEach(visit);
+      return;
+    }
+    const start = node.getStart(file);
+    if (start > node.getFullStart()) code += " ";
+    code += source.slice(start, node.getEnd());
+  };
+  visit(file);
+  return code.replace(/\s+/g, " ");
+}
+
+const executableFile = (filePath: string): string =>
+  executableSource(fs.readFileSync(filePath, "utf8"), filePath);
+const snippet = (value: string): string => value.replace(/\s+/g, " ");
+
+describe("#3429 assistive truth and cooperative-stop adversarial seams", () => {
+  const activityPath = path.resolve(__dirname, "../../components/ari/AriActivity.tsx");
+  const attachmentCardsPath = path.resolve(__dirname, "../../components/ari/AriAttachmentCards.tsx");
+  const revealPath = path.resolve(__dirname, "../../components/ari/SemanticRevealText.tsx");
+
+  it("reads executable source only: a comment that quotes a guarded statement never satisfies it", () => {
+    const fixture = [
+      "// setStopRequested(true); void onStop();",
+      "/* accessibilityLabel=\"Remove all attached files\" */",
+      "/** Files are saved with this conversation and kept private to your brand workspace. */",
+      "const url = \"https://example.invalid/a//b\";",
+      "export const Probe = () => <View>{/* useReducedMotion() */}<Text>Keep // this text</Text></View>;",
+    ].join("\n");
+    const code = executableSource(fixture, "fixture.tsx");
+
+    expect(code).not.toContain("setStopRequested(true); void onStop();");
+    expect(code).not.toContain("Remove all attached files");
+    expect(code).not.toContain("Files are saved with this conversation");
+    expect(code).not.toContain("useReducedMotion()");
+    expect(code).toContain("const url = \"https://example.invalid/a//b\";");
+    expect(code).toContain("Keep // this text");
+  });
+
+  it("keeps animated content readable while never presenting a stop request as a confirmed stop", () => {
+    const activity = executableFile(activityPath);
+    const reveal = executableFile(revealPath);
+
+    expect(activity).toContain(snippet('accessibilityLabel={stopRequested ? "Stop requested" : turn.accepted ? "Stop Ari" : "Stop sending"}'));
+    expect(activity).toContain(snippet("onPress={() => { setStopRequested(true); void onStop(); }}"));
+    expect(activity).toMatch(/const terminal = turn\.delivery === "stopped" \|\| turn\.delivery === "failed"/);
+    expect(activity).toContain(snippet('if (terminal) { AccessibilityInfo.announceForAccessibility(turn.errorMessage ?? "Ari stopped. Your message is still here.");'));
+    expect(activity).toContain("useReducedMotion()");
+    expect(reveal).toContain("accessibilityLabel={`Ari said: ${text}`}");
+    expect(reveal).toContain('importantForAccessibility="no-hide-descendants"');
+    expect(reveal).toMatch(/if \(reduced \|\| skipped\) \{[^}]*duration: reduced \? 0 : 80/);
+  });
+
+  it("exposes full attachment identity and deterministic failure recovery to assistive technology", () => {
+    const cards = executableFile(attachmentCardsPath);
+
+    expect(cards).toContain(snippet("accessibilityLabel={`${attachment.name}, ${attachment.fileType}, ${formatAriFileSize(attachment.sizeBytes)}, ${accessibleState}`}"));
+    expect(cards).toContain("accessibilityLabel={`Retry attaching ${attachment.name}`}");
+    expect(cards).toContain("accessibilityLabel={`Remove file ${attachment.name}`}");
+    expect(cards).toContain('accessibilityLabel="Remove all attached files"');
+    expect(cards).toContain("Files are saved with this conversation and kept private to your brand workspace.");
+  });
+});
