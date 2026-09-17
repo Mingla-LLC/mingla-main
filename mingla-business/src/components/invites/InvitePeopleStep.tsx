@@ -567,6 +567,7 @@ function PeoplePickerSheet(props: {
 function PersonRow(props: { person: BrandPersonSummary; selected: boolean; disabled: boolean; onPress: () => void }) {
   const contact = props.person.contacts.find((item) => item.isPrimary) ?? props.person.contacts[0];
   return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: props.selected, disabled: props.disabled }}
+    accessibilityLabel={contact?.value ? `${props.person.displayName}, ${contact.value}` : props.person.displayName}
     aria-checked={props.selected}
     disabled={props.disabled} onPress={props.onPress} style={[styles.personRow, props.selected && styles.personSelected]}>
     <View style={[styles.avatar, props.selected && styles.avatarSelected]}><Text style={styles.avatarText}>
