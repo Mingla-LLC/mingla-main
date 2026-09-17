@@ -39,6 +39,7 @@ import {
 } from "zustand/middleware";
 
 import { generateDraftId } from "../utils/draftEventId";
+import { recordServerCoverBase } from "../utils/draftCoverBase";
 import { convertDraftToLiveEvent } from "../utils/liveEventConverter";
 // ORCH-0877 — smart-infer helper used for v10→v11 persist backfill of the
 // new endsAtUtc field on legacy drafts.
@@ -1055,6 +1056,10 @@ export const useDraftEventStore = create<DraftEventState>()(
             return s;
           }
           accepted = true;
+          // The accepted server copy becomes the local draft, so its cover is
+          // now the base this session's autosaves and cover adoption merge
+          // against (see utils/draftCoverBase).
+          recordServerCoverBase(draft.id, draft.coverMediaUrl);
           // #3288 — merge-on-read for the additional-photos gallery. A server
           // draft whose read did not carry the gallery column has
           // `coverGallery: undefined` (UNKNOWN). Replacing the local draft
