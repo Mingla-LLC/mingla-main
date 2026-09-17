@@ -70,6 +70,11 @@ import {
 } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import {
+  useServerCoverAdoption,
+  type FetchServerCover,
+} from "../../hooks/useServerCoverAdoption";
+import type { ServerDraftCover } from "../../utils/draftCoverBase";
+import {
   type Brand,
   type BrandStripeStatus,
 } from "../../store/currentBrandStore";
@@ -208,6 +213,12 @@ export interface EventCreatorWizardProps {
   onOpenPaymentOnboarding: () => void;
   onAutosaveDraft?: (draft: DraftEvent) => void;
   /**
+   * Reads the server draft's cover, so a cover video that finishes after its
+   * Cover sheet closed lands on the draft (see useServerCoverAdoption). The
+   * route passes `fetchServerDraftCover`; absent = adoption is off.
+   */
+  fetchServerCover?: FetchServerCover;
+  /**
    * issue #3040 — resolve (creating if necessary) the SERVER `events` row this
    * draft maps to, and reconcile the route onto it. Owned by the route because
    * the route owns route state and the URL. Resolves with the server uuid;
@@ -237,6 +248,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   onOpenPreview,
   onOpenPaymentOnboarding,
   onAutosaveDraft,
+  fetchServerCover,
   onRequireServerDraft,
   onDiscardServerDraft,
   onPublishDraft,
@@ -278,6 +290,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const [isDiscarding, setIsDiscarding] = useState<boolean>(false);
   const [coverVideoProcessing, setCoverVideoProcessing] =
     useState<boolean>(false);
+  const coverIntentVersionRef = useRef(0);
+  const processingCoverRef = useRef<{ active: boolean; started: boolean; base: string | null }>({
+    active: false, started: false, base: null,
+  });
   const [discardError, setDiscardError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>({
     visible: false,
@@ -512,6 +528,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     (
       patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>,
     ): void => {
+      if (Object.prototype.hasOwnProperty.call(patch, "coverMediaUrl")) {
+        coverIntentVersionRef.current += 1;
+      }
       const nextRevision = clientRevisionRef.current + 1;
       clientRevisionRef.current = nextRevision;
       const revisionedPatch = {
@@ -536,6 +555,47 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const handleShowToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
   }, []);
+
+  // A cover video picked on the Cover step finishes on the SERVER, often after
+  // its sheet closed. Adopt it into the draft (card + Preview + next autosave)
+  // unless the host changed the cover since; keep checking while it processes.
+  const handleAdoptServerCover = useCallback(
+    (cover: ServerDraftCover): void => {
+      handleUpdate({ ...cover });
+    },
+    [handleUpdate],
+  );
+  const handleCoverProcessingChange = useCallback((processing: boolean): void => {
+    const tracked = processingCoverRef.current;
+    if (processing && !tracked.active) {
+      // A later upload must not be completed by an earlier in-flight read.
+      if (tracked.started) coverIntentVersionRef.current += 1;
+      tracked.base = latestDraftRef.current.coverMediaUrl ?? null;
+    }
+    // An idle/ready notification also establishes the previous job boundary.
+    tracked.started = true;
+    tracked.active = processing;
+    setCoverVideoProcessing(processing);
+  }, []);
+  const handleCoverReconciled = useCallback((cover: ServerDraftCover | null): void => {
+    const tracked = processingCoverRef.current;
+    if (tracked.active && cover?.coverMediaType === "video" &&
+        cover.coverMediaUrl !== null && cover.coverMediaUrl !== tracked.base) {
+      tracked.active = false;
+      setCoverVideoProcessing(false);
+    }
+  }, []);
+  const coverAuthority = useServerCoverAdoption({
+    draftId,
+    fetchServerCover,
+    localCoverUrl: liveDraft.coverMediaUrl ?? null,
+    watching: coverVideoProcessing,
+    pulse: currentStep,
+    onAdopt: handleAdoptServerCover,
+    onReconciled: handleCoverReconciled,
+    getCoverIntentVersion: () => coverIntentVersionRef.current,
+    onReadError: () => handleShowToast("Couldn't refresh your cover. Retrying shortly."),
+  });
 
   const handleDismissToast = useCallback((): void => {
     setToast((prev) => ({ ...prev, visible: false }));
@@ -638,6 +698,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // ---- Publish gate ----
 
   const handlePublishTap = useCallback((): void => {
+    if (!coverAuthority.isReady) return;
     const errs = validatePublish(liveDraft, stripeStatus);
     const stripeBlocking = errs.find(
       (e) => e.fieldKey === "stripeNotConnected",
@@ -663,10 +724,11 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     }
     // J-E2: happy path → confirm dialog.
     setPublishConfirmVisible(true);
-  }, [liveDraft, stripeStatus, handleShowToast]);
+  }, [liveDraft, stripeStatus, handleShowToast, coverAuthority.isReady]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     if (isPublishing) return;
+    if (!coverAuthority.isReady) return;
     setIsPublishing(true);
     const draftName = liveDraft.name;
     // Simulated 1.2s submit per spec AC#28.
@@ -756,6 +818,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     deleteDraft,
     handleShowToast,
     onOpenPaymentOnboarding,
+    coverAuthority.isReady,
   ]);
 
   const handleFixJump = useCallback((step: number): void => {
@@ -779,7 +842,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // connected. The Stripe-blocked-card in Step 7 body owns the
   // "Connect Stripe" CTA — the dock banner was removed for cleaner UX.
   const publishDisabled =
-    publishability.status === "blocked-stripe" || coverVideoProcessing;
+    publishability.status === "blocked-stripe" || coverVideoProcessing || !coverAuthority.isReady;
 
   // Publish modal copy varies per whenMode (Cycle 4 spec §3.8.2).
   const publishModalTitle = useMemo<string>(() => {
@@ -820,7 +883,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       // Issue #3291 — first source of the Where step's rank-only proximity.
       brandLocation: brand,
       coverMediaApplyMode: "draft_auto" as const,
-      onCoverVideoProcessingChange: setCoverVideoProcessing,
+      onCoverVideoProcessingChange: handleCoverProcessingChange,
       coverVideoProcessing,
       // issue #2160 — the multi-day pricing-mode control is EVENT-only.
       // ExperienceCreatorWizard lifts the same When step and deliberately does

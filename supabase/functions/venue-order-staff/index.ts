@@ -59,7 +59,6 @@ import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts"
 import {
   classifyStripePaymentIntentCreateFailure,
   jsonResponse,
-  normalizePhoneE164,
   randomBuyerStatusToken,
   serviceClient,
   sha256Hex,
@@ -96,9 +95,27 @@ import {
 } from "../_shared/paymentProvider.ts";
 import { venueOrderPaystackReference } from "../_shared/venueOrderWebhook.ts";
 import { venueOrderSplitFields } from "../venue-order-create/ngPaystackSplit.ts";
+// Issue #3380 — the guest's phone is read WITH the country the waiter chose.
+import {
+  LEGACY_NANP_REFUSAL,
+  legacyNanpGuessAllowed,
+  resolveBuyerPhone,
+} from "../_shared/buyerPhone.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ENABLED_PRICING_REGIONS = ["GB", "US", "EU", "CH"] as const;
+
+/**
+ * Issue #3380 — the phone refusal keeps its machine code (the pad already maps
+ * `buyer_phone_required`) but names what is wrong with the number the waiter
+ * typed, instead of asking for a number they already entered.
+ */
+function failPhone(message: string): Response {
+  return jsonResponse(
+    { error: "buyer_phone_required", message },
+    venueOrderErrorStatus("buyer_phone_required"),
+  );
+}
 
 /** P-29 — the machine code AND the exact STAFF-facing copy, together. */
 function fail(
@@ -542,13 +559,23 @@ async function billToPhone(
   const buyerEmail = typeof input.buyer.email === "string"
     ? input.buyer.email.trim().toLowerCase()
     : "";
-  const buyerPhone = normalizePhoneE164(input.buyer.phone);
+  // Issue #3380 — `phoneCountryIso` is the country the pad's picker showed. An
+  // E.164 value (every pad before this change) passes through unchanged.
+  const phone = resolveBuyerPhone(
+    input.buyer.phone,
+    input.buyer.phoneCountryIso,
+  );
+  const buyerPhone = phone.e164;
   // The contact triple is not optional here: the row becomes payment_status
   // 'paid' on a Mingla path, and venue_orders_paid_needs_contact makes a paid
   // Mingla order WITHOUT all three literally unwritable.
   if (buyerName.length < 2) return fail("buyer_name_required");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) return fail("buyer_email_invalid");
-  if (buyerPhone === null) return fail("buyer_phone_required");
+  if (buyerPhone === null) {
+    return phone.message === null
+      ? fail("buyer_phone_required")
+      : failPhone(phone.message);
+  }
 
   const { data: pricingRows, error: pricingError } = await supabase.rpc(
     "resolve_brand_pricing_inputs",
@@ -558,6 +585,12 @@ async function billToPhone(
     return fail("order_total_invalid");
   }
   const pricing = pricingRows[0] as Record<string, unknown>;
+  // Issue #3380 — a pad from before the country picker sends bare national
+  // digits. "Ten digits are American" is only believable at a North American
+  // venue; anywhere else it billed a stranger's US number, so refuse it.
+  if (phone.legacyNanpGuess && !legacyNanpGuessAllowed(pricing.payment_country)) {
+    return failPhone(LEGACY_NANP_REFUSAL);
+  }
   const settlementCurrency = typeof pricing.pricing_currency === "string"
     ? pricing.pricing_currency.trim().toUpperCase()
     : "";

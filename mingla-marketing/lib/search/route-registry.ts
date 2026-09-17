@@ -242,6 +242,16 @@ const REDIRECTED_ROUTES = [
     source: '/tools/book',
     destination: '/schedule',
   },
+  // #3371 — the long Explorer page moved to /going-out so the side menu's
+  // Explorer item can mean the home page. Permanent, so shared links and search
+  // signals follow the page to its new canonical.
+  {
+    id: 'explorer-page-redirect',
+    match: { type: 'exact', pathname: '/explorer' },
+    lifecycle: 'redirected',
+    source: '/explorer',
+    destination: '/going-out',
+  },
 ] as const satisfies readonly RedirectedRouteContract[]
 
 // #2983 owns its ten city route contracts as a registry projection. Keep this

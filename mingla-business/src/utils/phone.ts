@@ -14,6 +14,8 @@
  * proper E.164 strings.
  */
 
+import { composePhoneE164 } from "@mingla/phone-input/phoneNumber";
+
 /**
  * Tests whether a string is a valid E.164 phone number.
  * Matches the server validator's first-line regex exactly.
@@ -38,20 +40,6 @@ export const isValidE164 = (value: string): boolean =>
  * @example composeE164("+44", "")          → null  (empty local digits)
  * @example composeE164("+44", "abc")       → null  (no digits)
  */
-/**
- * issue #2462 — COUNTRIES WHOSE SUBSCRIBER NUMBER KEEPS ITS LEADING ZERO.
- *
- * Almost every country uses `0` as a national trunk prefix that is DROPPED in
- * E.164 (`0803…` -> `+234803…`). Italy is the famous exception: the leading zero
- * is part of the subscriber number and must be KEPT (`+39 06 …` is correct).
- * San Marino and Vatican City share Italy's numbering plan.
- *
- * Stripping is therefore the default and this set is the carve-out — the
- * opposite of a blocklist, so a country we have not thought about is handled
- * correctly rather than silently corrupted.
- */
-const KEEPS_LEADING_ZERO = new Set(["+39", "+378", "+379"]);
-
 /**
  * issue #2462 — DIAL CODES WITH NO NATIONAL TRUNK PREFIX AT ALL.
  *
@@ -126,41 +114,13 @@ const NSN_LENGTHS: Readonly<Record<string, readonly number[]>> = {
 export const composeE164 = (
   countryDialCode: string,
   localDigits: string,
-): string | null => {
-  let digits = localDigits.replace(/\D/g, "");
-  if (digits.length === 0) return null;
-
-  // (1) national trunk prefix
-  if (NO_TRUNK_PREFIX.has(countryDialCode)) {
-    // Not a prefix here — it is evidence of the wrong country. Refuse.
-    if (digits.startsWith("0")) return null;
-  } else if (!KEEPS_LEADING_ZERO.has(countryDialCode)) {
-    digits = digits.replace(/^0+/, "");
-    if (digits.length === 0) return null;
-  }
-
-  const expected = NSN_LENGTHS[countryDialCode];
-  const ccDigits = countryDialCode.replace(/\D/g, "");
-
-  // (2) the guest pasted the country code as well. Only trusted when the
-  // remainder is a length we recognise for this country — otherwise a real
-  // +1 234-xxx-xxxx would lose its area code.
-  if (
-    expected !== undefined &&
-    digits.length > ccDigits.length &&
-    digits.startsWith(ccDigits) &&
-    expected.includes(digits.length - ccDigits.length) &&
-    !expected.includes(digits.length)
-  ) {
-    digits = digits.slice(ccDigits.length);
-  }
-
-  // (3) the country's own plan, when we know it
-  if (expected !== undefined && !expected.includes(digits.length)) return null;
-
-  const composed = `${countryDialCode}${digits}`;
-  return isValidE164(composed) ? composed : null;
-};
+): string | null =>
+  // issue #3380 — the rules above now live in ONE place shared with the
+  // ordering server and every other phone field
+  // (`packages/phone-input/phoneNumber.ts`), so checkout and ordering can never
+  // disagree about a number again. Same answers, same null contract; the #2462
+  // suite below pins every case it always did.
+  composePhoneE164(countryDialCode, localDigits);
 
 /**
  * issue #2462 — SAY WHAT IS ACTUALLY WRONG WITH THE NUMBER.

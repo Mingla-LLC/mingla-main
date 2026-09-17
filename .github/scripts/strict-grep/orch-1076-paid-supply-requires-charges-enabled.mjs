@@ -45,6 +45,9 @@ const SUPPLY_RPCS = [
   "pg_public_trips_by_brand",
   "pg_discover_business_events",
   "pg_public_experience_by_slug",
+  // #3426 — the brand page's date-decided section reader serves the same paid
+  // supply as pg_public_brand_upcoming, so it carries the same readiness gate.
+  "pg_public_brand_offering_section",
 ];
 
 const READINESS_MARKER = "pg_brand_can_collect(";
@@ -141,7 +144,7 @@ function run() {
     process.exit(1);
   }
   console.log(
-    "ORCH-1076 paid-supply gate passed (all seven buyer-read RPCs carry provider-neutral readiness and reject Stripe-only admission).",
+    `ORCH-1076 paid-supply gate passed (all ${SUPPLY_RPCS.length} buyer-read RPCs carry provider-neutral readiness and reject Stripe-only admission).`,
   );
   process.exit(0);
 }

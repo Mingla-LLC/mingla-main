@@ -10,7 +10,7 @@
       "modelRelease": "not_applicable_no_people",
       "capturedAt": "2026-09-10",
       "approvedBy": "repository brand-asset audit",
-      "allowedSurfaces": ["product-proof-capture", "usemingla.com/explorer"],
+      "allowedSurfaces": ["product-proof-capture", "usemingla.com/going-out"],
       "redactions": [],
       "altText": "Mingla Explorer app icon"
     },
@@ -48,7 +48,7 @@
       "networkAttempts": 0,
       "sha256": "b8adad52781a036985bd2e1099e831c0776e9f855d53c811197e50a9ddc7b478",
       "approvedBy": "Mingla implementor privacy and rights review; independent tester pending",
-      "allowedSurfaces": ["usemingla.com/explorer", "usemingla.com/about"],
+      "allowedSurfaces": ["usemingla.com/going-out", "usemingla.com/about"],
       "redactions": [],
       "privacyState": "Synthetic sample fixtures only; no real account, person, place, order, payment or contact data.",
       "altText": "Mingla Explorer showing the saved Sample sunset gallery plan open in its details sheet."
@@ -72,7 +72,7 @@
       "networkAttempts": 0,
       "sha256": "d076219dffc70d30593bedcbca0a0eb5094a33a9c73c0d197e221397fc936491",
       "approvedBy": "Mingla implementor privacy and rights review; independent tester pending",
-      "allowedSurfaces": ["usemingla.com/explorer"],
+      "allowedSurfaces": ["usemingla.com/going-out"],
       "redactions": [],
       "privacyState": "Synthetic sample participants and messages only; no real names, avatars, contacts or accounts.",
       "altText": "Mingla Explorer collaboration showing Sample Ava and Sample Noah agreeing on a saved gallery plan."
@@ -96,7 +96,7 @@
       "networkAttempts": 0,
       "sha256": "4c35c207e271b9bd398c3fbe4e2cb275d9afb40a0e289038b7770e0f847748a8",
       "approvedBy": "Mingla implementor privacy and rights review; independent tester pending",
-      "allowedSurfaces": ["usemingla.com/explorer"],
+      "allowedSurfaces": ["usemingla.com/going-out"],
       "redactions": [],
       "privacyState": "Synthetic sample RSVP only; the QR payload is explicitly nonredeemable and contains no order, payment or account identifier.",
       "altText": "Mingla Explorer RSVP pass for the Sample rooftop listening session, marked Going with a show-at-door code."

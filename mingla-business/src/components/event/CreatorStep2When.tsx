@@ -1294,8 +1294,11 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           <Text style={styles.pickerValue}>{tzLabel}</Text>
           <Icon name="chevD" size={16} color={textTokens.tertiary} />
         </Pressable>
+        {/* Guest surfaces (public page, consumer app, confirmation emails,
+            tickets, RSVP passes) all print times in THIS zone — nothing
+            converts to the viewer's zone, so never promise "their local time". */}
         <Text style={styles.helperHint}>
-          We'll show this to guests in their local time.
+          Guests see times in this time zone.
         </Text>
       </View>
 

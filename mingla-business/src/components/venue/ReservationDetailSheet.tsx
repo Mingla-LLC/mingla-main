@@ -31,6 +31,10 @@ import type {
   ReservationAction,
 } from "../../types/venueReservation";
 import { SourceRefundStatusChip } from "../refunds/SourceRefundStatusChip";
+import {
+  PAID_CANCEL_REFUND_NOTE,
+  paidCancelNeedsRefundNote,
+} from "./reservationPaidCancelNote";
 
 export interface ReservationDetailSheetProps {
   visible: boolean;
@@ -143,6 +147,14 @@ export function ReservationDetailSheet({
                 ))}
               </View>
             ) : null}
+            {paidCancelNeedsRefundNote(reservation, confirmingAction) ? (
+              <Text
+                style={styles.paidCancelNote}
+                testID="reservation-paid-cancel-note"
+              >
+                {PAID_CANCEL_REFUND_NOTE}
+              </Text>
+            ) : null}
           </>
         )}
       </View>
@@ -240,6 +252,12 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.tertiary,
     marginTop: spacing.md,
+  },
+  // #3391 — arming Cancel on a paid booking says the guest is not refunded.
+  paidCancelNote: {
+    ...typography.bodySm,
+    color: semantic.warning,
+    marginTop: spacing.sm,
   },
   actionRow: {
     flexDirection: "row",
