@@ -4,7 +4,7 @@
  * A host who changes a live venue's name, category or address sends a request;
  * the venue keeps its current details until Mingla approves. The request lives
  * in the `details_change_*` columns of the venue row (see
- * supabase/migrations/20270710003386_issue_3386_venue_details_host_edit.sql);
+ * supabase/migrations/20270710013386_issue_3386_venue_details_host_edit.sql);
  * admins read it through the existing `is_admin_user()` SELECT policy.
  *
  * Deciding goes through the admin-review-venue-claim edge function

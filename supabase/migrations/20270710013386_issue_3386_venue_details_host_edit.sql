@@ -49,10 +49,11 @@
 -- precision, and a request that does not change the address never touches the
 -- stored pin (the address group is all-or-nothing, enforced by CHECK).
 --
--- Version: 20270710003386 — renumbered on 2026-09-16 from 20270707003386,
--- which sorted below versions already applied in production (20270708003439,
--- 20270709000000). Above every migration on origin/main at that date
--- (20270709000000). No later migration touches the objects defined here.
+-- Version: 20270710013386 — renumbered on 2026-09-17 from 20270710003386 so it
+-- sorts above #3391's migration 20270710003391 (applied first) and below #1780's
+-- 20270711001780. First renumbered on 2026-09-16 from 20270707003386, which sorted
+-- below versions already applied in production (20270708003439, 20270709000000).
+-- No later migration touches the objects defined here.
 --
 -- Apply from MERGED main through the Management API (blind `db push` is unsafe:
 -- migration-history drift). Additive: new nullable columns, constraints that
