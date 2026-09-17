@@ -2,6 +2,10 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
+import {
+  type AriTurnAttemptRow,
+  loadAriTurnStatus,
+} from "../_shared/agentTurnSweep.ts";
 
 type TurnAction = "status" | "cancel" | "retry";
 interface RequestBody {
@@ -150,14 +154,16 @@ Deno.serve(async (request) => {
   if (!attempt) return response(404, { code: "TURN_NOT_FOUND" });
 
   if (body.action === "status") {
-    const { data: events, error: eventsError } = await userClient
-      .from("agent_activity_events")
-      .select("id,attempt_number,sequence,event_type,created_at")
-      .eq("attempt_id", attempt.id)
-      .eq("attempt_number", attempt.attempt_number)
-      .order("sequence", { ascending: true });
-    if (eventsError) return response(500, { code: "STATUS_UNAVAILABLE" });
-    return response(200, { attempt, events: events ?? [] });
+    // REWORK-1: an attempt whose worker died is terminalized here (420 s)
+    // before its canonical events are returned.
+    const status = await loadAriTurnStatus({
+      userClient,
+      admin,
+      userId,
+      attempt: attempt as AriTurnAttemptRow,
+    });
+    if (!status.ok) return response(500, { code: status.code });
+    return response(200, { attempt: status.attempt, events: status.events });
   }
 
   if (body.action === "cancel") {

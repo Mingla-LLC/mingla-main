@@ -1,0 +1,21 @@
+{
+  "UNSUPPORTED_TYPE": "That file isn’t supported. Add a JPG, PNG, WebP, HEIC, PDF, DOCX, TXT, or CSV file up to 10 MB.",
+  "MIME_MISMATCH": "That file isn’t supported. Add a JPG, PNG, WebP, HEIC, PDF, DOCX, TXT, or CSV file up to 10 MB.",
+  "FILE_TOO_LARGE": "That file is larger than 10 MB. Choose a smaller file.",
+  "DUPLICATE_FILE": "{filename} is already attached.",
+  "CONTEXT_LIMIT_EXCEEDED": "Ari couldn’t use this file because it contains too much information for one message. Remove it and attach a shorter version.",
+  "ENCRYPTED_FILE": "Ari couldn’t read {filename}. Remove password protection or choose a different file.",
+  "CORRUPT_FILE": "Ari couldn’t read {filename}. Choose a different file.",
+  "UNREADABLE_FILE": "Ari couldn’t read {filename}. Choose a different file.",
+  "DECOMPRESSION_BOMB": "Ari couldn’t read {filename}. Choose a different file.",
+  "IMAGE_UNREADABLE": "Ari couldn’t read {filename}. Choose a different file.",
+  "UPLOAD_INCOMPLETE": "{filename} couldn’t upload. Nothing was sent to Ari.",
+  "SIZE_MISMATCH": "{filename} couldn’t upload. Nothing was sent to Ari.",
+  "STORAGE_REJECTED": "Ari couldn’t save {filename}. Try again.",
+  "PREPARE_FAILED": "Ari couldn’t save {filename}. Try again.",
+  "PROCESSING_INTERRUPTED": "Ari couldn’t finish preparing {filename}. Try again.",
+  "IMAGE_DIMENSIONS_EXCEEDED": "{filename} is too large for Ari to prepare. Choose a smaller image.",
+  "IMAGE_SOURCE_TOO_LARGE": "{filename} is too large for Ari to prepare. Choose a smaller image.",
+  "HEIC_NOT_SUPPORTED_IN_BROWSER": "This browser can’t open HEIC photos. Save {filename} as a JPG, or attach it from the Mingla Business app on your phone.",
+  "ATTACHMENT_SCOPE_DENIED": "Ari couldn’t use {filename}. Remove it and attach it again."
+}

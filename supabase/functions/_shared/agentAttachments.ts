@@ -13,6 +13,23 @@ const MAX_PDF_PAGES = 80;
 const MAX_PDF_STREAM_BYTES = 20 * 1024 * 1024;
 const MAX_IMAGE_PIXELS = 40_000_000;
 const MAX_IMAGE_DECODED_BYTES = 64 * 1024 * 1024;
+// REWORK-1 CPU budget (SPEC AMENDMENT section 3.2): measured on the Supabase
+// edge runtime, a decode is only attempted once the header proves it fits.
+// Business clients prepare images to a 1,600 px long edge before upload.
+export const ARI_IMAGE_MAX_LONG_EDGE = 1_600;
+export const ARI_IMAGE_MAX_LOSSY_PIXELS = 2_560_000;
+export const ARI_IMAGE_MAX_DEFENSIVE_PIXELS = 786_432;
+export const ARI_DOCX_MAX_DOCUMENT_XML_BYTES = 3 * 1024 * 1024;
+const MAX_PDF_FILTER_CHAIN = 4;
+const PDF_INFLATE_FILTERS = new Set(["FlateDecode", "RunLengthDecode"]);
+const PDF_OPAQUE_FILTERS = new Set([
+  "DCTDecode",
+  "JPXDecode",
+  "CCITTFaxDecode",
+  "JBIG2Decode",
+  "ASCII85Decode",
+  "ASCIIHexDecode",
+]);
 
 export const ARI_ATTACHMENT_MIMES = Object.freeze(
   [
@@ -42,7 +59,10 @@ export type AriAttachmentFailureCode =
   | "DECOMPRESSION_BOMB"
   | "CONTEXT_LIMIT_EXCEEDED"
   | "UPLOAD_INCOMPLETE"
-  | "ATTACHMENT_SCOPE_DENIED";
+  | "ATTACHMENT_SCOPE_DENIED"
+  | "IMAGE_DIMENSIONS_EXCEEDED"
+  | "STORAGE_REJECTED"
+  | "PROCESSING_INTERRUPTED";
 
 export class AriAttachmentError extends Error {
   readonly code: AriAttachmentFailureCode;
@@ -411,6 +431,11 @@ async function docxText(
   );
   const document = entries.find((entry) => entry.name === "word/document.xml");
   if (!contentTypes || !document) throw new AriAttachmentError("CORRUPT_FILE");
+  // REWORK-1 section 3.2.2: a very long document costs more CPU than one
+  // request has. Refuse it from the central directory, before any inflate.
+  if (document.uncompressedSize > ARI_DOCX_MAX_DOCUMENT_XML_BYTES) {
+    throw new AriAttachmentError("CONTEXT_LIMIT_EXCEEDED");
+  }
   const contentTypesBytes = await unzipEntry(bytes, contentTypes);
   const contentTypesText = textDecoder.decode(contentTypesBytes);
   if (!contentTypesText.includes("wordprocessingml.document.main+xml")) {
@@ -427,11 +452,18 @@ async function docxText(
     .replace(/<w:tab\b[^>]*\/>/g, "\t")
     .replace(/<w:br\b[^>]*\/>/g, "\n")
     .replace(/<\/w:p>/g, "\n");
-  const textRuns = Array.from(
-    withBreaks.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g),
-  )
-    .map((match) => decodeXmlEntities(match[1]))
-    .join("");
+  const runs: string[] = [];
+  let extractedChars = 0;
+  for (const match of withBreaks.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)) {
+    const run = decodeXmlEntities(match[1]);
+    extractedChars += run.length;
+    // Stop as soon as the text is already too long for one message.
+    if (extractedChars > MAX_TEXT_CONTEXT_CHARS) {
+      throw new AriAttachmentError("CONTEXT_LIMIT_EXCEEDED");
+    }
+    runs.push(run);
+  }
+  const textRuns = runs.join("");
   const text = normalizeText(textRuns.replace(/\n{3,}/g, "\n\n").trim());
   if (text.length === 0) throw new AriAttachmentError("UNREADABLE_FILE");
   return { text, entries: entries.length };
@@ -478,6 +510,30 @@ function assertImageDimensions(
     decodedBytes > MAX_IMAGE_DECODED_BYTES
   ) {
     throw new AriAttachmentError("DECOMPRESSION_BOMB");
+  }
+}
+
+type ImageBudgetClass = "lossy" | "defensive";
+
+/**
+ * REWORK-1 section 3.2.1 step 4. Runs after the header parse and the bomb cap,
+ * and before any pixel decode. JPEG and WebP get the prepared-photo budget;
+ * PNG and HEIC/HEIF are defense-only because Business clients never send them.
+ */
+function assertImageBudget(
+  width: number,
+  height: number,
+  budget: ImageBudgetClass,
+): void {
+  assertImageDimensions(width, height);
+  const maxPixels = budget === "lossy"
+    ? ARI_IMAGE_MAX_LOSSY_PIXELS
+    : ARI_IMAGE_MAX_DEFENSIVE_PIXELS;
+  if (
+    Math.max(width, height) > ARI_IMAGE_MAX_LONG_EDGE ||
+    width * height > maxPixels
+  ) {
+    throw new AriAttachmentError("IMAGE_DIMENSIONS_EXCEEDED");
   }
 }
 
@@ -669,7 +725,7 @@ function verifyJpeg(bytes: Uint8Array): ImageDimensions {
       }
       const width = readU16BE(bytes, cursor + 5);
       const height = readU16BE(bytes, cursor + 3);
-      assertImageDimensions(width, height);
+      assertImageBudget(width, height, "lossy");
       dimensions = { width, height };
       for (let index = 0; index < componentCount; index += 1) {
         const componentId = bytes[payloadStart + 6 + 3 * index];
@@ -804,7 +860,7 @@ async function verifyPng(bytes: Uint8Array): Promise<PngStructure> {
       }
       width = readU32BE(bytes, dataStart);
       height = readU32BE(bytes, dataStart + 4);
-      assertImageDimensions(width, height);
+      assertImageBudget(width, height, "defensive");
       bitDepth = bytes[dataStart + 8];
       colorType = bytes[dataStart + 9];
       channels =
@@ -1011,37 +1067,66 @@ function verifyHeic(bytes: Uint8Array): HeicStructure | null {
       if (++boxCount > 10_000) {
         throw new AriAttachmentError("DECOMPRESSION_BOMB");
       }
-      const declaredSize = readU32BE(bytes, cursor);
-      if (declaredSize < 8 || cursor + declaredSize > end) {
+      // ISO/IEC 14496-12 section 4.2: size 1 means a 64-bit largesize follows
+      // the type (16-byte header); size 0 means "to the end of the file" and
+      // is only meaningful for a top-level box. Every field below is read
+      // relative to the payload start, never a fixed eight-byte header.
+      const compactSize = readU32BE(bytes, cursor);
+      let headerSize = 8;
+      let boxSize: number;
+      if (compactSize === 1) {
+        if (cursor + 16 > end) {
+          throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+        }
+        const high = readU32BE(bytes, cursor + 8);
+        const low = readU32BE(bytes, cursor + 12);
+        boxSize = high * 0x1_0000_0000 + low;
+        headerSize = 16;
+        if (!Number.isSafeInteger(boxSize) || boxSize < 16) {
+          throw new AriAttachmentError("CORRUPT_FILE");
+        }
+      } else if (compactSize === 0) {
+        if (depth !== 0) throw new AriAttachmentError("CORRUPT_FILE");
+        boxSize = end - cursor;
+        if (boxSize < 8) throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+      } else if (compactSize < 8) {
+        throw new AriAttachmentError("CORRUPT_FILE");
+      } else {
+        boxSize = compactSize;
+      }
+      const boxEnd = cursor + boxSize;
+      if (!Number.isSafeInteger(boxEnd) || boxEnd > end) {
         throw new AriAttachmentError("UPLOAD_INCOMPLETE");
       }
+      const payload = cursor + headerSize;
+      const payloadSize = boxEnd - payload;
       const type = textDecoder.decode(bytes.slice(cursor + 4, cursor + 8));
       if (type === "ispe") {
-        if (declaredSize < 20) throw new AriAttachmentError("CORRUPT_FILE");
-        const width = readU32BE(bytes, cursor + 12);
-        const height = readU32BE(bytes, cursor + 16);
-        assertImageDimensions(width, height);
+        if (payloadSize < 12) throw new AriAttachmentError("CORRUPT_FILE");
+        const width = readU32BE(bytes, payload + 4);
+        const height = readU32BE(bytes, payload + 8);
+        assertImageBudget(width, height, "defensive");
         dimensions.push({ width, height });
         sawIspe = true;
       } else if (type === "clap") {
-        if (declaredSize !== 40) {
+        if (payloadSize !== 32) {
           throw new AriAttachmentError("CORRUPT_FILE");
         }
-        const widthNumerator = readU32BE(bytes, cursor + 8);
-        const widthDenominator = readU32BE(bytes, cursor + 12);
-        const heightNumerator = readU32BE(bytes, cursor + 16);
-        const heightDenominator = readU32BE(bytes, cursor + 20);
+        const widthNumerator = readU32BE(bytes, payload);
+        const widthDenominator = readU32BE(bytes, payload + 4);
+        const heightNumerator = readU32BE(bytes, payload + 8);
+        const heightDenominator = readU32BE(bytes, payload + 12);
         const width = widthNumerator / widthDenominator;
         const height = heightNumerator / heightDenominator;
         if (
           widthDenominator === 0 || heightDenominator === 0 ||
-          readU32BE(bytes, cursor + 28) === 0 ||
-          readU32BE(bytes, cursor + 36) === 0 ||
+          readU32BE(bytes, payload + 20) === 0 ||
+          readU32BE(bytes, payload + 28) === 0 ||
           !Number.isInteger(width) || !Number.isInteger(height)
         ) {
           throw new AriAttachmentError("CORRUPT_FILE");
         }
-        assertImageDimensions(width, height);
+        assertImageBudget(width, height, "defensive");
         dimensions.push({ width, height });
       } else if (type === "hvcC") {
         if (hevcConfigurations.length !== 0) {
@@ -1049,12 +1134,11 @@ function verifyHeic(bytes: Uint8Array): HeicStructure | null {
         }
         hevcConfigurations.push(parseHevcConfiguration(
           bytes,
-          cursor + 8,
-          cursor + declaredSize,
+          payload,
+          boxEnd,
         ));
       } else if (type === "infe") {
-        const payload = cursor + 8;
-        if (declaredSize < 20) throw new AriAttachmentError("CORRUPT_FILE");
+        if (payloadSize < 12) throw new AriAttachmentError("CORRUPT_FILE");
         const version = bytes[payload];
         let itemId: number;
         let itemTypeOffset: number;
@@ -1067,7 +1151,7 @@ function verifyHeic(bytes: Uint8Array): HeicStructure | null {
         } else {
           throw new AriAttachmentError("UNSUPPORTED_TYPE");
         }
-        if (itemId < 1 || itemTypeOffset + 4 > cursor + declaredSize) {
+        if (itemId < 1 || itemTypeOffset + 4 > boxEnd) {
           throw new AriAttachmentError("CORRUPT_FILE");
         }
         const itemType = textDecoder.decode(
@@ -1078,8 +1162,7 @@ function verifyHeic(bytes: Uint8Array): HeicStructure | null {
         }
         itemTypes.set(itemId, itemType);
       } else if (type === "iloc") {
-        if (declaredSize < 16) throw new AriAttachmentError("CORRUPT_FILE");
-        const payload = cursor + 8;
+        if (payloadSize < 8) throw new AriAttachmentError("CORRUPT_FILE");
         const version = bytes[payload];
         if (version > 2) throw new AriAttachmentError("CORRUPT_FILE");
         const offsetSize = bytes[payload + 4] >>> 4;
@@ -1100,7 +1183,7 @@ function verifyHeic(bytes: Uint8Array): HeicStructure | null {
         }
         let itemCursor = payload + (version < 2 ? 8 : 10);
         const readVariableUInt = (size: number): number => {
-          if (itemCursor + size > cursor + declaredSize) {
+          if (itemCursor + size > boxEnd) {
             throw new AriAttachmentError("UPLOAD_INCOMPLETE");
           }
           let value = 0;
@@ -1112,7 +1195,7 @@ function verifyHeic(bytes: Uint8Array): HeicStructure | null {
         for (let item = 0; item < itemCount; item += 1) {
           const itemIdSize = version < 2 ? 2 : 4;
           const fixedBytes = itemIdSize + (version > 0 ? 2 : 0) + 4;
-          if (itemCursor + fixedBytes > cursor + declaredSize) {
+          if (itemCursor + fixedBytes > boxEnd) {
             throw new AriAttachmentError("UPLOAD_INCOMPLETE");
           }
           const itemId = itemIdSize === 2
@@ -1158,33 +1241,32 @@ function verifyHeic(bytes: Uint8Array): HeicStructure | null {
             }
           }
         }
-        if (itemCursor !== cursor + declaredSize) {
+        if (itemCursor !== boxEnd) {
           throw new AriAttachmentError("CORRUPT_FILE");
         }
       } else if (type === "mdat") {
-        if (declaredSize <= 8) throw new AriAttachmentError("CORRUPT_FILE");
-        mediaDataRanges.push({ start: cursor + 8, end: cursor + declaredSize });
+        if (payloadSize <= 0) throw new AriAttachmentError("CORRUPT_FILE");
+        mediaDataRanges.push({ start: payload, end: boxEnd });
       } else if (type === "idat") {
-        if (declaredSize <= 8) throw new AriAttachmentError("CORRUPT_FILE");
-        itemDataRanges.push({ start: cursor + 8, end: cursor + declaredSize });
+        if (payloadSize <= 0) throw new AriAttachmentError("CORRUPT_FILE");
+        itemDataRanges.push({ start: payload, end: boxEnd });
       } else if (type === "iinf") {
-        const payload = cursor + 8;
-        if (declaredSize < 14) throw new AriAttachmentError("CORRUPT_FILE");
+        if (payloadSize < 6) throw new AriAttachmentError("CORRUPT_FILE");
         const version = bytes[payload];
         if (version > 1) throw new AriAttachmentError("UNSUPPORTED_TYPE");
         const childStart = payload + (version === 0 ? 6 : 8);
-        if (childStart > cursor + declaredSize) {
+        if (childStart > boxEnd) {
           throw new AriAttachmentError("CORRUPT_FILE");
         }
-        visit(childStart, cursor + declaredSize, depth + 1);
+        visit(childStart, boxEnd, depth + 1);
       } else if (containers.has(type)) {
-        const childStart = cursor + 8 + (type === "meta" ? 4 : 0);
-        if (childStart > cursor + declaredSize) {
+        const childStart = payload + (type === "meta" ? 4 : 0);
+        if (childStart > boxEnd) {
           throw new AriAttachmentError("CORRUPT_FILE");
         }
-        visit(childStart, cursor + declaredSize, depth + 1);
+        visit(childStart, boxEnd, depth + 1);
       }
-      cursor += declaredSize;
+      cursor = boxEnd;
     }
   };
   visit(0, bytes.length, 0);
@@ -1268,7 +1350,7 @@ function verifyWebp(bytes: Uint8Array): ImageDimensions {
         (bytes[data + 6] << 16);
       const height = 1 + bytes[data + 7] + (bytes[data + 8] << 8) +
         (bytes[data + 9] << 16);
-      assertImageDimensions(width, height);
+      assertImageBudget(width, height, "lossy");
       extendedDimensions = { width, height };
     } else if (type === "VP8L" && length >= 5 && bytes[data] === 0x2f) {
       if (codedPayloadFound) throw new AriAttachmentError("CORRUPT_FILE");
@@ -1278,7 +1360,7 @@ function verifyWebp(bytes: Uint8Array): ImageDimensions {
       }
       const width = 1 + (packedDimensions & 0x3fff);
       const height = 1 + ((packedDimensions >>> 14) & 0x3fff);
-      assertImageDimensions(width, height);
+      assertImageBudget(width, height, "lossy");
       if (
         extendedDimensions !== null &&
         (extendedDimensions.width !== width ||
@@ -1307,7 +1389,7 @@ function verifyWebp(bytes: Uint8Array): ImageDimensions {
       }
       const width = readU16LE(bytes, data + 6) & 0x3fff;
       const height = readU16LE(bytes, data + 8) & 0x3fff;
-      assertImageDimensions(width, height);
+      assertImageBudget(width, height, "lossy");
       if (
         extendedDimensions !== null &&
         (extendedDimensions.width !== width ||
@@ -1587,8 +1669,21 @@ function parsePdfReference(
   return { objectNumber: Number(match[1]), generation: Number(match[2]) };
 }
 
-function parsePdfFilters(dictionary: string): string[] {
-  if (!/\/Filter\b/.test(dictionary)) return [];
+interface PdfFilterPlan {
+  /** The one bounded decoder applied, or null when the bytes stay as stored. */
+  inflate: "FlateDecode" | "RunLengthDecode" | null;
+}
+
+/**
+ * REWORK-1 SC-R1-PDF-1. Image and text-encoding filters are opaque: the
+ * verifier never decodes them, bounds them by their stored length, and counts
+ * those bytes toward the stream caps. Only a FlateDecode or RunLengthDecode
+ * filter that is sole or first in the chain is inflated. A chain the verifier
+ * cannot bound (unknown or encryption filters, or an overlong chain) fails
+ * closed. LZWDecode stays refused: a committed #3429 regression test pins it.
+ */
+function parsePdfFilters(dictionary: string): PdfFilterPlan {
+  if (!/\/Filter\b/.test(dictionary)) return { inflate: null };
   const direct = /\/Filter\s*\/([A-Za-z0-9]+)/.exec(dictionary);
   const array = /\/Filter\s*\[((?:\s*\/[A-Za-z0-9]+\s*)+)\]/.exec(
     dictionary,
@@ -1600,14 +1695,19 @@ function parsePdfFilters(dictionary: string): string[] {
     : [];
   if (filters.length === 0) throw new AriAttachmentError("CORRUPT_FILE");
   if (
-    filters.length > 2 ||
+    filters.length > MAX_PDF_FILTER_CHAIN ||
     filters.some((filter) =>
-      !["FlateDecode", "RunLengthDecode"].includes(filter)
+      !PDF_INFLATE_FILTERS.has(filter) && !PDF_OPAQUE_FILTERS.has(filter)
     )
   ) {
     throw new AriAttachmentError("UNSUPPORTED_TYPE");
   }
-  return filters;
+  const first = filters[0];
+  return {
+    inflate: first === "FlateDecode" || first === "RunLengthDecode"
+      ? first
+      : null,
+  };
 }
 
 function decodePdfRunLength(
@@ -1663,35 +1763,31 @@ function decodePdfRunLength(
 
 async function decodePdfStream(
   encoded: Uint8Array,
-  filters: string[],
+  plan: PdfFilterPlan,
   maximumBytes: number,
 ): Promise<Uint8Array> {
   if (encoded.byteLength > maximumBytes) {
     throw new AriAttachmentError("DECOMPRESSION_BOMB");
   }
-  let decoded: Uint8Array = encoded.slice();
-  for (const filter of filters) {
-    if (filter === "RunLengthDecode") {
-      decoded = decodePdfRunLength(decoded, maximumBytes);
-      continue;
-    }
-    try {
-      const source = decoded.buffer.slice(
-        decoded.byteOffset,
-        decoded.byteOffset + decoded.byteLength,
-      ) as ArrayBuffer;
-      decoded = await collectStreamAtMost(
-        new Blob([source]).stream().pipeThrough(
-          new DecompressionStream("deflate"),
-        ),
-        maximumBytes,
-      );
-    } catch (error: unknown) {
-      if (error instanceof AriAttachmentError) throw error;
-      throw new AriAttachmentError("CORRUPT_FILE");
-    }
+  if (plan.inflate === null) return encoded;
+  if (plan.inflate === "RunLengthDecode") {
+    return decodePdfRunLength(encoded, maximumBytes);
   }
-  return decoded;
+  try {
+    const source = encoded.buffer.slice(
+      encoded.byteOffset,
+      encoded.byteOffset + encoded.byteLength,
+    ) as ArrayBuffer;
+    return await collectStreamAtMost(
+      new Blob([source]).stream().pipeThrough(
+        new DecompressionStream("deflate"),
+      ),
+      maximumBytes,
+    );
+  } catch (error: unknown) {
+    if (error instanceof AriAttachmentError) throw error;
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
 }
 
 function pdfObjectBodyAt(
@@ -1949,9 +2045,45 @@ function parsePdfXrefStream(
   return { root, entries };
 }
 
+type PdfIndirectLengthResolver = (
+  reference: PdfReference,
+  streamObjectNumber: number,
+) => Promise<number>;
+
+/**
+ * REWORK-1 SC-R1-PDF-2. `/Length n g R` is resolved through the xref (classic
+ * or stream). A length that is missing, circular, not a plain integer, or out
+ * of bounds fails closed as CORRUPT_FILE, never as UPLOAD_INCOMPLETE.
+ */
+function resolvePdfIndirectLength(
+  latin: string,
+  reference: PdfReference,
+  entries: Map<number, PdfXrefEntry>,
+  streamObjectNumber: number,
+): number {
+  if (reference.objectNumber === streamObjectNumber) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+  const entry = entries.get(reference.objectNumber);
+  if (!entry || entry.generation !== reference.generation) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+  const header = new RegExp(
+    `^${reference.objectNumber}\\s+${reference.generation}\\s+obj\\b`,
+  ).exec(latin.slice(entry.offset, entry.offset + 64));
+  if (!header) throw new AriAttachmentError("CORRUPT_FILE");
+  const bodyStart = entry.offset + header[0].length;
+  const bodyEnd = latin.indexOf("endobj", bodyStart);
+  if (bodyEnd < 0) throw new AriAttachmentError("CORRUPT_FILE");
+  const body = /^\s*(\d{1,9})\s*$/.exec(latin.slice(bodyStart, bodyEnd));
+  if (!body) throw new AriAttachmentError("CORRUPT_FILE");
+  return Number(body[1]);
+}
+
 async function parsePdfStreams(
   bytes: Uint8Array,
   latin: string,
+  resolveIndirectLength: PdfIndirectLengthResolver,
 ): Promise<PdfStreamRecord[]> {
   const objectHeaders = Array.from(
     latin.matchAll(/(?:^|\r?\n)(\d+)\s+(\d+)\s+obj\b/g),
@@ -1964,8 +2096,12 @@ async function parsePdfStreams(
   const records: PdfStreamRecord[] = [];
   let totalDecoded = 0;
   let objectHeaderIndex = -1;
+  // A "stream" keyword inside an earlier stream's stored bytes (for example
+  // JPEG data) is data, not structure; skip it.
+  let consumedUntil = 0;
   for (const marker of latin.matchAll(/\r?\nstream\r?\n/g)) {
     const markerOffset = marker.index ?? 0;
+    if (markerOffset < consumedUntil) continue;
     while (
       objectHeaderIndex + 1 < objectHeaders.length &&
       objectHeaders[objectHeaderIndex + 1].offset < markerOffset
@@ -1983,22 +2119,44 @@ async function parsePdfStreams(
       throw new AriAttachmentError("CORRUPT_FILE");
     }
     const dictionary = objectPrefix.slice(dictionaryStart, dictionaryEnd + 2);
-    const lengthMatch = /\/Length\s+(\d+)\b/.exec(dictionary);
-    if (!lengthMatch) throw new AriAttachmentError("UNSUPPORTED_TYPE");
-    const length = Number(lengthMatch[1]);
+    const indirectLength = /\/Length\s+(\d+)\s+(\d+)\s+R\b/.exec(dictionary);
     const dataStart = markerOffset + marker[0].length;
+    let length: number;
+    if (indirectLength) {
+      length = await resolveIndirectLength({
+        objectNumber: Number(indirectLength[1]),
+        generation: Number(indirectLength[2]),
+      }, object.objectNumber);
+      if (
+        !Number.isSafeInteger(length) || length > MAX_PDF_STREAM_BYTES ||
+        dataStart + length > bytes.length ||
+        !/^(?:\r\n|\n|\r)?endstream\b/.test(
+          latin.slice(dataStart + length, dataStart + length + 16),
+        )
+      ) {
+        throw new AriAttachmentError("CORRUPT_FILE");
+      }
+    } else {
+      const lengthMatch = /\/Length\s+(\d+)\b/.exec(dictionary);
+      if (!lengthMatch) throw new AriAttachmentError("UNSUPPORTED_TYPE");
+      length = Number(lengthMatch[1]);
+      if (
+        !Number.isSafeInteger(length) || length < 0 ||
+        length > MAX_PDF_STREAM_BYTES || dataStart + length > bytes.length
+      ) {
+        throw new AriAttachmentError("DECOMPRESSION_BOMB");
+      }
+      if (
+        !/^(?:\r\n|\n|\r)?endstream\b/.test(
+          latin.slice(dataStart + length, dataStart + length + 16),
+        )
+      ) {
+        throw new AriAttachmentError("UPLOAD_INCOMPLETE");
+      }
+    }
     const dataEnd = dataStart + length;
-    if (
-      !Number.isSafeInteger(length) || length < 0 ||
-      length > MAX_PDF_STREAM_BYTES || dataEnd > bytes.length
-    ) {
-      throw new AriAttachmentError("DECOMPRESSION_BOMB");
-    }
-    if (!/^(?:\r\n|\n|\r)?endstream\b/.test(latin.slice(dataEnd))) {
-      throw new AriAttachmentError("UPLOAD_INCOMPLETE");
-    }
     const decoded = await decodePdfStream(
-      bytes.slice(dataStart, dataEnd),
+      bytes.subarray(dataStart, dataEnd),
       parsePdfFilters(dictionary),
       MAX_PDF_STREAM_BYTES - totalDecoded,
     );
@@ -2006,6 +2164,7 @@ async function parsePdfStreams(
     if (totalDecoded > MAX_PDF_STREAM_BYTES) {
       throw new AriAttachmentError("DECOMPRESSION_BOMB");
     }
+    consumedUntil = dataEnd;
     records.push({
       objectNumber: object.objectNumber,
       generation: object.generation,
@@ -2015,6 +2174,50 @@ async function parsePdfStreams(
     });
   }
   return records;
+}
+
+/** Parses only the xref stream object at `offset` (its /Length must be direct). */
+async function parsePdfXrefStreamObject(
+  bytes: Uint8Array,
+  latin: string,
+  offset: number,
+): Promise<PdfStreamRecord[]> {
+  const header = /^(\d+)\s+(\d+)\s+obj\b/.exec(
+    latin.slice(offset, offset + 64),
+  );
+  if (!header) throw new AriAttachmentError("CORRUPT_FILE");
+  const marker = /\r?\nstream\r?\n/.exec(latin.slice(offset, offset + 8192));
+  if (!marker) throw new AriAttachmentError("CORRUPT_FILE");
+  const markerOffset = offset + marker.index;
+  const objectPrefix = latin.slice(offset, markerOffset);
+  const dictionaryStart = objectPrefix.indexOf("<<");
+  const dictionaryEnd = objectPrefix.lastIndexOf(">>");
+  if (dictionaryStart < 0 || dictionaryEnd < dictionaryStart) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+  const dictionary = objectPrefix.slice(dictionaryStart, dictionaryEnd + 2);
+  const lengthMatch = /\/Length\s+(\d+)\b(?!\s+\d+\s+R)/.exec(dictionary);
+  if (!lengthMatch) throw new AriAttachmentError("CORRUPT_FILE");
+  const length = Number(lengthMatch[1]);
+  const dataStart = markerOffset + marker[0].length;
+  if (
+    !Number.isSafeInteger(length) || length > MAX_PDF_STREAM_BYTES ||
+    dataStart + length > bytes.length
+  ) {
+    throw new AriAttachmentError("CORRUPT_FILE");
+  }
+  const decoded = await decodePdfStream(
+    bytes.subarray(dataStart, dataStart + length),
+    parsePdfFilters(dictionary),
+    MAX_PDF_STREAM_BYTES,
+  );
+  return [{
+    objectNumber: Number(header[1]),
+    generation: Number(header[2]),
+    objectOffset: offset,
+    dictionary,
+    decoded,
+  }];
 }
 
 async function verifyPdf(bytes: Uint8Array): Promise<{ pageCount: number }> {
@@ -2030,10 +2233,37 @@ async function verifyPdf(bytes: Uint8Array): Promise<{ pageCount: number }> {
   if (!Number.isSafeInteger(xrefOffset) || xrefOffset >= bytes.length) {
     throw new AriAttachmentError("CORRUPT_FILE");
   }
-  const streams = await parsePdfStreams(bytes, latin);
-  const parsed = latin.slice(xrefOffset, xrefOffset + 4) === "xref"
+  const classicXref = latin.slice(xrefOffset, xrefOffset + 4) === "xref";
+  let parsedXref:
+    | { root: PdfReference; entries: Map<number, PdfXrefEntry> }
+    | null = null;
+  // The xref is only parsed ahead of the streams when a stream actually
+  // declares an indirect length, so direct-length files keep their existing
+  // error precedence.
+  const loadXref = async () => {
+    parsedXref ??= classicXref
+      ? parseClassicPdfXref(latin, xrefOffset)
+      : parsePdfXrefStream(
+        latin,
+        xrefOffset,
+        await parsePdfXrefStreamObject(bytes, latin, xrefOffset),
+      );
+    return parsedXref;
+  };
+  const streams = await parsePdfStreams(
+    bytes,
+    latin,
+    async (reference, streamObjectNumber) =>
+      resolvePdfIndirectLength(
+        latin,
+        reference,
+        (await loadXref()).entries,
+        streamObjectNumber,
+      ),
+  );
+  const parsed = parsedXref ?? (classicXref
     ? parseClassicPdfXref(latin, xrefOffset)
-    : parsePdfXrefStream(latin, xrefOffset, streams);
+    : parsePdfXrefStream(latin, xrefOffset, streams));
   return { pageCount: validatePdfPageTree(latin, parsed.root, parsed.entries) };
 }
 
@@ -2111,15 +2341,48 @@ export async function verifyAriAttachment(
   };
 }
 
+const BASE64_ALPHABET = new TextEncoder().encode(
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+);
+const BASE64_PAD = 0x3d;
+const base64Decoder = new TextDecoder("latin1");
+
+/**
+ * REWORK-1 section 3.4: linear standard base64. The previous
+ * `String.fromCharCode(...chunk)` + `btoa` path built a 25 MB binary string and
+ * cost 1-2 s of edge CPU for one full message. This writes ASCII bytes into one
+ * typed array and decodes it once; the output is byte-identical to `btoa`.
+ */
 export function base64FromBytes(bytes: Uint8Array): string {
-  const chunkSize = 0x8000;
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(
-      ...bytes.subarray(offset, offset + chunkSize),
-    );
+  const output = new Uint8Array(Math.ceil(bytes.length / 3) * 4);
+  let read = 0;
+  let write = 0;
+  const whole = bytes.length - (bytes.length % 3);
+  while (read < whole) {
+    const triple = (bytes[read] << 16) | (bytes[read + 1] << 8) |
+      bytes[read + 2];
+    output[write] = BASE64_ALPHABET[(triple >>> 18) & 0x3f];
+    output[write + 1] = BASE64_ALPHABET[(triple >>> 12) & 0x3f];
+    output[write + 2] = BASE64_ALPHABET[(triple >>> 6) & 0x3f];
+    output[write + 3] = BASE64_ALPHABET[triple & 0x3f];
+    read += 3;
+    write += 4;
   }
-  return btoa(binary);
+  const remaining = bytes.length - whole;
+  if (remaining === 1) {
+    const value = bytes[read];
+    output[write] = BASE64_ALPHABET[value >>> 2];
+    output[write + 1] = BASE64_ALPHABET[(value << 4) & 0x3f];
+    output[write + 2] = BASE64_PAD;
+    output[write + 3] = BASE64_PAD;
+  } else if (remaining === 2) {
+    const value = (bytes[read] << 8) | bytes[read + 1];
+    output[write] = BASE64_ALPHABET[value >>> 10];
+    output[write + 1] = BASE64_ALPHABET[(value >>> 4) & 0x3f];
+    output[write + 2] = BASE64_ALPHABET[(value << 2) & 0x3f];
+    output[write + 3] = BASE64_PAD;
+  }
+  return base64Decoder.decode(output);
 }
 
 export function wrapAriAttachmentText(

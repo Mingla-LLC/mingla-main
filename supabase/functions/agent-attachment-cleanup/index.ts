@@ -3,6 +3,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
 import { ARI_ATTACHMENT_BUCKET } from "../_shared/agentAttachments.ts";
+import { sweepStaleAriAttachmentProcessing } from "../_shared/agentAttachmentFinalize.ts";
 
 function response(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
@@ -38,6 +39,18 @@ Deno.serve(async (request) => {
   });
   const now = new Date();
   const staleBefore = new Date(now.getTime() - 10 * 60_000).toISOString();
+
+  // REWORK-1 backstop: no attachment may stay `processing` past its 60-second
+  // lease once this worker has observed it, even if no client ever asks.
+  let interruptedCount = 0;
+  try {
+    interruptedCount = await sweepStaleAriAttachmentProcessing({
+      admin,
+      nowMs: now.getTime(),
+    });
+  } catch {
+    return response(500, { code: "PROCESSING_SWEEP_FAILED" });
+  }
 
   // Deleting abandoned metadata invokes the migration trigger, which queues
   // original and derivative opaque paths before the row disappears.
@@ -125,11 +138,13 @@ Deno.serve(async (request) => {
   }
   console.log(JSON.stringify({
     event: "ari_attachment_cleanup_run",
+    interrupted_processing_count: interruptedCount,
     selected_count: jobs?.length ?? 0,
     completed_count: completed,
     failed_count: failed,
   }));
   return response(200, {
+    interrupted_processing_count: interruptedCount,
     selected_count: jobs?.length ?? 0,
     completed_count: completed,
     failed_count: failed,

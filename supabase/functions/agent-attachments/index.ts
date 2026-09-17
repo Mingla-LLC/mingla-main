@@ -7,16 +7,18 @@ import {
   ARI_ATTACHMENT_MAX_FILE_BYTES,
   ARI_ATTACHMENT_MAX_FILES,
   ARI_ATTACHMENT_MAX_TURN_BYTES,
-  AriAttachmentError,
   fileTypeForDeclaredMime,
-  verifyAriAttachment,
 } from "../_shared/agentAttachments.ts";
+import {
+  handleAriAttachmentLifecycle,
+  stableFailureMessage,
+} from "../_shared/agentAttachmentFinalize.ts";
 import {
   requireAccessibleAgentBrand,
   resolveAccessibleAgentBrands,
 } from "../_shared/agentTenantScope.ts";
 
-type AttachmentAction = "prepare" | "finalize" | "open" | "discard";
+type AttachmentAction = "prepare" | "finalize" | "status" | "open" | "discard";
 
 interface PrepareFile {
   filename: string;
@@ -60,28 +62,6 @@ function response(status: number, body: Record<string, unknown>): Response {
 function safeFilename(value: string): string {
   return value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 240) ||
     "attachment";
-}
-
-function stableFailureMessage(code: string, filename: string): string {
-  switch (code) {
-    case "CONTEXT_LIMIT_EXCEEDED":
-      return "Ari couldn’t use this file because it contains too much information for one message. Remove it and attach a shorter version.";
-    case "UNSUPPORTED_TYPE":
-    case "MIME_MISMATCH":
-      return "That file isn’t supported. Add a JPG, PNG, WebP, HEIC, PDF, DOCX, TXT, or CSV file up to 10 MB.";
-    case "FILE_TOO_LARGE":
-      return "That file is larger than 10 MB. Choose a smaller file.";
-    case "DUPLICATE_FILE":
-      return `${filename} is already attached.`;
-    case "ENCRYPTED_FILE":
-    case "CORRUPT_FILE":
-    case "UNREADABLE_FILE":
-    case "DECOMPRESSION_BOMB":
-    case "UPLOAD_INCOMPLETE":
-    case "SIZE_MISMATCH":
-    default:
-      return `Ari couldn’t read ${filename}. Remove password protection or choose a different file.`;
-  }
 }
 
 function serviceClient() {
@@ -216,7 +196,12 @@ Deno.serve(async (request) => {
           state: "prepared",
         });
       if (insertError) {
-        outcomes.push({ filename, state: "failed", code: "PREPARE_FAILED" });
+        outcomes.push({
+          filename,
+          state: "failed",
+          code: "PREPARE_FAILED",
+          message: stableFailureMessage("PREPARE_FAILED", filename),
+        });
         continue;
       }
       const { data: signed, error: signedError } = await admin.storage
@@ -224,7 +209,12 @@ Deno.serve(async (request) => {
       if (signedError || !signed?.token) {
         await admin.from("agent_attachments").delete().eq("id", attachmentId)
           .eq("user_id", userId);
-        outcomes.push({ filename, state: "failed", code: "PREPARE_FAILED" });
+        outcomes.push({
+          filename,
+          state: "failed",
+          code: "PREPARE_FAILED",
+          message: stableFailureMessage("PREPARE_FAILED", filename),
+        });
         continue;
       }
       outcomes.push({
@@ -237,164 +227,14 @@ Deno.serve(async (request) => {
     return response(200, { outcomes });
   }
 
-  if (body.action === "finalize") {
-    const attachmentIds = Array.isArray(body.attachment_ids)
-      ? body.attachment_ids.filter((id): id is string =>
-        typeof id === "string" && UUID_PATTERN.test(id)
-      )
-      : [];
-    if (
-      attachmentIds.length === 0 ||
-      attachmentIds.length > ARI_ATTACHMENT_MAX_FILES
-    ) {
-      return response(400, { code: "BAD_REQUEST" });
-    }
-    const outcomes: Record<string, unknown>[] = [];
-    for (const attachmentId of attachmentIds) {
-      const { data: rowData } = await admin.from("agent_attachments")
-        .select(
-          "id,user_id,brand_id,conversation_id,storage_path,derived_storage_path,original_filename,declared_mime,declared_size_bytes,state",
-        )
-        .eq("id", attachmentId)
-        .eq("user_id", userId)
-        .maybeSingle();
-      const row = rowData as AttachmentAuthorityRow | null;
-      if (
-        !row || row.conversation_id !== null ||
-        !["prepared", "failed"].includes(row.state)
-      ) {
-        outcomes.push({
-          attachment_id: attachmentId,
-          state: "failed",
-          code: "ATTACHMENT_SCOPE_DENIED",
-        });
-        continue;
-      }
-      let derivedStoragePath: string | null = null;
-      try {
-        await admin.from("agent_attachments").update({
-          state: "uploaded",
-          updated_at: new Date().toISOString(),
-        })
-          .eq("id", attachmentId).eq("user_id", userId);
-        await admin.from("agent_attachments").update({
-          state: "processing",
-          failure_code: null,
-          updated_at: new Date().toISOString(),
-        })
-          .eq("id", attachmentId).eq("user_id", userId).eq("state", "uploaded");
-        const { data: source, error: sourceError } = await admin.storage
-          .from(ARI_ATTACHMENT_BUCKET).download(row.storage_path);
-        if (sourceError || !source) {
-          throw new AriAttachmentError("UPLOAD_INCOMPLETE");
-        }
-        const bytes = new Uint8Array(await source.arrayBuffer());
-        const verified = await verifyAriAttachment(
-          bytes,
-          row.declared_mime,
-          row.declared_size_bytes,
-        );
-        const { data: duplicate } = await admin.from("agent_attachments")
-          .select("id")
-          .eq("user_id", userId)
-          .eq("brand_id", row.brand_id)
-          .eq("sha256", verified.sha256)
-          .eq("state", "ready")
-          .is("client_turn_id", null)
-          .neq("id", attachmentId)
-          .limit(1)
-          .maybeSingle();
-        if (duplicate) throw new AriAttachmentError("DUPLICATE_FILE");
-        let derivedSizeBytes: number | null = null;
-        let derivedSha256: string | null = null;
-        if (verified.derivativeText !== null) {
-          derivedStoragePath =
-            `${userId}/${row.brand_id}/${attachmentId}/derived`;
-          const derivative = new TextEncoder().encode(verified.derivativeText);
-          derivedSizeBytes = derivative.byteLength;
-          const derivativeDigest = new Uint8Array(
-            await crypto.subtle.digest("SHA-256", derivative),
-          );
-          derivedSha256 = Array.from(derivativeDigest)
-            .map((value) => value.toString(16).padStart(2, "0")).join("");
-          const { error: derivativeError } = await admin.storage
-            .from(ARI_ATTACHMENT_BUCKET).upload(
-              derivedStoragePath,
-              derivative,
-              {
-                contentType: "text/plain; charset=utf-8",
-                upsert: true,
-              },
-            );
-          if (derivativeError) throw new AriAttachmentError("UNREADABLE_FILE");
-        }
-        const { data: readyRow, error: readyError } = await admin.from(
-          "agent_attachments",
-        )
-          .update({
-            state: "ready",
-            failure_code: null,
-            verified_mime: verified.verifiedMime,
-            verified_size_bytes: verified.sizeBytes,
-            sha256: verified.sha256,
-            file_type: verified.fileType,
-            derived_storage_path: derivedStoragePath,
-            derived_size_bytes: derivedSizeBytes,
-            derived_sha256: derivedSha256,
-            processing_metadata: verified.processingMetadata,
-            ready_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }).eq("id", attachmentId).eq("user_id", userId).eq(
-            "state",
-            "processing",
-          ).select("id").maybeSingle();
-        if (readyError || !readyRow) {
-          throw new AriAttachmentError("UNREADABLE_FILE");
-        }
-        outcomes.push({
-          attachment_id: attachmentId,
-          filename: row.original_filename,
-          state: "ready",
-          verified_mime: verified.verifiedMime,
-          file_type: verified.fileType,
-          size_bytes: verified.sizeBytes,
-        });
-      } catch (error: unknown) {
-        const code = error instanceof AriAttachmentError
-          ? error.code
-          : "UNREADABLE_FILE";
-        if (derivedStoragePath !== null) {
-          const { error: cleanupError } = await admin.storage
-            .from(ARI_ATTACHMENT_BUCKET).remove([derivedStoragePath]);
-          if (cleanupError) {
-            const { error: queueError } = await admin
-              .from("agent_attachment_cleanup_jobs")
-              .upsert({ storage_path: derivedStoragePath }, {
-                onConflict: "storage_path",
-                ignoreDuplicates: true,
-              });
-            console.error("ari_attachment_derivative_cleanup_failed", {
-              attachmentId,
-              code: cleanupError.message,
-              cleanupQueued: queueError === null,
-            });
-          }
-        }
-        await admin.from("agent_attachments").update({
-          state: "failed",
-          failure_code: code,
-          updated_at: new Date().toISOString(),
-        }).eq("id", attachmentId).eq("user_id", userId);
-        outcomes.push({
-          attachment_id: attachmentId,
-          filename: row.original_filename,
-          state: "failed",
-          code,
-          message: stableFailureMessage(code, row.original_filename),
-        });
-      }
-    }
-    return response(200, { outcomes });
+  // REWORK-1: one file per finalize request, plus an owner-scoped `status`
+  // that terminalizes an interrupted 60-second processing lease.
+  if (body.action === "finalize" || body.action === "status") {
+    const result = await handleAriAttachmentLifecycle(
+      { admin, userId },
+      body,
+    );
+    return response(result.status, result.body);
   }
 
   if (!body.attachment_id || !UUID_PATTERN.test(body.attachment_id)) {
