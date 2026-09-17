@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   trackedFilesProcessInvocations,
@@ -31,10 +31,24 @@ function git(root, args) {
   return execFileSync("git", [...GIT_IDENTITY, ...args], { cwd: root, stdio: "pipe" });
 }
 
-function cloneFixture(prefix) {
+// [#3336 Amendment 3] Clone over file:// at depth 1, never `--no-hardlinks <path>`.
+// A CI checkout is shallow, and an earlier Class A gate (the #2148 topology gate's
+// ensureComparisonHistory) deepens it with `--filter=blob:none`, leaving older
+// commits without their file contents. A path clone of a shallow source goes through
+// upload-pack, which must pack that whole history and aborts with "possible
+// repository corruption". A depth-1 file:// clone needs only HEAD's own objects,
+// only reads the source, and works whether the source HEAD is a branch or detached.
+function cloneFixture(prefix, source = ROOT) {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   const clone = path.join(parent, "repo");
-  execFileSync("git", ["clone", "-q", "--no-hardlinks", ROOT, clone], { stdio: "pipe" });
+  try {
+    execFileSync("git", ["clone", "-q", "--depth", "1", "--no-tags", pathToFileURL(source).href, clone], {
+      stdio: "pipe",
+    });
+  } catch (error) {
+    fs.rmSync(parent, { recursive: true, force: true });
+    throw error;
+  }
   return { parent, root: fs.realpathSync(clone) };
 }
 
@@ -197,4 +211,86 @@ test("raw Actions records preserve all boundaries and report three distinct fail
     [eviction.result.core.row, eviction.result.readiness.row, eviction.result.exit],
     ["D5", READINESS_ROWS.NOT_EVALUATED, 0],
   );
+});
+
+// [#3336 Amendment 3] Regression: reproduce the CI checkout that broke the legacy
+// clone on main (run 35175924177), then prove the production fixture clone copes.
+const LEGACY_CLONE_HAZARD = /pack-objects died|repository corruption/;
+
+function checkoutState(root) {
+  return [
+    git(root, ["show-ref", "--head"]).toString(),
+    fs.readFileSync(path.join(root, ".git", "config"), "utf8"),
+    fs.readFileSync(path.join(root, ".git", "shallow"), "utf8"),
+  ].join("\n--\n");
+}
+
+function headTree(root) {
+  return git(root, ["rev-parse", "HEAD^{tree}"]).toString().trim();
+}
+
+test("fixture clones stay whole from a shallow checkout deepened without file contents", () => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "issue3336-incomplete-checkout-"));
+  const fixtures = [];
+  try {
+    const source = path.join(scratch, "source");
+    fs.mkdirSync(source);
+    git(source, ["init", "-q", "-b", "main"]);
+    git(source, ["config", "uploadpack.allowFilter", "true"]);
+    for (let revision = 1; revision <= 4; revision += 1) {
+      fs.writeFileSync(path.join(source, "tracked.txt"), `revision ${revision}\n`);
+      git(source, ["add", "tracked.txt"]);
+      git(source, ["commit", "-qm", `revision ${revision}`]);
+    }
+
+    // A depth-1 checkout on a branch (push) or detached with no local branch
+    // (pull_request), then the topology gate's blobless deepen, shallower than history.
+    const workspaces = ["branch", "detached"].map((shape) => {
+      const workspace = path.join(scratch, `workspace-${shape}`);
+      git(scratch, ["clone", "-q", "--depth", "1", "--no-tags", pathToFileURL(source).href, workspace]);
+      if (shape === "detached") {
+        git(workspace, ["checkout", "-q", "--detach"]);
+        git(workspace, ["branch", "-q", "-D", "main"]);
+      }
+      git(workspace, [
+        "fetch",
+        "-q",
+        "--no-tags",
+        "--filter=blob:none",
+        "--depth=2",
+        "origin",
+        "+refs/heads/main:refs/remotes/origin/main",
+      ]);
+      assert.equal(
+        git(workspace, ["rev-parse", "--is-shallow-repository"]).toString().trim(),
+        "true",
+        `${shape}: the deepened workspace must still be shallow`,
+      );
+      return { shape, workspace };
+    });
+    fs.rmSync(source, { recursive: true, force: true });
+
+    for (const { shape, workspace } of workspaces) {
+      assert.throws(
+        () =>
+          execFileSync("git", ["clone", "-q", "--no-hardlinks", workspace, path.join(scratch, `legacy-${shape}`)], {
+            stdio: "pipe",
+          }),
+        (error) => LEGACY_CLONE_HAZARD.test(String(error.stderr)),
+        `${shape}: the legacy path clone must hit the incomplete-checkout hazard, or this fixture proves nothing`,
+      );
+
+      const before = checkoutState(workspace);
+      let fixture;
+      assert.doesNotThrow(() => {
+        fixture = cloneFixture(`issue3336-incomplete-${shape}-`, workspace);
+      }, `${shape}: the production fixture clone must succeed from an incomplete shallow checkout`);
+      fixtures.push(fixture);
+      assert.equal(headTree(fixture.root), headTree(workspace), `${shape}: the fixture clone must reproduce HEAD's tree`);
+      assert.equal(checkoutState(workspace), before, `${shape}: fixture cloning must not write to its source checkout`);
+    }
+  } finally {
+    for (const fixture of fixtures) fs.rmSync(fixture.parent, { recursive: true, force: true });
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 });
