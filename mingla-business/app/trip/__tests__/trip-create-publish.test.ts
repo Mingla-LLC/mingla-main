@@ -79,8 +79,10 @@ describe("ORCH-0859 — trip create + wizard + publish contract", () => {
   });
 
   test("TripCreatorWizard header owns step title and body does not repeat it", () => {
+    // [TEST-MOD-APPROVED #1780] The title is the accessibility header only on
+    // the new Invite people step (7); the header still owns the step title.
     expect(wizardSource).toMatch(
-      /<Text style=\{styles\.mobileStepTitle\}>\{stepTitle\}<\/Text>/,
+      /<Text accessibilityRole=\{step === 7 \? "header" : undefined\} style=\{styles\.mobileStepTitle\}>\{stepTitle\}<\/Text>/,
     );
     expect(wizardSource).toMatch(
       /<Text style=\{styles\.mobileStepSub\}>\{stepSubtitle\}<\/Text>/,

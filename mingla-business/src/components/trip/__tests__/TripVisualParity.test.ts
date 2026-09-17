@@ -62,7 +62,9 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
       // preserved at the new shape.
       expect(SRC).toMatch(/STEP_SUBTITLES/);
       expect(SRC).toMatch(/\{brand\.name\}\s*·\s*Step\s+\{visibleStepNumber\}\s+of\s+\{visibleStepCount\}/);
-      expect(SRC).toMatch(/<Text style=\{styles\.mobileStepTitle\}>\{stepTitle\}/);
+      // [TEST-MOD-APPROVED #1780] The title is the accessibility header only on
+      // the new Invite people step (7); the visual title shape is unchanged.
+      expect(SRC).toMatch(/<Text accessibilityRole=\{step === 7 \? "header" : undefined\} style=\{styles\.mobileStepTitle\}>\{stepTitle\}<\/Text>/);
     });
 
     it("SC-07: dock uses GlassCard variant='elevated' radius='xxl' floating; hides when keyboard up", () => {

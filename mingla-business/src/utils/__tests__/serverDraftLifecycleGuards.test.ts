@@ -11,8 +11,10 @@ describe("server-backed draft lifecycle guards", () => {
     const source = repoFile("src/components/event/EventCreatorWizard.tsx");
 
     expect(source).toContain("onPublishDraft");
+    // [TEST-MOD-APPROVED #1780] publish now also passes the confirmed invite
+    // plan receipt as a second argument; the slug still comes from the RPC.
     expect(source).toContain(
-      "const slug = await onPublishDraft(draftToPublish)",
+      "const slug = await onPublishDraft(draftToPublish, {",
     );
     expect(source).toContain("deleteDraft(draftToPublish.id)");
     expect(source).not.toContain("publishDraft(liveDraft.id)");
