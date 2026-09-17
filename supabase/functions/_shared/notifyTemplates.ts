@@ -63,6 +63,41 @@ function fmtDate(
   return { date, time };
 }
 
+// #3391 — the refund amount on a venue-cancelled paid booking, with the glyph
+// the guest reads ("$50.00", "£50.00", "₦25,000.00"). `narrowSymbol` because the
+// default ISO fallback prints "NGN 25,000.00" in en-US (the #3341 rule). Returns
+// null unless the payload is a venue cancellation with a positive refund.
+//
+// `gsm7: true` is for SMS bodies, which this file authors GSM-7 clean: a glyph
+// outside that alphabet ("₦") would silently force UCS-2 and halve the segment,
+// so SMS reads the ISO code instead ("NGN 25,000.00"). "$" and "£" are GSM-7.
+export function venueCancelRefundAmount(
+  payload: Record<string, unknown>,
+  options: { gsm7?: boolean } = {},
+): string | null {
+  if (payload.cancelled_by !== "venue") return null;
+  const cents = Number(payload.refund_amount_cents);
+  const currency = str(payload.refund_currency).trim().toUpperCase();
+  if (
+    !Number.isSafeInteger(cents) || cents <= 0 || !/^[A-Z]{3}$/.test(currency)
+  ) {
+    return null;
+  }
+  const format = (currencyDisplay: "narrowSymbol" | "code"): string =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      currencyDisplay,
+    }).format(cents / 100).replace(/[\u00a0\u202f]/g, " ");
+  try {
+    const glyph = format("narrowSymbol");
+    if (options.gsm7 && !/^[\x20-\x7e£]*$/.test(glyph)) return format("code");
+    return glyph;
+  } catch {
+    return `${(cents / 100).toFixed(2)} ${currency}`;
+  }
+}
+
 export function renderCategoryMessage(
   categoryKey: string,
   payload: Record<string, unknown>,
@@ -196,7 +231,27 @@ export function renderCategoryMessage(
         sms: `${brand}: Table for ${party} confirmed ${date} ${time}.`,
       };
 
-    case "buyer_reservation_cancelled":
+    case "buyer_reservation_cancelled": {
+      // #3391 — the venue cancelled a PAID booking and the refund row already
+      // exists (the reservation trigger adds these fields only then). Say the
+      // money is on its way; "processing" and "processed" stay with the
+      // source_refund_buyer_state notices the refund runner sends.
+      const refund = venueCancelRefundAmount(payload);
+      if (refund !== null) {
+        const line = (amount: string) =>
+          `The venue cancelled your reservation. Your ${amount} refund is on its way.`;
+        const body = line(refund);
+        return {
+          push: { title: "Reservation cancelled", body },
+          email: {
+            subject: `Your ${brand} reservation was cancelled`,
+            body: date ? `${body}\n\nReservation: ${brand}, ${date}.` : body,
+          },
+          sms: `${brand}: ${
+            line(venueCancelRefundAmount(payload, { gsm7: true }) ?? refund)
+          }`,
+        };
+      }
       // COPY §3.2
       return {
         push: {
@@ -211,6 +266,7 @@ export function renderCategoryMessage(
         sms:
           `${brand}: Your reservation for ${date} was cancelled. Questions? Contact the venue.`,
       };
+    }
 
     case "buyer_event_reminder":
       // COPY §3.3 (24h) / §3.4 (2h).

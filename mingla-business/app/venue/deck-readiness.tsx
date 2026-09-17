@@ -2,7 +2,7 @@
  * META-ORCH-1009 Sub-E — durable deck-readiness resume route.
  */
 
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,7 +25,11 @@ import {
 } from "../../src/components/venue/VenueDeckReadinessSetup";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import type { CoverPatch } from "../../src/components/ui/CoverPicker";
-import type { DeckReadinessFocus } from "../../src/utils/deckReadinessRoutes";
+import {
+  deckReadinessSaveDestination,
+  type DeckReadinessFocus,
+} from "../../src/utils/deckReadinessRoutes";
+import { useVenueSuiteStore } from "../../src/store/venueSuiteStore";
 
 const FOCUS_VALUES = new Set<DeckReadinessFocus>([
   "basics",
@@ -58,11 +62,15 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
     // META-ORCH-1255 — the pipeline is venue-keyed; routes carry venue_id.
     venue_id?: string | string[];
     focus?: string | string[];
+    // #3385 — "venue" when opened from the venue page's Settings.
+    from?: string | string[];
   }>();
   const brandId = paramValue(params.brand_id);
   const requestedPlacePoolId = paramValue(params.place_pool_id);
   const venueId = paramValue(params.venue_id);
   const focus = normalizeFocus(paramValue(params.focus));
+  const from = paramValue(params.from);
+  const setSavedFlash = useVenueSuiteStore((s) => s.setSavedFlash);
   const venueQuery = useVenueListing(venueId);
   const venue = venueQuery.data ?? null;
   // One owner per truth: the place pointer lives on the venue row.
@@ -87,6 +95,21 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
       description: typeof op?.description === "string" ? op.description : null,
     };
   }, [contextQuery.data]);
+
+  // #3385 — a successful save returns the host to the venue (never Events)
+  // and hands the venue page a one-shot "Changes saved" confirmation.
+  const handleSaved = useCallback((): void => {
+    if (venueId !== null) {
+      setSavedFlash(venueId, "Changes saved", Date.now());
+    }
+    const destination = deckReadinessSaveDestination({
+      venueId,
+      from,
+      canGoBack: router.canGoBack(),
+    });
+    if (destination.kind === "back") router.back();
+    else router.replace(destination.href as never);
+  }, [from, router, setSavedFlash, venueId]);
 
   const cover = useMemo<CoverPatch | null>(() => {
     const context = contextQuery.data;
@@ -178,7 +201,7 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
         initialCoaching={contextQuery.data.coaching}
         initialCover={cover}
         initialGallery={contextQuery.data.gallery_urls}
-        onDone={() => router.replace("/(tabs)/hub/events" as never)}
+        onDone={handleSaved}
       />
     </View>
   );

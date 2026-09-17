@@ -50,6 +50,10 @@ import { ReservationCard } from "./ReservationCard";
 import type { FocusableReservationEntry } from "./ReservationCard";
 import { ReservationCreateSheet } from "./ReservationCreateSheet";
 import { ReservationDetailSheet } from "./ReservationDetailSheet";
+import {
+  cancelRefundsGuest,
+  paidCancelErrorMessage,
+} from "./reservationPaidCancelNote";
 import { ReservationMonthView } from "./ReservationMonthView";
 import { ReservationWeekView } from "./ReservationWeekView";
 import { ACTION_TARGET } from "./reservationViews";
@@ -162,6 +166,8 @@ export function VenueReservationsModule({
   const [scope, setScope] = useState<ReservationStatusScope>("active");
   const [createOpen, setCreateOpen] = useState<boolean>(false);
   const [selected, setSelected] = useState<Reservation | null>(null);
+  // #3391 — why the last lifecycle action was refused, shown in the sheet.
+  const [actionError, setActionError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [agendaNavigationVersion, setAgendaNavigationVersion] = useState(0);
   const retryInFlightRef = useRef(false);
@@ -268,6 +274,7 @@ export function VenueReservationsModule({
   const closeDetail = useCallback((): void => {
     const invokingId = selectedInvokerIdRef.current;
     setSelected(null);
+    setActionError(null);
     if (invokingId === null) return;
     const restore = (): void => {
       reservationEntryRefs.current[invokingId]?.focus?.();
@@ -279,9 +286,38 @@ export function VenueReservationsModule({
 
   const handleAction = useCallback(
     (reservation: Reservation, action: ReservationAction): void => {
+      // #3391 — cancelling a paid, unseated booking refunds the guest in full.
+      const refundsGuest =
+        action === "cancel" && cancelRefundsGuest(reservation);
+      setActionError(null);
       transition.mutate(
-        { reservationId: reservation.id, toStatus: ACTION_TARGET[action] },
-        { onSuccess: () => closeDetail() },
+        {
+          reservationId: reservation.id,
+          toStatus: ACTION_TARGET[action],
+          refundsGuest,
+        },
+        {
+          onSuccess: (result) => {
+            if (refundsGuest && result?.refund) {
+              // Stay open on the cancelled booking so the host sees the refund.
+              setSelected({
+                ...reservation,
+                status: "cancelled_by_venue",
+                refund: result.refund,
+              });
+              return;
+            }
+            closeDetail();
+          },
+          onError: (error) => {
+            if (!refundsGuest) return;
+            const code =
+              (error as { code?: unknown } | null)?.code ?? null;
+            setActionError(
+              paidCancelErrorMessage(typeof code === "string" ? code : null),
+            );
+          },
+        },
       );
     },
     [closeDetail, transition],
@@ -369,6 +405,7 @@ export function VenueReservationsModule({
   const selectReservation = useCallback((reservation: Reservation): void => {
     selectedInvokerIdRef.current = reservation.id;
     setSelected(reservation);
+    setActionError(null);
   }, []);
 
   const entryRefFor = useCallback(
@@ -863,6 +900,7 @@ export function VenueReservationsModule({
         timeZone={resolvedZone.timeZone}
         onAction={handleAction}
         acting={transition.isPending}
+        actionError={actionError}
       />
     </View>
   );

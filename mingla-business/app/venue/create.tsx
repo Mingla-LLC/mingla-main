@@ -4,7 +4,7 @@
  * ORCH-1263 [claim-adoption] — the gate now runs the DESIGN §4 match moment:
  * ClaimMatchCard (evolution of the retired PoolMatchCard) with presence facts
  * + claim_state; "Yes, this is me" fires the AUTHED adoption-detail fetch
- * (D-B copy-on-start — zero server writes) and enters the 10-step claim
+ * (D-B copy-on-start — zero server writes) and enters the 9-step claim
  * wizard; claimed/pending places are blocked politely AT THE GATE
  * (I-PROPOSED-1263-CLAIMED-STATE-FRONT-LOADED); a persisted claim draft
  * renders the resume card (DESIGN §8.4); claim submit success shows the
@@ -42,6 +42,7 @@ import {
 } from "../../src/components/brand/ClaimMatchCard";
 import { VenueCategoryPicker } from "../../src/components/brand/VenueCategoryPicker";
 import { VenueCreatorWizard } from "../../src/components/venue/VenueCreatorWizard";
+import { venueWizardResumeProgress } from "../../src/components/venue/venueWizardValidation";
 import { Button } from "../../src/components/ui/Button";
 import { EventCoverMedia } from "../../src/components/ui/EventCoverMedia";
 import { Icon } from "../../src/components/ui/Icon";
@@ -410,6 +411,8 @@ export default function VenueCreateRoute(): React.ReactElement {
   // resume card above the name input. The abandon boundary stays clean:
   // nothing server-side ever happened.
   const showResumeCard = phase === "gate" && claimDraft !== null;
+  // #3390 — counted from the wizard's real step list (the card is claim-only).
+  const resumeProgress = venueWizardResumeProgress(draftStep, true);
   const resumePhoto = claimDraft?.keptGalleryUrls[0] ?? null;
 
   // Blocked variants sort below available (DESIGN §4.5); race-discovered
@@ -460,8 +463,8 @@ export default function VenueCreateRoute(): React.ReactElement {
                       {draftDisplayName.trim() || workingName.trim()}
                     </Text>
                     <Text style={styles.resumeStep}>
-                      You&apos;re on step {Math.min(draftStep + 1, 10)} of 10 —
-                      nearly there.
+                      You&apos;re on step {resumeProgress.current} of{" "}
+                      {resumeProgress.total} — nearly there.
                     </Text>
                   </View>
                 </View>

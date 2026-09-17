@@ -23,7 +23,11 @@ import type {
   Reservation,
   ReservationCreateInput,
 } from "../types/venueReservation";
-import { listSourceRefundSummaries } from "../services/sourceRefundService";
+import {
+  cancelPaidVenueReservation,
+  listSourceRefundSummaries,
+} from "../services/sourceRefundService";
+import type { SourceRefundSummary } from "../types/venueReservation";
 
 interface ReservationRow {
   id: string;
@@ -209,16 +213,46 @@ export interface ReservationTransitionVars {
   toStatus: Reservation["status"];
   tableId?: string | null;
   reason?: string | null;
+  /**
+   * #3391 — the booking is paid, unrefunded and not seated, so a venue cancel
+   * refunds the guest in full. Routes through the refunding edge action.
+   */
+  refundsGuest?: boolean;
+}
+
+export interface ReservationTransitionResult {
+  /** #3391 — the refund a paid venue cancel created (or replayed). */
+  refund: SourceRefundSummary | null;
 }
 
 /** Lifecycle transition via the guarded RPC (legal transitions enforced server-side). */
 export function useTransitionReservation(
   brandId: string | null,
   venueId: string | null,
-): UseMutationResult<void, Error, ReservationTransitionVars> {
+): UseMutationResult<
+  ReservationTransitionResult,
+  Error,
+  ReservationTransitionVars
+> {
   const queryClient = useQueryClient();
-  return useMutation<void, Error, ReservationTransitionVars>({
-    mutationFn: async (vars: ReservationTransitionVars): Promise<void> => {
+  return useMutation<
+    ReservationTransitionResult,
+    Error,
+    ReservationTransitionVars
+  >({
+    mutationFn: async (
+      vars: ReservationTransitionVars,
+    ): Promise<ReservationTransitionResult> => {
+      // #3391 — a paid venue cancel refunds. The server would refund through
+      // the plain RPC too (it delegates), but the edge action also runs the
+      // refund straight away and hands back the refund to show.
+      if (vars.toStatus === "cancelled_by_venue" && vars.refundsGuest === true) {
+        const { refund } = await cancelPaidVenueReservation({
+          reservationId: vars.reservationId,
+          reason: vars.reason ?? null,
+        });
+        return { refund };
+      }
       const { error } = await supabase.rpc("biz_reservation_transition", {
         p_reservation_id: vars.reservationId,
         p_to_status: vars.toStatus,
@@ -226,8 +260,11 @@ export function useTransitionReservation(
         p_reason: vars.reason ?? null,
       });
       if (error !== null) throw error as unknown as Error;
+      return { refund: null };
     },
-    onSuccess: () => {
+    // Settled, not success: a refused or timed-out cancel may still have
+    // committed server-side, so the list re-reads either way.
+    onSettled: () => {
       if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
           queryKey: venueReservationsKeys.list(brandId, venueId),

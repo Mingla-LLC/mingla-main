@@ -47,6 +47,7 @@ import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaim
 import { StaySuiteShell } from "../../../src/components/stay/StaySuiteShell";
 import { VenueIdentityBand } from "../../../src/components/venue/VenueIdentityBand";
 import { VenueModulePillRow } from "../../../src/components/venue/VenueModulePillRow";
+import { parseVenueModuleParam } from "../../../src/components/venue/venueModules";
 // #2099 §F3 — EXTENSIONLESS on purpose: Metro resolves `.web` on web and
 // `.native` on iOS/Android, so the correction feature never enters a native
 // graph. TypeScript is served by the sibling `.d.ts` (the same shape
@@ -109,21 +110,15 @@ export default function VenueManagementPage(): React.ReactElement {
   const venueId = paramValue(params.venueId);
   const focus =
     paramValue(params.focus) === "feedback" ? ("feedback" as const) : undefined;
-  // Issue #1735 G-3 — `?module=insights` deep link (Overview tile + to-do
-  // nudges). Whitelist the literal "insights" ONLY: it is command-band, so it
-  // is always in `visibleModules` and can never select a hidden module. Any
-  // other value is ignored (the default Overview stands).
-  //
-  // Issue #1791 — `?module=orders` joins it, and this is the landing point of
-  // every `mingla-business://venue/{id}/orders` push the alerting spine sends.
-  // Same whitelist reasoning: `orders` is command-band and therefore always
-  // visible, so a tapped notification can never select a hidden module.
+  // `?module=<id>` deep link — Issue #1735 G-3 (`insights`, Overview tile +
+  // to-do nudges), Issue #1791 (`orders`, the landing point of every
+  // `mingla-business://venue/{id}/orders` push) and #3389 (`tables` / `menu`
+  // from the Home data-completeness to-dos, which used to land on Overview).
+  // Any known venue module is accepted; unknown values keep Overview. A booking
+  // module on a venue whose reservations are off is left for Overview by the
+  // shell once its settings load (`shouldLeaveBookingModule`).
   const requestedModule = paramValue(params.module);
-  const initialModule = requestedModule === "insights"
-    ? ("insights" as const)
-    : requestedModule === "orders"
-    ? ("orders" as const)
-    : undefined;
+  const initialModule = parseVenueModuleParam(requestedModule);
 
   const venueQuery = useVenueListing(venueId);
   const venue = venueQuery.data ?? null;
@@ -208,6 +203,16 @@ export default function VenueManagementPage(): React.ReactElement {
   useEffect(() => {
     if (focus === "feedback" && hasFollowUp) setFeedbackVisible(true);
   }, [focus, hasFollowUp]);
+
+  // #3385 — a venue sub-screen (deck readiness) saved and returned here.
+  // Consumed once, for THIS venue only, so the confirmation shows exactly once.
+  const savedFlash = useVenueSuiteStore((s) => s.savedFlash);
+  const takeSavedFlash = useVenueSuiteStore((s) => s.takeSavedFlash);
+  useEffect(() => {
+    if (savedFlash === null || venueId === null) return;
+    const message = takeSavedFlash(venueId, Date.now());
+    if (message !== null) setToast({ kind: "success", message });
+  }, [savedFlash, takeSavedFlash, venueId]);
 
   const claimRow = useMemo(
     () =>
