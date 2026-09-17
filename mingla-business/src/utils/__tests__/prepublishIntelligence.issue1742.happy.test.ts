@@ -71,7 +71,10 @@ describe("#1742 pre-publish intelligence happy path", () => {
       "src/components/experience/ExperienceCreatorWizard.tsx",
     );
     expect(experience).toContain("const handleSubmit = useCallback(");
-    expect(experience).toContain("onPress={maybeOpenIntelGate}");
+    // [TEST-MOD-APPROVED #1780] The Publish tap first refreshes the invite plan
+    // (beginPublish), which then routes through the same fail-soft intel gate.
+    expect(experience).toContain("onPress={() => void beginPublish()}");
+    expect(experience).toContain("maybeOpenIntelGate();");
     expect(experience).toContain("autoRunEnabled={false}");
     expect(experience).toContain('label="Save as draft"');
     expect(experience).toContain("onPress={() => void handleSubmit(false)}");
