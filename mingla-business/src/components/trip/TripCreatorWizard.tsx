@@ -53,6 +53,7 @@ import {
   DESKTOP_WIZARD_RAIL_WIDTH,
 } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useScrollToTopOnStepChange } from "../../hooks/useScrollToTopOnStepChange";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
@@ -576,6 +577,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   // for ORCH-0892-B v2 — KAS scrolls via its own animated ref; this JS-side
   // ref is unused by KAS but kept for the CoverPicker drilldown prop chain.
   const scrollViewRef = useRef<ScrollView | null>(null);
+  // Each step opens at the top — the ScrollView is shared by every step.
+  useScrollToTopOnStepChange(scrollViewRef, step);
 
   const updateBasicsMutation = useUpdateTripBasics();
   const upsertDaysMutation = useUpsertTripDays();

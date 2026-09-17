@@ -10,6 +10,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 // ORCH-1165: library-backed keyboard-visibility read (gate-clean wrapper).
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
+import { useScrollToTopOnStepChange } from "../../hooks/useScrollToTopOnStepChange";
 // orch-strict-grep-allow orch-0892 — META-ORCH-1059 Sub-A rebuilds the experience
 // wizard onto a multi-stop itinerary + lifted CreatorStep2When + two-mode pricing.
 // Keyboard-input fields sit in a single ScrollView with keyboardShouldPersistTaps;
@@ -301,6 +302,8 @@ export const ExperienceCreatorWizard: React.FC<
   const currencySymbol = currencySymbolFor(currency);
 
   const [step, setStep] = useState<StepIndex>(1);
+  // Each step opens at the top — the ScrollView is shared by every step.
+  useScrollToTopOnStepChange(scrollRef, step);
   const [intelGateOpen, setIntelGateOpen] = useState(false);
   useEffect(() => {
     if (step >= 4) void loadPrePublishGateSheet();

@@ -56,6 +56,7 @@ import {
   useTransitionVenueOrder,
   useVenueOrders,
 } from "../../hooks/useVenueOrders";
+import { useVenueListing } from "../../hooks/useVenueListings";
 import { useVenueTabs } from "../../hooks/useVenueOrderTabs";
 import {
   useSetVenueOrderingEnabled,
@@ -70,6 +71,10 @@ import { VenueOrderCard } from "./VenueOrderCard";
 import { VenueOrderDetailSheet } from "./VenueOrderDetailSheet";
 import { VenueOrderPadSheet } from "./orderPad/VenueOrderPadSheet";
 import { VenueTabsCard } from "./orderPad/VenueTabsCard";
+import {
+  orderingSwitchErrorCopy,
+  orderingSwitchState,
+} from "./venueOrderingSwitch";
 import type { OrderPadTab } from "./orderPad/venueOrderPad";
 import {
   VENUE_ORDER_VIEWS,
@@ -123,6 +128,9 @@ export function VenueOrdersModule({
   const refundDecision = useDecideVenueOrderRefund(scopedBrandId);
   const setPaused = useSetVenueOrderingPaused(venueId);
   const setEnabled = useSetVenueOrderingEnabled(venueId);
+  // #3388 — ordering can only be switched on for a live (verified) venue.
+  const venueQuery = useVenueListing(venueId);
+  const [orderingError, setOrderingError] = useState<string | null>(null);
 
   const [view, setView] = useState<VenueOrderView>("new");
   const [zoneFilter, setZoneFilter] = useState<string | null>(null);
@@ -203,6 +211,20 @@ export function VenueOrdersModule({
   const settings = settingsQuery.data ?? null;
   const orderingEnabled = settings?.orderingEnabled === true;
   const paused = settings?.paused === true;
+  const orderingSwitch = orderingSwitchState({
+    claimStatus: venueQuery.data?.claimStatus,
+    orderingEnabled,
+    canDecideMoney,
+    pending: setEnabled.isPending,
+  });
+  const handleOrderingSwitch = (next: boolean): void => {
+    setOrderingError(null);
+    setEnabled.mutate(next, {
+      onError: (error) => {
+        void orderingSwitchErrorCopy(error).then(setOrderingError);
+      },
+    });
+  };
 
   return (
     <View style={styles.host} testID={testID ?? "venue-orders-module"}>
@@ -274,12 +296,29 @@ export function VenueOrdersModule({
             </View>
             <BrandSwitch
               value={orderingEnabled}
-              onValueChange={(next) => setEnabled.mutate(next)}
-              disabled={!canDecideMoney || setEnabled.isPending}
+              onValueChange={handleOrderingSwitch}
+              disabled={orderingSwitch.disabled}
               accessibilityLabel="Take orders through Mingla"
               testID="venue-orders-enable-switch"
             />
           </View>
+          {orderingSwitch.note !== null ? (
+            <Text
+              style={styles.switchNote}
+              testID="venue-orders-enable-not-live"
+            >
+              {orderingSwitch.note}
+            </Text>
+          ) : null}
+          {orderingError !== null ? (
+            <Text
+              style={styles.switchError}
+              accessibilityRole="alert"
+              testID="venue-orders-enable-error"
+            >
+              {orderingError}
+            </Text>
+          ) : null}
           {orderingEnabled ? (
             <View style={styles.switchRow}>
               <View style={styles.switchText}>
@@ -516,6 +555,11 @@ const styles = StyleSheet.create({
   switchNote: {
     ...typography.caption,
     color: textTokens.tertiary,
+  },
+  // #3388 — a refused ordering switch says why.
+  switchError: {
+    ...typography.caption,
+    color: semantic.error,
   },
   segRow: {
     flexDirection: "row",

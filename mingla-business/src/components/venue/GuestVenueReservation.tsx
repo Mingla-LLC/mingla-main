@@ -17,10 +17,14 @@ import {
 import {
   PhoneInput,
   getCountryByCode,
-  getDefaultCountryCode,
   type PhoneInputIconName,
   type PhoneInputTheme,
 } from "@mingla/phone-input";
+// issue #3380 — the ONE phone rule set, by deep specifier (never a barrel mock).
+import {
+  parsePhoneEntry,
+  resolvePhoneStartCountry,
+} from "@mingla/phone-input/phoneNumber";
 import type { ThemePalette } from "@mingla/offering-rendering";
 import {
   radius,
@@ -31,11 +35,14 @@ import {
 import { usePublicVenueAvailability } from "../../hooks/usePublicVenueAvailability";
 import { createGuestVenueReservation } from "../../services/venueGuestReservationService";
 import { guestReservationManagePath } from "../../utils/guestReservationManage";
+import { guestReservationFailureCopy } from "./venueGuestReservationErrorCopy";
 import {
   captureVenueOrganicEvent,
   getVenueOrganicJourneyToken,
 } from "../../services/venueOrganicCaptureService";
 import { runBuyerVenueOrganicCapture } from "../../services/venueOrganicCapturePolicy";
+import { devicePhoneRegion } from "../../utils/devicePhoneRegion";
+import { phoneStartCountryForCurrency } from "../../utils/phoneStartCountryForCurrency";
 import { composeE164 } from "../../utils/phone";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -45,6 +52,13 @@ interface GuestVenueReservationProps {
   venueId: string;
   brandId: string;
   currency: string | null;
+  /**
+   * issue #3380 — the venue's country (ISO alpha-2), when a host has it. The
+   * phone picker starts here; without it, on the country the venue CHARGES in
+   * (`currency`: a naira venue opens on +234, a dollar venue on +1). Only when
+   * neither names a country does the visitor's own browser region decide.
+   */
+  countryCode?: string | null;
   analyticsSurface: "buyer_web" | "business_preview";
   /**
    * issue #1564 — the page's RESOLVED palette, handed down by the booking slot.
@@ -92,10 +106,28 @@ const dateOptions = (): { value: string; label: string }[] => {
   });
 };
 
+const phoneCountryKnown = (iso: string): boolean => {
+  try {
+    return getCountryByCode(iso) !== undefined;
+  } catch {
+    return false;
+  }
+};
+
+const phoneStartCountry = (
+  venueCountry: string | null | undefined,
+  currency: string | null,
+): string =>
+  resolvePhoneStartCountry(
+    [venueCountry, phoneStartCountryForCurrency(currency), devicePhoneRegion()],
+    phoneCountryKnown,
+  ) ?? "US";
+
 export function GuestVenueReservation({
   venueId,
   brandId,
   currency,
+  countryCode = null,
   analyticsSurface,
   palette,
 }: GuestVenueReservationProps): React.ReactElement {
@@ -146,9 +178,14 @@ export function GuestVenueReservation({
   const [email, setEmail] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
   const [emailServerInvalid, setEmailServerInvalid] = useState(false);
-  const [phoneCountry, setPhoneCountry] = useState(getDefaultCountryCode());
+  const [phoneCountry, setPhoneCountry] = useState(() =>
+    phoneStartCountry(countryCode, currency),
+  );
   const [phoneLocal, setPhoneLocal] = useState("");
   const [phoneTouched, setPhoneTouched] = useState(false);
+  // issue #3380 — the venue's country can arrive after mount; follow it until
+  // the guest has typed a number or picked a country of their own.
+  const phoneCountryChosen = useRef(false);
   const [occasion, setOccasion] = useState("");
   const [notes, setNotes] = useState("");
   const [marketingOptIn, setMarketingOptIn] = useState(false);
@@ -186,12 +223,36 @@ export function GuestVenueReservation({
       : [],
   };
   const phoneDialCode = getCountryByCode(phoneCountry)?.dialCode ?? "+1";
-  const normalizedPhone = composeE164(phoneDialCode, phoneLocal);
+  const composedPhone = composeE164(phoneDialCode, phoneLocal);
+  // issue #3380 — the reservation's confirmation is TEXTED, so the number must
+  // be a mobile for the country on the picker. `0803 123 4567` under +44 used
+  // to compose to +448031234567 and be saved; it is now refused with a message
+  // naming Nigeria, and a one-tap switch.
+  const phoneCheck = parsePhoneEntry(phoneLocal, {
+    countryIso: phoneCountry,
+    dialCode: phoneDialCode,
+    mode: "mobile",
+  });
+  const phoneProblem =
+    phoneLocal.replace(/\D/g, "").length > 0 && !phoneCheck.ok
+      ? phoneCheck
+      : null;
+  const normalizedPhone = phoneProblem === null ? composedPhone : null;
+  const phoneErrorCopy = phoneProblem?.message ?? INVALID_PHONE_COPY;
+  const suggestedPhoneCountry =
+    phoneProblem?.suggestedCountryIso != null
+      ? getCountryByCode(phoneProblem.suggestedCountryIso)
+      : undefined;
   const normalizedName = name.trim();
   const normalizedEmail = email.trim();
   const nameInvalid = normalizedName.length < 2;
   const emailInvalid = !EMAIL_PATTERN.test(normalizedEmail);
   const contactInvalid = nameInvalid || emailInvalid;
+
+  useEffect(() => {
+    if (phoneCountryChosen.current) return;
+    setPhoneCountry(phoneStartCountry(countryCode, currency));
+  }, [countryCode, currency]);
 
   useEffect(() => {
     if (!availabilitySettled || selectedUtc === null) return;
@@ -219,7 +280,7 @@ export function GuestVenueReservation({
     if (emailInvalid) setEmailTouched(true);
     if (selectedUtc === null || contactInvalid || normalizedPhone === null) {
       setPhoneTouched(true);
-      setError(normalizedPhone === null ? INVALID_PHONE_COPY : null);
+      setError(normalizedPhone === null ? phoneErrorCopy : null);
       return;
     }
     submissionTruthRef.current = {
@@ -285,7 +346,8 @@ export function GuestVenueReservation({
         setEmailServerInvalid(true);
         setError(null);
       } else {
-        setError(RESERVATION_FAILURE_COPY);
+        // #3387 — a refusal the guest can act on gets its own sentence.
+        setError(guestReservationFailureCopy(errorCode) ?? RESERVATION_FAILURE_COPY);
       }
       captureWeb("venue_reservation_failed", {
         surface: analyticsSurface,
@@ -532,19 +594,24 @@ export function GuestVenueReservation({
             </Text>
           ) : null}
           <PhoneInput
+            // issue #3380 — formats as typed, follows a pasted +code, autofill.
+            smartEntry
+            required
             value={phoneLocal}
             countryCode={phoneCountry}
             onChangePhone={(next: string) => {
+              if (next.length > 0) phoneCountryChosen.current = true;
               setPhoneLocal(next);
-              setPhoneTouched(true);
             }}
             onChangeCountry={(next: string) => {
+              phoneCountryChosen.current = true;
               setPhoneCountry(next);
               setPhoneTouched(true);
             }}
+            onBlur={() => setPhoneTouched(true)}
             error={
               phoneTouched && normalizedPhone === null
-                ? INVALID_PHONE_COPY
+                ? phoneErrorCopy
                 : null
             }
             disabled={submitting}
@@ -572,7 +639,7 @@ export function GuestVenueReservation({
               phonePlaceholder: "Phone number",
               countryButtonAccessibilityLabel: (countryName: string) =>
                 `Country code, ${countryName}, tap to change`,
-              phoneInputAccessibilityLabel: "Phone number, required",
+              phoneInputAccessibilityLabel: "Phone number",
               doneButton: "Done",
               pickerTitle: "Select Country",
               pickerSearchPlaceholder: "Search country or dial code",
@@ -580,6 +647,22 @@ export function GuestVenueReservation({
             }}
             theme={phoneFieldTheme}
           />
+          {phoneTouched && suggestedPhoneCountry?.code !== undefined ? (
+            <Pressable
+              onPress={() => {
+                phoneCountryChosen.current = true;
+                setPhoneCountry(suggestedPhoneCountry.code);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Switch the country code to ${suggestedPhoneCountry.name} ${suggestedPhoneCountry.dialCode}`}
+              hitSlop={8}
+              style={styles.phoneSwitch}
+            >
+              <Text style={[styles.phoneSwitchText, { color: palette.accent }]}>
+                {`Switch to ${suggestedPhoneCountry.flag} ${suggestedPhoneCountry.name} (${suggestedPhoneCountry.dialCode})`}
+              </Text>
+            </Pressable>
+          ) : null}
           <Input
             value={occasion}
             onChangeText={setOccasion}
@@ -657,6 +740,8 @@ const styles = StyleSheet.create({
   },
   form: { gap: spacing.sm, marginTop: spacing.md },
   fieldError: { ...typography.bodySm, color: semantic.error },
+  phoneSwitch: { alignSelf: "flex-start", paddingVertical: spacing.xs },
+  phoneSwitchText: { ...typography.bodySm, fontWeight: "600" },
   optIn: {
     flexDirection: "row",
     alignItems: "center",
