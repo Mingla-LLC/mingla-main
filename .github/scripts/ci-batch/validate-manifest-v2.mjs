@@ -839,9 +839,9 @@ export function withTrackedFilesScope(root, fn) {
 
 function trackedFilesScopeFor(key) {
   for (let index = trackedFilesScopeStack.length - 1; index >= 0; index -= 1) {
-    if (trackedFilesScopeStack[index].cache.has(key)) return trackedFilesScopeStack[index];
+    if (trackedFilesScopeStack[index].root === key) return trackedFilesScopeStack[index];
   }
-  return trackedFilesScopeStack.length ? trackedFilesScopeStack[trackedFilesScopeStack.length - 1] : null;
+  return null;
 }
 
 // [#2439 SC-15.4] Exported so the post-cutover retired-reference inventory can
@@ -1631,6 +1631,22 @@ export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
 export function validateRegistry(
   rawManifest,
   { root = DEFAULT_ROOT, liveOrigins = null, workflowProviders = null, matrixSource = null } = {},
+) {
+  const resolvedRoot = path.resolve(root);
+  const validate = () => validateRegistryInTrackedFilesScope(rawManifest, {
+    root: resolvedRoot,
+    liveOrigins,
+    workflowProviders,
+    matrixSource,
+  });
+  return trackedFilesScopeFor(resolvedRoot)
+    ? validate()
+    : withTrackedFilesScope(resolvedRoot, validate);
+}
+
+function validateRegistryInTrackedFilesScope(
+  rawManifest,
+  { root, liveOrigins, workflowProviders, matrixSource },
 ) {
   const errors = [];
   errors.push(...validateManifestTextRepresentations(rawManifest));
