@@ -111,6 +111,8 @@ class FakeDb {
   rpc(fn: string, args: Record<string, unknown>) {
     this.rpcs.push({ fn, args });
     if (fn === "issue_2079_verify_ticket_paid_identity") {
+      // #2079: this replaces an unconditional "verified" stub, so the test now proves the
+      // real refusal path instead of assuming success.
       // Mirrors the live RPC: a Stripe payment with no charge id is never
       // verified — it is held and routed to a reversal instead.
       const charge = typeof args.p_stripe_charge_id === "string"
