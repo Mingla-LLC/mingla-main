@@ -1932,6 +1932,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           eventId={event.id}
           ticket={waitlistTicket}
           onClose={() => setWaitlistTicketId(null)}
+          currency={event.currency ?? null}
         />
       ) : null}
 

@@ -30,10 +30,28 @@ const CURRENCY_DEFAULT_COUNTRY: Record<string, string> = {
   GHS: "GH",
 };
 
-/** Preserve the pre-#1857 primary-RSVP default; new plus-one rows stay neutral. */
+/**
+ * The primary RSVP phone's starting country; new plus-one rows stay neutral.
+ *
+ * issue #3380 — the EVENT's country (read from its currency, the only brand
+ * signal a public event row carries) now comes before the visitor's locale, so
+ * a naira event opens on +234 even on a phone set to US English. The euro is
+ * the one mapped currency spanning many countries, so it keeps the old order.
+ */
 export const resolvePrimaryRsvpPhoneCountry = (
   currency?: string | null,
 ): string => {
+  const currencyCountry = currency
+    ? CURRENCY_DEFAULT_COUNTRY[currency.toUpperCase()]
+    : undefined;
+  const knownCurrencyCountry =
+    currencyCountry &&
+    COUNTRIES.some((country) => country.code === currencyCountry)
+      ? currencyCountry
+      : undefined;
+  if (knownCurrencyCountry && currency?.toUpperCase() !== "EUR") {
+    return knownCurrencyCountry;
+  }
   try {
     const locale = Intl.DateTimeFormat().resolvedOptions().locale;
     const region = locale.split("-")[1]?.toUpperCase();
@@ -41,17 +59,9 @@ export const resolvePrimaryRsvpPhoneCountry = (
       return region;
     }
   } catch {
-    // Intl unavailable — fall through to the existing currency hint.
+    // Intl unavailable — fall through to the currency hint.
   }
-  const currencyCountry = currency
-    ? CURRENCY_DEFAULT_COUNTRY[currency.toUpperCase()]
-    : undefined;
-  if (
-    currencyCountry &&
-    COUNTRIES.some((country) => country.code === currencyCountry)
-  ) {
-    return currencyCountry;
-  }
+  if (knownCurrencyCountry) return knownCurrencyCountry;
   return "US";
 };
 

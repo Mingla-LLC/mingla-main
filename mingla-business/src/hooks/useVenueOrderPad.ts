@@ -417,7 +417,13 @@ export interface StaffOrderSettleVars {
   orderId: string;
   /** Only the two SENDABLE methods exist here. `charge_to_room` is not built. */
   method: "bill_to_phone" | "venue_collected";
-  buyer?: { name: string; email: string; phone: string };
+  /** issue #3380 — `phoneCountryIso` is the country the pad's picker showed. */
+  buyer?: {
+    name: string;
+    email: string;
+    phone: string;
+    phoneCountryIso?: string | null;
+  };
 }
 
 export interface StaffOrderSettled {

@@ -63,6 +63,7 @@ import {
 } from "../../../src/constants/designSystem";
 import { usePublicExperienceById } from "../../../src/hooks/usePublicExperience";
 import { formatCurrency } from "../../../src/utils/currency";
+import { phoneStartCountryForCurrency } from "../../../src/utils/phoneStartCountryForCurrency";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
 // issue #2337 — the THIRD free rail. Like `checkout-trip`, this catch rendered
 // `error.message` straight to the guest, so every handled 409 arrived as the
@@ -110,12 +111,20 @@ const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
   errorText: "#ef4444",
 };
 
-const resolveInitialCountry = (existingFullE164: string): string => {
+const resolveInitialCountry = (
+  existingFullE164: string,
+  brandCountry: string | null = null,
+): string => {
   if (existingFullE164.length > 0) {
     const found = [...COUNTRIES]
       .sort((a, b) => b.dialCode.length - a.dialCode.length)
       .find((c) => existingFullE164.startsWith(c.dialCode));
     if (found) return found.code;
+  }
+  // issue #3380 — the event's own country beats the visitor's locale: a naira
+  // event opens on +234 even on a phone set to US English.
+  if (brandCountry !== null && COUNTRIES.some((c) => c.code === brandCountry)) {
+    return brandCountry;
   }
   try {
     const locale = Intl.DateTimeFormat().resolvedOptions().locale;
@@ -188,10 +197,10 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   const [phoneTouched, setPhoneTouched] = useState<boolean>(false);
 
   const [phoneCountry, setPhoneCountry] = useState<string>(() =>
-    resolveInitialCountry(buyer.phone),
+    resolveInitialCountry(buyer.phone, phoneStartCountryForCurrency(totals.currency)),
   );
   const [phoneLocal, setPhoneLocal] = useState<string>(() =>
-    splitExistingPhone(buyer.phone, resolveInitialCountry(buyer.phone)),
+    splitExistingPhone(buyer.phone, resolveInitialCountry(buyer.phone, phoneStartCountryForCurrency(totals.currency))),
   );
 
   const handlePhoneLocalChange = useCallback(

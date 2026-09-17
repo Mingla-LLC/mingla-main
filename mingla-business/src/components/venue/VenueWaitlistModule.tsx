@@ -223,6 +223,7 @@ export function VenueWaitlistModule({
         onClose={() => setAddOpen(false)}
         onSave={handleAdd}
         saving={add.isPending}
+        venueId={venueId}
       />
       <WaitlistConvertSheet
         venueId={venueId}
