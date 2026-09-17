@@ -84,6 +84,12 @@ These objects are permitted:
   governed fields: `ATTENDANCE_CLAIM_PEPPER`, `META_COMPETITOR_ACCESS_TOKEN`,
   `META_COMPETITOR_IG_USER_ID`, and `RESEND_WEBHOOK_SECRET`. Each reads the valid envelope first,
   falls back only to its identical direct migration name, and never substitutes another field.
+  #3392 adds the venue booking manage-link key ring: `VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KID`,
+  `VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KEY_B64`, and the optional
+  `VENUE_RESERVATION_MANAGE_TOKEN_PREVIOUS_KID` / `_PREVIOUS_KEY_B64` pair, read only by
+  `_shared/venueReservationManageToken.ts`. There is no direct name and no fallback: absent or
+  invalid fields fail closed (web bookings keep random tokens and confirmation emails send
+  without the link).
 - `OFFERING_INVITE_TOKEN_PEPPER`: the #1770 standalone cryptographic secret used only by the
   shared offering-invite token helper, `marketing-send`, and the authenticated dispatch boundary. It stays outside every bundle
   because its independent rotation and audit boundary is part of invite authorization.
@@ -289,6 +295,65 @@ unavailable, retain the current complete bundle and stop; never delete this fiel
 weaken the parser, or reconstruct from Supabase. The Edge function may be deactivated separately.
 A completed database erasure, tombstone, or audit record is irreversible and is never rolled back
 with secret configuration.
+
+### #3392 venue booking manage-link key install
+
+Seth approved (2026-09-15) putting a working "Manage or cancel" link in venue booking confirmation
+emails. The link's token is `<kid>.` + base64url(HMAC-SHA256(key, checkout session id)); only its
+hash is stored. The key is four fields of the existing `AD_CONVERSION_TOKENS` object. This adds,
+removes and renames no Supabase secret name: the names-only audit stays at exactly 88.
+
+**Never run `supabase secrets set VENUE_RESERVATION_MANAGE_TOKEN_...`.** A direct name is an 89th
+user-managed name: `preflight-function-secret-readiness` then fails `unexpected:<NAME>` and blocks
+every CI edge deploy (COMMS-0177). The governed lane below is the only sanctioned setter; it runs
+`supabase secrets set` itself, through stdin, with the complete object.
+
+Both readers fail closed, so the install is order-independent with the #3392 function deploys.
+Until the fields exist, `venue-reservation-create` logs
+`venue_reservation_manage_key_unavailable` and issues today's random token, and
+`notify-outbox-drain` logs `venue_reservation_manage_link_omitted` and sends the email without the
+button. Treat either log line after the install as a failed install.
+
+1. Reconstruct the complete current `AD_CONVERSION_TOKENS` object only from the approved provider
+   dashboards, private operating records, and the secure vault (the same rule as #1772 step 2).
+   Never read it back from Supabase. Stop if any existing field's source is unavailable.
+2. In a private shell, generate the key straight into the vault record and never print it, for
+   example with `umask 077; openssl rand -base64 32 | tr -d '\n' > <vault-record-file>`. The value
+   must be canonical standard Base64 of exactly 32 bytes (44 characters ending in `=`), which is
+   what that command produces. Pick a new lowercase key id, for example `m1`.
+3. Build the mode-0600 input file for the setter. It is the wrapper object the setter prepares,
+   not the bare bundle: `bundleName: "AD_CONVERSION_TOKENS"`; `bundleObject`, the complete
+   object from step 1 plus `VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KID` and
+   `VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KEY_B64`; `authoritativeExistingFieldNames`, every field
+   name the live object already holds; `previousFieldStates`, with both `VENUE_RESERVATION_MANAGE_TOKEN_PREVIOUS_*`
+   fields set to `intentionally_absent` alongside every other `*_PREVIOUS*` attestation; and
+   `attestations`, with `{ owner: "Payments Engineering", source_type: "secure_vault" }` for each new
+   field. Assemble the key into it from the vault file with a tool that reads stdin, for example
+   `jq -Rs`, never through argv or an echoed variable.
+4. Apply it through the governed lane from merged `main`. That lane only accepts an `--ad-input`
+   alongside a function that declares `AD_CONVERSION_TOKENS` bundle fields, for example
+   `resend-webhook`. Confirm that function's deployed source already matches the merge commit,
+   because the lane redeploys it:
+   `scripts/deploy-supabase-functions.sh --project-ref gqnoajqerqhnvulmnyvv --merged-commit <sha> --function resend-webhook --ad-input <0600-file>`.
+   The setter's strict parser rejects a non-canonical key, a bad kid, or a kid or key equal to any
+   other slot in the envelope. Then shred the input file.
+5. Verify with a synthetic web booking, never a real guest: the confirmation email shows **Manage
+   or cancel**, the link opens the booking, and neither log line from above appears.
+
+**Rotation.** Move the current pair to `VENUE_RESERVATION_MANAGE_TOKEN_PREVIOUS_KID` /
+`_PREVIOUS_KEY_B64`, install a fresh current pair with a new kid, and apply the complete object as
+above. Keep the previous pair for at least 24 hours: the email is sent about a minute after the
+booking, and bookings made under the old key need it only until then. Links already sent keep
+working after rotation because the booking stores the token's hash, not the key.
+
+**Rotation does not revoke issued links.** If a key leaks, rotate it. Then treat already-issued
+tokens as exposed: each remains valid for its booking until the booking is cancelled or completed.
+Revoking them means rewriting those bookings' `guest_cancel_token_hash`, which is a separate,
+reviewed production write.
+
+Rollback restores the prior complete `AD_CONVERSION_TOKENS` object from its authoritative source.
+Removing the fields is safe for bookings: new bookings fall back to random tokens and emails send
+without the link.
 
 ### #1808 content-share switch reconciliation
 

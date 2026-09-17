@@ -48,6 +48,7 @@ import type {
 import { formatMenuPrice } from "../PublicMenuSections";
 import type {
   VenueOrderBuyerDraft,
+  VenueOrderPhoneFieldArgs,
   VenueOrderCartLine,
   VenueOrderingConfig,
   VenueOrderPreview,
@@ -99,6 +100,19 @@ export interface VenueOrderReviewPaneProps {
    * substitution, so the default is the ordinary control.
    */
   TextInputComponent?: React.ComponentType<TextInputProps>;
+  /**
+   * issue #3380 — the host's country-aware phone field (flag, dial code,
+   * search). When present it REPLACES the plain "Phone, with country code" box,
+   * which asked a Lagos guest to know to type +234. The pane stays
+   * host-agnostic: the host owns the picker, its icons and its rules.
+   */
+  renderPhoneField?: (args: VenueOrderPhoneFieldArgs) => React.ReactNode;
+  /**
+   * issue #3380 — the host's verdict on the number, in words ("Nigerian mobile
+   * numbers have 10 digits after the 0 — you entered 8."), or null. Holds the
+   * Pay button exactly like a missing name or email does.
+   */
+  phoneFailure?: string | null;
 }
 
 /**
@@ -140,12 +154,22 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
   onSubmit,
   onBack,
   TextInputComponent,
+  renderPhoneField,
+  phoneFailure = null,
 }) => {
   const Input = TextInputComponent ?? TextInput;
   const priced = previewStatus === "ready" && preview !== null;
   const money = (cents: number): string =>
     formatMenuPrice(cents, preview?.currency ?? "") ?? "—";
-  const buyerFailure = venueOrderBuyerFailure(buyer);
+  const baseBuyerFailure = venueOrderBuyerFailure(buyer);
+  // A host's specific phone verdict outranks the generic phone line, never a
+  // missing name or email (those still come first, in the order a guest fills).
+  const buyerFailure =
+    phoneFailure !== null &&
+    phoneFailure !== "" &&
+    (baseBuyerFailure === null || baseBuyerFailure.field === "phone")
+      ? { field: "phone" as const, message: phoneFailure }
+      : baseBuyerFailure;
   // The Pay button is live only when the SERVER has priced this exact basket.
   // A stale price behind a live button is how a guest is charged a number they
   // never saw.
@@ -364,19 +388,28 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
             { borderColor: palette.panelBorder, color: palette.primaryText },
           ]}
         />
-        <Input
-          value={buyer.phone}
-          onChangeText={(value: string) => onBuyerChange({ phone: value })}
-          placeholder="Phone, with country code"
-          placeholderTextColor={palette.tertiaryText}
-          accessibilityLabel="Phone number, with country code"
-          keyboardType="phone-pad"
-          maxLength={24}
-          style={[
-            styles.input,
-            { borderColor: palette.panelBorder, color: palette.primaryText },
-          ]}
-        />
+        {renderPhoneField !== undefined ? (
+          renderPhoneField({
+            phone: buyer.phone,
+            phoneCountryIso: buyer.phoneCountryIso ?? null,
+            onChange: onBuyerChange,
+            disabled: submitting,
+          })
+        ) : (
+          <Input
+            value={buyer.phone}
+            onChangeText={(value: string) => onBuyerChange({ phone: value })}
+            placeholder="Phone, with country code"
+            placeholderTextColor={palette.tertiaryText}
+            accessibilityLabel="Phone number, with country code"
+            keyboardType="phone-pad"
+            maxLength={24}
+            style={[
+              styles.input,
+              { borderColor: palette.panelBorder, color: palette.primaryText },
+            ]}
+          />
+        )}
       </View>
 
       {/* ── the money. All five numbers are the server's. ───────────────── */}

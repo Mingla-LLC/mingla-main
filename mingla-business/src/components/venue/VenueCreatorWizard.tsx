@@ -69,6 +69,7 @@ import {
 } from "../../services/venueListingsService";
 import { saveVenueReservationsEnabled } from "../../hooks/useVenueReservationSettings";
 import { sanitizeAuthoringError } from "../../utils/sanitizeAuthoringError";
+import { composeE164 } from "../../utils/phone";
 import { acquireVenueForSubmission } from "./venueSubmissionResume";
 import { saveWizardReservationsChoice } from "./venueWizardReservationsChoice";
 // META-ORCH-1290 Leg B (D-1) — the create post-submit deck-readiness NAV is
@@ -78,6 +79,7 @@ import { saveWizardReservationsChoice } from "./venueWizardReservationsChoice";
 // (VenueListingContent.handleEdit) — it is just no longer a create step.
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import {
+  c6DialCode,
   claimDockLabel,
   claimPrefilledStepCount,
   claimStepPrefilled,
@@ -359,7 +361,10 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           venueCategory,
           contact: {
             email: st.contactEmail.trim() || undefined,
-            phone: st.contactPhone.trim() || undefined,
+            // #3396: do not discard the country after validating the number.
+            phone:
+              composeE164(c6DialCode(st.contactPhoneCountryIso), st.contactPhone) ??
+              undefined,
           },
           coverMediaUrl: coverChoice?.url ?? null,
           coverMediaPosterUrl:
