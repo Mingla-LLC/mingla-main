@@ -42,3 +42,43 @@ Deno.test("#2079 webhook captures relation mismatch before acknowledging", () =>
   assert(mismatch >= 0 && capture > mismatch && captureFailure > capture);
   assert(returnAfterCapture > captureFailure);
 });
+
+// The pinned Stripe API sends `latest_charge`, not a `charges` list. Every
+// charge-id read in the router must go through paymentIntentChargeId, or a
+// paid ticket is held for a "missing" charge and reversed. DELETE the helper
+// call from the ticket handler and this fails.
+Deno.test("#2079 webhook reads the paid charge through paymentIntentChargeId only", () => {
+  const helperStart = source.indexOf("export function paymentIntentChargeId(");
+  const helperEnd = source.indexOf("\n}\n", helperStart);
+  assert(helperStart >= 0 && helperEnd > helperStart);
+  const outsideHelper = source.slice(0, helperStart) +
+    source.slice(helperEnd);
+  assert(!/\.charges\b/.test(outsideHelper));
+  assert(!/\["charges"\]/.test(outsideHelper));
+  const observed = handler.indexOf(
+    "const observedChargeId = paymentIntentChargeId(paymentIntent);",
+  );
+  const verify = handler.indexOf(
+    '"issue_2079_verify_ticket_paid_identity"',
+    observed,
+  );
+  assert(observed >= 0 && verify > observed);
+});
+
+// Installment PaymentIntents arrive through the same webhook with the same
+// payload shape. Their handler must read the charge through the shared helper
+// too, or every collected installment is saved with no charge id. PUT BACK a
+// `charges` read in installmentWebhookHandlers.ts and this fails.
+Deno.test("#2079 installment webhook reads the charge through paymentIntentChargeId only", () => {
+  const installment = Deno.readTextFileSync(
+    "supabase/functions/_shared/installmentWebhookHandlers.ts",
+  ).replace(/^\s*\/\/.*$/gm, "");
+  assert(!/\.charges\b/.test(installment));
+  assert(!/\["charges"\]/.test(installment));
+  assert(installment.includes("const chargeId = paymentIntentChargeId(pi);"));
+  assert(
+    installment.includes(
+      'import { paymentIntentChargeId } from "./stripeWebhookRouter.ts";',
+    ),
+  );
+});
