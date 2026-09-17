@@ -14,7 +14,7 @@ const ts = marketingRequire('typescript')
 const SELF_TEST = process.argv.includes('--self-test')
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
 const promotedPaths = [
-  '/about', '/explorer', '/cities',
+  '/about', '/going-out', '/cities',
   '/cities/lagos', '/cities/durham-nc', '/cities/cary-nc', '/cities/raleigh-nc',
   '/cities/new-york-city', '/cities/brussels', '/cities/paris', '/cities/london',
   '/cities/fort-lauderdale', '/cities/washington-dc',

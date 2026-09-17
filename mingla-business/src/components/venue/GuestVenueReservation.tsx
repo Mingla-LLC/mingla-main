@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Switch,
@@ -33,6 +34,7 @@ import {
 } from "../../constants/designSystem";
 import { usePublicVenueAvailability } from "../../hooks/usePublicVenueAvailability";
 import { createGuestVenueReservation } from "../../services/venueGuestReservationService";
+import { guestReservationManagePath } from "../../utils/guestReservationManage";
 import {
   captureVenueOrganicEvent,
   getVenueOrganicJourneyToken,
@@ -189,6 +191,8 @@ export function GuestVenueReservation({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completedId, setCompletedId] = useState<string | null>(null);
+  // #3392 — the free booking's private manage/cancel credential (web only).
+  const [manageToken, setManageToken] = useState<string | null>(null);
 
   const availability = usePublicVenueAvailability(venueId, date, partySize);
   const slots = availability.data ?? [];
@@ -310,6 +314,7 @@ export function GuestVenueReservation({
         organicJourneyToken: getVenueOrganicJourneyToken({ brandId, venueId }),
       });
       if (result.kind === "free_completed") {
+        setManageToken(result.guestCancelToken ?? null);
         setCompletedId(result.reservationId);
         captureWeb("venue_reservation_completed", {
           surface: analyticsSurface,
@@ -362,6 +367,28 @@ export function GuestVenueReservation({
         <Text style={[styles.body, { color: palette.secondaryText }]}>
           Confirmation has been sent to your email.
         </Text>
+        {Platform.OS === "web" && manageToken !== null ? (
+          // #3392 — free bookings get the same private manage/cancel page
+          // paid bookings reach from their confirm screen.
+          <Button
+            label="Manage or cancel"
+            variant="secondary"
+            size="md"
+            onPress={() => {
+              if (typeof window !== "undefined") {
+                window.location.assign(
+                  guestReservationManagePath({
+                    brandId,
+                    reservationId: completedId,
+                    token: manageToken,
+                  }),
+                );
+              }
+            }}
+            accessibilityLabel="Manage or cancel this reservation"
+            testID="guest-reservation-manage"
+          />
+        ) : null}
       </View>
     );
   }

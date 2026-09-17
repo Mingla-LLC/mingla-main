@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Compass, House, Info, MapPinned, Store, Wrench } from 'lucide-react'
+import { Compass, Footprints, Info, MapPinned, Store, Wrench } from 'lucide-react'
 import { DeviceCta, type CutoutSurface } from './device-cta'
 
 const EXPLORER_PAGE_SYSTEM_PATHS = new Set([
@@ -16,8 +16,12 @@ const HOST_PATHS = new Set([
   '/internal/page-system/host-event-promoter-guide',
 ])
 
+// #3371 — `/` is the Explorer home, so the Explorer item is the one lit there.
+// `/going-out` is still an Explorer-surface page, but it has its own
+// supporting item; a current supporting item always wins the highlight (see
+// `activeSurface` below), so Explorer is never lit there.
 function surfaceForPath(pathname: string): CutoutSurface | null {
-  if (pathname === '/' || pathname === '/explorer' || pathname.startsWith('/explorer/') || EXPLORER_PAGE_SYSTEM_PATHS.has(pathname)) return 'explorer'
+  if (pathname === '/' || pathname === '/going-out' || EXPLORER_PAGE_SYSTEM_PATHS.has(pathname)) return 'explorer'
   if (HOST_PATHS.has(pathname) || pathname.startsWith('/host/')) return 'host'
   return null
 }
@@ -37,18 +41,21 @@ export function AudienceMenuContent({
 }) {
   const pathname = usePathname()
   const audienceDestinations = [
-    { href: '/explorer', label: 'Explorer', surface: 'explorer' as const, Icon: Compass },
+    { href: '/', label: 'Explorer', surface: 'explorer' as const, Icon: Compass },
     { href: '/host', label: 'Host', surface: 'host' as const, Icon: Store },
   ]
   const supportingDestinations = [
-    { href: '/', label: 'Home', Icon: House },
     { href: '/cities', label: 'Cities', Icon: MapPinned },
+    { href: '/going-out', label: 'Going out', Icon: Footprints },
     { href: '/about', label: 'About', Icon: Info },
     { href: '/tools', label: 'Free tools', Icon: Wrench },
   ]
   const supportingDestinationIsCurrent = supportingDestinations.some(({ href }) => destinationIsCurrent(pathname, href))
   const activeSurface = supportingDestinationIsCurrent ? null : surfaceForPath(pathname) ?? surface
-  const menuButtonClass = 'cut-btn flex min-h-14 w-full justify-start gap-3.5 rounded-2xl px-5 font-display text-base focus-ring'
+  // `cut-menu-item` is what actually left-aligns these rows: `.cut-btn` in
+  // cutout.css centres its content and, being unlayered CSS, beats the
+  // `justify-start` utility. See the #3371 rule beside `.cut-btn`.
+  const menuButtonClass = 'cut-btn flex min-h-14 w-full justify-start cut-menu-item gap-3.5 rounded-2xl px-5 font-display text-base focus-ring'
 
   return (
     <>

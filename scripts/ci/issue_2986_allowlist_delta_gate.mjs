@@ -27,9 +27,22 @@ const TESTER_SUITE_TOKEN = "#2117 tester adversarial suite";
 const EXACT_SKIP_LINE = `*${MIGRATION_FILE}) continue ;;`;
 const EXACT_APPLY_LINE = `-f ${MIGRATION_PATH}`;
 
+// #3426 — the second binding amendment, and the only other one. Exactly ONE
+// intended-public reader (the brand page's date-decided sections) plus its one
+// justification comment, inserted directly after the Upcoming reader it
+// partners. Nothing else in the file may move, and the #2986 count header is
+// deliberately NOT edited (the #2986 security suite pins it).
+const I3426_ANCHOR = "pg_public_brand_upcoming(p_brand_slug text, p_cursor_at timestamp with time zone, p_limit integer)";
+const I3426_SIGNATURE = "pg_public_brand_offering_section(p_brand_slug text, p_section text, p_cursor_at timestamp with time zone, p_cursor_id uuid, p_limit integer)";
+const I3426_BLOCK = [
+  "# #3426: one date-decided section (happening_now/upcoming/past) of a public brand page; the same visibility, private-access and paid-supply guards as pg_public_brand_upcoming, no theme column, bounded page size.",
+  I3426_SIGNATURE,
+].join("\n");
+const I3426_NAME = "pg_public_brand_offering_section(";
+
 const countExactLine = (source, expected) => source.split(/\r?\n/).filter((line) => line.trim() === expected).length;
 
-export const expectedAllowlist = (base) => {
+const expectedAfter2986 = (base) => {
   const baseHasPair = SIGNATURES.every((signature) => countExactLine(base, signature) === 1);
   if (baseHasPair) return base;
   if (SIGNATURES.some((signature) => base.includes(signature))) {
@@ -40,6 +53,19 @@ export const expectedAllowlist = (base) => {
   return base.replace(OLD_HEADER, NEW_HEADER).replace(ANCHOR, `${ANCHOR}\n${EXACT_BLOCK}`);
 };
 
+// #3426 — applied on top of #2986. A base that already carries the exact block
+// is returned unchanged, so every later change must leave the file byte-equal.
+const expectedAfter3426 = (base) => {
+  if (countExactLine(base, I3426_SIGNATURE) === 1 && base.includes(`${I3426_ANCHOR}\n${I3426_BLOCK}\n`)) return base;
+  if (base.includes(I3426_NAME) || base.includes("#3426")) {
+    throw new Error("base contains a partial or lookalike #3426 reader");
+  }
+  if (countExactLine(base, I3426_ANCHOR) !== 1) throw new Error("base #3426 insertion anchor is absent or duplicated");
+  return base.replace(`${I3426_ANCHOR}\n`, `${I3426_ANCHOR}\n${I3426_BLOCK}\n`);
+};
+
+export const expectedAllowlist = (base) => expectedAfter3426(expectedAfter2986(base));
+
 export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
   const failures = [];
   let expected = "";
@@ -49,9 +75,9 @@ export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
     failures.push(error instanceof Error ? error.message : String(error));
   }
   if (expected && currentAllowlist !== expected) {
-    failures.push("allowlist delta is not the exact #2986 pair/comments/header correction");
+    failures.push("allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader");
   }
-  for (const signature of SIGNATURES) {
+  for (const signature of [...SIGNATURES, I3426_SIGNATURE]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
   if (countExactLine(workflow, LIVE_GATE_LINE) !== 1) failures.push("the live ORCH-1392 anon-definer gate was removed, duplicated, or bypassed");
@@ -74,6 +100,7 @@ const fixtureBase = () => [
   "# fixture",
   OLD_HEADER,
   "# === INTENDED-PUBLIC READS ===",
+  I3426_ANCHOR,
   ANCHOR,
   "place_discovery_range_for_viewer(p_place_pool_id uuid)",
   "",
@@ -111,10 +138,27 @@ const runSelfTest = () => {
     ["migration applied early", head, workflow.replace(`      - name: "${PHASE_TWO_TOKEN}"\n      - name: "${TESTER_SUITE_TOKEN}"\n            ${EXACT_APPLY_LINE}`, `            ${EXACT_APPLY_LINE}\n      - name: "${PHASE_TWO_TOKEN}"\n      - name: "${TESTER_SUITE_TOKEN}"`), false],
     ["migration contaminates tester suite", head, workflow.replace(`      - name: "${TESTER_SUITE_TOKEN}"\n            ${EXACT_APPLY_LINE}`, `            ${EXACT_APPLY_LINE}\n      - name: "${TESTER_SUITE_TOKEN}"`), false],
     ["additional issue migration", head, workflow.replace(EXACT_SKIP_LINE, `${EXACT_SKIP_LINE}\n              *20270614002987_issue_2986_extra.sql) continue ;;`), false],
+    // #3426 — the second amendment is exactly one reader and one comment.
+    ["#3426 reader missing", head.replace(`${I3426_BLOCK}\n`, ""), workflow, false],
+    ["#3426 comment missing", head.replace(`${I3426_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
+    ["#3426 comment substituted", head.replace("# #3426: one date-decided section", "# #3426: approved somehow"), workflow, false],
+    ["#3426 signature changed", head.replace(I3426_SIGNATURE, I3426_SIGNATURE.replace("p_section text", "p_section_name text")), workflow, false],
+    ["#3426 lookalike overload", `${head}pg_public_brand_offering_section(p_brand_slug text, p_section text)\n`, workflow, false],
+    ["#3426 moved away from its anchor", head.replace(`${I3426_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3426_BLOCK}\n`), workflow, false],
+    ["#3426 plus a forged neighbour", head.replace(`${I3426_BLOCK}\n`, `${I3426_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
   ];
   for (const [name, candidate, candidateWorkflow, shouldPass] of cases) {
     const passed = validate({ baseAllowlist: base, currentAllowlist: candidate, workflow: candidateWorkflow }).length === 0;
     if (passed !== shouldPass) throw new Error(`self-test ${name} ${shouldPass ? "failed" : "was not rejected"}`);
+  }
+  // #3426 — once a base carries both amendments, the ONLY accepted head is that
+  // base, byte for byte.
+  const settled = expectedAllowlist(base);
+  if (validate({ baseAllowlist: settled, currentAllowlist: settled, workflow }).length !== 0) {
+    throw new Error("self-test settled base with both amendments failed");
+  }
+  if (validate({ baseAllowlist: settled, currentAllowlist: `${settled}forged_after_settle()\n`, workflow }).length === 0) {
+    throw new Error("self-test settled base accepted a new line");
   }
   process.stdout.write("#2986 allowlist delta gate self-test PASS\n");
 };
@@ -127,7 +171,7 @@ const runReal = (baseSha) => {
   const workflow = readFileSync(resolve(root, WORKFLOW_PATH), "utf8");
   const failures = validate({ baseAllowlist, currentAllowlist, workflow });
   if (failures.length) throw new Error(failures.join("\n"));
-  process.stdout.write("#2986 exact allowlist pair + frozen #2117 live gate PASS\n");
+  process.stdout.write("#2986 exact allowlist pair + #3426 exact reader + frozen #2117 live gate PASS\n");
 };
 
 if (process.argv.includes("--self-test")) {

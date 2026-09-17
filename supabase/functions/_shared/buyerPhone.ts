@@ -22,9 +22,8 @@
 //      into somebody else's American number.
 // ===========================================================================
 
-// Deno needs the explicit `.ts` extension; the Business jest suite (which
-// proves this file) compiles it without `allowImportingTsExtensions`.
-// @ts-ignore -- TS5097 under ts-jest only.
+// Deno needs the explicit `.ts` extension. The Business Jest runner enables
+// TypeScript's matching import option, so both runtimes check this same owner.
 import { parsePhoneEntry } from "../../../packages/phone-input/phoneNumber.ts";
 
 /** What a guest reads when a number arrives without a country we can trust. */
@@ -58,18 +57,20 @@ export function resolveBuyerPhone(
     return { e164: trimmed, message: null, legacyNanpGuess: false };
   }
 
+  const countryMetadataWasSupplied = countryIso !== null && countryIso !== undefined;
   const iso = typeof countryIso === "string" &&
       ISO_RE.test(countryIso.trim().toUpperCase())
     ? countryIso.trim().toUpperCase()
     : null;
 
-  // A "+" the guest typed names the country on its own ("+234 803 123 4567"
-  // with spaces used to be refused outright).
-  if (iso !== null || trimmed.startsWith("+")) {
-    const result = parsePhoneEntry(trimmed, { countryIso: iso, mode: "any" });
-    if (result.ok) {
-      return { e164: result.e164, message: null, legacyNanpGuess: false };
-    }
+  // The shared parser validates characters before removing presentation
+  // punctuation. It also honours both explicit international prefixes, so a
+  // typed +code or 00code needs no picker metadata.
+  const result = parsePhoneEntry(trimmed, { countryIso: iso, mode: "mobile" });
+  if (result.ok) {
+    return { e164: result.e164, message: null, legacyNanpGuess: false };
+  }
+  if (result.problem !== "country_required" || iso !== null) {
     return {
       e164: null,
       message: result.problem === "country_required"
@@ -79,6 +80,18 @@ export function resolveBuyerPhone(
     };
   }
 
+  // A malformed explicit ISO is not the same as absent metadata. It cannot
+  // authorize the old ten-digits-means-US compatibility reading.
+  if (countryMetadataWasSupplied) {
+    return {
+      e164: null,
+      message: LEGACY_NANP_REFUSAL,
+      legacyNanpGuess: false,
+    };
+  }
+
+  // Reaching this line proves the shared parser saw only supported phone
+  // characters and refused solely because a national number had no country.
   const digits = trimmed.replace(/\D/g, "");
   if (digits.length === 10) {
     return { e164: `+1${digits}`, message: null, legacyNanpGuess: true };
@@ -98,10 +111,7 @@ export function resolveBuyerPhone(
  * the North American plan. Anywhere else it is refused, never guessed.
  */
 export function legacyNanpGuessAllowed(paymentCountry: unknown): boolean {
-  if (typeof paymentCountry !== "string" || paymentCountry.trim() === "") {
-    return true;
-  }
+  if (typeof paymentCountry !== "string") return false;
   const country = paymentCountry.trim().toUpperCase();
   return country === "US" || country === "CA";
 }
-

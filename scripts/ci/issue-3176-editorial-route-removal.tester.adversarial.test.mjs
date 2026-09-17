@@ -89,7 +89,7 @@ async function runtimeContract() {
       assert.doesNotMatch(response.body, /Mingla Editorial Standards|How Mingla chooses, verifies and updates content/, 'deleted content leaked into the 404 response')
     }
 
-    for (const pathname of ['/', '/about', '/explorer', '/cities', '/host']) {
+    for (const pathname of ['/', '/about', '/going-out', '/cities', '/host']) {
       const response = await request(port, pathname)
       assert.equal(response.status, 200, `${pathname} regressed during editorial-page removal`)
       assert.doesNotMatch(response.body, /href=["']\/editorial-standards(?:[?#"'])/, `${pathname} still links to the deleted page`)
