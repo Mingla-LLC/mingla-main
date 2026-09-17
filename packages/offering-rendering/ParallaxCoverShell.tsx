@@ -42,8 +42,10 @@
 
 import React from "react";
 import {
+  Animated,
   Platform,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -71,13 +73,22 @@ import {
 } from "./heroMediaAccessibility";
 
 import { OfferingChrome } from "./OfferingChrome";
+import {
+  chromeBackdropHeight,
+  chromeBackdropRange,
+  chromeStatusBarStyle,
+  isChromeBackdropSolid,
+} from "./chromeBackdrop";
 import { useResponsiveLayout } from "./useResponsiveLayout";
 
 // react-native-web honors CSS position values RN's types omit. This cast is the
 // single sanctioned escape hatch for the parallax pin + the sticky panel.
 // issue #868 — extended with the horizontal scroll-snap CSS props RN's ViewStyle
 // omits but react-native-web honors, for the web cover pager (independent axes).
-type WebViewStyle = ViewStyle & {
+// #3431 — `Omit` first: intersecting ViewStyle's own `position` union with the
+// wider one narrowed it back to RN's values, so every "fixed" / "sticky" below
+// was a type error.
+type WebViewStyle = Omit<ViewStyle, "position"> & {
   position?: ViewStyle["position"] | "fixed" | "sticky";
   overflowX?: "auto" | "hidden" | "scroll" | "visible";
   scrollSnapType?: string;
@@ -96,6 +107,9 @@ const SEAM = 28;
 export const COVER_Z = 1;
 export const CONTENT_Z = 2;
 export const CHROME_Z = 70;
+// #3431 — the solid header bar behind the chrome row (chromeBackdrop.ts): above
+// the scrolling content, below the buttons it backs.
+export const CHROME_BACKDROP_Z = 60;
 
 export interface ParallaxCoverShellProps {
   palette: ThemePalette;
@@ -202,7 +216,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   ScrollComponent,
   contentBottomInset = 0,
   safeAreaTop = 0,
-  onScroll,
+  onScroll: onScrollProp,
   onScrollViewLayout,
   closeAccessibilityLabel,
   hideCloseOnWeb = false,
@@ -253,6 +267,73 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   const selectSequenceIndex = React.useCallback((index: number): void => {
     setActiveIndex(index);
   }, []);
+
+  // #3431 — a solid, page-coloured header bar behind the status bar and the
+  // chrome row once the body scrolls under them (chromeBackdrop.ts), on the two
+  // phone layouts. The scroll offset drives the bar's opacity without
+  // re-rendering the page; state changes only when the bar becomes or stops
+  // being solid (it then takes touches, and on native sets the status-bar text
+  // colour). No type arguments on React calls: see coverPlaceholderLabel above.
+  const [scrollY] = React.useState(() => new Animated.Value(0));
+  const [bodyTop, setBodyTop] = React.useState(null as number | null);
+  const backdropRange = chromeBackdropRange(bodyTop, safeAreaTop);
+  const backdropRangeRef = React.useRef(backdropRange);
+  backdropRangeRef.current = backdropRange;
+  const backdropSolidRef = React.useRef(false);
+  const [backdropSolid, setBackdropSolid] = React.useState(false);
+  // Both phone Scrolls take THIS handler; the caller's onScroll is still
+  // forwarded verbatim with the same event.
+  const onScroll = React.useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      const y = event.nativeEvent.contentOffset.y;
+      scrollY.setValue(y);
+      const solid = isChromeBackdropSolid(y, backdropRangeRef.current);
+      if (solid !== backdropSolidRef.current) {
+        backdropSolidRef.current = solid;
+        setBackdropSolid(solid);
+      }
+      onScrollProp?.(event);
+    },
+    [onScrollProp, scrollY],
+  );
+  // The cover spacer's height fixes where the body's top edge sits at scroll 0.
+  const onCoverSpacerLayout = React.useCallback(
+    (event: LayoutChangeEvent): void => {
+      setBodyTop(event.nativeEvent.layout.height - SEAM);
+    },
+    [],
+  );
+  const backdropStart = backdropRange?.start ?? null;
+  const backdropEnd = backdropRange?.end ?? null;
+  const backdropOpacity = React.useMemo(
+    () =>
+      backdropStart === null || backdropEnd === null
+        ? 0
+        : scrollY.interpolate({
+            inputRange: [backdropStart, backdropEnd],
+            outputRange: [0, 1],
+            extrapolate: "clamp",
+          }),
+    [backdropStart, backdropEnd, scrollY],
+  );
+  const chromeBackdrop = (
+    <Animated.View
+      pointerEvents={backdropSolid ? "auto" : "none"}
+      style={[
+        styles.chromeBackdrop,
+        // web phone pins it to the viewport like the cover and the chrome.
+        isWeb ? webStyle({ position: "fixed" }) : null,
+        {
+          height: chromeBackdropHeight(safeAreaTop),
+          backgroundColor: palette.page,
+          borderBottomColor: palette.panelBorder,
+          opacity: backdropOpacity,
+        },
+      ]}
+      testID={testID !== undefined ? `${testID}-chrome-backdrop` : undefined}
+    />
+  );
+  const backdropStatusBarStyle = chromeStatusBarStyle(palette.page);
 
   const chrome = (
     <OfferingChrome
@@ -462,6 +543,9 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           {entrance}
         </View>
 
+        {/* #3431 — solid header bar behind the chrome once the body scrolls under it */}
+        {chromeBackdrop}
+
         {/* body-level fixed chrome (highest layer) */}
         <View
           style={webStyle({
@@ -505,6 +589,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           <View
             style={[styles.webPhoneSpacer, { aspectRatio: coverAspectRatio }]}
             pointerEvents={sequenceActive ? "none" : undefined}
+            onLayout={onCoverSpacerLayout}
           />
           {/* body slides up over the cover (middle layer) */}
           <View
@@ -569,6 +654,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
         <View
           style={[styles.nativeSpacer, { aspectRatio: coverAspectRatio }]}
           pointerEvents={sequenceActive ? "none" : undefined}
+          onLayout={onCoverSpacerLayout}
         />
         <View
           style={[
@@ -587,6 +673,13 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           {children}
         </View>
       </Scroll>
+
+      {/* #3431 — solid header bar behind the chrome once the body scrolls under
+          it; while solid, the status-bar text follows the bar's colour. */}
+      {chromeBackdrop}
+      {backdropSolid && backdropStatusBarStyle !== null ? (
+        <StatusBar barStyle={backdropStatusBarStyle} animated={true} />
+      ) : null}
 
       {/* chrome — absolute box-none sibling padded by the safe-area top */}
       <View
@@ -733,6 +826,16 @@ const styles = StyleSheet.create({
     zIndex: CHROME_Z,
   },
   // ---- shared ----
+  // #3431 — header bar behind the chrome (both phone layouts; web phone
+  // overrides position to fixed): above the content, below the buttons.
+  chromeBackdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    zIndex: CHROME_BACKDROP_Z,
+  },
   // issue #868 — the cover box fills its parent (deterministic single-item render).
   coverPager: {
     width: "100%",
