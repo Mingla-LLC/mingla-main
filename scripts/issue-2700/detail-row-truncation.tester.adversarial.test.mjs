@@ -63,6 +63,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { PROVIDERS_ADDED_SINCE_SEAL, SUITES_ADDED_SINCE_SEAL } from '../../.github/scripts/ci-batch/validate-manifest-v2.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
@@ -471,7 +472,11 @@ test('A9 CI actually collects THIS suite, and the provider seal is re-derived ra
   assert.ok(workflow.includes(`- run: node --test ${SELF_PATH}`), 'this suite is not invoked by the provider workflow');
 
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.github/ci-batch/MANIFEST.json'), 'utf8'));
-  assert.equal(manifest.legacyOrigins.length, 200, 'the legacy origin registry must stay pinned at 200');
+  // Sealed at 200; each suite declared in SUITES_ADDED_SINCE_SEAL adds exactly one
+  // provenance claim. Derived from that one declaration, never hand-typed (#3017).
+  const SEALED_LEGACY_ORIGINS = 200;
+  assert.equal(manifest.legacyOrigins.length, SEALED_LEGACY_ORIGINS + SUITES_ADDED_SINCE_SEAL.length,
+    'the legacy origin registry must equal the sealed 200 plus the declared post-seal provenance claims');
   const origin = manifest.legacyOrigins.find((item) => `${item.stem}.${item.extension}` === WORKFLOW_NAME);
   assert.ok(origin, 'the provider workflow is not a registered origin');
 
@@ -519,8 +524,12 @@ test('A9b the provider digest comes from the validator itself, and the seal coun
   assert.deepEqual([...origin.workflowMetadata.triggers].sort(), [...inspected.triggers].sort(), 'the manifest triggers are stale');
   assert.deepEqual([...origin.workflowMetadata.pathScope].sort(), [...inspected.pathScope].sort(), 'the manifest path scope is stale');
 
-  // The frozen provider-record set. 91 or 93 means something is wrong.
-  assert.equal(manifest.workflowProviders.length, 92, 'the workflow provider baseline moved');
+  // The frozen provider-record set: the amended 91 plus each provider the
+  // validator declares in PROVIDERS_ADDED_SINCE_SEAL — the same derivation the
+  // gate itself enforces. One more or one fewer means something is wrong.
+  const SEALED_PROVIDERS = 91;
+  assert.equal(manifest.workflowProviders.length, SEALED_PROVIDERS + PROVIDERS_ADDED_SINCE_SEAL.length,
+    'the workflow provider baseline moved');
 
   // ...and this file must never mint a provider record of its own. A single
   // spelled-out workflow filename here breaks the seal for the whole repo.

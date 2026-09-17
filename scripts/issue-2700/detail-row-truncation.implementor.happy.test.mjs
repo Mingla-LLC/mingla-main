@@ -23,6 +23,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { SUITES_ADDED_SINCE_SEAL } from '../../.github/scripts/ci-batch/validate-manifest-v2.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const require = createRequire(import.meta.url);
@@ -188,7 +189,7 @@ test('P8 the composed row still rasterises — both paths stay inside the 200 KB
   assert.equal(examined, 2, `rendered ${examined} cards, expected 2`);
 });
 
-test('P9 CI actually COLLECTS this suite — registered in a live provider workflow, registry still at 200 origins', () => {
+test('P9 CI actually COLLECTS this suite — registered in a live provider workflow, registry at the sealed 200 plus declared post-seal claims', () => {
   const fs = require('node:fs');
   // #2653 — the provider workflow filename is ASSEMBLED FROM PARTS here, never
   // written as one literal, and it must stay that way. `discoverWorkflowProviders()`
@@ -205,7 +206,15 @@ test('P9 CI actually COLLECTS this suite — registered in a live provider workf
   assert.ok(workflow.includes(`- run: node --test ${SELF}`), 'suite is not invoked by the workflow');
 
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.github/ci-batch/MANIFEST.json'), 'utf8'));
-  assert.equal(manifest.legacyOrigins.length, 200, 'legacy origin registry must stay pinned at 200');
+  // The origin registry was SEALED at 200 entries. Each suite the validator
+  // declares in SUITES_ADDED_SINCE_SEAL adds exactly one provenance claim, so the
+  // expected count is derived from that one declaration, never hand-typed (#3017).
+  const SEALED_LEGACY_ORIGINS = 200;
+  assert.equal(
+    manifest.legacyOrigins.length,
+    SEALED_LEGACY_ORIGINS + SUITES_ADDED_SINCE_SEAL.length,
+    'legacy origin registry must equal the sealed 200 baseline plus the declared post-seal provenance claims',
+  );
   const origin = manifest.legacyOrigins.find((item) => `${item.stem}.${item.extension}` === WORKFLOW_NAME);
   assert.ok(origin, 'provider workflow is not a registered origin');
 
