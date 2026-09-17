@@ -427,3 +427,146 @@ Deno.test("payout.failed upserts payout and dispatches remediation notification"
     }
   }
 });
+
+// ── Installment PaymentIntents record the real charge ────────────────────────
+// A collected installment keeps the charge id so it can be refunded and
+// reconciled later. The pinned Stripe API sends `latest_charge` and NO
+// `charges` list; the installment handler used to read only
+// `charges.data[0]` and saved a null charge id on every collection. REVERT
+// installmentWebhookHandlers.ts to that read and the live-shape tests fail.
+class InstallmentFakeBuilder {
+  table: string;
+  db: InstallmentFakeDb;
+  pendingUpdate: Record<string, unknown> | null = null;
+
+  constructor(db: InstallmentFakeDb, table: string) {
+    this.db = db;
+    this.table = table;
+  }
+
+  select() {
+    return this;
+  }
+
+  eq() {
+    return this;
+  }
+
+  in() {
+    return this;
+  }
+
+  update(payload: Record<string, unknown>) {
+    this.pendingUpdate = payload;
+    return this;
+  }
+
+  insert(payload: Record<string, unknown>) {
+    this.db.inserts.push({ table: this.table, payload });
+    return Promise.resolve({ error: null });
+  }
+
+  maybeSingle() {
+    if (this.table === "order_installments" && this.pendingUpdate) {
+      this.db.installmentUpdates.push(this.pendingUpdate);
+      return Promise.resolve({
+        data: {
+          id: "installment_123",
+          order_id: "order_123",
+          ordinal: 2,
+          amount_cents: 2500,
+        },
+        error: null,
+      });
+    }
+    return Promise.resolve({ data: null, error: null });
+  }
+
+  // The "remaining installments" count. One still scheduled, so the
+  // paid-in-full dispatch (a network call) is never reached.
+  then(resolve: (value: { count: number; error: null }) => void) {
+    resolve({ count: 1, error: null });
+  }
+}
+
+class InstallmentFakeDb {
+  inserts: Array<{ table: string; payload: Record<string, unknown> }> = [];
+  installmentUpdates: Array<Record<string, unknown>> = [];
+
+  from(table: string) {
+    return new InstallmentFakeBuilder(this, table);
+  }
+
+  rpc() {
+    throw new Error("installment collection must not call an RPC");
+  }
+}
+
+function installmentSucceededEvent(object: Record<string, unknown>) {
+  return {
+    id: "evt_installment",
+    type: "payment_intent.succeeded",
+    data: {
+      object: {
+        id: "pi_3Installment",
+        payment_method_types: ["card"],
+        metadata: {
+          mingla_installment_id: "installment_123",
+          mingla_brand_id: "brand_123",
+        },
+        ...object,
+      },
+    },
+  };
+}
+
+Deno.test("installment payment_intent.succeeded with only latest_charge (live API shape) saves the charge id", async () => {
+  const db = new InstallmentFakeDb();
+  const result = await routeStripeEvent(
+    db as never,
+    {} as never,
+    installmentSucceededEvent({ latest_charge: "ch_3InstallmentLive" }),
+  );
+  assertEquals(result.brandId, "brand_123");
+  assertEquals(db.installmentUpdates.length, 1);
+  assertEquals(db.installmentUpdates[0].status, "collected");
+  assertEquals(
+    db.installmentUpdates[0].stripe_payment_intent_id,
+    "pi_3Installment",
+  );
+  assertEquals(
+    db.installmentUpdates[0].stripe_charge_id,
+    "ch_3InstallmentLive",
+  );
+  const audit = db.inserts.find((row) => row.table === "audit_log");
+  assertEquals(
+    (audit?.payload.after as Record<string, unknown>).stripe_charge_id,
+    "ch_3InstallmentLive",
+  );
+});
+
+Deno.test("installment payment_intent.succeeded with an expanded latest_charge object saves the charge id", async () => {
+  const db = new InstallmentFakeDb();
+  await routeStripeEvent(
+    db as never,
+    {} as never,
+    installmentSucceededEvent({
+      latest_charge: { id: "ch_3InstallmentExpanded", object: "charge" },
+    }),
+  );
+  assertEquals(
+    db.installmentUpdates[0]?.stripe_charge_id,
+    "ch_3InstallmentExpanded",
+  );
+});
+
+Deno.test("installment payment_intent.succeeded with no charge still collects, with no invented charge id", async () => {
+  const db = new InstallmentFakeDb();
+  await routeStripeEvent(
+    db as never,
+    {} as never,
+    installmentSucceededEvent({}),
+  );
+  assertEquals(db.installmentUpdates[0]?.status, "collected");
+  assertEquals(db.installmentUpdates[0]?.stripe_charge_id, null);
+});
