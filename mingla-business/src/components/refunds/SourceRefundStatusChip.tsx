@@ -11,8 +11,19 @@ const COPY = {
   failed_terminal: "Support review",
 } as const;
 
-export function SourceRefundStatusChip({ refund }: { refund: SourceRefundSummary }) {
-  const amount = `${(refund.amountCents / 100).toFixed(2)} ${refund.currency}`;
+export function SourceRefundStatusChip({
+  refund,
+  amountLabel,
+}: {
+  refund: SourceRefundSummary;
+  /**
+   * #3391 — a pre-formatted amount (e.g. "₦25,000.00") for surfaces that show
+   * the currency glyph. Omitted, the chip keeps #1221's exact "123.45 NGN".
+   */
+  amountLabel?: string;
+}) {
+  const amount =
+    amountLabel ?? `${(refund.amountCents / 100).toFixed(2)} ${refund.currency}`;
   const label = `${COPY[refund.buyerState]} · ${amount}`;
   return (
     <View style={styles.chip} accessibilityRole="text" accessibilityLabel={`Refund ${label}`}>

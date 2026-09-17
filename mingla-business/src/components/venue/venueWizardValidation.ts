@@ -78,6 +78,23 @@ export function venueWizardSteps(isClaim: boolean): VenueWizardStep[] {
   return (isClaim ? CLAIM_STEPS : CREATE_STEPS).map((s) => ({ ...s }));
 }
 
+/**
+ * #3390 — "You're on step X of N" for the resume card. N comes from the real
+ * step list, never a literal: the resume card said "of 10" for months after
+ * ORCH-1304 dropped the Pitch step and both arms became 9 steps. X is the
+ * 1-based step, clamped into 1..N so a stale persisted index can't print
+ * "step 11 of 9" or "step 0".
+ */
+export function venueWizardResumeProgress(
+  stepIndex: number,
+  isClaim: boolean,
+): { current: number; total: number } {
+  const total = (isClaim ? CLAIM_STEPS : CREATE_STEPS).length;
+  const safeIndex = Number.isFinite(stepIndex) ? Math.floor(stepIndex) : 0;
+  const current = Math.min(Math.max(safeIndex + 1, 1), total);
+  return { current, total };
+}
+
 // ─── Validation ─────────────────────────────────────────────────────────────
 
 /**
@@ -109,7 +126,7 @@ const looksLikeUrl = (v: string): boolean =>
  * Input phone variant exactly: null/unknown ISO → the GB default. Shared
  * directory truth (`packages/phone-input/countries.ts`), no new table.
  */
-const c6DialCode = (iso: string | null | undefined): string =>
+export const c6DialCode = (iso: string | null | undefined): string =>
   COUNTRIES.find((c) => c.code === (iso ?? "GB").toUpperCase())?.dialCode ??
   "+44";
 

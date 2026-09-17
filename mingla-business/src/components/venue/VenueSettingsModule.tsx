@@ -21,6 +21,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -68,6 +69,10 @@ import {
   canEnablePaidReservationFee,
   paidFeeIsActive,
 } from "./venueFeeGate";
+import {
+  VENUE_DETAILS_SUPPORT_EMAIL,
+  venueDetailsChangeRequestUrl,
+} from "./venueDetailsChangeRequest";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 
@@ -317,14 +322,28 @@ export function VenueSettingsModule({
   // ORCH-1304 — the client edit-cap readout is retired (the DB column stays,
   // dead-but-harmless). No edit-cap copy or disabled tie here.
 
-  const goToVenueEdit = useCallback((): void => {
-    if (brandId !== null) router.push(`/brand/${brandId}` as never);
-  }, [brandId, router]);
+  // #3386 — "Edit venue details" used to push `/brand/{brandId}`, which edits
+  // the BRAND, not this venue. Name, address, category and contact details are
+  // checked by Mingla and have no host-side editor, so the host gets a
+  // prefilled request that names this venue. If no mail app opens, the address
+  // is on screen and the failure is said out loud (never a dead tap).
+  const [detailsRequestFailed, setDetailsRequestFailed] =
+    useState<boolean>(false);
+  const requestDetailsChange = useCallback((): void => {
+    if (venueId === null) return;
+    setDetailsRequestFailed(false);
+    const url = venueDetailsChangeRequestUrl({
+      venueId,
+      venueName: venueQuery.data?.name ?? null,
+    });
+    void Linking.openURL(url).catch(() => setDetailsRequestFailed(true));
+  }, [venueId, venueQuery.data?.name]);
 
   const goToDeckReadiness = useCallback((): void => {
     if (brandId === null || placePoolId === null || venueId === null) return;
     router.push(
-      `/venue/deck-readiness?brand_id=${brandId}&place_pool_id=${placePoolId}&venue_id=${venueId}&focus=review&fix=review_pipeline` as never,
+      // #3385 — `from=venue` so Save returns here instead of leaving the venue.
+      `/venue/deck-readiness?brand_id=${brandId}&place_pool_id=${placePoolId}&venue_id=${venueId}&focus=review&fix=review_pipeline&from=venue` as never,
     );
   }, [brandId, placePoolId, venueId, router]);
 
@@ -562,15 +581,33 @@ export function VenueSettingsModule({
             {CATEGORY_LABEL[venueQuery.data.venueCategory]}
           </Text>
         ) : null}
-        {canMutate ? (
+        <Text style={styles.rowSub} testID="venue-settings-details-checked">
+          Mingla checks your venue&apos;s name, address, category and contact
+          details before guests see them. To change any of these, email{" "}
+          {VENUE_DETAILS_SUPPORT_EMAIL} and we&apos;ll update your venue.
+        </Text>
+        <Text style={styles.rowSub} testID="venue-settings-details-self-serve">
+          You can change opening hours above, and photos, cover, website and
+          price in Edit photos &amp; details.
+        </Text>
+        {canMutate && venueId !== null ? (
           <Button
-            label="Edit venue details"
-            onPress={goToVenueEdit}
+            label="Request a change"
+            onPress={requestDetailsChange}
             variant="secondary"
             size="md"
             style={styles.inlineBtn}
             testID="venue-settings-edit-details"
           />
+        ) : null}
+        {detailsRequestFailed ? (
+          <Text
+            style={styles.hoursError}
+            testID="venue-settings-details-request-failed"
+          >
+            Couldn&apos;t open your email app. Email{" "}
+            {VENUE_DETAILS_SUPPORT_EMAIL} with the changes and your venue name.
+          </Text>
         ) : null}
       </Section>
 

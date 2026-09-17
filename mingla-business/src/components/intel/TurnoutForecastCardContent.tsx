@@ -27,6 +27,8 @@ import { useTurnoutIntel } from "./TurnoutIntelContext";
 import { buildTurnoutDrivers, type TurnoutDriver } from "./turnoutDrivers";
 import {
   humanizeTurnoutCopy,
+  repairCappedTurnoutCopy,
+  TURNOUT_FIX_COPY_CAPS,
   turnoutReportCurrency,
 } from "../../utils/turnoutDisplayCopy";
 
@@ -81,6 +83,7 @@ export const TurnoutForecastCardContent: React.FC<
     typeof forecast.capacity === "number";
   const benchmark = report?.meta?.research_source === "fallback";
   const stale = intel.state === "stale";
+  const topFix = report?.fixes?.[0];
   const accessibilityLabel = hasBand
     ? `Turnout forecast: ${forecast.total_low} to ${forecast.total_high} of ${forecast.capacity} expected, ${benchmark ? "benchmark" : "modeled"}.`
     : "Turnout forecast";
@@ -185,11 +188,24 @@ export const TurnoutForecastCardContent: React.FC<
                   ?.detail ?? ""}
               </Text>
             ) : null}
-            {report?.fixes?.[0]?.title !== undefined ? (
-              <Text style={[styles.reco, stale ? styles.stale : null]}>
-                {humanizeTurnoutCopy(report.fixes[0].title, reportCurrency)}
-                {report.fixes[0].lift_note !== undefined
-                  ? ` · ${humanizeTurnoutCopy(report.fixes[0].lift_note, reportCurrency)}`
+            {topFix?.title !== undefined ? (
+              <Text
+                style={[styles.reco, stale ? styles.stale : null]}
+                testID="turnout-top-fix"
+              >
+                {/* Repair BEFORE humanizing: the cap applies to the raw engine text. */}
+                {humanizeTurnoutCopy(
+                  repairCappedTurnoutCopy(topFix.title, TURNOUT_FIX_COPY_CAPS.title),
+                  reportCurrency,
+                )}
+                {topFix.lift_note !== undefined
+                  ? ` · ${humanizeTurnoutCopy(
+                      repairCappedTurnoutCopy(
+                        topFix.lift_note,
+                        TURNOUT_FIX_COPY_CAPS.lift_note,
+                      ),
+                      reportCurrency,
+                    )}`
                   : ""}
               </Text>
             ) : null}

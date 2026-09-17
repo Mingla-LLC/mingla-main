@@ -56,6 +56,7 @@ import {
 } from "../../hooks/useBrands";
 import { useCreateVenueListing } from "../../hooks/useVenueListings";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { useScrollToTopOnStepChange } from "../../hooks/useScrollToTopOnStepChange";
 import {
   commitNewVenueDiscoveryRange,
   fetchVenuePipelineState,
@@ -67,8 +68,11 @@ import {
   fetchVenueListing,
   findOwnListingForPlace,
 } from "../../services/venueListingsService";
+import { saveVenueReservationsEnabled } from "../../hooks/useVenueReservationSettings";
 import { sanitizeAuthoringError } from "../../utils/sanitizeAuthoringError";
+import { composeE164 } from "../../utils/phone";
 import { acquireVenueForSubmission } from "./venueSubmissionResume";
+import { saveWizardReservationsChoice } from "./venueWizardReservationsChoice";
 // META-ORCH-1290 Leg B (D-1) — the create post-submit deck-readiness NAV is
 // RETIRED: create is now ONE folded submission that lands directly on the
 // management page "In review" (the durable-route builder import is gone). The
@@ -76,6 +80,7 @@ import { acquireVenueForSubmission } from "./venueSubmissionResume";
 // (VenueListingContent.handleEdit) — it is just no longer a create step.
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import {
+  c6DialCode,
   claimDockLabel,
   claimPrefilledStepCount,
   claimStepPrefilled,
@@ -214,6 +219,9 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
   const TOTAL = baseSteps.length;
   const clampedStep = Math.min(step, TOTAL - 1);
   const stepId = baseSteps[clampedStep]?.id ?? baseSteps[0].id;
+  // Each step opens at the top — the ScrollView is shared by every step.
+  const scrollRef = useRef<ScrollView | null>(null);
+  useScrollToTopOnStepChange(scrollRef, stepId);
   // DESIGN §5.2 — prefilled flags come from the immutable adopted snapshot.
   const stepperSteps: StepperStep[] = baseSteps.map((s) => ({
     ...s,
@@ -357,7 +365,10 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           venueCategory,
           contact: {
             email: st.contactEmail.trim() || undefined,
-            phone: st.contactPhone.trim() || undefined,
+            // #3396: do not discard the country after validating the number.
+            phone:
+              composeE164(c6DialCode(st.contactPhoneCountryIso), st.contactPhone) ??
+              undefined,
           },
           coverMediaUrl: coverChoice?.url ?? null,
           coverMediaPosterUrl:
@@ -468,6 +479,20 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         priceMinInput: st.discoveryPriceMinInput ?? "",
         priceMaxInput: st.discoveryPriceMaxInput ?? "",
       });
+
+      // #3383 — the Bookings step's "Take reservations on Mingla" switch.
+      // Both arms reach this line with a real venue row, BEFORE either onDone,
+      // so a venue submitted with the switch on lands with reservations on.
+      // Non-blocking: the venue already exists, and a failed write leaves the
+      // truthful "Turn on Reservations" card on the venue page.
+      await saveWizardReservationsChoice(
+        {
+          brandId: currentBrand.id,
+          venueId,
+          wantsReservations: st.wantsReservations,
+        },
+        saveVenueReservationsEnabled,
+      );
 
       if (claimMode) {
         // ORCH-1263 — claim success: the standard pending card state (DESIGN
@@ -671,6 +696,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       ) : null}
 
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={{
           paddingBottom: insets.bottom + spacing.xl,

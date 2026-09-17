@@ -628,7 +628,12 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       });
       if (isVenue) await videoUpload.acknowledgeApplied();
       lastEmittedProcessedVideoUrlRef.current = readyUrl;
-      setVideoPickNotice({ tone: "info", text: "Video cover added." });
+      // ONE confirmation. The video status card already shows the green
+      // success state for the `applied` stage every success lands on, so the
+      // orange in-sheet notice that used to be set here said the same thing a
+      // second time, a little lower in the sheet. Clearing the notice also drops any stale message from
+      // an earlier attempt (e.g. a failed save that this retry just fixed).
+      setVideoPickNotice(null);
     } catch {
       lastEmittedProcessedVideoUrlRef.current = null;
       setReadyPersistenceFailed(true);

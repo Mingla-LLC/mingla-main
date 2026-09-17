@@ -91,6 +91,35 @@ export const formatTurnoutDate = (value: string, now: Date = new Date()): string
   return iso.startsWith(`${now.getFullYear()}-`) ? short : `${short} ${iso.slice(0, 4)}`;
 };
 
+/**
+ * The engine's storage caps on turnout fix copy (growth-tools-events
+ * `normalizeSynthesis`). Title, lift note, why and change are capped at these
+ * lengths before the report is stored.
+ */
+export const TURNOUT_FIX_COPY_CAPS = {
+  title: 90,
+  lift_note: 120,
+  why: 220,
+  change: 220,
+} as const;
+
+/**
+ * Fix copy cut mid-word by an older engine: "…allows for realistic plannin".
+ *
+ * Until the engine clipped on word boundaries, every cap above was a bare
+ * `.slice(0, cap)`, and saved or cached reports still carry those cuts. A
+ * string that FILLS its cap and does not end a sentence was cut there, so back
+ * up to the last whole word and say so with "…". Anything shorter than its cap
+ * is exactly what the engine wrote and is left alone, as is copy the current
+ * engine already ended with "…".
+ */
+export const repairCappedTurnoutCopy = (text: string, cap: number): string => {
+  if (text.length < cap || /[.!?)"'…]$/.test(text)) return text;
+  const boundary = text.search(/\s\S*$/);
+  const kept = boundary >= Math.floor(cap * 0.6) ? text.slice(0, boundary) : text.slice(0, cap - 1);
+  return `${kept.replace(/[\s,;:.\-–—]+$/u, "")}…`;
+};
+
 const escapeRegExp = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 

@@ -31,10 +31,8 @@ import type {
   ReservationAction,
 } from "../../types/venueReservation";
 import { SourceRefundStatusChip } from "../refunds/SourceRefundStatusChip";
-import {
-  PAID_CANCEL_REFUND_NOTE,
-  paidCancelNeedsRefundNote,
-} from "./reservationPaidCancelNote";
+import { paidCancelNote } from "./reservationPaidCancelNote";
+import { formatCurrency } from "../../utils/currency";
 
 export interface ReservationDetailSheetProps {
   visible: boolean;
@@ -45,6 +43,8 @@ export interface ReservationDetailSheetProps {
   /** Apply a lifecycle action (maps to a server transition). */
   onAction: (r: Reservation, action: ReservationAction) => void;
   acting: boolean;
+  /** #3391 — why the last action was refused (e.g. a paid cancel). */
+  actionError?: string | null;
   testID?: string;
 }
 
@@ -56,6 +56,7 @@ export function ReservationDetailSheet({
   timeZone,
   onAction,
   acting,
+  actionError = null,
   testID,
 }: ReservationDetailSheetProps): React.ReactElement | null {
   const [confirmingAction, setConfirmingAction] =
@@ -81,6 +82,9 @@ export function ReservationDetailSheet({
   const safe = actions.filter((a) => !DESTRUCTIVE_ACTIONS.includes(a));
   const destructive = actions.filter((a) => DESTRUCTIVE_ACTIONS.includes(a));
 
+  // #3391 — what arming Cancel on a paid booking will do to the guest's money.
+  const cancelNote = paidCancelNote(reservation, confirmingAction);
+
   const summaryParts: string[] = [
     `Party of ${reservation.partySize}`,
   ];
@@ -104,7 +108,14 @@ export function ReservationDetailSheet({
           <Text style={styles.statusValue}>{pres.label}</Text>
         </View>
         {reservation.refund ? (
-          <SourceRefundStatusChip refund={reservation.refund} />
+          <SourceRefundStatusChip
+            refund={reservation.refund}
+            amountLabel={formatCurrency(
+              reservation.refund.amountCents,
+              reservation.refund.currency,
+              true,
+            )}
+          />
         ) : (
           <Text style={styles.terminalNote}>No refund has been requested.</Text>
         )}
@@ -147,16 +158,30 @@ export function ReservationDetailSheet({
                 ))}
               </View>
             ) : null}
-            {paidCancelNeedsRefundNote(reservation, confirmingAction) ? (
+            {cancelNote !== null ? (
               <Text
-                style={styles.paidCancelNote}
+                style={
+                  cancelNote.kind === "refund"
+                    ? styles.paidCancelNote
+                    : styles.paidCancelWarning
+                }
                 testID="reservation-paid-cancel-note"
+                accessibilityLiveRegion="polite"
               >
-                {PAID_CANCEL_REFUND_NOTE}
+                {cancelNote.text}
               </Text>
             ) : null}
           </>
         )}
+        {actionError !== null ? (
+          <Text
+            style={styles.actionError}
+            testID="reservation-action-error"
+            accessibilityRole="alert"
+          >
+            {actionError}
+          </Text>
+        ) : null}
       </View>
     </Sheet>
   );
@@ -253,10 +278,22 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     marginTop: spacing.md,
   },
-  // #3391 — arming Cancel on a paid booking says the guest is not refunded.
+  // #3391 — arming Cancel on a paid booking says how much the guest gets back.
   paidCancelNote: {
     ...typography.bodySm,
+    color: textTokens.primary,
+    fontWeight: "600",
+    marginTop: spacing.sm,
+  },
+  // #3391 — a seated paid booking is not refunded automatically.
+  paidCancelWarning: {
+    ...typography.bodySm,
     color: semantic.warning,
+    marginTop: spacing.sm,
+  },
+  actionError: {
+    ...typography.bodySm,
+    color: semantic.error,
     marginTop: spacing.sm,
   },
   actionRow: {

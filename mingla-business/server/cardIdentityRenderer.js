@@ -42,6 +42,162 @@ const factsWithoutStamped = (facts, stamp) => {
   for (const key of stamp.consumedKeys) delete remaining[key];
   return remaining;
 };
+/**
+ * #2700 — the plate's detail row is measured and cut HERE, before the shaper
+ * sees it.
+ *
+ * Both plates clip that row at two 16pt lines with `overflow: hidden`, and the
+ * cut lands wherever satori happens to break. When it landed just after a
+ * separator the separator became the last visible glyph, and the card shipped a
+ * dangling middot: "Aug 29, 2026 at 1:00 PM · Didi Museum · Akin Adesola
+ * Street 175, Lagos 10, Lagos, Nigeria ·" — which reads as a rendering fault
+ * rather than as truncation.
+ *
+ * CSS cannot fix it in this engine. `-webkit-line-clamp` and
+ * `text-overflow: ellipsis` are INERT here: five clamp variants
+ * (`display: block`, `-webkit-box`, `flex`, the `lineClamp` shorthand and
+ * `white-space: nowrap`) rendered BYTE-IDENTICAL PNGs through @vercel/og 0.11.1
+ * / satori 0.25.0, and `font-variant-numeric` is inert the same way. Measured
+ * against the real rasteriser, not read off a support table.
+ *
+ * The row is therefore composed, not clipped:
+ *
+ * 1. The joined string is measured against the row's real capacity and whole
+ *    trailing facts are dropped until it fits, so the shaper is never handed a
+ *    string it will have to cut.
+ * 2. Whatever survives is stripped of trailing whitespace and separators before
+ *    a single ellipsis is appended — so the composed row cannot END on a
+ *    separator for ANY input, and a truncated row reads as "there is more"
+ *    rather than as a fault.
+ *
+ * A no-break space after the separator would additionally make a dangling
+ * separator impossible at the SHAPER, not just in the string, by carrying
+ * "· fact" down to the next line as one unit — and it renders byte-identically,
+ * since a no-break space and a space have the same advance in Inter. It is
+ * deliberately NOT taken here: it changes the composed string and would
+ * invalidate the ten plate strings pinned by A4 in
+ * `scripts/issue-2589/fallback-share-card.tester.adversarial.test.mjs`, which
+ * this issue was not dispatched to supersede. Raised for #2700 instead.
+ *
+ * Both plates call this, so they cannot diverge.
+ */
+const FACT_SEPARATOR = " \u00B7 ";
+const ELLIPSIS = "\u2026";
+/** The plate's own side padding (`padding: 9px 12px 7px`) and the row's clip. */
+const PLATE_SIDE_PADDING = 12;
+const FACT_LINE_HEIGHT = 16;
+const FACT_CLIP_HEIGHT = 32;
+/**
+ * Per-character advance in ems, calibrated against THIS renderer rather than
+ * guessed: each class carries its WIDEST measured member, found by
+ * binary-searching the character count at which satori wraps a 288pt line at
+ * 13pt.
+ * Measured maxima — W .963 · M/m .886 · @ and em-dash .923 · O/N .764 ·
+ * euro .738 · digits .671 ("0") · lowercase .599 (b/d/g/k/p/q/x) · en-dash
+ * .599 · slash .482 · hyphen .426 · r/t/f .396 · "1" .389 · l/I .270 ·
+ * i .246 · space .269 · . , middot .201 · ellipsis .583. An entry may carry a
+ * third pattern the character must ALSO match, which is how the Latin classes
+ * are kept from swallowing other scripts.
+ */
+const FACT_ADVANCE_EM = Object.freeze([
+  [/[MWmw%@\u2014\u00C6\u00E6\u0152\u0153]/u, 0.98],
+  [/[ilIjftr1()\[\]|!'\u2019]/u, 0.42],
+  // Latin ONLY. A Cyrillic or Greek capital is `\p{Lu}` too and runs far wider
+  // than .78, so every other script falls through to the unknown-glyph charge
+  // rather than being under-charged as if it were an "O".
+  [/\p{Lu}/u, 0.78, /\p{Script=Latin}/u],
+  [/\p{Ll}/u, 0.61, /\p{Script=Latin}/u],
+  [/\p{Nd}/u, 0.69],
+  [/[ \t\u00A0]/u, 0.28],
+  [/[.,;:\u00B7\u2022]/u, 0.22],
+  // The ellipsis this function appends is charged at its MEASURED advance. It
+  // was briefly left to the unknown-glyph charge, which over-priced it by .72em
+  // and dropped a whole fact that fitted — the estimate must be honest about the
+  // one glyph the algorithm itself adds.
+  [/\u2026/u, 0.60],
+  [/[\u20AC&$\u00A3+\u2013]/u, 0.76],
+  [/[\-\/\\#]/u, 0.50],
+]);
+/**
+ * Anything unmatched — CJK, the naira sign, an emoji, a script this table has no
+ * business guessing at. Charged wider than the widest measured Latin glyph
+ * (.963) and wider than a full-width ideograph, so an unknown codepoint can only
+ * ever make the estimate too big.
+ */
+const UNKNOWN_ADVANCE_EM = 1.3;
+/**
+ * Every class above carries its widest member, so a real mixed-case string
+ * measures systematically wide. Across 14 strings binary-searched against
+ * satori for their true single-line width the raw estimate ran 1.099x-1.175x
+ * high (mean 1.125). Dividing the budget by the LOW end of that band keeps the
+ * estimate on the safe side of every measured string — worst case 1.008x — while
+ * removing most of the bias, so a row that really fits is not truncated for
+ * nothing. Verified: over 48 strings the corrected model never under-counts a
+ * line, and matches satori exactly on all 29 realistic ones.
+ */
+const FACT_WIDTH_CALIBRATION = 1.09;
+const advanceEm = (character) => {
+  for (const [pattern, em, script] of FACT_ADVANCE_EM) {
+    if (!pattern.test(character)) continue;
+    if (script && !script.test(character)) continue;
+    return em;
+  }
+  return UNKNOWN_ADVANCE_EM;
+};
+const wordEm = (word) => { let em = 0; for (const character of word) em += advanceEm(character); return em; };
+/**
+ * Greedy word wrap, exactly as the shaper does it: the ONLY break opportunity is
+ * an ordinary space. A no-break space is charged a space's width and is
+ * deliberately not a split point, because satori does not break there either
+ * (measured).
+ */
+const wrappedLineCount = (value, usableEm) => {
+  const words = value.split(" ").filter(Boolean);
+  if (!words.length) return 0;
+  const spaceEm = advanceEm(" ");
+  let lines = 1;
+  let cursor = 0;
+  for (const word of words) {
+    const width = wordEm(word);
+    const next = cursor === 0 ? width : cursor + spaceEm + width;
+    if (next <= usableEm) { cursor = next; continue; }
+    lines += 1;
+    cursor = width;
+    // `wordBreak: break-word` splits a word wider than the row across lines.
+    while (cursor > usableEm) { lines += 1; cursor -= usableEm; }
+  }
+  return lines;
+};
+/** Nothing the shaper could leave dangling survives to the end of the row. */
+const withoutDanglingSeparator = (value) => value.replace(/[\s\u00B7]+$/u, "");
+/**
+ * Compose the detail row for a plate `plateW` points wide whose text sets at
+ * `size` points. Facts are the unit of meaning, so a fact is the unit dropped;
+ * only a single fact too wide for the whole row is ever cut inside, and only at
+ * a word boundary unless one word alone overflows.
+ */
+function factsLine(tokens, plateW, size) {
+  const parts = (Array.isArray(tokens) ? tokens : [])
+    .map((token) => withoutDanglingSeparator(safeText(token))).filter(Boolean);
+  if (!parts.length) return "";
+  const usableEm = ((plateW - 2 * PLATE_SIDE_PADDING) / size) * FACT_WIDTH_CALIBRATION;
+  const rows = Math.max(1, Math.floor(FACT_CLIP_HEIGHT / FACT_LINE_HEIGHT));
+  const fits = (value) => wrappedLineCount(value, usableEm) <= rows;
+  const joined = parts.join(FACT_SEPARATOR);
+  if (fits(joined)) return joined;
+  for (let count = parts.length - 1; count >= 1; count -= 1) {
+    const candidate = withoutDanglingSeparator(parts.slice(0, count).join(FACT_SEPARATOR)) + ELLIPSIS;
+    if (fits(candidate)) return candidate;
+  }
+  const words = parts[0].split(" ").filter(Boolean);
+  for (let count = words.length - 1; count >= 1; count -= 1) {
+    const candidate = withoutDanglingSeparator(words.slice(0, count).join(" ")) + ELLIPSIS;
+    if (fits(candidate)) return candidate;
+  }
+  const head = Array.from(words[0] || "");
+  while (head.length > 1 && !fits(head.join("") + ELLIPSIS)) head.pop();
+  return withoutDanglingSeparator(head.join("")) + ELLIPSIS;
+}
 /** 20pt of air between the stamp's bottom edge and a worst-case 2-line title. */
 const STAMP_TITLE_CLEARANCE = 20;
 const MAX_COVER_BYTES = 8 * 1024 * 1024;
@@ -124,9 +280,9 @@ function cardIdentityElement(snapshot, surfaceKey, scale = 1) {
     React.createElement("img", { src:wordmarkSource(), style:{width:px(96),height:px(34),objectFit:"contain"} })),
   React.createElement("div", { style: { display: "flex", position: "absolute", left: px(s.sideInset + s.titleInset), right: px(s.sideInset + s.titleInset), bottom: titleBottom, fontSize: px(s.titleSize), lineHeight: `${px(s.titleLH)}px`, fontWeight: Number(s.titleWeight), maxHeight: px(s.titleLH * s.titleLines), overflow: "hidden" } }, safeText(snapshot.title)),
   snapshot.kind === "curated" ? SLIVER.offsets.map((offset, index) => React.createElement("div", { key: `sliver-${index}`, style: { position: "absolute", left: px(s.sideInset + s.sliver.insets[index]), right: px(s.sideInset + s.sliver.insets[index]), bottom: px(s.bottomInset + s.plateH + offset), height: px(s.sliver.height), borderRadius: px(s.sliver.radius), border: `${px(sliverBoundary.width)}px solid ${sliverBoundary.color}`, background: `linear-gradient(90deg,${s.sliver.opaque[0]},${s.sliver.opaque[1]})` } })) : null,
-  React.createElement("div", { style: { position: "absolute", left: px(s.sideInset), bottom: px(s.bottomInset), width: px(s.plateW), height: px(s.plateH), borderRadius: px(s.plateR), border: `${px(boundary.width)}px solid ${boundary.color}`, background: PLATE.fallbackSolid, boxShadow: `inset 0 ${px(1)}px 0 ${PLATE.topHighlight}`, display: "flex", flexDirection:"column", padding:`${px(9)}px ${px(12)}px ${px(7)}px`, boxSizing:"border-box", fontVariantNumeric:"tabular-nums" } },
+  React.createElement("div", { style: { position: "absolute", left: px(s.sideInset), bottom: px(s.bottomInset), width: px(s.plateW), height: px(s.plateH), borderRadius: px(s.plateR), border: `${px(boundary.width)}px solid ${boundary.color}`, background: PLATE.fallbackSolid, boxShadow: `inset 0 ${px(1)}px 0 ${PLATE.topHighlight}`, display: "flex", flexDirection:"column", padding:`${px(9)}px ${px(PLATE_SIDE_PADDING)}px ${px(7)}px`, boxSizing:"border-box", fontVariantNumeric:"tabular-nums" } },
     React.createElement("div", { style:{height:px(20),display:"flex",alignItems:"center",fontSize:px(12),lineHeight:`${px(16)}px`,fontWeight:600} }, kindLabel(snapshot.kind)),
-    React.createElement("div", { style: { display: "flex", marginTop:px(3), fontSize: px(s.metaSize), lineHeight:`${px(16)}px`, fontWeight: 500, maxHeight:px(32), overflow:"hidden", wordBreak:"break-word" } }, facts.join(" · ")),
+    React.createElement("div", { style: { display: "flex", marginTop:px(3), fontSize: px(s.metaSize), lineHeight:`${px(FACT_LINE_HEIGHT)}px`, fontWeight: 500, maxHeight:px(FACT_CLIP_HEIGHT), overflow:"hidden", wordBreak:"break-word" } }, factsLine(facts, s.plateW, s.metaSize)),
   ));
 }
 
@@ -235,11 +391,11 @@ function contentSharePortraitElement(contentShare) {
     // #2589 — an empty facts row centres the kind label instead of leaving 39pt
     // of dead space below it. `plateH` stays 78, so `scrimHeight`, `plateUnder`
     // and `titleBottom` are all untouched: nothing derived from the plate moves.
-    React.createElement("div", {style:{position:"absolute",left:px(s.sideInset),bottom:px(s.bottomInset),width:px(s.plateW),height:px(s.plateH),borderRadius:px(s.plateR),border:`${px(boundary.width)}px solid ${boundary.color}`,background:plateMaterial,display:"flex",flexDirection:"column",justifyContent:tokens.length?"flex-start":"center",padding:`${px(9)}px ${px(12)}px ${px(7)}px`,boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}},
+    React.createElement("div", {style:{position:"absolute",left:px(s.sideInset),bottom:px(s.bottomInset),width:px(s.plateW),height:px(s.plateH),borderRadius:px(s.plateR),border:`${px(boundary.width)}px solid ${boundary.color}`,background:plateMaterial,display:"flex",flexDirection:"column",justifyContent:tokens.length?"flex-start":"center",padding:`${px(9)}px ${px(PLATE_SIDE_PADDING)}px ${px(7)}px`,boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}},
       React.createElement("div", {style:{height:px(20),display:"flex",alignItems:"center",fontSize:px(12),lineHeight:`${px(16)}px`,fontWeight:600}},
         React.createElement("span", null, kindLabel(facts.kind)),
         status ? React.createElement("span", {style:{marginLeft:"auto",height:px(20),padding:`0 ${px(8)}px`,display:"flex",alignItems:"center",borderRadius:px(10),background:"#FFF7EF",color:"#0C0E12",fontWeight:700}}, `● ${status}`) : null),
-      tokens.length ? React.createElement("div", {style:{display:"flex",marginTop:px(3),fontSize:px(13),lineHeight:`${px(16)}px`,fontWeight:500,maxHeight:px(32),overflow:"hidden",wordBreak:"break-word"}}, tokens.join(" · ")) : null));
+      tokens.length ? React.createElement("div", {style:{display:"flex",marginTop:px(3),fontSize:px(13),lineHeight:`${px(FACT_LINE_HEIGHT)}px`,fontWeight:500,maxHeight:px(FACT_CLIP_HEIGHT),overflow:"hidden",wordBreak:"break-word"}}, factsLine(tokens, s.plateW, 13)) : null));
 }
 
 async function renderContentSharePortraitPng(contentShare) {
