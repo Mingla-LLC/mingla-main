@@ -8,6 +8,8 @@ import {
   assertMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Same URL the handlers import, so this is the very class their serve() uses.
+import { Server } from "https://deno.land/std@0.168.0/http/server.ts";
 import { processGeneric } from "../notify-outbox-drain/index.ts";
 import {
   guestCancelTokenHash,
@@ -45,6 +47,10 @@ Deno.test("#3392 independent actual-handler credential/recipient boundary", asyn
     error: console.error,
   };
   const listeners: Deno.TcpListener[] = [];
+  const originalListenAndServe = Server.prototype.listenAndServe;
+  const servers: { server: Server; running: Promise<void> }[] = [];
+  const originalSetInterval = globalThis.setInterval;
+  const authRefreshTickers: number[] = [];
   const env: Record<string, string> = {
     SUPABASE_URL: DB,
     SUPABASE_SERVICE_ROLE_KEY: SERVICE,
@@ -115,6 +121,8 @@ Deno.test("#3392 independent actual-handler credential/recipient boundary", asyn
   function matches(row: Row, url: URL) {
     return [...url.searchParams].every(([key, value]) => {
       if (["select", "limit", "order"].includes(key)) return true;
+      // .not(col, "is", null) — the click-id lookup in _shared/adConversionFire.ts.
+      if (value === "not.is.null") return row[key] != null;
       assert(value.startsWith("eq."), `unmodelled query operator: ${key}`);
       return String(row[key]) === value.slice(3);
     });
@@ -206,6 +214,18 @@ Deno.test("#3392 independent actual-handler credential/recipient boundary", asyn
     for (const level of ["log", "warn", "error"] as const) {
       console[level] = (...args: unknown[]) => logs.push(JSON.stringify(args));
     }
+    // _shared/apiHealthLog.ts:52 (reached via paystack.ts recordApiCall) builds
+    // a supabase-js@2.45.4 client with default auth options on every call, and
+    // auth-js starts a 30s auto-refresh setInterval that nothing can stop from
+    // outside. Remember only those tickers so cleanup can stop them, exactly as
+    // client.auth.stopAutoRefresh() would; every other timer stays sanitized.
+    globalThis.setInterval = ((...args: Parameters<typeof setInterval>) => {
+      const id = originalSetInterval(...args);
+      if (new Error().stack?.includes("_startAutoRefresh")) {
+        authRefreshTickers.push(id);
+      }
+      return id;
+    }) as typeof setInterval;
     globalThis.fetch =
       (async (input: string | URL | Request, init?: RequestInit) => {
         const req = new Request(input, init);
@@ -346,12 +366,21 @@ Deno.test("#3392 independent actual-handler credential/recipient boundary", asyn
       listeners.push(listener);
       return listener;
     }) as typeof Deno.listen;
+    // Keep each std Server so cleanup can close() it: closing only its listener
+    // leaves the accept loop retrying on a backoff timer forever.
+    Server.prototype.listenAndServe = function (this: Server) {
+      const running = originalListenAndServe.call(this);
+      servers.push({ server: this, running });
+      return running;
+    };
     await import("../notify-dispatch/index.ts");
     dispatchOrigin = `http://127.0.0.1:${listeners.at(-1)!.addr.port}`;
     await import("../venue-reservation-create/index.ts");
     createOrigin = `http://127.0.0.1:${listeners.at(-1)!.addr.port}`;
     Deno.listen = originalListen;
+    Server.prototype.listenAndServe = originalListenAndServe;
     assertEquals(listeners.length, 2);
+    assertEquals(servers.length, 2);
 
     await t.step(
       "free web HTTP create → phone-addressed outbox → HTTP dispatch → matching email credential; no plaintext writes",
@@ -648,9 +677,13 @@ Deno.test("#3392 independent actual-handler credential/recipient boundary", asyn
       },
     );
   } finally {
-    for (const listener of listeners) listener.close();
-    // Allow the std server loops to observe their closed, owned listeners.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Server.close() closes the listener, aborts the accept backoff timer and
+    // ends the loop; awaiting it proves nothing is still running.
+    for (const { server } of servers) if (!server.closed) server.close();
+    await Promise.all(servers.map(({ running }) => running));
+    for (const id of authRefreshTickers) clearInterval(id);
+    globalThis.setInterval = originalSetInterval;
+    Server.prototype.listenAndServe = originalListenAndServe;
     Deno.listen = originalListen;
     globalThis.fetch = originalFetch;
     Deno.env.get = originalGet;
