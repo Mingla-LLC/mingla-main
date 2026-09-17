@@ -30,6 +30,11 @@
  * (KeyboardAwareScrollView on native) scrolls it clear of the keyboard, and the
  * app-root KeyboardToolbarRoot Done bar blurs it — iOS number pads have no
  * return key. Hosts must render this inside a SmartScrollView.
+ *
+ * No `returnKeyType`: on iOS, React Native gives a number pad that has one its
+ * own UIToolbar "Done" accessory. Under the app's Done bar that was a SECOND
+ * Done — a floating pill at the bottom right — and with a hardware keyboard it
+ * still raised a keyboard frame (RSVP tutorial recording, 2026-09-17).
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -297,7 +302,6 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
           onSubmitEditing={commitTyped}
           onPressIn={(event) => reselectOnWebPointer(event, shownText)}
           keyboardType="number-pad"
-          returnKeyType="done"
           selectTextOnFocus
           maxLength={maxDigits}
           accessibilityLabel={fieldLabel}
