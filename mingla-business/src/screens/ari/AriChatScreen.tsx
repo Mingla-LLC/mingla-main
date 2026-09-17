@@ -940,6 +940,9 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
+    // P2-6: when a tall attachment tray lifts the hero, it clips inside the
+    // chat column instead of drawing over the header.
+    overflow: "hidden",
   },
   flexSpacer: {
     flex: 1,
