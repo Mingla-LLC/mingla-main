@@ -1,7 +1,7 @@
 /** Issue #3429 — bounded entrance for an already-complete Ari response. */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated as CoreAnimated, Easing as CoreEasing, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -11,8 +11,9 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { ariThread } from "../../constants/designSystem";
+import { ariThread, text as textTokens } from "../../constants/designSystem";
 import { captureAriRevealOutcome } from "../../services/ariPolishAnalytics";
+import { type AriBubbleSegment, toSegments } from "./ChatBubble";
 
 export interface SemanticRevealTextProps {
   text: string;
@@ -21,27 +22,77 @@ export interface SemanticRevealTextProps {
   surface?: "main" | "website";
 }
 
-interface Chunk {
-  kind: "paragraph" | "list";
-  text: string;
-}
+type Chunk = AriBubbleSegment;
 
 export function semanticRevealDuration(chunkCount: number): number {
   return Math.max(300, Math.min(1200, 300 + Math.max(0, chunkCount - 1) * 55));
 }
 
+/** P2-4: exactly the settled bubble's segments (one segmenter, ChatBubble). */
 export function splitSemanticChunks(text: string): Chunk[] {
-  const chunks: Chunk[] = [];
-  for (const block of text.split(/\n\n+/)) {
-    const lines = block.split("\n");
-    if (lines.length > 0 && lines.every((line) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(line))) {
-      lines.forEach((line) => chunks.push({ kind: "list", text: line }));
-    } else if (block.length > 0) {
-      chunks.push({ kind: "paragraph", text: block });
-    }
-  }
+  const chunks = toSegments(text);
   return chunks.length ? chunks : [{ kind: "paragraph", text }];
 }
+
+const ChunkBody: React.FC<{ chunk: Chunk; textStyle: object }> = ({ chunk, textStyle }) => (
+  chunk.kind === "bullet" ? (
+    <View style={styles.listRow}>
+      <Text style={[textStyle, styles.bulletGlyph]}>•</Text>
+      <Text selectable style={[textStyle, styles.listText]}>{chunk.text}</Text>
+    </View>
+  ) : (
+    <Text selectable style={textStyle}>{chunk.text}</Text>
+  )
+);
+
+function revealDelay(index: number, count: number): number {
+  const total = semanticRevealDuration(count);
+  return count <= 1 ? 0 : Math.round((Math.max(0, total - 200) * index) / (count - 1));
+}
+
+/**
+ * P2-3 (web): Reanimated's web style path inserted chunks already settled, so
+ * nothing animated on Business web. The core Animated driver writes the
+ * starting opacity/offset on mount and steps them on animation frames.
+ */
+const WebRevealChunk: React.FC<{
+  chunk: Chunk;
+  index: number;
+  count: number;
+  skipped: boolean;
+  reduced: boolean;
+  textStyle: object;
+}> = ({ chunk, index, count, skipped, reduced, textStyle }) => {
+  const opacity = useRef(new CoreAnimated.Value(reduced ? 1 : 0.22)).current;
+  const translateY = useRef(new CoreAnimated.Value(reduced ? 0 : 4)).current;
+  const delay = revealDelay(index, count);
+
+  useEffect(() => {
+    const step = (value: CoreAnimated.Value, toValue: number, duration: number, after: number) =>
+      CoreAnimated.timing(value, {
+        toValue,
+        duration,
+        delay: after,
+        easing: CoreEasing.out(CoreEasing.quad),
+        useNativeDriver: false,
+      });
+    const animation = reduced || skipped
+      ? CoreAnimated.parallel([step(opacity, 1, reduced ? 0 : 80, 0), step(translateY, 0, reduced ? 0 : 80, 0)])
+      : CoreAnimated.parallel([step(opacity, 1, 200, delay), step(translateY, 0, 200, delay)]);
+    animation.start();
+    return () => animation.stop();
+  }, [delay, opacity, reduced, skipped, translateY]);
+
+  return (
+    <CoreAnimated.View
+      style={[index > 0 ? styles.gap : null, { opacity, transform: [{ translateY }] }]}
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+    >
+      <ChunkBody chunk={chunk} textStyle={textStyle} />
+    </CoreAnimated.View>
+  );
+};
 
 const RevealChunk: React.FC<{
   chunk: Chunk;
@@ -53,8 +104,7 @@ const RevealChunk: React.FC<{
 }> = ({ chunk, index, count, skipped, reduced, textStyle }) => {
   const opacity = useSharedValue(reduced ? 1 : 0.22);
   const translateY = useSharedValue(reduced ? 0 : 4);
-  const total = semanticRevealDuration(count);
-  const delay = count <= 1 ? 0 : Math.round((Math.max(0, total - 200) * index) / (count - 1));
+  const delay = revealDelay(index, count);
 
   useEffect(() => {
     if (reduced || skipped) {
@@ -73,13 +123,7 @@ const RevealChunk: React.FC<{
       accessible={false}
       importantForAccessibility="no-hide-descendants"
     >
-      {chunk.kind === "list" ? (
-        <View style={styles.listRow}>
-          <Text selectable style={[textStyle, styles.listText]}>{chunk.text}</Text>
-        </View>
-      ) : (
-        <Text selectable style={textStyle}>{chunk.text}</Text>
-      )}
+      <ChunkBody chunk={chunk} textStyle={textStyle} />
     </Animated.View>
   );
 };
@@ -92,6 +136,7 @@ export const SemanticRevealText: React.FC<SemanticRevealTextProps> = ({
 }) => {
   const reduced = useReducedMotion();
   const chunks = useMemo(() => splitSemanticChunks(text), [text]);
+  const ChunkComponent = Platform.OS === "web" ? WebRevealChunk : RevealChunk;
   const [skipped, setSkipped] = useState(false);
   const captured = useRef(false);
 
@@ -133,7 +178,7 @@ export const SemanticRevealText: React.FC<SemanticRevealTextProps> = ({
       accessibilityLabel={`Ari said: ${text}`}
     >
       {chunks.map((chunk, index) => (
-        <RevealChunk
+        <ChunkComponent
           key={`${index}-${chunk.text.slice(0, 16)}`}
           chunk={chunk}
           index={index}
@@ -150,6 +195,8 @@ export const SemanticRevealText: React.FC<SemanticRevealTextProps> = ({
 const styles = StyleSheet.create({
   gap: { marginTop: ariThread.gapGroup },
   listRow: { flexDirection: "row" },
+  // Identical to ChatBubble's hanging bullet so reveal and settled rows match.
+  bulletGlyph: { color: textTokens.tertiary, width: 6, marginRight: 6 },
   listText: { flex: 1 },
 });
 

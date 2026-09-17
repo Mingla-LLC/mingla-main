@@ -13,7 +13,7 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { AlertTriangle, Ellipsis, Sparkles } from "lucide-react-native";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -36,10 +36,23 @@ import {
 import { agentQueryKeys } from "../../hooks/agentQueryKeys";
 import { captureAriTitleAction } from "../../services/ariPolishAnalytics";
 
+/**
+ * D-9: ConfirmDialog (web-capable, unlike Alert) loads only when a dialog opens.
+ * Its animation stack must stay out of this drawer's import graph, which the
+ * #2013 containment suite mounts without a native animation runtime.
+ */
+const ConfirmDialog = React.lazy(() =>
+  import("../ui/ConfirmDialog").then((module) => ({ default: module.ConfirmDialog }))
+);
+
 export function conversationDisplayTitle(conversation: AgentConversation): string {
   const title = conversation.title?.trim();
+  const fallback = `Conversation · ${new Date(conversation.updated_at).toLocaleDateString()}`;
+  // P3-1: the legacy backfill stores the bare word "Conversation"; show the
+  // same dated fallback an untitled conversation gets.
+  if (conversation.title_source === "legacy_fallback" && title === "Conversation") return fallback;
   if (title && title.toLowerCase() !== "untitled conversation") return title;
-  return `Conversation · ${new Date(conversation.updated_at).toLocaleDateString()}`;
+  return fallback;
 }
 
 function friendlyDate(iso: string): string {
@@ -87,6 +100,13 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   const [renameConversation, setRenameConversation] = useState<AgentConversation | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  // D-9: web-capable confirmations and inline notices (Alert is a no-op on web).
+  const [regenerateConfirm, setRegenerateConfirm] = useState<AgentConversation | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<AgentConversation | null>(null);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState<string[] | null>(null);
+  const [drawerNotice, setDrawerNotice] = useState<string | null>(null);
+  const [menuNotice, setMenuNotice] = useState<string | null>(null);
+  const [renameNotice, setRenameNotice] = useState<string | null>(null);
 
   // Reset select state every time the drawer closes
   React.useEffect(() => {
@@ -95,6 +115,12 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
       setSelectedIds(new Set());
       setMenuConversation(null);
       setRenameConversation(null);
+      setRegenerateConfirm(null);
+      setDeleteConfirm(null);
+      setBulkDeleteConfirm(null);
+      setDrawerNotice(null);
+      setMenuNotice(null);
+      setRenameNotice(null);
     }
   }, [visible]);
 
@@ -126,50 +152,45 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         toggleSelect(c.id);
         return;
       }
-      Alert.alert(
-        conversationDisplayTitle(c),
-        "Delete this conversation? This can't be undone.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: async () => {
-              optimisticDelete([c.id]);
-              try {
-                await deleteConversation(c.id);
-              } catch (err) {
-                // Roll back optimistic removal by refetching the truth.
-                qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
-                Alert.alert(
-                  "Couldn't delete",
-                  err instanceof Error ? err.message : "Unknown error",
-                );
-                return;
-              }
-              qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
-              captureAriTitleAction(surface, "deleted");
-              if (c.id === activeId) {
-                qc.invalidateQueries({ queryKey: agentQueryKeys.messages(c.id) });
-                onSelect(null);
-              }
-            },
-          },
-        ],
-      );
+      setMenuNotice(null);
+      setDeleteConfirm(c);
     },
-    [activeId, onSelect, optimisticDelete, qc, selectMode, surface, toggleSelect],
+    [selectMode, toggleSelect],
   );
+
+  const confirmDeleteSingle = useCallback(async (): Promise<void> => {
+    const c = deleteConfirm;
+    if (!c) return;
+    setDeleteConfirm(null);
+    setMenuConversation(null);
+    setDrawerNotice(null);
+    optimisticDelete([c.id]);
+    try {
+      await deleteConversation(c.id);
+    } catch {
+      // Roll back optimistic removal by refetching the truth.
+      qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
+      setDrawerNotice("Couldn’t delete that conversation. Check your connection and try again.");
+      return;
+    }
+    qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
+    captureAriTitleAction(surface, "deleted");
+    if (c.id === activeId) {
+      qc.invalidateQueries({ queryKey: agentQueryKeys.messages(c.id) });
+      onSelect(null);
+    }
+  }, [activeId, deleteConfirm, onSelect, optimisticDelete, qc, surface]);
 
   const regenerateTitle = useCallback(async (c: AgentConversation, confirmed = false): Promise<void> => {
     setRegeneratingId(c.id);
+    setMenuNotice(null);
     try {
       await regenerateAgentConversationTitle(c.id, confirmed);
       captureAriTitleAction(surface, "regenerated");
       await qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
       setMenuConversation(null);
     } catch {
-      Alert.alert("Couldn’t update the title", "Couldn’t update the title. Your previous title is unchanged.");
+      setMenuNotice("Couldn’t update the title. Your previous title is unchanged.");
     } finally {
       setRegeneratingId(null);
     }
@@ -177,14 +198,8 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
 
   const handleRegenerate = useCallback((c: AgentConversation): void => {
     if (c.title_source === "manual") {
-      Alert.alert(
-        "Replace your name with a new Ari title?",
-        "Your current name will stay unless Ari creates a replacement.",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Regenerate", onPress: () => void regenerateTitle(c, true) },
-        ],
-      );
+      setMenuNotice(null);
+      setRegenerateConfirm(c);
       return;
     }
     void regenerateTitle(c);
@@ -193,42 +208,36 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   const handleBulkDelete = useCallback((): void => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    Alert.alert(
-      `Delete ${ids.length} ${ids.length === 1 ? "conversation" : "conversations"}?`,
-      "This can't be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            optimisticDelete(ids);
-            const deletedActive = activeId !== null && ids.includes(activeId);
-            // Fire all deletions in parallel
-            const results = await Promise.allSettled(
-              ids.map((id) => deleteConversation(id)),
-            );
-            const failed = results.filter((r) => r.status === "rejected");
-            const deletedCount = ids.length - failed.length;
-            if (deletedCount > 0) captureAriTitleAction(surface, "deleted");
-            qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
-            if (deletedActive) {
-              qc.invalidateQueries({ queryKey: agentQueryKeys.messages(activeId) });
-              onSelect(null);
-            }
-            setSelectMode(false);
-            setSelectedIds(new Set());
-            if (failed.length > 0) {
-              Alert.alert(
-                "Some deletions failed",
-                `${failed.length} of ${ids.length} couldn't be deleted. The list has been refreshed.`,
-              );
-            }
-          },
-        },
-      ],
+    setDrawerNotice(null);
+    setBulkDeleteConfirm(ids);
+  }, [selectedIds]);
+
+  const confirmBulkDelete = useCallback(async (): Promise<void> => {
+    const ids = bulkDeleteConfirm;
+    if (!ids || ids.length === 0) return;
+    setBulkDeleteConfirm(null);
+    optimisticDelete(ids);
+    const deletedActive = activeId !== null && ids.includes(activeId);
+    // Fire all deletions in parallel
+    const results = await Promise.allSettled(
+      ids.map((id) => deleteConversation(id)),
     );
-  }, [activeId, onSelect, optimisticDelete, qc, selectedIds, surface]);
+    const failed = results.filter((r) => r.status === "rejected");
+    const deletedCount = ids.length - failed.length;
+    if (deletedCount > 0) captureAriTitleAction(surface, "deleted");
+    qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
+    if (deletedActive) {
+      qc.invalidateQueries({ queryKey: agentQueryKeys.messages(activeId) });
+      onSelect(null);
+    }
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    if (failed.length > 0) {
+      setDrawerNotice(
+        `Some deletions failed. ${failed.length} of ${ids.length} couldn’t be deleted. The list has been refreshed.`,
+      );
+    }
+  }, [activeId, bulkDeleteConfirm, onSelect, optimisticDelete, qc, surface]);
 
   const handleRowPress = useCallback(
     (c: AgentConversation): void => {
@@ -345,6 +354,10 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
           </Pressable>
         ) : null}
 
+        {drawerNotice ? (
+          <Text style={styles.inlineNotice} accessibilityRole="alert">{drawerNotice}</Text>
+        ) : null}
+
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
@@ -398,14 +411,57 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
               <Text style={styles.menuTitle} numberOfLines={2}>{conversationDisplayTitle(menuConversation)}</Text>
               <Pressable style={styles.menuAction} accessibilityRole="button" onPress={() => { setRenameDraft(conversationDisplayTitle(menuConversation)); setRenameConversation(menuConversation); setMenuConversation(null); }}><Text style={styles.menuActionText}>Rename conversation</Text></Pressable>
               <Pressable style={styles.menuAction} accessibilityRole="button" disabled={regeneratingId === menuConversation.id} onPress={() => handleRegenerate(menuConversation)}><Text style={styles.menuActionText}>Regenerate title</Text></Pressable>
-              <Pressable style={styles.menuAction} accessibilityRole="button" onPress={() => { const target = menuConversation; setMenuConversation(null); handleDeleteSingle(target); }}><Text style={styles.deleteActionText}>Delete</Text></Pressable>
+              <Pressable style={styles.menuAction} accessibilityRole="button" onPress={() => handleDeleteSingle(menuConversation)}><Text style={styles.deleteActionText}>Delete</Text></Pressable>
+              {menuNotice ? (
+                <Text style={styles.inlineNotice} accessibilityRole="alert">{menuNotice}</Text>
+              ) : null}
             </View>
+          ) : null}
+          {/* D-9: confirmations render INSIDE the sheet that opened them so iOS
+              presents them from that sheet's own modal (#1369 pattern). */}
+          {regenerateConfirm ? (
+          <React.Suspense fallback={null}>
+          <ConfirmDialog
+            visible={!!regenerateConfirm}
+            onClose={() => setRegenerateConfirm(null)}
+            onConfirm={() => {
+              const target = regenerateConfirm;
+              setRegenerateConfirm(null);
+              if (target) void regenerateTitle(target, true);
+            }}
+            title="Replace your name with a new Ari title?"
+            description="Your current name will stay unless Ari creates a replacement."
+            cancelLabel="Cancel"
+            confirmLabel="Regenerate"
+            initialFocus="cancel"
+            testID="ari-regenerate-title-confirm"
+          />
+          </React.Suspense>
+          ) : null}
+          {deleteConfirm ? (
+          <React.Suspense fallback={null}>
+          <ConfirmDialog
+            visible={!!deleteConfirm}
+            onClose={() => setDeleteConfirm(null)}
+            onConfirm={confirmDeleteSingle}
+            title={deleteConfirm ? conversationDisplayTitle(deleteConfirm) : "Delete conversation"}
+            description="Delete this conversation? This can't be undone."
+            cancelLabel="Cancel"
+            confirmLabel="Delete"
+            destructive
+            initialFocus="cancel"
+            testID="ari-delete-conversation-confirm"
+          />
+          </React.Suspense>
           ) : null}
         </Sheet>
 
         <Sheet visible={!!renameConversation} onClose={() => setRenameConversation(null)} snapPoint={300}>
           <View style={styles.menuBody}>
             <Text style={styles.menuTitle}>Rename conversation</Text>
+            {renameNotice ? (
+              <Text style={styles.inlineNotice} accessibilityRole="alert">{renameNotice}</Text>
+            ) : null}
             <TextInput
               value={renameDraft}
               onChangeText={setRenameDraft}
@@ -425,19 +481,37 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
                 disabled={!renameDraft.trim()}
                 onPress={async () => {
                   if (!renameConversation || !renameDraft.trim()) return;
+                  setRenameNotice(null);
                   try {
                     await renameAgentConversation(renameConversation.id, renameDraft.trim());
                     captureAriTitleAction(surface, "renamed");
                     await qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
                     setRenameConversation(null);
                   } catch {
-                    Alert.alert("Couldn’t rename", "Your previous title is unchanged.");
+                    setRenameNotice("Couldn’t rename. Your previous title is unchanged.");
                   }
                 }}
               ><Text style={styles.saveActionText}>Save</Text></Pressable>
             </View>
           </View>
         </Sheet>
+
+        {bulkDeleteConfirm ? (
+        <React.Suspense fallback={null}>
+        <ConfirmDialog
+          visible={!!bulkDeleteConfirm}
+          onClose={() => setBulkDeleteConfirm(null)}
+          onConfirm={confirmBulkDelete}
+          title={`Delete ${bulkDeleteConfirm?.length ?? 0} ${(bulkDeleteConfirm?.length ?? 0) === 1 ? "conversation" : "conversations"}?`}
+          description="This can't be undone."
+          cancelLabel="Cancel"
+          confirmLabel="Delete"
+          destructive
+          initialFocus="cancel"
+          testID="ari-bulk-delete-confirm"
+        />
+        </React.Suspense>
+        ) : null}
       </View>
     </Sheet>
   );
@@ -603,6 +677,7 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   menuBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.sm },
+  inlineNotice: { color: semantic.errorText, fontSize: 14, lineHeight: 20 },
   menuTitle: { color: textTokens.primary, fontSize: 20, lineHeight: 32, fontWeight: "600" },
   menuAction: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: radius.md },
   menuActionText: { color: textTokens.primary, fontSize: 15, lineHeight: 20, fontWeight: "600" },

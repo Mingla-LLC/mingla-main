@@ -1,7 +1,7 @@
 /** Issue #3429 — review and durable sent-file cards for Ari. */
 
-import React from "react";
-import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AlertCircle, CheckCircle2, FileText, Image as ImageIcon, RotateCw, X } from "lucide-react-native";
 
 import { accent, ariThread, glass, radius, semantic, spacing, text as textTokens } from "../../constants/designSystem";
@@ -98,23 +98,26 @@ export const AriAttachmentTray: React.FC<{
               >
                 <X size={18} color={textTokens.secondary} />
               </Pressable>
-              {failed ? (
-                <View style={styles.failureFooter}>
-                  <Text style={styles.failureCopy}>{attachment.errorMessage}</Text>
-                  <View style={styles.failureActions}>
-                    <Pressable onPress={() => onRetry(attachment.localId)} style={styles.footerAction} accessibilityRole="button" accessibilityLabel={`Retry attaching ${attachment.name}`}>
-                      <Text style={styles.footerActionText}>Retry</Text>
-                    </Pressable>
-                    <Pressable onPress={() => onRemove(attachment.localId)} style={styles.footerAction} accessibilityRole="button" accessibilityLabel={`Remove file ${attachment.name}`}>
-                      <Text style={styles.footerActionText}>Remove file</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : null}
             </View>
           );
         })}
       </ScrollView>
+      {/* P2-5: failure details sit below the tray at full composer width, never
+          inside the horizontal scroller where they could be off-screen. */}
+      {attachments.filter((attachment) => attachment.state === "failed").map((attachment) => (
+        <View key={`failure-${attachment.localId}`} style={styles.failureBlock} accessibilityRole="alert">
+          <Text style={styles.failureFilename} numberOfLines={1}>{attachment.name}</Text>
+          <Text style={styles.failureCopy}>{attachment.errorMessage}</Text>
+          <View style={styles.failureActions}>
+            <Pressable onPress={() => onRetry(attachment.localId)} style={styles.footerAction} accessibilityRole="button" accessibilityLabel={`Retry attaching ${attachment.name}`}>
+              <Text style={styles.footerActionText}>Retry</Text>
+            </Pressable>
+            <Pressable onPress={() => onRemove(attachment.localId)} style={styles.footerAction} accessibilityRole="button" accessibilityLabel={`Remove file ${attachment.name}`}>
+              <Text style={styles.footerActionText}>Remove file</Text>
+            </Pressable>
+          </View>
+        </View>
+      ))}
       <Text style={styles.privacy}>Files are saved with this conversation and kept private to your brand workspace. Ari may process them to answer this chat.</Text>
     </View>
   );
@@ -124,6 +127,8 @@ export const AriSentAttachments: React.FC<{
   attachments: AriSentAttachment[];
   surface?: "main" | "website";
 }> = ({ attachments, surface = "main" }) => {
+  // D-9: Alert is a no-op on web; the open failure is inline under the cards.
+  const [openError, setOpenError] = useState<string | null>(null);
   if (!attachments.length) return null;
   return (
     <View style={styles.sentList} accessibilityRole="list">
@@ -135,6 +140,7 @@ export const AriSentAttachments: React.FC<{
             // client and analytics own native SDK bootstrap, so load them only
             // when a person opens a file instead of when any historical chat row
             // is rendered.
+            setOpenError(null);
             void Promise.all([
               import("../../services/ariAttachmentService"),
               import("../../services/ariPolishAnalytics"),
@@ -142,7 +148,7 @@ export const AriSentAttachments: React.FC<{
               captureAriAttachmentOutcome({ surface, outcome: "opened", fileType: attachment.file_type });
               return openAriAttachment(attachment.id);
             }).catch(() => {
-              Alert.alert("Couldn’t open attachment", "Check your connection and try again.");
+              setOpenError("Couldn’t open attachment. Check your connection and try again.");
             });
           }}
           style={({ pressed }) => [styles.sentCard, pressed && styles.pressed]}
@@ -157,6 +163,7 @@ export const AriSentAttachments: React.FC<{
           <CheckCircle2 size={16} color={semantic.success} />
         </Pressable>
       ))}
+      {openError ? <Text style={styles.openError} accessibilityRole="alert">{openError}</Text> : null}
     </View>
   );
 };
@@ -182,7 +189,6 @@ const styles = StyleSheet.create({
     borderColor: glass.border.profileBase,
     backgroundColor: raised,
     overflow: "hidden",
-    flexWrap: "wrap",
   },
   failedCard: { borderColor: semantic.error },
   thumbnail: { width: ariThread.attachmentThumb, height: ariThread.attachmentThumb, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: ariThread.composerSurface, overflow: "hidden" },
@@ -193,8 +199,10 @@ const styles = StyleSheet.create({
   stateRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   failedText: { color: semantic.error },
   iconControl: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  failureFooter: { width: "100%", borderTopWidth: 1, borderTopColor: semantic.error, paddingTop: spacing.sm, gap: spacing.xs },
-  failureCopy: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
+  failureBlock: { width: "100%", gap: spacing.xs, paddingVertical: spacing.xs },
+  failureFilename: { color: textTokens.secondary, fontSize: 12, lineHeight: 16, fontWeight: "600" },
+  failureCopy: { color: semantic.errorText, fontSize: 14, lineHeight: 20 },
+  openError: { color: semantic.errorText, fontSize: 14, lineHeight: 20 },
   failureActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   footerAction: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.sm },
   footerActionText: { color: accent.warm, fontSize: 14, fontWeight: "600" },

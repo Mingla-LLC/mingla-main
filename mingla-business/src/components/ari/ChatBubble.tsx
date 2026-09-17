@@ -46,14 +46,18 @@ export interface ChatBubbleProps {
   surface?: "main" | "website";
 }
 
-interface Segment {
+export interface AriBubbleSegment {
   kind: "paragraph" | "bullet";
   text: string;
 }
 
+type Segment = AriBubbleSegment;
+
 /** Split already-parsed plain text into paragraph / bullet segments.
- *  Container-level formatting only (no inline markdown). */
-function toSegments(raw: string): Segment[] {
+ *  Container-level formatting only (no inline markdown).
+ *  #3429 REWORK-1 P2-4: the ONE segmenter — the semantic reveal renders these
+ *  same segments, so a revealed answer and its settled row never differ. */
+export function toSegments(raw: string): Segment[] {
   const paragraphs = raw.split(/\n\n+/);
   const out: Segment[] = [];
   for (const para of paragraphs) {
