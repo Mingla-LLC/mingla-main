@@ -242,6 +242,77 @@ export async function fetchPublicEventSeedBySlug(
   if (error !== null) {
     throw new Error(error.message);
   }
-  if (data === null || data === undefined) return null;
+  if (data === null || data === undefined) {
+    // Unlisted RSVP invite link — the view lists PUBLIC events only, so an
+    // unlisted RSVP's own link used to end here. See fetchDirectRsvpEventRow.
+    const direct = await fetchDirectRsvpEventRow(brandSlug, eventSlug);
+    return direct === null
+      ? null
+      : mapPublicEventSeedRow(direct as unknown as PublicEventSeedViewRow);
+  }
   return mapPublicEventSeedRow(data as unknown as PublicEventSeedViewRow);
 }
+
+/**
+ * Unlisted RSVP invite link — the exact-link RSVP row.
+ *
+ * An UNLISTED RSVP (events.visibility = 'hidden') has no ticketed bundle and no
+ * row in the public-only business_public_events_view, so a cold /e/ link to it
+ * showed the not-found cap. pg_public_rsvp_by_slug admits public and unlisted
+ * RSVPs by exact slug (never private) and carries the same event as ONE
+ * view-shaped row, `publicEventRow` — every view column, the view's own address
+ * withholding — so the mappers that read the view read it unchanged.
+ *
+ * Asked only AFTER the view misses. A payload without a well-formed row (a
+ * database from before that change) is "not visible here". Errors THROW.
+ */
+export const directRsvpRowFromPayload = (
+  payload: unknown,
+): Record<string, unknown> | null => {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const row = (payload as Record<string, unknown>).publicEventRow;
+  if (row === null || typeof row !== "object" || Array.isArray(row)) return null;
+  const candidate = row as Record<string, unknown>;
+  return typeof candidate.id === "string" &&
+    typeof candidate.brand_id === "string" &&
+    typeof candidate.brand_slug === "string" &&
+    typeof candidate.slug === "string" &&
+    candidate.event_type === "rsvp"
+    ? candidate
+    : null;
+};
+
+export async function fetchDirectRsvpEventRow(
+  brandSlug: string,
+  eventSlug: string,
+): Promise<Record<string, unknown> | null> {
+  const { supabase } = await import("./supabase");
+  const { data, error } = await supabase.rpc("pg_public_rsvp_by_slug", {
+    p_brand_slug: brandSlug,
+    p_event_slug: eventSlug,
+  });
+  if (error !== null) {
+    throw new Error(error.message);
+  }
+  return directRsvpRowFromPayload(data);
+}
+
+/**
+ * The host's two guest-facing display choices, read from a direct row's
+ * sanitised theme the same way pg_public_social_proof reads them (absent or
+ * unreadable -> false). The social-proof read answers NULL for an unlisted
+ * event, so these are the only source of the host's choice on that page.
+ */
+export const rsvpHostDisplayGatesFromTheme = (
+  publicTheme: unknown,
+): { privateGuestList: boolean; hideRemainingCount: boolean } => {
+  const settings = asRecord(asRecord(asRecord(publicTheme).business_event).settings);
+  const read = (value: unknown): boolean =>
+    value === true || value === "true";
+  return {
+    privateGuestList: read(settings.privateGuestList),
+    hideRemainingCount: read(settings.hideRemainingCount),
+  };
+};
