@@ -43,10 +43,10 @@
 --       host's edge action and the */5 sweep never run one refund at once.
 --   (7) the guest's cancellation notice carries the refund amount.
 --
--- MONOTONIC VERSION 20270708003391: above main's frontier
--- (20270706003197_issue_3197) and above every open PR's migration at rebase
--- time (#3407 20270706000000, #3420 20270707003386, #3421 20270707000000).
--- Renamed from 20270706003391 on the rebase onto main. DO NOT run
+-- MONOTONIC VERSION 20270710003391: above every version already applied in
+-- production when main was merged in (20270708003439_draft_autosave and
+-- 20270709000000_unlisted_rsvp_invite_link). Renamed from 20270708003391,
+-- which sorted below both; originally 20270706003391. DO NOT run
 -- `supabase db push`; apply via the Management API after review. No data is
 -- rewritten.
 -- ===========================================================================
