@@ -46,6 +46,7 @@ import type { RefundPolicy } from "./refundPolicyModel";
 import { setOfferingRefundPolicy } from "./refundPolicyWrites";
 import { parseOfferingRefundPolicy } from "@mingla/offering-rendering/offeringRefundPolicy";
 import { OfferingRefundTermsError } from "../utils/refundPolicyTerms";
+import { coverBasePayload } from "../utils/draftCoverBase";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -1037,6 +1038,9 @@ export const publishBusinessEventDraft = async (
   draft: DraftEvent,
   clientRevision: number | null = draft.clientRevision ?? null,
 ): Promise<PublishedBusinessEvent> => {
+  // #3439: pair the base with THIS draft snapshot before any awaited write.
+  // A cover poll may advance the shared base while refund terms are saving.
+  const publishCoverBase = coverBasePayload(draft.id);
   // ══ issue #3284 — refund terms FIRST, fail closed ════════════════════════
   // The organiser's terms are written to events.refund_policy through the one
   // gated owner (a draft row takes them with no reason and no sales gate) BEFORE
@@ -1063,7 +1067,15 @@ export const publishBusinessEventDraft = async (
       p_event_id: draft.id,
       p_draft_payload: {
         ...payload,
+        ...publishCoverBase,
         visibility: publishedVisibilityForDraft(draft.visibility),
+        // #1653 — business_publish_event_draft promotes the pin AND its
+        // precision from these top-level keys. The payload never carried them,
+        // so the precision half never ran: every published event has
+        // coordinate_precision NULL (the pin itself arrived via the autosave
+        // column, which has no precision). Same values the draft already holds.
+        locationGeo: draft.locationGeo,
+        coordinatePrecision: draft.coordinatePrecision ?? null,
       },
       p_client_revision: clientRevision,
     },

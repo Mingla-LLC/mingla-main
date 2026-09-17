@@ -23,6 +23,10 @@ const blockCopy = (wizard: string, reason: string | null): string | null => {
     return wizard === "rsvp"
       ? "Turnout modeling needs a capacity — this RSVP is open-ended."
       : "Turnout modeling needs a capacity — this event has unlimited tickets.";
+  // An RSVP only reaches missing_capacity with a guest limit below
+  // MIN_FORECAST_CAPACITY (no limit is unlimited_capacity), so say what to change.
+  if (reason === "missing_capacity" && wizard === "rsvp")
+    return "Set a guest limit above 1 to check turnout.";
   const map: Record<string, string> = {
     missing_title: "Add a title to check turnout.",
     missing_category: "Add a category to check turnout.",

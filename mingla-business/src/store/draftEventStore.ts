@@ -39,6 +39,7 @@ import {
 } from "zustand/middleware";
 
 import { generateDraftId } from "../utils/draftEventId";
+import { recordServerCoverBase } from "../utils/draftCoverBase";
 import { convertDraftToLiveEvent } from "../utils/liveEventConverter";
 // ORCH-0877 — smart-infer helper used for v10→v11 persist backfill of the
 // new endsAtUtc field on legacy drafts.
@@ -998,6 +999,40 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
 };
 
 
+/**
+ * Where a promoted draft went: the client-only `d_*` id → the server id that
+ * replaced it (written by `replaceDraft`, i.e. the d_*→server promotion swap).
+ *
+ * WHY — the creator's name field lost the END of what the host typed. The swap
+ * removes `d_*` from `drafts` at once, but the route only re-renders the wizard
+ * against the server id a scheduler task later. Keystrokes handled in between
+ * still carried the old id: `updateDraft(d_*)` matched nothing and dropped the
+ * letter, and the field was then set back to the swapped copy. Under load, or
+ * with a fast typist or a paste, that was the whole tail ("Record Launch: Room +
+ * Stream" kept "Record Launch").
+ *
+ * Only writes and `useDraftById` follow it. `getDraft` keeps its raw meaning
+ * (a promoted `d_*` reads null), which the promotion registry relies on.
+ * In memory only: an old id is never reused and the URL is moved onto the
+ * server id in the same promotion.
+ */
+const promotedDraftIds = new Map<string, string>();
+
+const resolvePromotedDraftId = (
+  drafts: readonly DraftEvent[],
+  id: string,
+): string => {
+  let current = id;
+  const seen = new Set<string>();
+  while (!drafts.some((d) => d.id === current)) {
+    const next = promotedDraftIds.get(current);
+    if (next === undefined || seen.has(next)) return id;
+    seen.add(current);
+    current = next;
+  }
+  return current;
+};
+
 export const useDraftEventStore = create<DraftEventState>()(
   persist(
     (set, get) => ({
@@ -1055,6 +1090,10 @@ export const useDraftEventStore = create<DraftEventState>()(
             return s;
           }
           accepted = true;
+          // The accepted server copy becomes the local draft, so its cover is
+          // now the base this session's autosaves and cover adoption merge
+          // against (see utils/draftCoverBase).
+          recordServerCoverBase(draft.id, draft.coverMediaUrl);
           // #3288 — merge-on-read for the additional-photos gallery. A server
           // draft whose read did not carry the gallery column has
           // `coverGallery: undefined` (UNKNOWN). Replacing the local draft
@@ -1102,6 +1141,9 @@ export const useDraftEventStore = create<DraftEventState>()(
       },
 
       replaceDraft: (oldId, draft): void => {
+        // Recorded before `set` so every subscriber notified by this swap
+        // already resolves the old id to its replacement.
+        if (oldId !== draft.id) promotedDraftIds.set(oldId, draft.id);
         set((s) => {
           const filtered = s.drafts.filter((d) => d.id !== oldId && d.id !== draft.id);
           return { drafts: [...filtered, draft] };
@@ -1110,11 +1152,16 @@ export const useDraftEventStore = create<DraftEventState>()(
 
       updateDraft: (id, patch): void => {
         const now = new Date().toISOString();
-        set((s) => ({
-          drafts: s.drafts.map((d) =>
-            d.id === id ? { ...d, ...patch, updatedAt: now } : d,
-          ),
-        }));
+        set((s) => {
+          // A keystroke still addressed to a promoted d_* id lands on the
+          // server draft that replaced it (see promotedDraftIds).
+          const target = resolvePromotedDraftId(s.drafts, id);
+          return {
+            drafts: s.drafts.map((d) =>
+              d.id === target ? { ...d, ...patch, updatedAt: now } : d,
+            ),
+          };
+        });
       },
 
       setLastStep: (id, step): void => {
@@ -1242,6 +1289,7 @@ export const useDraftEventStore = create<DraftEventState>()(
       },
 
       reset: (): void => {
+        promotedDraftIds.clear();
         set({ drafts: [], activeDraftId: null, draftEditMeta: {} });
       },
     }),
@@ -1267,12 +1315,17 @@ export const useDraftsForBrand = (brandId: string | null): DraftEvent[] => {
 
 /**
  * Selector: a single draft by id, or null.
+ *
+ * A promoted `d_*` id resolves to the server draft that replaced it, in the same
+ * render as the swap. The creator routes read the draft through this, so the
+ * wizard's fields and its update callback move onto the server id before the
+ * next keystroke is handled (see promotedDraftIds).
  */
 export const useDraftById = (id: string | null): DraftEvent | null => {
   const drafts = useDraftEventStore((s) => s.drafts);
-  return useMemo(
-    (): DraftEvent | null =>
-      id === null ? null : (drafts.find((d) => d.id === id) ?? null),
-    [drafts, id],
-  );
+  return useMemo((): DraftEvent | null => {
+    if (id === null) return null;
+    const target = resolvePromotedDraftId(drafts, id);
+    return drafts.find((d) => d.id === target) ?? null;
+  }, [drafts, id]);
 };

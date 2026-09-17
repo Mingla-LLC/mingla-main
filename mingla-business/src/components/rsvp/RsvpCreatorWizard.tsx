@@ -56,6 +56,12 @@ import {
   DESKTOP_WIZARD_RAIL_WIDTH,
 } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useScrollToTopOnStepChange } from "../../hooks/useScrollToTopOnStepChange";
+import {
+  useServerCoverAdoption,
+  type FetchServerCover,
+} from "../../hooks/useServerCoverAdoption";
+import type { ServerDraftCover } from "../../utils/draftCoverBase";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { type Brand } from "../../store/currentBrandStore";
 import {
@@ -186,6 +192,12 @@ export interface RsvpCreatorWizardProps {
    *  the provider-neutral payments onboarding. */
   onOpenStripeOnboard?: () => void;
   onAutosaveDraft?: (draft: DraftEvent) => void;
+  /**
+   * Reads the server draft's cover, so a cover video that finishes after its
+   * Cover sheet closed lands on the draft (see useServerCoverAdoption). The
+   * route passes `fetchServerDraftCover`; absent = adoption is off.
+   */
+  fetchServerCover?: FetchServerCover;
   /** issue #3040 — see EventCreatorWizard. Route-owned server-row resolver. */
   onRequireServerDraft?: () => Promise<string>;
   onDiscardServerDraft?: (draft: DraftEvent) => Promise<void>;
@@ -211,6 +223,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   onOpenPreview,
   onOpenStripeOnboard,
   onAutosaveDraft,
+  fetchServerCover,
   onRequireServerDraft,
   onDiscardServerDraft,
   onPublishDraft,
@@ -252,6 +265,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const [isDiscarding, setIsDiscarding] = useState<boolean>(false);
   const [coverVideoProcessing, setCoverVideoProcessing] =
     useState<boolean>(false);
+  const coverIntentVersionRef = useRef(0);
+  const processingCoverRef = useRef<{ active: boolean; started: boolean; base: string | null }>({
+    active: false, started: false, base: null,
+  });
   const [discardError, setDiscardError] = useState<string | null>(null);
   // issue #3047 [rsvp-publish-reachable] — the publish dialog's OWN inline error,
   // rendered by ConfirmDialog's errorMessage slot. Mirrors discardError exactly.
@@ -341,6 +358,8 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   // doesn't reliably scroll-to-focused-input for multiline TextInputs
   // in this nested layout (verified by smoke 2026-04-30).
   const scrollViewRef = useRef<ScrollView | null>(null);
+  // Each step opens at the top — the ScrollView is shared by every step.
+  useScrollToTopOnStepChange(scrollViewRef, currentStep);
   // issue #1027 (iOS description-reveal REGRESSION) — deferred scroll-to-bottom.
   // The RSVP wizard REUSES CreatorStep1Basics, so its Description field hits the
   // exact same reveal path. Set by step bodies on input focus, consumed when the
@@ -486,6 +505,9 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     (
       patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>,
     ): void => {
+      if (Object.prototype.hasOwnProperty.call(patch, "coverMediaUrl")) {
+        coverIntentVersionRef.current += 1;
+      }
       const nextRevision = clientRevisionRef.current + 1;
       clientRevisionRef.current = nextRevision;
       const revisionedPatch = {
@@ -510,6 +532,47 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const handleShowToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
   }, []);
+
+  // A cover video picked on the Cover step finishes on the SERVER, often after
+  // its sheet closed. Adopt it into the draft (card + Preview + next autosave)
+  // unless the host changed the cover since; keep checking while it processes.
+  const handleAdoptServerCover = useCallback(
+    (cover: ServerDraftCover): void => {
+      handleUpdate({ ...cover });
+    },
+    [handleUpdate],
+  );
+  const handleCoverProcessingChange = useCallback((processing: boolean): void => {
+    const tracked = processingCoverRef.current;
+    if (processing && !tracked.active) {
+      // A later upload must not be completed by an earlier in-flight read.
+      if (tracked.started) coverIntentVersionRef.current += 1;
+      tracked.base = latestDraftRef.current.coverMediaUrl ?? null;
+    }
+    // An idle/ready notification also establishes the previous job boundary.
+    tracked.started = true;
+    tracked.active = processing;
+    setCoverVideoProcessing(processing);
+  }, []);
+  const handleCoverReconciled = useCallback((cover: ServerDraftCover | null): void => {
+    const tracked = processingCoverRef.current;
+    if (tracked.active && cover?.coverMediaType === "video" &&
+        cover.coverMediaUrl !== null && cover.coverMediaUrl !== tracked.base) {
+      tracked.active = false;
+      setCoverVideoProcessing(false);
+    }
+  }, []);
+  useServerCoverAdoption({
+    draftId,
+    fetchServerCover,
+    localCoverUrl: liveDraft.coverMediaUrl ?? null,
+    watching: coverVideoProcessing,
+    pulse: currentStep,
+    onAdopt: handleAdoptServerCover,
+    onReconciled: handleCoverReconciled,
+    getCoverIntentVersion: () => coverIntentVersionRef.current,
+    onReadError: () => handleShowToast("Couldn't refresh your cover. Retrying shortly."),
+  });
 
   const handleDismissToast = useCallback((): void => {
     setToast((prev) => ({ ...prev, visible: false }));
@@ -766,7 +829,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       // Issue #3291 — first source of the Where step's rank-only proximity.
       brandLocation: brand,
       coverMediaApplyMode: "draft_auto" as const,
-      onCoverVideoProcessingChange: setCoverVideoProcessing,
+      onCoverVideoProcessingChange: handleCoverProcessingChange,
       // ORCH-1335 — RsvpStep5Setup reads this to swap its chip-in bank callout.
       chipInPayoutReady,
     };
