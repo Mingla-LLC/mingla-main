@@ -11,8 +11,10 @@ describe("#1008 turnout surface wiring", () => {
     const rsvpWizard = read("src/components/rsvp/RsvpCreatorWizard.tsx");
     expect(eventWizard.match(/<LazyTurnoutIntelProvider/g)).toHaveLength(1);
     expect(rsvpWizard.match(/<LazyTurnoutIntelProvider/g)).toHaveLength(1);
-    expect(eventWizard).toContain("previewActive={currentStep === 6}");
-    expect(rsvpWizard).toContain("previewActive={currentStep === 5}");
+    // [TEST-MOD-APPROVED #1780] Invite people is inserted before Review, so
+    // Review moves from Event step 6 to 7 and RSVP step 5 to 6.
+    expect(eventWizard).toContain("previewActive={currentStep === 7}");
+    expect(rsvpWizard).toContain("previewActive={currentStep === 6}");
 
     const mounts: [string, string][] = [
       ["src/components/event/CreatorStep2When.tsx", 'surface="when"'],

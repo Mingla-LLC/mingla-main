@@ -109,8 +109,11 @@ describe("ORCH-1118 — create wizard requires confirmed Mapbox picks", () => {
     // B2 multi-package validity) and is now multi-line (TripCreatorWizard.tsx
     // :1637-1642). `!tripLocationValid` is still a disabling term (ORCH-1118); the
     // pin is updated to the exact current multi-term gate at the same strength.
+    // [TEST-MOD-APPROVED #1780] Publish also waits for a confirmed, refreshed
+    // invite plan (!invitePublishReady || checkingInvitePublish); every prior
+    // disabling term is still asserted.
     expect(w).toMatch(
-      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\}/,
+      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
     );
   });
 });

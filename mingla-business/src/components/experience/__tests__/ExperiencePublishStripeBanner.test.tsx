@@ -74,12 +74,15 @@ describe("ORCH-1076 — T-20 disabled Publish, draft enabled", () => {
     // The Publish button (from its label to the end of its element) carries the
     // needsStripe disable.
     const publishBlock = src.slice(publishIdx, publishIdx + 700);
-    expect(publishBlock).toContain("disabled={experienceNeedsStripe}");
+    // [TEST-MOD-APPROVED #1780] Publish also waits for a confirmed, refreshed
+    // invite plan; the needsStripe term stays first in the disable.
+    expect(publishBlock).toContain("disabled={experienceNeedsStripe || !invitePublishReady || checkingInvitePublish}");
 
     // The Save-as-draft button element (bounded to BEFORE the Publish button)
     // has NO needsStripe disable.
     const draftBlock = src.slice(draftIdx, publishIdx);
-    expect(draftBlock).not.toContain("disabled={experienceNeedsStripe}");
+    // [TEST-MOD-APPROVED #1780] Same Publish-only disable expression as above.
+    expect(draftBlock).not.toContain("disabled={experienceNeedsStripe || !invitePublishReady || checkingInvitePublish}");
   });
 });
 
