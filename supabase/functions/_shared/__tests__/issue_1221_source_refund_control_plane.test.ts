@@ -4,6 +4,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { buildSourceRefundRecipientRows } from "../sourceRefundNotifications.ts";
+import { sourceRefundNoticeCopy } from "../sourceRefundNotifications.ts";
 import {
   deriveSourceRefundAttentionToken,
   hashSourceRefundAttentionToken,
@@ -315,4 +316,317 @@ Deno.test("#1221 adopted Paystack attempt reconciles its persisted identity with
     if (originalKey === undefined) Deno.env.delete("PAYSTACK_SECRET_KEY_TEST");
     else Deno.env.set("PAYSTACK_SECRET_KEY_TEST", originalKey);
   }
+});
+
+// ── Ticket checkout refund notices ──────────────────────────────────────────
+// A buyer whose ticket could not be confirmed is refunded automatically. They
+// must be told why, in words that match what happened, and the brand must be
+// told too. The notice must also be queued for the contact the recipient
+// resolver will read back at send time (a contact corrected on the refund
+// first), or the keyed fingerprint cannot match and nothing is sent.
+async function runTicketRefundNotices(
+  overrides: Partial<SourceRefundOperation> = {},
+) {
+  const originalFetch = globalThis.fetch;
+  const saved = new Map<string, string | undefined>();
+  const env = {
+    SOURCE_REFUNDS_POST_DISABLED: "false",
+    PAYSTACK_MODE: "test",
+    PAYSTACK_SECRET_KEY_TEST: "sk_test_ticketrefundnotice",
+    AD_CONVERSION_TOKENS: testSecurityBundle(),
+  };
+  for (const [name, value] of Object.entries(env)) {
+    saved.set(name, Deno.env.get(name));
+    Deno.env.set(name, value);
+  }
+  const persistedMerchantNote = "mingla_source_refund:ticket-refund:1";
+  const outbox: Array<Record<string, unknown>> = [];
+  const deliveries: Array<Record<string, unknown>> = [];
+
+  class Query {
+    constructor(private readonly table: string) {}
+    private pending: Record<string, unknown> | null = null;
+    select() {
+      return this;
+    }
+    eq() {
+      return this;
+    }
+    is() {
+      return this;
+    }
+    not() {
+      return this;
+    }
+    in() {
+      return this;
+    }
+    maybeSingle() {
+      if (this.table === "ticket_checkout_sessions") {
+        return Promise.resolve({
+          data: {
+            buyer_user_id: null,
+            buyer_email: "buyer@example.com",
+            buyer_phone_e164: "+15555550101",
+          },
+          error: null,
+        });
+      }
+      if (this.table === "brands") {
+        return Promise.resolve({
+          data: {
+            name: "Ticket brand",
+            contact_email: "brand@example.com",
+            contact_phone: "+15555550100",
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    }
+    upsert(payload: Record<string, unknown>) {
+      this.pending = payload;
+      if (this.table === "notification_outbox") outbox.push(payload);
+      if (this.table === "source_refund_notification_deliveries") {
+        deliveries.push(payload);
+      }
+      return this;
+    }
+    single() {
+      return Promise.resolve({
+        data: { id: `outbox-${outbox.length}` },
+        error: null,
+      });
+    }
+    then(
+      resolve: (value: { data: unknown; error: null }) => unknown,
+    ) {
+      if (this.table === "brand_team_members") {
+        return Promise.resolve(resolve({
+          data: [{ user_id: "team-user-1", role: "brand_owner" }],
+          error: null,
+        }));
+      }
+      return Promise.resolve(
+        resolve({ data: this.pending ? null : [], error: null }),
+      );
+    }
+  }
+  const client = {
+    rpc(fn: string) {
+      if (fn === "ensure_source_refund_attempt") {
+        return Promise.resolve({
+          data: {
+            attempt_no: 1,
+            idempotency_key: "source_refund_buyer:ticket-refund:1",
+            merchant_note: persistedMerchantNote,
+            provider_operation_id: "ticket-provider-refund",
+            reconcile_only: true,
+          },
+          error: null,
+        });
+      }
+      if (fn === "record_source_refund_provider_event") {
+        return Promise.resolve({
+          data: { source_refund_event_id: 41, attention_generation: 0 },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: {}, error: null });
+    },
+    from(table: string) {
+      return new Query(table);
+    },
+  };
+  globalThis.fetch = ((input: string | URL | Request) => {
+    const url = String(input);
+    const json = (body: unknown) =>
+      Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    if (url.includes("/transaction/verify/ticket-transaction")) {
+      return json({
+        status: true,
+        data: {
+          id: 2079101,
+          reference: "ticket-transaction",
+          status: "success",
+          currency: "NGN",
+          amount: 10000,
+        },
+      });
+    }
+    assertStringIncludes(url, "/refund?transaction=2079101&perPage=100");
+    return json({
+      status: true,
+      data: [{
+        id: "ticket-provider-refund",
+        merchant_note: persistedMerchantNote,
+        amount: 10000,
+        status: "processed",
+        transaction: 2079101,
+      }],
+    });
+  }) as typeof fetch;
+
+  try {
+    await runSourceRefundOperation(client, {
+      id: "ticket-refund",
+      source_type: "ticket_checkout_session",
+      source_id: "ticket-session",
+      subject_id: "ticket-session",
+      brand_id: "ticket-brand",
+      provider: "paystack",
+      currency: "NGN",
+      original_charge_cents: 10000,
+      original_application_fee_cents: 0,
+      buyer_refund_requested_cents: 10000,
+      fee_reversal_required_cents: 0,
+      buyer_state: "queued",
+      fee_state: "not_required",
+      active_buyer_attempt_no: 1,
+      active_fee_attempt_no: 0,
+      provider_payment_reference: "ticket-transaction",
+      paystack_transaction_id: 2079101,
+      provider_account_reference: null,
+      stripe_application_fee_id: null,
+      provider_refund_id: null,
+      refund_kind: "late_payment_no_value",
+      ...overrides,
+    } satisfies SourceRefundOperation);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [name, value] of saved) {
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+  }
+  return { outbox, deliveries };
+}
+
+function outboxMessage(
+  rows: Array<Record<string, unknown>>,
+  category: string,
+  channel: string,
+): string | undefined {
+  const row = rows.find((entry) =>
+    entry.category_key === category && entry.channel === channel
+  );
+  return (row?.payload as Record<string, unknown> | undefined)?.message as
+    | string
+    | undefined;
+}
+
+Deno.test("ticket checkout refund tells the buyer and the brand why the payment came back", async () => {
+  const { outbox } = await runTicketRefundNotices();
+  const amount = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "NGN",
+  }).format(100);
+  const buyer =
+    `We couldn't confirm your ticket, so your payment of ${amount} has been refunded in full.`;
+  const brand =
+    `Event ticket payment: A ticket couldn't be confirmed, so the buyer's payment of ${amount} has been refunded in full.`;
+  assertEquals(
+    outboxMessage(outbox, "source_refund_buyer_state", "email"),
+    buyer,
+  );
+  assertEquals(outboxMessage(outbox, "source_refund_buyer_state", "sms"), buyer);
+  for (const channel of ["inapp", "push", "email", "sms"]) {
+    assertEquals(
+      outboxMessage(outbox, "source_refund_brand_state", channel),
+      brand,
+    );
+  }
+  assert(outbox.every((row) => row.contact === null));
+});
+
+Deno.test("ticket checkout refund notice is fingerprinted for the contact the resolver reads", async () => {
+  const keys = readSourceRefundRecipientKeys(testSecurityBundle());
+  const fingerprintFor = (channel: "email" | "sms", recipient: string) =>
+    sourceRefundRecipientFingerprint({ key: keys.current, channel, recipient });
+  const delivery = (
+    rows: Array<Record<string, unknown>>,
+    channel: string,
+  ) =>
+    rows.find((row) =>
+      String(row.idempotency_key).endsWith(`:buyer:${channel}:contact`)
+    );
+
+  const session = await runTicketRefundNotices();
+  assertEquals(
+    delivery(session.deliveries, "email")?.recipient_fingerprint,
+    await fingerprintFor("email", "buyer@example.com"),
+  );
+  assertEquals(
+    delivery(session.deliveries, "sms")?.recipient_fingerprint,
+    await fingerprintFor("sms", "+15555550101"),
+  );
+
+  const corrected = await runTicketRefundNotices({
+    attention_recipient_email_override: "fixed@example.com",
+    attention_recipient_phone_e164_override: "+15555550199",
+  });
+  assertEquals(
+    delivery(corrected.deliveries, "email")?.recipient_fingerprint,
+    await fingerprintFor("email", "fixed@example.com"),
+  );
+  assertEquals(
+    delivery(corrected.deliveries, "sms")?.recipient_fingerprint,
+    await fingerprintFor("sms", "+15555550199"),
+  );
+});
+
+Deno.test("refund notice copy is honest per state and unchanged for other refunds", () => {
+  const ticket = (state: string, fullRefund = true) =>
+    sourceRefundNoticeCopy({
+      state,
+      amountLabel: "$3.00",
+      sourceLabel: "Event ticket payment",
+      sourceType: "ticket_checkout_session",
+      refundKind: "late_payment_no_value",
+      fullRefund,
+    });
+  assertEquals(
+    ticket("queued").buyer,
+    "We couldn't confirm your ticket, so we're refunding your payment of $3.00 in full.",
+  );
+  assertEquals(
+    ticket("provider_pending").brand,
+    "Event ticket payment: A ticket couldn't be confirmed, so the buyer's payment of $3.00 is being refunded in full.",
+  );
+  assertEquals(
+    ticket("processed", false).buyer,
+    "We couldn't confirm your ticket, so $3.00 of your payment has been refunded.",
+  );
+  assertEquals(
+    ticket("failed_terminal").buyer,
+    "We couldn't confirm your ticket. Your $3.00 refund needs support review.",
+  );
+
+  const venue = sourceRefundNoticeCopy({
+    state: "processed",
+    amountLabel: "$3.00",
+    sourceLabel: "Venue order",
+    sourceType: "venue_menu_order",
+    refundKind: "venue_order_guest_cancel",
+    fullRefund: true,
+  });
+  assertEquals(venue.buyer, "Your $3.00 refund has been processed.");
+  assertEquals(venue.brand, "Venue order: Your $3.00 refund has been processed.");
+  // Another ticket refund kind keeps the generic wording.
+  assertEquals(
+    sourceRefundNoticeCopy({
+      state: "processed",
+      amountLabel: "$3.00",
+      sourceLabel: "Event ticket payment",
+      sourceType: "ticket_checkout_session",
+      refundKind: "event_cancel",
+      fullRefund: true,
+    }).buyer,
+    "Your $3.00 refund has been processed.",
+  );
 });

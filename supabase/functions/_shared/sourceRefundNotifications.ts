@@ -165,6 +165,80 @@ export async function sourceRefundPayloadFingerprint(input: {
   }));
 }
 
+// What the buyer and the brand are told about a refund in a given state.
+//
+// A ticket checkout refunded because the ticket could not be confirmed (the
+// `late_payment_no_value` kind) gets its own wording: the buyer paid, got no
+// ticket, and the generic "Your refund has been processed" never says why. It
+// only says "in full" when the refund really is the whole charge.
+export function sourceRefundNoticeCopy(input: {
+  state: string;
+  amountLabel: string;
+  sourceLabel: string;
+  sourceType?: string | null;
+  refundKind?: string | null;
+  fullRefund?: boolean;
+}): { buyer: string; brand: string } {
+  const amount = input.amountLabel;
+  if (
+    input.sourceType === "ticket_checkout_session" &&
+    input.refundKind === "late_payment_no_value"
+  ) {
+    const full = input.fullRefund === true;
+    const buyerPayment = full
+      ? `your payment of ${amount}`
+      : `${amount} of your payment`;
+    const brandPayment = full
+      ? `the buyer's payment of ${amount}`
+      : `${amount} of the buyer's payment`;
+    const inFull = full ? " in full" : "";
+    let buyer: string;
+    let brand: string;
+    switch (input.state) {
+      case "processed":
+        buyer =
+          `We couldn't confirm your ticket, so ${buyerPayment} has been refunded${inFull}.`;
+        brand =
+          `A ticket couldn't be confirmed, so ${brandPayment} has been refunded${inFull}.`;
+        break;
+      case "needs_attention":
+        buyer =
+          `We couldn't confirm your ticket. Action is needed to continue your ${amount} refund.`;
+        brand =
+          `A ticket couldn't be confirmed. Action is needed to continue the buyer's ${amount} refund.`;
+        break;
+      case "failed_retryable":
+        buyer =
+          `We couldn't confirm your ticket. Your ${amount} refund is delayed. We're retrying it.`;
+        brand =
+          `A ticket couldn't be confirmed. The buyer's ${amount} refund is delayed and is being retried.`;
+        break;
+      case "failed_terminal":
+        buyer =
+          `We couldn't confirm your ticket. Your ${amount} refund needs support review.`;
+        brand =
+          `A ticket couldn't be confirmed. The buyer's ${amount} refund needs support review.`;
+        break;
+      default:
+        buyer =
+          `We couldn't confirm your ticket, so we're refunding ${buyerPayment}${inFull}.`;
+        brand =
+          `A ticket couldn't be confirmed, so ${brandPayment} is being refunded${inFull}.`;
+    }
+    return { buyer, brand: `${input.sourceLabel}: ${brand}` };
+  }
+  const stateCopy: Record<string, string> = {
+    provider_pending: `Your ${amount} refund is processing.`,
+    needs_attention: `Action is needed to continue your ${amount} refund.`,
+    processed: `Your ${amount} refund has been processed.`,
+    failed_retryable: `Your ${amount} refund is delayed. We’re retrying it.`,
+    failed_terminal: `Your ${amount} refund needs support review.`,
+  };
+  const buyer = stateCopy[input.state] ??
+    `Your ${amount} refund is processing.`;
+  return { buyer, brand: `${input.sourceLabel}: ${buyer}` };
+}
+
 // deno-lint-ignore no-explicit-any
 export async function enqueueSourceRefundNotifications(client: any, input: {
   refundId: string;
@@ -177,21 +251,14 @@ export async function enqueueSourceRefundNotifications(client: any, input: {
   brandId: string;
   amountLabel: string;
   sourceLabel: string;
+  sourceType?: string | null;
+  refundKind?: string | null;
+  fullRefund?: boolean;
 }): Promise<void> {
   if (!Number.isSafeInteger(input.eventId) || input.eventId < 1) {
     throw new Error("source_refund_notification_event_missing");
   }
-  const stateCopy: Record<string, string> = {
-    provider_pending: `Your ${input.amountLabel} refund is processing.`,
-    needs_attention:
-      `Action is needed to continue your ${input.amountLabel} refund.`,
-    processed: `Your ${input.amountLabel} refund has been processed.`,
-    failed_retryable:
-      `Your ${input.amountLabel} refund is delayed. We’re retrying it.`,
-    failed_terminal: `Your ${input.amountLabel} refund needs support review.`,
-  };
-  const buyerCopy = stateCopy[input.state] ??
-    `Your ${input.amountLabel} refund is processing.`;
+  const copy = sourceRefundNoticeCopy(input);
   const { data: brand } = await client.from("brands")
     .select("name,contact_email,contact_phone")
     .eq("id", input.brandId).maybeSingle();
@@ -222,7 +289,7 @@ export async function enqueueSourceRefundNotifications(client: any, input: {
   }
 
   const buyerPayload = {
-    message: buyerCopy,
+    message: copy.buyer,
     amount: input.amountLabel,
     state: input.state,
     source_refund_id: input.refundId,
@@ -252,7 +319,7 @@ export async function enqueueSourceRefundNotifications(client: any, input: {
     .in("role", ["brand_owner", "brand_admin", "finance_manager"]);
   if (teamError) throw new Error("source_refund_brand_team_lookup_failed");
   const brandPayload = {
-    message: `${input.sourceLabel}: ${buyerCopy}`,
+    message: copy.brand,
     operation_id: input.refundId,
     source_refund_id: input.refundId,
     amount: input.amountLabel,
