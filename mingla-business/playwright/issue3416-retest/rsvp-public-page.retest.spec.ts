@@ -219,7 +219,7 @@ test("R5 PENDING DEVIATION: while the pass check is in flight, 'View your pass' 
   await viewPass(page).click();
   const svgWhilePending = qr(page).first().locator("svg");
   await expect(svgWhilePending).toBeVisible({ timeout: 5_000 });
-  const pendingQrPixels = await svgWhilePending.evaluate((n) => [...n.querySelectorAll("path")].reduce((sum, p) => sum + (p.getAttribute("d") ?? "").length, 0));
+  const pendingQrPixels = await svgWhilePending.evaluate((n) => Array.from(n.querySelectorAll("path")).reduce((sum, p) => sum + (p.getAttribute("d") ?? "").length, 0));
   await shot(page, "R5a-PENDING-scannable-qr-before-409-375");
   const shotAt = Date.now();
   expect(backend.passAnsweredAt).toHaveLength(0); // the 409 had NOT been answered when the QR was on screen

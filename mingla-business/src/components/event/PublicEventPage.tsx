@@ -1331,7 +1331,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // reply is now written to sessionStorage (same tab only: the redirect comes
   // back to this tab, and a later visitor on a shared device does not inherit
   // someone else's pass) and read back on mount. Nothing goes in the URL.
-  const { restoredRsvp, recoveryNotice, onResolved: handleRsvpResolved } =
+  const { restoredRsvp, recoveryNotice, onResolved: handleRsvpResolved, retryRecovery } =
     useRsvpGuestRecovery(event.id, user?.id ?? null, isRsvp);
   useEffect(() => {
     lastRsvpContactRef.current = null;
@@ -1539,6 +1539,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           replyIdentity={user?.id ?? null}
           recoveryNotice={recoveryNotice}
           onRsvpResolved={handleRsvpResolved}
+          onRecoveryRetry={retryRecovery}
           // A Stripe return lands with ?contribution=paid: show the inline
           // chip-in thank-you instead of asking the guest to chip in again.
           contributionState={returnBanner === "paid" ? "paid" : "idle"}

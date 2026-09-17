@@ -360,6 +360,11 @@ export interface RsvpOfferingBodyProps {
   restoredRsvp?: RsvpGuestSnapshot | null;
   /** Called with the reply the server just accepted, for the host to keep. */
   onRsvpResolved?: (snapshot: RsvpGuestSnapshot) => void;
+  /**
+   * #3416 D1 — while the host could not confirm a restored pass (network error),
+   * re-checks it. Present ⇒ "Try again" sits where "View your pass" would.
+   */
+  onRecoveryRetry?: (() => void) | null;
   testID?: string;
 }
 
@@ -401,6 +406,8 @@ interface RsvpDecisionState {
   validationHint: string | null;
   /** "View your pass" for a going guest whose pass is known; else null. */
   passAction: { label: string; onPress: () => void; testID?: string } | null;
+  /** #3416 D1 — "Try again" while a restored pass could not be confirmed; else null. */
+  recoveryAction: { label: string; onPress: () => void; testID?: string } | null;
   /** The INLINE decision block, so the surface can hide the floating copy while it is on screen. */
   inlineDecisionRef: React.RefObject<View | null>;
   floatingDecisionRef: React.RefObject<View | null>;
@@ -1621,6 +1628,20 @@ export const useRsvpOfferingState = (
     </Suspense>
   );
 
+  // #3416 D1 — a restored pass the host could not confirm offers a retry
+  // instead; the stored QR is never the fallback.
+  const onRecoveryRetry = props.onRecoveryRetry ?? null;
+  const recoveryAction =
+    recoveryHint && onRecoveryRetry !== null
+      ? {
+          label: "Try again",
+          onPress: () => {
+            if (isCurrent()) onRecoveryRetry();
+          },
+          testID: "rsvp-recovery-retry",
+        }
+      : null;
+
   // A going guest can always get back to their pass (the success popup closes,
   // and a restored reply has no popup of its own).
   const passAction =
@@ -1649,6 +1670,7 @@ export const useRsvpOfferingState = (
     subcopy,
     validationHint,
     passAction,
+    recoveryAction,
     inlineDecisionRef,
     floatingDecisionRef,
     recoveryHint,
@@ -1745,7 +1767,7 @@ const DecisionUnit: React.FC<{
       micro={state.subcopy ?? undefined}
       validationHint={state.validationHint}
       announceHint={!state.recoveryHint || (showMomentum && Platform.OS === "web")}
-      secondaryAction={state.passAction}
+      secondaryAction={state.passAction ?? state.recoveryAction}
       decisionRef={decisionRef}
       goingTestID="orch-1150-rsvp-going"
       maybeTestID="orch-1150-rsvp-maybe"

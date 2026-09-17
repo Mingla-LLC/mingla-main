@@ -127,6 +127,8 @@ export interface FoundationRsvpPreviewProps {
   restoredRsvp?: RsvpGuestSnapshot | null;
   /** Called with each reply the server accepts (the adapter keeps it for the tab). */
   onRsvpResolved?: (snapshot: RsvpGuestSnapshot) => void;
+  /** #3416 D1 — re-check a restored pass the host could not confirm. */
+  onRecoveryRetry?: (() => void) | null;
 }
 
 export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (props) => {
@@ -163,6 +165,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     onAcquisitionClosed,
     restoredRsvp = null,
     onRsvpResolved,
+    onRecoveryRetry,
   } = props;
   const { isDesktop } = useResponsiveLayout();
   const acquisitionClosed =
@@ -254,6 +257,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     onRevealField: revealField,
     restoredRsvp,
     onRsvpResolved,
+    onRecoveryRetry,
   });
 
   // ── floating bar only once the inline decision has been scrolled past ──

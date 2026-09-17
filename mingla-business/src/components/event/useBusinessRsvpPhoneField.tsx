@@ -120,7 +120,7 @@ export const BusinessRsvpPhoneField = ({
           }}
           error={
             emptyRequired
-              ? "Required"
+              ? "Add your phone number"
               : invalid
                 ? "Select a country and enter a valid phone number."
                 : null
