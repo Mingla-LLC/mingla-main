@@ -56,6 +56,7 @@ import {
   DESKTOP_WIZARD_RAIL_WIDTH,
 } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useScrollToTopOnStepChange } from "../../hooks/useScrollToTopOnStepChange";
 import {
   useServerCoverAdoption,
   type FetchServerCover,
@@ -357,6 +358,8 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   // doesn't reliably scroll-to-focused-input for multiline TextInputs
   // in this nested layout (verified by smoke 2026-04-30).
   const scrollViewRef = useRef<ScrollView | null>(null);
+  // Each step opens at the top — the ScrollView is shared by every step.
+  useScrollToTopOnStepChange(scrollViewRef, currentStep);
   // issue #1027 (iOS description-reveal REGRESSION) — deferred scroll-to-bottom.
   // The RSVP wizard REUSES CreatorStep1Basics, so its Description field hits the
   // exact same reveal path. Set by step bodies on input focus, consumed when the

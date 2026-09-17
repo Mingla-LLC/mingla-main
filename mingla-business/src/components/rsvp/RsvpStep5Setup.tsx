@@ -35,6 +35,7 @@ import {
 import type { DraftEventVisibility } from "../../store/draftEventStore";
 import { type StepBodyProps } from "../event/types";
 import { Icon } from "../ui/Icon";
+import { NumberStepper } from "../ui/NumberStepper";
 import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
 import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 // #3372 — the chip-in money prefix reads "₦", not "NGN" (#3341 rule).
@@ -45,6 +46,23 @@ const ROW_BG = Platform.select({
   android: "#23262b",
   default: glass.tint.profileBase,
 });
+
+/**
+ * The guest limit a host starts from when they switch "Limit the guest list"
+ * on. It used to be 1, which turned the stepper into a tap-79-times chore for
+ * an 80-person party. 50 is a typical small-event size and one edit away from
+ * most real numbers; the count is typeable, so it is only a starting point.
+ */
+export const RSVP_DEFAULT_GUEST_LIMIT = 50;
+
+/**
+ * Upper bounds for the typed counts. They are not product policy — the columns
+ * are Postgres integers with no cap — only a guard against a fat-fingered
+ * "99999999999" failing the integer cast at publish. Both are far past any
+ * real RSVP.
+ */
+export const RSVP_GUEST_LIMIT_MAX = 100_000;
+export const RSVP_PLUS_ONES_MAX = 99;
 
 const VISIBILITY_OPTIONS: readonly {
   id: DraftEventVisibility;
@@ -94,52 +112,6 @@ const ToggleRow: React.FC<ToggleRowProps> = ({
       />
     </View>
   </Pressable>
-);
-
-interface StepperRowProps {
-  label: string;
-  value: number;
-  min: number;
-  onChange: (next: number) => void;
-  testID?: string;
-}
-
-const NumberStepper: React.FC<StepperRowProps> = ({
-  label,
-  value,
-  min,
-  onChange,
-  testID,
-}) => (
-  <View style={styles.stepperRow}>
-    <Text style={styles.stepperLabel}>{label}</Text>
-    <View style={styles.stepperControls}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Decrease ${label}`}
-        onPress={() => onChange(Math.max(min, value - 1))}
-        style={styles.stepperBtn}
-        testID={testID ? `${testID}-dec` : undefined}
-      >
-        <Text style={styles.stepperBtnText}>−</Text>
-      </Pressable>
-      <Text
-        style={styles.stepperValue}
-        testID={testID ? `${testID}-value` : undefined}
-      >
-        {value}
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Increase ${label}`}
-        onPress={() => onChange(value + 1)}
-        style={styles.stepperBtn}
-        testID={testID ? `${testID}-inc` : undefined}
-      >
-        <Text style={styles.stepperBtnText}>+</Text>
-      </Pressable>
-    </View>
-  </View>
 );
 
 // ORCH-1291 [rsvp-chip-in] — currency symbol for the money-field prefix.
@@ -260,9 +232,9 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
     updateDraft(
       capacityOn
         ? { rsvpCapacity: null, rsvpWaitlistEnabled: false }
-        : { rsvpCapacity: Math.max(draft.rsvpCapacity ?? 1, 1) },
+        : { rsvpCapacity: RSVP_DEFAULT_GUEST_LIMIT },
     );
-  }, [capacityOn, draft.rsvpCapacity, updateDraft]);
+  }, [capacityOn, updateDraft]);
 
   const togglePlusOnes = useCallback(() => {
     const next = !draft.rsvpAllowPlusOnes;
@@ -305,8 +277,9 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
       {capacityOn ? (
         <NumberStepper
           label="Max guests"
-          value={draft.rsvpCapacity ?? 1}
+          value={draft.rsvpCapacity ?? RSVP_DEFAULT_GUEST_LIMIT}
           min={1}
+          max={RSVP_GUEST_LIMIT_MAX}
           onChange={(n) => updateDraft({ rsvpCapacity: Math.max(1, n) })}
           testID="rsvp-capacity"
         />
@@ -325,6 +298,7 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
           label="Max extra guests per person"
           value={Math.max(draft.rsvpPlusOnesMax, 1)}
           min={1}
+          max={RSVP_PLUS_ONES_MAX}
           onChange={(n) => updateDraft({ rsvpPlusOnesMax: Math.max(1, n) })}
           testID="rsvp-plusones-max"
         />
@@ -733,51 +707,4 @@ const styles = StyleSheet.create({
   },
   toggleThumbOff: { transform: [{ translateX: 0 }] },
   toggleThumbOn: { transform: [{ translateX: 18 }] },
-
-  // Number stepper
-  stepperRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.md,
-    overflow: "hidden",
-    backgroundColor: ROW_BG,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.sm,
-  },
-  stepperLabel: {
-    flex: 1,
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "500",
-    color: textTokens.primary,
-  },
-  stepperControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  stepperBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: radiusTokens.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: glass.tint.profileElevated,
-  },
-  stepperBtnText: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: textTokens.primary,
-  },
-  stepperValue: {
-    minWidth: 28,
-    textAlign: "center",
-    fontSize: typography.bodyLg.fontSize,
-    fontWeight: "700",
-    color: textTokens.primary,
-    fontVariant: ["tabular-nums"],
-  },
 });
