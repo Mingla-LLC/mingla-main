@@ -1370,7 +1370,8 @@ export const ExperienceCreatorWizard: React.FC<
       <View style={styles.header}>
         <Pressable
           onPress={goBack}
-          disabled={step === 6 && inviteNavigation?.phase !== "ready"}
+          // #1780 — no stepping back to Invite while Publish re-reads the plan.
+          disabled={(step === 6 && inviteNavigation?.phase !== "ready") || checkingInvitePublish}
           accessibilityRole="button"
             accessibilityLabel={
               step === 1 ? "Cancel experience creation" : "Back"

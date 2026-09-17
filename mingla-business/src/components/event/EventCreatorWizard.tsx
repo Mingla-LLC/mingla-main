@@ -1345,6 +1345,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
                 size="md"
                 leadingIcon="chevL"
                 onPress={handleStepBack}
+                // #1780 — no stepping back to Invite while Publish re-reads the plan.
+                disabled={checkingInvitePublish}
                 fullWidth
               />
             </View>

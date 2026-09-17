@@ -1772,7 +1772,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                   onPress={() => {
                     void handleStepBack();
                   }}
-                  disabled={submitting}
+                  // #1780 — no stepping back to Invite while Publish re-reads the plan.
+                  disabled={submitting || checkingInvitePublish}
                   fullWidth
                 />
               </View>
