@@ -82,6 +82,14 @@ export interface TurnoutForecastController {
 }
 
 const FRESH_WINDOW_MS = 24 * 60 * 60 * 1_000;
+/**
+ * How long the forecast inputs must stay unchanged before the one metered
+ * automatic run spends. A host stepping Max guests from 1 up to 80, or typing a
+ * capacity, passes through every value on the way; running on the first of them
+ * produced a band for a number nobody chose ("1–1 of 1"), then a STALE card that
+ * needed a manual "Update forecast". Each input change restarts the wait.
+ */
+export const TURNOUT_AUTO_RUN_SETTLE_MS = 2_000;
 const RESUME_POLL_MS = 5_000;
 const RESUME_DEADLINE_MS = 130_000;
 
@@ -323,19 +331,27 @@ export const useTurnoutForecast = (
 
   // I-PROPOSED-1008-TURNOUT-AUTO-RUN-METERED: set the ref BEFORE issuing
   // the request so StrictMode/effect replays cannot spend twice.
+  // The auto run waits for the inputs to SETTLE (TURNOUT_AUTO_RUN_SETTLE_MS).
+  // The wait is keyed on `inputKey` — the input's content — not on `run`,
+  // whose identity changes on every wizard render (the source is built inline),
+  // so unrelated re-renders cannot keep postponing it.
+  const runRef = useRef(run);
+  useEffect(() => {
+    runRef.current = run;
+  }, [run]);
   useEffect(() => {
     if (!built.ok) {
       setState("idle");
       return;
     }
-    if (
-      (args.autoRunEnabled ?? true) &&
-      !args.previewActive &&
-      runBudget.current.spendAuto()
-    ) {
-      void run("auto");
-    }
-  }, [args.autoRunEnabled, args.previewActive, built.ok, run]);
+    if (!(args.autoRunEnabled ?? true) || args.previewActive) return;
+    const timer = setTimeout(() => {
+      if (runBudget.current.spendAuto()) {
+        void runRef.current("auto");
+      }
+    }, TURNOUT_AUTO_RUN_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [args.autoRunEnabled, args.previewActive, built.ok, inputKey]);
 
   useEffect(() => {
     if (inputKey === null || materialKey === null || result === null) return;

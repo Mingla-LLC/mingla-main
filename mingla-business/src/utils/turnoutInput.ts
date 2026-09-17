@@ -43,6 +43,19 @@ export type TurnoutBlockReason =
   | "unlimited_capacity"
   | "online_event";
 
+/**
+ * The smallest capacity a turnout forecast is run for.
+ *
+ * A band over one seat is not a forecast: the engine clamps its baseline into
+ * [0, capacity], so the only possible answers are 0–0, 0–1 and 1–1. That is
+ * how the RSVP wizard showed "EXPECTED TURNOUT 1–1 of 1": turning on "Limit
+ * the guest list" seeds Max guests with 1 before the host has chosen a number,
+ * which made the draft eligible, and the one metered auto run spent itself on
+ * that placeholder. Below this floor the input reports `missing_capacity`, so
+ * no run starts and no card shows until there is a real guest limit.
+ */
+export const MIN_FORECAST_CAPACITY = 2;
+
 export type TurnoutInputResult =
   | { ok: true; input: TurnoutEngineInput }
   | { ok: false; reason: TurnoutBlockReason };
@@ -189,7 +202,7 @@ export const buildTurnoutInput = (
       return { ok: false, reason: "invalid_date" };
     if (source.unlimited) return { ok: false, reason: "unlimited_capacity" };
     const capacity = Number(source.capacity);
-    if (!Number.isInteger(capacity) || capacity < 1)
+    if (!Number.isInteger(capacity) || capacity < MIN_FORECAST_CAPACITY)
       return { ok: false, reason: "missing_capacity" };
     const currency = source.brandDefaultCurrency?.trim().toUpperCase() ?? "";
     const startTime = source.when.doorsOpen ?? firstStop?.startTime ?? "";
@@ -241,7 +254,7 @@ export const buildTurnoutInput = (
       ? (draft.rsvpCapacity ?? "unlimited_capacity")
       : eventCapacity(draft);
   if (typeof capacity !== "number") return { ok: false, reason: capacity };
-  if (!Number.isInteger(capacity) || capacity < 1) {
+  if (!Number.isInteger(capacity) || capacity < MIN_FORECAST_CAPACITY) {
     return { ok: false, reason: "missing_capacity" };
   }
 

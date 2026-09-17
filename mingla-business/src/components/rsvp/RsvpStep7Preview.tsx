@@ -35,6 +35,7 @@ import { resolveTheme } from "../../../../packages/offering-rendering/themeResol
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 import { buildDraftThemePreview } from "../theme/themePreviewContent";
+import { themedPreviewCardColors } from "../theme/themedPreviewCardColors";
 import { type StepBodyProps } from "../event/types";
 
 // #1742 / ORCH-1083 — Review intelligence is an on-demand surface, not boot UI.
@@ -74,6 +75,13 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
     () => createThemePalette(resolveTheme(brandTheme, draft.themeOverrides ?? null)),
     [brandTheme, draft.themeOverrides],
   );
+  // The card paints the THEMED page as its surface, so every text on it must
+  // come from the palette too — never the dark app-chrome text tokens, which
+  // are near-white and vanish on a light theme. See themedPreviewCardColors.
+  const card = useThemeMemo(
+    () => themedPreviewCardColors(themePalette),
+    [themePalette],
+  );
   const [themeSheetOpen, setThemeSheetOpen] = React.useState(false);
   const handleThemeChange = useCallback(
     (next: Parameters<typeof updateDraft>[0]["themeOverrides"]): void => {
@@ -103,7 +111,11 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
         onPress={handleMiniCardPress}
         accessibilityRole="button"
         accessibilityLabel="Preview public page"
-        style={[styles.miniCard, { backgroundColor: themePalette.page }]}
+        style={[
+          styles.miniCard,
+          { backgroundColor: card.surface, borderColor: card.border },
+        ]}
+        testID="rsvp-preview-mini-card"
       >
         <View style={styles.miniCover}>
           <EventCoverMedia
@@ -116,30 +128,57 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
           />
         </View>
         <View style={styles.miniBody}>
-          <Text style={[styles.miniDate, { color: themePalette.accent }]}>{dateLine}</Text>
+          <Text style={[styles.miniDate, { color: card.dateText }]}>{dateLine}</Text>
           <Text
-            style={[styles.miniTitle, { color: themePalette.primaryText }]}
+            style={[styles.miniTitle, { color: card.titleText }]}
             numberOfLines={1}
           >
             {titleLine}
           </Text>
-          <Text style={styles.miniVenue} numberOfLines={1}>
+          <Text
+            style={[styles.miniVenue, { color: card.venueText }]}
+            numberOfLines={1}
+          >
             {venueLine}
           </Text>
           {subline !== null ? (
             <View style={styles.recurrencePillRow}>
-              <View style={styles.recurrencePill}>
-                <Text style={styles.recurrencePillLabel}>{subline}</Text>
+              <View
+                style={[
+                  styles.recurrencePill,
+                  { backgroundColor: card.pillFill, borderColor: card.pillBorder },
+                ]}
+              >
+                <Text style={[styles.recurrencePillLabel, { color: card.pillText }]}>
+                  {subline}
+                </Text>
               </View>
             </View>
           ) : null}
           {/* Going / Not-going CTA preview (non-interactive) */}
           <View style={styles.ctaRow}>
-            <View style={[styles.ctaBtn, styles.ctaGoing]}>
-              <Text style={styles.ctaGoingLabel}>Going</Text>
+            <View
+              style={[
+                styles.ctaBtn,
+                { backgroundColor: card.goingFill, borderColor: card.goingFill },
+              ]}
+            >
+              <Text style={[styles.ctaGoingLabel, { color: card.goingText }]}>
+                Going
+              </Text>
             </View>
-            <View style={[styles.ctaBtn, styles.ctaNotGoing]}>
-              <Text style={styles.ctaNotGoingLabel}>Not going</Text>
+            <View
+              style={[
+                styles.ctaBtn,
+                {
+                  backgroundColor: card.notGoingFill,
+                  borderColor: card.notGoingBorder,
+                },
+              ]}
+            >
+              <Text style={[styles.ctaNotGoingLabel, { color: card.notGoingText }]}>
+                Not going
+              </Text>
             </View>
           </View>
         </View>
@@ -198,12 +237,12 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
 };
 
 const styles = StyleSheet.create({
+  // Colours for miniCard and everything inside it are applied inline from
+  // themedPreviewCardColors — the card sits on the THEMED surface.
   miniCard: {
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileElevated,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
     marginBottom: spacing.md,
   },
   miniCover: { height: 140, width: "100%" },
@@ -213,18 +252,15 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: accent.warm,
     marginBottom: 4,
   },
   miniTitle: {
     fontSize: 18,
     fontWeight: "700",
     letterSpacing: -0.2,
-    color: textTokens.primary,
   },
   miniVenue: {
     fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
     marginTop: 2,
   },
   recurrencePillRow: { flexDirection: "row", marginTop: spacing.xs },
@@ -233,33 +269,24 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: accent.tint,
     borderWidth: 1,
-    borderColor: accent.border,
   },
   recurrencePillLabel: {
     fontSize: typography.caption.fontSize,
     fontWeight: "600",
-    color: accent.warm,
   },
   ctaRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
   ctaBtn: {
     flex: 1,
     paddingVertical: spacing.sm,
     borderRadius: radiusTokens.md,
+    borderWidth: 1,
     alignItems: "center",
   },
-  ctaGoing: { backgroundColor: accent.warm },
-  ctaGoingLabel: { fontSize: typography.bodySm.fontSize, fontWeight: "700", color: "#fff" },
-  ctaNotGoing: {
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-  },
+  ctaGoingLabel: { fontSize: typography.bodySm.fontSize, fontWeight: "700" },
   ctaNotGoingLabel: {
     fontSize: typography.bodySm.fontSize,
     fontWeight: "600",
-    color: textTokens.secondary,
   },
   statusCardWrap: { marginBottom: spacing.sm },
   previewLinkBtn: {
