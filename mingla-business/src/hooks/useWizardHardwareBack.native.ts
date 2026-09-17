@@ -12,7 +12,14 @@
 // - Native overlays go first for free. Every RN <Modal> (ConfirmDialog, Sheet,
 //   Toast, the people picker) consumes KEYCODE_BACK inside its native Dialog
 //   and calls onRequestClose. JS hardwareBackPress listeners do not fire while
-//   one is mounted. The soft keyboard is dismissed by the IME first too.
+//   one is mounted.
+// - The soft keyboard does NOT go first for free. With the keyboard up, one
+//   press hides the IME AND reaches this listener (runtime-proven, #3446
+//   SC-7). So a press while the keyboard owner (useKeyboardIsVisible) says
+//   visible, or just after a hide no press has claimed, only dismisses the
+//   keyboard: no owner runs and the latch is untouched. Android can deliver
+//   the hide and the press in either order; the window and the claim rule
+//   live in wizardHardwareBackRouting.ts (WIZARD_KEYBOARD_BACK_WINDOW_MS).
 // - Subscribe ONCE per focus (useFocusEffect with EMPTY deps). BackHandler
 //   runs listeners newest-first. Re-subscribing on every render would push
 //   this listener ahead of any overlay listener registered later in the tree
@@ -32,37 +39,79 @@
 //   there.
 // - No console, no timers, no beforeRemove / usePreventRemove.
 //   beforeRemove would also intercept the wizards' own router.replace exits.
+//   The keyboard rule compares timestamps; it never schedules anything.
 //
 // Invariant: I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK (docs/INVARIANT_REGISTRY.md).
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { BackHandler, Platform } from "react-native";
+import { BackHandler, Keyboard, Platform } from "react-native";
 import { useFocusEffect } from "expo-router";
 
+import { useKeyboardIsVisible } from "../wrappers/useKeyboardIsVisible";
 import {
   dispatchWizardHardwareBackPress,
   type WizardHardwareBackConfig,
   type WizardHardwareBackLatch,
 } from "./wizardHardwareBackRouting";
 
+interface KeyboardTrack {
+  /** useKeyboardIsVisible as of the last commit. */
+  visible: boolean;
+  /** When it last hid, unless a back press claimed that hide. */
+  unclaimedHideAt: number | null;
+  /** A back press was swallowed while visible; the coming hide is its own. */
+  claimed: boolean;
+}
+
 export function useWizardHardwareBack(config: WizardHardwareBackConfig): void {
   const configRef = useRef<WizardHardwareBackConfig>(config);
   const latchRef = useRef<WizardHardwareBackLatch>("idle");
+  const keyboardVisible = useKeyboardIsVisible();
+  const keyboardRef = useRef<KeyboardTrack>({
+    visible: keyboardVisible,
+    unclaimedHideAt: null,
+    claimed: false,
+  });
 
   useLayoutEffect(() => {
     configRef.current = config;
   });
+
+  // Same-commit refresh as the config, for the same reason: a press queued
+  // right behind the keyboard update must see it.
+  useLayoutEffect(() => {
+    const keyboard = keyboardRef.current;
+    if (keyboard.visible === keyboardVisible) return;
+    keyboard.visible = keyboardVisible;
+    keyboard.unclaimedHideAt =
+      !keyboardVisible && !keyboard.claimed ? Date.now() : null;
+    keyboard.claimed = false;
+  }, [keyboardVisible]);
 
   useFocusEffect(
     useCallback(() => {
       if (Platform.OS !== "android") return undefined;
       latchRef.current = "idle";
       const onPress = (): boolean => {
+        const keyboard = keyboardRef.current;
         const decision = dispatchWizardHardwareBackPress(
           latchRef.current,
           configRef.current,
+          {
+            visible: keyboard.visible,
+            unclaimedHideAt: keyboard.unclaimedHideAt,
+            now: Date.now(),
+          },
         );
         latchRef.current = decision.nextLatch;
+        if (decision.action === "dismiss_keyboard") {
+          // One hide swallows at most one press.
+          keyboard.unclaimedHideAt = null;
+          if (keyboard.visible) {
+            keyboard.claimed = true;
+            Keyboard.dismiss();
+          }
+        }
         if (decision.pending !== null) {
           const clear = (): void => {
             if (latchRef.current === "stepping") latchRef.current = "idle";
