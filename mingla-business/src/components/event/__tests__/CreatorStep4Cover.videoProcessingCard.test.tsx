@@ -209,16 +209,19 @@ describe("W-1 every Cover-step mount passes the processing flag back", () => {
   const stripComments = (src: string): string =>
     src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
+  // The two creator wizards route the flag through the cover-tracking handler
+  // from #3407 (it still sets coverVideoProcessing); the published-event
+  // editor passes the state setter directly.
   test.each([
-    ["src/components/rsvp/RsvpCreatorWizard.tsx"],
-    ["src/components/event/EventCreatorWizard.tsx"],
-    ["src/components/event/EditPublishedScreen.tsx"],
-  ])("%s", (file) => {
+    ["src/components/rsvp/RsvpCreatorWizard.tsx", "handleCoverProcessingChange"],
+    ["src/components/event/EventCreatorWizard.tsx", "handleCoverProcessingChange"],
+    ["src/components/event/EditPublishedScreen.tsx", "setCoverVideoProcessing"],
+  ])("%s", (file, handler) => {
     const src = stripComments(
       readFileSync(path.join(process.cwd(), file), "utf8"),
     );
     expect(src).toMatch(
-      /onCoverVideoProcessingChange: setCoverVideoProcessing,\s*coverVideoProcessing,/,
+      new RegExp(`onCoverVideoProcessingChange: ${handler},\\s*coverVideoProcessing,`),
     );
   });
 });
