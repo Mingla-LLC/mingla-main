@@ -1864,8 +1864,10 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     // event key, job-level concurrency block, or reusable-workflow call.
     [liveWorkflow("issue", "873", "guest", "status", "roster", "tests"),
       "          supabase/functions/offering-invite-dispatch/issue_1780_wizard_worker.happy.test.ts\n"],
+    // [TEST-MOD-APPROVED #1780] The Jest registration is a folded `run: >-`
+    // block, so the revert-sensitive byte line is the test path itself.
     [liveWorkflow("issue", "873", "guest", "status", "roster", "tests"),
-      "      - run: npx jest --runInBand src/services/__tests__/issue_1780_wizard_invites.implementor.test.ts\n"],
+      "          src/services/__tests__/issue_1780_wizard_invites.implementor.test.ts\n"],
     [liveWorkflow("issue", "873", "guest", "status", "roster", "tests"),
       "          -f supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql\n"],
   ]) {
