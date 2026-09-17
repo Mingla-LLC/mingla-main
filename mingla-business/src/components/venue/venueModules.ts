@@ -148,3 +148,45 @@ export function deriveVenueModules(
 export function isBookingModule(module: VenueModule): boolean {
   return (VENUE_BOOKING_MODULES as readonly VenueModule[]).includes(module);
 }
+
+/**
+ * #3389 — the `?module=` deep-link reader for `/venue/{venueId}`.
+ *
+ * The page used to accept only `insights` and `orders`, so Home to-dos that
+ * link to `?module=tables` ("add zones") and `?module=menu` ("add item costs")
+ * silently landed on Overview. Every id in `VENUE_MODULES` is now accepted;
+ * anything else (absent, empty, unknown, wrong case) returns `undefined` so the
+ * page keeps its Overview default. Selecting a HIDDEN booking module is safe:
+ * the shell leaves it for Overview once the settings say reservations are off
+ * (see `shouldLeaveBookingModule`).
+ */
+export function parseVenueModuleParam(
+  value: string | null | undefined,
+): VenueModule | undefined {
+  if (typeof value !== "string" || value.length === 0) return undefined;
+  return Object.prototype.hasOwnProperty.call(VENUE_MODULES, value)
+    ? (value as VenueModule)
+    : undefined;
+}
+
+/**
+ * #3389 — whether the shell must bounce a booking module back to Overview.
+ *
+ * Only once the reservation settings have RESOLVED. The shell's old guard ran
+ * on the loading frame too, where `reservationsEnabled` reads `false` before
+ * the row arrives — so a `?module=tables` link was sent to Overview even for a
+ * venue whose reservations are on. A failed settings request is not resolved
+ * either: it is not a confirmed OFF, and bouncing on it would lose the
+ * requested module before the retry answers.
+ */
+export function shouldLeaveBookingModule(input: {
+  activeModule: VenueModule;
+  reservationsEnabled: boolean;
+  settingsResolved: boolean;
+}): boolean {
+  return (
+    isBookingModule(input.activeModule) &&
+    input.settingsResolved &&
+    !input.reservationsEnabled
+  );
+}

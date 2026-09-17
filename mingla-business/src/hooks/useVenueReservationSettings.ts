@@ -106,8 +106,38 @@ export function useVenueReservationSettings(
 }
 
 /**
- * Toggle `reservations_enabled` (default-creating the single row on first
- * toggle). Upsert on the brand_id PK → idempotent.
+ * The ONE write of `reservations_enabled` (default-creating the single row on
+ * first write). Upsert on the venue_id PK → idempotent.
+ *
+ * #3383 — exported so the Add a venue wizard saves its "Take reservations on
+ * Mingla" switch through the SAME write the Settings switch uses. Before this
+ * the wizard showed "Reservations on" and then never wrote it anywhere.
+ */
+export async function saveVenueReservationsEnabled(
+  brandId: string | null,
+  venueId: string | null,
+  enabledNext: boolean,
+): Promise<void> {
+  if (brandId === null) throw new Error("brand_required");
+  // META-ORCH-1255 — venue_id is NOT NULL + the PK; a brand-only upsert
+  // cannot exist anymore. Fail fast with an honest error.
+  if (venueId === null) throw new Error("venue_required");
+  const { error } = await supabase
+    .from("venue_reservation_settings")
+    .upsert(
+      {
+        brand_id: brandId,
+        venue_id: venueId,
+        reservations_enabled: enabledNext,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "venue_id" },
+    );
+  if (error !== null) throw error as unknown as Error;
+}
+
+/**
+ * Toggle `reservations_enabled` from the venue's Settings / Overview.
  */
 export function useSetReservationsEnabled(
   brandId: string | null,
@@ -115,24 +145,8 @@ export function useSetReservationsEnabled(
 ): UseMutationResult<void, Error, boolean> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, boolean>({
-    mutationFn: async (enabledNext: boolean): Promise<void> => {
-      if (brandId === null) throw new Error("brand_required");
-      // META-ORCH-1255 — venue_id is NOT NULL + the PK; a brand-only upsert
-      // cannot exist anymore. Fail fast with an honest error.
-      if (venueId === null) throw new Error("venue_required");
-      const { error } = await supabase
-        .from("venue_reservation_settings")
-        .upsert(
-          {
-            brand_id: brandId,
-            venue_id: venueId,
-            reservations_enabled: enabledNext,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "venue_id" },
-        );
-      if (error !== null) throw error as unknown as Error;
-    },
+    mutationFn: (enabledNext: boolean): Promise<void> =>
+      saveVenueReservationsEnabled(brandId, venueId, enabledNext),
     onSuccess: () => {
       if (brandId !== null && venueId !== null) {
         void queryClient.invalidateQueries({
