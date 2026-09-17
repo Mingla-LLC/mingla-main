@@ -165,6 +165,16 @@ function validateExistingAdParsers(bundleObject) {
       "SOURCE_REFUND_NOTIFICATION_RECIPIENT_PREVIOUS_KID",
       "SOURCE_REFUND_NOTIFICATION_RECIPIENT_PREVIOUS_KEY_B64",
     ],
+    // #3392 — the venue booking manage-link key ring. Same kid + canonical
+    // 32-byte key grammar, and distinct from every other slot.
+    [
+      "VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KID",
+      "VENUE_RESERVATION_MANAGE_TOKEN_CURRENT_KEY_B64",
+    ],
+    [
+      "VENUE_RESERVATION_MANAGE_TOKEN_PREVIOUS_KID",
+      "VENUE_RESERVATION_MANAGE_TOKEN_PREVIOUS_KEY_B64",
+    ],
   ].flatMap(([kidField, keyField]) => {
     const kid = bundleObject[kidField];
     const encoded = bundleObject[keyField];
