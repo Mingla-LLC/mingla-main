@@ -77,6 +77,10 @@ import {
   fireAdConversion,
   persistReservationAttributionClickId,
 } from "../_shared/adConversionFire.ts";
+// #3392 — web guest manage tokens are DERIVED from the checkout session id so
+// the confirmation email can re-derive the same token and link to the manage
+// page. Only the hash is stored; a missing key falls back to a random token.
+import { issueWebGuestManageToken } from "../_shared/venueReservationManageToken.ts";
 
 type ReserveSurface = "native" | "web";
 
@@ -382,8 +386,11 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   // FREE PATH — no fee, no deposit threshold. Mint the reservation directly.
   // ════════════════════════════════════════════════════════════════════════════
   if (!hasFee) {
+    // #3392 — the credential row's id is chosen here so the manage token can be
+    // derived from it before either row is written.
+    const freeCheckoutSessionId = crypto.randomUUID();
     const guestCancelToken = surface === "web"
-      ? randomBuyerStatusToken()
+      ? await issueWebManageToken(freeCheckoutSessionId)
       : null;
     // This zero-value credential row has no settlement currency. Preserve a
     // configured venue currency when present; otherwise use ISO 4217 "no
@@ -425,6 +432,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       const { error: freeSessionError } = await supabase.from(
         "reservation_checkout_sessions",
       ).insert({
+        id: freeCheckoutSessionId,
         brand_id: brandId,
         venue_id: venueId,
         reserved_for: reservedForIso,
@@ -570,7 +578,13 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     pricing_currency: pricing.pricing_currency,
   });
 
-  const buyerStatusToken = randomBuyerStatusToken();
+  // #3392 — pick the session id first: a web booking's token (it is both the
+  // `bst` status token and the guest manage token) is derived from it, so the
+  // confirmation email sent after payment can re-derive the same credential.
+  const checkoutSessionId = crypto.randomUUID();
+  const buyerStatusToken = surface === "web"
+    ? await issueWebManageToken(checkoutSessionId)
+    : randomBuyerStatusToken();
   // #1221: one plaintext is held only by the browser/in-memory response. The
   // checkout session stores only the versioned SHA-256 credential hash.
   const guestCancelToken = surface === "web" ? buyerStatusToken : null;
@@ -652,6 +666,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     });
 
     const sessionId = await insertReservationSession(supabase, {
+      checkoutSessionId,
       brandId,
       venueId,
       reservedForIso,
@@ -819,6 +834,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
 
   // Persist the in-flight session FIRST (the durable charge record).
   const sessionId = await insertReservationSession(supabase, {
+    checkoutSessionId,
     brandId,
     venueId,
     reservedForIso,
@@ -1072,6 +1088,22 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+// #3392 — a web guest's manage token. Derived from the checkout session id when
+// the manage key ring is installed; otherwise the pre-#3392 random token, so a
+// missing or broken key never blocks a booking. Logs a reason code only.
+async function issueWebManageToken(checkoutSessionId: string): Promise<string> {
+  const issued = await issueWebGuestManageToken({
+    checkoutSessionId,
+    randomToken: randomBuyerStatusToken,
+  });
+  if (!issued.derived) {
+    console.warn("[venue-reservation-create] venue_reservation_manage_key_unavailable", {
+      reason: issued.reason,
+    });
+  }
+  return issued.token;
+}
+
 // deno-lint-ignore no-explicit-any
 async function reservedSlotIsAvailable(
   supabase: any,
@@ -1111,6 +1143,7 @@ async function reservedSlotIsAvailable(
 }
 
 interface SessionInsert {
+  checkoutSessionId: string;
   brandId: string;
   venueId: string;
   reservedForIso: string;
@@ -1142,6 +1175,7 @@ async function insertReservationSession(
   const { data, error } = await supabase
     .from("reservation_checkout_sessions")
     .insert({
+      id: s.checkoutSessionId,
       brand_id: s.brandId,
       // META-ORCH-1255: the venue key rides the session so the idempotent
       // finalize (pg_finalize_guest_reservation) mints venue-keyed.

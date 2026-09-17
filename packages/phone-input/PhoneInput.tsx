@@ -41,7 +41,7 @@ import {
   countryFromInternationalEntry,
   cursorAfterEdit,
 } from "./phoneEntryText";
-import { reformatPhoneEdit } from "./phoneNumber";
+import { parsePhoneEntry, reformatPhoneEdit } from "./phoneNumber";
 import {
   pickerCloseFocusTarget,
   resolvePickerPresentation,
@@ -250,6 +250,15 @@ export const PhoneInput = ({
         onChangePhone(next);
         return;
       }
+      // #3396: validate BEFORE formatting discards characters. Keep rejected
+      // text editable so the shared parser can explain it, never silently turn
+      // a malformed paste into a different, accepted recipient.
+      const entry = parsePhoneEntry(next, { countryIso: countryCode, mode: "any" });
+      if (!entry.ok && entry.problem === "invalid") {
+        setPendingSelection(undefined);
+        onChangePhone(next);
+        return;
+      }
       const international = countryFromInternationalEntry(next, countryCode);
       if (international !== null) {
         const formatted = reformatPhoneEdit({
@@ -266,7 +275,7 @@ export const PhoneInput = ({
       }
       if (/^\s*(\+|00)/.test(next)) {
         // Still typing the country code — keep exactly what they typed.
-        onChangePhone(next.replace(/[^\d+\s()-]/g, ""));
+        onChangePhone(next);
         return;
       }
       const formatted = reformatPhoneEdit({
