@@ -22,6 +22,7 @@ import { buildDraftEvent, useDraftEventStore } from "../../../store/draftEventSt
 import { RsvpStep5Setup } from "../RsvpStep5Setup";
 import * as liveAdapter from "../../../utils/liveEventAdapter";
 import * as mapper from "../../../utils/serverDraftEventMapper";
+import * as coverHook from "../../../hooks/useServerCoverAdoption";
 
 type Node = { type: unknown; props: any; findAll: (predicate: (node: Node) => boolean) => Node[] };
 type Tree = { root: Node; unmount: () => void };
@@ -49,6 +50,9 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     if (name.endsWith("/liveEventStore")) return { useLiveEventStore: (selector: any) => selector({ updateLiveEventFields }) };
     if (name.endsWith("/liveEventAdapter")) return liveAdapter;
     if (name.endsWith("/serverDraftEventMapper")) return mapper;
+    // #3407: the create host now runs the real server-cover adoption hook
+    // (inert here — no fetchServerCover is passed), registered as #3439 does.
+    if (name.endsWith("/useServerCoverAdoption")) return coverHook;
     if (name.endsWith("/editPublishedSections")) return require("../../event/editPublishedSections");
     if (name.endsWith("/rsvpHubMetrics")) return require("../../../utils/rsvpHubMetrics");
     if (name.endsWith("/designSystem")) return require("../../../constants/designSystem");
