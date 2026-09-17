@@ -14,6 +14,7 @@ import {
   BusinessAuthNotReadyError,
   toBusinessAuthNotReadyError,
 } from "../utils/authReadiness";
+import { coverBasePayload, type ServerDraftCover } from "../utils/draftCoverBase";
 
 // ORCH-0841: include the post-ORCH-0824 top-level taxonomy + city + geo
 // columns so serverRowToDraft sees them on every fetch / autosave round-trip.
@@ -327,6 +328,28 @@ export const fetchDraftById = async (
   return data === null ? null : rowToDraft(data);
 };
 
+/**
+ * The cover a server draft carries right now, mapped exactly like every other
+ * draft read. The wizards poll this to adopt a cover the server applied after
+ * the Cover sheet closed. `null` when the draft is no longer an editable draft.
+ */
+export const fetchServerDraftCover = async (
+  draftId: string,
+): Promise<ServerDraftCover | null> => {
+  const draft = await fetchDraftById(draftId);
+  if (draft === null) return null;
+  return {
+    coverMediaUrl: draft.coverMediaUrl ?? null,
+    coverMediaPosterUrl: draft.coverMediaPosterUrl ?? null,
+    coverMediaType: draft.coverMediaType ?? null,
+    coverMediaProvider: draft.coverMediaProvider ?? null,
+    coverMediaSourceUrl: draft.coverMediaSourceUrl ?? null,
+    coverMediaCredit: draft.coverMediaCredit ?? null,
+    coverMediaCreditUrl: draft.coverMediaCreditUrl ?? null,
+    coverMediaAlt: draft.coverMediaAlt ?? null,
+  };
+};
+
 interface ExistingDraftSaveContext {
   theme: unknown;
   currency: string | null;
@@ -416,6 +439,10 @@ export const autosaveServerDraft = async (
       p_payload: {
         ...updatePayload,
         __expectedClientRevision: draft.clientRevision ?? 0,
+        // The cover this session last received, so the owner keeps a cover the
+        // server applied (a cover video finishing after the sheet closed)
+        // instead of writing this client's stale one over it.
+        ...coverBasePayload(draft.id),
       },
       p_reason: null,
       p_client_request_id: createRsvpRequestId(),
@@ -430,7 +457,8 @@ export const autosaveServerDraft = async (
   // orch-strict-grep-allow events-type-filter — ORCH-1150 D-2: RSVP-draft UPDATE is scoped via .in("event_type", ["event","rsvp"]); event_type IS filtered (event+rsvp), not unfiltered.
   const { data, error } = await supabase.rpc("business_update_event_draft", {
     p_event_id: draft.id,
-    p_payload: updatePayload,
+    // Same cover base as the RSVP owner above.
+    p_payload: { ...updatePayload, ...coverBasePayload(draft.id) },
     p_client_revision: draft.clientRevision ?? 0,
   });
 

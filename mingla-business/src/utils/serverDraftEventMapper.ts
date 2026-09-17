@@ -193,6 +193,11 @@ export interface BusinessDraftPayload {
   musicGenres: string[];
   city: string | null;
   locationGeo: { lat: number; lng: number } | null;
+  // How the Where step captured locationGeo ("exact" pick / "approximate" free
+  // text). Rides the blob so the autosave echo cannot wipe it, and so the RSVP
+  // publish can promote it with the pin. Always a concrete value (never
+  // undefined, which JSON.stringify would drop).
+  coordinatePrecision: "exact" | "approximate" | null;
   requestedVisibility: DraftEventVisibility;
   coverHue: number;
   coverProvider: {
@@ -266,6 +271,42 @@ const asNumber = (value: unknown, fallback: number): number =>
 
 const asBoolean = (value: unknown, fallback: boolean): boolean =>
   typeof value === "boolean" ? value : fallback;
+
+const asCoordinatePrecision = (
+  value: unknown,
+): "exact" | "approximate" | null =>
+  value === "exact" || value === "approximate" ? value : null;
+
+/** A `{lat,lng}` blob value with finite numbers, or null. */
+const asLatLng = (value: unknown): { lat: number; lng: number } | null => {
+  const point = asRecord(value);
+  return typeof point.lat === "number" &&
+    Number.isFinite(point.lat) &&
+    typeof point.lng === "number" &&
+    Number.isFinite(point.lng)
+    ? { lat: point.lat, lng: point.lng }
+    : null;
+};
+
+/** The events.location_geo write value: Postgres `point` text "(lng,lat)". */
+const locationGeoColumnValue = (
+  geo: { lat: number; lng: number } | null,
+): string | null => (geo === null ? null : `(${geo.lng},${geo.lat})`);
+
+/** The events.location_geo column: Postgres `point` text "(lng,lat)" or {x,y}. */
+const locationGeoFromColumn = (
+  g: ServerDraftEventRow["location_geo"],
+): { lat: number; lng: number } | null => {
+  if (g == null) return null;
+  if (typeof g === "string") {
+    const m = g.match(/^\(([-\d.]+),([-\d.]+)\)$/);
+    return m ? { lng: Number(m[1]), lat: Number(m[2]) } : null;
+  }
+  if (typeof g === "object" && typeof g.x === "number" && typeof g.y === "number") {
+    return { lng: g.x, lat: g.y };
+  }
+  return null;
+};
 
 const asDraftFormat = (value: unknown, isOnline: boolean): DraftEventFormat => {
   if (value === "in_person" || value === "online" || value === "hybrid") {
@@ -364,6 +405,7 @@ const buildBusinessDraftPayload = (
   musicGenres: draft.musicGenres,
   city: draft.city,
   locationGeo: draft.locationGeo,
+  coordinatePrecision: asCoordinatePrecision(draft.coordinatePrecision),
   requestedVisibility: draft.visibility,
   coverHue: draft.coverHue,
   coverProvider: {
@@ -507,6 +549,13 @@ export interface RsvpUpdatePayload {
   // loaded gallery is known and changed. business_update_rsvp_graph writes the
   // column only when this key is present, so an unrelated edit keeps it.
   cover_media_gallery?: OfferingGalleryImage[];
+  // The Where-step pin on a published RSVP, emitted by the DIFF builder only
+  // when the organiser re-picked the address. business_update_rsvp_graph writes
+  // location_geo + coordinate_precision (and city) only when these keys are
+  // present, so an unrelated edit keeps the stored pin.
+  city?: string | null;
+  location_geo?: string | null;
+  coordinate_precision?: "exact" | "approximate" | null;
 }
 
 /**
@@ -638,6 +687,23 @@ export const buildRsvpUpdatePayloadDiff = (
     JSON.stringify(original.coverGallery) !== JSON.stringify(edited.coverGallery)
   ) {
     payload.cover_media_gallery = edited.coverGallery;
+  }
+  // The Where-step pin: a re-picked address sends its coordinate, precision and
+  // city. Before this the published-RSVP editor saved the new address text and
+  // left the old (or no) pin behind, so map links pointed at the wrong place.
+  const originalGeo = original.locationGeo ?? null;
+  if (
+    originalGeo?.lat !== edited.locationGeo?.lat ||
+    originalGeo?.lng !== edited.locationGeo?.lng
+  ) {
+    payload.location_geo = locationGeoColumnValue(edited.locationGeo);
+    payload.coordinate_precision =
+      edited.locationGeo === null
+        ? null
+        : asCoordinatePrecision(edited.coordinatePrecision);
+  }
+  if ((original.city ?? null) !== edited.city) {
+    payload.city = edited.city;
   }
   // ORCH-1296 [chip-in-edit-published-gap] — emit the 3 chip-in fields ONLY when
   // changed from the loaded LiveEvent, so the RPC's COALESCE-to-existing safety
@@ -799,10 +865,7 @@ export const draftToServerUpdate = (
   vibe_tags: Array.isArray(draft.vibeTags) ? draft.vibeTags : [],
   music_genres: Array.isArray(draft.musicGenres) ? draft.musicGenres : [],
   city: draft.city,
-  location_geo:
-    draft.locationGeo === null
-      ? null
-      : `(${draft.locationGeo.lng},${draft.locationGeo.lat})`,
+  location_geo: locationGeoColumnValue(draft.locationGeo),
   // ORCH-1006 — per-offering pricing switches. NULL = inherit brand default.
   // Draft rows are status=draft (unsold → never locked) so a direct column
   // write is safe; the post-sale lock guard only matters on live edits.
@@ -833,6 +896,15 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
   const settings = asRecord(businessDraft.settings);
   const format = asDraftFormat(businessDraft.format, row.is_online);
   const whenMode = asWhenMode(businessDraft.whenMode, row);
+  // The Where-step pin. The column wins; when it is empty the pin saved in
+  // business_draft is used. The RSVP draft owner never wrote the column, so its
+  // autosave echo came back with location_geo NULL and — because the store
+  // replaces the local draft wholesale with this echo — the picked coordinate
+  // vanished ~1s after the pick (the map preview went blank and the next
+  // autosave saved the blank). The blob always carried the pin.
+  const locationGeo =
+    locationGeoFromColumn(row.location_geo) ??
+    asLatLng(businessDraft.locationGeo);
 
   const legacyLocalDraftId = asStringOrNull(businessDraft.legacyLocalDraftId);
   return {
@@ -887,18 +959,13 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     // the Postgres `point` representation (string "(lng,lat)" OR object
     // {x,y}). Empty point → null.
     city: asStringOrNull(row.city),
-    locationGeo: ((): { lat: number; lng: number } | null => {
-      const g = row.location_geo;
-      if (g == null) return null;
-      if (typeof g === "string") {
-        const m = g.match(/^\(([-\d.]+),([-\d.]+)\)$/);
-        return m ? { lng: Number(m[1]), lat: Number(m[2]) } : null;
-      }
-      if (typeof g === "object" && typeof g.x === "number" && typeof g.y === "number") {
-        return { lng: g.x, lat: g.y };
-      }
-      return null;
-    })(),
+    locationGeo,
+    // Round-trips through the blob for the same reason, and only ever describes
+    // a pin that exists.
+    coordinatePrecision:
+      locationGeo === null
+        ? null
+        : asCoordinatePrecision(businessDraft.coordinatePrecision),
     onlineUrl: row.online_url,
     hideAddressUntilTicket: asBoolean(
       businessDraft.hideAddressUntilTicket,

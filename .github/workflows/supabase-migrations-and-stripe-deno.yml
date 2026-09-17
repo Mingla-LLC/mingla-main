@@ -436,6 +436,27 @@ jobs:
           # still honour an explicit []; removing a cover must not wipe it.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql
+          # RSVP Where step — a picked address kept its map pin for about a
+          # second: the RSVP draft owner never wrote location_geo, the wizard
+          # adopted that row, and publish never promoted a pin. The draft and
+          # live owners now write it, publish promotes it with its precision,
+          # and the public RSVP page still withholds it while the address is
+          # hidden. Behavioural against the real chain; every case rolls back.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/rsvp_where_step_keeps_the_pin.test.sql
+          # Draft autosave keeps a cover the server applied — a cover video that
+          # finishes after its sheet closed was erased by the next autosave on RSVP
+          # and ticketed drafts. The job applies through cover_video_apply_once and
+          # the save runs the real owners; a deliberate pick or removal still saves.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql
+          # #3439 — publish reconciles URL/type/poster under the same locked row;
+          # actual inner and caller, intentional edits and cross-tenant rejection.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3439_publish_cover_reconciliation.test.sql
+          # Independent #3439 adversarial publish/visibility/replay coverage.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3439_publish_cover.tester.adversarial.test.sql
           # Issue #3284 — refund terms on events and experiences. The gated writer
           # refuses terms that are worse for buyers once a paid order exists, and
           # both public readers append refundPolicy without moving any existing key.
@@ -448,6 +469,13 @@ jobs:
           # key contract. Behavioural against the real chain; every case rolls back.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3314_bundle_hide_remaining.test.sql
+          # Unlisted RSVP invite link (20270709000000) — an unlisted RSVP opens from its
+          # link as anon through pg_public_rsvp_by_slug and can be RSVPed; its appended
+          # publicEventRow equals the business_public_events_view row for public RSVPs;
+          # private stays NULL, unlisted stays unlisted, #2489 address withholding holds.
+          # Behavioural against the real chain; every case rolls back.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/unlisted_rsvp_invite_link.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
