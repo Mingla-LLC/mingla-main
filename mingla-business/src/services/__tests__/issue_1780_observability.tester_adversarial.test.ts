@@ -15,7 +15,7 @@ import path from "node:path";
 const ROOT = path.resolve(__dirname, "../../../..");
 const MIGRATION_PATH = path.join(
   ROOT,
-  "supabase/migrations/20270709001780_issue_1780_wizard_invite_plans.sql",
+  "supabase/migrations/20270711001780_issue_1780_wizard_invite_plans.sql", // [TEST-MOD-APPROVED #1780] renumbered above the merge train
 );
 const WORKER_PATH = path.join(
   ROOT,
