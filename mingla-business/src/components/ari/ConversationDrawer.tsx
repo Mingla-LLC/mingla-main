@@ -13,7 +13,7 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { AlertTriangle, Ellipsis, Sparkles } from "lucide-react-native";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -27,6 +27,9 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { Sheet } from "../ui/Sheet";
+// ORCH-0892: a file that hosts a TextInput scrolls through the keyboard-aware
+// wrapper (KeyboardAwareScrollView on native, ScrollView on web).
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import {
   deleteConversation,
   regenerateAgentConversationTitle,
