@@ -10303,3 +10303,17 @@ All four #2796 rules were established ACTIVE after independent web, iOS AX5, and
 - **Enforcement:** `.github/scripts/strict-grep/issue-2148-ci-topology-bounded.mjs` (disposable comparison repository). `.github/scripts/strict-grep/issue-3455-topology-gate-checkout-isolation.implementor.test.mjs` and the independently written `…tester.test.mjs` (strict-grep Class E) fingerprint push-shaped, PR-shaped, linked-worktree and full-clone-anchor checkouts before and after success, exit-2, fetch-failure and late-throw runs; they require an empty temp base and a successful `git clone --no-hardlinks <workspace>` afterwards, and fail when the pre-#3455 gate is restored. The frozen #2148/#2681 topology suites remain unchanged in Class A.
 - **Scope note:** today only the topology gate fetches history. Any future gate that needs history must use the same disposable-repository pattern. A runner-level mutation guard is a recorded follow-up (#3455 SPEC §15), not enforcement.
 - **Status:** DRAFT until #3455 CLOSE: post-merge push Class A green plus the network replica readback at the merged SHA.
+
+## DRAFT — issue #3446 (Android back steps back one screen in every Business creation wizard)
+
+### I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK (DRAFT)
+
+- **Rule:** every Business creation wizard (Event, RSVP, Experience, Trip) calls `useWizardHardwareBack` exactly once. While a wizard screen is focused on Android, hardware back never pops the wizard route directly:
+  - an open native overlay consumes it first;
+  - otherwise Step 1 runs the wizard's in-app close/cancel owner, and every later step runs its in-app Back owner;
+  - presses during publish, autosave or discard are swallowed;
+  - a second press never skips a step or re-runs an exit that is still in flight.
+
+  The listener subscribes once per focus, is removed on blur, and does not exist on iOS or web. No wizard file imports `BackHandler` directly.
+- **Enforcement:** `mingla-business/src/hooks/__tests__/issue_3446_wizard_hardware_back.implementor.test.tsx` (hook and latch behaviour), `mingla-business/src/components/__tests__/issue_3446_wizard_hardware_back_wiring.implementor.test.ts` (all four wizards wired, one owner), `mingla-business/src/components/experience/__tests__/issue_3446_experience_hardware_back.implementor.test.tsx` (runtime wiring).
+- **Established:** DRAFT at #3446; flips ACTIVE on CLOSE.
