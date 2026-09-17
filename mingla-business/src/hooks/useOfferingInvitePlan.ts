@@ -85,12 +85,18 @@ export function useOfferingInvitePlan(input: {
     const subscription = AppState.addEventListener("change", (next) => {
       const wasActive = appState.current === "active";
       appState.current = next;
-      if (next === "active" && !wasActive && eventId !== null) {
+      // Same predicate as the plan query: a foreground refresh bypasses
+      // React Query's enabled, so it must never fire pre-auth or while the
+      // caller has invites disabled.
+      if (
+        next === "active" && !wasActive &&
+        isAuthReady && input.enabled && eventId !== null
+      ) {
         void refreshAuthoritative().catch(() => undefined);
       }
     });
     return () => subscription.remove();
-  }, [eventId, refreshAuthoritative]);
+  }, [eventId, input.enabled, isAuthReady, refreshAuthoritative]);
   return { plan, people, groups, quote, replace, clear, refreshAuthoritative };
 }
 
@@ -137,11 +143,17 @@ export function useOfferingInvitePlanSummary(input: {
     const subscription = AppState.addEventListener("change", (next) => {
       const wasActive = appState.current === "active";
       appState.current = next;
-      if (next === "active" && !wasActive && input.eventId !== null) {
+      // Same predicate as the plan query: a foreground refresh bypasses
+      // React Query's enabled, so it must never fire pre-auth or while the
+      // caller has the summary disabled.
+      if (
+        next === "active" && !wasActive &&
+        isAuthReady && input.enabled && input.eventId !== null
+      ) {
         void refreshAuthoritative().catch(() => undefined);
       }
     });
     return () => subscription.remove();
-  }, [input.eventId, refreshAuthoritative]);
+  }, [input.eventId, input.enabled, isAuthReady, refreshAuthoritative]);
   return { plan, quote, refreshAuthoritative };
 }
