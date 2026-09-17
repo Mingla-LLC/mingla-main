@@ -1167,7 +1167,7 @@ CREATE OR REPLACE FUNCTION public.issue_1719_publish_event_with_poster(
   p_event_id uuid,p_draft_payload jsonb,p_client_revision integer DEFAULT NULL
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog
 AS $fn$
-DECLARE v_result jsonb;v_url text;v_type text;v_poster text;v_payload jsonb;
+DECLARE v_result jsonb;v_payload jsonb;
   v_invite_revision bigint;v_invite_confirmed boolean;
 BEGIN
   IF private.issue_1780_payload_has_forbidden_invite_tail(p_draft_payload) THEN
@@ -1177,13 +1177,11 @@ BEGIN
   v_invite_confirmed:=COALESCE((p_draft_payload->>'invite_selection_confirmed')::boolean,false);
   v_payload:=p_draft_payload-ARRAY['invite_selection_revision','invite_selection_confirmed'];
   PERFORM public.business_assert_event_visibility(v_payload#>'{theme,business_draft,requestedVisibility}');
-  v_url:=NULLIF(v_payload->>'cover_media_url','');v_type:=NULLIF(v_payload->>'cover_media_type','');
-  v_poster:=COALESCE(NULLIF(v_payload->>'cover_media_poster_url',''),CASE WHEN v_type='image' THEN v_url END);
-  PERFORM public.assert_cover_media_triplet(v_url,v_type,v_poster);
+  -- #3439 (20270708003439): the locked publish owner resolves, validates and
+  -- persists the URL/type/poster together. A second write from stale input would
+  -- either erase the poster or roll the safe publish back with persist_mismatch,
+  -- so this wrapper adds only the #1780 invite receipt around that one owner.
   v_result:=public.business_publish_event_draft(p_event_id,v_payload,p_client_revision);
-  UPDATE public.events SET cover_media_poster_url=v_poster WHERE id=p_event_id
-    AND cover_media_url IS NOT DISTINCT FROM v_url AND cover_media_type IS NOT DISTINCT FROM v_type;
-  IF NOT FOUND THEN RAISE EXCEPTION 'cover_media_persist_mismatch';END IF;
   RETURN v_result||private.enqueue_wizard_invites_on_publish_v1(p_event_id,v_invite_revision,v_invite_confirmed);
 END;$fn$;
 
