@@ -9296,6 +9296,15 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 - **Rule:** The `static-gates` job runs no container and provisions no database. It declares no `services:`, invokes no `docker`, and installs no Supabase CLI. Database-backed contract proofs belong in `postgres-contract-suites.yml`, which owns the sole `supabase/postgres` service container and replays every migration from zero unconditionally.
 - **Enforcement:** the SC-11 assertion in `issue-2437-node-wave-shadow-parity.implementor.test.mjs`, scanning every `static-gates` step for container and CLI verbs with each forbidden literal assembled from fragments so the guard cannot match its own source; plus `STATIC_CLASS_A_STEP_SHA256`, deliberately re-cut at #2594 from the 9-step `d89bf992…` to the 7-step `982cd176…`, so any step returning to that job moves the seal and must be declared. Mutants proven: restoring the replay step reds both the container scan and the seal; restoring the CLI action reds; adding a job-level service container reds.
 
+---
+
+## ACTIVE — issue #3336 (Class A keeps a visible ten-percent readiness margin)
+
+### I-PROPOSED-3336-CLASS-A-READINESS-MARGIN (ACTIVE)
+
+- **Rule:** A successful Class A job is release-ready only at or below 540 seconds, preserving at least 60 seconds / 10% of its unchanged 600-second constitutional bound. A success above 540 through 600 seconds fails as `R1 READINESS-MARGIN FAIL`; a success above 600 remains the distinct #2594 `D3` constitutional failure; and a lone timeout-shaped cancellation remains the distinct #2594 `D6` failure against the 890-second kill floor and 900-second hard cap. Registry validation may reuse one exact-root tracked-file listing only within one validation or an explicit caller-owned immutable scope; the scope is discarded after the validation so sequential Git-index mutations are always observed.
+- **Enforcement:** `validateRegistry()` in `.github/scripts/ci-batch/validate-manifest-v2.mjs`; the deterministic owner accounting and immutable-scope proofs in `issue-2438-postgres-wave-shadow-parity.implementor.test.mjs`; the D4-only readiness composition and core-plus-readiness fixtures in `issue-2594-class-a-budget.mjs`; and the independently wired `issue-3336-class-a-margin.tester.test.mjs`, which commits A → B → A provider mutations, attacks wrong-root reuse, and distinguishes the 540/541/600/601/900-second outcomes. Class A remains manifest-complete and fail-closed; verification evidence lives on issue #3336 and PR #3433.
+
 ## ACTIVE — issue #1795 (venue order intelligence)
 
 ### I-PROPOSED-1795-VENUE-ORDER-METRICS-ONE-TRUTH (ACTIVE)
