@@ -425,6 +425,40 @@ export interface RsvpOfferingState extends RsvpDecisionState {
 }
 
 /**
+ * #3440 F3 — reply state (reply, approval, pass, open pass popup) that only
+ * renders for the reply context (event + identity) that wrote it.
+ *
+ * A context switch still resets these values during render, but that reset is
+ * a set of queued state updates, and React can replay an older queued update
+ * over it (observed: switching events while the old event's verification was
+ * still pending painted event A's "You're going" and pass on event B). Tagging
+ * each value with its writer makes a value written for another context
+ * unrenderable, whatever the update queue does: it reads as `unowned` (the
+ * current context's own restored value, or nothing) instead.
+ */
+function useReplyOwnedState<T>(
+  contextRef: { readonly current: object },
+  context: object,
+  unowned: T,
+): [T, (next: T) => void, (owner: object) => T | undefined] {
+  const [slot, setSlot] = useState<{ owner: object; value: T }>(() => ({
+    owner: context,
+    value: unowned,
+  }));
+  const set = useCallback(
+    (next: T): void => {
+      // The writer is the context current when the write happens; every async
+      // writer in this hook is already fenced by isCurrent().
+      setSlot({ owner: contextRef.current, value: next });
+    },
+    [contextRef],
+  );
+  // The value a given (usually the previous) context wrote, if it wrote one.
+  const writtenBy = (owner: object): T | undefined => (slot.owner === owner ? slot.value : undefined);
+  return [slot.owner === context ? slot.value : unowned, set, writtenBy];
+}
+
+/**
  * The single source of RSVP decision/submit/dialog state. The SURFACE calls this
  * ONCE and passes the result to BOTH <RsvpOfferingBody> and
  * <RsvpOfferingDecisionDock> so the inline box and the pinned floating dock share
@@ -488,15 +522,19 @@ export const useRsvpOfferingState = (
   // An anonymous guest's reply restored after the chip-in redirect seeds the
   // resolved state, so the returning page shows their reply, not a fresh invite.
   const restoredRsvp = props.restoredRsvp ?? null;
-  const [guestStatus, setGuestStatus] = useState<
+  const [guestStatus, setGuestStatus] = useReplyOwnedState<
     "going" | "not_going" | "waitlisted" | "maybe" | null
-  >(restoredRsvp?.guestStatus ?? null);
-  const [guestApproval, setGuestApproval] = useState<"pending" | "approved" | null>(
+  >(contextRef, context, restoredRsvp?.guestStatus ?? null);
+  const [guestApproval, setGuestApproval] = useReplyOwnedState<"pending" | "approved" | null>(
+    contextRef,
+    context,
     restoredRsvp?.guestApproval ?? null,
   );
   // The last confirmed Going details (pass QR + recovery), kept after the
   // success popup closes so "View your pass" can reopen it.
-  const [passDetails, setPassDetails] = useState<RsvpConfirmationDetails | null>(
+  const [passDetails, setPassDetails] = useReplyOwnedState<RsvpConfirmationDetails | null>(
+    contextRef,
+    context,
     restoredRsvp?.details ?? null,
   );
   const currentPassRef = useRef(passDetails);
@@ -532,7 +570,9 @@ export const useRsvpOfferingState = (
   // FLOW A — Going confirmation dialog + success popup state (body-owned).
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
-  const [successDetails, setSuccessDetails] = useState<RsvpConfirmationDetails | null>(
+  const [successDetails, setSuccessDetails, successDetailsWrittenBy] = useReplyOwnedState<RsvpConfirmationDetails | null>(
+    contextRef,
+    context,
     null,
   );
   const visiblePassRef = useRef(successDetails);
@@ -581,7 +621,10 @@ export const useRsvpOfferingState = (
     acceptedRevision.current += 1;
     // Adjust before children commit: old credentials never paint in the new
     // event/account, even when a surface reuses the mounted hook.
-    focusDecisionRequested.current = renderedContext.eventId === event.id && successDetails !== null;
+    // Whether the context being left had its pass popup open (the value this
+    // render sees for the NEW context is already unowned).
+    const leftOpenPopup = (successDetailsWrittenBy(renderedContext) ?? null) !== null;
+    focusDecisionRequested.current = renderedContext.eventId === event.id && leftOpenPopup;
     setRenderedContext(context);
     setGuestName(props.initialGuestName ?? "");
     setGuestEmail(props.initialGuestEmail ?? "");
