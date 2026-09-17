@@ -342,23 +342,217 @@ test('A5 the two plates compose byte-identical rows under adversarial tokens —
   assert.ok(matched >= 20, `only ${matched} pairs were actually compared on both plates`);
 });
 
+/**
+ * A6 IS HERMETIC (#2700 follow-up). For a glyph Geist does not carry, @vercel/og
+ * fetches fallback assets AT RENDER TIME: unicode-range CSS plus a `text=` font
+ * subset from Google Fonts, and one twemoji SVG per emoji from jsDelivr. A dead
+ * socket on a runner therefore failed A6 with `TypeError: fetch failed` and
+ * turned main red although nothing in the renderer had changed.
+ *
+ * Answering those requests with "no font" is NOT a fix. Satori then draws the
+ * last font's .notdef box, which HAS ink but the wrong advance: measured against
+ * the network run, the Hangul, Greek, fullwidth and stacked-combining rows fell
+ * from 2 bands to 1 and the Han, Kana and Thai rows lost about 40% of their
+ * width. A6 would have stayed green while measuring tofu.
+ *
+ * So A6 replays the SAME fonts from `fixtures/a6-fallback-assets.json`:
+ *   - the detector CSS is re-synthesised from the recorded unicode-ranges,
+ *     restricted to the code points A6 renders (`alphabet`, admitted per row);
+ *   - each family is ONE Google subset covering every code point that A6's rows
+ *     AND their full, untruncated facts were routed to it, so a renderer change
+ *     that moves the cut still draws real glyphs and fails A6 on BANDS;
+ *   - an emoji the CDN served is drawn as a full em-square stand-in. Satori
+ *     sizes an emoji image to the em box whatever the SVG holds, so bands AND ink
+ *     extents match the real art (measured); a code the CDN 404s replays its 404.
+ * Measured against the network run, every row's band count AND per-band ink
+ * extent is identical except `math_bold`, which is .notdef in BOTH: Google serves
+ * Noto Sans Math with no unicode-range, so no fallback font ever carries U+1D400+
+ * (production draws the same box). A box takes the advance of whichever loaded
+ * font is tried last — 1em on the network, 0.6em here, because a subset already
+ * holding the fullwidth glyphs means one fewer font is appended — one band
+ * either way. Anything the fixture cannot answer is a MISS, asserted per row, so
+ * a font this fixture lacks can never quietly become a box. Re-record (needs
+ * network; rewrites the fixture) with:
+ *   ISSUE_2700_RECORD_A6_ASSETS=1 node --test <this file>
+ * The Noto font subsets are SIL Open Font License 1.1, as served by Google Fonts.
+ */
+const A6_ASSETS_PATH = path.join(HERE, 'fixtures', 'a6-fallback-assets.json');
+const RECORD_A6_ASSETS = process.env.ISSUE_2700_RECORD_A6_ASSETS === '1';
+const FONTS_CSS = 'https://fonts.googleapis.com/css2?';
+/** The user agent @vercel/og's `loadGoogleFont` sends, so Google answers with TrueType, not WOFF2. */
+const FONT_SUBSET_AGENT = 'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_8; de-at) AppleWebKit/533.21.1 (KHTML, like Gecko) Version/5.0.5 Safari/533.21.1';
+const TWEMOJI_SVG = /^https:\/\/cdn\.jsdelivr\.net\/gh\/twitter\/twemoji@[^/]+\/assets\/svg\/([0-9a-f-]+)\.svg$/;
+const DETECTOR_BLOCK = /font-family:\s*'(.+?)';.+?unicode-range:\s*(.+?);/gms;
+const REPLAYED_FONT = 'https://a6-fixture.invalid/';
+const EMOJI_STAND_IN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><rect width="36" height="36" fill="#FFFFFF"/></svg>';
+
+const urlOf = (input) => (typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+const familyKey = (family) => family.replaceAll(' ', '+');
+const sortedCodePoints = (text) => [...new Set(Array.from(text, (character) => character.codePointAt(0)))].sort((a, b) => a - b);
+const parseRanges = (value) => (value ? value.split(',').map((part) => {
+  const [start, end = start] = part.trim().replace(/^U\+/i, '').split('-');
+  return [parseInt(start, 16), parseInt(end, 16)];
+}) : []);
+const inRanges = (ranges, point) => ranges.some(([start, end]) => start <= point && point <= end);
+function formatRanges(points) {
+  const merged = [];
+  for (const point of points) {
+    const last = merged.at(-1);
+    if (last && point === last[1] + 1) last[1] = point; else merged.push([point, point]);
+  }
+  return merged.map(([start, end]) => (start === end ? `U+${start.toString(16)}` : `U+${start.toString(16)}-${end.toString(16)}`)).join(', ');
+}
+const hex = (points) => points.map((point) => `U+${point.toString(16)}`);
+
+/** Offline: answer every fallback-asset request from the recorded fixture, and record anything it cannot answer. */
+function replayFallbackAssets() {
+  const fixture = JSON.parse(fs.readFileSync(A6_ASSETS_PATH, 'utf8'));
+  const alphabet = parseRanges(fixture.alphabet);
+  const realFetch = globalThis.fetch;
+  let misses = [];
+  const served = { fonts: 0, emoji: 0 };
+  globalThis.fetch = async (input, init) => {
+    const url = urlOf(input);
+    if (url.startsWith('data:')) return realFetch(input, init);
+    if (url.startsWith(FONTS_CSS)) {
+      const params = new URL(url).searchParams;
+      const families = params.getAll('family').map(familyKey);
+      const text = params.get('text');
+      if (text === null) {
+        let css = '';
+        for (const family of families) {
+          if (!(family in fixture.ranges)) { misses.push(`unicode-range for ${family}`); continue; }
+          if (fixture.ranges[family]) css += `@font-face { font-family: '${family.replaceAll('+', ' ')}'; unicode-range: ${fixture.ranges[family]}; }\n`;
+        }
+        return new Response(css, { headers: { 'content-type': 'text/css' } });
+      }
+      const font = fixture.fonts[families[0]];
+      const uncovered = Array.from(text).filter((character) => !font || !font.text.includes(character));
+      if (uncovered.length) {
+        misses.push(`${families[0]} glyphs ${hex(sortedCodePoints(uncovered.join(''))).join(' ')}`);
+        return new Response('', { headers: { 'content-type': 'text/css' } });
+      }
+      served.fonts += 1;
+      return new Response(`@font-face { src: url(${REPLAYED_FONT}${families[0]}) format('truetype'); }`, { headers: { 'content-type': 'text/css' } });
+    }
+    if (url.startsWith(REPLAYED_FONT)) return new Response(Buffer.from(fixture.fonts[url.slice(REPLAYED_FONT.length)].data, 'base64'));
+    const emoji = TWEMOJI_SVG.exec(url);
+    if (emoji) {
+      const recorded = fixture.emoji[emoji[1]];
+      if (!recorded) { misses.push(`twemoji ${emoji[1]}`); return new Response('', { status: 404 }); }
+      served.emoji += 1;
+      return recorded.status === 200
+        ? new Response(EMOJI_STAND_IN, { headers: { 'content-type': 'image/svg+xml' } })
+        : new Response(recorded.body, { status: recorded.status });
+    }
+    misses.push(`unexpected network request ${url}`);
+    throw new Error(`A6 is hermetic and the fixture has no answer for ${url}`);
+  };
+  return {
+    admit(name, line) {
+      const outside = sortedCodePoints(line).filter((point) => !inRanges(alphabet, point));
+      assert.deepEqual(hex(outside), [], `${name}: the row uses code points the fixture was never recorded for — re-record (see the A6 note)`);
+    },
+    takeMisses() { const taken = misses; misses = []; return taken; },
+    restore() { globalThis.fetch = realFetch; },
+    finish() {
+      // Anti-vacuity: a run in which the fixture served nothing never exercised
+      // the fallback path A6 exists for.
+      assert.ok(served.fonts >= 1, 'no fallback font was replayed — A6 no longer reaches a script Geist lacks');
+      assert.ok(served.emoji >= 1, 'no emoji was replayed — A6 no longer reaches the emoji path');
+    },
+  };
+}
+
+/** Online, on request only: render against the real network and rewrite the fixture from what was fetched. */
+function recordFallbackAssets() {
+  const realFetch = globalThis.fetch;
+  const ranges = {};
+  const routed = {};
+  const emoji = {};
+  let rendered = '';
+  globalThis.fetch = async (input, init) => {
+    const url = urlOf(input);
+    const response = await realFetch(input, init);
+    if (url.startsWith(FONTS_CSS)) {
+      const params = new URL(url).searchParams;
+      const families = params.getAll('family').map(familyKey);
+      const text = params.get('text');
+      if (text === null) {
+        for (const family of families) ranges[family] ??= [];
+        for (const [, family, range] of (await response.clone().text()).matchAll(DETECTOR_BLOCK)) (ranges[familyKey(family)] ??= []).push(...parseRanges(range));
+      } else {
+        routed[families[0]] = `${routed[families[0]] ?? ''}${text}`;
+      }
+    }
+    const code = TWEMOJI_SVG.exec(url);
+    if (code) emoji[code[1]] = response.status === 200 ? { status: 200 } : { status: response.status, body: await response.clone().text() };
+    return response;
+  };
+  return {
+    admit(name, line) { rendered += line; },
+    takeMisses() { return []; },
+    restore() { globalThis.fetch = realFetch; },
+    async finish() {
+      const points = sortedCodePoints(rendered);
+      const fixture = {
+        about: 'Fallback assets @vercel/og fetches while #2700 A6 renders scripts Geist lacks. Replayed offline by that test; re-record with ISSUE_2700_RECORD_A6_ASSETS=1. Noto font subsets: SIL Open Font License 1.1, from Google Fonts. Emoji are not stored: a served code is drawn as an em-square stand-in.',
+        alphabet: formatRanges(points),
+        ranges: {},
+        fonts: {},
+        emoji: Object.fromEntries(Object.entries(emoji).sort(([a], [b]) => a.localeCompare(b))),
+      };
+      for (const family of Object.keys(ranges).sort()) fixture.ranges[family] = formatRanges(points.filter((point) => inRanges(ranges[family], point)));
+      for (const family of Object.keys(routed).sort()) {
+        const text = String.fromCodePoint(...sortedCodePoints(routed[family]));
+        const css = await (await realFetch(`${FONTS_CSS}family=${family}&text=${encodeURIComponent(text)}`, { headers: { 'User-Agent': FONT_SUBSET_AGENT } })).text();
+        const source = css.match(/src: url\((.+)\) format\('(opentype|truetype)'\)/);
+        assert.ok(source, `Google Fonts returned no TrueType subset for ${family}`);
+        const data = await (await realFetch(source[1])).arrayBuffer();
+        fixture.fonts[family] = { text, data: Buffer.from(data).toString('base64') };
+      }
+      fs.mkdirSync(path.dirname(A6_ASSETS_PATH), { recursive: true });
+      fs.writeFileSync(A6_ASSETS_PATH, `${JSON.stringify(fixture, null, 2)}\n`);
+      console.log(`A6: recorded ${Object.keys(fixture.fonts).length} font subsets and ${Object.keys(fixture.emoji).length} emoji codes`);
+    },
+  };
+}
+
 test('A6 RUNTIME: rows in scripts the advance table does not model still lay out inside the plate clip', async () => {
   // The decisive proof for every script the table falls through to the
   // unknown-glyph charge for. Rendered on the real engine at the plate's real
   // width and typography, then counted band by band — not reasoned about from a
-  // style object, and not inferred from the estimate that is under test.
+  // style object, and not inferred from the estimate that is under test. The
+  // engine's fallback fonts come from the recorded fixture, never the network
+  // (see the A6 note above).
+  const assets = RECORD_A6_ASSETS ? recordFallbackAssets() : replayFallbackAssets();
   let examined = 0;
   let skipped = 0;
-  for (const [name, [category, area]] of Object.entries(ADVERSARIAL_FACTS)) {
-    if (RASTERISER_CANNOT_SHAPE.has(name)) { skipped += 1; continue; }
-    const line = covered(category, area);
-    if (line === null || line === '') { skipped += 1; continue; }
-    const bands = await inkBands(line);
-    // Anti-vacuity: a row that rendered NO ink would satisfy "<= 2" for free.
-    assert.ok(bands >= 1, `${name}: the composed row rendered no ink at all -> ${JSON.stringify(line)}`);
-    assert.ok(bands <= CLIP_BANDS, `${name}: composed row lays out in ${bands} bands, the plate clips at ${CLIP_BANDS} -> ${JSON.stringify(line)}`);
-    examined += 1;
+  try {
+    if (RECORD_A6_ASSETS) {
+      // Route every FULL fact too, so a subset still covers a row the renderer
+      // cuts somewhere else tomorrow.
+      for (const [name, pair] of Object.entries(NORMALISED_FACTS)) {
+        if (RASTERISER_CANNOT_SHAPE.has(name)) continue;
+        for (const fact of pair) if (fact && fact.trim()) { assets.admit(name, fact); await inkBands(fact); }
+      }
+    }
+    for (const [name, [category, area]] of Object.entries(ADVERSARIAL_FACTS)) {
+      if (RASTERISER_CANNOT_SHAPE.has(name)) { skipped += 1; continue; }
+      const line = covered(category, area);
+      if (line === null || line === '') { skipped += 1; continue; }
+      assets.admit(name, line);
+      const bands = await inkBands(line);
+      assert.deepEqual(assets.takeMisses(), [], `${name}: the offline fixture could not answer the engine, so this row would be measured in the wrong font — re-record (see the A6 note)`);
+      // Anti-vacuity: a row that rendered NO ink would satisfy "<= 2" for free.
+      assert.ok(bands >= 1, `${name}: the composed row rendered no ink at all -> ${JSON.stringify(line)}`);
+      assert.ok(bands <= CLIP_BANDS, `${name}: composed row lays out in ${bands} bands, the plate clips at ${CLIP_BANDS} -> ${JSON.stringify(line)}`);
+      examined += 1;
+    }
+  } finally {
+    assets.restore();
   }
+  await assets.finish();
   assert.equal(examined + skipped, Object.keys(ADVERSARIAL_FACTS).length, `visited ${examined + skipped} cases, expected ${Object.keys(ADVERSARIAL_FACTS).length}`);
   assert.ok(examined >= 20, `only ${examined} rows actually reached the rasteriser`);
 });
