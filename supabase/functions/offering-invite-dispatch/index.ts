@@ -188,6 +188,7 @@ function applyWizardSmsMarketFlags(
   return rows.map((row) => {
     if (row.channel !== "sms" || !row.allowed) return row;
     const country = countryFromE164(row.normalizedContact);
+    // orch-strict-grep-allow stripe-country-out-of-scope — SMS market rollout flag selection, not Stripe payout eligibility.
     const marketEnabled = country === "NG" ? policy.smsNg : policy.smsUs;
     return marketEnabled
       ? row
@@ -342,62 +343,13 @@ async function dispatchCommittedWizardGroup(
   group: { groupId: string; campaignIds: string[] },
   channels: Channel[],
 ): Promise<boolean> {
-  let ambiguous = false;
-  for (const campaignId of group.campaignIds ?? []) {
-    try {
-      const response = await fetch(url + "/functions/v1/" + "marketing-send", {
-        method: "POST",
-        headers: {
-          authorization: "Bearer " + serviceKey,
-          apikey: serviceKey,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ campaign_id: campaignId }),
-      });
-      if (!response.ok) ambiguous = true;
-    } catch {
-      ambiguous = true;
-    }
-  }
-  if (channels.includes("push")) {
-    const { data: attempts, error: attemptsError } = await service.from(
-      "brand_offering_invite_delivery_attempts",
-    ).select("id").eq("send_group_id", group.groupId).eq("channel", "push")
-      .eq("status", "queued");
-    if (attemptsError) ambiguous = true;
-    for (const attempt of attempts ?? []) {
-      const { data: preflightData, error: preflightError } = await service.rpc(
-        "biz_preflight_offering_push_provider_io",
-        { p_attempt_id: attempt.id },
-      );
-      if (preflightError || !preflightData) {
-        ambiguous = true;
-        continue;
-      }
-      const claimed = preflightData as {
-        attemptId: string;
-        recipientUserId: string;
-        internalProviderClaimKey: string;
-        oneSignalIdempotencyKey: string;
-        pushPayload: PersistedOfferingPushV1;
-      };
-      const result = await dispatchV2(
-        service as unknown as MinimalClient,
-        {
-          user_id: claimed.recipientUserId,
-          category_key: "offering_invitation",
-          payload: {},
-          idempotency_key: claimed.internalProviderClaimKey,
-          requested_channel: "push",
-          persisted_offering_push: claimed.pushPayload,
-          offering_attempt_id: claimed.attemptId,
-          internal_provider_claim_key: claimed.internalProviderClaimKey,
-          onesignal_idempotency_key: claimed.oneSignalIdempotencyKey,
-        },
-      );
-      if (!result.success) ambiguous = true;
-    }
-  }
+  const ambiguous = await handOffOfferingGroupProviders(
+    service,
+    url,
+    serviceKey,
+    group,
+    channels,
+  );
   const intendedStatus = ambiguous ? "partial" : "running";
   // A previous ambiguous handoff leaves the group partial. A reclaimed
   // outbox lease resumes the same group/campaign operation keys and may
@@ -1120,6 +1072,66 @@ export async function handler(request: Request): Promise<Response> {
     campaignIds: string[];
     [key: string]: unknown;
   };
+  const ambiguous = await handOffOfferingGroupProviders(
+    service,
+    url,
+    serviceKey,
+    group,
+    channels,
+  );
+  const intendedStatus = ambiguous ? "partial" : "running";
+  const eligibleStatuses = ambiguous ? ["queued", "running"] : ["queued"];
+  const { data: updatedGroup, error: groupUpdateError } = await service.from(
+    "marketing_send_groups",
+  ).update({
+    status: intendedStatus,
+    started_at: new Date().toISOString(),
+  }).eq("id", group.groupId).in("status", eligibleStatuses).select("status")
+    .maybeSingle();
+  let authoritativeStatus = updatedGroup?.status as string | undefined;
+  if (groupUpdateError || authoritativeStatus === undefined) {
+    const { data: currentGroup, error: currentGroupError } = await service.from(
+      "marketing_send_groups",
+    ).select("status").eq("id", group.groupId).maybeSingle();
+    if (currentGroupError || currentGroup === null) {
+      return json({
+        ...group,
+        error: "group_status_persistence_unproven",
+        providerIo: true,
+      }, 502);
+    }
+    authoritativeStatus = currentGroup.status;
+  }
+  if (
+    (ambiguous && authoritativeStatus !== "partial") ||
+    (!ambiguous && authoritativeStatus === "queued")
+  ) {
+    return json({
+      ...group,
+      error: "group_status_persistence_unproven",
+      status: authoritativeStatus,
+      providerIo: true,
+    }, 502);
+  }
+  return json({
+    ...group,
+    status: authoritativeStatus,
+    providerIo: true,
+  });
+}
+
+/**
+ * Sole provider handoff owner for #1770 sends and #1780 wizard groups. Runs
+ * only after the execution RPC committed; returns true when any provider
+ * handoff was ambiguous. Callers own their own group status transition.
+ */
+async function handOffOfferingGroupProviders(
+  service: WizardServiceClient,
+  url: string,
+  serviceKey: string,
+  group: { groupId: string; campaignIds: string[] },
+  channels: Channel[],
+): Promise<boolean> {
   let ambiguous = false;
   for (const campaignId of group.campaignIds ?? []) {
     try {
@@ -1177,45 +1189,7 @@ export async function handler(request: Request): Promise<Response> {
       }
     }
   }
-  const intendedStatus = ambiguous ? "partial" : "running";
-  const eligibleStatuses = ambiguous ? ["queued", "running"] : ["queued"];
-  const { data: updatedGroup, error: groupUpdateError } = await service.from(
-    "marketing_send_groups",
-  ).update({
-    status: intendedStatus,
-    started_at: new Date().toISOString(),
-  }).eq("id", group.groupId).in("status", eligibleStatuses).select("status")
-    .maybeSingle();
-  let authoritativeStatus = updatedGroup?.status as string | undefined;
-  if (groupUpdateError || authoritativeStatus === undefined) {
-    const { data: currentGroup, error: currentGroupError } = await service.from(
-      "marketing_send_groups",
-    ).select("status").eq("id", group.groupId).maybeSingle();
-    if (currentGroupError || currentGroup === null) {
-      return json({
-        ...group,
-        error: "group_status_persistence_unproven",
-        providerIo: true,
-      }, 502);
-    }
-    authoritativeStatus = currentGroup.status;
-  }
-  if (
-    (ambiguous && authoritativeStatus !== "partial") ||
-    (!ambiguous && authoritativeStatus === "queued")
-  ) {
-    return json({
-      ...group,
-      error: "group_status_persistence_unproven",
-      status: authoritativeStatus,
-      providerIo: true,
-    }, 502);
-  }
-  return json({
-    ...group,
-    status: authoritativeStatus,
-    providerIo: true,
-  });
+  return ambiguous;
 }
 
 if (import.meta.main) serve(handler);
