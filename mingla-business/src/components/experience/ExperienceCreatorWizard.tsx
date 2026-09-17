@@ -75,6 +75,7 @@ import {
 import type { WizardInvitePlan, WizardInviteQuote } from "../../services/offeringInvitePlanService";
 import { useOfferingInvitePlanSummary } from "../../hooks/useOfferingInvitePlan";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
+import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
 import { CreatorStep2When } from "../event/CreatorStep2When";
 import { ExperienceCoverStep } from "./ExperienceCoverStep";
 import type { CoverPatch } from "../ui/CoverPicker";
@@ -723,6 +724,15 @@ export const ExperienceCreatorWizard: React.FC<
     if (step === 1) onCancel?.();
     else setStep((prev) => Math.max(1, prev - 1) as StepIndex);
   }, [inviteNavigation?.phase, onCancel, step]);
+
+  // #3446 — Android back = this wizard's own Back (step > 1) or close (step 1). See I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK.
+  useWizardHardwareBack({
+    isFirstStep: step === 1,
+    busy: submitting || checkingInvitePublish,
+    exitSurfaced: false,
+    onStepBack: goBack,
+    onExit: goBack,
+  });
 
   const buildPayload = useCallback(
     (publish: boolean) => {
