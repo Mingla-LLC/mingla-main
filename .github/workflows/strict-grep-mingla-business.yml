@@ -106,8 +106,7 @@ on:
       # this workflow, so `main` can only be reported red when this workflow
       # runs. MEASURED, not assumed: over 40 consecutive `main` commits, SEVEN
       # (17.5%) matched none of the positive patterns above -- root-level
-      # REPORTS.md/COMMS.md (every CLOSE appended both then; the COMMS.md table
-      # was retired by #3476) and the whole
+      # REPORTS.md/COMMS.md (every CLOSE appends REPORTS.md) and the whole
       # mingla-site-cms tree. On those a red `main` alerted NOBODY, which from
       # outside is indistinguishable from a green one. An alert that fires on
       # five commits in six is not an alert, it is a sampling scheme, and it is
