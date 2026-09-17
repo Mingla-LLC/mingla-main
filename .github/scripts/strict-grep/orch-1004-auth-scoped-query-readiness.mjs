@@ -230,6 +230,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   "marketing/useBrandPersonMaintenance.ts",
   // #1777 — the Brand Circle roster RPC is auth.uid()/brand-rank scoped.
   "marketing/useBrandCircleReach.ts",
+  // [TEST-MOD-APPROVED #1780] Wizard invite plan, Book, groups and quote reads
+  // are auth.uid() and event-scope RPCs; every query folds isAuthReady into enabled.
+  "useOfferingInvitePlan.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads

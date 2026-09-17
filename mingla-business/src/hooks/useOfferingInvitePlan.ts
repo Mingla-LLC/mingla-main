@@ -2,6 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { useCallback, useEffect, useRef } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 
+import { useAuth } from "../context/AuthContext";
 import { marketingKeys } from "./marketing/marketingKeys";
 import {
   clearWizardInvitePlan,
@@ -20,16 +21,17 @@ export function useOfferingInvitePlan(input: {
   enabled: boolean;
 }) {
   const client = useQueryClient();
+  const { isAuthReady } = useAuth();
   const eventId = input.eventId;
   const plan = useQuery({
     queryKey: marketingKeys.offeringInvites.plan(eventId ?? "pending"),
-    enabled: input.enabled && eventId !== null,
+    enabled: isAuthReady && input.enabled && eventId !== null,
     queryFn: () => getWizardInvitePlan(eventId!),
     staleTime: 10_000,
   });
   const people = useInfiniteQuery({
     queryKey: marketingKeys.offeringInvites.activeBookPeople(input.brandId, input.search),
-    enabled: input.enabled && input.brandId.length > 0,
+    enabled: isAuthReady && input.enabled && input.brandId.length > 0,
     queryFn: ({ pageParam }) => listWizardInviteBookPeople(
       input.brandId,
       input.search.trim() || null,
@@ -41,13 +43,13 @@ export function useOfferingInvitePlan(input: {
   });
   const groups = useQuery({
     queryKey: marketingKeys.offeringInvites.manualGroups(input.brandId),
-    enabled: input.enabled && input.brandId.length > 0,
+    enabled: isAuthReady && input.enabled && input.brandId.length > 0,
     queryFn: () => listWizardInviteManualGroups(input.brandId),
     staleTime: 15_000,
   });
   const quote = useQuery({
     queryKey: marketingKeys.offeringInvites.quote(eventId ?? "pending", plan.data?.selectionRevision ?? 0),
-    enabled: input.enabled && eventId !== null && plan.data !== undefined,
+    enabled: isAuthReady && input.enabled && eventId !== null && plan.data !== undefined,
     queryFn: () => quoteWizardInvitePlan(eventId!, plan.data!.selectionRevision),
     staleTime: 10_000,
   });
@@ -99,9 +101,10 @@ export function useOfferingInvitePlanSummary(input: {
   quoteWhenEmpty?: boolean;
 }) {
   const client = useQueryClient();
+  const { isAuthReady } = useAuth();
   const plan = useQuery({
     queryKey: marketingKeys.offeringInvites.plan(input.eventId ?? "pending"),
-    enabled: input.enabled && input.eventId !== null,
+    enabled: isAuthReady && input.enabled && input.eventId !== null,
     queryFn: () => getWizardInvitePlan(input.eventId!),
     staleTime: 10_000,
   });
@@ -110,7 +113,7 @@ export function useOfferingInvitePlanSummary(input: {
       input.eventId ?? "pending",
       plan.data?.selectionRevision ?? 0,
     ),
-    enabled: input.enabled && input.eventId !== null && plan.data !== undefined &&
+    enabled: isAuthReady && input.enabled && input.eventId !== null && plan.data !== undefined &&
       (input.quoteWhenEmpty !== false || plan.data.selectedCount > 0),
     queryFn: () => quoteWizardInvitePlan(input.eventId!, plan.data!.selectionRevision),
     staleTime: 10_000,
