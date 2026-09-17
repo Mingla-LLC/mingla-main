@@ -273,3 +273,155 @@ BEGIN
   END IF;
 END $test$;
 ROLLBACK;
+
+-- Refund status notices reach a real recipient.
+--
+-- A ticket checkout refunded because the ticket could not be confirmed used to
+-- resolve NO recipient for its "refunded" notice on any channel: the resolver
+-- served only open action-needed requests and never looked at ticket checkout
+-- sessions. Every delivery ended failed_terminal / invalid_recipient and the
+-- refund sat in needs_review. RESTORE the resolver's needs_attention-only gate
+-- (or drop its ticket_checkout_session branch) and this block fails.
+BEGIN;
+INSERT INTO auth.users(id) VALUES('5eed0000-0000-4000-8000-000000000001');
+INSERT INTO public.creator_accounts(id) VALUES('5eed0000-0000-4000-8000-000000000001');
+INSERT INTO public.brands(id,account_id,name,slug,default_currency,pricing_currency,payment_provider,
+  contact_email,contact_phone)
+VALUES('5eed0000-0000-4000-8000-000000000010','5eed0000-0000-4000-8000-000000000001',
+  'Refund notice brand','refund-notice-brand','USD','USD','stripe',
+  'brand-notices@example.com','+15555550100');
+INSERT INTO public.events(id,brand_id,title,slug,event_type,status,visibility,timezone,currency)
+VALUES('5eed0000-0000-4000-8000-000000000011','5eed0000-0000-4000-8000-000000000010',
+  'Refund notice event','refund-notice-event','event','scheduled','public','UTC','USD');
+INSERT INTO public.ticket_checkout_sessions(id,event_id,brand_id,buyer_name,buyer_email,
+  buyer_phone_e164,currency,subtotal_cents,total_cents,status,idempotency_key,expires_at,
+  application_fee_amount_cents)
+VALUES('5eed0000-0000-4000-8000-000000000021','5eed0000-0000-4000-8000-000000000011',
+  '5eed0000-0000-4000-8000-000000000010','Notice buyer','buyer-notices@example.com',
+  '+15555550101','USD',300,300,'requires_payment','refund-notice-ticket',
+  now()+interval '15 minutes',0);
+
+DO $test$
+DECLARE v_claim jsonb; v_attempt uuid; v_epoch bigint; v_minted jsonb;
+  v_refund uuid; v_buyer_attempt jsonb; v_recorded jsonb; v_event bigint;
+  v_outbox uuid; v_delivery uuid; v_resolved jsonb; v_channel text;
+  v_audience text; v_state text; v_expected text; v_case record;
+BEGIN
+  v_claim:=public.issue_1930_claim_ticket_provider_attempt(
+    '5eed0000-0000-4000-8000-000000000021','5eed0000-0000-4000-8000-000000000011',
+    'stripe','stripe_native','refund-notice-fingerprint');
+  v_attempt:=(v_claim->>'attemptId')::uuid; v_epoch:=(v_claim->>'epoch')::bigint;
+  PERFORM public.issue_1930_commit_ticket_provider_attempt(v_attempt,v_epoch,
+    'pi_refundnotice',NULL,NULL,'refund-notice-continuation');
+  UPDATE public.ticket_checkout_sessions SET stripe_account_id='acct_refundnotice',
+    stripe_payment_intent_id='pi_refundnotice'
+  WHERE id='5eed0000-0000-4000-8000-000000000021';
+  v_minted:=public.issue_1930_mint_ticket_late_reversal(
+    '5eed0000-0000-4000-8000-000000000021','stripe','pi_refundnotice',NULL,'ch_refundnotice');
+  SELECT id INTO v_refund FROM public.source_refunds
+  WHERE source_type='ticket_checkout_session'
+    AND source_id='5eed0000-0000-4000-8000-000000000021'
+    AND refund_kind='late_payment_no_value';
+  IF v_minted->>'outcome'<>'queued' OR v_refund IS NULL THEN
+    RAISE EXCEPTION 'refund notice fixture: ticket refund was not queued: %',v_minted;
+  END IF;
+
+  v_buyer_attempt:=public.ensure_source_refund_attempt(v_refund,'buyer_refund');
+  v_recorded:=public.record_source_refund_provider_event(v_refund,'buyer_refund',
+    (v_buyer_attempt->>'attempt_no')::integer,'refund-notice:processed',
+    'worker_reconciliation','worker:refund-notice','processed',300,
+    're_refundnotice','stripe_verified_refund');
+  v_event:=(v_recorded->>'source_refund_event_id')::bigint;
+  IF v_event IS NULL OR NOT EXISTS(SELECT 1 FROM public.source_refunds
+      WHERE id=v_refund AND buyer_state='processed' AND attention_generation=0) THEN
+    RAISE EXCEPTION 'refund notice fixture: refund did not reach processed: %',v_recorded;
+  END IF;
+
+  FOR v_case IN SELECT * FROM (VALUES
+    ('buyer','email','processed','buyer-notices@example.com'),
+    ('buyer','sms','processed','+15555550101'),
+    ('brand','email','processed','brand-notices@example.com'),
+    ('brand','inapp','processed','<resolved>'),
+    ('buyer','email','provider_pending','buyer-notices@example.com'),
+    ('buyer','email','needs_attention',NULL),
+    ('buyer','email',NULL,NULL)
+  ) AS t(audience,channel,state,expected) LOOP
+    v_audience:=v_case.audience; v_channel:=v_case.channel;
+    v_state:=v_case.state; v_expected:=v_case.expected;
+    INSERT INTO public.notification_outbox(category_key,brand_id,payload,idempotency_key,
+      channel,contract_version,attention_generation,source_refund_event_id,status,
+      notification_group_key,next_attempt_at)
+    VALUES(
+      CASE WHEN v_audience='buyer' THEN 'source_refund_buyer_state' ELSE 'source_refund_brand_state' END,
+      '5eed0000-0000-4000-8000-000000000010',
+      jsonb_strip_nulls(jsonb_build_object('state',v_state,'source_refund_id',v_refund,
+        'audience',v_audience,'amount','$3.00')),
+      'refund-notice:'||v_audience||':'||v_channel||':'||COALESCE(v_state,'none'),
+      v_channel,9,1,v_event,'pending','source_refund:'||v_refund||':1',now())
+    RETURNING id INTO v_outbox;
+    INSERT INTO public.source_refund_notification_deliveries(refund_id,source_refund_event_id,
+      outbox_id,attention_generation,audience,channel,recipient_revision,recipient_key_id,
+      recipient_fingerprint,payload_fingerprint,serializer_version,idempotency_key,status,
+      next_attempt_at)
+    VALUES(v_refund,v_event,v_outbox,1,v_audience,v_channel,0,
+      CASE WHEN v_channel IN ('email','sms') THEN 'rec1' END,
+      CASE WHEN v_channel IN ('email','sms')
+        THEN 'v1:rec1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' END,
+      repeat('a',64),9,'refund-notice:'||v_audience||':'||v_channel||':'||COALESCE(v_state,'none'),
+      'queued',now())
+    RETURNING id INTO v_delivery;
+    PERFORM public.claim_source_refund_notification_delivery(v_outbox,
+      '5eed0000-0000-4000-8000-0000000000c1',9,now());
+    v_resolved:=public.resolve_source_refund_notification_recipient(v_delivery,
+      '5eed0000-0000-4000-8000-0000000000c1');
+    IF v_expected IS NULL THEN
+      IF v_resolved IS NOT NULL THEN
+        RAISE EXCEPTION 'refund notice: % % notice in state % must not resolve on a processed refund: %',
+          v_audience,v_channel,COALESCE(v_state,'<none>'),v_resolved;
+      END IF;
+    ELSIF v_resolved IS NULL
+       OR (v_expected<>'<resolved>'
+         AND v_resolved->>'recipient' IS DISTINCT FROM v_expected)
+       OR v_resolved->>'channel'<>v_channel THEN
+      RAISE EXCEPTION 'refund notice: % % % notice resolved % (expected %)',
+        v_audience,v_channel,v_state,v_resolved,v_expected;
+    END IF;
+  END LOOP;
+
+  -- A contact corrected on the refund wins, exactly as the runner fingerprints it.
+  UPDATE public.source_refunds SET attention_recipient_email_override='fixed-notices@example.com'
+  WHERE id=v_refund;
+  INSERT INTO public.notification_outbox(category_key,brand_id,payload,idempotency_key,
+    channel,contract_version,attention_generation,source_refund_event_id,status,
+    notification_group_key,next_attempt_at)
+  VALUES('source_refund_buyer_state','5eed0000-0000-4000-8000-000000000010',
+    jsonb_build_object('state','processed','source_refund_id',v_refund,'audience','buyer'),
+    'refund-notice:override',
+    'email',9,1,v_event,'pending','source_refund:'||v_refund||':1',now())
+  RETURNING id INTO v_outbox;
+  INSERT INTO public.source_refund_notification_deliveries(refund_id,source_refund_event_id,
+    outbox_id,attention_generation,audience,channel,recipient_revision,recipient_key_id,
+    recipient_fingerprint,payload_fingerprint,serializer_version,idempotency_key,status,
+    next_attempt_at)
+  VALUES(v_refund,v_event,v_outbox,1,'buyer','email',0,'rec1',
+    'v1:rec1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',repeat('a',64),9,
+    'refund-notice:override','queued',now())
+  RETURNING id INTO v_delivery;
+  PERFORM public.claim_source_refund_notification_delivery(v_outbox,
+    '5eed0000-0000-4000-8000-0000000000c2',9,now());
+  v_resolved:=public.resolve_source_refund_notification_recipient(v_delivery,
+    '5eed0000-0000-4000-8000-0000000000c2');
+  IF v_resolved->>'recipient' IS DISTINCT FROM 'fixed-notices@example.com' THEN
+    RAISE EXCEPTION 'refund notice: corrected contact was not used: %',v_resolved;
+  END IF;
+
+  IF has_function_privilege('anon',
+      'public.resolve_source_refund_notification_recipient(uuid,uuid)','EXECUTE')
+     OR has_function_privilege('authenticated',
+      'public.resolve_source_refund_notification_recipient(uuid,uuid)','EXECUTE')
+     OR NOT has_function_privilege('service_role',
+      'public.resolve_source_refund_notification_recipient(uuid,uuid)','EXECUTE') THEN
+    RAISE EXCEPTION 'refund notice: recipient resolver privilege mismatch';
+  END IF;
+END $test$;
+ROLLBACK;

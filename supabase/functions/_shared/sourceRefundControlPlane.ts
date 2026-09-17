@@ -39,6 +39,9 @@ export interface SourceRefundOperation {
   provider_payment_reference: string;
   paystack_transaction_id?: number | string | null;
   stripe_charge_id?: string | null;
+  refund_kind?: string | null;
+  attention_recipient_email_override?: string | null;
+  attention_recipient_phone_e164_override?: string | null;
   provider_account_reference: string | null;
   stripe_application_fee_id: string | null;
   provider_refund_id: string | null;
@@ -69,6 +72,10 @@ function stripeState(status: string | null | undefined): SourceRefundState {
     default:
       return "provider_pending";
   }
+}
+
+function nonEmpty(value: string | null | undefined): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 async function record(
@@ -164,6 +171,14 @@ async function record(
       default:
         throw new Error("source_refund_unknown_source_type");
     }
+    // A contact the buyer corrected on this refund wins over the one on the
+    // original purchase. The notification recipient resolver reads the same
+    // preference, so the keyed recipient fingerprint taken here still matches
+    // at send time.
+    buyerEmail = nonEmpty(operation.attention_recipient_email_override) ??
+      buyerEmail;
+    buyerPhone = nonEmpty(operation.attention_recipient_phone_e164_override) ??
+      buyerPhone;
     let amountLabel = `${
       (operation.buyer_refund_requested_cents / 100).toFixed(2)
     } ${operation.currency}`;
@@ -190,6 +205,11 @@ async function record(
         brandId: operation.brand_id,
         amountLabel,
         sourceLabel,
+        sourceType: operation.source_type,
+        refundKind: operation.refund_kind ?? null,
+        fullRefund: operation.buyer_refund_requested_cents > 0 &&
+          operation.buyer_refund_requested_cents >=
+            operation.original_charge_cents,
       });
     } catch {
       console.warn("source_refund_notification_enqueue_failed");
