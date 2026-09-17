@@ -106,6 +106,9 @@ const GUARDED_DEFINER_FNS = [
   // ISSUE-2725: safe competitor operations list + audited bounded actions.
   "admin_competitor_intel_list",
   "admin_competitor_intel_action",
+  // ISSUE-3386: approve/reject a host's venue details change request. Writes the
+  // live venue row, so the is_admin_user() guard MUST be the first statement.
+  "admin_review_venue_details_change",
 ];
 
 function fnBody(src, name) {
@@ -272,8 +275,14 @@ if (process.argv.includes("--self-test")) {
         "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
     )
     .join("");
+  // ISSUE-3386: the venue details change decision RPC, guard-first GOOD fixture so
+  // the appended registry name stays covered by the missing/guard-order checks.
+  const venueDetailsChange3386 =
+    "create or replace function public.admin_review_venue_details_change(p_venue_id uuid) returns jsonb " +
+    "language plpgsql security definer as $$ declare v jsonb; begin if not public.is_admin_user() then " +
+    "raise exception 'forbidden'; end if; return '{}'::jsonb; end; $$;\n";
   const reads = getPerson + offerings1273 + moneyFns + identity1276 + money1278 + offerings1277 +
-    toolLeads1354 + competitorIntel2725;
+    toolLeads1354 + competitorIntel2725 + venueDetailsChange3386;
 
   // GOOD: all guard-first.
   let f = [];

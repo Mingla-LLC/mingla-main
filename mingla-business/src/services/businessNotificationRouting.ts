@@ -25,6 +25,9 @@
  * Issue #1791 (#1767 Phase 3) adds the venue head:
  *   mingla-business://venue/{venueId}/orders    venue_order_placed,
  *                                               venue_order_unacknowledged
+ *
+ * Issue #3386 adds the venue Settings sub:
+ *   mingla-business://venue/{venueId}/settings  venue_details_change_decision
  */
 
 import { useRouter } from "expo-router";
@@ -120,9 +123,12 @@ export function parseBusinessDeepLink(deepLink: string): BusinessNavTarget | nul
     case "venue": {
       const venueId = rest[0];
       if (!venueId) return null;
-      return rest[1] === "orders"
-        ? `/venue/${venueId}?module=orders`
-        : `/venue/${venueId}`;
+      if (rest[1] === "orders") return `/venue/${venueId}?module=orders`;
+      // Issue #3386: Mingla's answer to a venue details change request lands
+      // on Settings, where the Venue details card shows the new details or the
+      // reason it was not approved.
+      if (rest[1] === "settings") return `/venue/${venueId}?module=settings`;
+      return `/venue/${venueId}`;
     }
     case "(tabs)": {
       // e.g. mingla-business://(tabs)/marketing
@@ -194,6 +200,13 @@ export function resolveBusinessNavTarget(data: BusinessPushData): BusinessNavTar
     case "business.venue_order_unacknowledged": {
       const venueId = (data.venueId ?? data.relatedId) as string | undefined;
       return venueId ? `/venue/${venueId}?module=orders` : ACCOUNT_FALLBACK;
+    }
+
+    // Issue #3386: a push without its deep link still reaches the venue's
+    // Settings, never the account tab.
+    case "business.venue_details_change_decision": {
+      const venueId = (data.venueId ?? data.relatedId) as string | undefined;
+      return venueId ? `/venue/${venueId}?module=settings` : ACCOUNT_FALLBACK;
     }
 
     default:
