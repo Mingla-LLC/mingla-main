@@ -20,6 +20,20 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-20 — Hosts can now edit a live venue's contact details directly, and send name, address or category changes to Mingla for review without leaving the venue (#3386, PR #3420)
+- 2026-09-20 — Explorer's venue ordering and reservation phone fields now use the country picker and start on the venue's country (#3397, PR #3414)
+- 2026-09-20 — RSVP creators only see the discovery switch on public RSVPs, read an honest spots-left count, and see a processing video on the Cover card (#3441, PR #3418)
+- 2026-09-20 — Paying for a ticket with a card issues the ticket again instead of holding it and refunding the buyer without telling them (#2079, PR #3478)
+- 2026-09-20 — The RSVP guest-limit field shows one Done button on iPhone instead of two (#3402, PR #3467)
+- 2026-09-20 — A venue cancelling a paid booking now refunds the guest in full, automatically, with the refund and its ledger entries saved together (#3391, PR #3419)
+- 2026-09-20 — Venue hosts keep their saved bookings switch, get an honest pitch row, return to the venue after saving, and can reach venue details and modules directly (#3393, PR #3404)
+- 2026-09-20 — The share-card layout test no longer downloads fonts mid-run, so a network hiccup can't turn main red (#2700, PR #3463)
+- 2026-09-20 — The end of a new event or RSVP name typed while the draft is first saving is no longer lost (#3431, PR #3465)
+- 2026-09-20 — The RSVP creator shows a readable preview, an accurate forecast, returns to the top between steps, and confirms the cover (#3444, PR #3409)
+- 2026-09-20 — Hosts can type the RSVP guest limit instead of tapping plus one at a time (#3402, PR #3408)
+- 2026-09-20 — Venue booking confirmation emails carry a Manage or cancel button, which stays hidden until its signing key is installed (#3392, PR #3417)
+- 2026-09-20 — Share cards no longer end their detail line on a dangling separator when the text runs out of room (#2700, PR #3454)
+- 2026-09-20 — The deposit for large parties can be switched off, needs an amount when on, and the ordering switch explains itself before approval (#3387, PR #3405)
 - 2026-09-20 — CI's workflow-topology check now gets missing git history in a throwaway copy, so it can no longer damage the checkout it is inspecting; that damage had turned main red and silently shallowed the shared developer repository (#3455, PR #3471)
 - 2026-09-17 — Claude and Codex chats now coordinate by messaging each other instead of a shared table, and docs no longer need their own follow-up pull requests (#3476, PR #3482)
 - 2026-09-15 — Business and public venue phone forms start on the venue's country, accept local numbers with a country picker, and preserve that country when booking, ordering, sending bills, or submitting a venue for review; native app delivery awaits an approved OTA (#3396, PR #3413)
