@@ -88,6 +88,7 @@ export const useBusinessRsvpPhoneField = (
 
 export const BusinessRsvpPhoneField = ({
   args: {
+      role,
       countryCode,
       rawValue,
       onChangeCountry,
@@ -130,7 +131,7 @@ export const BusinessRsvpPhoneField = ({
           }}
           error={
             emptyRequired
-              ? "Required"
+              ? `Add ${role === "plus_one" ? "their" : "your"} phone number`
               : invalid
                 ? "Select a country and enter a valid phone number."
                 : null

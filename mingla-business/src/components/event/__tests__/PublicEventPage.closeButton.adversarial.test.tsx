@@ -275,6 +275,20 @@ const renderPublicEventPage = (
       // barrels. None affect the close-callback behavior under test.
       case "./FoundationRsvpPreview":
         return { FoundationRsvpPreview: "FoundationRsvpPreview" };
+      // [TEST-MOD-APPROVED #3440] Root review issuecomment-5690363981:
+      // additive registration for this non-RSVP close-only fixture. Recovery
+      // remains real in the dedicated RSVP suites; accidental use here is loud.
+      case "./useRsvpGuestRecovery":
+        return {
+          useRsvpGuestRecovery: (_eventId: string, _userId: string | null, enabled: boolean) => {
+            if (enabled) throw new Error("RSVP recovery is outside the close-button harness");
+            return {
+              restoredRsvp: null,
+              recoveryNotice: null,
+              onResolved: () => { throw new Error("RSVP acceptance is outside the close-button harness"); },
+            };
+          },
+        };
       case "./useBusinessRsvpPhoneField":
         return {
           resolvePrimaryRsvpPhoneCountry: () => "US",
@@ -427,6 +441,14 @@ const renderPublicEventPage = (
       // contract is unrelated and every close assertion below is untouched.
       case "@mingla/offering-rendering/offeringRefundPolicy":
         return jest.requireActual("@mingla/offering-rendering/offeringRefundPolicy");
+      // Harness registration only — ADDITION, no assertion changed. The public
+      // RSVP page keeps an anonymous guest's accepted reply for the tab (pure
+      // snapshot reader, returned real) and renders its RSVP status pill from a
+      // sibling component. Both are outside the close-callback contract.
+      case "@mingla/offering-rendering/rsvpGuestSnapshot":
+        return jest.requireActual("@mingla/offering-rendering/rsvpGuestSnapshot");
+      case "./RsvpStatusBanner":
+        return { RsvpStatusBanner: "RsvpStatusBanner" };
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }
