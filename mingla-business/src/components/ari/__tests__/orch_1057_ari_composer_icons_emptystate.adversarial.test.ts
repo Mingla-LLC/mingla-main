@@ -139,7 +139,13 @@ describe("ORCH-1057 adversarial · hard guard — first-run guidance byte-stable
   // drift silently, so it now pins the copy that replaced it, byte for byte.
   it("ADV-7 keeps the first-run hint copy EXACTLY as shipped", () => {
     expect(emptyState).toContain("Tap ");
-    expect(emptyState).toContain(" to attach context");
+    // [TEST-MOD-APPROVED #3429] REWORK-2 R-3: "byte-stable" has to mean the
+    // bytes users see. As a bare substring this passed on the source comment or
+    // the accessibilityLabel alone, so ADV-7 could not detect a change to the
+    // shipped sentence at all. Anchored to the rendered <Text>, it can.
+    expect(emptyState).toContain(
+      '<Text style={styles.hintText}> to attach context</Text>',
+    );
     expect(emptyState).toContain('accessibilityLabel="Tap the plus button to attach context"');
     expect(chatScreen).not.toContain("SAMPLE_PROMPTS");
   });

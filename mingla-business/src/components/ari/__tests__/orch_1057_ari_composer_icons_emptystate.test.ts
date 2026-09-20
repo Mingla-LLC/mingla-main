@@ -139,9 +139,16 @@ describe("ORCH-1057 · Item C — empty state chip wall removed", () => {
     expect(emptyState).toMatch(/import\s*\{\s*Plus\s*\}\s*from\s*["']lucide-react-native["']/);
     expect(emptyState).toMatch(/<Plus\s+size=\{13\}/);
     // [TEST-MOD-APPROVED #3429] (a) superseded: the composer "+" now opens
-    // "Add context", so the first-run hint reads "Tap [+] to attach context".
+    // "Add context", so the first-run hint points at the attach affordance.
     expect(emptyState).toContain("Tap ");
-    expect(emptyState).toContain(" to attach context");
+    // [TEST-MOD-APPROVED #3429] REWORK-2 R-3: anchored to the SHIPPED element.
+    // As a bare substring this matched the source comment and the
+    // accessibilityLabel as readily as the rendered copy, so changing the
+    // visible sentence left it green. Still the same protection — the first-run
+    // hint copy cannot drift — now expressed against the thing users read.
+    expect(emptyState).toContain(
+      '<Text style={styles.hintText}> to attach context</Text>',
+    );
     // The hint chip is presentational, not an action — never a Pressable / button role.
     expect(emptyState).not.toContain("Pressable");
     expect(emptyState).not.toContain('accessibilityRole="button"');

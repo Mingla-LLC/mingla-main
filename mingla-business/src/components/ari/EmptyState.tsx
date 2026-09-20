@@ -34,8 +34,15 @@ export const EmptyState: React.FC = () => (
         a literal "+" character. The "word" is the button glyph itself, rendered
         as a chip that mirrors the InputBar "+" suggestions button (bordered
         circle, lucide Plus) inline in the sentence. accessibilityLabel keeps the
-        spoken sentence natural. #3429 gives the + button to attachments, so the
-        sentence now reads "Tap [+] to attach context". */}
+        spoken sentence natural. #3429 gives the + button to attachments.
+
+        [TEST-MOD-APPROVED #3429] REWORK-2 R-3: this docblock deliberately does
+        NOT quote the shipped sentence. Three suites assert the first-run copy is
+        byte-stable by reading this file, and while the prose quoted the sentence
+        those assertions were satisfied by the comment alone — the shipped copy
+        could be changed to anything and all three still passed. Do not restore
+        a quotation here; the copy is below, and the assertions are anchored to
+        the <Text> element that renders it. */}
     <View
       style={styles.hintRow}
       accessibilityRole="text"

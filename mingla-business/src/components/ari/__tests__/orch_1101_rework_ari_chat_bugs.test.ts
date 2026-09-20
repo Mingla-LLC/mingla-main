@@ -221,7 +221,13 @@ describe("ORCH-1101 REWORK · #5 — hint references the actual + button glyph",
     // [TEST-MOD-APPROVED #3429] (a) superseded copy: the + now opens "Add
     // context", so the split sentence reads "Tap [+] to attach context".
     expect(emptyState).toMatch(/Tap /);
-    expect(emptyState).toMatch(/ to attach context/);
+    // [TEST-MOD-APPROVED #3429] REWORK-2 R-3: anchored to the SHIPPED element
+    // rather than matching anywhere in the file — the source comment and the
+    // accessibilityLabel each satisfied the loose regex on their own, so a
+    // change to the visible second half of the split sentence went undetected.
+    expect(emptyState).toContain(
+      '<Text style={styles.hintText}> to attach context</Text>',
+    );
     expect(emptyState).toMatch(/<View style=\{styles\.hintChip\}/);
     expect(emptyState).toMatch(/<Plus size=\{13\}/);
   });
