@@ -54,6 +54,9 @@ const AriSentAttachments = React.lazy(async () => {
  */
 export type { ConfirmOutcome } from "./toolProposalTypes";
 import type { ConfirmOutcome } from "./toolProposalTypes";
+// #3429 REWORK-2 R-4 — the failed-delivery row renders the ONE connection
+// sentence #3184 owns, not a second wording of its own.
+import { ARI_CHAT_CONNECTION_COPY } from "../../screens/ari/ariChatErrorCopy";
 
 export interface MessageListProps {
   messages: AgentMessage[];
@@ -433,7 +436,7 @@ export const MessageList: React.FC<MessageListProps> = ({
             ) : null}
             {m.role === "user" && localDelivery === "failed" && m.client_turn_id ? (
               <View style={styles.deliveryFailure} accessibilityRole="alert">
-                <Text style={styles.deliveryFailureCopy}>{(m.content as { local_error?: string }).local_error ?? "Message not sent. Check your connection and try again."}</Text>
+                <Text style={styles.deliveryFailureCopy}>{(m.content as { local_error?: string }).local_error ?? ARI_CHAT_CONNECTION_COPY}</Text>
                 <View style={styles.deliveryActions}>
                   <Pressable onPress={() => onRetryTurn?.(m.client_turn_id as string)} style={styles.retryTurn} accessibilityRole="button" accessibilityLabel={`Retry sending ${text}`}><Text style={styles.retryTurnText}>Retry</Text></Pressable>
                   <Pressable onPress={() => onEditTurn?.(m.client_turn_id as string)} style={styles.retryTurn} accessibilityRole="button" accessibilityLabel={`Edit ${text}`}><Text style={styles.retryTurnText}>Edit</Text></Pressable>

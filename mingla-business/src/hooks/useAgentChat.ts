@@ -9,6 +9,12 @@ import { AppState } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useShareNetworkState } from "../components/ui/useShareNetworkState";
+// #3429 REWORK-2 R-4 — the connection sentence has exactly ONE owner (#3184's
+// copy module) and exactly one code (TRANSPORT_UNAVAILABLE). This hook used to
+// hardcode a second, differently-worded sentence in four places, so one
+// transport failure read two ways depending on which path reported it.
+// The module is dependency-free by design, so importing it here costs nothing.
+import { ARI_CHAT_CONNECTION_COPY } from "../screens/ari/ariChatErrorCopy";
 import { useAuth } from "../context/AuthContext";
 import {
   type AgentChoiceSubmissionV2,
@@ -456,6 +462,10 @@ export function useAgentChat(
         await reconcileOne(clientTurnId, false);
         const reconciled = turnsRef.current.find((candidate) => candidate.clientTurnId === clientTurnId);
         if (!reconciled?.accepted) {
+          // R-4 note: this literal is NOT client copy — it is the prefix of the
+          // sentence the SERVER returns for a stop that beat acceptance
+          // (`agent-chat/index.ts`). It is a wire-format detector and must keep
+          // matching the server, so it is deliberately not the copy module's.
           const stoppedBeforeAcceptance = response.code === "TURN_STOPPED" &&
             response.message.startsWith("Message not sent.");
           patchTurn(clientTurnId, {
@@ -463,7 +473,7 @@ export function useAgentChat(
             attemptStatus: stoppedBeforeAcceptance ? null : response.code === "TURN_STOPPED" ? "stopped" : null,
             errorCode: stoppedBeforeAcceptance ? "STOP_BEFORE_ACCEPTANCE" : response.code,
             errorMessage: response.code === "TRANSPORT_UNAVAILABLE"
-              ? "Message not sent. Check your connection and try again." : response.message,
+              ? ARI_CHAT_CONNECTION_COPY : response.message,
             reconciling: false,
           });
         }
@@ -519,14 +529,14 @@ export function useAgentChat(
         patchTurn(clientTurnId, {
           delivery: "failed",
           errorCode: "TRANSPORT_UNAVAILABLE",
-          errorMessage: "Message not sent. Check your connection and try again.",
+          errorMessage: ARI_CHAT_CONNECTION_COPY,
           reconciling: false,
         });
       }
       setErrorCode(null);
       setErrorMessage(null);
       captureAriTurnOutcome({ surface: surfaceRef.current, outcome: "failed", errorCode: "TRANSPORT_UNAVAILABLE" });
-      return { kind: "error", code: "TRANSPORT_UNAVAILABLE", message: "Message not sent. Check your connection and try again." };
+      return { kind: "error", code: "TRANSPORT_UNAVAILABLE", message: ARI_CHAT_CONNECTION_COPY };
     }
   }, [brandId, conversationId, patchTurn, qc, reconcileOne, refreshCanonicalMessages, selectConversation]);
 
@@ -717,7 +727,7 @@ export function useAgentChat(
         attemptStatus: null,
         reconciling: false,
         errorCode: "STOP_BEFORE_ACCEPTANCE",
-        errorMessage: "Message not sent. Check your connection and try again.",
+        errorMessage: ARI_CHAT_CONNECTION_COPY,
       });
       captureAriTurnOutcome({ surface: surfaceRef.current, outcome: "cancelled" });
       return;
