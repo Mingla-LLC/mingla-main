@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   acknowledgeEventCoverVideoSourceUploaded, applyEventCoverVideoJob, cancelEventCoverVideoJob,
@@ -192,6 +192,66 @@ const currentUserId = async (): Promise<string> => {
     throw new EventCoverVideoProcessingError("unauthenticated", "Finishing sign-in. Try again in a moment.");
   }
   return data.session.user.id;
+};
+
+// ---- issue #3485 [a finished job that says "Processing video…" forever] ------
+//
+// Filmed on a Release build (2026-09-20): the job was `applied` server-side
+// (`event_cover_video_jobs.status='applied'`, `events.cover_media_type='video'`)
+// and the foregrounded sheet still read "Processing video…", elapsed 4758m, over
+// a thumbnail that was already the finished cover. Closing and reopening the
+// sheet did not clear it; only a full app restart did.
+//
+// WHY it could not clear itself: this hook had exactly three routes to the truth
+// — `resume()` on mount, the live `watch()` poll, and `checkNow`, which the sheet
+// renders ONLY in the `detached` phase. There was no AppState listener anywhere
+// in the file, so a `processing` card whose watch died while the app was
+// suspended had no route back to the server at all, and the elapsed reading went
+// on counting real wall-clock against a job that was long finished.
+//
+// The fix is the missing signal, and deliberately NOT a poller: one read when
+// the app returns to the foreground, one when the sheet lands on a server-owned
+// phase, debounced, single-flight, and never in a phase where a re-read could
+// race local work or has nothing to settle.
+const RECHECKABLE_PHASES: ReadonlySet<EventCoverVideoUploadStage["phase"]> = new Set([
+  // The provider owns the outcome and nothing local is in flight. This is the
+  // phase the 4758m card was stuck in.
+  "processing",
+  // We deliberately stopped watching (watch deadline, or a transient status
+  // failure). The sheet's own "Check now" button does exactly this read; coming
+  // back to the app is the same question asked without a tap.
+  "detached",
+]);
+// Excluded on purpose: every terminal phase (`idle`/`applied`/`error` — nothing
+// to settle), `picking`/`preparing`/`validating`/`compressing`/`intent_pending`
+// (no server job exists yet, and a by-target read would find a PREVIOUS job),
+// `uploading`/`ack_pending`/`applying` (a local operation is mid-flight and a
+// settle must not race it), and `reattaching`/`ready` (resume's own 12s deadline
+// and the Retry-saving control already own those).
+
+// A foreground can arrive twice in a second (an OS alert dismissing over the
+// app, a share sheet closing), and the phase can flap. One read per window.
+const FOREGROUND_RECHECK_MIN_INTERVAL_MS = 5_000;
+
+/**
+ * Subscribes to the app returning to the foreground. Returns the unsubscribe.
+ *
+ * `AppState` is reached through optional chaining rather than called directly
+ * because this hook's existing jest harnesses replace the whole `react-native`
+ * module with `{ Platform }`. A bare `AppState.addEventListener` is a property
+ * read on `undefined` there, which THROWS and takes the entire suite down
+ * instead of failing one assertion — the same partial-mock trap this repo
+ * already documents for newly imported symbols. No AppState simply means no
+ * foreground signal, which is the web's situation regardless: the web has no
+ * React Native AppState lifecycle, so it keeps the mount-time and phase-entry
+ * reads and nothing else.
+ */
+const subscribeToForeground = (onForeground: () => void): (() => void) => {
+  if (Platform.OS === "web") return () => {};
+  const subscription = AppState?.addEventListener?.("change", (next) => {
+    if (next === "active") onForeground();
+  });
+  return (): void => { subscription?.remove?.(); };
 };
 
 export function useEventCoverVideoUpload(
@@ -1013,6 +1073,78 @@ export function useEventCoverVideoUpload(
       setStage(idleStage);
     }
   }, [cleanupPersisted, project, settleCanonical]);
+
+  // ---- issue #3485 — the foreground / sheet-open re-check --------------------
+  // See RECHECKABLE_PHASES above for why this exists and which phases it may run
+  // in. Self-contained on purpose: two refs, one callback, two small effects.
+  const foregroundRecheckInFlightRef = useRef(false);
+  const lastForegroundRecheckAtRef = useRef(0);
+  // Owned by the subscribe effect below, so this block carries its own
+  // unmount truth instead of reaching into the hook's main lifecycle effect. The
+  // generation counter cannot serve here: unmount bumps it, and a re-check that
+  // starts AFTER the bump would read the new value and think itself current.
+  const foregroundRecheckActiveRef = useRef(false);
+
+  const recheckSettledJob = useCallback(async (): Promise<void> => {
+    if (!foregroundRecheckActiveRef.current) return;
+    if (!RECHECKABLE_PHASES.has(stageRef.current.phase)) return;
+    // No storms: one read in flight, and one read per interval.
+    if (foregroundRecheckInFlightRef.current) return;
+    const startedAt = Date.now();
+    if (startedAt - lastForegroundRecheckAtRef.current < FOREGROUND_RECHECK_MIN_INTERVAL_MS) return;
+    lastForegroundRecheckAtRef.current = startedAt;
+    foregroundRecheckInFlightRef.current = true;
+    const generation = generationRef.current;
+    try {
+      // By job id when we have one; by target otherwise, exactly as resume's own
+      // truth-fetch does — a sheet that reopened without a local record still
+      // has a server job to ask about.
+      const jobId = jobIdRef.current;
+      const canonical = jobId !== null
+        ? await fetchEventCoverVideoStatus(jobId)
+        : await fetchEventCoverVideoStatusByTarget({
+          target: exactTarget.serverTarget, eventId: exactTarget.eventId, brandId,
+          venueId: exactTarget.venueId, draftOwnerKey: exactTarget.draftOwnerKey,
+        });
+      // A newer flow, a cancel, or unmount took over while we were asking.
+      if (generationRef.current !== generation) return;
+      if (!foregroundRecheckActiveRef.current) return;
+      if (canonical === null) return;
+      // The watch may have settled the card on its own during the read; a phase
+      // that has moved on is not ours to overwrite.
+      if (!RECHECKABLE_PHASES.has(stageRef.current.phase)) return;
+      jobIdRef.current = canonical.jobId;
+      await settleCanonical(canonical);
+    } catch {
+      // A re-check that cannot reach the server changes NOTHING: the card keeps
+      // the phase it had, any live watch keeps its own verdict, and the next
+      // foreground asks again. This must never be the thing that turns a healthy
+      // job into an error card.
+    } finally {
+      foregroundRecheckInFlightRef.current = false;
+    }
+  }, [brandId, exactTarget, settleCanonical]);
+
+  // Read through a ref so the subscription is installed once and torn down once,
+  // instead of re-subscribing every time a dependency of the callback changes.
+  const recheckSettledJobRef = useRef(recheckSettledJob);
+  recheckSettledJobRef.current = recheckSettledJob;
+
+  useEffect(() => {
+    foregroundRecheckActiveRef.current = true;
+    const unsubscribe = subscribeToForeground(() => { void recheckSettledJobRef.current(); });
+    return (): void => {
+      foregroundRecheckActiveRef.current = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // The sheet opening on (or landing on) a server-owned phase asks once too —
+  // a remount whose `resume` settled straight onto `processing`/`detached` gets
+  // an independent read rather than waiting for a backgrounding that may never
+  // come. Keyed on the PHASE, so the watch's per-poll percent updates do not
+  // re-fire it.
+  useEffect(() => { void recheckSettledJobRef.current(); }, [stage.phase]);
 
   return {
     acknowledgeApplied, cancel, checkNow, error, localPreviewUri,
