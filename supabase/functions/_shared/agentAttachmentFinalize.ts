@@ -240,6 +240,46 @@ export async function sweepStaleAriAttachmentProcessing(args: {
   return (data as unknown[] | null)?.length ?? 0;
 }
 
+/**
+ * REWORK-2 R-1 — reclaim every attachment whose `expires_at` has passed.
+ *
+ * `ready` is in this list and must stay in it. It is the state an attachment
+ * sits in from the moment it finishes preparing until the turn carrying it is
+ * sent, so an abandoned tray — an app kill, a crash, a closed web tab, a
+ * navigation, or a `discardAriAttachment` the client swallowed — almost always
+ * strands a `ready` row. While one survives past its expiry two things break
+ * the promises this table makes: its private source and derived objects are
+ * retained past the 24-hour `expires_at`, and `finalizeAriAttachment`'s
+ * duplicate check (`state = 'ready' AND client_turn_id IS NULL`) refuses that
+ * same file for that user and brand forever with DUPLICATE_FILE, naming a file
+ * the user can no longer see. Binding a turn rewrites `expires_at` to 30 days
+ * (`start_agent_turn_with_attachments`), so a SENT attachment is reclaimed on
+ * that schedule instead and is untouched here until then.
+ *
+ * Deleting the row is what queues the storage work: the migration's delete
+ * trigger enqueues both opaque paths into `agent_attachment_cleanup_jobs`
+ * before the row disappears.
+ */
+export const ARI_ATTACHMENT_RECLAIMED_STATES = Object.freeze([
+  "prepared",
+  "uploaded",
+  "processing",
+  "ready",
+  "failed",
+  "discarded",
+]) as readonly string[];
+
+export async function reclaimExpiredAriAttachments(args: {
+  admin: SupabaseClient;
+  nowMs: number;
+}): Promise<void> {
+  const { error } = await args.admin.from("agent_attachments")
+    .delete()
+    .in("state", [...ARI_ATTACHMENT_RECLAIMED_STATES])
+    .lt("expires_at", new Date(args.nowMs).toISOString());
+  if (error) throw new Error("attachment_reclaim_failed");
+}
+
 /** `status` for one owned attachment id (section 3.2.7). */
 export async function ariAttachmentStatus(
   deps: AriAttachmentLifecycleDeps,

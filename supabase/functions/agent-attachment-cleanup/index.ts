@@ -3,7 +3,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
 import { ARI_ATTACHMENT_BUCKET } from "../_shared/agentAttachments.ts";
-import { sweepStaleAriAttachmentProcessing } from "../_shared/agentAttachmentFinalize.ts";
+import {
+  reclaimExpiredAriAttachments,
+  sweepStaleAriAttachmentProcessing,
+} from "../_shared/agentAttachmentFinalize.ts";
 
 function response(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
@@ -53,12 +56,14 @@ Deno.serve(async (request) => {
   }
 
   // Deleting abandoned metadata invokes the migration trigger, which queues
-  // original and derivative opaque paths before the row disappears.
-  const { error: abandonedError } = await admin.from("agent_attachments")
-    .delete()
-    .in("state", ["prepared", "uploaded", "processing", "failed", "discarded"])
-    .lt("expires_at", now.toISOString());
-  if (abandonedError) {
+  // original and derivative opaque paths before the row disappears. REWORK-2
+  // R-1: the reclaimed state list — `ready` included — lives with the rest of
+  // the attachment lifecycle in `agentAttachmentFinalize.ts`, so the states
+  // this worker reclaims and the states the duplicate check reads can never
+  // drift apart again.
+  try {
+    await reclaimExpiredAriAttachments({ admin, nowMs: now.getTime() });
+  } catch {
     return response(500, { code: "ABANDONED_RECLAIM_FAILED" });
   }
 
