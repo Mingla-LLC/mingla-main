@@ -18,6 +18,7 @@ import {
   Keyboard,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -189,6 +190,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // P2-6: the empty-state hero clears the real composer column (tray, failure
   // details, helper and pill), measured without the keyboard lift.
   const [composerContentHeight, setComposerContentHeight] = useState(60);
+  // R-2: the height of the hero's own (keyboard-independent) box, measured.
+  // It is what keeps the hero ANCHORED — the scroll content keeps this height
+  // whatever the keyboard does, so opening the keyboard shrinks the viewport
+  // instead of re-centering the orb.
+  const [emptyHeroBoxHeight, setEmptyHeroBoxHeight] = useState(0);
   const [draftText, setDraftText] = useState("");
   const composerInputRef = useRef<React.ElementRef<typeof TextInput> | null>(null);
   const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
@@ -501,6 +507,34 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const legacyReadOnly = !!selectedBrandId && activeConversation?.brand_id === null;
   const brandSelectionRequired = !selectedBrandId && (brands.data?.length ?? 0) > 0;
   const brandName = currentBrand?.displayName ?? "selected brand";
+  // #3429 REWORK-2 R-2 — the empty state is an absolute overlay whose bottom
+  // padding is deliberately keyboard-independent (that is what stops the orb
+  // jumping when the keyboard opens). The composer, however, DOES rise by the
+  // keyboard height, so with the keyboard up it was drawing straight over the
+  // first-run copy and the whole "Tap (+) to attach context" hint — on an
+  // iPhone SE the body sentence was cut mid-word and the hint row vanished,
+  // and nothing could recover them: the overlay was non-scrollable with
+  // `overflow: hidden`.
+  //
+  // This is how far the composer's top edge rises above its resting position.
+  // It is applied as a bottom margin on the hero's SCROLL VIEWPORT only, never
+  // to the hero's own box, so:
+  //   - the viewport's bottom edge is clamped to the composer's top edge, so
+  //     the two rectangles can never intersect;
+  //   - the scroll content keeps the hero box's full resting height, so the
+  //     orb and headline stay exactly where they were (no jump);
+  //   - whatever no longer fits stays reachable by scrolling instead of
+  //     disappearing behind the composer.
+  // Web has no soft keyboard, so this is 0 there and nothing changes.
+  const composerRestingOccupiedPx =
+    Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX;
+  const emptyHeroComposerClamp = Math.max(
+    0,
+    (keyboardHeight > 0
+      ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
+      : composerRestingOccupiedPx) +
+      spacing.sm - composerRestingOccupiedPx,
+  );
   const rateLimited = rateLimitUntil !== null && rateLimitUntil > cooldownNow;
   const cooldownSeconds = rateLimited ? Math.max(1, Math.ceil((rateLimitUntil - cooldownNow) / 1000)) : 0;
 
@@ -626,8 +660,12 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 orb. Its paddingBottom keeps the hero above the resting composer
                 and is keyboard-independent, so it stays put when the keyboard
                 opens. Tapping anywhere dismisses the keyboard — the only escape
-                on a multiline composer where Return inserts a newline. */}
-            <Pressable
+                on a multiline composer where Return inserts a newline.
+                REWORK-2 R-2: the hero box below is still keyboard-independent
+                (that is the no-jump contract). The keyboard lift is applied to
+                the SCROLL VIEWPORT inside it instead, clamping the viewport's
+                bottom edge to the composer's top edge. */}
+            <View
               style={[
                 styles.emptyOverlay,
                 {
@@ -638,12 +676,44 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                     Math.max(0, composerContentHeight - 60),
                 },
               ]}
-              onPress={() => Keyboard.dismiss()}
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss keyboard"
             >
-              <EmptyState />
-            </Pressable>
+              {/* This wrapper is the hero's resting box: it fills the padded
+                  overlay and the clamp never touches it, so its measured
+                  height is the keyboard-independent height the scroll content
+                  keeps. That is what anchors the orb. */}
+              <View
+                style={styles.emptyHeroBox}
+                onLayout={(event) => {
+                  const next = Math.round(event.nativeEvent.layout.height);
+                  setEmptyHeroBoxHeight((previous) =>
+                    previous === next ? previous : next
+                  );
+                }}
+              >
+                <ScrollView
+                  style={[
+                    styles.emptyHeroScroll,
+                    { marginBottom: emptyHeroComposerClamp },
+                  ]}
+                  contentContainerStyle={[
+                    styles.emptyHeroScrollContent,
+                    { minHeight: emptyHeroBoxHeight },
+                  ]}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode="on-drag"
+                >
+                  <Pressable
+                    style={styles.emptyHeroPress}
+                    onPress={() => Keyboard.dismiss()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Dismiss keyboard"
+                  >
+                    <EmptyState />
+                  </Pressable>
+                </ScrollView>
+              </View>
+            </View>
             <View style={styles.flexSpacer} pointerEvents="none" />
           </>
         ) : (
@@ -947,6 +1017,25 @@ const styles = StyleSheet.create({
     // P2-6: when a tall attachment tray lifts the hero, it clips inside the
     // chat column instead of drawing over the header.
     overflow: "hidden",
+  },
+  // REWORK-2 R-2 — the hero's resting box (never clamped: it is what the
+  // scroll content's minHeight is measured from, and therefore what keeps the
+  // orb anchored) and the viewport that IS clamped to the composer's top.
+  emptyHeroBox: {
+    flex: 1,
+    width: "100%",
+  },
+  emptyHeroScroll: {
+    flex: 1,
+    width: "100%",
+  },
+  emptyHeroScrollContent: {
+    flexGrow: 1,
+    width: "100%",
+  },
+  emptyHeroPress: {
+    flex: 1,
+    width: "100%",
   },
   flexSpacer: {
     flex: 1,
