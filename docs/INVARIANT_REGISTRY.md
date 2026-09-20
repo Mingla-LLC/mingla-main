@@ -10304,16 +10304,18 @@ All four #2796 rules were established ACTIVE after independent web, iOS AX5, and
 - **Scope note:** today only the topology gate fetches history. Any future gate that needs history must use the same disposable-repository pattern. A runner-level mutation guard is a recorded follow-up (#3455 SPEC §15), not enforcement.
 - **Status:** DRAFT until #3455 CLOSE: post-merge push Class A green plus the network replica readback at the merged SHA.
 
-## DRAFT — issue #3446 (Android back steps back one screen in every Business creation wizard)
+## ACTIVE — issue #3446 (Android back steps back one screen in every Business creation wizard)
 
-### I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK (DRAFT)
+### I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK (ACTIVE)
 
 - **Rule:** every Business creation wizard (Event, RSVP, Experience, Trip) calls `useWizardHardwareBack` exactly once. While a wizard screen is focused on Android, hardware back never pops the wizard route directly:
   - an open native overlay consumes it first;
+  - the soft keyboard is next: while the repo's keyboard-visibility owner (`useKeyboardIsVisible`) reports the keyboard visible, or within `WIZARD_KEYBOARD_BACK_WINDOW_MS` (300 ms, Android's double-tap timeout) of a hide that no back press has claimed, the press ONLY dismisses the keyboard — no step change, no exit, and the latch is left exactly as it was. Both orderings of `keyboardDidHide` and `hardwareBackPress` resolve to one dismissal, and one hide swallows at most one press;
   - otherwise Step 1 runs the wizard's in-app close/cancel owner, and every later step runs its in-app Back owner;
   - presses during publish, autosave or discard are swallowed;
   - a second press never skips a step or re-runs an exit that is still in flight.
 
-  The listener subscribes once per focus, is removed on blur, and does not exist on iOS or web. No wizard file imports `BackHandler` directly.
-- **Enforcement:** `mingla-business/src/hooks/__tests__/issue_3446_wizard_hardware_back.implementor.test.tsx` (hook and latch behaviour), `mingla-business/src/components/__tests__/issue_3446_wizard_hardware_back_wiring.implementor.test.ts` (all four wizards wired, one owner), `mingla-business/src/components/experience/__tests__/issue_3446_experience_hardware_back.implementor.test.tsx` (runtime wiring).
-- **Established:** DRAFT at #3446; flips ACTIVE on CLOSE.
+  The whole routing decision lives in one place, `mingla-business/src/hooks/wizardHardwareBackRouting.ts`; the native hook only stamps the keyboard's last commit and performs the dismissal, and introduces no second keyboard-visibility owner. The listener subscribes once per focus, is removed on blur, and does not exist on iOS or web. No wizard file imports `BackHandler` directly.
+- **Enforcement:** `mingla-business/src/hooks/__tests__/issue_3446_wizard_hardware_back.implementor.test.tsx` (hook and latch behaviour, 36), `mingla-business/src/hooks/__tests__/issue_3446_wizard_hardware_back_keyboard.implementor.test.tsx` (the keyboard rule with both event orderings plus the exhaustive keyboard x latch x busy x first-step table, 80), `mingla-business/src/components/__tests__/issue_3446_wizard_hardware_back_wiring.implementor.test.ts` (all four wizards wired, one owner, 14), `mingla-business/src/components/experience/__tests__/issue_3446_experience_hardware_back.implementor.test.tsx` (runtime wiring, 4).
+- **Regression:** all four suites are green (134 tests) and each fails on TRUE LINE DELETION of the rule it guards. Deleting the keyboard clause from `dispatchWizardHardwareBackPress` turns 54 of the 80 keyboard tests red (K-1, K-2, K-3, K-5, K-6, K-7 and every keyboard-visible / hide-window row); byte-identical restore returns 80/80. The step-back, busy and latch rules were proven the same way on the original #3446 suites.
+- **Status:** ACTIVE on 2026-09-20, proven pre-merge in PR #3462 on branch `1780-invite-during-creation-r2` rebased onto `origin/main` at `76e33f8dc`. The device finding behind the keyboard clause is emulator-5564 (Android 15, gesture nav), where one back press with the IME up both hid the keyboard and moved the wizard (Event Step 1 exited to Hub, RSVP Step 3 went to Step 2). Post-merge release records (deploy, OTA ids, on-device re-verification) go on issue #3446 as comments.
