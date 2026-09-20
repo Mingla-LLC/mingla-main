@@ -168,7 +168,10 @@ serve(async (req: Request): Promise<Response> => {
   if (wantsMetadata) {
     // Metadata negotiation is exact-entity only. Explorer's whole-party view
     // uses fetch_user_rsvp_party_passes, whose auth.uid() policy is canonical.
+    // #3416 D4 — the event this pass belongs to, so a web page restoring a
+    // tab-kept reply can refuse a pass issued for a different event.
     return reply(200, {
+      eventId,
       credentials: [credential(role, entityId, name, qrCode)],
     });
   }
