@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 
 // META-ORCH-0954: every operator-facing agent/skill definition that ENTERS the
-// pipeline must carry the comms-ledger-read stanza + the 2-section output template.
+// pipeline must carry the chat-coordination stanza + the 2-section output template.
+// (Originally the comms-ledger-read stanza; re-pinned by #3476, see below. The
+// filename and MANIFEST.json job key keep their historical name.)
 //
 // IMPORTANT — gitignore reality (codified 2026-05-25 after `ffa816d37 chore: untrack
 // .claude/skills/*/SKILL.md per .gitignore rule`):
@@ -14,8 +16,8 @@ import { existsSync, readFileSync } from 'node:fs';
 //   Therefore the only file this CI gate can verify is the tracked top-level
 //   AGENTS.md (the canonical Codex agent contract that lives at repo root and
 //   IS checked in). The 9 `.claude/skills/*/SKILL.md` + 6 `.codex/skills/*/SKILL.md`
-//   files are enforced via developer discipline + the standing memory rule
-//   `feedback_comms_ledger_required.md` + skill-author review, not CI.
+//   files are enforced via developer discipline + skill-author review, not CI
+//   (since #3476 they must carry the same coordination protocol as AGENTS.md).
 //
 //   The existsSync guard below is belt-and-braces for any future tracked file
 //   that's later removed from the repo without a corresponding TARGETS update.
@@ -28,11 +30,15 @@ const SKIPPED_GITIGNORED = [
   '.codex/skills/*/SKILL.md (gitignored — Codex agent definitions are operator-local)',
 ];
 
-// Issue #974 (2026-07-19): COMMS_LEDGER.md retired in favor of COMMS.md and the
-// long-form 2-section template compressed into "## Response style". The contract
-// is unchanged in substance: agents must read comms on entry and answer in the
-// two-section format; only the heading text moved.
-const REQUIRED_LEDGER_HEADING = '## Read COMMS.md on entry (MANDATORY)';
+// Issue #974 (2026-07-19): the first comms ledger was replaced by a COMMS table and
+// the long-form 2-section template compressed into "## Response style".
+// Issue #3476 (2026-09-17): the COMMS table itself is retired. Chats now message
+// each other directly (start / blocked / done), with the GitHub issue as the
+// Claude<->Codex channel, and binding rules live in "## Standing holds". The
+// contract keeps its substance: every agent must follow the coordination protocol
+// on entry and answer in the two-section format; the required heading moved.
+const REQUIRED_COORDINATION_HEADING = '## Coordinate with other chats (MANDATORY)';
+const REQUIRED_STANDING_HOLDS_HEADING = '## Standing holds';
 const REQUIRED_2SECTION_HEADING = '## Response style';
 
 const failures = [];
@@ -45,8 +51,11 @@ for (const target of TARGETS) {
   }
   checked += 1;
   const text = readFileSync(target, 'utf8');
-  if (!text.includes(REQUIRED_LEDGER_HEADING)) {
-    failures.push(`${target}: missing ledger stanza`);
+  if (!text.includes(REQUIRED_COORDINATION_HEADING)) {
+    failures.push(`${target}: missing coordination stanza \`${REQUIRED_COORDINATION_HEADING}\``);
+  }
+  if (!text.includes(REQUIRED_STANDING_HOLDS_HEADING)) {
+    failures.push(`${target}: missing \`${REQUIRED_STANDING_HOLDS_HEADING}\` section`);
   }
   if (!text.includes(REQUIRED_2SECTION_HEADING)) {
     failures.push(`${target}: missing 2-section template`);

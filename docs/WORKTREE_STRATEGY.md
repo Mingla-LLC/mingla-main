@@ -165,6 +165,12 @@ Spawn echoes the next-available port based on `git worktree list` count.
 
 The anchor's `node_modules` is the source of truth. If main updates deps mid-ORCH, the symlink resolves to the new version on next read.
 
+**The symlink has three traps. Know them before a runtime test, an OTA publish, or a deep-import jest run:**
+
+- **The dev server cannot resolve modules through the symlink (#1544).** Metro follows the link's realpath and fails with `Unable to resolve module ./mingla-main/<app>/node_modules/…`, surviving `--clear` and a watchman reset. Before any runtime test or OTA publish from a worktree, replace the link with a real install: `rm <sub>/node_modules && (cd <sub> && npm ci)`. This is a different defect from the bracket one in § Path characters: brackets were not the cause of #1544, and renaming a worktree does not fix it.
+- **A deep `@mingla/<pkg>/<sub>` import in a worktree jest run resolves the ANCHOR's copy of that file, not your branch's (#1559).** When the anchor merely differs, the run silently tests another branch's code and reports green. Prefer a relative import in tests, or add a `moduleNameMapper` line for the package (only `@mingla/brand-rendering` has one, in `mingla-business/jest.config.cjs`).
+- **Never run `npm install --no-save` in a worktree you need to boot.** Locally it prunes `node_modules/expo/node_modules/expo-asset`, Metro dies with `Unable to resolve module expo-asset`, and `git status` stays clean, so no gate sees it. `npm ci` restores it. If you need the render-lane dependencies too, provision them last or in a throwaway checkout.
+
 ---
 
 ## VS Code multi-root workspace
@@ -211,6 +217,17 @@ They DO serialize on:
 
 ---
 
+## Traps that have cost real time
+
+- **Right after spawning, run `git log --oneline origin/main..HEAD`. It must print nothing.** `spawn.sh` branches off the shared anchor, which can carry another session's unpushed commits. Drop foreign commits with `git rebase --onto origin/main <last-foreign-commit>`; never merge them into your branch, or your PR ships someone else's unmerged work.
+- **`git worktree add <path> main` fails while another worktree holds `main`.** Use `git worktree add --detach <path> origin/main` and check the exit code. A script that ignores it runs its next commands in whatever directory it was in, usually the shared anchor.
+- **Never squash with `git reset --soft origin/main` unless you have just rebased onto that exact ref.** The commit keeps your tree on top of the newer `main`, so everything `main` gained since your real base becomes a deletion in your diff. If `git diff --name-status origin/main` lists deletions of files you never touched, the branch is mis-parented: reset to `origin/main` and re-apply only your own files.
+- **zsh does not word-split an unquoted `$VAR`.** `for f in $FILES` runs ONCE with the whole string, and the loop still prints its success line. Use `while IFS= read -r f; do …; done <<< "$FILES"`, and verify any destructive loop by re-reading state, never by the loop's own output.
+- **Never kill processes by pattern.** `pkill -f "<pattern>"` matches the command line of every session on this Mac, so a pattern precise enough to name your process names another chat's identical one too (a `run-batch.mjs --class A` kill did this twice). Capture the PID you started (`$!` or a pid file) and kill only that.
+- **`reap.sh` can exit non-zero after fully succeeding.** The non-zero comes from a later simulator/AVD step, after the worktree and both branches are already gone. Do not retry and do not clean up by hand on its exit code: re-read `git worktree list`, `git branch --list` and `git ls-remote --heads origin`. Before any delete, resolve the path from `git worktree list --porcelain` at that moment and confirm the branch checked out there is the one you meant; a map built at the start of a sweep goes stale when a peer moves their worktree.
+
+---
+
 ## Why this time is different (from the 2026-05-11 revert)
 
 The previous worktree-per-ORCH attempt (META-ORCH-0755) was reverted because of accumulated friction. The current rollout addresses every gap that drove that revert:
@@ -247,7 +264,7 @@ Before merging any PR (per-ORCH branch → main), the orchestrator MUST verify A
 2. **No conflicts with main.** `mergeStateStatus != "DIRTY"`. If main moved, rebase or merge main into the per-ORCH branch first.
 3. **All review-required approvals collected.** If branch protection requires N reviewers and you only have N-1, do NOT bypass with `--admin` unless explicitly authorized for this incident.
 4. **Operator-confirmed.** Either operator explicitly says "merge" / "ship" / etc., OR the orchestrator has delegated end-to-end execution authority.
-5. **Vercel `[deploy]` tag present** in the commit subject if the ORCH touches any Vercel-built surface (`mingla-business/`, `mingla-admin/`, `mingla-marketing/`). See `feedback_vercel_deploy_gate.md`.
+5. **Vercel `[deploy]` tag present** in the commit subject if the ORCH touches any Vercel-built surface (`mingla-business/`, `mingla-admin/`, `mingla-marketing/`). See `feedback_vercel_deploy_gate.md`. Put it in the pull request **title**: the squash commit's subject comes from the title, so a `[deploy]` that only sits in a branch commit is dropped and Vercel skips the build.
 6. **Strict-grep + Tests-Append-Only + Migrations-Baseline gates** all passed against the latest HEAD.
 7. **No `skipped` conclusion on a draft-gated workflow** (issue #2881). Since #2881, every pull-request workflow except the two that produce the ruleset-required checks skips its jobs while the pull request is a draft and re-fires on `ready_for_review`. A `skipped` conclusion on one of those workflows **at merge time is a FAILURE, not a pass** — it means the `ready_for_review` re-fire never happened and that workflow never executed against the merged code. GitHub counts `skipped` as satisfying a required check, so nothing else will catch it. Expected count on any merged SHA: **zero**. The always-on exempt set is the `ALWAYS_ON` registry in `.github/scripts/strict-grep/issue-2881-pr-draft-gate-policy.mjs`; those two never report `skipped` at all.
 8. **`main` ITSELF IS GREEN.** Run `node scripts/ci/main-health.mjs pregate` and require exit 0. It performs ONE snapshot read of the newest completed push-to-`main` run of every workflow and refuses when any of them is red, naming the failing check, the commit and who merged it. No `--watch`, no polling — the API quota is one shared wallet.

@@ -34,6 +34,14 @@
 //   → 200 { cancelled:true, refunded:false, refundError } refund-side failure
 //          (the cancel SUCCEEDED; only the deposit refund is pending retry)
 //   → 500 internal
+//
+// #3391 — HOST mode: POST { reservationId, actor: "venue", reason? } with a
+// manager-plus host's JWT cancels a PAID booking and refunds the guest in full
+// (venue_staff_cancel). → 200/202 { cancelled, replayed, refund, runner }
+// · 401 · 403 not_authorized · 404 · 409 { error } for not_a_paid_reservation,
+// already_refunded, seated_no_auto_refund, cancel_not_allowed, payout_in_flight,
+// application_fee_unrecorded, payment_reference_missing. See
+// _shared/venueStaffCancelRefund.ts.
 // ===========================================================================
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -49,6 +57,7 @@ import {
   runSourceRefundOperation,
   type SourceRefundOperation,
 } from "../_shared/sourceRefundControlPlane.ts";
+import { handleVenueStaffCancel } from "../_shared/venueStaffCancelRefund.ts";
 
 serve(
   wrapEdgeHandler("venue-reservation-cancel", async (req: Request) => {
@@ -60,7 +69,12 @@ serve(
     }
 
     // ── input ────────────────────────────────────────────────────────────
-    let body: { reservationId?: unknown; guestToken?: unknown };
+    let body: {
+      reservationId?: unknown;
+      guestToken?: unknown;
+      actor?: unknown;
+      reason?: unknown;
+    };
     try {
       body = await req.json();
     } catch {
@@ -71,6 +85,27 @@ serve(
       : "";
     if (reservationId.length === 0) {
       return jsonResponse({ error: "reservation_id_required" }, 400);
+    }
+
+    // ── #3391: the VENUE cancels a paid booking ────────────────────────────
+    // A signed-in manager-plus host. The guest is refunded in full, Mingla's fee
+    // included; the refund obligation commits with the cancel, then the #1221
+    // runner executes it. Everything lives in the shared module so it is tested.
+    if (body.actor === "venue") {
+      if (!await userIdFromAuthHeader(req)) {
+        return jsonResponse({ error: "not_authenticated" }, 401);
+      }
+      const hostCancel = await handleVenueStaffCancel(
+        {
+          reservationId,
+          reason: typeof body.reason === "string" ? body.reason : null,
+        },
+        {
+          userRpc: (fn, args) => userClient(req).rpc(fn, args),
+          service: serviceClient(),
+        },
+      );
+      return jsonResponse(hostCancel.body, hostCancel.status);
     }
 
     // ── auth (owner only) ─────────────────────────────────────────────────

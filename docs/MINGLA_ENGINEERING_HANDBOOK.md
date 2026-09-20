@@ -104,6 +104,8 @@ supabase/
 - **Server records do NOT belong in Zustand persist.** Per memory `feedback_zustand_persist_no_server_snapshots.md`, `partialize` must only include IDs + local UI state, never fetched server objects.
 - Read patterns: `useStore((s) => s.field)` for selectors; never `useStore.getState()` inside React render paths.
 - Cold-start: any persisted store needs a `_hasHydrated` flag gate to avoid reading from disk on first render before rehydration completes.
+- **Reshape a persisted store by bumping `version` and writing `migrate`, never by renaming its `name`.** A rename orphans every operator's in-progress draft (#1685).
+- **Put an ownership or isolation check in front of EVERY success path, including "already active" shortcuts.** #1685 checked the brand boundary on one path only; its `activeDraftId === draftId` shortcut returned `true` for any brand and leaked drafts across brands past 55 green checks and two green headless suites. Only a runtime drive found it.
 
 ### 3.4 Supabase access
 
@@ -146,6 +148,10 @@ supabase/
 ### 3.12 Navigation guards
 
 - `navigation.addListener("beforeRemove", e => e.preventDefault())` blocks your own sanctioned `router.replace` from exit CTAs. Use a `useRef<boolean>` flag that the exit CTA flips before navigating; the listener reads the flag and lets sanctioned exits pass. Same pattern for web `popstate`. Per memory `feedback_back_listener_disarm_pattern.md`.
+
+### 3.13 Domains
+
+- **`mingla.app` is NOT a Mingla domain.** It is parked (no MX). Never send mail to it or build links on it; Mingla's domains are `usemingla.com` and its subdomains. Some code still falls back to `https://business.mingla.app` (for example `discover-merged-events/_business-query.ts`); whether any such path is live is unverified, so do not copy it.
 
 ---
 
@@ -354,6 +360,11 @@ You do NOT run this yourself. If you need to test an edge function locally:
 supabase functions serve <name>
 ```
 
+**Two deploy traps:**
+
+- **Docker on this Mac fails as a silent no-op.** `docker info` hangs, and a Docker-bound `supabase functions deploy` can print nothing and exit 0 having deployed nothing. Deploy with `--use-api` (it bundles server-side and never touches Docker), and always confirm the function's version actually moved. Do not quit, kill or restart Docker on your own: it holds other sessions' containers. If it is wedged, ask Seth.
+- **The only proof that a worker runs is rows changing in its target table.** A green deploy, an ACTIVE function listing and passing unit tests are all consistent with nothing ever calling it (#2290: the ingest worker shipped with no cron row). A queue whose rows all have `attempt_count = 0`, `locked_at IS NULL` and no error code has never been called; a worker that fails leaves attempts and error codes behind.
+
 ### 7.5b Reading app config — `expo config --json` hides config errors
 
 **If `npx expo config --json` exits non-zero with NO output on either stream, re-run it without
@@ -377,6 +388,13 @@ incomplete env produced a non-zero exit that was read as proof a newly-added gua
 different guard had thrown. Confirm WHICH guard spoke before drawing a conclusion — the #994 S-5
 assertion does exactly this by requiring the failure to NAME the key under test
 (`.github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs`).
+
+**Native appearance: read the built `Info.plist`, not `expo config`.** Any `dark` key in the
+`expo-splash-screen` plugin config, even one whose colour matches the light one, makes the app follow
+the device appearance and silently overrides `"userInterfaceStyle": "light"` in the same file.
+`npx expo config --type prebuild --json` still reports `light` because it does not run the plugin's
+native mod, so it is a false green. Check `UIUserInterfaceStyle` in the generated or built `Info.plist`
+(#2322; nothing reads build warnings yet, #2342).
 
 ### 7.6 EAS OTA
 
@@ -455,6 +473,37 @@ launch, which is the same defect class this whole section exists to prevent (#99
 Dev mode does NOT substitute. In dev, the same boot-path throw renders as a dismissible LogBox overlay
 while the app keeps running; in release it is the stuck splash screen (#990 §3).
 
+**OTA and EAS traps that have bitten real publishes:**
+
+- **Never drive a wrapper to test it without a stub.** Running `<app>/scripts/ota/publish-production-ota.sh`
+  with `MINGLA_EAS_BIN` unset publishes a REAL production OTA (it did, on 2026-08-09, and had to be rolled
+  back). Always `MINGLA_EAS_BIN=/path/to/stub bash <wrapper> ios "msg"`. Piping the output through `head`
+  does not stop the publish. A symlinked invocation fails closed on purpose; do not "fix" that.
+- **Publish from a worktree with a real install, never from the anchor.** The anchor's `app-mobile/node_modules`
+  and `mingla-business/node_modules` can be empty directories, and `eas-cli` then fails with "Failed to
+  resolve plugin for module expo-router". Run `npm ci` in the worktree first.
+- **Re-read reach immediately before every publish.** Check the Play production track, the App Store release
+  state and `eas update:list --branch production` for the exact platform and runtime; a reach snapshot goes
+  stale. `eas update:list` is also the authority on what devices actually received, so check a user's
+  runtime before diagnosing behaviour as "unshipped".
+- **Run the native-delta check against the shipped store binary**, not only against the previous OTA.
+- **The first export in a fresh worktree can take about 14 minutes** of cold Metro bundling. It is not hung:
+  check the process tree (Metro workers, then `hermesc`) before killing anything, and finish one platform
+  before starting the other. Filter output with `grep -v`, not `tail`, which buffers everything until exit.
+- **The manifest verifier does not check every key.** For Host it deliberately skips
+  `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`, and an unset value serializes as `{}` without changing the `extra` key
+  count, so check Mapbox by hand in the served manifest. Explorer serving `GOOGLE_IOS_CLIENT_SECRET` and
+  `GOOGLE_WEB_CLIENT_SECRET` as empty strings is CORRECT: client secrets must never ship in a bundle, so do not
+  provision them.
+- **EAS GraphQL (`api.expo.dev/graphql`) returns 403 with Cloudflare error 1010 to a default script User-Agent**,
+  even with a valid session. Send a browser User-Agent; `eas whoami` working proves nothing about GraphQL.
+- **`eas build` picks the environment from the profile's SHAPE, not its channel.** `distribution: internal`
+  binds `preview`, `developmentClient: true` binds `development`, everything else binds `production`, and
+  `channel: "production"` changes none of that. The consumer app's `preview` environment holds `pk_test`, so a
+  consumer internal-distribution build boots normally with a dead checkout. Pin `"environment": "production"`
+  in the profile (copy `app-mobile/eas.json` `demo-simulator`) and read the "Resolved … environment" line
+  before spending a build.
+
 ### 7.7 Pull requests
 
 For merging `Seth` → `main`, Seth handles via GitHub PR with a pre-merge gate. You don't open PRs directly.
@@ -519,6 +568,24 @@ For any new table or RLS policy: test the negative case. Sign in as User A. Atte
 - **Load-bearing invariants that had been pinned by source-text tests were re-homed to additive strict-grep gates** (`.github/scripts/strict-grep/i-1047-biz-*.mjs`, registered in `MANIFEST.json`) that actually run — never dropped.
 
 The required flip is complete; do not remove the all-PR trigger, add a paths filter, rename the exact job context, or remove its required-rule binding without a separately reviewed add-before-remove transition. The #1047 invariants protect the whole-suite wire and forbid reintroducing source-only pins as regression proofs.
+
+### 8.7 Runtime testing traps
+
+- **Cold-launch before any layout measurement.** With Fast Refresh active, flex-derived geometry measures wrong (an Explorer deck container read 874pt where flex resolves to 769pt). Terminate and relaunch the app first; a hot-reloaded number is not evidence.
+- **Prove the running bundle is yours.** With more than one Metro running, the Expo dev client can silently switch to another worktree's Metro and serve its bundle. Before trusting an observation, confirm the app shows something that exists only in the commit under test.
+- **Clean up demo-account fixtures before you finish.** A past-due `calendar_entries` row with `feedback_status IS NULL` raises a non-dismissible full-screen prompt that locks EVERY session using the shared demo account out of the app (#1691). Check for pre-existing past-due rows before you start, and delete yours before you stop.
+
+### 8.8 CI, GitHub and gate-writing traps
+
+- **In class A, `cancelled` can mean its time cap killed it.** GitHub reports a `timeout-minutes` kill as `cancelled`, not `failure`, so check the job's elapsed time before calling it noise. Never raise its `timeout-minutes`, and never memoise `trackedFiles()` or `discoverWorkflowProviders()`: that is proven to create a false green.
+- **Adding a `.github/workflows/*.yml` takes two pull requests.** First land the exception contract in `.github/ci-capability-workflows.json` (exactly the keys `path`, `issue`, `category`, `rationale`). Then the workflow commit's body must carry `CI-WORKFLOW-APPROVED #<issue> [<category>]: <rationale>` matching that entry byte for byte. The filename must not start with `issue-`, `orch-` or `meta-` and must match `^[a-z][a-z0-9]*(?:-[a-z0-9]+)+\.ya?ml$`. A pull request that only touches the registry is not validated by class A (#2544), so run `issue-2148-ci-topology-bounded.mjs` locally before merging one.
+- **Never hand-edit `mingla-business/scripts/ci/bundle-baseline.json`** to turn `bundle-budget` green. If `main` is itself above its recorded baseline, the excess is not yours.
+- **Re-derive `MANIFEST.json` counters from disk after every rebase that touches the file.** `expectedStrictGrepMjsFiles` and `selfTestWiredFloor` are exact-equality values; when two branches each add a gate, git can merge both sides to the same wrong number with no conflict marker. Count the `.mjs` files under `.github/scripts/strict-grep/` and the `gates[]` entries with `selfTest == "wired"` (the key is `gates`, not `entries`), then run `meta-1383-manifest-parity.mjs` and read its exit code directly, never after a pipe. When two branches edit the same workflow, regenerate its `sourceSha256` in `.github/ci-batch/MANIFEST.json` from the resolved file; neither side's value is right.
+- **Install with `npm ci`, never a bare `npm install`, and never add `--legacy-peer-deps`.** A caret range next to a pinned peer (`"lottie-react-native": "^7.3.8"` beside `"react": "19.1.0"`) breaks every bare install the day upstream publishes an incompatible minor (#1657).
+- **Never bulk-cancel workflow runs from the repository-wide `actions/runs?status=queued` list.** Build a list filtered by exact `head_sha`, review it, then cancel only those run IDs; a missing filter once cancelled 224 runs across other pull requests.
+- **Take a new issue's number only from `gh issue create`'s own output** (it prints the issue URL). `gh issue create` has no `--format` flag, and a `|| gh issue list --limit 1` fallback returns whichever issue someone else created last. Check that number's title before editing any board field.
+- **When writing a gate, do not parse TypeScript fields with a regex anchored at the start of a statement.** `/^([A-Za-z_$][\w$]*)\??\s*:/` misses `readonly x: T` (house style), quoted keys and other modifiers, so the gate fails green. Never write a real field name in a gate's comments either: sibling gates grep for field names, and an example in prose blinds them. Use `…`.
+- **A new api-health tile needs its `api_health_services` row first.** `api_health_checks.service_key` is a foreign key and the probe batch-inserts, so one unknown value makes the whole tick insert zero rows.
 
 ---
 
