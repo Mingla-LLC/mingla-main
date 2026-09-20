@@ -541,6 +541,21 @@ jobs:
     name: "Strict grep — static gates (class A)"
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # issue #3449 — this job is class A SHARD 1, the CARRIER shard. Everything else
+    # about it is byte-identical to what it was: same key, same display name, same
+    # `timeout-minutes: 15`, and the same `steps` array byte-for-byte, so
+    # STATIC_CLASS_A_STEP_SHA256 in issue-2437-node-wave-shadow-parity.implementor.test.mjs
+    # does not move — job-level `env:` is not a member of `steps`. It stays the
+    # carrier because the two Deno/admin suite steps below are sealed into its step
+    # array and must run exactly once, which costs it about +5.5 s over its row sum.
+    #
+    # The shard value is read by run-batch.mjs, which computes membership from
+    # MANIFEST.json's classAShardCount plus class-a-shard-costs.json. If this block
+    # is ever dropped, the runner falls back to the WHOLE class — slower and
+    # duplicated, never dark — and issue-3449-class-a-shard-plan.mjs reds statically
+    # because the shard indices would no longer be exactly {1..classAShardCount}.
+    env:
+      STRICT_GREP_CLASS_A_SHARD: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -591,6 +606,96 @@ jobs:
           path: gate-results-A.json
           if-no-files-found: error
 
+  # ── issue #3449 — class A runs as THREE cost-balanced shards ───────────────
+  #
+  # WHY. Class A ran all 1,033 strict-grep executions in one job: mean 519 s over
+  # 14 runs against #3336's 540 s readiness ceiling, worst 539 s — ONE SECOND of
+  # margin — growing +3.6 to +8.8 s/day because the corpus grows by policy (#2865)
+  # and the append-only ratchet forbids removal. Within days ordinary pull requests
+  # would have gone red, each red costing a 13-minute rerun before anything merged.
+  # Three shards run the same executions at about 183 s each, so each has roughly
+  # 357 s of room. Adding a fourth shard is a one-line change to classAShardCount.
+  #
+  # MEMBERSHIP IS COMPUTED, NEVER LISTED. run-batch.mjs's classAShardPlan() bin-packs
+  # MANIFEST.json's batch:A executions over class-a-shard-costs.json. A new batch:A
+  # gate therefore lands in exactly one shard with no human decision — the
+  # contributor instruction is unchanged: add the script and ONE MANIFEST.json entry.
+  # It is cost-based and not count-based because the class is skewed: one execution
+  # is 18% of it while about 800 together are 6%.
+  #
+  # EXPLICIT SIBLINGS, NOT `strategy: matrix`. `fail-fast: true` is the matrix
+  # default and cancels sibling shards; a cancelled shard with a simultaneously
+  # cancelled peer classifies as D5 NEUTRAL exit 0 in issue-2594-class-a-budget.mjs
+  # — "the pool was busy" — the exact "a kill reads as noise" failure #2594 and
+  # #3336 closed. `fail-fast: false` is a one-line default a future edit silently
+  # restores, and no seal covers it. issue-3449-class-a-shard-plan.mjs refuses any
+  # `strategy:` key on a class A job, so the hazard is unreachable by construction.
+  #
+  # PER-SHARD `executed === expected` IS NOT COMPLETENESS. Three shards each
+  # honestly reporting "I ran all of mine" is compatible with executions belonging
+  # to no shard at all. The class-a-shard-completeness job below is the authority.
+  #
+  # DO NOT give these jobs an `if:`, a `needs:`, a `strategy:`, or a shorter
+  # `timeout-minutes`. Each of those is a named error in the plan gate, and the
+  # reason is stated at the assertion.
+  static-gates-shard-2:
+    name: "Strict grep — static gates (class A shard 2)"
+    runs-on: ubuntu-latest
+    # 15 minutes is 900 s. The adjudicators' CLASS_A_TIMEOUT_KILL_SECONDS of 890 is
+    # the floor that separates a cap kill (D6, FAIL) from an unexplained lone
+    # cancellation (D7, INCONCLUSIVE). A shorter cap would kill a shard below 890 s
+    # and misclassify a genuine cap kill as D7.
+    timeout-minutes: 15
+    env:
+      STRICT_GREP_CLASS_A_SHARD: "2"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # MANDATORY on every shard, not a style choice: 13 class A gates reference
+      # deno, two of them among the heaviest rows, and membership is COMPUTED — any
+      # gate may land on any shard at any time. A shard missing a toolchain is a
+      # gate that fails, or worse passes vacuously, for a reason nobody edited.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run class A gates (batched)
+        run: node .github/scripts/strict-grep/run-batch.mjs --class A
+      # Same file name as shard 1 writes (it is inside shard 1's sealed step and
+      # cannot change); distinctness lives at the ARTIFACT NAME layer instead.
+      - name: Upload class A shard 2 gate results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-results-A-shard-2
+          path: gate-results-A.json
+          if-no-files-found: error
+
+  static-gates-shard-3:
+    name: "Strict grep — static gates (class A shard 3)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      STRICT_GREP_CLASS_A_SHARD: "3"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run class A gates (batched)
+        run: node .github/scripts/strict-grep/run-batch.mjs --class A
+      - name: Upload class A shard 3 gate results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-results-A-shard-3
+          path: gate-results-A.json
+          if-no-files-found: error
+
   # issue #2594 — OUT-OF-BAND adjudication of the class-A elapsed-time bound.
   #
   # A7-SC1(1) says class A must conclude `success` within 600 s. Until #2594 that
@@ -631,6 +736,121 @@ jobs:
           CLASS_A_BUDGET_SECONDS: "600"
           CLASS_A_TIMEOUT_KILL_SECONDS: "890"
         run: node .github/scripts/strict-grep/issue-2594-class-a-budget.mjs --enforce
+
+  # issue #3449 — ONE adjudicator per shard, and the #2594 module is BYTE-IDENTICAL.
+  #
+  # enforce() already reads its subject from CLASS_A_JOB_NAME and adjudicate()
+  # already selects exactly one job by that exact display name, so three jobs with
+  # three names need no code change at all. The 600 s constitutional bound, the
+  # 890 s kill floor and the 900 s cap are unchanged, which means #3336's readiness
+  # ceiling stays the code-owned derivation round(600 × 0.9) = 540 s and now applies
+  # PER SHARD. Three jobs each under 540 s is strictly stronger than one job under
+  # 540 s, and a red now names its shard instead of naming "class A".
+  #
+  # CLASS_A_JOB_NAME must stay in lockstep with its shard's `name:` above. That is
+  # asserted by issue-3449-class-a-shard-plan.mjs: a rename on one side leaves the
+  # adjudicator hunting a job that no longer exists and D0 fires forever.
+  class-a-budget-shard-2:
+    name: "Strict grep — class A shard 2 elapsed-time budget (out-of-band)"
+    needs: [static-gates-shard-2]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: "Adjudicate class A shard 2 against the A7-SC1(1) 600 s bound"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLASS_A_JOB_NAME: "Strict grep — static gates (class A shard 2)"
+          CLASS_A_BUDGET_SECONDS: "600"
+          CLASS_A_TIMEOUT_KILL_SECONDS: "890"
+        run: node .github/scripts/strict-grep/issue-2594-class-a-budget.mjs --enforce
+
+  class-a-budget-shard-3:
+    name: "Strict grep — class A shard 3 elapsed-time budget (out-of-band)"
+    needs: [static-gates-shard-3]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: "Adjudicate class A shard 3 against the A7-SC1(1) 600 s bound"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLASS_A_JOB_NAME: "Strict grep — static gates (class A shard 3)"
+          CLASS_A_BUDGET_SECONDS: "600"
+          CLASS_A_TIMEOUT_KILL_SECONDS: "890"
+        run: node .github/scripts/strict-grep/issue-2594-class-a-budget.mjs --enforce
+
+  # issue #3449 — THE COMPLETENESS AUTHORITY. The single most important job here.
+  #
+  # Splitting a completeness check is the one change that can be WORSE than the
+  # problem: a split that loses a third of the class while reporting green is worse
+  # than a slow check. Each shard asserts `executed === expected` over its OWN set,
+  # but three shards each honestly reporting "I ran all of mine" is compatible with
+  # executions belonging to NO shard at all, because each shard's notion of
+  # "expected" comes from the same possibly-wrong plan. This job recomputes the plan
+  # ITSELF from the checked-out registry and cost table and refuses to pass unless
+  # the shards' rows are exactly the whole class with nothing dropped, nothing
+  # duplicated, and nothing executed by a shard the plan did not assign it to.
+  #
+  # `if: always()` is load-bearing. Without it a failing or cancelled shard SKIPS
+  # this proof at exactly the moment completeness is most in doubt. It is also what
+  # closes the one shape the per-shard adjudicators cannot refuse: a shard cancelled
+  # by a concurrency eviction is D5 NEUTRAL exit 0, so with two healthy siblings the
+  # workflow would be green with a third of the class unrun. A cancelled shard
+  # uploads nothing, so this job exits 2 and names the missing shard.
+  #
+  # `merge-multiple` MUST STAY ABSENT. Every shard writes a file called
+  # gate-results-A.json (that name is inside shard 1's sealed step and cannot
+  # change). With merge-multiple: true the three artifacts collapse into one path
+  # and two shards' rows are SILENTLY OVERWRITTEN — a green run that lost 693
+  # executions, the precise failure this job exists to prevent.
+  #
+  # gate-results-A-aggregate is the CANONICAL full-class record: same array of the
+  # same row objects a single unsharded run produced, all executions, each row
+  # carrying an additive `shard`. Acceptance tooling should read it rather than
+  # gate-results-A, which is now shard 1's rows only.
+  class-a-shard-completeness:
+    name: "Strict grep — class A shard completeness"
+    needs: [static-gates, static-gates-shard-2, static-gates-shard-3]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Download every class A shard's results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: gate-results-A*
+          path: shard-results
+      - name: "Prove the class A shards partition the class"
+        run: node .github/scripts/strict-grep/issue-3449-class-a-shard-completeness.mjs --aggregate --input shard-results --out gate-results-A-aggregate.json
+      - name: Upload the class A aggregate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-results-A-aggregate
+          path: gate-results-A-aggregate.json
+          if-no-files-found: error
 
   dep-gates:
     name: "Strict grep — dependency gates (class B)"
@@ -1081,7 +1301,19 @@ jobs:
     name: "Alert: main went red"
     needs:
       - static-gates
+      # issue #3449 — the shards, their adjudicators and the completeness proof are
+      # all listed here for two reasons. The comment above claims this job covers
+      # EVERY job in this host, and issue-2909-main-health-wiring.mjs enforces that
+      # claim. More importantly, MINGLA_SELF_CONCLUSION below is
+      # contains(needs.*.result, 'failure'): a CANCELLED shard yields 'cancelled',
+      # not 'failure', while the aggregate's exit 2 yields 'failure' — so the
+      # completeness job is what turns a LOST shard into an alert a human reads.
+      - static-gates-shard-2
+      - static-gates-shard-3
       - class-a-budget
+      - class-a-budget-shard-2
+      - class-a-budget-shard-3
+      - class-a-shard-completeness
       - dep-gates
       - expo-export-gate
       - jest-suites
