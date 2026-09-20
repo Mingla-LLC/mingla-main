@@ -68,6 +68,9 @@ const ADMIN_WRITE_RPCS = [
   "admin_update_venue_reservation_settings",
   "admin_update_venue_capacity_rule",
   "admin_set_reservation_status",
+  // ISSUE-3386: approve applies a host's venue details change to the live row;
+  // reject records the reason. Both call admin_write_audit.
+  "admin_review_venue_details_change",
 ];
 
 // Slice a plpgsql function body (between the first `$$` pair after its def).
@@ -181,7 +184,14 @@ if (process.argv.includes("--self-test")) {
         "return '{}'::jsonb; end; $$;\n",
     )
     .join("");
-  const registered = identity1276 + money1278 + offerings1277;
+  // ISSUE-3386: the venue details change decision RPC — registered above.
+  const venueDetailsChange3386 =
+    "create or replace function public.admin_review_venue_details_change(p_venue_id uuid) returns jsonb " +
+    "language plpgsql security definer as $$ begin if not public.is_admin_user() then " +
+    "raise exception 'forbidden'; end if; " +
+    "perform public.admin_write_audit('venue_details_change.approve','venue_listing',p_venue_id::text,'r','{}'::jsonb,false); " +
+    "return '{}'::jsonb; end; $$;\n";
+  const registered = identity1276 + money1278 + offerings1277 + venueDetailsChange3386;
 
   // GOOD.
   let f = [];

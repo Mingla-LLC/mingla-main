@@ -21,7 +21,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -69,10 +68,7 @@ import {
   canEnablePaidReservationFee,
   paidFeeIsActive,
 } from "./venueFeeGate";
-import {
-  VENUE_DETAILS_SUPPORT_EMAIL,
-  venueDetailsChangeRequestUrl,
-} from "./venueDetailsChangeRequest";
+import { VenueDetailsEditor } from "./VenueDetailsEditor";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 
@@ -86,14 +82,6 @@ const ROLE_LEGEND: readonly { label: string; perms: string }[] = [
   { label: "Finance", perms: "Payouts & reports" },
   { label: "Scanner", perms: "Check guests in" },
 ];
-
-/** ORCH-1186-A — human label for the venue category summary row. */
-const CATEGORY_LABEL: Record<string, string> = {
-  restaurant: "Restaurant",
-  play: "Play",
-  creative_and_arts: "Creative & Arts",
-  stay: "Stay",
-};
 
 interface SectionProps {
   title: string;
@@ -322,23 +310,6 @@ export function VenueSettingsModule({
   // ORCH-1304 — the client edit-cap readout is retired (the DB column stays,
   // dead-but-harmless). No edit-cap copy or disabled tie here.
 
-  // #3386 — "Edit venue details" used to push `/brand/{brandId}`, which edits
-  // the BRAND, not this venue. Name, address, category and contact details are
-  // checked by Mingla and have no host-side editor, so the host gets a
-  // prefilled request that names this venue. If no mail app opens, the address
-  // is on screen and the failure is said out loud (never a dead tap).
-  const [detailsRequestFailed, setDetailsRequestFailed] =
-    useState<boolean>(false);
-  const requestDetailsChange = useCallback((): void => {
-    if (venueId === null) return;
-    setDetailsRequestFailed(false);
-    const url = venueDetailsChangeRequestUrl({
-      venueId,
-      venueName: venueQuery.data?.name ?? null,
-    });
-    void Linking.openURL(url).catch(() => setDetailsRequestFailed(true));
-  }, [venueId, venueQuery.data?.name]);
-
   const goToDeckReadiness = useCallback((): void => {
     if (brandId === null || placePoolId === null || venueId === null) return;
     router.push(
@@ -565,50 +536,25 @@ export function VenueSettingsModule({
         ) : null}
       </Section>
 
-      {/* 5 — Venue details (live summary + working edit affordance). */}
+      {/* 5 — Venue details. #3386: a real editor. Contact is saved directly;
+          name, address and category are saved directly while the venue is in
+          review and sent to Mingla once it is live. "Request a change" (the
+          #3404 email) remains only where nothing else fits. */}
       <Section title="Venue details">
-        <Text style={styles.rowTitle}>
-          {venueQuery.data?.name ?? brand?.displayName ?? "Your venue"}
-        </Text>
-        {venueQuery.data?.address != null ? (
-          <Text style={styles.rowSub}>{venueQuery.data.address}</Text>
-        ) : null}
-        {venueQuery.data?.city != null ? (
-          <Text style={styles.rowSub}>{venueQuery.data.city}</Text>
-        ) : null}
-        {venueQuery.data?.venueCategory != null ? (
-          <Text style={styles.rowSub}>
-            {CATEGORY_LABEL[venueQuery.data.venueCategory]}
-          </Text>
-        ) : null}
-        <Text style={styles.rowSub} testID="venue-settings-details-checked">
-          Mingla checks your venue&apos;s name, address, category and contact
-          details before guests see them. To change any of these, email{" "}
-          {VENUE_DETAILS_SUPPORT_EMAIL} and we&apos;ll update your venue.
-        </Text>
+        {/* ORCH-1186-A T9c: the details stay reachable from Settings under the
+            same testID; it now holds the editor, never a brand-page button. */}
+        <View testID="venue-settings-edit-details">
+          <VenueDetailsEditor
+            brandId={brandId}
+            venueId={venueId}
+            canMutate={canMutate}
+            brandCountryCode={brand?.countryCode ?? null}
+          />
+        </View>
         <Text style={styles.rowSub} testID="venue-settings-details-self-serve">
           You can change opening hours above, and photos, cover, website and
           price in Edit photos &amp; details.
         </Text>
-        {canMutate && venueId !== null ? (
-          <Button
-            label="Request a change"
-            onPress={requestDetailsChange}
-            variant="secondary"
-            size="md"
-            style={styles.inlineBtn}
-            testID="venue-settings-edit-details"
-          />
-        ) : null}
-        {detailsRequestFailed ? (
-          <Text
-            style={styles.hoursError}
-            testID="venue-settings-details-request-failed"
-          >
-            Couldn&apos;t open your email app. Email{" "}
-            {VENUE_DETAILS_SUPPORT_EMAIL} with the changes and your venue name.
-          </Text>
-        ) : null}
       </Section>
 
       {/* 6 — Photos & vibes & AI (read-only readout + working entry point). */}
