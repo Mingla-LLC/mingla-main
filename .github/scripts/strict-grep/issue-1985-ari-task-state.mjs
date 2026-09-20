@@ -609,6 +609,7 @@ export function check(s) {
     "issue_3429_ari_upload_and_finalize.implementor.test.ts",
     "issue_3429_ari_image_preparation.implementor.test.ts",
     "issue_3429_ari_attachment_reclaim.implementor.test.ts",
+    "issue_3429_ari_turn_control_auth_order.implementor.test.ts",
   ]) if (s.workflow.split(testPath).length - 1 !== 3) {
     failures.push(`#3429 workflow routing incomplete for ${testPath}`);
   }
@@ -974,6 +975,11 @@ if (process.argv.includes("--self-test")) {
       key: "workflow",
       from: "issue_3429_ari_attachment_reclaim.implementor.test.ts",
       to: "removed_3429_ari_attachment_reclaim.implementor.test.ts",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_turn_control_auth_order.implementor.test.ts",
+      to: "removed_3429_ari_turn_control_auth_order.implementor.test.ts",
     },
   ];
   for (const mutation of mutations) {

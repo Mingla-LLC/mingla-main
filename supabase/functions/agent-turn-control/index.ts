@@ -30,18 +30,12 @@ Deno.serve(async (request) => {
   if (request.method !== "POST") {
     return response(405, { code: "METHOD_NOT_ALLOWED" });
   }
-  let body: RequestBody;
-  try {
-    body = await request.json() as RequestBody;
-  } catch {
-    return response(400, { code: "BAD_REQUEST" });
-  }
-  if (
-    !body.action || !body.client_turn_id ||
-    !UUID_PATTERN.test(body.client_turn_id)
-  ) {
-    return response(400, { code: "BAD_REQUEST" });
-  }
+  // REWORK-2 R-5: authenticate BEFORE the body is read. This is a control
+  // plane — cancel and retry — and parsing first let an unauthenticated holder
+  // of the public anon key tell a malformed body (400) from an unauthenticated
+  // caller (401) and probe this function's request shape. `agent-attachments`
+  // and `agent-conversation` already authenticate first; this now matches them.
+  // Nothing below may read `request.json()` before `getUser` has resolved.
   const authHeader = request.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return response(401, { code: "UNAUTHENTICATED" });
@@ -64,6 +58,18 @@ Deno.serve(async (request) => {
     return response(401, { code: "UNAUTHENTICATED" });
   }
   const userId = userData.user.id;
+  let body: RequestBody;
+  try {
+    body = await request.json() as RequestBody;
+  } catch {
+    return response(400, { code: "BAD_REQUEST" });
+  }
+  if (
+    !body.action || !body.client_turn_id ||
+    !UUID_PATTERN.test(body.client_turn_id)
+  ) {
+    return response(400, { code: "BAD_REQUEST" });
+  }
   const admin = createClient(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });

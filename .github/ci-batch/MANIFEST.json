@@ -16861,7 +16861,7 @@
           "supabase/functions/_shared/__tests__/issue_1985_rework2_integrity.test.ts",
           "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts",
           "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts",
-          "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_rework1.implementor.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_attachment_reclaim.implementor.test.ts",
+          "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_rework1.implementor.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_attachment_reclaim.implementor.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_turn_control_auth_order.implementor.test.ts",
           "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_structure.adversarial.test.ts",
           "supabase/functions/_shared/__tests__/issue_3429_ari_attachments.implementor.test.ts",
           "supabase/functions/_shared/__tests__/issue_3429_ari_failure_copy.snapshot.json",
