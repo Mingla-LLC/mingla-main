@@ -167,28 +167,33 @@ describe("issue #3485 re-check wiring (source)", () => {
     // Keyed on `recheckVideoJob`, whose identity changes only with the phase and
     // the hook's `checkNow` — never with the watch's per-poll percent updates.
     expect(coverPickerSource).toContain("  useEffect(() => {\n    recheckVideoJob();\n  }, [recheckVideoJob]);");
-    expect(coverPickerSource).toContain("}, [videoUpload.checkNow, videoUpload.stage.phase]);");
+    // Both are read off the hook's object at RENDER time: `videoUpload` is a
+    // fresh object every render, so depending on it would rebuild the callback
+    // every render and re-fire this effect on every poll tick.
+    expect(coverPickerSource).toContain("const checkVideoJobNow = videoUpload.checkNow;");
+    expect(coverPickerSource).toContain("const videoJobPhase = videoUpload.stage.phase;");
+    expect(coverPickerSource).toContain("}, [checkVideoJobNow, videoJobPhase]);");
   });
 
   test("the rule decides, and the picker obeys it", () => {
     expect(coverPickerSource).toContain('from "./coverPickerVideoRecheck"');
     const start = coverPickerSource.indexOf("const recheckVideoJob = useCallback(");
     expect(start).toBeGreaterThan(-1);
-    const body = coverPickerSource.slice(start, coverPickerSource.indexOf("}, [videoUpload.checkNow", start));
+    const body = coverPickerSource.slice(start, coverPickerSource.indexOf("}, [checkVideoJobNow, videoJobPhase]);", start));
     expect(body).toContain("!shouldRecheckCoverVideo({");
-    expect(body).toContain("phase: videoUpload.stage.phase,");
+    expect(body).toContain("phase: videoJobPhase,");
     expect(body).toContain("checkInFlight: videoRecheckInFlightRef.current,");
     // The in-flight flag is taken before the read and released after it, or a
     // slow read would let every later foreground through.
     expect(body).toContain("videoRecheckInFlightRef.current = true;");
     expect(body).toContain("videoRecheckInFlightRef.current = false;");
     expect(body.indexOf("videoRecheckInFlightRef.current = true;"))
-      .toBeLessThan(body.indexOf("videoUpload\n      .checkNow()"));
+      .toBeLessThan(body.indexOf("void checkVideoJobNow()"));
   });
 
   test("a read that cannot reach the server does not become an error card", () => {
     const start = coverPickerSource.indexOf("const recheckVideoJob = useCallback(");
-    const body = coverPickerSource.slice(start, coverPickerSource.indexOf("}, [videoUpload.checkNow", start));
+    const body = coverPickerSource.slice(start, coverPickerSource.indexOf("}, [checkVideoJobNow, videoJobPhase]);", start));
     expect(body).toContain(".catch(() => {");
     // No notice, no toast, no stage write on failure — the card keeps its phase.
     expect(body).not.toContain("setVideoPickNotice");
