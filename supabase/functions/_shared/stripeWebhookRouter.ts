@@ -141,6 +141,33 @@ function objectString(
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+// The charge behind a succeeded PaymentIntent. This API version
+// (STRIPE_API_VERSION) no longer sends the `charges` list on a PaymentIntent;
+// it sends `latest_charge` — an id, or an object when expanded. Reading only
+// `charges.data[0]` yields null on every live event, and paid-identity proof
+// then refuses a genuine purchase for a "missing" charge. The legacy list is
+// kept only as a fallback for older payload shapes.
+export function paymentIntentChargeId(
+  paymentIntent: Record<string, unknown>,
+): string | null {
+  const latestCharge = paymentIntent.latest_charge;
+  if (typeof latestCharge === "string" && latestCharge.length > 0) {
+    return latestCharge;
+  }
+  if (latestCharge !== null && typeof latestCharge === "object") {
+    const expandedId = objectString(
+      latestCharge as Record<string, unknown>,
+      "id",
+    );
+    if (expandedId) return expandedId;
+  }
+  const legacyCharges = paymentIntent.charges as
+    | { data?: Array<Record<string, unknown>> }
+    | undefined;
+  const legacyCharge = legacyCharges?.data?.[0];
+  return legacyCharge ? objectString(legacyCharge, "id") : null;
+}
+
 function accountIdForEvent(event: StripeWebhookEvent): string | null {
   if (typeof event.account === "string" && event.account.length > 0) {
     return event.account;
@@ -186,11 +213,7 @@ async function handleRsvpContributionEvent(
   let chargeId: string | null = null;
   let methodType: string | null = null;
   if (event.type === "payment_intent.succeeded") {
-    const charges = obj.charges as
-      | { data?: Array<Record<string, unknown>> }
-      | undefined;
-    const latestCharge = charges?.data?.[0] ?? null;
-    chargeId = latestCharge ? objectString(latestCharge, "id") : null;
+    chargeId = paymentIntentChargeId(obj);
     const pmTypes = Array.isArray(obj.payment_method_types)
       ? obj.payment_method_types
       : [];
@@ -1476,10 +1499,6 @@ async function handleTicketCheckoutPaymentIntent(
   if (!session) return null;
 
   if (event.type === "payment_intent.succeeded") {
-    const charges = paymentIntent.charges as {
-      data?: Array<Record<string, unknown>>;
-    } | undefined;
-    const latestCharge = charges?.data?.[0] ?? null;
     const paymentMethodTypes = Array.isArray(paymentIntent.payment_method_types)
       ? paymentIntent.payment_method_types
       : [];
@@ -1504,9 +1523,7 @@ async function handleTicketCheckoutPaymentIntent(
     const observedAccount = typeof event.account === "string"
       ? event.account
       : objectString(session, "stripe_account_id");
-    const observedChargeId = latestCharge
-      ? objectString(latestCharge, "id")
-      : null;
+    const observedChargeId = paymentIntentChargeId(paymentIntent);
     const hostedCheckoutId = objectString(
       session,
       "stripe_checkout_session_id",
