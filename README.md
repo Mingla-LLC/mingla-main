@@ -2,7 +2,7 @@
 
 Mingla helps people discover experiences, plan with friends, and run the operational surfaces that keep the ecosystem healthy. Both apps are live on the App Store and Google Play.
 
-README is a snapshot front door. The truth system is small and lives in two places: **work** is tracked as issues on the Mingla Avengers board, and **durable knowledge** lives in the four canonical docs plus `docs/`.
+README is a snapshot front door. The truth system is small and lives in two places: **work** is tracked as issues on the Mingla Avengers board, and **durable knowledge** lives in the three canonical docs plus `docs/`.
 
 ## How We Work
 
@@ -12,7 +12,8 @@ All work — bugs, features, ideas, discoveries — is a GitHub issue on the [Mi
 - Branches are named `<issue#>-short-slug`; PRs say `Fixes #<issue#>`.
 - **Status** tracks the lifecycle: `Todo` → `In Progress` (being built) → `In Review` (PR open / testing) → `Done` (merged + verified; auto-closes the issue).
 - Investigation findings, specs, implementation notes, and test evidence go in **issue comments** — not repo .md files.
-- When something ships, one line is appended to [`REPORTS.md`](REPORTS.md).
+- When something ships, its pull request adds one line to [`REPORTS.md`](REPORTS.md) before merging, never in a docs-only follow-up.
+- Claude and Codex chats coordinate by messaging each other directly, not through a shared file. The protocol and the standing holds live in [`AGENTS.md`](AGENTS.md).
 
 The pre-2026-07-19 operating system (`Mingla_Artifacts/`, `Mingla_Roadmap/`, per-ORCH docs) is retired; all of it is preserved at git tag `pre-avengers-archive`.
 
@@ -23,7 +24,7 @@ The pre-2026-07-19 operating system (`Mingla_Artifacts/`, `Mingla_Roadmap/`, per
 | What is being worked on, and its state? | [Mingla Avengers board](https://github.com/orgs/Mingla-LLC/projects/4) and its issues |
 | Product, positioning, roadmap, strategy | [`PRODUCT_AND_STRATEGY.md`](PRODUCT_AND_STRATEGY.md) |
 | Marketing channels, attribution, motions | [`MARKETING.md`](MARKETING.md) |
-| Cross-session coordination | [`COMMS.md`](COMMS.md) |
+| Cross-session coordination and standing holds | [`AGENTS.md`](AGENTS.md) |
 | What shipped, when | [`REPORTS.md`](REPORTS.md) |
 | Engineering invariants that must hold | [`docs/INVARIANT_REGISTRY.md`](docs/INVARIANT_REGISTRY.md) |
 | Stack conventions + Constitution detail | [`docs/MINGLA_ENGINEERING_HANDBOOK.md`](docs/MINGLA_ENGINEERING_HANDBOOK.md) |

@@ -37,6 +37,8 @@ interface PhoneInputProps {
   required?: boolean;
   maxLength?: number;
   onBlur?: () => void;
+  /** issue #3380 — format as typed, follow a pasted +code, phone autofill. */
+  smartEntry?: boolean;
 }
 
 export const PhoneInput: React.FC<PhoneInputProps> = (props) => {
