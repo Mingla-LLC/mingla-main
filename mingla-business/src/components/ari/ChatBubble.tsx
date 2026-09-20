@@ -53,6 +53,8 @@ export interface AriBubbleSegment {
 
 type Segment = AriBubbleSegment;
 
+const BULLET_LINE = /^\s*[•-]\s+/;
+
 /** Split already-parsed plain text into paragraph / bullet segments.
  *  Container-level formatting only (no inline markdown).
  *  #3429 REWORK-1 P2-4: the ONE segmenter — the semantic reveal renders these
@@ -62,16 +64,28 @@ export function toSegments(raw: string): Segment[] {
   const out: Segment[] = [];
   for (const para of paragraphs) {
     const lines = para.split("\n");
-    // If every line in this paragraph is a bullet, render hanging bullets.
-    const allBullets =
-      lines.length > 0 && lines.every((l) => /^\s*[•-]\s+/.test(l));
-    if (allBullets) {
-      for (const line of lines) {
-        out.push({ kind: "bullet", text: line.replace(/^\s*[•-]\s+/, "") });
+    // #3429 REWORK-2 R-6: a paragraph is split AT its first bullet, not
+    // all-or-nothing. Requiring every line to be a bullet meant the single most
+    // common shape an answer takes — an intro line, then bullets, with no blank
+    // line between them — fell through to one plain paragraph and rendered the
+    // literal "- " dashes the writer meant as a list. Consecutive non-bullet
+    // lines still group into one paragraph, so an all-prose paragraph and an
+    // all-bullet paragraph are byte-for-byte what they were before.
+    let prose: string[] = [];
+    const flushProse = (): void => {
+      if (prose.length === 0) return;
+      out.push({ kind: "paragraph", text: prose.join("\n") });
+      prose = [];
+    };
+    for (const line of lines) {
+      if (BULLET_LINE.test(line)) {
+        flushProse();
+        out.push({ kind: "bullet", text: line.replace(BULLET_LINE, "") });
+      } else {
+        prose.push(line);
       }
-    } else {
-      out.push({ kind: "paragraph", text: para });
     }
+    flushProse();
   }
   return out;
 }
