@@ -887,6 +887,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       brandLocation: brand,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: handleCoverProcessingChange,
+      coverVideoProcessing,
       // issue #2160 — the multi-day pricing-mode control is EVENT-only.
       // ExperienceCreatorWizard lifts the same When step and deliberately does
       // NOT pass this: experiences have their own checkout that never sends a
