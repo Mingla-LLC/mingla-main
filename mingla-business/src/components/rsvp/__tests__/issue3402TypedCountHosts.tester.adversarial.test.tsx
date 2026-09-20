@@ -85,6 +85,19 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     if (/(orderRefundService|publishedEventEditGuards|tierEditGuardCopy|eventCoverMediaService|businessEvents|pricingSwitchesService|refundPolicyWrites|refundPolicyTerms)$/.test(name)) return {};
     if (name === "@mingla/brand-assets") return { MINGLA_BUSINESS_LOGO: 1 };
     if (name.endsWith("/createDeferredTurnoutIntelProvider")) return { createDeferredTurnoutIntelProvider: () => leaf("IntelProvider") };
+    // #1780: the create host now also mounts the invite-selection surfaces
+    // (Your Book picker, review summary, publish confirmation) and the #3446
+    // Android back hook. None of them is this suite's subject — the typed
+    // guest count on Step 5 and the host/edit parity are — so they are
+    // substituted as inert leaves and hooks, exactly like the other
+    // infrastructure boundaries above. The invite flag is off, which is the
+    // shipped default, so the invite step is not in the create host's stepper.
+    // Real invite behaviour is proved by the #1780 suites.
+    if (name.endsWith("/context/AuthContext")) return { useAuth: () => ({ isAuthReady: true, user: { id: "issue-3402-user" }, signOut: jest.fn() }) };
+    if (name.endsWith("/useFeatureFlag")) return { useFeatureFlag: () => ({ data: false, isLoading: false }) };
+    if (name.endsWith("/useOfferingInvitePlan")) return { useOfferingInvitePlanSummary: () => ({ plan: { data: undefined }, quote: { data: undefined }, refreshAuthoritative: async () => ({ plan: null, quote: null }) }) };
+    if (name.endsWith("/useWizardHardwareBack")) return { useWizardHardwareBack: () => undefined };
+    if (name.endsWith("/InvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary") };
     const exportName = name.split("/").pop()!;
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep7Preview|PublishErrorsSheet|ChangeSummaryModal|EditAfterPublishBanner|ThemeControlRow|ThemeSheet)$/.test(exportName)) return { [exportName]: leaf(exportName) };
     throw new Error(`Unclassified host boundary: ${name}`);

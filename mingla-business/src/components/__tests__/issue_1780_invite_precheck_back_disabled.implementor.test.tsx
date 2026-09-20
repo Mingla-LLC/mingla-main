@@ -324,6 +324,11 @@ const BOUNDARY: Record<string, () => unknown> = {
   designSystem: () => designSystem,
   desktopLayout: () => desktopLayout,
   useResponsiveLayout: () => ({ useResponsiveLayout: () => ({ isWideDesktop: false }) }),
+  // #3409 added this to all four creator wizards. Supply the REAL hook: it
+  // only scrolls a ref to the top when the step index changes, so it is inert
+  // here (the ScrollView leaf has no scrollTo) and the boundary stays honest.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useScrollToTopOnStepChange: () => require("../../hooks/useScrollToTopOnStepChange"),
   useServerCoverAdoption: () => ({ useServerCoverAdoption: () => ({ isReady: true }) }),
   draftEventStore: () => ({ buildDraftEvent, useDraftEventStore }),
   draftEventValidation: () => ({
