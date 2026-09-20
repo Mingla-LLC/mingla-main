@@ -28,6 +28,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Image,
   InteractionManager,
   Platform,
@@ -60,9 +61,11 @@ import {
   waitForTrimEditorToClose,
 } from "./coverPickerVideoTrimEditor";
 // issue #3485 — the video pick's busy rule, and the sentence it shows when it
-// refuses. Pure module beside this one because CoverPicker.tsx cannot be mounted
-// under jest (expo-video / expo-image-picker / react-native-video-trim).
+// refuses; plus the rule for when a stuck card should ask the server again. Pure
+// modules beside this one because CoverPicker.tsx cannot be mounted under jest
+// (expo-video / expo-image-picker / react-native-video-trim).
 import { videoPickRefusal } from "./coverPickerVideoPickGate";
+import { shouldRecheckCoverVideo } from "./coverPickerVideoRecheck";
 
 import {
   accent,
@@ -1503,6 +1506,67 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     if (uploadFile === null || activeVideoUpload || disabled || uploading || galleryUploading) return;
     void videoUpload.start(uploadFile);
   }, [activeVideoUpload, disabled, galleryUploading, uploading, videoUpload]);
+
+  // ----- issue #3485: settle a finished job when the app comes back ---------
+  // The card was stuck on "Processing video…" (elapsed 4758m) for a job the
+  // server had already applied, and closing and reopening the sheet did not
+  // clear it — only a full app restart did. The sheet had exactly three routes
+  // to the truth: the hook's mount-time `resume`, its live poll, and `checkNow`,
+  // which is only reachable from the `detached` phase's button. A poll that died
+  // while the app was suspended therefore had no route back at all.
+  //
+  // The missing signal is the app coming back. `shouldRecheckCoverVideo` owns
+  // WHEN (phase, single-flight, one read per window); `videoUpload.checkNow` is
+  // the same read the button performs, apply step included.
+  const videoRecheckInFlightRef = useRef(false);
+  const lastVideoRecheckAtRef = useRef<number | null>(null);
+  const recheckVideoJob = useCallback((): void => {
+    const last = lastVideoRecheckAtRef.current;
+    if (
+      !shouldRecheckCoverVideo({
+        phase: videoUpload.stage.phase,
+        checkInFlight: videoRecheckInFlightRef.current,
+        msSinceLastCheck: last === null ? null : Date.now() - last,
+      })
+    ) {
+      return;
+    }
+    lastVideoRecheckAtRef.current = Date.now();
+    videoRecheckInFlightRef.current = true;
+    void videoUpload
+      .checkNow()
+      .catch(() => {
+        // A read that cannot reach the server changes NOTHING: the card keeps
+        // the phase it had and the next foreground asks again. A background
+        // refresh must never be what shows the host an error.
+      })
+      .finally(() => {
+        videoRecheckInFlightRef.current = false;
+      });
+  }, [videoUpload.checkNow, videoUpload.stage.phase]);
+
+  // Read through a ref so the listener is installed once and removed once,
+  // instead of re-subscribing on every phase change.
+  const recheckVideoJobRef = useRef(recheckVideoJob);
+  recheckVideoJobRef.current = recheckVideoJob;
+  useEffect(() => {
+    // The web has no React Native AppState lifecycle; there the phase effect
+    // below is the whole coverage. Same `Platform.OS` shape as the app's other
+    // foreground listeners (see `OtaAcknowledgementLayer`).
+    if (Platform.OS === "web") return;
+    const subscription = AppState.addEventListener("change", (next) => {
+      if (next === "active") recheckVideoJobRef.current();
+    });
+    return () => subscription.remove();
+  }, []);
+
+  // The sheet opening on — or landing on — a server-owned phase asks once too,
+  // so a reopen settles a finished job without waiting for a backgrounding that
+  // may never come. `recheckVideoJob`'s identity changes only with the PHASE, so
+  // the watch's per-poll percent updates cannot re-fire this.
+  useEffect(() => {
+    recheckVideoJob();
+  }, [recheckVideoJob]);
 
   // ----- Provider browse (gallery-first) ---------------------------------
 
