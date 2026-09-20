@@ -10,6 +10,7 @@ on:
       - "PRODUCT_AND_STRATEGY.md"
       - "MARKETING.md"
       - "COMMS.md"
+      - "COMMS_LEDGER.md"
       - "REPORTS.md"
       - "docs/**"
       - "scripts/docs/**"
@@ -25,6 +26,7 @@ on:
       - "PRODUCT_AND_STRATEGY.md"
       - "MARKETING.md"
       - "COMMS.md"
+      - "COMMS_LEDGER.md"
       - "REPORTS.md"
       - "docs/**"
       - "scripts/docs/**"
@@ -60,13 +62,11 @@ jobs:
       - name: Check artifact placement
         run: python3 scripts/docs/check_artifact_placement.py
 
-      - name: Check COMMS integrity
+      # #3476 — the COMMS.md table is retired; this only keeps it from growing back.
+      - name: Check the retired COMMS table stays retired
         run: |
-          python3 scripts/docs/check_comms_integrity.py --self-test
-          python3 scripts/docs/check_comms_integrity.py
           python3 scripts/docs/check_ota_comms_authority.py --self-test
           python3 scripts/docs/check_ota_comms_authority.py
-          python3 scripts/docs/check_ota_comms_authority_tester_adversarial.py
 
       - name: Check README snapshot
         run: python3 scripts/docs/check_readme_snapshot.py
