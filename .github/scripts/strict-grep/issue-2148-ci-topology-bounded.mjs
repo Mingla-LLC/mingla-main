@@ -15,6 +15,7 @@
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -46,11 +47,45 @@ const BOUNDARY_CATEGORIES = new Set([
 const INVALID_RATIONALE =
   /(?:\b(?:tbd|todo|placeholder|example|dummy|fake)\b|\bn\/?a\b|convenience only|secret word|does not require|no unique boundary)/i;
 
-function git(args, { cwd = REPO_ROOT, allowFailure = false } = {}) {
+// Issue #3455: inherited variables that could point git at another repository.
+// Disposable-repository calls delete every one of them before setting GIT_DIR.
+const REPOSITORY_LOCATION_VARIABLES = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_IMPLICIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_INDEX_FILE",
+  "GIT_SHALLOW_FILE",
+  "GIT_GRAFT_FILE",
+  "GIT_PREFIX",
+  "GIT_NAMESPACE",
+];
+
+// Two modes (issue #3455). Checkout-side (the default) keeps today's cwd and
+// inherited environment but forbids lazy fetching, so a read can never write a
+// promisor pack into the checkout. Disposable-repository mode (`gitDir`, or
+// `isolated` for the one `git init` that runs before the repository exists)
+// scrubs repository-location variables, targets only the disposable repository
+// and makes a would-be credential prompt fail fast. `args` is never prefixed
+// with --git-dir, -C or -c: frozen tests match the thrown `git fetch … failed`.
+function git(args, { cwd = REPO_ROOT, allowFailure = false, gitDir = "", isolated = Boolean(gitDir), input } = {}) {
+  let env;
+  if (isolated) {
+    env = { ...process.env };
+    for (const name of REPOSITORY_LOCATION_VARIABLES) delete env[name];
+    if (gitDir) env.GIT_DIR = gitDir;
+    env.GIT_TERMINAL_PROMPT = "0";
+  } else {
+    env = { ...process.env, GIT_NO_LAZY_FETCH: "1" };
+  }
   const result = spawnSync("git", args, {
-    cwd,
+    cwd: gitDir || cwd,
     encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
+    env,
+    input,
+    stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
   });
   if (result.status === 0) return result.stdout.trim();
   if (allowFailure) return "";
@@ -193,8 +228,103 @@ function readEvent() {
   }
 }
 
+/**
+ * [#3455] NEVER fetch into the checkout. A `--filter=blob:none --depth=1024`
+ * fetch persists in the repository it runs in: the shallow boundary, promisor
+ * config, repository format 1, blobless packs, refs and FETCH_HEAD. On a
+ * push-shaped CI checkout that made a later `git clone --no-hardlinks <workspace>`
+ * abort with "possible repository corruption", and run locally it turned a full
+ * anchor (and every worktree sharing it) shallow and blobless.
+ *
+ * Missing history is therefore obtained in a disposable bare repository that
+ * borrows the checkout's objects read-only through objects/info/alternates. The
+ * copy of the checkout's `shallow` file is LOAD-BEARING: without it git walks
+ * into boundary parents it cannot load ("Failed to traverse parents") and the
+ * deepening fetch fails with "remote did not send all necessary objects".
+ * The temp base is realpath'd and absolute (a relative TMPDIR made Node and git
+ * resolve different directories) and must lie outside both the checkout and its
+ * common directory. Every git call here goes through `git()` with `gitDir`, so
+ * the argv (and therefore the error text pinned by the frozen tests) never gains
+ * --git-dir. The caller owns `dispose()`; it runs on every JavaScript exit path.
+ */
+function createComparisonRepository(repoRoot) {
+  const locations = git(
+    ["rev-parse", "--path-format=absolute", "--git-common-dir", "--git-path", "objects", "--git-path", "shallow"],
+    { cwd: repoRoot },
+  ).split("\n");
+  const commonDir = locations[0];
+  const objectsDir = locations.length === 3 ? locations[1] : locations.slice(1, -1).join("\n");
+  const shallowPath = locations[locations.length - 1];
+  const originUrl = git(["config", "--get", "remote.origin.url"], { cwd: repoRoot, allowFailure: true });
+  const headCommit = git(["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], { cwd: repoRoot, allowFailure: true });
+  const refs = git(["for-each-ref", "--format=%(objectname) %(refname) %(symref)"], { cwd: repoRoot })
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [objectName, refName, target = ""] = line.split(" ");
+      return { objectName, refName, target };
+    });
+
+  const temporaryBase = fs.realpathSync(path.resolve(os.tmpdir()));
+  for (const protectedPath of [fs.realpathSync(repoRoot), fs.realpathSync(commonDir)]) {
+    if (temporaryBase === protectedPath || temporaryBase.startsWith(protectedPath + path.sep)) {
+      throw new Error(`refusing to create the comparison repository inside the checkout (${temporaryBase})`);
+    }
+  }
+  if (!path.isAbsolute(objectsDir) || objectsDir.includes("\n")) {
+    throw new Error(`cannot borrow the checkout object store at ${JSON.stringify(objectsDir)}`);
+  }
+
+  const root = fs.mkdtempSync(path.join(temporaryBase, "mingla-2148-comparison-"));
+  const gitDir = path.join(root, "repo.git");
+  let disposed = false;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    try {
+      fs.rmSync(root, { recursive: true, force: true, maxRetries: 3 });
+    } catch (error) {
+      console.error(`Issue #3455: could not remove the comparison repository ${root}: ${error.code ?? error.message}`);
+    }
+  };
+
+  try {
+    git(["init", "--bare", "-q", "--template=", gitDir], { cwd: root, isolated: true });
+    fs.writeFileSync(path.join(gitDir, "objects", "info", "alternates"), `${objectsDir}\n`);
+    if (fs.existsSync(shallowPath)) fs.copyFileSync(shallowPath, path.join(gitDir, "shallow"));
+
+    // Temp-local settings only. No http.* key and no credential is ever copied.
+    const settings = [
+      ["gc.auto", "0"],
+      ["maintenance.auto", "false"],
+      ["fetch.recurseSubmodules", "false"],
+      ["core.logAllRefUpdates", "false"],
+      ["core.hooksPath", path.join(root, "hooks-disabled")],
+    ];
+    if (originUrl) settings.push(["remote.origin.url", originUrl]);
+    for (const [key, value] of settings) git(["config", key, value], { gitDir });
+
+    // Mirrored refs resolve the same names as the checkout and seed negotiation.
+    const directRefs = refs.filter((ref) => !ref.target);
+    if (directRefs.length) {
+      git(["update-ref", "--stdin"], {
+        gitDir,
+        input: directRefs.map((ref) => `update ${ref.refName} ${ref.objectName}\n`).join(""),
+      });
+    }
+    for (const ref of refs.filter((candidate) => candidate.target)) {
+      git(["symbolic-ref", ref.refName, ref.target], { gitDir });
+    }
+    if (headCommit) git(["update-ref", "--no-deref", "HEAD", headCommit], { gitDir });
+  } catch (error) {
+    dispose();
+    throw error;
+  }
+  return { gitDir, dispose };
+}
+
 function ensureComparisonHistory(event, base, head, repoRoot = REPO_ROOT) {
-  if (git(["merge-base", base, head], { cwd: repoRoot, allowFailure: true })) return;
+  if (git(["merge-base", base, head], { cwd: repoRoot, allowFailure: true })) return null;
 
   const refspecs = [];
   if (event.pull_request?.number) {
@@ -211,16 +341,25 @@ function ensureComparisonHistory(event, base, head, repoRoot = REPO_ROOT) {
     refspecs.push(`+refs/heads/${branch}:refs/remotes/origin/${branch}`);
   }
 
+  // [#3455] The recovery fetch and the post-fetch merge-base run ONLY in the
+  // disposable repository. With zero refspecs nothing could change, so the
+  // refusal is immediate and no repository is created.
   if (refspecs.length) {
-    git(["fetch", "--no-tags", "--filter=blob:none", "--depth=1024", "origin", ...refspecs], {
-      cwd: repoRoot,
-    });
+    const comparison = createComparisonRepository(repoRoot);
+    try {
+      git(["fetch", "--no-tags", "--filter=blob:none", "--depth=1024", "origin", ...refspecs], {
+        gitDir: comparison.gitDir,
+      });
+      if (git(["merge-base", base, head], { gitDir: comparison.gitDir, allowFailure: true })) return comparison;
+    } catch (error) {
+      comparison.dispose();
+      throw error;
+    }
+    comparison.dispose();
   }
-  if (!git(["merge-base", base, head], { cwd: repoRoot, allowFailure: true })) {
-    throw new Error(
-      `cannot establish a complete comparison history for ${base}..${head}; refusing a vacuous green`,
-    );
-  }
+  throw new Error(
+    `cannot establish a complete comparison history for ${base}..${head}; refusing a vacuous green`,
+  );
 }
 
 export function resolveComparison({ argv = process.argv.slice(2), event = readEvent() } = {}) {
@@ -276,8 +415,8 @@ export function canonicalRepositoryMode(repoRoot = REPO_ROOT, environment = proc
   return "noncanonical-fixture";
 }
 
-function registryAt(repoRoot, revision, required) {
-  const raw = git(["show", `${revision}:${REGISTRY_PATH}`], { cwd: repoRoot, allowFailure: true });
+function registryAt(repoRoot, revision, required, gitDir = "") {
+  const raw = git(["show", `${revision}:${REGISTRY_PATH}`], { cwd: repoRoot, gitDir, allowFailure: true });
   if (!raw) {
     if (required) throw new Error(`${REGISTRY_PATH} is missing at ${revision}`);
     return null;
@@ -293,7 +432,18 @@ function registryAt(repoRoot, revision, required) {
 }
 
 export function inspectRepository({ repoRoot = REPO_ROOT, base, head, event = {} }) {
-  ensureComparisonHistory(event, base, head, repoRoot);
+  const comparison = ensureComparisonHistory(event, base, head, repoRoot);
+  try {
+    return readComparisonHistory({ repoRoot, base, head, gitDir: comparison?.gitDir ?? "" });
+  } finally {
+    comparison?.dispose();
+  }
+}
+
+// [#3455] When a disposable comparison repository exists, every history read
+// below runs there; the checkout is consulted only for its own identity.
+function readComparisonHistory({ repoRoot, base, head, gitDir }) {
+  const history = gitDir ? { gitDir } : { cwd: repoRoot };
   // Issue #2681: THREE dots, deliberately. `git diff A B` compares two tips;
   // `git diff A...B` compares the MERGE BASE of A and B against B — the same
   // question `git log A..B` below already asks when it attributes tokens.
@@ -301,11 +451,15 @@ export function inspectRepository({ repoRoot = REPO_ROOT, base, head, event = {}
   // is reported as having ADDED that file (nine phantom violations on PR #2677),
   // and, in the other direction, a workflow added at a path the base branch
   // already has is invisible to --diff-filter=A and passes. ensureComparisonHistory
-  // above has already proven the merge base is computable or exited 2, so this
-  // adds no history requirement. Do NOT "simplify" this back to two dots.
+  // above has already proven the merge base is computable or exited 2 — in the
+  // disposable comparison repository whenever one had to be built (issue #3455) —
+  // so this adds no history requirement. Rename detection here and
+  // registryAt(base) below may still lazily fetch blobs, but only INTO that
+  // disposable repository, never into the checkout.
+  // Do NOT "simplify" this back to two dots.
   const raw = git(
     ["diff", "--diff-filter=A", "--name-only", `${base}...${head}`, "--", WORKFLOW_PREFIX],
-    { cwd: repoRoot },
+    history,
   );
   const addedWorkflows = raw
     .split("\n")
@@ -316,14 +470,14 @@ export function inspectRepository({ repoRoot = REPO_ROOT, base, head, event = {}
   for (const workflow of addedWorkflows) {
     const bodies = git(
       ["log", "--format=%B%x00", `${base}..${head}`, "--", workflow],
-      { cwd: repoRoot },
+      history,
     );
     touchingCommitBodies[workflow] = bodies.split("\0").filter(Boolean);
   }
   const repositoryMode = canonicalRepositoryMode(repoRoot);
   if (repositoryMode === "canonical") {
-    const headRegistry = registryAt(repoRoot, head, true);
-    const baseRegistry = registryAt(repoRoot, base, addedWorkflows.length > 0);
+    const headRegistry = registryAt(repoRoot, head, true, gitDir);
+    const baseRegistry = registryAt(repoRoot, base, addedWorkflows.length > 0, gitDir);
     return { addedWorkflows, touchingCommitBodies, repositoryMode, baseRegistry, headRegistry };
   }
   return { addedWorkflows, touchingCommitBodies, repositoryMode };
@@ -518,11 +672,13 @@ function selfTest() {
     if (!rejected) failed += 1;
   }
 
-  const identityRoot = fs.mkdtempSync(path.join(process.cwd(), ".issue-2431-identity-"));
+  // Issue #3455: the identity fixture lives under os.tmpdir(), never under the
+  // checkout, and is its own repository from the first statement so git
+  // discovery can never read the enclosing checkout's origin (which crashed this
+  // self-test in any clone whose origin is not the canonical GitHub URL).
+  const identityRoot = fs.mkdtempSync(path.join(os.tmpdir(), ".issue-2431-identity-"));
   const nestedFixture = path.join(identityRoot, "nested-fixture");
   const workspaceAlias = `${identityRoot}-alias`;
-  fs.mkdirSync(nestedFixture);
-  fs.symlinkSync(identityRoot, workspaceAlias);
   const canonicalEnvironment = {
     GITHUB_ACTIONS: "true",
     GITHUB_REPOSITORY: CANONICAL_REPOSITORY,
@@ -530,6 +686,9 @@ function selfTest() {
   };
   const identityCases = [];
   try {
+    git(["init", "-q"], { cwd: identityRoot });
+    fs.mkdirSync(nestedFixture);
+    fs.symlinkSync(identityRoot, workspaceAlias);
     identityCases.push({
       name: "the realpath GitHub workspace is canonical",
       passed: canonicalRepositoryMode(identityRoot, canonicalEnvironment) === "canonical",
@@ -539,7 +698,6 @@ function selfTest() {
       passed: canonicalRepositoryMode(nestedFixture, canonicalEnvironment) === "noncanonical-fixture",
     });
 
-    git(["init", "-q"], { cwd: identityRoot });
     git(["remote", "add", "origin", "https://github.com/not-mingla/not-mingla.git"], { cwd: identityRoot });
     let conflictRejected = false;
     try {
@@ -582,6 +740,8 @@ function selfTest() {
   console.log(`\nIssue #2148 CI topology self-test: ${total}/${total} PASS.`);
 }
 
+// Issue #3455: main() RETURNS its exit code instead of calling process.exit, so
+// no exit path can skip the disposable comparison repository's cleanup.
 function main() {
   try {
     const { base, head, event } = resolveComparison();
@@ -598,16 +758,17 @@ function main() {
     if (failures.length) {
       console.error(`\nI-PROPOSED-2148-CI-TOPOLOGY-BOUNDED FAILED — ${failures.length} violation(s):`);
       for (const failure of failures) console.error(`  - ${failure}`);
-      process.exit(1);
+      return 1;
     }
     console.log("I-PROPOSED-2148-CI-TOPOLOGY-BOUNDED: PASS.");
+    return 0;
   } catch (error) {
     console.error(`I-PROPOSED-2148-CI-TOPOLOGY-BOUNDED INCONCLUSIVE: ${error.message}`);
-    process.exit(2);
+    return 2;
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (process.argv.includes("--self-test")) selfTest();
-  else main();
+  else process.exitCode = main();
 }
