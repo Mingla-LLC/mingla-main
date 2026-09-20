@@ -382,7 +382,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     }
     if (result.kind === "text" && result.handoff_route) router.push(result.handoff_route as never);
     }).catch((error: unknown) => {
-      setLocalError(error instanceof Error ? error.message : "Message not sent. Check your connection and try again.");
+      // #3184 — the screen owns no connection sentence. A throw here has no
+      // registry code (the transport layer already returns TRANSPORT_UNAVAILABLE
+      // as a result when the request never reached Mingla), so show the
+      // module's internal-failure copy instead of blaming the network.
+      setLocalError(error instanceof Error ? error.message : ariChatErrorCopy("EDGE_ERROR"));
     });
     return true;
   };
