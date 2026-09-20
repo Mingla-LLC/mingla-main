@@ -6,7 +6,8 @@
 //     refused before even one Git command can reach the anchor;
 //   * a legitimate label creates a real worktree whose leaf equals its branch;
 //   * reap still removes a real legacy bracketed worktree safely; and
-//   * the durable docs and COMMS correction describe the same contract.
+//   * the durable docs describe the same contract (the COMMS-0131 correction
+//     moved into docs/WORKTREE_STRATEGY.md when #3476 retired COMMS.md).
 // Every path and repository created here lives under one mkdtemp-owned root and
 // is removed by this process only. The operator's anchor/worktrees are never
 // passed to spawn.sh, reap.sh, or git.
@@ -178,7 +179,7 @@ test("#2210 tester: reap accepts and removes a real legacy bracketed worktree", 
   });
 });
 
-test("#2210 tester: guard, docs, reap guidance, and COMMS carry one contract", () => {
+test("#2210 tester: guard, docs, and reap guidance carry one contract", () => {
   for (const hostile of [
     "/tmp/full/path/[bad]/clean-leaf",
     "/tmp/full/path/clean leaf",
@@ -194,12 +195,16 @@ test("#2210 tester: guard, docs, reap guidance, and COMMS carry one contract", (
 
   const docs = readFileSync(path.join(ROOT, "docs", "WORKTREE_STRATEGY.md"), "utf8");
   const reap = readFileSync(REAP, "utf8");
-  const comms = readFileSync(path.join(ROOT, "COMMS.md"), "utf8");
   assert.match(docs, /directory name and the branch name are identical/);
   assert.match(docs, /Path characters — hard rule \(#2210\)/);
   assert.doesNotMatch(docs, /mingla-orchs\/<ORCH_ID>-\[<short-kebab-label>\]/);
   assert.match(reap, /reaps the LEGACY bracketed/);
-  assert.match(comms, /CORRECTION 2026-08-18 \(#2210\).*NARROWED to the #1544 Metro-symlink symptom/);
-  assert.match(comms, /Brackets ARE the proven cause of a separate defect/);
-  assert.match(comms, /existing bracketed worktrees are still NOT migrated/);
+  // [TEST-MOD-APPROVED #3476] COMMS.md is now a retirement stub, so the
+  // COMMS-0131 correction these three lines pinned lives in WORKTREE_STRATEGY.md.
+  // Same three facts: #1544 (the Metro symlink) is NOT a bracket defect, brackets
+  // ARE the proven cause of the silent zero-match glob, and existing bracketed
+  // worktrees are still not migrated.
+  assert.match(docs, /brackets were not the cause of #1544/);
+  assert.match(docs, /matches \*\*zero files, prints nothing, and exits 0\*\*/);
+  assert.match(docs, /Existing bracketed worktrees are NOT migrated/);
 });
