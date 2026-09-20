@@ -68,3 +68,35 @@ export function routeForPipelineStateFix(input: {
     fix: input.fix,
   });
 }
+
+/**
+ * #3385 — where "Save changes" on the deck-readiness screen sends the host.
+ *
+ * It used to `router.replace("/(tabs)/hub/events")`: the host left the venue
+ * they were editing and saw no sign the save worked. Now:
+ *   - opened from the venue page (`from=venue`) with history → go BACK to it,
+ *     so the host lands exactly where they were (the venue's Settings);
+ *   - anything else (Home to-do, a refreshed web tab, a shared link) → open
+ *     the venue's own page on Settings, where "Edit photos & details" lives;
+ *   - no venue id (a malformed link) → back if possible, else the venue list.
+ * Never the Events tab.
+ */
+export type DeckReadinessSaveDestination =
+  | { kind: "back" }
+  | { kind: "replace"; href: string };
+
+export function deckReadinessSaveDestination(input: {
+  venueId: string | null;
+  from: string | null;
+  canGoBack: boolean;
+}): DeckReadinessSaveDestination {
+  if (input.from === "venue" && input.canGoBack) return { kind: "back" };
+  if (input.venueId !== null && input.venueId.length > 0) {
+    return {
+      kind: "replace",
+      href: `/venue/${encodeURIComponent(input.venueId)}?module=settings`,
+    };
+  }
+  if (input.canGoBack) return { kind: "back" };
+  return { kind: "replace", href: "/(tabs)/hub/listing" };
+}

@@ -3,21 +3,25 @@
 This is the single running log of what has been fixed, implemented, and shipped. It is the
 canonical record: if it shipped, it has a line here.
 
-**Going-forward format:** when an issue on the Mingla Avengers board reaches Done, ONE entry is
-appended at the top of the "Shipped" section:
+**Going-forward format:** ONE entry is added at the top of the "Shipped" section by the pull request
+that ships the change, before it merges. It is never appended afterwards in a docs-only follow-up
+pull request (#3476). Open the pull request first, then fill in its number with a follow-up commit
+on the same branch:
 
 ```
 - YYYY-MM-DD — <plain-English what changed for users/ops> (#<issue>, PR #<pr>)
 ```
 
-Detail (evidence, root cause, test notes) lives in the issue, not here. One line per ship,
-newest first, plain English first.
+Detail (evidence, root cause, test notes) and post-merge release records (OTA ids, deploy and live
+verification) live in the issue, not here. One line per ship, newest first, plain English first.
 
 History before 2026-07-19 is archived in full at git tag `pre-avengers-archive`. Entries below
 that date are a translated back-fill from the old ORCH/artifact system; old IDs are kept in
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-20 — CI's workflow-topology check now gets missing git history in a throwaway copy, so it can no longer damage the checkout it is inspecting; that damage had turned main red and silently shallowed the shared developer repository (#3455, PR #3471)
+- 2026-09-17 — Claude and Codex chats now coordinate by messaging each other instead of a shared table, and docs no longer need their own follow-up pull requests (#3476, PR #3482)
 - 2026-09-15 — Business and public venue phone forms start on the venue's country, accept local numbers with a country picker, and preserve that country when booking, ordering, sending bills, or submitting a venue for review; native app delivery awaits an approved OTA (#3396, PR #3413)
 - 2026-09-15 — New RSVP chip-ins now link to the matching guest, and retries cannot reuse another payer's contribution; the production service is source-verified live, with no historical backfill or mobile update (#3436, PR #3415)
 - 2026-09-15 — Menu-ordering and staff bill-to-phone services now interpret local numbers using the guest's country and reject malformed numbers without guessing a US number; both production functions are source-verified live, with Host and Explorer country-picker releases tracked separately (#3395, PR #3411)

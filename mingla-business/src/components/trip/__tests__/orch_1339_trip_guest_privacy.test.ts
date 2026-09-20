@@ -194,9 +194,15 @@ describe("ORCH-1339 — §4.8 copy on the standard-event + RSVP wizard homes (T-
     expect(rsvpStep5).toContain('label="Keep the guest list private"');
     expect(rsvpStep5).toContain('sub="Hide who\'s going. Only you see the list."');
     expect(rsvpStep5).toContain('label="Hide the spots-left count"');
+    // The spots-left sub-copy now follows the private-guest-list switch: "Guests
+    // see who's going" was shown even with the list private. Both honest strings
+    // live in rsvpHideCountSub; the render proof is
+    // rsvp/__tests__/RsvpStep5Setup.visibilityDiscovery.test.tsx (H-1).
+    expect(rsvpStep5).toContain("sub={rsvpHideCountSub(draft.privateGuestList)}");
     expect(rsvpStep5).toContain(
-      'sub="Guests see who\'s going — not how many spots remain."',
+      '"Guests see who\'s going — not how many spots remain."',
     );
+    expect(rsvpStep5).toContain('"Guests won\'t see how many spots remain."');
     expect(rsvpStep5).not.toContain("Hide the Going count from guests");
     expect(rsvpStep5).not.toContain("Guests won't see how many are coming.");
   });

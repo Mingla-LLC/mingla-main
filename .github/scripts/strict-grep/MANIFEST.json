@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 647,
+  "expectedStrictGrepMjsFiles": 649,
   "selfTestWiredFloor": 415,
   "unenforcedCap": 2,
   "fixtureCap": 9,
@@ -9664,6 +9664,24 @@
       "invocation": "node",
       "modes": ["self-test", "plain"],
       "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-3455-topology-gate-checkout-isolation.implementor.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:E",
+      "invocation": "node --test",
+      "modes": ["plain"],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-3455-topology-gate-checkout-isolation.tester.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:E",
+      "invocation": "node --test",
+      "modes": ["plain"],
+      "selfTest": "none",
       "jobKeys": []
     }
   ]

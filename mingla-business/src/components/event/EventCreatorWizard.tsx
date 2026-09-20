@@ -70,6 +70,7 @@ import {
   DESKTOP_WIZARD_RAIL_WIDTH,
 } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useScrollToTopOnStepChange } from "../../hooks/useScrollToTopOnStepChange";
 import {
   useServerCoverAdoption,
   type FetchServerCover,
@@ -407,6 +408,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // doesn't reliably scroll-to-focused-input for multiline TextInputs
   // in this nested layout (verified by smoke 2026-04-30).
   const scrollViewRef = useRef<ScrollView | null>(null);
+  // Each step opens at the top — the ScrollView is shared by every step.
+  useScrollToTopOnStepChange(scrollViewRef, currentStep);
   // issue #1027 (iOS description-reveal REGRESSION) — deferred scroll-to-bottom.
   // Set by step bodies on input focus (Step 1 Description, Step 3 online-URL),
   // consumed when the keyboard finishes rising. WHY the defer is load-bearing on
@@ -918,6 +921,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       brandLocation: brand,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: handleCoverProcessingChange,
+      coverVideoProcessing,
       // issue #2160 — the multi-day pricing-mode control is EVENT-only.
       // ExperienceCreatorWizard lifts the same When step and deliberately does
       // NOT pass this: experiences have their own checkout that never sends a

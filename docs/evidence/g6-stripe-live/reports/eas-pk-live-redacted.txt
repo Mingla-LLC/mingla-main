@@ -6,7 +6,7 @@
 Multiple production OTA publishes verified the *served* EAS update manifest carried
 EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY = pk_live_… (live publishable key; secret material omitted).
 
-Documented instances (see COMMS.md Active table):
+Documented instances (rows of the COMMS.md table, retired by #3476; read them with `git show 8d6cb5b9b22b91521a99463e3242a9d1576ecf5f:COMMS.md`):
 - COMMS-0151 (2026-08-18): Consumer 1.1.5 production OTA — served manifests carry pk_live… for EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY on iOS + Android.
 - COMMS-0164 (2026-08-25): Mingla Host 1.1.6 production OTA — served manifest verified EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY = pk_live_… (107 chars), not the committed pk_test_ sandbox literal.
 - COMMS-0147 / related Host+Consumer 1.1.6 publishes: served manifests verified carrying pk_live_ on all four platform payloads.

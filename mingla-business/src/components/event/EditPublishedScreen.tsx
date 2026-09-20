@@ -1601,6 +1601,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         brandDefaultCurrency: liveEvent.currency ?? null,
         coverMediaApplyMode: "published_manual" as const,
         onCoverVideoProcessingChange: setCoverVideoProcessing,
+        coverVideoProcessing,
         // ORCH-1335 — RsvpStep5Setup ("rsvp-setup" section) reads this to swap
         // its chip-in bank callout. Undefined for non-RSVP sections (harmless).
         chipInPayoutReady,
@@ -1677,6 +1678,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       liveEvent.currency,
       chipInPayoutReady,
       brandQuery.data,
+      coverVideoProcessing,
     ],
   );
 

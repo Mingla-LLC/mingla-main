@@ -402,6 +402,16 @@ module.exports = {
     // already points here, so the mapping is the identity. Anchored to the
     // subpath form only: the bare barrel is untouched.
     "^@mingla/brand-rendering/(.+)$": "<rootDir>/../packages/brand-rendering/$1",
+    // #3397 — resolution repair, NOT a mock, same shape as #1559 above. The
+    // Consumer VenueReserveSheet imports the shared phone rules by the deep
+    // `@mingla/phone-input/phoneNumber` specifier, and the #3387 suites mount
+    // that app-mobile file from here. Node resolution walks up from app-mobile,
+    // whose node_modules CI never installs, so the specifier could not load.
+    // Business files already resolve it through their own workspace symlink to
+    // this same directory, so for them the mapping is the identity. Anchored to
+    // the subpath form only: the bare barrel and its jest.mock() users are
+    // untouched.
+    "^@mingla/phone-input/(.+)$": "<rootDir>/../packages/phone-input/$1",
     // #1773 — resolution repair, NOT a mock. The phone owner is deliberately a
     // real `.mjs` ESM module for Supabase's hosted ESZip bundler. Metro resolves
     // the workspace symlink, while this node/ts-jest runner must stay on this
