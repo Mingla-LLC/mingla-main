@@ -100,54 +100,81 @@ describe("ORCH-1101 REWORK · #1 guard — separator never reads undefined trail
 
 describe("ORCH-1101 REWORK · #2 — optimistic user message renders instantly", () => {
   it("builds a crash-safe optimistic AgentMessage (role user, content.text, null tool fields)", () => {
-    expect(useAgentChat).toMatch(/function makeOptimisticMessage\(/);
+    // [TEST-MOD-APPROVED #3429] (a) superseded: the optimistic row is now built
+    // by turnMessage(turn) from the conversation-scoped local turn #3429
+    // introduced for D-2. The crash-safe shape this assertion protects — role
+    // user, a text content field, null tool fields — is unchanged, and the id
+    // is still namespaced (see ADV-R5).
+    expect(useAgentChat).toMatch(/function turnMessage\(turn: LocalTurn\): AgentMessage/);
     const block = useAgentChat.slice(
-      useAgentChat.indexOf("function makeOptimisticMessage"),
-      useAgentChat.indexOf("function makeOptimisticMessage") + 600,
+      useAgentChat.indexOf("function turnMessage(turn: LocalTurn)"),
+      useAgentChat.indexOf("function turnMessage(turn: LocalTurn)") + 900,
     );
     expect(block).toMatch(/role:\s*["']user["']/);
-    expect(block).toMatch(/content:\s*\{\s*text\s*\}/);
+    expect(block).toMatch(/content:\s*\{\s*\n\s*text,/);
     expect(block).toMatch(/tool_calls:\s*null/);
     expect(block).toMatch(/tool_results:\s*null/);
-    expect(block).toMatch(/optimistic-/);
+    expect(block).toMatch(/id:\s*turn\.localId/);
+    expect(block).toMatch(/client_turn_id:\s*turn\.clientTurnId/);
   });
 
   // [TEST-MOD-APPROVED #2060] — #2060 moved optimistic insert from sendMessage into sendTurn.
-  it("inserts the optimistic bubble synchronously in sendTurn, before mutateAsync", () => {
+  // [TEST-MOD-APPROVED #3429] (a) superseded: the insert is the local turn
+  // itself (replaceTurns) and the request is executeTurn, not a mutateAsync.
+  // The ordering this exists for — the bubble exists BEFORE the network call —
+  // is pinned exactly as before.
+  it("inserts the optimistic bubble synchronously in sendTurn, before the request", () => {
     const sendBlock = useAgentChat.slice(
       useAgentChat.indexOf("const sendTurn = useCallback"),
       useAgentChat.indexOf("const sendMessage = useCallback"),
     );
-    // setOptimisticMessages([...]) MUST run before mutateAsync returns.
-    expect(sendBlock).toMatch(/setOptimisticMessages\(\(prev\) => \[\.\.\.prev, optimistic\]\)/);
-    const insertIdx = sendBlock.indexOf("setOptimisticMessages((prev) => [...prev, optimistic]");
-    const mutateIdx = sendBlock.indexOf("mutateAsync");
+    // The local turn MUST be in state before the request leaves.
+    expect(sendBlock).toMatch(/replaceTurns\(\(current\) =>/);
+    const insertIdx = sendBlock.indexOf("replaceTurns((current) =>");
+    const requestIdx = sendBlock.indexOf("executeTurn(turn)");
     expect(insertIdx).toBeGreaterThanOrEqual(0);
-    expect(mutateIdx).toBeGreaterThan(insertIdx);
+    expect(requestIdx).toBeGreaterThan(insertIdx);
   });
 
-  it("reconciles on success and drops the bubble on error (no stranded placeholder)", () => {
-    // onError removes the optimistic id.
-    expect(useAgentChat).toMatch(
-      /onError[\s\S]{0,400}setOptimisticMessages\(\(prev\) => prev\.filter\(\(m\) => m\.id !== vars\.optimisticId\)\)/,
-    );
-    // onSuccess awaits the refetch THEN clears (no blink between clear + refetch).
-    expect(useAgentChat).toMatch(
-      /await qc\.invalidateQueries\(\{ queryKey: agentQueryKeys\.messages\(response\.conversation_id\) \}\)[\s\S]{0,120}setOptimisticMessages/,
-    );
+  it("reconciles on success and marks a failed send, never stranding a bubble", () => {
+    // [TEST-MOD-APPROVED #3429] (a) superseded on BOTH halves.
+    //  - Success: there is no separate "clear" step to order against a refetch
+    //    any more. The local row is dropped in the same derivation that reads
+    //    the server snapshot (liveLocalMessages), so the blink this guarded is
+    //    structurally impossible.
+    //  - Error: #3429 deliberately KEEPS the row and marks it failed, with the
+    //    failure sentence and a Retry, because the message is not lost ("Your
+    //    message is safe"). Dropping it would now be the defect.
+    // Behavioural replacement: issue_3429_ari_chat_polish.implementor.test.ts
+    // ("keeps same-text turns distinct and replaces exactly the matching
+    // optimistic row") and issue_3429_ari_delivery_state.implementor.test.ts.
+    expect(useAgentChat).toMatch(/const liveLocalMessages = localMessages\.filter/);
+    expect(useAgentChat).toMatch(/patchTurn\(clientTurnId, \{[\s\S]{0,200}delivery: "failed"/);
+    expect(useAgentChat).toMatch(/errorMessage:/);
   });
 
-  it("merges server + optimistic with a text dedupe so the bubble never doubles", () => {
-    expect(useAgentChat).toMatch(/const liveOptimistic = optimisticMessages\.filter/);
-    expect(useAgentChat).toMatch(/const mergedMessages: AgentMessage\[\] = \[\.\.\.serverMessages, \.\.\.liveOptimistic\]/);
-    expect(useAgentChat).toMatch(/messages: mergedMessages/);
+  it("merges server + local turns with an identity dedupe so the bubble never doubles", () => {
+    // [TEST-MOD-APPROVED #3429] (a) superseded: the dedupe keys on
+    // client_turn_id (canonicalIdentityMatch), with text equality kept only as
+    // a compatibility path for pre-#3429 rows — strictly stronger than the
+    // text-only dedupe this pinned.
+    expect(useAgentChat).toMatch(/const localMessages = scopedTurns\.map\(turnMessage\)/);
+    expect(useAgentChat).toMatch(
+      /const liveLocalMessages = localMessages\.filter\(\(local\) => !serverMessages\.some\(\(server\) => canonicalIdentityMatch\(server, local\)\)\)/,
+    );
+    expect(useAgentChat).toMatch(/const messages = \[\.\.\.decoratedServerMessages, \.\.\.liveLocalMessages\]/);
   });
 });
 
 describe("ORCH-1101 REWORK · #3 — thinking signal shows while sending", () => {
-  it("AriChatScreen passes isThinking while the send mutation is in flight", () => {
-    expect(chatScreen).toMatch(/isThinking=\{chat\.isSending && !chat\.pendingAction\}/);
-    expect(chatScreen).toMatch(/renderThinking=\{\(\) => <StreamingText visible \/>\}/);
+  it("AriChatScreen passes isThinking while a turn is actually in flight", () => {
+    // [TEST-MOD-APPROVED #3429] (a) superseded: the thinking row is now the
+    // truthful activity callout, driven by the live turn rather than by the
+    // mutation flag — the point of D-1 (the callout ends with its work). Still
+    // derived, never a standalone useState (see ADV-R2).
+    expect(chatScreen).toMatch(/isThinking=\{!!chat\.activeTurn\}/);
+    expect(chatScreen).toMatch(/renderThinking=\{\(\) => chat\.activeTurn \? \(/);
+    expect(chatScreen).toMatch(/<AriActivity/);
   });
 
   it("MessageList renders the thinking row and StreamingText respects reduced motion", () => {
@@ -191,8 +218,10 @@ describe("ORCH-1101 REWORK · #5 — hint references the actual + button glyph",
     // The old literal copy is gone.
     expect(emptyState).not.toMatch(/Tap \+ for things to try/);
     // The sentence is split around a Plus-glyph chip.
+    // [TEST-MOD-APPROVED #3429] (a) superseded copy: the + now opens "Add
+    // context", so the split sentence reads "Tap [+] to attach context".
     expect(emptyState).toMatch(/Tap /);
-    expect(emptyState).toMatch(/ for things to try/);
+    expect(emptyState).toMatch(/ to attach context/);
     expect(emptyState).toMatch(/<View style=\{styles\.hintChip\}/);
     expect(emptyState).toMatch(/<Plus size=\{13\}/);
   });
@@ -205,7 +234,9 @@ describe("ORCH-1101 REWORK · #5 — hint references the actual + button glyph",
   });
 
   it("keeps a natural spoken accessibility label for the hint row", () => {
-    expect(emptyState).toMatch(/accessibilityLabel="Tap the plus button for things to try"/);
+    // [TEST-MOD-APPROVED #3429] (a) superseded copy only — the label still
+    // speaks the whole sentence naturally, now for the attach affordance.
+    expect(emptyState).toMatch(/accessibilityLabel="Tap the plus button to attach context"/);
   });
 });
 

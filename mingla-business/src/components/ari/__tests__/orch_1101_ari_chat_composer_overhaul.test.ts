@@ -51,18 +51,25 @@ describe("ORCH-1101 · Bug B — send button is a flat ember disc, no SVG blob",
   });
 
   it("renders a flat ember disc fill (ariPalette.userBubble) on the send button", () => {
+    // [TEST-MOD-APPROVED #3429] (b) assertion unchanged; only the slice window
+    // is repaired. #3429 renamed the "+" style suggestBtn -> attachBtn, so the
+    // old end marker returned -1 and the window ran to end of file.
     const sendBtnBlock = inputBar.slice(
       inputBar.indexOf("sendBtn:"),
-      inputBar.indexOf("suggestBtn:"),
+      inputBar.indexOf("attachBtn:"),
     );
     expect(sendBtnBlock).toMatch(/backgroundColor:\s*ariPalette\.userBubble/);
     // Opaque fill — never a translucent rgba/hsla (Android opaque-glass policy).
     expect(sendBtnBlock).not.toMatch(/backgroundColor:\s*["']?(rgba|hsla)/);
   });
 
-  it("renders exactly one lucide ArrowUp (18 / 2.75 / white) as the glyph", () => {
+  it("renders exactly one lucide ArrowUp (20 / 2.75 / canvas.depth) as the glyph", () => {
+    // [TEST-MOD-APPROVED #3429] (a) superseded by the approved #3429 design:
+    // 20pt dark glyph on the warm 44pt disc (ariThread.onUserBubble ===
+    // canvas.depth, pinned by issue_3429_ari_chat_polish.implementor.test.ts).
+    // "exactly one lucide ArrowUp, no SVG sibling" is unchanged.
     expect(inputBar).toMatch(/import\s*\{\s*ArrowUp\s*\}\s*from\s*["']lucide-react-native["']/);
-    expect(inputBar).toMatch(/<ArrowUp\s+size=\{18\}\s+color=["']#ffffff["']\s+strokeWidth=\{2\.75\}\s*\/>/);
+    expect(inputBar).toMatch(/<ArrowUp\s+size=\{20\}\s+color=\{canvas\.depth\}\s+strokeWidth=\{2\.75\}\s*\/>/);
   });
 
   it("keeps the Animated.View + iOS ember shadow-glow + reduced-motion gate", () => {
@@ -76,10 +83,15 @@ describe("ORCH-1101 · Bug B — send button is a flat ember disc, no SVG blob",
     expect(defaultBranch).not.toMatch(/elevation/);
   });
 
-  it("sizes the send disc to 34 and the + to 30 (paired with the tighter composer)", () => {
+  it("sizes the send disc and the + from the 44pt control tokens", () => {
+    // [TEST-MOD-APPROVED #3429] (a) superseded: #3429 raises both composer
+    // controls to a 44pt accessible target (sendSize 44, controlSize 44 —
+    // "controlSize: 44" is pinned by issue_3429_ari_chat_polish.implementor
+    // .test.ts). The protection kept: both sizes come from tokens, never from
+    // a hardcoded number in the component.
     expect(inputBar).toMatch(/width:\s*ariThread\.sendSize/);
-    const suggestBlock = inputBar.slice(inputBar.indexOf("suggestBtn:"));
-    expect(suggestBlock).toMatch(/width:\s*30/);
+    const attachBlock = inputBar.slice(inputBar.indexOf("attachBtn:"));
+    expect(attachBlock).toMatch(/width:\s*ariThread\.controlSize/);
   });
 });
 
@@ -135,15 +147,21 @@ describe("ORCH-1101 · density tokens exist", () => {
   });
 
   it("adds the ariThread density token block with the load-bearing values", () => {
+    // [TEST-MOD-APPROVED #3429] (a) superseded values, (b) unchanged ones.
+    // #3429's approved design re-sets the thread density: 44pt controls, a
+    // 60pt composer, 16/24 body type and a 16pt turn gap. The same numbers are
+    // pinned from the #3429 side by issue_3429_ari_chat_polish.implementor
+    // .test.ts, so the two suites now agree instead of contradicting.
     expect(designSystem).toMatch(/export const ariThread\s*=/);
-    expect(designSystem).toMatch(/composerMinH:\s*48/);
-    expect(designSystem).toMatch(/inputMinH:\s*30/);
-    expect(designSystem).toMatch(/inputPadV:\s*6/);
-    expect(designSystem).toMatch(/sendSize:\s*34/);
-    expect(designSystem).toMatch(/bodyFont:\s*14/);
-    expect(designSystem).toMatch(/bodyLine:\s*19/);
-    expect(designSystem).toMatch(/gapTurn:\s*10/);
-    expect(designSystem).toMatch(/gapGroup:\s*4/);
+    expect(designSystem).toMatch(/composerMinH:\s*60/); // (a) was 48
+    expect(designSystem).toMatch(/inputMinH:\s*44/); // (a) was 30
+    expect(designSystem).toMatch(/inputPadV:\s*8/); // (a) was 6
+    expect(designSystem).toMatch(/sendSize:\s*44/); // (a) was 34
+    expect(designSystem).toMatch(/controlSize:\s*44/); // (a) new sibling token
+    expect(designSystem).toMatch(/bodyFont:\s*16/); // (a) was 14
+    expect(designSystem).toMatch(/bodyLine:\s*24/); // (a) was 19
+    expect(designSystem).toMatch(/gapTurn:\s*16/); // (a) was 10
+    expect(designSystem).toMatch(/gapGroup:\s*4/); // (b) unchanged
   });
 });
 

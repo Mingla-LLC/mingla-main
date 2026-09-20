@@ -34,7 +34,8 @@ export const EmptyState: React.FC = () => (
         a literal "+" character. The "word" is the button glyph itself, rendered
         as a chip that mirrors the InputBar "+" suggestions button (bordered
         circle, lucide Plus) inline in the sentence. accessibilityLabel keeps the
-        spoken sentence natural ("Tap plus for things to try"). */}
+        spoken sentence natural. #3429 gives the + button to attachments, so the
+        sentence now reads "Tap [+] to attach context". */}
     <View
       style={styles.hintRow}
       accessibilityRole="text"

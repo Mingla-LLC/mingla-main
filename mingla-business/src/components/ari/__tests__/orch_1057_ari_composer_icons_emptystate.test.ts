@@ -32,13 +32,18 @@ const read = (p: string): string => fs.readFileSync(p, "utf8");
 const inputBar = read(path.join(ARI_DIR, "InputBar.tsx"));
 const emptyState = read(path.join(ARI_DIR, "EmptyState.tsx"));
 const chatScreen = read(path.join(SCREEN_DIR, "AriChatScreen.tsx"));
+const messageList = read(path.join(ARI_DIR, "MessageList.tsx"));
 
 describe("ORCH-1057 · Item A — Ember Send button", () => {
   it("uses the lucide ArrowUp glyph", () => {
     expect(inputBar).toMatch(/import\s*\{\s*ArrowUp\s*\}\s*from\s*["']lucide-react-native["']/);
-    // [TEST-MOD-APPROVED ORCH-1101] ORCH-1101 §4.2 deepens the glyph to
-    // size 18 / strokeWidth 2.75 (was 20 / 2.5) on the flat ember disc.
-    expect(inputBar).toMatch(/<ArrowUp\b[^>]*color=["']#ffffff["'][^>]*strokeWidth=\{2\.75\}/);
+    // [TEST-MOD-APPROVED #3429] (a) superseded by the approved #3429 design:
+    // the glyph is now size 20 on a 44pt accessible control and is DARK on the
+    // warm disc (ariThread.onUserBubble === canvas.depth), which is the
+    // contrast direction #3429 approved. strokeWidth 2.75 is unchanged, and the
+    // token itself is pinned by issue_3429_ari_chat_polish.implementor.test.ts
+    // ("onUserBubble: canvas.depth").
+    expect(inputBar).toMatch(/<ArrowUp\s+size=\{20\}\s+color=\{canvas\.depth\}\s+strokeWidth=\{2\.75\}\s*\/>/);
   });
 
   it("removes the old CSS-border triangle send mark", () => {
@@ -47,8 +52,13 @@ describe("ORCH-1057 · Item A — Ember Send button", () => {
   });
 
   it("is DISABLED when the input is empty (canSend gating)", () => {
-    // canSend is false on empty/whitespace input...
-    expect(inputBar).toMatch(/const\s+canSend\s*=\s*text\.trim\(\)\.length\s*>\s*0\s*&&\s*!disabled/);
+    // [TEST-MOD-APPROVED #3429] (a) superseded: #3429 lets an attachment with
+    // no typed text be sent, so the predicate moved into the shared, unit-tested
+    // isAriSendReady(text, hasReadyAttachments, disabled, sendDisabled). Empty
+    // text with no ready attachment is still false — proven behaviourally by
+    // issue_3429_ari_delivery_state.implementor.test.ts, and the exact call
+    // shape is pinned by issue_3429_ari_turn_scope.tester.adversarial.test.tsx.
+    expect(inputBar).toMatch(/const\s+canSend\s*=\s*isAriSendReady\(text,\s*hasReadyAttachments,\s*disabled,\s*sendDisabled\)/);
     // ...and that drives both the Pressable disabled prop and a11y state.
     expect(inputBar).toContain("disabled={!canSend}");
     expect(inputBar).toContain("accessibilityState={{ disabled: !canSend }}");
@@ -128,17 +138,26 @@ describe("ORCH-1057 · Item C — empty state chip wall removed", () => {
     // changed. Operator-directed scope expansion for ORCH-1101.
     expect(emptyState).toMatch(/import\s*\{\s*Plus\s*\}\s*from\s*["']lucide-react-native["']/);
     expect(emptyState).toMatch(/<Plus\s+size=\{13\}/);
+    // [TEST-MOD-APPROVED #3429] (a) superseded: the composer "+" now opens
+    // "Add context", so the first-run hint reads "Tap [+] to attach context".
     expect(emptyState).toContain("Tap ");
-    expect(emptyState).toContain(" for things to try");
+    expect(emptyState).toContain(" to attach context");
     // The hint chip is presentational, not an action — never a Pressable / button role.
     expect(emptyState).not.toContain("Pressable");
     expect(emptyState).not.toContain('accessibilityRole="button"');
   });
 });
 
-describe("ORCH-1057 · hard guard — suggestionsPanel untouched", () => {
-  it("keeps the +-triggered QuickReplyChips suggestions panel in AriChatScreen", () => {
-    expect(chatScreen).toContain("QuickReplyChips");
-    expect(chatScreen).toContain("suggestionsOpen");
+describe("ORCH-1057 · hard guard — quick replies survive the + repurposing", () => {
+  // [TEST-MOD-APPROVED #3429] (a) superseded: #3429 gives the composer "+" to
+  // attachments ("Add context"), so the screen-level suggestions panel is gone.
+  // The protection — a user always has contextual quick replies to tap — moved
+  // to MessageList, where issue_3429_ari_chat_polish.implementor.test.ts pins
+  // "<QuickReplyChips". This guard now pins BOTH halves of the trade: the chips
+  // still exist next to the thread, and the "+" has a real entry point.
+  it("keeps contextual QuickReplyChips in MessageList and gives + the attach sheet", () => {
+    expect(messageList).toContain("<QuickReplyChips");
+    expect(chatScreen).toContain("<AriAttachmentSourceSheet");
+    expect(inputBar).toContain('accessibilityLabel="Attach images or documents"');
   });
 });
