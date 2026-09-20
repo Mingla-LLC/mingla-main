@@ -1,5 +1,6 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
+  paymentIntentChargeId,
   routeStripeEvent,
   STRIPE_ROUTED_EVENT_TYPES,
 } from "../stripeWebhookRouter.ts";
@@ -110,7 +111,19 @@ class FakeDb {
   rpc(fn: string, args: Record<string, unknown>) {
     this.rpcs.push({ fn, args });
     if (fn === "issue_2079_verify_ticket_paid_identity") {
-      return Promise.resolve({ data: { outcome: "verified" }, error: null });
+      // #2079: this replaces an unconditional "verified" stub, so the test now proves the
+      // real refusal path instead of assuming success.
+      // Mirrors the live RPC: a Stripe payment with no charge id is never
+      // verified — it is held and routed to a reversal instead.
+      const charge = typeof args.p_stripe_charge_id === "string"
+        ? args.p_stripe_charge_id
+        : "";
+      return Promise.resolve({
+        data: {
+          outcome: /^ch_[A-Za-z0-9]+$/.test(charge) ? "verified" : "attention",
+        },
+        error: null,
+      });
     }
     return Promise.resolve({ data: { orderId: "order_123" }, error: null });
   }
@@ -202,6 +215,153 @@ Deno.test("payment_intent.succeeded finalizes checkout with bounded QR pepper RP
       Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
     } else Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", priorServiceKey);
   }
+});
+
+async function withTicketFinalizeEnv(run: () => Promise<void>) {
+  const priorPepper = Deno.env.get("app.qr_token_pepper");
+  const priorSupabaseUrl = Deno.env.get("SUPABASE_URL");
+  const priorServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const originalFetch = globalThis.fetch;
+  Deno.env.set("app.qr_token_pepper", "12345678901234567890123456789012");
+  Deno.env.set("SUPABASE_URL", "https://example.supabase.co");
+  Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "service-role-test");
+  globalThis.fetch =
+    (() =>
+      Promise.resolve(new Response("{}", { status: 200 }))) as typeof fetch;
+  try {
+    await run();
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (priorPepper === undefined) Deno.env.delete("app.qr_token_pepper");
+    else Deno.env.set("app.qr_token_pepper", priorPepper);
+    if (priorSupabaseUrl === undefined) Deno.env.delete("SUPABASE_URL");
+    else Deno.env.set("SUPABASE_URL", priorSupabaseUrl);
+    if (priorServiceKey === undefined) {
+      Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+    } else Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", priorServiceKey);
+  }
+}
+
+// A paid ticket must never be refused because the webhook could not see the
+// charge. On the pinned Stripe API a PaymentIntent carries `latest_charge`
+// and NO `charges` list — the exact live payload shape. REVERT the webhook to
+// reading only `charges.data[0]` and this test fails: no finalize, no ticket.
+Deno.test("payment_intent.succeeded with only latest_charge (live API shape) verifies and issues the ticket", async () => {
+  await withTicketFinalizeEnv(async () => {
+    const db = new FakeDb();
+    const result = await routeStripeEvent(db as never, {} as never, {
+      id: "evt_pi_live_shape",
+      type: "payment_intent.succeeded",
+      data: {
+        object: {
+          id: "pi_3LiveShape",
+          latest_charge: "ch_3LiveShape",
+          payment_method_types: ["card"],
+        },
+      },
+    });
+    assertEquals(result.brandId, "brand_123");
+    const verify = db.rpcs.find((call) =>
+      call.fn === "issue_2079_verify_ticket_paid_identity"
+    );
+    assertEquals(verify?.args.p_stripe_charge_id, "ch_3LiveShape");
+    const finalize = db.rpcs.find((call) =>
+      call.fn === "biz_ticket_checkout_finalize"
+    );
+    assertEquals(finalize === undefined, false);
+    assertEquals(finalize?.args.p_stripe_charge_id, "ch_3LiveShape");
+    assertEquals(finalize?.args.p_stripe_payment_intent_id, "pi_3LiveShape");
+  });
+});
+
+Deno.test("payment_intent.succeeded with an expanded latest_charge object still issues the ticket", async () => {
+  await withTicketFinalizeEnv(async () => {
+    const db = new FakeDb();
+    await routeStripeEvent(db as never, {} as never, {
+      id: "evt_pi_expanded",
+      type: "payment_intent.succeeded",
+      data: {
+        object: {
+          id: "pi_3Expanded",
+          latest_charge: { id: "ch_3Expanded", object: "charge" },
+          payment_method_types: ["card"],
+        },
+      },
+    });
+    const finalize = db.rpcs.find((call) =>
+      call.fn === "biz_ticket_checkout_finalize"
+    );
+    assertEquals(finalize?.args.p_stripe_charge_id, "ch_3Expanded");
+  });
+});
+
+// The guard stays a guard: a payment that truly has no charge is still held.
+Deno.test("payment_intent.succeeded with no charge at all is still held, never finalized", async () => {
+  await withTicketFinalizeEnv(async () => {
+    const db = new FakeDb();
+    await routeStripeEvent(db as never, {} as never, {
+      id: "evt_pi_no_charge",
+      type: "payment_intent.succeeded",
+      data: {
+        object: { id: "pi_3NoCharge", payment_method_types: ["card"] },
+      },
+    });
+    assertEquals(
+      db.rpcs.some((call) =>
+        call.fn === "issue_2079_verify_ticket_paid_identity"
+      ),
+      true,
+    );
+    assertEquals(
+      db.rpcs.some((call) => call.fn === "biz_ticket_checkout_finalize"),
+      false,
+    );
+  });
+});
+
+Deno.test("RSVP chip-in payment_intent.succeeded records the live latest_charge id", async () => {
+  const db = new FakeDb();
+  await routeStripeEvent(db as never, {} as never, {
+    id: "evt_rsvp_live_shape",
+    type: "payment_intent.succeeded",
+    data: {
+      object: {
+        id: "pi_3Chipin",
+        latest_charge: "ch_3Chipin",
+        payment_method_types: ["card"],
+        metadata: {
+          mingla_purpose: "rsvp_contribution",
+          contribution_id: "contribution_123",
+        },
+      },
+    },
+  });
+  const finalize = db.rpcs.find((call) =>
+    call.fn === "issue_1930_finalize_rsvp_contribution"
+  );
+  assertEquals(finalize?.args.p_charge_id, "ch_3Chipin");
+});
+
+Deno.test("paymentIntentChargeId reads latest_charge first, then the legacy charges list", () => {
+  assertEquals(paymentIntentChargeId({ latest_charge: "ch_a" }), "ch_a");
+  assertEquals(
+    paymentIntentChargeId({ latest_charge: { id: "ch_b" } }),
+    "ch_b",
+  );
+  assertEquals(
+    paymentIntentChargeId({ charges: { data: [{ id: "ch_c" }] } }),
+    "ch_c",
+  );
+  assertEquals(
+    paymentIntentChargeId({
+      latest_charge: "ch_new",
+      charges: { data: [{ id: "ch_old" }] },
+    }),
+    "ch_new",
+  );
+  assertEquals(paymentIntentChargeId({ latest_charge: null }), null);
+  assertEquals(paymentIntentChargeId({ latest_charge: "" }), null);
+  assertEquals(paymentIntentChargeId({}), null);
 });
 
 Deno.test("account.updated updates connect row and clears KYC stall marker when enabled", async () => {
