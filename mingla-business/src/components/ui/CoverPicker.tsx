@@ -1520,11 +1520,16 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // the same read the button performs, apply step included.
   const videoRecheckInFlightRef = useRef(false);
   const lastVideoRecheckAtRef = useRef<number | null>(null);
+  // Read off the hook's object HERE, not inside the callback: `videoUpload` is a
+  // fresh object every render, so depending on it would rebuild this callback
+  // every render and re-fire the phase effect below on every poll tick.
+  const checkVideoJobNow = videoUpload.checkNow;
+  const videoJobPhase = videoUpload.stage.phase;
   const recheckVideoJob = useCallback((): void => {
     const last = lastVideoRecheckAtRef.current;
     if (
       !shouldRecheckCoverVideo({
-        phase: videoUpload.stage.phase,
+        phase: videoJobPhase,
         checkInFlight: videoRecheckInFlightRef.current,
         msSinceLastCheck: last === null ? null : Date.now() - last,
       })
@@ -1533,8 +1538,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     }
     lastVideoRecheckAtRef.current = Date.now();
     videoRecheckInFlightRef.current = true;
-    void videoUpload
-      .checkNow()
+    void checkVideoJobNow()
       .catch(() => {
         // A read that cannot reach the server changes NOTHING: the card keeps
         // the phase it had and the next foreground asks again. A background
@@ -1543,7 +1547,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       .finally(() => {
         videoRecheckInFlightRef.current = false;
       });
-  }, [videoUpload.checkNow, videoUpload.stage.phase]);
+  }, [checkVideoJobNow, videoJobPhase]);
 
   // Read through a ref so the listener is installed once and removed once,
   // instead of re-subscribing on every phase change.
