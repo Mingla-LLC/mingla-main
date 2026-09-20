@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-20 — CI's workflow-topology check now gets missing git history in a throwaway copy, so it can no longer damage the checkout it is inspecting; that damage had turned main red and silently shallowed the shared developer repository (#3455, PR #3471)
 - 2026-09-17 — Claude and Codex chats now coordinate by messaging each other instead of a shared table, and docs no longer need their own follow-up pull requests (#3476, PR #3482)
 - 2026-09-15 — Business and public venue phone forms start on the venue's country, accept local numbers with a country picker, and preserve that country when booking, ordering, sending bills, or submitting a venue for review; native app delivery awaits an approved OTA (#3396, PR #3413)
 - 2026-09-15 — New RSVP chip-ins now link to the matching guest, and retries cannot reuse another payer's contribution; the production service is source-verified live, with no historical backfill or mobile update (#3436, PR #3415)
