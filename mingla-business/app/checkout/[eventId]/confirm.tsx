@@ -152,9 +152,10 @@ function CheckoutConfirmScreenInner({
   // confirm is asked again with backoff for up to 60 s, and
   // `useOrderRealtimeSubscription` below listens alongside it — whichever sees
   // the order first finalizes the screen. The calm "Confirming your tickets…"
-  // state has no controls. Only two endings do: a sale the server refused
-  // after payment ("Tickets not issued", refund automatic) and a spent budget
-  // ("Still confirming your tickets", Realtime still listening).
+  // state has no controls. Three endings do: a checkout that ran out of time
+  // ("Checkout expired", provably unpaid, safe to retry), a sale the server
+  // refused whose payment is unsettled ("Tickets not issued", no retry offered)
+  // and a spent budget ("Still confirming your tickets", Realtime listening).
   const [realtimePending, setRealtimePending] = useState<boolean>(false);
   // issue #2198 — a terminal payment outcome from the return leg. Before this,
   // `ticket-checkout-confirm` could not tell a Paystack failure from a slow
@@ -162,9 +163,9 @@ function CheckoutConfirmScreenInner({
   // spinner and a guest whose card was declined sat there forever. The server
   // now returns a bounded reason; this renders it through #2188's mapper.
   const [terminalFailure, setTerminalFailure] = useState<string | null>(null);
-  // The two endings without an order: the server refused the sale after
-  // payment (refund automatic), or the 60 s confirmation budget ran out.
-  // Decided by `awaitTicketConfirmation` alone; this screen only renders it.
+  // The endings without an order: an expired checkout (nothing charged), a
+  // refused sale whose payment is unsettled, or a spent 60 s budget. Decided by
+  // `awaitTicketConfirmation` alone; this screen only renders it.
   const [confirmEnding, setConfirmEnding] = useState<TicketConfirmEnding | null>(null);
   const [pendingSession, setPendingSession] = useState<{
     checkoutSessionId: string;
@@ -391,11 +392,12 @@ function CheckoutConfirmScreenInner({
         setTerminalFailure(verdict.message);
         return;
       }
-      // The sale was refused after payment (refund automatic) or the checkout
-      // expired. No order is coming, so the Realtime wait is released too.
-      if (verdict.kind === "not_issued") {
+      // No order is coming, so the Realtime wait is released too. The two
+      // refusals stay APART all the way to the screen: `expired` proves nothing
+      // was charged, `not_issued` proves nothing about the money either way.
+      if (verdict.kind === "expired" || verdict.kind === "not_issued") {
         setRealtimePending(false);
-        setConfirmEnding("not_issued");
+        setConfirmEnding(verdict.kind);
         return;
       }
       // Budget spent with no answer either way. Keep Realtime listening: a

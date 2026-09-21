@@ -1,15 +1,21 @@
 /**
- * The two ENDINGS a paid return leg can reach without an order, shared by the
+ * The three ENDINGS a paid return leg can reach without an order, shared by the
  * event, trip and experience confirmation screens.
  *
- *   - "not_issued"       — the server refused the sale after payment (closed or
- *                          held) or the checkout expired. Any payment is being
- *                          refunded automatically. Primary action: try again,
- *                          which takes the guest back to the offering.
+ *   - "expired"          — the hosted checkout timed out before the guest paid.
+ *                          Nothing was charged, so this is the ONLY ending that
+ *                          invites a retry.
+ *   - "not_issued"       — a `checkout_unavailable` refusal. The guest may well
+ *                          have paid and what happens to that money is decided
+ *                          elsewhere (#2079), so the copy claims no charge
+ *                          outcome and promises no refund, and the primary
+ *                          action is NOT "try again" — asking a guest whose
+ *                          money is unsettled to pay again is the harm #2264
+ *                          was filed about, one screen over.
  *   - "still_confirming" — the 60 s confirmation budget ran out with no answer
  *                          either way. Honest about not knowing; tells the guest
- *                          not to pay twice. Secondary action: back to the
- *                          offering. A later paid answer still replaces this.
+ *                          not to pay twice. A later paid answer still replaces
+ *                          this.
  *
  * The verdict itself is decided ONLY by `awaitTicketConfirmation`
  * (`src/services/ticketCheckoutService.ts`). This component renders it and owns
@@ -30,6 +36,8 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import {
+  TICKETS_EXPIRED_MESSAGE,
+  TICKETS_EXPIRED_TITLE,
   TICKETS_NOT_ISSUED_MESSAGE,
   TICKETS_NOT_ISSUED_TITLE,
   TICKETS_STILL_CONFIRMING_MESSAGE,
@@ -38,7 +46,10 @@ import {
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 
-export type TicketConfirmEnding = "not_issued" | "still_confirming";
+export type TicketConfirmEnding =
+  | "expired"
+  | "not_issued"
+  | "still_confirming";
 
 export interface TicketConfirmVerdictHeroProps {
   ending: TicketConfirmEnding;
@@ -53,36 +64,84 @@ export interface TicketConfirmVerdictHeroProps {
   onBack: () => void;
 }
 
+/**
+ * ONE row per ending. Nothing outside this table decides what a guest is shown,
+ * so adding an ending is a compile error until its words and its action exist.
+ *
+ * `retry` is the sole difference that matters on a money path: only the ending
+ * that PROVES no charge may offer to start the purchase over.
+ */
+const ENDINGS: Readonly<
+  Record<
+    TicketConfirmEnding,
+    {
+      readonly title: string;
+      readonly body: string;
+      readonly icon: "x" | "clock";
+      readonly tone: "error" | "warning";
+      readonly retry: boolean;
+    }
+  >
+> = {
+  expired: {
+    title: TICKETS_EXPIRED_TITLE,
+    body: TICKETS_EXPIRED_MESSAGE,
+    icon: "clock",
+    tone: "warning",
+    retry: true,
+  },
+  not_issued: {
+    title: TICKETS_NOT_ISSUED_TITLE,
+    body: TICKETS_NOT_ISSUED_MESSAGE,
+    icon: "x",
+    tone: "error",
+    // The payment is unsettled. Never invite a second one.
+    retry: false,
+  },
+  still_confirming: {
+    title: TICKETS_STILL_CONFIRMING_TITLE,
+    body: TICKETS_STILL_CONFIRMING_MESSAGE,
+    icon: "clock",
+    tone: "warning",
+    retry: false,
+  },
+};
+
 export function TicketConfirmVerdictHero({
   ending,
   topInset,
   backLabel,
   onBack,
 }: TicketConfirmVerdictHeroProps): React.ReactElement {
-  const notIssued = ending === "not_issued";
+  const spec = ENDINGS[ending];
+  const isError = spec.tone === "error";
   return (
     <View style={styles.host} testID={`ticket-confirm-ending-${ending}`}>
       <View style={[styles.hero, { paddingTop: topInset + spacing.xl }]}>
         <View
           style={[
             styles.badge,
-            { backgroundColor: notIssued ? semantic.errorTint : semantic.warningTint },
+            {
+              backgroundColor: isError
+                ? semantic.errorTint
+                : semantic.warningTint,
+            },
           ]}
         >
           <Icon
-            name={notIssued ? "x" : "clock"}
+            name={spec.icon}
             size={36}
-            color={notIssued ? semantic.errorText : semantic.warning}
+            color={isError ? semantic.errorText : semantic.warning}
           />
         </View>
         <Text style={styles.title} accessibilityRole="header">
-          {notIssued ? TICKETS_NOT_ISSUED_TITLE : TICKETS_STILL_CONFIRMING_TITLE}
+          {spec.title}
         </Text>
         <Text style={styles.body} accessibilityLiveRegion="polite">
-          {notIssued ? TICKETS_NOT_ISSUED_MESSAGE : TICKETS_STILL_CONFIRMING_MESSAGE}
+          {spec.body}
         </Text>
         <View style={styles.actions}>
-          {notIssued ? (
+          {spec.retry ? (
             <Button
               label="Try again"
               onPress={onBack}

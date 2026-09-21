@@ -226,9 +226,11 @@ type PaystackPollOutcome =
   /** The server reached a terminal verdict; `code` is its bounded token. */
   | { kind: "terminal"; code: string | null }
   /**
-   * The server REFUSED the sale (HTTP 409 `checkout_unavailable`: the session
-   * was revoked, or the payment is being reversed). No tickets will be issued
-   * and any payment is refunded automatically. Terminal.
+   * The server REFUSED the sale with `checkout_unavailable` — at HTTP 409 (the
+   * session was revoked, or the payment is being reversed) or at HTTP 200 via
+   * #2198's verifier, which emits that token ONLY for `paid_reversal_pending`.
+   * No tickets will be issued, and what happens to the money is decided by the
+   * #2079 refund machinery, not here. Terminal.
    */
   | { kind: "refused"; code: string | null }
   /** The budget ran out with no answer either way. */
@@ -285,7 +287,15 @@ async function readCheckoutStatusOnce(
   // Do not narrow this response type again.
   // Invariant: I-PROPOSED-CHECKOUT-STATUS-ANSWER-NOT-DISCARDED.
   if (data?.status === "failed") {
-    return { kind: "terminal", code: data.error ?? null };
+    const code = data.error ?? null;
+    // #2264 — `checkout_unavailable` at HTTP 200 is #2198's `paid_reversal_pending`
+    // arm: the guest paid and the sale moved under the charge. It is a REFUSAL,
+    // not an ordinary terminal reason, and the difference is not cosmetic — the
+    // terminal arm below deliberately KEEPS the held Paystack page so the buyer
+    // can reopen and finish. Reopening a page for a sale being reversed invites
+    // a second payment, which is the harm this issue exists to stop.
+    if (code === "checkout_unavailable") return { kind: "refused", code };
+    return { kind: "terminal", code };
   }
   // A 409 is the server refusing the sale (revoked, or the payment is being
   // reversed). Read the status off error.context BEFORE extractFunctionError:
@@ -508,7 +518,8 @@ async function followPaystackHandoff(
   }
   // The server refused the sale itself. Unlike an abandoned page, the held
   // page is NOT a way back — re-opening it would ask the buyer to pay into a
-  // refused checkout — so it is released and the next tap starts fresh.
+  // refused checkout, possibly a second time — so it is released and the next
+  // tap starts fresh.
   if (poll.kind === "refused") {
     clearHeldHandoff(eventId);
     return {

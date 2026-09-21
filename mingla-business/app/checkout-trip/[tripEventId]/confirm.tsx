@@ -141,9 +141,9 @@ function CheckoutTripConfirmScreenInner({
   // a terminal payment outcome must read as one here too instead of becoming
   // "Confirming your reservation…" forever.
   const [terminalFailure, setTerminalFailure] = useState<string | null>(null);
-  // Surface parity with the event-side screen: a sale refused after payment
-  // (refund automatic) or a spent 60 s confirmation budget. Decided by
-  // `awaitTicketConfirmation` alone; this screen only renders it.
+  // Surface parity with the event-side screen: an expired checkout, a refused
+  // sale whose payment is unsettled, or a spent 60 s confirmation budget.
+  // Decided by `awaitTicketConfirmation` alone; this screen only renders it.
   const [confirmEnding, setConfirmEnding] = useState<TicketConfirmEnding | null>(null);
   const [pendingSession, setPendingSession] = useState<{
     checkoutSessionId: string;
@@ -334,9 +334,12 @@ function CheckoutTripConfirmScreenInner({
         setTerminalFailure(verdict.message);
         return;
       }
-      if (verdict.kind === "not_issued") {
+      // No order is coming, so the Realtime wait is released too. The two
+      // refusals stay APART all the way to the screen: `expired` proves nothing
+      // was charged, `not_issued` proves nothing about the money either way.
+      if (verdict.kind === "expired" || verdict.kind === "not_issued") {
         setRealtimePending(false);
-        setConfirmEnding("not_issued");
+        setConfirmEnding(verdict.kind);
         return;
       }
       armRealtime();

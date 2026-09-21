@@ -101,8 +101,8 @@ function CheckoutExperienceConfirmScreenInner({
 
   const [realtimePending, setRealtimePending] = useState<boolean>(false);
   // Surface parity with the event and trip screens. A verified terminal
-  // payment outcome (#2198 copy), a sale refused after payment (refund
-  // automatic), or a spent 60 s confirmation budget — all decided by
+  // payment outcome (#2198 copy), an expired checkout, a refused sale whose
+  // payment is unsettled, or a spent 60 s confirmation budget — all decided by
   // `awaitTicketConfirmation` alone; this screen only renders them.
   const [terminalFailure, setTerminalFailure] = useState<string | null>(null);
   const [confirmEnding, setConfirmEnding] = useState<TicketConfirmEnding | null>(null);
@@ -285,9 +285,12 @@ function CheckoutExperienceConfirmScreenInner({
         setTerminalFailure(verdict.message);
         return;
       }
-      if (verdict.kind === "not_issued") {
+      // No order is coming, so the Realtime wait is released too. The two
+      // refusals stay APART all the way to the screen: `expired` proves nothing
+      // was charged, `not_issued` proves nothing about the money either way.
+      if (verdict.kind === "expired" || verdict.kind === "not_issued") {
         setRealtimePending(false);
-        setConfirmEnding("not_issued");
+        setConfirmEnding(verdict.kind);
         return;
       }
       armRealtime();

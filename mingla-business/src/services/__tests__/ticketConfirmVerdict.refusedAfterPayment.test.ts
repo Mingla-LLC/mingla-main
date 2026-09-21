@@ -5,11 +5,17 @@
  *
  * THE DEFECT. `ticket-checkout-confirm` refuses a paid sale that was closed or
  * held after payment with HTTP 409
- * `{ status: "failed", order: null, error: "checkout_unavailable" }` and refunds
- * the payment automatically. `invokeOrThrow` turns that into a THROW, and every
- * buyer confirmation screen treated every throw as transient: the guest sat on
- * "Confirming your tickets…" forever, waiting on a Realtime push that never
- * comes for a refused sale. `status: "expired"` fell into the same wait.
+ * `{ status: "failed", order: null, error: "checkout_unavailable" }`.
+ * `invokeOrThrow` turns that into a THROW, and every buyer confirmation screen
+ * treated every throw as transient: the guest sat on "Confirming your tickets…"
+ * forever, waiting on a Realtime push that never comes for a refused sale.
+ * `status: "expired"` fell into the same wait.
+ *
+ * THE SECOND DEFECT, and the one about money. Those two are NOT the same event.
+ * `expired` means the checkout timed out with nothing charged. A
+ * `checkout_unavailable` refusal is raised only after a completed charge or a
+ * revoked sale, and #2079 may resolve it by COMPLETING the sale rather than
+ * refunding it. One sentence cannot be true of both, so they never share one.
  *
  * The loop is driven with an injected clock and an injected `waitFor`, so the
  * 60 s budget is asserted exactly and runs in milliseconds.
@@ -40,6 +46,8 @@ import {
   PAID_CHECKOUT_PAYMENT_FAILED_MESSAGE,
   PAID_CHECKOUT_PAYMENT_MISMATCH_MESSAGE,
   TICKET_CONFIRM_BUDGET_MS,
+  TICKETS_EXPIRED_MESSAGE,
+  TICKETS_EXPIRED_TITLE,
   TICKETS_NOT_ISSUED_MESSAGE,
   TICKETS_NOT_ISSUED_TITLE,
   TICKETS_STILL_CONFIRMING_MESSAGE,
@@ -114,9 +122,13 @@ describe("classifyTicketConfirmAnswer — one answer, one meaning", () => {
     ).toEqual({ kind: "not_issued" });
   });
 
-  test("expired is definitive", () => {
+  test("expired is definitive AND kept apart from the refusal that may be paid", () => {
     expect(classifyTicketConfirmAnswer({ kind: "result", result: answer("expired") }))
-      .toEqual({ kind: "not_issued" });
+      .toEqual({ kind: "expired" });
+    // Merging these two is the money bug: one proves no charge, the other
+    // proves nothing either way.
+    expect(classifyTicketConfirmAnswer({ kind: "result", result: answer("expired") }))
+      .not.toEqual({ kind: "not_issued" });
   });
 
   test("paid with an order is the only success", () => {
@@ -144,7 +156,10 @@ describe("classifyTicketConfirmAnswer — one answer, one meaning", () => {
     }
   });
 
-  test("any other 200 failed means no tickets were issued", () => {
+  test("any other 200 failed means no tickets, and no claim about the money", () => {
+    // `checkout_unavailable` at HTTP 200 is #2198's `paid_reversal_pending`
+    // arm — the guest DID pay. It must not reach `paidCheckoutErrorMessage`,
+    // whose copy for that token ends "You have not been charged".
     for (const error of [undefined, null, "", "checkout_unavailable", "something_new"]) {
       expect(
         classifyTicketConfirmAnswer({ kind: "result", result: answer("failed", { error }) }),
@@ -214,7 +229,7 @@ describe("awaitTicketConfirmation — the bounded wait", () => {
     expect(onWaiting).not.toHaveBeenCalled();
   });
 
-  test("expired → not_issued", async () => {
+  test("expired → expired, NOT the refusal that may be paid", async () => {
     const clock = fakeClock();
     const confirm = jest.fn(async () => answer("expired"));
     await expect(
@@ -225,7 +240,7 @@ describe("awaitTicketConfirmation — the bounded wait", () => {
         now: clock.now,
         waitFor: clock.waitFor,
       }),
-    ).resolves.toEqual({ kind: "not_issued" });
+    ).resolves.toEqual({ kind: "expired" });
     expect(confirm).toHaveBeenCalledTimes(1);
   });
 
@@ -417,12 +432,39 @@ describe("awaitTicketConfirmation — the bounded wait", () => {
   });
 });
 
-describe("buyer copy — says what happened to the money", () => {
-  test("not-issued copy is exact and states the refund", () => {
+describe("buyer copy — never asserts what it cannot know about the money", () => {
+  test("the expired sentence is the ONLY refusal that says 'not charged'", () => {
+    expect(TICKETS_EXPIRED_TITLE).toBe("Checkout expired");
+    expect(TICKETS_EXPIRED_MESSAGE).toBe(
+      "Your checkout expired before the payment went through, so no tickets were issued. You haven't been charged — you can start again.",
+    );
+  });
+
+  test("the refusal sentence claims no charge outcome and promises no refund", () => {
     expect(TICKETS_NOT_ISSUED_TITLE).toBe("Tickets not issued");
     expect(TICKETS_NOT_ISSUED_MESSAGE).toBe(
-      "We couldn't issue your tickets. You haven't been charged — any payment is being refunded in full. Try again or contact the organiser.",
+      "We couldn't issue your tickets for this sale. If your payment went through, we're sorting it out and will email you — please don't pay again. Contact support@usemingla.com and we'll pick it up from there.",
     );
+    // The regression this test exists for: a guest whose money moved must not
+    // read "you haven't been charged", and must not be promised a refund the
+    // #2079 attention path may never execute.
+    expect(TICKETS_NOT_ISSUED_MESSAGE).not.toMatch(/been charged/i);
+    expect(TICKETS_NOT_ISSUED_MESSAGE).not.toMatch(/refund/i);
+    expect(TICKETS_NOT_ISSUED_MESSAGE).toMatch(/don't pay again/i);
+  });
+
+  test("no two endings share a sentence, and none is a dead end", () => {
+    const endings = [
+      TICKETS_EXPIRED_MESSAGE,
+      TICKETS_NOT_ISSUED_MESSAGE,
+      TICKETS_STILL_CONFIRMING_MESSAGE,
+    ];
+    expect(new Set(endings).size).toBe(endings.length);
+    for (const message of endings) {
+      // Either a way forward, or a plain statement of what happens next.
+      expect(message).toMatch(/start again|pay again|email you|contact/i);
+      expect(message).toMatch(/[.!]$/);
+    }
   });
 
   test("still-confirming copy never claims a charge outcome and says not to pay twice", () => {

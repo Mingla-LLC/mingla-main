@@ -820,27 +820,60 @@ export const pollTicketCheckoutStatus = async (
 // ONE owner for all three buyer confirmation screens (event, trip, experience).
 // Before this, each screen classified `confirmTicketCheckout` inline and treated
 // EVERY thrown error as transient. `ticket-checkout-confirm` refuses a sale that
-// was closed or held after payment with HTTP 409 `checkout_unavailable` (the
-// payment is refunded automatically) — a definitive answer that arrived as a
-// throw, so the guest sat on "Confirming your tickets…" with nothing left that
-// could ever resolve it. `status: "expired"` fell into the same wait, and the
-// wait itself had no end: only a Realtime subscription that never fires for a
-// refused sale.
+// was closed or held after payment with HTTP 409 `checkout_unavailable` — a
+// definitive answer that arrived as a throw, so the guest sat on "Confirming
+// your tickets…" with nothing left that could ever resolve it. `status:
+// "expired"` fell into the same wait, and the wait itself had no end: only a
+// Realtime subscription that never fires for a refused sale.
+//
+// TWO refusals, NOT one. They differ by the only fact a guest cares about —
+// whether their money moved — so they can never share a sentence:
+//
+//   • `expired`  — the hosted Checkout Session timed out before the guest paid.
+//     Nothing was charged and there is nothing to refund. Safe to try again.
+//
+//   • a `checkout_unavailable` refusal (thrown 409, or `status: "failed"` with
+//     that token at HTTP 200) — reached ONLY after a completed charge or a
+//     revoked sale. Read the server before writing copy for it:
+//       - ticket-checkout-confirm raises all three of its 409s AFTER
+//         `paymentIntent.status === "succeeded"`. Two of them capture a #2079
+//         `needs_attention` obligation, which that issue makes deliberately
+//         NON-EXECUTABLE — a person resolves it, and it may well end as a
+//         completed sale rather than a refund. Only `paid_reversal_pending`
+//         queues a refund.
+//       - ticket-checkout-status raises its 409 for `revoked_at` (which can
+//         predate any payment) as well as `paid_reversal_pending`.
+//       - paystackTicketReturnVerify returns this token at HTTP 200 for
+//         `paid_reversal_pending`: the guest definitely paid.
+//     So "you have not been charged" is false here, and "being refunded in
+//     full" is a promise we may not keep. The copy asserts NEITHER.
 //
 // Screens call `awaitTicketConfirmation` and render its verdict. They do not
 // read statuses, codes or tokens themselves.
 // ---------------------------------------------------------------------------
 
-/** Title for a sale the server definitively refused after payment. */
+/** Title for a checkout that ran out of time before any payment. */
+export const TICKETS_EXPIRED_TITLE = "Checkout expired";
+
+/**
+ * `status: "expired"` — the hosted Checkout Session timed out. The guest never
+ * completed a payment, so this is the one refusal that can safely say so and
+ * send them back to try again.
+ */
+export const TICKETS_EXPIRED_MESSAGE =
+  "Your checkout expired before the payment went through, so no tickets were issued. You haven't been charged — you can start again.";
+
+/** Title for a refused sale whose payment is not settled either way. */
 export const TICKETS_NOT_ISSUED_TITLE = "Tickets not issued";
 
 /**
- * The server refused the sale (closed or held after payment, or the checkout
- * expired). Any money that moved is refunded automatically, so the sentence
- * says so — a guest must always be told what happened to their money.
+ * A `checkout_unavailable` refusal. Money may well have moved, and what happens
+ * to it is not decided here — so this claims NO charge outcome and promises NO
+ * refund. It tells the guest the two things that are true on every arm: nobody
+ * should pay again, and a person can reach us.
  */
 export const TICKETS_NOT_ISSUED_MESSAGE =
-  "We couldn't issue your tickets. You haven't been charged — any payment is being refunded in full. Try again or contact the organiser.";
+  "We couldn't issue your tickets for this sale. If your payment went through, we're sorting it out and will email you — please don't pay again. Contact support@usemingla.com and we'll pick it up from there.";
 
 /** Title once the confirmation budget is spent without an answer either way. */
 export const TICKETS_STILL_CONFIRMING_TITLE = "Still confirming your tickets";
@@ -880,7 +913,10 @@ export type TicketConfirmClassification =
   | TicketConfirmPaid
   /** A verified payment outcome with its own copy (#2198). Terminal. */
   | { readonly kind: "payment_failed"; readonly message: string }
-  /** The server refused the sale or the checkout expired. Terminal. */
+  /** The checkout timed out before any payment. Nothing was charged. Terminal. */
+  | { readonly kind: "expired" }
+  /** A `checkout_unavailable` refusal: no tickets, and the payment is not
+   *  settled either way. NEVER merged with `expired` — opposite money facts. */
   | { readonly kind: "not_issued" }
   /** No answer yet (pending, transport failure, 5xx). Ask again. */
   | { readonly kind: "pending" }
@@ -891,6 +927,7 @@ export type TicketConfirmClassification =
 export type TicketConfirmVerdict =
   | TicketConfirmPaid
   | { readonly kind: "payment_failed"; readonly message: string }
+  | { readonly kind: "expired" }
   | { readonly kind: "not_issued" }
   | { readonly kind: "still_confirming" }
   | { readonly kind: "cancelled" };
@@ -903,10 +940,17 @@ export type TicketConfirmVerdict =
  *      (transport) or 5xx is transient; any other status cannot be resolved by
  *      asking again;
  *   2. `paid` with an order is the only success;
- *   3. `expired` is definitive;
- *   4. `failed` with a Paystack token keeps its #2198 copy; any other `failed`
- *      means no tickets were issued;
- *   5. everything else (pending, `paid` with no order yet) keeps waiting.
+ *   3. `expired` is definitive AND provably unpaid — the one refusal allowed to
+ *      say "you haven't been charged";
+ *   4. `failed` carrying `checkout_unavailable` is the #1930 reversal arm at
+ *      HTTP 200: the guest DID pay. It must never reach `paidCheckoutErrorMessage`,
+ *      whose copy for that token ("You have not been charged") belongs to the
+ *      CREATE leg, where it is true and here is not;
+ *   5. `failed` with a Paystack token keeps its #2198 copy;
+ *   6. any OTHER `failed` token is a reason we do not recognise. On a money path
+ *      the safe direction is "we don't know", never "you weren't charged", so it
+ *      joins `not_issued` rather than the create-leg fallback;
+ *   7. everything else (pending, `paid` with no order yet) keeps waiting.
  */
 export const classifyTicketConfirmAnswer = (
   answer: TicketConfirmAnswer,
@@ -923,7 +967,7 @@ export const classifyTicketConfirmAnswer = (
   if (result.status === "paid" && result.order !== null) {
     return { kind: "paid", result, order: result.order };
   }
-  if (result.status === "expired") return { kind: "not_issued" };
+  if (result.status === "expired") return { kind: "expired" };
   if (result.status === "failed") {
     const code = typeof result.error === "string" ? result.error : null;
     if (code !== null && PAYSTACK_RETURN_FAILURE_CODES.has(code)) {
@@ -984,7 +1028,9 @@ const settleWithin = async <T>(
  * Returns:
  *   - `paid`             → render the order;
  *   - `payment_failed`   → render `message` (#2198 copy);
- *   - `not_issued`       → render TICKETS_NOT_ISSUED_MESSAGE;
+ *   - `expired`          → render TICKETS_EXPIRED_MESSAGE (safe to try again);
+ *   - `not_issued`       → render TICKETS_NOT_ISSUED_MESSAGE (do NOT invite a
+ *                          retry: the payment is unsettled);
  *   - `still_confirming` → render TICKETS_STILL_CONFIRMING_MESSAGE, and keep
  *                          any other path (Realtime) open — a later paid answer
  *                          still wins;

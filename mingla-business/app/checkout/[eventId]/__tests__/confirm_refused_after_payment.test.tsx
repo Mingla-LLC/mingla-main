@@ -2,7 +2,7 @@
  * Paid return leg — a sale refused after payment must END, not spin.
  *
  * WHAT THE GUEST SAW. After paying, `ticket-checkout-confirm` refused the sale
- * (closed or held after payment; the payment is refunded automatically) with
+ * (closed or held after a completed payment) with
  * HTTP 409 `{status:"failed", order:null, error:"checkout_unavailable"}`. The
  * screen treated that throw as a network blip and showed
  *
@@ -207,6 +207,8 @@ import { CartProvider } from "../../../../src/components/checkout/CartContext";
 import { eventPublicPath } from "../../../../src/constants/publicUrls";
 import {
   PAID_CHECKOUT_PAYMENT_FAILED_MESSAGE,
+  TICKETS_EXPIRED_MESSAGE,
+  TICKETS_EXPIRED_TITLE,
   TICKETS_NOT_ISSUED_MESSAGE,
   TICKETS_NOT_ISSUED_TITLE,
   TICKETS_STILL_CONFIRMING_MESSAGE,
@@ -295,7 +297,7 @@ afterEach(() => {
 });
 
 describe("event confirm — a sale refused after payment ends in a clear state", () => {
-  it("409 checkout_unavailable → 'Tickets not issued', the refund sentence, and Try again — never 'Payment received'", async () => {
+  it("409 checkout_unavailable → 'Tickets not issued', no charge claim, no Try again — never 'Payment received'", async () => {
     invoke.mockResolvedValue(refusedAfterPayment());
 
     const tree = await mount(ConfirmScreen);
@@ -308,7 +310,16 @@ describe("event confirm — a sale refused after payment ends in a clear state",
     expect(text).toContain(TICKETS_NOT_ISSUED_MESSAGE);
     expect(text).not.toContain("Payment received");
     expect(text).not.toContain("Confirming your tickets");
-    expect(tree.root.findAllByProps({ testID: "btn-Try again" }).length).toBeGreaterThan(0);
+    // THE MONEY ASSERTION. All three of this endpoint's 409s are raised AFTER
+    // `paymentIntent.status === "succeeded"`, so the guest has paid. The screen
+    // must not tell them they were not charged, must not promise a refund
+    // #2079's attention path may never execute, and must NOT offer to start the
+    // purchase again — that is how a charged guest pays twice.
+    expect(text).not.toMatch(/been charged/i);
+    expect(text).not.toMatch(/refunded/i);
+    expect(tree.root.findAllByProps({ testID: "btn-Try again" })).toHaveLength(0);
+    expect(tree.root.findAllByProps({ testID: "ticket-confirm-ending-not_issued" }).length)
+      .toBeGreaterThan(0);
     // A refusal is an answer: asked once, and the guest is not bounced to the cart.
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(router.replace).not.toHaveBeenCalled();
@@ -318,7 +329,7 @@ describe("event confirm — a sale refused after payment ends in a clear state",
     });
   });
 
-  it("Try again disarms the back guard and returns the guest to the event", async () => {
+  it("the way out disarms the back guard and returns the guest to the event", async () => {
     invoke.mockResolvedValue(refusedAfterPayment());
     const tree = await mount(ConfirmScreen);
 
@@ -327,7 +338,7 @@ describe("event confirm — a sale refused after payment ends in a clear state",
     navListeners.beforeRemove?.({ preventDefault: before });
     expect(before).toHaveBeenCalledTimes(1);
 
-    await press(tree, "btn-Try again");
+    await press(tree, "btn-Back to event");
 
     expect(router.replace).toHaveBeenCalledWith(
       eventPublicPath({ brandSlug: "refused-brand", eventSlug: "refused-night" }),
@@ -342,12 +353,17 @@ describe("event confirm — a sale refused after payment ends in a clear state",
     });
   });
 
-  it("an expired checkout ends the same way", async () => {
+  it("an expired checkout ends DIFFERENTLY — it is the one refusal that proves no charge", async () => {
     invoke.mockResolvedValue(answer("expired"));
     const tree = await mount(ConfirmScreen);
     const text = visibleText(tree);
-    expect(text).toContain(TICKETS_NOT_ISSUED_MESSAGE);
+    expect(text).toContain(TICKETS_EXPIRED_TITLE);
+    expect(text).toContain(TICKETS_EXPIRED_MESSAGE);
     expect(text).not.toContain("Payment received");
+    // The two refusals must never be shown as the same event: this one really
+    // can say "you haven't been charged", and really can invite a retry.
+    expect(text).not.toContain(TICKETS_NOT_ISSUED_MESSAGE);
+    expect(tree.root.findAllByProps({ testID: "btn-Try again" }).length).toBeGreaterThan(0);
     await act(async () => {
       tree.unmount();
     });
@@ -435,31 +451,47 @@ describe("event confirm — a slow answer is bounded at 60 s", () => {
 });
 
 describe("trip and experience confirm — surface parity", () => {
-  it("trip: 409 checkout_unavailable → not issued, Try again goes back to the trip", async () => {
-    invoke.mockResolvedValue(refusedAfterPayment());
-    const tree = await mount(TripConfirmScreen);
-    const text = visibleText(tree);
-    expect(text).toContain(TICKETS_NOT_ISSUED_MESSAGE);
-    expect(text).not.toContain("Payment received");
-    expect(text).not.toContain("Confirming your reservation");
-    await press(tree, "btn-Try again");
-    expect(router.replace).toHaveBeenCalledWith("/t/refused-brand/refused-trip");
-    await act(async () => {
-      tree.unmount();
-    });
-  });
+  // Parity here is MANUAL: three separate route files render the same verdict.
+  // The money rule has to hold on all three or a guest finds the honest copy on
+  // one surface and the dishonest one on another.
+  const surfaces: Array<[string, React.ComponentType, string, string]> = [
+    ["trip", TripConfirmScreen, "/t/refused-brand/refused-trip", "Back to trip"],
+    [
+      "experience",
+      ExperienceConfirmScreen,
+      "/exp/refused-brand/refused-experience",
+      "Back to experience",
+    ],
+  ];
 
-  it("experience: 409 checkout_unavailable → not issued, Try again goes back to the experience", async () => {
-    invoke.mockResolvedValue(refusedAfterPayment());
-    const tree = await mount(ExperienceConfirmScreen);
-    const text = visibleText(tree);
-    expect(text).toContain(TICKETS_NOT_ISSUED_MESSAGE);
-    expect(text).not.toContain("Payment received");
-    expect(text).not.toContain("Confirming your reservation");
-    await press(tree, "btn-Try again");
-    expect(router.replace).toHaveBeenCalledWith("/exp/refused-brand/refused-experience");
-    await act(async () => {
-      tree.unmount();
+  for (const [name, Screen, path, backLabel] of surfaces) {
+    it(`${name}: 409 checkout_unavailable → not issued, no charge claim, no retry`, async () => {
+      invoke.mockResolvedValue(refusedAfterPayment());
+      const tree = await mount(Screen);
+      const text = visibleText(tree);
+      expect(text).toContain(TICKETS_NOT_ISSUED_MESSAGE);
+      expect(text).not.toContain("Payment received");
+      expect(text).not.toContain("Confirming your reservation");
+      expect(text).not.toMatch(/been charged/i);
+      expect(text).not.toMatch(/refunded/i);
+      expect(tree.root.findAllByProps({ testID: "btn-Try again" })).toHaveLength(0);
+      await press(tree, `btn-${backLabel}`);
+      expect(router.replace).toHaveBeenCalledWith(path);
+      await act(async () => {
+        tree.unmount();
+      });
     });
-  });
+
+    it(`${name}: an expired checkout gets the unpaid ending, not the refusal`, async () => {
+      invoke.mockResolvedValue(answer("expired"));
+      const tree = await mount(Screen);
+      const text = visibleText(tree);
+      expect(text).toContain(TICKETS_EXPIRED_MESSAGE);
+      expect(text).not.toContain(TICKETS_NOT_ISSUED_MESSAGE);
+      expect(text).not.toContain("Payment received");
+      await act(async () => {
+        tree.unmount();
+      });
+    });
+  }
 });

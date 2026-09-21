@@ -182,6 +182,40 @@ const check = (raw) => {
     if (!/verdict\.kind\s*===\s*"not_issued"/.test(s[key])) {
       fail(`${key} lost its not-issued branch (a refused sale spins forever)`);
     }
+    if (!/verdict\.kind\s*===\s*"expired"/.test(s[key])) {
+      fail(`${key} lost its expired branch (an expired checkout spins forever)`);
+    }
+  }
+
+  // --- 4b. #2264 — the two refusals may never be told in one sentence. ---
+  // `expired` proves the guest was NOT charged. `checkout_unavailable` is
+  // reached only after a completed charge or a revoked sale, and what happens
+  // to that money is #2079's to decide — it may end as a completed sale, not a
+  // refund. A single shared sentence has to lie about one of them.
+  if (!/\{ kind: "expired" \}/.test(classifier)) {
+    fail("the classifier folded `expired` back into the refusal that may be paid");
+  }
+  const literal = (name) =>
+    new RegExp(`${name}\\s*=\\s*\\n?\\s*"([^"]*)"`).exec(s.service)?.[1] ?? null;
+  const expiredCopy = literal("TICKETS_EXPIRED_MESSAGE");
+  const notIssuedCopy = literal("TICKETS_NOT_ISSUED_MESSAGE");
+  if (expiredCopy === null || notIssuedCopy === null) {
+    fail("the two refusal sentences are no longer literal constants");
+  }
+  if (expiredCopy === notIssuedCopy) {
+    fail("the expired and refused sentences have been merged back into one");
+  }
+  if (!/been charged/i.test(expiredCopy)) {
+    fail("expired copy no longer tells the guest they were not charged");
+  }
+  if (/been charged/i.test(notIssuedCopy)) {
+    fail("refusal copy makes a charge claim it cannot support");
+  }
+  if (/refund/i.test(notIssuedCopy)) {
+    fail("refusal copy promises a refund #2079 may not execute");
+  }
+  if (!/don.t pay again/i.test(notIssuedCopy)) {
+    fail("refusal copy no longer tells the guest not to pay twice");
   }
   // The mismatch case is the one where money may have moved. It must never
   // claim otherwise.
@@ -231,6 +265,8 @@ if (process.argv.includes("--self-test")) {
     ["experienceScreen", "awaitTicketConfirmation(", "confirmOnce("],
     ["screen", 'verdict.kind === "payment_failed"', 'verdict.kind === "ignored"'],
     ["tripScreen", 'verdict.kind === "not_issued"', 'verdict.kind === "ignored"'],
+    ["experienceScreen", 'verdict.kind === "expired"', 'verdict.kind === "ignored"'],
+    ["service", '{ kind: "expired" }', '{ kind: "not_issued" }'],
     ["workflow", "issue_2198_paystack_return_verify.test.ts", "removed.test.ts"],
     ["workflow", "issue_2188_paid_checkout_provider_handoff.test.tsx", "removed.test.tsx"],
   ];
