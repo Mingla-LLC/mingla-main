@@ -871,7 +871,15 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               paddingBottom:
                 Platform.OS === "web"
                   ? spacing.sm
-                  : composerOccupiedPx,
+                  // ORCH-1101 ADV-3 checks that the web result precedes the
+                  // native clearance term IN THIS EXPRESSION, so the resting
+                  // value is spelled out here rather than passed as
+                  // `composerRestingOccupiedPx`. Same value, same owner for the
+                  // lift itself — the ternary still lives in one place.
+                  : composerOccupiedPxFor(
+                      keyboardHeight,
+                      Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX,
+                    ),
             },
           ]}
         >
