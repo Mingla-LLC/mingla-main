@@ -1,93 +1,133 @@
 /**
- * #3429 CI pass — two defects CI caught that a local subset did not.
+ * #3429 CI pass — two defects CI caught that my local subset did not, both
+ * proven here by EXECUTING the behaviour rather than reading the source.
  *
- * Both are behavioural, both are the kind that only bite in production, and
- * both were green in every gate I ran locally before CI ran the whole lane.
+ * ORCH-1296 — SPLASH BRICK ON OTA. `ariAttachmentFileReader.native.ts`
+ * imported `expo-file-system`'s new `File` API at MODULE SCOPE. A top-level
+ * import of a native module is evaluated at boot, so when the native side is
+ * missing or version-mismatched it throws before the first frame and the app
+ * bricks on the splash screen. This branch ships over OTA, which is how that
+ * reaches every installed app at once. T-1 reproduces exactly that: with the
+ * native module unavailable, merely LOADING the reader must still succeed.
  *
- * ORCH-1296 — `ariAttachmentFileReader.native.ts` imported `expo-file-system`'s
- * new `File` API at MODULE SCOPE. A top-level import of a native module is
- * evaluated at boot, so when the native side is missing or version-mismatched
- * it throws before the first frame: the app bricks on the splash screen. This
- * branch ships over OTA, which is exactly how that reaches every installed app
- * at once. The fix is a lazy `await import(...)` inside each function.
- *
- * ORCH-1381 — `ariAttachmentService.openAriAttachment` re-rolled
+ * ORCH-1381 — DOUBLE NAVIGATION. `openAriAttachment` re-rolled
  * `window.open(dest, "_blank", "noopener,noreferrer")` inline instead of
  * calling this package's `openExternal` owner. Either token makes `open()`
  * return null EVEN WHEN IT SUCCEEDED, so the owner's popup-block fallback
- * fires on every tap and the page double-navigates. The owner opens bare,
- * severs `win.opener` to keep the security property, and falls back only on a
- * genuine failure.
+ * fires on every tap and the page navigates twice. T-3/T-4 drive the real
+ * function against a fake Window and assert the tab is opened once, bare.
  *
- * These are source-shape assertions on purpose. Both defects are about WHERE a
- * call lives — module scope versus function body, inline versus the owner —
- * and neither is observable from the module's return values: a lazily imported
- * `File` and a top-level one behave identically once the native module loads,
- * which is why this shipped. The runtime half of ORCH-1381 is already covered
- * by the owner's own suite.
+ * WHY NOT A SOURCE PIN. An earlier draft of this file asserted source text and
+ * was correctly rejected by I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN: such pins
+ * rot on refactors and caught none of the #1047 regressions. Both defects turn
+ * out to be observable after all — one as a module that must load without its
+ * native dependency, the other as the argument list a real click produces.
  *
- * fails-on-revert (proven by real mutation, never a comment-out):
- *   - restore the top-level `import { File } from "expo-file-system"` -> T-1/T-2 fail
- *   - restore the inline `window.open(..., "noopener,noreferrer")` -> T-3/T-4 fail
+ * fails-on-revert (real mutation, never a comment-out):
+ *   - restore the top-level `import { File } from "expo-file-system"` -> T-1 fails
+ *   - restore the inline `window.open(..., "noopener,noreferrer")`    -> T-3/T-4 fail
  */
 
-import fs from "node:fs";
-import path from "node:path";
+// The native module is UNAVAILABLE — evaluating it throws, exactly as it does
+// on a device whose native side does not match the JS bundle.
+jest.mock(
+  "expo-file-system",
+  () => {
+    throw new Error("native module unavailable (simulated version mismatch)");
+  },
+  { virtual: true },
+);
 
-const SERVICES = path.join(__dirname, "..");
-const read = (name: string): string => fs.readFileSync(path.join(SERVICES, name), "utf8");
+const SIGNED_URL = "https://example.test/signed/attachment.pdf";
 
-/** Strip comments so prose describing the trap can never satisfy an assertion
- *  (the #3429 R-3 lesson: a docblock quoting the code is not the code). */
-function code(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
+const invoke = jest.fn();
+jest.mock("../supabase", () => ({ supabase: { functions: { invoke: (...a: unknown[]) => invoke(...a) } } }));
+jest.mock("react-native", () => ({
+  Platform: { OS: "web" },
+  Linking: { openURL: jest.fn() },
+}));
 
-describe("#3429 · ORCH-1296 — the native file reader is not evaluated at boot", () => {
-  const source = code(read("ariAttachmentFileReader.native.ts"));
-
-  it("T-1 does NOT import expo-file-system at module scope", () => {
-    // A top-level import runs at boot. That is the splash brick.
-    expect(source).not.toMatch(/^\s*import\s[^;]*from\s*["']expo-file-system["']/m);
-    expect(source).not.toMatch(/^\s*import\s*\{[^}]*\bFile\b[^}]*\}\s*from/m);
+describe("#3429 · ORCH-1296 — the reader loads even when its native module does not", () => {
+  it("T-1 importing the native reader does NOT evaluate expo-file-system (no boot throw)", () => {
+    // With a top-level import this throws HERE — which on a device is a throw
+    // before the first frame, i.e. the splash brick.
+    expect(() => {
+      jest.isolateModules(() => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        require("../ariAttachmentFileReader.native");
+      });
+    }).not.toThrow();
   });
 
-  it("T-2 imports it lazily inside every function that uses the File API", () => {
-    const lazy = [...source.matchAll(/const\s*\{\s*File\s*\}\s*=\s*await\s+import\(\s*["']expo-file-system["']\s*\)/g)];
-    const uses = [...source.matchAll(/new\s+File\s*\(/g)];
-    expect(uses.length).toBeGreaterThan(0);
-    // One lazy import per function that constructs a File — not one shared
-    // module-scope binding wearing a dynamic-import disguise.
-    expect(lazy.length).toBe(uses.length);
-    // ...and each lazy import is inside a function body, never at column 0.
-    for (const m of lazy) {
-      const lineStart = source.lastIndexOf("\n", m.index ?? 0) + 1;
-      expect((m.index ?? 0) - lineStart).toBeGreaterThan(0);
-    }
+  it("T-2 the failure surfaces at CALL time instead, where it can be handled", async () => {
+    let mod: typeof import("../ariAttachmentFileReader.native") | undefined;
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      mod = require("../ariAttachmentFileReader.native");
+    });
+    // The lazy import is what defers it — the module is usable, and only the
+    // call that actually needs the native side rejects.
+    await expect(mod!.readAriAttachmentBytes({ uri: "file:///x.pdf" })).rejects.toThrow();
+    // ...and the guarded probes swallow it rather than propagating a boot-shaped
+    // crash into the attachment flow.
+    await expect(mod!.ariAttachmentSourceExists({ uri: "file:///x.pdf" })).resolves.toBe(false);
+    await expect(mod!.readAriAttachmentSize({ uri: "file:///x.pdf" })).resolves.toBeNull();
   });
 });
 
-describe("#3429 · ORCH-1381 — opening an attachment goes through the ONE owner", () => {
-  const source = code(read("ariAttachmentService.ts"));
+describe("#3429 · ORCH-1381 — opening an attachment opens ONE tab, bare", () => {
+  const realWindow = (globalThis as { window?: unknown }).window;
+  let open: jest.Mock;
+  let assign: jest.Mock;
 
-  it("T-3 does not re-roll window.open with noopener/noreferrer", () => {
-    // Either token makes open() return null on SUCCESS, which double-navigates.
-    expect(source).not.toMatch(/window\.open\s*\([^)]*noopener/i);
-    expect(source).not.toMatch(/window\.open\s*\([^)]*noreferrer/i);
-    expect(source).not.toMatch(/\bwindow\.open\s*\(/);
+  beforeEach(() => {
+    invoke.mockReset();
+    invoke.mockResolvedValue({ data: { signed_url: SIGNED_URL }, error: null });
+    assign = jest.fn();
+    // A Window that SUCCEEDS. The trap is that `open()` returns null anyway
+    // when noopener/noreferrer is passed, so the caller thinks it failed.
+    open = jest.fn((_dest: string, _target?: string, features?: string) =>
+      features ? null : ({ opener: {} as unknown } as Window),
+    );
+    (globalThis as { window?: unknown }).window = { open, location: { assign } };
   });
 
-  it("T-4 calls this package's openExternal owner instead", () => {
-    expect(source).toMatch(/import\s*\{[^}]*\bopenExternal\b[^}]*\}\s*from\s*["']\.\/guestFunnelLink["']/);
-    expect(source).toMatch(/openExternal\s*\(\s*data\.signed_url\s*\)/);
+  afterEach(() => {
+    if (realWindow === undefined) delete (globalThis as { window?: unknown }).window;
+    else (globalThis as { window?: unknown }).window = realWindow;
   });
 
-  it("T-5 the owner still opens BARE and severs opener (the property T-4 relies on)", () => {
-    const owner = code(read("guestFunnelLink.ts"));
-    const fn = owner.slice(owner.indexOf("export function openExternal"));
-    const body = fn.slice(0, fn.indexOf("\n}"));
-    expect(body).toMatch(/\.open\(\s*dest\s*,\s*["']_blank["']\s*\)/);
-    expect(body).not.toMatch(/noopener|noreferrer/i);
-    expect(body).toMatch(/opener\s*=\s*null/);
+  async function openAttachment(): Promise<void> {
+    let mod: typeof import("../ariAttachmentService") | undefined;
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      mod = require("../ariAttachmentService");
+    });
+    await mod!.openAriAttachment("att_1");
+  }
+
+  it("T-3 opens the tab with NO feature string, so a success is not read as a failure", async () => {
+    await openAttachment();
+    expect(open).toHaveBeenCalledTimes(1);
+    const [dest, target, features] = open.mock.calls[0];
+    expect(dest).toBe(SIGNED_URL);
+    expect(target).toBe("_blank");
+    // Either token nulls the return value even on success. Neither may be here.
+    expect(features).toBeUndefined();
+  });
+
+  it("T-4 does not ALSO navigate the current page (the double-navigation bug)", async () => {
+    await openAttachment();
+    // The inline re-roll passed a feature string, got null back from a
+    // SUCCESSFUL open, and fell through to location.assign — two navigations
+    // for one tap.
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("T-5 a genuinely blocked popup still falls back, so the tap is never dead", async () => {
+    open.mockImplementation(() => null);
+    await openAttachment();
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(assign).toHaveBeenCalledWith(SIGNED_URL);
   });
 });
