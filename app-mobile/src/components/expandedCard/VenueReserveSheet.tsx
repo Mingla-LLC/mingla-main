@@ -16,7 +16,7 @@
  * signed-in user server-side. Slots come ONLY from the engine (never fabricated).
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -36,10 +36,11 @@ import {
   getCountryByCode,
   getDefaultCountryCode,
 } from "../../constants/countries";
+// issue #3380 — the ONE phone rule set, by deep specifier (no barrel mock).
 import {
-  buildPendingCollabPhoneE164,
-  isPendingCollabPhoneValid,
-} from "../connections/pendingCollabChatUtils";
+  parsePhoneEntry,
+  resolvePhoneStartCountry,
+} from "@mingla/phone-input/phoneNumber";
 import { useAppStore } from "../../store/appStore";
 import {
   useVenueAvailability,
@@ -63,6 +64,11 @@ export interface VenueReserveSheetProps {
   venueName: string;
   /** Display currency (WYSIWYP), e.g. "USD". */
   currency: string | null;
+  /**
+   * issue #3380 — the venue's ISO country. The contact-phone picker starts
+   * here (a Lagos venue opens on +234); the device region is the fallback.
+   */
+  countryCode?: string | null;
   /** Fires after a successful booking with the new reservation id. */
   onReserved: (reservationId: string) => void;
   /** Optional public-venue analytics seam; no guest or slot PII is passed. */
@@ -74,6 +80,24 @@ export interface VenueReserveSheetProps {
 }
 
 type Step = "party" | "slots" | "confirm";
+
+const phoneCountryKnown = (iso: string): boolean =>
+  getCountryByCode(iso) !== undefined;
+
+/** issue #3380 — venue country first, then the device region, then US. */
+export const reservePhoneStartCountry = (
+  venueCountry: string | null | undefined,
+): string => {
+  let device: string | null = null;
+  try {
+    device = getDefaultCountryCode();
+  } catch {
+    device = null;
+  }
+  return (
+    resolvePhoneStartCountry([venueCountry, device], phoneCountryKnown) ?? "US"
+  );
+};
 
 const SHEET_SNAP_POINTS = ["82%"];
 const MAX_PARTY = 12;
@@ -126,6 +150,7 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
   brandId,
   venueName,
   currency,
+  countryCode: venueCountryCode = null,
   onReserved,
   onAvailabilityResultViewed,
   onSlotSelected,
@@ -143,7 +168,15 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
 
   // Phone collection (only when the signed-in user has none on file).
   const [phoneInput, setPhoneInput] = useState("");
-  const [countryCode, setCountryCode] = useState(getDefaultCountryCode());
+  const [countryCode, setCountryCode] = useState(() =>
+    reservePhoneStartCountry(venueCountryCode),
+  );
+  const [phoneTouched, setPhoneTouched] = useState(false);
+  const phoneCountryChosen = useRef(false);
+  useEffect(() => {
+    if (phoneCountryChosen.current) return;
+    setCountryCode(reservePhoneStartCountry(venueCountryCode));
+  }, [venueCountryCode]);
   const selectedCountry = useMemo(
     () => getCountryByCode(countryCode),
     [countryCode],
@@ -190,11 +223,24 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
         ? `+${rawStoredPhone}` // full international E.164 missing its '+' (Supabase Auth)
         : rawStoredPhone;
   const needsPhone = profilePhone.length === 0;
+  // issue #3380 — was `dialCode + digits`, so 0803… under +234 became
+  // +23408031234567 and passed. The shared rules drop the trunk 0, refuse a
+  // number that belongs to another country, and say why. Mobile rules: the
+  // confirmation is texted.
+  const phoneEntry = parsePhoneEntry(phoneInput, {
+    countryIso: countryCode,
+    dialCode: selectedCountry?.dialCode ?? null,
+    mode: "mobile",
+  });
+  const phoneProblem =
+    needsPhone && phoneInput.replace(/\D/g, "").length > 0 && !phoneEntry.ok
+      ? phoneEntry.message
+      : null;
   const composedPhoneE164 = needsPhone
-    ? buildPendingCollabPhoneE164(phoneInput, selectedCountry?.dialCode)
+    ? (phoneEntry.ok ? phoneEntry.e164 : "")
     : profilePhone;
   const phoneOk = needsPhone
-    ? isPendingCollabPhoneValid(phoneInput)
+    ? phoneEntry.ok
     : profilePhone.length > 0;
 
   const buyerName =
@@ -212,7 +258,8 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
   const handleConfirm = async (): Promise<void> => {
     if (!selectedSlot || submitting) return;
     if (!phoneOk) {
-      setError("Add a phone number so the venue can reach you.");
+      setPhoneTouched(true);
+      setError(phoneProblem ?? "Add a phone number so the venue can reach you.");
       onReservationFailed?.("phone_invalid");
       return;
     }
@@ -422,13 +469,23 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
             <View style={styles.phoneBlock}>
               <Text style={styles.sectionLabel}>CONTACT PHONE</Text>
               <PhoneInput
+                smartEntry
+                required
                 value={phoneInput}
                 countryCode={countryCode}
-                onChangePhone={setPhoneInput}
-                onChangeCountry={setCountryCode}
-                error={null}
+                onChangePhone={(next: string) => {
+                  if (next.length > 0) phoneCountryChosen.current = true;
+                  setPhoneInput(next);
+                }}
+                onChangeCountry={(next: string) => {
+                  phoneCountryChosen.current = true;
+                  setCountryCode(next);
+                }}
+                onBlur={() => setPhoneTouched(true)}
+                error={phoneTouched ? phoneProblem : null}
                 disabled={submitting}
                 theme={RESERVE_PHONE_THEME}
+                phoneInputAccessibilityLabel="Mobile number for your booking"
               />
             </View>
           )}

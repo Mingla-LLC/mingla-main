@@ -38,6 +38,57 @@ node -e 'console.log(require("./.github/scripts/strict-grep/MANIFEST.json")
 
 # run a whole dependency class exactly as CI does
 node .github/scripts/strict-grep/run-batch.mjs --class A
+
+# run ONE class A shard, exactly as that shard's CI job does (issue #3449)
+STRICT_GREP_CLASS_A_SHARD=2 node .github/scripts/strict-grep/run-batch.mjs --class A
+
+# what the shard plan currently looks like, and whether the cost table has rotted
+node .github/scripts/strict-grep/issue-3449-class-a-shard-plan.mjs
+```
+
+### Class A results artifacts (issue #3449)
+
+Class A runs as three shards, so there are now four artifacts:
+
+| Artifact | Contents |
+|---|---|
+| `gate-results-A` | **shard 1's rows only** (about a third of the class), each carrying `"shard": 1` |
+| `gate-results-A-shard-2` | shard 2's rows, each `"shard": 2` |
+| `gate-results-A-shard-3` | shard 3's rows, each `"shard": 3` |
+| **`class-a-shard-aggregate`** | **the canonical full-class array** — every execution exactly once, same row objects and same top-level shape a single unsharded run produced, plus an additive `shard` field |
+
+**Read `class-a-shard-aggregate`**, not `gate-results-A`. Every existing `jq`
+expression works unchanged against it; `gate-results-A` keeps its name only because
+that name is inside shard 1's sealed step array and cannot be changed. The aggregate
+is written by the `class-a-shard-completeness` job and **only after** it has proved
+the shards partition the class: one result file per shard, the multiset of
+`(script, mode)` exactly equal to the registry's class A set, and every row's
+`shard` equal to the shard the recomputed plan assigns it. A missing, cancelled,
+skipped or never-started shard is a non-zero exit there, never a neutral pass.
+
+Its name sits deliberately OUTSIDE the `gate-results-A*` namespace it downloads. An
+aggregate named inside that namespace is matched by the job's own download pattern:
+harmless in a clean run, but on a "Re-run failed jobs" click the download returns a
+fourth file, the job refuses the unexpected count, and it cannot go green again
+without re-running the whole workflow. The plan gate asserts statically that the
+upload name cannot match the download pattern, so this cannot come back.
+
+### Refreshing the class A shard cost table
+
+The plan balances over measured medians in `class-a-shard-costs.json`. Refreshing it
+is operator-run and reviewed, never automatic — an automatic refresh would rebalance
+the plan with nobody looking at the diff:
+
+```bash
+for r in <three or more recent run ids>; do
+  gh run download "$r" -n class-a-shard-aggregate -D /tmp/costs/"$r"
+done
+# review: prints the key-by-key diff, the resulting planned shard loads, and the
+# worst imbalance the new table would produce. Refuses fewer than three samples,
+# because single-run row timings vary by about ±1.2 s on shared runners.
+node scripts/ci/refresh-class-a-shard-costs.mjs --results /tmp/costs --top 50
+# then commit it
+node scripts/ci/refresh-class-a-shard-costs.mjs --results /tmp/costs --top 50 --write
 ```
 
 ## ⚠️ NUL-byte files are grep-invisible — sweeps & registry greps MUST be binary-aware
@@ -87,7 +138,7 @@ whose `--self-test` proves the check still fires on a NUL-hidden stale string.
 | ORCH-0783 | `orch-0783-event-cover-image-provider-pivot.mjs` | ORCH-0783 | `Mingla_Artifacts/specs/SPEC_ORCH-0783_EVENT_COVER_IMAGE_PROVIDER_PIVOT.md` |
 | I-NO-BOTTOMNAV-OUTSIDE-LAYOUT + I-DESKTOP-GATE-VIA-HOOK | `orch-0885-a-no-bottomnav-on-wide-desktop.mjs` | ORCH-0885-A | `Mingla_Artifacts/specs/SPEC_ORCH-0885-A_TIER_1_DESKTOP_CONTAINER_RAIL.md` §6 + §10 |
 | I-PROPOSED-KEYBOARD-LIBRARY-ONLY (DRAFT) | `orch-0892-no-bespoke-keyboard-plumbing.mjs` | ORCH-0892-A | `Mingla_Artifacts/specs/SPEC_ORCH-0892-A_KEYBOARD_CONTROLLER_INSTALL_AND_3_SCREEN_PILOT.md` §6 + §10 + §13 — INFORMATIONAL until ORCH-0892-C flips to BLOCK |
-| I-COMMS-LEDGER-ENTRY-STANZA + I-RESPONSE-2-SECTION-SHAPE | `meta-orch-0954-comms-ledger-stanza.mjs` | META-ORCH-0954 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-COMMS-LEDGER-ENTRY-STANZA + I-RESPONSE-2-SECTION-SHAPE |
+| I-CHAT-COORDINATION-STANZA (#3476; succeeds the retired I-COMMS-LEDGER-ENTRY-STANZA) + I-RESPONSE-2-SECTION-SHAPE | `meta-orch-0954-comms-ledger-stanza.mjs` | META-ORCH-0954, re-pinned #3476 | `docs/INVARIANT_REGISTRY.md` I-CHAT-COORDINATION-STANZA + I-RESPONSE-2-SECTION-SHAPE |
 | I-1292-TAXONOMY-LABEL-AT-RENDER | `orch-1292-taxonomy-label-parity.mjs` | ORCH-1292 | ORCH-1292 — public-page taxonomy slug→canonical-label resolution + drift/fails-on-revert / adversarial scope+fallback-masking; `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-1292-TAXONOMY-LABEL-AT-RENDER |
 | I-1292-TAXONOMY-LABEL-AT-RENDER | `orch-1292-taxonomy-label-adversarial.mjs` | ORCH-1292 | ORCH-1292 — public-page taxonomy slug→canonical-label resolution + drift/fails-on-revert / adversarial scope+fallback-masking; `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-1292-TAXONOMY-LABEL-AT-RENDER |
 | I-PROPOSED-1303-WEB-COVER-VIDEO-URI-UNMANGLED | `orch-1303-web-cover-video-uri.mjs` | ORCH-1303 | ORCH-1303 — business-WEB picked-video blob: URL reaches the uploader unmangled (`resolveRawClipUploadUri` web branch); no `file://blob:` mangle; native byte-identical; `Mingla_Artifacts/reports/INVESTIGATION_ORCH-1303_HERO_COVER_VIDEO_WEB_UPLOAD.md` |
@@ -137,16 +188,32 @@ whose `--self-test` proves the check still fires on a NUL-hidden stale string.
 
    | Class | Job | Use when your gate… |
    |---|---|---|
-   | **A** | `static-gates` | needs nothing but node + a checkout ← almost always |
+   | **A** | `static-gates` + `static-gates-shard-2` + `static-gates-shard-3` | needs nothing but node + a checkout ← almost always |
    | **B** | `dep-gates` | needs an npm package (`@babel/parser`, `madge`, `typescript`, `yaml`) |
    | **C** | `expo-export-gate` | reads the `expo export -p web` stderr side-effect |
    | **D** | `jest-suites` | is an `app-mobile` `npm run` structural suite |
    | **E** | `full-clone-gates` | reads **git history** (needs `fetch-depth: 0`) |
 
+   **Class A runs as three shards (issue #3449), and that changes NOTHING for you.**
+   Register the row exactly as above and your gate is placed in one shard
+   automatically — membership is COMPUTED by `run-batch.mjs`'s `classAShardPlan()`
+   from `MANIFEST.json`, the committed `class-a-shard-costs.json` and
+   `MANIFEST.json`'s `classAShardCount`. There is no `shard` field on a gate row and
+   there must never be one. A gate with no cost-table entry is costed at the
+   committed `defaultCostMs` and still runs exactly once; an uncosted heavy gate is
+   only a balance question, never a correctness one, and the run's own log prints
+   `costed=<k> defaulted=<m>` so drift is visible immediately.
+
+   Class A was split because it reached 1,033 executions and a measured mean of
+   519 s against the 540 s readiness ceiling — worst run 539 s, one second of
+   margin. Each shard now runs about 183 s. Adding a fourth shard is one line:
+   raise `classAShardCount`.
+
    If you add a class-B gate, add its dependency to that job's
    `npm install --no-save` line. **Do NOT add a job for your gate** — if you find
    yourself editing `jobs:` in `strict-grep-mingla-business.yml`, you are doing it
-   the pre-1383 way.
+   the pre-1383 way. That still holds with class A sharded: the shard jobs are
+   topology, not registration.
 
    **The one exception — `job:<jobKey>` (4 carve-out jobs).** Four gates assert that
    *their own job key exists in the workflow file*, so batching them would make them

@@ -33,6 +33,13 @@ class Sha256 {
 // Observed on the iOS Simulator 2026-09-03: three consecutive trims produced
 // 15s/161KB files whose ffprobe stream list was one AAC track and nothing else.
 //
+// CORRECTION (2026-09-17): the trim editor was not the source. Those 161 KB
+// files were `react-native-compressor` output (their job rows carry the
+// `<operationId>.mp4` name only a compressed file gets): on the Simulator its
+// H.264 writer input is refused, it drops the video track and still resolves.
+// The hook now falls back to the original when that happens; this guard stays
+// as the last line of defence for any other picture-less file.
+//
 // This scans the ISO-BMFF handler boxes while the file is already being read
 // for its hash, so it costs no extra I/O.
 //

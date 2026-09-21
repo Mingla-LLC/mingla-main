@@ -82,6 +82,22 @@ the same `SUPABASE_PROJECT_REF`. Record the issue, script commit, migration vers
 read-only evidence, and redacted result. Never print the bearer token, database URL, query secrets,
 or response rows containing personal data.
 
+- The Management API sits behind Cloudflare, which answers a default script User-Agent with error
+  1010. Send a browser User-Agent on those requests.
+- Never apply these five superseded Ari certification migrations: `20270529002060`,
+  `20270530001977`, `20270610002060`, `20270621001980`, `20270625001981`. Migration
+  `20270630003055` (#3055) already delivered their certification objects in production, and applying
+  one of them can clobber or abort against the live requirement set.
+
+## Consumer app project URL
+
+The consumer app's Supabase project URL has ONE owner, `app-mobile/src/config/supabaseProject.js`.
+The client (`app-mobile/src/services/supabase.ts`) and `app-mobile/app.config.js` both read it, and
+`verify-production-supabase-authority.mjs` asserts all of that in five named `consumer:*` checks. An
+edit to either file can turn "Fail-closed production authority" red for a reason unrelated to your
+feature; the failure names which check. Never add `EXPO_PUBLIC_SUPABASE_URL` to `eas.json`: that is a
+second owner of the project URL and the #990 wrong-config class.
+
 ## Apple rotation and secret audit
 
 `scripts/rotate-apple-jwt.mjs` validates `SUPABASE_PROJECT_REF` before JWT generation, GET, or PATCH.

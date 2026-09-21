@@ -30,8 +30,9 @@
  *   push trigger carries a `**` catch-all, so no `main` commit can miss it.
  *   That was NOT true when this was written: seven of forty consecutive `main`
  *   commits (17.5%) matched none of the host's globs -- root `REPORTS.md` and
- *   `COMMS.md`, which every CLOSE touches, and the whole `mingla-site-cms`
- *   tree -- and an eighth was skipped by a baseline exclusion. On those eight,
+ *   `COMMS.md`, which every CLOSE touched then (the COMMS.md table was retired
+ *   by #3476), and the whole `mingla-site-cms` tree -- and an eighth was
+ *   skipped by a baseline exclusion. On those eight,
  *   a red `main` reached nobody, which is indistinguishable from a green one.
  *   RE-MEASURED at #3078 over the forty `main` commits ending 31b8b50e1:
  *   39 of 40. The one miss is a baseline-ONLY commit, which the trailing

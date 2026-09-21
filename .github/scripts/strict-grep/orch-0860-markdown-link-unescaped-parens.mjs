@@ -37,8 +37,8 @@ const ROOT_DOCS = [
   "AGENTS.md",
   "PRODUCT_AND_STRATEGY.md",
   "MARKETING.md",
+  // #3476: COMMS.md is now a retirement stub; COMMS_LEDGER.md is deleted.
   "COMMS.md",
-  "COMMS_LEDGER.md",
   "REPORTS.md",
 ];
 

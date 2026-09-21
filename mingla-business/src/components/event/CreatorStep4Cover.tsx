@@ -14,7 +14,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import {
   spacing,
@@ -57,6 +57,24 @@ interface CreatorStep4CoverProps extends StepBodyProps {
  */
 const EMPTY_COVER_GALLERY: OfferingGalleryImage[] = Object.freeze([]) as unknown as OfferingGalleryImage[];
 
+/**
+ * The card's word for a video that is still processing after the cover sheet
+ * closed. It matches the sheet's own promise (CoverPicker
+ * `coverVideoFinishesWithoutYou`): only a DRAFT (`draft_auto`) is applied
+ * server-side without the host; a published edit waits for the host to come
+ * back to the cover.
+ */
+export const coverStepProcessingBody = (
+  applyMode: "draft_auto" | "published_manual",
+): string =>
+  applyMode === "draft_auto"
+    ? "You can keep going. It becomes your cover when it's ready."
+    : "Open the cover again when it's ready to use it.";
+
+/** "Plus 3 more photos" under the card, so added gallery photos are visible. */
+export const coverStepGalleryCountLabel = (count: number): string | null =>
+  count > 0 ? `Plus ${count} more photo${count === 1 ? "" : "s"}` : null;
+
 export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
   draft,
   updateDraft,
@@ -64,6 +82,7 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
   coverMediaEventId,
   coverMediaApplyMode,
   onCoverVideoProcessingChange,
+  coverVideoProcessing = false,
   onRequireServerDraft,
   showThemeRow = true,
 }) => {
@@ -180,6 +199,13 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
 
   const hasCover =
     typeof draft.coverMediaUrl === "string" && draft.coverMediaUrl.length > 0;
+  // The sheet unmounts on close while the video keeps processing, so the card
+  // itself must say so — otherwise it shows the empty placeholder and an
+  // "Add cover" button for a cover that is on its way.
+  const videoProcessing = coverVideoProcessing && !pickerVisible;
+  const galleryCountLabel = coverStepGalleryCountLabel(
+    draft.coverGallery?.length ?? 0,
+  );
   const credit = eventCoverProviderCreditLabel({
     provider: draft.coverMediaProvider ?? null,
     credit: draft.coverMediaCredit ?? null,
@@ -224,13 +250,33 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
             playbackActive={!pickerVisible}
             showAudioControl={draft.coverMediaType === "video" && !pickerVisible}
           />
+          {videoProcessing ? (
+            <View
+              style={styles.processingOverlay}
+              accessible
+              accessibilityRole="progressbar"
+              accessibilityLabel="Processing video"
+              testID="cover-step-video-processing"
+            >
+              <ActivityIndicator color={textTokens.primary} />
+              <Text style={styles.processingTitle}>Processing video…</Text>
+              <Text style={styles.processingBody}>
+                {coverStepProcessingBody(coverMediaApplyMode ?? "draft_auto")}
+              </Text>
+            </View>
+          ) : null}
         </View>
         {credit !== null ? <Text style={styles.creditText}>{credit}</Text> : null}
+        {galleryCountLabel !== null ? (
+          <Text style={styles.creditText} testID="cover-step-gallery-count">
+            {galleryCountLabel}
+          </Text>
+        ) : null}
         <Button
           label={
             preparing
               ? "Preparing…"
-              : hasCover
+              : hasCover || videoProcessing
                 ? "Change cover"
                 : "Add cover"
           }
@@ -243,7 +289,7 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
           accessibilityLabel={
             preparing
               ? "Preparing this event before a cover can be added"
-              : hasCover
+              : hasCover || videoProcessing
                 ? "Change cover"
                 : "Add cover photo, GIF, or video"
           }
@@ -344,6 +390,26 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     marginBottom: spacing.sm,
+  },
+  processingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  processingTitle: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+    color: textTokens.primary,
+    textAlign: "center",
+  },
+  processingBody: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
+    textAlign: "center",
   },
   prepareError: {
     marginTop: spacing.sm,

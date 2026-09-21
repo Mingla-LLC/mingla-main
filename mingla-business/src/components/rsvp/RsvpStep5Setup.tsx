@@ -173,6 +173,41 @@ const MoneyField: React.FC<MoneyFieldProps> = ({
   </View>
 );
 
+// "Who can find this" — what each choice does on the server, so each pairing
+// has exactly one meaning on screen:
+//   Public   → listed on the brand page (business_public_events_view admits only
+//              visibility='public') and open to anyone with the link. The feed
+//              switch adds the Explorer discovery feed on top
+//              (pg_discover_business_events needs visibility='public' AND
+//              rsvp_discoverable). Public + feed OFF is NOT Unlisted: it is
+//              still on the brand page.
+//   Unlisted → stored 'hidden': link only. Never on the brand page or the feed,
+//              whatever rsvp_discoverable says.
+//   Private  → never on the brand page or the feed; the publish RPC also forces
+//              rsvp_discoverable off.
+// The feed switch therefore only means something under Public, so it is shown
+// only there, and picking Unlisted or Private saves it OFF.
+export const rsvpDiscoverySub = (discoverable: boolean): string =>
+  discoverable
+    ? "On: people nearby can also find it in the Mingla app and RSVP."
+    : "Off: people find it on your brand page or with your link.";
+
+export const RSVP_DISCOVERY_UNAVAILABLE: Readonly<
+  Record<Exclude<DraftEventVisibility, "public">, string>
+> = {
+  unlisted:
+    "Unlisted RSVPs are link-only, so they stay off your brand page and Mingla's discovery feed.",
+  private:
+    "Private RSVPs stay off your brand page and Mingla's discovery feed.",
+};
+
+// The spots-left sub-copy must not promise "guests see who's going" when the
+// host has made the guest list private.
+export const rsvpHideCountSub = (privateGuestList: boolean): string =>
+  privateGuestList
+    ? "Guests won't see how many spots remain."
+    : "Guests see who's going — not how many spots remain.";
+
 export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
   draft,
   updateDraft,
@@ -416,7 +451,7 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
           scarcity, so the copy now says exactly that. */}
       <ToggleRow
         label="Hide the spots-left count"
-        sub="Guests see who's going — not how many spots remain."
+        sub={rsvpHideCountSub(draft.privateGuestList)}
         on={draft.hideRemainingCount}
         onToggle={() =>
           updateDraft({ hideRemainingCount: !draft.hideRemainingCount })
@@ -434,15 +469,17 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
               <Pressable
                 key={opt.id}
                 onPress={() =>
-                  // ORCH-1355 C-3 — ONE combined patch. A private RSVP can't be
-                  // on a public feed, so "private" forces rsvpDiscoverable OFF in
-                  // the SAME write (a prior two-write version dropped the forced
-                  // discover-OFF from autosave via the wizard's stale closure).
+                  // ORCH-1355 C-3 — ONE combined patch. Only a Public RSVP can
+                  // be on the discovery feed, so Unlisted and Private force
+                  // rsvpDiscoverable OFF in the SAME write (a prior two-write
+                  // version dropped the forced discover-OFF from autosave via
+                  // the wizard's stale closure). The server forces it off only
+                  // for Private, so Unlisted must be forced here.
                   // One patch per user action — see I-PROPOSED-1355-TOGGLE-SINGLE-PATCH.
                   updateDraft(
-                    opt.id === "private"
-                      ? { visibility: opt.id, rsvpDiscoverable: false }
-                      : { visibility: opt.id },
+                    opt.id === "public"
+                      ? { visibility: opt.id }
+                      : { visibility: opt.id, rsvpDiscoverable: false },
                   )
                 }
                 accessibilityRole="button"
@@ -466,20 +503,21 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
             );
           })}
         </View>
-        <ToggleRow
-          label="Also show this on Mingla's discovery feed"
-          sub={
-            draft.visibility === "private"
-              ? "A private RSVP can't be on the public feed."
-              : "Off = invite-link only. On = anyone nearby can find and RSVP."
-          }
-          on={draft.rsvpDiscoverable}
-          onToggle={() =>
-            updateDraft({ rsvpDiscoverable: !draft.rsvpDiscoverable })
-          }
-          disabled={draft.visibility === "private"}
-          testID="rsvp-discoverable-toggle"
-        />
+        {draft.visibility === "public" ? (
+          <ToggleRow
+            label="Also show this on Mingla's discovery feed"
+            sub={rsvpDiscoverySub(draft.rsvpDiscoverable)}
+            on={draft.rsvpDiscoverable}
+            onToggle={() =>
+              updateDraft({ rsvpDiscoverable: !draft.rsvpDiscoverable })
+            }
+            testID="rsvp-discoverable-toggle"
+          />
+        ) : (
+          <Text style={styles.helper} testID="rsvp-discoverable-unavailable">
+            {RSVP_DISCOVERY_UNAVAILABLE[draft.visibility]}
+          </Text>
+        )}
       </View>
       <TurnoutForecastCard surface="rsvp_setup" />
     </View>
