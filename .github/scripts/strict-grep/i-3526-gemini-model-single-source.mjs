@@ -253,18 +253,24 @@ export function checkSources(files, modelId) {
     const isOwner = rel === OWNER;
     const isTest = isTestPath(rel);
 
-    if (!isOwner && !isTest && MODEL_LITERAL.test(code)) {
-      const hit = MODEL_LITERAL.exec(code)[0];
+    // issue #3526 P2-3 — test the NORMALISED source so a literal assembled by
+    // concatenation, interpolation or a split URL cannot walk past a plain
+    // substring match. All three were proven to smuggle through.
+    const normalized = normalizeForModelMatch(code);
+    if (!isOwner && !isTest && MODEL_LITERAL.test(normalized)) {
+      const hit = MODEL_LITERAL.exec(normalized)[0];
       failures.push(
         `G-1 ${rel}: raw model literal "${hit}" outside ${OWNER}. ` +
         `Import GEMINI_MODEL_ID / geminiGenerateContentUrl() instead — a second ` +
         `owner is exactly how competitor-intel-worker kept calling the retired model.`,
       );
     }
-    if (THINKING_BUDGET.test(code)) {
+    const legacyThinking = THINKING_BUDGET.exec(code);
+    if (legacyThinking) {
       failures.push(
-        `G-3 ${rel}: "thinkingBudget" is a Gemini 2.x parameter. On a 3.x model ` +
-        `it is ignored, which silently restores default "medium" thinking. Use ` +
+        `G-3 ${rel}: "${legacyThinking[0]}" is a Gemini 2.x parameter. On a 3.x ` +
+        `model it is ignored, which silently restores default "medium" thinking ` +
+        `— the cost and latency F-2 exists to prevent. Use ` +
         `thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL }.`,
       );
     }
@@ -438,10 +444,63 @@ function runSelfTest() {
       files: [{ rel: join("supabase", "functions", "_shared", "photoAestheticEnums.ts"), source: "  GEMINI_INPUT_PER_TOKEN: GEMINI_INPUT_USD_PER_TOKEN," }],
       expect: 0,
     },
+    // ── issue #3526 second round — every way the first version was falsified ──
+    {
+      name: "G-3 REVERT (snake_case): thinking_budget — the spelling this repo USES",
+      files: [{ rel: join("supabase", "functions", "competitor-intel-worker", "index.ts"), source: "const g = { thinkingConfig: { thinking_budget: 0 } };" }],
+      expect: 1,
+    },
+    {
+      name: "G-3 REVERT: quoted snake_case in a serialized payload",
+      files: [{ rel: join("supabase", "functions", "x", "index.ts"), source: 'const p = \'{"thinking_budget":0}\';' }],
+      expect: 1,
+    },
+    {
+      name: "G-1 SMUGGLE: the literal assembled by string concatenation",
+      files: [{ rel: join("supabase", "functions", "x", "index.ts"), source: 'const m = "gemini-2." + "5-flash";' }],
+      expect: 1,
+    },
+    {
+      name: "G-1 SMUGGLE: the literal assembled by template interpolation",
+      files: [{ rel: join("supabase", "functions", "x", "index.ts"), source: "const m = `gemini-${maj}.${min}-flash`;" }],
+      expect: 1,
+    },
+    {
+      name: "G-1 SMUGGLE: a URL split at the dot",
+      files: [{ rel: join("supabase", "functions", "x", "index.ts"), source: 'const u = base + "/models/gemini-2." + "5-flash:generateContent";' }],
+      expect: 1,
+    },
+    {
+      name: "G-1 SMUGGLE: the ALL-HYPHEN pricing-page spelling",
+      files: [{ rel: join("supabase", "functions", "x", "index.ts"), source: 'const u = "https://ai.google.dev/pricing/gemini-2-5-flash";' }],
+      expect: 1,
+    },
+    {
+      name: "G-4 SMUGGLE (class, not instance): another vendor's versioned rate",
+      files: [{ rel: join("supabase", "functions", "_shared", "photoAestheticEnums.ts"), source: "  HAIKU_4_5_INPUT_PER_TOKEN: 1.0 / 1_000_000," }],
+      expect: 1,
+    },
+    {
+      name: "G-5 REVERT: the admin re-acquires a per-place rate",
+      admin: [{ rel: join("mingla-admin", "src", "hooks", "useBulkRunDispatcher.js"), source: "const estCost = remaining * 0.004;\nconst PER_PLACE_COST_USD = 1;" }],
+      expect: 1,
+    },
+    {
+      name: "G-5 clean: the admin consuming the server's cost model passes",
+      admin: [{ rel: join("mingla-admin", "src", "hooks", "useBulkRunDispatcher.js"), source: "const c = needsHighCostConfirmation(n, costModel);" }],
+      expect: 0,
+    },
+    {
+      name: "G-5 scope: a rate literal with NO cost identifier is not this gate's business",
+      admin: [{ rel: join("mingla-admin", "src", "lib", "unrelated.js"), source: "const opacity = 0.004;" }],
+      expect: 0,
+    },
   ];
 
   for (const c of cases) {
-    const got = checkSources(c.files, "gemini-3.6-flash").length;
+    const got = c.admin
+      ? checkAdminCostOwnership(c.admin).length
+      : checkSources(c.files, "gemini-3.6-flash").length;
     const pass = c.expect === 0 ? got === 0 : got > 0;
     if (!pass) broken.push(`${c.name} — expected ${c.expect === 0 ? "no" : "a"} failure, got ${got}`);
   }
@@ -468,6 +527,20 @@ function runSelfTest() {
       name: "G-2 REVERT: a trigger that stamps no model label at all trips the gate",
       sql: `${fnHead}  INSERT INTO t VALUES ('v4');\nEND;\n$$;`,
       expect: 1,
+    },
+    {
+      // issue #3526 P2-1 — the UNQUALIFIED form. Supabase migrations run with
+      // search_path = public, so this installs the very same live trigger, and
+      // a `public.`-only discovery left the gate validating a stale earlier
+      // file while reporting PASS.
+      name: "G-2 REVERT: an UNQUALIFIED CREATE OR REPLACE with a stale label is discovered",
+      sql: `CREATE OR REPLACE FUNCTION ${TRIGGER_FN}()\nRETURNS trigger AS $$\nBEGIN\n  INSERT INTO t VALUES ('v4', 'gemini-2.5-flash');\nEND;\n$$;`,
+      expect: 1,
+    },
+    {
+      name: "G-2 clean: the unqualified form with the RIGHT label passes",
+      sql: `CREATE OR REPLACE FUNCTION ${TRIGGER_FN}()\nRETURNS trigger AS $$\nBEGIN\n  INSERT INTO t VALUES ('v4', 'gemini-3.6-flash');\nEND;\n$$;`,
+      expect: 0,
     },
   ];
   for (const c of g2) {

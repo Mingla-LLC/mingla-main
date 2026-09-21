@@ -214,7 +214,25 @@ async function probeGemini(): Promise<ProbeResult> {
         body: JSON.stringify({
           contents: [{ role: "user", parts: [{ text: "ping" }] }],
           generationConfig: {
-            maxOutputTokens: 1,
+            // ⚠ issue #3526 P2-5 — DEPLOY RISK, UNPROVEN, CHECK THIS FIRST.
+            // On Gemini 2.5/3 thinking tokens count AGAINST maxOutputTokens.
+            // If the budget is consumed by thinking the API can return HTTP 200
+            // with NO `candidates` key at all — just usageMetadata/modelVersion
+            // — and geminiProbeOk reads that as down. The tile would then go
+            // red hourly on a perfectly healthy API, which is worse than the
+            // blindness this probe replaced: a permanent false alarm is an
+            // alarm nobody reads.
+            //
+            // maxOutputTokens is 16, not 1, to leave room for a candidate after
+            // `minimal` thinking. Cost is not the constraint — the probe runs
+            // hourly (8,760/yr) on a ~10-token prompt, so this is ≈$0.15/year.
+            // This is RISK REDUCTION, not a verified fix: it has not been run
+            // against the live provider. FIRST CHECK AT DEPLOY: invoke the
+            // probe once, then read the `synthetic` row in api_health_checks.
+            // If it still reports down on a healthy key, accept a
+            // candidate-less 200 carrying finishReason "MAX_TOKENS" as healthy
+            // while STILL rejecting a ListModels-shaped body.
+            maxOutputTokens: 16,
             temperature: 0,
             thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
           },

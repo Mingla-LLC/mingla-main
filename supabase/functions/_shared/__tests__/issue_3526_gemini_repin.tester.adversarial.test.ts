@@ -177,42 +177,88 @@ Deno.test("#3526 TESTER — widening gemini regresses no other live depletion_si
 const REPO = new URL("../../../../", import.meta.url);
 const readRepo = (rel: string) => Deno.readTextFileSync(new URL(rel, REPO));
 
-Deno.test("#3526 TESTER-DEFECT — the admin per-place cost equals the edge function's", () => {
-  // The spec's §4a scope note says "no mobile, admin or marketing consumer of
-  // the model id", which is true of the ID and false of its PRICE. #3526 moved
-  // PER_PLACE_COST_USD 0.0040 -> 0.0089 in the edge function; mingla-admin
-  // keeps five independent copies of 0.0040 and computes confirm_high_cost
-  // client-side from its own copy. Cities whose remaining count lands between
-  // the two thresholds cannot be started: the client decides no confirmation
-  // is needed and the server answers 400 cost_above_guard.
+Deno.test("#3526 TESTER-DEFECT — the admin owns NO per-place cost at all", () => {
+  // ORIGINAL ASSERTION (tester, bc9f9ad2c): each of the admin's five copies of
+  // the per-place rate must EQUAL the edge constant. That encoded the verdict's
+  // fallback remedy — "or reduce it to one exported constant ... set to 0.0089".
+  //
+  // REPLACED, and deliberately STRENGTHENED, on the coordinator's ruling: "the
+  // admin client must stop owning the cost model ... do not duplicate the
+  // number a sixth time." Asserting the copies AGREE still leaves five copies
+  // that must be kept in step by hand at the next repricing — which is the
+  // defect one level up. Asserting there are NO copies cannot be satisfied by a
+  // stale-but-matching number, so it is strictly harder to pass than what it
+  // replaces. Nothing here is loosened: every original site is still checked,
+  // and the check on each is now "holds no rate" rather than "holds the right
+  // rate".
+  //
+  // The server publishes {per_place_cost_usd, cost_guard_usd, ...} on
+  // `intelligence_coverage` and `city_coverage`; the admin renders what it is
+  // told and blocks the run when it is told nothing.
   const edge = readRepo("supabase/functions/run-place-intelligence-trial/index.ts");
   const edgeCost = Number(/const PER_PLACE_COST_USD = ([0-9.]+);/.exec(edge)?.[1]);
   const edgeGuard = Number(/const COST_GUARD_USD = ([0-9.]+);/.exec(edge)?.[1]);
   assert(Number.isFinite(edgeCost) && Number.isFinite(edgeGuard));
+  // The edge function must still PUBLISH the model, or the client has nothing
+  // to render and this whole design collapses into a silent block.
+  assert(
+    /cost_model:\s*buildCostModel\(\)/.test(edge),
+    "the edge function must publish its cost model on the admin's read paths",
+  );
+  assertEquals(
+    (edge.match(/cost_model:\s*buildCostModel\(\)/g) ?? []).length,
+    2,
+    "both intelligence_coverage and city_coverage must carry the cost model",
+  );
 
-  const sites: Array<[string, RegExp]> = [
-    ["mingla-admin/src/hooks/useBulkRunDispatcher.js", /remaining_count\) \* ([0-9.]+);/],
-    ["mingla-admin/src/components/placeIntelligenceTrial/IntelligenceOverviewTab.jsx", /const PER_PLACE_COST_USD = ([0-9.]+);/],
-    ["mingla-admin/src/components/placeIntelligenceTrial/TrialResultsTab.jsx", /const PER_PLACE_COST_USD = ([0-9.]+);/],
-    ["mingla-admin/src/components/placeIntelligenceTrial/RunRemainderConfirmModal.jsx", /perPlaceCostUsd = ([0-9.]+),/],
-    ["mingla-admin/src/services/intelligenceCoverageEstimators.js", /perPlace = ([0-9.]+)\)/],
+  // Every site the original assertion named, now checked for ABSENCE.
+  const sites = [
+    "mingla-admin/src/hooks/useBulkRunDispatcher.js",
+    "mingla-admin/src/components/placeIntelligenceTrial/IntelligenceOverviewTab.jsx",
+    "mingla-admin/src/components/placeIntelligenceTrial/TrialResultsTab.jsx",
+    "mingla-admin/src/components/placeIntelligenceTrial/RunRemainderConfirmModal.jsx",
+    "mingla-admin/src/components/placeIntelligenceTrial/RunRemainderOnAllConfirmModal.jsx",
+    "mingla-admin/src/components/placeIntelligenceTrial/ActiveRunCard.jsx",
+    "mingla-admin/src/services/intelligenceCoverageEstimators.js",
+    "mingla-admin/src/services/intelligenceCoverageService.js",
   ];
-  const drifted: string[] = [];
-  for (const [rel, re] of sites) {
-    const v = Number(re.exec(readRepo(rel))?.[1]);
-    if (v !== edgeCost) drifted.push(`${rel.split("/").pop()}=${v}`);
+  const offenders: string[] = [];
+  for (const rel of sites) {
+    const code = readRepo(rel)
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/[^\n]*/g, "");
+    // A per-place rate literal: 0.00x. Also catch a re-introduced guard literal
+    // sitting next to a cost identifier.
+    const rate = /\b0\.00[0-9]+\b/.exec(code);
+    if (rate) offenders.push(`${rel.split("/").pop()} holds rate ${rate[0]}`);
+    if (/COST_GUARD_USD\s*=\s*[0-9]/.test(code)) {
+      offenders.push(`${rel.split("/").pop()} holds its own cost guard`);
+    }
   }
   assertEquals(
-    drifted,
+    offenders,
     [],
-    `admin per-place cost disagrees with the edge constant (${edgeCost}): ${
-      drifted.join(", ")
-    }. Server demands confirm_high_cost from ${
-      Math.ceil(edgeGuard / edgeCost)
-    } places; the client only sends it from ${
-      Math.floor(edgeGuard / 0.004) + 1
-    }. Baltimore (1,205 remaining today) sits inside that band.`,
+    `the admin must hold NO per-place rate and NO cost guard of its own — the ` +
+      `server owns both and publishes them. Offenders: ${offenders.join("; ")}. ` +
+      `Baltimore (1,205 remaining) is the live case: at the edge rate the ` +
+      `server demands confirm_high_cost from ${Math.ceil(edgeGuard / edgeCost)} ` +
+      `places, and any client copy that disagrees makes that city unstartable.`,
   );
+
+  // And the client must actually READ the published model, not merely lack a
+  // constant — a client that computes nothing would also pass the check above.
+  for (
+    const rel of [
+      "mingla-admin/src/hooks/useBulkRunDispatcher.js",
+      "mingla-admin/src/components/placeIntelligenceTrial/TrialResultsTab.jsx",
+      "mingla-admin/src/components/placeIntelligenceTrial/RunRemainderConfirmModal.jsx",
+    ]
+  ) {
+    assert(
+      /costModel/.test(readRepo(rel)),
+      `${rel} must consume the server's cost model`,
+    );
+  }
 });
 
 Deno.test("#3526 TESTER-DEFECT — no admin confirmation names the retired model", () => {

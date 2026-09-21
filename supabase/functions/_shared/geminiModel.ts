@@ -20,8 +20,17 @@
 //
 // THINKING. Gemini 3 removed `thinkingBudget` and replaced it with
 // `thinking_level`. A Gemini 3 model that receives no thinking config defaults
-// to `medium` and bills the thinking tokens as output — so every call site
-// sets GEMINI_THINKING_LEVEL_MINIMAL explicitly rather than inheriting.
+// to `medium` and bills the thinking tokens as OUTPUT — so every call site that
+// builds a `:generateContent` request sets GEMINI_THINKING_LEVEL_MINIMAL
+// explicitly rather than inheriting.
+//
+// "Every" is ENFORCED, not asserted. The tester's derived-sender test walks the
+// tree for files that build a `:generateContent` URL and send a
+// `generationConfig`, so a new sender added without a thinking level fails CI
+// rather than quietly inheriting a bill. That enforcement exists because this
+// sentence was FALSE when first written: four of eleven senders — the four
+// public growth tools — had no thinking config at all, and a hand-written list
+// of six in the first regression test could not see them (#3526 P1-1/P1-2).
 
 export const GEMINI_MODEL_ID = "gemini-3.6-flash";
 
@@ -52,6 +61,15 @@ export const GEMINI_OUTPUT_MICROUSD_PER_TOKEN = 3.75;
 
 export const GEMINI_API_BASE =
   "https://generativelanguage.googleapis.com/v1beta/models";
+
+// The pricing page the admin's spend-authorisation screen links to, and the
+// citation every cost comment should point at. One owner: the admin used to
+// hardcode `https://ai.google.dev/pricing/gemini-2-5-flash` — an ALL-HYPHEN
+// THIRD spelling of the retired model that neither a `gemini-2.5-flash` nor a
+// `GEMINI_2_5_FLASH` sweep could match — in two live `href`s, plus 14 more
+// places across 12 files (#3526 P2-3).
+export const GEMINI_PRICING_REFERENCE_URL =
+  "https://ai.google.dev/gemini-api/docs/pricing";
 
 // `generationConfig.thinkingConfig.thinking_level` — the Gemini 3 replacement
 // for `thinkingConfig.thinkingBudget`. "minimal" is the floor on 3.6-flash and

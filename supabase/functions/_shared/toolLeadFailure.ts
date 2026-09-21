@@ -15,9 +15,19 @@
 //
 // ACCESS. `tool_leads` is RLS deny-all with zero policies (I-1045-ANON-NO-SELECT),
 // so the column is unreadable by anon and authenticated alike; only the
-// service-role edge functions touch it. `growth-tools-report` additionally
-// allowlists its select-list, and surfaces only `stage` — never `http_status`
-// or `detail`.
+// service-role edge functions touch it.
+//
+// `growth-tools-report` does NOT read this column at all. Surfacing even the
+// stage means adding `failure_reason` to its APP_READ_COLUMNS, and that
+// select-list is a SECURITY allowlist pinned by
+// growth-tools-report/__tests__/issue_1734_app_read.test.ts, whose own comment
+// warns a widening "would sail past `includes` — the unfalsifiable-test class".
+// That is a decision for Seth and the tester, not an implementation detail, and
+// no success criterion needs it. Deferral raised on issue #3526 and pinned by a
+// test so it cannot happen by accident. (An earlier version of this comment
+// described a stage-only filter that was never written — a security-adjacent
+// claim about code that does not exist is exactly the kind of thing that gets
+// copied forward, so it is corrected here.)
 
 /** Max stored length of the provider detail string. */
 export const FAILURE_DETAIL_MAX = 500;

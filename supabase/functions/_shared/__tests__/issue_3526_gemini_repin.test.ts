@@ -87,32 +87,149 @@ Deno.test("#3526 competitor-intel-worker builds its URL from the shared constant
   assertEquals(/gemini-\d+\.\d+-flash/.test(code), false);
 });
 
-// ─── DEFECT 2: thinkingBudget does not exist on Gemini 3 ────────────────────
-// Revert lever: delete the thinkingConfig line from any of the five senders.
-Deno.test("#3526 every Gemini sender sets thinking_level and none sends the Gemini 2.x budget param", () => {
-  const senders = [
-    "../agentGemini.ts",
-    "../geminiMenuParser.ts",
-    "../geminiActivitiesParser.ts",
-    "../../competitor-intel-worker/index.ts",
-    "../../run-place-intelligence-trial/index.ts",
-    "../../run-business-place-authoring-pipeline/index.ts",
-  ];
-  for (const rel of senders) {
-    const code = read(rel).replace(/\/\/[^\n]*/g, "");
-    assertStringIncludes(
-      code,
-      "thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL }",
-      `${rel} must set thinking_level explicitly — a Gemini 3 model with no ` +
-        `thinking config defaults to "medium" and bills those tokens as output`,
-    );
-    assertEquals(
-      new RegExp(LEGACY_THINKING_PARAM).test(code),
-      false,
-      `${rel} still names the Gemini 2.x thinking parameter, which a 3.x model ` +
-        `ignores — silently restoring default thinking`,
-    );
+// ─── DEFECT 2: the Gemini 2.x thinking parameter does not exist on Gemini 3 ──
+//
+// issue #3526 P1-2 — the FIRST version of this test wrote its own list of six
+// sender files. All six passed; the four public growth tools and the health
+// probe were not in the list, so the assertion in the test's own NAME could not
+// fail for them — and it did not, while four senders shipped with no thinking
+// config at all. That is the unfalsifiable-test shape
+// (feedback_unfalsifiable_test_bug_class.md) and the same failure mode that put
+// three P0s past 12,500 passing tests on #3429.
+//
+// The sender set is DERIVED from the tree now: any non-test file under
+// supabase/functions/ that both builds a `:generateContent` URL and sends a
+// `generationConfig`. The derivation is itself guarded below so it cannot pass
+// vacuously, and it is proven by adding a synthetic sender with no thinking
+// config and watching this test fail.
+
+/** Walk supabase/functions/ for .ts files, excluding tests. */
+function allFunctionSources(): Array<{ path: string; source: string }> {
+  const root = new URL("../../", HERE);
+  const out: Array<{ path: string; source: string }> = [];
+  const walk = (dir: URL, rel: string) => {
+    for (const entry of Deno.readDirSync(dir)) {
+      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory) {
+        if (entry.name === "node_modules" || entry.name === "__tests__") continue;
+        walk(new URL(`${entry.name}/`, dir), childRel);
+      } else if (entry.name.endsWith(".ts") && !entry.name.includes(".test.")) {
+        out.push({
+          path: childRel,
+          source: Deno.readTextFileSync(new URL(entry.name, dir)),
+        });
+      }
+    }
+  };
+  walk(root, "");
+  return out;
+}
+
+/**
+ * A file is a Gemini SENDER when it sends a `generationConfig` AND reaches the
+ * Gemini generateContent endpoint.
+ *
+ * "Reaches the endpoint" is deliberately NOT "contains the literal
+ * `:generateContent`" — most senders build the URL through
+ * `geminiGenerateContentUrl()` or `GEMINI_API_BASE`, so a literal-only test
+ * found 3 of 11 and would have been another scope authored to match the
+ * implementation. It is "imports the single source, or names the literal",
+ * which is exhaustive BY INTERLOCK: gate G-1 fails any file under
+ * supabase/functions/ that carries its own model literal, so importing
+ * _shared/geminiModel.ts is the only legal way to reach the endpoint. A sender
+ * that evades this derivation has to fail G-1 to do it.
+ */
+export function deriveGeminiSenders(
+  files: Array<{ path: string; source: string }>,
+): string[] {
+  return files
+    .filter(({ path, source }) => {
+      if (path === "_shared/geminiModel.ts") return false; // the source itself
+      const code = source.replace(/\/\/[^\n]*/g, "");
+      if (!/generationConfig\s*:/.test(code)) return false;
+      return /:generateContent/.test(code) ||
+        /from\s+["'][^"']*geminiModel\.ts["']/.test(code);
+    })
+    .map(({ path }) => path)
+    .sort();
+}
+
+Deno.test("#3526 the sender derivation is not vacuous", () => {
+  // If the derivation silently matched nothing, the test below would pass on an
+  // empty set and guarantee nothing at all. Pin both ends: it must find the
+  // real senders, and it must REJECT a file that only looks like one.
+  const senders = deriveGeminiSenders(allFunctionSources());
+  assert(
+    senders.length >= 11,
+    `expected the real sender set, derived ${senders.length}: ${senders.join(", ")}`,
+  );
+  for (
+    const expected of [
+      "_shared/agentGemini.ts",
+      "competitor-intel-worker/index.ts",
+      "growth-tools-run/index.ts",
+      "run-place-intelligence-trial/index.ts",
+      "api-health-probe/index.ts",
+    ]
+  ) {
+    assert(senders.includes(expected), `derivation missed a known sender: ${expected}`);
   }
+  // Negative controls — neither half alone makes a sender.
+  assertEquals(
+    deriveGeminiSenders([{ path: "x.ts", source: "const u = ':generateContent';" }]),
+    [],
+  );
+  assertEquals(
+    deriveGeminiSenders([{ path: "x.ts", source: "const g = { generationConfig: {} };" }]),
+    [],
+  );
+  // The import route must count — that is how 8 of the 11 real senders reach
+  // the endpoint, and keying on the literal alone found only 3.
+  assertEquals(
+    deriveGeminiSenders([{
+      path: "x.ts",
+      source: 'import { GEMINI_MODEL_ID } from "../_shared/geminiModel.ts";\n' +
+        "const g = { generationConfig: { temperature: 0 } };",
+    }]),
+    ["x.ts"],
+  );
+  // And a comment-only mention is not a sender.
+  assertEquals(
+    deriveGeminiSenders([{
+      path: "x.ts",
+      source: "// :generateContent with a generationConfig\nconst a = 1;",
+    }]),
+    [],
+  );
+});
+
+Deno.test("#3526 EVERY derived Gemini sender sets thinking_level and none sends the 2.x budget param", () => {
+  const files = allFunctionSources();
+  const senders = deriveGeminiSenders(files);
+  const byPath = new Map(files.map((f) => [f.path, f.source]));
+
+  const missingThinking: string[] = [];
+  const legacyParam: string[] = [];
+  for (const path of senders) {
+    const code = (byPath.get(path) ?? "").replace(/\/\/[^\n]*/g, "");
+    if (!code.includes("thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL }")) {
+      missingThinking.push(path);
+    }
+    if (new RegExp(LEGACY_THINKING_PARAM).test(code)) legacyParam.push(path);
+  }
+
+  assertEquals(
+    missingThinking,
+    [],
+    `these Gemini senders set no thinking level, so a Gemini 3 model bills them ` +
+      `at the default "medium" as output: ${missingThinking.join(", ")}`,
+  );
+  assertEquals(
+    legacyParam,
+    [],
+    `these senders still name the Gemini 2.x thinking parameter, which a 3.x ` +
+      `model ignores — silently restoring default thinking: ${legacyParam.join(", ")}`,
+  );
   assertEquals(GEMINI_THINKING_LEVEL_MINIMAL, "minimal");
 });
 

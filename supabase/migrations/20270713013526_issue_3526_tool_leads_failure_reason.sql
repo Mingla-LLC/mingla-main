@@ -29,8 +29,13 @@
 -- anon SELECT grant recorded in the #1856 grant-class baseline is not a row
 -- grant, and with no policy there are no visible rows. Grants are deliberately
 -- NOT changed here — revoking would break the #1856 grant-class guard's
--- baseline. `growth-tools-report` additionally allowlists its select-list and
--- surfaces only `stage`, never `http_status` or `detail`.
+-- baseline.
+--
+-- `growth-tools-report` does NOT read this column. Surfacing even the stage
+-- means widening its APP_READ_COLUMNS security allowlist, which is a decision
+-- for Seth and the tester; the deferral is raised on issue #3526 and pinned by
+-- a test. (An earlier draft of this comment described a stage-only filter that
+-- was never written.)
 --
 -- SAFE-MIGRATION: purely additive (one nullable column + one comment),
 -- idempotent (IF NOT EXISTS), no backfill, no lock beyond a catalog-only

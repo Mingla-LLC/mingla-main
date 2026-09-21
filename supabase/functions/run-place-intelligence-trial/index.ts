@@ -837,14 +837,26 @@ if (import.meta.main) {
 // Bounds under the new rates (input 2.5x, output 1.5x):
 //   lower  $0.00536 (all-output)  ·  derived $0.00668  ·  upper $0.00894 (all-input)
 //
-// 0.0089 = the UPPER bound. Deliberate: this constant feeds COST_GUARD_USD, and
-// for a spend guard over-estimating costs a confirmation while under-estimating
-// costs money. It also absorbs the thinking tokens `thinking_level: "minimal"`
-// will spend, which cannot be measured until a live 3.6 call happens.
+// WHAT 0.0089 IS, PRECISELY. It is an upper bound on the repriced historical
+// NON-THINKING mean, less 0.44%: the arithmetic ceiling (all-input, multiplier
+// 2.5) is $0.0089390, and 0.0089 sits $0.000039 below it. Calling it "the upper
+// bound" flat, as the first version of this comment did, is very slightly false.
+//
+// WHERE IT IS OPTIMISTIC, WHICH MATTERS MORE. Those historical cost_usd values
+// were produced by a computeCostUsdGemini that never billed thinking, while
+// this path sent no thinkingConfig at all — so 2.5-flash's dynamic thinking ran
+// and went uncounted. The $0.003576 mean is therefore an UNDER-COUNT of true
+// 2.5-flash spend, and repricing an under-count cannot bound true 3.6 spend now
+// that the cost function DOES bill thoughts. Headroom to 0.0089 in billed
+// thinking tokens per place:
+//   at the derived split (x≈0.37, $0.006686):  ≈ 590 tokens — comfortable at
+//                                              thinking_level "minimal"
+//   at the all-input extreme:                  already negative
 //
 // ⚠ PROVISIONAL — re-measure on the FIRST live 3.6 run (issue #3526 SC-4) and
 // update BOTH this constant AND the matching 0.0089 in
-// supabase/migrations/20260921*_issue_3526_*.sql (tg_meta_orch_1009_sub_d_drift_queue_reeval):
+// supabase/migrations/20270713003526_issue_3526_drift_trigger_gemini_repin.sql
+// (tg_meta_orch_1009_sub_d_drift_queue_reeval):
 //   SELECT avg(cost_usd) FROM place_intelligence_trial_runs
 //    WHERE status='completed' AND model='gemini-3.6-flash' AND retry_count=0;
 const PER_PLACE_COST_USD = 0.0089;
@@ -1690,7 +1702,7 @@ async function handleRunTrialForPlace(
 // External-API doc: Gemini 2.5 Flash invoked via the existing trial pipeline
 // (the queued child is drained by handleProcessChunk → processOnePlace).
 // See https://ai.google.dev/api/generate-content#function_calling (cited at
-// line 1092 above) + https://ai.google.dev/pricing/gemini-2-5-flash for
+// line 1092 above) + GEMINI_PRICING_REFERENCE_URL (_shared/geminiModel.ts) for
 // per-place cost (~$0.0040). COMMS-0003.
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -2781,7 +2793,7 @@ async function insertRetryChildrenInChunks(
 // COMMS-0003 — external API parameters/pricing must cite provider docs URL.
 // This action is Supabase-only (no Gemini calls) but the file-level Gemini
 // 2.5 Flash pricing citation is preserved in the q1/q2 helpers above:
-//   https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-30).
+//   GEMINI_PRICING_REFERENCE_URL in _shared/geminiModel.ts (issue #3526).
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ORCH-1017 — the Intelligence Coverage operational constants (90-day stale
