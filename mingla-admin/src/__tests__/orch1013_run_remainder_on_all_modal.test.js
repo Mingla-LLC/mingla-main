@@ -115,6 +115,51 @@ describe("ORCH-1013 Finding B — RunRemainderOnAllConfirmModal contract", () =>
     );
   });
 
+  // issue #3526 P3-R4 — the dead affordance.
+  //
+  // When the server has not published a cost the run can never start, so the
+  // acknowledgement checkbox invited a tick that could not lead anywhere
+  // (Constitution #1, no dead taps) beside a disabled button that gave no
+  // reason (Constitution #3, no silent failures). Restoring either — rendering
+  // the checkbox unconditionally, or dropping the title — must fail here.
+  it("offers no acknowledgement it cannot honour, and says why the CTA is off", () => {
+    assert.ok(
+      /\{costUnknown \? \(/.test(src),
+      "the cost-unknown branch must replace the checkbox, not merely reword it",
+    );
+    assert.ok(
+      src.includes("Cost unavailable"),
+      "an unpriceable run must say so in the body, not only by a disabled button",
+    );
+    // The checkbox must live on the OTHER side of that branch.
+    const unknownBranch = src.slice(
+      src.indexOf("{costUnknown ? ("),
+      src.indexOf(") : ("),
+    );
+    assert.ok(
+      !unknownBranch.includes('type="checkbox"'),
+      "no checkbox may render while the run is unstartable",
+    );
+    assert.ok(
+      /disabled=\{!canConfirm\}[\s\S]{0,400}?title=\{/.test(src),
+      "the disabled CTA must carry a title explaining which gate is unmet",
+    );
+    // One stated reason per gate that can hold the button off.
+    for (
+      const reason of [
+        "did not return a per-place cost",   // unpriceable
+        "No city has un-evaluated places",   // nothing to queue
+        "Tick the acknowledgement",          // unticked
+        "to confirm a run above",            // typed-confirm outstanding
+      ]
+    ) {
+      assert.ok(
+        src.includes(reason),
+        `the CTA title must name the unmet gate — missing "${reason}"`,
+      );
+    }
+  });
+
   it("primary CTA disabled until canConfirm", () => {
     assert.ok(
       src.includes("disabled={!canConfirm}"),

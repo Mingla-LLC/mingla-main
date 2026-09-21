@@ -34,6 +34,8 @@ import {
   type ToolLeadFailure,
 } from "../toolLeadFailure.ts";
 import { geminiProbeOk, matchClassBDepletion } from "../../api-health-probe/logic.ts";
+// issue #3526 P1-R1 — the cost model is asserted at RUNTIME, not as source text.
+import { buildCostModel } from "../../run-place-intelligence-trial/index.ts";
 
 // The Gemini 2.x parameter this change removes. ASSEMBLED at runtime, never
 // written as one literal: gate G-3 fails any file under supabase/functions/
@@ -465,18 +467,34 @@ Deno.test("#3526 a candidate-less 200 is judged on evidence, not on maxOutputTok
 // issue #3526 P1-R1 — the admin holds NO dollar amount, including the
 // typed-confirmation threshold, which was the last one.
 Deno.test("#3526 the server publishes every dollar figure the admin renders", () => {
-  const edge = read("../../run-place-intelligence-trial/index.ts");
+  // RUNTIME, not source text. The first version of this test asserted the
+  // strings were present in the file — and the field names also appear in the
+  // return-TYPE declaration, so deleting the actual value from the returned
+  // object left the test green. Caught by the fails-on-revert run.
+  const model = buildCostModel() as unknown as Record<string, unknown>;
   for (
     const field of [
-      "per_place_cost_usd:",
-      "cost_guard_usd:",
-      "cost_drift_tolerance_usd_per_place:",
-      "cost_review_threshold_usd:",
+      "per_place_cost_usd",
+      "cost_guard_usd",
+      "cost_drift_tolerance_usd_per_place",
+      "cost_review_threshold_usd",
     ]
   ) {
-    assertStringIncludes(edge, field, `buildCostModel must publish ${field}`);
+    assert(
+      typeof model[field] === "number" && Number(model[field]) > 0,
+      `buildCostModel() must return a positive ${field}, got ${
+        JSON.stringify(model[field])
+      }. Every dollar figure the admin renders comes from here; a missing one ` +
+        `means the client either blocks the run or invents the number again.`,
+    );
   }
+  // The drift tolerance is DERIVED from the rate, never typed independently.
+  assertEquals(
+    model.cost_drift_tolerance_usd_per_place,
+    +(Number(model.per_place_cost_usd) * 0.25).toFixed(6),
+  );
   // Both admin read paths carry it.
+  const edge = read("../../run-place-intelligence-trial/index.ts");
   assertEquals((edge.match(/cost_model:\s*buildCostModel\(\)/g) ?? []).length, 2);
 });
 
