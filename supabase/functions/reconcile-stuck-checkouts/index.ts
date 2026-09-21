@@ -690,9 +690,16 @@ async (req) => {
         expired: summary.expired,
         skipped: summary.skipped,
         errors: summary.errors,
-        evidenceHoldsReleased: summary.evidenceHoldsReleased,
+        // A run that looked at no evidence hold reports the body it always
+        // reported. Only a run that examined one adds these two keys, so the
+        // existing response contract (and the suites that pin it) is unchanged.
+        ...(evidenceHolds.length > 0
+          ? {
+            evidenceHoldsReleased: summary.evidenceHoldsReleased,
+            evidenceHolds,
+          }
+          : {}),
         results,
-        evidenceHolds,
       },
       null,
       2,

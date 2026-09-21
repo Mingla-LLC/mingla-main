@@ -17568,7 +17568,7 @@
       "providerWorkflow": ".github/workflows/issue-2079-paystack-late-refund-identity-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "2f5422a8743355654f66c54b17d4fe6e5ea020a7342d2b291159edb1d0492e15",
+        "sourceSha256": "5f75c057229dec3ed8d05bceb83ba5e8d22558ec5f39e6c546d40d9804d85cdc",
         "triggers": [
           "pull_request",
           "push",
@@ -17579,17 +17579,24 @@
           ".github/scripts/strict-grep/issue-2079-paystack-late-refund-identity.mjs",
           ".github/workflows/issue-2079-paystack-late-refund-identity-tests.yml",
           "docs/INVARIANT_REGISTRY.md",
+          "supabase/functions/_shared/__tests__/issue_2079_evidence_hold_completes_sale.happy.test.ts",
+          "supabase/functions/_shared/__tests__/issue_2079_evidence_hold_completes_sale.tester.adversarial.test.ts",
           "supabase/functions/_shared/__tests__/issue_2079_paystack_late_refund_identity.happy.test.ts",
           "supabase/functions/_shared/__tests__/issue_2079_paystack_late_refund_identity.tester.adversarial.test.ts",
           "supabase/functions/_shared/__tests__/issue_2079_stripe_webhook_identity.test.ts",
           "supabase/functions/_shared/paystackRefunds.ts",
+          "supabase/functions/_shared/paystackWebhookRouter.ts",
           "supabase/functions/_shared/sourceRefundControlPlane.ts",
+          "supabase/functions/_shared/sourceRefundNotifications.ts",
           "supabase/functions/_shared/stripeWebhookRouter.ts",
+          "supabase/functions/_shared/ticketEvidenceHold.ts",
           "supabase/functions/checkout-sale-revocation/**",
           "supabase/functions/reconcile-stuck-checkouts/**",
           "supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2079_stripe_hosted_null_relation.tester.adversarial.test.ts",
           "supabase/functions/ticket-checkout-confirm/**",
           "supabase/migrations/20270411002079_issue_2079_paystack_late_refund_identity.sql",
+          "supabase/migrations/20270711120000_source_refund_status_notice_recipients.sql",
+          "supabase/migrations/20270711130000_ticket_evidence_hold_completes_sale.sql",
           "supabase/migrations/__tests__/issue_2079_paystack_late_refund_identity.test.sql"
         ],
         "jobKeys": [

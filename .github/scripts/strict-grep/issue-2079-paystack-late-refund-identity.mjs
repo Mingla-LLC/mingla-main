@@ -10,6 +10,9 @@ const paths = {
   webhook: "supabase/functions/_shared/stripeWebhookRouter.ts",
   reconcile: "supabase/functions/reconcile-stuck-checkouts/index.ts",
   workflow: ".github/workflows/issue-2079-paystack-late-refund-identity-tests.yml",
+  hold: "supabase/functions/_shared/ticketEvidenceHold.ts",
+  evidence: "supabase/migrations/20270711130000_ticket_evidence_hold_completes_sale.sql",
+  paystackWebhook: "supabase/functions/_shared/paystackWebhookRouter.ts",
 };
 const sources = Object.fromEntries(Object.entries(paths).map(([key, path]) => [key, fs.readFileSync(path, "utf8")]));
 const fail = (message) => { throw new Error(`issue-2079: ${message}`); };
@@ -27,9 +30,45 @@ const check = (s) => {
     const finalize = s[key].indexOf('"biz_ticket_checkout_finalize"', verify);
     if (verify < 0 || finalize < verify) fail(`${key} lacks capture-before-finalize`);
   }
-  for (const token of ["issue_2079_paystack_late_refund_identity.happy.test.ts", "issue_2079_paystack_late_refund_identity.tester.adversarial.test.ts", "issue_2079_ticket_identity_obligation.test.ts", "issue_2079_stripe_hosted_identity.test.ts", "issue_2079_stripe_webhook_identity.test.ts", "issue_2079_paystack_late_refund_identity.test.sql", "issue-2079-paystack-late-refund-identity.mjs --self-test"]) {
+  for (const token of ["issue_2079_paystack_late_refund_identity.happy.test.ts", "issue_2079_paystack_late_refund_identity.tester.adversarial.test.ts", "issue_2079_ticket_identity_obligation.test.ts", "issue_2079_stripe_hosted_identity.test.ts", "issue_2079_stripe_webhook_identity.test.ts", "issue_2079_evidence_hold_completes_sale.happy.test.ts", "issue_2079_evidence_hold_completes_sale.tester.adversarial.test.ts", "issue_2079_paystack_late_refund_identity.test.sql", "issue-2079-paystack-late-refund-identity.mjs --self-test"]) {
     if (!s.workflow.includes(token)) fail(`workflow missing ${token}`);
   }
+  // A paid ticket held only because OUR evidence was incomplete completes the
+  // sale; a genuine late payment after sale closure still refunds. These
+  // assertions pin the fence between those two.
+  if (!s.hold.includes('session.reversal_state === "paid_reversal_pending"') || !s.hold.includes("session.order_id == null")) {
+    fail("evidence-hold candidate no longer requires a held, unsold session");
+  }
+  if (!s.evidence.includes("bool_and(o.reason=ANY(v_evidence_reasons))")) {
+    fail("a hold may be lifted without proving every revocation reason is missing-evidence");
+  }
+  if (!s.evidence.includes("IF current_user NOT IN ('postgres','service_role') THEN")) {
+    fail("release owner is no longer service-role only");
+  }
+  if (!s.evidence.includes("RETURN 'already_owned';")) {
+    fail("#2168 handoff can open a second refund for money that already has an owner");
+  }
+  const guardLoop = s.evidence.indexOf("FOR v_refund IN");
+  const refundDelete = s.evidence.indexOf("DELETE FROM public.source_refunds", guardLoop);
+  if (guardLoop < 0 || refundDelete < guardLoop) fail("refunds are deleted before they are proven untouched");
+  const guards = s.evidence.slice(guardLoop, refundDelete);
+  for (const token of ["v_refund.provider_refund_id IS NOT NULL", "v_refund.buyer_refund_processed_cents<>0", "v_refund.lease_owner IS NOT NULL", "public.source_refund_attempts", "public.source_refund_events", "public.payment_webhook_events", "'refund_in_progress'"]) {
+    if (!guards.includes(token)) fail(`refund guard missing ${token}`);
+  }
+  // Every caller asks the release owner BEFORE the ordinary verify/finalize,
+  // so a released session finalizes through the one existing finalize owner.
+  for (const key of ["confirm", "webhook", "paystackWebhook", "reconcile"]) {
+    if (!s[key].includes("releaseTicketEvidenceHold(")) fail(`${key} no longer releases an evidence hold`);
+  }
+  for (const key of ["confirm", "webhook"]) {
+    const release = s[key].indexOf("releaseTicketEvidenceHold(");
+    const verify = s[key].indexOf('"issue_2079_verify_ticket_paid_identity"', release);
+    if (release < 0 || verify < release) fail(`${key} releases the hold after it verifies`);
+  }
+  const paystackRelease = s.paystackWebhook.indexOf("releaseTicketEvidenceHold(");
+  const paystackFinalize = s.paystackWebhook.indexOf('"biz_ticket_checkout_finalize"', paystackRelease);
+  if (paystackRelease < 0 || paystackFinalize < paystackRelease) fail("paystackWebhook releases the hold after it finalizes");
+  if (!s.reconcile.includes('pi.status !== "succeeded"')) fail("the sweep can release a hold on a payment Stripe never captured");
 };
 
 if (process.argv.includes("--self-test")) {
@@ -42,6 +81,18 @@ if (process.argv.includes("--self-test")) {
     ["migration", "issue_2079_record_paid_identity_retry", "issue_2079_record_paid_identity_removed"],
     ["confirm", '"issue_2079_verify_ticket_paid_identity"', '"issue_2079_verify_ticket_identity_removed"'],
     ["workflow", "issue_2079_paystack_late_refund_identity.happy.test.ts", "removed.test.ts"],
+    ["workflow", "issue_2079_evidence_hold_completes_sale.tester.adversarial.test.ts", "removed.adversarial.test.ts"],
+    ["hold", 'session.reversal_state === "paid_reversal_pending"', 'session.reversal_state !== "sold"'],
+    ["evidence", "bool_and(o.reason=ANY(v_evidence_reasons))", "bool_or(o.reason=ANY(v_evidence_reasons))"],
+    ["evidence", "IF current_user NOT IN ('postgres','service_role') THEN", "IF false THEN"],
+    ["evidence", "RETURN 'already_owned';", "RETURN 'attention_created';"],
+    ["evidence", "v_refund.provider_refund_id IS NOT NULL", "false"],
+    ["evidence", "v_refund.lease_owner IS NOT NULL", "false"],
+    ["confirm", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],
+    ["webhook", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],
+    ["paystackWebhook", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],
+    ["reconcile", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],
+    ["reconcile", 'pi.status !== "succeeded"', 'pi.status !== "processing"'],
   ];
   for (const [key, from, to] of mutations) {
     let rejected = false;

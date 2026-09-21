@@ -377,7 +377,7 @@ export async function handlePaystackChargeSuccess(
   // flight for the finalize below; any other answer keeps the hold and the
   // finalize below still ends at the refund.
   if (isEvidenceHoldCandidate(session) && txnId) {
-    await releaseTicketEvidenceHold(supabase, {
+    const release = await releaseTicketEvidenceHold(supabase, {
       checkoutSessionId: String(session.id),
       provider: "paystack",
       paymentReference: reference,
@@ -387,6 +387,13 @@ export async function handlePaystackChargeSuccess(
       amountCents: verifiedAmount,
       currency: verifiedCurrency,
     });
+    if (release.outcome === "refund_kept") {
+      console.warn(
+        "[paystack-webhook] ticket payment hold kept",
+        String(session.id),
+        release.reason,
+      );
+    }
   }
   const { data: finalized, error: finalizeError } = await supabase.rpc(
       "biz_ticket_checkout_finalize",
