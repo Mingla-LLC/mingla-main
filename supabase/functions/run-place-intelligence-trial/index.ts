@@ -27,6 +27,8 @@ import { recordApiCall } from "../_shared/apiHealthLog.ts"; // ORCH-1201-R2 Laye
 // issue #3526 — single source for the model id, endpoint and thinking level.
 import {
   GEMINI_MODEL_ID,
+  GEMINI_PRICING_REFERENCE_URL,
+  GEMINI_PRICING_VERSION,
   GEMINI_THINKING_LEVEL_MINIMAL,
   geminiErrorFingerprint,
   geminiGenerateContentUrl,
@@ -846,6 +848,46 @@ if (import.meta.main) {
 //   SELECT avg(cost_usd) FROM place_intelligence_trial_runs
 //    WHERE status='completed' AND model='gemini-3.6-flash' AND retry_count=0;
 const PER_PLACE_COST_USD = 0.0089;
+
+// issue #3526 P0-1 — THE SERVER OWNS THE COST MODEL. Constitution #2.
+//
+// The admin app used to keep FIVE independent copies of 0.0040 and decide
+// `confirm_high_cost` from its own arithmetic. When this constant moved to
+// 0.0089 the two sides disagreed and a live city became unstartable: Baltimore,
+// 1,205 remaining — admin showed $4.82 and sent confirm=false, the server
+// computed $10.72 and returned 400 cost_above_guard, and the dispatcher never
+// retried. A dead button in production.
+//
+// The client no longer computes cost. It ASKS. This object rides on the two
+// read actions the admin already calls (`intelligence_coverage`,
+// `city_coverage`), and the admin renders what it is told. There is no
+// client-side fallback rate ON PURPOSE: a client that guesses is a client that
+// owns the truth again, and on a spend-authorisation screen a wrong number is
+// worse than an absent one (Constitution #9 — missing is hidden, never faked).
+//
+// `cost_drift_tolerance_usd_per_place` is DERIVED, not typed: the admin's drift
+// badge was a hardcoded 0.001 described as "±25% of $0.0040", so it silently
+// became ±11% when the rate moved and would have fired on every run.
+export const COST_DRIFT_TOLERANCE_FRACTION = 0.25;
+
+export function buildCostModel(): {
+  per_place_cost_usd: number;
+  cost_guard_usd: number;
+  cost_drift_tolerance_usd_per_place: number;
+  pricing_version: string;
+  pricing_reference_url: string;
+  model_id: string;
+} {
+  return {
+    per_place_cost_usd: PER_PLACE_COST_USD,
+    cost_guard_usd: COST_GUARD_USD,
+    cost_drift_tolerance_usd_per_place:
+      +(PER_PLACE_COST_USD * COST_DRIFT_TOLERANCE_FRACTION).toFixed(6),
+    pricing_version: GEMINI_PRICING_VERSION,
+    pricing_reference_url: GEMINI_PRICING_REFERENCE_URL,
+    model_id: GEMINI_MODEL_ID,
+  };
+}
 const SAMPLE_SIZE_DEFAULT = 200;
 const SAMPLE_SIZE_MIN = 50;
 const SAMPLE_SIZE_MAX = 500;
@@ -2690,6 +2732,8 @@ async function handleCityCoverage(
     estimated_retry_cost_usd:
       +(retrySelection.retryableCount * PER_PLACE_COST_USD).toFixed(4),
     failure_classes: retrySelection.failureClasses,
+    // issue #3526 P0-1 — same cost model as intelligence_coverage.
+    cost_model: buildCostModel(),
   });
 }
 
@@ -2799,7 +2843,9 @@ async function handleIntelligenceCoverage(
     needs_refresh_count: r.needs_refresh_count ?? 0,
   }));
 
-  return json({ rows });
+  // issue #3526 P0-1 — the cost model rides along so the admin never has to
+  // hold its own copy of the rate or the guard.
+  return json({ rows, cost_model: buildCostModel() });
 }
 
 async function handleRetryFailedRun(

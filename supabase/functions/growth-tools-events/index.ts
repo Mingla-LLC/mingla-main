@@ -801,7 +801,16 @@ async function callResearchOnce(
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         systemInstruction: { parts: [{ text: RESEARCH_SYSTEM }] },
         tools: [{ google_search: {} }],
-        generationConfig: { maxOutputTokens: 8192, temperature: GEMINI_TEMPERATURE },
+        generationConfig: {
+          maxOutputTokens: 8192,
+          temperature: GEMINI_TEMPERATURE,
+          // issue #3526 P1-1 — this public tool sent NO thinking config. On a
+          // Gemini 3 model an absent thinking level defaults to `medium`, billed as
+          // OUTPUT at $3.75/1M, and none of the four growth tools records cost
+          // anywhere — so the spend would have been invisible. It is also a latency
+          // risk: GROUNDED_CALL_TIMEOUT_MS was sized for a non-thinking model.
+          thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
+        },
       }),
       timeoutMs: GROUNDED_CALL_TIMEOUT_MS,
     });
@@ -1085,6 +1094,12 @@ async function callSynthesisOnce(
           temperature: GEMINI_TEMPERATURE,
           responseMimeType: "application/json",
           responseSchema: SYNTH_SCHEMA,
+          // issue #3526 P1-1 — this public tool sent NO thinking config. On a
+          // Gemini 3 model an absent thinking level defaults to `medium`, billed as
+          // OUTPUT at $3.75/1M, and none of the four growth tools records cost
+          // anywhere — so the spend would have been invisible. It is also a latency
+          // risk: GROUNDED_CALL_TIMEOUT_MS was sized for a non-thinking model.
+          thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
         },
       }),
       timeoutMs,

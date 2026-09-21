@@ -40,6 +40,15 @@
  * make them pass. The stripper is string-literal aware, so `"https://…"` inside
  * a quoted string is never mistaken for a `//` comment.
  *
+ * SCOPE, STATED EXPLICITLY because the first version left it implicit and that
+ * is where P0-1 hid. G-1/G-3/G-4 cover `supabase/functions/` only — every
+ * extension in SCANNED_EXTENSIONS, not just `.ts`. The model ID genuinely has
+ * no consumer outside the backend. Its PRICE does not: `mingla-admin` held five
+ * copies of the per-place cost and decided the spend guard client-side. That is
+ * fixed by making the SERVER the owner and the admin ask (the admin holds no
+ * rate at all now), which is a design property this gate cannot express as a
+ * grep — so G-5 pins it directly: no admin file may carry a per-place rate.
+ *
  * TEST FILES ARE OUT OF SCOPE for G-1 and G-4: a test legitimately asserts the
  * model string and the old constant names as fixture data. G-3 DOES cover tests,
  * because a test asserting `thinkingBudget: 0` is a test pinning a parameter
@@ -60,10 +69,40 @@ const OWNER = join("supabase", "functions", "_shared", "geminiModel.ts");
 
 const TRIGGER_FN = "tg_meta_orch_1009_sub_d_drift_queue_reeval";
 
-const MODEL_LITERAL = /gemini-\d+\.\d+-flash/i;
-const MODEL_LITERAL_G = /gemini-\d+\.\d+-flash/gi;
-const STALE_PRICING_IDENT = /GEMINI_\d+_\d+_FLASH/;
-const THINKING_BUDGET = /thinkingBudget/;
+// issue #3526 P2-3 — the model name has THREE spellings in this repo and the
+// first version of this gate matched one of them:
+//   gemini-2.5-flash   the API model id
+//   gemini-2-5-flash   the pricing-page URL form — 16 occurrences across 12
+//                      files survived the first sweep, including two live
+//                      admin `href`s on the spend-authorisation screen
+//   GEMINI_2_5_FLASH   the identifier form (see STALE_PRICING_IDENT)
+// Sweep for the CONCEPT, not the string.
+const MODEL_LITERAL = /gemini-\d+[-.]\d+-flash/i;
+const MODEL_LITERAL_G = /gemini-\d+[-.]\d+-flash/gi;
+
+// issue #3526 P2-3 — the literal can also be ASSEMBLED, which defeats a plain
+// substring match: `"gemini-2." + "5-flash"`, `` `gemini-${maj}.${min}-flash` ``,
+// or a URL split at the dot. Normalising the source before the test closes all
+// three at once: drop string-concatenation joins and collapse `${…}` holes to a
+// single char, then re-run the same matcher.
+const CONCAT_JOIN = /["'`]\s*\+\s*["'`]/g;
+const TEMPLATE_HOLE = /\$\{[^{}]*\}/g;
+function normalizeForModelMatch(code) {
+  return code.replace(CONCAT_JOIN, "").replace(TEMPLATE_HOLE, "0");
+}
+
+// issue #3526 P4-1 — was /GEMINI_\d+_\d+_FLASH/, which fixed the instance and
+// not the class: three lines above the renamed Gemini rates sit
+// HAIKU_4_5_INPUT_PER_TOKEN and friends, identical sweep-blind spelling,
+// different vendor. When Anthropic retires Haiku 4.5 this recurs exactly.
+const STALE_PRICING_IDENT = /[A-Z]+_\d+_\d+_[A-Z0-9_]*(INPUT|OUTPUT|CACHE)/;
+
+// issue #3526 P1-3 — was /thinkingBudget/, camelCase ONLY. Every thinking key
+// in this repo is snake_case (`thinking_level`, at all eleven senders) because
+// the Gemini REST API accepts snake_case — so `thinking_budget` is the NATURAL
+// way to reintroduce the parameter this check exists to forbid, and the
+// camelCase-only form could not see it. Proven end-to-end on the real tree.
+const THINKING_BUDGET = /thinking[_]?[Bb]udget/;
 
 // ── Comment stripping ───────────────────────────────────────────────────────
 // String-literal aware so a URL inside "…" or `…` is never read as a comment.
@@ -139,14 +178,18 @@ export function stripSqlComments(src) {
 }
 
 // ── File walking ────────────────────────────────────────────────────────────
+// issue #3526 P2-3 — the walker read ONLY `.ts`, so a `.json` contract/fixture
+// or a `.mjs` under supabase/functions/ was invisible (11 such files exist).
+const SCANNED_EXTENSIONS = [".ts", ".tsx", ".mjs", ".js", ".json", ".sql"];
+
 function walk(dir, acc = []) {
   if (!existsSync(dir)) return acc;
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
-      if (entry === "node_modules") continue;
+      if (entry === "node_modules" || entry === "dist" || entry === ".git") continue;
       walk(full, acc);
-    } else if (entry.endsWith(".ts")) {
+    } else if (SCANNED_EXTENSIONS.some((ext) => entry.endsWith(ext))) {
       acc.push(full);
     }
   }
@@ -166,24 +209,35 @@ export function readOwnerModelId(source) {
 }
 
 // ── G-2: the newest migration that defines the drift trigger function ───────
-export function newestTriggerMigration(dir) {
-  if (!existsSync(dir)) return null;
-  const hits = readdirSync(dir)
+// issue #3526 P2-1 — this required `CREATE OR REPLACE FUNCTION public.<fn>`.
+// Supabase migrations run with `search_path = public`, so the UNQUALIFIED form
+// installs the very same live trigger — and a migration using it was invisible
+// here, leaving the gate validating a stale earlier file while reporting PASS.
+// The schema qualifier is optional now, and the discovery returns ALL matches
+// so the caller can assert exactly one is treated as newest.
+const TRIGGER_DEF_RE = new RegExp(
+  `CREATE\\s+OR\\s+REPLACE\\s+FUNCTION\\s+(?:public\\.)?${TRIGGER_FN}`,
+  "i",
+);
+
+export function triggerMigrations(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
     .filter((f) => f.endsWith(".sql"))
-    .filter((f) => {
-      const body = readFileSync(join(dir, f), "utf8");
-      return new RegExp(`CREATE OR REPLACE FUNCTION\\s+public\\.${TRIGGER_FN}`, "i").test(body);
-    })
+    .filter((f) => TRIGGER_DEF_RE.test(stripSqlComments(readFileSync(join(dir, f), "utf8"))))
     .sort();
+}
+
+export function newestTriggerMigration(dir) {
+  const hits = triggerMigrations(dir);
   return hits.length > 0 ? hits[hits.length - 1] : null;
 }
 
 /** Model labels the trigger function writes, comments stripped. */
 export function triggerModelLabels(sql) {
   const code = stripSqlComments(sql);
-  const start = code.search(
-    new RegExp(`CREATE OR REPLACE FUNCTION\\s+public\\.${TRIGGER_FN}`, "i"),
-  );
+  // issue #3526 P2-1 — `public.` optional, same reason as the discovery above.
+  const start = code.search(TRIGGER_DEF_RE);
   if (start < 0) return [];
   const body = code.slice(start);
   const end = body.indexOf("$$;");
@@ -231,8 +285,64 @@ export function checkSources(files, modelId) {
   return failures;
 }
 
-export function checkMigration(modelId, migrationName, sql) {
+/**
+ * G-5 (issue #3526 P0-1) — the admin app must hold NO per-place rate.
+ *
+ * The model ID genuinely has no consumer outside `supabase/functions/`. Its
+ * PRICE did: `mingla-admin` kept five copies of 0.0040 and computed
+ * `confirm_high_cost` from its own arithmetic. When the edge constant moved to
+ * 0.0089 the two disagreed and Baltimore (1,205 remaining) became unstartable —
+ * admin showed $4.82 and sent confirm=false, the server computed $10.72 and
+ * returned 400. The fix is not a sixth copy: the server owns the cost model and
+ * publishes it on `intelligence_coverage` / `city_coverage`, and the admin
+ * renders what it is told. This gate keeps it that way.
+ */
+const ADMIN_COST_DIR = join("mingla-admin", "src");
+const ADMIN_RATE_LITERAL = /\b0\.00[0-9]+\b/;
+const ADMIN_COST_IDENT = /PER_PLACE_COST_USD|COST_GUARD_USD|COST_DRIFT_TOLERANCE/;
+
+export function checkAdminCostOwnership(files) {
   const failures = [];
+  for (const { rel, source } of files) {
+    if (!rel.startsWith(ADMIN_COST_DIR)) continue;
+    if (isTestPath(rel)) continue;
+    const code = stripTsComments(source);
+    if (!ADMIN_COST_IDENT.test(code)) continue;
+    // An identifier is fine when it names a SERVER-SUPPLIED value; a numeric
+    // rate literal beside it is the client owning the truth again.
+    if (ADMIN_RATE_LITERAL.test(code)) {
+      failures.push(
+        `G-5 ${rel}: a per-place cost/guard identifier sits next to a rate ` +
+        `literal (${ADMIN_RATE_LITERAL.exec(code)[0]}). The admin must not own ` +
+        `the cost model — read per_place_cost_usd / cost_guard_usd off the ` +
+        `server's cost_model and render what you are told. A client that ` +
+        `guesses is a client that owns the truth, and that is what made ` +
+        `Baltimore unstartable.`,
+      );
+    }
+  }
+  return failures;
+}
+
+export function checkMigration(modelId, migrationName, sql, allMigrations = []) {
+  const failures = [];
+  // issue #3526 P2-1 — several migrations legitimately define this trigger over
+  // time (the applied 20260808 original plus each repin), so "exactly one" would
+  // be wrong. What matters is that the NEWEST is found at all: the attack was an
+  // unqualified `CREATE OR REPLACE FUNCTION tg_…` in a later file, invisible to
+  // a `public.`-only discovery, which left the gate validating a stale earlier
+  // file while reporting PASS. TRIGGER_DEF_RE now finds both forms, so the
+  // newest really is the newest. Ambiguity that WOULD be silent is two
+  // definitions sharing one timestamp prefix — `.sort()` would pick arbitrarily.
+  const prefixes = allMigrations.map((f) => f.split("_")[0]);
+  const duplicatePrefix = prefixes.find((v, i) => prefixes.indexOf(v) !== i);
+  if (duplicatePrefix) {
+    failures.push(
+      `G-2: two migrations defining ${TRIGGER_FN} share the timestamp prefix ` +
+      `${duplicatePrefix}, so which one counts as newest is arbitrary. ` +
+      `Give the later one a strictly greater prefix.`,
+    );
+  }
   if (!migrationName) {
     return [
       `G-2: no migration under supabase/migrations/ defines ${TRIGGER_FN}. ` +
@@ -393,12 +503,21 @@ if (process.argv.includes("--self-test")) {
   }));
   const failures = checkSources(files, modelId);
 
+  // G-5 — the admin app, which is where the PRICE had its second owner.
+  const adminFiles = walk(join(ROOT, ADMIN_COST_DIR)).map((full) => ({
+    rel: relative(ROOT, full),
+    source: readFileSync(full, "utf8"),
+  }));
+  failures.push(...checkAdminCostOwnership(adminFiles));
+
+  const triggerFiles = triggerMigrations(MIGRATIONS_DIR);
   const migrationName = newestTriggerMigration(MIGRATIONS_DIR);
   failures.push(
     ...checkMigration(
       modelId,
       migrationName,
       migrationName ? readFileSync(join(MIGRATIONS_DIR, migrationName), "utf8") : "",
+      triggerFiles,
     ),
   );
 

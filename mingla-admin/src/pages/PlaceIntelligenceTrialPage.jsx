@@ -58,7 +58,7 @@ export function PlaceIntelligenceTrialPage({ onTabChange }) {
             Place Intelligence Trial
           </h1>
           <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-            Pick a city + sample size, score servable places with Gemini 2.5 Flash against
+            Pick a city + sample size, score servable places with Gemini against
             Mingla's 16 signals. Research-only — output never feeds card ranking.
           </p>
         </div>

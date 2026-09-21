@@ -12,7 +12,8 @@
  * tabs don't eat edge-fn quota or distort the ETA buffer.
  *
  * Gemini pricing reference (COMMS-0003):
- * https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-30).
+ * issue #3526 — pricing comes from the server's cost_model; this hook pins no
+ * model name or price card.
  *
  * Contract (SPEC §3 B.4):
  *   activeRuns        — runs currently active (pending|running|cancelling)

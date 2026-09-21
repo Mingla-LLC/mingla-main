@@ -183,10 +183,17 @@ export const PHOTO_AESTHETIC_TOOL = {
 // Prompt caching: 10% read multiplier on cached tokens (write = 1.25x base).
 // Prices are PER TOKEN (not per million) for arithmetic convenience.
 export const PRICING = {
-  HAIKU_4_5_INPUT_PER_TOKEN: 1.0 / 1_000_000,
-  HAIKU_4_5_OUTPUT_PER_TOKEN: 5.0 / 1_000_000,
-  HAIKU_4_5_CACHE_READ_PER_TOKEN: 0.1 / 1_000_000,
-  HAIKU_4_5_CACHE_WRITE_PER_TOKEN: 1.25 / 1_000_000,
+  // issue #3526 P4-1 — renamed off the model version. These carried the model
+  // version in the identifier, the identical sweep-blind spelling that hid the
+  // Gemini rates three lines below and would have cost a 2.5x silent
+  // under-report. Same trap, different vendor: when Anthropic retires Haiku 4.5
+  // a model-name sweep would not have found these either. Gate G-4 now fails
+  // the CLASS, not just the Gemini instance. Values unchanged; the model they
+  // price is named in MODEL_ID at run-place-intelligence-trial:73.
+  ANTHROPIC_INPUT_PER_TOKEN: 1.0 / 1_000_000,
+  ANTHROPIC_OUTPUT_PER_TOKEN: 5.0 / 1_000_000,
+  ANTHROPIC_CACHE_READ_PER_TOKEN: 0.1 / 1_000_000,
+  ANTHROPIC_CACHE_WRITE_PER_TOKEN: 1.25 / 1_000_000,
   BATCH_API_DISCOUNT: 0.5,
   // ORCH-0713 Gemini comparison (2026-05-05).
   // issue #3526 — these were named GEMINI_2_5_FLASH_* with UNDERSCORES, so a
@@ -218,10 +225,10 @@ export function computeCostUsd(args: {
   } = args;
   const discount = useBatchApi ? PRICING.BATCH_API_DISCOUNT : 1.0;
   const cost =
-    inputTokens * PRICING.HAIKU_4_5_INPUT_PER_TOKEN * discount +
-    outputTokens * PRICING.HAIKU_4_5_OUTPUT_PER_TOKEN * discount +
-    cacheReadTokens * PRICING.HAIKU_4_5_CACHE_READ_PER_TOKEN * discount +
-    cacheWriteTokens * PRICING.HAIKU_4_5_CACHE_WRITE_PER_TOKEN * discount;
+    inputTokens * PRICING.ANTHROPIC_INPUT_PER_TOKEN * discount +
+    outputTokens * PRICING.ANTHROPIC_OUTPUT_PER_TOKEN * discount +
+    cacheReadTokens * PRICING.ANTHROPIC_CACHE_READ_PER_TOKEN * discount +
+    cacheWriteTokens * PRICING.ANTHROPIC_CACHE_WRITE_PER_TOKEN * discount;
   return Math.round(cost * 1_000_000) / 1_000_000;
 }
 

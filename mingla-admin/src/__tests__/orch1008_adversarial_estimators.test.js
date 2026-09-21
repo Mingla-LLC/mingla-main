@@ -19,51 +19,50 @@ import {
 } from "../services/intelligenceCoverageEstimators.js";
 
 describe("ORCH-1008 adversarial — estimateRemainderCostUsd boundaries", () => {
+  // issue #3526 P0-1 — every case now passes the rate explicitly. The implicit
+  // $0.0040 these used to lean on was the defect (see the P0 in the #3526 test
+  // verdict); a missing rate is its own case at the bottom of this block.
   it("does not return a negative cost for any negative input", () => {
-    assert.equal(estimateRemainderCostUsd(-1), 0);
-    assert.equal(estimateRemainderCostUsd(-1_000_000), 0);
-    assert.equal(estimateRemainderCostUsd(Number.MIN_SAFE_INTEGER), 0);
+    assert.equal(estimateRemainderCostUsd(-1, 0.0089), 0);
+    assert.equal(estimateRemainderCostUsd(-1_000_000, 0.0089), 0);
+    assert.equal(estimateRemainderCostUsd(Number.MIN_SAFE_INTEGER, 0.0089), 0);
   });
 
   it("rejects Infinity / -Infinity / NaN", () => {
-    assert.equal(estimateRemainderCostUsd(Infinity), 0);
-    assert.equal(estimateRemainderCostUsd(-Infinity), 0);
-    assert.equal(estimateRemainderCostUsd(NaN), 0);
+    assert.equal(estimateRemainderCostUsd(Infinity, 0.0089), 0);
+    assert.equal(estimateRemainderCostUsd(-Infinity, 0.0089), 0);
+    assert.equal(estimateRemainderCostUsd(NaN, 0.0089), 0);
   });
 
   it("rejects non-numeric inputs (string, object, null) without throwing", () => {
-    assert.equal(estimateRemainderCostUsd("100"), 0);
-    assert.equal(estimateRemainderCostUsd({}), 0);
-    assert.equal(estimateRemainderCostUsd(null), 0);
+    assert.equal(estimateRemainderCostUsd("100", 0.0089), 0);
+    assert.equal(estimateRemainderCostUsd({}, 0.0089), 0);
+    assert.equal(estimateRemainderCostUsd(null, 0.0089), 0);
   });
 
   it("rounds to 4 decimal places (no floating-point smear)", () => {
-    // 11_344 * 0.0040 = 45.376 exactly; but 0.1 * 3 = 0.30000000000000004 territory
-    // 1234 * 0.0040 = 4.936
-    const v = estimateRemainderCostUsd(1234);
-    assert.equal(v, 4.936);
+    // 1234 * 0.0089 = 10.9826
+    assert.equal(estimateRemainderCostUsd(1234, 0.0089), 10.9826);
     // 1_234_567 places — large but realistic upper bound on city count.
-    // 1234567 * 0.0040 = 4938.268 — must not be 4938.2680000000005
-    const big = estimateRemainderCostUsd(1_234_567);
-    assert.equal(big, 4938.268);
-    // Verify the toFixed(4) result is a finite number
+    const big = estimateRemainderCostUsd(1_234_567, 0.0089);
+    assert.equal(big, 10987.6463);
     assert.ok(Number.isFinite(big));
   });
 
-  it("perPlace override is respected and clamped on bad rates", () => {
-    // Override path — operator could pass a bad rate via prop drift
-    assert.equal(estimateRemainderCostUsd(100, 0), 0);
-    // Negative perPlace propagates negative — this is an UNGUARDED case.
-    // Documenting current behavior; the modal currently displays this to the
-    // operator. If this test starts failing because the implementation now
-    // clamps negative perPlace, this test should be updated to assert
-    // clamping rather than the negative-passthrough below.
-    const neg = estimateRemainderCostUsd(100, -0.001);
-    assert.equal(neg, -0.1, "negative perPlace currently passes through");
+  // issue #3526 P0-1 — the old version of this case DOCUMENTED that a negative
+  // rate "currently passes through" and showed the operator a negative cost.
+  // A cost model that can produce a negative price is not a cost model; the
+  // function refuses the rate outright now.
+  it("refuses a missing, zero or negative rate rather than inventing one", () => {
+    assert.equal(estimateRemainderCostUsd(100), null);
+    assert.equal(estimateRemainderCostUsd(100, 0), null);
+    assert.equal(estimateRemainderCostUsd(100, -0.001), null);
+    assert.equal(estimateRemainderCostUsd(100, "0.0089"), null);
+    assert.equal(estimateRemainderCostUsd(100, null), null);
   });
 
   it("zero remainingCount returns 0", () => {
-    assert.equal(estimateRemainderCostUsd(0), 0);
+    assert.equal(estimateRemainderCostUsd(0, 0.0089), 0);
     assert.equal(estimateRemainderCostUsd(0, 0.999), 0);
   });
 });

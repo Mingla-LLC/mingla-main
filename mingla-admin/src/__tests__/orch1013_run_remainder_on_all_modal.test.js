@@ -40,8 +40,11 @@ describe("ORCH-1013 Finding B — RunRemainderOnAllConfirmModal contract", () =>
 
   it("renders the typed-input gate only when totalCost > threshold", () => {
     assert.ok(
-      src.includes("requiresTypedConfirm = totalCost > COST_REVIEW_THRESHOLD_USD"),
-      "must derive requiresTypedConfirm from totalCost > $10",
+      src.includes("requiresTypedConfirm = !costUnknown && totalCost > COST_REVIEW_THRESHOLD_USD"),
+      // issue #3526 — an unknown cost can never satisfy a `>` comparison
+      // meaningfully, so the gate is explicit about it rather than letting
+      // `null > 10` quietly evaluate false and wave the run through.
+      "must derive requiresTypedConfirm from a KNOWN totalCost > $10",
     );
   });
 
@@ -67,8 +70,10 @@ describe("ORCH-1013 Finding B — RunRemainderOnAllConfirmModal contract", () =>
       "body must render one row per candidate city",
     );
     assert.ok(
-      src.includes("remaining_count") && src.includes("perPlaceCostUsd"),
-      "each row must show remaining_count and per-city cost",
+      src.includes("remaining_count") && src.includes("estimateCostUsd(c.remaining_count, costModel)"),
+      // issue #3526 P0-1 — per-city cost is priced from the SERVER's model, not
+      // a `perPlaceCostUsd` prop defaulted to a stale client constant.
+      "each row must show remaining_count and a server-priced per-city cost",
     );
   });
 
@@ -79,10 +84,18 @@ describe("ORCH-1013 Finding B — RunRemainderOnAllConfirmModal contract", () =>
     );
   });
 
-  it("cites Gemini pricing URL (COMMS-0003)", () => {
+  it("cites the pricing URL the SERVER supplies (COMMS-0003)", () => {
+    // issue #3526 — COMMS-0003 wants the provider doc cited; it does not want
+    // it frozen in the client. The URL used to be a hardcoded
+    // `ai.google.dev/pricing/gemini-2-5-flash`, a third spelling of the retired
+    // model that survived every sweep, rendered on the spend screen.
     assert.ok(
-      src.includes("ai.google.dev/pricing/gemini-2-5-flash"),
-      "Gemini pricing URL must be linked inline per COMMS-0003",
+      /href=\{costModel\?\.pricingReferenceUrl/.test(src),
+      "the pricing href must come from the server's cost model",
+    );
+    assert.ok(
+      !/gemini-\d+[-.]\d+-flash/i.test(src),
+      "no model-version spelling may be hardcoded in this modal",
     );
   });
 

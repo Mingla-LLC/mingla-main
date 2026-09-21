@@ -1312,6 +1312,12 @@ async function callGeminiOnce(
       temperature: GEMINI_TEMPERATURE,
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA,
+      // issue #3526 P1-1 — this public tool sent NO thinking config. On a
+      // Gemini 3 model an absent thinking level defaults to `medium`, billed as
+      // OUTPUT at $3.75/1M, and none of the four growth tools records cost
+      // anywhere — so the spend would have been invisible. It is also a latency
+      // risk: GROUNDED_CALL_TIMEOUT_MS was sized for a non-thinking model.
+      thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
     },
   };
   let response: Response;
@@ -1794,6 +1800,12 @@ async function callCompetitionOnce(
       // review themes + a head-to-head scorecard + where-you-win.
       maxOutputTokens: 8192,
       temperature: GEMINI_TEMPERATURE,
+      // issue #3526 P1-1 — this public tool sent NO thinking config. On a
+      // Gemini 3 model an absent thinking level defaults to `medium`, billed as
+      // OUTPUT at $3.75/1M, and none of the four growth tools records cost
+      // anywhere — so the spend would have been invisible. It is also a latency
+      // risk: GROUNDED_CALL_TIMEOUT_MS was sized for a non-thinking model.
+      thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
     },
   };
   // ISSUE-1734 P-24: grounded-pass cap. This stage is BEST-EFFORT — an abort

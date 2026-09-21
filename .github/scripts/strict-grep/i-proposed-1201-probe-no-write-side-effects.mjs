@@ -41,6 +41,24 @@ if (!existsSync(indexPath)) {
 }
 const code = stripComments(readFileSync(indexPath, "utf8"));
 
+// issue #3526 — resolve GEMINI_API_BASE to a real host before honouring any
+// allowance that leans on its NAME. If the constant ever pointed somewhere
+// else, the allowance evaporates and every POST in the probe fails this gate.
+const GEMINI_HOST_OK = (() => {
+  const ownerPath = join(root, "supabase/functions/_shared/geminiModel.ts");
+  if (!existsSync(ownerPath)) return false;
+  const owner = stripComments(readFileSync(ownerPath, "utf8"));
+  const m = /export const GEMINI_API_BASE\s*=\s*["'`]([^"'`]+)["'`]/.exec(owner);
+  return Boolean(m) && /^https:\/\/generativelanguage\.googleapis\.com\//.test(m[1]);
+})();
+if (!GEMINI_HOST_OK) {
+  failures.push(
+    "supabase/functions/_shared/geminiModel.ts: GEMINI_API_BASE does not resolve " +
+    "to https://generativelanguage.googleapis.com/ — the probe's :generateContent " +
+    "allowance is host-scoped through that constant and is now withdrawn.",
+  );
+}
+
 // Find fetch(...) call args that include method: "POST" and a vendor URL that
 // is NOT google.serper.dev. We scan each `timedFetch(` / `fetch(` invocation.
 const callRe = /\b(?:timedFetch|fetch)\s*\(\s*([^,]+),([\s\S]*?)\)\s*;/g;
@@ -52,9 +70,32 @@ while ((m = callRe.exec(code)) !== null) {
   if (!isPost) continue;
   // allowed: serper search
   if (/serper\.dev/.test(urlArg)) continue;
-  // allowed (issue #3526): the Gemini liveness generation. NARROW — the URL
-  // must name :generateContent. Any other Gemini POST still fails.
-  if (/:generateContent/.test(urlArg)) continue;
+  // allowed (issue #3526): the Gemini liveness generation.
+  //
+  // The FIRST version of this allowance was `/:generateContent/` — a bare
+  // substring test on the URL expression with NO host constraint, unlike the
+  // Serper allowance directly above it. It admitted
+  //   fetch("https://api.some-vendor.example/v1/accounts/delete?tag=:generateContent",
+  //         { method: "POST", body: JSON.stringify({ purge: true }) })
+  // and a `#:generateContent` fragment on any host: two mutating POSTs to
+  // arbitrary vendors, waved through by a gate whose entire job is to stop
+  // exactly that. Proven end-to-end. Host-scoped now, like Serper.
+  //
+  // Still NARROW within the Gemini host: `cachedContents`, `files:upload`,
+  // `tunedModels`, `batches` and `:streamGenerateContent` contain no
+  // `:generateContent` token and remain refused.
+  // The probe builds its URL from GEMINI_API_BASE (issue #3526's single source),
+  // so the host is not a literal in this expression. The gate RESOLVES the
+  // constant rather than trusting the name: geminiApiBaseHost() below reads
+  // _shared/geminiModel.ts and fails closed unless GEMINI_API_BASE really is the
+  // Gemini host. Either spelling is accepted; neither is assumed.
+  if (
+    GEMINI_HOST_OK &&
+    /(generativelanguage\.googleapis\.com|GEMINI_API_BASE)[\s\S]{0,160}:generateContent/
+      .test(urlArg)
+  ) {
+    continue;
+  }
   // allowed: cloudinary destroy lives in _shared, not here; supabase writes are not fetch.
   failures.push(
     `api-health-probe/index.ts: POST vendor fetch to ${urlArg.trim()} — synthetic probes must be read-only (only Serper search + Stripe/Paystack SDK reads allowed).`,
