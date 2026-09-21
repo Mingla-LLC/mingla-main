@@ -521,8 +521,25 @@ BEGIN
   IF v->>'outcome'<>'released' OR (v->>'refundsReleased')::int<>1 THEN
     RAISE EXCEPTION 'evidence hold 1: complete evidence did not release the hold: %',v;
   END IF;
-  IF EXISTS(SELECT 1 FROM public.source_refunds WHERE source_type='ticket_checkout_session' AND source_id=a)
-     OR EXISTS(SELECT 1 FROM public.source_refund_ledger_allocations WHERE refund_id=v_refund_a)
+  -- #1221's money ledger is APPEND-ONLY: issue_1221_enforce_allocation_monotonic()
+  -- rejects every DELETE on source_refund_ledger_allocations and allows only
+  -- prepared -> posted, and refund_id is ON DELETE RESTRICT. The release
+  -- therefore RETIRES the obligation in place — reconciled, ops-resolved, an
+  -- appended ops_resolved event, no lease, no retry — and leaves the three
+  -- prepared allocations exactly as they were: prepared, never posted. Make the
+  -- release delete either of them again and this block fails on `append_only`.
+  IF NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE id=v_refund_a
+       AND financial_state='reconciled' AND ops_status='resolved'
+       AND last_error_code='sale_completed_no_refund_due'
+       AND buyer_refund_processed_cents=0 AND provider_refund_id IS NULL
+       AND lease_owner IS NULL AND next_retry_at IS NULL
+       AND attention_completed_at IS NOT NULL AND attention_expires_at IS NULL)
+     OR (SELECT count(*) FROM public.source_refund_ledger_allocations
+       WHERE refund_id=v_refund_a AND state='prepared'
+         AND payout_release_id IS NULL AND payout_ledger_adjustment_id IS NULL)<>3
+     OR NOT EXISTS(SELECT 1 FROM public.source_refund_events WHERE refund_id=v_refund_a
+       AND event_type='ops_resolved' AND safe_reason_code='sale_completed_no_refund_due'
+       AND to_state='reconciled' AND amount_observed_cents=0)
      OR NOT EXISTS(SELECT 1 FROM public.ticket_checkout_sessions WHERE id=a
        AND status='processing_payment' AND reversal_state='none' AND failed_at IS NULL)
      OR NOT EXISTS(SELECT 1 FROM public.ticket_checkout_provider_attempts
@@ -532,6 +549,14 @@ BEGIN
      OR NOT EXISTS(SELECT 1 FROM public.audit_log WHERE target_type='ticket_checkout_session'
        AND target_id=a::text AND action='ticket_checkout.evidence_hold_released') THEN
     RAISE EXCEPTION 'evidence hold 1: release left refund, session, attempt, outbox or audit wrong';
+  END IF;
+  -- A retired obligation is terminal for the worker: claim_source_refund_operations
+  -- selects only `financial_state <> 'reconciled'`, so the sweep can never pick
+  -- it up and refund a buyer who now holds a ticket.
+  PERFORM * FROM public.claim_source_refund_operations('evidence-hold-retired',25,now());
+  IF EXISTS(SELECT 1 FROM public.source_refunds WHERE id=v_refund_a
+      AND lease_owner='evidence-hold-retired') THEN
+    RAISE EXCEPTION 'evidence hold 1: a retired refund was claimed by the worker';
   END IF;
   IF public.issue_2079_verify_ticket_paid_identity(a,'stripe','pi_evidenceA',NULL,'ch_evidenceA',
        'acct_evidencehold')->>'outcome'<>'verified' THEN
@@ -555,7 +580,9 @@ BEGIN
   -- The revocation worker's handoff no longer opens an operator refund for it.
   IF public.issue_2168_handoff_revocation_attention((SELECT id FROM public.checkout_sale_revocation_outbox
        WHERE subject_type='ticket_checkout_session' AND subject_id=a LIMIT 1))<>'already_owned'
-     OR EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=a) THEN
+     OR (SELECT count(*) FROM public.source_refunds WHERE source_id=a)<>1
+     OR EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=a
+       AND financial_state<>'reconciled') THEN
     RAISE EXCEPTION 'evidence hold 1: handoff opened a refund for a completed sale';
   END IF;
 
@@ -572,8 +599,13 @@ BEGIN
     RAISE EXCEPTION 'evidence hold 2: handoff duplicated an owned refund';
   END IF;
   v:=pg_temp.evidence_hold_release(b,'pi_evidenceB','ch_evidenceB');
-  IF v->>'outcome'<>'released' OR EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=b) THEN
-    RAISE EXCEPTION 'evidence hold 2: a queued, unstarted refund was not released: %',v;
+  IF v->>'outcome'<>'released'
+     OR NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=b
+       AND financial_state='reconciled' AND buyer_refund_processed_cents=0)
+     OR NOT EXISTS(SELECT 1 FROM public.source_refund_ledger_allocations l
+       JOIN public.source_refunds r ON r.id=l.refund_id
+       WHERE r.source_id=b AND l.state='prepared') THEN
+    RAISE EXCEPTION 'evidence hold 2: a queued, unstarted refund was not retired: %',v;
   END IF;
 
   -- ── 3. The refund worker got there first ──────────────────────────────────
@@ -642,6 +674,27 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=e AND buyer_state='queued'
        AND buyer_notice_code='sale_unavailable') THEN
     RAISE EXCEPTION 'evidence hold 5: the queued refund lost its notice reason';
+  END IF;
+  -- MONEY, PINNED. Seth ruled on 2026-09-21 that a ticket checkout refunded
+  -- because the sale could not be completed KEEPS Mingla's platform fee: the
+  -- buyer gets their payment minus our fee. The figures below are what the code
+  -- ACTUALLY does today, and they are the opposite — full refund to the buyer,
+  -- fee absorbed by Mingla. Both refund creators live in the already-merged
+  -- 20270411002079, not in this issue, so #2079 does not change them; this
+  -- assertion is the exact before-image so the correcting edit is deliberate
+  -- and visible, in either direction. The session is 1000 cents with a 100-cent
+  -- application fee. Under the ruling the buyer figure becomes 900 and the
+  -- absorption 0; under today's code it is 1000 and 100. Change the maths
+  -- without changing this line and the block fails.
+  IF NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=e
+       AND refund_kind='late_payment_no_value'
+       AND original_charge_cents=1000
+       AND original_application_fee_cents=100
+       AND buyer_refund_requested_cents=1000      -- INHERITED: full refund
+       AND platform_fee_absorption_cents=100      -- INHERITED: fee absorbed
+       AND fee_reversal_required_cents=100
+       AND organizer_refund_liability_cents=900) THEN
+    RAISE EXCEPTION 'evidence hold 5: the inherited sale_unavailable fee maths changed — see the 2026-09-21 keep-the-fee ruling before editing';
   END IF;
 
   -- ── 6. No longer purchasable (ticket type switched off) ───────────────────

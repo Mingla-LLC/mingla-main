@@ -24,10 +24,12 @@
 --   * the sale is still open for this buyer: the event is sellable, the
 --     admission epoch is unchanged, and the same authorization finalize uses
 --     (access, ticket availability, capacity, chosen days) still passes.
--- It then removes the never-started refund rows (with an audit row), returns
--- the session to processing_payment, marks the revocation rows sale_completed
--- and answers `released`. The caller's ordinary verify + finalize then issues
--- the tickets through the one existing finalize owner.
+-- It then RETIRES the never-started refund rows in place — `financial_state`
+-- becomes 'reconciled' with an appended `ops_resolved` event, never a DELETE,
+-- because #1221's money ledger is append-only — returns the session to
+-- processing_payment, marks the revocation rows sale_completed and answers
+-- `released`. The caller's ordinary verify + finalize then issues the tickets
+-- through the one existing finalize owner.
 --
 -- Everything else keeps the refund:
 --   * sold out / no longer purchasable -> `refund_kept` + the held refund is
@@ -239,12 +241,47 @@ BEGIN
     v_sale_open:=false;
   END;
   IF NOT v_sale_open THEN
+    -- MONEY RULE (Seth, 2026-09-21): on a ticket checkout refunded because the
+    -- sale could not be completed, Mingla KEEPS its platform fee — the buyer is
+    -- refunded their payment minus our fee, and Mingla does not absorb it. This
+    -- matches his 2026-09-20 ruling on refunds caused by our own bug, and is
+    -- the OPPOSITE of #3391, where a venue cancelling a paid booking makes the
+    -- guest whole and Mingla absorbs the fee; that stays as it is.
+    --
+    -- This branch only tags the reason the buyer is shown. The refund's money
+    -- was already decided by whichever creator opened it — both of them on main
+    -- in 20270411002079: buyer_refund_requested_cents = total_cents and
+    -- platform_fee_absorption_cents = the application fee, i.e. today the fee
+    -- is ABSORBED, not kept. That does not match the rule above, and this issue
+    -- deliberately does not change it: the maths is inherited, not introduced
+    -- here, and a money rule does not get smuggled in through a notice tag. The
+    -- #2079 SQL suite pins the inherited figures so the next edit to them has
+    -- to be deliberate; changing them is its own issue.
     UPDATE public.source_refunds SET buyer_notice_code='sale_unavailable',updated_at=now()
       WHERE id=ANY(v_refund_ids) AND refund_kind='late_payment_no_value';
     RETURN jsonb_build_object('outcome','refund_kept','reason','sale_unavailable');
   END IF;
 
   -- 6. Release: the refunds never started, so nothing is owed back.
+  --
+  -- The obligation is RETIRED IN PLACE, never deleted. #1221 makes the money
+  -- ledger append-only: issue_1221_enforce_allocation_monotonic() rejects every
+  -- DELETE on source_refund_ledger_allocations and allows only
+  -- prepared -> posted, and source_refund_ledger_allocations.refund_id is
+  -- ON DELETE RESTRICT, so the source_refunds row cannot go either. Both
+  -- creators of a ticket late refund (issue_2079_capture_ticket_paid_identity_
+  -- attention and issue_1930_mint_ticket_late_reversal) write the three
+  -- prepared allocations at creation, so EVERY hold this function can see has
+  -- them. An append-only ledger is the invariant; the release is what bends.
+  --
+  -- So: append the compensating record #1221 already has a vocabulary for
+  -- (`ops_resolved`), then move the refund to `financial_state='reconciled'`.
+  -- That is the exact predicate claim_source_refund_operations uses to decide
+  -- what is still open (`WHERE financial_state <> 'reconciled'`), and the exact
+  -- predicate every payout arm uses to decide what still blocks a release, so
+  -- one honest value makes the obligation terminal for both. The prepared
+  -- allocations stay exactly as they are: prepared, never posted, which is what
+  -- actually happened.
   INSERT INTO public.audit_log(user_id,brand_id,event_id,action,target_type,target_id,before,after)
   VALUES(NULL,v_session.brand_id,v_session.event_id,'ticket_checkout.evidence_hold_released',
     'ticket_checkout_session',v_session.id::text,
@@ -252,9 +289,26 @@ BEGIN
       'attemptState',v_attempt.state,'refunds',v_refund_snapshot),
     jsonb_build_object('status','processing_payment','reversalState','none',
       'provider',p_provider,'paymentReference',p_payment_reference,
-      'amountCents',p_amount_cents,'currency',upper(p_currency)));
-  DELETE FROM public.source_refund_ledger_allocations WHERE refund_id=ANY(v_refund_ids);
-  DELETE FROM public.source_refunds WHERE id=ANY(v_refund_ids);
+      'amountCents',p_amount_cents,'currency',upper(p_currency),
+      'refundsRetired',COALESCE(array_length(v_refund_ids,1),0)));
+  INSERT INTO public.source_refund_events(refund_id,event_key,event_type,from_state,to_state,
+    amount_observed_cents,safe_reason_code,actor_type,safe_payload)
+  SELECT r.id,'evidence-hold-released:'||r.id,'ops_resolved',r.financial_state,'reconciled',
+    0,'sale_completed_no_refund_due','system',
+    jsonb_build_object('checkoutSessionId',v_session.id,'provider',p_provider)
+  FROM public.source_refunds r WHERE r.id=ANY(v_refund_ids)
+  ON CONFLICT(event_key) DO NOTHING;
+  UPDATE public.source_refunds SET
+    financial_state='reconciled',
+    ops_status='resolved',
+    ops_note='Sale completed after a missing-evidence hold; no refund is owed.',
+    last_error_code='sale_completed_no_refund_due',
+    last_error_public=NULL,
+    lease_owner=NULL,leased_at=NULL,next_retry_at=NULL,
+    attention_completed_at=COALESCE(attention_completed_at,now()),
+    attention_expires_at=NULL,
+    updated_at=now()
+  WHERE id=ANY(v_refund_ids);
   UPDATE public.ticket_checkout_sessions SET status='processing_payment',
     reversal_state='none',failed_at=NULL,updated_at=now()
     WHERE id=v_session.id;
@@ -263,6 +317,9 @@ BEGIN
   UPDATE public.checkout_sale_revocation_outbox SET state='sale_completed',
     lease_owner=NULL,leased_at=NULL,next_retry_at=NULL,last_error_code=NULL,updated_at=now()
     WHERE subject_type='ticket_checkout_session' AND subject_id=v_session.id;
+  -- `refundsReleased` counts the obligations retired by this call. Nothing is
+  -- deleted, so a replay finds the session no longer held and answers
+  -- `not_held` without touching them again.
   RETURN jsonb_build_object('outcome','released',
     'refundsReleased',COALESCE(array_length(v_refund_ids,1),0));
 END $$;

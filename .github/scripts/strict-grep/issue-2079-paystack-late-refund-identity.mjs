@@ -48,10 +48,20 @@ const check = (s) => {
   if (!s.evidence.includes("RETURN 'already_owned';")) {
     fail("#2168 handoff can open a second refund for money that already has an owner");
   }
+  // #1221's money ledger is append-only (issue_1221_enforce_allocation_monotonic
+  // rejects every DELETE, and source_refund_ledger_allocations.refund_id is
+  // ON DELETE RESTRICT). The release retires the obligation in place.
+  if (/\bDELETE\s+FROM\s+public\.source_refund/i.test(s.evidence)) {
+    fail("the release deletes a refund or a ledger allocation; #1221's ledger is append-only");
+  }
+  for (const token of ["financial_state='reconciled'", "ops_status='resolved'", "last_error_code='sale_completed_no_refund_due'", "'ops_resolved'", "INSERT INTO public.source_refund_events("]) {
+    if (!s.evidence.includes(token)) fail(`retirement missing ${token}`);
+  }
+  if (/buyer_state='processed'/.test(s.evidence)) fail("the release claims a refund was processed");
   const guardLoop = s.evidence.indexOf("FOR v_refund IN");
-  const refundDelete = s.evidence.indexOf("DELETE FROM public.source_refunds", guardLoop);
-  if (guardLoop < 0 || refundDelete < guardLoop) fail("refunds are deleted before they are proven untouched");
-  const guards = s.evidence.slice(guardLoop, refundDelete);
+  const refundRetire = s.evidence.indexOf("UPDATE public.source_refunds SET\n    financial_state='reconciled'", guardLoop);
+  if (guardLoop < 0 || refundRetire < guardLoop) fail("refunds are retired before they are proven untouched");
+  const guards = s.evidence.slice(guardLoop, refundRetire);
   for (const token of ["v_refund.provider_refund_id IS NOT NULL", "v_refund.buyer_refund_processed_cents<>0", "v_refund.lease_owner IS NOT NULL", "public.source_refund_attempts", "public.source_refund_events", "public.payment_webhook_events", "'refund_in_progress'"]) {
     if (!guards.includes(token)) fail(`refund guard missing ${token}`);
   }
@@ -88,6 +98,8 @@ if (process.argv.includes("--self-test")) {
     ["evidence", "RETURN 'already_owned';", "RETURN 'attention_created';"],
     ["evidence", "v_refund.provider_refund_id IS NOT NULL", "false"],
     ["evidence", "v_refund.lease_owner IS NOT NULL", "false"],
+    ["evidence", "UPDATE public.source_refunds SET\n    financial_state='reconciled'", "DELETE FROM public.source_refunds WHERE true; UPDATE public.source_refunds SET\n    financial_state='pending'"],
+    ["evidence", "INSERT INTO public.source_refund_events(", "INSERT INTO public.source_refund_events_removed("],
     ["confirm", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],
     ["webhook", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],
     ["paystackWebhook", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],

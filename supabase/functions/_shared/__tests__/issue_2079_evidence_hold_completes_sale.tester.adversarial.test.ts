@@ -407,10 +407,21 @@ Deno.test("#2079 ADV the release owner cannot cancel a refund anything has touch
   const migration = Deno.readTextFileSync(
     "supabase/migrations/20270711130000_ticket_evidence_hold_completes_sale.sql",
   );
+  // #1221's money ledger is append-only. The release must RETIRE the obligation
+  // in place and must never delete a refund or one of its ledger allocations —
+  // the trigger would refuse it anyway (`append_only`), and the FK is
+  // ON DELETE RESTRICT, so a delete is a red CI job, not a silent bug.
+  assert(
+    !/\bDELETE\s+FROM\s+public\.source_refund/i.test(migration),
+    "the release deletes a refund or a ledger allocation; #1221's ledger is append-only",
+  );
   const loop = migration.indexOf("FOR v_refund IN");
-  const del = migration.indexOf("DELETE FROM public.source_refunds", loop);
-  assert(loop >= 0 && del > loop, "refunds are deleted before they are checked");
-  const guards = migration.slice(loop, del);
+  const retire = migration.indexOf(
+    "UPDATE public.source_refunds SET\n    financial_state='reconciled'",
+    loop,
+  );
+  assert(loop >= 0 && retire > loop, "refunds are retired before they are checked");
+  const guards = migration.slice(loop, retire);
   for (
     const guard of [
       "v_refund.provider_refund_id IS NOT NULL",
@@ -431,6 +442,28 @@ Deno.test("#2079 ADV the release owner cannot cancel a refund anything has touch
     guards.includes("'refund_in_progress'"),
     "a touched refund must be kept, not released",
   );
+  // The retirement itself is terminal for the worker and honest about money.
+  const retirement = migration.slice(retire, retire + 800);
+  for (
+    const field of [
+      "financial_state='reconciled'",
+      "ops_status='resolved'",
+      "last_error_code='sale_completed_no_refund_due'",
+      "lease_owner=NULL",
+      "next_retry_at=NULL",
+      "attention_expires_at=NULL",
+    ]
+  ) {
+    assert(retirement.includes(field), `retirement missing ${field}`);
+  }
+  // It must never claim money moved.
+  assert(!/buyer_state='processed'/.test(migration));
+  assert(!/buyer_refund_processed_cents\s*=\s*[1-9]/.test(migration));
+  assert(!/provider_refund_id\s*=\s*'/.test(migration));
+  // And it appends #1221's own compensating record rather than rewriting one.
+  assert(migration.includes("INSERT INTO public.source_refund_events("));
+  assert(migration.includes("'ops_resolved'"));
+  assert(migration.includes("'sale_completed_no_refund_due'"));
   // The revocation rows land in a state the claim RPC never re-claims, so no
   // worker can neutralize a sale that has completed.
   assert(migration.includes("state='sale_completed'"));
