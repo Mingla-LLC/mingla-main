@@ -20,25 +20,73 @@ const partnerBinding =
 Deno.test("#2019 tester: proposal and confirmation authorization ordering is fail-closed", async () => {
   const chat = await read("agent-chat/index.ts");
   const confirm = await read("agent-confirm-action/index.ts");
-  const proposalAuth = chat.indexOf(
-    "await authorizeAgentTool(tool, gemini.toolCall.args",
+  // [TEST-MOD-APPROVED #3429] Two changes, and only two.
+  //
+  // (1) ANCHOR TO THE REFLOWED SHAPE. This searched for the one-line literal
+  //     `await authorizeAgentTool(tool, gemini.toolCall.args`. `deno fmt`
+  //     wrapped that call across six lines, so indexOf returned -1 — and the
+  //     assertion died on its FIRST conjunct while printing the ORDERING
+  //     message. A reformat and a security inversion were indistinguishable in
+  //     the output, which trains a reader to assume the literal. The
+  //     strict-grep guard was moved to a reflow-tolerant pattern in REWORK-1;
+  //     this now matches it.
+  //
+  // (2) SPLIT THE ASSERTION, so each failure mode says what happened.
+  //
+  // The ordering check is an INTERLEAVE rather than "first persist at or after
+  // the authorize". The old forward-only indexOf could not fail: with a persist
+  // moved above its authorize, the search simply found the next one below and
+  // passed. Pairing each authorize with the persist that follows it catches
+  // that, which is the mutation this test exists to survive.
+  //
+  // KNOWN AND DELIBERATELY OUT OF SCOPE: `terminalizeProposalForTaskReplacement`
+  // updates `agent_pending_actions` at line ~1694, BEFORE the authorize at
+  // ~1718. It cancels a PREVIOUSLY AUTHORIZED proposal for task replacement,
+  // scoped `.eq("user_id", userId)`, and does not persist the new one, so the
+  // invariant holds. The old forward-only search could never have seen it.
+  // Recorded on #3429 rather than silently absorbed here.
+  const authPattern = /await\s+authorizeAgentTool\(\s*tool\s*,/gs;
+  const authIndices = [...chat.matchAll(authPattern)].map((m) => m.index ?? -1);
+  assert(
+    authIndices.length > 0,
+    "agent-chat authorize site NOT FOUND — the call's shape changed (deno fmt?). " +
+      "This says nothing about ordering; re-anchor the pattern before reading it as one.",
   );
-  const pendingInsert = chat.indexOf(
-    '.from("agent_pending_actions")',
-    proposalAuth,
+  const persistIndices = [...chat.matchAll(/return await commitPendingTurn\(\{/gs)]
+    .map((m) => m.index ?? -1);
+  assert(
+    persistIndices.length === authIndices.length,
+    `agent-chat has ${authIndices.length} authorize site(s) but ` +
+      `${persistIndices.length} proposal-persist site(s) — every persisted proposal ` +
+      "needs its own authorization immediately before it.",
+  );
+  for (let i = 0; i < authIndices.length; i++) {
+    assert(
+      authIndices[i] < persistIndices[i] &&
+        (i + 1 === authIndices.length || persistIndices[i] < authIndices[i + 1]),
+      "PROPOSAL PERSISTED BEFORE AUTHORIZATION: persist site " + (i + 1) +
+        " is not preceded by its own authorizeAgentTool call. Runtime proof of the " +
+        "correct order (#3429, real stack): biz_role_rank + " +
+        "biz_brand_effective_rank_for_caller, then POST /rest/v1/agent_pending_actions.",
+    );
+  }
+  const finalArgs = confirm.indexOf("const finalArgs");
+  const confirmAuthMatch = /await\s+authorizeAgentTool\(\s*tool\s*,\s*finalArgs/s
+    .exec(confirm);
+  assert(
+    finalArgs > 0,
+    "agent-confirm-action: `const finalArgs` NOT FOUND — shape changed, not an ordering claim.",
   );
   assert(
-    proposalAuth > 0 && pendingInsert > proposalAuth,
-    "proposal persisted before authorization",
+    confirmAuthMatch !== null,
+    "agent-confirm-action authorize site NOT FOUND — shape changed, not an ordering claim.",
   );
-  const finalArgs = confirm.indexOf("const finalArgs");
-  const confirmAuth = confirm.indexOf(
-    "await authorizeAgentTool(tool, finalArgs",
-  );
+  const confirmAuth = (confirmAuthMatch as RegExpExecArray).index;
   const executing = confirm.indexOf('status: "executing"', confirmAuth);
   assert(
-    finalArgs > 0 && confirmAuth > finalArgs && executing > confirmAuth,
-    "final args not authorized before executing",
+    confirmAuth > finalArgs && executing > confirmAuth,
+    "FINAL ARGS NOT AUTHORIZED BEFORE EXECUTING: the confirm path marks the action " +
+      "executing without authorizing the arguments it is about to run.",
   );
 });
 
