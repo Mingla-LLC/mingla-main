@@ -1520,7 +1520,7 @@ export async function synthesizeBrief(
   try {
     response = await fetchWithTimeout(
       fetcher,
-      // issue #3526 — was a hardcoded `gemini-2.5-flash` literal that ignored
+      // issue #3526 — was a hardcoded 2.5 Flash model literal that ignored
       // GEMINI_MODEL_ID above, so repinning the constant alone left this worker
       // calling the retired model. Built from the shared constants now.
       `${GEMINI_API_BASE}/${GEMINI_MODEL_ID}:generateContent?key=${

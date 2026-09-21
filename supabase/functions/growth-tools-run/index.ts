@@ -17,7 +17,8 @@
 //        redirects followed, private hosts rejected) and extracts title /
 //        meta description / og:image / visible text,
 //     5. best-effort place_pool match (+ top place_scores score),
-//     6. grades via Gemini (gemini-2.5-flash, strict JSON schema, one retry),
+//     6. grades via Gemini (model id from _shared/geminiModel.ts, strict JSON
+//        schema, one retry),
 //     7. COMPETITION PASS (best-effort — NEVER fails the run): up to 4 pool
 //        competitors (same city + primary_type, ranked by top place_scores),
 //        up to 3 PARALLEL competitor homepage peeks (5s / 100KB / 8k chars),

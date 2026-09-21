@@ -45,6 +45,7 @@ import {
   type DepletionObs,
   evaluateBalanceForSignal,
   evaluateCronJobHealth,
+  geminiProbeOk,
   type HealthStatus,
   indicatorToStatus,
   matchClassBDepletion,
@@ -225,7 +226,7 @@ async function probeGemini(): Promise<ProbeResult> {
       | null;
     // The verdict comes from the GENERATION call, not a list call. A 200 that
     // carries no candidate array is a failure (#1620 bodyVerdict discipline).
-    const ok = res.ok && Array.isArray(body?.candidates);
+    const ok = geminiProbeOk(res.ok, body);
     const detail: Record<string, unknown> = {};
     if (!ok) {
       // issue #3526 M-5 — keep the provider's own words next to the status.

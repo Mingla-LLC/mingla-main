@@ -94,7 +94,7 @@ Deno.test("selectFailedRowsForRetry selects retryable rows and preserves source 
     cityId: "city-1",
     rows: selection.selectedRows,
     promptVersion: "v4",
-    model: "gemini-2.5-flash",
+    model: "gemini-3.6-flash",
   });
 
   assertEquals(retryRows.map((row) => row.source_trial_run_id), [

@@ -25,7 +25,7 @@ import {
 
 const EVAL_AT = "2026-05-30T19:00:00.000Z";
 const PROMPT_VERSION = "v4";
-const MODEL = "gemini-2.5-flash";
+const MODEL = "gemini-3.6-flash";
 
 type WriteHelperDb = Parameters<typeof writeAiSignalScoresToPlacePool>[0];
 

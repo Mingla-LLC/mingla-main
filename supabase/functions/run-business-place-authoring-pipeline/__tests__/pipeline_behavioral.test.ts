@@ -34,8 +34,8 @@ import {
 } from "../index.ts";
 import { bounce } from "../../_shared/bouncer.ts";
 
-// ── Stage 6: ai_signal_scores 6-key shape, v4, gemini-2.5-flash ──────────────
-Deno.test("buildAiSignalScores emits the exact 6-key Q2 shape with v4 + gemini-2.5-flash", () => {
+// ── Stage 6: ai_signal_scores 6-key shape, v4, gemini-3.6-flash ──────────────
+Deno.test("buildAiSignalScores emits the exact 6-key Q2 shape with v4 + gemini-3.6-flash", () => {
   const signals = [
     { id: "date_night", label: "Date night" },
     { id: "groups", label: "Groups" },
@@ -59,7 +59,7 @@ Deno.test("buildAiSignalScores emits the exact 6-key Q2 shape with v4 + gemini-2
       "score_0_to_100",
     ]);
     assertEquals(entry.prompt_version, "v4");
-    assertEquals(entry.model, "gemini-2.5-flash");
+    assertEquals(entry.model, "gemini-3.6-flash");
     assertEquals(entry.evaluated_at, at);
     assert(entry.score_0_to_100 >= 0 && entry.score_0_to_100 <= 100);
   }

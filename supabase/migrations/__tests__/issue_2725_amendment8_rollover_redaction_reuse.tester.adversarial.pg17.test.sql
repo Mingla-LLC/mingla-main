@@ -130,7 +130,7 @@ BEGIN
     md5('issue2725-tester-job-21')::uuid,
     '27250800-0000-4000-8000-000000000099',
     jsonb_build_object(
-      'model_id', 'gemini-2.5-flash',
+      'model_id', 'gemini-3.6-flash',
       'prompt_contract_version', 'competitor-brief-v2.8',
       'canonical_input_fingerprint', repeat('e', 64),
       'request_bytes', 1216,
@@ -138,11 +138,11 @@ BEGIN
       'candidate_tokens', 500,
       'thinking_tokens', 0,
       'total_tokens', 850,
-      'provider_model_version', 'gemini-2.5-flash-001',
+      'provider_model_version', 'gemini-3.6-flash',
       'latency_ms', 321,
       'finish_reason', 'STOP',
       'result_class', 'accepted',
-      'pricing_version', 'gemini-2.5-flash-standard-2026-08',
+      'pricing_version', 'gemini-3.6-flash-standard-2026-09',
       'reserved_microusd', 50000,
       'actual_microusd', 1355,
       'usage_complete', true
@@ -166,7 +166,7 @@ BEGIN
   SELECT public.issue_2725_accept_synthesis(
     md5('issue2725-tester-job-21')::uuid,
     '27250800-0000-4000-8000-000000000099',
-    'gemini-2.5-flash',
+    'gemini-3.6-flash',
     'competitor-brief-v2.8',
     repeat('e', 64)::char(64),
     first_result,
@@ -210,7 +210,7 @@ BEGIN
     md5('issue2725-tester-racing-job')::uuid,
     '27250800-0000-4000-8000-000000000099',
     jsonb_build_object(
-      'model_id', 'gemini-2.5-flash',
+      'model_id', 'gemini-3.6-flash',
       'prompt_contract_version', 'competitor-brief-v2.8',
       'canonical_input_fingerprint', repeat('e', 64),
       'request_bytes', 1216,
@@ -218,11 +218,11 @@ BEGIN
       'candidate_tokens', 501,
       'thinking_tokens', 0,
       'total_tokens', 851,
-      'provider_model_version', 'gemini-2.5-flash-001',
+      'provider_model_version', 'gemini-3.6-flash',
       'latency_ms', 400,
       'finish_reason', 'STOP',
       'result_class', 'accepted',
-      'pricing_version', 'gemini-2.5-flash-standard-2026-08',
+      'pricing_version', 'gemini-3.6-flash-standard-2026-09',
       'reserved_microusd', 50000,
       'actual_microusd', 1358,
       'usage_complete', true
@@ -231,7 +231,7 @@ BEGIN
   SELECT public.issue_2725_accept_synthesis(
     md5('issue2725-tester-racing-job')::uuid,
     '27250800-0000-4000-8000-000000000099',
-    'gemini-2.5-flash',
+    'gemini-3.6-flash',
     'competitor-brief-v2.8',
     repeat('e', 64)::char(64),
     second_result,

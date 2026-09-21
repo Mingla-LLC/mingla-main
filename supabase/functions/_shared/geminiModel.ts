@@ -1,7 +1,7 @@
 // issue #3526 — THE single source of truth for which Gemini model we call,
 // what it costs, and where it lives.
 //
-// WHY THIS FILE EXISTS. On 2026-09-17 Google closed `gemini-2.5-flash` to
+// WHY THIS FILE EXISTS. On 2026-09-17 Google closed Gemini 2.5 Flash to
 // callers without prior usage history. Ten production files named that model
 // as a bare string literal, so every Gemini-powered surface went down at once
 // (growth tools, place intelligence, the competitor brief worker, Ari) and the

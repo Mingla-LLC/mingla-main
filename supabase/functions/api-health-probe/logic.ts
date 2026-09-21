@@ -101,6 +101,25 @@ export const CLASS_B_DEPLETION: Record<
   ticketmaster: { header: { name: "rate-limit-available", warn: 500 } },
 };
 
+// ── issue #3526 M-2 — Gemini probe verdict (pure) ──
+//
+// The old probe called ListModels ONLY and passed when the body held a `models`
+// array. It reported healthy/200 at 16:00:10Z on 2026-09-21, TWENTY MINUTES
+// before a real generation call returned 404 "this model is no longer available
+// to new users". A list call answers "does this key work", never "can this key
+// call THIS model".
+//
+// The verdict now comes from a `:generateContent` response and requires a
+// CANDIDATE. A ListModels-shaped body is explicitly NOT healthy — that is the
+// whole regression. #1620 bodyVerdict discipline preserved: a 200 with no
+// candidate is a failure, never "healthy".
+export function geminiProbeOk(
+  httpOk: boolean,
+  body: { candidates?: unknown } | null | undefined,
+): boolean {
+  return httpOk === true && Array.isArray(body?.candidates);
+}
+
 // ── Class-B reactive depletion matcher (pure) ──
 // Scans real-traffic observations (api_health_observations) for the documented
 // depletion fingerprint. Returns depleted=true on the FIRST matching row (quota

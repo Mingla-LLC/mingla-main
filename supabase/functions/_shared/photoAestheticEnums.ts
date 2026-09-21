@@ -190,7 +190,7 @@ export const PRICING = {
   BATCH_API_DISCOUNT: 0.5,
   // ORCH-0713 Gemini comparison (2026-05-05).
   // issue #3526 — these were named GEMINI_2_5_FLASH_* with UNDERSCORES, so a
-  // `git grep "gemini-2.5-flash"` sweep could not see them and the rates would
+  // hyphenated-model-name sweep could not see them and the rates would
   // have been left on the retired model's price card. The names are
   // model-AGNOSTIC now and the values come from _shared/geminiModel.ts, which
   // is the one place a repin touches. Gate G-4 fails any identifier matching

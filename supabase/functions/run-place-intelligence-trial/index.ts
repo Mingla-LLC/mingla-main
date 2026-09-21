@@ -2165,7 +2165,7 @@ async function callGeminiQuestion(args: {
       maxOutputTokens: 8000,
       temperature: 0.3,
       // issue #3526 — this call site sent NO thinking config at all. On
-      // gemini-2.5-flash that was survivable; a Gemini 3 model with no
+      // Gemini 2.5 Flash that was survivable; a Gemini 3 model with no
       // thinking_level defaults to `medium` and bills those tokens as output,
       // so the trial would have spent thinking tokens it never counted. Set it
       // explicitly at the floor, matching the worker's intent and preserving
