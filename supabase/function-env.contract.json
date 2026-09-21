@@ -237,6 +237,34 @@
       "required_bundle_fields": {},
       "required_top_level": []
     },
+    "agent-attachment-cleanup": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "DENO_DEPLOYMENT_ID",
+        "MINGLA_RELEASE_SHA",
+        "SB_EXECUTION_ID"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GEMINI_API_KEY_ARI",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "agent-attachments": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "DENO_DEPLOYMENT_ID",
+        "MINGLA_RELEASE_SHA",
+        "SB_EXECUTION_ID"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GEMINI_API_KEY_ARI",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
     "agent-chat": {
       "migration_fallback_top_level": [],
       "optional_top_level": [
@@ -264,6 +292,18 @@
         "SENTRY_DSN",
         "SENTRY_ENVIRONMENT"
       ]
+    },
+    "agent-conversation": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "agent-turn-control": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
     },
     "api-health-probe": {
       "migration_fallback_top_level": [],
