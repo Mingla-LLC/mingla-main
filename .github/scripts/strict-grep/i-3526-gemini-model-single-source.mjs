@@ -209,6 +209,11 @@ const SCANNED_EXTENSIONS = [
 const NON_SOURCE_EXTENSIONS = new Set([
   ".md", ".svg", ".css", ".sh", ".png", ".jpg", ".jpeg", ".gif", ".webp",
   ".ico", ".txt", ".yml", ".yaml", ".lock", ".snap", ".map", ".woff", ".woff2",
+  // issue #3526 — `.pdf` arrived with #3429's Ari file-attachment fixtures on
+  // the first rebase after G-6 shipped, and G-6 reported it by itself rather
+  // than silently widening the blind spot. Binary test fixtures; no code.
+  ".pdf", ".zip", ".gz", ".mp4", ".mov", ".webm", ".mp3", ".wav", ".ttf", ".otf",
+  ".eot", ".bmp", ".avif", ".heic", ".pem", ".der", ".bin",
 ]);
 
 /**
