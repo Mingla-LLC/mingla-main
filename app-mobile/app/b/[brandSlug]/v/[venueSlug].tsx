@@ -512,6 +512,7 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
           brandId={venue.brandId}
           venueName={venue.name}
           currency={venue.reservability.currency}
+          countryCode={venue.countryCode}
           onAvailabilityResultViewed={onAvailabilityResultViewed}
           onSlotSelected={onSlotSelected}
           onReservationFailed={onReservationFailed}
@@ -658,6 +659,7 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
               menu={context.menu}
               menuWindows={venue.menuWindows}
               timezone={venue.timezone}
+              countryCode={venue.countryCode}
             />
           </React.Suspense>
         ),

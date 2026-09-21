@@ -131,6 +131,11 @@ const AUTH_SCOPED_HOOK_FILES = [
   //    reads as "you have no spots". Both fold isAuthReady into enabled.
   "useQrSpots.ts",
   "useMenuModifiers.ts",
+  // ── #3386 — the host's own venue details and change request, read from
+  //    brand-member-RLS-gated venue_listings. A pre-auth fire would cache the
+  //    RLS-empty 200, and the Settings card would read "no details". Folds
+  //    isAuthReady into enabled.
+  "useVenueDetailsEdit.ts",
   // ── #1791 (#1767 Phase 3) — the Orders queue and the venue's ordering
   //    switches. Both read brand-member-RLS-gated tables (venue_orders /
   //    venue_order_items / venue_ordering_settings), so a pre-auth fire would

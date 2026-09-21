@@ -157,8 +157,8 @@ const ACK_POLL_INTERVAL_MS = 2_000;
 // verdict.
 export const EVENT_COVER_VIDEO_WATCH_DEADLINE_MS = 600_000;
 // issue #3073 — `prepareEventCoverVideoSource` refuses a source whose ISO-BMFF
-// handler boxes carry no video track (the trim editor can return an audio-only
-// MP4). Translating it HERE, at the single point every start-path error already
+// handler boxes carry no video track (the compressor can return an audio-only
+// MP4 — see the fallback in `startInternal`). Translating it HERE, at the single point every start-path error already
 // funnels through, keeps the prepare call itself a plain direct call — which is
 // what ORCH-1308 gate D reads to prove the source is prepared before allocation.
 // Matched by NAME, and defined right here rather than imported. Several suites
@@ -613,6 +613,25 @@ export function useEventCoverVideoUpload(
   ): Promise<void> => {
     let prepared: PreparedEventCoverVideoSource | null = null;
     let replacementAccepted = false;
+    // Issue #3073 — who is allowed to silence this attempt's failure.
+    //
+    // The catch below returns WITHOUT a word when the attempt was cancelled or
+    // superseded, because whoever did that owns the sheet now. It used to ask
+    // only "is the installed controller aborted?". `cancel()` aborts that
+    // controller and leaves it installed, and nothing here replaces it until
+    // `uploadPrepared` runs. So after "Discard upload", the NEXT attempt that
+    // failed during preparation found that old, already-aborted controller,
+    // took itself for cancelled and returned silently, leaving the sheet on
+    // "Optimizing video…" forever with no job row. Reproduced on the iOS
+    // Simulator 2026-09-17: a 4-second clip, discarded 14-second clip before it.
+    //
+    // A controller that was ALREADY aborted when this attempt began says nothing
+    // about this attempt. A cancel that lands during preparation bumps the
+    // generation, which is the signal that stays honest even when the installed
+    // controller was already dead.
+    const startGeneration = generationRef.current;
+    const abortedBeforeStart = abortRef.current?.signal.aborted === true ? abortRef.current : null;
+    let handedToUpload = false;
     try {
       // issue #2974 — the create-event wizard holds a client-only `d_<ts36>`
       // draft id until the lazy server promotion lands. Sending it to
@@ -667,11 +686,44 @@ export function useEventCoverVideoUpload(
           "This clip is still too big after compressing. Try a shorter clip, or record at a lower resolution.",
         );
       }
-      prepared = await prepareEventCoverVideoSource({
-        uri: compressed.uri, bytes: compressed.bytes, durationMs: compressed.durationMs,
-        fileName: compressed.wasCompressed ? `${operationId}.mp4` : file.fileName,
-        mimeType: compressed.wasCompressed ? "video/mp4" : file.mimeType, operationId,
-      });
+      try {
+        prepared = await prepareEventCoverVideoSource({
+          uri: compressed.uri, bytes: compressed.bytes, durationMs: compressed.durationMs,
+          fileName: compressed.wasCompressed ? `${operationId}.mp4` : file.fileName,
+          mimeType: compressed.wasCompressed ? "video/mp4" : file.mimeType, operationId,
+        });
+      } catch (preparationError) {
+        // Issue #3073 — the compressor can hand back a file with sound and no
+        // picture, and call it a success. `react-native-compressor` builds its
+        // H.264 writer input only if `AVAssetWriter.canApply(outputSettings:)`
+        // agrees; when it does not, the exporter logs "Unsupported output
+        // configuration", skips the video track, exports the audio track alone
+        // and resolves. The iOS 26.5 Simulator refuses the
+        // `AVVideoAverageNonDroppableFrameRateKey` it always sends, so EVERY
+        // clip that is big enough to compress (5 MB and up) and has a sound
+        // track came back picture-less there — a 90 MB iPhone clip became a
+        // 223 KB AAC file. A clip without sound fails the export outright, and
+        // #3128 already uploads the original in that case.
+        //
+        // This is the same failure, detected one step later: compression did
+        // not work, so the original is uploaded exactly as #3128 does, and the
+        // provider transcodes it. Refusing a good phone clip because our own
+        // optimisation broke is the wrong answer.
+        if (!compressed.wasCompressed || !isMissingVideoTrackError(preparationError)) throw preparationError;
+        if (file.bytes > EVENT_COVER_SOURCE_MAX_BYTES) {
+          throw new EventCoverVideoProcessingError(
+            "video_compression_failed",
+            "Your phone couldn’t shrink this clip, and it’s over 100 MB as it is. Try a shorter clip, or record at a lower resolution.",
+          );
+        }
+        // Optimising is over. Copying and fingerprinting the full-size original
+        // is the slow part now, and "Preparing video…" is what it is.
+        if (!replacing) projectPreparation({ phase: "preparing", percent: 0 });
+        prepared = await prepareEventCoverVideoSource({
+          uri: file.uri, bytes: file.bytes, durationMs: file.durationMs,
+          fileName: file.fileName, mimeType: file.mimeType, operationId,
+        });
+      }
       if (!replacing&&persisted&&!persisted.sourceAcknowledged&&persisted.sourceSha256!==prepared.sha256) {
         await deletePreparedEventCoverVideoSource(prepared.uri);
         throw new EventCoverVideoProcessingError(
@@ -682,6 +734,7 @@ export function useEventCoverVideoUpload(
           "Choose the same video to resume this upload, or tap Discard upload to start over.",
         );
       }
+      handedToUpload = true;
       await uploadPrepared(
         prepared,
         operationId,
@@ -691,7 +744,11 @@ export function useEventCoverVideoUpload(
       );
     } catch (caught) {
       clearPreparationProjection();
-      if (abortRef.current?.signal.aborted) return;
+      // Issue #3073 — see `abortedBeforeStart` above.
+      const installed = abortRef.current;
+      const abortedDuringAttempt = installed !== null && installed !== abortedBeforeStart && installed.signal.aborted;
+      const cancelledDuringPreparation = !handedToUpload && generationRef.current !== startGeneration;
+      if (abortedDuringAttempt || cancelledDuringPreparation) return;
       const next = safeUploadError(caught);
       if (replacing && !replacementAccepted) {
         if (prepared?.uri) await deletePreparedEventCoverVideoSource(prepared.uri);

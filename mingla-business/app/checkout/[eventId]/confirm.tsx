@@ -62,8 +62,12 @@ import {
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
 import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
 import {
+  TicketConfirmVerdictHero,
+  type TicketConfirmEnding,
+} from "../../../src/components/checkout/TicketConfirmVerdictHero";
+import {
+  awaitTicketConfirmation,
   confirmTicketCheckout,
-  paidCheckoutErrorMessage,
 } from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
@@ -141,17 +145,17 @@ function CheckoutConfirmScreenInner({
     [eventDateIds, eventDateId],
   );
   // ORCH-0852: bulletproof web confirmation. On `?cs=…` arrival we call the
-  // new `ticket-checkout-confirm` edge function once. It synchronously
+  // new `ticket-checkout-confirm` edge function. It synchronously
   // verifies the Stripe PaymentIntent and idempotently finalizes the order,
   // so the buyer's screen does NOT depend on Stripe webhook arrival timing.
-  // If that call returns status: "pending" OR throws, we fall through to
-  // `useOrderRealtimeSubscription` below — a Postgres-Realtime push from
-  // ticket_checkout_sessions.order_id finalizes the screen as soon as
-  // either path (the same sync confirm retried, or the webhook backup)
-  // lands the order. There is no retry button, no help link, no dead-end
-  // fallback — the user sees a calm "Confirming your tickets…" state for
-  // the rare seconds-to-30s window between PaymentSheet success and order
-  // finalization, and the screen auto-resolves to the full order view.
+  // While the answer is still open (pending, transport failure, 5xx) the
+  // confirm is asked again with backoff for up to 60 s, and
+  // `useOrderRealtimeSubscription` below listens alongside it — whichever sees
+  // the order first finalizes the screen. The calm "Confirming your tickets…"
+  // state has no controls. Three endings do: a checkout that ran out of time
+  // ("Checkout expired", provably unpaid, safe to retry), a sale the server
+  // refused whose payment is unsettled ("Tickets not issued", no retry offered)
+  // and a spent budget ("Still confirming your tickets", Realtime listening).
   const [realtimePending, setRealtimePending] = useState<boolean>(false);
   // issue #2198 — a terminal payment outcome from the return leg. Before this,
   // `ticket-checkout-confirm` could not tell a Paystack failure from a slow
@@ -159,6 +163,10 @@ function CheckoutConfirmScreenInner({
   // spinner and a guest whose card was declined sat there forever. The server
   // now returns a bounded reason; this renders it through #2188's mapper.
   const [terminalFailure, setTerminalFailure] = useState<string | null>(null);
+  // The endings without an order: an expired checkout (nothing charged), a
+  // refused sale whose payment is unsettled, or a spent 60 s budget. Decided by
+  // `awaitTicketConfirmation` alone; this screen only renders it.
+  const [confirmEnding, setConfirmEnding] = useState<TicketConfirmEnding | null>(null);
   const [pendingSession, setPendingSession] = useState<{
     checkoutSessionId: string;
     buyerStatusToken: string;
@@ -241,9 +249,9 @@ function CheckoutConfirmScreenInner({
   // `ticket-checkout-confirm` synchronously. That edge function calls
   // Stripe's API directly + invokes the idempotent finalize RPC, so the
   // buyer is NOT dependent on Stripe webhook arrival timing. On success,
-  // recordResult fires and the QR carousel mounts. On `pending` or thrown
-  // error, we set `realtimePending` + `pendingSession` and the Realtime
-  // hook below picks up the order the moment the webhook lands.
+  // recordResult fires and the QR carousel mounts. While the answer is still
+  // open we set `realtimePending` + `pendingSession` so the Realtime hook below
+  // can pick up the order the moment the webhook lands, and keep asking.
   // Storage is cleared only on confirmed success — pending/failed paths
   // leave the entry in place so a refresh can retry.
   useEffect(() => {
@@ -315,84 +323,87 @@ function CheckoutConfirmScreenInner({
     }
 
     let cancelled = false;
+    // Arms the Realtime safety net below. It runs ALONGSIDE the confirm poll
+    // (never instead of it), so whichever path sees the order first wins.
+    const armRealtime = (): void => {
+      setPendingSession({
+        checkoutSessionId: payload.checkoutSessionId,
+        buyerStatusToken: payload.buyerStatusToken,
+      });
+      setRealtimePending(true);
+    };
     (async (): Promise<void> => {
-      try {
-        const confirmResult = await confirmTicketCheckout(
-          payload.checkoutSessionId,
-          payload.buyerStatusToken,
-        );
-        if (cancelled) return;
-        if (confirmResult.status === "paid" && confirmResult.order !== null) {
-          // ORCH-0804 — pass Stripe Tax data into the order result so the
-          // confirmation can render a tax line. taxAmountCents defaults to 0
-          // when missing (free order / brand not registered in buyer
-          // jurisdiction).
-          const taxCents = Number(confirmResult.order.taxAmountCents ?? 0);
-          recordResult({
-            orderId: confirmResult.order.orderId,
-            ticketIds: confirmResult.order.tickets.map((t) => t.ticketId),
-            checkoutSessionId: confirmResult.checkoutSessionId,
-            // issue #2323 — carry the possession proof onto the order so
-            // `useAttendanceClaimArm` can mint from the RESULT. Reading it back
-            // out of sessionStorage here is not an option: the resume payload
-            // is cleared a few lines below, before this render commits.
-            buyerStatusToken: payload.buyerStatusToken,
-            paidAt: new Date().toISOString(),
-            paymentMethod: "card",
-            total: confirmResult.order.totalCents / 100,
-            totalCents: confirmResult.order.totalCents,
-            currency: confirmResult.order.currency,
-            tax: taxCents > 0 ? taxCents / 100 : 0,
-            taxAmountCents: taxCents,
-            paymentStatus: confirmResult.order.paymentStatus,
-            notificationStatus: confirmResult.order.notificationStatus,
-            tickets: confirmResult.order.tickets,
-          });
-          // META-ORCH-1187 — purchase conversion (SC-6). value in major units.
-          postHogService.capture("purchase_completed", {
-            event_id: eventId,
-            order_id: confirmResult.order.orderId,
-            value: confirmResult.order.totalCents / 100,
-            currency: confirmResult.order.currency,
-            offering_type: "event",
-            surface: "business_app",
-          });
-          clearCheckoutResumePayload(win.sessionStorage, eventId);
-          return;
-        }
-        // issue #2198 — a TERMINAL outcome (Paystack said failed / abandoned,
-        // or the verified amount did not match). Waiting cannot help and the
-        // webhook will never say otherwise, so say what happened.
-        if (confirmResult.status === "failed") {
-          setTerminalFailure(
-            paidCheckoutErrorMessage({ code: confirmResult.error ?? null }),
-          );
-          return;
-        }
-        // status === "pending" — Stripe PI still processing OR no PI tied
-        // to the session yet. Fall through to Realtime; the webhook backup
-        // will populate ticket_checkout_sessions.order_id and the Realtime
-        // hook below will materialize the order.
-        setPendingSession({
-          checkoutSessionId: payload.checkoutSessionId,
+      // ONE owner decides what each confirm answer means and how long to keep
+      // asking (60 s, with backoff). A thrown 409 `checkout_unavailable` is a
+      // definitive refusal, not a network blip.
+      const verdict = await awaitTicketConfirmation({
+        checkoutSessionId: payload.checkoutSessionId,
+        buyerStatusToken: payload.buyerStatusToken,
+        confirm: confirmTicketCheckout,
+        isCancelled: () => cancelled,
+        onWaiting: armRealtime,
+      });
+      if (cancelled || verdict.kind === "cancelled") return;
+      if (verdict.kind === "paid") {
+        const confirmResult = verdict.result;
+        const order = verdict.order;
+        // ORCH-0804 — pass Stripe Tax data into the order result so the
+        // confirmation can render a tax line. taxAmountCents defaults to 0
+        // when missing (free order / brand not registered in buyer
+        // jurisdiction).
+        const taxCents = Number(order.taxAmountCents ?? 0);
+        recordResult({
+          orderId: order.orderId,
+          ticketIds: order.tickets.map((t) => t.ticketId),
+          checkoutSessionId: confirmResult.checkoutSessionId,
+          // issue #2323 — carry the possession proof onto the order so
+          // `useAttendanceClaimArm` can mint from the RESULT. Reading it back
+          // out of sessionStorage here is not an option: the resume payload
+          // is cleared a few lines below, before this render commits.
           buyerStatusToken: payload.buyerStatusToken,
+          paidAt: new Date().toISOString(),
+          paymentMethod: "card",
+          total: order.totalCents / 100,
+          totalCents: order.totalCents,
+          currency: order.currency,
+          tax: taxCents > 0 ? taxCents / 100 : 0,
+          taxAmountCents: taxCents,
+          paymentStatus: order.paymentStatus,
+          notificationStatus: order.notificationStatus,
+          tickets: order.tickets,
         });
-        setRealtimePending(true);
-      } catch (err) {
-        if (cancelled) return;
-        // Confirm errored (network, 502 stripe_unavailable, etc.). Webhook
-        // backup is still in flight — fall through to Realtime so the
-        // buyer never sees a dead-end retry screen.
-        console.warn(
-          "[checkout-confirm] sync confirm failed, falling back to realtime",
-          err,
-        );
-        setPendingSession({
-          checkoutSessionId: payload.checkoutSessionId,
-          buyerStatusToken: payload.buyerStatusToken,
+        // META-ORCH-1187 — purchase conversion (SC-6). value in major units.
+        postHogService.capture("purchase_completed", {
+          event_id: eventId,
+          order_id: order.orderId,
+          value: order.totalCents / 100,
+          currency: order.currency,
+          offering_type: "event",
+          surface: "business_app",
         });
-        setRealtimePending(true);
+        clearCheckoutResumePayload(win.sessionStorage, eventId);
+        return;
       }
+      // issue #2198 — a TERMINAL payment outcome (Paystack said failed /
+      // abandoned, or the verified amount did not match), already mapped to
+      // its #2188 copy by the owner.
+      if (verdict.kind === "payment_failed") {
+        setRealtimePending(false);
+        setTerminalFailure(verdict.message);
+        return;
+      }
+      // No order is coming, so the Realtime wait is released too. The two
+      // refusals stay APART all the way to the screen: `expired` proves nothing
+      // was charged, `not_issued` proves nothing about the money either way.
+      if (verdict.kind === "expired" || verdict.kind === "not_issued") {
+        setRealtimePending(false);
+        setConfirmEnding(verdict.kind);
+        return;
+      }
+      // Budget spent with no answer either way. Keep Realtime listening: a
+      // late order still replaces this state.
+      armRealtime();
+      setConfirmEnding("still_confirming");
     })();
     return (): void => {
       cancelled = true;
@@ -440,6 +451,8 @@ function CheckoutConfirmScreenInner({
       }
       setRealtimePending(false);
       setPendingSession(null);
+      // A late order outranks "still confirming".
+      setConfirmEnding(null);
     },
   });
 
@@ -510,9 +523,11 @@ function CheckoutConfirmScreenInner({
       // issue #2198 — keep the guest on /confirm to read the failure reason
       // instead of bouncing them silently back to the cart.
       if (terminalFailure !== null) return;
+      // Same for a refused sale or a spent confirmation budget.
+      if (confirmEnding !== null) return;
     }
     router.replace(`/checkout/${eventId}` as never);
-  }, [result, eventId, router, realtimePending, isClient, terminalFailure]);
+  }, [result, eventId, router, realtimePending, isClient, terminalFailure, confirmEnding]);
 
   // ----- Handlers -----
   const handleBackToEvent = useCallback((): void => {
@@ -562,6 +577,17 @@ function CheckoutConfirmScreenInner({
             </Text>
           </View>
         </View>
+      );
+    }
+    // A refused sale or a spent confirmation budget also outranks the spinner.
+    if (confirmEnding !== null) {
+      return (
+        <TicketConfirmVerdictHero
+          ending={confirmEnding}
+          topInset={insets.top}
+          backLabel="Back to event"
+          onBack={handleBackToEvent}
+        />
       );
     }
     if (Platform.OS === "web") {

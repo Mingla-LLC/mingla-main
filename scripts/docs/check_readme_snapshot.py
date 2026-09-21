@@ -33,7 +33,7 @@ def main() -> int:
         BOARD_URL,
         "PRODUCT_AND_STRATEGY.md",
         "MARKETING.md",
-        "COMMS.md",
+        "AGENTS.md",
         "REPORTS.md",
         "docs/INVARIANT_REGISTRY.md",
         "pre-avengers-archive",
@@ -43,6 +43,8 @@ def main() -> int:
     )
     for needle in required:
         require(needle in text, f"README must contain `{needle}`", failures)
+    # #3476: the COMMS.md coordination table is retired; the front door must not send chats to it.
+    require("COMMS.md" not in text, "README must not point at the retired COMMS.md (#3476)", failures)
 
     source_table = re.search(
         r"## Source Of Truth\n(?P<body>.*?)(?:\n## |\Z)",
@@ -57,7 +59,7 @@ def main() -> int:
             "Source Of Truth must point to the Mingla Avengers board",
             failures,
         )
-        for doc in ("PRODUCT_AND_STRATEGY.md", "MARKETING.md", "COMMS.md", "REPORTS.md"):
+        for doc in ("PRODUCT_AND_STRATEGY.md", "MARKETING.md", "AGENTS.md", "REPORTS.md"):
             require(
                 doc in source_body,
                 f"Source Of Truth must point to {doc}",

@@ -182,3 +182,43 @@ test("T-1793-N7 — the sitting persists IDs and tokens, never a server record",
     );
   }
 });
+
+// ---------------------------------------------------------------------------
+// issue #3380 — "Who's ordering?" and the venue reservation sheet use the
+// country picker, start on the venue's country, and build the number with the
+// shared rules. The rules' behaviour is proven in the Business jest suite
+// (issue_3380_explorer_order_phone); these pin the Explorer wiring.
+// fails-on-revert: restore the free-text box, the module-scope picker import,
+// or `buildPendingCollabPhoneE164` in the reservation sheet, and these die.
+// ---------------------------------------------------------------------------
+test("T-3380-E1 — the review sheet renders the country picker, loaded only when it renders", () => {
+  const slots = stripComments(read(SLOTS));
+  assert.match(slots, /renderPhoneField=\{\(args\) => \{/);
+  assert.match(slots, /require\("\.\/ConsumerVenueOrderPhoneField"\)/);
+  assert.doesNotMatch(slots, /^import[^;]*onboarding\/PhoneInput/m);
+  assert.match(slots, /phoneFailure=\{/);
+  assert.match(slots, /const slotProps = \{ ordering, palette, surface, theme, countryCode \};/);
+  const field = stripComments(read(
+    "app-mobile/src/components/venueOrdering/ConsumerVenueOrderPhoneField.tsx",
+  ));
+  assert.match(field, /<PhoneInput\s+smartEntry/);
+  assert.match(field, /onChange\(\{ phoneCountryIso: start \}\)/);
+  assert.match(field, /onChange\(\{ phoneCountryIso: iso \}\)/);
+});
+
+test("T-3380-E2 — the venue page hands its country to ordering and to the reservation sheet", () => {
+  const route = stripComments(read(ROUTE));
+  assert.equal((route.match(/countryCode=\{venue\.countryCode\}/g) ?? []).length, 2);
+  const model = stripComments(read("app-mobile/src/services/publicVenueService.ts"));
+  assert.match(model, /countryCode:\s*typeof row\.country_code === "string"/);
+});
+
+test("T-3380-E3 — the reservation sheet builds the number with the shared rules", () => {
+  const sheet = stripComments(read(
+    "app-mobile/src/components/expandedCard/VenueReserveSheet.tsx",
+  ));
+  assert.doesNotMatch(sheet, /buildPendingCollabPhoneE164/);
+  assert.match(sheet, /parsePhoneEntry\(phoneInput, \{/);
+  assert.match(sheet, /reservePhoneStartCountry\(venueCountryCode\)/);
+  assert.match(sheet, /<PhoneInput\s+smartEntry/);
+});

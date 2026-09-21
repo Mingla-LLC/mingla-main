@@ -9,18 +9,21 @@ export const fetchPublicRsvpPassMetadata = async (
   entityType: "primary" | "guest",
   entityId: string,
   recoveryToken: string | null,
-): Promise<import("@mingla/offering-rendering").RsvpPassCredential> => {
+): Promise<import("@mingla/offering-rendering").RsvpPassCredential & { eventId?: string }> => {
   const { data, error } = await supabase.functions.invoke("rsvp-pass-fetch", {
     body: { entityType, entityId, recoveryToken },
     headers: { Accept: "application/json" },
   });
   if (error) throw error;
   const result = data as {
+    eventId?: unknown;
     credentials?: import("@mingla/offering-rendering").RsvpPassCredential[];
   };
   const credential = result.credentials?.[0];
   if (!credential) throw new Error("rsvp_pass_metadata_missing");
-  return credential;
+  // #3416 D4 — the pass's event as the service states it (restore binding;
+  // the recovery hook validates it).
+  return { ...credential, eventId: result.eventId as string | undefined };
 };
 
 export const fetchPublicRsvpPassPdf = async (

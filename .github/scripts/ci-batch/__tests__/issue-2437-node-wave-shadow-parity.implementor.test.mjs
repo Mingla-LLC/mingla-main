@@ -111,6 +111,40 @@ const staticClassAContainerErrors = (job) => {
   return errors;
 };
 
+// issue #3449 — INSERTION-ONLY CORRECTION. Nothing below is changed, weakened or
+// removed, and no commit token is spent: the append-only guard counts DELETED lines
+// and permits additions anywhere.
+//
+// THE ERROR STRING BELOW IS WRONG ABOUT WHY THE NAME IS FROZEN. It says "Strict
+// Class A required-context name must remain exact". The name is NOT a required
+// status-check context. Read live from the repository's rulesets, the ONLY required
+// contexts on `main` are "Framework Major Guard" (ruleset 19508605) and
+// "mingla-business jest (full suite)" (ruleset 19583754). No ruleset names any
+// Class A job, which is also what the #2594 adjudicator's own header and the ACTIVE
+// I-PROPOSED-2594-CLASS-A-BUDGET-ADJUDICATED entry already say: "This is a
+// reporting check, not a required status context."
+//
+// THE REAL REASON THE NAME IS FROZEN, and it is a good one: the out-of-band
+// elapsed-time adjudicator selects its subject by exact display name through
+// CLASS_A_JOB_NAME. A rename on one side leaves the adjudicator hunting a job that
+// no longer exists, and its D0 row — "no job carries that name" — fires on every
+// run forever. The assertion is therefore CORRECT and must stay; only its message
+// misattributes the authority.
+//
+// The string itself is left alone deliberately. Editing it would DELETE a line in a
+// __tests__/ path and require a test-modification token, and #3449 is committed to
+// spending none. The next change that already carries a token on this file should
+// reword it to name the adjudicator's lockstep instead of a required context.
+//
+// #3449 also adds two SIBLING Class A shard jobs and three more out-of-band jobs to
+// the host workflow. Both validators below are unaffected by construction:
+// validateStaticClassAJob inspects jobs["static-gates"] only, and its step seal
+// covers that job's `steps` array — #3449 adds a job-level `env:` to it, which is
+// not a member of `steps`, so STATIC_CLASS_A_STEP_SHA256 does not move.
+// validateClassABudgetJob inspects jobs["class-a-budget"] only; the two sibling
+// adjudicators are invisible to it, and it validates CLASS_A_BUDGET_SECONDS as a
+// CEILING of 600 rather than an equality, which is why every shard keeping the
+// unchanged 600 s bound needs no change here either.
 const validateStaticClassAJob = (source) => {
   const errors = [];
   let document;

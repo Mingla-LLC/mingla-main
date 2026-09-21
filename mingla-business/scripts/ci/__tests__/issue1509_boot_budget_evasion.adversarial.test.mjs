@@ -124,12 +124,20 @@ describe("#1509 adversarial — the ways someone would try to make this stop com
     // The obvious next move once the delta gate blocks you: edit the baseline
     // up so your delta looks small. The ceiling check runs first and is
     // computed from a constant, so this buys nothing.
+    //
+    // REPOINTED by issue #3493 [TEST-MOD-APPROVED #3493] — these two numbers
+    // are positions RELATIVE to HARD_CEILING.common.raw, which Seth raised from
+    // 2,600,000 to 2,800,000 on 2026-09-20. The attack being modelled is
+    // unchanged, and so is its strength: the forged baseline still sits one
+    // allowance under the ceiling and the build still sits just over it, so a
+    // gate that consulted the baseline instead of the constant would pass this
+    // and the assertion below would fail.
     const ciDir = cloneCiDir((dir) => {
       const b = JSON.parse(readFileSync(join(dir, "bundle-baseline.json"), "utf8"));
-      b.common.raw = 2_599_000; // just under the 2,600,000 ceiling
+      b.common.raw = 2_799_000; // just under the 2,800,000 ceiling
       writeFileSync(join(dir, "bundle-baseline.json"), JSON.stringify(b, null, 2));
     });
-    const r = run(makeBuild({ commonRaw: 2_610_000 }), { ciDir });
+    const r = run(makeBuild({ commonRaw: 2_810_000 }), { ciDir });
     assert.equal(r.status, 1, "the product ceiling must hold regardless of the baseline");
     assert.match(r.stderr, /PRODUCT CEILING/);
     assert.match(r.stderr, /Do NOT raise it to land this PR/);
@@ -138,9 +146,13 @@ describe("#1509 adversarial — the ways someone would try to make this stop com
   test("a baseline written above the ceiling is caught by the self-test, not silently obeyed", () => {
     // Defence in depth: if a baseline ever lands that would make the delta gate
     // unreachable, the self-test — which runs without needing an export — says so.
+    //
+    // REPOINTED by issue #3493 [TEST-MOD-APPROVED #3493] — the figure must stay
+    // ABOVE HARD_CEILING.common.raw, which moved 2,600,000 -> 2,800,000. Same
+    // impossible baseline, same required verdict.
     const ciDir = cloneCiDir((dir) => {
       const b = JSON.parse(readFileSync(join(dir, "bundle-baseline.json"), "utf8"));
-      b.common.raw = 2_700_000;
+      b.common.raw = 2_900_000;
       writeFileSync(join(dir, "bundle-baseline.json"), JSON.stringify(b, null, 2));
     });
     const r = spawnSync(process.execPath, [join(ciDir, GATE_NAME), "--self-test"], {
