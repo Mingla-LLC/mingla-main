@@ -20,6 +20,13 @@
 //   keyboard: no owner runs and the latch is untouched. Android can deliver
 //   the hide and the press in either order; the window and the claim rule
 //   live in wizardHardwareBackRouting.ts (WIZARD_KEYBOARD_BACK_WINDOW_MS).
+//   The keyboard owner's flag is BEHIND the dismissal it is reporting — the
+//   library flips it on the IME inset animation's onEnd, which device
+//   evidence puts 340-565 ms after the press — so this hook also records the
+//   dismissal it asked for and stops reading `visible` until a visibility
+//   change settles it (WIZARD_KEYBOARD_DISMISS_SETTLE_MS). Without that, a
+//   second press inside the lag was swallowed as another keyboard dismissal
+//   and the wizard did not move.
 // - Subscribe ONCE per focus (useFocusEffect with EMPTY deps). BackHandler
 //   runs listeners newest-first. Re-subscribing on every render would push
 //   this listener ahead of any overlay listener registered later in the tree
@@ -61,6 +68,13 @@ interface KeyboardTrack {
   unclaimedHideAt: number | null;
   /** A back press was swallowed while visible; the coming hide is its own. */
   claimed: boolean;
+  /**
+   * When we last called Keyboard.dismiss() with no visibility change since.
+   * The keyboard owner's flag flips only at the end of the IME hide animation,
+   * so between the two `visible` is stale and must not be read as authoritative
+   * (see WIZARD_KEYBOARD_DISMISS_SETTLE_MS).
+   */
+  dismissRequestedAt: number | null;
 }
 
 export function useWizardHardwareBack(config: WizardHardwareBackConfig): void {
@@ -71,6 +85,7 @@ export function useWizardHardwareBack(config: WizardHardwareBackConfig): void {
     visible: keyboardVisible,
     unclaimedHideAt: null,
     claimed: false,
+    dismissRequestedAt: null,
   });
 
   useLayoutEffect(() => {
@@ -86,6 +101,11 @@ export function useWizardHardwareBack(config: WizardHardwareBackConfig): void {
     keyboard.unclaimedHideAt =
       !keyboardVisible && !keyboard.claimed ? Date.now() : null;
     keyboard.claimed = false;
+    // Any visibility change settles an outstanding dismissal request, in both
+    // directions: a hide is the confirmation we were waiting for, and a show
+    // means the keyboard is genuinely up again, so `visible` is authoritative
+    // once more. Either way we stop distrusting it.
+    keyboard.dismissRequestedAt = null;
   }, [keyboardVisible]);
 
   useFocusEffect(
@@ -94,13 +114,15 @@ export function useWizardHardwareBack(config: WizardHardwareBackConfig): void {
       latchRef.current = "idle";
       const onPress = (): boolean => {
         const keyboard = keyboardRef.current;
+        const now = Date.now();
         const decision = dispatchWizardHardwareBackPress(
           latchRef.current,
           configRef.current,
           {
             visible: keyboard.visible,
             unclaimedHideAt: keyboard.unclaimedHideAt,
-            now: Date.now(),
+            now,
+            dismissRequestedAt: keyboard.dismissRequestedAt,
           },
         );
         latchRef.current = decision.nextLatch;
@@ -109,6 +131,11 @@ export function useWizardHardwareBack(config: WizardHardwareBackConfig): void {
           keyboard.unclaimedHideAt = null;
           if (keyboard.visible) {
             keyboard.claimed = true;
+            // Record the dismissal we are asking for. Until the keyboard owner
+            // reports a change, `visible` is our own stale value and rule 0
+            // must not act on it, so the NEXT press steps back (or exits on
+            // step 1) instead of being swallowed as a second dismissal.
+            keyboard.dismissRequestedAt = now;
             Keyboard.dismiss();
           }
         }
