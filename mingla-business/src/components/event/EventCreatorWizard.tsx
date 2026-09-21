@@ -111,12 +111,17 @@ import type { StepperStep } from "../ui/Stepper";
 import { TopBar } from "../ui/TopBar";
 import { Toast } from "../ui/Toast";
 import { createDeferredTurnoutIntelProvider } from "../intel/createDeferredTurnoutIntelProvider";
+// #1780 [bundle budget] — the invite surfaces come from their lazy owner, not
+// from InvitePeopleStep directly. All four wizards are separate lazy route
+// chunks, so a static import hoisted the whole invite cluster into `__common`,
+// the boot payload every business-web visitor downloads (ORCH-1083 / #1509).
+// See LazyInvitePeopleStep.tsx.
 import {
   InvitePeoplePublishConfirmation,
   InvitePeopleStep,
   InvitePlanReviewSummary,
   type InviteNavigationState,
-} from "../invites/InvitePeopleStep";
+} from "../invites/LazyInvitePeopleStep";
 import type {
   WizardInvitePlan,
   WizardInviteQuote,

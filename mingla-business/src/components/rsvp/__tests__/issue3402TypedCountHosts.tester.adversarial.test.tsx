@@ -97,6 +97,7 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     if (name.endsWith("/useFeatureFlag")) return { useFeatureFlag: () => ({ data: false, isLoading: false }) };
     if (name.endsWith("/useOfferingInvitePlan")) return { useOfferingInvitePlanSummary: () => ({ plan: { data: undefined }, quote: { data: undefined }, refreshAuthoritative: async () => ({ plan: null, quote: null }) }) };
     if (name.endsWith("/useWizardHardwareBack")) return { useWizardHardwareBack: () => undefined };
+    if (name.endsWith("/LazyInvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary") }; // [TEST-MOD-APPROVED #1780] lazy owner, same inert leaves
     if (name.endsWith("/InvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary") };
     const exportName = name.split("/").pop()!;
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep7Preview|PublishErrorsSheet|ChangeSummaryModal|EditAfterPublishBanner|ThemeControlRow|ThemeSheet)$/.test(exportName)) return { [exportName]: leaf(exportName) };

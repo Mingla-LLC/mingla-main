@@ -146,12 +146,17 @@ import type { TripPreviewBrand } from "./TripPreview";
 // master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
 // the app-local copy is deleted.
 import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
+// #1780 [bundle budget] — the invite surfaces come from their lazy owner, not
+// from InvitePeopleStep directly. All four wizards are separate lazy route
+// chunks, so a static import hoisted the whole invite cluster into `__common`,
+// the boot payload every business-web visitor downloads (ORCH-1083 / #1509).
+// See LazyInvitePeopleStep.tsx.
 import {
   InvitePeoplePublishConfirmation,
   InvitePeopleStep,
   InvitePlanReviewSummary,
   type InviteNavigationState,
-} from "../invites/InvitePeopleStep";
+} from "../invites/LazyInvitePeopleStep";
 import { useOfferingInvitePlanSummary } from "../../hooks/useOfferingInvitePlan";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";

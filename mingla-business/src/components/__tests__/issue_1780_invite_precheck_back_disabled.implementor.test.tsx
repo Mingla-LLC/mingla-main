@@ -361,6 +361,10 @@ const BOUNDARY: Record<string, () => unknown> = {
   createDeferredTurnoutIntelProvider: () =>
     jest.requireMock("../intel/createDeferredTurnoutIntelProvider"),
   InvitePeopleStep: () => jest.requireMock("../invites/InvitePeopleStep"),
+  // #1780 [bundle budget] — the wizards now take the invite surfaces from their
+  // lazy owner. Same stand-in, reachable under the new specifier: this suite's
+  // subject is the pre-check Back rule, not which chunk the step arrives in.
+  LazyInvitePeopleStep: () => jest.requireMock("../invites/InvitePeopleStep"),
   useOfferingInvitePlan: () => jest.requireMock("../../hooks/useOfferingInvitePlan"),
   useFeatureFlag: () => jest.requireMock("../../hooks/useFeatureFlag"),
   useWizardHardwareBack: () => jest.requireMock("../../hooks/useWizardHardwareBack"),
