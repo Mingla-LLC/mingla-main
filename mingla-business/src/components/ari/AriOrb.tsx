@@ -33,7 +33,9 @@ import { ariPalette } from "../../constants/designSystem";
 
 export type AriOrbSize = "xs" | "sm" | "md" | "lg" | "xl";
 
-const SIZE_PX: Record<AriOrbSize, number> = {
+/** Orb diameter per size, in px. Exported so a caller that must reason about
+ *  the orb's footprint reads these numbers rather than copying them. */
+export const SIZE_PX: Record<AriOrbSize, number> = {
   xs: 16,
   sm: 24,
   md: 32,
@@ -41,8 +43,10 @@ const SIZE_PX: Record<AriOrbSize, number> = {
   xl: 88,
 };
 
-// Halo extends past the orb diameter as a percentage
-const HALO_MULT_PX: Record<AriOrbSize, number> = {
+/** How far the halo extends PAST the orb diameter on every side, in px — so
+ *  the ink is `SIZE_PX + HALO_MULT_PX * 2` and overflows the layout box by
+ *  `HALO_MULT_PX` on each edge. Exported for the same reason. */
+export const HALO_MULT_PX: Record<AriOrbSize, number> = {
   xs: 4,
   sm: 6,
   md: 10,

@@ -41,6 +41,7 @@
  *     build shipped on the Pixel 7 at font scale 1.5.
  *   - pin the orb back to a fixed `size="lg"` → T-12 and T-13 go red: that is
  *     F-1, the halo sheared flat and the orb sliced into a half-disc.
+ *   - fork AriOrb's size tables back into a local copy → T-11 goes red.
  *   - drop `heroTopOffsetPx` back to a `justifyContent: "center"` → T-3 and
  *     T-4 go red, because the orb then tracks the clamp (the jump ORCH-1057
  *     removed) and the resting position stops matching what centring produced.
@@ -64,9 +65,30 @@ import { spacing } from "../../../constants/designSystem";
 jest.mock("../AriOrb", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ReactModule = require("react");
+  // The component is stubbed (it value-imports react-native-svg and reanimated,
+  // neither of which loads here), but the SIZE TABLES are read out of the real
+  // AriOrb source. EmptyState derives its orb ladder from these, so the ladder
+  // under test is built from AriOrb's own numbers and cannot quietly fork.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const source: string = require("fs").readFileSync(
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("path").join(__dirname, "..", "AriOrb.tsx"),
+    "utf8",
+  );
+  const table = (symbol: string): Record<string, number> => {
+    const start = source.indexOf(`export const ${symbol}: Record<AriOrbSize, number> = {`);
+    if (start < 0) throw new Error(`AriOrb no longer exports ${symbol}`);
+    const out: Record<string, number> = {};
+    for (const [, key, value] of source.slice(start, source.indexOf("};", start)).matchAll(/(\w+):\s*(\d+)/g)) {
+      out[key] = Number(value);
+    }
+    return out;
+  };
   return {
     AriOrb: (props: Record<string, unknown>): React.ReactElement =>
       ReactModule.createElement("AriOrb", props),
+    SIZE_PX: table("SIZE_PX"),
+    HALO_MULT_PX: table("HALO_MULT_PX"),
   };
 });
 
@@ -433,40 +455,70 @@ describe("#3429 REWORK-4 N-1 — the attach hint is the last content dropped", (
     tight.unmount();
   });
 
-  it("T-11 the orb-size mirror still agrees with AriOrb (drift guard)", () => {
-    // AriOrb owns its size and halo tables and is outside this rework's file
-    // allowlist, so EmptyState carries a mirror of the two numbers it needs.
-    // A mirror that can drift silently is worse than no mirror: read the real
-    // source and hold them to each other.
+  it("T-11 AriOrb is the ONE owner of the orb's size numbers", () => {
+    // The ladder used to mirror AriOrb's two tables. A mirror can only ever be
+    // guarded against its symptom — divergence — so the numbers were moved to a
+    // single owner and exported. This holds that shape: EmptyState must import
+    // them, must not re-declare them, and the size it actually renders must
+    // obey AriOrb's real values.
     const read = (name: string): string =>
       require("fs").readFileSync(require("path").join(__dirname, "..", name), "utf8");
     const orbSource = read("AriOrb.tsx");
     const emptySource = read("EmptyState.tsx");
 
-    const table = (source: string, symbol: string): Record<string, number> => {
-      const start = source.indexOf(`const ${symbol}: Record<AriOrbSize, number> = {`);
-      expect(start).toBeGreaterThan(-1);
-      const body = source.slice(start, source.indexOf("};", start));
+    // (a) AriOrb exports them.
+    expect(orbSource).toContain("export const SIZE_PX: Record<AriOrbSize, number>");
+    expect(orbSource).toContain("export const HALO_MULT_PX: Record<AriOrbSize, number>");
+
+    // (b) EmptyState imports them, rather than owning a copy.
+    expect(emptySource).toMatch(/SIZE_PX as \w+,?/);
+    expect(emptySource).toMatch(/HALO_MULT_PX as \w+,?/);
+    expect(emptySource).not.toMatch(/const\s+(SIZE_PX|HALO_MULT_PX)\s*[:=]/);
+    // (c) ...and the ladder carries no hard-coded geometry at all.
+    const ladder = emptySource.slice(
+      emptySource.indexOf("const ORB_LADDER"),
+      emptySource.indexOf("}));", emptySource.indexOf("const ORB_LADDER")),
+    );
+    expect(ladder).not.toMatch(/(dimPx|haloPx):\s*\d/);
+
+    // (d) The rendered choice obeys AriOrb's REAL numbers: parse them here, and
+    // for each rung assert the boundary — a cap of exactly its ink picks it,
+    // and one px less does not.
+    const table = (symbol: string): Record<string, number> => {
+      const start = orbSource.indexOf(`export const ${symbol}: Record<AriOrbSize, number> = {`);
       const out: Record<string, number> = {};
-      for (const [, key, value] of body.matchAll(/(\w+):\s*(\d+)/g)) out[key] = Number(value);
+      for (const [, key, value] of orbSource.slice(start, orbSource.indexOf("};", start)).matchAll(/(\w+):\s*(\d+)/g)) {
+        out[key] = Number(value);
+      }
       return out;
     };
-    const dim = table(orbSource, "SIZE_PX");
-    const halo = table(orbSource, "HALO_MULT_PX");
+    const dim = table("SIZE_PX");
+    const halo = table("HALO_MULT_PX");
 
-    const ladder = [...emptySource.matchAll(
-      /\{\s*size:\s*"(\w+)",\s*dimPx:\s*(\d+),\s*haloPx:\s*(\d+)\s*\}/g,
-    )].map(([, size, a, b]) => ({ size, a: Number(a), b: Number(b) }));
-    expect(ladder.length).toBeGreaterThanOrEqual(3);
+    // Drive the cap directly: resting box, hero content and hint all fixed, and
+    // the clamp chosen so the decorative zone is exactly `ink` tall — then one
+    // px short of it. Derived from the component's own formula rather than
+    // hand-computed, so the boundary stays true if the geometry moves.
+    const RESTING = 1000;
+    const HERO = 210;
+    const HINT = 54;
+    const topOffset = Math.max(
+      ORB_INK_HEADROOM,
+      Math.round((RESTING - HOST_PADDING_BOTTOM - HERO - HINT) / 2),
+    );
+    const capFor = (target: number): number =>
+      RESTING - HOST_PADDING_BOTTOM - HINT - topOffset - target;
+    for (const size of ["lg", "md", "sm"] as const) {
+      const ink = dim[size] + halo[size];
+      const exact = mount(RESTING, capFor(ink), HERO, HINT);
+      expect([size, exact.heroClip.maxHeight]).toEqual([size, ink]);
+      expect([size, exact.orbSize]).toEqual([size, size]);
+      exact.unmount();
 
-    for (const step of ladder) {
-      // Each rung must be that size's REAL box and REAL halo, from AriOrb.
-      expect([step.size, step.a]).toEqual([step.size, dim[step.size]]);
-      expect([step.size, step.b]).toEqual([step.size, halo[step.size]]);
+      const short = mount(RESTING, capFor(ink) + 1, HERO, HINT);
+      expect([size, short.orbSize]).not.toEqual([size, size]);
+      short.unmount();
     }
-    // ...and the rungs must descend, or "largest that fits" picks the wrong one.
-    const extents = ladder.map((step) => step.a + step.b);
-    expect([...extents].sort((x, y) => y - x)).toEqual(extents);
   });
 
   it("T-12 the orb steps DOWN through real sizes and then hides — it is never clipped", () => {

@@ -57,7 +57,12 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { AriOrb, type AriOrbSize } from "./AriOrb";
+import {
+  AriOrb,
+  type AriOrbSize,
+  HALO_MULT_PX as ARI_ORB_HALO_PX,
+  SIZE_PX as ARI_ORB_DIM_PX,
+} from "./AriOrb";
 
 /** The hero geometry the SCREEN owns and this component consumes. */
 export interface AriEmptyStateLayout {
@@ -95,20 +100,20 @@ const HOST_PADDING_BOTTOM = spacing.xxl;
  * column's own top edge, which is exactly what it did on an iPhone SE at
  * accessibility-medium.
  *
- * AriOrb owns these numbers; this is a mirror, and AriOrb is outside this
- * rework's file allowlist. The mirror cannot drift silently — T-11 in
- * issue_3429_ari_rework4_empty_state_priority.implementor.test.tsx reads
- * AriOrb.tsx and fails if either table there stops agreeing with this one.
+ * AriOrb owns these numbers and exports them; nothing is copied here. The
+ * rungs are the sizes this screen is willing to use, in descending order —
+ * below the smallest the orb is hidden rather than shrunk further, because `sm`
+ * is the size the assistant bubble already uses and anything under it is a dot,
+ * not the Ari mark.
  *
- * Below the smallest entry the orb is hidden rather than shrunk further: `sm`
- * is the size the assistant bubble already uses, so it is a real designed
- * appearance; anything under it is a dot, not the Ari mark.
  */
-const ORB_LADDER: { size: AriOrbSize; dimPx: number; haloPx: number }[] = [
-  { size: "lg", dimPx: 56, haloPx: 18 },
-  { size: "md", dimPx: 32, haloPx: 10 },
-  { size: "sm", dimPx: 24, haloPx: 6 },
-];
+const ORB_LADDER: { size: AriOrbSize; dimPx: number; haloPx: number }[] = (
+  ["lg", "md", "sm"] as const
+).map((size) => ({
+  size,
+  dimPx: ARI_ORB_DIM_PX[size],
+  haloPx: ARI_ORB_HALO_PX[size],
+}));
 
 /**
  * How much room the decorative content leaves above itself, at minimum.
