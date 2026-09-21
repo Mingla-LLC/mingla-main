@@ -39,6 +39,8 @@
  *   - render the headline/body unconditionally instead of gating them on the
  *     cap → T-10 goes red: that is the sliver-of-glyphs the first REWORK-4
  *     build shipped on the Pixel 7 at font scale 1.5.
+ *   - pin the orb back to a fixed `size="lg"` → T-12 and T-13 go red: that is
+ *     F-1, the halo sheared flat and the orb sliced into a half-disc.
  *   - drop `heroTopOffsetPx` back to a `justifyContent: "center"` → T-3 and
  *     T-4 go red, because the orb then tracks the clamp (the jump ORCH-1057
  *     removed) and the resting position stops matching what centring produced.
@@ -143,6 +145,8 @@ interface Mounted {
   hintRowLabel: unknown;
   /** The decorative text rows actually rendered, in document order. */
   textRows: string[];
+  /** The AriOrb size actually rendered, or null when the orb is not drawn. */
+  orbSize: string | null;
   unmount: () => void;
 }
 
@@ -220,7 +224,12 @@ function mount(
   const hintRow = childViews(hintZone)[0];
 
   const contentBox = childViews(heroClip)[0];
+  const orbNode = (contentBox.children ?? []).find((c) => c.type === "AriOrb")
+    ?? (contentBox.children ?? [])
+      .flatMap((c) => c.children ?? [])
+      .find((c) => c.type === "AriOrb");
   return {
+    orbSize: (orbNode?.props.size as string) ?? null,
     host: flatten(host.props.style),
     heroClip: flatten(heroClip.props.style),
     heroContent: flatten(contentBox.props.style),
@@ -248,15 +257,14 @@ describe("#3429 REWORK-4 N-1 — the attach hint is the last content dropped", (
     const m = mount(408, 226, SCALES[0].heroPx, SCALES[0].hintPx);
     // The instruction this whole feature exists to ship is present...
     expect(m.hintRowLabel).toBe("Tap the plus button to attach context");
-    // ...and it lives OUTSIDE the zone that clips, which is the entire point:
-    // clipping can only ever reach the decorative hero.
-    expect(m.heroClip.overflow).toBe("hidden");
+    // #3429 REWORK-5 F-1: NOTHING clips. Every child is drawn whole or not
+    // drawn, so a clipping box has no job left — and a clipping box is what
+    // sheared the orb's halo flat and sliced it in half on the iPhone SE.
+    expect(m.heroClip.overflow).toBeUndefined();
     expect(m.hintZone.overflow).toBeUndefined();
+    expect(m.heroContent.overflow).toBeUndefined();
     m.unmount();
 
-    // And at rest, with nothing to clip, the zone does NOT clip — the orb
-    // paints a halo past its own box and a permanently-clipping parent shears
-    // the bottom off it (caught on the Pixel 7, not by an earlier assertion).
     const atRest = mount(620, 0, SCALES[0].heroPx, SCALES[0].hintPx);
     expect(atRest.heroClip.overflow).toBeUndefined();
     atRest.unmount();
@@ -419,6 +427,89 @@ describe("#3429 REWORK-4 N-1 — the attach hint is the last content dropped", (
     // ...and the attach hint still outranks all of it.
     expect(tight.hintRowLabel).toBe("Tap the plus button to attach context");
     tight.unmount();
+  });
+
+  it("T-11 the orb-size mirror still agrees with AriOrb (drift guard)", () => {
+    // AriOrb owns its size and halo tables and is outside this rework's file
+    // allowlist, so EmptyState carries a mirror of the two numbers it needs.
+    // A mirror that can drift silently is worse than no mirror: read the real
+    // source and hold them to each other.
+    const read = (name: string): string =>
+      require("fs").readFileSync(require("path").join(__dirname, "..", name), "utf8");
+    const orbSource = read("AriOrb.tsx");
+    const emptySource = read("EmptyState.tsx");
+
+    const table = (source: string, symbol: string): Record<string, number> => {
+      const start = source.indexOf(`const ${symbol}: Record<AriOrbSize, number> = {`);
+      expect(start).toBeGreaterThan(-1);
+      const body = source.slice(start, source.indexOf("};", start));
+      const out: Record<string, number> = {};
+      for (const [, key, value] of body.matchAll(/(\w+):\s*(\d+)/g)) out[key] = Number(value);
+      return out;
+    };
+    const dim = table(orbSource, "SIZE_PX");
+    const halo = table(orbSource, "HALO_MULT_PX");
+
+    const ladder = [...emptySource.matchAll(
+      /\{\s*size:\s*"(\w+)",\s*paintsBelowBoxTopPx:\s*(\d+)\s*\+\s*(\d+)\s*\}/g,
+    )].map(([, size, a, b]) => ({ size, a: Number(a), b: Number(b) }));
+    expect(ladder.length).toBeGreaterThanOrEqual(3);
+
+    for (const step of ladder) {
+      // Each rung must be that size's REAL box and REAL halo, from AriOrb.
+      expect([step.size, step.a]).toEqual([step.size, dim[step.size]]);
+      expect([step.size, step.b]).toEqual([step.size, halo[step.size]]);
+    }
+    // ...and the rungs must descend, or "largest that fits" picks the wrong one.
+    const extents = ladder.map((step) => step.a + step.b);
+    expect([...extents].sort((x, y) => y - x)).toEqual(extents);
+  });
+
+  it("T-12 the orb steps DOWN through real sizes and then hides — it is never clipped", () => {
+    const sc = SCALES[0];
+    const seen: (string | null)[] = [];
+    // Walk the cap from "everything fits" down to "nothing fits" by growing the
+    // clamp, and record what the orb does at each step.
+    for (const clamp of [0, 180, 260, 300, 340, 420]) {
+      const m = mount(620, clamp, sc.heroPx, sc.hintPx);
+      seen.push(m.orbSize);
+      // Whatever it chose, no box in the decorative column may clip it.
+      expect(m.heroClip.overflow).toBeUndefined();
+      expect(m.heroContent.overflow).toBeUndefined();
+      m.unmount();
+    }
+    // At rest it is the full-size hero...
+    expect(seen[0]).toBe("lg");
+    // ...it only ever gets smaller or disappears, never bigger...
+    const rank = (size: string | null): number =>
+      size === null ? 0 : ["sm", "md", "lg"].indexOf(size) + 1;
+    for (let i = 1; i < seen.length; i += 1) {
+      expect(rank(seen[i])).toBeLessThanOrEqual(rank(seen[i - 1]));
+    }
+    // ...it genuinely steps rather than jumping straight to nothing...
+    expect(new Set(seen.filter(Boolean)).size).toBeGreaterThan(1);
+    // ...and at the tightest cap it is gone, with the hint still standing.
+    expect(seen[seen.length - 1]).toBeNull();
+    const tightest = mount(620, 420, sc.heroPx, sc.hintPx);
+    expect(tightest.hintRowLabel).toBe("Tap the plus button to attach context");
+    tightest.unmount();
+  });
+
+  it("T-13 the orb's INK always fits the cap, on every device and type size", () => {
+    // The orb's halo paints past its own layout box, which is why fitting the
+    // box is not the same as fitting the orb. This is the assertion F-1 failed.
+    const EXTENT: Record<string, number> = { lg: 56 + 18, md: 32 + 10, sm: 24 + 6 };
+    for (const device of DEVICES) {
+      for (const scale of SCALES) {
+        for (const clamp of [0, device.clampPx]) {
+          const m = mount(device.restingHeightPx, clamp, scale.heroPx, scale.hintPx);
+          if (m.orbSize !== null) {
+            expect(EXTENT[m.orbSize]).toBeLessThanOrEqual(m.heroClip.maxHeight as number);
+          }
+          m.unmount();
+        }
+      }
+    }
   });
 
   it("T-8 before measurement the group is centred, so the first frame is not top-aligned", () => {

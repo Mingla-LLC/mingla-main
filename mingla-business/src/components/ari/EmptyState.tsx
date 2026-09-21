@@ -22,11 +22,19 @@
  *     attach hint is the LAST content dropped and is always inside the visible
  *     region — above the composer, never behind it.
  *
- * A text row that cannot be shown IN FULL is not shown at all. A half-drawn
- * line of type reads as a rendering bug rather than as a deliberate reduction
- * (REWORK-4 shipped a sliver of headline ascenders on the Pixel 7 at font scale
- * 1.5 before this rule). The orb is not a text row and still crops, which reads
- * as the intended crop.
+ * NOTHING IS EVER CLIPPED. A half-drawn shape reads as a rendering bug rather
+ * than as a deliberate reduction, so every child is either drawn whole or not
+ * drawn at all:
+ *   - a TEXT ROW that cannot be shown in full is not shown (REWORK-4 shipped a
+ *     sliver of headline ascenders on the Pixel 7 at font scale 1.5);
+ *   - the ORB steps down through AriOrb's own designed sizes until it fits, and
+ *     is hidden below the smallest one (REWORK-5 F-1: the orb was sliced
+ *     through its lower half into a half-disc on the iPhone SE, six seconds
+ *     after the keyboard settled).
+ *
+ * Because of that, the decorative zone carries no `overflow: hidden` at all —
+ * there is nothing left for it to clip. The cap is a decision input, not a
+ * blade.
  *
  * The centring is done with an explicit, keyboard-INDEPENDENT top offset rather
  * than `justifyContent: "center"`, which is what lets the decorative zone shrink
@@ -49,7 +57,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { AriOrb } from "./AriOrb";
+import { AriOrb, type AriOrbSize } from "./AriOrb";
 
 /** The hero geometry the SCREEN owns and this component consumes. */
 export interface AriEmptyStateLayout {
@@ -72,6 +80,30 @@ export const AriEmptyStateLayoutContext =
   React.createContext<AriEmptyStateLayout>({ viewportBottomClampPx: 0 });
 
 const HOST_PADDING_BOTTOM = spacing.xxl;
+
+/**
+ * How far each AriOrb size PAINTS below the top of its own layout box.
+ *
+ * The orb's host box is `dim` square, but its halo is an absolutely positioned
+ * circle of `dim + halo * 2` offset by `-halo` on both axes — so the ink runs
+ * `halo` past the box on every side. Fitting the box is therefore not the same
+ * as fitting the orb, and measuring cannot tell us the difference: `onLayout`
+ * reports the box, never the ink.
+ *
+ * AriOrb owns these numbers; this is a mirror, and AriOrb is outside this
+ * rework's file allowlist. The mirror cannot drift silently — T-11 in
+ * issue_3429_ari_rework4_empty_state_priority.implementor.test.ts reads
+ * AriOrb.tsx and fails if either table there stops agreeing with this one.
+ *
+ * Below the smallest entry the orb is hidden rather than shrunk further: `sm`
+ * is the size the assistant bubble already uses, so it is a real designed
+ * appearance; anything under it is a dot, not the Ari mark.
+ */
+const ORB_LADDER: { size: AriOrbSize; paintsBelowBoxTopPx: number }[] = [
+  { size: "lg", paintsBelowBoxTopPx: 56 + 18 },
+  { size: "md", paintsBelowBoxTopPx: 32 + 10 },
+  { size: "sm", paintsBelowBoxTopPx: 24 + 6 },
+];
 
 /** Track a subtree's measured height without re-rendering on equal values. */
 function useMeasuredHeight(): [number, (event: LayoutChangeEvent) => void] {
@@ -145,11 +177,13 @@ export const EmptyState: React.FC = () => {
   // extreme clamp (tall attachment tray + keyboard on a small phone) it would
   // push the hint row off the visible box — the exact failure this fix ends.
   const heroMaxHeightPx = Math.max(0, visibleHeightPx - hintHeightPx - heroTopOffsetPx);
-  // Clip ONLY when the cap actually bites. The orb paints a soft halo past its
-  // own layout box, so a permanently-clipping box shears the bottom off it even
-  // at rest with nothing to clip — a regression caught on the Pixel 7 rather
-  // than by any assertion.
-  const heroIsClipped = measured && heroMaxHeightPx < heroContentPx;
+  // The largest orb whose INK fits the decorative zone. Stepping down through
+  // AriOrb's own sizes keeps the halo a circle at every keyboard height; the
+  // choice reads only the cap and the constants above, never a measurement of
+  // the orb, so it cannot feed back into the layout that produced the cap.
+  const orb = measured
+    ? ORB_LADDER.find((step) => step.paintsBelowBoxTopPx <= heroMaxHeightPx)
+    : ORB_LADDER[0];
   // A text row that cannot be shown IN FULL is not shown. The rows are in
   // document order, so hiding one always hides the ones below it and never
   // moves the ones above it — nothing reflows, it only disappears.
@@ -165,13 +199,14 @@ export const EmptyState: React.FC = () => {
         style={[
           styles.heroClip,
           measured ? { marginTop: heroTopOffsetPx, maxHeight: heroMaxHeightPx } : null,
-          heroIsClipped ? styles.heroClipped : null,
         ]}
       >
         <View style={styles.heroContent} onLayout={handleHeroLayout}>
-          <View style={styles.orbWrap}>
-            <AriOrb size="lg" thinking decorative={false} accessibilityLabel="Ari" />
-          </View>
+          {orb ? (
+            <View style={styles.orbWrap}>
+              <AriOrb size={orb.size} thinking decorative={false} accessibilityLabel="Ari" />
+            </View>
+          ) : null}
           {showHeadline ? (
             <Text style={styles.headline} onLayout={handleHeadlineLayout}>Hi, I&apos;m Ari.</Text>
           ) : null}
@@ -228,17 +263,15 @@ const styles = StyleSheet.create({
   hostBeforeMeasurement: {
     justifyContent: "center",
   },
-  // #3429 REWORK-4 N-1 — the decorative zone. `overflow: hidden` here (rather
-  // than only on the screen's outer box) is what makes the hero the thing that
-  // gives way: it is clipped at its OWN bottom edge, above the hint row,
-  // instead of the hint row being clipped at the screen's edge.
+  // #3429 REWORK-4 N-1 — the decorative zone: capped to what is still visible,
+  // so it is the thing that gives way while the hint row below it does not.
+  // #3429 REWORK-5 F-1 — and it carries no `overflow`, on purpose. Every child
+  // is drawn whole or not drawn, so there is nothing left to clip; a clipping
+  // box here is what sheared the orb's halo flat and sliced it in half on the
+  // iPhone SE.
   heroClip: {
     width: "100%",
     alignItems: "center",
-  },
-  // Applied only while the cap bites — see `heroIsClipped`.
-  heroClipped: {
-    overflow: "hidden",
   },
   // The box whose height is measured. It overflows the cap above it on purpose
   // — the clip is the mechanism — and `flexShrink: 0` says so, though it is NOT
