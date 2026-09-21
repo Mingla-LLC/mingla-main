@@ -25,7 +25,7 @@
     "is the FOURTH: it raises this to 653 and adds its own batch:E row in the same PR. P2/P3 are exact",
     "equalities, so a row cannot be registered before its file exists."
   ],
-  "expectedStrictGrepMjsFiles": 652,
+  "expectedStrictGrepMjsFiles": 653,
   "selfTestWiredFloor": 417,
   "classAShardCount": 3,
   "unenforcedCap": 2,
@@ -9715,6 +9715,15 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-3449-class-a-shard-plan.implementor.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:E",
+      "invocation": "node --test",
+      "modes": ["plain"],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-3449-class-a-shard-plan.tester.test.mjs",
       "kind": "file",
       "enforcement": "batch:E",
       "invocation": "node --test",
