@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as Haptics from "expo-haptics";
 import { Linking } from "react-native";
 
 import { pickAriAttachmentFiles } from "../components/ari/ariAttachmentPicker";
@@ -267,7 +266,11 @@ export function useAriAttachments(args: {
       fileType: target.fileType,
       errorCode: target.errorCode,
     });
-    Haptics.selectionAsync().catch(() => undefined);
+    // #3429 P0 follow-up — ORCH-1296 class; see ariPrepareImage.native.ts.
+    // Fire-and-forget either way, so deferring the resolve costs nothing.
+    void import("expo-haptics").then((Haptics) => Haptics.selectionAsync()).catch(
+      () => undefined,
+    );
     if (target.attachmentId) void discardAriAttachment(target.attachmentId).catch(() => undefined);
   }, [args.surface, replaceAttachments]);
 

@@ -43,7 +43,6 @@ import Animated, {
 } from "react-native-reanimated";
 import { ArrowUp } from "lucide-react-native";
 import { Plus } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
 import { isAriSendReady } from "../../services/agentReliability";
 
 import {
@@ -136,7 +135,10 @@ export const InputBar: React.FC<InputBarProps> = ({
       }
     }
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+    // #3429 P0 follow-up — ORCH-1296 class; see ariPrepareImage.native.ts.
+    void import("expo-haptics").then((Haptics) =>
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    ).catch(() => undefined);
 
     const accepted = onSend(t);
     // Transfer ownership synchronously. Once Send is accepted locally the one

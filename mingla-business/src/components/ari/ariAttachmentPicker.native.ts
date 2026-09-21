@@ -1,4 +1,3 @@
-import * as DocumentPicker from "expo-document-picker";
 import {
   launchImageLibraryAsync,
   type PlatformImagePickerAsset,
@@ -56,6 +55,14 @@ export async function pickAriAttachmentFiles(
     }));
   }
 
+  // #3429 P0 follow-up — ORCH-1296 class. `expo-document-picker` evaluates
+  // `expo-modules-core`'s EventEmitter against a native global at IMPORT time,
+  // so a module-scope import here made merely importing the picker fatal
+  // anywhere the native module is not registered — it killed all six of
+  // #1486's dormant AriChatScreen render tests. Resolve it when a person
+  // actually opens the file picker, exactly as ariAttachmentFileReader.native
+  // does for expo-file-system.
+  const DocumentPicker = await import("expo-document-picker");
   const result = await DocumentPicker.getDocumentAsync({
     type: DOCUMENT_MIMES,
     multiple: true,

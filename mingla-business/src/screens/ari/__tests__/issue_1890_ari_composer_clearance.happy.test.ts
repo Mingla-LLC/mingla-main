@@ -118,7 +118,33 @@ jest.mock("react-native-reanimated", () => {
     withSequence: (v: unknown) => v,
     cancelAnimation: () => undefined,
     useReducedMotion: () => true,
-    Easing: { bezier: () => (t: number) => t, out: (f: unknown) => f, inOut: (f: unknown) => f, ease: (t: number) => t },
+    // [TEST-MOD-APPROVED #3429] Mock-surface widening only; no assertion
+    // changed. #3429 gives the composer an attachment source sheet, so
+    // AriChatScreen's graph now reaches SheetMobile, which uses
+    // `Easing.in(Easing.cubic)`. The four-member stand-in below threw
+    // "Easing.in is not a function" and took all six tests with it. Every
+    // easing is identity here because this suite measures PADDING, not motion.
+    Easing: (() => {
+      const identity = (t: number): number => t;
+      const shape = (fn?: unknown): unknown => fn ?? identity;
+      return {
+        bezier: () => identity,
+        in: shape,
+        out: shape,
+        inOut: shape,
+        ease: identity,
+        linear: identity,
+        quad: identity,
+        cubic: identity,
+        sin: identity,
+        circle: identity,
+        exp: identity,
+        poly: () => identity,
+        elastic: () => identity,
+        back: () => identity,
+        bounce: identity,
+      };
+    })(),
   };
 });
 
@@ -226,6 +252,23 @@ jest.mock("../../../hooks/useAgentChat", () => ({
     brandId: null,
     errorMessage: null,
     clearErrorMessage: jest.fn(),
+    // [TEST-MOD-APPROVED #3429] Mock-surface widening only; no assertion
+    // changed. #3429 grows useAgentChat's return with the turn-lifecycle and
+    // surface members AriChatScreen now reads. A partial mock silently yields
+    // `undefined` for anything it omits, so the screen died on
+    // `chat.setSurface is not a function` before a single padding assertion
+    // ran. Kept in the same order the hook returns them.
+    setSurface: jest.fn(),
+    activeTurn: null,
+    stopTurn: jest.fn(),
+    retryTurn: jest.fn(),
+    editTurn: jest.fn(),
+    discardTurn: jest.fn(),
+    sendChoice: jest.fn(async () => ({})),
+    beginConfirmedActivity: jest.fn(),
+    finishConfirmedActivity: jest.fn(),
+    retryTenantRecovery: jest.fn(),
+    errorCode: null,
   }),
 }));
 // [TEST-MOD-APPROVED #2013] — tenant containment wired the canonical
@@ -495,7 +538,17 @@ describe("#1890 — Ari composer keyboard clearance", () => {
   it("4. the lift tracks the shared occluder budget, not a re-typed number", () => {
     let observed: unknown = null;
     jest.isolateModules(() => {
-      jest.doMock("../../../wrappers/SmartScrollView", () => ({ DONE_BAR_OCCUPIED: 100 }));
+      // [TEST-MOD-APPROVED #3429] Mock-surface widening only; the override
+      // this test exists for (DONE_BAR_OCCUPIED: 100) is unchanged. #3429
+      // gives ConversationDrawer a TextInput, so it now takes `ScrollView`
+      // from this wrapper too (ORCH-0892). Stubbing the module down to the one
+      // constant left that import `undefined` and React rejected the element
+      // before any padding was measured. Re-export the real one.
+      jest.doMock("../../../wrappers/SmartScrollView", () => ({
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        ScrollView: (jest.requireActual("react-native") as { ScrollView: unknown }).ScrollView,
+        DONE_BAR_OCCUPIED: 100,
+      }));
       jest.doMock("../../../wrappers/keyboardClearance", () => ({ MIN_VISIBLE_CLEARANCE: 7 }));
       /* eslint-disable @typescript-eslint/no-require-imports */
       const R = require("react") as typeof React;

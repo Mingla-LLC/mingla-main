@@ -8,7 +8,8 @@
  * orientation applied) and its size is read from the written file.
  */
 
-import * as ImageManipulator from "expo-image-manipulator";
+// Type-only: erased at compile time, so it never evaluates the native module.
+import type * as ImageManipulatorTypes from "expo-image-manipulator";
 
 import { readAriAttachmentSize } from "./ariAttachmentFileReader";
 import {
@@ -23,6 +24,10 @@ import {
 export async function prepareAriImage(
   input: AriImagePreparationInput & { uri: string },
 ): Promise<AriPreparedImage> {
+  // #3429 P0 follow-up — ORCH-1296 class: this expo module evaluates
+  // expo-modules-core's EventEmitter at IMPORT time, so a module-scope import
+  // is fatal wherever the native module is not registered. Resolve it at use.
+  const ImageManipulator = await import("expo-image-manipulator");
   const plan = planAriImagePreparation(input);
   if (plan === null) throw new AriImagePreparationError("IMAGE_UNREADABLE");
   if (plan.kind === "refuse") throw new AriImagePreparationError(plan.code);
@@ -30,7 +35,7 @@ export async function prepareAriImage(
     ? ImageManipulator.SaveFormat.WEBP
     : ImageManipulator.SaveFormat.JPEG;
   const save = { compress: plan.compress, format };
-  let result: ImageManipulator.ImageResult;
+  let result: ImageManipulatorTypes.ImageResult;
   try {
     result = await ImageManipulator.manipulateAsync(
       input.uri,
