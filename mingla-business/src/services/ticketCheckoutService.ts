@@ -780,8 +780,11 @@ export const preflightTicketCheckout = async (
  *    subscription on ticket_checkout_sessions.order_id; webhook backup
  *    will eventually populate it.
  *  - status === "failed" | "expired"     → surface error state.
- *  - thrown error                        → treat as transient; fall through
- *    to Realtime; webhook backup will still complete the order.
+ *  - thrown error                        → transient ONLY without a status or
+ *    with a 5xx; a 409 `checkout_unavailable` is a definitive refusal.
+ *
+ * Buyer screens do not apply these rules themselves: they call
+ * `awaitTicketConfirmation` below, the one owner of that classification.
  */
 export const confirmTicketCheckout = async (
   checkoutSessionId: string,
@@ -809,6 +812,281 @@ export const pollTicketCheckoutStatus = async (
   }
   latest = await statusFetcher(checkoutSessionId, buyerStatusToken);
   return latest.order !== null ? latest : null;
+};
+
+// ---------------------------------------------------------------------------
+// THE PAID RETURN LEG — what a confirm answer MEANS, and how long we keep asking.
+//
+// ONE owner for all three buyer confirmation screens (event, trip, experience).
+// Before this, each screen classified `confirmTicketCheckout` inline and treated
+// EVERY thrown error as transient. `ticket-checkout-confirm` refuses a sale that
+// was closed or held after payment with HTTP 409 `checkout_unavailable` — a
+// definitive answer that arrived as a throw, so the guest sat on "Confirming
+// your tickets…" with nothing left that could ever resolve it. `status:
+// "expired"` fell into the same wait, and the wait itself had no end: only a
+// Realtime subscription that never fires for a refused sale.
+//
+// TWO refusals, NOT one. They differ by the only fact a guest cares about —
+// whether their money moved — so they can never share a sentence:
+//
+//   • `expired`  — the hosted Checkout Session timed out before the guest paid.
+//     Nothing was charged and there is nothing to refund. Safe to try again.
+//
+//   • a `checkout_unavailable` refusal (thrown 409, or `status: "failed"` with
+//     that token at HTTP 200) — reached ONLY after a completed charge or a
+//     revoked sale. Read the server before writing copy for it:
+//       - ticket-checkout-confirm raises all three of its 409s AFTER
+//         `paymentIntent.status === "succeeded"`. Two of them capture a #2079
+//         `needs_attention` obligation, which that issue makes deliberately
+//         NON-EXECUTABLE — a person resolves it, and it may well end as a
+//         completed sale rather than a refund. Only `paid_reversal_pending`
+//         queues a refund.
+//       - ticket-checkout-status raises its 409 for `revoked_at` (which can
+//         predate any payment) as well as `paid_reversal_pending`.
+//       - paystackTicketReturnVerify returns this token at HTTP 200 for
+//         `paid_reversal_pending`: the guest definitely paid.
+//     So "you have not been charged" is false here, and "being refunded in
+//     full" is a promise we may not keep. The copy asserts NEITHER.
+//
+// Screens call `awaitTicketConfirmation` and render its verdict. They do not
+// read statuses, codes or tokens themselves.
+// ---------------------------------------------------------------------------
+
+/** Title for a checkout that ran out of time before any payment. */
+export const TICKETS_EXPIRED_TITLE = "Checkout expired";
+
+/**
+ * `status: "expired"` — the hosted Checkout Session timed out. The guest never
+ * completed a payment, so this is the one refusal that can safely say so and
+ * send them back to try again.
+ */
+export const TICKETS_EXPIRED_MESSAGE =
+  "Your checkout expired before the payment went through, so no tickets were issued. You haven't been charged — you can start again.";
+
+/** Title for a refused sale whose payment is not settled either way. */
+export const TICKETS_NOT_ISSUED_TITLE = "Tickets not issued";
+
+/**
+ * A `checkout_unavailable` refusal. Money may well have moved, and what happens
+ * to it is not decided here — so this claims NO charge outcome and promises NO
+ * refund. It tells the guest the two things that are true on every arm: nobody
+ * should pay again, and a person can reach us.
+ */
+export const TICKETS_NOT_ISSUED_MESSAGE =
+  "We couldn't issue your tickets for this sale. If your payment went through, we're sorting it out and will email you — please don't pay again. Contact support@usemingla.com and we'll pick it up from there.";
+
+/** Title once the confirmation budget is spent without an answer either way. */
+export const TICKETS_STILL_CONFIRMING_TITLE = "Still confirming your tickets";
+
+/**
+ * The honest unknown. The payment may well have succeeded and the order may
+ * still land (the webhook backup is live), so this never claims a charge
+ * outcome — it tells the guest not to pay twice and that the email follows.
+ */
+export const TICKETS_STILL_CONFIRMING_MESSAGE =
+  "This is taking longer than usual. We'll email you as soon as your tickets are confirmed, so there's no need to pay again.";
+
+/** Total time the buyer screen keeps asking before it says "still confirming". */
+export const TICKET_CONFIRM_BUDGET_MS = 60_000;
+
+/** Wait between confirm attempts; the last value repeats until the budget ends. */
+export const TICKET_CONFIRM_BACKOFF_MS = [1000, 2000, 3000, 5000, 8000] as const;
+
+/** Return-leg tokens that carry their own, more specific copy (#2198). */
+const PAYSTACK_RETURN_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "paystack_charge_failed",
+  "paystack_charge_abandoned",
+  "paystack_payment_mismatch",
+]);
+
+export type TicketConfirmAnswer =
+  | { readonly kind: "result"; readonly result: TicketCheckoutConfirmResult }
+  | { readonly kind: "error"; readonly error: unknown };
+
+export type TicketConfirmPaid = {
+  readonly kind: "paid";
+  readonly result: TicketCheckoutConfirmResult;
+  readonly order: NonNullable<TicketCheckoutConfirmResult["order"]>;
+};
+
+export type TicketConfirmClassification =
+  | TicketConfirmPaid
+  /** A verified payment outcome with its own copy (#2198). Terminal. */
+  | { readonly kind: "payment_failed"; readonly message: string }
+  /** The checkout timed out before any payment. Nothing was charged. Terminal. */
+  | { readonly kind: "expired" }
+  /** A `checkout_unavailable` refusal: no tickets, and the payment is not
+   *  settled either way. NEVER merged with `expired` — opposite money facts. */
+  | { readonly kind: "not_issued" }
+  /** No answer yet (pending, transport failure, 5xx). Ask again. */
+  | { readonly kind: "pending" }
+  /** A refusal that asking again cannot change and that does not say whether
+   *  tickets exist (e.g. 403 / 404). Stop asking; do not guess. */
+  | { readonly kind: "unanswerable" };
+
+export type TicketConfirmVerdict =
+  | TicketConfirmPaid
+  | { readonly kind: "payment_failed"; readonly message: string }
+  | { readonly kind: "expired" }
+  | { readonly kind: "not_issued" }
+  | { readonly kind: "still_confirming" }
+  | { readonly kind: "cancelled" };
+
+/**
+ * Classify ONE confirm answer. Pure and total.
+ *
+ * ORDER IS THE CONTRACT:
+ *   1. a thrown refusal: `checkout_unavailable` / 409 is definitive; no status
+ *      (transport) or 5xx is transient; any other status cannot be resolved by
+ *      asking again;
+ *   2. `paid` with an order is the only success;
+ *   3. `expired` is definitive AND provably unpaid — the one refusal allowed to
+ *      say "you haven't been charged";
+ *   4. `failed` carrying `checkout_unavailable` is the #1930 reversal arm at
+ *      HTTP 200: the guest DID pay. It must never reach `paidCheckoutErrorMessage`,
+ *      whose copy for that token ("You have not been charged") belongs to the
+ *      CREATE leg, where it is true and here is not;
+ *   5. `failed` with a Paystack token keeps its #2198 copy;
+ *   6. any OTHER `failed` token is a reason we do not recognise. On a money path
+ *      the safe direction is "we don't know", never "you weren't charged", so it
+ *      joins `not_issued` rather than the create-leg fallback;
+ *   7. everything else (pending, `paid` with no order yet) keeps waiting.
+ */
+export const classifyTicketConfirmAnswer = (
+  answer: TicketConfirmAnswer,
+): TicketConfirmClassification => {
+  if (answer.kind === "error") {
+    const status = httpStatusOf(answer.error);
+    if (codeOf(answer.error) === "checkout_unavailable" || status === 409) {
+      return { kind: "not_issued" };
+    }
+    if (status === null || status >= 500) return { kind: "pending" };
+    return { kind: "unanswerable" };
+  }
+  const { result } = answer;
+  if (result.status === "paid" && result.order !== null) {
+    return { kind: "paid", result, order: result.order };
+  }
+  if (result.status === "expired") return { kind: "expired" };
+  if (result.status === "failed") {
+    const code = typeof result.error === "string" ? result.error : null;
+    if (code !== null && PAYSTACK_RETURN_FAILURE_CODES.has(code)) {
+      return {
+        kind: "payment_failed",
+        message: paidCheckoutErrorMessage({ code }),
+      };
+    }
+    return { kind: "not_issued" };
+  }
+  return { kind: "pending" };
+};
+
+export interface AwaitTicketConfirmationInput {
+  readonly checkoutSessionId: string;
+  readonly buyerStatusToken: string;
+  /** The confirm call. Screens pass `confirmTicketCheckout`. */
+  readonly confirm?: (
+    checkoutSessionId: string,
+    buyerStatusToken: string,
+  ) => Promise<TicketCheckoutConfirmResult>;
+  readonly waitFor?: (ms: number) => Promise<void>;
+  readonly now?: () => number;
+  readonly budgetMs?: number;
+  readonly backoffMs?: readonly number[];
+  /** True once the caller has gone away (unmount). Checked around every await. */
+  readonly isCancelled?: () => boolean;
+  /** Fired once, on the first answer that is not yet a verdict. */
+  readonly onWaiting?: () => void;
+}
+
+const CONFIRM_DEADLINE = Symbol("ticket-confirm-deadline");
+
+/**
+ * Resolve with the work, or with CONFIRM_DEADLINE if it has not settled within
+ * `ms`. A confirm request that never answers must not hold the guest past the
+ * budget. The request itself is not aborted — it is idempotent server-side.
+ */
+const settleWithin = async <T>(
+  work: Promise<T>,
+  ms: number,
+): Promise<T | typeof CONFIRM_DEADLINE> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<typeof CONFIRM_DEADLINE>((resolve) => {
+    timer = setTimeout(() => resolve(CONFIRM_DEADLINE), Math.max(0, ms));
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+};
+
+/**
+ * Ask `ticket-checkout-confirm` until it gives a verdict, with backoff, for at
+ * most `budgetMs` (60 s). Never calls confirm after the budget is spent.
+ *
+ * Returns:
+ *   - `paid`             → render the order;
+ *   - `payment_failed`   → render `message` (#2198 copy);
+ *   - `expired`          → render TICKETS_EXPIRED_MESSAGE (safe to try again);
+ *   - `not_issued`       → render TICKETS_NOT_ISSUED_MESSAGE (do NOT invite a
+ *                          retry: the payment is unsettled);
+ *   - `still_confirming` → render TICKETS_STILL_CONFIRMING_MESSAGE, and keep
+ *                          any other path (Realtime) open — a later paid answer
+ *                          still wins;
+ *   - `cancelled`        → the caller went away; render nothing.
+ */
+export const awaitTicketConfirmation = async (
+  input: AwaitTicketConfirmationInput,
+): Promise<TicketConfirmVerdict> => {
+  const confirm = input.confirm ?? confirmTicketCheckout;
+  const waitFor = input.waitFor ?? wait;
+  const now = input.now ?? Date.now;
+  const budgetMs = input.budgetMs ?? TICKET_CONFIRM_BUDGET_MS;
+  const backoff: readonly number[] =
+    input.backoffMs !== undefined && input.backoffMs.length > 0
+      ? input.backoffMs
+      : TICKET_CONFIRM_BACKOFF_MS;
+  const isCancelled = input.isCancelled ?? ((): boolean => false);
+  const startedAt = now();
+  // Elapsed is the larger of the clock and the sum of our own waits, so a clock
+  // that stalls (or a test clock that never moves) can never extend the budget.
+  let waitedMs = 0;
+  const elapsed = (): number => Math.max(now() - startedAt, waitedMs);
+  let announcedWaiting = false;
+
+  for (let attempt = 0; ; attempt += 1) {
+    if (isCancelled()) return { kind: "cancelled" };
+    const remainingMs = budgetMs - elapsed();
+    if (remainingMs <= 0) return { kind: "still_confirming" };
+
+    let classification: TicketConfirmClassification;
+    try {
+      const answer = await settleWithin(
+        confirm(input.checkoutSessionId, input.buyerStatusToken),
+        remainingMs,
+      );
+      if (answer === CONFIRM_DEADLINE) {
+        return isCancelled() ? { kind: "cancelled" } : { kind: "still_confirming" };
+      }
+      classification = classifyTicketConfirmAnswer({ kind: "result", result: answer });
+    } catch (error) {
+      classification = classifyTicketConfirmAnswer({ kind: "error", error });
+    }
+    if (isCancelled()) return { kind: "cancelled" };
+
+    if (classification.kind === "unanswerable") return { kind: "still_confirming" };
+    if (classification.kind !== "pending") return classification;
+
+    if (!announcedWaiting) {
+      announcedWaiting = true;
+      input.onWaiting?.();
+    }
+    const delayMs = Math.max(1, backoff[Math.min(attempt, backoff.length - 1)] ?? 1);
+    if (elapsed() + delayMs >= budgetMs) return { kind: "still_confirming" };
+    await waitFor(delayMs);
+    waitedMs += delayMs;
+  }
 };
 
 export const resendTicketConfirmation = async (
