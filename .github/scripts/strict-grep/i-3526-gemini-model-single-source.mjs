@@ -408,7 +408,7 @@ const ADMIN_MONEY_BOUND = new RegExp(
 // `const estCost = Math.max(0, city.remaining_count) * 0.004;`, which carries no
 // `usd` anywhere and which a currency-marked rule cannot see.
 const ADMIN_MONEY_ARITHMETIC = new RegExp(
-  `\\b[\\w$]*${MONEY_WORD}[\\w$]*\\s*=\\s*(?:[^;\\n]*?\\*\\s*)?\\d+\\.\\d+`,
+  `\\b([\\w$]*${MONEY_WORD}[\\w$]*)\\s*=\\s*(?:[^;\\n]*?\\*\\s*)?\\d+\\.\\d+`,
   "i",
 );
 
@@ -418,6 +418,13 @@ const ADMIN_MONEY_ARITHMETIC = new RegExp(
 // are exempt from ADMIN_MONEY_ARITHMETIC only — a currency-marked identifier is
 // a dollar amount whatever else its name says, so nothing exempts it from
 // ADMIN_MONEY_BOUND.
+//
+// issue #3526 P2-R1 — THIS IS TESTED AGAINST THE CAPTURED IDENTIFIER, NEVER THE
+// WHOLE EXPRESSION. Testing the expression let the word that DEFINES the offence
+// excuse it: a per-place rate is by definition multiplied by a count, so
+// `estCost = Math.max(0, city.remaining_count) * 0.004` — P0-1's original line —
+// contained "count" and was waved through. The exclusion is honest; the escape
+// hatch beside it was the hole.
 const DIMENSIONLESS_MARK =
   /fraction|ratio|multiplier|pct|percent|_ms\b|millis|seconds?|minutes?|hours?|days?|count|processed|index|length|size|version/i;
 
@@ -472,7 +479,9 @@ export function checkAdminCostOwnership(files) {
       continue;
     }
     const arith = ADMIN_MONEY_ARITHMETIC.exec(code);
-    if (arith && !DIMENSIONLESS_MARK.test(arith[0])) {
+    // arith[1] is the IDENTIFIER, arith[0] the whole expression. The escape is
+    // a property of what the value IS NAMED, not of what it is multiplied by.
+    if (arith && !DIMENSIONLESS_MARK.test(arith[1])) {
       failures.push(
         `G-5 ${rel}: a cost identifier is computed from a hardcoded rate ` +
         `(\`${arith[0].trim()}\`). ${WHY}`,
