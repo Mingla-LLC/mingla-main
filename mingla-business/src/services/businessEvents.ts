@@ -1037,6 +1037,7 @@ export const setEventMultiDatePricingMode = async (
 export const publishBusinessEventDraft = async (
   draft: DraftEvent,
   clientRevision: number | null = draft.clientRevision ?? null,
+  invites?: { selectionRevision: number | null; confirmed: boolean },
 ): Promise<PublishedBusinessEvent> => {
   // #3439: pair the base with THIS draft snapshot before any awaited write.
   // A cover poll may advance the shared base while refund terms are saving.
@@ -1076,6 +1077,12 @@ export const publishBusinessEventDraft = async (
         // column, which has no precision). Same values the draft already holds.
         locationGeo: draft.locationGeo,
         coordinatePrecision: draft.coordinatePrecision ?? null,
+        ...(invites?.selectionRevision !== null && invites?.selectionRevision !== undefined
+          ? {
+              invite_selection_revision: invites.selectionRevision,
+              invite_selection_confirmed: invites.confirmed,
+            }
+          : {}),
       },
       p_client_revision: clientRevision,
     },

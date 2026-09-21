@@ -48,6 +48,10 @@ export interface ExperienceCoverStepProps {
   experienceId: string | null;
   /** true while the up-front draft RPC is in flight. */
   preparingDraft: boolean;
+  /** Existing live offerings save edits here; new offerings continue to Invite then Review. */
+  isLiveEdit?: boolean;
+  /** True only when creation has the optional Invite and Review tail after Cover. */
+  hasInviteStep?: boolean;
   cover: CoverPatch;
   /**
    * issue #3373 — the experience's title as typed, and its When state, so the
@@ -74,6 +78,8 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
   brandId,
   experienceId,
   preparingDraft,
+  isLiveEdit = false,
+  hasInviteStep = false,
   cover,
   title,
   when,
@@ -151,8 +157,11 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
     <View style={styles.stepBody}>
       <Text style={styles.title}>Cover</Text>
       <Text style={styles.help}>
-        Add a photo, GIF, or short video. You can publish now to make this
-        experience bookable, or save it as a draft and finish later.
+        {isLiveEdit
+          ? "Add or change the photo, GIF, or short video, then save your changes."
+          : hasInviteStep
+            ? "Add a photo, GIF, or short video. Next, invite people or skip invites, then review and publish."
+            : "Add a photo, GIF, or short video. You can publish now to make this experience bookable, or save it as a draft and finish later."}
       </Text>
 
       <View style={styles.preview}>

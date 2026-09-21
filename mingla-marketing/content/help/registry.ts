@@ -607,6 +607,65 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'sell-tickets-to-a-hybrid-event-in-nigeria',
+    episode: 11,
+    title: 'Sell tickets to a hybrid event in Nigeria',
+    blurb:
+      'One event with two ways in — a public address and a private stream link, a capped room tier and an uncapped stream pass.',
+    duration: '3:08',
+    durationIso: 'PT3M8S',
+    chapter: 'creating',
+    intents: ['Sell tickets'],
+    surfaces: ['iOS'],
+    bambooEntryId: '0_83lj8x9k',
+    uploadedAt: '2026-09-21',
+    // Nothing is burned into this render, so the sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Switch to your Nigerian brand, then pick Hybrid',
+        body:
+          'On Home, switch to your Nigerian brand, then tap +, Create event and Ticketed event. Name it and set the format to Hybrid — that one choice is what lets the event carry an address and a stream link at once, and a capped ticket next to an uncapped one. Then the party type, the vibe tags and the genres.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+      {
+        title: 'One date, and Lagos time',
+        body:
+          'In step two, keep it on Single and pick the date, then when doors open and when it ends. Set the timezone to Lagos.',
+      },
+      {
+        title: 'An address and a link, on the same event',
+        body:
+          'Step three is headed “Venue or online link”, and for a hybrid it is both. Name the venue and pick its address; with Hide address off, the address shows on the public event page and in tickets and confirmation emails. Then add the stream link underneath — that one is shared with ticketed guests only, and never posted publicly.',
+      },
+      {
+        title: 'Cover and photos',
+        body:
+          'Add a video cover, then the photos that sit under it — guests swipe through them after the video. Up to eight.',
+      },
+      {
+        title: 'The room ticket',
+        body:
+          'Step five. Name the first ticket, price it in naira, and set the capacity to what the room holds. Turn the waitlist on for when that number runs out, and cap how many one buyer can take. Leave Available at on Online and at the door: buyers see the tier on the public page, and you can also sell it at the door.',
+      },
+      {
+        title: 'The stream pass',
+        body:
+          'Add a second ticket at the same price, but turn Unlimited capacity on — the Capacity field disappears, because a stream does not sell out. Then set Available at to Online only: there is no door for a stream pass. Available at is set per ticket, not per event.',
+      },
+      {
+        title: 'Public, and a refund policy',
+        body:
+          'Keep the event public. Then pick a refund policy: Standard is a full refund 14 or more days before the start, half from 7 to 13 days, and none inside 7 days. Guests see those terms before they buy, and you issue refunds from Orders.',
+      },
+      {
+        title: 'One page, both tickets',
+        body:
+          'Step seven shows the event the way guests will see it. Publish, and both tickets go on sale at once. The live page is tagged in-person + online and carries a ticket box with both tiers in it, and Where you’ll be shows the venue and its address — and says also online. Every customer Mingla drives your way lands on this page.',
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>

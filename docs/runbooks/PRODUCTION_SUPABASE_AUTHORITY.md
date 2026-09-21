@@ -63,6 +63,23 @@ SUPABASE_PROJECT_ID="$SUPABASE_PROJECT_REF" scripts/deploy-supabase-functions.sh
   --function brand-stripe-refresh-status
 ```
 
+> **#3498 — the wrapper ships your working tree, not the commit you name.**
+> `--merged-commit <sha>` is recorded as an attestation string only; the script checks nothing out.
+> On 2026-09-21 three production deploys shipped pre-fix code from a checkout five commits behind
+> while `PASS baked release attestation`, `PASS deployed`, and an incremented function version all
+> read green. Deploy from a checkout you have just proven current — run
+> `git fetch origin main && git merge --ff-only origin/main`, or use a fresh worktree at the merged
+> SHA; `grep` the working tree for a line your change actually added before running the script; and
+> after deploying prove the behaviour changed with `curl` or `function_edge_logs`, because a version
+> bump proves only that *a* deploy happened, never *which* code.
+
+> **#3498 — build the function list from the real import graph, transitively.** The same day, a
+> change to two `_shared` modules meant ten functions, not the five the PR described, because those
+> modules were imported well outside the path it named. Resolve importers by actual
+> `import … from "…"` statements, not by grepping the module name: four of five apparent matches for
+> one module were prose in comments, and deploying on that would have been four needless production
+> writes.
+
 Never call `supabase functions deploy` directly for Mingla production.
 
 ## Migration or Management API lane

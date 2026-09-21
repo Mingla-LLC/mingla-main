@@ -366,6 +366,10 @@ export interface PublishTripInput {
   eventId: string;
   draftPayload: Record<string, unknown>;
   brandId: string;
+  invites?: {
+    selectionRevision: number;
+    selectionConfirmed: true;
+  };
 }
 
 export const usePublishTrip = (): UseMutationResult<
@@ -380,6 +384,7 @@ export const usePublishTrip = (): UseMutationResult<
         operationId: operationIdFor(variables),
         // publish runs two commands; the pre-save needs its own stable id.
         saveOperationId: operationIdFor(variables.draftPayload),
+        invites: variables.invites,
       }),
     onSuccess: (trip, { brandId }) => {
       queryClient.setQueryData<Trip>(tripKeys.detail(trip.id), trip);
