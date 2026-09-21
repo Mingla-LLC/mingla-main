@@ -58,6 +58,14 @@ const check = (s) => {
     if (!s.evidence.includes(token)) fail(`retirement missing ${token}`);
   }
   if (/buyer_state='processed'/.test(s.evidence)) fail("the release claims a refund was processed");
+  // A released session must re-hold its inventory, and a retirement must be
+  // undone when the sale it was retired for does not complete.
+  if (!s.evidence.includes("expires_at=now()+GREATEST(v_session.expires_at-v_session.created_at,interval '0')")) {
+    fail("a released session no longer re-holds its inventory for the finalize window");
+  }
+  if (!s.evidence.includes("'sale_not_completed_after_release'") || !s.evidence.includes("'outcome','reopened'")) {
+    fail("a retired obligation can be swallowed when the finalize after a release fails");
+  }
   const guardLoop = s.evidence.indexOf("FOR v_refund IN");
   const refundRetire = s.evidence.indexOf("UPDATE public.source_refunds SET\n    financial_state='reconciled'", guardLoop);
   if (guardLoop < 0 || refundRetire < guardLoop) fail("refunds are retired before they are proven untouched");
@@ -100,6 +108,8 @@ if (process.argv.includes("--self-test")) {
     ["evidence", "v_refund.lease_owner IS NOT NULL", "false"],
     ["evidence", "UPDATE public.source_refunds SET\n    financial_state='reconciled'", "DELETE FROM public.source_refunds WHERE true; UPDATE public.source_refunds SET\n    financial_state='pending'"],
     ["evidence", "INSERT INTO public.source_refund_events(", "INSERT INTO public.source_refund_events_removed("],
+    ["evidence", "expires_at=now()+GREATEST(v_session.expires_at-v_session.created_at,interval '0'),\n", ""],
+    ["evidence", "'sale_not_completed_after_release'", "'sale_completed_no_refund_due'"],
     ["confirm", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],
     ["webhook", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],
     ["paystackWebhook", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],

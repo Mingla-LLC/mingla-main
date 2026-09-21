@@ -509,7 +509,8 @@ DECLARE v jsonb; v_order jsonb; v_replay jsonb; v_claim jsonb; v_attempt uuid; v
   c uuid:='e71d0000-0000-4000-8000-0000000000c1'; d uuid:='e71d0000-0000-4000-8000-0000000000d1';
   e uuid:='e71d0000-0000-4000-8000-0000000000e1'; e2 uuid:='e71d0000-0000-4000-8000-0000000000e2';
   f uuid:='e71d0000-0000-4000-8000-0000000000f1'; g uuid:='e71d0000-0000-4000-8000-0000000000a7';
-  h uuid:='e71d0000-0000-4000-8000-0000000000a8';
+  h uuid:='e71d0000-0000-4000-8000-0000000000a8'; i uuid:='e71d0000-0000-4000-8000-0000000000a9';
+  v_held integer; v_expires timestamptz; v_reopen jsonb;
 BEGIN
   -- ── 1. Webhook without a charge, then the buyer's confirm with one ────────
   v:=pg_temp.evidence_hold_stripe(a,'e71d0000-0000-4000-8000-000000000012','pi_evidenceA',NULL);
@@ -755,6 +756,71 @@ BEGIN
   END IF;
   IF public.biz_ticket_checkout_finalize(h,'evidence-hold-paystack-ref','2079901','card',v_pepper)->>'outcome'<>'finalized' THEN
     RAISE EXCEPTION 'evidence hold 8: the released Paystack session did not issue the ticket';
+  END IF;
+
+  -- ── 10. A release that does not end in a sale still owes the buyer ───────
+  --
+  -- The release puts the session back in flight and retires its refund BEFORE
+  -- the caller's finalize runs. Two things must hold across that window:
+  --
+  --   (a) the session RE-HOLDS its inventory. A held session only counts toward
+  --       issue_2491_derived_held() while expires_at > now(), and a hold that
+  --       reached the release expired long ago. Without the re-hold the last
+  --       seat can be sold to someone else while a buyer who has already paid
+  --       waits for their ticket.
+  --   (b) if finalize fails anyway — for a reason a held seat cannot prevent,
+  --       such as the ticket type being switched off — the retired obligation
+  --       is RE-OPENED. Without that the mint's identity-match return answers
+  --       'existing', changes nothing, and the buyer is left having paid, with
+  --       no ticket, owed a refund that no longer exists and that no worker
+  --       will ever look at again, because every claimer skips
+  --       financial_state='reconciled'. Silent and permanent.
+  --
+  -- DELETE the expires_at re-grant from release_ticket_checkout_evidence_hold
+  -- and (a) fails. DELETE the reopen branch from
+  -- issue_1930_mint_ticket_late_reversal and (b) fails.
+  v:=pg_temp.evidence_hold_stripe(i,'e71d0000-0000-4000-8000-000000000013','pi_evidenceI',NULL);
+  IF v->>'outcome'<>'attention' OR NOT pg_temp.evidence_hold_intact(i) THEN
+    RAISE EXCEPTION 'evidence hold 10: fixture did not hold: %',v;
+  END IF;
+  v:=pg_temp.evidence_hold_release(i,'pi_evidenceI','ch_evidenceI');
+  IF v->>'outcome'<>'released' THEN
+    RAISE EXCEPTION 'evidence hold 10: the hold was not released: %',v;
+  END IF;
+  -- (a) the released session holds its seat again.
+  SELECT expires_at INTO v_expires FROM public.ticket_checkout_sessions WHERE id=i;
+  v_held:=public.issue_2491_derived_held('e71d0000-0000-4000-8000-000000000013');
+  IF v_expires IS NULL OR v_expires<=now() OR v_held<1 THEN
+    RAISE EXCEPTION 'evidence hold 10(a): a released session holds no inventory (expires_at=%, held=%)',
+      v_expires,v_held;
+  END IF;
+  -- (b) finalize then fails for a reason the seat could not prevent.
+  UPDATE public.ticket_types SET is_disabled=true WHERE id='e71d0000-0000-4000-8000-000000000013';
+  v_order:=public.biz_ticket_checkout_finalize(i,'pi_evidenceI','ch_evidenceI','card',v_pepper);
+  UPDATE public.ticket_types SET is_disabled=false WHERE id='e71d0000-0000-4000-8000-000000000013';
+  IF v_order->>'outcome'<>'paid_reversal_pending' OR v_order->>'orderId' IS NOT NULL
+     OR EXISTS(SELECT 1 FROM public.orders WHERE checkout_session_id=i) THEN
+    RAISE EXCEPTION 'evidence hold 10: a closed sale still minted an order: %',v_order;
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=i
+       AND refund_kind='late_payment_no_value'
+       AND financial_state='pending' AND buyer_state='queued'
+       AND last_error_code IS NULL AND buyer_refund_processed_cents=0)
+     OR NOT EXISTS(SELECT 1 FROM public.source_refund_events e
+       JOIN public.source_refunds r ON r.id=e.refund_id
+       WHERE r.source_id=i AND e.safe_reason_code='sale_not_completed_after_release') THEN
+    RAISE EXCEPTION 'evidence hold 10(b): a failed finalize after a release left the buyer owed nothing';
+  END IF;
+  -- The re-opened obligation is real work again: the worker can claim it.
+  PERFORM * FROM public.claim_source_refund_operations('evidence-hold-reopen',25,now());
+  IF NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=i
+      AND lease_owner='evidence-hold-reopen') THEN
+    RAISE EXCEPTION 'evidence hold 10(b): the re-opened refund is still invisible to the worker';
+  END IF;
+  -- Calling the mint again is idempotent: one refund, still exactly one.
+  v_reopen:=public.issue_1930_mint_ticket_late_reversal(i,'stripe','pi_evidenceI',NULL,'ch_evidenceI');
+  IF (SELECT count(*) FROM public.source_refunds WHERE source_id=i)<>1 THEN
+    RAISE EXCEPTION 'evidence hold 10(b): the reopen duplicated the obligation: %',v_reopen;
   END IF;
 
   -- ── 9. Service role only ──────────────────────────────────────────────────

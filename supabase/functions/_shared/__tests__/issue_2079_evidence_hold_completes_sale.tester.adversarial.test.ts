@@ -474,3 +474,42 @@ Deno.test("#2079 ADV the release owner cannot cancel a refund anything has touch
   // And the #2168 handoff refuses to open a second refund for owned money.
   assert(migration.includes("RETURN 'already_owned';"));
 });
+
+// A release hands the session back for a finalize that may still fail. Two
+// things must survive that window or a buyer who has paid is left with nothing
+// and nobody looking: the session must re-hold its seat, and the retirement
+// must be undone if the sale does not complete. Delete either and a paid buyer
+// can be stranded silently and permanently.
+Deno.test("#2079 ADV a release that does not end in a sale still owes the buyer", () => {
+  const migration = Deno.readTextFileSync(
+    "supabase/migrations/20270711130000_ticket_evidence_hold_completes_sale.sql",
+  );
+  assert(
+    migration.includes(
+      "expires_at=now()+GREATEST(v_session.expires_at-v_session.created_at,interval '0')",
+    ),
+    "a released session does not re-hold its inventory, so its seat can be sold to someone else",
+  );
+  const reopen = migration.indexOf("'sale_not_completed_after_release'");
+  assert(reopen >= 0, "a retired obligation is never re-opened when the sale fails");
+  assert(migration.includes("'outcome','reopened'"));
+  // The re-open must restore a real, claimable obligation — not a cosmetic flag.
+  const window = migration.slice(Math.max(0, reopen - 1500), reopen + 1500);
+  for (
+    const token of [
+      "v_existing.financial_state='reconciled'",
+      "v_existing.last_error_code='sale_completed_no_refund_due'",
+      "v_existing.buyer_refund_processed_cents=0",
+      "v_existing.provider_refund_id IS NULL",
+      "buyer_state='queued'",
+      "financial_state='pending'",
+    ]
+  ) {
+    assert(window.includes(token), `reopen missing ${token}`);
+  }
+  // It must only re-open its own retirement, on matching provider identity.
+  assert(window.includes("v_existing.provider=p_provider"));
+  assert(
+    window.includes("v_existing.provider_payment_reference=p_payment_reference"),
+  );
+});
