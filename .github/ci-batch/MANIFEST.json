@@ -17568,7 +17568,7 @@
       "providerWorkflow": ".github/workflows/issue-2079-paystack-late-refund-identity-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5f75c057229dec3ed8d05bceb83ba5e8d22558ec5f39e6c546d40d9804d85cdc",
+        "sourceSha256": "1830b7007b800534758d40adc062673139f18b92009a8f650a63e01f892b0ea7",
         "triggers": [
           "pull_request",
           "push",
@@ -17592,6 +17592,7 @@
           "supabase/functions/_shared/ticketEvidenceHold.ts",
           "supabase/functions/checkout-sale-revocation/**",
           "supabase/functions/reconcile-stuck-checkouts/**",
+          "supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2079_evidence_hold_sweep.tester.adversarial.test.ts",
           "supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2079_stripe_hosted_null_relation.tester.adversarial.test.ts",
           "supabase/functions/ticket-checkout-confirm/**",
           "supabase/migrations/20270411002079_issue_2079_paystack_late_refund_identity.sql",
