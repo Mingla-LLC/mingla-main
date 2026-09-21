@@ -44,7 +44,9 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
     });
 
     it("SC-05: Stepper primitive with named pill chips (replaces 4pt anonymous segments)", () => {
-      expect(SRC).toMatch(/<Stepper[^>]*steps=\{?STEPPER_STEPS/);
+      // [TEST-MOD-APPROVED #1780] The dark-launch step map filters the named
+      // steps, while retaining the same shared Stepper primitive.
+      expect(SRC).toMatch(/<Stepper[^>]*steps=\{?visibleStepperSteps/);
       expect(SRC).toMatch(/STEPPER_STEPS:\s*StepperStep\[\]/);
       // No more anonymous progress segments
       expect(SRC).not.toMatch(/progressSegment/);
@@ -59,8 +61,10 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
       // step-context invariant (subtitle + title + progress above the step body) is
       // preserved at the new shape.
       expect(SRC).toMatch(/STEP_SUBTITLES/);
-      expect(SRC).toMatch(/\{brand\.name\}\s*·\s*Step\s+\{step\}\s+of\s+\{STEP_COUNT\}/);
-      expect(SRC).toMatch(/<Text style=\{styles\.mobileStepTitle\}>\{stepTitle\}/);
+      expect(SRC).toMatch(/\{brand\.name\}\s*·\s*Step\s+\{visibleStepNumber\}\s+of\s+\{visibleStepCount\}/);
+      // [TEST-MOD-APPROVED #1780] The title is the accessibility header only on
+      // the new Invite people step (7); the visual title shape is unchanged.
+      expect(SRC).toMatch(/<Text accessibilityRole=\{step === 7 \? "header" : undefined\} style=\{styles\.mobileStepTitle\}>\{stepTitle\}<\/Text>/);
     });
 
     it("SC-07: dock uses GlassCard variant='elevated' radius='xxl' floating; hides when keyboard up", () => {
@@ -69,7 +73,7 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
     });
 
     it("SC-08: subtitle row shows brand name + Step N of 5 + autosave-state text", () => {
-      expect(SRC).toMatch(/\{brand\.name\}\s*·\s*Step\s+\{step\}\s+of\s+\{STEP_COUNT\}/);
+      expect(SRC).toMatch(/\{brand\.name\}\s*·\s*Step\s+\{visibleStepNumber\}\s+of\s+\{visibleStepCount\}/);
       expect(SRC).toContain("autosaveStateText");
       expect(SRC).toContain('"Saving…"');
       expect(SRC).toContain('"Saved"');

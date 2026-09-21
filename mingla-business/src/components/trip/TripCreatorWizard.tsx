@@ -1,5 +1,5 @@
 /**
- * TripCreatorWizard — host component for the 7-step trip-planner wizard.
+ * TripCreatorWizard — host component for the 8-step trip-planner wizard.
  * Tr2 (ORCH-0859). Chrome rewritten in ORCH-0874 [Trip surfaces visual
  * parity with Events] per SPEC §3.3.5 + DESIGN §3.3 to mirror
  * EventCreatorWizard chrome:
@@ -35,6 +35,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "../../context/AuthContext";
 
 import {
   accent,
@@ -145,6 +146,26 @@ import type { TripPreviewBrand } from "./TripPreview";
 // master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
 // the app-local copy is deleted.
 import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
+// #1780 [bundle budget] — the invite surfaces come from their lazy owner, not
+// from InvitePeopleStep directly. All four wizards are separate lazy route
+// chunks, so a static import hoisted the whole invite cluster into `__common`,
+// the boot payload every business-web visitor downloads (ORCH-1083 / #1509).
+// See LazyInvitePeopleStep.tsx.
+import {
+  InvitePeoplePublishConfirmation,
+  InvitePeopleStep,
+  InvitePlanReviewSummary,
+  type InviteNavigationState,
+  InvitePlanSummaryBridge,
+  PENDING_WIZARD_INVITE_SUMMARY,
+  type WizardInvitePlanSummary,
+} from "../invites/LazyInvitePeopleStep";
+import { useFeatureFlag } from "../../hooks/useFeatureFlag";
+import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
+import type {
+  WizardInvitePlan,
+  WizardInviteQuote,
+} from "../../services/offeringInvitePlanService";
 
 /*
  * Desktop web wizard contract restored after regression:
@@ -178,7 +199,7 @@ export interface TripCreatorWizardProps {
   onExit: () => void;
 }
 
-type StepIndex = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+type StepIndex = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 const STEP_TITLES: Record<StepIndex, string> = {
   1: "Basics",
@@ -187,7 +208,8 @@ const STEP_TITLES: Record<StepIndex, string> = {
   4: "Pricing",
   5: "Cancellation & deadline",
   6: "Traveler info",
-  7: "Review",
+  7: "Invite people",
+  8: "Review",
 };
 
 const STEP_SUBTITLES: Record<StepIndex, string> = {
@@ -197,13 +219,14 @@ const STEP_SUBTITLES: Record<StepIndex, string> = {
   4: "Pricing and payment plan",
   5: "Refund tiers and when bookings close",
   6: "What to ask travelers before they pay",
-  7: "Preview and publish",
+  7: "Choose people from Your Book",
+  8: "Preview and publish",
 };
 
 // ORCH-0880 [Tr5 Traveler Intake Forms] — wizard grew from 6 to 7 steps per
 // DESIGN_ORCH-0880 §3.1. Step 6 NEW (per-tier traveler intake schema
 // builder + live preview); Review moved to Step 7.
-const STEP_COUNT = 7;
+const STEP_COUNT = 8;
 
 const STEPPER_STEPS: StepperStep[] = [
   { id: "step-1", label: STEP_TITLES[1] },
@@ -213,6 +236,7 @@ const STEPPER_STEPS: StepperStep[] = [
   { id: "step-5", label: STEP_TITLES[5] },
   { id: "step-6", label: STEP_TITLES[6] },
   { id: "step-7", label: STEP_TITLES[7] },
+  { id: "step-8", label: STEP_TITLES[8] },
 ];
 
 const DESKTOP_WIZARD_NAV_ITEMS = [
@@ -460,6 +484,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { signOut } = useAuth();
   const { isWideDesktop } = useResponsiveLayout();
   const [step, setStep] = useState<StepIndex>(1);
   const [step1Draft, setStep1Draft] = useState<Step1Draft>(tripToStep1Draft(trip));
@@ -495,6 +520,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
 
   // ORCH-0874: publish ConfirmDialog state (Step 7 publish tap).
   const [publishConfirmVisible, setPublishConfirmVisible] = useState<boolean>(false);
+  const [invitePublishConfirmVisible, setInvitePublishConfirmVisible] =
+    useState<boolean>(false);
+  const [inviteNavigation, setInviteNavigation] = useState<InviteNavigationState | null>(null);
+  const [checkingInvitePublish, setCheckingInvitePublish] = useState(false);
 
   // ORCH-0874: toast for transient feedback (discard error, etc.).
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
@@ -588,6 +617,45 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   const createTierMutation = useCreateTripPricingTier();
   const removeTierMutation = useRemoveTripPricingTier();
   const publishMutation = usePublishTrip();
+  const inviteFlag = useFeatureFlag("business_wizard_invite_selection_v1");
+  // #1780 [bundle budget] — the saved selection arrives from the LAZY invite
+  // module, not from a hook imported here. All four wizards are separate lazy
+  // route chunks, so an eager `useOfferingInvitePlanSummary` import kept that
+  // hook and offeringInvitePlanService in `__common`, the payload every
+  // business-web visitor downloads. The bridge below calls the same hook with
+  // the same inputs on the far side of the chunk and reports each result here;
+  // the snapshot has the hook's own shape, so every expression that reads it is
+  // unchanged. Until it arrives this is PENDING_WIZARD_INVITE_SUMMARY, which
+  // reads as "still loading", so Publish readiness and the rollback step
+  // correction stay CLOSED rather than acting on a value we do not have.
+  const [inviteSummary, setInviteSummary] =
+    useState<WizardInvitePlanSummary>(PENDING_WIZARD_INVITE_SUMMARY);
+  const invitePlan = inviteSummary.plan.data ?? null;
+  const inviteQuote = inviteSummary.quote.data ?? null;
+  const inviteEnabled = inviteFlag.data === true ||
+    (invitePlan?.selectedCount ?? 0) > 0;
+  const inviteRollbackReady = inviteFlag.data === false &&
+    !inviteFlag.isPending && !inviteFlag.isFetching && !inviteFlag.isError &&
+    invitePlan?.selectedCount === 0 &&
+    !inviteSummary.plan.isPending && !inviteSummary.plan.isFetching &&
+    !inviteSummary.plan.isError;
+  const inviteSummaryReady = !inviteEnabled || (invitePlan !== null && inviteQuote !== null &&
+    inviteQuote.selectionRevision === invitePlan.selectionRevision &&
+    inviteQuote.selectionHash === invitePlan.selectionHash &&
+    !inviteSummary.plan.isPending && !inviteSummary.plan.isFetching &&
+    !inviteSummary.plan.isError && !inviteSummary.quote.isPending &&
+    !inviteSummary.quote.isFetching && !inviteSummary.quote.isError);
+  const invitePublishReady = inviteEnabled ? inviteSummaryReady : inviteRollbackReady;
+  const handleInvitePlanChange = useCallback((
+    _plan: WizardInvitePlan | null,
+    _quote: WizardInviteQuote | null,
+    navigation: InviteNavigationState,
+  ) => setInviteNavigation(navigation), []);
+  useEffect(() => {
+    if (inviteFlag.data === false && invitePlan?.selectedCount === 0) {
+      setStep((value) => value === 7 ? 8 : value);
+    }
+  }, [inviteFlag.data, invitePlan?.selectedCount]);
   // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 autosave hooks.
   const updateRefundPolicyMutation = useUpdateRefundPolicy();
   const updateBookingDeadlineMutation = useUpdateBookingDeadline();
@@ -997,11 +1065,17 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
 
   // ----- Navigation -----
   const handleNext = useCallback(async (): Promise<void> => {
+    if (step === 7) {
+      if (inviteNavigation?.phase === "error") inviteNavigation.retry();
+      if (inviteNavigation?.phase !== "ready") return;
+    }
     try {
       await autosaveCurrentStep();
       setPublishError(null);
-      // ORCH-0880 [Tr5 Traveler Intake Forms] — wizard grew 6→7 steps.
-      setStep((s) => (s < 7 ? ((s + 1) as StepIndex) : s));
+      setStep((s) => {
+        if (s === 6 && !inviteEnabled) return 8;
+        return s < 8 ? ((s + 1) as StepIndex) : s;
+      });
     } catch (e) {
       // issue #1014 (rework F-1) — a currency-less brand pricing a PAID trip
       // fires trigger (d)'s event_currency_required during the Step-4 autosave
@@ -1030,7 +1104,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
       });
     }
-  }, [autosaveCurrentStep, step, router, trip.brandId]);
+  }, [autosaveCurrentStep, step, router, trip.brandId, inviteEnabled, inviteNavigation]);
 
   // ORCH-0876 — Back now autosaves before stepping back, mirroring
   // event wizard semantics so unsaved Step N edits aren't lost when the
@@ -1038,9 +1112,13 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   // step with the persistent autosave-error banner; user can retry.
   const handleStepBack = useCallback(async (): Promise<void> => {
     if (step <= 1) return;
+    if (step === 7 && inviteNavigation?.phase !== "ready") return;
     try {
       await autosaveCurrentStep();
-      setStep((s) => (s > 1 ? ((s - 1) as StepIndex) : s));
+      setStep((s) => {
+        if (s === 8 && !inviteEnabled) return 6;
+        return s > 1 ? ((s - 1) as StepIndex) : s;
+      });
       setPublishError(null);
     } catch (e) {
       // issue #1014 (rework F-1) — same money-setup guard mapping as
@@ -1067,7 +1145,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
       });
     }
-  }, [autosaveCurrentStep, step, router, trip.brandId]);
+  }, [autosaveCurrentStep, step, router, trip.brandId, inviteEnabled, inviteNavigation?.phase]);
 
   // ----- ORCH-0874 handleClose (chrome X) — branches on isCreateMode + pristine -----
   const handleClose = useCallback((): void => {
@@ -1159,7 +1237,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   }, [onDiscardTrip, onExit]);
 
   // ----- Publish -----
-  const handlePublishTap = useCallback((): void => {
+  const handlePublishTap = useCallback(async (): Promise<void> => {
     // ORCH-1118 — trip location must be a confirmed Mapbox pick before publish
     // (belt; the dock Publish disabled is the suspenders). Both departure AND
     // destination are hard-required — empty or dirty text blocks publish. Reveal
@@ -1186,9 +1264,42 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       showToast(packagesValidation.reason ?? "Fix your packages before publishing.");
       return;
     }
-    // Open ConfirmDialog; actual publish runs in handleConfirmPublish.
-    setPublishConfirmVisible(true);
-  }, [tripLocationValid, tripNeedsStripe, packagesValidation, showToast]);
+    if (!inviteEnabled) {
+      if (!inviteRollbackReady) {
+        showToast("Checking saved invite plans before publishing.");
+        return;
+      }
+      setPublishConfirmVisible(true);
+      return;
+    }
+    setCheckingInvitePublish(true);
+    try {
+      const latest = await inviteSummary.refreshAuthoritative();
+      if (latest.quote === null) {
+        if (inviteFlag.data === false && latest.plan.selectedCount === 0) {
+          setPublishConfirmVisible(true);
+        } else {
+          showToast("Refresh the invite estimate before publishing.");
+        }
+        return;
+      }
+      if (latest.quote.selectionRevision !== latest.plan.selectionRevision ||
+          latest.quote.selectionHash !== latest.plan.selectionHash) {
+        showToast("Refresh the invite estimate before publishing.");
+        return;
+      }
+      if (latest.plan.selectedCount > 0) {
+        setInvitePublishConfirmVisible(true);
+        return;
+      }
+      setPublishConfirmVisible(true);
+    } catch {
+      showToast("Refresh the invite estimate before publishing.");
+    } finally {
+      setCheckingInvitePublish(false);
+    }
+  }, [tripLocationValid, tripNeedsStripe, packagesValidation, showToast, inviteSummary,
+    inviteEnabled, inviteRollbackReady, inviteFlag.data]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     setPublishError(null);
@@ -1196,6 +1307,12 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       const published = await publishMutation.mutateAsync({
         eventId: trip.id,
         brandId: trip.brandId,
+        invites: invitePlan && invitePlan.selectedCount > 0
+          ? {
+              selectionRevision: invitePlan.selectionRevision,
+              selectionConfirmed: true,
+            }
+          : undefined,
         draftPayload: {
           title: step1Draft.title.trim(),
           cover_media_url: step1Draft.coverMediaUrl,
@@ -1241,6 +1358,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         showToast("Couldn't save guest privacy — check Settings after publishing.");
       }
       setPublishConfirmVisible(false);
+      setInvitePublishConfirmVisible(false);
       onPublished(published);
     } catch (e) {
       const err = e as TripPublishValidationError;
@@ -1253,7 +1371,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
       }
     }
-  }, [publishMutation, router, step1Draft, step5Draft, trip.id, trip.brandId, trip.timezone, onPublished, showToast]);
+  }, [publishMutation, router, step1Draft, step5Draft, trip.id, trip.brandId, trip.timezone, onPublished, showToast, invitePlan]);
 
   // Suppress autosave-error toast surfacing via setPublishError; show via
   // the persistent banner in Step 5. Show toast for discard errors only.
@@ -1283,9 +1401,26 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
 
   // ----- Render -----
   const submitting = isAutosaving || publishMutation.isPending;
-  const stepIdx = step - 1; // Stepper is 0-indexed; state is 1-indexed.
+
+  // #3446 — Android back = this wizard's own Back (step > 1) or close (step 1). See I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK.
+  useWizardHardwareBack({
+    isFirstStep: step === 1,
+    busy: submitting || checkingInvitePublish || isDiscarding,
+    exitSurfaced: discardDialogVisible,
+    onStepBack: handleStepBack,
+    onExit: handleClose,
+  });
+
+  const visibleStepperSteps = inviteEnabled
+    ? STEPPER_STEPS
+    : STEPPER_STEPS.filter((item) => item.id !== "step-7");
+  const visibleStepNumber = !inviteEnabled && step === 8 ? 7 : step;
+  const visibleStepCount = inviteEnabled ? STEP_COUNT : STEP_COUNT - 1;
+  const stepIdx = visibleStepNumber - 1;
   const stepTitle = STEP_TITLES[step];
-  const stepSubtitle = STEP_SUBTITLES[step];
+  const stepSubtitle = step === 7
+    ? "Choose people from Your Book. Nothing sends until this trip is published."
+    : STEP_SUBTITLES[step];
 
   // Autosave state copy for subtitle row.
   const autosaveStateText = useMemo<string>(() => {
@@ -1383,8 +1518,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         </Text>
       </View>
       <View style={styles.desktopStepList}>
-        {STEPPER_STEPS.map((stepDef, index) => {
-          const stepNumber = (index + 1) as StepIndex;
+        {visibleStepperSteps.map((stepDef, index) => {
+          const stepNumber = Number(stepDef.id.slice(5)) as StepIndex;
           const active = stepNumber === step;
           return (
             <View
@@ -1403,7 +1538,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                     active ? styles.desktopStepIndexTextActive : null,
                   ]}
                 >
-                  {stepNumber}
+                  {index + 1}
                 </Text>
               </View>
               <View style={styles.desktopStepCopy}>
@@ -1464,24 +1599,24 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           />
           <View style={styles.stepperWrap}>
             <Stepper
-              steps={STEPPER_STEPS}
+              steps={visibleStepperSteps}
               currentIndex={stepIdx}
               showCaption={false}
             />
           </View>
           <Text style={styles.stepCounter} testID="trip-wizard-step-counter">
-            {step}/{STEP_COUNT}
+            {visibleStepNumber}/{visibleStepCount}
           </Text>
         </View>
       )}
 
-      {/* Subtitle row: "{brand.name} · Step N of 7" + active-step title. */}
+          {/* Subtitle row uses the active flag-aware step count and title. */}
       {isWideDesktop ? null : (
       <View style={styles.subtitleRow}>
         <Text style={styles.subtitle}>
-          {brand.name} · Step {step} of {STEP_COUNT}
+          {brand.name} · Step {visibleStepNumber} of {visibleStepCount}
         </Text>
-        <Text style={styles.mobileStepTitle}>{stepTitle}</Text>
+        <Text accessibilityRole={step === 7 ? "header" : undefined} style={styles.mobileStepTitle}>{stepTitle}</Text>
         <Text style={styles.mobileStepSub}>{stepSubtitle}</Text>
         {autosaveStateText.length > 0 ? (
           <Text
@@ -1589,8 +1724,21 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               disabled={submitting}
             />
           ) : null}
-          {/* ORCH-0880: Review moved from Step 6 to Step 7. */}
-          {step === 7 ? (
+          {step === 7 && inviteEnabled ? (
+            <InvitePeopleStep
+              eventId={trip.id}
+              brandId={trip.brandId}
+              eventType="trip"
+              showHeader={isWideDesktop}
+              onProtectedFlowExit={onExit}
+              onReauthenticate={async () => {
+                await signOut();
+                router.replace("/auth");
+              }}
+              onPlanChange={handleInvitePlanChange}
+            />
+          ) : null}
+          {step === 8 ? (
             <TripCreatorStep5Review
               trip={previewTrip}
               brand={brand}
@@ -1600,6 +1748,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               themeOverrides={step1Draft.themeOverrides}
               onThemeChange={handleReviewThemeChange}
             />
+          ) : null}
+          {step === 8 ? (
+            <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote} />
           ) : null}
         </View>
       </ScrollView>
@@ -1625,11 +1776,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               fullWidth
               testID="trip-wizard-footer-cta"
             />
-          ) : step === 7 ? (
-            // ORCH-0880 [Tr5 Traveler Intake Forms] — Review (Publish) dock
-            // moved from Step 6 to Step 7 (Step 6 NEW = traveler intake;
-            // Step 7 NEW = Review). Steps 2-6 fall through to the generic
-            // Back + Continue dock below.
+          ) : step === 8 ? (
+                // #1780 — Review (Publish) is Step 8 when Invite people is
+                // enabled and remains visible Step 7 when the flag is dark.
             <View style={styles.dockButtonRow}>
               <View style={styles.dockBackCell}>
                 <Button
@@ -1640,7 +1789,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                   onPress={() => {
                     void handleStepBack();
                   }}
-                  disabled={submitting}
+                  // #1780 — no stepping back to Invite while Publish re-reads the plan.
+                  disabled={submitting || checkingInvitePublish}
                   fullWidth
                 />
               </View>
@@ -1655,8 +1805,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                   }
                   variant="primary"
                   size="md"
-                  onPress={handlePublishTap}
-                  loading={submitting}
+                  onPress={() => void handlePublishTap()}
+                  loading={submitting || checkingInvitePublish}
                   // ORCH-1076 Stream B — disable Publish for a paid trip on a
                   // Stripe-unready brand (proactive gate; mirrors events).
                   // ORCH-1118 — also disable until departure + destination are
@@ -1666,7 +1816,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                     submitting ||
                     tripNeedsStripe ||
                     !tripLocationValid ||
-                    !packagesValidation.ok
+                    !packagesValidation.ok ||
+                    !invitePublishReady ||
+                    checkingInvitePublish
                   }
                   fullWidth
                   testID="trip-wizard-footer-cta"
@@ -1683,20 +1835,22 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                   onPress={() => {
                     void handleStepBack();
                   }}
-                  disabled={submitting}
+                  disabled={submitting || (step === 7 && inviteNavigation?.phase !== "ready")}
                   fullWidth
                 />
               </View>
               <View style={styles.dockPrimaryCell}>
                 <Button
-                  label={submitting ? "Saving…" : "Continue"}
+                  label={step === 7
+                    ? inviteNavigation?.primaryLabel ?? "Checking…"
+                    : submitting ? "Saving…" : "Continue"}
                   variant="primary"
                   size="md"
                   onPress={() => {
                     void handleNext();
                   }}
-                  loading={submitting}
-                  disabled={submitting}
+                  loading={submitting || (step === 7 && inviteNavigation?.phase === "saving")}
+                  disabled={submitting || (step === 7 && inviteNavigation?.blocked === true)}
                   fullWidth
                   testID="trip-wizard-footer-cta"
                 />
@@ -1723,6 +1877,23 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         errorMessage={discardError}
         destructive
         testID="trip-wizard-discard-dialog"
+      />
+
+      <InvitePlanSummaryBridge
+        eventId={trip.id}
+        enabled={true}
+        quoteWhenEmpty={inviteFlag.data === true}
+        onChange={setInviteSummary}
+      />
+
+      <InvitePeoplePublishConfirmation
+        visible={invitePublishConfirmVisible}
+        eventType="trip"
+        plan={invitePlan}
+        quote={inviteQuote}
+        publishing={publishMutation.isPending}
+        onClose={() => setInvitePublishConfirmVisible(false)}
+        onConfirm={handleConfirmPublish}
       />
 
       <ConfirmDialog

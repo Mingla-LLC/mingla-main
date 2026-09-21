@@ -132,6 +132,21 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
         },
       },
     );
+  // [TEST-MOD-APPROVED #1780] Fixtures for the #1780/#3446 boundaries classified below.
+  // The catch-all above answers an unknown module with a Proxy that reads ANY capitalised
+  // export as a component. `PENDING_WIZARD_INVITE_SUMMARY` is a frozen plain OBJECT in the
+  // product, so that rule handed the wizard a function, `useState` ran it as a lazy
+  // initializer, and the leaf threw on `props.children`. The classifications below say what
+  // each boundary actually is. State chosen to match issue3439CoverTiming on this branch:
+  // the flag settled OFF over a settled saved plan with zero people — the rollback-ready
+  // state, so both wizards keep the pre-#1780 step walk and the plain publish dialog. One
+  // fixture per wizard load, so the stubs return stable identities across renders as the
+  // real query results would. Nothing here touches the reveal: every assertion in this file
+  // still turns on scrollToBottom, the keyboard signal and which field armed it.
+  const settledIdle = { isPending: false, isFetching: false, isError: false }; // [TEST-MOD-APPROVED #1780]
+  const settledOffFlag = { ...settledIdle, data: false }; // [TEST-MOD-APPROVED #1780]
+  const emptyInvitePlan = { eventId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", eventType: kind, selectionRevision: 0, selectedCount: 0, brandPersonIds: [], selectionHash: "0".repeat(64), state: "draft", publishedSelectionRevision: null, updatedAt: null }; // [TEST-MOD-APPROVED #1780]
+  const inviteSummaryStub = { plan: { ...settledIdle, data: emptyInvitePlan }, quote: { ...settledIdle, data: undefined }, refreshAuthoritative: async () => ({ plan: emptyInvitePlan, quote: null }) }; // [TEST-MOD-APPROVED #1780]
   const boundaryRequire = (name: string): any => {
     if (name === "react") return React;
     if (name === "react-native") return require("react-native");
@@ -168,6 +183,20 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     if (name.endsWith("/createDeferredTurnoutIntelProvider")) {
       return { createDeferredTurnoutIntelProvider: () => leaf("IntelProvider") };
     }
+    // [TEST-MOD-APPROVED #1780] Session and native chrome added by #1780/#3446, stubbed like
+    // the router, keyboard and layout hooks above: auth is read only for signOut on the
+    // invite step's re-auth exit, and hardware back is a no-op off Android (#3446).
+    if (name.endsWith("/context/AuthContext")) return { useAuth: () => ({ signOut: async () => undefined }) }; // [TEST-MOD-APPROVED #1780]
+    if (name.endsWith("/hooks/useWizardHardwareBack")) return { useWizardHardwareBack: () => undefined }; // [TEST-MOD-APPROVED #1780]
+    if (name.endsWith("/hooks/useFeatureFlag")) return { useFeatureFlag: () => settledOffFlag }; // [TEST-MOD-APPROVED #1780]
+    if (name.endsWith("/hooks/useOfferingInvitePlan")) return { useOfferingInvitePlanSummary: () => inviteSummaryStub }; // [TEST-MOD-APPROVED #1780]
+    // [TEST-MOD-APPROVED #1780] The lazy invite owner (#1780 moved the invite cluster off the
+    // wizards' static import graph). Its three surfaces render as named leaves like the step
+    // bodies below; the bridge renders nothing and reports the settled empty summary, as the
+    // real bridge reports the hook's result; PENDING_WIZARD_INVITE_SUMMARY is the product's
+    // "not read yet" OBJECT, never a component.
+    if (name.endsWith("/invites/LazyInvitePeopleStep")) return { InvitePlanSummaryBridge: ({ onChange }: { onChange: (summary: unknown) => void }) => { React.useEffect(() => { onChange(inviteSummaryStub); }, [onChange]); return null; }, PENDING_WIZARD_INVITE_SUMMARY: { plan: { data: undefined, isPending: true, isFetching: true, isError: false }, quote: { data: undefined, isPending: true, isFetching: true, isError: false }, refreshAuthoritative: async () => ({ plan: null, quote: null }) }, InvitePeopleStep: leaf("InvitePeopleStep"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation") }; // [TEST-MOD-APPROVED #1780]
+    if (name.endsWith("/invites/InvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation") }; // [TEST-MOD-APPROVED #1780]
     const exportName = name.split("/").pop()!;
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep\d\w+|PublishErrorsSheet)$/.test(exportName)) {
       return { [exportName]: leaf(exportName) };

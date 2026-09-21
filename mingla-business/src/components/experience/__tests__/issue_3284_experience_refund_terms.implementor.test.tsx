@@ -160,6 +160,56 @@ jest.mock("../EditAfterPublishExperienceBanner", () => ({
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require("react").createElement("LiveEditBannerProbe", props),
 }));
+// [TEST-MOD-APPROVED #1780] The wizard now imports the #1780 invite step, whose
+// ConfirmDialog loads react-native-reanimated (unparseable under this ts-jest
+// project), plus the invite flag and persisted-plan hooks. Stub them at the
+// module boundary like the other steps above. Flag off with a settled, empty
+// saved plan keeps the pre-#1780 step list and publish arguments this suite pins.
+jest.mock("../../invites/InvitePeopleStep", () => ({
+  InvitePeoplePublishConfirmation: (): null => null,
+  InvitePeopleStep: (): null => null,
+  InvitePlanReviewSummary: (): null => null,
+  // #1780 [bundle budget] — the wizard reads the saved selection through this
+  // module now. Report the SAME summary this file's useOfferingInvitePlan mock
+  // already returns, so the wizard sees exactly what it saw when it called the
+  // hook itself and no assertion below changes meaning.
+  InvitePlanSummaryBridge: ({ onChange }: { onChange: (summary: unknown) => void }): null => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ReactActual = require("react") as typeof import("react");
+    const { useOfferingInvitePlanSummary } = jest.requireMock(
+      "../../../hooks/useOfferingInvitePlan",
+    ) as { useOfferingInvitePlanSummary: () => unknown };
+    const summary = useOfferingInvitePlanSummary();
+    ReactActual.useEffect(() => {
+      onChange(summary);
+    }, [onChange, summary]);
+    return null;
+  },
+}));
+jest.mock("../../../hooks/useFeatureFlag", () => {
+  const settledOff = { data: false, isPending: false, isFetching: false, isError: false };
+  return { useFeatureFlag: () => settledOff };
+});
+jest.mock("../../../hooks/useOfferingInvitePlan", () => {
+  const settledIdle = { isPending: false, isFetching: false, isError: false };
+  const emptyPlan = {
+    eventId: "event-1780-empty",
+    eventType: "experience",
+    selectionRevision: 0,
+    selectedCount: 0,
+    brandPersonIds: [],
+    selectionHash: "0".repeat(64),
+    state: "draft",
+    publishedSelectionRevision: null,
+    updatedAt: null,
+  };
+  const summary = {
+    plan: { ...settledIdle, data: emptyPlan },
+    quote: { ...settledIdle, data: undefined },
+    refreshAuthoritative: async () => ({ plan: emptyPlan, quote: null }),
+  };
+  return { useOfferingInvitePlanSummary: () => summary };
+});
 
 import {
   EVENT_FLEXIBLE_POLICY,

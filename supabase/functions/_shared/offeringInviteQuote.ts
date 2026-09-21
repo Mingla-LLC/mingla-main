@@ -435,7 +435,9 @@ export async function buildOfferingExecutionSnapshot(input: {
     },
   ).sort((left, right) => left.candidateKey.localeCompare(right.candidateKey));
   if (
-    candidates.length > 500 ||
+    // #1780: selection is capped at 500 PEOPLE; each may have email, SMS and
+    // push candidates, so the sealed delivery envelope can contain 1500 rows.
+    candidates.length > 1500 ||
     (candidates.length < 1 && !input.allowEmptyPreview)
   ) {
     throw new Error("offering_execution_candidate_invalid");

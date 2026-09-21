@@ -54,6 +54,11 @@ export interface TripCommandOptions {
    * different commands is an `idempotency_conflict`, not a replay.
    */
   saveOperationId?: string;
+  /** Exact persisted invite-plan receipt confirmed on the final review step. */
+  invites?: {
+    selectionRevision: number;
+    selectionConfirmed: true;
+  };
 }
 
 export function newTripOperationId(): string {
@@ -1490,6 +1495,12 @@ export async function publishTrip(
     p_event_id: eventId,
     p_expected_updated_at: await readTripRevision(eventId),
     p_operation_id: options?.operationId ?? newTripOperationId(),
+    ...(options?.invites !== undefined
+      ? {
+          p_invite_selection_revision: options.invites.selectionRevision,
+          p_invite_selection_confirmed: options.invites.selectionConfirmed,
+        }
+      : {}),
   });
 
   if (error) {

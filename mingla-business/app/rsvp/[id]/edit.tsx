@@ -934,9 +934,10 @@ export default function RsvpEditRoute(): React.ReactElement {
       fetchServerCover={fetchServerDraftCover}
       onRequireServerDraft={handleRequireServerDraft}
       onDiscardServerDraft={handleDiscardDraft}
-      onPublishDraft={async (draftToPublish) => {
+      onPublishDraft={async (draftToPublish, invites) => {
         const published = await publishServerDraft.mutateAsync({
           draft: draftToPublish,
+          invites,
         });
         publishedLandingRef.current = {
           visibility: published.event.visibility ?? null,
