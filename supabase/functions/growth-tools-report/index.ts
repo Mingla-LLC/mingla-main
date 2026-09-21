@@ -70,7 +70,11 @@ function safeEqual(a: string, b: string): boolean {
 // P-26/P-43 column allowlist (OQ-U1 amended): the select-list IS the
 // enforcement — report_token / email / ip_hash / pid / utm can never appear in
 // an app-lane response because they are never selected.
-const APP_READ_COLUMNS = "id, status, report, input, brand_id, created_at";
+// issue #3526 — `failure_reason` is added so a failed run can say WHICH stage
+// failed. ONLY `stage` is ever returned; `http_status` and `detail` are
+// provider internals and never leave the server.
+const APP_READ_COLUMNS =
+  "id, status, report, input, brand_id, created_at, failure_reason";
 
 const KNOWN_TOOLS = new Set(["venues", "events", "trips", "experiences"]);
 
@@ -81,6 +85,8 @@ interface AppRow {
   input: unknown;
   brand_id: string | null;
   created_at: string;
+  // issue #3526 — {stage, http_status, detail}. Only `stage` is surfaced.
+  failure_reason: { stage?: string } | null;
 }
 
 // Map one OWNED row to the run_id/client_ref-selector response body. The
@@ -94,7 +100,20 @@ function rowStatusResponse(row: AppRow): Response {
     }, 200);
   }
   if (row.status === "failed") {
-    return json({ status: "failed", reason: "failed", input: row.input }, 200);
+    // issue #3526 — `reason` keeps its existing value so no client contract
+    // changes; `failure_stage` is ADDITIVE and names which pass failed.
+    // http_status and detail are deliberately NOT surfaced: they are provider
+    // internals and this response can reach a brand member, not just an
+    // operator.
+    const stage = typeof row.failure_reason?.stage === "string"
+      ? row.failure_reason.stage
+      : null;
+    return json({
+      status: "failed",
+      reason: "failed",
+      input: row.input,
+      ...(stage ? { failure_stage: stage } : {}),
+    }, 200);
   }
   // 'created' (in-flight). gated_email/emailed are web-only statuses and
   // structurally unreachable here (web rows have NULL brand_id → 403 earlier).

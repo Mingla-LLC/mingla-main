@@ -66,17 +66,33 @@ export interface ClassBReactive {
   http: number | number[];
   field: "type" | "body" | "status_text";
   match: string;
+  // issue #3526 — a 429 means we ran out of quota, a 403 means we are being
+  // refused, a 404 on a model means the model is GONE. Labelling all three
+  // "depleted" sends the next reader to check billing instead of the model pin.
+  // Optional: absent means "depletion", preserving every pre-#3526 signal.
+  kind?: ClassBSignalKind;
 }
+export type ClassBSignalKind = "depletion" | "refusal" | "retirement";
 export interface ClassBHeader {
   name: string;
   warn: number;
 }
 export const CLASS_B_DEPLETION: Record<
   string,
-  { reactive?: ClassBReactive; header?: ClassBHeader }
+  { reactive?: ClassBReactive | ClassBReactive[]; header?: ClassBHeader }
 > = {
   openai: { reactive: { http: 429, field: "type", match: "insufficient_quota" } },
-  gemini: { reactive: { http: 429, field: "type", match: "RESOURCE_EXHAUSTED" } },
+  // issue #3526 — mirrors the widened DB row (migration
+  // 20270713023526_issue_3526_gemini_depletion_signal_widen.sql). The single
+  // 429 matcher made the 17-Sep 403 and the 21-Sep 404 invisible BY
+  // CONFIGURATION.
+  gemini: {
+    reactive: [
+      { http: 429, field: "type", match: "RESOURCE_EXHAUSTED", kind: "depletion" },
+      { http: 403, field: "type", match: "PERMISSION_DENIED", kind: "refusal" },
+      { http: 404, field: "type", match: "NOT_FOUND", kind: "retirement" },
+    ],
+  },
   serper: { reactive: { http: [400, 401, 402, 403, 429], field: "body", match: "Not enough credits" } },
   resend: { reactive: { http: 429, field: "type", match: "quota_exceeded" } },
   mapbox: { reactive: { http: 429, field: "status_text", match: "429" } },
@@ -100,13 +116,24 @@ export interface DepletionResult {
   depleted: boolean;
   lastErrorCode: string | null;
   lastErrorText: string | null;
+  // issue #3526 — WHICH kind of failure matched. null when nothing matched.
+  // A caller that only reads `depleted` behaves exactly as it did before.
+  kind?: ClassBSignalKind | null;
 }
 export function matchClassBDepletion(
-  signal: { reactive?: ClassBReactive; header?: ClassBHeader } | null | undefined,
+  signal:
+    | { reactive?: ClassBReactive | ClassBReactive[]; header?: ClassBHeader }
+    | null
+    | undefined,
   rows: DepletionObs[],
   cachedRemaining?: number | string | null,
 ): DepletionResult {
-  const none: DepletionResult = { depleted: false, lastErrorCode: null, lastErrorText: null };
+  const none: DepletionResult = {
+    depleted: false,
+    lastErrorCode: null,
+    lastErrorText: null,
+    kind: null,
+  };
   if (!signal) return none;
 
   // header signal: depleted when the freshest cached remaining <= warn.
@@ -116,23 +143,40 @@ export function matchClassBDepletion(
   if (signal.header) {
     const rem = toNum(cachedRemaining);
     if (rem != null && rem <= signal.header.warn) {
-      return { depleted: true, lastErrorCode: "header_remaining", lastErrorText: `${rem} <= ${signal.header.warn}` };
+      return {
+        depleted: true,
+        lastErrorCode: "header_remaining",
+        lastErrorText: `${rem} <= ${signal.header.warn}`,
+        kind: "depletion",
+      };
     }
     return none;
   }
 
-  const r = signal.reactive;
-  if (!r) return none;
-  const httpSet = Array.isArray(r.http) ? new Set(r.http) : new Set([r.http]);
-  const needle = r.match.toLowerCase();
+  // issue #3526 — `reactive` may now be an ARRAY of matchers. A single object
+  // is still accepted verbatim so every pre-#3526 service (openai, serper,
+  // resend, mapbox, google_places) keeps working with no data change.
+  if (!signal.reactive) return none;
+  const matchers: ClassBReactive[] = Array.isArray(signal.reactive)
+    ? signal.reactive
+    : [signal.reactive];
+  if (matchers.length === 0) return none;
   // newest-first scan so lastError* is the most recent match.
   const sorted = [...rows].sort((a, b) =>
     new Date(b.observed_at).getTime() - new Date(a.observed_at).getTime());
   for (const row of sorted) {
-    if (row.http_status == null || !httpSet.has(row.http_status)) continue;
-    const hay = (r.field === "type" ? row.error_code : row.error_text) ?? "";
-    if (hay.toLowerCase().includes(needle)) {
-      return { depleted: true, lastErrorCode: row.error_code, lastErrorText: row.error_text };
+    for (const r of matchers) {
+      const httpSet = Array.isArray(r.http) ? new Set(r.http) : new Set([r.http]);
+      if (row.http_status == null || !httpSet.has(row.http_status)) continue;
+      const hay = (r.field === "type" ? row.error_code : row.error_text) ?? "";
+      if (hay.toLowerCase().includes(r.match.toLowerCase())) {
+        return {
+          depleted: true,
+          lastErrorCode: row.error_code,
+          lastErrorText: row.error_text,
+          kind: r.kind ?? "depletion",
+        };
+      }
     }
   }
   return none;
