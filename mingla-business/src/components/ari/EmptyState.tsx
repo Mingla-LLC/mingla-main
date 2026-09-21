@@ -16,12 +16,20 @@
  * composer. That is the one instruction this feature exists to ship.
  *
  * The empty state is now two zones with an explicit drop order:
- *   - the DECORATIVE zone (orb, headline, body) is clipped and shrinks as the
- *     clamp grows, so it is what gives way first. Its inner box keeps the
- *     keyboard-independent resting height, so the orb and headline do not move
- *     — the ORCH-1057 no-jump contract is untouched;
- *   - the HINT zone never shrinks and is laid out after it, so the attach hint
- *     is the LAST content dropped and always renders above the composer.
+ *   - the DECORATIVE zone (orb, headline, body) is capped to whatever height is
+ *     still visible and clips, so it is what gives way first;
+ *   - the HINT zone never shrinks and is laid out immediately after it, so the
+ *     attach hint is the LAST content dropped and is always inside the visible
+ *     region — above the composer, never behind it.
+ *
+ * The centring is done with an explicit, keyboard-INDEPENDENT top offset rather
+ * than `justifyContent: "center"`, which is what lets the decorative zone shrink
+ * without dragging the orb with it. Two consequences, both deliberate:
+ *   - at rest the offset resolves to exactly what centring produced, so the
+ *     resting layout is pixel-identical to what shipped before;
+ *   - while the keyboard is up the orb and headline do not move at all — the
+ *     ORCH-1057 no-jump contract — and the hint row rises with the visible
+ *     bottom edge instead of being trimmed off it.
  */
 
 import React from "react";
@@ -72,41 +80,44 @@ function useMeasuredHeight(): [number, (event: LayoutChangeEvent) => void] {
 export const EmptyState: React.FC = () => {
   const { viewportBottomClampPx } = React.useContext(AriEmptyStateLayoutContext);
   // The host fills the screen's resting box, whose height is keyboard-
-  // independent by construction, so this measures the RESTING height even
-  // while the keyboard is up. That is what keeps the orb still.
+  // independent by construction, so this measures the RESTING height even while
+  // the keyboard is up. That is what keeps the orb still.
   const [restingHeightPx, handleHostLayout] = useMeasuredHeight();
+  // The decorative content's NATURAL height. It is measured on an inner box
+  // that carries no cap, so it stays correct even while the zone around it is
+  // clipped — and it tracks font scale, which is where N-1 bit hardest.
+  const [heroContentPx, handleHeroLayout] = useMeasuredHeight();
   const [hintHeightPx, handleHintLayout] = useMeasuredHeight();
 
-  const measured = restingHeightPx > 0;
-  // What the decorative zone occupies at rest: everything the hint row and the
-  // host's own bottom padding do not.
-  const heroRestingHeightPx = Math.max(
+  const measured = restingHeightPx > 0 && heroContentPx > 0 && hintHeightPx > 0;
+  // Where the decorative content starts, from the top of the resting box. This
+  // is exactly what `justifyContent: "center"` used to resolve to for the whole
+  // group, and it does not reference the clamp — so it never moves.
+  const heroTopOffsetPx = Math.max(
     0,
-    restingHeightPx - HOST_PADDING_BOTTOM - hintHeightPx,
+    Math.round((restingHeightPx - HOST_PADDING_BOTTOM - heroContentPx - hintHeightPx) / 2),
   );
-  // ...and what is left of it once the clamp lifts the visible bottom edge.
-  // Capped, never margined: a margin is not shrinkable, so at an extreme clamp
-  // (tall attachment tray + keyboard on a small phone) it would push the hint
-  // row off the visible box — the exact failure this fix exists to end.
-  const heroVisibleHeightPx = Math.max(
-    0,
-    heroRestingHeightPx - viewportBottomClampPx,
-  );
+  // How much of the resting box is still visible once the clamp lifts the
+  // bottom edge to the composer's top...
+  const visibleHeightPx = restingHeightPx - viewportBottomClampPx - HOST_PADDING_BOTTOM;
+  // ...and what the decorative zone may occupy once the hint row has taken its
+  // share of it. Capped, never margined: a margin is not shrinkable, so at an
+  // extreme clamp (tall attachment tray + keyboard on a small phone) it would
+  // push the hint row off the visible box — the exact failure this fix ends.
+  const heroMaxHeightPx = Math.max(0, visibleHeightPx - hintHeightPx - heroTopOffsetPx);
 
   return (
-    <View style={styles.host} onLayout={handleHostLayout}>
+    <View
+      style={[styles.host, measured ? null : styles.hostBeforeMeasurement]}
+      onLayout={handleHostLayout}
+    >
       <View
         style={[
           styles.heroClip,
-          measured ? { maxHeight: heroVisibleHeightPx } : null,
+          measured ? { marginTop: heroTopOffsetPx, maxHeight: heroMaxHeightPx } : null,
         ]}
       >
-        <View
-          style={[
-            styles.heroAnchor,
-            measured ? { minHeight: heroRestingHeightPx } : null,
-          ]}
-        >
+        <View style={styles.heroContent} onLayout={handleHeroLayout}>
           <View style={styles.orbWrap}>
             <AriOrb size="lg" thinking decorative={false} accessibilityLabel="Ari" />
           </View>
@@ -157,22 +168,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingBottom: HOST_PADDING_BOTTOM,
   },
+  // One frame only, before the three measurements land: centre the group the
+  // way it used to be, so the first paint is never top-aligned or blank.
+  hostBeforeMeasurement: {
+    justifyContent: "center",
+  },
   // #3429 REWORK-4 N-1 — the decorative zone. `overflow: hidden` here (rather
   // than only on the screen's outer box) is what makes the hero the thing that
   // gives way: it is clipped at its OWN bottom edge, above the hint row,
   // instead of the hint row being clipped at the screen's edge.
   heroClip: {
-    flex: 1,
-    width: "100%",
-    overflow: "hidden",
-  },
-  // Keeps the resting height whatever the clamp does, so the content centred
-  // inside it never re-centres and the orb never moves.
-  heroAnchor: {
-    flexGrow: 1,
     width: "100%",
     alignItems: "center",
-    justifyContent: "center",
+    overflow: "hidden",
+  },
+  // Unclamped, so its measured height is the content's natural height.
+  heroContent: {
+    width: "100%",
+    alignItems: "center",
   },
   orbWrap: {
     marginBottom: spacing.lg,

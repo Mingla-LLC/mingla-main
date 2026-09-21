@@ -13,9 +13,10 @@
  * THE FIX. The empty state is now two zones with an explicit drop order. The
  * decorative zone (orb, headline, body) is capped to the VISIBLE height and
  * clipped, so it is what gives way; the hint zone carries `flexShrink: 0` and
- * is laid out after it, so the attach hint is the LAST content dropped. The
- * decorative zone's inner box keeps the keyboard-INDEPENDENT resting height, so
- * the ORCH-1057 no-jump contract is untouched.
+ * is laid out immediately after it, so the attach hint is the LAST content
+ * dropped. Centring is done with a keyboard-INDEPENDENT top offset instead of
+ * `justifyContent`, which both keeps the ORCH-1057 no-jump contract and makes
+ * the resting layout pixel-identical to what shipped before (T-3).
  *
  * WHY THIS SUITE RENDERS INSTEAD OF GREPPING. This is the #3429 R-3 lesson
  * applied before the fact: three "byte-stable" suites on this very component
@@ -28,14 +29,13 @@
  * lands relative to the composer's top edge — the user-facing property.
  *
  * fails-on-revert (proven by TRUE LINE DELETION, never a comment-out):
- *   - delete the `maxHeight: heroVisibleHeightPx` line from the decorative
- *     zone's style array → T-2/T-3 go red: the zone keeps its resting height,
+ *   - delete the `marginTop`/`maxHeight` line from the decorative zone's style
+ *     array → T-2/T-3/T-4/T-5 go red: the zone keeps its full natural height,
  *     so the hint row is pushed below the composer's top edge again (the exact
  *     N-1 geometry, reproduced arithmetically).
- *   - delete the `minHeight: heroRestingHeightPx` line → T-4 goes red: the
- *     anchor starts tracking the clamp, which is the orb jump ORCH-1057
- *     removed.
- *   - delete `flexShrink: 0` from the hint zone → T-5 goes red.
+ *   - delete `flexShrink: 0` from the hint zone → T-5/T-6/T-7 go red.
+ *   - drop `heroTopOffsetPx` back to a `justifyContent: "center"` → T-4 goes
+ *     red, because the orb then tracks the clamp: the jump ORCH-1057 removed.
  *
  * Adversarial coverage (Dynamic Type, VoiceOver/TalkBack traversal order, the
  * tall-attachment-tray extreme) is tester-owned and deliberately not pre-empted.
@@ -120,28 +120,37 @@ const DEVICES = [
   { name: "Pixel 7", restingHeightPx: 560, clampPx: 268 },
 ] as const;
 
-/** A generous hint-zone height: the row plus its `spacing.xl` top gap, at the
- *  1.5x font scale the coordinator flagged as the worse case for N-1. */
-const HINT_ZONE_HEIGHT = spacing.xl + 33;
+/** Intrinsic content heights. The 1.5x pair is the font scale the coordinator
+ *  flagged as the WORSE case for N-1 — more copy, so more of it was lost. */
+const SCALES = [
+  { name: "font scale 1.0", heroPx: 210, hintPx: spacing.xl + 22 },
+  { name: "font scale 1.5", heroPx: 300, hintPx: spacing.xl + 33 },
+] as const;
+
+const HOST_PADDING_BOTTOM = spacing.xxl;
 
 interface Mounted {
   host: Record<string, unknown>;
   heroClip: Record<string, unknown>;
-  heroAnchor: Record<string, unknown>;
   hintZone: Record<string, unknown>;
   hintRowLabel: unknown;
   unmount: () => void;
 }
 
 /**
- * Mount the real component with the real clamp, play back the layout pass the
- * platform performs, and hand back the RESOLVED styles.
+ * Mount the real component with the real clamp, play back the three layout
+ * measurements the platform performs, and hand back the RESOLVED styles.
  *
  * Zones are identified STRUCTURALLY — the outermost host View, then its two
- * child Views, then the first child of the first — never by a style name, so a
- * rename cannot quietly turn this suite into a no-op.
+ * child Views — never by a style name, so a rename cannot quietly turn this
+ * suite into a no-op.
  */
-function mount(restingHeightPx: number, clampPx: number, hintHeightPx: number): Mounted {
+function mount(
+  restingHeightPx: number,
+  clampPx: number,
+  heroPx: number,
+  hintPx: number,
+): Mounted {
   let tree: TestRoot | null = null;
   act(() => {
     tree = create(
@@ -163,109 +172,140 @@ function mount(restingHeightPx: number, clampPx: number, hintHeightPx: number): 
   };
 
   const first = root.toJSON();
-  // The platform measures the host (the hero's resting box) and the hint zone.
   fire(first, restingHeightPx);
-  fire(childViews(first)[1], hintHeightPx);
+  fire(childViews(childViews(first)[0])[0], heroPx);
+  fire(childViews(first)[1], hintPx);
 
   // Re-read after the measurement-driven re-render.
   const host = root.toJSON();
   const [heroClip, hintZone] = childViews(host);
-  const heroAnchor = childViews(heroClip)[0];
   const hintRow = childViews(hintZone)[0];
 
   return {
     host: flatten(host.props.style),
     heroClip: flatten(heroClip.props.style),
-    heroAnchor: flatten(heroAnchor.props.style),
     hintZone: flatten(hintZone.props.style),
     hintRowLabel: hintRow.props.accessibilityLabel,
     unmount: () => act(() => root.unmount()),
   };
 }
 
+/** Where the hero's top edge lands, from the top of the resting box. */
+function heroTop(m: Mounted): number {
+  return (m.heroClip.marginTop as number) ?? 0;
+}
+/** Where the hint row's bottom edge lands, from the same origin. */
+function hintBottom(m: Mounted, heroPx: number, hintPx: number): number {
+  const cap = m.heroClip.maxHeight as number;
+  return heroTop(m) + Math.min(heroPx, cap) + hintPx;
+}
+
 describe("#3429 REWORK-4 N-1 — the attach hint is the last content dropped", () => {
   it("T-1 the hint row is rendered, and is NOT inside the clipped decorative zone", () => {
-    const mounted = mount(DEVICES[0].restingHeightPx, DEVICES[0].clampPx, HINT_ZONE_HEIGHT);
+    const m = mount(408, 226, SCALES[0].heroPx, SCALES[0].hintPx);
     // The instruction this whole feature exists to ship is present...
-    expect(mounted.hintRowLabel).toBe("Tap the plus button to attach context");
+    expect(m.hintRowLabel).toBe("Tap the plus button to attach context");
     // ...and it lives OUTSIDE the zone that clips, which is the entire point:
     // clipping can only ever reach the decorative hero.
-    expect(mounted.heroClip.overflow).toBe("hidden");
-    expect(mounted.hintZone.overflow).toBeUndefined();
-    mounted.unmount();
+    expect(m.heroClip.overflow).toBe("hidden");
+    expect(m.hintZone.overflow).toBeUndefined();
+    m.unmount();
   });
 
   for (const device of DEVICES) {
-    it(`T-2 ${device.name}: with the keyboard open the hint row still fits above the composer`, () => {
-      const mounted = mount(device.restingHeightPx, device.clampPx, HINT_ZONE_HEIGHT);
-      const paddingBottom = mounted.host.paddingBottom as number;
-      const heroVisible = mounted.heroClip.maxHeight as number;
-      expect(typeof heroVisible).toBe("number");
-
-      // Where the hint row's bottom edge lands, measured from the top of the
-      // hero's resting box: the decorative zone, then the hint zone.
-      const hintBottomOffset = heroVisible + HINT_ZONE_HEIGHT;
-      // Where the composer's top edge lands: the clamp lifts the visible
-      // bottom edge by exactly that much.
-      const visibleBottomOffset = device.restingHeightPx - device.clampPx;
-
-      // The hint row is fully inside the visible region — not clipped, and not
-      // under the composer. This is the assertion N-1 failed.
-      expect(hintBottomOffset).toBeLessThanOrEqual(visibleBottomOffset - paddingBottom);
-      // ...and it has real height to draw into, so "fits" is not "collapsed".
-      expect(HINT_ZONE_HEIGHT).toBeGreaterThan(0);
-      expect(hintBottomOffset).toBeGreaterThan(0);
-      mounted.unmount();
-    });
+    for (const scale of SCALES) {
+      it(`T-2 ${device.name} @ ${scale.name}: with the keyboard open the hint row still fits above the composer`, () => {
+        const m = mount(device.restingHeightPx, device.clampPx, scale.heroPx, scale.hintPx);
+        // Where the composer's top edge lands: the clamp lifts the visible
+        // bottom edge by exactly that much.
+        const visibleBottom =
+          device.restingHeightPx - device.clampPx - HOST_PADDING_BOTTOM;
+        // The hint row is fully inside the visible region — not clipped, and
+        // not under the composer. This is the assertion N-1 failed.
+        expect(hintBottom(m, scale.heroPx, scale.hintPx)).toBeLessThanOrEqual(visibleBottom);
+        // ...and "fits" is not "collapsed to nothing".
+        expect(hintBottom(m, scale.heroPx, scale.hintPx)).toBeGreaterThan(0);
+        m.unmount();
+      });
+    }
   }
 
-  it("T-3 the decorative zone absorbs the ENTIRE clamp, to the px", () => {
-    const device = DEVICES[0];
-    const open = mount(device.restingHeightPx, device.clampPx, HINT_ZONE_HEIGHT);
-    const closed = mount(device.restingHeightPx, 0, HINT_ZONE_HEIGHT);
-    const visibleOpen = open.heroClip.maxHeight as number;
-    const visibleClosed = closed.heroClip.maxHeight as number;
-    // Every pixel the keyboard takes comes out of the hero, and none of it out
-    // of the hint row.
-    expect(visibleClosed - visibleOpen).toBe(device.clampPx);
-    open.unmount();
-    closed.unmount();
+  it("T-3 the resting layout is what centring produced, and the hint is whole", () => {
+    for (const device of DEVICES) {
+      for (const scale of SCALES) {
+        const m = mount(device.restingHeightPx, 0, scale.heroPx, scale.hintPx);
+        const contentBox = device.restingHeightPx - HOST_PADDING_BOTTOM;
+        // (a) The hero starts exactly where `justifyContent: "center"` used to
+        // put the group — the resting layout did not move.
+        const centred = Math.round((contentBox - scale.heroPx - scale.hintPx) / 2);
+        expect(heroTop(m)).toBe(Math.max(0, centred));
+
+        if (scale.heroPx + scale.hintPx <= contentBox) {
+          // (b) The content fits, so nothing is capped and the hint sits
+          // immediately below the body, exactly as before.
+          expect(m.heroClip.maxHeight as number).toBeGreaterThanOrEqual(scale.heroPx);
+        } else {
+          // (c) It does NOT fit — iPhone SE at font scale 1.5 overruns the
+          // resting box by a few px before the keyboard is even involved. The
+          // priority still holds: the hero absorbs the shortfall and the hint
+          // row is whole.
+          expect(m.heroClip.maxHeight as number).toBeLessThan(scale.heroPx);
+        }
+        // Either way the hint row's bottom edge is inside the resting box.
+        expect(hintBottom(m, scale.heroPx, scale.hintPx)).toBeLessThanOrEqual(contentBox);
+        m.unmount();
+      }
+    }
   });
 
-  it("T-4 the decorative zone's inner box is keyboard-INDEPENDENT (no orb jump)", () => {
-    const device = DEVICES[1];
-    const open = mount(device.restingHeightPx, device.clampPx, HINT_ZONE_HEIGHT);
-    const closed = mount(device.restingHeightPx, 0, HINT_ZONE_HEIGHT);
-    // The anchor holds the resting height whatever the keyboard does, so the
-    // content centred inside it never re-centres — ORCH-1057's no-jump
-    // contract, restated as a rendered value rather than a source string.
-    expect(open.heroAnchor.minHeight).toBe(closed.heroAnchor.minHeight);
-    expect(open.heroAnchor.minHeight).toBe(
-      device.restingHeightPx - (open.host.paddingBottom as number) - HINT_ZONE_HEIGHT,
+  it("T-4 the hero's top edge is keyboard-INDEPENDENT (no orb jump)", () => {
+    for (const device of DEVICES) {
+      for (const scale of SCALES) {
+        const open = mount(device.restingHeightPx, device.clampPx, scale.heroPx, scale.hintPx);
+        const closed = mount(device.restingHeightPx, 0, scale.heroPx, scale.hintPx);
+        // ORCH-1057's no-jump contract, restated as a rendered value rather
+        // than a source string.
+        expect(heroTop(open)).toBe(heroTop(closed));
+        open.unmount();
+        closed.unmount();
+      }
+    }
+  });
+
+  it("T-5 the decorative zone absorbs the ENTIRE clamp, to the px", () => {
+    const d = DEVICES[0];
+    const s0 = SCALES[0];
+    const open = mount(d.restingHeightPx, d.clampPx, s0.heroPx, s0.hintPx);
+    const closed = mount(d.restingHeightPx, 0, s0.heroPx, s0.hintPx);
+    // Every pixel the keyboard takes comes out of the hero's allowance, and
+    // none of it out of the hint row.
+    expect((closed.heroClip.maxHeight as number) - (open.heroClip.maxHeight as number)).toBe(
+      d.clampPx,
     );
+    expect(open.hintZone.flexShrink).toBe(0);
     open.unmount();
     closed.unmount();
   });
 
-  it("T-5 the hint zone cannot be shrunk by the flex layout", () => {
-    const mounted = mount(DEVICES[2].restingHeightPx, DEVICES[2].clampPx, HINT_ZONE_HEIGHT);
+  it("T-6 the hint zone cannot be shrunk by the flex layout", () => {
+    const m = mount(560, 268, SCALES[1].heroPx, SCALES[1].hintPx);
     // Without this the flex column would take the hint row's height back the
     // moment space runs short, which is N-1 by another route.
-    expect(mounted.hintZone.flexShrink).toBe(0);
-    mounted.unmount();
+    expect(m.hintZone.flexShrink).toBe(0);
+    m.unmount();
   });
 
-  it("T-6 at an extreme clamp the hero collapses to nothing and the hint survives", () => {
+  it("T-7 at an extreme clamp the hero collapses to nothing and the hint survives", () => {
     // A tall attachment tray plus the keyboard on a small phone: the clamp
-    // exceeds everything the hero had. The hint must still be laid out.
-    const mounted = mount(240, 400, HINT_ZONE_HEIGHT);
-    expect(mounted.heroClip.maxHeight).toBe(0);
-    expect(mounted.hintZone.flexShrink).toBe(0);
-    expect(mounted.hintRowLabel).toBe("Tap the plus button to attach context");
-    mounted.unmount();
+    // exceeds everything the hero had.
+    const m = mount(240, 400, SCALES[1].heroPx, SCALES[1].hintPx);
+    expect(m.heroClip.maxHeight).toBe(0);
+    expect(m.hintZone.flexShrink).toBe(0);
+    expect(m.hintRowLabel).toBe("Tap the plus button to attach context");
+    m.unmount();
   });
 
-  it("T-7 before measurement nothing is capped, so the first frame is not blank", () => {
+  it("T-8 before measurement the group is centred, so the first frame is not top-aligned", () => {
     let tree: TestRoot | null = null;
     act(() => {
       tree = create(
@@ -275,9 +315,10 @@ describe("#3429 REWORK-4 N-1 — the attach hint is the last content dropped", (
       ) as unknown as TestRoot;
     });
     const root = tree as unknown as TestRoot;
-    const heroClip = childViews(root.toJSON())[0];
+    const host = root.toJSON();
     // maxHeight of 0 on an unmeasured first frame would blank the hero.
-    expect(flatten(heroClip.props.style).maxHeight).toBeUndefined();
+    expect(flatten(childViews(host)[0].props.style).maxHeight).toBeUndefined();
+    expect(flatten(host.props.style).justifyContent).toBe("center");
     act(() => root.unmount());
   });
 });
