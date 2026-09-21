@@ -57,7 +57,38 @@ const check = (s) => {
   for (const token of ["financial_state='reconciled'", "ops_status='resolved'", "last_error_code='sale_completed_no_refund_due'", "'ops_resolved'", "INSERT INTO public.source_refund_events("]) {
     if (!s.evidence.includes(token)) fail(`retirement missing ${token}`);
   }
-  if (/buyer_state='processed'/.test(s.evidence)) fail("the release claims a refund was processed");
+  // The release must never claim money moved. Scoped to the release owner's own
+  // body: the migration's CHECK constraints legitimately quote 'processed' when
+  // they say what a reconciled refund is allowed to be.
+  const releaseStart = s.evidence.indexOf("CREATE OR REPLACE FUNCTION public.release_ticket_checkout_evidence_hold(");
+  const releaseEnd = s.evidence.indexOf("END $$;", releaseStart);
+  if (releaseStart < 0 || releaseEnd < releaseStart) fail("the release owner is gone");
+  const releaseBody = s.evidence.slice(releaseStart, releaseEnd);
+  if (/buyer_state\s*=\s*'processed'/.test(releaseBody)) fail("the release claims a refund was processed");
+  if (/fee_state\s*=\s*'processed'/.test(releaseBody)) fail("the release claims a fee reversal was processed");
+  // #1221 has no state meaning "closed, nothing owed": every terminal buyer
+  // state either claims the money moved or claims we failed to move it, and
+  // `reconciled` is admissible only beside the first. One was added, and the
+  // retirement closes BOTH legs on it — without that, a reconciled row beside a
+  // leg still in needs_attention / queued is refused outright and the release
+  // cannot complete. The fee leg is derived from the money owed, never copied,
+  // because #1221 ties (fee_state = 'not_required') to a zero fee reversal.
+  const retireEnd = s.evidence.indexOf("WHERE id=ANY(v_refund_ids);", s.evidence.indexOf("UPDATE public.source_refunds SET\n    financial_state='reconciled'"));
+  const retireStmt = s.evidence.slice(s.evidence.indexOf("UPDATE public.source_refunds SET\n    financial_state='reconciled'"), retireEnd);
+  for (const token of ["buyer_state='cancelled_no_refund_due'", "fee_state=CASE WHEN fee_reversal_required_cents=0", "THEN 'not_required' ELSE 'cancelled_no_reversal_due' END", "COALESCE(paystack_transaction_id,v_paystack_id)", "COALESCE(stripe_charge_id,p_stripe_charge_id)"]) {
+    if (!retireStmt.includes(token)) fail(`retirement missing ${token}`);
+  }
+  if (/fee_state='cancelled_no_reversal_due'[,\n]/.test(retireStmt)) {
+    fail("the fee leg is cancelled unconditionally; a refund that owed no fee must stay not_required");
+  }
+  // The widened `reconciled` invariant must stay AT LEAST AS STRICT for every
+  // state that could already exist: #1221's original branch intact, the new
+  // pairing admissible only with nothing processed on either leg, and a
+  // cancelled leg pinned to a terminal financial_state so no stray recompute
+  // can silently re-open a closed obligation.
+  for (const token of ["ADD CONSTRAINT source_refunds_issue_2079_reconciled_settlement", "OR (buyer_state = 'processed'\n        AND fee_state = ANY (ARRAY['processed','not_required']))", "AND buyer_refund_processed_cents = 0", "AND fee_reversal_processed_cents = 0", "ADD CONSTRAINT source_refunds_issue_2079_cancelled_legs_moved_no_money", "AND financial_state = 'reconciled'"]) {
+    if (!s.evidence.includes(token)) fail(`reconciled invariant missing ${token}`);
+  }
   // A released session must re-hold its inventory, and a retirement must be
   // undone when the sale it was retired for does not complete.
   if (!s.evidence.includes("expires_at=now()+GREATEST(v_session.expires_at-v_session.created_at,interval '0')")) {
@@ -65,6 +96,12 @@ const check = (s) => {
   }
   if (!s.evidence.includes("'sale_not_completed_after_release'") || !s.evidence.includes("'outcome','reopened'")) {
     fail("a retired obligation can be swallowed when the finalize after a release fails");
+  }
+  // BOTH legs come back, and only the release's own retirement may be re-opened.
+  const reopenWindowAt = s.evidence.indexOf("'sale_not_completed_after_release'");
+  const reopenWindow = s.evidence.slice(Math.max(0, reopenWindowAt - 1500), reopenWindowAt + 1500);
+  for (const token of ["v_existing.buyer_state='cancelled_no_refund_due'", "fee_state=CASE WHEN fee_reversal_required_cents=0"]) {
+    if (!reopenWindow.includes(token)) fail(`reopen missing ${token}`);
   }
   // A reopened obligation must hard-fail its session, or a recovered sale can
   // still mint a ticket for a buyer who is also being refunded.
@@ -125,6 +162,14 @@ if (process.argv.includes("--self-test")) {
     ["evidence", "'sale_not_completed_after_release'", "'sale_completed_no_refund_due'"],
     ["evidence", "      UPDATE public.ticket_checkout_sessions SET reversal_state='paid_reversal_pending',\n        status='failed',failed_at=COALESCE(failed_at,now()),updated_at=now()\n      WHERE id=v_session.id AND order_id IS NULL;\n", ""],
     ["evidence", "gen_random_uuid(),'requested','reconciled','queued',", "extract(epoch FROM clock_timestamp())::bigint,'requested','reconciled','queued',"],
+    ["evidence", "    buyer_state='cancelled_no_refund_due',\n", ""],
+    ["evidence", "      THEN 'not_required' ELSE 'cancelled_no_reversal_due' END,\n", "      THEN 'cancelled_no_reversal_due' ELSE 'cancelled_no_reversal_due' END,\n"],
+    ["evidence", "COALESCE(stripe_charge_id,p_stripe_charge_id)", "stripe_charge_id"],
+    ["evidence", "COALESCE(paystack_transaction_id,v_paystack_id)", "paystack_transaction_id"],
+    ["evidence", "        AND buyer_refund_processed_cents = 0\n", ""],
+    ["evidence", "ADD CONSTRAINT source_refunds_issue_2079_cancelled_legs_moved_no_money", "ADD CONSTRAINT source_refunds_issue_2079_cancelled_legs_removed"],
+    ["evidence", "       AND v_existing.buyer_state='cancelled_no_refund_due'\n", ""],
+    ["evidence", "        fee_state=CASE WHEN fee_reversal_required_cents=0\n          THEN 'not_required' ELSE 'queued' END,\n", ""],
     ["confirm", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],
     ["webhook", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],
     ["paystackWebhook", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],

@@ -456,10 +456,75 @@ Deno.test("#2079 ADV the release owner cannot cancel a refund anything has touch
   ) {
     assert(retirement.includes(field), `retirement missing ${field}`);
   }
-  // It must never claim money moved.
-  assert(!/buyer_state='processed'/.test(migration));
+  // The whole retirement statement, not a fixed window: it now carries the
+  // cancelled leg states and the provider identity as well.
+  const retireEnd = migration.indexOf("WHERE id=ANY(v_refund_ids);", retire);
+  assert(retireEnd > retire, "the retirement never ends");
+  const retireStmt = migration.slice(retire, retireEnd);
+  // CANCELLED, NOT PAID. #1221 has no state that means "closed, nothing owed",
+  // so one was added; without it `financial_state='reconciled'` beside a leg
+  // that is still 'needs_attention' / 'queued' is a row source_refunds refuses
+  // outright, and the release cannot complete at all.
+  for (
+    const field of [
+      "buyer_state='cancelled_no_refund_due'",
+      "fee_state=CASE WHEN fee_reversal_required_cents=0",
+      "THEN 'not_required' ELSE 'cancelled_no_reversal_due' END",
+    ]
+  ) {
+    assert(retireStmt.includes(field), `retirement missing ${field}`);
+  }
+  // The fee leg is derived from the money owed, never copied from whatever the
+  // leg happened to say: #1221 requires (fee_state = 'not_required') =
+  // (fee_reversal_required_cents = 0), so a checkout with no platform fee must
+  // keep 'not_required'.
+  assert(
+    !/fee_state='cancelled_no_reversal_due'[,\n]/.test(retireStmt),
+    "the fee leg is cancelled unconditionally; a zero-fee refund must stay not_required",
+  );
+  // The provider identity this hold was MISSING is recorded, or the retired row
+  // is a ticket late refund out of 'needs_attention' that still cannot name its
+  // charge — which source_refunds_issue_2079_execution_ready refuses — and the
+  // reopen can no longer recognise its own retirement.
+  for (
+    const field of [
+      "paystack_transaction_id=CASE WHEN refund_kind='late_payment_no_value'",
+      "stripe_charge_id=CASE WHEN refund_kind='late_payment_no_value'",
+      "COALESCE(paystack_transaction_id,v_paystack_id)",
+      "COALESCE(stripe_charge_id,p_stripe_charge_id)",
+    ]
+  ) {
+    assert(retireStmt.includes(field), `retirement missing ${field}`);
+  }
+  // It must never claim money moved. Scoped to the release function body: the
+  // migration's CHECK constraints legitimately quote 'processed' when they say
+  // what a reconciled refund is allowed to be.
+  const releaseStart = migration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.release_ticket_checkout_evidence_hold(",
+  );
+  const releaseEnd = migration.indexOf("END $$;", releaseStart);
+  assert(releaseStart >= 0 && releaseEnd > releaseStart, "the release owner is gone");
+  const releaseBody = migration.slice(releaseStart, releaseEnd);
+  assert(!/buyer_state\s*=\s*'processed'/.test(releaseBody));
+  assert(!/fee_state\s*=\s*'processed'/.test(releaseBody));
   assert(!/buyer_refund_processed_cents\s*=\s*[1-9]/.test(migration));
   assert(!/provider_refund_id\s*=\s*'/.test(migration));
+  // And the widened invariant is re-added AT LEAST AS STRICT: the cancelled
+  // pairing is admissible only with nothing processed on either leg and no
+  // provider refund identity, and a cancelled leg is pinned to a terminal
+  // financial_state so no stray recompute can silently re-open it.
+  for (
+    const clause of [
+      "ADD CONSTRAINT source_refunds_issue_2079_reconciled_settlement",
+      "OR (buyer_state = 'processed'\n        AND fee_state = ANY (ARRAY['processed','not_required']))",
+      "AND buyer_refund_processed_cents = 0",
+      "AND fee_reversal_processed_cents = 0",
+      "ADD CONSTRAINT source_refunds_issue_2079_cancelled_legs_moved_no_money",
+      "AND financial_state = 'reconciled'",
+    ]
+  ) {
+    assert(migration.includes(clause), `reconciled invariant missing ${clause}`);
+  }
   // And it appends #1221's own compensating record rather than rewriting one.
   assert(migration.includes("INSERT INTO public.source_refund_events("));
   assert(migration.includes("'ops_resolved'"));
@@ -503,6 +568,12 @@ Deno.test("#2079 ADV a release that does not end in a sale still owes the buyer"
       "v_existing.provider_refund_id IS NULL",
       "buyer_state='queued'",
       "financial_state='pending'",
+      // The obligation is only half re-opened if the fee leg stays cancelled:
+      // a reversal nobody performs, sitting on a refund that does pay.
+      "fee_state=CASE WHEN fee_reversal_required_cents=0",
+      // And only the release's own retirement may be re-opened. The leg state
+      // is the non-forgeable half of that marker.
+      "v_existing.buyer_state='cancelled_no_refund_due'",
     ]
   ) {
     assert(window.includes(token), `reopen missing ${token}`);
