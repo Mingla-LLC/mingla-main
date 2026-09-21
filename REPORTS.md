@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-20 — Mingla's biggest automated safety check now runs as three parallel parts instead of one, so it finishes in about a third of the time and keeps months of spare margin as more checks are added; a new fourth check proves the three parts together cover every one of the 1,033 checks exactly once, so none can be dropped or double-counted unnoticed (#3449, PR #3495)
 - 2026-09-20 — The size limit on the Business web startup download is raised so pull requests can merge again; main had gone red and blocked every chat because the measured payload had crept to within 9 KB of the limit, leaving no room for an ordinary change. Nothing users see changed, and trimming the payload back down is still tracked (#3493, PR #3494)
 - 2026-09-20 — CI's workflow-topology check now gets missing git history in a throwaway copy, so it can no longer damage the checkout it is inspecting; that damage had turned main red and silently shallowed the shared developer repository (#3455, PR #3471)
 - 2026-09-17 — Claude and Codex chats now coordinate by messaging each other instead of a shared table, and docs no longer need their own follow-up pull requests (#3476, PR #3482)
