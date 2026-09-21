@@ -24,10 +24,14 @@
 --   * the sale is still open for this buyer: the event is sellable, the
 --     admission epoch is unchanged, and the same authorization finalize uses
 --     (access, ticket availability, capacity, chosen days) still passes.
--- It then RETIRES the never-started refund rows in place — `financial_state`
--- becomes 'reconciled' with an appended `ops_resolved` event, never a DELETE,
--- because #1221's money ledger is append-only — returns the session to
--- processing_payment, marks the revocation rows sale_completed and answers
+-- It then RETIRES the never-started refund rows in place — both legs move to a
+-- real terminal state meaning CANCELLED, NOTHING OWED ('cancelled_no_refund_due'
+-- / 'cancelled_no_reversal_due'), `financial_state` becomes 'reconciled' with an
+-- appended `ops_resolved` event, and nothing is ever DELETEd, because #1221's
+-- money ledger is append-only. Not one processed figure is written: the row
+-- goes on saying that a refund was asked for and that none of it moved. It then
+-- returns the session to processing_payment, marks the revocation rows
+-- sale_completed and answers
 -- `released`. The caller's ordinary verify + finalize then issues the tickets
 -- through the one existing finalize owner.
 --
@@ -57,6 +61,151 @@ ALTER TABLE public.source_refunds
 ALTER TABLE public.source_refunds
   ADD CONSTRAINT source_refunds_buyer_notice_code_check CHECK (
     buyer_notice_code IS NULL OR buyer_notice_code = 'sale_unavailable');
+
+-- ---------------------------------------------------------------------------
+-- A CANCELLED obligation needs a word for itself.
+--
+-- #1221's vocabulary has no way to say "this refund was never owed and was
+-- never paid, and it is now closed". Every terminal buyer_state either claims
+-- the money moved ('processed') or claims we tried and failed to move it
+-- ('failed_terminal'), and `financial_state='reconciled'` is admissible only
+-- beside the first of those:
+--
+--   CHECK (financial_state <> 'reconciled' OR
+--     (buyer_state = 'processed' AND fee_state IN ('processed','not_required')))
+--
+-- So retiring the hold by writing `financial_state='reconciled'` and leaving
+-- the legs where they were is not a row this table allows — it is rejected
+-- outright, and for a Stripe hold the application-fee identity CHECK below
+-- rejects it a second time, because a fee reversal that never happened has no
+-- `stripe_application_fee_id` to name.
+--
+-- Marking the legs 'processed' is NOT the way out. #1221 also holds
+--
+--   CHECK ((buyer_state = 'processed') =
+--     (buyer_refund_processed_cents = buyer_refund_requested_cents))
+--
+-- so 'processed' would force the processed figure up to the requested figure —
+-- the ledger would assert Mingla paid a refund it never paid. That is a lie in
+-- the money ledger and it does not ship.
+--
+-- The honest answer is a real terminal value per leg meaning "cancelled,
+-- nothing owed, nothing paid", and a `reconciled` invariant widened to admit
+-- exactly that pairing and nothing else. Zero owed and zero paid IS a balanced
+-- book; the row stays terminal for every sweep and worker, because they all
+-- skip `financial_state='reconciled'`, and it stays honest, because
+-- buyer_refund_processed_cents is still 0.
+ALTER TABLE public.source_refunds
+  DROP CONSTRAINT IF EXISTS source_refunds_buyer_state_check;
+ALTER TABLE public.source_refunds
+  ADD CONSTRAINT source_refunds_buyer_state_check CHECK (buyer_state = ANY (ARRAY[
+    'queued','provider_pending','needs_attention','processed',
+    'failed_retryable','failed_terminal','cancelled_no_refund_due']));
+
+ALTER TABLE public.source_refunds
+  DROP CONSTRAINT IF EXISTS source_refunds_fee_state_check;
+ALTER TABLE public.source_refunds
+  ADD CONSTRAINT source_refunds_fee_state_check CHECK (fee_state = ANY (ARRAY[
+    'not_required','queued','provider_pending','needs_attention','processed',
+    'failed_retryable','failed_terminal','cancelled_no_reversal_due']));
+
+-- The two `reconciled` invariants are ANONYMOUS table CHECKs from #1221's
+-- CREATE TABLE (they arrive as source_refunds_check8 / _check9). They are
+-- located by DEFINITION rather than by that generated name, and the lookup
+-- asserts it matched exactly one constraint each, so a rename or a reordering
+-- upstream fails this migration loudly instead of silently dropping nothing —
+-- or dropping something else.
+DO $block$
+DECLARE v_name text; v_n integer;
+BEGIN
+  SELECT count(*), min(conname) INTO v_n, v_name FROM pg_constraint
+  WHERE conrelid='public.source_refunds'::regclass AND contype='c'
+    AND pg_get_constraintdef(oid) LIKE '%reconciled%'
+    AND pg_get_constraintdef(oid) LIKE '%buyer_state = ''processed''%';
+  IF v_n<>1 THEN
+    RAISE EXCEPTION 'issue 2079: expected exactly 1 reconciled/buyer-processed CHECK on source_refunds, found %', v_n;
+  END IF;
+  EXECUTE format('ALTER TABLE public.source_refunds DROP CONSTRAINT %I', v_name);
+
+  SELECT count(*), min(conname) INTO v_n, v_name FROM pg_constraint
+  WHERE conrelid='public.source_refunds'::regclass AND contype='c'
+    AND pg_get_constraintdef(oid) LIKE '%stripe_application_fee_id%';
+  IF v_n<>1 THEN
+    RAISE EXCEPTION 'issue 2079: expected exactly 1 application-fee identity CHECK on source_refunds, found %', v_n;
+  END IF;
+  EXECUTE format('ALTER TABLE public.source_refunds DROP CONSTRAINT %I', v_name);
+END $block$;
+
+-- Re-added AT LEAST AS STRICT for every state that could already exist. The
+-- first branch is #1221's original rule, character for character. The only rows
+-- this makes legal that were not legal before are rows carrying the two brand
+-- new values, and only in the shape below: both legs cancelled together (or the
+-- fee leg genuinely not required), nothing processed on either leg, and no
+-- provider refund or fee-refund identity — i.e. a refund that demonstrably
+-- never moved a cent. Every pre-existing combination is judged by exactly the
+-- rule that judged it before.
+ALTER TABLE public.source_refunds
+  DROP CONSTRAINT IF EXISTS source_refunds_issue_2079_reconciled_settlement;
+ALTER TABLE public.source_refunds
+  ADD CONSTRAINT source_refunds_issue_2079_reconciled_settlement CHECK (
+    financial_state <> 'reconciled'
+    OR (buyer_state = 'processed'
+        AND fee_state = ANY (ARRAY['processed','not_required']))
+    OR (buyer_state = 'cancelled_no_refund_due'
+        AND fee_state = ANY (ARRAY['not_required','cancelled_no_reversal_due'])
+        AND buyer_refund_processed_cents = 0
+        AND fee_reversal_processed_cents = 0
+        AND provider_refund_id IS NULL
+        AND stripe_application_fee_refund_id IS NULL));
+
+-- #1221's rule was: a reconciled refund whose fee leg is a Stripe application
+-- fee refund must name the application fee it reversed. That rule is untouched
+-- for every fee leg that was actually performed. The added branch covers the
+-- one case it cannot describe — a fee reversal that was CANCELLED and never
+-- performed, which has no fee to name. 'cancelled_no_reversal_due' did not
+-- exist before this migration, so no pre-existing row can reach it.
+ALTER TABLE public.source_refunds
+  DROP CONSTRAINT IF EXISTS source_refunds_issue_2079_reconciled_stripe_fee_identity;
+ALTER TABLE public.source_refunds
+  ADD CONSTRAINT source_refunds_issue_2079_reconciled_stripe_fee_identity CHECK (
+    financial_state <> 'reconciled'
+    OR fee_leg_kind <> 'stripe_application_fee_refund'
+    OR stripe_application_fee_id IS NOT NULL
+    OR fee_state = 'cancelled_no_reversal_due');
+
+-- NEW, and purely narrowing: the cancelled values mean one thing and cannot be
+-- used to mean anything else. A cancelled leg has moved no money, and a
+-- cancelled obligation is terminal — `financial_state='reconciled'` is the one
+-- value every sweep, worker and payout arm reads as "closed", so a cancelled
+-- leg may not sit beside any other financial_state.
+--
+-- That second half is deliberate armour. #1221 has two functions that recompute
+-- financial_state with a trailing `ELSE 'pending'`
+-- (issue_1221_schedule_source_refund_retry and the tail of
+-- record_source_refund_provider_event). Neither can reach a retired row today —
+-- claim_source_refund_operations only hands out rows with
+-- financial_state <> 'reconciled', and the provider-event path raises
+-- stale_attempt / attempt_not_found on a refund with no attempts. If either
+-- ever did reach one, it would quietly re-open an obligation on a buyer who is
+-- holding their ticket, and the sweep would refund them a second time. This
+-- CHECK turns that silent double-payment into a loud, immediate error.
+ALTER TABLE public.source_refunds
+  DROP CONSTRAINT IF EXISTS source_refunds_issue_2079_cancelled_legs_moved_no_money;
+ALTER TABLE public.source_refunds
+  ADD CONSTRAINT source_refunds_issue_2079_cancelled_legs_moved_no_money CHECK (
+    (buyer_state <> 'cancelled_no_refund_due'
+      OR (buyer_refund_processed_cents = 0
+          AND provider_refund_id IS NULL
+          AND financial_state = 'reconciled'))
+    AND (fee_state <> 'cancelled_no_reversal_due'
+      OR (fee_reversal_processed_cents = 0
+          AND stripe_application_fee_refund_id IS NULL
+          AND financial_state = 'reconciled')));
+
+COMMENT ON COLUMN public.source_refunds.buyer_state IS
+  'Buyer refund leg. ''cancelled_no_refund_due'' is terminal and means the obligation was closed with nothing owed and nothing paid — never that a refund was made.';
+COMMENT ON COLUMN public.source_refunds.fee_state IS
+  'Platform fee reversal leg. ''cancelled_no_reversal_due'' is terminal and means the reversal was closed without being performed.';
 
 CREATE OR REPLACE FUNCTION public.release_ticket_checkout_evidence_hold(
   p_checkout_session_id uuid,
@@ -182,7 +331,15 @@ BEGIN
     IF v_refund.refund_kind NOT IN ('late_payment_no_value','checkout_provider_reference_unresolved')
        OR v_refund.buyer_state NOT IN ('needs_attention','queued')
        OR v_refund.financial_state NOT IN ('needs_attention','pending')
-       OR v_refund.fee_state NOT IN ('not_required','queued','needs_attention')
+       -- NARROWED with the cancellable states: the retirement collapses the fee
+       -- leg to 'cancelled_no_reversal_due' and the reopen restores it from the
+       -- money alone ('not_required' when none is owed, otherwise 'queued',
+       -- which is what both creators write). A fee leg parked on
+       -- 'needs_attention' could not be restored to that exactly, so it is no
+       -- longer releasable at all: the buyer keeps their refund instead of a
+       -- round trip that loses a state a human was waiting on. Neither creator
+       -- can produce it, so this refuses nothing that happens today.
+       OR v_refund.fee_state NOT IN ('not_required','queued')
        OR v_refund.buyer_refund_processed_cents<>0
        OR v_refund.fee_reversal_processed_cents<>0
        OR v_refund.active_buyer_attempt_no<>0
@@ -275,13 +432,20 @@ BEGIN
   -- them. An append-only ledger is the invariant; the release is what bends.
   --
   -- So: append the compensating record #1221 already has a vocabulary for
-  -- (`ops_resolved`), then move the refund to `financial_state='reconciled'`.
-  -- That is the exact predicate claim_source_refund_operations uses to decide
-  -- what is still open (`WHERE financial_state <> 'reconciled'`), and the exact
-  -- predicate every payout arm uses to decide what still blocks a release, so
-  -- one honest value makes the obligation terminal for both. The prepared
+  -- (`ops_resolved`), close BOTH legs on the cancelled terminal states this
+  -- migration adds, and move the refund to `financial_state='reconciled'`.
+  -- That last one is the exact predicate claim_source_refund_operations uses to
+  -- decide what is still open (`WHERE financial_state <> 'reconciled'`), and the
+  -- exact predicate every payout arm uses to decide what still blocks a release,
+  -- so one honest value makes the obligation terminal for both. The prepared
   -- allocations stay exactly as they are: prepared, never posted, which is what
   -- actually happened.
+  --
+  -- What this must NOT do is claim the refund was paid. Closing the legs on
+  -- 'processed' would drag buyer_refund_processed_cents up to
+  -- buyer_refund_requested_cents (#1221 ties those together in a CHECK) and the
+  -- ledger would assert money left Mingla that never left. The cancelled states
+  -- exist precisely so the row can be terminal and still say zero.
   INSERT INTO public.audit_log(user_id,brand_id,event_id,action,target_type,target_id,before,after)
   VALUES(NULL,v_session.brand_id,v_session.event_id,'ticket_checkout.evidence_hold_released',
     'ticket_checkout_session',v_session.id::text,
@@ -307,7 +471,31 @@ BEGIN
     lease_owner=NULL,leased_at=NULL,next_retry_at=NULL,
     attention_completed_at=COALESCE(attention_completed_at,now()),
     attention_expires_at=NULL,
-    updated_at=now()
+    updated_at=now(),
+    -- The legs are CANCELLED, not paid. buyer_refund_processed_cents stays 0
+    -- and buyer_refund_requested_cents is not touched: the ledger keeps saying
+    -- what was asked for and that none of it moved. The fee leg is derived from
+    -- the money, not from its previous value, because #1221 requires
+    -- (fee_state = 'not_required') = (fee_reversal_required_cents = 0) — a
+    -- refund that never owed a fee reversal was already 'not_required' and
+    -- stays there.
+    buyer_state='cancelled_no_refund_due',
+    fee_state=CASE WHEN fee_reversal_required_cents=0
+      THEN 'not_required' ELSE 'cancelled_no_reversal_due' END,
+    -- The provider has just AUTHENTICATED the identity this hold was missing,
+    -- and the loop above already refused to continue if the row carried a
+    -- different one. Recording it is what makes the retirement legal — a ticket
+    -- late refund that is not in 'needs_attention' must name its Paystack
+    -- transaction or Stripe charge (source_refunds_issue_2079_execution_ready)
+    -- and, while it does not, must stay in the attention shape
+    -- (source_refunds_issue_2079_attention_shape). It is also what lets the
+    -- reopen below recognise its own retirement: the reopen matches on identity,
+    -- and an unstamped row no longer matches the evidence that released it.
+    -- This is identity, not money; no amount is rewritten.
+    paystack_transaction_id=CASE WHEN refund_kind='late_payment_no_value'
+      THEN COALESCE(paystack_transaction_id,v_paystack_id) ELSE paystack_transaction_id END,
+    stripe_charge_id=CASE WHEN refund_kind='late_payment_no_value'
+      THEN COALESCE(stripe_charge_id,p_stripe_charge_id) ELSE stripe_charge_id END
   WHERE id=ANY(v_refund_ids);
   -- The session must RE-HOLD its inventory for the finalize window. A held
   -- session only counts toward issue_2491_derived_held() while
@@ -416,6 +604,11 @@ BEGIN
     -- Re-open it instead. A retired row has processed nothing, so there is
     -- nothing to unwind; its prepared allocations are still prepared.
     IF v_existing.financial_state='reconciled'
+       -- The leg state is the non-forgeable half of this marker: only the
+       -- release writes 'cancelled_no_refund_due', and the table forbids it
+       -- beside any financial_state but 'reconciled'. last_error_code is kept
+       -- as the second half, so a hand-edited row cannot borrow this branch.
+       AND v_existing.buyer_state='cancelled_no_refund_due'
        AND v_existing.last_error_code='sale_completed_no_refund_due'
        AND v_existing.buyer_refund_processed_cents=0
        AND v_existing.fee_reversal_processed_cents=0
@@ -432,7 +625,15 @@ BEGIN
         0,'sale_not_completed_after_release','system',
         jsonb_build_object('checkoutSessionId',v_session.id,'provider',p_provider))
       ON CONFLICT(event_key) DO NOTHING;
+      -- Both legs come back. The fee leg is restored from the money it owes,
+      -- which is exactly what both creators of this refund write at creation:
+      -- 'not_required' when no reversal is owed, 'queued' when one is. The
+      -- buyer leg comes back as 'queued' rather than 'needs_attention' because
+      -- the release recorded the provider identity that was missing, so this
+      -- obligation really is execution-ready now.
       UPDATE public.source_refunds SET buyer_state='queued',financial_state='pending',
+        fee_state=CASE WHEN fee_reversal_required_cents=0
+          THEN 'not_required' ELSE 'queued' END,
         ops_status='none',ops_note=NULL,last_error_code=NULL,last_error_public=NULL,
         lease_owner=NULL,leased_at=NULL,next_retry_at=NULL,updated_at=now()
       WHERE id=v_existing.id;

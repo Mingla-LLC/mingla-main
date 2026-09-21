@@ -453,12 +453,19 @@ VALUES('e71d0000-0000-4000-8000-000000000012','e71d0000-0000-4000-8000-000000000
   'General',1000,'USD',false,100,1,true,false,0),
 ('e71d0000-0000-4000-8000-000000000013','e71d0000-0000-4000-8000-000000000011',
   'Last seat',1000,'USD',false,1,1,true,false,1),
+-- Section 10 needs a scarce type of its OWN. Section 5 sells 'Last seat' to the
+-- other buyer to prove a sold-out hold keeps its refund, so by the time section
+-- 10 runs that type has no seats left and its fixture cannot even be claimed —
+-- the claim answers 'revoked' and the block dies in its own setup.
+('e71d0000-0000-4000-8000-000000000014','e71d0000-0000-4000-8000-000000000011',
+  'Last seat, second run',1000,'USD',false,1,1,true,false,2),
 ('e71d0000-0000-4000-8000-000000000022','e71d0000-0000-4000-8000-000000000021',
   'NG General',1000,'NGN',false,100,1,true,false,0);
 
 -- A Stripe native checkout for one ticket, paid, whose first signal had no
 -- charge id: exactly the hold the webhook used to create.
-CREATE FUNCTION pg_temp.evidence_hold_stripe(p_id uuid,p_ticket_type uuid,p_pi text,p_charge text)
+CREATE FUNCTION pg_temp.evidence_hold_stripe(p_id uuid,p_ticket_type uuid,p_pi text,p_charge text,
+  p_fee integer DEFAULT 100)
 RETURNS jsonb LANGUAGE plpgsql AS $f$
 DECLARE v_claim jsonb; v_attempt uuid; v_epoch bigint;
 BEGIN
@@ -467,7 +474,7 @@ BEGIN
     application_fee_amount_cents)
   VALUES(p_id,'e71d0000-0000-4000-8000-000000000011','e71d0000-0000-4000-8000-000000000010',
     'Hold buyer','hold-buyer@example.com','+15555550111','USD',1000,1000,'requires_payment',
-    'evidence-hold-'||p_id,now()+interval '15 minutes',100);
+    'evidence-hold-'||p_id,now()+interval '15 minutes',p_fee);
   INSERT INTO public.ticket_checkout_session_items(checkout_session_id,ticket_type_id,
     ticket_name_at_purchase,quantity,unit_price_cents,total_cents)
   VALUES(p_id,p_ticket_type,'Ticket',1,1000,1000);
@@ -492,6 +499,25 @@ RETURNS jsonb LANGUAGE sql AS $f$
     p_account,p_amount,p_currency)
 $f$;
 
+-- Does source_refunds REFUSE this write? The probe runs inside a subtransaction
+-- that is rolled back whether the write is accepted or rejected, so the row it
+-- is aimed at is never actually changed. It answers true only for a CHECK
+-- violation: any other error is re-raised rather than counted as a refusal, so
+-- a probe that fails for the wrong reason cannot quietly pass.
+CREATE FUNCTION pg_temp.evidence_hold_refuses(p_id uuid,p_set text) RETURNS boolean
+LANGUAGE plpgsql AS $f$
+BEGIN
+  BEGIN
+    EXECUTE format('UPDATE public.source_refunds SET %s WHERE id=%L',p_set,p_id);
+    RAISE EXCEPTION 'evidence_hold_probe_accepted';
+  EXCEPTION
+    WHEN check_violation THEN RETURN true;
+    WHEN raise_exception THEN
+      IF SQLERRM='evidence_hold_probe_accepted' THEN RETURN false; END IF;
+      RAISE;
+  END;
+END $f$;
+
 CREATE FUNCTION pg_temp.evidence_hold_intact(p_id uuid) RETURNS boolean LANGUAGE sql AS $f$
   SELECT EXISTS(SELECT 1 FROM public.ticket_checkout_sessions s
       WHERE s.id=p_id AND s.status='failed' AND s.reversal_state='paid_reversal_pending'
@@ -510,6 +536,7 @@ DECLARE v jsonb; v_order jsonb; v_replay jsonb; v_claim jsonb; v_attempt uuid; v
   e uuid:='e71d0000-0000-4000-8000-0000000000e1'; e2 uuid:='e71d0000-0000-4000-8000-0000000000e2';
   f uuid:='e71d0000-0000-4000-8000-0000000000f1'; g uuid:='e71d0000-0000-4000-8000-0000000000a7';
   h uuid:='e71d0000-0000-4000-8000-0000000000a8'; i uuid:='e71d0000-0000-4000-8000-0000000000a9';
+  j uuid:='e71d0000-0000-4000-8000-0000000000aa';
   v_held integer; v_expires timestamptz; v_reopen jsonb;
 BEGIN
   -- ── 1. Webhook without a charge, then the buyer's confirm with one ────────
@@ -551,6 +578,76 @@ BEGIN
        AND target_id=a::text AND action='ticket_checkout.evidence_hold_released') THEN
     RAISE EXCEPTION 'evidence hold 1: release left refund, session, attempt, outbox or audit wrong';
   END IF;
+  -- RETIRED MEANS CANCELLED, NOT PAID.
+  --
+  -- #1221 had no word for "this refund was never owed and was never paid".
+  -- Writing financial_state='reconciled' and leaving the legs alone is a row
+  -- the table refuses; marking the legs 'processed' would drag
+  -- buyer_refund_processed_cents up to buyer_refund_requested_cents, which
+  -- would be the ledger asserting Mingla paid a refund it never paid. So both
+  -- legs close on a real terminal state that means CANCELLED, the requested
+  -- figures are untouched, both processed figures stay at zero, and the
+  -- provider identity this hold was missing is now on the row. Delete the
+  -- buyer_state or fee_state line from the release and this fails on a CHECK.
+  IF NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE id=v_refund_a
+       AND buyer_state='cancelled_no_refund_due'
+       AND fee_state='cancelled_no_reversal_due'
+       AND buyer_refund_requested_cents=1000 AND buyer_refund_processed_cents=0
+       AND fee_reversal_required_cents=100 AND fee_reversal_processed_cents=0
+       AND organizer_refund_liability_cents=900 AND platform_fee_absorption_cents=100
+       AND stripe_charge_id='ch_evidenceA'
+       AND stripe_application_fee_id IS NULL
+       AND stripe_application_fee_refund_id IS NULL
+       AND processed_at IS NULL) THEN
+    RAISE EXCEPTION 'evidence hold 1: the retired obligation is not a cancelled, zero-paid, identified row';
+  END IF;
+
+  -- AND THE INVARIANT THAT BLOCKED THIS STILL BLOCKS EVERYTHING ELSE.
+  --
+  -- `reconciled` was widened to admit one new shape: an obligation cancelled
+  -- with nothing owed and nothing paid. Every probe below was illegal before
+  -- that widening and is still illegal now. Weaken
+  -- source_refunds_issue_2079_reconciled_settlement,
+  -- source_refunds_issue_2079_reconciled_stripe_fee_identity or
+  -- source_refunds_issue_2079_cancelled_legs_moved_no_money and this fails.
+  IF NOT pg_temp.evidence_hold_refuses(v_refund_a,
+       -- the original CI failure: reconciled beside a leg a human is waiting on
+       $probe$buyer_state='needs_attention'$probe$)
+     OR NOT pg_temp.evidence_hold_refuses(v_refund_a,
+       -- reconciled beside a fee leg still queued
+       $probe$fee_state='queued'$probe$)
+     OR NOT pg_temp.evidence_hold_refuses(v_refund_a,
+       -- 'processed' cannot be claimed while nothing was processed
+       $probe$buyer_state='processed'$probe$)
+     OR NOT pg_temp.evidence_hold_refuses(v_refund_a,
+       -- nor can a cancelled leg quietly acquire a processed amount
+       $probe$buyer_refund_processed_cents=buyer_refund_requested_cents$probe$)
+     OR NOT pg_temp.evidence_hold_refuses(v_refund_a,
+       -- nor a provider refund id for a refund that never reached a provider
+       $probe$provider_refund_id='re_forged'$probe$)
+     OR NOT pg_temp.evidence_hold_refuses(v_refund_a,
+       -- a cancelled leg may not sit beside any other financial_state: that is
+       -- what stops a stray recompute silently re-opening a closed obligation
+       $probe$financial_state='pending'$probe$)
+     OR NOT pg_temp.evidence_hold_refuses(v_refund_a,
+       $probe$financial_state='needs_attention'$probe$)
+     OR NOT pg_temp.evidence_hold_refuses(v_refund_a,
+       -- a genuinely processed refund may NOT borrow the cancelled fee value to
+       -- escape naming the Stripe application fee it reversed
+       $probe$buyer_state='processed',buyer_refund_processed_cents=buyer_refund_requested_cents,$probe$
+       ||$probe$fee_state='processed',fee_reversal_processed_cents=fee_reversal_required_cents$probe$)
+     OR NOT pg_temp.evidence_hold_refuses(v_refund_a,
+       $probe$buyer_state='processed',buyer_refund_processed_cents=buyer_refund_requested_cents,$probe$
+       ||$probe$fee_state='cancelled_no_reversal_due'$probe$) THEN
+    RAISE EXCEPTION 'evidence hold 1: the widened reconciled invariant now accepts a row it must refuse';
+  END IF;
+  -- The row the probes were aimed at is unchanged: every probe rolled back.
+  IF NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE id=v_refund_a
+       AND buyer_state='cancelled_no_refund_due' AND financial_state='reconciled'
+       AND buyer_refund_processed_cents=0 AND provider_refund_id IS NULL) THEN
+    RAISE EXCEPTION 'evidence hold 1: a constraint probe leaked into the row it probed';
+  END IF;
+
   -- A retired obligation is terminal for the worker: claim_source_refund_operations
   -- selects only `financial_state <> 'reconciled'`, so the sweep can never pick
   -- it up and refund a buyer who now holds a ticket.
@@ -754,6 +851,18 @@ BEGIN
   IF v->>'outcome'<>'released' THEN
     RAISE EXCEPTION 'evidence hold 8: a proven Paystack payment was not released: %',v;
   END IF;
+  -- Same retirement on the Paystack side, and the transaction id the hold was
+  -- missing is recorded. Without it the row would be a ticket late refund that
+  -- is not in 'needs_attention' and still cannot name its Paystack transaction,
+  -- which source_refunds_issue_2079_execution_ready refuses outright.
+  IF NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=h
+       AND buyer_state='cancelled_no_refund_due'
+       AND fee_state='cancelled_no_reversal_due'
+       AND financial_state='reconciled'
+       AND paystack_transaction_id=2079901 AND stripe_charge_id IS NULL
+       AND buyer_refund_processed_cents=0 AND fee_reversal_processed_cents=0) THEN
+    RAISE EXCEPTION 'evidence hold 8: the Paystack retirement did not cancel its legs or record its identity';
+  END IF;
   IF public.biz_ticket_checkout_finalize(h,'evidence-hold-paystack-ref','2079901','card',v_pepper)->>'outcome'<>'finalized' THEN
     RAISE EXCEPTION 'evidence hold 8: the released Paystack session did not issue the ticket';
   END IF;
@@ -779,7 +888,7 @@ BEGIN
   -- DELETE the expires_at re-grant from release_ticket_checkout_evidence_hold
   -- and (a) fails. DELETE the reopen branch from
   -- issue_1930_mint_ticket_late_reversal and (b) fails.
-  v:=pg_temp.evidence_hold_stripe(i,'e71d0000-0000-4000-8000-000000000013','pi_evidenceI',NULL);
+  v:=pg_temp.evidence_hold_stripe(i,'e71d0000-0000-4000-8000-000000000014','pi_evidenceI',NULL);
   IF v->>'outcome'<>'attention' OR NOT pg_temp.evidence_hold_intact(i) THEN
     RAISE EXCEPTION 'evidence hold 10: fixture did not hold: %',v;
   END IF;
@@ -789,22 +898,27 @@ BEGIN
   END IF;
   -- (a) the released session holds its seat again.
   SELECT expires_at INTO v_expires FROM public.ticket_checkout_sessions WHERE id=i;
-  v_held:=public.issue_2491_derived_held('e71d0000-0000-4000-8000-000000000013');
+  v_held:=public.issue_2491_derived_held('e71d0000-0000-4000-8000-000000000014');
   IF v_expires IS NULL OR v_expires<=now() OR v_held<1 THEN
     RAISE EXCEPTION 'evidence hold 10(a): a released session holds no inventory (expires_at=%, held=%)',
       v_expires,v_held;
   END IF;
   -- (b) finalize then fails for a reason the seat could not prevent.
-  UPDATE public.ticket_types SET is_disabled=true WHERE id='e71d0000-0000-4000-8000-000000000013';
+  UPDATE public.ticket_types SET is_disabled=true WHERE id='e71d0000-0000-4000-8000-000000000014';
   v_order:=public.biz_ticket_checkout_finalize(i,'pi_evidenceI','ch_evidenceI','card',v_pepper);
-  UPDATE public.ticket_types SET is_disabled=false WHERE id='e71d0000-0000-4000-8000-000000000013';
+  UPDATE public.ticket_types SET is_disabled=false WHERE id='e71d0000-0000-4000-8000-000000000014';
   IF v_order->>'outcome'<>'paid_reversal_pending' OR v_order->>'orderId' IS NOT NULL
      OR EXISTS(SELECT 1 FROM public.orders WHERE checkout_session_id=i) THEN
     RAISE EXCEPTION 'evidence hold 10: a closed sale still minted an order: %',v_order;
   END IF;
+  -- BOTH legs come back, or the reopened obligation is only half real: a fee
+  -- leg left on 'cancelled_no_reversal_due' would be a reversal nobody performs
+  -- sitting on a refund that does pay. Delete the fee_state line from the
+  -- reopen and this fails.
   IF NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=i
        AND refund_kind='late_payment_no_value'
        AND financial_state='pending' AND buyer_state='queued'
+       AND fee_state='queued'
        AND last_error_code IS NULL AND buyer_refund_processed_cents=0)
      OR NOT EXISTS(SELECT 1 FROM public.source_refund_events e
        JOIN public.source_refunds r ON r.id=e.refund_id
@@ -843,7 +957,7 @@ BEGIN
     RAISE EXCEPTION 'evidence hold 10(c): the reconcile sweep can still batch this session';
   END IF;
   -- The seat goes back to the sale rather than being held by a dead session.
-  v_held:=public.issue_2491_derived_held('e71d0000-0000-4000-8000-000000000013');
+  v_held:=public.issue_2491_derived_held('e71d0000-0000-4000-8000-000000000014');
   IF v_held<>0 THEN
     RAISE EXCEPTION 'evidence hold 10(c): a failed session still holds its seat (held=%)',v_held;
   END IF;
@@ -868,7 +982,15 @@ BEGIN
   -- (d) Two reopens inside the same second must both leave an audit record.
   -- The key used to carry a second-granularity clock_timestamp(), so the second
   -- one hit ON CONFLICT DO NOTHING and vanished while still flipping state.
-  UPDATE public.source_refunds SET financial_state='reconciled',buyer_state='needs_attention',
+  -- Re-retire it by hand, in the exact shape the release writes. This UPDATE
+  -- used to leave buyer_state='needs_attention' beside a reconciled row, which
+  -- the table now refuses outright: a reconciled obligation says either that
+  -- the money moved or that it was cancelled with nothing owed, never that a
+  -- human is still waiting on it.
+  UPDATE public.source_refunds SET financial_state='reconciled',
+    buyer_state='cancelled_no_refund_due',
+    fee_state=CASE WHEN fee_reversal_required_cents=0 THEN 'not_required'
+      ELSE 'cancelled_no_reversal_due' END,
     last_error_code='sale_completed_no_refund_due',lease_owner=NULL,leased_at=NULL
     WHERE source_id=i;
   UPDATE public.ticket_checkout_sessions SET status='processing_payment',reversal_state='none',
@@ -881,6 +1003,29 @@ BEGIN
       JOIN public.source_refunds r ON r.id=e.refund_id
       WHERE r.source_id=i AND e.safe_reason_code='sale_not_completed_after_release')<>2 THEN
     RAISE EXCEPTION 'evidence hold 10(d): a reopen inside the same second lost its audit record';
+  END IF;
+
+  -- ── 11. A hold that owed no platform fee keeps 'not_required' ────────────
+  --
+  -- #1221 ties the fee leg to the money it owes:
+  -- (fee_state = 'not_required') = (fee_reversal_required_cents = 0). A
+  -- retirement that stamped 'cancelled_no_reversal_due' on every fee leg
+  -- regardless would break that for a checkout with no platform fee, so the
+  -- release derives the value from the amount owed rather than from whatever
+  -- the leg happened to say. Replace the CASE in the release with a bare
+  -- 'cancelled_no_reversal_due' and this fails on a CHECK.
+  v:=pg_temp.evidence_hold_stripe(j,'e71d0000-0000-4000-8000-000000000012','pi_evidenceJ',NULL,0);
+  IF v->>'outcome'<>'attention' OR NOT pg_temp.evidence_hold_intact(j) THEN
+    RAISE EXCEPTION 'evidence hold 11: the zero-fee fixture did not hold: %',v;
+  END IF;
+  v:=pg_temp.evidence_hold_release(j,'pi_evidenceJ','ch_evidenceJ');
+  IF v->>'outcome'<>'released'
+     OR NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=j
+       AND buyer_state='cancelled_no_refund_due'
+       AND fee_state='not_required' AND fee_leg_kind='not_required'
+       AND fee_reversal_required_cents=0 AND fee_reversal_processed_cents=0
+       AND financial_state='reconciled') THEN
+    RAISE EXCEPTION 'evidence hold 11: a zero-fee retirement did not keep its not_required fee leg: %',v;
   END IF;
 
   -- ── 9. Service role only ──────────────────────────────────────────────────
