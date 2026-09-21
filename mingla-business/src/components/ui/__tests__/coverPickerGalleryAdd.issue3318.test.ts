@@ -552,7 +552,9 @@ describe("issue #3318 source wiring", () => {
     const code = executable(coverPickerSource);
     // Busy (disabled) still includes a photo upload; the spinner does not.
     expect(code).toContain("uploading={uploading || galleryUploading}");
-    expect(code).toContain("spinning={uploading}");
+    // [TEST-MOD-APPROVED #3073] Narrowed further: the Image spinner is an IMAGE
+    // cover upload only; a video pick spins the Video button instead.
+    expect(code).toContain('spinning={uploading && coverUploadKind === "image"}');
     expect(code).toContain("loading={spinning}");
     expect(code).not.toContain("loading={uploading}");
     expect(code).toContain('testID="cover-gallery-uploading"');

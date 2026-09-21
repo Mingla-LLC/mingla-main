@@ -13,10 +13,21 @@
     "ORCH-1400 additions: fixtureCap caps enforcement:\"fixture\" rows (P10); capableUnwiredCap caps",
     "selfTest:\"capable-unwired\" rows (P12); externalGateDirs lists dirs OUTSIDE strict-grep swept for",
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
-    "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
+    "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2).",
+    "issue #3449: 'classAShardCount' is how many explicit sibling jobs run batch:A. It is a declared",
+    "TOPOLOGY fact, so it lives here; the measured per-execution costs the plan balances over live in",
+    "class-a-shard-costs.json instead, because this file is GENERATED and a regeneration would wipe them.",
+    "Changing 3 -> 4 is the whole change needed to add a shard: membership is COMPUTED (run-batch.mjs's",
+    "classAShardPlan), never listed on a gate row. Enforced by issue-3449-class-a-shard-plan.mjs, and the",
+    "shards are proved to partition the class by issue-3449-class-a-shard-completeness.mjs --aggregate.",
+    "issue #3449 counter note: 652 is the implementor's THREE new .mjs (plan gate, aggregate gate,",
+    "implementor regression). The tester's independently written issue-3449-class-a-shard-plan.tester.test.mjs",
+    "is the FOURTH: it raises this to 653 and adds its own batch:E row in the same PR. P2/P3 are exact",
+    "equalities, so a row cannot be registered before its file exists."
   ],
-  "expectedStrictGrepMjsFiles": 649,
-  "selfTestWiredFloor": 415,
+  "expectedStrictGrepMjsFiles": 653,
+  "selfTestWiredFloor": 417,
+  "classAShardCount": 3,
   "unenforcedCap": 2,
   "fixtureCap": 9,
   "capableUnwiredCap": 23,
@@ -9677,6 +9688,42 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-3455-topology-gate-checkout-isolation.tester.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:E",
+      "invocation": "node --test",
+      "modes": ["plain"],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-3449-class-a-shard-plan.mjs",
+      "kind": "file",
+      "enforcement": "batch:E",
+      "invocation": "node",
+      "modes": ["self-test", "plain"],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-3449-class-a-shard-completeness.mjs",
+      "kind": "file",
+      "enforcement": "batch:E",
+      "invocation": "node",
+      "modes": ["self-test"],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-3449-class-a-shard-plan.implementor.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:E",
+      "invocation": "node --test",
+      "modes": ["plain"],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-3449-class-a-shard-plan.tester.test.mjs",
       "kind": "file",
       "enforcement": "batch:E",
       "invocation": "node --test",

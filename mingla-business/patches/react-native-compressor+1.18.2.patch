@@ -1,0 +1,42 @@
+diff --git a/node_modules/react-native-compressor/ios/Video/NextLevelSessionExporter.swift b/node_modules/react-native-compressor/ios/Video/NextLevelSessionExporter.swift
+index 4bbedf6..ab8b520 100644
+--- a/node_modules/react-native-compressor/ios/Video/NextLevelSessionExporter.swift
++++ b/node_modules/react-native-compressor/ios/Video/NextLevelSessionExporter.swift
+@@ -250,6 +250,16 @@ extension NextLevelSessionExporter {
+         }
+         
+         self.setupVideoOutput(withAsset: asset)
++        // Mingla #3073: a source with a picture must never export as sound only.
++        // Fail instead, so the caller can fall back to the original file.
++        if asset.tracks(withMediaType: AVMediaType.video).count > 0 && self._videoInput == nil {
++            print("NextLevelSessionExporter, the video track could not be encoded with the requested configuration")
++            DispatchQueue.main.async {
++                self._completionHandler?(.failure(NextLevelSessionExporterError.setupFailure))
++                self._completionHandler = nil
++            }
++            return
++        }
+         if !self.stripAudio {
+             self.setupAudioOutput(withAsset: asset)
+             self.setupAudioInput()
+@@ -340,8 +350,18 @@ extension NextLevelSessionExporter {
+         }
+         
+         // video input
+-        if self._writer?.canApply(outputSettings: self.videoOutputConfiguration, forMediaType: AVMediaType.video) == true {
+-            self._videoInput = AVAssetWriterInput(mediaType: AVMediaType.video, outputSettings: self.videoOutputConfiguration)
++        // Mingla #3073: the iOS Simulator's H.264 encoder refuses
++        // AVVideoAverageNonDroppableFrameRateKey, so canApply was false for every
++        // clip and the export silently carried on with the audio track alone.
++        // Retry once without that optional hint before giving up on the video.
++        var videoOutputSettings = self.videoOutputConfiguration
++        if self._writer?.canApply(outputSettings: videoOutputSettings, forMediaType: AVMediaType.video) != true,
++           var compressionProperties = videoOutputSettings?[AVVideoCompressionPropertiesKey] as? [String: Any],
++           compressionProperties.removeValue(forKey: AVVideoAverageNonDroppableFrameRateKey) != nil {
++            videoOutputSettings?[AVVideoCompressionPropertiesKey] = compressionProperties
++        }
++        if self._writer?.canApply(outputSettings: videoOutputSettings, forMediaType: AVMediaType.video) == true {
++            self._videoInput = AVAssetWriterInput(mediaType: AVMediaType.video, outputSettings: videoOutputSettings)
+             self._videoInput?.expectsMediaDataInRealTime = self.expectsMediaDataInRealTime
+         } else {
+             print("Unsupported output configuration")
