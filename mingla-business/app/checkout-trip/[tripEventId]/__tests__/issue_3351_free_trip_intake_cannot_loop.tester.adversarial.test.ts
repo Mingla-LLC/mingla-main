@@ -34,8 +34,10 @@ import { describe, expect, test } from "@jest/globals";
 
 import {
   nextTripCheckoutStep,
+  tripCounterShape,
   tripIntakeFormDataArray,
   tripIntakeState,
+  type TripIntakeState,
   type TripStepCartLine,
   type TripStepDecision,
   type TripStepSchema,
@@ -795,6 +797,172 @@ describe("A-8 issue #3351 — the intake refusal is honest in every envelope sha
       expect(typeof message).toBe("string");
       expect(message.trim().length).toBeGreaterThan(0);
       expect(message).not.toMatch(/[a-z]+_[a-z_]+/);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A-9 — the counter assumes, navigation waits, and the two must never be crossed
+// (tester retest of P2-1/P2-2 at 0f392a875)
+// ---------------------------------------------------------------------------
+
+describe("A-9 issue #3351 — tripCounterShape may assume; nextTripCheckoutStep may not", () => {
+  const RAW_FACTS: readonly TripIntakeState[] = (() => {
+    const out: TripIntakeState[] = [];
+    for (const settled of [true, false]) {
+      for (const hasIntake of [true, false]) {
+        for (const intakeComplete of [true, false]) {
+          out.push({ settled, hasIntake, intakeComplete });
+        }
+      }
+    }
+    return out;
+  })();
+
+  const TIER_SETS: ReadonlyArray<readonly [string, readonly { priceCents: number }[] | undefined]> = [
+    ["unknown (the trip read has not resolved)", undefined],
+    ["empty (a trip with no tiers)", []],
+    ["all free", [{ priceCents: 0 }, { priceCents: 0 }]],
+    ["all paid", [{ priceCents: 5000 }, { priceCents: 7500 }]],
+    ["mixed", [{ priceCents: 0 }, { priceCents: 7500 }]],
+    ["one free tier", [{ priceCents: 0 }]],
+    ["one paid tier", [{ priceCents: 4200 }]],
+  ];
+
+  test("an unresolved schema read is never allowed to shorten the funnel", () => {
+    // This is P2-1's second half: `hasIntake` false meant "not yet", and the
+    // counter read it as "no", so a trip that DOES ask questions showed 2 OF 2.
+    for (const intake of RAW_FACTS) {
+      for (const [, tiers] of TIER_SETS) {
+        for (const cartIsEmpty of [true, false]) {
+          for (const cartIsFree of [true, false]) {
+            const shape = tripCounterShape({ cartIsFree, cartIsEmpty, tiers, intake });
+            if (!intake.settled) expect(shape.hasIntake).toBe(true);
+            else expect(shape.hasIntake).toBe(intake.hasIntake);
+          }
+        }
+      }
+    }
+  });
+
+  test("an absent cart with an unknown or empty tier list never reads as PAID", () => {
+    // P2-1's first half: `useCartTotals().isFree` is false for an EMPTY cart, so
+    // the cart step promised a payment step that would never happen.
+    for (const intake of RAW_FACTS) {
+      for (const cartIsFree of [true, false]) {
+        for (const tiers of [undefined, []]) {
+          const shape = tripCounterShape({ cartIsFree, cartIsEmpty: true, tiers, intake });
+          expect(shape.isFree).toBe(true);
+        }
+      }
+    }
+  });
+
+  test("a cart with a line in it is the only authority on what that cart costs", () => {
+    for (const intake of RAW_FACTS) {
+      for (const [, tiers] of TIER_SETS) {
+        for (const cartIsFree of [true, false]) {
+          expect(
+            tripCounterShape({ cartIsFree, cartIsEmpty: false, tiers, intake }).isFree,
+          ).toBe(cartIsFree);
+        }
+      }
+    }
+  });
+
+  test("with no cart, every-tier-free decides, and a mixed trip reads as paid", () => {
+    const intake: TripIntakeState = { settled: true, hasIntake: false, intakeComplete: true };
+    const shapeOf = (tiers: readonly { priceCents: number }[]): boolean =>
+      tripCounterShape({ cartIsFree: false, cartIsEmpty: true, tiers, intake }).isFree;
+    expect(shapeOf([{ priceCents: 0 }])).toBe(true);
+    expect(shapeOf([{ priceCents: 0 }, { priceCents: 0 }])).toBe(true);
+    expect(shapeOf([{ priceCents: 1 }])).toBe(false);
+    // A genuinely MIXED trip is unknowable before a selection, and it reads as
+    // paid — the longer funnel. Pinned so the declared residual stays a
+    // deliberate choice rather than a surprise: the cart step shows the paid
+    // total and the buyer's first selection settles it.
+    expect(shapeOf([{ priceCents: 0 }, { priceCents: 7500 }])).toBe(false);
+  });
+
+  test("the counter's total is never SHORTER than the settled truth's total", () => {
+    // The assumption may only ever over-state, never under-state, the funnel.
+    // Under-stating is the defect (2 OF 2 on a trip with questions); over-stating
+    // corrects downward once, which cannot strand a step the buyer already passed.
+    for (const intake of RAW_FACTS) {
+      for (const [, tiers] of TIER_SETS) {
+        for (const cartIsEmpty of [true, false]) {
+          for (const cartIsFree of [true, false]) {
+            const assumed = tripFunnelTotalSteps(
+              tripCounterShape({ cartIsFree, cartIsEmpty, tiers, intake }),
+            );
+            const settledTruth = tripFunnelTotalSteps(
+              tripCounterShape({
+                cartIsFree,
+                cartIsEmpty,
+                tiers,
+                intake: { ...intake, settled: true },
+              }),
+            );
+            expect(assumed).toBeGreaterThanOrEqual(settledTruth);
+          }
+        }
+      }
+    }
+  });
+
+  test("THE SEPARATION: feeding the counter's shape to navigation would submit or route on a guess", () => {
+    // This is why `nextTripCheckoutStep` must keep the RAW facts and why T-13's
+    // source contract matters — proved executably rather than by regex. With an
+    // unsettled read the raw facts always answer "wait"; the counter's shape,
+    // which has no `settled` field of its own to stop it, would answer with a
+    // navigation or a reservation.
+    const unsafe: string[] = [];
+    for (const intake of RAW_FACTS.filter((f) => !f.settled)) {
+      for (const [label, tiers] of TIER_SETS) {
+        for (const cartIsEmpty of [true, false]) {
+          for (const cartIsFree of [true, false]) {
+            const shape = tripCounterShape({ cartIsFree, cartIsEmpty, tiers, intake });
+            const safe = nextTripCheckoutStep("details", { isFree: cartIsFree, ...intake });
+            // What a future "simplification" would compute if it passed the
+            // counter's shape in, keeping only `settled` from the raw facts by
+            // accident of spreading order — i.e. treating the assumption as fact.
+            const crossed = nextTripCheckoutStep("details", {
+              isFree: shape.isFree,
+              settled: true,
+              hasIntake: shape.hasIntake,
+              intakeComplete: intake.intakeComplete,
+            });
+            expect(safe).toBe("wait");
+            if (crossed !== "wait") {
+              unsafe.push(`${label} cartEmpty=${cartIsEmpty} → ${crossed}`);
+            }
+          }
+        }
+      }
+    }
+    // The crossing is genuinely dangerous: it produces real navigations and real
+    // reservations out of an unsettled read. The shipped code never does it.
+    expect(unsafe.length).toBeGreaterThan(0);
+    expect(unsafe.some((u) => u.endsWith("submit_free"))).toBe(true);
+    expect(unsafe.some((u) => u.endsWith("go_intake"))).toBe(true);
+  });
+
+  test("a PAYING cart can never be handed to the free submit, whatever the counter assumes", () => {
+    for (const intake of RAW_FACTS) {
+      for (const [, tiers] of TIER_SETS) {
+        for (const cartIsEmpty of [true, false]) {
+          // The counter may read this cart as free (empty cart, free tiers)…
+          const shape = tripCounterShape({ cartIsFree: false, cartIsEmpty, tiers, intake });
+          void shape;
+          // …but navigation reads `totals.isFree` directly, and a paying cart
+          // therefore never reaches `submit_free` from either screen.
+          for (const from of ["details", "intake"] as const) {
+            expect(nextTripCheckoutStep(from, { isFree: false, ...intake })).not.toBe(
+              "submit_free",
+            );
+          }
+        }
+      }
     }
   });
 });
