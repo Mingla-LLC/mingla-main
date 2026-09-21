@@ -86,6 +86,24 @@ const ALLOWLIST = new Set([
   // directly (which would leak it into the web bundle) and without a bespoke
   // Keyboard.addListener (which orch-0892 pattern 1 forbids).
   "mingla-business/src/wrappers/useKeyboardHeight.native.ts",
+  // #3446 V2 — imeUpTracker.native.ts is the same class again, and its boot
+  // cost is provably ZERO because it is a MOVE, not an addition. The file it
+  // serves, src/hooks/useWizardHardwareBack.native.ts, previously reached the
+  // library through useKeyboardIsVisible.native.ts (two entries up), so this
+  // exact route already pulled react-native-keyboard-controller in at boot;
+  // #3446 V2 only changed WHICH allowlisted wrapper does it. Independently of
+  // that, the package is unconditionally evaluated at native boot anyway:
+  // app/_layout.tsx:66 imports KeyboardRoot, which resolves to
+  // KeyboardRoot.native.tsx and top-level-imports KeyboardProvider from the
+  // library at its line 11.
+  //
+  // Lazy `await import(...)` is not available to this module and never will be.
+  // Its whole purpose is to answer "is the IME up?" SYNCHRONOUSLY inside a
+  // BackHandler callback — the press cannot await anything — and to hold
+  // listeners at module scope so it does not miss keyboard events while the
+  // wizard is blurred. An async import would reintroduce exactly the lag the
+  // module exists to remove.
+  "mingla-business/src/wrappers/imeUpTracker.native.ts",
   "mingla-business/src/wrappers/KeyboardRoot.native.tsx",
   "mingla-business/src/wrappers/SmartScrollView.native.tsx",
   "mingla-business/src/wrappers/KeyboardToolbarRoot.native.tsx",
