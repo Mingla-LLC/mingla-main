@@ -7,6 +7,13 @@
 // for Vite/JSX side; orchestrator dispatches a follow-up if either side diverges.
 //
 // Spec: §5 (prompt design + tool schema sanitization).
+//
+// issue #3526 — the Gemini token rates below are re-exported from
+// _shared/geminiModel.ts. A repin changes ONE file; this one follows.
+import {
+  GEMINI_INPUT_USD_PER_TOKEN,
+  GEMINI_OUTPUT_USD_PER_TOKEN,
+} from "./geminiModel.ts";
 
 // 16 Mingla signal IDs. These are the values Claude must use in
 // appropriate_for / inappropriate_for arrays. Same list as
@@ -182,12 +189,17 @@ export const PRICING = {
   HAIKU_4_5_CACHE_WRITE_PER_TOKEN: 1.25 / 1_000_000,
   BATCH_API_DISCOUNT: 0.5,
   // ORCH-0713 Gemini comparison (2026-05-05).
-  // Gemini 2.5 Flash pricing per https://ai.google.dev/pricing (verify live).
+  // issue #3526 — these were named GEMINI_2_5_FLASH_* with UNDERSCORES, so a
+  // `git grep "gemini-2.5-flash"` sweep could not see them and the rates would
+  // have been left on the retired model's price card. The names are
+  // model-AGNOSTIC now and the values come from _shared/geminiModel.ts, which
+  // is the one place a repin touches. Gate G-4 fails any identifier matching
+  // /GEMINI_\d+_\d+_FLASH/ so this class of miss cannot recur.
   // Input/output rates apply uniformly to text + image tokens.
   // No prompt cache yet (paid prompt caching is documented but optional —
   // we don't use it for the trial path; baseline rates apply).
-  GEMINI_2_5_FLASH_INPUT_PER_TOKEN: 0.30 / 1_000_000,
-  GEMINI_2_5_FLASH_OUTPUT_PER_TOKEN: 2.50 / 1_000_000,
+  GEMINI_INPUT_PER_TOKEN: GEMINI_INPUT_USD_PER_TOKEN,
+  GEMINI_OUTPUT_PER_TOKEN: GEMINI_OUTPUT_USD_PER_TOKEN,
 } as const;
 
 export function computeCostUsd(args: {
@@ -213,16 +225,28 @@ export function computeCostUsd(args: {
   return Math.round(cost * 1_000_000) / 1_000_000;
 }
 
-// ORCH-0713 Gemini comparison — Gemini 2.5 Flash cost calc.
-// Gemini's usageMetadata reports promptTokenCount + candidatesTokenCount;
-// no separate cache-read/cache-write split exposed for free tier.
+// ORCH-0713 Gemini comparison — Gemini cost calc.
+// Gemini's usageMetadata reports promptTokenCount + candidatesTokenCount +
+// thoughtsTokenCount; no separate cache-read/cache-write split exposed.
+//
+// issue #3526 — `thinkingTokens` is NEW and it closes a real asymmetry:
+// competitor-intel-worker's geminiCostMicrousd always billed
+// `(candidate + thinking) * outputRate`, while this function had no thinking
+// parameter at all and billed prompt + candidates only. The two cost functions
+// disagreed. Under Gemini 3, where thinking is on by default and bills at the
+// output rate, that disagreement becomes a live under-report. Optional with a
+// 0 default so no caller silently changes behaviour, but every Gemini caller
+// should pass `usageMetadata.thoughtsTokenCount ?? 0`.
 export function computeCostUsdGemini(args: {
   promptTokens: number;
   candidatesTokens: number;
+  thinkingTokens?: number;
 }): number {
-  const { promptTokens, candidatesTokens } = args;
+  const { promptTokens, candidatesTokens, thinkingTokens = 0 } = args;
   const cost =
-    promptTokens * PRICING.GEMINI_2_5_FLASH_INPUT_PER_TOKEN +
-    candidatesTokens * PRICING.GEMINI_2_5_FLASH_OUTPUT_PER_TOKEN;
+    promptTokens * PRICING.GEMINI_INPUT_PER_TOKEN +
+    // Thinking tokens bill at the OUTPUT rate — Google's pricing page lists
+    // "output price (including thinking tokens)".
+    (candidatesTokens + thinkingTokens) * PRICING.GEMINI_OUTPUT_PER_TOKEN;
   return Math.round(cost * 1_000_000) / 1_000_000;
 }

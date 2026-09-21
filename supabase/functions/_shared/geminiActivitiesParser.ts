@@ -1,10 +1,18 @@
 // Ve6 — Play activities list → experiences parser (Gemini 2.5 Flash).
 
 import { filterPlayIntentTags } from "./playIntentTags.ts";
+// issue #3526 — model id + thinking level come from the single source.
+import {
+  GEMINI_THINKING_LEVEL_MINIMAL,
+  geminiErrorFingerprint,
+  geminiGenerateContentUrl,
+} from "./geminiModel.ts";
+// ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
+// issue #3526 M-4: this Ari path recorded NOTHING before, so a provider refusal
+// here was invisible to the health tables.
+import { recordApiCall } from "./apiHealthLog.ts";
 
-const GEMINI_MODEL_ID = "gemini-2.5-flash";
-const GEMINI_API_URL =
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
+const GEMINI_API_URL = geminiGenerateContentUrl();
 
 // ORCH-1151: a CURATED FEW themed experiences (down from 20 flat per-activity),
 // each carrying the activities/packages as STOPS. Cap low so the nested output
@@ -270,9 +278,14 @@ export async function parseActivitiesWithGemini(args: {
       temperature: TEMPERATURE,
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA,
+      // issue #3526 — Gemini 3 removed `thinkingBudget`. Without an explicit
+      // thinking_level a 3.x model defaults to `medium` and bills the thinking
+      // tokens as OUTPUT. Set it, never inherit it.
+      thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
     },
   };
 
+  const _t0 = Date.now();
   const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -281,8 +294,18 @@ export async function parseActivitiesWithGemini(args: {
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    // issue #3526 M-4 — this Ari path recorded NOTHING before, so a provider
+    // refusal here never reached api_health_observations at all.
+    void recordApiCall(
+      "gemini",
+      false,
+      Date.now() - _t0,
+      response.status,
+      geminiErrorFingerprint(response.status, detail),
+    ); // ORCH-1201 Layer-C
     throw new Error(`Gemini HTTP ${response.status}: ${detail.slice(0, 300)}`);
   }
+  void recordApiCall("gemini", true, Date.now() - _t0, response.status); // ORCH-1201 Layer-C (ok path)
 
   const json = await response.json() as {
     candidates?: Array<{

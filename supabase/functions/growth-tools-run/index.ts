@@ -72,6 +72,24 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // preflight is not rejected. Do NOT inline a hand-rolled allow-list.
 import { corsHeaders } from "../_shared/cors.ts";
 import { timeoutFetch } from "../_shared/timeoutFetch.ts";
+// issue #3526 — single source for the Gemini model id, endpoint and thinking level.
+import {
+  GEMINI_MODEL_ID,
+  GEMINI_THINKING_LEVEL_MINIMAL,
+  geminiErrorFingerprint,
+  geminiGenerateContentUrl,
+} from "../_shared/geminiModel.ts";
+// issue #3526 M-1 — persist WHY a run failed onto the tool_leads row.
+import {
+  buildToolLeadFailure,
+  markToolLeadFailed,
+  type ProviderFailureSink,
+  recordProviderFailure,
+  type ToolLeadFailure,
+} from "../_shared/toolLeadFailure.ts";
+// issue #3526 M-4 — Layer-C passive health observation for the GEMINI_API_KEY
+// surface, which recorded nothing at all before this change.
+import { recordApiCall } from "../_shared/apiHealthLog.ts";
 // ISSUE-1734 — the SINGLE shared app-lane auth/quota/cache/budget module
 // (P-6: no per-function copies; one point of audit).
 import {
@@ -117,9 +135,9 @@ const PEEK_FETCH_TIMEOUT_MS = 5_000;
 const PEEK_BODY_CAP_BYTES = 100 * 1024; // 100KB
 const PEEK_TEXT_CAP_CHARS = 8_000;
 
-const GEMINI_MODEL_ID = "gemini-2.5-flash";
-const GEMINI_API_URL =
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
+// issue #3526 — GEMINI_MODEL_ID is re-exported from the single source so the
+// `model:` field written onto the report meta stays in lockstep with the URL.
+const GEMINI_API_URL = geminiGenerateContentUrl();
 const GEMINI_TEMPERATURE = 0.4;
 const GEMINI_MAX_OUTPUT_TOKENS = 4096;
 
@@ -1281,6 +1299,9 @@ async function callGeminiOnce(
   apiKey: string,
   userPrompt: string,
   timeoutMs: number,
+  // issue #3526 M-1 — request-scoped capture of WHY the provider refused, so
+  // the tool_leads row can carry the reason instead of a bare status:"failed".
+  sink?: ProviderFailureSink,
 ): Promise<{ value: GeminiReport | null; timedOut: boolean }> {
   const requestBody = {
     contents: [{ role: "user", parts: [{ text: userPrompt }] }],
@@ -1293,6 +1314,7 @@ async function callGeminiOnce(
     },
   };
   let response: Response;
+  const _t0 = Date.now();
   try {
     response = await timeoutFetch(`${GEMINI_API_URL}?key=${apiKey}`, {
       method: "POST",
@@ -1303,19 +1325,34 @@ async function callGeminiOnce(
   } catch (err) {
     if (isAbortError(err)) {
       console.error("[growth-tools-run] Gemini call timed out", { timeoutMs });
+      recordProviderFailure(sink, "timeout", null, `structured pass aborted after ${timeoutMs}ms`);
+      void recordApiCall("gemini", false, Date.now() - _t0, undefined, { code: "timeout" }); // ORCH-1201 Layer-C
       return { value: null, timedOut: true };
     }
     throw err;
   }
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    console.error(
-      "[growth-tools-run] Gemini HTTP",
+    // issue #3526 M-5 — status and detail in ONE structured object. As two
+    // separate console.error arguments a reader scanning for a status code saw
+    // `404` and could miss the sentence beside it saying the model was retired.
+    console.error("[growth-tools-run] Gemini HTTP", {
+      status: response.status,
+      detail: detail.slice(0, 200),
+    });
+    // issue #3526 M-1 — the durable record of WHY.
+    recordProviderFailure(sink, "generate", response.status, detail);
+    // issue #3526 M-4 — Layer-C passive health observation.
+    void recordApiCall(
+      "gemini",
+      false,
+      Date.now() - _t0,
       response.status,
-      detail.slice(0, 200),
-    );
+      geminiErrorFingerprint(response.status, detail),
+    ); // ORCH-1201 Layer-C
     return { value: null, timedOut: false };
   }
+  void recordApiCall("gemini", true, Date.now() - _t0, response.status); // ORCH-1201 Layer-C (ok path)
   const payload = await response.json() as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
@@ -1340,15 +1377,19 @@ async function generateReport(
   apiKey: string,
   userPrompt: string,
   budget: RunBudget,
+  sink?: ProviderFailureSink,
 ): Promise<{ value: GeminiReport | null; timedOut: boolean }> {
   const cap1 = Math.min(STRUCTURED_CALL_TIMEOUT_MS, budget.remainingMs());
-  if (cap1 <= 0) return { value: null, timedOut: true };
-  const first = await callGeminiOnce(apiKey, userPrompt, cap1);
+  if (cap1 <= 0) {
+    recordProviderFailure(sink, "budget_exhausted", null, "no budget left for the structured pass");
+    return { value: null, timedOut: true };
+  }
+  const first = await callGeminiOnce(apiKey, userPrompt, cap1, sink);
   if (first.value !== null) return first;
   const cap2 = Math.min(STRUCTURED_CALL_TIMEOUT_MS, budget.remainingMs());
   if (cap2 <= 0) return { value: null, timedOut: true };
   console.error("[growth-tools-run] Gemini attempt 1 failed — retrying once");
-  const second = await callGeminiOnce(apiKey, userPrompt, cap2);
+  const second = await callGeminiOnce(apiKey, userPrompt, cap2, sink);
   return {
     value: second.value,
     timedOut: first.timedOut || second.timedOut,
@@ -1757,6 +1798,7 @@ async function callCompetitionOnce(
   // ISSUE-1734 P-24: grounded-pass cap. This stage is BEST-EFFORT — an abort
   // just fails the attempt (pool-only fallback downstream), never the run.
   let response: Response;
+  const _t0 = Date.now();
   try {
     response = await timeoutFetch(`${GEMINI_API_URL}?key=${apiKey}`, {
       method: "POST",
@@ -1769,19 +1811,30 @@ async function callCompetitionOnce(
       console.error("[growth-tools-run] grounded Gemini call timed out", {
         timeoutMs,
       });
+      void recordApiCall("gemini", false, Date.now() - _t0, undefined, { code: "timeout" }); // ORCH-1201 Layer-C
       return null;
     }
     throw err;
   }
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    console.error(
-      "[growth-tools-run] grounded Gemini HTTP",
+    // issue #3526 M-5 — status and detail in ONE structured object. The
+    // grounded pass is BEST-EFFORT and never fails the run, so it deliberately
+    // does NOT write the tool_leads failure reason — only the health record.
+    console.error("[growth-tools-run] grounded Gemini HTTP", {
+      status: response.status,
+      detail: detail.slice(0, 200),
+    });
+    void recordApiCall(
+      "gemini",
+      false,
+      Date.now() - _t0,
       response.status,
-      detail.slice(0, 200),
-    );
+      geminiErrorFingerprint(response.status, detail),
+    ); // ORCH-1201 Layer-C
     return null;
   }
+  void recordApiCall("gemini", true, Date.now() - _t0, response.status); // ORCH-1201 Layer-C (ok path)
   const payload = await response.json() as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
@@ -2183,17 +2236,16 @@ async function handleRun(
   }
   const runId = (inserted as { id: string }).id;
 
-  const markFailed = async () => {
-    const { error } = await supabase
-      .from("tool_leads")
-      .update({ status: "failed" })
-      .eq("id", runId);
-    if (error) {
-      console.error(
-        "[growth-tools-run] failed-status update failed",
-        error.message,
-      );
-    }
+  // issue #3526 M-1 — request-scoped capture of the provider refusal. Module
+  // scope would bleed across the concurrent requests one isolate serves.
+  const failureSink: ProviderFailureSink = { last: null };
+  const markFailed = async (fallback: ToolLeadFailure) => {
+    await markToolLeadFailed(
+      supabase,
+      runId,
+      failureSink.last ?? fallback,
+      "[growth-tools-run]",
+    );
   };
 
   // d. Fetch the website server-side. A total fetch failure still generates a
@@ -2213,16 +2265,27 @@ async function handleRun(
   const apiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
   if (!apiKey) {
     console.error("[growth-tools-run] GEMINI_API_KEY missing");
-    await markFailed();
+    await markFailed(
+      buildToolLeadFailure("config", null, "GEMINI_API_KEY not configured"),
+    );
     return json({ error: "generation_failed", reason: "upstream_failed" }, 502);
   }
   const pass1 = await generateReport(
     apiKey,
     buildGeminiUserPrompt(input, site, match),
     budget,
+    failureSink,
   );
   if (pass1.value === null) {
-    await markFailed();
+    await markFailed(
+      buildToolLeadFailure(
+        pass1.timedOut || budget.exhausted() ? "timeout" : "generate",
+        null,
+        pass1.timedOut || budget.exhausted()
+          ? "structured pass exhausted its time budget"
+          : "structured pass returned no usable report",
+      ),
+    );
     return json({
       error: "generation_failed",
       reason: pass1.timedOut || budget.exhausted()

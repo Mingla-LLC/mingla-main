@@ -1,7 +1,7 @@
 // META-ORCH-1009 Sub-E — business-app supply-side feeder.
 //
 // Gemini structured JSON contract:
-// https://ai.google.dev/gemini-api/docs/models/gemini#gemini-2.5-flash
+// https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash
 // https://ai.google.dev/gemini-api/docs/structured-output
 
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -27,8 +27,18 @@ import {
   priceTiersFromTier2,
 } from "../_shared/authoredApply.ts";
 export { priceLevelFromTiers, priceTiersFromTier2 };
+// issue #3526 — single source for the model id, endpoint and thinking level.
+import {
+  GEMINI_API_BASE,
+  GEMINI_MODEL_ID,
+  GEMINI_THINKING_LEVEL_MINIMAL,
+  geminiErrorFingerprint,
+} from "../_shared/geminiModel.ts";
+// issue #3526 M-4 — Layer-C passive health observation; this function recorded
+// nothing at all before.
+import { recordApiCall } from "../_shared/apiHealthLog.ts";
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = GEMINI_MODEL_ID;
 const PROMPT_VERSION = "v4";
 
 // META-ORCH-1009 Sub-E / META-ORCH-1290 D-3 (OQ-2 SPLIT): FORCE Gemini's output
@@ -1082,8 +1092,9 @@ async function fetchGeminiCandidate(
   | { ok: true; parsed: Record<string, unknown> }
   | { ok: false; err: string; retryable: boolean }
 > {
+  const _t0 = Date.now();
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    `${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1094,12 +1105,29 @@ async function fetchGeminiCandidate(
           responseSchema: schema,
           maxOutputTokens,
           temperature: 0.4,
+          // issue #3526 — Gemini 3 replaced `thinkingBudget` with
+          // `thinking_level`; without it a 3.x model defaults to `medium` and
+          // bills the thinking tokens as output.
+          thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
         },
       }),
     },
   );
   if (!res.ok) {
     const body = await res.text();
+    // issue #3526 M-5 — status and detail in ONE structured object.
+    console.error("[place-authoring] Gemini HTTP", {
+      status: res.status,
+      detail: body.slice(0, 200),
+    });
+    // issue #3526 M-4 — Layer-C passive health observation.
+    void recordApiCall(
+      "gemini",
+      false,
+      Date.now() - _t0,
+      res.status,
+      geminiErrorFingerprint(res.status, body),
+    ); // ORCH-1201 Layer-C
     // 4xx (bad key / quota / bad request) won't fix on retry — non-retryable.
     return {
       ok: false,
@@ -1107,6 +1135,7 @@ async function fetchGeminiCandidate(
       retryable: res.status >= 500,
     };
   }
+  void recordApiCall("gemini", true, Date.now() - _t0, res.status); // ORCH-1201 Layer-C (ok path)
   const payload = await res.json() as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };

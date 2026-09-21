@@ -2,10 +2,14 @@
 
 // ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
 import { recordApiCall } from "./apiHealthLog.ts";
+// issue #3526 — model id + thinking level come from the single source.
+import {
+  GEMINI_THINKING_LEVEL_MINIMAL,
+  geminiErrorFingerprint,
+  geminiGenerateContentUrl,
+} from "./geminiModel.ts";
 
-const GEMINI_MODEL_ID = "gemini-2.5-flash";
-const GEMINI_API_URL =
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
+const GEMINI_API_URL = geminiGenerateContentUrl();
 
 // ORCH-1151: a CURATED FEW themed experiences (down from 20 flat per-dish),
 // each carrying the menu items as STOPS. Cap low so the nested output stays well
@@ -262,6 +266,10 @@ export async function parseMenuWithGemini(args: {
       temperature: TEMPERATURE,
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA,
+      // issue #3526 — Gemini 3 removed `thinkingBudget`. Without an explicit
+      // thinking_level a 3.x model defaults to `medium` and bills the thinking
+      // tokens as OUTPUT. Set it, never inherit it.
+      thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
     },
   };
 
@@ -274,13 +282,10 @@ export async function parseMenuWithGemini(args: {
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    // ORCH-1201-R2 Layer-C: capture the Gemini depletion fingerprint (429 RESOURCE_EXHAUSTED).
-    let depErr: { code?: string; text?: string } | undefined;
-    if (response.status === 429) {
-      let parsedStatus = "";
-      try { parsedStatus = (JSON.parse(detail)?.error?.status as string) ?? ""; } catch { /* non-JSON */ }
-      depErr = { code: parsedStatus || "RESOURCE_EXHAUSTED", text: detail.slice(0, 300) };
-    }
+    // ORCH-1201-R2 Layer-C: capture the Gemini depletion fingerprint.
+    // issue #3526 M-3: fingerprint EVERY refusal class, not only 429 — a 403 or
+    // 404 used to record error_code=NULL and was invisible to the matcher.
+    const depErr = geminiErrorFingerprint(response.status, detail);
     void recordApiCall("gemini", false, Date.now() - _t0, response.status, depErr); // ORCH-1201 Layer-C
     throw new Error(`Gemini HTTP ${response.status}: ${detail.slice(0, 300)}`);
   }

@@ -43,6 +43,24 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { timeoutFetch } from "../_shared/timeoutFetch.ts";
+// issue #3526 — single source for the Gemini model id, endpoint and thinking level.
+import {
+  GEMINI_MODEL_ID,
+  GEMINI_THINKING_LEVEL_MINIMAL,
+  geminiErrorFingerprint,
+  geminiGenerateContentUrl,
+} from "../_shared/geminiModel.ts";
+// issue #3526 M-1 — persist WHY a run failed onto the tool_leads row.
+import {
+  buildToolLeadFailure,
+  markToolLeadFailed,
+  type ProviderFailureSink,
+  recordProviderFailure,
+  type ToolLeadFailure,
+} from "../_shared/toolLeadFailure.ts";
+// issue #3526 M-4 — Layer-C passive health observation for the GEMINI_API_KEY
+// surface, which recorded nothing at all before this change.
+import { recordApiCall } from "../_shared/apiHealthLog.ts";
 // ISSUE-1734 — the SINGLE shared app-lane auth/quota/cache/budget module (P-6).
 import {
   type AppLaneAuth,
@@ -76,9 +94,9 @@ const IP_SALT = "mingla-tools";
 const RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const RATE_LIMIT_MAX = Number(Deno.env.get("PRICING_RATE_LIMIT_MAX") ?? "10") || 10;
 
-const GEMINI_MODEL_ID = "gemini-2.5-flash";
-const GEMINI_API_URL =
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
+// issue #3526 — GEMINI_MODEL_ID is re-exported from the single source so the
+// `model:` field written onto the report meta stays in lockstep with the URL.
+const GEMINI_API_URL = geminiGenerateContentUrl();
 const GEMINI_TEMPERATURE = 0.4;
 
 // A fair hourly rate for a skilled host's time, in the experience's currency —
@@ -487,6 +505,7 @@ async function callResearchOnce(apiKey: string, prompt: string): Promise<Pricing
   // ISSUE-1734 P-24: grounded pass bounded at 45s per attempt. BEST-EFFORT —
   // an abort just fails the attempt (fallback research downstream).
   let res: Response;
+  const _t0 = Date.now();
   try {
     res = await timeoutFetch(`${GEMINI_API_URL}?key=${apiKey}`, {
       method: "POST",
@@ -502,14 +521,33 @@ async function callResearchOnce(apiKey: string, prompt: string): Promise<Pricing
   } catch (err) {
     if (isAbortError(err)) {
       console.error("[growth-tools-pricing] research call timed out");
+      void recordApiCall("gemini", false, Date.now() - _t0, undefined, { code: "timeout" }); // ORCH-1201 Layer-C
       return null;
     }
     throw err;
   }
   if (!res.ok) {
-    console.error("[growth-tools-pricing] research HTTP", res.status);
+    // issue #3526 M-5 — the body was never read here at all, so Google's
+    // actual words ("this model is no longer available…") were discarded and
+    // only a bare status survived. Read it, log it as ONE object, record it.
+    const detail = await res.text().catch(() => "");
+    console.error("[growth-tools-pricing] research HTTP", {
+      status: res.status,
+      detail: detail.slice(0, 200),
+    });
+    // issue #3526 M-4 — Layer-C passive health observation. The research pass
+    // is BEST-EFFORT (fallback research downstream) so it records health but
+    // deliberately does NOT claim the tool_leads failure reason.
+    void recordApiCall(
+      "gemini",
+      false,
+      Date.now() - _t0,
+      res.status,
+      geminiErrorFingerprint(res.status, detail),
+    ); // ORCH-1201 Layer-C
     return null;
   }
+  void recordApiCall("gemini", true, Date.now() - _t0, res.status); // ORCH-1201 Layer-C (ok path)
   const payload = await res.json() as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
@@ -695,8 +733,11 @@ async function callSynthesisOnce(
   apiKey: string,
   prompt: string,
   timeoutMs: number,
+  // issue #3526 M-1 — request-scoped capture of WHY the provider refused.
+  sink?: ProviderFailureSink,
 ): Promise<{ value: Synthesis | null; timedOut: boolean }> {
   let res: Response;
+  const _t0 = Date.now();
   try {
     res = await timeoutFetch(`${GEMINI_API_URL}?key=${apiKey}`, {
       method: "POST",
@@ -716,14 +757,33 @@ async function callSynthesisOnce(
   } catch (err) {
     if (isAbortError(err)) {
       console.error("[growth-tools-pricing] synthesis call timed out", { timeoutMs });
+      recordProviderFailure(sink, "timeout", null, `synthesis pass aborted after ${timeoutMs}ms`);
+      void recordApiCall("gemini", false, Date.now() - _t0, undefined, { code: "timeout" }); // ORCH-1201 Layer-C
       return { value: null, timedOut: true };
     }
     throw err;
   }
   if (!res.ok) {
-    console.error("[growth-tools-pricing] synthesis HTTP", res.status);
+    // issue #3526 M-5 — the body was never read here at all. Read it, log
+    // status AND detail as ONE object, and persist it onto the tool_leads row.
+    const detail = await res.text().catch(() => "");
+    console.error("[growth-tools-pricing] synthesis HTTP", {
+      status: res.status,
+      detail: detail.slice(0, 200),
+    });
+    // issue #3526 M-1 — the durable record of WHY.
+    recordProviderFailure(sink, "synthesis", res.status, detail);
+    // issue #3526 M-4 — Layer-C passive health observation.
+    void recordApiCall(
+      "gemini",
+      false,
+      Date.now() - _t0,
+      res.status,
+      geminiErrorFingerprint(res.status, detail),
+    ); // ORCH-1201 Layer-C
     return { value: null, timedOut: false };
   }
+  void recordApiCall("gemini", true, Date.now() - _t0, res.status); // ORCH-1201 Layer-C (ok path)
   const payload = await res.json() as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
@@ -747,15 +807,19 @@ async function generateSynthesis(
   research: PricingResearch,
   audit: PricingAudit,
   budget: RunBudget,
+  sink?: ProviderFailureSink,
 ): Promise<{ value: Synthesis | null; timedOut: boolean }> {
   const prompt = buildSynthesisPrompt(input, research, audit);
   const cap1 = Math.min(STRUCTURED_CALL_TIMEOUT_MS, budget.remainingMs());
-  if (cap1 <= 0) return { value: null, timedOut: true };
-  const first = await callSynthesisOnce(apiKey, prompt, cap1);
+  if (cap1 <= 0) {
+    recordProviderFailure(sink, "budget_exhausted", null, "no budget left for the synthesis pass");
+    return { value: null, timedOut: true };
+  }
+  const first = await callSynthesisOnce(apiKey, prompt, cap1, sink);
   if (first.value !== null) return first;
   const cap2 = Math.min(STRUCTURED_CALL_TIMEOUT_MS, budget.remainingMs());
   if (cap2 <= 0) return { value: null, timedOut: true };
-  const second = await callSynthesisOnce(apiKey, prompt, cap2);
+  const second = await callSynthesisOnce(apiKey, prompt, cap2, sink);
   return { value: second.value, timedOut: first.timedOut || second.timedOut };
 }
 
@@ -893,14 +957,24 @@ async function handleRun(
     return json({ error: "server" }, 500);
   }
   const runId = (inserted as { id: string }).id;
-  const markFailed = async () => {
-    await supabase.from("tool_leads").update({ status: "failed" }).eq("id", runId);
+  // issue #3526 M-1 — request-scoped capture of the provider refusal. Module
+  // scope would bleed across the concurrent requests one isolate serves.
+  const failureSink: ProviderFailureSink = { last: null };
+  const markFailed = async (fallback: ToolLeadFailure) => {
+    await markToolLeadFailed(
+      supabase,
+      runId,
+      failureSink.last ?? fallback,
+      "[growth-tools-pricing]",
+    );
   };
 
   const apiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
   if (!apiKey) {
     console.error("[growth-tools-pricing] GEMINI_API_KEY missing");
-    await markFailed();
+    await markFailed(
+      buildToolLeadFailure("config", null, "GEMINI_API_KEY not configured"),
+    );
     return json({ error: "generation_failed", reason: "upstream_failed" }, 502);
   }
 
@@ -930,9 +1004,17 @@ async function handleRun(
 
   // PASS B — structured synthesis (verdict + framing + factors + fixes).
   // FATAL stage (P-24/P-25): budget exhaustion → reason:"timeout".
-  const synthRes = await generateSynthesis(apiKey, input, research, audit, budget);
+  const synthRes = await generateSynthesis(apiKey, input, research, audit, budget, failureSink);
   if (synthRes.value === null) {
-    await markFailed();
+    await markFailed(
+      buildToolLeadFailure(
+        synthRes.timedOut || budget.exhausted() ? "timeout" : "synthesis",
+        null,
+        synthRes.timedOut || budget.exhausted()
+          ? "synthesis pass exhausted its time budget"
+          : "synthesis pass returned no usable result",
+      ),
+    );
     return json({
       error: "generation_failed",
       reason: synthRes.timedOut || budget.exhausted() ? "timeout" : "upstream_failed",

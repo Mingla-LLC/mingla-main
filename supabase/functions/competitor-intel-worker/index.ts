@@ -3,6 +3,20 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { normalizeCompetitorSource } from "../_shared/competitorSourceIdentity.ts";
 import { observeCompetitorWebsite } from "../_shared/competitorWebsiteObservation.ts";
 import { resolveGovernedAdField } from "../_shared/governedAdSecret.ts";
+// issue #3526 — single source for the model id, endpoint, rates and thinking level.
+import {
+  GEMINI_API_BASE,
+  GEMINI_INPUT_MICROUSD_PER_TOKEN,
+  GEMINI_MODEL_ID as SHARED_GEMINI_MODEL_ID,
+  GEMINI_OUTPUT_MICROUSD_PER_TOKEN,
+  GEMINI_PRICING_VERSION,
+  GEMINI_THINKING_LEVEL_MINIMAL,
+  geminiErrorFingerprint,
+} from "../_shared/geminiModel.ts";
+// issue #3526 M-4 — Layer-C passive health observation. This worker recorded
+// nothing at all, so the entire GEMINI_API_KEY surface was invisible to the
+// health tables by construction.
+import { recordApiCall } from "../_shared/apiHealthLog.ts";
 
 export const ANALYZED_PROVIDER_ALLOWLIST = new Set(
   ["website", "instagram"] as const,
@@ -12,9 +26,16 @@ export const ANALYZED_PROVIDER_ALLOWLIST = new Set(
 const MAX_OBSERVED_ITEMS = 20;
 const OBSERVATION_WINDOW_DAYS = 28;
 const RESERVED_MICROUSD = 50_000;
-export const GEMINI_MODEL_ID = "gemini-2.5-flash";
+// issue #3526 — re-exported from _shared/geminiModel.ts. The receipts this
+// worker writes name the model, so the export stays; the VALUE lives in one
+// place. Line ~1500 used to hardcode the literal in the URL and ignore this
+// constant entirely — that is the exact trap the single-source gate now blocks.
+export const GEMINI_MODEL_ID = SHARED_GEMINI_MODEL_ID;
 export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.4";
-export const PRICING_VERSION = "gemini-2.5-flash-standard-2026-08";
+// issue #3526 — stamped next to actual_microusd on every job row. Bumped in the
+// same change as the rates: without it a $0.30-rate row and a $0.75-rate row
+// are indistinguishable to a later reader.
+export const PRICING_VERSION = GEMINI_PRICING_VERSION;
 export const MAX_SYNTHESIS_OUTPUT_TOKENS = 1_200;
 const MAX_SYNTHESIS_REQUEST_BYTES = 65_536;
 const PROVIDER_TIMEOUT_MS = 12_000;
@@ -298,7 +319,13 @@ export function geminiCostMicrousd(
     ![prompt, candidate, thinking].every(Number.isSafeInteger) || prompt < 0 ||
     candidate < 0 || thinking < 0
   ) throw new Error("invalid_usage_metadata");
-  return Math.ceil(prompt * 0.3 + (candidate + thinking) * 2.5);
+  // issue #3526 — rates from the single source. microUSD per token:
+  // input 0.75 (was 0.3), output 3.75 (was 2.5). Thinking bills as output and
+  // is already included here — the asymmetry fixed in computeCostUsdGemini.
+  return Math.ceil(
+    prompt * GEMINI_INPUT_MICROUSD_PER_TOKEN +
+      (candidate + thinking) * GEMINI_OUTPUT_MICROUSD_PER_TOKEN,
+  );
 }
 export async function fetchWithTimeout(
   fetcher: typeof fetch,
@@ -1472,7 +1499,13 @@ export async function synthesizeBrief(
       responseJsonSchema: PROVIDER_RESPONSE_SCHEMA,
       temperature: 0,
       seed: parseInt(fingerprint.slice(0, 8), 16) % 2147483647,
-      thinkingConfig: { thinkingBudget: 0 },
+      // issue #3526 — Gemini 3 removed `thinkingBudget`; the replacement is
+      // `thinking_level`. `minimal` is the floor and ONLY gemini-3.6-flash
+      // offers it (3.7/3.8 stop at `low`), which is why the repin picked 3.6.
+      // SYNTHESIS_TIMEOUT_MS (15s) and MAX_SYNTHESIS_OUTPUT_TOKENS (1,200) are
+      // both sized for a non-thinking model; the default `medium` would blow
+      // through both.
+      thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
       candidateCount: 1,
       maxOutputTokens: MAX_SYNTHESIS_OUTPUT_TOKENS,
     },
@@ -1487,7 +1520,10 @@ export async function synthesizeBrief(
   try {
     response = await fetchWithTimeout(
       fetcher,
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${
+      // issue #3526 — was a hardcoded `gemini-2.5-flash` literal that ignored
+      // GEMINI_MODEL_ID above, so repinning the constant alone left this worker
+      // calling the retired model. Built from the shared constants now.
+      `${GEMINI_API_BASE}/${GEMINI_MODEL_ID}:generateContent?key=${
         encodeURIComponent(key)
       }`,
       {
@@ -1526,6 +1562,7 @@ export async function synthesizeBrief(
     throw new Error("usage_metadata_missing");
   }
   const result = await response.json().catch(() => ({})) as {
+    error?: { status?: string; message?: string };
     candidates?: Array<
       { finishReason?: string; content?: { parts?: Array<{ text?: string }> } }
     >;
@@ -1537,6 +1574,26 @@ export async function synthesizeBrief(
     };
     modelVersion?: string;
   };
+  // issue #3526 M-4 — Layer-C passive health observation. Fire-and-forget;
+  // never awaited, never allowed to change this function's return.
+  if (response.ok) {
+    void recordApiCall("gemini", true, Date.now() - started, response.status); // ORCH-1201 Layer-C
+  } else {
+    const errorBody = JSON.stringify(result.error ?? {});
+    // issue #3526 M-5 — status AND detail in ONE structured object so a reader
+    // scanning for the status code cannot miss the sentence explaining it.
+    console.error("[competitor-intel-worker] Gemini HTTP", {
+      status: response.status,
+      detail: errorBody.slice(0, 200),
+    });
+    void recordApiCall(
+      "gemini",
+      false,
+      Date.now() - started,
+      response.status,
+      geminiErrorFingerprint(response.status, errorBody),
+    ); // ORCH-1201 Layer-C
+  }
   const u = result.usageMetadata;
   const promptTokens = u?.promptTokenCount,
     candidateTokens = u?.candidatesTokenCount,
