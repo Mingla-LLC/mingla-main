@@ -13,7 +13,7 @@ import Animated, {
 
 import { ariThread, text as textTokens } from "../../constants/designSystem";
 import { captureAriRevealOutcome } from "../../services/ariPolishAnalytics";
-import { type AriBubbleSegment, toSegments } from "./ChatBubble";
+import { type AriBubbleSegment, toAccessibleText, toSegments } from "./ChatBubble";
 
 export interface SemanticRevealTextProps {
   text: string;
@@ -187,7 +187,7 @@ export const SemanticRevealText: React.FC<SemanticRevealTextProps> = ({
       onPress={skip}
       accessible
       accessibilityRole="text"
-      accessibilityLabel={`Ari said: ${text}`}
+      accessibilityLabel={`Ari said: ${toAccessibleText(text)}`}
     >
       {chunks.map((chunk, index) => (
         <ChunkComponent

@@ -36,6 +36,9 @@
  *   - delete `flexShrink: 0` from the hint zone → T-5/T-6/T-7 go red.
  *   - take the LATEST hero measurement instead of the high-water one → T-9
  *     goes red: that is the measurement loop that drifted the orb on device.
+ *   - render the headline/body unconditionally instead of gating them on the
+ *     cap → T-10 goes red: that is the sliver-of-glyphs the first REWORK-4
+ *     build shipped on the Pixel 7 at font scale 1.5.
  *   - drop `heroTopOffsetPx` back to a `justifyContent: "center"` → T-3 and
  *     T-4 go red, because the orb then tracks the clamp (the jump ORCH-1057
  *     removed) and the resting position stops matching what centring produced.
@@ -138,7 +141,15 @@ interface Mounted {
   heroContent: Record<string, unknown>;
   hintZone: Record<string, unknown>;
   hintRowLabel: unknown;
+  /** The decorative text rows actually rendered, in document order. */
+  textRows: string[];
   unmount: () => void;
+}
+
+/** Every string rendered inside a node, flattened in document order. */
+function textOf(node: JsonNode | string): string[] {
+  if (typeof node === "string") return [node];
+  return (node.children ?? []).flatMap(textOf);
 }
 
 /**
@@ -156,6 +167,8 @@ function mount(
   hintPx: number,
   /** A LATER, smaller hero report — what the platform sends once the cap bites. */
   clampedHeroPx?: number,
+  /** Bottom offsets of the headline and body rows inside the decorative box. */
+  rowBottoms?: { headline: number; body: number },
 ): Mounted {
   let tree: TestRoot | null = null;
   act(() => {
@@ -181,6 +194,20 @@ function mount(
   fire(first, restingHeightPx);
   fire(childViews(childViews(first)[0])[0], heroPx);
   fire(childViews(first)[1], hintPx);
+  if (rowBottoms) {
+    // The platform reports each text row's frame inside the decorative box.
+    const content = childViews(childViews(root.toJSON())[0])[0];
+    const rows = (content.children ?? []).filter((c) => c.type === "Text");
+    const send = (node: JsonNode | undefined, bottom: number): void => {
+      const onLayout = node?.props.onLayout as
+        | ((e: { nativeEvent: { layout: { y: number; height: number } } }) => void)
+        | undefined;
+      if (!onLayout) return;
+      act(() => onLayout({ nativeEvent: { layout: { y: bottom - 1, height: 1 } } }));
+    };
+    send(rows[0], rowBottoms.headline);
+    send(rows[1], rowBottoms.body);
+  }
   if (clampedHeroPx !== undefined) {
     // The platform re-reports the decorative box at its CLAMPED height once the
     // cap bites. Taking that at face value is a measurement loop.
@@ -192,10 +219,14 @@ function mount(
   const [heroClip, hintZone] = childViews(host);
   const hintRow = childViews(hintZone)[0];
 
+  const contentBox = childViews(heroClip)[0];
   return {
     host: flatten(host.props.style),
     heroClip: flatten(heroClip.props.style),
-    heroContent: flatten(childViews(heroClip)[0].props.style),
+    heroContent: flatten(contentBox.props.style),
+    textRows: (contentBox.children ?? [])
+      .filter((c) => c.type === "Text")
+      .map((c) => textOf(c).join("").trim()),
     hintZone: flatten(hintZone.props.style),
     hintRowLabel: hintRow.props.accessibilityLabel,
     unmount: () => act(() => root.unmount()),
@@ -351,6 +382,43 @@ describe("#3429 REWORK-4 N-1 — the attach hint is the last content dropped", (
         looped.unmount();
       }
     }
+  });
+
+  it("T-10 a text row that cannot be shown IN FULL is not shown at all", () => {
+    // The 17 Pro Max at font scale 1.5: the only combination where everything
+    // genuinely fits at rest, so "hidden" can only mean the cap hid it. (On an
+    // SE at 1.5 the body overruns the resting box before the keyboard is even
+    // involved — see T-3.)
+    const d = DEVICES[1];
+    const sc = SCALES[1];
+    // Row bottoms inside the decorative box: headline ends at 100, body at 300.
+    const rows = { headline: 100, body: 300 };
+
+    // Keyboard down: the cap clears both, so both render.
+    const rest = mount(d.restingHeightPx, 0, sc.heroPx, sc.hintPx, undefined, rows);
+    expect(rest.textRows).toHaveLength(2);
+    expect(rest.textRows[0]).toContain("Hi, I'm Ari.");
+    rest.unmount();
+
+    // Keyboard up: the cap now falls BETWEEN the two rows. The body cannot be
+    // drawn in full, so it is not drawn — no sliver of glyphs — and the
+    // headline, which still fits, is untouched and has not moved.
+    const mid = mount(d.restingHeightPx, d.clampPx, sc.heroPx, sc.hintPx, undefined, rows);
+    const cap = mid.heroClip.maxHeight as number;
+    expect(cap).toBeGreaterThanOrEqual(rows.headline);
+    expect(cap).toBeLessThan(rows.body);
+    expect(mid.textRows).toHaveLength(1);
+    expect(mid.textRows[0]).toContain("Hi, I'm Ari.");
+    expect(heroTop(mid)).toBe(heroTop(rest));
+    mid.unmount();
+
+    // A cap tighter than the headline drops both — hiding a row always hides
+    // the rows below it, so nothing can reflow upward into the gap.
+    const tight = mount(240, 400, sc.heroPx, sc.hintPx, undefined, rows);
+    expect(tight.textRows).toHaveLength(0);
+    // ...and the attach hint still outranks all of it.
+    expect(tight.hintRowLabel).toBe("Tap the plus button to attach context");
+    tight.unmount();
   });
 
   it("T-8 before measurement the group is centred, so the first frame is not top-aligned", () => {

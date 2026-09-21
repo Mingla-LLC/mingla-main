@@ -142,7 +142,14 @@ describe("#3429 assistive truth and cooperative-stop adversarial seams", () => {
     expect(activity).toMatch(/const terminal = turn\.delivery === "stopped" \|\| turn\.delivery === "failed"/);
     expect(activity).toContain(snippet('if (terminal) { AccessibilityInfo.announceForAccessibility(turn.errorMessage ?? "Ari stopped. Your message is still here.");'));
     expect(activity).toContain("useReducedMotion()");
-    expect(reveal).toContain("accessibilityLabel={`Ari said: ${text}`}");
+    // [TEST-MOD-APPROVED #3429] REWORK-4 N-2: the protection is that the
+    // revealing bubble CARRIES a spoken label while its chunks are hidden from
+    // assistive technology. Pinning the raw `${text}` form also froze the
+    // markdown defect into the contract — a screen reader read "dash" before
+    // every bullet on every fresh answer, and this assertion was what stopped
+    // it being fixed. Same protection, anchored to the stripped form the
+    // renderer's own segments produce.
+    expect(reveal).toContain("accessibilityLabel={`Ari said: ${toAccessibleText(text)}`}");
     expect(reveal).toContain('importantForAccessibility="no-hide-descendants"');
     expect(reveal).toMatch(/if \(reduced \|\| skipped\) \{[^}]*duration: reduced \? 0 : 80/);
   });

@@ -22,6 +22,12 @@
  *     attach hint is the LAST content dropped and is always inside the visible
  *     region — above the composer, never behind it.
  *
+ * A text row that cannot be shown IN FULL is not shown at all. A half-drawn
+ * line of type reads as a rendering bug rather than as a deliberate reduction
+ * (REWORK-4 shipped a sliver of headline ascenders on the Pixel 7 at font scale
+ * 1.5 before this rule). The orb is not a text row and still crops, which reads
+ * as the intended crop.
+ *
  * The centring is done with an explicit, keyboard-INDEPENDENT top offset rather
  * than `justifyContent: "center"`, which is what lets the decorative zone shrink
  * without dragging the orb with it. Two consequences, both deliberate:
@@ -77,6 +83,26 @@ function useMeasuredHeight(): [number, (event: LayoutChangeEvent) => void] {
   return [height, handleLayout];
 }
 
+/**
+ * Track how far a row's BOTTOM edge sits from the top of its parent, as a
+ * high-water mark.
+ *
+ * High-water for the same reason `heroContentPx` is: a row that this component
+ * stops rendering also stops reporting, so the latest value would vanish the
+ * instant it is used, and the row would flicker back into view. The natural
+ * offset only changes with font scale, which needs a cold relaunch (handbook
+ * §8.7) and therefore a remount.
+ */
+function useRowBottom(): [number, (event: LayoutChangeEvent) => void] {
+  const [bottom, setBottom] = React.useState(0);
+  const handleLayout = React.useCallback((event: LayoutChangeEvent): void => {
+    const { y, height } = event.nativeEvent.layout;
+    const next = Math.round(y + height);
+    setBottom((previous) => (next > previous ? next : previous));
+  }, []);
+  return [bottom, handleLayout];
+}
+
 export const EmptyState: React.FC = () => {
   const { viewportBottomClampPx } = React.useContext(AriEmptyStateLayoutContext);
   // The host fills the screen's resting box, whose height is keyboard-
@@ -98,6 +124,10 @@ export const EmptyState: React.FC = () => {
     setHeroContentPx((previous) => (next > previous ? next : previous));
   }, []);
   const [hintHeightPx, handleHintLayout] = useMeasuredHeight();
+  // Where each text row ENDS inside the decorative zone. A row is shown only if
+  // the cap reaches its bottom edge.
+  const [headlineBottomPx, handleHeadlineLayout] = useRowBottom();
+  const [bodyBottomPx, handleBodyLayout] = useRowBottom();
 
   const measured = restingHeightPx > 0 && heroContentPx > 0 && hintHeightPx > 0;
   // Where the decorative content starts, from the top of the resting box. This
@@ -120,6 +150,11 @@ export const EmptyState: React.FC = () => {
   // at rest with nothing to clip — a regression caught on the Pixel 7 rather
   // than by any assertion.
   const heroIsClipped = measured && heroMaxHeightPx < heroContentPx;
+  // A text row that cannot be shown IN FULL is not shown. The rows are in
+  // document order, so hiding one always hides the ones below it and never
+  // moves the ones above it — nothing reflows, it only disappears.
+  const showHeadline = !measured || headlineBottomPx === 0 || headlineBottomPx <= heroMaxHeightPx;
+  const showBody = showHeadline && (bodyBottomPx === 0 || bodyBottomPx <= heroMaxHeightPx);
 
   return (
     <View
@@ -137,10 +172,14 @@ export const EmptyState: React.FC = () => {
           <View style={styles.orbWrap}>
             <AriOrb size="lg" thinking decorative={false} accessibilityLabel="Ari" />
           </View>
-          <Text style={styles.headline}>Hi, I&apos;m Ari.</Text>
-          <Text style={styles.body}>
-            I can create events, manage brands, and answer questions about your business.
-          </Text>
+          {showHeadline ? (
+            <Text style={styles.headline} onLayout={handleHeadlineLayout}>Hi, I&apos;m Ari.</Text>
+          ) : null}
+          {showBody ? (
+            <Text style={styles.body} onLayout={handleBodyLayout}>
+              I can create events, manage brands, and answer questions about your business.
+            </Text>
+          ) : null}
         </View>
       </View>
       {/* ORCH-1101 REWORK Bug #5: the hint must reference the ACTUAL + button, not
