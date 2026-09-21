@@ -20,12 +20,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, ExternalLink } from "lucide-react";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { Button } from "../ui/Button";
+import { AlertCard } from "../ui/Card";
 import {
   estimateCostUsd,
   formatPerPlaceCost,
 } from "../../services/intelligenceCoverageService";
 
-const COST_REVIEW_THRESHOLD_USD = 10;
+// issue #3526 P1-R1 — the typed-confirmation threshold is a DOLLAR amount and
+// it moved to the server's cost_model with the rate and the guard. A client
+// copy of it is the same defect as a client copy of the rate.
 const TYPED_CONFIRM_PHRASE = "RUN ALL";
 // issue #3526 P0-1 — the client-side default rate is gone. It was one of five
 // copies of a number the server had already moved, and a default is exactly how
@@ -63,7 +66,9 @@ export function RunRemainderOnAllConfirmModal({
   // dialog queues every eligible city at once; guessing the rate here is the
   // most expensive place in the app to be wrong.
   const costUnknown = totalCost === null;
-  const requiresTypedConfirm = !costUnknown && totalCost > COST_REVIEW_THRESHOLD_USD;
+  const reviewThreshold = costModel?.costReviewThresholdUsd ?? null;
+  const requiresTypedConfirm = !costUnknown && reviewThreshold !== null &&
+    totalCost > reviewThreshold;
   const typedMatches = typed.trim() === TYPED_CONFIRM_PHRASE;
   const canConfirm =
     safeCities.length > 0 &&
@@ -195,7 +200,7 @@ export function RunRemainderOnAllConfirmModal({
           {requiresTypedConfirm && (
             <div className="border-l-4 border-l-[var(--color-warning-500)] bg-[var(--color-warning-50)] p-4 rounded-r-lg">
               <h4 className="text-sm font-semibold text-[var(--color-warning-700)] mb-1">
-                Cost exceeds ${COST_REVIEW_THRESHOLD_USD}
+                Cost exceeds ${reviewThreshold?.toFixed(2)}
               </h4>
               <p className="text-xs text-[var(--color-warning-700)] mb-2">
                 Type <span className="font-mono">{TYPED_CONFIRM_PHRASE}</span>{" "}
@@ -222,21 +227,35 @@ export function RunRemainderOnAllConfirmModal({
             </div>
           )}
 
-          {/* Acknowledgement checkbox */}
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              ref={checkboxRef}
-              type="checkbox"
-              checked={acknowledged}
-              onChange={(e) => setAcknowledged(e.target.checked)}
-              className="mt-0.5 cursor-pointer"
+          {/* Acknowledgement checkbox.
+              issue #3526 P3-R4 — an unknown cost blocks the launcher outright,
+              so inviting a tick that can never enable "Queue all" was a dead tap
+              (Constitution #1) beside a disabled button with no stated reason
+              (Constitution #3). */}
+          {costUnknown ? (
+            <AlertCard
+              variant="warning"
+              title="Cost unavailable — nothing can be queued"
+              description={
+                "The server did not return a per-place cost, so these runs cannot be " +
+                "priced and the spend cannot be authorised. Reload the page; if it " +
+                "persists the intelligence edge function needs redeploying."
+              }
             />
-            <span className="text-sm text-[var(--color-text-primary)]">
-              {costUnknown
-                ? "I understand the cost of this run could not be read from the server."
-                : `I understand this will charge ~$${totalCost.toFixed(2)} on the Gemini API.`}
-            </span>
-          </label>
+          ) : (
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                ref={checkboxRef}
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => setAcknowledged(e.target.checked)}
+                className="mt-0.5 cursor-pointer"
+              />
+              <span className="text-sm text-[var(--color-text-primary)]">
+                {`I understand this will charge ~$${totalCost.toFixed(2)} on the Gemini API.`}
+              </span>
+            </label>
+          )}
 
           <p className="text-xs text-[var(--color-text-tertiary)] italic">
             Up to 3 cities will run at a time. Remaining cities queue
@@ -257,6 +276,17 @@ export function RunRemainderOnAllConfirmModal({
             onClose?.();
           }}
           disabled={!canConfirm}
+          title={
+            costUnknown
+              ? "The server did not return a per-place cost, so these runs cannot be priced."
+              : safeCities.length === 0
+                ? "No city has un-evaluated places to run."
+                : !acknowledged
+                  ? "Tick the acknowledgement to continue."
+                  : requiresTypedConfirm && !typedMatches
+                    ? `Type "${TYPED_CONFIRM_PHRASE}" to confirm a run above $${reviewThreshold?.toFixed(2)}.`
+                    : undefined
+          }
         >
           Queue all
         </Button>

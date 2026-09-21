@@ -58,7 +58,18 @@
  *
  * Exit codes: 0 — clean (or self-test proven) · 1 — violation.
  */
-import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -178,9 +189,45 @@ export function stripSqlComments(src) {
 }
 
 // ── File walking ────────────────────────────────────────────────────────────
-// issue #3526 P2-3 — the walker read ONLY `.ts`, so a `.json` contract/fixture
-// or a `.mjs` under supabase/functions/ was invisible (11 such files exist).
-const SCANNED_EXTENSIONS = [".ts", ".tsx", ".mjs", ".js", ".json", ".sql"];
+// issue #3526 P2-3 / P1-R1 — the walker read ONLY `.ts`, so a `.json` fixture or
+// a `.mjs` was invisible. Round 2 added `.tsx` and MISSED `.jsx`, which is the
+// admin's component extension: 117 of 306 admin files, 38% of the tree, and
+// THREE of the five files P0-1 actually lived in. A gate that cannot see the
+// files its own defect lived in is not a gate.
+//
+// The list is no longer the only defence. `checkScanCoverage` below walks the
+// real roots and fails on any SOURCE extension that is not in this list, so the
+// next extension nobody thought of reports itself instead of going silent.
+const SCANNED_EXTENSIONS = [
+  ".ts", ".tsx", ".mts", ".cts",
+  ".js", ".jsx", ".mjs", ".cjs",
+  ".json", ".sql",
+];
+
+// Extensions that legitimately carry no code. Everything else under a scanned
+// root must be in SCANNED_EXTENSIONS or the gate fails — see checkScanCoverage.
+const NON_SOURCE_EXTENSIONS = new Set([
+  ".md", ".svg", ".css", ".sh", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+  ".ico", ".txt", ".yml", ".yaml", ".lock", ".snap", ".map", ".woff", ".woff2",
+]);
+
+/**
+ * Every file under `dir`, regardless of extension. `walk()` answers "what does
+ * this gate read"; this answers "what exists", and G-6 compares the two.
+ */
+function walkAll(dir, acc = []) {
+  if (!existsSync(dir)) return acc;
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      if (entry === "node_modules" || entry === "dist" || entry === ".git") continue;
+      walkAll(full, acc);
+    } else {
+      acc.push(full);
+    }
+  }
+  return acc;
+}
 
 function walk(dir, acc = []) {
   if (!existsSync(dir)) return acc;
@@ -321,26 +368,150 @@ export function checkSources(files, modelId) {
  * renders what it is told. This gate keeps it that way.
  */
 const ADMIN_COST_DIR = join("mingla-admin", "src");
-const ADMIN_RATE_LITERAL = /\b0\.00[0-9]+\b/;
-const ADMIN_COST_IDENT = /PER_PLACE_COST_USD|COST_GUARD_USD|COST_DRIFT_TOLERANCE/;
+
+// issue #3526 P1-R1 — the round-2 rule was
+//   ADMIN_COST_IDENT  = /PER_PLACE_COST_USD|COST_GUARD_USD|COST_DRIFT_TOLERANCE/
+//   ADMIN_RATE_LITERAL = /\b0\.00[0-9]+\b/
+// SCREAMING_SNAKE only, and magnitude-bound to rates under a cent. Both were
+// measured to miss:
+//   const perPlaceCostUsd = 0.0089   — camelCase, the spelling the new client
+//                                      module itself uses for these fields
+//   const PER_PLACE_COST_USD = 0.0178 — the exact identifier, in an original P0
+//                                      file, at the rate this repo documents
+//                                      Google charging from 1 Jan 2027
+// The rule is BY NAME now, not by magnitude or notation, and case-insensitive.
+//
+// THE PRINCIPLE, which is what keeps it honest rather than over-fitted: the
+// admin may hold the SHAPE of a cost model and it may hold dimensionless
+// RATIOS; it may not hold a DOLLAR AMOUNT. So the trigger is a money-word
+// identifier that also carries a currency marker, bound to a number.
+const MONEY_WORD =
+  "(?:cost|price|rate|guard|fee|charge|spend|threshold|budget|amount)";
+const CURRENCY_MARK = "(?:usd|dollars?|cents?)";
+
+// A money identifier carrying a currency marker, in either order, bound to a
+// number: `PER_PLACE_COST_USD = 0.0178`, `perPlaceCostUsd: 0.0089`,
+// `COST_GUARD_USD = 5`, `costGuardUsd = 5`, `usdCostPerPlace = 1e-2`.
+// The number is CAPTURED, not just detected, because a bound value of exactly
+// zero is not a rate: `cost_so_far_usd: 0` initialises an optimistic run object
+// with no spend yet and cannot make the client disagree with the server about
+// price. Any non-zero number can. Exponent notation is in the pattern because
+// `8.9e-3` is a rate spelled to dodge a decimal-shaped matcher.
+const NUMBER = "[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?";
+const ADMIN_MONEY_BOUND = new RegExp(
+  `\\b[\\w$]*(?:${MONEY_WORD}[\\w$]*${CURRENCY_MARK}|${CURRENCY_MARK}[\\w$]*${MONEY_WORD})[\\w$]*\\s*[:=]\\s*(${NUMBER})`,
+  "i",
+);
+
+// A money identifier multiplied by, or assigned, a DECIMAL literal — with no
+// currency marker needed. This is the original dispatcher defect,
+// `const estCost = Math.max(0, city.remaining_count) * 0.004;`, which carries no
+// `usd` anywhere and which a currency-marked rule cannot see.
+const ADMIN_MONEY_ARITHMETIC = new RegExp(
+  `\\b[\\w$]*${MONEY_WORD}[\\w$]*\\s*=\\s*(?:[^;\\n]*?\\*\\s*)?\\d+\\.\\d+`,
+  "i",
+);
+
+// Dimensionless or non-money units. The admin legitimately holds these: a drift
+// TOLERANCE FRACTION (the server publishes the absolute figure; this is only the
+// fallback multiplier), a browser THROTTLE in MS, a MIN_PROCESSED count. They
+// are exempt from ADMIN_MONEY_ARITHMETIC only — a currency-marked identifier is
+// a dollar amount whatever else its name says, so nothing exempts it from
+// ADMIN_MONEY_BOUND.
+const DIMENSIONLESS_MARK =
+  /fraction|ratio|multiplier|pct|percent|_ms\b|millis|seconds?|minutes?|hours?|days?|count|processed|index|length|size|version/i;
+
+/**
+ * The ONE documented exception, capped so it cannot grow silently.
+ *
+ * Widening G-5 to the whole admin tree immediately found a SIXTH client-owned
+ * rate nobody knew about: `RefreshTab.jsx` estimates a Google Places refresh at
+ * `total_places * 0.017` when the server reports `total_cost_usd === 0`. Same
+ * defect class, DIFFERENT vendor and pipeline, and display-only — no
+ * confirm_high_cost equivalent hangs off it, so it cannot make a button dead
+ * the way the Gemini copy did. Fixing it means deciding what `total_cost_usd
+ * === 0` should render, which is a seeding-pipeline question a Gemini repin has
+ * no business answering. Reported as a discovery on issue #3526 instead.
+ *
+ * The cap is the point: this list is a visible diff and a failing assertion
+ * away from growing. An exemption without a ceiling is just a hole with a
+ * comment on it.
+ */
+const ADMIN_COST_EXEMPT = [
+  // issue #3526 discovery — Google Places refresh estimate, display-only.
+  join("mingla-admin", "src", "components", "seeding", "RefreshTab.jsx"),
+];
+const ADMIN_COST_EXEMPT_CAP = 1;
 
 export function checkAdminCostOwnership(files) {
   const failures = [];
+  if (ADMIN_COST_EXEMPT.length > ADMIN_COST_EXEMPT_CAP) {
+    failures.push(
+      `G-5: ADMIN_COST_EXEMPT holds ${ADMIN_COST_EXEMPT.length} entries, cap is ` +
+      `${ADMIN_COST_EXEMPT_CAP}. Every exemption is a client that owns a price. ` +
+      `Fix the file or raise the cap deliberately, citing an issue.`,
+    );
+  }
+  const WHY =
+    `The admin must not own the cost model — read per_place_cost_usd / ` +
+    `cost_guard_usd off the server's cost_model and render what you are told. ` +
+    `A client that guesses is a client that owns the truth, and that is what ` +
+    `made Baltimore (1,205 remaining) unstartable.`;
   for (const { rel, source } of files) {
     if (!rel.startsWith(ADMIN_COST_DIR)) continue;
     if (isTestPath(rel)) continue;
+    if (ADMIN_COST_EXEMPT.includes(rel)) continue;
     const code = stripTsComments(source);
-    if (!ADMIN_COST_IDENT.test(code)) continue;
-    // An identifier is fine when it names a SERVER-SUPPLIED value; a numeric
-    // rate literal beside it is the client owning the truth again.
-    if (ADMIN_RATE_LITERAL.test(code)) {
+
+    const bound = ADMIN_MONEY_BOUND.exec(code);
+    if (bound && Number(bound[1]) !== 0) {
       failures.push(
-        `G-5 ${rel}: a per-place cost/guard identifier sits next to a rate ` +
-        `literal (${ADMIN_RATE_LITERAL.exec(code)[0]}). The admin must not own ` +
-        `the cost model — read per_place_cost_usd / cost_guard_usd off the ` +
-        `server's cost_model and render what you are told. A client that ` +
-        `guesses is a client that owns the truth, and that is what made ` +
-        `Baltimore unstartable.`,
+        `G-5 ${rel}: a currency-denominated identifier is bound to a number ` +
+        `(\`${bound[0].trim()}\`). ${WHY}`,
+      );
+      continue;
+    }
+    const arith = ADMIN_MONEY_ARITHMETIC.exec(code);
+    if (arith && !DIMENSIONLESS_MARK.test(arith[0])) {
+      failures.push(
+        `G-5 ${rel}: a cost identifier is computed from a hardcoded rate ` +
+        `(\`${arith[0].trim()}\`). ${WHY}`,
+      );
+    }
+  }
+  return failures;
+}
+
+/**
+ * G-6 (issue #3526 P1-R1) — the SCOPE is audited, not assumed.
+ *
+ * Thirty green self-test cases did not catch the missing `.jsx` because every
+ * one of them called the checkers with a synthetic file list and never touched
+ * `walk()`. The gate proved its rules and never its reach. A gate whose
+ * self-test cannot see its own file discovery will keep reporting PASS over any
+ * extension nobody thought of — which is the same unfalsifiable shape as a
+ * hand-written sender list, one layer down.
+ *
+ * So the real roots are walked and every source file must be inside the scan.
+ */
+export function checkScanCoverage(roots) {
+  const failures = [];
+  for (const { label, dir } of roots) {
+    if (!existsSync(dir)) continue;
+    const missed = new Map();
+    for (const full of walkAll(dir)) {
+      const dot = full.lastIndexOf(".");
+      const ext = dot < 0 ? "" : full.slice(dot).toLowerCase();
+      if (SCANNED_EXTENSIONS.includes(ext)) continue;
+      if (NON_SOURCE_EXTENSIONS.has(ext) || ext === "") continue;
+      missed.set(ext, (missed.get(ext) ?? 0) + 1);
+    }
+    for (const entry of missed.entries()) {
+      failures.push(
+        `G-6 ${label}: ${entry[1]} file(s) with extension "${entry[0]}" are ` +
+        `outside SCANNED_EXTENSIONS, so every rule in this gate is blind to ` +
+        `them. Add the extension, or add it to NON_SOURCE_EXTENSIONS if it ` +
+        `genuinely carries no code.`,
       );
     }
   }
@@ -576,6 +747,98 @@ function runSelfTest() {
     if (!pass) broken.push(`${c.name} — expected ${c.expect === 0 ? "no" : "a"} failure, got ${got}`);
   }
 
+  // ── THE REAL WALKER, over a REAL temp tree ────────────────────────────────
+  //
+  // issue #3526 P1-R1 — every case above calls a checker with a synthetic
+  // `{rel, source}` list, so none of them touches `walk()`. That is exactly why
+  // 30 green cases could not see that `.jsx` was missing from
+  // SCANNED_EXTENSIONS while 117 admin files — and three of the five files the
+  // P0 actually lived in — were invisible. The gate proved its RULES and never
+  // its REACH, which is the unfalsifiable shape one layer down from a
+  // hand-written sender list.
+  //
+  // These cases write real files to a real directory and run the real
+  // discovery, so the next extension, ignore rule or nesting change that
+  // silently drops files fails here instead of passing quietly.
+  const tmpRoot = mkdtempSync(join(realpathSync(tmpdir()), "i-3526-walk-"));
+  try {
+    const write = (rel, body) => {
+      const abs = join(tmpRoot, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, body);
+      return abs;
+    };
+    // One file per extension the real trees actually contain, plus a nested
+    // directory and a node_modules that must be skipped.
+    write("fn/a.ts", "const a = 1;");
+    write("fn/b.mjs", "const b = 1;");
+    write("fn/c.json", "{}");
+    write("fn/d.sql", "select 1;");
+    write("fn/nested/deep/e.tsx", "const e = 1;");
+    write("admin/Comp.jsx", 'const PER_PLACE_COST_USD = 0.0040;');
+    write("admin/plain.js", "const p = 1;");
+    write("admin/node_modules/skip.jsx", "const PER_PLACE_COST_USD = 0.0040;");
+    write("admin/readme.md", "not code");
+    write("admin/icon.svg", "<svg/>");
+
+    const walked = walk(tmpRoot).map((f) => relative(tmpRoot, f).split(sep).join("/")).sort();
+    for (const expected of [
+      "admin/Comp.jsx",
+      "admin/plain.js",
+      "fn/a.ts",
+      "fn/b.mjs",
+      "fn/c.json",
+      "fn/d.sql",
+      "fn/nested/deep/e.tsx",
+    ]) {
+      if (!walked.includes(expected)) {
+        broken.push(`REAL WALKER: ${expected} was not discovered (walked: ${walked.join(", ")})`);
+      }
+    }
+    if (walked.some((f) => f.includes("node_modules"))) {
+      broken.push("REAL WALKER: node_modules was not skipped");
+    }
+    if (walked.includes("admin/readme.md") || walked.includes("admin/icon.svg")) {
+      broken.push("REAL WALKER: a non-source file was scanned");
+    }
+
+    // THE CASE THAT WAS MISSED: the original defect line, in a .jsx, reached
+    // through the real walker rather than a hand-built list.
+    const adminReal = walk(join(tmpRoot, "admin")).map((full) => ({
+      rel: join(ADMIN_COST_DIR, relative(join(tmpRoot, "admin"), full)),
+      source: readFileSync(full, "utf8"),
+    }));
+    if (checkAdminCostOwnership(adminReal).length === 0) {
+      broken.push(
+        "REAL WALKER: `const PER_PLACE_COST_USD = 0.0040;` in a .jsx reached " +
+        "through walk() did NOT trip G-5 — this is the exact miss P1-R1 reported",
+      );
+    }
+
+    // G-6 over a tree containing an extension nobody listed.
+    write("admin/legacy.coffee", "cost = 1");
+    if (checkScanCoverage([{ label: "tmp", dir: tmpRoot }]).length === 0) {
+      broken.push("G-6: an unscanned source extension did not report itself");
+    }
+    rmSync(join(tmpRoot, "admin/legacy.coffee"));
+    if (checkScanCoverage([{ label: "tmp", dir: tmpRoot }]).length !== 0) {
+      broken.push("G-6: a fully-covered tree was reported as uncovered");
+    }
+  } finally {
+    rmSync(tmpRoot, { recursive: true, force: true });
+  }
+
+  // The live trees must be fully covered too — this is the assertion that
+  // would have failed on the missing `.jsx` the moment it mattered.
+  if (
+    checkScanCoverage([
+      { label: "supabase/functions", dir: FUNCTIONS_DIR },
+      { label: ADMIN_COST_DIR, dir: join(ROOT, ADMIN_COST_DIR) },
+    ]).length !== 0
+  ) {
+    broken.push("G-6: the live trees contain a source extension outside the scan");
+  }
+
   if (broken.length > 0) {
     console.error("\n#3526 gemini-model-single-source gate SELF-TEST FAILED:\n");
     for (const b of broken) console.error(`  ✗ ${b}`);
@@ -609,6 +872,13 @@ if (process.argv.includes("--self-test")) {
     source: readFileSync(full, "utf8"),
   }));
   failures.push(...checkAdminCostOwnership(adminFiles));
+
+  // G-6 — audit the SCOPE, not just the rules. This is what would have made the
+  // missing `.jsx` report itself instead of hiding behind 30 green cases.
+  failures.push(...checkScanCoverage([
+    { label: "supabase/functions", dir: FUNCTIONS_DIR },
+    { label: ADMIN_COST_DIR, dir: join(ROOT, ADMIN_COST_DIR) },
+  ]));
 
   const triggerFiles = triggerMigrations(MIGRATIONS_DIR);
   const migrationName = newestTriggerMigration(MIGRATIONS_DIR);

@@ -36,12 +36,11 @@ import {
   needsHighCostConfirmation,
 } from "../../services/intelligenceCoverageService";
 
-// issue #3526 P0-1 — the guard is NOT a client constant any more. It arrives on
-// the server's cost_model, because a client copy is how Baltimore ended up
-// showing "$4.82, no confirmation needed" for a run the server priced at $10.72
-// and refused. COST_REVIEW_THRESHOLD_USD is a pure UX escalation (type the city
-// name) with no server counterpart, so it stays here.
-const COST_REVIEW_THRESHOLD_USD = 10;
+// issue #3526 — this modal holds NO dollar amount. The guard and the
+// typed-confirmation threshold both arrive on the server's cost_model: a client
+// copy of the guard is how Baltimore showed "$4.82, no confirmation needed" for
+// a run the server priced at $10.72 and refused, and a client copy of the
+// escalation threshold is the same defect wearing a different name (P1-R1).
 
 export function RunRemainderConfirmModal({
   open,
@@ -78,7 +77,9 @@ export function RunRemainderConfirmModal({
   // server has not told us the rate we cannot compute confirm_high_cost, and
   // starting the run would repeat exactly the mismatch this change fixes.
   const costUnknown = estCost === null;
-  const requiresTypedConfirm = !costUnknown && estCost > COST_REVIEW_THRESHOLD_USD;
+  const reviewThreshold = costModel?.costReviewThresholdUsd ?? null;
+  const requiresTypedConfirm = !costUnknown && reviewThreshold !== null &&
+    estCost > reviewThreshold;
   const sendConfirmHighCost = needsHighCostConfirmation(remainingCount, costModel) === true;
   const typedMatches = typedName.trim() === (cityName || "");
   const canRun =
@@ -243,7 +244,7 @@ export function RunRemainderConfirmModal({
           {requiresTypedConfirm && (
             <div className="border-l-4 border-l-[var(--color-warning-500)] bg-[var(--color-warning-50)] p-4 rounded-r-lg">
               <h4 className="text-sm font-semibold text-[var(--color-warning-700)] mb-1">
-                Cost exceeds ${COST_REVIEW_THRESHOLD_USD}
+                Cost exceeds ${reviewThreshold?.toFixed(2)}
               </h4>
               <p className="text-xs text-[var(--color-warning-700)] mb-2">
                 Type the city name below to confirm.
@@ -269,21 +270,35 @@ export function RunRemainderConfirmModal({
             </div>
           )}
 
-          {/* Acknowledgement checkbox */}
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              ref={checkboxRef}
-              type="checkbox"
-              checked={acknowledged}
-              onChange={(e) => setAcknowledged(e.target.checked)}
-              className="mt-0.5 cursor-pointer"
+          {/* Acknowledgement checkbox.
+              issue #3526 P3-R4 — when the cost is unknown the run can never
+              start, so inviting a tick was a dead tap (Constitution #1) beside a
+              disabled button that gave no reason (Constitution #3). The
+              checkbox is unavailable and the modal says WHY, in one place. */}
+          {costUnknown ? (
+            <AlertCard
+              variant="warning"
+              title="Cost unavailable — this run cannot start"
+              description={
+                "The server did not return a per-place cost, so this run cannot be " +
+                "priced and the spend cannot be authorised. Reload the page; if it " +
+                "persists the intelligence edge function needs redeploying."
+              }
             />
-            <span className="text-sm text-[var(--color-text-primary)]">
-              {costUnknown
-                ? "I understand the cost of this run could not be read from the server."
-                : `I understand this will charge ~$${estCost.toFixed(2)} on the Gemini API.`}
-            </span>
-          </label>
+          ) : (
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                ref={checkboxRef}
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => setAcknowledged(e.target.checked)}
+                className="mt-0.5 cursor-pointer"
+              />
+              <span className="text-sm text-[var(--color-text-primary)]">
+                {`I understand this will charge ~$${estCost.toFixed(2)} on the Gemini API.`}
+              </span>
+            </label>
+          )}
 
           {/* Error */}
           {errorMessage && (
@@ -325,6 +340,15 @@ export function RunRemainderConfirmModal({
           onClick={handleRun}
           loading={submitting}
           disabled={!canRun}
+          title={
+            costUnknown
+              ? "The server did not return a per-place cost, so this run cannot be priced."
+              : !acknowledged
+                ? "Tick the acknowledgement to continue."
+                : requiresTypedConfirm && !typedMatches
+                  ? `Type "${cityName}" to confirm a run above $${reviewThreshold?.toFixed(2)}.`
+                  : undefined
+          }
         >
           Run trial
         </Button>

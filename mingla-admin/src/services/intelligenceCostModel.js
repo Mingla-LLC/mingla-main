@@ -45,9 +45,17 @@ export function normalizeCostModel(raw) {
   if (!Number.isFinite(perPlaceCostUsd) || perPlaceCostUsd <= 0) return null;
   if (!Number.isFinite(costGuardUsd) || costGuardUsd <= 0) return null;
   const drift = Number(raw.cost_drift_tolerance_usd_per_place);
+  // issue #3526 P1-R1 — the typed-confirmation threshold moved server-side too.
+  // It is the last dollar amount the client held, and a client-owned dollar
+  // figure governing a spend confirmation is the same defect as a client-owned
+  // rate. Falls back to the guard when absent: escalating at the guard is never
+  // less cautious than escalating above it.
+  const review = Number(raw.cost_review_threshold_usd);
   return {
     perPlaceCostUsd,
     costGuardUsd,
+    costReviewThresholdUsd:
+      Number.isFinite(review) && review > 0 ? review : costGuardUsd,
     // Derived server-side as a FRACTION of the rate. The admin previously
     // hardcoded 0.001 described as "±25% of $0.0040", so it silently became
     // ±11% when the rate moved and the drift badge would have fired on every run.

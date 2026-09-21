@@ -199,9 +199,14 @@ function synthRow(
 // model". Four days of outage looked green.
 //
 // It now issues a real `:generateContent` against the pinned GEMINI_MODEL_ID.
-// Cost is negligible — a handful of tokens, hourly, with maxOutputTokens 1 and
-// thinking at the floor. The #1620 bodyVerdict discipline is kept and
-// tightened: a 200 with no candidate is a FAILURE, never "healthy".
+// Cost is negligible — a handful of tokens, hourly, thinking at the floor:
+// ≈$0.09/year. The #1620 bodyVerdict discipline is kept: a 200 that cannot show
+// the model ran is a FAILURE, never "healthy".
+//
+// issue #3526 P2-5 — the verdict does NOT depend on maxOutputTokens. A 200 with
+// no `candidates` (thinking consumed the budget) is judged on what the response
+// SAYS — finishReason MAX_TOKENS, or modelVersion plus usage showing generated
+// tokens. See geminiProbeOk in logic.ts for why any finite budget was a guess.
 async function probeGemini(): Promise<ProbeResult> {
   const key = Deno.env.get("GEMINI_API_KEY");
   if (!key) return { ok: false, latencyMs: null, status: "unknown", detail: { error: "GEMINI_API_KEY missing" } };
@@ -214,24 +219,12 @@ async function probeGemini(): Promise<ProbeResult> {
         body: JSON.stringify({
           contents: [{ role: "user", parts: [{ text: "ping" }] }],
           generationConfig: {
-            // ⚠ issue #3526 P2-5 — DEPLOY RISK, UNPROVEN, CHECK THIS FIRST.
-            // On Gemini 2.5/3 thinking tokens count AGAINST maxOutputTokens.
-            // If the budget is consumed by thinking the API can return HTTP 200
-            // with NO `candidates` key at all — just usageMetadata/modelVersion
-            // — and geminiProbeOk reads that as down. The tile would then go
-            // red hourly on a perfectly healthy API, which is worse than the
-            // blindness this probe replaced: a permanent false alarm is an
-            // alarm nobody reads.
-            //
-            // maxOutputTokens is 16, not 1, to leave room for a candidate after
-            // `minimal` thinking. Cost is not the constraint — the probe runs
-            // hourly (8,760/yr) on a ~10-token prompt, so this is ≈$0.15/year.
-            // This is RISK REDUCTION, not a verified fix: it has not been run
-            // against the live provider. FIRST CHECK AT DEPLOY: invoke the
-            // probe once, then read the `synthetic` row in api_health_checks.
-            // If it still reports down on a healthy key, accept a
-            // candidate-less 200 carrying finishReason "MAX_TOKENS" as healthy
-            // while STILL rejecting a ListModels-shaped body.
+            // issue #3526 P2-5 — 16 rather than 1 so `minimal` thinking usually
+            // leaves room for a candidate. That is a CONVENIENCE, not the fix:
+            // any finite budget is a guess about Google's thinking floor, so
+            // geminiProbeOk no longer depends on one. A candidate-less 200 is
+            // judged on the evidence in the response body instead. ≈$0.15/year
+            // at hourly cadence; cost is not the constraint here.
             maxOutputTokens: 16,
             temperature: 0,
             thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },

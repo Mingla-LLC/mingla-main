@@ -27,10 +27,20 @@ const MODAL = path.join(
 describe("ORCH-1013 Finding B — RunRemainderOnAllConfirmModal contract", () => {
   const src = fs.readFileSync(MODAL, "utf8");
 
-  it("declares the >$10 typed-confirm threshold + fixed phrase 'RUN ALL'", () => {
+  // issue #3526 P1-R1 — the $10 escalation threshold was the LAST dollar amount
+  // the admin still owned, and it survived round 2 precisely because it has no
+  // server counterpart. A client-owned dollar figure governing a spend
+  // confirmation is the same defect as a client-owned rate: when the rate moved
+  // 2.2x, "$10" stopped meaning what it meant. It is published on the server's
+  // cost_model now. The fixed phrase is NOT money and stays here.
+  it("holds no dollar threshold of its own, and keeps the fixed phrase 'RUN ALL'", () => {
     assert.ok(
-      /COST_REVIEW_THRESHOLD_USD\s*=\s*10\b/.test(src),
-      "high-cost threshold constant must be $10",
+      !/COST_REVIEW_THRESHOLD_USD/.test(src),
+      "the escalation threshold must come from the server, not a client constant",
+    );
+    assert.ok(
+      src.includes("costModel?.costReviewThresholdUsd"),
+      "the modal must read the threshold off the server's cost model",
     );
     assert.ok(
       /TYPED_CONFIRM_PHRASE\s*=\s*"RUN ALL"/.test(src),
@@ -38,13 +48,19 @@ describe("ORCH-1013 Finding B — RunRemainderOnAllConfirmModal contract", () =>
     );
   });
 
-  it("renders the typed-input gate only when totalCost > threshold", () => {
+  it("renders the typed-input gate only when a KNOWN totalCost exceeds the server threshold", () => {
     assert.ok(
-      src.includes("requiresTypedConfirm = !costUnknown && totalCost > COST_REVIEW_THRESHOLD_USD"),
-      // issue #3526 — an unknown cost can never satisfy a `>` comparison
-      // meaningfully, so the gate is explicit about it rather than letting
-      // `null > 10` quietly evaluate false and wave the run through.
-      "must derive requiresTypedConfirm from a KNOWN totalCost > $10",
+      src.includes(
+        "requiresTypedConfirm = !costUnknown && reviewThreshold !== null &&",
+      ),
+      // issue #3526 — neither an unknown cost nor an unknown threshold may
+      // satisfy a `>` comparison by accident: `null > 10` and `5 > null` both
+      // evaluate false and would wave the run through without the escalation.
+      "requiresTypedConfirm must require BOTH a known cost and a known threshold",
+    );
+    assert.ok(
+      src.includes("totalCost > reviewThreshold"),
+      "the comparison must use the server-supplied threshold",
     );
   });
 

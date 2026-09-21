@@ -882,10 +882,21 @@ const PER_PLACE_COST_USD = 0.0089;
 // became ±11% when the rate moved and would have fired on every run.
 export const COST_DRIFT_TOLERANCE_FRACTION = 0.25;
 
+// issue #3526 P1-R1 — the LAST dollar amount the admin still owned. Both
+// confirmation modals held `COST_REVIEW_THRESHOLD_USD = 10`: the point above
+// which the operator must type the city name, not just tick a box. It has no
+// server counterpart today, which is exactly why it survived round 2 — but a
+// client-owned dollar figure governing a spend confirmation is the same class
+// of defect as the per-place rate, and leaving it forces the gate to carry an
+// exemption. Published instead, so the rule "the admin holds no dollar amount"
+// is absolute and needs no allowlist.
+const COST_REVIEW_THRESHOLD_USD = 10.0;
+
 export function buildCostModel(): {
   per_place_cost_usd: number;
   cost_guard_usd: number;
   cost_drift_tolerance_usd_per_place: number;
+  cost_review_threshold_usd: number;
   pricing_version: string;
   pricing_reference_url: string;
   model_id: string;
@@ -895,6 +906,7 @@ export function buildCostModel(): {
     cost_guard_usd: COST_GUARD_USD,
     cost_drift_tolerance_usd_per_place:
       +(PER_PLACE_COST_USD * COST_DRIFT_TOLERANCE_FRACTION).toFixed(6),
+    cost_review_threshold_usd: COST_REVIEW_THRESHOLD_USD,
     pricing_version: GEMINI_PRICING_VERSION,
     pricing_reference_url: GEMINI_PRICING_REFERENCE_URL,
     model_id: GEMINI_MODEL_ID,

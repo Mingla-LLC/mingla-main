@@ -109,15 +109,70 @@ export const CLASS_B_DEPLETION: Record<
 // to new users". A list call answers "does this key work", never "can this key
 // call THIS model".
 //
-// The verdict now comes from a `:generateContent` response and requires a
-// CANDIDATE. A ListModels-shaped body is explicitly NOT healthy — that is the
-// whole regression. #1620 bodyVerdict discipline preserved: a 200 with no
-// candidate is a failure, never "healthy".
+// issue #3526 P2-5 — THE VERDICT NO LONGER DEPENDS ON A TOKEN BUDGET.
+//
+// The first version was `httpOk && Array.isArray(body.candidates)`. On Gemini
+// 2.5/3 thinking tokens count AGAINST maxOutputTokens, so when the budget is
+// consumed by thinking the API returns HTTP 200 with NO `candidates` key at all
+// — just `usageMetadata` and `modelVersion`. That read as DOWN, which would
+// have turned the tile red hourly on a perfectly healthy API. Raising
+// maxOutputTokens narrows that window and cannot close it: any finite value is
+// a guess about Google's thinking floor, and an alarm that is sometimes wrong
+// for a reason nobody can see is worse than the blindness this probe replaced.
+//
+// So a candidate-less 200 is judged on WHAT THE RESPONSE SAYS:
+//   - `finishReason: "MAX_TOKENS"` — the model ran and hit the output ceiling.
+//     Healthy. This is exactly the fallback the implementation comment named.
+//   - `modelVersion` plus `usageMetadata` showing tokens beyond the prompt —
+//     positive evidence the model generated something, even if the budget left
+//     no room to return it. Healthy.
+//   - anything else — no evidence the model ran. NOT healthy.
+//
+// Never on absence, always on positive evidence: #1620's bodyVerdict discipline
+// says a 200 that cannot show it worked is a failure. And a ListModels-shaped
+// body is rejected FIRST, whatever else it carries, because that is the exact
+// false green this probe exists to end.
+export interface GeminiProbeBody {
+  models?: unknown;
+  candidates?: Array<{ finishReason?: string }> | unknown;
+  finishReason?: string;
+  modelVersion?: string;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    thoughtsTokenCount?: number;
+    totalTokenCount?: number;
+  };
+}
+
 export function geminiProbeOk(
   httpOk: boolean,
-  body: { candidates?: unknown } | null | undefined,
+  body: GeminiProbeBody | null | undefined,
 ): boolean {
-  return httpOk === true && Array.isArray(body?.candidates);
+  if (httpOk !== true || !body || typeof body !== "object") return false;
+
+  // A model LIST is never a generation verdict, whatever else is attached.
+  if (Array.isArray(body.models)) return false;
+
+  const candidates = Array.isArray(body.candidates) ? body.candidates : null;
+  if (candidates && candidates.length > 0) return true;
+
+  // ── candidate-less 200: positive evidence only ──
+  const finishReason = candidates?.[0]?.finishReason ?? body.finishReason;
+  if (finishReason === "MAX_TOKENS") return true;
+
+  const usage = body.usageMetadata;
+  if (typeof body.modelVersion !== "string" || body.modelVersion.length === 0) {
+    return false;
+  }
+  if (!usage || typeof usage !== "object") return false;
+  const prompt = Number(usage.promptTokenCount ?? 0);
+  const generated = Number(usage.candidatesTokenCount ?? 0) +
+    Number(usage.thoughtsTokenCount ?? 0);
+  const total = Number(usage.totalTokenCount ?? 0);
+  // Either the usage block itself names generated tokens, or the total exceeds
+  // the prompt — both mean the model produced something.
+  return generated > 0 || (Number.isFinite(total) && total > prompt);
 }
 
 // ── Class-B reactive depletion matcher (pure) ──

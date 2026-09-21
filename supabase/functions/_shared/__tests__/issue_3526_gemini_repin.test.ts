@@ -403,6 +403,83 @@ Deno.test("#3526 probeGemini's verdict comes from a generation call, not a model
   assertEquals(geminiProbeOk(true, { candidates: [{ content: {} }] }), true);
 });
 
+// issue #3526 P2-5 — the verdict must not depend on a token budget.
+Deno.test("#3526 a candidate-less 200 is judged on evidence, not on maxOutputTokens", () => {
+  // THE FALSE RED: on Gemini 3 thinking counts against maxOutputTokens, so a
+  // healthy API can answer 200 with no `candidates` key at all. The first
+  // version read that as down and would have reddened the tile hourly.
+  // Raising the budget narrows that window and cannot close it.
+  assertEquals(
+    geminiProbeOk(true, {
+      modelVersion: "gemini-3.6-flash",
+      usageMetadata: { promptTokenCount: 3, thoughtsTokenCount: 16, totalTokenCount: 19 },
+    }),
+    true,
+    "a candidate-less 200 whose usage shows the model generated tokens is healthy",
+  );
+  assertEquals(
+    geminiProbeOk(true, { candidates: [{ finishReason: "MAX_TOKENS" }] }),
+    true,
+    "finishReason MAX_TOKENS is the model saying it ran and hit the ceiling",
+  );
+  assertEquals(
+    geminiProbeOk(true, { finishReason: "MAX_TOKENS" }),
+    true,
+    "the same signal at the top level counts too",
+  );
+
+  // …and NONE of that may become a way to pass on absence.
+  assertEquals(
+    geminiProbeOk(true, { modelVersion: "gemini-3.6-flash" }),
+    false,
+    "a modelVersion with no usage is not evidence the model ran",
+  );
+  assertEquals(
+    geminiProbeOk(true, {
+      usageMetadata: { promptTokenCount: 3, totalTokenCount: 19 },
+    }),
+    false,
+    "usage with no modelVersion is not evidence either",
+  );
+  assertEquals(
+    geminiProbeOk(true, {
+      modelVersion: "gemini-3.6-flash",
+      usageMetadata: { promptTokenCount: 3, totalTokenCount: 3 },
+    }),
+    false,
+    "a total equal to the prompt means nothing was generated",
+  );
+  assertEquals(geminiProbeOk(true, { candidates: [] }), false);
+  // The original false green stays rejected however it is dressed up.
+  assertEquals(
+    geminiProbeOk(true, {
+      models: [{ name: "models/gemini-3.6-flash" }],
+      modelVersion: "gemini-3.6-flash",
+      usageMetadata: { promptTokenCount: 1, totalTokenCount: 99 },
+    }),
+    false,
+    "a ListModels-shaped body is never healthy, whatever else it carries",
+  );
+});
+
+// issue #3526 P1-R1 — the admin holds NO dollar amount, including the
+// typed-confirmation threshold, which was the last one.
+Deno.test("#3526 the server publishes every dollar figure the admin renders", () => {
+  const edge = read("../../run-place-intelligence-trial/index.ts");
+  for (
+    const field of [
+      "per_place_cost_usd:",
+      "cost_guard_usd:",
+      "cost_drift_tolerance_usd_per_place:",
+      "cost_review_threshold_usd:",
+    ]
+  ) {
+    assertStringIncludes(edge, field, `buildCostModel must publish ${field}`);
+  }
+  // Both admin read paths carry it.
+  assertEquals((edge.match(/cost_model:\s*buildCostModel\(\)/g) ?? []).length, 2);
+});
+
 Deno.test("#3526 the probe actually posts a generateContent request for the pinned model", () => {
   const code = read("../../api-health-probe/index.ts").replace(/\/\/[^\n]*/g, "");
   assertStringIncludes(
