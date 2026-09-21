@@ -11,11 +11,18 @@
  *
  * THE FIX. `toAccessibleText` builds the spoken string from the SAME
  * `toSegments` output the renderer consumes, so the list markers are gone and
- * the announcement cannot drift from what is on screen. It is applied on all
- * three label sites: the assistant bubble, the user bubble (which renders
- * bullets through the same path), and `SemanticRevealText`'s settled label —
- * the last of which is the COMMON case, because a freshly answered turn reveals
- * before it settles.
+ * the announcement cannot drift from what is on screen. It is applied to the
+ * two label sites this pass owns: the assistant bubble and the user bubble
+ * (which renders bullets through the same path).
+ *
+ * ONE SITE IS DELIBERATELY NOT FIXED HERE, and is reported instead.
+ * `SemanticRevealText`'s settled label carries the same defect, and it is the
+ * COMMON case because a freshly answered turn reveals before it settles. Its
+ * label expression is pinned to the raw `${text}` form by a committed tester
+ * suite (src/hooks/__tests__/issue_3429_ari_turn_scope.tester.adversarial.test.tsx
+ * :145) that this pass's §11 allowlist does not cover, so taking it would mean
+ * editing another agent's adversarial test without a grant. T-4 below proves
+ * the remaining work is a one-expression swap, without freezing the defect.
  *
  * WHY THIS SUITE RENDERS. The defect was invisible to every source-level check
  * in the repo precisely because the renderer was already correct; only the
@@ -25,8 +32,8 @@
  * did.
  *
  * fails-on-revert (proven by TRUE LINE DELETION, never a comment-out): restore
- * any of the three labels to the raw `${text}` form and T-2/T-3/T-4 go red with
- * the literal "- " back in the announcement.
+ * either label to the raw `${text}` form, or delete `toAccessibleText`'s body,
+ * and T-2/T-3 go red with the literal "- " back in the announcement.
  *
  * Adversarial coverage (nested/ordered lists, mixed markers, live-region
  * announcement order) is tester-owned.
@@ -118,22 +125,33 @@ describe("#3429 REWORK-4 N-2 — the spoken bubble carries no list markers", () 
     expect(label).not.toContain("- ");
   });
 
-  it("T-4 a revealing answer — the COMMON case — is clean too", () => {
-    // With `reveal`, ChatBubble hands the label duty to SemanticRevealText, so
-    // fixing only ChatBubble would have left the defect on every fresh answer.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { toAccessibleText: shared } = require("../ChatBubble") as {
-      toAccessibleText: (raw: string) => string;
-    };
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const revealSource: string = require("fs").readFileSync(
+  it("T-4 the reveal path shares ONE helper, so the remaining site is a one-line change", () => {
+    // ChatBubble hands the label duty to SemanticRevealText while a turn is
+    // revealing, and SemanticRevealText's own label is pinned to the raw
+    // `${text}` form by a committed tester suite
+    // (src/hooks/__tests__/issue_3429_ari_turn_scope.tester.adversarial.test.tsx
+    // line 145), which is outside this pass's §11 allowlist. That leg is
+    // therefore REPORTED, not taken. What this asserts is that nothing else
+    // stands in its way: the helper is exported, it is already clean, and the
+    // reveal path renders the SAME segments, so the remaining fix is swapping
+    // one expression. This deliberately does NOT pin the raw form — a test that
+    // froze the defect would block the fix a second time.
+    const source: string = require("fs").readFileSync(
       require("path").join(__dirname, "..", "SemanticRevealText.tsx"),
       "utf8",
     );
-    // The settled label is produced by the shared helper, not by raw text.
-    expect(revealSource).toContain("accessibilityLabel={`Ari said: ${toAccessibleText(text)}`}");
-    expect(revealSource).not.toContain("accessibilityLabel={`Ari said: ${text}`}");
-    expect(shared(ANSWER)).not.toContain("- ");
+    expect(typeof toAccessibleText).toBe("function");
+    expect(toAccessibleText(ANSWER)).not.toContain("- ");
+    // The reveal renders the renderer's segments, so the cleaned label it will
+    // eventually carry describes exactly what it draws.
+    expect(source).toContain("toSegments(text)");
+    // And ChatBubble really does delegate while revealing — which is why the
+    // gap matters: a fresh answer reveals before it settles.
+    const bubble: string = require("fs").readFileSync(
+      require("path").join(__dirname, "..", "ChatBubble.tsx"),
+      "utf8",
+    );
+    expect(bubble).toContain("accessible={!reveal}");
   });
 
   it("T-5 plain prose is untouched, so nothing else changed meaning", () => {
