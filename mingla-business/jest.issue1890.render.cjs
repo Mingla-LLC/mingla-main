@@ -52,6 +52,16 @@ module.exports = {
     // composer, whose overshoot lived in a DIFFERENT property on a DIFFERENT
     // node and was therefore invisible to the Ari proof above.
     "**/__tests__/issue_1890_group_chat_composer_clearance.happy.test.ts",
+    // #3460 [narrow-web-nav-overlap] — the SAME composer-clearance instrument
+    // pointed at the WEB branch of the same `inputWrap` padding. It belongs in
+    // this config rather than a new one: identical harness (react-test-renderer
+    // on the RN preset, `Platform` driven through a Proxy), identical quantity
+    // (the resolved paddingBottom on the mounted wrapper), and #1486's gate
+    // requires every new config to be wired into a workflow — reusing the one
+    // that already runs this instrument is the smaller, safer change. It drives
+    // `useWindowDimensions` instead of the keyboard, so the real
+    // WIDE_DESKTOP_MIN_WIDTH boundary is what decides the branch.
+    "**/__tests__/issue_3460_ari_composer_narrow_web_clearance.happy.test.ts",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|@testing-library|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom)",

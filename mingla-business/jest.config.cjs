@@ -91,6 +91,15 @@ module.exports = {
     // the composer row's resolved paddingBottom plus the offset it passes to the
     // KeyboardAvoidingView. Same config, same reason it must not run here.
     "issue_1890_group_chat_composer_clearance\\.happy\\.test\\.ts$",
+    // #3460 [narrow-web-nav-overlap] implementor happy-path render-proof — the
+    // same instrument as #1890 above, pointed at the WEB width branch of the
+    // same `inputWrap` padding: it drives `useWindowDimensions` across
+    // WIDE_DESKTOP_MIN_WIDTH and reads the resolved paddingBottom off the
+    // mounted tree. Runs under jest.issue1890.render.cjs (RN preset + RTL);
+    // MUST NOT run under this default node/ts-jest config (no RTL installed
+    // here). Named `.happy.test.ts`, so it is NOT covered by the
+    // `\.render\.test\.tsx$` catch-all below.
+    "issue_3460_ari_composer_narrow_web_clearance\\.happy\\.test\\.ts$",
     // #1036 [remove-contrast-chip] tester adversarial WEB render-proof — mounts
     // the REAL ThemeSheet through react-native-web (ReactDOMServer) to assert no
     // contrast-advisory node renders for any seed. Runs under

@@ -842,11 +842,36 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           style={[
             styles.inputWrap,
             {
-              // ORCH-1101 Bug A (screen side): on desktop web there is no soft
-              // keyboard (keyboardHeight stays 0) and no floating BottomNav
-              // capsule (the business web nav is a side rail), so the old
+              // ORCH-1101 Bug A (screen side): on WIDE desktop web there is no
+              // soft keyboard (keyboardHeight stays 0) and no floating BottomNav
+              // capsule (the business web nav is a left side rail), so the old
               // `insets.bottom + BOTTOM_NAV_CLEARANCE_PX` reserved a phantom
-              // 80px gap below the composer. Web → spacing.sm only.
+              // 80px gap below the composer. Wide desktop web → spacing.sm only.
+              //
+              // #3460 [narrow-web-nav-overlap] — that premise is about WIDTH, not
+              // platform, and it was written as `Platform.OS === "web"`, which is
+              // also true for every web viewport UNDER `WIDE_DESKTOP_MIN_WIDTH`
+              // (1024, inclusive). Below 1024 `BottomNav.web.tsx` renders
+              // `MobileWebCapsule` — a floating capsule in `navWrap`
+              // (`position:absolute; bottom:0`, painted after `<Slot/>`) whose
+              // `pointerEvents="box-none"` compiles in react-native-web 0.21.2 to
+              // `<selector> > * { pointer-events: auto }`, so its full-width direct
+              // child captures taps across the whole 80pt band. With only
+              // `spacing.sm` (8pt) of clearance the composer sat INSIDE that band:
+              // `document.elementFromPoint` returned a nav element at 147 of 147
+              // points sampled across the Attach (+) button, the input and Send on
+              // real mobile Safari at 402x714, and real taps never reached the
+              // controls. The clearance therefore follows `isWideDesktop` — the
+              // same hook the nav itself gates on (I-DESKTOP-GATE-VIA-HOOK) — so
+              // narrow web gets the same 80pt capsule clearance native gets, and
+              // >=1024 keeps ORCH-1101's phantom-gap fix byte-for-byte.
+              //
+              // NOT fixed by adding `/ari` to `(tabs)/_layout.tsx`'s
+              // `hideBottomNav` list: `/campaigns/compose` and `/analytics` are
+              // sub-routes a user can back out of, whereas `/ari` IS a top-level
+              // tab (and Website → Edit with Ari redirects INTO it at
+              // `/(tabs)/ari?sitesIntent=edit`), so hiding the capsule there would
+              // strand a phone-web user on a screen with no navigation.
               //
               // Native: when the keyboard is up, this padding IS the composer's
               // position. `inputWrap` carries only paddingHorizontal/paddingTop
@@ -870,7 +895,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               // safe-area inset.
               paddingBottom:
                 Platform.OS === "web"
-                  ? spacing.sm
+                  ? isWideDesktop
+                    ? spacing.sm
+                    // #3460 — narrow web HAS the floating capsule, so it needs the
+                    // same clearance the native branch below reserves.
+                    : Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX
                   // ORCH-1101 ADV-3 checks that the web result precedes the
                   // native clearance term IN THIS EXPRESSION, so the resting
                   // value is spelled out here rather than passed as
