@@ -22,6 +22,10 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { writeAudit } from "./audit.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
+import {
+  isEvidenceHoldCandidate,
+  releaseTicketEvidenceHold,
+} from "./ticketEvidenceHold.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
 import { fireAdConversion } from "./adConversionFire.ts";
 // ISSUE-1326 — the ONE finalize path for a paid NG (Paystack) venue reservation
@@ -232,7 +236,7 @@ export async function handlePaystackChargeSuccess(
   // 3. Lookup the session by the persisted reference.
   const { data: session, error: sessionError } = await supabase
     .from("ticket_checkout_sessions")
-    .select("id, status, order_id, total_cents, currency")
+    .select("id, status, order_id, total_cents, currency, reversal_state")
     .eq("stripe_payment_intent_id", reference)
     .maybeSingle();
   if (sessionError) {
@@ -367,6 +371,30 @@ export async function handlePaystackChargeSuccess(
   const txnId = txn?.id !== undefined && txn?.id !== null
     ? String(txn.id)
     : null;
+  // A checkout held only because an earlier signal lacked evidence completes
+  // the sale now that Paystack's own verified transaction proves it (amount
+  // and currency were checked above). `released` puts the session back in
+  // flight for the finalize below; any other answer keeps the hold and the
+  // finalize below still ends at the refund.
+  if (isEvidenceHoldCandidate(session) && txnId) {
+    const release = await releaseTicketEvidenceHold(supabase, {
+      checkoutSessionId: String(session.id),
+      provider: "paystack",
+      paymentReference: reference,
+      paystackTransactionId: txnId,
+      stripeChargeId: null,
+      observedAccountReference: null,
+      amountCents: verifiedAmount,
+      currency: verifiedCurrency,
+    });
+    if (release.outcome === "refund_kept") {
+      console.warn(
+        "[paystack-webhook] ticket payment hold kept",
+        String(session.id),
+        release.reason,
+      );
+    }
+  }
   const { data: finalized, error: finalizeError } = await supabase.rpc(
       "biz_ticket_checkout_finalize",
     {

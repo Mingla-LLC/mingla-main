@@ -26,6 +26,11 @@ import {
 // deduped with the browser pixel on the shared event_id; idempotent + fail-open).
 import { fireAdConversion } from "./adConversionFire.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
+import {
+  isEvidenceHoldCandidate,
+  releaseTicketEvidenceHold,
+  stripePaymentIntentAmount,
+} from "./ticketEvidenceHold.ts";
 // ORCH-0869 [Tr3 Installment Payments]: discriminator + handlers for
 // installment PaymentIntent events. See SPEC §3.2.3.
 import {
@@ -1456,7 +1461,7 @@ async function handleTicketCheckoutPaymentIntent(
   let { data: session, error: sessionError } = await supabase
     .from("ticket_checkout_sessions")
     .select(
-      "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id, provider_flow",
+      "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id, provider_flow, reversal_state",
     )
     .eq("stripe_payment_intent_id", paymentIntentId)
     .maybeSingle();
@@ -1482,7 +1487,7 @@ async function handleTicketCheckoutPaymentIntent(
       const fallback = await supabase
         .from("ticket_checkout_sessions")
         .select(
-          "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id, provider_flow",
+          "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id, provider_flow, reversal_state",
         )
         .eq("id", mingleCheckoutSessionId)
         .maybeSingle();
@@ -1573,6 +1578,33 @@ async function handleTicketCheckoutPaymentIntent(
       if (persistError) {
         throw new Error(
           `ticket hosted Stripe PI persist failed: ${persistError.message}`,
+        );
+      }
+    }
+    // A checkout held only because an earlier signal lacked evidence (this
+    // is where Stripe's own retry of this event lands) completes the sale
+    // when this event proves it. `released` puts the session back in flight
+    // for the ordinary verify + finalize below; any other answer keeps the
+    // hold, and the same path continues to the refund.
+    const providerAmount = stripePaymentIntentAmount(paymentIntent);
+    if (
+      isEvidenceHoldCandidate(session) && providerAmount && observedChargeId
+    ) {
+      const release = await releaseTicketEvidenceHold(supabase, {
+        checkoutSessionId: String(session.id),
+        provider: "stripe",
+        paymentReference: paymentIntentId,
+        paystackTransactionId: null,
+        stripeChargeId: observedChargeId,
+        observedAccountReference: observedAccount,
+        amountCents: providerAmount.amountCents,
+        currency: providerAmount.currency,
+      });
+      if (release.outcome === "refund_kept") {
+        console.warn(
+          "[stripe-webhook] ticket payment hold kept",
+          session.id,
+          release.reason,
         );
       }
     }
