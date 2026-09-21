@@ -532,12 +532,21 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // Web has no soft keyboard, so this is 0 there and nothing changes.
   const composerRestingOccupiedPx =
     Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX;
+  // ORCH-1890 — THE keyboard-open lift site. There is exactly one in this file,
+  // and both consumers below read it: the composer's own bottom padding and the
+  // empty-state clamp. Two sites is not a style problem — rule (E) of the
+  // keyboard gate matches with a NON-GLOBAL regex, so it validates the FIRST
+  // site and never sees a second, and REWORK-2's clamp site sat unguarded
+  // behind exactly that blind spot until the #1890 singularity suite caught it.
+  // Do NOT add a measured pill height to this: it positions the pill's bottom
+  // edge, so any pill-height term is the double count #1890 removed.
+  const composerOccupiedPx =
+    keyboardHeight > 0
+      ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
+      : composerRestingOccupiedPx;
   const emptyHeroComposerClamp = Math.max(
     0,
-    (keyboardHeight > 0
-      ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
-      : composerRestingOccupiedPx) +
-      spacing.sm - composerRestingOccupiedPx,
+    composerOccupiedPx + spacing.sm - composerRestingOccupiedPx,
   );
   // #3429 REWORK-4 N-1 — the hero's drop order is EmptyState's to enforce, and
   // this is the only number it needs from the screen.
@@ -845,9 +854,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               paddingBottom:
                 Platform.OS === "web"
                   ? spacing.sm
-                  : keyboardHeight > 0
-                    ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
-                    : Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX,
+                  : composerOccupiedPx,
             },
           ]}
         >

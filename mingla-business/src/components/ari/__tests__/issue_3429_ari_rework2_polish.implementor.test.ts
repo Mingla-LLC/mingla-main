@@ -270,11 +270,27 @@ describe("#3429 R2 R-2 — the empty state never sits under the composer", () =>
 
   const clampExpression = shippedExpression(screen, "emptyHeroComposerClamp");
   const restingExpression = shippedExpression(screen, "composerRestingOccupiedPx");
+  // [TEST-MOD-APPROVED #3429] ORCH-1890: the keyboard-open lift was hoisted out
+  // of the clamp into ONE named site that both the composer's padding and the
+  // clamp read. It had to be: rule (E) of the keyboard gate matches with a
+  // NON-GLOBAL regex, so it validates the FIRST lift site and never sees a
+  // second — the clamp's own site was unguarded from REWORK-2 until the #1890
+  // singularity suite caught it. These assertions follow the lift to where it
+  // now lives instead of being relaxed; the tokens are still required, and the
+  // clamp must still be DERIVED from that site rather than re-deriving it.
+  const occupiedExpression = shippedExpression(screen, "composerOccupiedPx");
 
-  it("the clamp is derived from the keyboard, not a constant", () => {
-    expect(clampExpression).toContain("keyboardHeight");
-    expect(clampExpression).toContain("DONE_BAR_OCCUPIED");
-    expect(clampExpression).toContain("MIN_VISIBLE_CLEARANCE");
+  it("the lift is derived from the keyboard, not a constant", () => {
+    expect(occupiedExpression).toContain("keyboardHeight");
+    expect(occupiedExpression).toContain("DONE_BAR_OCCUPIED");
+    expect(occupiedExpression).toContain("MIN_VISIBLE_CLEARANCE");
+  });
+
+  it("the clamp reads that ONE lift site rather than re-deriving it", () => {
+    expect(clampExpression).toContain("composerOccupiedPx");
+    // If the clamp re-derived the lift it would be a second site, which is the
+    // blind spot above.
+    expect(clampExpression).not.toContain("keyboardHeight");
   });
 
   for (const device of devices) {
@@ -298,19 +314,24 @@ describe("#3429 R2 R-2 — the empty state never sits under the composer", () =>
             Math,
           };
           const composerRestingOccupiedPx = evaluate(restingExpression, scope);
+          // Evaluate the shipped lift, then the shipped clamp that reads it —
+          // both from source, so the arithmetic under test is the arithmetic
+          // that ships.
+          const composerOccupiedPx = evaluate(occupiedExpression, {
+            ...scope,
+            composerRestingOccupiedPx,
+          });
           const clamp = evaluate(clampExpression, {
             ...scope,
             composerRestingOccupiedPx,
+            composerOccupiedPx,
           });
 
           // What the screen actually renders, as distances from the bottom of
           // the chat column. `inputWrap`'s paddingBottom places the composer
           // pill's BOTTOM edge; the column grows upward from there, under
           // `inputWrap`'s own paddingTop of spacing.sm.
-          const composerTopInset = (keyboardHeight > 0
-            ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
-            : Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX) +
-            composerContentHeight + spacing.sm;
+          const composerTopInset = composerOccupiedPx + composerContentHeight + spacing.sm;
           // The overlay's keyboard-INDEPENDENT padding (the no-jump contract),
           // plus the clamp applied to the scroll viewport inside it.
           const heroRestingInset = Math.max(insets.bottom, spacing.md) +
