@@ -204,17 +204,34 @@ const SCANNED_EXTENSIONS = [
   ".json", ".sql",
 ];
 
-// Extensions that legitimately carry no code. Everything else under a scanned
-// root must be in SCANNED_EXTENSIONS or the gate fails — see checkScanCoverage.
+// Extensions that legitimately carry no code — CAPPED, and every entry earns
+// its place by actually existing under a scanned root.
+//
+// issue #3526 — the first version of this list exempted 26 extensions when the
+// rebase forced exactly one. That is the shape this gate refused two rounds ago
+// for ADMIN_COST_EXEMPT and it deserved the same answer: an allowlist without a
+// ceiling is a blind spot with a comment on it, and 25 speculative entries mean
+// the next real extension slides in under a default instead of being argued.
+//
+// THE PRINCIPLE for exempting a binary at all: a rate literal or a model string
+// hidden in one is unreachable — neither Vite nor Deno will import a `.pdf` as
+// a module, so nothing this gate guards can live there. That is why binary
+// FIXTURES are safe to skip, and why this list may never grow to cover a format
+// that IS importable.
+//
+// Measured against both roots: these five are what exist. A sixth fails
+// NON_SOURCE_EXTENSION_CAP, which makes it a visible, argued diff.
 const NON_SOURCE_EXTENSIONS = new Set([
-  ".md", ".svg", ".css", ".sh", ".png", ".jpg", ".jpeg", ".gif", ".webp",
-  ".ico", ".txt", ".yml", ".yaml", ".lock", ".snap", ".map", ".woff", ".woff2",
-  // issue #3526 — `.pdf` arrived with #3429's Ari file-attachment fixtures on
-  // the first rebase after G-6 shipped, and G-6 reported it by itself rather
-  // than silently widening the blind spot. Binary test fixtures; no code.
-  ".pdf", ".zip", ".gz", ".mp4", ".mov", ".webm", ".mp3", ".wav", ".ttf", ".otf",
-  ".eot", ".bmp", ".avif", ".heic", ".pem", ".der", ".bin",
+  ".md",   // README/notes beside functions
+  ".sh",   // shell helper, not a module this gate reads
+  ".svg",  // admin icon asset
+  ".css",  // admin stylesheet
+  // Arrived with #3429's Ari file-attachment fixtures on the first rebase after
+  // G-6 shipped — and G-6 reported it ITSELF rather than widening quietly.
+  // Binary test fixtures; unreachable as modules per the principle above.
+  ".pdf",
 ]);
+const NON_SOURCE_EXTENSION_CAP = 5;
 
 /**
  * Every file under `dir`, regardless of extension. `walk()` answers "what does
@@ -510,6 +527,18 @@ export function checkAdminCostOwnership(files) {
  */
 export function checkScanCoverage(roots) {
   const failures = [];
+  // issue #3526 — the cap is the control that keeps "this carries no code" an
+  // argued exception instead of a default. Same discipline as
+  // ADMIN_COST_EXEMPT_CAP: growing the list has to move a number, visibly, not
+  // slip in a line under a comment.
+  if (NON_SOURCE_EXTENSIONS.size > NON_SOURCE_EXTENSION_CAP) {
+    failures.push(
+      `G-6: NON_SOURCE_EXTENSIONS holds ${NON_SOURCE_EXTENSIONS.size} entries, ` +
+      `cap is ${NON_SOURCE_EXTENSION_CAP}. Every entry is an extension this ` +
+      `gate is blind to. Exempt only what a scanned root actually contains, ` +
+      `and raise the cap deliberately when it does.`,
+    );
+  }
   for (const { label, dir } of roots) {
     if (!existsSync(dir)) continue;
     const missed = new Map();
