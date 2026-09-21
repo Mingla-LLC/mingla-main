@@ -109,6 +109,48 @@ export const CHECKOUT_PAYMENT_MISMATCH_MESSAGE =
 export const CHECKOUT_AWAITING_CONFIRMATION_MESSAGE =
   "Paystack hasn't confirmed this payment yet. If you completed it, your tickets will arrive here and by email within a few minutes — don't pay again. If nothing arrives, contact support@usemingla.com.";
 
+// ---------------------------------------------------------------------------
+// The CONFIRMATION verdict — the buyer has paid (or may have) and the server
+// has answered whether tickets exist.
+//
+// A THIRD codomain, deliberately kept out of both arrays above and below:
+//   • NATIVE_CHECKOUT_MESSAGES' walkers pin the create-refusal wording
+//     ("you have not been charged") on every member — the exact clause this
+//     verdict must not carry;
+//   • NATIVE_PAYSTACK_RETURN_MESSAGES is pinned as the EXACT codomain of
+//     `nativePaystackReturnMessage`, and nothing here is returned by it.
+// ---------------------------------------------------------------------------
+
+/**
+ * A `checkout_unavailable` refusal on the RETURN leg — `ticket-checkout-status`
+ * at HTTP 409 (the sale was revoked, or the payment is being reversed), and the
+ * same token at HTTP 200 from #2198's verifier, which is reached ONLY on
+ * `paid_reversal_pending`: there, the guest definitely paid.
+ *
+ * So this arm cannot borrow CHECKOUT_UNAVAILABLE_MESSAGE. That sentence ends
+ * "You have not been charged", which is true of the CREATE refusal it was
+ * written for and false here. It cannot promise a refund either: #2079 makes
+ * two of the three server refusals a NON-EXECUTABLE obligation a person
+ * resolves, and that resolution may complete the sale instead of reversing it.
+ *
+ * What is true on every arm: no tickets, nobody should pay again, and a person
+ * can reach us. That is all this says — in the same words the buyer web
+ * confirmation screen uses.
+ */
+export const CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE =
+  "We couldn't issue your tickets for this sale. If your payment went through, we're sorting it out and will email you — please don't pay again. Contact support@usemingla.com and we'll pick it up from there.";
+
+/**
+ * Every confirmation-verdict string, so a test can walk them. A THIRD array,
+ * deliberately outside both pinned ones: NATIVE_CHECKOUT_MESSAGES' walkers
+ * require "you have not been charged" on every member, and
+ * NATIVE_PAYSTACK_RETURN_MESSAGES is pinned as the EXACT codomain of
+ * `nativePaystackReturnMessage`, which never returns this.
+ */
+export const NATIVE_CONFIRMATION_VERDICT_MESSAGES: readonly string[] = [
+  CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
+];
+
 /** Every constant this module owns, in one place, so a test can walk them. */
 export const NATIVE_CHECKOUT_MESSAGES: readonly string[] = [
   CHECKOUT_IN_PROGRESS_MESSAGE,
@@ -133,7 +175,8 @@ export const NATIVE_CHECKOUT_MESSAGES: readonly string[] = [
  * CHECKOUT_UNAVAILABLE_MESSAGE appears in BOTH arrays on purpose: it is the
  * `paid_reversal_pending` arm's copy here (#1930 — the sale moved under the
  * charge) and the `checkout_unavailable` create-refusal there. Same sentence,
- * two rails.
+ * two rails — which is precisely the flaw the flow now routes around; see the
+ * note on that table entry.
  */
 export const NATIVE_PAYSTACK_RETURN_MESSAGES: readonly string[] = [
   CHECKOUT_ABANDONED_MESSAGE,
@@ -283,6 +326,29 @@ const PAYSTACK_RETURN_MESSAGE_BY_CODE: Readonly<Record<string, string>> =
     paystack_charge_failed: CHECKOUT_PAYMENT_FAILED_MESSAGE,
     paystack_payment_mismatch: CHECKOUT_PAYMENT_MISMATCH_MESSAGE,
     // #1930 — `paid_reversal_pending`: current-sale truth moved under the charge.
+    //
+    // #3500 — this entry is NO LONGER REACHED from the CONSUMER return leg. The
+    // flow now classifies a `checkout_unavailable` answer as a REFUSAL before it
+    // reaches this mapper (`readCheckoutStatusOnce`), because the sentence this
+    // resolves to ends "You have not been charged" — true of the create refusal
+    // it was written for, and false for the one guest this arm describes, who
+    // has paid. It is kept only as this mapper's totality fallback.
+    //
+    // KNOWN RESIDUE, left deliberately after a scoped correction was authorised
+    // and found to be unconfinable. Repointing THIS line is a three-file change,
+    // not a one-line one:
+    //   1. the business app mirrors this mapper in
+    //      `mingla-business/src/payments/nativeCheckoutFlow.native.ts`, with the
+    //      same token, the same sentence and the same defect — and, unlike this
+    //      app after #3500, it never reads the 409 at all;
+    //   2. TA-2 in `issue_2264_return_leg_hostile_inputs.tester_adversarial`
+    //      asserts the two apps route all four codes to the SAME constant, so
+    //      this one cannot move on its own;
+    //   3. its `consumerConstantName` map and the byte-identical CONSTANTS check
+    //      in `native_checkout_flow_parity` would both need the new constant,
+    //      and the business file would have to keep its now-dead
+    //      CHECKOUT_UNAVAILABLE_MESSAGE declared purely to satisfy that check.
+    // Fix both apps together, under [TEST-MOD-APPROVED #3500], or not at all.
     checkout_unavailable: CHECKOUT_UNAVAILABLE_MESSAGE,
   });
 
