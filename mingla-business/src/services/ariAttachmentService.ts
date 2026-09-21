@@ -4,6 +4,7 @@ import { Linking, Platform } from "react-native";
 
 import type { AriPickedFile } from "../components/ari/ariAttachmentPickerShared";
 import { readAriAttachmentBytes } from "./ariAttachmentFileReader";
+import { openExternal } from "./guestFunnelLink";
 import { supabase } from "./supabase";
 
 export const ARI_ATTACHMENT_MAX_FILES = 5;
@@ -310,7 +311,14 @@ export async function openAriAttachment(attachmentId: string): Promise<void> {
   );
   if (error || !data?.signed_url) throw new Error("Couldn’t open that attachment.");
   if (Platform.OS === "web" && typeof window !== "undefined") {
-    window.open(data.signed_url, "_blank", "noopener,noreferrer");
+    // ORCH-1381: this package's `openExternal` is the ONE owner of opening an
+    // external destination. Re-rolling `window.open(dest, "_blank",
+    // "noopener,noreferrer")` here reshipped the trap that owner exists to
+    // avoid — either token makes `open()` return null even when it SUCCEEDED,
+    // so the fallback fires on every tap and the page double-navigates. The
+    // owner opens bare, severs `win.opener` to keep the security property, and
+    // falls back only when the open genuinely failed.
+    openExternal(data.signed_url);
     return;
   }
   await Linking.openURL(data.signed_url);
