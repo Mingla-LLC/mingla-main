@@ -213,9 +213,25 @@ describe("issue #3280 gallery add gate (source wiring: the same-session case)", 
     expect(callbackBody("pickImageOrGifCover", "pickVideoCover")).toContain(
       "if (uploading || galleryUploading || disabled || activeVideoUpload) return;",
     );
-    expect(callbackBody("pickVideoCover", "cancelVideoCoverUpload")).toMatch(
-      /if \(uploading \|\| galleryUploading \|\| disabled \|\|/,
-    );
+    // [TEST-MOD-APPROVED #3485] This used to pin the literal one-line guard
+    //   `if (uploading || galleryUploading || disabled || (lockedVideoOperation …)) return;`
+    // — and #3485 proved that line wrong, so the assertion was pinning the
+    // defect. `uploading` is not "a picker is open": `pickVideoCover` sets it and
+    // then awaits `videoUpload.start`, which awaits the processing watch, so the
+    // flag is held for the WHOLE job. Replace -> "Choose replacement" was
+    // therefore a dead tap for exactly the 32-minute provider stall a host needs
+    // to escape (filmed on a Release build 2026-09-20). The busy rule moved into
+    // the pure `videoPickRefusal`, which lets a REPLACE past an in-flight
+    // upload/encode and still blocks a second picker launch.
+    //
+    // #3280's own contract is unchanged and is what is asserted now: the VIDEO
+    // pick still treats an in-flight gallery upload as cover-busy, and still
+    // reads the picker-wide flag — they are just passed to the gate as named
+    // inputs instead of OR-ed into one silent return.
+    const videoGuard = callbackBody("pickVideoCover", "cancelVideoCoverUpload");
+    expect(videoGuard).toContain("videoPickRefusal({");
+    expect(videoGuard).toContain("galleryUploading,");
+    expect(videoGuard).toContain("coverUploading: uploading,");
     expect(callbackBody("retryVideoCoverUpload", "loadTrending")).toContain("galleryUploading");
     // The Image / Video / Remove / retry buttons get the merged busy flag.
     expect(executable(coverPickerSource)).toContain("uploading={uploading || galleryUploading}");

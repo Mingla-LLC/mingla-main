@@ -110,6 +110,13 @@ export interface StepBodyProps {
   /** Lets parent flows block publish/save while a video cover is still processing. */
   onCoverVideoProcessingChange?: (isProcessing: boolean) => void;
   /**
+   * The parent's copy of that same flag, handed back so the Cover step can show
+   * "Processing video…" on its card after the host closes the cover sheet. The
+   * sheet (and its own progress UI) unmounts on close while the video keeps
+   * processing; without this the card fell back to the empty placeholder.
+   */
+  coverVideoProcessing?: boolean;
+  /**
    * META-ORCH-1059 — when true, the recurring "Ends" picker offers a third
    * "Never ends" option (open-ended recurrence). Only the EXPERIENCE wizard
    * passes this; events still require a bounded end (count<=52 / until-date).

@@ -93,3 +93,45 @@ export const partyTypeLabel = (slug: string): string =>
     .filter((w) => w.length > 0)
     .map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w))
     .join(" ");
+
+export interface RsvpMomentumSubLabelOptions {
+  /** events.rsvp_waitlist_enabled — when known to be OFF a full list reads "Full". */
+  waitlistEnabled?: boolean;
+}
+
+/**
+ * The sub-line the public RSVP card actually renders. Starts from
+ * `deriveMomentum` (the one owner of the momentum model) and adds what a guest
+ * needs that the model's zero-state leaves out:
+ *
+ *   goingCount=0 + capacity N → "Be the first to RSVP · N spots"
+ *     The page used to say only "Be the first to RSVP" under an empty meter, so
+ *     a guest never learned an 80-person event HAD 80 spots. Callers pass the
+ *     DISPLAY capacity (null under "Hide the spots-left count"), so a host who
+ *     hides the count still gets the bare line.
+ *   full + waitlist known OFF → "Full"
+ *     "Full · waitlist open" promised a waitlist the host had switched off.
+ *
+ * Every other state returns `deriveMomentum`'s sub-line unchanged.
+ */
+export const rsvpMomentumSubLabel = (
+  goingCount: number,
+  displayCapacity: number | null,
+  options: RsvpMomentumSubLabelOptions = {},
+): string => {
+  const model = deriveMomentum(goingCount, displayCapacity);
+  const cap =
+    displayCapacity !== null && Number.isFinite(displayCapacity) && displayCapacity > 0
+      ? Math.floor(displayCapacity)
+      : null;
+  if (!model.hasGoing) {
+    return cap === null
+      ? model.subLabel
+      : `${model.subLabel} · ${cap} ${cap === 1 ? "spot" : "spots"}`;
+  }
+  const spotsLeft = cap === null ? null : cap - Math.floor(goingCount);
+  if (spotsLeft !== null && spotsLeft <= 0 && options.waitlistEnabled === false) {
+    return "Full";
+  }
+  return model.subLabel;
+};

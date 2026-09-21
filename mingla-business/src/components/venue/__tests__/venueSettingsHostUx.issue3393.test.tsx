@@ -1,9 +1,10 @@
 /**
  * #3393 umbrella — venue Settings and suite-shell fixes from the tutorial prep.
  *
- *   #3386 — "Edit venue details" no longer opens the BRAND page. The host is
- *           told which details they change themselves, and "Request a change"
- *           opens a prefilled email to Mingla support naming this venue.
+ *   #3386 — "Edit venue details" no longer opens the BRAND page. Seth's
+ *           2026-09-15 decision turned the card into a real editor
+ *           (VenueDetailsEditor, proven in venueDetailsEditor.issue3386.test.tsx);
+ *           "Request a change" survives there only as the fallback.
  *   #3385 — "Edit photos & details" tells deck readiness it came from the
  *           venue (`from=venue`), so Save returns here.
  *   #3389 — the suite shell no longer bounces a `?module=tables` deep link to
@@ -108,6 +109,11 @@ jest.mock("../../ui/BrandSwitch", () => ({ __esModule: true, BrandSwitch: mockHo
 jest.mock("../../ui/GlassCard", () => ({ __esModule: true, GlassCard: mockHost("GlassCard") }));
 jest.mock("../../ui/Input", () => ({ __esModule: true, Input: mockHost("Input") }));
 jest.mock("../BrandHoursEditor", () => ({ __esModule: true, BrandHoursEditor: () => null }));
+// #3386 — the Venue details card renders the editor; its behaviour has its own suite.
+jest.mock("../VenueDetailsEditor", () => ({
+  __esModule: true,
+  VenueDetailsEditor: mockHost("VenueDetailsEditor"),
+}));
 jest.mock("../../../wrappers/SmartScrollView", () => ({
   __esModule: true,
   ScrollView: mockHost("ScrollView"),
@@ -207,49 +213,25 @@ describe("#3386 — Edit venue details never opens the brand page", () => {
     expect(query.get("subject")).toBe("Change venue details: my venue");
   });
 
-  test("Request a change opens the email and pushes no brand route", async () => {
-    const openURL = jest
-      .spyOn(Linking, "openURL")
-      .mockImplementation(() => Promise.resolve(true));
+  test("the Venue details card is this venue's editor and pushes no brand route", async () => {
     const tree = await mount(
       <VenueSettingsModule brandId="brand-3393" venueId="venue-3393" />,
     );
-    const button = byTestId(tree.root, "venue-settings-edit-details");
-    expect(button.props.label).toBe("Request a change");
-    await TestRenderer.act(async () => {
-      (button.props.onPress as () => void)();
-    });
-    expect(openURL).toHaveBeenCalledTimes(1);
-    expect(String(openURL.mock.calls[0][0])).toBe(
-      venueDetailsChangeRequestUrl({
-        venueId: "venue-3393",
-        venueName: "Rooftop Kitchen",
-      }),
-    );
+    const editors = tree.root.findAll((n) => n.type === "VenueDetailsEditor");
+    expect(editors).toHaveLength(1);
+    expect(editors[0].props.venueId).toBe("venue-3393");
+    expect(editors[0].props.brandId).toBe("brand-3393");
+    expect(editors[0].props.canMutate).toBe(true);
+    // `venue-settings-edit-details` now wraps the editor, never a button that
+    // pushes `/brand/{id}`.
+    const details = byTestId(tree.root, "venue-settings-edit-details");
+    expect(details.props.onPress).toBeUndefined();
+    expect(details.findAll((n) => n.type === "VenueDetailsEditor")).toHaveLength(1);
     for (const [href] of mockPush.mock.calls) {
       expect(href.startsWith("/brand/")).toBe(false);
     }
-    const checked = flatText(byTestId(tree.root, "venue-settings-details-checked"));
-    expect(checked).toContain(VENUE_DETAILS_SUPPORT_EMAIL);
-    openURL.mockRestore();
-    await TestRenderer.act(async () => tree.unmount());
-  });
-
-  test("if no mail app opens, the host is told and given the address", async () => {
-    const openURL = jest
-      .spyOn(Linking, "openURL")
-      .mockImplementation(() => Promise.reject(new Error("no handler")));
-    const tree = await mount(
-      <VenueSettingsModule brandId="brand-3393" venueId="venue-3393" />,
-    );
-    await TestRenderer.act(async () => {
-      (byTestId(tree.root, "venue-settings-edit-details").props.onPress as () => void)();
-    });
-    const failure = flatText(
-      byTestId(tree.root, "venue-settings-details-request-failed"),
-    );
-    expect(failure).toContain(VENUE_DETAILS_SUPPORT_EMAIL);
-    openURL.mockRestore();
+    const selfServe = flatText(byTestId(tree.root, "venue-settings-details-self-serve"));
+    expect(selfServe).toContain("Edit photos");
     await TestRenderer.act(async () => tree.unmount());
   });
 });
