@@ -823,6 +823,66 @@ BEGIN
     RAISE EXCEPTION 'evidence hold 10(b): the reopen duplicated the obligation: %',v_reopen;
   END IF;
 
+  -- (c) A reopened obligation must also HARD-FAIL its session, or the buyer can
+  -- keep the ticket AND the refund. The release had put the session back in
+  -- flight with a live expires_at. reconcile-stuck-checkouts batches on
+  -- status IN (processing_payment, awaiting_web_redirect, requires_payment,
+  -- pending_free), so a session left in flight is picked up and finalized into
+  -- a real ticket the moment the organiser re-enables the sale — while this
+  -- refund also pays, because nothing cancels a refund on mint and
+  -- issue_1930_claim_revocations only claims queued / failed_retryable /
+  -- provider_unknown. DELETE the session UPDATE from the reopen branch and
+  -- every assertion below fails.
+  IF NOT EXISTS(SELECT 1 FROM public.ticket_checkout_sessions WHERE id=i
+       AND status='failed' AND reversal_state='paid_reversal_pending'
+       AND failed_at IS NOT NULL AND order_id IS NULL) THEN
+    RAISE EXCEPTION 'evidence hold 10(c): a reopened obligation left its session finalizable';
+  END IF;
+  IF EXISTS(SELECT 1 FROM public.ticket_checkout_sessions WHERE id=i
+       AND status IN ('processing_payment','awaiting_web_redirect','requires_payment','pending_free')) THEN
+    RAISE EXCEPTION 'evidence hold 10(c): the reconcile sweep can still batch this session';
+  END IF;
+  -- The seat goes back to the sale rather than being held by a dead session.
+  v_held:=public.issue_2491_derived_held('e71d0000-0000-4000-8000-000000000013');
+  IF v_held<>0 THEN
+    RAISE EXCEPTION 'evidence hold 10(c): a failed session still holds its seat (held=%)',v_held;
+  END IF;
+  -- And the sale recovering does NOT let it mint: this is the exact sequence
+  -- the sweep would drive — organiser re-enables the ticket type, then finalize
+  -- runs again on the same paid session.
+  IF public.issue_1930_ticket_session_authorized(i,'e71d0000-0000-4000-8000-000000000011') THEN
+    RAISE EXCEPTION 'evidence hold 10(c): a reopened session is still authorized to mint';
+  END IF;
+  v_order:=public.biz_ticket_checkout_finalize(i,'pi_evidenceI','ch_evidenceI','card',v_pepper);
+  IF v_order->>'orderId' IS NOT NULL
+     OR EXISTS(SELECT 1 FROM public.orders WHERE checkout_session_id=i)
+     OR EXISTS(SELECT 1 FROM public.tickets t JOIN public.orders o ON o.id=t.order_id
+       WHERE o.checkout_session_id=i) THEN
+    RAISE EXCEPTION 'evidence hold 10(c): a recovered sale minted a ticket for a refunded buyer: %',v_order;
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=i
+       AND financial_state='pending' AND buyer_state='queued') THEN
+    RAISE EXCEPTION 'evidence hold 10(c): the reopened refund did not survive the recovered sale';
+  END IF;
+
+  -- (d) Two reopens inside the same second must both leave an audit record.
+  -- The key used to carry a second-granularity clock_timestamp(), so the second
+  -- one hit ON CONFLICT DO NOTHING and vanished while still flipping state.
+  UPDATE public.source_refunds SET financial_state='reconciled',buyer_state='needs_attention',
+    last_error_code='sale_completed_no_refund_due',lease_owner=NULL,leased_at=NULL
+    WHERE source_id=i;
+  UPDATE public.ticket_checkout_sessions SET status='processing_payment',reversal_state='none',
+    failed_at=NULL,expires_at=now()+interval '15 minutes' WHERE id=i;
+  v_reopen:=public.issue_1930_mint_ticket_late_reversal(i,'stripe','pi_evidenceI',NULL,'ch_evidenceI');
+  IF v_reopen->>'outcome'<>'reopened' THEN
+    RAISE EXCEPTION 'evidence hold 10(d): the second retirement was not reopened: %',v_reopen;
+  END IF;
+  IF (SELECT count(DISTINCT e.event_key) FROM public.source_refund_events e
+      JOIN public.source_refunds r ON r.id=e.refund_id
+      WHERE r.source_id=i AND e.safe_reason_code='sale_not_completed_after_release')<>2 THEN
+    RAISE EXCEPTION 'evidence hold 10(d): a reopen inside the same second lost its audit record';
+  END IF;
+
   -- ── 9. Service role only ──────────────────────────────────────────────────
   IF has_function_privilege('anon',
       'public.release_ticket_checkout_evidence_hold(uuid,text,text,text,text,text,bigint,text)','EXECUTE')

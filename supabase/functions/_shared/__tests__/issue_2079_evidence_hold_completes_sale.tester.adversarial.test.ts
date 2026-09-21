@@ -512,4 +512,21 @@ Deno.test("#2079 ADV a release that does not end in a sale still owes the buyer"
   assert(
     window.includes("v_existing.provider_payment_reference=p_payment_reference"),
   );
+  // And it must HARD-FAIL the session. The release left it in flight with a
+  // live expires_at; reconcile-stuck-checkouts batches exactly those statuses,
+  // so a session left live is finalized into a real ticket once the sale
+  // recovers — while this refund also pays. Nothing cancels a refund on mint.
+  const upTo = migration.slice(reopen, migration.indexOf("'outcome','reopened'", reopen));
+  assert(
+    upTo.includes(
+      "UPDATE public.ticket_checkout_sessions SET reversal_state='paid_reversal_pending',",
+    ) && upTo.includes("status='failed'") &&
+      upTo.includes("WHERE id=v_session.id AND order_id IS NULL"),
+    "a reopened obligation leaves its session finalizable — the buyer can keep the ticket and the refund",
+  );
+  // The audit key must be unique per reopen, not second-granularity.
+  assert(
+    !/evidence-hold-reopened:[\s\S]{0,160}extract\(epoch/.test(migration),
+    "two reopens in the same second silently drop one audit record",
+  );
 });

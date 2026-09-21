@@ -428,7 +428,7 @@ BEGIN
       INSERT INTO public.source_refund_events(refund_id,event_key,event_type,from_state,to_state,
         amount_observed_cents,safe_reason_code,actor_type,safe_payload)
       VALUES(v_existing.id,'evidence-hold-reopened:'||v_existing.id||':'||
-        extract(epoch FROM clock_timestamp())::bigint,'requested','reconciled','queued',
+        gen_random_uuid(),'requested','reconciled','queued',
         0,'sale_not_completed_after_release','system',
         jsonb_build_object('checkoutSessionId',v_session.id,'provider',p_provider))
       ON CONFLICT(event_key) DO NOTHING;
@@ -436,6 +436,20 @@ BEGIN
         ops_status='none',ops_note=NULL,last_error_code=NULL,last_error_public=NULL,
         lease_owner=NULL,leased_at=NULL,next_retry_at=NULL,updated_at=now()
       WHERE id=v_existing.id;
+      -- The session must be HARD-FAILED, exactly as the fresh-create path below
+      -- does it. The release had put it back in flight with a live expires_at;
+      -- leaving it there means reconcile-stuck-checkouts can still pick it up
+      -- (its batch is status IN processing_payment/awaiting_web_redirect/
+      -- requires_payment/pending_free) and finalize it into a real ticket once
+      -- the organiser re-enables the sale, while this refund also pays —
+      -- the buyer keeps the ticket AND the money. Nothing in the codebase
+      -- cancels a refund on mint, and the revocation outbox cannot save it
+      -- either, because issue_1930_claim_revocations claims only queued /
+      -- failed_retryable / provider_unknown. Failing the session also returns
+      -- the seat. `order_id IS NULL` keeps a sale that DID complete untouched.
+      UPDATE public.ticket_checkout_sessions SET reversal_state='paid_reversal_pending',
+        status='failed',failed_at=COALESCE(failed_at,now()),updated_at=now()
+      WHERE id=v_session.id AND order_id IS NULL;
       UPDATE public.ticket_checkout_provider_attempts SET state='paid_reversal_pending',updated_at=now()
       WHERE id=v_session.provider_attempt_id AND state<>'paid_reversed';
       UPDATE public.checkout_sale_revocation_outbox SET state='paid_reversal_pending',

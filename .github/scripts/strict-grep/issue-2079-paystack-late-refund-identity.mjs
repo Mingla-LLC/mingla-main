@@ -66,6 +66,19 @@ const check = (s) => {
   if (!s.evidence.includes("'sale_not_completed_after_release'") || !s.evidence.includes("'outcome','reopened'")) {
     fail("a retired obligation can be swallowed when the finalize after a release fails");
   }
+  // A reopened obligation must hard-fail its session, or a recovered sale can
+  // still mint a ticket for a buyer who is also being refunded.
+  const reopenAt = s.evidence.indexOf("'sale_not_completed_after_release'");
+  const reopenEnd = s.evidence.indexOf("'outcome','reopened'", reopenAt);
+  const reopenBody = s.evidence.slice(reopenAt, reopenEnd);
+  if (!reopenBody.includes("UPDATE public.ticket_checkout_sessions SET reversal_state='paid_reversal_pending',")
+      || !reopenBody.includes("status='failed'")
+      || !reopenBody.includes("WHERE id=v_session.id AND order_id IS NULL")) {
+    fail("a reopened obligation leaves its session finalizable — the buyer can keep the ticket and the refund");
+  }
+  if (/evidence-hold-reopened:[\s\S]{0,160}extract\(epoch/.test(s.evidence)) {
+    fail("the reopen audit key is second-granularity; a second reopen in the same second is silently dropped");
+  }
   const guardLoop = s.evidence.indexOf("FOR v_refund IN");
   const refundRetire = s.evidence.indexOf("UPDATE public.source_refunds SET\n    financial_state='reconciled'", guardLoop);
   if (guardLoop < 0 || refundRetire < guardLoop) fail("refunds are retired before they are proven untouched");
@@ -110,6 +123,8 @@ if (process.argv.includes("--self-test")) {
     ["evidence", "INSERT INTO public.source_refund_events(", "INSERT INTO public.source_refund_events_removed("],
     ["evidence", "expires_at=now()+GREATEST(v_session.expires_at-v_session.created_at,interval '0'),\n", ""],
     ["evidence", "'sale_not_completed_after_release'", "'sale_completed_no_refund_due'"],
+    ["evidence", "      UPDATE public.ticket_checkout_sessions SET reversal_state='paid_reversal_pending',\n        status='failed',failed_at=COALESCE(failed_at,now()),updated_at=now()\n      WHERE id=v_session.id AND order_id IS NULL;\n", ""],
+    ["evidence", "gen_random_uuid(),'requested','reconciled','queued',", "extract(epoch FROM clock_timestamp())::bigint,'requested','reconciled','queued',"],
     ["confirm", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],
     ["webhook", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],
     ["paystackWebhook", "releaseTicketEvidenceHold(", "skipTicketEvidenceHold("],
