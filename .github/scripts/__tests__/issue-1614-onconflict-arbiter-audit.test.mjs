@@ -36,7 +36,26 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //   +  1  #1983 business_notification_type_preferences (user_id,channel,type)
   //          — supabase/functions/_shared/agentDomainTools.ts updateNotificationPrefs
   //            (Host hook already counted; this is the Ari call site)
-  //   = 89
+  //   +  1  #3429 agent_attachment_cleanup_jobs (storage_path)
+  //          — supabase/functions/_shared/agentAttachmentFinalize.ts:501
+  //   +  1  #3429 agent_turn_claim_guards (user_id,client_turn_id)
+  //          — supabase/functions/agent-turn-control/index.ts:95
+  //   = 91
+  //
+  // [TEST-MOD-APPROVED #3429] Census +2, both new Ari call sites, both with a
+  // real non-partial arbiter. Verified by reading pg_indexes on the live #3429
+  // PostgreSQL 17 stack rather than the migration text:
+  //   agent_attachment_cleanup_jobs_storage_path_key
+  //     UNIQUE btree (storage_path)            indpred IS NULL
+  //   agent_turn_claim_guards_pkey
+  //     UNIQUE btree (user_id, client_turn_id) indpred IS NULL
+  // Both upserts pass `ignoreDuplicates: true`, so the arbiter is doing
+  // dedupe: the cleanup job queues one row per storage path however many times
+  // a derivative is re-finalized, and the stop guard records one claim per
+  // (user, client turn) however many times Stop is tapped. Neither adds an
+  // arbiter column; the partial index on that first table
+  // (idx_..._ready WHERE completed_at IS NULL) is a lookup index and is NOT
+  // the conflict target.
   //
   // [TEST-MOD-APPROVED #1789] Both #1789 sites resolve to a real, non-partial
   // arbiter — `PRIMARY KEY (id)` on each table, created at
@@ -71,7 +90,7 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 89);
+  assert.equal(sites.length, 91);
   assert.equal(sites.some((site) => site.table === "user_stats"), false);
   assert.equal(sites.some((site) => site.table === "saved_experience_privacy"), false);
   assert.equal(sites.some((site) => site.table === "business_notification_type_preferences"), true);
