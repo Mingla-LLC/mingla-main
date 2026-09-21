@@ -8,11 +8,17 @@
  * statically into `__common`, the boot payload every business-web visitor
  * downloads before anything renders (ORCH-1083 / issue #1509). A static import
  * of `InvitePeopleStep` therefore charged every visitor — a guest opening a
- * checkout link included — for the whole invite cluster: the step itself, its
- * analytics helper, and through them `peopleService` and
- * `marketing/manualGroupService`, which until then were reachable only from the
- * lazy People and Marketing routes. Measured at 51,029 B of `__common` growth
- * against a 12,000 B per-pull-request allowance.
+ * checkout link included — 22,031 B of generated JavaScript for the step and
+ * 165 B for its analytics helper, for a surface only a signed-in host creating
+ * an offering ever sees. Moving them out took this branch's `__common` growth
+ * from 39,576 B to 19,765 B raw (7,723 B to 3,600 B brotli), measured locally
+ * with `expo export -p web --source-maps`, `scripts/ci/bundle-attribute.mjs`
+ * and the gate as CI runs it.
+ *
+ * `peopleService` and `marketing/manualGroupService` are NOT part of that
+ * saving, contrary to the first reading of this bug: attribution shows
+ * `hooks/marketing/useBrandPeople.ts` and `useManualGroups.ts` already put both
+ * in `__common`, so they were never this feature's to move.
  *
  * So all four wizards import THIS owner, and the cluster loads through a
  * dynamic `import()` the first time a wizard mounts. Routes that never open a
