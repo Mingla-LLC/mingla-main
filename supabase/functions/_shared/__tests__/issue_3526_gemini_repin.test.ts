@@ -232,15 +232,27 @@ Deno.test("#3526 no growth tool marks a run failed without a reason", () => {
   }
 });
 
-// `growth-tools-report` may surface the STAGE and must never leak the provider
-// status or body to a caller.
-Deno.test("#3526 growth-tools-report surfaces the failure stage and never the provider detail", () => {
+// `growth-tools-report` DELIBERATELY does not read failure_reason yet.
+//
+// The spec's M-1 note says the report "should surface the real stage once the
+// column exists". Doing so means adding failure_reason to APP_READ_COLUMNS,
+// and that select-list is a SECURITY allowlist pinned by
+// growth-tools-report/__tests__/issue_1734_app_read.test.ts
+// (I-PROPOSED-1734-TOKEN-FLOW-UNTOUCHED), whose own comment warns that a
+// widening "would sail past `includes` — the unfalsifiable-test class".
+// Widening it is a decision for Seth and the tester, not an implementation
+// detail, and no success criterion needs it: SC-6 is about PERSISTING the
+// reason, which the column and the four write sites do. Raised on #3526.
+//
+// This test pins the deferral so it cannot happen by accident: the read path
+// must expose NOTHING from failure_reason until that decision is made.
+Deno.test("#3526 growth-tools-report leaks no part of failure_reason (deferred widening)", () => {
   const code = read("../../growth-tools-report/index.ts").replace(/\/\/[^\n]*/g, "");
-  assertStringIncludes(code, "failure_stage");
   assertEquals(
-    /failure_reason\.(http_status|detail)/.test(code),
+    /failure_reason/.test(code),
     false,
-    "growth-tools-report must not read http_status or detail into a response",
+    "growth-tools-report reads failure_reason — that widens the #1734 " +
+      "APP_READ_COLUMNS security allowlist and needs an explicit decision first",
   );
 });
 
