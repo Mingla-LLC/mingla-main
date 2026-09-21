@@ -218,6 +218,24 @@ describe("#3429 R2 R-4 — the connection sentence has exactly one owner", () =>
  * is deleted, zeroed or detached from the keyboard, these evaluate to the new
  * value and the geometry assertions below fail.
  */
+/** The BODY of a shipped arrow-function constant, without its TypeScript
+ *  annotations — `new Function` cannot parse those, and the body is the part
+ *  under test. */
+function shippedArrowBody(source: ts.SourceFile, name: string): string {
+  let text: string | null = null;
+  walk(source, (node) => {
+    if (
+      ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) &&
+      node.name.text === name && node.initializer &&
+      ts.isArrowFunction(node.initializer)
+    ) {
+      text = node.initializer.body.getText();
+    }
+  });
+  if (text === null) throw new Error(`AriChatScreen no longer declares ${name} as an arrow`);
+  return text;
+}
+
 function shippedExpression(source: ts.SourceFile, name: string): string {
   let text: string | null = null;
   walk(source, (node) => {
@@ -278,7 +296,11 @@ describe("#3429 R2 R-2 — the empty state never sits under the composer", () =>
   // singularity suite caught it. These assertions follow the lift to where it
   // now lives instead of being relaxed; the tokens are still required, and the
   // clamp must still be DERIVED from that site rather than re-deriving it.
-  const occupiedExpression = shippedExpression(screen, "composerOccupiedPx");
+  // The lift lives at module scope (`composerOccupiedPxFor`) so it is outside
+  // the ~490 lines #1850's A-5 stripper deletes when it mistakes the props
+  // interface's brace plus docblock for a JSX comment. One site, visible to
+  // both checks.
+  const occupiedExpression = shippedArrowBody(screen, "composerOccupiedPxFor");
 
   it("the lift is derived from the keyboard, not a constant", () => {
     expect(occupiedExpression).toContain("keyboardHeight");
@@ -319,7 +341,7 @@ describe("#3429 R2 R-2 — the empty state never sits under the composer", () =>
           // that ships.
           const composerOccupiedPx = evaluate(occupiedExpression, {
             ...scope,
-            composerRestingOccupiedPx,
+            restingOccupiedPx: composerRestingOccupiedPx,
           });
           const clamp = evaluate(clampExpression, {
             ...scope,

@@ -139,6 +139,30 @@ const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({
   );
 };
 
+/**
+ * ORCH-1890 — THE keyboard-open lift. One site, at module scope.
+ *
+ * How far the composer column is lifted off the bottom of the screen: the
+ * keyboard plus its Done bar plus the clearance when the keyboard is up, and
+ * the resting occupancy when it is down. Both consumers read this — the
+ * composer's own bottom padding and the empty-state clamp — because rule (E)
+ * of the keyboard gate matches with a NON-GLOBAL regex and validates only the
+ * FIRST lift site it finds; a second site is invisible to it, which is how
+ * REWORK-2's clamp went unguarded until #1890's singularity suite caught it.
+ *
+ * It lives at module scope rather than inside the component so it is outside
+ * the region #1850's A-5 stripper deletes (that check treats the props
+ * interface's `{` plus its docblock as one JSX comment and drops ~490 lines
+ * with it, so a use inside the component body is invisible to it).
+ *
+ * Do NOT add a measured pill height: this positions the pill's bottom edge, so
+ * any pill-height term is the double count #1890 removed.
+ */
+const composerOccupiedPxFor = (keyboardHeight: number, restingOccupiedPx: number): number =>
+  keyboardHeight > 0
+    ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
+    : restingOccupiedPx;
+
 export interface AriChatScreenProps {
   /**
    * #2830 — render inside a host that already owns the page chrome.
@@ -532,18 +556,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // Web has no soft keyboard, so this is 0 there and nothing changes.
   const composerRestingOccupiedPx =
     Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX;
-  // ORCH-1890 — THE keyboard-open lift site. There is exactly one in this file,
-  // and both consumers below read it: the composer's own bottom padding and the
-  // empty-state clamp. Two sites is not a style problem — rule (E) of the
-  // keyboard gate matches with a NON-GLOBAL regex, so it validates the FIRST
-  // site and never sees a second, and REWORK-2's clamp site sat unguarded
-  // behind exactly that blind spot until the #1890 singularity suite caught it.
-  // Do NOT add a measured pill height to this: it positions the pill's bottom
-  // edge, so any pill-height term is the double count #1890 removed.
-  const composerOccupiedPx =
-    keyboardHeight > 0
-      ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
-      : composerRestingOccupiedPx;
+  // The one lift, read by both consumers — see `composerOccupiedPxFor`.
+  const composerOccupiedPx = composerOccupiedPxFor(
+    keyboardHeight,
+    composerRestingOccupiedPx,
+  );
   const emptyHeroComposerClamp = Math.max(
     0,
     composerOccupiedPx + spacing.sm - composerRestingOccupiedPx,
