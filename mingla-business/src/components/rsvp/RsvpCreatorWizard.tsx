@@ -294,6 +294,13 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const [inviteQuote, setInviteQuote] = useState<WizardInviteQuote | null>(null);
   const [inviteNavigation, setInviteNavigation] = useState<InviteNavigationState | null>(null);
   const [checkingInvitePublish, setCheckingInvitePublish] = useState(false);
+  // #3446 — the wizard's autosave signal, for the hardware-back `busy` term
+  // below. The route gives this wizard one save flag (`autosave.isSaving ||
+  // discardServerDraft.isPending || publishServerDraft.isPending` in
+  // app/rsvp/[id]/edit.tsx); `=== true` keeps it a boolean when the prop is
+  // absent. A back press during a save must do nothing, so the draft the
+  // server is taking is the draft the host was looking at.
+  const isAutosaving = serverSaveState?.isSaving === true;
   const inviteFlag = useFeatureFlag("business_wizard_invite_selection_v1");
   const persistedInvite = useOfferingInvitePlanSummary({
     eventId: /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(liveDraft.id) ? liveDraft.id : null,
@@ -716,7 +723,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   // #3446 — Android back = this wizard's own Back (step > 1) or close (step 1). See I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK.
   useWizardHardwareBack({
     isFirstStep,
-    busy: isPublishing || checkingInvitePublish || isDiscarding,
+    busy: isPublishing || checkingInvitePublish || isDiscarding || isAutosaving,
     exitSurfaced: discardDialogVisible || toast.visible,
     onStepBack: handleStepBack,
     onExit: handleClose,

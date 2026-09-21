@@ -733,7 +733,7 @@ export const ExperienceCreatorWizard: React.FC<
   // #3446 — Android back = this wizard's own Back (step > 1) or close (step 1). See I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK.
   useWizardHardwareBack({
     isFirstStep: step === 1,
-    busy: submitting || checkingInvitePublish,
+    busy: submitting || checkingInvitePublish || creatingDraft,
     exitSurfaced: false,
     onStepBack: goBack,
     onExit: goBack,

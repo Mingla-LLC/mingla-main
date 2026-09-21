@@ -403,3 +403,141 @@ describe("#3446 hook platform split and the overlays it relies on", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// #3446 contract gap (retest r4) — `busy` must include the wizard's AUTOSAVE.
+//
+// The SPEC says a hardware back press during publish, autosave or discard does
+// nothing. Publish and discard were wired; autosave was not, in the two wizards
+// whose autosave flag is a prop rather than local state. A press while the
+// draft was mid-save therefore ran the wizard's Back owner against a draft the
+// server had not taken yet.
+//
+// Each wizard's real flag, read from its own source:
+//   Event / RSVP   `isAutosaving`, derived from `serverSaveState?.isSaving` —
+//                  the one autosave signal the route gives the wizard
+//                  (app/{event,rsvp}/[id]/edit.tsx pass `autosave.isSaving ||
+//                  discardServerDraft.isPending || publishServerDraft.isPending`).
+//   Trip           `isAutosaving`, already inside `submitting`
+//                  (`const submitting = isAutosaving || publishMutation.isPending`),
+//                  so Trip is asserted, not changed. Trip's handleStepBack
+//                  awaits autosaveCurrentStep(), which sets isAutosaving AFTER
+//                  the press was routed, so this cannot deadlock its
+//                  save-then-step: `busy` is read before the owner runs, and
+//                  the async latch — not `busy` — is what holds the second
+//                  press.
+//   Experience     `creatingDraft`, the flag around ensureDraft()'s
+//                  biz_create_experience write. Experience has no debounced
+//                  autosave; that write is its only background persistence.
+//
+// These cases are APPENDED; the WIZARDS table and T-11..T-15 above are
+// unchanged. Fails on revert: drop the autosave term from any wizard's `busy`
+// and that wizard's T-16 goes red; drop it from all four and T-17 goes red too.
+// ---------------------------------------------------------------------------
+/**
+ * The term in each wizard's `busy` that a press during autosave must travel
+ * through. Trip's is INDIRECT: its `submitting` is `isAutosaving ||
+ * publishMutation.isPending`, so `busy` never names `isAutosaving` itself. T-18
+ * proves the derivation for all four.
+ */
+const AUTOSAVE_BUSY_TERM: Record<string, string> = {
+  Event: "isAutosaving",
+  RSVP: "isAutosaving",
+  Experience: "creatingDraft",
+  Trip: "submitting",
+};
+
+describe.each(WIZARDS)("#3446 $name wizard — back waits for autosave", (spec) => {
+  const autosaveFlag = AUTOSAVE_BUSY_TERM[spec.name];
+  const known = [...spec.busyFlags, autosaveFlag];
+
+  test("T-16 the autosave term alone makes the wizard busy", () => {
+    const carved = carve(spec, parse(spec.file));
+    const busy = expressionOf(carved, "busy");
+    const reads = readsOf(busy);
+
+    // The term is actually read by the expression the wizard passes...
+    expect(reads.has(autosaveFlag)).toBe(true);
+    // ...it alone turns busy on...
+    expect(Boolean(evaluate(busy, scopeWith(reads, known, [autosaveFlag])))).toBe(true);
+    // ...and with every flag off, busy is still off (no flag was hard-coded).
+    expect(Boolean(evaluate(busy, scopeWith(reads, known, [])))).toBe(false);
+    // The publish / pre-check / discard flags still each turn it on alone.
+    for (const flag of spec.busyFlags) {
+      expect(Boolean(evaluate(busy, scopeWith(reads, known, [flag])))).toBe(true);
+    }
+  });
+
+  test("T-17 a press while autosaving runs NEITHER owner, at step 1 or later", () => {
+    const carved = carve(spec, parse(spec.file));
+    const busy = expressionOf(carved, "busy");
+    const reads = readsOf(busy);
+    const busyWhileSaving = Boolean(
+      evaluate(busy, scopeWith(reads, known, [autosaveFlag])),
+    );
+
+    for (const step of [spec.firstStep, spec.steps[spec.steps.length - 1]]) {
+      const onStepBack = jest.fn<() => void>();
+      const onExit = jest.fn<() => void>();
+      const decision = dispatchWizardHardwareBackPress("idle", {
+        isFirstStep: step === spec.firstStep,
+        busy: busyWhileSaving,
+        exitSurfaced: false,
+        onStepBack,
+        onExit,
+      });
+      expect(decision.action).toBe("none");
+      expect(decision.nextLatch).toBe("idle");
+      expect(onStepBack).not.toHaveBeenCalled();
+      expect(onExit).not.toHaveBeenCalled();
+    }
+  });
+
+  test("T-18 the autosave flag traces to that wizard's real save signal", () => {
+    const source = read(spec.file);
+    if (spec.name === "Experience") {
+      // creatingDraft brackets the biz_create_experience write.
+      expect(source).toContain("const [creatingDraft, setCreatingDraft] = useState(false)");
+      expect(source).toContain("setCreatingDraft(true)");
+      expect(source).toContain("setCreatingDraft(false)");
+      return;
+    }
+    if (spec.name === "Trip") {
+      // Local state, set for the duration of autosaveCurrentStep().
+      expect(source).toContain("const [isAutosaving, setIsAutosaving] = useState<boolean>(false)");
+      expect(source).toContain("const submitting = isAutosaving || publishMutation.isPending");
+      return;
+    }
+    // Event and RSVP: derived from the route's serverSaveState.
+    expect(source).toMatch(
+      /const isAutosaving\s*=\s*serverSaveState\?\.isSaving\s*===\s*true;/,
+    );
+  });
+});
+
+describe("#3446 contract gap — Trip's save-then-step is not deadlocked", () => {
+  test("T-19 Trip sets isAutosaving INSIDE the owner, after busy was read", () => {
+    const source = read("components/trip/TripCreatorWizard.tsx");
+    // handleStepBack awaits autosaveCurrentStep, which is what raises the flag.
+    expect(source).toMatch(
+      /const handleStepBack = useCallback\(async \(\): Promise<void> => \{[\s\S]*?await autosaveCurrentStep\(\);/,
+    );
+    expect(source).toMatch(
+      /const autosaveCurrentStep = useCallback\(async \(\): Promise<void> => \{\s*\n\s*setIsAutosaving\(true\);/,
+    );
+    // And the dispatcher reads busy BEFORE calling the owner, so a press that
+    // starts a save is routed on the pre-save value and still steps.
+    const onStepBack = jest.fn<() => Promise<void>>(() => Promise.resolve());
+    const onExit = jest.fn<() => void>();
+    const decision = dispatchWizardHardwareBackPress("idle", {
+      isFirstStep: false,
+      busy: false,
+      exitSurfaced: false,
+      onStepBack,
+      onExit,
+    });
+    expect(decision.action).toBe("step_back");
+    expect(decision.nextLatch).toBe("stepping");
+    expect(onStepBack).toHaveBeenCalledTimes(1);
+  });
+});
