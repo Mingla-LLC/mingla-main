@@ -34,8 +34,9 @@
  *     so the hint row is pushed below the composer's top edge again (the exact
  *     N-1 geometry, reproduced arithmetically).
  *   - delete `flexShrink: 0` from the hint zone → T-5/T-6/T-7 go red.
- *   - drop `heroTopOffsetPx` back to a `justifyContent: "center"` → T-4 goes
- *     red, because the orb then tracks the clamp: the jump ORCH-1057 removed.
+ *   - drop `heroTopOffsetPx` back to a `justifyContent: "center"` → T-3 and
+ *     T-4 go red, because the orb then tracks the clamp (the jump ORCH-1057
+ *     removed) and the resting position stops matching what centring produced.
  *
  * Adversarial coverage (Dynamic Type, VoiceOver/TalkBack traversal order, the
  * tall-attachment-tray extreme) is tester-owned and deliberately not pre-empted.
@@ -263,6 +264,9 @@ describe("#3429 REWORK-4 N-1 — the attach hint is the last content dropped", (
       for (const scale of SCALES) {
         const open = mount(device.restingHeightPx, device.clampPx, scale.heroPx, scale.hintPx);
         const closed = mount(device.restingHeightPx, 0, scale.heroPx, scale.hintPx);
+        // The hero's position is an EXPLICIT offset, not a by-product of
+        // centring — centring is what makes the orb track the clamp.
+        expect(typeof open.heroClip.marginTop).toBe("number");
         // ORCH-1057's no-jump contract, restated as a rendered value rather
         // than a source string.
         expect(heroTop(open)).toBe(heroTop(closed));
