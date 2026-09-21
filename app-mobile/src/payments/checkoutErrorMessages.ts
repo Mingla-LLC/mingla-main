@@ -327,14 +327,28 @@ const PAYSTACK_RETURN_MESSAGE_BY_CODE: Readonly<Record<string, string>> =
     paystack_payment_mismatch: CHECKOUT_PAYMENT_MISMATCH_MESSAGE,
     // #1930 — `paid_reversal_pending`: current-sale truth moved under the charge.
     //
-    // #2264 — this entry is NO LONGER REACHED from the return leg. The flow now
-    // classifies a `checkout_unavailable` answer as a REFUSAL before it reaches
-    // this mapper (`readCheckoutStatusOnce`), because the sentence below ends
-    // "You have not been charged" — true of the create refusal it was written
-    // for, and false for the one guest this arm describes, who has paid. It is
-    // kept only as this mapper's totality fallback for that token.
-    // KNOWN RESIDUE: correcting the entry itself means changing two suites
-    // already on main that pin it, which needs [TEST-MOD-APPROVED #2264].
+    // #3500 — this entry is NO LONGER REACHED from the CONSUMER return leg. The
+    // flow now classifies a `checkout_unavailable` answer as a REFUSAL before it
+    // reaches this mapper (`readCheckoutStatusOnce`), because the sentence this
+    // resolves to ends "You have not been charged" — true of the create refusal
+    // it was written for, and false for the one guest this arm describes, who
+    // has paid. It is kept only as this mapper's totality fallback.
+    //
+    // KNOWN RESIDUE, left deliberately after a scoped correction was authorised
+    // and found to be unconfinable. Repointing THIS line is a three-file change,
+    // not a one-line one:
+    //   1. the business app mirrors this mapper in
+    //      `mingla-business/src/payments/nativeCheckoutFlow.native.ts`, with the
+    //      same token, the same sentence and the same defect — and, unlike this
+    //      app after #3500, it never reads the 409 at all;
+    //   2. TA-2 in `issue_2264_return_leg_hostile_inputs.tester_adversarial`
+    //      asserts the two apps route all four codes to the SAME constant, so
+    //      this one cannot move on its own;
+    //   3. its `consumerConstantName` map and the byte-identical CONSTANTS check
+    //      in `native_checkout_flow_parity` would both need the new constant,
+    //      and the business file would have to keep its now-dead
+    //      CHECKOUT_UNAVAILABLE_MESSAGE declared purely to satisfy that check.
+    // Fix both apps together, under [TEST-MOD-APPROVED #3500], or not at all.
     checkout_unavailable: CHECKOUT_UNAVAILABLE_MESSAGE,
   });
 
