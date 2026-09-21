@@ -536,7 +536,8 @@ DECLARE v jsonb; v_order jsonb; v_replay jsonb; v_claim jsonb; v_attempt uuid; v
   e uuid:='e71d0000-0000-4000-8000-0000000000e1'; e2 uuid:='e71d0000-0000-4000-8000-0000000000e2';
   f uuid:='e71d0000-0000-4000-8000-0000000000f1'; g uuid:='e71d0000-0000-4000-8000-0000000000a7';
   h uuid:='e71d0000-0000-4000-8000-0000000000a8'; i uuid:='e71d0000-0000-4000-8000-0000000000a9';
-  j uuid:='e71d0000-0000-4000-8000-0000000000aa';
+  j uuid:='e71d0000-0000-4000-8000-0000000000aa'; k uuid:='e71d0000-0000-4000-8000-0000000000ab';
+  v_outbox uuid; v_handoff text;
   v_held integer; v_expires timestamptz; v_reopen jsonb;
 BEGIN
   -- ── 1. Webhook without a charge, then the buyer's confirm with one ────────
@@ -1026,6 +1027,73 @@ BEGIN
        AND fee_reversal_required_cents=0 AND fee_reversal_processed_cents=0
        AND financial_state='reconciled') THEN
     RAISE EXCEPTION 'evidence hold 11: a zero-fee retirement did not keep its not_required fee leg: %',v;
+  END IF;
+
+  -- ── 12. The OTHER refund kind the release can retire ─────────────────────
+  --
+  -- A session whose paid evidence had no resolvable provider reference at all
+  -- never gets a `late_payment_no_value` refund; #2168's handoff opens a
+  -- `checkout_provider_reference_unresolved` one instead, and the release can
+  -- reach that row too. It is a different shape — no provider payment
+  -- reference, and #2168's own CHECK pins it to fee_state='not_required',
+  -- fee_reversal_required_cents=0, platform_fee_absorption_cents=0, because
+  -- that kind never absorbs the platform fee. So the retirement must cancel the
+  -- buyer leg, leave the fee leg exactly where #2168 requires it, and NOT stamp
+  -- a provider identity onto a row whose whole definition is not having one.
+  INSERT INTO public.ticket_checkout_sessions(id,event_id,brand_id,buyer_name,buyer_email,
+    buyer_phone_e164,currency,subtotal_cents,total_cents,status,idempotency_key,expires_at,
+    application_fee_amount_cents)
+  VALUES(k,'e71d0000-0000-4000-8000-000000000011','e71d0000-0000-4000-8000-000000000010',
+    'Unresolved buyer','unresolved-buyer@example.com','+15555550114','USD',1000,1000,'requires_payment',
+    'evidence-hold-'||k,now()+interval '15 minutes',100);
+  INSERT INTO public.ticket_checkout_session_items(checkout_session_id,ticket_type_id,
+    ticket_name_at_purchase,quantity,unit_price_cents,total_cents)
+  VALUES(k,'e71d0000-0000-4000-8000-000000000012','Ticket',1,1000,1000);
+  v_claim:=public.issue_1930_claim_ticket_provider_attempt(k,
+    'e71d0000-0000-4000-8000-000000000011','stripe','stripe_native','evidence-hold-fp-'||k);
+  v_attempt:=(v_claim->>'attemptId')::uuid; v_epoch:=(v_claim->>'epoch')::bigint;
+  PERFORM public.issue_1930_commit_ticket_provider_attempt(v_attempt,v_epoch,'pi_evidenceK',NULL,NULL,
+    'evidence-hold-cont-'||k);
+  UPDATE public.ticket_checkout_sessions SET stripe_account_id='acct_evidencehold',
+    stripe_payment_intent_id='pi_evidenceK' WHERE id=k;
+  -- Paid, with no reference we can resolve: holds the session, opens NO refund.
+  IF public.issue_1930_mint_ticket_late_reversal(k,'stripe',NULL,NULL,NULL)->>'outcome'
+       <>'paid_reversal_pending'
+     OR EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=k) THEN
+    RAISE EXCEPTION 'evidence hold 12: the unresolved-reference fixture did not hold cleanly';
+  END IF;
+  SELECT id INTO v_outbox FROM public.checkout_sale_revocation_outbox
+    WHERE subject_type='ticket_checkout_session' AND subject_id=k;
+  -- The call is its OWN statement, deliberately. Inlined into the IF below it
+  -- shares that statement's snapshot with the EXISTS beside it, so the refund
+  -- the handoff has just inserted is invisible to the same condition that asks
+  -- whether it exists, and this block fails on a row that is really there.
+  v_handoff:=public.issue_2168_handoff_revocation_attention(v_outbox);
+  IF v_handoff<>'attention_created'
+     OR NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=k
+       AND refund_kind='checkout_provider_reference_unresolved') THEN
+    RAISE EXCEPTION 'evidence hold 12: the #2168 handoff did not open its operator refund: %',v_handoff;
+  END IF;
+  v:=pg_temp.evidence_hold_release(k,'pi_evidenceK','ch_evidenceK');
+  IF v->>'outcome'<>'released'
+     OR NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=k
+       AND refund_kind='checkout_provider_reference_unresolved'
+       AND buyer_state='cancelled_no_refund_due'
+       AND fee_state='not_required' AND fee_leg_kind='not_required'
+       AND fee_reversal_required_cents=0 AND platform_fee_absorption_cents=0
+       AND financial_state='reconciled'
+       AND buyer_refund_processed_cents=0
+       -- NOT stamped: this kind is defined by having no provider reference, and
+       -- the loop above never proved one for it.
+       AND stripe_charge_id IS NULL AND paystack_transaction_id IS NULL
+       AND provider_payment_reference IS NULL) THEN
+    RAISE EXCEPTION 'evidence hold 12: the unresolved-reference obligation did not retire in its own shape: %',v;
+  END IF;
+  -- And it is terminal for the 72-hour escalation, which only chases a row a
+  -- human is still waiting on.
+  PERFORM public.issue_2168_escalate_overdue_revocation_attention();
+  IF EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=k AND ops_status='escalated') THEN
+    RAISE EXCEPTION 'evidence hold 12: a closed obligation was escalated to an operator';
   END IF;
 
   -- ── 9. Service role only ──────────────────────────────────────────────────
