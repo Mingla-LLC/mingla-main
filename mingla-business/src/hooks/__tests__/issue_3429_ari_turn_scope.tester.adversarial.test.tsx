@@ -145,6 +145,14 @@ describe("#3429 assistive truth and cooperative-stop adversarial seams", () => {
     expect(activity).toContain(snippet("onPress={() => { setStopRequested(true); void onStop(); }}"));
     expect(activity).toMatch(/const terminal = turn\.delivery === "stopped" \|\| turn\.delivery === "failed"/);
     expect(activity).toContain(snippet('if (terminal) { AccessibilityInfo.announceForAccessibility(turn.errorMessage ?? "Ari stopped. Your message is still here.");'));
+    // [TEST-MOD-APPROVED #3429] A QUALIFIED call depends on the binding of its
+    // ROOT — `AccessibilityInfo`, not `announceForAccessibility`. My first
+    // audit keyed on the identifier next to the paren and filed this as
+    // "nothing to drop"; it is an import like any other, and dropping it is a
+    // crash on the terminal-turn announcement. Pin the binding too.
+    expect(activity).toMatch(
+      /import[^;]*\{[^}]*\bAccessibilityInfo\b[^}]*\}\s*from\s*"react-native";/,
+    );
     expect(activity).toContain("useReducedMotion()");
     // [TEST-MOD-APPROVED #3429] Same reason as above: pin the binding, not just
     // the call text.

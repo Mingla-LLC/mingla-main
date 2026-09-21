@@ -18,7 +18,7 @@ function capture(event: string, properties: Record<string, unknown>): void {
   const { postHogService } = require("./postHogService") as {
     postHogService: { capture: (event: string, properties: Record<string, unknown>) => void };
   };
-  capture(event, properties);
+  postHogService.capture(event, properties);
 }
 
 type AriSurface = "main" | "website";
