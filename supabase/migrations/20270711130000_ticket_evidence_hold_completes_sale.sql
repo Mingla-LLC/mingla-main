@@ -489,7 +489,6 @@ BEGIN
     lease_owner=NULL,leased_at=NULL,next_retry_at=NULL,
     attention_completed_at=COALESCE(attention_completed_at,now()),
     attention_expires_at=NULL,
-    updated_at=now(),
     -- The legs are CANCELLED, not paid. buyer_refund_processed_cents stays 0
     -- and buyer_refund_requested_cents is not touched: the ledger keeps saying
     -- what was asked for and that none of it moved. The fee leg is derived from
@@ -513,7 +512,8 @@ BEGIN
     paystack_transaction_id=CASE WHEN refund_kind='late_payment_no_value'
       THEN COALESCE(paystack_transaction_id,v_paystack_id) ELSE paystack_transaction_id END,
     stripe_charge_id=CASE WHEN refund_kind='late_payment_no_value'
-      THEN COALESCE(stripe_charge_id,p_stripe_charge_id) ELSE stripe_charge_id END
+      THEN COALESCE(stripe_charge_id,p_stripe_charge_id) ELSE stripe_charge_id END,
+    updated_at=now()
   WHERE id=ANY(v_refund_ids);
   -- The session must RE-HOLD its inventory for the finalize window. A held
   -- session only counts toward issue_2491_derived_held() while
