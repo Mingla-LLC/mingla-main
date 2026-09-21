@@ -41,6 +41,8 @@ const paths = {
   // Surface parity: the trip confirmation screen is a second copy of the same
   // screen and returns through the SAME server path.
   tripScreen: "mingla-business/app/checkout-trip/[tripEventId]/confirm.tsx",
+  experienceScreen:
+    "mingla-business/app/checkout-experience/[experienceEventId]/confirm.tsx",
   workflow: ".github/workflows/issue-2198-paystack-return-verify-tests.yml",
 };
 const sources = Object.fromEntries(
@@ -150,13 +152,70 @@ const check = (raw) => {
       fail(`the #2188 error mapper no longer maps ${token}`);
     }
   }
-  for (const key of ["screen", "tripScreen"]) {
-    if (!s[key].includes("paidCheckoutErrorMessage")) {
+  // The return-leg classification has ONE owner, `classifyTicketConfirmAnswer`
+  // in the service: a `failed` answer carrying one of the tokens above is
+  // mapped through #2188's `paidCheckoutErrorMessage` THERE, and the screens
+  // render the verdict (`awaitTicketConfirmation`). Before that owner existed
+  // each screen classified inline, and a thrown 409 refusal became a spinner.
+  const classifierAt = s.service.indexOf("export const classifyTicketConfirmAnswer");
+  const classifierEnd = s.service.indexOf("export interface AwaitTicketConfirmationInput");
+  if (classifierAt < 0 || classifierEnd < classifierAt) {
+    fail("the return-leg classifier (classifyTicketConfirmAnswer) is gone");
+  }
+  const classifier = s.service.slice(classifierAt, classifierEnd);
+  if (!/status\s*===\s*"failed"/.test(classifier)) {
+    fail("the classifier lost its terminal-failure branch (the spinner returns)");
+  }
+  if (!classifier.includes("paidCheckoutErrorMessage(")) {
+    fail("the classifier no longer maps the reason through #2188's mapper");
+  }
+  if (!/"checkout_unavailable"/.test(classifier)) {
+    fail("the classifier no longer treats a checkout_unavailable refusal as final");
+  }
+  for (const key of ["screen", "tripScreen", "experienceScreen"]) {
+    if (!s[key].includes("awaitTicketConfirmation(")) {
+      fail(`${key} no longer asks the return-leg owner for its verdict`);
+    }
+    if (!/verdict\.kind\s*===\s*"payment_failed"/.test(s[key])) {
       fail(`${key} no longer renders the mapped reason`);
     }
-    if (!/status\s*===\s*"failed"/.test(s[key])) {
-      fail(`${key} lost its terminal-failure branch (the spinner returns)`);
+    if (!/verdict\.kind\s*===\s*"not_issued"/.test(s[key])) {
+      fail(`${key} lost its not-issued branch (a refused sale spins forever)`);
     }
+    if (!/verdict\.kind\s*===\s*"expired"/.test(s[key])) {
+      fail(`${key} lost its expired branch (an expired checkout spins forever)`);
+    }
+  }
+
+  // --- 4b. #2264 — the two refusals may never be told in one sentence. ---
+  // `expired` proves the guest was NOT charged. `checkout_unavailable` is
+  // reached only after a completed charge or a revoked sale, and what happens
+  // to that money is #2079's to decide — it may end as a completed sale, not a
+  // refund. A single shared sentence has to lie about one of them.
+  if (!/\{ kind: "expired" \}/.test(classifier)) {
+    fail("the classifier folded `expired` back into the refusal that may be paid");
+  }
+  const literal = (name) =>
+    new RegExp(`${name}\\s*=\\s*\\n?\\s*"([^"]*)"`).exec(s.service)?.[1] ?? null;
+  const expiredCopy = literal("TICKETS_EXPIRED_MESSAGE");
+  const notIssuedCopy = literal("TICKETS_NOT_ISSUED_MESSAGE");
+  if (expiredCopy === null || notIssuedCopy === null) {
+    fail("the two refusal sentences are no longer literal constants");
+  }
+  if (expiredCopy === notIssuedCopy) {
+    fail("the expired and refused sentences have been merged back into one");
+  }
+  if (!/been charged/i.test(expiredCopy)) {
+    fail("expired copy no longer tells the guest they were not charged");
+  }
+  if (/been charged/i.test(notIssuedCopy)) {
+    fail("refusal copy makes a charge claim it cannot support");
+  }
+  if (/refund/i.test(notIssuedCopy)) {
+    fail("refusal copy promises a refund #2079 may not execute");
+  }
+  if (!/don.t pay again/i.test(notIssuedCopy)) {
+    fail("refusal copy no longer tells the guest not to pay twice");
   }
   // The mismatch case is the one where money may have moved. It must never
   // claim otherwise.
@@ -199,8 +258,15 @@ if (process.argv.includes("--self-test")) {
     ["confirm", "attachQrImageDataUrls", "qrPayloadToDataUrl"],
     ["status", "attachQrImageDataUrls", "qrPayloadToDataUrl"],
     ["workflow", "issue_2216_qr_image_never_silently_blank.test.ts", "removed.test.ts"],
-    ["screen", "paidCheckoutErrorMessage", "removedMapper"],
-    ["tripScreen", "paidCheckoutErrorMessage", "removedMapper"],
+    ["service", 'result.status === "failed"', 'result.status === "never"'],
+    ["service", "message: paidCheckoutErrorMessage({ code })", "message: String(code)"],
+    ["screen", "awaitTicketConfirmation(", "confirmOnce("],
+    ["tripScreen", "awaitTicketConfirmation(", "confirmOnce("],
+    ["experienceScreen", "awaitTicketConfirmation(", "confirmOnce("],
+    ["screen", 'verdict.kind === "payment_failed"', 'verdict.kind === "ignored"'],
+    ["tripScreen", 'verdict.kind === "not_issued"', 'verdict.kind === "ignored"'],
+    ["experienceScreen", 'verdict.kind === "expired"', 'verdict.kind === "ignored"'],
+    ["service", '{ kind: "expired" }', '{ kind: "not_issued" }'],
     ["workflow", "issue_2198_paystack_return_verify.test.ts", "removed.test.ts"],
     ["workflow", "issue_2188_paid_checkout_provider_handoff.test.tsx", "removed.test.tsx"],
   ];

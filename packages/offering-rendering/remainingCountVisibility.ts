@@ -89,17 +89,23 @@ export const readBundleHideRemainingCount = (payload: unknown): boolean | null =
 
 /**
  * The pills-row summary ("N tickets left" / "Sold out") for a set of tiers'
- * remaining capacities. `null` = omit the pill. Unlimited tiers and tiers with
- * no finite capacity contribute nothing (never fabricate a count).
+ * remaining capacities. `null` = omit the pill. Tiers with no finite capacity
+ * contribute nothing (never fabricate a count).
+ *
+ * Any unlimited tier omits the pill (#3431). The pill speaks for the whole
+ * event, and an event with an unlimited tier never runs out: a hybrid event
+ * with 60 in-person places and an unlimited stream pass read "60 tickets
+ * left", and "Sold out" once the room filled while stream passes were still on
+ * sale. Each tier's own caption ("60 available", "Unlimited") still shows.
  */
 export const ticketsLeftSummaryLabel = (
   tickets: ReadonlyArray<{ isUnlimited: boolean; capacity: number | null }>,
   hideRemainingCount: boolean,
 ): string | null => {
+  if (tickets.some((t) => t.isUnlimited)) return null;
   let total = 0;
   let anyFinite = false;
   for (const t of tickets) {
-    if (t.isUnlimited) continue;
     if (t.capacity !== null) {
       total += t.capacity;
       anyFinite = true;
