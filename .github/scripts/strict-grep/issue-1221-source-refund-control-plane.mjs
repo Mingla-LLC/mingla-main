@@ -345,12 +345,28 @@ export function evaluateIssue1221(files, migrationNames, trackedEntries = []) {
       );
     }
   }
+  // Issue #3512 — the Edge-only contract is unchanged, but the marker moved
+  // from the raw client call to invokeWithRefresh (which calls
+  // supabase.functions.invoke internally and retries a 401 exactly once).
+  // Pinning the raw call here is what kept the service on a path that dies
+  // when an idle admin tab's JWT ages out.
   requireText(files, "mingla-admin/src/services/refundOperationsService.js", [
-    "supabase.functions.invoke(",
+    "invokeWithRefresh(name, options)",
     '"admin-source-refund-operations"',
     '"admin-source-refund-action"',
     "appendCapturedQueuePage",
   ], failures);
+  if (
+    /(?:^|[^\w.])supabase\.functions\.invoke\(/m.test(
+      (files["mingla-admin/src/services/refundOperationsService.js"] ?? "")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\/\/[^\n]*/g, ""),
+    )
+  ) {
+    failures.push(
+      "Admin refund operations must invoke edge functions through invokeWithRefresh, not supabase.functions.invoke",
+    );
+  }
   requireText(files, "mingla-admin/src/pages/RefundOperationsPage.jsx", [
     "appendCapturedQueuePage(current, page)",
     "correct_attention_contact",
