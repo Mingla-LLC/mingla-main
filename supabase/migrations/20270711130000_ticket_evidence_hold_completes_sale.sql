@@ -136,7 +136,10 @@ BEGIN
   EXECUTE format('ALTER TABLE public.source_refunds DROP CONSTRAINT %I', v_name);
 END $block$;
 
--- Re-added AT LEAST AS STRICT for every state that could already exist. The
+-- Re-added AT LEAST AS STRICT for every state that could already exist. Each
+-- conjunct is on its own line deliberately: weakening this invariant has to be
+-- a visible deletion of a whole line, and the #2079 SQL suite fails on any one
+-- of them. The
 -- first branch is #1221's original rule, character for character. The only rows
 -- this makes legal that were not legal before are rows carrying the two brand
 -- new values, and only in the shape below: both legs cancelled together (or the
@@ -149,14 +152,19 @@ ALTER TABLE public.source_refunds
 ALTER TABLE public.source_refunds
   ADD CONSTRAINT source_refunds_issue_2079_reconciled_settlement CHECK (
     financial_state <> 'reconciled'
-    OR (buyer_state = 'processed'
-        AND fee_state = ANY (ARRAY['processed','not_required']))
-    OR (buyer_state = 'cancelled_no_refund_due'
-        AND fee_state = ANY (ARRAY['not_required','cancelled_no_reversal_due'])
-        AND buyer_refund_processed_cents = 0
-        AND fee_reversal_processed_cents = 0
-        AND provider_refund_id IS NULL
-        AND stripe_application_fee_refund_id IS NULL));
+    OR (
+      buyer_state = 'processed'
+      AND fee_state = ANY (ARRAY['processed','not_required'])
+    )
+    OR (
+      buyer_state = 'cancelled_no_refund_due'
+      AND fee_state = ANY (ARRAY['not_required','cancelled_no_reversal_due'])
+      AND buyer_refund_processed_cents = 0
+      AND fee_reversal_processed_cents = 0
+      AND provider_refund_id IS NULL
+      AND stripe_application_fee_refund_id IS NULL
+    )
+  );
 
 -- #1221's rule was: a reconciled refund whose fee leg is a Stripe application
 -- fee refund must name the application fee it reversed. That rule is untouched
@@ -171,7 +179,8 @@ ALTER TABLE public.source_refunds
     financial_state <> 'reconciled'
     OR fee_leg_kind <> 'stripe_application_fee_refund'
     OR stripe_application_fee_id IS NOT NULL
-    OR fee_state = 'cancelled_no_reversal_due');
+    OR fee_state = 'cancelled_no_reversal_due'
+  );
 
 -- NEW, and purely narrowing: the cancelled values mean one thing and cannot be
 -- used to mean anything else. A cancelled leg has moved no money, and a
@@ -193,14 +202,23 @@ ALTER TABLE public.source_refunds
   DROP CONSTRAINT IF EXISTS source_refunds_issue_2079_cancelled_legs_moved_no_money;
 ALTER TABLE public.source_refunds
   ADD CONSTRAINT source_refunds_issue_2079_cancelled_legs_moved_no_money CHECK (
-    (buyer_state <> 'cancelled_no_refund_due'
-      OR (buyer_refund_processed_cents = 0
-          AND provider_refund_id IS NULL
-          AND financial_state = 'reconciled'))
-    AND (fee_state <> 'cancelled_no_reversal_due'
-      OR (fee_reversal_processed_cents = 0
-          AND stripe_application_fee_refund_id IS NULL
-          AND financial_state = 'reconciled')));
+    (
+      buyer_state <> 'cancelled_no_refund_due'
+      OR (
+        buyer_refund_processed_cents = 0
+        AND provider_refund_id IS NULL
+        AND financial_state = 'reconciled'
+      )
+    )
+    AND (
+      fee_state <> 'cancelled_no_reversal_due'
+      OR (
+        fee_reversal_processed_cents = 0
+        AND stripe_application_fee_refund_id IS NULL
+        AND financial_state = 'reconciled'
+      )
+    )
+  );
 
 COMMENT ON COLUMN public.source_refunds.buyer_state IS
   'Buyer refund leg. ''cancelled_no_refund_due'' is terminal and means the obligation was closed with nothing owed and nothing paid — never that a refund was made.';

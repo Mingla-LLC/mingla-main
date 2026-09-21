@@ -516,7 +516,7 @@ Deno.test("#2079 ADV the release owner cannot cancel a refund anything has touch
   for (
     const clause of [
       "ADD CONSTRAINT source_refunds_issue_2079_reconciled_settlement",
-      "OR (buyer_state = 'processed'\n        AND fee_state = ANY (ARRAY['processed','not_required']))",
+      "OR (\n      buyer_state = 'processed'\n      AND fee_state = ANY (ARRAY['processed','not_required'])\n    )",
       "AND buyer_refund_processed_cents = 0",
       "AND fee_reversal_processed_cents = 0",
       "ADD CONSTRAINT source_refunds_issue_2079_cancelled_legs_moved_no_money",

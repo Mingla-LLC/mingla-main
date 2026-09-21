@@ -86,7 +86,7 @@ const check = (s) => {
   // pairing admissible only with nothing processed on either leg, and a
   // cancelled leg pinned to a terminal financial_state so no stray recompute
   // can silently re-open a closed obligation.
-  for (const token of ["ADD CONSTRAINT source_refunds_issue_2079_reconciled_settlement", "OR (buyer_state = 'processed'\n        AND fee_state = ANY (ARRAY['processed','not_required']))", "AND buyer_refund_processed_cents = 0", "AND fee_reversal_processed_cents = 0", "ADD CONSTRAINT source_refunds_issue_2079_cancelled_legs_moved_no_money", "AND financial_state = 'reconciled'"]) {
+  for (const token of ["ADD CONSTRAINT source_refunds_issue_2079_reconciled_settlement", "OR (\n      buyer_state = 'processed'\n      AND fee_state = ANY (ARRAY['processed','not_required'])\n    )", "AND buyer_refund_processed_cents = 0", "AND fee_reversal_processed_cents = 0", "ADD CONSTRAINT source_refunds_issue_2079_cancelled_legs_moved_no_money", "AND financial_state = 'reconciled'"]) {
     if (!s.evidence.includes(token)) fail(`reconciled invariant missing ${token}`);
   }
   // A released session must re-hold its inventory, and a retirement must be
@@ -166,7 +166,7 @@ if (process.argv.includes("--self-test")) {
     ["evidence", "      THEN 'not_required' ELSE 'cancelled_no_reversal_due' END,\n", "      THEN 'cancelled_no_reversal_due' ELSE 'cancelled_no_reversal_due' END,\n"],
     ["evidence", "COALESCE(stripe_charge_id,p_stripe_charge_id)", "stripe_charge_id"],
     ["evidence", "COALESCE(paystack_transaction_id,v_paystack_id)", "paystack_transaction_id"],
-    ["evidence", "        AND buyer_refund_processed_cents = 0\n", ""],
+    ["evidence", "      AND buyer_refund_processed_cents = 0\n", ""],
     ["evidence", "ADD CONSTRAINT source_refunds_issue_2079_cancelled_legs_moved_no_money", "ADD CONSTRAINT source_refunds_issue_2079_cancelled_legs_removed"],
     ["evidence", "       AND v_existing.buyer_state='cancelled_no_refund_due'\n", ""],
     ["evidence", "        fee_state=CASE WHEN fee_reversal_required_cents=0\n          THEN 'not_required' ELSE 'queued' END,\n", ""],
