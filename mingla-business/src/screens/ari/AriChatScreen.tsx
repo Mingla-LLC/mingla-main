@@ -18,7 +18,6 @@ import {
   Keyboard,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -697,9 +696,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                     empty state. Clamping it is what makes that rectangle stop
                     at the composer's top edge instead of running underneath it.
                     The dismiss target should not extend under the composer
-                    either. The ScrollView inside keeps the overflow reachable,
-                    and its content keeps the measured RESTING height, so the
-                    orb does not move when the keyboard opens. */}
+                    either. The box inside keeps the measured RESTING height,
+                    so the orb does not move when the keyboard opens. */}
                 <Pressable
                   style={[
                     styles.emptyHeroPress,
@@ -709,18 +707,25 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   accessibilityRole="button"
                   accessibilityLabel="Dismiss keyboard"
                 >
-                  <ScrollView
-                    style={styles.emptyHeroScroll}
-                    contentContainerStyle={[
-                      styles.emptyHeroScrollContent,
+                  {/* Deliberately NOT a ScrollView: the ORCH-0892 / #1841
+                      gate blocks a react-native ScrollView in a file that has a
+                      TextInput, and it is right to — a scroller near a focused
+                      field belongs to the keyboard library. Nothing here hosts
+                      a field, and this box must NOT be keyboard-aware: an
+                      auto-scrolling container would reintroduce exactly the orb
+                      jump ORCH-1057 removed. A plain box whose content keeps the
+                      measured RESTING height is what anchors the hero; the
+                      parent's `overflow: hidden` trims what the clamp excludes,
+                      and dismissing the keyboard (tap anywhere here) brings it
+                      straight back. */}
+                  <View
+                    style={[
+                      styles.emptyHeroContent,
                       { minHeight: emptyHeroBoxHeight },
                     ]}
-                    showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode="on-drag"
                   >
                     <EmptyState />
-                  </ScrollView>
+                  </View>
                 </Pressable>
               </View>
             </View>
@@ -1035,11 +1040,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
   },
-  emptyHeroScroll: {
-    flex: 1,
-    width: "100%",
-  },
-  emptyHeroScrollContent: {
+  emptyHeroContent: {
     flexGrow: 1,
     width: "100%",
   },

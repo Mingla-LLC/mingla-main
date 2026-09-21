@@ -315,18 +315,28 @@ describe("#3429 R2 R-2 — the empty state never sits under the composer", () =>
       source.indexOf("</Pressable>", source.indexOf("styles.emptyHeroPress,")),
     );
     expect(pressBlock).toContain('accessibilityLabel="Dismiss keyboard"');
-    expect(pressBlock).toContain("<ScrollView");
+    // The content box inside keeps the measured resting height — that, not the
+    // viewport, is what holds the hero still.
+    expect(pressBlock).toContain("styles.emptyHeroContent");
   });
 
-  it("the overflow the clamp creates is reachable by scrolling", () => {
+  it("the hero box is not a scroller, so it can never be keyboard-aware", () => {
+    // ORCH-0892 / #1841: a react-native ScrollView in a file with a TextInput is
+    // a gate blocker, and it is the right rule — an auto-scrolling container
+    // here would reintroduce the orb jump ORCH-1057 removed. Overflow is trimmed
+    // by the overlay and recovered by dismissing the keyboard.
     const file = parse(SCREEN);
-    let scrollsTheHero = false;
+    let scrollers = 0;
     walk(file, (node) => {
-      if (!ts.isJsxOpeningElement(node)) return;
-      if (node.tagName.getText() !== "ScrollView") return;
-      const attributes = node.attributes.getText();
-      if (attributes.includes("styles.emptyHeroScroll")) scrollsTheHero = true;
+      if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+        if (node.tagName.getText() === "ScrollView") scrollers += 1;
+      }
+      if (ts.isImportSpecifier(node) && node.name.text === "ScrollView") {
+        scrollers += 1;
+      }
     });
-    expect(scrollsTheHero).toBe(true);
+    expect(scrollers).toBe(0);
+    const source = fs.readFileSync(SCREEN, "utf8");
+    expect(source).toContain("overflow: \"hidden\"");
   });
 });
