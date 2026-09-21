@@ -90,6 +90,19 @@ export function toSegments(raw: string): Segment[] {
   return out;
 }
 
+/** The SPOKEN form of a bubble, built from the SAME segments the renderer uses.
+ *  #3429 REWORK-4 N-2: the visible rows render "- item" as a real bullet row
+ *  (R-6), but the accessibility label was still built from the raw text, so
+ *  TalkBack and VoiceOver announced "dash" before every list item while the
+ *  screen showed a bullet — sighted users got the R-6 fix and screen-reader
+ *  users did not. Taking the label from `toSegments` strips the list markers
+ *  and means the announcement cannot drift from what is on screen. */
+export function toAccessibleText(raw: string): string {
+  return toSegments(raw)
+    .map((segment) => segment.text)
+    .join("\n");
+}
+
 const BubbleText: React.FC<{ text: string; style: object }> = ({ text, style }) => {
   const segments = toSegments(text);
   // Fast path: a single plain paragraph renders as one Text (no extra views).
@@ -133,7 +146,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
       <View
         style={styles.userRow}
         accessibilityRole="text"
-        accessibilityLabel={accessibilityLabel ?? `You said: ${text}`}
+        accessibilityLabel={accessibilityLabel ?? `You said: ${toAccessibleText(text)}`}
       >
         <View
           style={[
@@ -151,7 +164,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
       style={styles.ariRow}
       accessible={!reveal}
       accessibilityRole="text"
-      accessibilityLabel={!reveal ? accessibilityLabel ?? `Ari said: ${text}` : undefined}
+      accessibilityLabel={!reveal ? accessibilityLabel ?? `Ari said: ${toAccessibleText(text)}` : undefined}
     >
       <View style={styles.orbWrap}>
         {!hideOrb ? <AriOrb size="sm" decorative /> : <View style={styles.orbSpacer} />}

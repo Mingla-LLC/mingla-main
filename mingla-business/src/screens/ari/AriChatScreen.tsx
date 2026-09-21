@@ -42,7 +42,7 @@ import {
 import { AriOrb } from "../../components/ari/AriOrb";
 import { AiDisclosureModal } from "../../components/ari/AiDisclosureModal";
 import { ConversationDrawer } from "../../components/ari/ConversationDrawer";
-import { EmptyState } from "../../components/ari/EmptyState";
+import { AriEmptyStateLayoutContext, EmptyState } from "../../components/ari/EmptyState";
 import { InputBar } from "../../components/ari/InputBar";
 import { MessageList } from "../../components/ari/MessageList";
 import type { ConfirmOutcome } from "../../components/ari/toolProposalTypes";
@@ -511,19 +511,24 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // jumping when the keyboard opens). The composer, however, DOES rise by the
   // keyboard height, so with the keyboard up it was drawing straight over the
   // first-run copy and the whole "Tap (+) to attach context" hint — on an
-  // iPhone SE the body sentence was cut mid-word and the hint row vanished,
-  // and nothing could recover them: the overlay was non-scrollable with
-  // `overflow: hidden`.
+  // iPhone SE the body sentence was cut mid-word and the hint row vanished.
   //
   // This is how far the composer's top edge rises above its resting position.
-  // It is applied as a bottom margin on the hero's SCROLL VIEWPORT only, never
+  // It is applied as a bottom margin on the hero's VISIBLE REGION only, never
   // to the hero's own box, so:
-  //   - the viewport's bottom edge is clamped to the composer's top edge, so
-  //     the two rectangles can never intersect;
-  //   - the scroll content keeps the hero box's full resting height, so the
-  //     orb and headline stay exactly where they were (no jump);
-  //   - whatever no longer fits stays reachable by scrolling instead of
-  //     disappearing behind the composer.
+  //   - the visible region's bottom edge is clamped to the composer's top
+  //     edge, so the two rectangles can never intersect;
+  //   - the content box keeps the hero box's full resting height, so the orb
+  //     and headline stay exactly where they were (no jump).
+  //
+  // #3429 REWORK-4 N-1 — what the clamp excludes is TRIMMED, not scrollable.
+  // An earlier version of this comment promised the excluded content "stays
+  // reachable by scrolling"; it never was. The box below is deliberately not a
+  // ScrollView (see there), so nothing scrolls and no gesture brings trimmed
+  // content back — only dismissing the keyboard does. Because trimming is
+  // real, WHAT gets trimmed matters, and that is decided inside EmptyState:
+  // the clamp is handed to it through AriEmptyStateLayoutContext so it can
+  // sacrifice the decorative hero first and always keep the attach hint.
   // Web has no soft keyboard, so this is 0 there and nothing changes.
   const composerRestingOccupiedPx =
     Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX;
@@ -533,6 +538,12 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
       : composerRestingOccupiedPx) +
       spacing.sm - composerRestingOccupiedPx,
+  );
+  // #3429 REWORK-4 N-1 — the hero's drop order is EmptyState's to enforce, and
+  // this is the only number it needs from the screen.
+  const emptyStateLayout = React.useMemo(
+    () => ({ viewportBottomClampPx: emptyHeroComposerClamp }),
+    [emptyHeroComposerClamp],
   );
   const rateLimited = rateLimitUntil !== null && rateLimitUntil > cooldownNow;
   const cooldownSeconds = rateLimited ? Math.max(1, Math.ceil((rateLimitUntil - cooldownNow) / 1000)) : 0;
@@ -714,17 +725,25 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                       a field, and this box must NOT be keyboard-aware: an
                       auto-scrolling container would reintroduce exactly the orb
                       jump ORCH-1057 removed. A plain box whose content keeps the
-                      measured RESTING height is what anchors the hero; the
-                      parent's `overflow: hidden` trims what the clamp excludes,
-                      and dismissing the keyboard (tap anywhere here) brings it
-                      straight back. */}
+                      measured RESTING height is what anchors the hero, and
+                      dismissing the keyboard (tap anywhere here) restores the
+                      full height.
+
+                      #3429 REWORK-4 N-1: because this box keeps the RESTING
+                      height while the Pressable above it shrinks to the clamp,
+                      this box's own bottom is trimmed — there is no scrolling
+                      and no gesture that recovers it. EmptyState therefore owns
+                      the drop order, and gets the clamp through the context
+                      below so the attach hint outlives the decorative hero. */}
                   <View
                     style={[
                       styles.emptyHeroContent,
                       { minHeight: emptyHeroBoxHeight },
                     ]}
                   >
-                    <EmptyState />
+                    <AriEmptyStateLayoutContext.Provider value={emptyStateLayout}>
+                      <EmptyState />
+                    </AriEmptyStateLayoutContext.Provider>
                   </View>
                 </Pressable>
               </View>
