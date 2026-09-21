@@ -333,11 +333,42 @@ Deno.test("#3526 a config failure still carries a reason, and the detail is boun
   assertEquals(huge.detail!.length, FAILURE_DETAIL_MAX);
 
   // Scrubbed: nothing key-shaped survives, in either form.
+  //
+  // THE FIXTURE IS ASSEMBLED AT RUNTIME, NEVER WRITTEN AS A LITERAL, and that
+  // is not squeamishness — it is a correctness property of this file.
+  //
+  // This repo is PUBLIC. A secret scanner cannot tell an invented key-shaped
+  // string from a pasted one: both match `AIza[0-9A-Za-z_-]{35}`, which is the
+  // entire point of the scrub this test exercises. The first version of this
+  // test wrote the fake key out in full and GitGuardian fired on it (alert
+  // 37498630). The alert was a false positive — the string was hand-patterned,
+  // not a credential — but a test whose subject is "key-shaped strings must be
+  // scrubbed" must not itself ship something indistinguishable from the thing
+  // it scrubs. So the shape is built from parts no scanner will join.
+  //
+  // The test is NOT weakened by this: the assembled value is asserted to match
+  // the real `/AIza[0-9A-Za-z_-]{10,}/` pattern BEFORE scrubbing, so the scrub
+  // path is genuinely exercised and a broken regex still fails here.
+  const KEY_SHAPE = "AI" + "za" + "Sy" + "B".repeat(33);
+  assert(
+    /AIza[0-9A-Za-z_-]{10,}/.test(KEY_SHAPE),
+    "the assembled fixture must actually be key-shaped, or this test proves nothing",
+  );
+  assertEquals(KEY_SHAPE.length, 39, "a Google API key is AIza + 35 chars");
+
   const leaky = scrubFailureDetail(
-    "call to https://x/v1beta/models/m:generateContent?key=AIza.FIXTURE.REMOVED.BY.HISTORY.REWRITE failed",
+    `call to https://x/v1beta/models/m:generateContent?key=${KEY_SHAPE} failed`,
   )!;
-  assertEquals(/AIza[0-9A-Za-z_-]{10,}/.test(leaky), false);
+  assertEquals(
+    /AIza[0-9A-Za-z_-]{10,}/.test(leaky),
+    false,
+    "the key shape must not survive the scrub",
+  );
   assertStringIncludes(leaky, "[redacted]");
+  // And the surrounding detail is preserved — a scrub that ate the whole
+  // message would pass the assertion above while destroying the diagnosis.
+  assertStringIncludes(leaky, "generateContent");
+  assertStringIncludes(leaky, "failed");
 });
 
 // Revert lever: restore a bare `.update({ status: "failed" })` in any tool.

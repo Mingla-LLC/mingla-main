@@ -740,7 +740,9 @@
         ]
       },
       "required_top_level": [
-        "GEMINI_API_KEY"
+        "GEMINI_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
       ]
     },
     "compute-engagement-scores": {
@@ -1009,7 +1011,9 @@
       "required_bundle_fields": {},
       "required_top_level": [
         "GEMINI_API_KEY",
-        "PEXELS_API_KEY"
+        "PEXELS_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
       ]
     },
     "growth-tools-gate": {
@@ -1041,7 +1045,9 @@
       ],
       "required_bundle_fields": {},
       "required_top_level": [
-        "GEMINI_API_KEY"
+        "GEMINI_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
       ]
     },
     "growth-tools-report": {
@@ -1062,7 +1068,9 @@
       "required_bundle_fields": {},
       "required_top_level": [
         "GEMINI_API_KEY",
-        "SCREENSHOTONE_KEYS"
+        "SCREENSHOTONE_KEYS",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
       ]
     },
     "growth-tools-trips": {
@@ -1073,7 +1081,9 @@
       "required_bundle_fields": {},
       "required_top_level": [
         "GEMINI_API_KEY",
-        "PEXELS_API_KEY"
+        "PEXELS_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
       ]
     },
     "guest-roster-actions": {
@@ -1353,7 +1363,9 @@
       "optional_top_level": [],
       "required_bundle_fields": {},
       "required_top_level": [
-        "GEMINI_API_KEY_ARI"
+        "GEMINI_API_KEY_ARI",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
       ]
     },
     "parse-restaurant-menu": {
@@ -1641,7 +1653,9 @@
       ],
       "required_bundle_fields": {},
       "required_top_level": [
-        "GEMINI_API_KEY"
+        "GEMINI_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
       ]
     },
     "run-place-intelligence-trial": {
