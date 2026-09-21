@@ -109,6 +109,31 @@ export const CHECKOUT_PAYMENT_MISMATCH_MESSAGE =
 export const CHECKOUT_AWAITING_CONFIRMATION_MESSAGE =
   "Paystack hasn't confirmed this payment yet. If you completed it, your tickets will arrive here and by email within a few minutes — don't pay again. If nothing arrives, contact support@usemingla.com.";
 
+// ---------------------------------------------------------------------------
+// The CONFIRMATION verdicts — the buyer has paid (or may have) and the server
+// has answered whether tickets exist.
+//
+// A THIRD codomain, deliberately kept out of both arrays above and below:
+//   • NATIVE_CHECKOUT_MESSAGES' walkers pin the create-refusal wording
+//     ("you have not been charged") on every member;
+//   • NATIVE_PAYSTACK_RETURN_MESSAGES is pinned as the EXACT codomain of
+//     `nativePaystackReturnMessage`, and nothing here is returned by it.
+// ---------------------------------------------------------------------------
+
+/**
+ * `ticket-checkout-status` refused the sale with HTTP 409 `checkout_unavailable`
+ * (the checkout was revoked, or the payment is being reversed). No tickets will
+ * be issued and any payment is refunded automatically — so this says both, in
+ * the same words the buyer web confirmation screen uses.
+ */
+export const CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE =
+  "We couldn't issue your tickets. You haven't been charged — any payment is being refunded in full. Try again or contact the organiser.";
+
+/** Every confirmation-verdict string, so a test can walk them. */
+export const NATIVE_CONFIRMATION_VERDICT_MESSAGES: readonly string[] = [
+  CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
+];
+
 /** Every constant this module owns, in one place, so a test can walk them. */
 export const NATIVE_CHECKOUT_MESSAGES: readonly string[] = [
   CHECKOUT_IN_PROGRESS_MESSAGE,

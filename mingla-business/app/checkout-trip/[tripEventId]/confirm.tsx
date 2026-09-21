@@ -59,8 +59,12 @@ import {
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
 import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
 import {
+  TicketConfirmVerdictHero,
+  type TicketConfirmEnding,
+} from "../../../src/components/checkout/TicketConfirmVerdictHero";
+import {
+  awaitTicketConfirmation,
   confirmTicketCheckout,
-  paidCheckoutErrorMessage,
 } from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
@@ -137,6 +141,10 @@ function CheckoutTripConfirmScreenInner({
   // a terminal payment outcome must read as one here too instead of becoming
   // "Confirming your reservation…" forever.
   const [terminalFailure, setTerminalFailure] = useState<string | null>(null);
+  // Surface parity with the event-side screen: a sale refused after payment
+  // (refund automatic) or a spent 60 s confirmation budget. Decided by
+  // `awaitTicketConfirmation` alone; this screen only renders it.
+  const [confirmEnding, setConfirmEnding] = useState<TicketConfirmEnding | null>(null);
   const [pendingSession, setPendingSession] = useState<{
     checkoutSessionId: string;
     buyerStatusToken: string;
@@ -264,72 +272,75 @@ function CheckoutTripConfirmScreenInner({
     }
 
     let cancelled = false;
+    // Arms the Realtime safety net below, ALONGSIDE the confirm poll.
+    const armRealtime = (): void => {
+      setPendingSession({
+        checkoutSessionId: payload.checkoutSessionId,
+        buyerStatusToken: payload.buyerStatusToken,
+      });
+      setRealtimePending(true);
+    };
     (async (): Promise<void> => {
-      try {
-        const confirmResult = await confirmTicketCheckout(
-          payload.checkoutSessionId,
-          payload.buyerStatusToken,
-        );
-        if (cancelled) return;
-        if (confirmResult.status === "paid" && confirmResult.order !== null) {
-          const taxCents = Number(confirmResult.order.taxAmountCents ?? 0);
-          recordResult({
-            orderId: confirmResult.order.orderId,
-            ticketIds: confirmResult.order.tickets.map((t) => t.ticketId),
-            checkoutSessionId: confirmResult.checkoutSessionId,
-            // issue #2323 — carry the possession proof onto the order so
-            // `useAttendanceClaimArm` can mint from the RESULT. Reading it back
-            // out of sessionStorage here is not an option: the resume payload
-            // is cleared a few lines below, before this render commits.
-            buyerStatusToken: payload.buyerStatusToken,
-            paidAt: new Date().toISOString(),
-            paymentMethod: "card",
-            total: confirmResult.order.totalCents / 100,
-            totalCents: confirmResult.order.totalCents,
-            currency: confirmResult.order.currency,
-            tax: taxCents > 0 ? taxCents / 100 : 0,
-            taxAmountCents: taxCents,
-            paymentStatus: confirmResult.order.paymentStatus,
-            notificationStatus: confirmResult.order.notificationStatus,
-            tickets: confirmResult.order.tickets,
-          });
-          // META-ORCH-1187 — purchase conversion (SC-6). value in major units.
-          postHogService.capture("purchase_completed", {
-            event_id: tripEventId,
-            order_id: confirmResult.order.orderId,
-            value: confirmResult.order.totalCents / 100,
-            currency: confirmResult.order.currency,
-            offering_type: "trip",
-            surface: "business_app",
-          });
-          clearCheckoutResumePayload(win.sessionStorage, tripEventId);
-          return;
-        }
-        // issue #2198 — Paystack said failed / abandoned, or the verified
-        // amount did not match. Waiting cannot change that answer.
-        if (confirmResult.status === "failed") {
-          setTerminalFailure(
-            paidCheckoutErrorMessage({ code: confirmResult.error ?? null }),
-          );
-          return;
-        }
-        setPendingSession({
-          checkoutSessionId: payload.checkoutSessionId,
+      // ONE owner decides what each confirm answer means and how long to keep
+      // asking (60 s, with backoff) — see the event-side screen.
+      const verdict = await awaitTicketConfirmation({
+        checkoutSessionId: payload.checkoutSessionId,
+        buyerStatusToken: payload.buyerStatusToken,
+        confirm: confirmTicketCheckout,
+        isCancelled: () => cancelled,
+        onWaiting: armRealtime,
+      });
+      if (cancelled || verdict.kind === "cancelled") return;
+      if (verdict.kind === "paid") {
+        const confirmResult = verdict.result;
+        const order = verdict.order;
+        const taxCents = Number(order.taxAmountCents ?? 0);
+        recordResult({
+          orderId: order.orderId,
+          ticketIds: order.tickets.map((t) => t.ticketId),
+          checkoutSessionId: confirmResult.checkoutSessionId,
+          // issue #2323 — carry the possession proof onto the order so
+          // `useAttendanceClaimArm` can mint from the RESULT. Reading it back
+          // out of sessionStorage here is not an option: the resume payload
+          // is cleared a few lines below, before this render commits.
           buyerStatusToken: payload.buyerStatusToken,
+          paidAt: new Date().toISOString(),
+          paymentMethod: "card",
+          total: order.totalCents / 100,
+          totalCents: order.totalCents,
+          currency: order.currency,
+          tax: taxCents > 0 ? taxCents / 100 : 0,
+          taxAmountCents: taxCents,
+          paymentStatus: order.paymentStatus,
+          notificationStatus: order.notificationStatus,
+          tickets: order.tickets,
         });
-        setRealtimePending(true);
-      } catch (err) {
-        if (cancelled) return;
-        console.warn(
-          "[checkout-trip-confirm] sync confirm failed, falling back to realtime",
-          err,
-        );
-        setPendingSession({
-          checkoutSessionId: payload.checkoutSessionId,
-          buyerStatusToken: payload.buyerStatusToken,
+        // META-ORCH-1187 — purchase conversion (SC-6). value in major units.
+        postHogService.capture("purchase_completed", {
+          event_id: tripEventId,
+          order_id: order.orderId,
+          value: order.totalCents / 100,
+          currency: order.currency,
+          offering_type: "trip",
+          surface: "business_app",
         });
-        setRealtimePending(true);
+        clearCheckoutResumePayload(win.sessionStorage, tripEventId);
+        return;
       }
+      // issue #2198 — Paystack said failed / abandoned, or the verified
+      // amount did not match. Waiting cannot change that answer.
+      if (verdict.kind === "payment_failed") {
+        setRealtimePending(false);
+        setTerminalFailure(verdict.message);
+        return;
+      }
+      if (verdict.kind === "not_issued") {
+        setRealtimePending(false);
+        setConfirmEnding("not_issued");
+        return;
+      }
+      armRealtime();
+      setConfirmEnding("still_confirming");
     })();
     return (): void => {
       cancelled = true;
@@ -371,6 +382,8 @@ function CheckoutTripConfirmScreenInner({
       }
       setRealtimePending(false);
       setPendingSession(null);
+      // A late order outranks "still confirming".
+      setConfirmEnding(null);
     },
   });
 
@@ -433,9 +446,11 @@ function CheckoutTripConfirmScreenInner({
       if (realtimePending) return;
       // issue #2198 — keep the guest here to read the failure reason.
       if (terminalFailure !== null) return;
+      // Same for a refused sale or a spent confirmation budget.
+      if (confirmEnding !== null) return;
     }
     router.replace(`/checkout-trip/${tripEventId}` as never);
-  }, [result, tripEventId, router, realtimePending, isClient, terminalFailure]);
+  }, [result, tripEventId, router, realtimePending, isClient, terminalFailure, confirmEnding]);
 
   // ----- Handlers -----
   const handleBackToTrip = useCallback((): void => {
@@ -480,6 +495,17 @@ function CheckoutTripConfirmScreenInner({
             </Text>
           </View>
         </View>
+      );
+    }
+    // A refused sale or a spent confirmation budget also outranks the spinner.
+    if (confirmEnding !== null) {
+      return (
+        <TicketConfirmVerdictHero
+          ending={confirmEnding}
+          topInset={insets.top}
+          backLabel="Back to trip"
+          onBack={handleBackToTrip}
+        />
       );
     }
     if (Platform.OS === "web") {
