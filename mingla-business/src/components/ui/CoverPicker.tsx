@@ -28,6 +28,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Image,
   InteractionManager,
   Platform,
@@ -59,6 +60,12 @@ import {
   trimVideoWithDedicatedEditor,
   waitForTrimEditorToClose,
 } from "./coverPickerVideoTrimEditor";
+// issue #3485 — the video pick's busy rule, and the sentence it shows when it
+// refuses; plus the rule for when a stuck card should ask the server again. Pure
+// modules beside this one because CoverPicker.tsx cannot be mounted under jest
+// (expo-video / expo-image-picker / react-native-video-trim).
+import { videoPickRefusal } from "./coverPickerVideoPickGate";
+import { shouldRecheckCoverVideo } from "./coverPickerVideoRecheck";
 
 import {
   accent,
@@ -417,6 +424,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         : {},
   );
   const lastVideoUploadFileRef = useRef<EventCoverVideoUploadFile | null>(null);
+  // issue #3485 — the PICK/PREPARE half of "busy" (see coverPickerVideoPickGate).
+  // True only while the OS video picker is open or its clip is being trimmed,
+  // measured and handed onward; cleared the moment the file becomes the upload
+  // hook's problem, so it never covers the upload or the encode the way
+  // `uploading` does. A ref, not state: the guard reads it at tap time and a
+  // re-render would buy nothing.
+  const videoPickInFlightRef = useRef(false);
   const lastEmittedProcessedVideoUrlRef = useRef<string | null>(null);
   const savingProcessedVideoUrlRef = useRef<string | null>(null);
   // ORCH-1308: hold the picked video blob assets across a retry. On web the
@@ -1205,7 +1219,24 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const pickVideoCover = useCallback(async (replacing = false): Promise<void> => {
     const resumingDetachedWeb = Platform.OS === "web" && videoUpload.stage.phase === "detached";
     // issue #3280 — see `pickImageOrGifCover`: a gallery upload is cover-busy.
-    if (uploading || galleryUploading || disabled || (lockedVideoOperation && !replacing && !resumingDetachedWeb)) return;
+    // issue #3485 — was one bare `return` over four flags, and `uploading` is
+    // held for the WHOLE processing window, so Replace was a dead tap for the
+    // exact 32-minute stall a host needs to escape. The rule now lives in
+    // `videoPickRefusal`, which lets a replace past an in-flight upload/encode
+    // and still blocks a second picker launch — and every refusal SAYS so.
+    const refusal = videoPickRefusal({
+      videoPickInFlight: videoPickInFlightRef.current,
+      galleryUploading,
+      coverUploading: uploading,
+      disabled,
+      videoLocked: lockedVideoOperation,
+      replacing,
+      resumingDetachedWeb,
+    });
+    if (refusal !== null) {
+      setVideoPickNotice(refusal);
+      return;
+    }
     // ORCH-1307: mobile web is no longer gated out of video covers. The web has
     // no trimmer (native-only react-native-video-trim), so a raw clip flows
     // straight to the duration guard below; clips within the ceiling upload
@@ -1223,6 +1254,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
     setUploading(true);
     setCoverUploadKind("video");
+    // issue #3485 — the pick/prepare critical section opens here and closes
+    // either where the file is handed to the upload hook or in the `finally`.
+    videoPickInFlightRef.current = true;
     // issue #1338 — clear any stale notice from a prior attempt.
     setVideoPickNotice(null);
     const previousPickedVideoAssets = pickedVideoAssetsRef.current;
@@ -1356,6 +1390,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         nativeEditorUpload = { file: uploadFile, replacing };
         return;
       }
+      // issue #3485 — the pick/prepare is over: the clip is validated and the
+      // hook owns it from here. Releasing BEFORE the await is the whole fix —
+      // `start`/`replace` do not resolve until the encode settles, and holding
+      // the pick lock across that window is what made Replace a dead tap.
+      videoPickInFlightRef.current = false;
       if (replacing) {
         await videoUpload.replace(uploadFile);
         revokeCoverPickedAssets(previousPickedVideoAssets);
@@ -1373,7 +1412,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       });
     } finally {
       // issue #3280 — hand off to a fresh sheet (see `handOffToFreshSheet`).
+      // issue #3485 — the pick lock outlives the hand-off on purpose: until the
+      // carry has been handed over, a second pick would race the trim editor's
+      // dismissal. It is released after, and on every early return and error.
       if (presentedNativeEditor && handOffAfterNativeEditor) await handOffToFreshSheet();
+      videoPickInFlightRef.current = false;
       // ORCH-1308: do NOT revoke the picked blob here — the "try again" retry
       // re-reads it (web fetch(blob:uri)). It is retained via
       // pickedVideoAssetsRef and freed on the next pick / on unmount instead.
@@ -1463,6 +1506,71 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     if (uploadFile === null || activeVideoUpload || disabled || uploading || galleryUploading) return;
     void videoUpload.start(uploadFile);
   }, [activeVideoUpload, disabled, galleryUploading, uploading, videoUpload]);
+
+  // ----- issue #3485: settle a finished job when the app comes back ---------
+  // The card was stuck on "Processing video…" (elapsed 4758m) for a job the
+  // server had already applied, and closing and reopening the sheet did not
+  // clear it — only a full app restart did. The sheet had exactly three routes
+  // to the truth: the hook's mount-time `resume`, its live poll, and `checkNow`,
+  // which is only reachable from the `detached` phase's button. A poll that died
+  // while the app was suspended therefore had no route back at all.
+  //
+  // The missing signal is the app coming back. `shouldRecheckCoverVideo` owns
+  // WHEN (phase, single-flight, one read per window); `videoUpload.checkNow` is
+  // the same read the button performs, apply step included.
+  const videoRecheckInFlightRef = useRef(false);
+  const lastVideoRecheckAtRef = useRef<number | null>(null);
+  // Read off the hook's object HERE, not inside the callback: `videoUpload` is a
+  // fresh object every render, so depending on it would rebuild this callback
+  // every render and re-fire the phase effect below on every poll tick.
+  const checkVideoJobNow = videoUpload.checkNow;
+  const videoJobPhase = videoUpload.stage.phase;
+  const recheckVideoJob = useCallback((): void => {
+    const last = lastVideoRecheckAtRef.current;
+    if (
+      !shouldRecheckCoverVideo({
+        phase: videoJobPhase,
+        checkInFlight: videoRecheckInFlightRef.current,
+        msSinceLastCheck: last === null ? null : Date.now() - last,
+      })
+    ) {
+      return;
+    }
+    lastVideoRecheckAtRef.current = Date.now();
+    videoRecheckInFlightRef.current = true;
+    void checkVideoJobNow()
+      .catch(() => {
+        // A read that cannot reach the server changes NOTHING: the card keeps
+        // the phase it had and the next foreground asks again. A background
+        // refresh must never be what shows the host an error.
+      })
+      .finally(() => {
+        videoRecheckInFlightRef.current = false;
+      });
+  }, [checkVideoJobNow, videoJobPhase]);
+
+  // Read through a ref so the listener is installed once and removed once,
+  // instead of re-subscribing on every phase change.
+  const recheckVideoJobRef = useRef(recheckVideoJob);
+  recheckVideoJobRef.current = recheckVideoJob;
+  useEffect(() => {
+    // The web has no React Native AppState lifecycle; there the phase effect
+    // below is the whole coverage. Same `Platform.OS` shape as the app's other
+    // foreground listeners (see `OtaAcknowledgementLayer`).
+    if (Platform.OS === "web") return;
+    const subscription = AppState.addEventListener("change", (next) => {
+      if (next === "active") recheckVideoJobRef.current();
+    });
+    return () => subscription.remove();
+  }, []);
+
+  // The sheet opening on — or landing on — a server-owned phase asks once too,
+  // so a reopen settles a finished job without waiting for a backgrounding that
+  // may never come. `recheckVideoJob`'s identity changes only with the PHASE, so
+  // the watch's per-poll percent updates cannot re-fire this.
+  useEffect(() => {
+    recheckVideoJob();
+  }, [recheckVideoJob]);
 
   // ----- Provider browse (gallery-first) ---------------------------------
 
@@ -2173,6 +2281,26 @@ const VideoStatusCard: React.FC<{
   );
 };
 
+/**
+ * issue #1338 — in-sheet cover-VIDEO feedback (cancel/over-cap/failure/added).
+ * Renders INSIDE CoverPickerSheet's Sheet — a plain View/Text, NOT a native
+ * <Modal>, so iOS never drops it while the sheet is up.
+ *
+ * issue #3485 — extracted so the SAME row can render while a video job owns the
+ * cover, where the action row it used to sit under is not rendered at all.
+ */
+const VideoPickNoticeRow: React.FC<{ notice: NativeEditorNotice | null }> = ({ notice }) =>
+  notice === null ? null : (
+    <View style={styles.videoNoticeRow}>
+      <Text
+        accessibilityRole="alert"
+        style={notice.tone === "error" ? styles.mediaErrorText : styles.videoNoticeInfoText}
+      >
+        {notice.text}
+      </Text>
+    </View>
+  );
+
 const LibraryTab: React.FC<{
   hasCover: boolean;
   hue: number;
@@ -2275,7 +2403,12 @@ const LibraryTab: React.FC<{
       />
     ) : null}
 
-    {activeVideoUpload ? null : (
+    {/* issue #3485 — the notice has to survive an ACTIVE job. It used to live
+        only inside the branch below, which renders nothing while a video
+        operation owns the cover — so the sentence explaining a refused Replace
+        would have been set and never shown, and the dead tap would look
+        identical. Same component, both branches, mutually exclusive. */}
+    {activeVideoUpload ? <VideoPickNoticeRow notice={videoPickNotice} /> : (
       <>
         <View style={styles.actionRow}>
           <Button
@@ -2333,23 +2466,7 @@ const LibraryTab: React.FC<{
           </View>
         ) : null}
 
-        {/* issue #1338 — in-sheet cover-VIDEO feedback (cancel/over-cap/failure/
-            added). Renders INSIDE CoverPickerSheet's Sheet — a plain View/Text,
-            NOT a native <Modal>, so iOS never drops it while the sheet is up. */}
-        {videoPickNotice !== null ? (
-          <View style={styles.videoNoticeRow}>
-            <Text
-              accessibilityRole="alert"
-              style={
-                videoPickNotice.tone === "error"
-                  ? styles.mediaErrorText
-                  : styles.videoNoticeInfoText
-              }
-            >
-              {videoPickNotice.text}
-            </Text>
-          </View>
-        ) : null}
+        <VideoPickNoticeRow notice={videoPickNotice} />
 
         <Text style={styles.uploadLimitText}>{EVENT_COVER_UPLOAD_LIMIT_COPY}</Text>
         {Platform.OS === "web" ? (
