@@ -1,5 +1,44 @@
 # Invariant Registry
 
+## DRAFT — issue #3351 (a free trip with intake reaches its reservation)
+
+### I-PROPOSED-3351-TRIP-CHECKOUT-STEP-ORDER-HAS-ONE-OWNER (DRAFT)
+
+- **Rule:** In the Business trip checkout, what comes after the details step and after the
+  last intake form is decided by one pure owner (`tripCheckoutStepOrder.ts`) that both screens
+  consult, keyed on intake **completion** — an answer set committed to the cart at the
+  schema's current `schema_version_id` — never on intake presence and never on whether a
+  question is required. A free reservation is created at exactly one call site, and that
+  call carries `intake_form_data` whenever the cart holds answers. No screen may hold a
+  second predicate over the intake schema query that decides navigation. Nothing on this
+  route may submit a reservation without a buyer tap: finishing the last form returns the
+  buyer to the details step with Reserve enabled, and there is no auto-finalise path and no
+  finalise token. The visible step total is a function of `{isFree, hasIntake}` only, so it
+  can never change mid-flow: free+intake 3, free 2, paid+intake 4, paid 3. A free cart never
+  navigates to the payment step. Every refusal the free rail shows is a mapped sentence from
+  `checkoutErrorCopy.ts`; `intake_form_required` maps to a sentence that says the organiser
+  needs answers and that nothing was reserved, and never that a ticket may already exist.
+- **Why:** #3351 — a free trip with any intake question could never be booked. Each screen
+  named the other as the finisher, so a traveller bounced between them forever and zero
+  reservation requests were made; the free request also omitted the answers, and the
+  resulting 400 rendered "Your ticket may already be reserved", the wording #2511/#2462
+  exist to prevent. Proven at runtime on buyer web, three laps, zero requests.
+- **Enforcement:** `issue_3351_free_trip_intake_reaches_reservation.implementor.test.ts`
+  (exhaustive decision table, bounded termination walk for required and optional-only
+  schemas, completion predicate, four-variant counter, the copy token, and the absence of
+  any auto-finalise path) plus the tester's independent adversarial suite, both in the
+  required `mingla-business jest (full suite)` lane.
+- **Relationship:** #3353 will relocate the single free-reservation call into a shared
+  service seam. That move must carry `intake_form_data` with it and must not re-decide the
+  step order, which this invariant owns. The server-side
+  `I-PROPOSED-TR5-INTAKE-REQUIRED-BLOCKS-CHECKOUT` gate is unchanged and remains the
+  authority on required-answer enforcement; this invariant is its client-side counterpart,
+  which no gate covered before.
+- **Status:** DRAFT until #3351 CLOSE: the implementor and tester suites green and proven
+  fail-on-revert, and a runtime lap on buyer web showing one `ticket-checkout-create`
+  request carrying the answers and the confirmation reached, for both the required and the
+  optional-only schema.
+
 ## DRAFT — issue #3449 (the Class A shards partition the class)
 
 ### I-PROPOSED-3449-CLASS-A-SHARDS-PARTITION-THE-CLASS (DRAFT)
