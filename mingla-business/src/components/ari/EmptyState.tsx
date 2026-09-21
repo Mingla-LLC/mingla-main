@@ -83,10 +83,20 @@ export const EmptyState: React.FC = () => {
   // independent by construction, so this measures the RESTING height even while
   // the keyboard is up. That is what keeps the orb still.
   const [restingHeightPx, handleHostLayout] = useMeasuredHeight();
-  // The decorative content's NATURAL height. It is measured on an inner box
-  // that carries no cap, so it stays correct even while the zone around it is
-  // clipped — and it tracks font scale, which is where N-1 bit hardest.
-  const [heroContentPx, handleHeroLayout] = useMeasuredHeight();
+  // The decorative content's NATURAL height — the largest this box has ever
+  // reported. It is deliberately NOT the latest value: once the cap below bites,
+  // `onLayout` reports the CLAMPED height, and feeding that back into the offset
+  // is a measurement loop that walks the orb down the screen. Measured on the
+  // Pixel 7 before this was fixed: 196 → 184 → 182 → 181 → 180dp across four
+  // frames, and the orb drifted 21px on a single keyboard open. `flexShrink: 0`
+  // does not prevent it. A font-scale change needs a cold relaunch to re-measure
+  // anything at all (handbook §8.7), and that remounts this component, so the
+  // high-water mark is re-taken exactly when it should be.
+  const [heroContentPx, setHeroContentPx] = React.useState(0);
+  const handleHeroLayout = React.useCallback((event: LayoutChangeEvent): void => {
+    const next = Math.round(event.nativeEvent.layout.height);
+    setHeroContentPx((previous) => (next > previous ? next : previous));
+  }, []);
   const [hintHeightPx, handleHintLayout] = useMeasuredHeight();
 
   const measured = restingHeightPx > 0 && heroContentPx > 0 && hintHeightPx > 0;
@@ -105,6 +115,11 @@ export const EmptyState: React.FC = () => {
   // extreme clamp (tall attachment tray + keyboard on a small phone) it would
   // push the hint row off the visible box — the exact failure this fix ends.
   const heroMaxHeightPx = Math.max(0, visibleHeightPx - hintHeightPx - heroTopOffsetPx);
+  // Clip ONLY when the cap actually bites. The orb paints a soft halo past its
+  // own layout box, so a permanently-clipping box shears the bottom off it even
+  // at rest with nothing to clip — a regression caught on the Pixel 7 rather
+  // than by any assertion.
+  const heroIsClipped = measured && heroMaxHeightPx < heroContentPx;
 
   return (
     <View
@@ -115,6 +130,7 @@ export const EmptyState: React.FC = () => {
         style={[
           styles.heroClip,
           measured ? { marginTop: heroTopOffsetPx, maxHeight: heroMaxHeightPx } : null,
+          heroIsClipped ? styles.heroClipped : null,
         ]}
       >
         <View style={styles.heroContent} onLayout={handleHeroLayout}>
@@ -180,12 +196,18 @@ const styles = StyleSheet.create({
   heroClip: {
     width: "100%",
     alignItems: "center",
+  },
+  // Applied only while the cap bites — see `heroIsClipped`.
+  heroClipped: {
     overflow: "hidden",
   },
-  // Unclamped, so its measured height is the content's natural height.
+  // The box whose height is measured. It overflows the cap above it on purpose
+  // — the clip is the mechanism — and `flexShrink: 0` says so, though it is NOT
+  // what keeps the measurement honest: see `heroContentPx`.
   heroContent: {
     width: "100%",
     alignItems: "center",
+    flexShrink: 0,
   },
   orbWrap: {
     marginBottom: spacing.lg,

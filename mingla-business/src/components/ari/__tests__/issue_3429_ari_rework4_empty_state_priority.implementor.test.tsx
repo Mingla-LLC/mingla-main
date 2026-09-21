@@ -34,6 +34,8 @@
  *     so the hint row is pushed below the composer's top edge again (the exact
  *     N-1 geometry, reproduced arithmetically).
  *   - delete `flexShrink: 0` from the hint zone → T-5/T-6/T-7 go red.
+ *   - take the LATEST hero measurement instead of the high-water one → T-9
+ *     goes red: that is the measurement loop that drifted the orb on device.
  *   - drop `heroTopOffsetPx` back to a `justifyContent: "center"` → T-3 and
  *     T-4 go red, because the orb then tracks the clamp (the jump ORCH-1057
  *     removed) and the resting position stops matching what centring produced.
@@ -133,6 +135,7 @@ const HOST_PADDING_BOTTOM = spacing.xxl;
 interface Mounted {
   host: Record<string, unknown>;
   heroClip: Record<string, unknown>;
+  heroContent: Record<string, unknown>;
   hintZone: Record<string, unknown>;
   hintRowLabel: unknown;
   unmount: () => void;
@@ -151,6 +154,8 @@ function mount(
   clampPx: number,
   heroPx: number,
   hintPx: number,
+  /** A LATER, smaller hero report — what the platform sends once the cap bites. */
+  clampedHeroPx?: number,
 ): Mounted {
   let tree: TestRoot | null = null;
   act(() => {
@@ -176,6 +181,11 @@ function mount(
   fire(first, restingHeightPx);
   fire(childViews(childViews(first)[0])[0], heroPx);
   fire(childViews(first)[1], hintPx);
+  if (clampedHeroPx !== undefined) {
+    // The platform re-reports the decorative box at its CLAMPED height once the
+    // cap bites. Taking that at face value is a measurement loop.
+    fire(childViews(childViews(root.toJSON())[0])[0], clampedHeroPx);
+  }
 
   // Re-read after the measurement-driven re-render.
   const host = root.toJSON();
@@ -185,6 +195,7 @@ function mount(
   return {
     host: flatten(host.props.style),
     heroClip: flatten(heroClip.props.style),
+    heroContent: flatten(childViews(heroClip)[0].props.style),
     hintZone: flatten(hintZone.props.style),
     hintRowLabel: hintRow.props.accessibilityLabel,
     unmount: () => act(() => root.unmount()),
@@ -211,6 +222,13 @@ describe("#3429 REWORK-4 N-1 — the attach hint is the last content dropped", (
     expect(m.heroClip.overflow).toBe("hidden");
     expect(m.hintZone.overflow).toBeUndefined();
     m.unmount();
+
+    // And at rest, with nothing to clip, the zone does NOT clip — the orb
+    // paints a halo past its own box and a permanently-clipping parent shears
+    // the bottom off it (caught on the Pixel 7, not by an earlier assertion).
+    const atRest = mount(620, 0, SCALES[0].heroPx, SCALES[0].hintPx);
+    expect(atRest.heroClip.overflow).toBeUndefined();
+    atRest.unmount();
   });
 
   for (const device of DEVICES) {
@@ -307,6 +325,32 @@ describe("#3429 REWORK-4 N-1 — the attach hint is the last content dropped", (
     expect(m.hintZone.flexShrink).toBe(0);
     expect(m.hintRowLabel).toBe("Tap the plus button to attach context");
     m.unmount();
+  });
+
+  it("T-9 a clamped re-measurement of the hero does NOT move it (the Pixel 7 drift)", () => {
+    for (const device of DEVICES) {
+      for (const scale of SCALES) {
+        // The platform re-reported the decorative box at its clamped height
+        // over four frames on the Pixel 7 (196 → 184 → 182 → 181 → 180dp) and
+        // the orb walked 21px down the screen. Feed the shrunken value in and
+        // the offset must not budge.
+        const stable = mount(device.restingHeightPx, device.clampPx, scale.heroPx, scale.hintPx);
+        const looped = mount(
+          device.restingHeightPx,
+          device.clampPx,
+          scale.heroPx,
+          scale.hintPx,
+          Math.round(scale.heroPx * 0.75),
+        );
+        expect(heroTop(looped)).toBe(heroTop(stable));
+        // ...and the hint row is still where it belongs.
+        expect(hintBottom(looped, scale.heroPx, scale.hintPx)).toBeLessThanOrEqual(
+          device.restingHeightPx - device.clampPx - HOST_PADDING_BOTTOM,
+        );
+        stable.unmount();
+        looped.unmount();
+      }
+    }
   });
 
   it("T-8 before measurement the group is centred, so the first frame is not top-aligned", () => {
