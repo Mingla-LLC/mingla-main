@@ -266,6 +266,33 @@ Deno.test("#3526 TESTER-DEFECT — the admin owns NO per-place cost at all", () 
   // spelled `0.00…`. Naming it `usd` is the convention everywhere here.
   const COST_IDENT_BOUND_TO_NUMBER =
     /\b[\w$]*(?:per_?place|cost_?guard|cost_?drift)[\w$]*usd[\w$]*\s*[:=]\s*[-+]?[0-9]/i;
+
+  // issue #3526 round 4 — the COMPUTED form, which neither of the two rules
+  // above sees. The original P0-1 line was not a bare assignment, it was
+  // arithmetic: `const estCost = Math.max(0, city.remaining_count) * 0.004;`
+  // (useBulkRunDispatcher.js:79). `RATE_LITERAL` catches that only while the
+  // rate is spelled `0.00…`; at the 1 Jan 2027 rate the exact original line
+  // walks past every check here. So: a money-named identifier assigned an
+  // expression that multiplies by a decimal literal.
+  //
+  // The dimensionless escape is tested against the IDENTIFIER ONLY, never the
+  // whole expression — a per-place rate is by definition multiplied by a COUNT,
+  // so matching "count" anywhere on the right-hand side would suppress exactly
+  // the shape this rule exists to catch.
+  const MONEY_NAME = "(?:cost|price|rate|guard|fee|charge|spend|threshold|amount)";
+  // Group 1 = the assigned identifier, group 2 = the left operand of the
+  // multiplication. The offence is a hardcoded PER-UNIT RATE: a count times a
+  // decimal. `perPlaceCostUsd * 0.25` is the opposite shape — a server-supplied
+  // cost times a dimensionless fraction — and is legitimate, so a left operand
+  // that is itself money is exempt. Shapes and ratios yes; dollar amounts no.
+  const MONEY_COMPUTED = new RegExp(
+    `\\b([\\w$]*${MONEY_NAME}[\\w$]*)\\s*=\\s*([^;\\n]*?)\\*\\s*\\d+\\.\\d+`,
+    "i",
+  );
+  const MONEY_OPERAND = new RegExp(MONEY_NAME, "i");
+  const DIMENSIONLESS_NAME =
+    /fraction|ratio|multiplier|pct|percent|_ms\b|millis|second|minute|hour|day|count|processed|index|length|size|version/i;
+
   const offenders: string[] = [];
   for (const rel of sites) {
     const code = readRepo(rel)
@@ -279,6 +306,13 @@ Deno.test("#3526 TESTER-DEFECT — the admin owns NO per-place cost at all", () 
     }
     const bound = COST_IDENT_BOUND_TO_NUMBER.exec(code);
     if (bound) offenders.push(`${name} binds a cost identifier to a number: ${bound[0].trim()}`);
+    const computed = MONEY_COMPUTED.exec(code);
+    if (
+      computed && !DIMENSIONLESS_NAME.test(computed[1]) &&
+      !MONEY_OPERAND.test(computed[2])
+    ) {
+      offenders.push(`${name} computes a cost from a hardcoded rate: ${computed[0].trim()}`);
+    }
   }
   assertEquals(
     offenders,
