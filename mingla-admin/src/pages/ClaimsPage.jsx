@@ -16,6 +16,9 @@ import { logAdminAction } from "../lib/auditLog";
 import { resolveClaimDisplayPhone, formatPhoneHref } from "../lib/claimsPhone";
 import { ClaimRow } from "../components/claims/ClaimRow";
 import { PendingVenueIdentityCorrectionPanel } from "../components/claims/PendingVenueIdentityCorrectionPanel";
+// #3386 — host change requests for live venues (name, category, address).
+import { VenueDetailsChangeRequestsPanel } from "../components/claims/VenueDetailsChangeRequestsPanel";
+import { countPendingVenueDetailsChanges } from "../services/adminVenueDetailsChangeService";
 import {
   addClaimFeedback,
   getClaimReviewBundle,
@@ -68,6 +71,8 @@ const CLAIM_TABS = [
   { id: "pending", label: "Pending review" },
   { id: "verified", label: "Verified" },
   { id: "rejected", label: "Rejected" },
+  // #3386 — a live venue's name/category/address change waits here for Mingla.
+  { id: "changes", label: "Detail changes" },
 ];
 
 const EMPTY_COPY = {
@@ -133,12 +138,33 @@ export function ClaimsPage() {
   const rejectReasonRef = useRef(null);
   const skipNextTabLoadRef = useRef(false);
 
+  // #3386 — how many host change requests are waiting, shown on the tab.
+  const [pendingChangeCount, setPendingChangeCount] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    countPendingVenueDetailsChanges()
+      .then((count) => {
+        if (!cancelled) setPendingChangeCount(count);
+      })
+      .catch(() => {
+        if (!cancelled) setPendingChangeCount(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const duplicateGroups = useMemo(
     () => groupClaimsByGooglePlaceId(rows),
     [rows],
   );
 
   const load = useCallback(async (tab = activeTab) => {
+    // #3386 — the Detail changes tab owns its own list and loading state.
+    if (tab === "changes") {
+      setLoading(false);
+      return null;
+    }
     setLoading(true);
     setListError(null);
     try {
@@ -590,12 +616,26 @@ export function ClaimsPage() {
                 : "border-white/10 bg-white/5 text-[var(--color-text-secondary)] hover:bg-white/10"
             }`}
           >
-            {tab.label}
+            {tab.id === "changes" && pendingChangeCount
+              ? `${tab.label} (${pendingChangeCount})`
+              : tab.label}
           </button>
         ))}
       </div>
 
-      <div ref={resultsRef} tabIndex={-1} aria-live="polite">
+      {activeTab === "changes" ? (
+        <VenueDetailsChangeRequestsPanel
+          categoryLabels={CAT_LABELS}
+          onCountChange={setPendingChangeCount}
+        />
+      ) : null}
+
+      <div
+        ref={resultsRef}
+        tabIndex={-1}
+        aria-live="polite"
+        hidden={activeTab === "changes"}
+      >
         <SectionCard
           title={`${CLAIM_TABS.find((tab) => tab.id === activeTab)?.label ?? "Pending review"} (${rows.length})`}
           subtitle={

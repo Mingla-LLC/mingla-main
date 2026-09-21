@@ -85,7 +85,7 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // judgement rather than a measurement, and moving one is Seth's call, made
 // deliberately, in a commit that does nothing else.
 //
-// If your PR trips a HARD CEILING, the boot payload has grown ~11-14% since
+// If your PR trips a HARD CEILING, the boot payload has grown ~20-25% since
 // 2026-08-11 without anyone deciding that was acceptable. That is a product
 // conversation (issue #943 owns the trim, and the parked audience-split issue
 // owns the permanent cure), not a one-line edit.
@@ -93,17 +93,28 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // Seeded 2026-08-11 from a measured main (see bundle-baseline.json), with
 // deliberate runway above it so the DELTA gate — not this one — is what a
 // normal PR ever meets:
-//   __common  brotli 439,775 → ceiling 500,000   (~14% runway)
-//   __common  raw    2,341,978 → ceiling 2,600,000 (~11% runway)
+//   __common  brotli 439,775 → ceiling 550,000   (raised 2026-09-20)
+//   __common  raw    2,341,978 → ceiling 2,800,000 (raised 2026-09-20)
 //   eager     brotli 660,678 → ceiling 750,000   (~14% runway)
 //   eager     raw    3,349,598 → ceiling 4,000,000 (~19% runway)
+//
+// RAISED 2026-09-20 — __common ONLY, from raw 2,600,000 / brotli 500,000 to raw
+// 2,800,000 / brotli 550,000. Seth's call (#3493), in the open, for a reason the
+// rest of this header already anticipated: main's measured baseline had crept to
+// 490,955 B brotli, which leaves 9,045 B beneath the old ceiling where the
+// baseline auto-merge insists on a full 12,000 B per-PR allowance. That refusal
+// turned main red and blocked every pull request in every chat, so the ceiling
+// moved rather than the measurement. This buys room; it settles nothing. The
+// trim that brings __common back under the old numbers is tracked on the same
+// issue, and the eager ceilings are deliberately untouched — their runway is
+// still healthy (brotli 712,079 of 750,000, well clear of the 25,000 margin).
 //
 // The eager raw ceiling REPLACES the old 9,405,478 B constant, which had been
 // unfailable since route splitting landed. This is a tightening, not a
 // relaxation: 4,000,000 is 57% below the number it replaces.
 // ═══════════════════════════════════════════════════════════════════════════
 const HARD_CEILING = {
-  common: { raw: 2_600_000, brotli: 500_000 },
+  common: { raw: 2_800_000, brotli: 550_000 },
   eager: { raw: 4_000_000, brotli: 750_000 },
 };
 

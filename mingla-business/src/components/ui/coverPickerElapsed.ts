@@ -18,6 +18,24 @@ import { useEffect, useMemo, useState } from "react";
 
 export const ELAPSED_TICK_MS = 1_000;
 
+/**
+ * #3485 — the reading has a plausibility ceiling.
+ *
+ * Filmed on a Release build (2026-09-20): a card that was still rendering
+ * "Processing video…" for a job the server had already applied showed an elapsed
+ * value of **4758m**. That number is not a measurement of anything — it is the
+ * symptom of a phase that never settled — and printing it tells the host their
+ * upload has been running for three days.
+ *
+ * 12 hours is the server's own stall deadline for a cover job (the reaper gives
+ * up there). Past it there is no job left to be timing, so the honest reading is
+ * no reading, which is what `useElapsedSince` already returns for a missing or
+ * unparseable start. The real fix for the stuck phase lives in
+ * `useEventCoverVideoUpload` (the foreground re-check); this is the belt on top
+ * of it, for a client that cannot reach the server to learn better.
+ */
+export const ELAPSED_CEILING_MS = 12 * 60 * 60 * 1_000;
+
 export const formatElapsed = (ms: number): string => {
   // Clock skew between the device and the server can make this negative, and a
   // counter running backwards into the past is worse than no counter at all.
@@ -51,5 +69,8 @@ export const useElapsedSince = (
     const timer = setInterval(() => setNowMs(Date.now()), ELAPSED_TICK_MS);
     return () => clearInterval(timer);
   }, [running, startedMs]);
-  return running ? formatElapsed(nowMs - startedMs) : null;
+  if (!running) return null;
+  const elapsedMs = nowMs - startedMs;
+  // #3485 — beyond the ceiling the number is a symptom, not a measurement.
+  return elapsedMs > ELAPSED_CEILING_MS ? null : formatElapsed(elapsedMs);
 };
