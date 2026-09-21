@@ -23,6 +23,10 @@ const SCREEN = path.resolve(ARI_DIR, "../../screens/ari/AriChatScreen.tsx");
 const HOOK = path.resolve(ARI_DIR, "../../hooks/useAgentChat.ts");
 const MESSAGE_LIST = path.resolve(ARI_DIR, "MessageList.tsx");
 const COPY_MODULE = path.resolve(ARI_DIR, "../../screens/ari/ariChatErrorCopy.ts");
+const AGENT_CHAT = path.resolve(
+  ARI_DIR,
+  "../../../../supabase/functions/agent-chat/index.ts",
+);
 
 function parse(filePath: string): ts.SourceFile {
   return ts.createSourceFile(
@@ -155,6 +159,33 @@ describe("#3429 R2 R-4 — the connection sentence has exactly one owner", () =>
       expect(imported).toContain("ARI_CHAT_CONNECTION_COPY");
     });
   }
+
+  it("the edge function's stop-before-acceptance sentence is byte-identical to the owned one", () => {
+    // An edge function cannot import a client module, so these bytes are
+    // duplicated in `agent-chat/index.ts` on purpose. This is the pin that
+    // makes the duplication safe: change either side and this fails. Read as
+    // string LITERALS, so the explanatory comment beside it counts for nothing.
+    const literals = stringLiterals(parse(AGENT_CHAT));
+    expect(literals).toContain(OWNED);
+    // ...and the wording it replaced must be gone from that file entirely.
+    expect(
+      literals.filter((literal) => literal.startsWith("Message not sent.")),
+    ).toEqual([]);
+    // Every OTHER TURN_STOPPED sentence stays distinct, which is what lets the
+    // client tell a stop that beat acceptance from one that did not.
+    expect(literals).toContain("Ari stopped. Your message is still here.");
+  });
+
+  it("the hook discriminates on the owned constant, not on a prefix of its own", () => {
+    const source = fs.readFileSync(HOOK, "utf8");
+    const stripped = source
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    expect(stripped).toContain(
+      "response.message === ARI_CHAT_CONNECTION_COPY",
+    );
+    expect(stripped).not.toContain('startsWith("Message not sent.")');
+  });
 
   it("every TRANSPORT_UNAVAILABLE message in the hook is the imported constant", () => {
     const file = parse(HOOK);

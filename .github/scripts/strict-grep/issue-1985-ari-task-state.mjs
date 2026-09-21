@@ -610,6 +610,11 @@ export function check(s) {
     "issue_3429_ari_image_preparation.implementor.test.ts",
     "issue_3429_ari_attachment_reclaim.implementor.test.ts",
     "issue_3429_ari_turn_control_auth_order.implementor.test.ts",
+    // The tester's own adversarial suite. It shipped in commit bc52624a9 with
+    // ZERO CI registrations, so nothing ran it — the #2113 "never executed"
+    // class, where a test reads as protection and is inert. Registered here so
+    // the lane fails if it is ever unhooked again.
+    "issue_3429_ari_attachment_boundaries.tester.adversarial.test.ts",
   ]) if (s.workflow.split(testPath).length - 1 !== 3) {
     failures.push(`#3429 workflow routing incomplete for ${testPath}`);
   }
@@ -980,6 +985,11 @@ if (process.argv.includes("--self-test")) {
       key: "workflow",
       from: "issue_3429_ari_turn_control_auth_order.implementor.test.ts",
       to: "removed_3429_ari_turn_control_auth_order.implementor.test.ts",
+    },
+    {
+      key: "workflow",
+      from: "issue_3429_ari_attachment_boundaries.tester.adversarial.test.ts",
+      to: "removed_3429_ari_attachment_boundaries.tester.adversarial.test.ts",
     },
   ];
   for (const mutation of mutations) {

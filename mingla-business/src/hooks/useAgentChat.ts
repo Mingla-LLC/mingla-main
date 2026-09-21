@@ -462,12 +462,15 @@ export function useAgentChat(
         await reconcileOne(clientTurnId, false);
         const reconciled = turnsRef.current.find((candidate) => candidate.clientTurnId === clientTurnId);
         if (!reconciled?.accepted) {
-          // R-4 note: this literal is NOT client copy — it is the prefix of the
-          // sentence the SERVER returns for a stop that beat acceptance
-          // (`agent-chat/index.ts`). It is a wire-format detector and must keep
-          // matching the server, so it is deliberately not the copy module's.
+          // R-4 (amendment): the server used to answer a stop that beat
+          // acceptance with a second, differently-worded connection sentence,
+          // and this detector sniffed its prefix. Both sides now use the ONE
+          // wording #3184 owns, so the detector compares against that constant
+          // instead of a prefix only this file knew. Every other TURN_STOPPED
+          // the server sends says "Ari stopped. Your message is still here.",
+          // so the two cases stay distinguishable.
           const stoppedBeforeAcceptance = response.code === "TURN_STOPPED" &&
-            response.message.startsWith("Message not sent.");
+            response.message === ARI_CHAT_CONNECTION_COPY;
           patchTurn(clientTurnId, {
             delivery: stoppedBeforeAcceptance ? "failed" : response.code === "TURN_STOPPED" ? "stopped" : "failed",
             attemptStatus: stoppedBeforeAcceptance ? null : response.code === "TURN_STOPPED" ? "stopped" : null,

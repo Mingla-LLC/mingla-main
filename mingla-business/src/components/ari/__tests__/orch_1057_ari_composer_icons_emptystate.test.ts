@@ -140,7 +140,11 @@ describe("ORCH-1057 · Item C — empty state chip wall removed", () => {
     expect(emptyState).toMatch(/<Plus\s+size=\{13\}/);
     // [TEST-MOD-APPROVED #3429] (a) superseded: the composer "+" now opens
     // "Add context", so the first-run hint points at the attach affordance.
-    expect(emptyState).toContain("Tap ");
+    // [TEST-MOD-APPROVED #3429] REWORK-2 R-3 (widened grant): the first half of
+    // the split sentence, anchored to its own shipped element for the same
+    // reason as the second half — as a bare substring "Tap " matched the source
+    // comment and the accessibilityLabel too.
+    expect(emptyState).toContain('<Text style={styles.hintText}>Tap </Text>');
     // [TEST-MOD-APPROVED #3429] REWORK-2 R-3: anchored to the SHIPPED element.
     // As a bare substring this matched the source comment and the
     // accessibilityLabel as readily as the rendered copy, so changing the

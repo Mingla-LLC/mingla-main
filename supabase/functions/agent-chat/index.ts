@@ -967,7 +967,19 @@ async function handle(req: Request): Promise<Response> {
       mismatch
         ? "This message changed after it was sent. Edit it into a new message."
         : stoppedBeforeAcceptance
-        ? "Message not sent. Check your connection and try again."
+        // #3429 REWORK-2 R-4 (amendment): this sentence reaches the user
+        // verbatim — the client renders `response.message` on the failed row —
+        // so it is the connection sentence and it must be THE connection
+        // sentence. #3184 locks exactly one wording for exactly one meaning,
+        // owned by `ARI_CHAT_CONNECTION_COPY` in
+        // `mingla-business/src/screens/ari/ariChatErrorCopy.ts`. An edge
+        // function cannot import a client module, so the bytes are duplicated
+        // here and pinned equal by
+        // `issue_3429_ari_rework2_polish.implementor.test.ts`. Change one and
+        // that test fails. Every other TURN_STOPPED in this file says "Ari
+        // stopped. Your message is still here.", which is what lets the client
+        // tell a stop that beat acceptance from one that did not.
+        ? "Ari could not connect — check your connection and try again."
         : "Failed to accept this message safely.",
     );
   }
