@@ -1,0 +1,40 @@
+
+Running 13 tests using 1 worker
+
+  ✓   1 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:71:5 › R1 countdown pill says 'Starts in 11 days', never 'Not on sale yet' (1.3s)
+  ✓   2 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:78:5 › R2 Going with empty fields scrolls to and focuses the first missing field, marks it, shows the hint (3.2s)
+  ✓   3 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:104:5 › R3 phone: floating bar only after the inline row scrolls away, never both, never over the last content (48.3s)
+  ✓   4 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:145:7 › desktop 1440x900 › R3-desktop no floating bar at any scroll position; Going blocked tap focuses first field (8.8s)
+  ✓   5 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:161:5 › R4 Going → chip-in redirect (fake hosted checkout) → return restores 'You're going' + pass, verified with the service (2.7s)
+{"R5":{"passRequestedAt":1789612533454,"qrScreenshotAt":1789612533776}}
+  ✓   6 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:190:5 › R5 PENDING DEVIATION: while the pass check is in flight, 'View your pass' renders a scannable QR the service then denies (409) (10.2s)
+  ✓   7 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:217:5 › R6 denied (403) is not restored, on this load or the next (4.8s)
+  ✓   8 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:237:5 › R7 in-app event switch A→B while A's check is pending: no A reply/pass on B; B stays an invite after A's late denial (7.4s)
+  ✓   9 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:278:5 › R8 signed-in A replies Going, signs out in another tab, B signs in: A's pass never shows (mounted or after reload) (6.1s)
+  ✓  10 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:315:5 › R9 spoofed ?contribution=paid on a fresh tab restores no reply and no pass (2.7s)
+{"restored":true,"qrShown":true,"passFetchCalls":0}
+  ✘  11 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:325:5 › R10 DEFECT-C runtime: a signed-in reply restores after reload with NO pass-service check, even though the service would deny it (6.2s)
+  ✓  12 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:356:5 › R11 verify network failure keeps the reply AND the openable QR indefinitely (stated design; evidence for the pending finding) (3.3s)
+  ✓  13 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:371:5 › R12 a second, separately opened tab never sees the first tab's reply (4.0s)
+
+
+  1) [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:325:5 › R10 DEFECT-C runtime: a signed-in reply restores after reload with NO pass-service check, even though the service would deny it 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      351 |   const checks = passFetchCalls(backend).length;
+      352 |   console.log(JSON.stringify({ restored, qrShown, passFetchCalls: checks }));
+    > 353 |   expect(checks > 0 || !qrShown).toBe(true);
+          |                                  ^
+      354 | });
+      355 |
+      356 | test("R11 verify network failure keeps the reply AND the openable QR indefinitely (stated design; evidence for the pending finding)", async ({ page }) => {
+
+    Error Context: test-results/rsvp-public-page.retest-R1-30004-h-the-service-would-deny-it-mobile-chromium/error-context.md
+
+  1 failed
+    [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:325:5 › R10 DEFECT-C runtime: a signed-in reply restores after reload with NO pass-service check, even though the service would deny it 
+  12 passed (1.8m)

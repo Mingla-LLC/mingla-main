@@ -1,0 +1,773 @@
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:179:22)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:193:9)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:219:20)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:221:9)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:241:22)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:257:22)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:271:22)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:278:9)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:286:22)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:299:9)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:323:9)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:339:22)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:353:9)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:388:9
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:406:9)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:413:9)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:422:9)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:437:9)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:450:20)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:452:20)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:458:9)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:468:9)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:480:22)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:495:22)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:500:9)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:507:22)
+
+  console.error
+    react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:512:9)
+
+FAIL src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx (44.301 s)
+  ✓ R2-01 pending verify: 'You're going' only — no View your pass, no Try again, no popup, stored QR in no rendered prop (345 ms)
+  ✓ R2-02 fast double tap on Going + a second confirm tap while submitting (restore pending): one submit, and only the NEW server QR ever shows (300 ms)
+  ✓ R2-03 remount mid-verify: the FIRST mount's late bound 200 never renders a QR on the second (still pending) mount (57 ms)
+  ✓ R2-04 in-place navigation A→B while A's verify is pending: A's bound 200 lands on B — B (with its own pending restore) shows no pass (359 ms)
+  ✓ R2-05 A→B→A while the first A verify is pending: the first answer cannot confirm the second A generation (235 ms)
+  ✓ R2-06 identity change mid-verify (anonymous → signed-in A): the anonymous 200 lands — A sees no reply and no pass, before or after (88 ms)
+  ✓ R2-07 identity flip anonymous → A → anonymous mid-verify: the original 200 does not render on the returned anonymous page (93 ms)
+  ✓ R2-08 network error → Try again (pending) → error → Try again → 200: never the stored QR; only the service QR after the 200 (69 ms)
+  ✓ R2-09 double tap Try again with a stale handler: a superseded 200 never confirms, the latest network error wins (46 ms)
+  ✓ R2-10 a stale Try again handler from event A does nothing on event B (88 ms)
+  ✓ R2-11 after an offline notice the guest re-replies (Maybe): the retry disappears and a stale retry cannot bring a pass back (89 ms)
+  ✓ R2-12 service answer with another entityType → denied, and never a QR (40 ms)
+  ✓ R2-12 service answer with another entityId → denied, and never a QR (44 ms)
+  ✓ R2-12 service answer with another eventId → denied, and never a QR (54 ms)
+  ✓ R2-12 service answer with eventId null → denied, and never a QR (53 ms)
+  ✓ R2-12 service answer with entityId as a number → denied, and never a QR (49 ms)
+  ✓ R2-12 service answer with no entityType → unconfirmed, and never a QR (22 ms)
+  ✓ R2-12 service answer with no entityId → unconfirmed, and never a QR (25 ms)
+  ✓ R2-12 service answer with no eventId (edge function not yet deployed) → unconfirmed, and never a QR (28 ms)
+  ✓ R2-12 service answer with empty qrCode → unconfirmed, and never a QR (23 ms)
+  ✓ R2-12 service answer with null qrCode → unconfirmed, and never a QR (145 ms)
+  ✓ R2-12 service answer with numeric qrCode → unconfirmed, and never a QR (87 ms)
+  ✓ R2-12 service answer with no qrCode → unconfirmed, and never a QR (19 ms)
+  ✓ R2-12 service answer with null answer → unconfirmed, and never a QR (51 ms)
+  ✓ R2-12 service answer with string answer → unconfirmed, and never a QR (29 ms)
+  ✓ R2-12 service answer with empty object → unconfirmed, and never a QR (28 ms)
+  ✕ NIT-1 whitespace-only qrCode from the service is not rendered as a pass (87 ms)
+  ✓ R2-14 (DEFECT-E, bound) tampered stored QR beside a valid token: the bound 200 renders the SERVICE QR and name, never the stored ones (66 ms)
+  ✓ R2-15 (DEFECT-F, bound) event A's entity bytes rewritten under B's key: the service truthfully names event A → denial on B (32 ms)
+  ✓ R2-16 stored plus-one credentials and other entities' recovery tokens are dropped from the confirmed pass (33 ms)
+  ✓ R2-17 D3 late denial after leaving blocks only the denied bytes, not a NEWER reply accepted on a later mount (67 ms)
+  ✓ R2-18 closing a confirmed pass popup revokes an in-flight PDF's authority (84 ms)
+  ✓ R2-20 logout while the private pass popup is open (same event): popup closes and focus returns ONCE to the decision (24 ms)
+  ✓ R2-19 D2: a signed-in guest's own stamped reply is not restored after the chip-in return (invite shown, no verify) (19 ms)
+  ✕ FINDING-1 signed-in chip-in return: the invite's live 'Going' re-submits an RSVP the guest already has (25 ms)
+
+  ● NIT-1 whitespace-only qrCode from the service is not rendered as a pass
+
+    expect(received).toBeNull()
+
+    Received: "   "
+
+      405 |   mockVerify.mockResolvedValueOnce(served({ qrCode: "   " }));
+      406 |   await mount();
+    > 407 |   expect(await reachableQr()).toBeNull();
+          |                               ^
+      408 | });
+      409 |
+      410 | test("R2-14 (DEFECT-E, bound) tampered stored QR beside a valid token: the bound 200 renders the SERVICE QR and name, never the stored ones", async () => {
+
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:407:31)
+
+  ● FINDING-1 signed-in chip-in return: the invite's live 'Going' re-submits an RSVP the guest already has
+
+    expect(jest.fn()).not.toHaveBeenCalled()
+
+    Expected number of calls: 0
+    Received number of calls: 1
+
+    1: {"guestEmail": "visitor@example.test", "guestName": "Visitor", "guestPhone": "+15551234567", "guestPhoneCountryIso": null, "guests": [], "plusCount": 0, "rsvpStatus": "going"}
+
+      516 |   await act(async () => { await dialog.props.children.props.onConfirm(); });
+      517 |   // A returning, already-going guest must not be able to re-submit from an empty invite.
+    > 518 |   expect(submit).not.toHaveBeenCalled();
+          |                      ^
+      519 | });
+      520 |
+
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx:518:22)
+
+Test Suites: 1 failed, 1 total
+Tests:       2 failed, 33 passed, 35 total
+Snapshots:   0 total
+Time:        45.661 s, estimated 77 s
+Ran all test suites matching /src\/components\/event\/__tests__\/issue_3416_r2_rework/i.

@@ -38,10 +38,13 @@ export const eventRow = (id: string, slug: string, title: string, startInMs = 11
 };
 
 export type PassMode =
-  | { kind: "ok" }
+  | { kind: "ok"; delayMs?: number }
   | { kind: "status"; status: number; delayMs?: number }
   | { kind: "network" }
-  | { kind: "hang" };
+  | { kind: "hang" }
+  // Round 2 (fdcb1f307): the pre-#3416 function (no eventId), and an answer naming another event.
+  | { kind: "okLegacyNoEventId" }
+  | { kind: "okOtherEvent" };
 
 export interface Backend {
   events: Record<string, ReturnType<typeof eventRow>>;
@@ -52,6 +55,10 @@ export interface Backend {
   calls: { url: string; method: string; body: string | null; at: number }[];
   passAnsweredAt: number[];
   blocked: string[];
+  /** rsvpId -> event UUID, as event_rsvps.event_id (what rsvp-pass-fetch now returns). */
+  entityEvents: Record<string, string>;
+  /** displayName the pass service returns (defaults to the name on the RSVP). */
+  servedName: string | null;
 }
 
 export const createBackend = (): Backend => ({
@@ -65,6 +72,8 @@ export const createBackend = (): Backend => ({
   calls: [],
   passAnsweredAt: [],
   blocked: [],
+  entityEvents: {},
+  servedName: null,
 });
 
 const cors = {
@@ -75,7 +84,8 @@ const cors = {
   "Access-Control-Expose-Headers": "*",
 };
 const json = (route: Route, status: number, body: unknown) =>
-  route.fulfill({ status, headers: { ...cors, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  route.fulfill({ status, headers: { ...cors, "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    .catch(() => undefined); // round 2: a delayed answer may land after its page reloaded
 
 export const session = (userId: string) => ({
   access_token: `local-${userId}`, token_type: "bearer", expires_in: 3600,
@@ -120,6 +130,7 @@ export const install = async (context: BrowserContext, backend: Backend): Promis
       const input = JSON.parse(body ?? "{}") as { eventId: string; rsvpStatus: string; guestName?: string };
       const rsvpId = `rsvp-${backend.nextQr.split(":").pop()}`;
       const going = input.rsvpStatus === "going";
+      backend.entityEvents[rsvpId] = input.eventId;
       return json(route, 200, {
         status: input.rsvpStatus, approvalStatus: "approved", rsvpId, confirmationToken: null,
         acknowledgement: going ? "accepted" : input.rsvpStatus,
@@ -138,7 +149,15 @@ export const install = async (context: BrowserContext, backend: Backend): Promis
         return json(route, mode.status, { error: mode.status === 409 ? "not_pass_eligible" : "not_owner_or_bad_recovery_token" });
       }
       const input = JSON.parse(body ?? "{}") as { entityType: string; entityId: string };
-      return json(route, 200, { credentials: [{ entityType: input.entityType, entityId: input.entityId, displayName: "Guest", qrCode: backend.nextQr, pdfFetchRef: input.entityId }] });
+      if (mode.kind === "ok" && mode.delayMs) await new Promise((r) => setTimeout(r, mode.delayMs));
+      backend.passAnsweredAt.push(Date.now());
+      const credentials = [{ entityType: input.entityType, entityId: input.entityId, displayName: backend.servedName ?? "Guest", qrCode: backend.nextQr, pdfFetchRef: input.entityId }];
+      if (mode.kind === "okLegacyNoEventId") return json(route, 200, { credentials });
+      const own = backend.entityEvents[input.entityId];
+      if (own === undefined) return json(route, 404, { error: "not_found" });
+      const other = Object.values(backend.events).map((e) => e.id).find((id) => id !== own)!;
+      // Mirrors supabase/functions/rsvp-pass-fetch at fdcb1f307: { eventId, credentials }.
+      return json(route, 200, { eventId: mode.kind === "okOtherEvent" ? other : own, credentials });
     }
     if (p === "/functions/v1/rsvp-contribution-create") {
       const slug = Object.values(backend.events).find((e) => body?.includes(e.id))?.slug ?? "night-a";

@@ -1,0 +1,6 @@
+  ✕ R2-04 in-place navigation A→B while A's verify is pending: A's bound 200 lands on B — B (with its own pending restore) shows no pass (64 ms)
+  ✕ R2-05 A→B→A while the first A verify is pending: the first answer cannot confirm the second A generation (78 ms)
+  ✕ R2-09 double tap Try again with a stale handler: a superseded 200 never confirms, the latest network error wins (111 ms)
+  ✕ NIT-1 whitespace-only qrCode from the service is not rendered as a pass (25 ms)
+  ✕ FINDING-1 signed-in chip-in return: the invite's live 'Going' re-submits an RSVP the guest already has (29 ms)
+Tests:       5 failed, 29 passed, 34 total

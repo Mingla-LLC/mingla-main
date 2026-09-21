@@ -1,0 +1,12 @@
+FAIL src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx (76.64 s)
+  ✕ ios uses no browser recovery and resets the open accepted popup on account change (64 ms)
+  ✕ android uses no browser recovery and resets the open accepted popup on account change (121 ms)
+FAIL src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx (77.374 s)
+  ✕ NIT-1 whitespace-only qrCode from the service is not rendered as a pass (39 ms)
+  ✕ R2-20 logout while the private pass popup is open (same event): popup closes and focus returns ONCE to the decision (410 ms)
+  ✕ FINDING-1 signed-in chip-in return: the invite's live 'Going' re-submits an RSVP the guest already has (224 ms)
+PASS src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx (5.305 s)
+PASS src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx (13.058 s)
+PASS src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx (21.112 s)
+PASS src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx (9.762 s)
+Tests:       5 failed, 111 passed, 116 total

@@ -1,0 +1,20 @@
+
+Running 10 tests using 1 worker
+
+  ✓   1 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:203:5 › R4 Going → chip-in redirect (fake hosted checkout) → return restores 'You're going' + pass, verified with the service (5.0s)
+{"R5":{"pendingSamplesWithoutPass":28}}
+  ✓   2 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:235:5 › R5 D1: while a slow check (then 409) is in flight: 'You're going' only — no 'View your pass', no QR, no retry; then the 409 withdraws the reply (11.7s)
+  ✓   3 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:276:5 › R7 in-app event switch A→B while A's check is pending: no A reply/pass on B; B stays an invite after A's late denial (11.7s)
+{"R10":{"returnBannerVisible":false,"labelOnReturn":"Going","confirmVisible":true,"submitCalls":2,"secondSubmitBody":"{\"eventId\":\"00000000-0000-4000-8000-00000000000a\",\"rsvpStatus\":\"going\",\"guestName\":\"\",\"guestEmail\":\"\",\"guestPhone\":\"\",\"guestPhoneCountryIso\":null,\"plusCount\":0,\"guests\":[]}"}}
+  ✓   4 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:378:5 › R10 D2: signed-in guest → chip-in → return: invite (no restore, no pass, no check); FINDING-1 its live Going re-submits (9.9s)
+  ✓   5 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:418:5 › R11 D1: network error → notice + Try again, no pass; Try again while still offline → still no pass; service back → Try again → pass (9.7s)
+{"R13":{"samples":42}}
+  ✓   6 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:461:5 › R13 D1: a check that never answers — 'You're going' only, no 'View your pass', no QR, no retry, for 8 s (12.9s)
+  ✓   7 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:478:5 › R14 D4: the service answers for a DIFFERENT eventId — no pass, denial notice, stored reply removed (8.4s)
+  ✓   8 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:497:5 › R15 D4: the pre-#3416 service (no eventId) — reply kept, no pass, retry offered (deploy-order behaviour) (8.9s)
+{"R16":{"checksFromDoubleClick":1}}
+  ✓   9 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:514:5 › R16 D1: double-click Try again during a slow check — no pass until the answer, then exactly the service pass (9.2s)
+  ✓  10 [mobile-chromium] › playwright/issue3416-retest/rsvp-public-page.retest.spec.ts:535:5 › R17 reload mid-check (slow 200 then reload): the new page shows no pass until ITS OWN answer (11.6s)
+
+  10 passed (1.7m)
+EXIT=0

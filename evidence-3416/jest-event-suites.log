@@ -1,0 +1,62 @@
+FAIL src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx (14.373 s)
+PASS src/components/event/__tests__/PublicEventPage.issue2101.test.tsx (19.346 s)
+PASS src/components/event/__tests__/issue_3314_hide_remaining_count.implementor.test.tsx
+PASS src/components/event/__tests__/issue_2135_multidate_public_day_picker.test.tsx
+PASS src/components/event/__tests__/issue_2209_public_page_shows_the_days.test.tsx
+PASS src/components/event/__tests__/TicketTierEditSheet.issue2664.happy.test.tsx
+PASS src/components/event/__tests__/issue_3314_bundle_hide_remaining_page.implementor.test.tsx
+PASS src/components/event/__tests__/EventRouteKeystrokeSurvives.orch0976.test.tsx
+PASS src/components/event/__tests__/issue_1902_public_event_transition_overlays.test.tsx
+PASS src/components/event/__tests__/EditPublishedScreen_silent_save_signals.test.ts
+PASS src/components/event/__tests__/issue_3341_naira_price_glyph.test.tsx
+PASS src/components/event/__tests__/issue_2508_ended_offering_address.test.tsx
+PASS src/components/event/__tests__/issue_3284_event_refund_terms.implementor.test.tsx (12.053 s)
+PASS src/components/event/__tests__/issue_3350_ticket_errors_wait_for_blur.test.tsx
+PASS src/components/event/__tests__/coverVideoDeterministic.issue3040.test.ts
+PASS src/components/event/__tests__/TicketTierEditSheet.issue1959.happy.test.tsx
+PASS src/components/event/__tests__/issue_1902_public_event_acquisition.test.tsx
+PASS src/components/event/__tests__/orch_1342_see_whos_going_gate.test.tsx
+PASS src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts
+PASS src/components/event/__tests__/issue_2399_business_preview_shared_route.happy.test.tsx
+PASS src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx
+PASS src/components/event/__tests__/issue_3315_when_step_repeat_day.test.tsx
+PASS src/components/event/__tests__/issue_3344_preview_pricing_note.test.tsx
+PASS src/components/event/__tests__/issue_3343_ticket_card_subline.test.tsx
+PASS src/components/event/__tests__/RsvpPublicBody.parallaxLayering.orch1150r2.test.ts
+PASS src/components/event/__tests__/orch_1186_wizard_map_preview.test.ts
+PASS src/components/event/__tests__/EventListCard_defensiveFilter.test.tsx
+PASS src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts
+PASS src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts
+PASS src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx
+PASS src/components/event/__tests__/issue1043RsvpThemeWrite.test.ts
+PASS src/components/event/__tests__/EditPublishedScreen.coverPersistence.test.tsx
+PASS src/components/event/__tests__/eventOrdersUnknownStates.issue2411.tester-adversarial.test.tsx
+PASS src/components/event/__tests__/TicketTierEditSheet.issue1959.tester.adversarial.test.tsx
+PASS src/components/event/__tests__/coverStepDraftPromotion.issue2974.test.ts
+PASS src/components/event/__tests__/RsvpPublicBody.maybeCta.orch1150r2.test.ts
+PASS src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx
+PASS src/components/event/__tests__/issue1043RsvpThemeClearPersists.test.ts
+PASS src/components/event/__tests__/issue_1035_stale_closure_dep_tester.test.ts
+PASS src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx
+PASS src/components/event/__tests__/EditPublishedScreen_when_save_gate.test.ts
+PASS src/components/event/__tests__/CreatorStep7Preview.refactorParity.test.tsx
+PASS src/components/event/__tests__/issue2333UnmappedPublishGuard.test.tsx
+PASS src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts
+PASS src/components/event/__tests__/orch1300_web_overlay_portal.test.ts
+PASS src/components/event/__tests__/issue_1857_business_rsvp_preview_phone.happy.test.ts
+PASS src/components/event/__tests__/orch1299_picker_presentation.test.ts
+PASS src/components/event/__tests__/issue_1902_public_event_acquisition.tester_adversarial.test.tsx
+PASS src/components/event/__tests__/TicketCheckoutAccessNotice.issue2101.native.test.tsx
+PASS src/components/event/__tests__/EventTicketCheckoutAccessCard.issue2101.native.test.tsx
+PASS src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx
+PASS src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx
+PASS src/components/event/__tests__/PublicEventPage.closeButton.adversarial.test.tsx
+PASS src/components/event/__tests__/rsvp_public_page_status_and_restore.test.tsx
+PASS src/components/event/__tests__/rsvp_public_guest_page_fixes.test.ts
+PASS src/components/event/__tests__/rsvp_public_guest_page_render.test.tsx
+PASS src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx
+PASS src/components/event/__tests__/PublicEventPage.closeButton.test.tsx
+PASS src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx
+FAIL src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx (14.373 s)
+Test Suites: 1 failed, 58 passed, 59 total
+Tests:       7 failed, 468 passed, 475 total

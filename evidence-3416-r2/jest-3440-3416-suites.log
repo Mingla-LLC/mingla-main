@@ -1,0 +1,1934 @@
+PASS src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx (79.713 s)
+  ● Console
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:168:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:185:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:191:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:201:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:205:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:211:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:217:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:234:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:238:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:246:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:253:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:261:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:273:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:278:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:288:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:295:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:303:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:318:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:318:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:318:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:318:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:318:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:318:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:328:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:333:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:328:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:333:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:328:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:333:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:341:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:353:20)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:360:20)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:368:20)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:385:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:396:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:408:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:419:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:427:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:432:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:442:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:446:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:454:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:462:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      124 | const mount = async (props: HarnessProps = {}) => {
+      125 |   let tree!: Tree;
+    > 126 |   await act(async () => { tree = create(<Harness {...props} />); });
+          |                                  ^
+      127 |   trees.push(tree);
+      128 |   return tree;
+      129 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:126:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx:471:9)
+
+PASS src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx (85.199 s)
+  ● Console
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:273:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:287:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:296:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:307:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:317:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:326:26)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:335:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:335:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:335:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:351:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:351:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:351:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:362:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:376:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:376:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:387:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:387:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:387:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:406:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:414:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:424:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:432:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:443:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:459:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      226 |   let tree!: Renderer;
+      227 |   await act(async () => {
+    > 228 |     tree = TestRenderer.create(
+          |                         ^
+      229 |       <PublicEventPage event={{ ...rsvpEvent, ...eventOverrides } as never} brand={brand as never} />,
+      230 |     );
+      231 |   });
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:228:25
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at renderPage (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:227:9)
+      at mount (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:265:22)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx:473:9)
+
+PASS src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx (7.383 s)
+  ● Console
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:98:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:112:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:123:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:137:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:145:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:157:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:165:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:167:26)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:174:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:181:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:187:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:187:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:197:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:202:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:219:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      76 | const mount = async (props: HarnessProps = {}) => {
+      77 |   let tree!: Renderer;
+    > 78 |   await act(async () => { tree = TestRenderer.create(<Harness {...props} />, { createNodeMock: () => ({ focus, setAttribute: jest.fn() }) }); });
+         |                                               ^
+      79 |   trees.push(tree);
+      80 |   return tree;
+      81 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:47
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:78:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx:234:22)
+
+PASS src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx (18.429 s)
+  ● Console
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:92:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:92:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:92:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:110:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:120:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:110:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:120:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:110:22
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:120:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:128:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:140:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:148:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:155:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:163:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      63 | const mount = async (identity: string | null = null) => {
+      64 |   let tree!: Tree;
+    > 65 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      66 |   trees.push(tree);
+      67 |   return tree;
+      68 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:65:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx:171:22)
+
+PASS src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx (16.881 s)
+  ● Console
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      81 | const mount = async (identity: string | null = null) => {
+      82 |   let tree!: Tree;
+    > 83 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      84 |   trees.push(tree);
+      85 |   return tree;
+      86 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:113:26)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      81 | const mount = async (identity: string | null = null) => {
+      82 |   let tree!: Tree;
+    > 83 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      84 |   trees.push(tree);
+      85 |   return tree;
+      86 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:122:27)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      81 | const mount = async (identity: string | null = null) => {
+      82 |   let tree!: Tree;
+    > 83 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      84 |   trees.push(tree);
+      85 |   return tree;
+      86 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:132:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      81 | const mount = async (identity: string | null = null) => {
+      82 |   let tree!: Tree;
+    > 83 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      84 |   trees.push(tree);
+      85 |   return tree;
+      86 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:141:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      81 | const mount = async (identity: string | null = null) => {
+      82 |   let tree!: Tree;
+    > 83 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      84 |   trees.push(tree);
+      85 |   return tree;
+      86 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:154:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      81 | const mount = async (identity: string | null = null) => {
+      82 |   let tree!: Tree;
+    > 83 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      84 |   trees.push(tree);
+      85 |   return tree;
+      86 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:165:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      81 | const mount = async (identity: string | null = null) => {
+      82 |   let tree!: Tree;
+    > 83 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      84 |   trees.push(tree);
+      85 |   return tree;
+      86 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:180:22)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      81 | const mount = async (identity: string | null = null) => {
+      82 |   let tree!: Tree;
+    > 83 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      84 |   trees.push(tree);
+      85 |   return tree;
+      86 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:186:9)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      81 | const mount = async (identity: string | null = null) => {
+      82 |   let tree!: Tree;
+    > 83 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      84 |   trees.push(tree);
+      85 |   return tree;
+      86 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:9)
+      at src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:197:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      81 | const mount = async (identity: string | null = null) => {
+      82 |   let tree!: Tree;
+    > 83 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      84 |   trees.push(tree);
+      85 |   return tree;
+      86 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:9)
+      at src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:197:9
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      81 | const mount = async (identity: string | null = null) => {
+      82 |   let tree!: Tree;
+    > 83 |   await act(async () => { tree = create(<Harness identity={identity} />); });
+         |                                  ^
+      84 |   trees.push(tree);
+      85 |   return tree;
+      86 | };
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:34
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (node_modules/react/cjs/react.development.js:789:22)
+      at mount (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:83:9)
+      at Object.<anonymous> (src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx:208:9)
+
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+
+Test Suites: 5 passed, 5 total
+Tests:       81 passed, 81 total
+Snapshots:   0 total
+Time:        107.992 s
+Ran all test suites matching /src\/components\/event\/__tests__\/issue_3440|src\/components\/event\/__tests__\/issue_3416/i.

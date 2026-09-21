@@ -1,5 +1,5 @@
 /**
- * PR #3416 / #3440 — INDEPENDENT runtime retest of head 034b86abe on a real
+ * PR #3416 / #3440 — INDEPENDENT runtime retest (round 2: head fdcb1f307) on a real
  * `expo export -p web` of mingla-business, driven in Chromium against a fully
  * local Supabase mock (mockBackend.ts). No production host is reachable: every
  * other origin is aborted and each test asserts that list stayed empty.
@@ -10,8 +10,15 @@ import { expect, test, type BrowserContext, type Locator, type Page } from "@pla
 import path from "node:path";
 import { APP, BRAND_SLUG, createBackend, install, passFetchCalls, session, submitCalls, type Backend } from "./mockBackend";
 
-const EVIDENCE = process.env.EVIDENCE_3416 ?? path.resolve(__dirname, "../../../evidence-3416");
+const EVIDENCE = process.env.EVIDENCE_3416 ?? path.resolve(__dirname, "../../../evidence-3416-r2");
 const shot = (page: Page, name: string) => page.screenshot({ path: path.join(EVIDENCE, `${name}.png`) });
+/** Round 2: bring the decision box (reply label, notice, pass/retry action) on screen before the shot. */
+const shotDecision = async (page: Page, name: string) => {
+  const box = page.locator('[data-testid="orch-1157-rsvp-inline-momentum"]').first();
+  await box.evaluate((n) => n.scrollIntoView({ block: "center" })).catch(() => undefined);
+  await page.waitForTimeout(700);
+  await shot(page, name);
+};
 const tid = (page: Page | Locator, id: string) => page.locator(`[data-testid="${id}"]`);
 const SNAPSHOT_KEY = (eventId: string) => `mingla.rsvp.guest.v1:${eventId}`;
 const EVENT_A_ID = "00000000-0000-4000-8000-00000000000a";
@@ -20,6 +27,23 @@ const inline = (page: Page) => tid(page, "orch-1157-rsvp-inline-momentum").first
 const floatingCard = (page: Page) => tid(page, "rsvp-floating-decision-card");
 const qr = (page: Page) => page.locator('[aria-label^="RSVP QR code for"]');
 const viewPass = (page: Page) => tid(page, "rsvp-view-pass");
+const retry = (page: Page) => tid(page, "rsvp-recovery-retry");
+const OFFLINE = "We couldn't confirm your pass — try again.";
+const DENIED = "This saved pass is no longer available";
+/** Returns to the page after a Going reply with a fresh JS runtime (same tab storage). */
+const reloadReplied = async (page: Page) => { await page.reload(); await open(page, "night-a"); };
+/** Samples for `ms`: "View your pass" or a QR must never be on screen. */
+const neverPassFor = async (page: Page, ms: number) => {
+  const until = Date.now() + ms;
+  let samples = 0;
+  while (Date.now() < until) {
+    expect(await viewPass(page).count()).toBe(0);
+    expect(await qr(page).count()).toBe(0);
+    samples += 1;
+    await page.waitForTimeout(150);
+  }
+  return samples;
+};
 
 const open = async (page: Page, slug: string, query = "") => {
   await page.goto(`${APP}/e/${BRAND_SLUG}/${slug}${query}`);
@@ -177,6 +201,7 @@ test.describe("desktop 1440x900", () => {
 });
 
 test("R4 Going → chip-in redirect (fake hosted checkout) → return restores 'You're going' + pass, verified with the service", async ({ page }) => {
+  backend.servedName = "Served Name"; // D4: the rendered pass is the service's answer, not the stored copy
   await open(page, "night-a");
   await fillContact(page);
   await replyGoing(page);
@@ -199,37 +224,33 @@ test("R4 Going → chip-in redirect (fake hosted checkout) → return restores '
   expect(page.url()).not.toContain("token");
   expect(navigations.some((u) => u.includes("/__fake-stripe"))).toBe(true); // really left the page
   expect(await page.evaluate(() => (window as unknown as { __beforeCheckout?: boolean }).__beforeCheckout)).toBeUndefined(); // full reload
-  await shot(page, "R4b-returned-from-checkout-restored-375");
+  await shotDecision(page, "R4b-returned-from-checkout-restored-375");
   await viewPass(page).click();
   await expect(qr(page).first()).toBeVisible();
+  await expect(page.locator('[aria-label="RSVP QR code for Served Name"]').first()).toBeVisible();
+  await expect(page.locator('[aria-label="RSVP QR code for Retest Guest"]')).toHaveCount(0);
   await shot(page, "R4c-returned-view-pass-375");
 });
 
-test("R5 PENDING DEVIATION: while the pass check is in flight, 'View your pass' renders a scannable QR the service then denies (409)", async ({ page }) => {
+test("R5 D1: while a slow check (then 409) is in flight: 'You're going' only — no 'View your pass', no QR, no retry; then the 409 withdraws the reply", async ({ page }) => {
   await open(page, "night-a");
   await fillContact(page);
   await replyGoing(page);
   await closePopup(page);
-  // Host revokes; the verifier answers 409 — slowly (8 s).
   backend.passMode = { kind: "status", status: 409, delayMs: 8000 };
-  await page.reload();
-  await open(page, "night-a").catch(async () => undefined);
-  await expect(viewPass(page)).toBeVisible({ timeout: 15_000 });
-  expect(passFetchCalls(backend).length).toBeGreaterThan(0);
-  await viewPass(page).click();
-  const svgWhilePending = qr(page).first().locator("svg");
-  await expect(svgWhilePending).toBeVisible({ timeout: 5_000 });
-  const pendingQrPixels = await svgWhilePending.evaluate((n) => Array.from(n.querySelectorAll("path")).reduce((sum, p) => sum + (p.getAttribute("d") ?? "").length, 0));
-  await shot(page, "R5a-PENDING-scannable-qr-before-409-375");
-  const shotAt = Date.now();
-  expect(backend.passAnsweredAt).toHaveLength(0); // the 409 had NOT been answered when the QR was on screen
-  console.log(JSON.stringify({ R5: { passRequestedAt: passFetchCalls(backend).at(-1)?.at, qrScreenshotAt: shotAt } }));
-  // …then the 409 lands and the page withdraws it.
-  await expect(qr(page)).toHaveCount(0, { timeout: 15_000 });
-  await expect(page.getByText("This saved pass is no longer available").first()).toBeVisible();
-  await shot(page, "R5b-after-409-withdrawn-375");
-  expect(backend.passAnsweredAt[0]).toBeGreaterThan(shotAt);
-  expect(pendingQrPixels).toBeGreaterThan(500); // a real QR module matrix was painted
+  await reloadReplied(page);
+  await expect.poll(() => passFetchCalls(backend).length).toBeGreaterThan(0);
+  await expect.poll(() => goingLabel(page)).toBe("You're going");
+  await shotDecision(page, "R5a-pending-going-no-pass-375");
+  const samples = await neverPassFor(page, 5000);
+  expect(await retry(page).count()).toBe(0);
+  expect(backend.passAnsweredAt).toHaveLength(0); // still pending for every sample
+  console.log(JSON.stringify({ R5: { pendingSamplesWithoutPass: samples } }));
+  await expect(page.getByText(DENIED).first()).toBeVisible({ timeout: 15_000 });
+  await expect(viewPass(page)).toHaveCount(0);
+  await expect(qr(page)).toHaveCount(0);
+  expect(await goingLabel(page)).toBe("Going");
+  await shotDecision(page, "R5b-after-409-withdrawn-375");
 });
 
 test("R6 denied (403) is not restored, on this load or the next", async ({ page }) => {
@@ -260,7 +281,9 @@ test("R7 in-app event switch A→B while A's check is pending: no A reply/pass o
   backend.passMode = { kind: "status", status: 403, delayMs: 4000 };
   await page.reload();
   await open(page, "night-a");
-  await expect(viewPass(page)).toBeVisible();
+  await expect.poll(() => goingLabel(page)).toBe("You're going");
+  await expect(viewPass(page)).toHaveCount(0); // D1: pending
+  await expect.poll(() => passFetchCalls(backend).length).toBeGreaterThan(0);
   await page.evaluate(() => { (window as unknown as { __noReload: boolean }).__noReload = true; });
   await page.evaluate(() => { window.history.pushState({}, "", "/e/lantern/night-b"); window.dispatchEvent(new PopStateEvent("popstate", { state: {} })); });
   await expect(page.getByText("Different Night B").first()).toBeVisible({ timeout: 20_000 });
@@ -273,6 +296,18 @@ test("R7 in-app event switch A→B while A's check is pending: no A reply/pass o
   expect(await goingLabel(page)).toBe("Going");
   await expect(page.getByText("This saved pass is no longer available")).toHaveCount(0);
   await shot(page, "R7b-event-b-after-late-A-denial-375");
+  // D3: back to A in the same runtime — the late denial still blocks those bytes (no reply, no re-check).
+  expect(backend.passAnsweredAt.length).toBeGreaterThan(0);
+  const checksBefore = passFetchCalls(backend).length;
+  backend.passMode = { kind: "ok" };
+  await page.evaluate(() => { window.history.pushState({}, "", "/e/lantern/night-a"); window.dispatchEvent(new PopStateEvent("popstate", { state: {} })); });
+  await expect(page.getByText("Neighbors Night A").first()).toBeVisible({ timeout: 20_000 });
+  expect(await page.evaluate(() => (window as unknown as { __noReload?: boolean }).__noReload)).toBe(true);
+  await page.waitForTimeout(2000);
+  expect(await goingLabel(page)).toBe("Going");
+  await expect(viewPass(page)).toHaveCount(0);
+  expect(passFetchCalls(backend).length).toBe(checksBefore);
+  await shotDecision(page, "R7c-back-to-A-late-denial-still-blocks-375");
 });
 
 const seedSignedIn = async (context: BrowserContext, userId: string) => {
@@ -340,7 +375,7 @@ test("R9 spoofed ?contribution=paid on a fresh tab restores no reply and no pass
   await shot(page, "R9-spoofed-contribution-paid-375");
 });
 
-test("R10 DEFECT-C runtime: a signed-in reply restores after reload with NO pass-service check, even though the service would deny it", async ({ context, page }) => {
+test("R10 D2: signed-in guest → chip-in → return: invite (no restore, no pass, no check); FINDING-1 its live Going re-submits", async ({ context, page }) => {
   backend.signedIn = true;
   backend.nextQr = "mingla:v1:rsvp:signed-in-qr";
   await seedSignedIn(context, "account-a");
@@ -353,37 +388,59 @@ test("R10 DEFECT-C runtime: a signed-in reply restores after reload with NO pass
   }
   await tid(page, "orch-1163-rsvp-going-confirm-cta").click();
   await expect(qr(page).first()).toBeVisible({ timeout: 15_000 });
-  await closePopup(page);
-  backend.passMode = { kind: "status", status: 409 }; // host revoked A
-  await page.reload();
-  await open(page, "night-a");
+  expect(submitCalls(backend)).toHaveLength(1);
+  const chip = tid(tid(page, "orch-1291-rsvp-chipin-panel-popup"), "orch-1291-rsvp-chipin-submit").first();
+  await chip.scrollIntoViewIfNeeded();
+  await Promise.all([page.waitForURL(/contribution=paid/, { timeout: 30_000 }), chip.click()]);
+  await open(page, "night-a").catch(async () => undefined);
+  await expect(page.getByText("Neighbors Night A").first()).toBeVisible({ timeout: 30_000 });
   await page.waitForTimeout(3000);
-  const restored = await viewPass(page).isVisible();
-  let qrShown = false;
-  if (restored) {
-    await viewPass(page).click();
-    qrShown = await qr(page).first().locator("svg").waitFor({ state: "visible", timeout: 8000 }).then(() => true, () => false);
-    await page.waitForTimeout(800); // let the popup finish fading in
-    await shot(page, "R10-signed-in-restored-qr-never-verified-375");
+  const banner = await tid(page, "orch-1295-chipin-return-banner").isVisible();
+  const label = await goingLabel(page);
+  await shotDecision(page, "R10a-signed-in-chipin-return-invite-375");
+  expect(await viewPass(page).count()).toBe(0);
+  expect(await qr(page).count()).toBe(0);
+  expect(passFetchCalls(backend)).toHaveLength(0);
+  expect(label).toBe("Going");
+  // FINDING-1 evidence: the already-going guest can re-submit from this invite.
+  await tid(inline(page), "orch-1150-rsvp-going").click();
+  const confirmVisible = await tid(page, "orch-1163-rsvp-going-confirm-cta").isVisible();
+  await shot(page, "R10b-signed-in-return-going-opens-confirm-375");
+  if (confirmVisible) {
+    await tid(page, "orch-1163-rsvp-going-confirm-cta").click();
+    await expect.poll(() => submitCalls(backend).length, { timeout: 10_000 }).toBe(2);
+    await page.waitForTimeout(800);
+    await shotDecision(page, "R10c-signed-in-return-resubmitted-375");
   }
-  const checks = passFetchCalls(backend).length;
-  console.log(JSON.stringify({ restored, qrShown, passFetchCalls: checks }));
-  expect(checks > 0 || !qrShown).toBe(true);
+  console.log(JSON.stringify({ R10: { returnBannerVisible: banner, labelOnReturn: label, confirmVisible, submitCalls: submitCalls(backend).length, secondSubmitBody: submitCalls(backend)[1]?.body ?? null } }));
 });
 
-test("R11 verify network failure keeps the reply AND the openable QR indefinitely (stated design; evidence for the pending finding)", async ({ page }) => {
+test("R11 D1: network error → notice + Try again, no pass; Try again while still offline → still no pass; service back → Try again → pass", async ({ page }) => {
   await open(page, "night-a");
   await fillContact(page);
   await replyGoing(page);
   await closePopup(page);
   backend.passMode = { kind: "network" };
-  await page.reload();
-  await open(page, "night-a");
-  await expect(page.getByText("We couldn't check your RSVP right now").first()).toBeVisible({ timeout: 15_000 });
+  await reloadReplied(page);
+  await expect(page.getByText(OFFLINE).first()).toBeVisible({ timeout: 15_000 });
+  await expect(retry(page).first()).toBeVisible();
+  expect(await goingLabel(page)).toBe("You're going");
+  await expect(viewPass(page)).toHaveCount(0);
+  await expect(qr(page)).toHaveCount(0);
+  await shotDecision(page, "R11a-network-error-retry-no-pass-375");
+  const before = passFetchCalls(backend).length;
+  await retry(page).first().click();
+  await expect.poll(() => passFetchCalls(backend).length).toBe(before + 1);
+  await expect(retry(page).first()).toBeVisible({ timeout: 15_000 });
+  await neverPassFor(page, 1500);
+  await shotDecision(page, "R11b-retry-still-offline-no-pass-375");
+  backend.passMode = { kind: "ok" };
+  await retry(page).first().click();
+  await expect(viewPass(page)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(OFFLINE)).toHaveCount(0);
   await viewPass(page).click();
-  await expect(qr(page).first().locator("svg")).toBeVisible({ timeout: 8_000 });
-  await page.waitForTimeout(800);
-  await shot(page, "R11-offline-verify-qr-still-shown-375");
+  await expect(qr(page).first()).toBeVisible();
+  await shotDecision(page, "R11c-service-back-retry-pass-375");
 });
 
 test("R12 a second, separately opened tab never sees the first tab's reply", async ({ context, page }) => {
@@ -399,4 +456,95 @@ test("R12 a second, separately opened tab never sees the first tab's reply", asy
   expect(await goingLabel(second)).toBe("Going");
   await second.screenshot({ path: path.join(EVIDENCE, "R12-second-tab-no-reply-375.png") });
   await expect(viewPass(page)).toBeVisible(); // first tab unaffected
+});
+
+test("R13 D1: a check that never answers — 'You're going' only, no 'View your pass', no QR, no retry, for 8 s", async ({ page }) => {
+  await open(page, "night-a");
+  await fillContact(page);
+  await replyGoing(page);
+  await closePopup(page);
+  backend.passMode = { kind: "hang" };
+  await reloadReplied(page);
+  await expect.poll(() => passFetchCalls(backend).length).toBeGreaterThan(0);
+  await expect.poll(() => goingLabel(page)).toBe("You're going");
+  const samples = await neverPassFor(page, 8000);
+  expect(await retry(page).count()).toBe(0);
+  const stored = await page.evaluate((k) => sessionStorage.getItem(k), SNAPSHOT_KEY(EVENT_A_ID));
+  expect(stored).toContain(backend.nextQr); // the QR is in storage, and still never on screen
+  await shotDecision(page, "R13-pending-verify-no-pass-no-qr-375");
+  console.log(JSON.stringify({ R13: { samples } }));
+});
+
+test("R14 D4: the service answers for a DIFFERENT eventId — no pass, denial notice, stored reply removed", async ({ page }) => {
+  await open(page, "night-a");
+  await fillContact(page);
+  await replyGoing(page);
+  await closePopup(page);
+  backend.passMode = { kind: "okOtherEvent" };
+  await reloadReplied(page);
+  await expect(page.getByText(DENIED).first()).toBeVisible({ timeout: 15_000 });
+  await expect(viewPass(page)).toHaveCount(0);
+  await expect(qr(page)).toHaveCount(0);
+  expect(await goingLabel(page)).toBe("Going");
+  expect(await page.evaluate((k) => sessionStorage.getItem(k), SNAPSHOT_KEY(EVENT_A_ID))).toBeNull();
+  await shotDecision(page, "R14-other-event-id-no-pass-notice-375");
+  backend.passMode = { kind: "ok" };
+  await reloadReplied(page);
+  await page.waitForTimeout(1500);
+  await expect(viewPass(page)).toHaveCount(0);
+});
+
+test("R15 D4: the pre-#3416 service (no eventId) — reply kept, no pass, retry offered (deploy-order behaviour)", async ({ page }) => {
+  await open(page, "night-a");
+  await fillContact(page);
+  await replyGoing(page);
+  await closePopup(page);
+  backend.passMode = { kind: "okLegacyNoEventId" };
+  await reloadReplied(page);
+  await expect(page.getByText(OFFLINE).first()).toBeVisible({ timeout: 15_000 });
+  await expect(retry(page).first()).toBeVisible();
+  expect(await goingLabel(page)).toBe("You're going");
+  await neverPassFor(page, 1500);
+  await retry(page).first().click();
+  await expect(retry(page).first()).toBeVisible({ timeout: 15_000 });
+  await neverPassFor(page, 1000);
+  await shotDecision(page, "R15-legacy-service-no-eventid-retry-no-pass-375");
+});
+
+test("R16 D1: double-click Try again during a slow check — no pass until the answer, then exactly the service pass", async ({ page }) => {
+  await open(page, "night-a");
+  await fillContact(page);
+  await replyGoing(page);
+  await closePopup(page);
+  backend.passMode = { kind: "network" };
+  await reloadReplied(page);
+  await expect(retry(page).first()).toBeVisible({ timeout: 15_000 });
+  backend.passMode = { kind: "ok", delayMs: 4000 };
+  const before = passFetchCalls(backend).length;
+  await retry(page).first().dblclick({ force: true }).catch(() => undefined);
+  await neverPassFor(page, 3000);
+  expect(submitCalls(backend)).toHaveLength(1); // the second click hit nothing that replies
+  await shotDecision(page, "R16a-double-retry-pending-no-pass-375");
+  await expect(viewPass(page)).toBeVisible({ timeout: 15_000 });
+  await viewPass(page).click();
+  await expect(qr(page)).toHaveCount(1);
+  await shot(page, "R16b-double-retry-answered-pass-375");
+  console.log(JSON.stringify({ R16: { checksFromDoubleClick: passFetchCalls(backend).length - before } }));
+});
+
+test("R17 reload mid-check (slow 200 then reload): the new page shows no pass until ITS OWN answer", async ({ page }) => {
+  await open(page, "night-a");
+  await fillContact(page);
+  await replyGoing(page);
+  await closePopup(page);
+  backend.passMode = { kind: "ok", delayMs: 2500 };
+  await reloadReplied(page);
+  await expect.poll(() => passFetchCalls(backend).length).toBeGreaterThan(0);
+  backend.passMode = { kind: "ok", delayMs: 6000 };
+  const answeredBefore = backend.passAnsweredAt.length;
+  await reloadReplied(page);
+  await neverPassFor(page, 3500); // the first page's 200 has landed (into a dead runtime) during this window
+  expect(backend.passAnsweredAt.length).toBeGreaterThan(answeredBefore);
+  await shotDecision(page, "R17a-reload-mid-check-no-pass-375");
+  await expect(viewPass(page)).toBeVisible({ timeout: 15_000 });
 });

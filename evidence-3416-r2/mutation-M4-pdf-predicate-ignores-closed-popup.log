@@ -1,0 +1,10 @@
+PASS src/components/event/__tests__/issue_3440_reply_reconciliation.implementor.test.tsx (76.396 s)
+FAIL src/components/event/__tests__/issue_3416_r2_rework.tester.adversarial.test.tsx (76.791 s)
+  ✕ NIT-1 whitespace-only qrCode from the service is not rendered as a pass (37 ms)
+  ✕ R2-18 closing a confirmed pass popup revokes an in-flight PDF's authority (252 ms)
+  ✕ FINDING-1 signed-in chip-in return: the invite's live 'Going' re-submits an RSVP the guest already has (64 ms)
+PASS src/components/event/__tests__/issue_3416_recovery_retest.tester.adversarial.test.tsx (6.193 s)
+PASS src/components/event/__tests__/issue_3440_storage_failure.tester.adversarial.test.tsx
+PASS src/components/event/__tests__/issue_3440_rsvp_identity.tester.adversarial.test.tsx (14.691 s)
+PASS src/components/event/__tests__/issue_3440_recovery_fail_closed.implementor.test.tsx
+Tests:       3 failed, 112 passed, 115 total

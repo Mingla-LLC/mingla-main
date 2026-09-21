@@ -1,0 +1,8 @@
+  ✕ R2-04 in-place navigation A→B while A's verify is pending: A's bound 200 lands on B — B (with its own pending restore) shows no pass (108 ms)
+  ✕ R2-12 service answer with another eventId → denied, and never a QR (151 ms)
+  ✕ R2-12 service answer with eventId null → denied, and never a QR (125 ms)
+  ✕ R2-12 service answer with no eventId (edge function not yet deployed) → unconfirmed, and never a QR (31 ms)
+  ✕ NIT-1 whitespace-only qrCode from the service is not rendered as a pass (83 ms)
+  ✕ R2-15 (DEFECT-F, bound) event A's entity bytes rewritten under B's key: the service truthfully names event A → denial on B (22 ms)
+  ✕ FINDING-1 signed-in chip-in return: the invite's live 'Going' re-submits an RSVP the guest already has (255 ms)
+Tests:       7 failed, 27 passed, 34 total

@@ -1,0 +1,8 @@
+issue-1447 self-test PASS (17 true-source reversions)
+issue-1447 RSVP admission gate PASS (eligibility, scan, recovery, delivery, exact-shape UI, ticket isolation)
+
+[0m[32mok[0m | 8 passed | 0 failed [0m[38;5;245m(231ms)[0m
+
+
+[0m[32mok[0m | 4 passed | 0 failed [0m[38;5;245m(71ms)[0m
+
