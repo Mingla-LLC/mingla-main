@@ -354,6 +354,8 @@ interface Branch {
   readonly onLayoutCount: number;
   readonly paddingAt52: number;
   readonly paddingAt200: number;
+  /** Lift padding after firing EACH handler alone at an absurd height. */
+  readonly paddingPerHandler: readonly number[];
 }
 
 /**
@@ -422,6 +424,19 @@ function measureBranch(id: string, os: string, version: number | string): Branch
     fireAll(200);
     const paddingAt200 = readPadding();
 
+    // [TEST-MOD-APPROVED #3429] Per-handler probe for assertion 5. Firing the
+    // handlers TOGETHER (as fireAll does) can be satisfied by two handlers that
+    // feed the lift and cancel. Firing each one ALONE at an absurd height
+    // cannot: if any single handler's measured value reaches the lift padding,
+    // that reading moves.
+    const paddingPerHandler = layoutHandlers.map((handler) => {
+      TR.act(() => {
+        handler({ nativeEvent: { layout: { x: 0, y: 0, width: 375, height: 999 } } });
+      });
+      return readPadding();
+    });
+    fireAll(200);
+
     result = {
       id,
       os,
@@ -431,6 +446,7 @@ function measureBranch(id: string, os: string, version: number | string): Branch
       onLayoutCount: layoutHandlers.length,
       paddingAt52,
       paddingAt200,
+      paddingPerHandler,
     };
     TR.act(() => {
       TR.act(() => {
@@ -576,10 +592,43 @@ describe("#1890 — Ari composer keyboard clearance", () => {
     jest.dontMock("../../../wrappers/keyboardClearance");
   });
 
-  // ── 5. the measuring plumbing is gone ─────────────────────────────────────
-  it("5. no composer-height measurement survives in the lift's subtree", () => {
+  // ── 5. no measurement REACHES the lift ────────────────────────────────────
+  //
+  // [TEST-MOD-APPROVED #3429] This asserted `onLayoutCount === 0`. That is a
+  // PROXY for #1890's property, not the property: what #1890 protects is that
+  // the lift padding does not depend on a measurement, and "no onLayout exists
+  // anywhere below the wrapper" is strictly stronger than that.
+  //
+  // #3429's empty state legitimately measures, and none of it reaches the lift:
+  //   AriChatScreen.tsx:722  hero box      -> emptyHeroBoxHeight -> hero minHeight
+  //   AriChatScreen.tsx:892  composerColumn -> composerContentHeight, whose ONLY
+  //                          consumer is :712, again the hero's geometry
+  // The lift padding is `composerOccupiedPxFor(...)`, which reads neither. The
+  // proxy would have forced the orb geometry to be re-derived without
+  // measurement, reopening the F-1 clipping defect that was fixed and verified
+  // on three devices at two type sizes.
+  //
+  // So the assertion is narrowed to handlers that actually FEED THE LIFT: fire
+  // each handler alone at an absurd height and the padding must not move. A
+  // handler that reaches the lift fails here no matter how many others exist,
+  // and unlike assertion 3 this cannot be satisfied by two handlers cancelling.
+  it("5. no layout measurement reaches the lift padding", () => {
     for (const b of branches) {
-      expect(b.onLayoutCount).toBe(0);
+      const budget = KEYBOARD_HEIGHT + b.doneBarOccupied + 12;
+      for (const [index, padding] of b.paddingPerHandler.entries()) {
+        expect({ branch: b.id, handler: index, padding }).toEqual({
+          branch: b.id,
+          handler: index,
+          padding: budget,
+        });
+      }
+      // Vacuity guard: this must be measuring something. If the walk found no
+      // handlers the per-handler probe is empty and proves nothing, so the
+      // all-at-once invariant carries the branch instead.
+      if (b.paddingPerHandler.length === 0) {
+        expect(b.paddingAt52).toBe(budget);
+        expect(b.paddingAt200).toBe(budget);
+      }
     }
   });
 });
