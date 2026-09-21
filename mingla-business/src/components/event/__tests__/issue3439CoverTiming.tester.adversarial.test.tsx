@@ -76,16 +76,19 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     // Publish assertion in this suite still turns on cover timing alone. Fixtures are built once per load
     // so the hooks return stable identities across renders, as the real query results would.
     if (name.endsWith("/hooks/useFeatureFlag")) { const settledOff = { data: false, isPending: false, isFetching: false, isError: false }; return { useFeatureFlag: () => settledOff }; } // [TEST-MOD-APPROVED #1780]
+    // [TEST-MOD-APPROVED #1780] ONE settled empty summary per load, shared by the
+    // hook classifier below and by the lazy module's bridge, so the wizard sees
+    // the same stable identity whichever way it reads the saved selection.
+    const settledIdle = { isPending: false, isFetching: false, isError: false }; // [TEST-MOD-APPROVED #1780]
+    const emptyPlan = { eventId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", eventType: kind, selectionRevision: 0, selectedCount: 0, brandPersonIds: [], selectionHash: "0".repeat(64), state: "draft", publishedSelectionRevision: null, updatedAt: null }; // [TEST-MOD-APPROVED #1780]
+    const inviteSummaryStub = { plan: { ...settledIdle, data: emptyPlan }, quote: { ...settledIdle, data: undefined }, refreshAuthoritative: async () => ({ plan: emptyPlan, quote: null }) }; // [TEST-MOD-APPROVED #1780]
     if (name.endsWith("/hooks/useOfferingInvitePlan")) { // [TEST-MOD-APPROVED #1780]
-      const settledIdle = { isPending: false, isFetching: false, isError: false }; // [TEST-MOD-APPROVED #1780]
-      const emptyPlan = { eventId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", eventType: kind, selectionRevision: 0, selectedCount: 0, brandPersonIds: [], selectionHash: "0".repeat(64), state: "draft", publishedSelectionRevision: null, updatedAt: null }; // [TEST-MOD-APPROVED #1780]
-      const summary = { plan: { ...settledIdle, data: emptyPlan }, quote: { ...settledIdle, data: undefined }, refreshAuthoritative: async () => ({ plan: emptyPlan, quote: null }) }; // [TEST-MOD-APPROVED #1780]
-      return { useOfferingInvitePlanSummary: () => summary }; // [TEST-MOD-APPROVED #1780]
+      return { useOfferingInvitePlanSummary: () => inviteSummaryStub }; // [TEST-MOD-APPROVED #1780]
     } // [TEST-MOD-APPROVED #1780]
     // [TEST-MOD-APPROVED #1780] Invite UI renders as named leaves, like the step bodies below. The module
     // exports three components (the step, the preview-step review summary, the invite publish dialog), so
     // it is mapped by module rather than by the single-export leaf pattern.
-    if (name.endsWith("/invites/LazyInvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation") }; // [TEST-MOD-APPROVED #1780] lazy owner, same inert leaves
+    if (name.endsWith("/invites/LazyInvitePeopleStep")) return { InvitePlanSummaryBridge: ({ onChange }: { onChange: (s: unknown) => void }) => { const R = require("react"); R.useEffect(() => { onChange(inviteSummaryStub); }, [onChange]); return null; }, PENDING_WIZARD_INVITE_SUMMARY: { plan: { data: undefined, isPending: true, isFetching: true, isError: false }, quote: { data: undefined, isPending: true, isFetching: true, isError: false }, refreshAuthoritative: async () => ({ plan: null, quote: null }) }, InvitePeopleStep: leaf("InvitePeopleStep"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation") }; // [TEST-MOD-APPROVED #1780] lazy owner, same inert leaves
     if (name.endsWith("/invites/InvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation") }; // [TEST-MOD-APPROVED #1780]
     const exportName = name.split("/").pop()!;
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep\d\w+|PublishErrorsSheet)$/.test(exportName)) return { [exportName]: leaf(exportName) };

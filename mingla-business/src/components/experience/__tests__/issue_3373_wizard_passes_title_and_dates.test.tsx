@@ -193,6 +193,22 @@ jest.mock("../../invites/InvitePeopleStep", () => ({
   InvitePeoplePublishConfirmation: (): null => null,
   InvitePeopleStep: (): null => null,
   InvitePlanReviewSummary: (): null => null,
+  // #1780 [bundle budget] — the wizard reads the saved selection through this
+  // module now. Report the SAME summary this file's useOfferingInvitePlan mock
+  // already returns, so the wizard sees exactly what it saw when it called the
+  // hook itself and no assertion below changes meaning.
+  InvitePlanSummaryBridge: ({ onChange }: { onChange: (summary: unknown) => void }): null => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ReactActual = require("react") as typeof import("react");
+    const { useOfferingInvitePlanSummary } = jest.requireMock(
+      "../../../hooks/useOfferingInvitePlan",
+    ) as { useOfferingInvitePlanSummary: () => unknown };
+    const summary = useOfferingInvitePlanSummary();
+    ReactActual.useEffect(() => {
+      onChange(summary);
+    }, [onChange, summary]);
+    return null;
+  },
 }));
 jest.mock("../../../hooks/useFeatureFlag", () => {
   const settledOff = { data: false, isPending: false, isFetching: false, isError: false };

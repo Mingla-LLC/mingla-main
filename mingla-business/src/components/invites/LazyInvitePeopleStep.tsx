@@ -78,9 +78,33 @@ import type {
   InviteNavigationPhase,
   InviteNavigationState,
   InvitePeopleStepProps,
+  WizardInvitePlanSummary,
 } from "./InvitePeopleStep";
 
-export type { InviteNavigationPhase, InviteNavigationState, InvitePeopleStepProps };
+export type {
+  InviteNavigationPhase,
+  InviteNavigationState,
+  InvitePeopleStepProps,
+  WizardInvitePlanSummary,
+};
+
+/**
+ * What a wizard holds before the invite chunk has arrived: "we have not read
+ * the saved selection yet". Every gate that reads it — Publish readiness, the
+ * feature-flag rollback step correction — therefore stays CLOSED until the real
+ * snapshot lands, instead of opening on a value we do not have. Frozen so the
+ * identity is stable and no effect re-fires on it.
+ */
+export const PENDING_WIZARD_INVITE_SUMMARY: WizardInvitePlanSummary = Object.freeze({
+  plan: Object.freeze({ data: undefined, isPending: true, isFetching: true, isError: false }),
+  quote: Object.freeze({ data: undefined, isPending: true, isFetching: true, isError: false }),
+  // Unreachable in practice — Publish cannot be ready while the snapshot is
+  // pending — but it must FAIL rather than resolve with nothing, so a publish
+  // can never proceed on a plan nobody read. The wizards' existing pre-check
+  // catch turns this into their normal "couldn't check" message.
+  refreshAuthoritative: (): Promise<never> =>
+    Promise.reject(new Error("wizard_invite_summary_unavailable")),
+}) as WizardInvitePlanSummary;
 
 type InviteModule = typeof import("./InvitePeopleStep");
 
@@ -193,6 +217,21 @@ export const InvitePeoplePublishConfirmation: React.FC<PublishConfirmationProps>
   const { module } = useInviteModule("LazyInvitePeoplePublishConfirmation");
   if (module === undefined) return null;
   return <module.InvitePeoplePublishConfirmation {...props} />;
+};
+
+type SummaryBridgeProps = React.ComponentProps<InviteModule["InvitePlanSummaryBridge"]>;
+
+/**
+ * The wizards' window onto the persisted plan, on the far side of the chunk.
+ * It renders nothing, so it can sit anywhere in the tree; it exists only so the
+ * hook that reads the plan lives in the lazy module rather than in four eagerly
+ * imported wizards. Until the chunk loads it reports nothing and the wizard
+ * keeps PENDING_WIZARD_INVITE_SUMMARY.
+ */
+export const InvitePlanSummaryBridge: React.FC<SummaryBridgeProps> = (props) => {
+  const { module } = useInviteModule("LazyInvitePlanSummaryBridge");
+  if (module === undefined) return null;
+  return <module.InvitePlanSummaryBridge {...props} />;
 };
 
 const styles = StyleSheet.create({

@@ -18,7 +18,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { captureWizardInvite } from "../../features/invites/wizardInviteAnalytics";
-import { useOfferingInvitePlan } from "../../hooks/useOfferingInvitePlan";
+import { useOfferingInvitePlan, useOfferingInvitePlanSummary } from "../../hooks/useOfferingInvitePlan";
 import {
   createWizardInviteRequestId,
   formatWizardInviteMoney,
@@ -724,3 +724,91 @@ const styles = StyleSheet.create({
   inlineError: { gap: spacing.sm, alignItems: "flex-start" },
   flex: { flex: 1 },
 });
+
+// ---------------------------------------------------------------------------
+// #1780 [bundle budget] — the wizards' window onto the persisted plan.
+//
+// Every wizard needs the saved selection at RENDER time: to decide whether the
+// Invite step is in the stepper at all, to show the Review summary, and to know
+// whether Publish may light up. It used to get that by calling
+// useOfferingInvitePlanSummary directly, which made all four wizards eager
+// importers of the hook and, through it, of offeringInvitePlanService — so
+// Metro kept both in `__common`, the payload every business-web visitor
+// downloads. A module only leaves `__common` when EVERY eager importer stops
+// importing it, so the hook call has to live on this side of the lazy boundary.
+//
+// This component is that boundary. It calls the same hook, with the same
+// inputs, and reports each committed result upward. The wizard keeps the
+// snapshot in state and reads it exactly as it read the hook's return value —
+// the shape below is deliberately the hook's shape, so no derived expression in
+// any wizard had to change.
+//
+// Behaviour is unchanged: one hook instance per wizard, as before; auth gating
+// and the foreground-dedupe owner are the hook's, untouched. Until the chunk
+// arrives the wizard holds PENDING_WIZARD_INVITE_SUMMARY, which reads as "still
+// loading" — so every gate that depends on it (Publish readiness, the rollback
+// step correction) stays CLOSED rather than opening on a value we do not have.
+// ---------------------------------------------------------------------------
+
+export interface WizardInvitePlanSummary {
+  plan: {
+    data: WizardInvitePlan | undefined;
+    isPending: boolean;
+    isFetching: boolean;
+    isError: boolean;
+  };
+  quote: {
+    data: WizardInviteQuote | undefined;
+    isPending: boolean;
+    isFetching: boolean;
+    isError: boolean;
+  };
+  /**
+   * The hook's own authoritative read, handed up with the snapshot so the
+   * publish pre-check calls it exactly as it always did — synchronously, with
+   * no extra await and no second code path. Reading the truth at the service
+   * boundary is the hook's job and stays the hook's job.
+   */
+  refreshAuthoritative: () => Promise<{
+    plan: WizardInvitePlan;
+    quote: WizardInviteQuote | null;
+  }>;
+}
+
+export function InvitePlanSummaryBridge(props: {
+  eventId: string | null;
+  enabled: boolean;
+  quoteWhenEmpty?: boolean;
+  onChange: (summary: WizardInvitePlanSummary) => void;
+}): null {
+  const summary = useOfferingInvitePlanSummary({
+    eventId: props.eventId,
+    enabled: props.enabled,
+    quoteWhenEmpty: props.quoteWhenEmpty,
+  });
+  const { plan, quote } = summary;
+  const { onChange } = props;
+  // Report on every committed change of the fields the wizards actually read.
+  useEffect(() => {
+    onChange({
+      plan: {
+        data: plan.data,
+        isPending: plan.isPending,
+        isFetching: plan.isFetching,
+        isError: plan.isError,
+      },
+      quote: {
+        data: quote.data,
+        isPending: quote.isPending,
+        isFetching: quote.isFetching,
+        isError: quote.isError,
+      },
+      refreshAuthoritative: summary.refreshAuthoritative,
+    });
+  }, [
+    onChange, summary.refreshAuthoritative,
+    plan.data, plan.isPending, plan.isFetching, plan.isError,
+    quote.data, quote.isPending, quote.isFetching, quote.isError,
+  ]);
+  return null;
+}

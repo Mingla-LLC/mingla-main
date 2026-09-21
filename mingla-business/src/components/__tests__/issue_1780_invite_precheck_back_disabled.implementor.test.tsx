@@ -269,6 +269,15 @@ jest.mock("../invites/InvitePeopleStep", () => {
     },
     InvitePeoplePublishConfirmation: (): null => null,
     InvitePlanReviewSummary: (): null => null,
+    // #1780 [bundle budget] — the wizards read the saved selection through this
+    // module now. The stand-in hands up the same summary the hook mock gave, so
+    // every assertion in this file keeps its meaning.
+    InvitePlanSummaryBridge: ({ onChange }: { onChange: (summary: unknown) => void }): null => {
+      ReactActual.useEffect(() => {
+        onChange(mockInvite.summary);
+      }, [onChange]);
+      return null;
+    },
   };
 });
 jest.mock("../../hooks/useFeatureFlag", () => ({
@@ -364,7 +373,19 @@ const BOUNDARY: Record<string, () => unknown> = {
   // #1780 [bundle budget] — the wizards now take the invite surfaces from their
   // lazy owner. Same stand-in, reachable under the new specifier: this suite's
   // subject is the pre-check Back rule, not which chunk the step arrives in.
-  LazyInvitePeopleStep: () => jest.requireMock("../invites/InvitePeopleStep"),
+  // #1780 [bundle budget] — the wizards now reach the invite surfaces AND the
+  // saved selection through the lazy boundary. Same stand-ins as before, plus
+  // the bridge, which hands this suite's existing summary straight up, and the
+  // loader, whose refreshAuthoritativeInvitePlan is the same deferred the
+  // pre-check assertions below already drive. No assertion changes meaning.
+  LazyInvitePeopleStep: () => ({
+    ...(jest.requireMock("../invites/InvitePeopleStep") as Record<string, unknown>),
+    PENDING_WIZARD_INVITE_SUMMARY: {
+      plan: { data: undefined, isPending: true, isFetching: true, isError: false },
+      quote: { data: undefined, isPending: true, isFetching: true, isError: false },
+      refreshAuthoritative: () => Promise.reject(new Error("wizard_invite_summary_unavailable")),
+    },
+  }),
   useOfferingInvitePlan: () => jest.requireMock("../../hooks/useOfferingInvitePlan"),
   useFeatureFlag: () => jest.requireMock("../../hooks/useFeatureFlag"),
   useWizardHardwareBack: () => jest.requireMock("../../hooks/useWizardHardwareBack"),

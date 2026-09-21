@@ -76,9 +76,11 @@ import {
   InvitePeopleStep,
   InvitePlanReviewSummary,
   type InviteNavigationState,
+  InvitePlanSummaryBridge,
+  PENDING_WIZARD_INVITE_SUMMARY,
+  type WizardInvitePlanSummary,
 } from "../invites/LazyInvitePeopleStep";
 import type { WizardInvitePlan, WizardInviteQuote } from "../../services/offeringInvitePlanService";
-import { useOfferingInvitePlanSummary } from "../../hooks/useOfferingInvitePlan";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
 import { CreatorStep2When } from "../event/CreatorStep2When";
@@ -436,11 +438,18 @@ export const ExperienceCreatorWizard: React.FC<
     existingExperienceId ?? null,
   );
   const inviteFlag = useFeatureFlag("business_wizard_invite_selection_v1");
-  const persistedInvite = useOfferingInvitePlanSummary({
-    eventId: experienceId,
-    enabled: !isLiveEdit,
-    quoteWhenEmpty: inviteFlag.data === true,
-  });
+  // #1780 [bundle budget] — the saved selection arrives from the LAZY invite
+  // module, not from a hook imported here. All four wizards are separate lazy
+  // route chunks, so an eager `useOfferingInvitePlanSummary` import kept that
+  // hook and offeringInvitePlanService in `__common`, the payload every
+  // business-web visitor downloads. The bridge below calls the same hook with
+  // the same inputs on the far side of the chunk and reports each result here;
+  // the snapshot has the hook's own shape, so every expression that reads it is
+  // unchanged. Until it arrives this is PENDING_WIZARD_INVITE_SUMMARY, which
+  // reads as "still loading", so Publish readiness and the rollback step
+  // correction stay CLOSED rather than acting on a value we do not have.
+  const [persistedInvite, setPersistedInvite] =
+    useState<WizardInvitePlanSummary>(PENDING_WIZARD_INVITE_SUMMARY);
   const inviteEnabled = !isLiveEdit && (inviteFlag.data === true ||
     (persistedInvite.plan.data?.selectedCount ?? 0) > 0);
   const inviteRollbackReady = isLiveEdit || (inviteFlag.data === false &&
@@ -1713,6 +1722,12 @@ export const ExperienceCreatorWizard: React.FC<
             />
           </React.Suspense>
         ) : null}
+        <InvitePlanSummaryBridge
+          eventId={experienceId}
+          enabled={!isLiveEdit}
+          quoteWhenEmpty={inviteFlag.data === true}
+          onChange={setPersistedInvite}
+        />
         <InvitePeoplePublishConfirmation visible={inviteConfirmVisible} eventType="experience"
           plan={invitePlan} quote={inviteQuote} publishing={submitting}
           onClose={() => setInviteConfirmVisible(false)} onConfirm={() => {

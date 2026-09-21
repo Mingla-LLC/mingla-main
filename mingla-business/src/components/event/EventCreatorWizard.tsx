@@ -121,12 +121,14 @@ import {
   InvitePeopleStep,
   InvitePlanReviewSummary,
   type InviteNavigationState,
+  InvitePlanSummaryBridge,
+  PENDING_WIZARD_INVITE_SUMMARY,
+  type WizardInvitePlanSummary,
 } from "../invites/LazyInvitePeopleStep";
 import type {
   WizardInvitePlan,
   WizardInviteQuote,
 } from "../../services/offeringInvitePlanService";
-import { useOfferingInvitePlanSummary } from "../../hooks/useOfferingInvitePlan";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
 
@@ -332,11 +334,18 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // server is taking is the draft the host was looking at.
   const isAutosaving = serverSaveState?.isSaving === true;
   const inviteFlag = useFeatureFlag("business_wizard_invite_selection_v1");
-  const persistedInvite = useOfferingInvitePlanSummary({
-    eventId: /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(liveDraft.id) ? liveDraft.id : null,
-    enabled: true,
-    quoteWhenEmpty: inviteFlag.data === true,
-  });
+  // #1780 [bundle budget] — the saved selection arrives from the LAZY invite
+  // module, not from a hook imported here. All four wizards are separate lazy
+  // route chunks, so an eager `useOfferingInvitePlanSummary` import kept that
+  // hook and offeringInvitePlanService in `__common`, the payload every
+  // business-web visitor downloads. The bridge below calls the same hook with
+  // the same inputs on the far side of the chunk and reports each result here;
+  // the snapshot has the hook's own shape, so every expression that reads it is
+  // unchanged. Until it arrives this is PENDING_WIZARD_INVITE_SUMMARY, which
+  // reads as "still loading", so Publish readiness and the rollback step
+  // correction stay CLOSED rather than acting on a value we do not have.
+  const [persistedInvite, setPersistedInvite] =
+    useState<WizardInvitePlanSummary>(PENDING_WIZARD_INVITE_SUMMARY);
   const inviteEnabled = inviteFlag.data === true ||
     (persistedInvite.plan.data?.selectedCount ?? 0) > 0;
   const inviteRollbackReady = inviteFlag.data === false &&
@@ -1432,6 +1441,13 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         closeDisabled={isDiscarding}
         errorMessage={discardError}
         destructive
+      />
+
+      <InvitePlanSummaryBridge
+        eventId={/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(liveDraft.id) ? liveDraft.id : null}
+        enabled={true}
+        quoteWhenEmpty={inviteFlag.data === true}
+        onChange={setPersistedInvite}
       />
 
       {(invitePlan?.selectedCount ?? 0) > 0 ? (

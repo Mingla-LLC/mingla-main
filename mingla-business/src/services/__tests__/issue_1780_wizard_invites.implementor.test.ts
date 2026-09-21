@@ -238,7 +238,14 @@ describe("issue #1780 — wizard invite plan implementation", () => {
       "src/components/trip/TripCreatorWizard.tsx",
     ]) {
       const source = read(file);
-      expect(source).toContain("quoteWhenEmpty: inviteFlag.data === true");
+      // [TEST-MOD-APPROVED #1780] Same contract, new call site. The wizard
+      // used to pass quoteWhenEmpty as a hook argument; since the invite data
+      // layer moved behind the lazy boundary it passes the identical value as
+      // a prop on InvitePlanSummaryBridge. Accept either spelling so this
+      // keeps asserting WHAT is passed, not how the call happens to be written.
+      expect(source).toMatch(
+        /quoteWhenEmpty(?::\s*|=\{)inviteFlag\.data === true\}?/,
+      );
       expect(source).toContain("const inviteRollbackReady =");
       expect(source).toContain("inviteFlag.data === false");
       expect(source).toContain("selectedCount === 0");

@@ -95,9 +95,12 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     // Real invite behaviour is proved by the #1780 suites.
     if (name.endsWith("/context/AuthContext")) return { useAuth: () => ({ isAuthReady: true, user: { id: "issue-3402-user" }, signOut: jest.fn() }) };
     if (name.endsWith("/useFeatureFlag")) return { useFeatureFlag: () => ({ data: false, isLoading: false }) };
-    if (name.endsWith("/useOfferingInvitePlan")) return { useOfferingInvitePlanSummary: () => ({ plan: { data: undefined }, quote: { data: undefined }, refreshAuthoritative: async () => ({ plan: null, quote: null }) }) };
+    // [TEST-MOD-APPROVED #1780] One summary, shared by the hook classifier and
+    // the lazy module bridge below.
+    const inviteSummaryStub = { plan: { data: undefined }, quote: { data: undefined }, refreshAuthoritative: async () => ({ plan: null, quote: null }) };
+    if (name.endsWith("/useOfferingInvitePlan")) return { useOfferingInvitePlanSummary: () => inviteSummaryStub };
     if (name.endsWith("/useWizardHardwareBack")) return { useWizardHardwareBack: () => undefined };
-    if (name.endsWith("/LazyInvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary") }; // [TEST-MOD-APPROVED #1780] lazy owner, same inert leaves
+    if (name.endsWith("/LazyInvitePeopleStep")) return { InvitePlanSummaryBridge: ({ onChange }: { onChange: (s: unknown) => void }) => { const R = require("react"); R.useEffect(() => { onChange(inviteSummaryStub); }, [onChange]); return null; }, PENDING_WIZARD_INVITE_SUMMARY: { plan: { data: undefined, isPending: true, isFetching: true, isError: false }, quote: { data: undefined, isPending: true, isFetching: true, isError: false }, refreshAuthoritative: async () => ({ plan: null, quote: null }) }, InvitePeopleStep: leaf("InvitePeopleStep"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary") }; // [TEST-MOD-APPROVED #1780] lazy owner, same inert leaves
     if (name.endsWith("/InvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary") };
     const exportName = name.split("/").pop()!;
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep7Preview|PublishErrorsSheet|ChangeSummaryModal|EditAfterPublishBanner|ThemeControlRow|ThemeSheet)$/.test(exportName)) return { [exportName]: leaf(exportName) };

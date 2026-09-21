@@ -443,3 +443,86 @@ describe("#1780 LB — nothing imports the invite chunk statically", () => {
     expect(scanForBoundaryViolations(OWNER, 'import("./InvitePeopleStep")')).toEqual([]);
   });
 });
+
+// ===========================================================================
+// LD — the invite DATA layer leaves `__common` with the surfaces.
+//
+// Lazy-loading the step alone was not enough. Metro drops a module from the
+// shared boot chunk only when EVERY eager importer stops importing it, and the
+// four wizards still pulled `useOfferingInvitePlanSummary` — and through it
+// `offeringInvitePlanService` — straight into their own graphs. Measured: the
+// hook 3,965 B and the service 4,687 B still sat in `__common` after the step
+// had gone. The wizards now read the saved selection through
+// InvitePlanSummaryBridge, on the far side of the chunk, and both modules
+// measure ZERO in `__common`.
+//
+// FAILS-ON-REVERT: restore `import { useOfferingInvitePlanSummary } from
+// "../../hooks/useOfferingInvitePlan"` in any wizard and LD-1 goes red.
+// ===========================================================================
+
+describe("#1780 LD — the invite data layer is not a boot import", () => {
+  const WIZARDS = [
+    "mingla-business/src/components/event/EventCreatorWizard.tsx",
+    "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx",
+    "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx",
+    "mingla-business/src/components/trip/TripCreatorWizard.tsx",
+  ];
+  const sourceOf = (rel: string): string =>
+    stripComments(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+
+  test("LD-1 no wizard imports the invite hook or service for its VALUES", () => {
+    for (const wizard of WIZARDS) {
+      const src = sourceOf(wizard);
+      // The hook module must not be imported at all: every one of its exports
+      // is a hook, so there is no type-only use to allow.
+      expect({ wizard, hookImports: /from\s+["'][^"']*\/useOfferingInvitePlan["']/.test(src) })
+        .toEqual({ wizard, hookImports: false });
+      // The service may only be reached for TYPES, which erase at runtime.
+      for (const match of src.matchAll(
+        /\b(import|export)\s+(type\s+)?([^;]*?)\s+from\s+["'][^"']*\/offeringInvitePlanService["']/g,
+      )) {
+        const clause = match[3].trim();
+        const braces = /^\{([\s\S]*)\}$/.exec(clause);
+        const typed =
+          match[2] !== undefined ||
+          (braces !== null &&
+            braces[1]
+              .split(",")
+              .map((x) => x.trim())
+              .filter(Boolean)
+              .every((x) => x.startsWith("type ")));
+        expect({ wizard, clause, typed }).toEqual({ wizard, clause, typed: true });
+      }
+    }
+  });
+
+  test("LD-2 each wizard reads the saved selection through the bridge, and Publish still reads the truth directly", () => {
+    for (const wizard of WIZARDS) {
+      const src = sourceOf(wizard);
+      // The bridge is mounted, and it is fed the same inputs the hook took.
+      expect({ wizard, bridge: src.includes("<InvitePlanSummaryBridge") })
+        .toEqual({ wizard, bridge: true });
+      expect({ wizard, pending: src.includes("PENDING_WIZARD_INVITE_SUMMARY") })
+        .toEqual({ wizard, pending: true });
+      // The publish pre-check still calls the authoritative read itself — not a
+      // cached value and not a React Query refetch.
+      expect({ wizard, precheck: /await \w+\.refreshAuthoritative\(\);/.test(src) })
+        .toEqual({ wizard, precheck: true });
+    }
+  });
+
+  test("LD-3 the bridge is mounted unconditionally, never behind the flag it feeds", () => {
+    // inviteEnabled is DERIVED from the snapshot the bridge reports. Mounting
+    // the bridge behind it would deadlock: no bridge, no snapshot, no
+    // inviteEnabled, forever. Assert the mount is not inside such a branch by
+    // checking the preceding line is not a conditional opener.
+    for (const wizard of WIZARDS) {
+      const lines = sourceOf(wizard).split("\n");
+      const at = lines.findIndex((l) => l.includes("<InvitePlanSummaryBridge"));
+      expect(at).toBeGreaterThan(0);
+      const before = lines.slice(Math.max(0, at - 2), at).join(" ");
+      expect({ wizard, guarded: /\?\s*\($|&&\s*\($|inviteEnabled\s*\?/.test(before.trim()) })
+        .toEqual({ wizard, guarded: false });
+    }
+  });
+});
