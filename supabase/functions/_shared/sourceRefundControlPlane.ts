@@ -40,6 +40,7 @@ export interface SourceRefundOperation {
   paystack_transaction_id?: number | string | null;
   stripe_charge_id?: string | null;
   refund_kind?: string | null;
+  buyer_notice_code?: string | null;
   attention_recipient_email_override?: string | null;
   attention_recipient_phone_e164_override?: string | null;
   provider_account_reference: string | null;
@@ -207,6 +208,7 @@ async function record(
         sourceLabel,
         sourceType: operation.source_type,
         refundKind: operation.refund_kind ?? null,
+        noticeCode: operation.buyer_notice_code ?? null,
         fullRefund: operation.buyer_refund_requested_cents > 0 &&
           operation.buyer_refund_requested_cents >=
             operation.original_charge_cents,

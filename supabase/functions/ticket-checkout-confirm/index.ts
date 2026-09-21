@@ -57,6 +57,11 @@ import {
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
 import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
+import {
+  isEvidenceHoldCandidate,
+  releaseTicketEvidenceHold,
+  stripePaymentIntentAmount,
+} from "../_shared/ticketEvidenceHold.ts";
 // META-ORCH-1074 Sub-A: fire business.order_paid / event_sold_out /
 // low_inventory after a newly-finalized order. Idempotency keys collapse the
 // confirm-vs-webhook double-fire to one notification row per recipient.
@@ -82,6 +87,9 @@ interface TicketRow {
 type StripePaymentIntentLike = {
   id?: string;
   status?: string;
+  amount?: number;
+  amount_received?: number;
+  currency?: string;
   payment_method_types?: string[];
   charges?: { data?: Array<{ id?: string }> };
   latest_charge?: string | { id?: string } | null;
@@ -258,7 +266,7 @@ serve(async (req) => {
   const { data: session, error: lookupError } = await supabase
     .from("ticket_checkout_sessions")
     .select(
-      "id, status, order_id, event_id, total_cents, currency, buyer_status_token_hash, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id",
+      "id, status, order_id, event_id, total_cents, currency, buyer_status_token_hash, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id, reversal_state",
     )
     .eq("id", checkoutSessionId)
     .maybeSingle();
@@ -508,6 +516,36 @@ serve(async (req) => {
         order: null,
         error: "checkout_unavailable",
       }, 409);
+    }
+
+    // A checkout held only because an earlier signal lacked evidence (a
+    // webhook with no charge id) completes the sale now that Stripe itself
+    // proves the payment. `released` puts the session back in flight for the
+    // ordinary verify + finalize below; any other answer keeps the hold and
+    // this path still ends at the refund.
+    const providerAmount = stripePaymentIntentAmount(
+      paymentIntent as Record<string, unknown>,
+    );
+    if (isEvidenceHoldCandidate(session) && providerAmount && latestCharge) {
+      try {
+        await releaseTicketEvidenceHold(supabase, {
+          checkoutSessionId: session.id,
+          provider: "stripe",
+          paymentReference: paymentIntentId,
+          paystackTransactionId: null,
+          stripeChargeId: latestCharge,
+          observedAccountReference: stripeAccountId,
+          amountCents: providerAmount.amountCents,
+          currency: providerAmount.currency,
+        });
+      } catch (err) {
+        console.error(
+          "[ticket-checkout-confirm] evidence hold release failed",
+          session.id,
+          err instanceof Error ? err.message : String(err),
+        );
+        return jsonResponse({ error: "paid_identity_capture_failed" }, 502);
+      }
     }
 
     const { data: identityTruth, error: identityError } = await supabase.rpc(

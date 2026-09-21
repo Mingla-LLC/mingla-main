@@ -425,3 +425,293 @@ BEGIN
   END IF;
 END $test$;
 ROLLBACK;
+
+-- A paid checkout held only because evidence was missing completes the sale.
+--
+-- A payment that succeeded, but whose first signal lacked a charge id (or a
+-- Paystack transaction id), was held and its refund queued the moment complete
+-- evidence arrived. release_ticket_checkout_evidence_hold() now lifts such a
+-- hold when the provider proves the payment and the sale is still open, and
+-- keeps the refund for every genuine conflict. DROP the release function's
+-- migration, or weaken any gate below, and this block fails.
+BEGIN;
+INSERT INTO auth.users(id) VALUES('e71d0000-0000-4000-8000-000000000001');
+INSERT INTO public.creator_accounts(id) VALUES('e71d0000-0000-4000-8000-000000000001');
+INSERT INTO public.brands(id,account_id,name,slug,default_currency,pricing_currency,payment_provider)
+VALUES('e71d0000-0000-4000-8000-000000000010','e71d0000-0000-4000-8000-000000000001',
+  'Evidence hold brand','evidence-hold-brand','USD','USD','stripe'),
+('e71d0000-0000-4000-8000-000000000020','e71d0000-0000-4000-8000-000000000001',
+  'Evidence hold NG brand','evidence-hold-ng-brand','NGN','NGN','paystack');
+INSERT INTO public.events(id,brand_id,title,slug,event_type,status,visibility,timezone,currency)
+VALUES('e71d0000-0000-4000-8000-000000000011','e71d0000-0000-4000-8000-000000000010',
+  'Evidence hold event','evidence-hold-event','event','scheduled','public','UTC','USD'),
+('e71d0000-0000-4000-8000-000000000021','e71d0000-0000-4000-8000-000000000020',
+  'Evidence hold NG event','evidence-hold-ng-event','event','scheduled','public','UTC','NGN');
+INSERT INTO public.ticket_types(id,event_id,name,price_cents,currency,is_free,quantity_total,
+  min_purchase_qty,available_online,available_in_person,display_order)
+VALUES('e71d0000-0000-4000-8000-000000000012','e71d0000-0000-4000-8000-000000000011',
+  'General',1000,'USD',false,100,1,true,false,0),
+('e71d0000-0000-4000-8000-000000000013','e71d0000-0000-4000-8000-000000000011',
+  'Last seat',1000,'USD',false,1,1,true,false,1),
+('e71d0000-0000-4000-8000-000000000022','e71d0000-0000-4000-8000-000000000021',
+  'NG General',1000,'NGN',false,100,1,true,false,0);
+
+-- A Stripe native checkout for one ticket, paid, whose first signal had no
+-- charge id: exactly the hold the webhook used to create.
+CREATE FUNCTION pg_temp.evidence_hold_stripe(p_id uuid,p_ticket_type uuid,p_pi text,p_charge text)
+RETURNS jsonb LANGUAGE plpgsql AS $f$
+DECLARE v_claim jsonb; v_attempt uuid; v_epoch bigint;
+BEGIN
+  INSERT INTO public.ticket_checkout_sessions(id,event_id,brand_id,buyer_name,buyer_email,
+    buyer_phone_e164,currency,subtotal_cents,total_cents,status,idempotency_key,expires_at,
+    application_fee_amount_cents)
+  VALUES(p_id,'e71d0000-0000-4000-8000-000000000011','e71d0000-0000-4000-8000-000000000010',
+    'Hold buyer','hold-buyer@example.com','+15555550111','USD',1000,1000,'requires_payment',
+    'evidence-hold-'||p_id,now()+interval '15 minutes',100);
+  INSERT INTO public.ticket_checkout_session_items(checkout_session_id,ticket_type_id,
+    ticket_name_at_purchase,quantity,unit_price_cents,total_cents)
+  VALUES(p_id,p_ticket_type,'Ticket',1,1000,1000);
+  v_claim:=public.issue_1930_claim_ticket_provider_attempt(p_id,
+    'e71d0000-0000-4000-8000-000000000011','stripe','stripe_native','evidence-hold-fp-'||p_id);
+  IF v_claim->>'outcome'<>'fresh_claim' THEN
+    RAISE EXCEPTION 'evidence hold fixture: claim failed %',v_claim;
+  END IF;
+  v_attempt:=(v_claim->>'attemptId')::uuid; v_epoch:=(v_claim->>'epoch')::bigint;
+  PERFORM public.issue_1930_commit_ticket_provider_attempt(v_attempt,v_epoch,p_pi,NULL,NULL,
+    'evidence-hold-cont-'||p_id);
+  UPDATE public.ticket_checkout_sessions SET stripe_account_id='acct_evidencehold',
+    stripe_payment_intent_id=p_pi WHERE id=p_id;
+  RETURN public.issue_2079_verify_ticket_paid_identity(p_id,'stripe',p_pi,NULL,p_charge,
+    'acct_evidencehold');
+END $f$;
+
+CREATE FUNCTION pg_temp.evidence_hold_release(p_id uuid,p_pi text,p_charge text,
+  p_account text DEFAULT 'acct_evidencehold',p_amount bigint DEFAULT 1000,p_currency text DEFAULT 'usd')
+RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT public.release_ticket_checkout_evidence_hold(p_id,'stripe',p_pi,NULL,p_charge,
+    p_account,p_amount,p_currency)
+$f$;
+
+CREATE FUNCTION pg_temp.evidence_hold_intact(p_id uuid) RETURNS boolean LANGUAGE sql AS $f$
+  SELECT EXISTS(SELECT 1 FROM public.ticket_checkout_sessions s
+      WHERE s.id=p_id AND s.status='failed' AND s.reversal_state='paid_reversal_pending'
+        AND s.order_id IS NULL)
+    AND EXISTS(SELECT 1 FROM public.source_refunds r
+      WHERE r.source_type='ticket_checkout_session' AND r.source_id=p_id
+        AND r.refund_kind='late_payment_no_value')
+$f$;
+
+DO $test$
+DECLARE v jsonb; v_order jsonb; v_replay jsonb; v_claim jsonb; v_attempt uuid; v_epoch bigint;
+  v_refund_a uuid;
+  v_pepper text:='evidence-hold-test-pepper-0123456789abcdef';
+  a uuid:='e71d0000-0000-4000-8000-0000000000a1'; b uuid:='e71d0000-0000-4000-8000-0000000000b1';
+  c uuid:='e71d0000-0000-4000-8000-0000000000c1'; d uuid:='e71d0000-0000-4000-8000-0000000000d1';
+  e uuid:='e71d0000-0000-4000-8000-0000000000e1'; e2 uuid:='e71d0000-0000-4000-8000-0000000000e2';
+  f uuid:='e71d0000-0000-4000-8000-0000000000f1'; g uuid:='e71d0000-0000-4000-8000-0000000000a7';
+  h uuid:='e71d0000-0000-4000-8000-0000000000a8';
+BEGIN
+  -- ── 1. Webhook without a charge, then the buyer's confirm with one ────────
+  v:=pg_temp.evidence_hold_stripe(a,'e71d0000-0000-4000-8000-000000000012','pi_evidenceA',NULL);
+  IF v->>'outcome'<>'attention' OR NOT pg_temp.evidence_hold_intact(a) THEN
+    RAISE EXCEPTION 'evidence hold 1: fixture did not hold: %',v;
+  END IF;
+  SELECT id INTO v_refund_a FROM public.source_refunds WHERE source_id=a;
+  v:=pg_temp.evidence_hold_release(a,'pi_evidenceA','ch_evidenceA');
+  IF v->>'outcome'<>'released' OR (v->>'refundsReleased')::int<>1 THEN
+    RAISE EXCEPTION 'evidence hold 1: complete evidence did not release the hold: %',v;
+  END IF;
+  IF EXISTS(SELECT 1 FROM public.source_refunds WHERE source_type='ticket_checkout_session' AND source_id=a)
+     OR EXISTS(SELECT 1 FROM public.source_refund_ledger_allocations WHERE refund_id=v_refund_a)
+     OR NOT EXISTS(SELECT 1 FROM public.ticket_checkout_sessions WHERE id=a
+       AND status='processing_payment' AND reversal_state='none' AND failed_at IS NULL)
+     OR NOT EXISTS(SELECT 1 FROM public.ticket_checkout_provider_attempts
+       WHERE checkout_session_id=a AND state='ready')
+     OR EXISTS(SELECT 1 FROM public.checkout_sale_revocation_outbox
+       WHERE subject_type='ticket_checkout_session' AND subject_id=a AND state<>'sale_completed')
+     OR NOT EXISTS(SELECT 1 FROM public.audit_log WHERE target_type='ticket_checkout_session'
+       AND target_id=a::text AND action='ticket_checkout.evidence_hold_released') THEN
+    RAISE EXCEPTION 'evidence hold 1: release left refund, session, attempt, outbox or audit wrong';
+  END IF;
+  IF public.issue_2079_verify_ticket_paid_identity(a,'stripe','pi_evidenceA',NULL,'ch_evidenceA',
+       'acct_evidencehold')->>'outcome'<>'verified' THEN
+    RAISE EXCEPTION 'evidence hold 1: released session did not verify';
+  END IF;
+  v_order:=public.biz_ticket_checkout_finalize(a,'pi_evidenceA','ch_evidenceA','card',v_pepper);
+  IF v_order->>'outcome'<>'finalized' OR v_order->>'orderId' IS NULL
+     OR NOT EXISTS(SELECT 1 FROM public.ticket_checkout_sessions WHERE id=a
+       AND status='paid_completed' AND order_id=(v_order->>'orderId')::uuid)
+     OR (SELECT count(*) FROM public.tickets WHERE order_id=(v_order->>'orderId')::uuid)<>1 THEN
+    RAISE EXCEPTION 'evidence hold 1: released session did not issue the ticket: %',v_order;
+  END IF;
+  -- Idempotent: a second confirm / webhook retry changes nothing.
+  v:=pg_temp.evidence_hold_release(a,'pi_evidenceA','ch_evidenceA');
+  v_replay:=public.biz_ticket_checkout_finalize(a,'pi_evidenceA','ch_evidenceA','card',v_pepper);
+  IF v->>'outcome'<>'not_held' OR v_replay->>'orderId'<>v_order->>'orderId'
+     OR (SELECT count(*) FROM public.tickets WHERE order_id=(v_order->>'orderId')::uuid)<>1
+     OR (SELECT count(*) FROM public.orders WHERE checkout_session_id=a)<>1 THEN
+    RAISE EXCEPTION 'evidence hold 1: replay was not idempotent: % / %',v,v_replay;
+  END IF;
+  -- The revocation worker's handoff no longer opens an operator refund for it.
+  IF public.issue_2168_handoff_revocation_attention((SELECT id FROM public.checkout_sale_revocation_outbox
+       WHERE subject_type='ticket_checkout_session' AND subject_id=a LIMIT 1))<>'already_owned'
+     OR EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=a) THEN
+    RAISE EXCEPTION 'evidence hold 1: handoff opened a refund for a completed sale';
+  END IF;
+
+  -- ── 2. The refund was already queued by complete evidence, never started ──
+  v:=pg_temp.evidence_hold_stripe(b,'e71d0000-0000-4000-8000-000000000012','pi_evidenceB',NULL);
+  v:=public.issue_1930_mint_ticket_late_reversal(b,'stripe','pi_evidenceB',NULL,'ch_evidenceB');
+  IF v->>'outcome'<>'promoted' THEN
+    RAISE EXCEPTION 'evidence hold 2: fixture did not queue the refund: %',v;
+  END IF;
+  -- The #2168 handoff must not add a second refund while the late refund owns it.
+  IF public.issue_2168_handoff_revocation_attention((SELECT id FROM public.checkout_sale_revocation_outbox
+       WHERE subject_type='ticket_checkout_session' AND subject_id=b LIMIT 1))<>'already_owned'
+     OR (SELECT count(*) FROM public.source_refunds WHERE source_id=b)<>1 THEN
+    RAISE EXCEPTION 'evidence hold 2: handoff duplicated an owned refund';
+  END IF;
+  v:=pg_temp.evidence_hold_release(b,'pi_evidenceB','ch_evidenceB');
+  IF v->>'outcome'<>'released' OR EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=b) THEN
+    RAISE EXCEPTION 'evidence hold 2: a queued, unstarted refund was not released: %',v;
+  END IF;
+
+  -- ── 3. The refund worker got there first ──────────────────────────────────
+  v:=pg_temp.evidence_hold_stripe(c,'e71d0000-0000-4000-8000-000000000012','pi_evidenceC',NULL);
+  v:=public.issue_1930_mint_ticket_late_reversal(c,'stripe','pi_evidenceC',NULL,'ch_evidenceC');
+  PERFORM * FROM public.claim_source_refund_operations('evidence-hold-worker',25,now());
+  IF NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=c AND lease_owner='evidence-hold-worker') THEN
+    RAISE EXCEPTION 'evidence hold 3: fixture refund was not leased';
+  END IF;
+  v:=pg_temp.evidence_hold_release(c,'pi_evidenceC','ch_evidenceC');
+  IF v->>'outcome'<>'refund_kept' OR v->>'reason'<>'refund_in_progress'
+     OR NOT pg_temp.evidence_hold_intact(c) THEN
+    RAISE EXCEPTION 'evidence hold 3: a leased refund was cancelled: %',v;
+  END IF;
+  -- A stale lease is not enough once the worker has started an attempt.
+  UPDATE public.source_refunds SET leased_at=now()-interval '1 hour' WHERE source_id=c;
+  PERFORM public.ensure_source_refund_attempt((SELECT id FROM public.source_refunds WHERE source_id=c),
+    'buyer_refund');
+  v:=pg_temp.evidence_hold_release(c,'pi_evidenceC','ch_evidenceC');
+  IF v->>'outcome'<>'refund_kept' OR v->>'reason'<>'refund_in_progress'
+     OR NOT pg_temp.evidence_hold_intact(c) THEN
+    RAISE EXCEPTION 'evidence hold 3: a started refund was cancelled: %',v;
+  END IF;
+
+  -- ── 4. Genuine conflicts keep the refund ──────────────────────────────────
+  v:=pg_temp.evidence_hold_stripe(d,'e71d0000-0000-4000-8000-000000000012','pi_evidenceD',NULL);
+  IF pg_temp.evidence_hold_release(d,'pi_evidenceD','ch_evidenceD','acct_someoneelse')->>'reason'<>'identity_conflict'
+     OR pg_temp.evidence_hold_release(d,'pi_wrongpayment','ch_evidenceD')->>'reason'<>'identity_conflict'
+     OR pg_temp.evidence_hold_release(d,'pi_evidenceD','ch_evidenceD','acct_evidencehold',999)->>'reason'<>'amount_mismatch'
+     OR pg_temp.evidence_hold_release(d,'pi_evidenceD','ch_evidenceD','acct_evidencehold',1000,'eur')->>'reason'<>'amount_mismatch'
+     OR pg_temp.evidence_hold_release(d,'pi_evidenceD',NULL)->>'reason'<>'identity_unverified'
+     OR NOT pg_temp.evidence_hold_intact(d) THEN
+    RAISE EXCEPTION 'evidence hold 4: a conflicting proof released the hold';
+  END IF;
+
+  -- ── 5. Sold out by the time the proof arrives: refund kept, buyer told ────
+  v:=pg_temp.evidence_hold_stripe(e,'e71d0000-0000-4000-8000-000000000013','pi_evidenceE',NULL);
+  INSERT INTO public.ticket_checkout_sessions(id,event_id,brand_id,buyer_name,buyer_email,
+    buyer_phone_e164,currency,subtotal_cents,total_cents,status,idempotency_key,expires_at,
+    application_fee_amount_cents)
+  VALUES(e2,'e71d0000-0000-4000-8000-000000000011','e71d0000-0000-4000-8000-000000000010',
+    'Other buyer','other-buyer@example.com','+15555550112','USD',1000,1000,'requires_payment',
+    'evidence-hold-'||e2,now()+interval '15 minutes',100);
+  INSERT INTO public.ticket_checkout_session_items(checkout_session_id,ticket_type_id,
+    ticket_name_at_purchase,quantity,unit_price_cents,total_cents)
+  VALUES(e2,'e71d0000-0000-4000-8000-000000000013','Ticket',1,1000,1000);
+  v_claim:=public.issue_1930_claim_ticket_provider_attempt(e2,
+    'e71d0000-0000-4000-8000-000000000011','stripe','stripe_native','evidence-hold-fp-'||e2);
+  v_attempt:=(v_claim->>'attemptId')::uuid; v_epoch:=(v_claim->>'epoch')::bigint;
+  PERFORM public.issue_1930_commit_ticket_provider_attempt(v_attempt,v_epoch,'pi_evidenceE2',NULL,NULL,
+    'evidence-hold-cont-'||e2);
+  UPDATE public.ticket_checkout_sessions SET stripe_account_id='acct_evidencehold',
+    stripe_payment_intent_id='pi_evidenceE2' WHERE id=e2;
+  IF public.biz_ticket_checkout_finalize(e2,'pi_evidenceE2','ch_evidenceE2','card',v_pepper)->>'outcome'<>'finalized' THEN
+    RAISE EXCEPTION 'evidence hold 5: the other buyer could not take the last seat';
+  END IF;
+  v:=pg_temp.evidence_hold_release(e,'pi_evidenceE','ch_evidenceE');
+  IF v->>'outcome'<>'refund_kept' OR v->>'reason'<>'sale_unavailable'
+     OR NOT pg_temp.evidence_hold_intact(e)
+     OR NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=e
+       AND buyer_notice_code='sale_unavailable') THEN
+    RAISE EXCEPTION 'evidence hold 5: a sold-out hold did not keep its refund and notice: %',v;
+  END IF;
+  -- The ordinary path then queues that refund; the notice reason survives it.
+  PERFORM public.issue_1930_mint_ticket_late_reversal(e,'stripe','pi_evidenceE',NULL,'ch_evidenceE');
+  IF NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE source_id=e AND buyer_state='queued'
+       AND buyer_notice_code='sale_unavailable') THEN
+    RAISE EXCEPTION 'evidence hold 5: the queued refund lost its notice reason';
+  END IF;
+
+  -- ── 6. No longer purchasable (ticket type switched off) ───────────────────
+  v:=pg_temp.evidence_hold_stripe(f,'e71d0000-0000-4000-8000-000000000012','pi_evidenceF',NULL);
+  UPDATE public.ticket_types SET is_disabled=true WHERE id='e71d0000-0000-4000-8000-000000000012';
+  v:=pg_temp.evidence_hold_release(f,'pi_evidenceF','ch_evidenceF');
+  UPDATE public.ticket_types SET is_disabled=false WHERE id='e71d0000-0000-4000-8000-000000000012';
+  IF v->>'outcome'<>'refund_kept' OR v->>'reason'<>'sale_unavailable'
+     OR NOT pg_temp.evidence_hold_intact(f) THEN
+    RAISE EXCEPTION 'evidence hold 6: an unpurchasable hold did not keep its refund: %',v;
+  END IF;
+
+  -- ── 7. A genuine late payment (no evidence hold) is not touched ───────────
+  INSERT INTO public.ticket_checkout_sessions(id,event_id,brand_id,buyer_name,buyer_email,
+    buyer_phone_e164,currency,subtotal_cents,total_cents,status,idempotency_key,expires_at,
+    application_fee_amount_cents)
+  VALUES(g,'e71d0000-0000-4000-8000-000000000011','e71d0000-0000-4000-8000-000000000010',
+    'Late buyer','late-buyer@example.com','+15555550113','USD',1000,1000,'requires_payment',
+    'evidence-hold-'||g,now()+interval '15 minutes',100);
+  v_claim:=public.issue_1930_claim_ticket_provider_attempt(g,
+    'e71d0000-0000-4000-8000-000000000011','stripe','stripe_native','evidence-hold-fp-'||g);
+  v_attempt:=(v_claim->>'attemptId')::uuid; v_epoch:=(v_claim->>'epoch')::bigint;
+  PERFORM public.issue_1930_commit_ticket_provider_attempt(v_attempt,v_epoch,'pi_evidenceG',NULL,NULL,
+    'evidence-hold-cont-'||g);
+  UPDATE public.ticket_checkout_sessions SET stripe_account_id='acct_evidencehold',
+    stripe_payment_intent_id='pi_evidenceG' WHERE id=g;
+  IF public.issue_1930_mint_ticket_late_reversal(g,'stripe','pi_evidenceG',NULL,'ch_evidenceG')->>'outcome'<>'queued' THEN
+    RAISE EXCEPTION 'evidence hold 7: fixture late reversal was not queued';
+  END IF;
+  v:=pg_temp.evidence_hold_release(g,'pi_evidenceG','ch_evidenceG');
+  IF v->>'outcome'<>'not_held' OR NOT pg_temp.evidence_hold_intact(g) THEN
+    RAISE EXCEPTION 'evidence hold 7: a genuine late-payment refund was released: %',v;
+  END IF;
+
+  -- ── 8. Paystack: a transaction id arrives after the hold ──────────────────
+  INSERT INTO public.ticket_checkout_sessions(id,event_id,brand_id,buyer_name,buyer_email,
+    buyer_phone_e164,currency,subtotal_cents,total_cents,status,idempotency_key,expires_at,
+    application_fee_amount_cents)
+  VALUES(h,'e71d0000-0000-4000-8000-000000000021','e71d0000-0000-4000-8000-000000000020',
+    'NG buyer','ng-buyer@example.com','+2348012345699','NGN',1000,1000,'requires_payment',
+    'evidence-hold-'||h,now()+interval '15 minutes',100);
+  INSERT INTO public.ticket_checkout_session_items(checkout_session_id,ticket_type_id,
+    ticket_name_at_purchase,quantity,unit_price_cents,total_cents)
+  VALUES(h,'e71d0000-0000-4000-8000-000000000022','Ticket',1,1000,1000);
+  v_claim:=public.issue_1930_claim_ticket_provider_attempt(h,
+    'e71d0000-0000-4000-8000-000000000021','paystack','paystack_redirect','evidence-hold-fp-'||h);
+  v_attempt:=(v_claim->>'attemptId')::uuid; v_epoch:=(v_claim->>'epoch')::bigint;
+  PERFORM public.issue_1930_commit_ticket_provider_attempt(v_attempt,v_epoch,NULL,NULL,
+    'evidence-hold-paystack-ref','evidence-hold-cont-'||h);
+  v:=public.issue_1930_mint_ticket_late_reversal(h,'paystack','evidence-hold-paystack-ref',NULL,NULL);
+  IF v->>'outcome'<>'attention' OR NOT pg_temp.evidence_hold_intact(h) THEN
+    RAISE EXCEPTION 'evidence hold 8: Paystack fixture did not hold: %',v;
+  END IF;
+  v:=public.release_ticket_checkout_evidence_hold(h,'paystack','evidence-hold-paystack-ref','2079901',
+    NULL,NULL,1000,'NGN');
+  IF v->>'outcome'<>'released' THEN
+    RAISE EXCEPTION 'evidence hold 8: a proven Paystack payment was not released: %',v;
+  END IF;
+  IF public.biz_ticket_checkout_finalize(h,'evidence-hold-paystack-ref','2079901','card',v_pepper)->>'outcome'<>'finalized' THEN
+    RAISE EXCEPTION 'evidence hold 8: the released Paystack session did not issue the ticket';
+  END IF;
+
+  -- ── 9. Service role only ──────────────────────────────────────────────────
+  IF has_function_privilege('anon',
+      'public.release_ticket_checkout_evidence_hold(uuid,text,text,text,text,text,bigint,text)','EXECUTE')
+     OR has_function_privilege('authenticated',
+      'public.release_ticket_checkout_evidence_hold(uuid,text,text,text,text,text,bigint,text)','EXECUTE')
+     OR NOT has_function_privilege('service_role',
+      'public.release_ticket_checkout_evidence_hold(uuid,text,text,text,text,text,bigint,text)','EXECUTE') THEN
+    RAISE EXCEPTION 'evidence hold 9: release privilege mismatch';
+  END IF;
+END $test$;
+ROLLBACK;

@@ -46,6 +46,10 @@ import { qrTokenPepper } from "../_shared/ticketCheckout.ts";
 import { fireAdConversion } from "../_shared/adConversionFire.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.74.0?target=denonext";
 import { classify, classifyRef } from "./classify.ts";
+import {
+  releaseTicketEvidenceHold,
+  stripePaymentIntentAmount,
+} from "../_shared/ticketEvidenceHold.ts";
 import type { StripeTruth } from "./classify.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -54,6 +58,11 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 // Capped batch (SPEC §4.2a): oldest-first so a backlog drains deterministically
 // across successive */15 runs. Current stuck population is 5.
 const SWEEP_BATCH_LIMIT = 50;
+
+// Evidence holds re-checked per run, newest first. A hold is a paid checkout
+// closed only because an earlier signal lacked evidence; they are rare, and a
+// hold whose refund is kept leaves this set once that refund is processed.
+const EVIDENCE_HOLD_BATCH_LIMIT = 10;
 
 /** Minimal structural shape of the retrieved PaymentIntent fields we read. */
 interface PaymentIntentLike {
@@ -143,6 +152,96 @@ export interface ReconcileStuckCheckoutsDeps {
   qrTokenPepper: () => string;
 }
 
+/**
+ * A paid Stripe checkout held ONLY because an earlier signal lacked evidence
+ * (for example a webhook with no charge id) completes the sale when Stripe
+ * proves the payment. This is the backstop for a buyer who left before their
+ * own confirm call ran. READ-ONLY on Stripe, like the rest of the sweep.
+ *
+ * A `released` hold is back to `processing_payment`, so the ordinary batch
+ * below finalizes it through the same verify + finalize as any webhook-lost
+ * paid session (in this run once it is past expiry, otherwise in the next).
+ * Every other answer leaves the hold, and its refund, untouched.
+ */
+async function releaseStripeEvidenceHolds(
+  supabase: ServiceClient,
+  stripe: StripeClient,
+): Promise<Array<Record<string, unknown>>> {
+  const out: Array<Record<string, unknown>> = [];
+  const { data: held, error } = await supabase
+    .from("ticket_checkout_sessions")
+    .select(
+      "id, order_id, reversal_state, stripe_payment_intent_id, stripe_checkout_session_id, stripe_account_id",
+    )
+    .eq("status", "failed")
+    .eq("reversal_state", "paid_reversal_pending")
+    .is("order_id", null)
+    .order("created_at", { ascending: false })
+    .limit(EVIDENCE_HOLD_BATCH_LIMIT);
+  if (error) {
+    out.push({ error: "evidence_hold_lookup_failed" });
+    return out;
+  }
+  for (const row of held ?? []) {
+    const sessionId = String(row.id);
+    const piId = row.stripe_payment_intent_id as string | null;
+    const accountId = row.stripe_account_id as string | null;
+    // Paystack references and reference-less rows are not Stripe holds.
+    if (!piId || !piId.startsWith("pi_") || !accountId) continue;
+    try {
+      const csId = row.stripe_checkout_session_id as string | null;
+      if (csId) {
+        const cs = await retrieveCheckoutSessionReadOnly(stripe, csId, accountId);
+        const csPi = typeof cs.payment_intent === "string"
+          ? cs.payment_intent
+          : cs.payment_intent?.id ?? null;
+        if (csPi !== piId) {
+          out.push({ sessionId, piId, skip: "evidence_hold_relation_unproven" });
+          continue;
+        }
+      }
+      const pi = await retrievePaymentIntentReadOnly(stripe, piId, accountId);
+      if (pi.status !== "succeeded") continue;
+      const raw = pi as unknown as Record<string, unknown>;
+      const latest = raw.latest_charge;
+      const chargeId = typeof latest === "string"
+        ? latest
+        : (latest && typeof latest === "object" &&
+            typeof (latest as { id?: unknown }).id === "string")
+        ? String((latest as { id: string }).id)
+        : null;
+      const amount = stripePaymentIntentAmount(raw);
+      if (!chargeId || !amount) {
+        out.push({ sessionId, piId, skip: "evidence_hold_evidence_incomplete" });
+        continue;
+      }
+      const release = await releaseTicketEvidenceHold(supabase, {
+        checkoutSessionId: sessionId,
+        provider: "stripe",
+        paymentReference: piId,
+        paystackTransactionId: null,
+        stripeChargeId: chargeId,
+        observedAccountReference: accountId,
+        amountCents: amount.amountCents,
+        currency: amount.currency,
+      });
+      out.push({
+        sessionId,
+        piId,
+        evidenceHold: release.outcome,
+        ...(release.outcome === "refund_kept" ? { reason: release.reason } : {}),
+      });
+    } catch (err) {
+      out.push({
+        sessionId,
+        piId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return out;
+}
+
 const defaultDeps: ReconcileStuckCheckoutsDeps = {
   serviceClient,
   stripeClient: stripeTicketCheckout,
@@ -165,6 +264,10 @@ async (req) => {
   // Captured ONCE per run: drives both the classify() cutoff test and the CAS
   // write's server-side `.lt("expires_at", nowIso)` re-check.
   const nowIso = new Date().toISOString();
+
+  // Release evidence-only holds FIRST, so a released session (now in flight
+  // again) is finalized by the batch below in this same run.
+  const evidenceHolds = await releaseStripeEvidenceHolds(supabase, stripe);
 
   // ORCH-1388 widened select — the WHOLE in-flight strand family (ruling 3),
   // not just processing_payment, and no PI-non-null filter (no-ref rows are in
@@ -573,6 +676,9 @@ async (req) => {
     expired: results.filter((r) => r.status === "expired").length,
     skipped: results.filter((r) => r.skip).length,
     errors: results.filter((r) => r.error).length,
+    evidenceHoldsReleased: evidenceHolds.filter((r) =>
+      r.evidenceHold === "released"
+    ).length,
   };
   // One greppable summary line per run (SC-12).
   console.log("[reconcile-stuck-checkouts] run summary", summary);
@@ -584,7 +690,9 @@ async (req) => {
         expired: summary.expired,
         skipped: summary.skipped,
         errors: summary.errors,
+        evidenceHoldsReleased: summary.evidenceHoldsReleased,
         results,
+        evidenceHolds,
       },
       null,
       2,

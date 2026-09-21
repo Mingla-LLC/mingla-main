@@ -178,8 +178,38 @@ export function sourceRefundNoticeCopy(input: {
   sourceType?: string | null;
   refundKind?: string | null;
   fullRefund?: boolean;
+  noticeCode?: string | null;
 }): { buyer: string; brand: string } {
   const amount = input.amountLabel;
+  if (
+    input.sourceType === "ticket_checkout_session" &&
+    input.refundKind === "late_payment_no_value" &&
+    input.noticeCode === "sale_unavailable" &&
+    (input.state === "processed" || input.state === "queued" ||
+      input.state === "provider_pending")
+  ) {
+    // The payment was confirmed, but by then the tickets could no longer be
+    // sold (sold out, or the sale closed or changed), so the refund stands.
+    const full = input.fullRefund === true;
+    const buyerPayment = full
+      ? `your payment of ${amount}`
+      : `${amount} of your payment`;
+    const brandPayment = full
+      ? `the buyer's payment of ${amount}`
+      : `${amount} of the buyer's payment`;
+    const inFull = full ? " in full" : "";
+    const done = input.state === "processed";
+    return {
+      buyer: done
+        ? `Tickets were no longer available by the time we confirmed your payment, so ${buyerPayment} has been refunded${inFull}.`
+        : `Tickets were no longer available by the time we confirmed your payment, so we're refunding ${buyerPayment}${inFull}.`,
+      brand: `${input.sourceLabel}: ${
+        done
+          ? `Tickets were no longer available when a payment was confirmed, so ${brandPayment} has been refunded${inFull}.`
+          : `Tickets were no longer available when a payment was confirmed, so ${brandPayment} is being refunded${inFull}.`
+      }`,
+    };
+  }
   if (
     input.sourceType === "ticket_checkout_session" &&
     input.refundKind === "late_payment_no_value"
@@ -254,6 +284,7 @@ export async function enqueueSourceRefundNotifications(client: any, input: {
   sourceType?: string | null;
   refundKind?: string | null;
   fullRefund?: boolean;
+  noticeCode?: string | null;
 }): Promise<void> {
   if (!Number.isSafeInteger(input.eventId) || input.eventId < 1) {
     throw new Error("source_refund_notification_event_missing");
