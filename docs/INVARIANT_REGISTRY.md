@@ -10382,3 +10382,61 @@ All four #2796 rules were established ACTIVE after independent web, iOS AX5, and
 - **Enforcement:** `mingla-business/src/components/invites/__tests__/issue_1780_lazy_invite_boundary.implementor.test.tsx` (LB-1 scans every non-test `.ts`/`.tsx` under `mingla-business/src` and `mingla-business/app` for static imports, value re-exports and runtime `import()` outside the owner, with a file-count denominator; LB-2 proves the scanner non-vacuous on planted violations; LI-1..LI-4 and LW-1 pin the placeholders, the retry and the first-frame behaviour). The measurement itself stays with `scripts/ci/orch-1083-initial-bundle-budget.mjs`.
 - **Scope note:** `useOfferingInvitePlanSummary` stays a static import in all four wizards on purpose. Every wizard calls it at render time for the Review summary, the publish pre-check and the step-visibility decision, so it is genuinely shared plumbing, not a surface; deferring it would change the #1780 hooks' auth gating and foreground-dedupe ownership, which this work must not do. `peopleService` and `marketing/manualGroupService` are NOT deferred either: `hooks/marketing/useBrandPeople.ts` and `hooks/marketing/useManualGroups.ts` already place both in `__common`, so deferring them from `offeringInvitePlanService` would move no bytes. Nor is `offeringInvitePlanService` itself: it was measured behind an `import()` inside the hook's async paths and stayed in `__common` regardless, because it is then shared between that async edge and the invite chunk — the attempt cost 249 B and moved none, and was reverted.
 - **Established:** DRAFT at #1780; flips ACTIVE on CLOSE, once the post-merge `__common` measurement on main confirms the drop.
+
+## DRAFT — issue #3429 (Ari chat polish)
+
+### I-3429-ARI-LOCAL-TURNS-SCOPED-TO-CONVERSATION (ACTIVE)
+
+- **Rule:** Business Ari renders a local turn (its row, activity callout, and Stop/Retry/Edit/Discard controls) only inside the conversation that owns it. A turn with no conversation yet renders only while New conversation is selected, and becomes owned by its canonical `conversation_id` once the claim is known (HTTP success, status reconcile, or an activity event). A turn's completion never changes the current selection unless the selection is still that turn's origin. Single-flight send gating stays global.
+- **Enforcement:** `mingla-business/src/hooks/useAgentChat.ts` (selection filter over local turns; `shouldFollowTurnConversation` origin guard from `mingla-business/src/services/ariTurnView.ts`).
+- **Test:** `mingla-business/src/hooks/__tests__/issue_3429_ari_conversation_scope.implementor.test.tsx`; tester adversarial at RETEST.
+- **Established:** DRAFT at #3429 REWORK-1; flips ACTIVE on CLOSE.
+
+### I-3429-ARI-ACTIVITY-ENDS-WITH-ITS-WORK (ACTIVE)
+
+- **Rule:** an Ari activity label is visible only while its backing work is in flight: the dispatch is pending, or an approved-action confirmation started by `approved_action_started` (or Confirm) is unresolved. `response_ready`, a completed attempt, stop, or failure ends it. `finalizing_started` alone never creates confirmation state, and Stop is never offered for a completed attempt.
+- **Enforcement:** `isOrdinaryTurnActivityVisible`, `isAriTurnStoppable` and `latestLabelledActivityEvent` in `mingla-business/src/services/ariTurnView.ts`; the confirmation watermark in `useAgentChat.ts`.
+- **Test:** `mingla-business/src/hooks/__tests__/issue_3429_ari_activity_terminal.implementor.test.tsx`.
+- **Established:** DRAFT at #3429 REWORK-1; flips ACTIVE on CLOSE.
+
+### I-3429-EDGE-ATTACHMENT-WORK-FITS-CPU-BUDGET-AND-ALWAYS-TERMINATES (ACTIVE)
+
+- **Rule:** every attachment and projection path in `agent-attachments` and `agent-chat` checks dimensions and size before decode and uses the measured caps (JPEG/WebP long edge ≤ 1,600 px and ≤ 2,560,000 px; PNG/HEIC/HEIF long edge ≤ 1,600 px and ≤ 786,432 px; DOCX `word/document.xml` ≤ 3 MiB from the central directory; linear base64 projection). Finalize handles one file per request and every row ends in a terminal state: an attachment `processing` lease is swept to `failed`/`PROCESSING_INTERRUPTED` after 60 seconds by a token-conditional update (status action and the hourly cleanup worker), and a turn attempt left `accepted`/`running` is swept to `failed`/`EXECUTION_INTERRUPTED` after 420 seconds by `agent-turn-control` `status`.
+- **Enforcement:** `supabase/functions/_shared/agentAttachments.ts`, `supabase/functions/_shared/agentAttachmentFinalize.ts`, `supabase/functions/_shared/agentTurnSweep.ts`, and the `agent_attachments_processing_lease` / `processing_attempts` CHECKs in `supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql`.
+- **Test:** `supabase/functions/_shared/__tests__/issue_3429_ari_attachment_rework1.implementor.test.ts` and `supabase/migrations/__tests__/issue_3429_ari_attachment_processing_lease.implementor.pg17.test.sql`.
+- **Budget proof:** any change to these caps or codecs re-runs the SPEC AMENDMENT REWORK-1 section 2 edge-runtime harness (3/3 at a 400 ms hard CPU limit, load ≤ 15) and attaches the raw runs.
+- **Established:** DRAFT at #3429 REWORK-1; flips ACTIVE on CLOSE.
+
+### I-3429-ARI-IMAGES-PREPARED-ON-DEVICE (ACTIVE)
+
+- **Rule:** Business clients upload images only as re-encoded JPEG or WebP with a long edge ≤ 1,600 px and camera/location metadata stripped. Web never uploads HEIC; a browser that cannot decode it refuses the file with the locked copy. The server never needs to decode an app-uploaded image above its cap. No Supabase Storage Image Transformation or paid image service is involved.
+- **Enforcement:** `mingla-business/src/services/ariImagePreparation.ts` (planner), `ariPrepareImage.native.ts` (`expo-image-manipulator`), `ariPrepareImage.ts` (canvas), called from `mingla-business/src/hooks/useAriAttachments.ts` before any request.
+- **Test:** `mingla-business/src/services/__tests__/issue_3429_ari_image_preparation.implementor.test.ts` and `mingla-business/src/services/__tests__/issue_3429_ari_upload_and_finalize.implementor.test.ts`.
+- **Established:** DRAFT at #3429 REWORK-1; flips ACTIVE on CLOSE.
+
+### I-3429-NATIVE-UPLOADS-SEND-REAL-BYTES (ACTIVE)
+
+- **Rule:** no Business upload body is built with `fetch(uri).blob()`. Upload bodies are exact `Uint8Array` bytes (native `expo-file-system` `File.arrayBuffer()`, web `Blob.arrayBuffer()`) whose length equals the declared size, checked before upload.
+- **Relationship:** extends ORCH-0786's finding (`brandCoverFileReader.native.ts`) to Ari attachments.
+- **Test:** `mingla-business/src/services/__tests__/issue_3429_ari_upload_and_finalize.implementor.test.ts`.
+- **Established:** DRAFT at #3429 REWORK-1; flips ACTIVE on CLOSE.
+
+### I-3429-ATTACHMENT-FAILURE-COPY-NEVER-BLAMES-THE-USER (ACTIVE)
+
+- **Rule:** only `ENCRYPTED_FILE` may mention password protection. The client copy table (`ARI_ATTACHMENT_FAILURE_COPY` in `mingla-business/src/services/ariAttachmentService.ts`) and the server table (`supabase/functions/_shared/agentAttachmentFinalize.ts`) are identical, both pinned to `supabase/functions/_shared/__tests__/issue_3429_ari_failure_copy.snapshot.json`; unknown codes fall back to the non-blaming `PROCESSING_INTERRUPTED` sentence.
+- **Test:** `supabase/functions/_shared/__tests__/issue_3429_ari_attachment_rework1.implementor.test.ts` and `mingla-business/src/services/__tests__/issue_3429_ari_upload_and_finalize.implementor.test.ts`.
+- **Established:** DRAFT at #3429 REWORK-1; flips ACTIVE on CLOSE.
+
+### I-3429-ARI-WEB-ACTIONS-NEVER-USE-NATIVE-ALERT (ACTIVE)
+
+- **Rule:** Ari drawer and attachment-card confirmations and notices render through components that are visible on web, iOS and Android (`ConfirmDialog` nested in the sheet that opened it, and inline notices). `Alert` is not imported or called in `ConversationDrawer.tsx` or `AriAttachmentCards.tsx`.
+- **Test:** `mingla-business/src/components/ari/__tests__/issue_3429_ari_web_dialogs.implementor.test.ts` (TypeScript compiler API; comments and strings never count).
+- **Related:** web icon coverage for the new Ari glyphs is protected by I-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL (ACTIVE); no new entry.
+- **Established:** DRAFT at #3429 REWORK-1; flips ACTIVE on CLOSE.
+
+### I-3429-MIGRATIONS-REPLAY-WITHOUT-VAULT (ACTIVE)
+
+- **Rule:** a migration may advise (`RAISE NOTICE`), but never raise, on missing Vault secrets or missing `pg_net`/Vault extensions, because many CI lanes replay the full chain on a Vault-less database. Fail-closed secret and extension checks live in the release runbook step that applies the migration: a read-only pre-apply check that both secrets and both extensions exist, and a post-apply check that the scheduled job exists in `cron.job`.
+- **Enforcement:** the advisory block in `supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql` (orchestrator decision #issuecomment-5712808665; precedent ORCH-0788, ORCH-0815-B, #1397).
+- **Test:** the "Vault-less full replay" step of `.github/workflows/issue-1985-ari-task-state.yml` (second fixture-free PG17 database; asserts both advisories, zero secrets, the scheduled cleanup job, and the attachment table).
+- **Established:** DRAFT at #3429 REWORK-1; flips ACTIVE on CLOSE.

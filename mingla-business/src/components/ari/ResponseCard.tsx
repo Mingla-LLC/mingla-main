@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
   },
   card: {
     flexShrink: 1,
-    maxWidth: "80%",
+    maxWidth: ariThread.bubbleMaxWidth,
   },
   cardDisabled: {
     opacity: 0.4,
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
   primaryText: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.inverse,
+    color: ariThread.onUserBubble,
     letterSpacing: -0.1,
   },
   pressed: {

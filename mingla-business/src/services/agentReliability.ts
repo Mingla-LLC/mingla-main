@@ -24,6 +24,34 @@ export type AriOperationState =
   | "expired"
   | "reconciliation_required";
 
+export function isAriSendReady(
+  text: string,
+  hasReadyAttachments: boolean,
+  disabled: boolean,
+  sendDisabled: boolean,
+): boolean {
+  return (text.trim().length > 0 || hasReadyAttachments) && !disabled &&
+    !sendDisabled;
+}
+
+export function nextAriAttachmentBytes(
+  acceptedBytes: number,
+  draft: { state: string; sizeBytes: number },
+): number {
+  return draft.state === "failed"
+    ? acceptedBytes
+    : acceptedBytes + draft.sizeBytes;
+}
+
+export function existingAriAttachmentBytes(
+  drafts: ReadonlyArray<{ state: string; sizeBytes: number }>,
+): number {
+  return drafts.reduce(
+    (total, draft) => nextAriAttachmentBytes(total, draft),
+    0,
+  );
+}
+
 export interface AriResponseEnvelope<T = unknown> {
   protocol_version: 1;
   kind: "success" | "error";
@@ -61,6 +89,10 @@ export type AriErrorCode =
   | "PAID_ORDER_MUST_REFUND"
   | "REFUND_PREVIEW_UNPRICED"
   | "DOMAIN_ACTION_REFUSED"
+  | "ATTACHMENT_INVALID"
+  | "ATTACHMENT_CONTEXT_LIMIT"
+  | "TURN_STOPPED"
+  | "ACCEPTED_RESPONSE_FAILED"
   | "INTERNAL";
 
 type AriErrorTuple = Readonly<{
@@ -169,6 +201,26 @@ export const ARI_CLIENT_ERROR_REGISTRY: Readonly<
     safeToRetry: false,
     operationState: "none",
   },
+  ATTACHMENT_INVALID: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "failed",
+  },
+  ATTACHMENT_CONTEXT_LIMIT: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "failed",
+  },
+  TURN_STOPPED: {
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "cancelled",
+  },
+  ACCEPTED_RESPONSE_FAILED: {
+    retryability: "after_backoff",
+    safeToRetry: true,
+    operationState: "failed",
+  },
   INTERNAL: {
     retryability: "after_backoff",
     safeToRetry: true,
@@ -221,6 +273,15 @@ export interface AriClientIntentRecord {
   attempt: number;
   lastCode: string | null;
   retryAt: number | null;
+}
+
+/** A deferred response may only mutate the brand epoch that dispatched it. */
+export function isCurrentAriTurnEpoch(
+  turnEpoch: number,
+  observedEpoch: number,
+  currentEpoch: number,
+): boolean {
+  return turnEpoch === currentEpoch && observedEpoch === currentEpoch;
 }
 
 export type AriRecoveryEvent =

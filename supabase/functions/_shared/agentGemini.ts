@@ -30,6 +30,7 @@ export interface GeminiContentMessage {
   role: "user" | "model";
   parts: Array<
     | { text: string }
+    | { inlineData: { mimeType: string; data: string } }
     | { functionCall: { name: string; args: Record<string, unknown> } }
     | { functionResponse: { name: string; response: Record<string, unknown> } }
   >;

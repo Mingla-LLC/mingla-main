@@ -802,3 +802,19 @@ verify_jwt = false
 # an exact Mingla Sites Origin allowlist and stores only a peppered token digest.
 [functions.brand-site-attribution]
 verify_jwt = false
+
+# Issue #3429 — authenticated Ari private-file and turn/title control planes.
+# Every user route also resolves auth.getUser in-code before private reads.
+[functions.agent-attachments]
+verify_jwt = true
+
+[functions.agent-turn-control]
+verify_jwt = true
+
+[functions.agent-conversation]
+verify_jwt = true
+
+# Hourly pg_cron worker. The gateway is open to the service-role bearer and the
+# handler compares that bearer in-code before touching the opaque cleanup queue.
+[functions.agent-attachment-cleanup]
+verify_jwt = false

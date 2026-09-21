@@ -62,41 +62,50 @@ const designSystem = read(path.join(CONSTANTS_DIR, "designSystem.ts"));
 
 describe("ORCH-1101 REWORK ADV-R1 · optimistic message cannot duplicate after reconcile", () => {
   it("the merge DEDUPES the placeholder against a matching server user row", () => {
-    // The defended invariant: liveOptimistic filters out any optimistic whose
-    // text already exists as a server user row, BEFORE the spread. Without this
-    // filter, the placeholder + the real echo both render = double bubble.
-    const filterIdx = useAgentChat.indexOf("const liveOptimistic = optimisticMessages.filter");
-    const mergeIdx = useAgentChat.indexOf("const mergedMessages");
+    // [TEST-MOD-APPROVED #3429] (a) superseded predicate, same invariant: the
+    // local row is filtered against the server snapshot BEFORE the spread, so
+    // the placeholder and the real echo can never both render. #3429 keys the
+    // match on client_turn_id (canonicalIdentityMatch) and keeps text equality
+    // only for pre-#3429 rows that have no id — strictly stronger than text.
+    const filterIdx = useAgentChat.indexOf("const liveLocalMessages = localMessages.filter");
+    const mergeIdx = useAgentChat.indexOf("const messages = [...decoratedServerMessages");
     expect(filterIdx).toBeGreaterThan(-1);
     expect(mergeIdx).toBeGreaterThan(filterIdx); // filter computed before merge
     const filterBlock = useAgentChat.slice(filterIdx, mergeIdx);
-    // The dedupe predicate must key on a server USER row with identical text.
     expect(filterBlock).toMatch(/serverMessages\.some/);
-    expect(filterBlock).toMatch(/role === ["']user["']/);
-    expect(filterBlock).toMatch(/\.text === /);
+    expect(filterBlock).toMatch(/canonicalIdentityMatch\(server, local\)/);
+    // and the identity predicate itself keys on the turn id, with the legacy
+    // text path reachable only when an id is missing.
+    const identityIdx = useAgentChat.indexOf("function canonicalIdentityMatch");
+    const identityBlock = useAgentChat.slice(identityIdx, identityIdx + 700);
+    expect(identityBlock).toMatch(/role !== ["']user["']/);
+    expect(identityBlock).toMatch(/server\.client_turn_id === local\.client_turn_id/);
+    expect(identityBlock).toMatch(/\.text === /);
   });
 
-  it("onSuccess clears the placeholder ONLY AFTER awaiting the refetch (no blink, no double)", () => {
-    const successIdx = useAgentChat.indexOf("onSuccess: async (response, vars)");
-    const errorIdx = useAgentChat.indexOf("onError:");
-    expect(successIdx).toBeGreaterThan(-1);
-    const successBlock = useAgentChat.slice(successIdx, errorIdx);
-    const awaitIdx = successBlock.indexOf("await qc.invalidateQueries");
-    // the LAST setOptimisticMessages in the success block is the reconcile clear
-    const clearIdx = successBlock.lastIndexOf("setOptimisticMessages");
-    expect(awaitIdx).toBeGreaterThan(-1);
-    expect(clearIdx).toBeGreaterThan(awaitIdx); // clear strictly after the await
+  it("has no clear-before-refetch window at all (the blink is structurally impossible)", () => {
+    // [TEST-MOD-APPROVED #3429] (a) superseded: there is no longer a separate
+    // "clear the placeholder" state write to order against the refetch. The
+    // local row is dropped inside the SAME derivation that reads the server
+    // snapshot, so a frame with neither row cannot exist. The stronger form of
+    // the original protection is: no state write may remove a local row on
+    // success — removal is derived only.
+    expect(useAgentChat).not.toMatch(/setOptimisticMessages/);
+    const filterIdx = useAgentChat.indexOf("const liveLocalMessages = localMessages.filter");
+    expect(filterIdx).toBeGreaterThan(-1);
+    expect(useAgentChat.indexOf("const messages = [...decoratedServerMessages")).toBeGreaterThan(filterIdx);
   });
 
-  it("a server-kind error drops the placeholder so a failed send leaves no stranded bubble", () => {
-    const successIdx = useAgentChat.indexOf("onSuccess: async (response, vars)");
-    const errorIdx = useAgentChat.indexOf("onError:");
-    const successBlock = useAgentChat.slice(successIdx, errorIdx);
-    // Inside the `response.kind === "error"` early-return, the placeholder is removed.
-    const errKindIdx = successBlock.indexOf('response.kind === "error"');
-    expect(errKindIdx).toBeGreaterThan(-1);
-    const errKindBlock = successBlock.slice(errKindIdx, errKindIdx + 320);
-    expect(errKindBlock).toMatch(/setOptimisticMessages\(\(prev\) => prev\.filter\(\(m\) => m\.id !== vars\.optimisticId\)\)/);
+  it("a failed send keeps the row, marked failed, so the message is never lost", () => {
+    // [TEST-MOD-APPROVED #3429] (a) superseded intent: dropping the bubble on
+    // error is now the DEFECT. #3429 keeps the row, marks it failed, attaches
+    // the failure sentence and offers Retry ("Your message is safe"), which is
+    // what the user-facing copy promises. The stranded-bubble risk the original
+    // guarded is covered instead by the dedupe above (a failed row still
+    // disappears the moment its server echo lands) and behaviourally by
+    // issue_3429_ari_delivery_state.implementor.test.ts.
+    expect(useAgentChat).toMatch(/patchTurn\(clientTurnId, \{[\s\S]{0,200}delivery: "failed"/);
+    expect(useAgentChat).toMatch(/delivery: "failed",[\s\S]{0,200}errorMessage:/);
   });
 });
 
@@ -109,7 +118,12 @@ describe("ORCH-1101 REWORK ADV-R2 · thinking bubble unmounts the moment the rep
     // isThinking is purely derived from chat.isSending — when the mutation
     // settles isSending flips false, so the thinking row evaporates. It must
     // NOT be a standalone useState that could get stuck true.
-    expect(chatScreen).toMatch(/isThinking=\{chat\.isSending && !chat\.pendingAction\}/);
+    // [TEST-MOD-APPROVED #3429] (a) superseded source: the row is driven by
+    // the live turn (chat.activeTurn) instead of the mutation flag, which is
+    // what makes the callout end with its work (D-1). The invariant this
+    // assertion exists for — derived, never a standalone useState that can get
+    // stuck true — is unchanged and still pinned.
+    expect(chatScreen).toMatch(/isThinking=\{!!chat\.activeTurn\}/);
     expect(chatScreen).not.toMatch(/useState[^\n]*[iI]sThinking/);
   });
 
@@ -180,17 +194,23 @@ describe("ORCH-1101 REWORK ADV-R4 · disclosure dismissal is decoupled from the 
 });
 
 describe("ORCH-1101 REWORK ADV-R5 · optimistic id can never collide with a real DB uuid", () => {
-  it("makeOptimisticMessage namespaces the id with an `optimistic-` prefix", () => {
-    const fnIdx = useAgentChat.indexOf("function makeOptimisticMessage");
-    const fnBlock = useAgentChat.slice(fnIdx, fnIdx + 400);
-    // id literal begins with the optimistic- namespace (a uuid never does).
-    expect(fnBlock).toMatch(/id:\s*`optimistic-/);
+  it("the local row id is namespaced so it can never collide with a DB uuid", () => {
+    // [TEST-MOD-APPROVED #3429] (a) superseded namespace, same protection:
+    // the local row's id is now `local-turn-${clientTurnId}` (a uuid never
+    // starts with "local-turn-"), and the row is addressed by clientTurnId.
+    expect(useAgentChat).toMatch(/localId: `local-turn-\$\{clientTurnId\}`/);
+    expect(useAgentChat).toMatch(/id: turn\.localId/);
   });
 
-  it("onError removes the placeholder strictly by its namespaced id (never by text)", () => {
-    const errIdx = useAgentChat.indexOf("onError:");
-    const errBlock = useAgentChat.slice(errIdx, errIdx + 400);
-    expect(errBlock).toMatch(/prev\.filter\(\(m\) => m\.id !== vars\.optimisticId\)/);
+  it("a failure is written to the row strictly by id (never by text)", () => {
+    // [TEST-MOD-APPROVED #3429] (a) superseded: nothing is removed on failure
+    // any more, but the addressing protection is the point and it holds — every
+    // write to a local row goes through patchTurn(clientTurnId, …), which
+    // matches on the turn id and never on message text.
+    const fnIdx = useAgentChat.indexOf("const patchTurn = useCallback");
+    const fnBlock = useAgentChat.slice(fnIdx, fnIdx + 400);
+    expect(fnBlock).toMatch(/turn\.clientTurnId === clientTurnId/);
+    expect(fnBlock).not.toMatch(/\.text/);
   });
 });
 

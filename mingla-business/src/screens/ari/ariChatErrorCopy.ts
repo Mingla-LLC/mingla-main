@@ -57,6 +57,16 @@ const REGISTRY_COPY: Readonly<Record<AriErrorCode, string>> = Object.freeze({
     "Ari couldn't get an exact refund amount. Nothing was changed; try again in a moment.",
   DOMAIN_ACTION_REFUSED:
     "Mingla couldn't complete that as requested. Nothing was changed; review the details and try something different.",
+  // #3429 added these four families to the shared registry. The sentences are
+  // the registry's own `userMessage` values, verbatim, so the toast and the
+  // attachment card never say two different things about the same failure.
+  ATTACHMENT_INVALID:
+    "Ari couldn’t read an attached file. Remove it or attach a different file.",
+  ATTACHMENT_CONTEXT_LIMIT:
+    "Ari couldn’t use this file because it contains too much information for one message. Remove it and attach a shorter version.",
+  TURN_STOPPED: "Ari stopped. Your message is still here.",
+  ACCEPTED_RESPONSE_FAILED:
+    "Ari couldn’t finish this response. Your message is safe.",
   INTERNAL: INTERNAL_COPY,
 });
 

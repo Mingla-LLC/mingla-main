@@ -370,6 +370,12 @@ export const accent = {
   border: "rgba(235, 120, 37, 0.55)",
 } as const;
 
+export const canvas = {
+  discover: "#0c0e12",
+  profile: "#141113",
+  depth: "#08090c",
+} as const;
+
 // ORCH-0821 — Ari signature palette (rework 2026-05-12).
 //
 // CALMER + REFRESHING. Decoupled from accent.warm (#eb7825 stays the brand
@@ -407,30 +413,47 @@ export const ariPalette = {
 // numbers downstream; every Ari layout value resolves here.
 export const ariThread = {
   // Vertical rhythm
-  gapTurn: 10, // between different-speaker turns
+  gapTurn: 16, // between different-speaker turns
   gapGroup: 4, // between same-speaker consecutive bubbles (iMessage cluster)
-  orbGap: 6, // orb → bubble gap on Ari rows
+  orbGap: 16, // orb → bubble gap; 10pt remains beyond the 6pt halo
   // Bubble geometry + padding
-  bubblePadH: 12,
-  bubblePadV: 8,
-  bubbleRadius: 16, // 3 non-tail corners (was 18)
-  bubbleTail: 4, // tail corner
-  bodyFont: 14,
-  bodyLine: 19,
+  bubblePadH: 16,
+  bubblePadV: 12,
+  bubbleRadius: 20,
+  bubbleTail: 12,
+  bubbleMaxWidth: 560,
+  threadMaxWidth: 760,
+  bodyFont: 16,
+  bodyLine: 24,
+  labelFont: 15,
+  labelLine: 20,
   // Cards
   cardPad: 12,
   cardTitleFont: 15,
   cardTitleLine: 21,
-  btnHeight: 34,
+  btnHeight: 44,
   // ORCH-1103 — Ari brand-proposal cover band height (one shared band, all states).
   coverBandH: 132,
   // Composer
-  composerMinH: 48,
-  composerPadV: 8,
-  inputPadV: 6,
-  inputMinH: 30,
+  composerMinH: 60,
+  composerPadH: 8,
+  composerPadV: 7,
+  inputPadV: 8,
+  inputMinH: 44,
+  inputMaxH: 120,
   // Send button
-  sendSize: 34,
+  sendSize: 44,
+  controlSize: 44,
+  attachmentCardW: 220,
+  attachmentCardMinH: 64,
+  attachmentThumb: 44,
+  activityMinH: 48,
+  websiteAriMinWidth: 420,
+  websiteAriMaxWidth: 520,
+  onUserBubble: canvas.depth,
+  actionText: accent.warm,
+  secondaryText: "rgba(255, 255, 255, 0.72)",
+  tertiaryText: "rgba(255, 255, 255, 0.52)",
   // Chips
   chipFont: 13,
   chipLine: 17,
@@ -494,12 +517,6 @@ export const androidOpaque = {
   infoFill: "#14233b",
 } as const;
 
-
-export const canvas = {
-  discover: "#0c0e12",
-  profile: "#141113",
-  depth: "#08090c",
-} as const;
 
 export const glass = {
   tint: {

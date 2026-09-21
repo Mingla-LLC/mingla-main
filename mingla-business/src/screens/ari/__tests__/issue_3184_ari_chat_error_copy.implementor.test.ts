@@ -53,7 +53,11 @@ const REGISTRY_CODES = Object.keys(ARI_CLIENT_ERROR_REGISTRY);
 
 describe("#3184 T-I6 Ari chat error copy never blames the connection for a refusal", () => {
   it("covers all twenty registry families", () => {
-    expect(REGISTRY_CODES).toHaveLength(20);
+    // [TEST-MOD-APPROVED #3429] count only: #3429 added ATTACHMENT_INVALID,
+    // ATTACHMENT_CONTEXT_LIMIT, TURN_STOPPED and ACCEPTED_RESPONSE_FAILED to
+    // the registry on BOTH sides (the #2060 parity gate compares the complete
+    // key sets and passes at 24/24). Every other assertion here is untouched.
+    expect(REGISTRY_CODES).toHaveLength(24);
     expect(REGISTRY_CODES).toContain("TRANSPORT_UNAVAILABLE");
   });
 
