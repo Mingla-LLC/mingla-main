@@ -42,6 +42,7 @@ const SEARCH_READY_PATHS = [
   '/help/sell-tickets-to-a-weekly-event',
   '/help/sell-tickets-to-an-online-event',
   '/help/sell-tickets-to-an-online-event-from-nigeria',
+  '/help/sell-tickets-to-a-hybrid-event-in-nigeria',
 ]
 
 const releaseRouteScope = JSON.parse(
@@ -67,6 +68,7 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/help/sell-tickets-to-a-weekly-event',
   '/help/sell-tickets-to-an-online-event',
   '/help/sell-tickets-to-an-online-event-from-nigeria',
+  '/help/sell-tickets-to-a-hybrid-event-in-nigeria',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [
