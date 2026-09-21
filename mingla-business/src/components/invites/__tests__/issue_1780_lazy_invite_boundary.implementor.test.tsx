@@ -215,8 +215,13 @@ describe("#1780 LI — the invite surfaces load in their own chunk", () => {
     // Same bordered card, same heading, one muted line — so Review does not
     // move when the real summary arrives.
     expect(textOf(tree)).toContain("Invites");
+    // Host elements only: findAll also returns the composite that carries the
+    // same testID, which would count the one placeholder twice.
     expect(
-      tree.root.findAll((n) => n.props.testID === "invite-plan-review-summary-loading"),
+      tree.root.findAll(
+        (n) =>
+          n.props.testID === "invite-plan-review-summary-loading" && typeof n.type === "string",
+      ),
     ).toHaveLength(1);
 
     await flushed;
@@ -242,7 +247,9 @@ describe("#1780 LI — the invite surfaces load in their own chunk", () => {
 
     // Try again. A React.lazy boundary could never recover here: it caches the
     // rejection. The hand loader forgets a failed load, so the retry succeeds.
-    const retry = tree.root.findAll((n) => n.props.testID === "button-Try again");
+    const retry = tree.root.findAll(
+      (n) => n.props.testID === "button-Try again" && typeof n.type === "string",
+    );
     expect(retry).toHaveLength(1);
     await reg.act(async () => {
       (retry[0].props.onPress as () => void)();
