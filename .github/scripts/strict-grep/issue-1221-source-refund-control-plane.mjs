@@ -56,6 +56,8 @@ const REQUIRED_FILES = [
   "mingla-business/src/components/refunds/__tests__/issue_1221_source_refund_surfaces.tester.adversarial.test.tsx",
   "mingla-admin/src/__tests__/issue1221_refund_operations.test.js",
   "mingla-admin/src/__tests__/issue1221_refund_operations.tester.adversarial.test.js",
+  // Issue #3512 — the expired-admin-session regression proof for this page.
+  "mingla-admin/src/__tests__/issue3512_refund_operations_session_refresh.test.js",
   "mingla-admin/src/pages/RefundOperationsPage.jsx",
   "mingla-admin/src/services/refundOperationsService.js",
   "app-mobile/src/components/activity/SourceRefundAttentionSheet.tsx",
@@ -367,7 +369,22 @@ export function evaluateIssue1221(files, migrationNames, trackedEntries = []) {
       "Admin refund operations must invoke edge functions through invokeWithRefresh, not supabase.functions.invoke",
     );
   }
+  // Issue #3512 — an expired session must be reported as an expired session,
+  // with a way back in, on the queue load AND on the action buttons.
+  requireText(
+    files,
+    "mingla-admin/src/__tests__/issue3512_refund_operations_session_refresh.test.js",
+    [
+      "ISSUE_3512_REFRESH_COUNT",
+      "ISSUE_3512_INVOKE_COUNT",
+      "liftInvokeWithRefreshSource",
+    ],
+    failures,
+  );
   requireText(files, "mingla-admin/src/pages/RefundOperationsPage.jsx", [
+    "isSessionExpiredError",
+    "SESSION_EXPIRED_MESSAGE",
+    "Sign in again",
     "appendCapturedQueuePage(current, page)",
     "correct_attention_contact",
     "reclaim_confirmed_unsent",

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -137,4 +138,22 @@ test("notify drain exact service-role runtime authorization remains CI-wired", (
     `${result.stdout}\n${result.stderr}`,
   );
   assert.match(result.stdout, /1 passed \| 0 failed/);
+});
+
+test("#3512 expired-admin-session regression proof stays CI-wired and green", () => {
+  // The Refund operations page reaches its edge functions through
+  // invokeWithRefresh (one refresh, one retry, never a loop). This runs the
+  // executable proof of that policy here, so batch A fails if the service ever
+  // drops back to the raw supabase.functions.invoke that returned 401 in
+  // production on 2026-09-21.
+  const proof = path.resolve(
+    HERE,
+    "../../../../mingla-admin/src/__tests__/issue3512_refund_operations_session_refresh.test.js",
+  );
+  assert.ok(fs.existsSync(proof), "issue #3512 regression proof is missing");
+  const run = spawnSync(process.execPath, ["--test", proof], {
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+  assert.doesNotMatch(`${run.stdout}`, /\n# fail [1-9]/);
 });
