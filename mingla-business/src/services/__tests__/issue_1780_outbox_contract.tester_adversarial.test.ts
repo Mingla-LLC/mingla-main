@@ -10,7 +10,7 @@ import path from "node:path";
 
 const root = process.cwd();
 const migration = fs.readFileSync(path.join(
-  root,"../supabase/migrations/20270711001780_issue_1780_wizard_invite_plans.sql", // [TEST-MOD-APPROVED #1780] renumbered above the merge train
+  root,"../supabase/migrations/20270712001780_issue_1780_wizard_invite_plans.sql", // [TEST-MOD-APPROVED #1780] renumbered above the merge train
 ),"utf8");
 const worker = fs.readFileSync(path.join(
   root,"../supabase/functions/offering-invite-dispatch/index.ts",

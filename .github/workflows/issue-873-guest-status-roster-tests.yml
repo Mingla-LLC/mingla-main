@@ -10,7 +10,7 @@ on:
       - "supabase/functions/offering-invite-dispatch/index.ts"
       # #1780 — wizard-selection migration, worker/quote contracts, and the
       # four Business creation flows extend this lane's existing invite rail.
-      - "supabase/migrations/20270711001780_issue_1780_wizard_invite_plans.sql"
+      - "supabase/migrations/20270712001780_issue_1780_wizard_invite_plans.sql"
       - "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_normalized_plan_members.tester_adversarial.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_observability_rollback.tester_adversarial.pg17.test.sql"
@@ -63,7 +63,7 @@ on:
       - "supabase/functions/offering-invite-dispatch/index.ts"
       # #1780 — wizard-selection migration, worker/quote contracts, and the
       # four Business creation flows extend this lane's existing invite rail.
-      - "supabase/migrations/20270711001780_issue_1780_wizard_invite_plans.sql"
+      - "supabase/migrations/20270712001780_issue_1780_wizard_invite_plans.sql"
       - "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_normalized_plan_members.tester_adversarial.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_observability_rollback.tester_adversarial.pg17.test.sql"

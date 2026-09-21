@@ -51,7 +51,7 @@
 --
 -- Version: 20270710013386 — renumbered on 2026-09-17 from 20270710003386 so it
 -- sorts above #3391's migration 20270710003391 (applied first) and below #1780's
--- 20270711001780. First renumbered on 2026-09-16 from 20270707003386, which sorted
+-- 20270712001780. First renumbered on 2026-09-16 from 20270707003386, which sorted
 -- below versions already applied in production (20270708003439, 20270709000000).
 -- No later migration touches the objects defined here.
 --
