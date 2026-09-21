@@ -229,18 +229,56 @@ Deno.test("#3526 TESTER-DEFECT — the admin owns NO per-place cost at all", () 
     "mingla-admin/src/services/intelligenceCoverageEstimators.js",
     "mingla-admin/src/services/intelligenceCoverageService.js",
   ];
+  // issue #3526 round 3 — RESTORING COVERAGE THE ROUND-2 REWRITE DROPPED.
+  //
+  // Round 2 replaced "every copy EQUALS the edge constant" with "there are no
+  // copies". Stronger against a stale-but-matching number, and it added three
+  // sites — but it recognises a rate only when spelled `0.00…`, so it is blind
+  // to a re-introduction at any rate >= $0.01. That is not hypothetical: this
+  // very file's sibling comment documents Google doubling the rate to ~$0.0178
+  // on 1 Jan 2027. Measured, all injected into IntelligenceOverviewTab.jsx:
+  //
+  //   injection                      round-1 check   round-2 check
+  //   const PER_PLACE_COST_USD = 0.0089    misses        CATCHES
+  //   const PER_PLACE_COST_USD = 0.0178    CATCHES        misses   <-- the 2027 rate
+  //   const PER_PLACE_COST_USD = 0.012     CATCHES        misses
+  //   const PER_PLACE_COST_USD = 8.9e-3     misses        misses
+  //   const PER_PLACE_COST_USD = 0.89 / 100 misses        misses
+  //
+  // So the third check below is by NAME, not by magnitude or notation: any
+  // cost-shaped identifier bound to a numeric literal, in either casing. The
+  // client may hold the SHAPE of a cost model; it may not hold a NUMBER.
+  const RATE_LITERAL = /\b0\.00[0-9]+\b/;
+  // Case-insensitive with an optional underscore, so SCREAMING_SNAKE and
+  // camelCase are one rule: PER_PLACE_COST_USD, perPlaceCostUsd, COST_GUARD_USD,
+  // costGuardUsd, COST_DRIFT_TOLERANCE_USD_PER_PLACE, costDriftToleranceUsdPerPlace.
+  // The leading [\w$]* may be empty, so an identifier that STARTS with the token
+  // still matches.
+  //
+  // `usd` is REQUIRED, and that is what keeps the rule honest rather than
+  // over-fitted. Two legitimate client constants are cost-adjacent and carry no
+  // money: `PER_PLACE_BROWSER_THROTTLE_MS` (a delay) and
+  // `COST_DRIFT_TOLERANCE_FRACTION` (dimensionless — the server publishes the
+  // absolute tolerance and this is only the fallback multiplier). The admin may
+  // hold shapes and ratios; it may not hold a DOLLAR amount.
+  // Residual, stated rather than over-fitted: a copy named without `usd`
+  // (`PER_PLACE_RATE = 0.0178`) is still caught by RATE_LITERAL only when it is
+  // spelled `0.00…`. Naming it `usd` is the convention everywhere here.
+  const COST_IDENT_BOUND_TO_NUMBER =
+    /\b[\w$]*(?:per_?place|cost_?guard|cost_?drift)[\w$]*usd[\w$]*\s*[:=]\s*[-+]?[0-9]/i;
   const offenders: string[] = [];
   for (const rel of sites) {
     const code = readRepo(rel)
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/\/\/[^\n]*/g, "");
-    // A per-place rate literal: 0.00x. Also catch a re-introduced guard literal
-    // sitting next to a cost identifier.
-    const rate = /\b0\.00[0-9]+\b/.exec(code);
-    if (rate) offenders.push(`${rel.split("/").pop()} holds rate ${rate[0]}`);
+    const name = rel.split("/").pop();
+    const rate = RATE_LITERAL.exec(code);
+    if (rate) offenders.push(`${name} holds rate ${rate[0]}`);
     if (/COST_GUARD_USD\s*=\s*[0-9]/.test(code)) {
-      offenders.push(`${rel.split("/").pop()} holds its own cost guard`);
+      offenders.push(`${name} holds its own cost guard`);
     }
+    const bound = COST_IDENT_BOUND_TO_NUMBER.exec(code);
+    if (bound) offenders.push(`${name} binds a cost identifier to a number: ${bound[0].trim()}`);
   }
   assertEquals(
     offenders,
