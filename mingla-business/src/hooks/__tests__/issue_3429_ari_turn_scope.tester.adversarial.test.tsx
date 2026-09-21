@@ -72,6 +72,10 @@ describe("#3429 LocalTurn ownership and scope adversarial seams", () => {
     const reliability = fs.readFileSync(reliabilityPath, "utf8");
     const screen = fs.readFileSync(screenPath, "utf8");
     expect(input).toContain("isAriSendReady(text, hasReadyAttachments, disabled, sendDisabled)");
+    // [TEST-MOD-APPROVED #3429] A call-expression substring is satisfied whether
+    // or not the identifier is bound — the P0 this round fixed. Pin the binding
+    // too, so dropping the import fails here instead of at first paint.
+    expect(input).toMatch(/import \{[^}]*\bisAriSendReady\b[^}]*\} from /);
     expect(reliability).toMatch(/return \(text\.trim\(\)\.length > 0 \|\| hasReadyAttachments\) && !disabled\s*&&\s*!sendDisabled;/);
     expect(screen).toContain("disabled={brands.isLoading || !conversationSelectionReady}");
     expect(screen).toContain("sendDisabled={chat.isSending || rateLimited || !online || !attachments.allReady}");
@@ -142,6 +146,11 @@ describe("#3429 assistive truth and cooperative-stop adversarial seams", () => {
     expect(activity).toMatch(/const terminal = turn\.delivery === "stopped" \|\| turn\.delivery === "failed"/);
     expect(activity).toContain(snippet('if (terminal) { AccessibilityInfo.announceForAccessibility(turn.errorMessage ?? "Ari stopped. Your message is still here.");'));
     expect(activity).toContain("useReducedMotion()");
+    // [TEST-MOD-APPROVED #3429] Same reason as above: pin the binding, not just
+    // the call text.
+    expect(activity).toMatch(
+      /import[^;]*\{[^}]*\buseReducedMotion\b[^}]*\}\s*from\s*"react-native-reanimated";/,
+    );
     // [TEST-MOD-APPROVED #3429] REWORK-4 N-2: the protection is that the
     // revealing bubble CARRIES a spoken label while its chunks are hidden from
     // assistive technology. Pinning the raw `${text}` form also froze the
@@ -149,7 +158,26 @@ describe("#3429 assistive truth and cooperative-stop adversarial seams", () => {
     // every bullet on every fresh answer, and this assertion was what stopped
     // it being fixed. Same protection, anchored to the stripped form the
     // renderer's own segments produce.
-    expect(reveal).toContain("accessibilityLabel={`Ari said: ${toAccessibleText(text)}`}");
+    // [TEST-MOD-APPROVED #3429] This line used to be the substring match
+    // `toContain("accessibilityLabel={\`Ari said: ${toAccessibleText(text)}\`}")`.
+    // It proved the TEXT of a call expression existed, not that the call could
+    // run. `390f435a0` repointed the segmenter import to the leaf module and
+    // dropped `toAccessibleText` from the binding list; this assertion stayed
+    // green while the Ari screen threw ReferenceError on every fresh answer,
+    // on iOS, Android and web alike. #2113 class, and it cost four rework
+    // rounds and a twelve-cell device matrix.
+    //
+    // The label is now proven by RENDERING the component and reading the
+    // resulting accessibility label — see
+    // src/components/ari/__tests__/issue_3429_ari_reveal_label.implementor.test.tsx
+    // (R-1..R-5), each proven by deleting the binding.
+    //
+    // What stays here is the source-level half that IS falsifiable: the module
+    // must both CALL the helper and BIND it. Deleting either fails this.
+    expect(reveal).toContain("${toAccessibleText(text)}");
+    expect(reveal).toMatch(
+      /import \{[^}]*\btoAccessibleText\b[^}]*\} from "\.\/ariBubbleSegments";/,
+    );
     expect(reveal).toContain('importantForAccessibility="no-hide-descendants"');
     expect(reveal).toMatch(/if \(reduced \|\| skipped\) \{[^}]*duration: reduced \? 0 : 80/);
   });

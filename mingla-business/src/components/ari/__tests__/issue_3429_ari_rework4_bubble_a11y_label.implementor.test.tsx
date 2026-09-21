@@ -129,20 +129,23 @@ describe("#3429 REWORK-4 N-2 — the spoken bubble carries no list markers", () 
     // With `reveal`, ChatBubble hands the label duty to SemanticRevealText, so
     // fixing only ChatBubble would have left the defect on every FRESH answer:
     // a turn reveals before it settles, which is what a user actually hears.
-    // The reveal's label is read from its source because the component
-    // value-imports reanimated, which will not load under this config.
-    const revealSource: string = require("fs").readFileSync(
-      require("path").join(__dirname, "..", "SemanticRevealText.tsx"),
-      "utf8",
-    );
-    expect(revealSource).toContain(
-      "accessibilityLabel={`Ari said: ${toAccessibleText(text)}`}",
-    );
-    expect(revealSource).not.toContain("accessibilityLabel={`Ari said: ${text}`}");
-    // ...and it renders the SAME segments the label is built from, so the two
-    // cannot describe different content.
-    expect(revealSource).toContain("toSegments(text)");
+    // [TEST-MOD-APPROVED #3429] This used to read SemanticRevealText.tsx and
+    // match the SOURCE STRING of its label expression. That assertion could not
+    // fail: a substring match is satisfied by the TEXT of a call expression
+    // whether or not the identifier is bound, and `390f435a0` proved it by
+    // dropping `toAccessibleText` from the import while this stayed green over
+    // a screen that threw ReferenceError at first paint on every platform.
+    //
+    // The reveal path is now proven by RENDERING it, in
+    // issue_3429_ari_reveal_label.implementor.test.tsx (R-1..R-5), which mocks
+    // reanimated's transport rather than the component. What is left here is
+    // the part this file can still prove honestly: the shared function both
+    // label sites call produces no list markers.
     expect(toAccessibleText(ANSWER)).not.toContain("- ");
+    expect(toAccessibleText(ANSWER)).toContain("Friday rooftop launch");
+    for (const segment of toSegments(ANSWER)) {
+      expect(toAccessibleText(ANSWER)).toContain(segment.text);
+    }
   });
 
   it("T-5 plain prose is untouched, so nothing else changed meaning", () => {

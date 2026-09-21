@@ -13,7 +13,7 @@ import Animated, {
 
 import { ariThread, text as textTokens } from "../../constants/designSystem";
 import { captureAriRevealOutcome } from "../../services/ariPolishAnalytics";
-import { type AriBubbleSegment, toSegments } from "./ariBubbleSegments";
+import { type AriBubbleSegment, toAccessibleText, toSegments } from "./ariBubbleSegments";
 
 export interface SemanticRevealTextProps {
   text: string;
