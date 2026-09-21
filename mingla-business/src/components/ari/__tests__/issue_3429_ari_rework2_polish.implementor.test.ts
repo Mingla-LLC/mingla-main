@@ -303,11 +303,19 @@ describe("#3429 R2 R-2 — the empty state never sits under the composer", () =>
     // ...and the scroll content's minHeight must be that measured height, so
     // shrinking the viewport cannot re-center the content.
     expect(source).toContain("minHeight: emptyHeroBoxHeight");
-    // The clamp lands on the scroll VIEWPORT.
-    const scrollStyle = source.slice(source.indexOf("styles.emptyHeroScroll,"));
-    expect(scrollStyle.slice(0, 200)).toContain(
+    // The clamp lands on the visible region — the same element that carries
+    // the dismiss role, so the one rectangle an accessibility-frame dump sees
+    // for the empty state stops at the composer's top edge.
+    const pressStyle = source.slice(source.indexOf("styles.emptyHeroPress,"));
+    expect(pressStyle.slice(0, 200)).toContain(
       "marginBottom: emptyHeroComposerClamp",
     );
+    const pressBlock = source.slice(
+      source.indexOf("styles.emptyHeroPress,"),
+      source.indexOf("</Pressable>", source.indexOf("styles.emptyHeroPress,")),
+    );
+    expect(pressBlock).toContain('accessibilityLabel="Dismiss keyboard"');
+    expect(pressBlock).toContain("<ScrollView");
   });
 
   it("the overflow the clamp creates is reachable by scrolling", () => {

@@ -690,28 +690,38 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   );
                 }}
               >
-                <ScrollView
+                {/* The clamp lands HERE, on the visible region: this Pressable
+                    is both the tap-to-dismiss target and — because an
+                    accessibilityRole flattens its subtree — the single node a
+                    screen reader and an accessibility-frame dump see for the
+                    empty state. Clamping it is what makes that rectangle stop
+                    at the composer's top edge instead of running underneath it.
+                    The dismiss target should not extend under the composer
+                    either. The ScrollView inside keeps the overflow reachable,
+                    and its content keeps the measured RESTING height, so the
+                    orb does not move when the keyboard opens. */}
+                <Pressable
                   style={[
-                    styles.emptyHeroScroll,
+                    styles.emptyHeroPress,
                     { marginBottom: emptyHeroComposerClamp },
                   ]}
-                  contentContainerStyle={[
-                    styles.emptyHeroScrollContent,
-                    { minHeight: emptyHeroBoxHeight },
-                  ]}
-                  showsVerticalScrollIndicator={false}
-                  keyboardShouldPersistTaps="handled"
-                  keyboardDismissMode="on-drag"
+                  onPress={() => Keyboard.dismiss()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Dismiss keyboard"
                 >
-                  <Pressable
-                    style={styles.emptyHeroPress}
-                    onPress={() => Keyboard.dismiss()}
-                    accessibilityRole="button"
-                    accessibilityLabel="Dismiss keyboard"
+                  <ScrollView
+                    style={styles.emptyHeroScroll}
+                    contentContainerStyle={[
+                      styles.emptyHeroScrollContent,
+                      { minHeight: emptyHeroBoxHeight },
+                    ]}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
                   >
                     <EmptyState />
-                  </Pressable>
-                </ScrollView>
+                  </ScrollView>
+                </Pressable>
               </View>
             </View>
             <View style={styles.flexSpacer} pointerEvents="none" />
