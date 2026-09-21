@@ -3,9 +3,12 @@ import {
   actOnSourceRefund,
   appendCapturedQueuePage,
   getSourceRefundOperation,
+  isSessionExpiredError,
   listSourceRefundOperations,
   recoverSourceRefundAttention,
+  SESSION_EXPIRED_MESSAGE,
 } from "../services/refundOperationsService";
+import { useAuth } from "../context/AuthContext";
 
 function money(cents, currency) {
   try {
@@ -17,9 +20,14 @@ function money(cents, currency) {
 }
 
 export function RefundOperationsPage() {
+  const { signOut } = useAuth();
   const [view, setView] = useState(null);
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState("");
+  // Issue #3512 — an expired session is not a queue failure. invokeWithRefresh
+  // has already refreshed and retried once by the time we see this, so the only
+  // remedy left is re-authenticating; say that instead of blaming the queue.
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [recoveryAction, setRecoveryAction] = useState("");
@@ -31,9 +39,15 @@ export function RefundOperationsPage() {
 
   const load = useCallback(async () => {
     setError("");
+    setSessionExpired(false);
     try {
       setView(await listSourceRefundOperations());
     } catch (caught) {
+      if (isSessionExpiredError(caught)) {
+        setSessionExpired(true);
+        setError(SESSION_EXPIRED_MESSAGE);
+        return;
+      }
       const message = caught instanceof Error ? caught.message : "";
       setError(
         message.includes("snapshot_expired")
@@ -55,6 +69,11 @@ export function RefundOperationsPage() {
       });
       setView((current) => appendCapturedQueuePage(current, page));
     } catch (caught) {
+      if (isSessionExpiredError(caught)) {
+        setSessionExpired(true);
+        setError(SESSION_EXPIRED_MESSAGE);
+        return;
+      }
       const message = caught instanceof Error ? caught.message : "";
       if (message.includes("snapshot_expired")) {
         setError(
@@ -80,6 +99,18 @@ export function RefundOperationsPage() {
       await actOnSourceRefund({ refundId, action, reason });
       setSelected(await getSourceRefundOperation(refundId));
       await load();
+    } catch (caught) {
+      // Issue #3512 — this path had no catch at all, so a 401 on an action
+      // button aborted the handler with an unhandled rejection and the admin
+      // saw nothing happen.
+      if (isSessionExpiredError(caught)) {
+        setSessionExpired(true);
+        setError(SESSION_EXPIRED_MESSAGE);
+      } else {
+        setError(
+          "That refund action could not be applied. Refresh the queue and try again.",
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -114,10 +145,15 @@ export function RefundOperationsPage() {
       setRecoveryAction("");
       setSelected(await getSourceRefundOperation(summary.refund_id));
       await load();
-    } catch {
-      setError(
-        "Recovery action could not be applied. Refresh and verify the current delivery state.",
-      );
+    } catch (caught) {
+      if (isSessionExpiredError(caught)) {
+        setSessionExpired(true);
+        setError(SESSION_EXPIRED_MESSAGE);
+      } else {
+        setError(
+          "Recovery action could not be applied. Refresh and verify the current delivery state.",
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -189,7 +225,14 @@ export function RefundOperationsPage() {
       </header>
       {error && (
         <div role="alert" className="rounded border border-red-300 p-4">
-          {error} <button onClick={load}>Refresh queue</button>
+          {error}{" "}
+          {sessionExpired
+            ? (
+              <button onClick={() => void signOut()}>
+                Sign in again
+              </button>
+            )
+            : <button onClick={load}>Refresh queue</button>}
         </div>
       )}
       {!error && view?.items?.length === 0 && (

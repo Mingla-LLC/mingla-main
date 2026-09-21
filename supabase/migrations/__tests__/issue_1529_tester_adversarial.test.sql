@@ -315,6 +315,14 @@ DECLARE
     'complete_source_refund_notification_delivery',
     'issue_1427_admin_list_stay_operations',
     'issue_1427_admin_retry_stay_notification',
+    -- #2079/#1221: resolves who a source-refund status notice goes to. It READS
+    -- one notification_outbox row to reach the refund behind a delivery and
+    -- never inserts, which the writes_outbox check below independently proves —
+    -- park it here and make it insert and this suite rejects it outright.
+    -- Listed here rather than at the end so the entry is a pure ADDITION: the
+    -- append-only gate counts a trailing comma appearing on an existing line as
+    -- a deletion, and nothing about this classification warrants an override.
+    'resolve_source_refund_notification_recipient',
     'issue_1427_admin_stay_group_projection'
   ];
   v_unclassified text;

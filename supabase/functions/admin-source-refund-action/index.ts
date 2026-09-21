@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders } from "../_shared/cors.ts";
 import {
   readSourceRefundRecipientKeys,
   sourceRefundRecipientFingerprint,
@@ -50,9 +51,13 @@ type ResolveAdminActionContext = (
 ) => Promise<AdminActionContext>;
 
 function reply(body: unknown, status: number): Response {
+  // Issue #3504 — this function is called from the browser (the Admin Refund
+  // operations page's action buttons, via supabase.functions.invoke). Without
+  // these headers the browser refuses to hand the response to the page even
+  // when the POST succeeds, so every response carries them.
   return Response.json(body, {
     status,
-    headers: { "Cache-Control": "no-store, private" },
+    headers: { ...corsHeaders, "Cache-Control": "no-store, private" },
   });
 }
 
@@ -351,6 +356,13 @@ export function createAdminSourceRefundActionHandler(
   resolveContext: ResolveAdminActionContext = resolveAdminActionContext,
 ): (req: Request) => Promise<Response> {
   return async (req) => {
+    // Issue #3504 — the browser sends a CORS preflight before the real POST.
+    // It MUST be answered before the method check; answering 405 stops the
+    // browser from ever sending the POST, which took every action button on
+    // the Admin Refund operations page offline.
+    if (req.method === "OPTIONS") {
+      return new Response("ok", { headers: corsHeaders });
+    }
     if (req.method !== "POST") {
       return reply({ error: "method_not_allowed" }, 405);
     }

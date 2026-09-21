@@ -64,3 +64,21 @@ Deno.test("#2079 webhook reads the paid charge through paymentIntentChargeId onl
   );
   assert(observed >= 0 && verify > observed);
 });
+
+// Installment PaymentIntents arrive through the same webhook with the same
+// payload shape. Their handler must read the charge through the shared helper
+// too, or every collected installment is saved with no charge id. PUT BACK a
+// `charges` read in installmentWebhookHandlers.ts and this fails.
+Deno.test("#2079 installment webhook reads the charge through paymentIntentChargeId only", () => {
+  const installment = Deno.readTextFileSync(
+    "supabase/functions/_shared/installmentWebhookHandlers.ts",
+  ).replace(/^\s*\/\/.*$/gm, "");
+  assert(!/\.charges\b/.test(installment));
+  assert(!/\["charges"\]/.test(installment));
+  assert(installment.includes("const chargeId = paymentIntentChargeId(pi);"));
+  assert(
+    installment.includes(
+      'import { paymentIntentChargeId } from "./stripeWebhookRouter.ts";',
+    ),
+  );
+});
