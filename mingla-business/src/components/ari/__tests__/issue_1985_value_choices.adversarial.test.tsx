@@ -70,6 +70,16 @@ jest.mock(
   "../ResponseCard",
   () => ({ ResponseCard: () => React.createElement("response-card") }),
 );
+// [TEST-MOD-APPROVED #3429] MessageList now imports AriAttachmentCards
+// statically (the old React.lazy deferred nothing — AriChatScreen already
+// imported the same module eagerly — and only forced Metro to hoist it and its
+// service deps into the EAGER __common chunk). This suite mocks every other
+// heavy sibling the same way; the file-card module joins that list. No
+// assertion changes.
+jest.mock("../AriAttachmentCards", () => ({
+  AriSentAttachments: () => null,
+  AriAttachmentTray: () => null,
+}));
 jest.mock("../QuickReplyChips", () => ({
   QuickReplyChips: (props: Record<string, unknown>) =>
     React.createElement("quick-reply-chips", props),

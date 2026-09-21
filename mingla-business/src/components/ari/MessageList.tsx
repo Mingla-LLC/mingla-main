@@ -27,6 +27,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { AgentMessage } from "../../services/agentChatService";
+import { AriSentAttachments } from "./AriAttachmentCards";
 import { ChatBubble } from "./ChatBubble";
 import { ToolProposalCard } from "./ToolProposalCard";
 import { ResponseCard } from "./ResponseCard";
@@ -38,13 +39,13 @@ import { buildChoiceSubmission, choiceLabel, choicesOf } from "./agentChoices";
 import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
 import type { PendingActionView } from "../../hooks/useAgentChat";
 
-// Historical message rendering predates attachments and is imported by small
-// choice-card harnesses with deliberately minimal native mocks. Keep the new
-// file-card module off that eager path; it loads only for a row that owns files.
-const AriSentAttachments = React.lazy(async () => {
-  const module = await import("./AriAttachmentCards");
-  return { default: module.AriSentAttachments };
-});
+// #3429 TRIM — this used to be a `React.lazy` "to keep the file-card module off
+// the eager path". It never did: AriChatScreen.tsx statically imports
+// `AriAttachmentTray` from this very module, so by the time any chat row renders
+// the module is already resolved. All the split point bought was a second entry
+// edge, which Metro answers by hoisting AriAttachmentCards (and its service and
+// analytics deps) out of the lazy `ari` chunk into the EAGER `__common` chunk —
+// the exact opposite of the intent. Static import keeps them in `ari`.
 
 /**
  * ORCH-1103 — the result of committing a pending action. `brandId` is set when
@@ -408,9 +409,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         const bubble = (
           <View>
             {m.role === "user" && attachments.length ? (
-              <React.Suspense fallback={null}>
-                <AriSentAttachments attachments={attachments} surface={surface} />
-              </React.Suspense>
+              <AriSentAttachments attachments={attachments} surface={surface} />
             ) : null}
             {text ? (
               <ChatBubble

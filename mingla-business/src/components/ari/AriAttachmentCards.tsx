@@ -5,7 +5,9 @@ import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "
 import { AlertCircle, CheckCircle2, FileText, Image as ImageIcon, RotateCw, X } from "lucide-react-native";
 
 import { accent, ariThread, glass, radius, semantic, spacing, text as textTokens } from "../../constants/designSystem";
+import { openAriAttachment } from "../../services/ariAttachmentService";
 import type { AriAttachmentDraft, AriSentAttachment } from "../../services/ariAttachmentService";
+import { captureAriAttachmentOutcome } from "../../services/ariPolishAnalytics";
 
 export function formatAriFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -136,15 +138,13 @@ export const AriSentAttachments: React.FC<{
         <Pressable
           key={attachment.id}
           onPress={() => {
-            // Keep MessageList presentational and cheap to import. The signed-URL
-            // client and analytics own native SDK bootstrap, so load them only
-            // when a person opens a file instead of when any historical chat row
-            // is rendered.
+            // #3429 TRIM — these used to be `import()`ed "so they load only when a
+            // person opens a file". Both were already resolved long before that:
+            // useAgentChat and useAriAttachments import them statically and
+            // AriChatScreen imports both hooks. The split point deferred nothing
+            // and hoisted both modules into the eager `__common` chunk.
             setOpenError(null);
-            void Promise.all([
-              import("../../services/ariAttachmentService"),
-              import("../../services/ariPolishAnalytics"),
-            ]).then(([{ openAriAttachment }, { captureAriAttachmentOutcome }]) => {
+            void Promise.resolve().then(() => {
               captureAriAttachmentOutcome({ surface, outcome: "opened", fileType: attachment.file_type });
               return openAriAttachment(attachment.id);
             }).catch(() => {
