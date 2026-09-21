@@ -34,6 +34,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -106,6 +107,18 @@ import {
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { tripFunnelTotalSteps } from "./tripFunnelSteps";
+// issue #3351 [free trip intake loop] — the SINGLE owner of what comes next.
+// This screen holds no predicate of its own over the intake schema query: it
+// asks `tripIntakeState` for the facts and `nextTripCheckoutStep` for the
+// decision. The old local `hasAnyIntakeSchema` tested intake PRESENCE, which is
+// unchanged by answering the form, so a free trip with any question bounced
+// between this screen and /intake forever and made zero reservation requests.
+import {
+  nextTripCheckoutStep,
+  tripIntakeFormDataArray,
+  tripIntakeState,
+  type TripIntakeState,
+} from "./tripCheckoutStepOrder";
 
 import {
   PhoneInput,
@@ -170,6 +183,20 @@ const splitExistingPhone = (
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_MIN_CHARS = 2;
 
+/**
+ * issue #3351 [free trip intake loop] — the honest sentence for a schema read
+ * that FAILED (after React Query's two retries, so this includes a terminal
+ * permission denial). A failed read cannot tell us whether the organiser asks
+ * any questions, so the rail fails CLOSED: before this, an unresolved query
+ * made the old presence predicate `false`, and a free trip with a required form
+ * would have submitted with NO answers and taken the server's 400.
+ *
+ * This lives here, not in `checkoutErrorCopy.ts`: it describes a client-side
+ * read failure, not one of the server's bounded refusal tokens.
+ */
+const INTAKE_SCHEMA_UNAVAILABLE_MESSAGE =
+  "We could not load this trip's questions, so we cannot hold your spot yet. Go back and reopen this trip to try again — nothing was reserved.";
+
 interface ValidationState {
   nameError: string | null;
   emailError: string | null;
@@ -211,7 +238,17 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
 
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
-  const { lines, buyer, setBuyer, recordResult, paymentPlanChoice } = useCart();
+  // issue #3351 — `intakeFormData` is read here for the first time. Without it
+  // this screen could not tell "the organiser asks questions" from "the
+  // traveller has answered them", which is the whole defect.
+  const {
+    lines,
+    buyer,
+    intakeFormData,
+    setBuyer,
+    recordResult,
+    paymentPlanChoice,
+  } = useCart();
   const totals = useCartTotals();
 
   // ORCH-1130 Fix #1 — "Total due today" (deposit) line for the order-summary
@@ -250,22 +287,43 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   const intakeSchemasQuery = useTripIntakeSchemasByEvent(tripEventId ?? "", {
     enabled: tripEventId !== null,
   });
-  const hasAnyIntakeSchema = useMemo<boolean>(() => {
-    if (intakeSchemasQuery.data === undefined) return false;
-    for (const line of lines) {
-      const schema = intakeSchemasQuery.data.get(line.ticketTypeId);
-      if (schema !== undefined && schema.questions.length > 0) return true;
-    }
-    return false;
-  }, [intakeSchemasQuery.data, lines]);
+  // issue #3351 — the ONE predicate over the schema query on this screen. It
+  // reports whether the read has settled, whether any cart tier carries
+  // questions, and whether every such tier has a cart-committed answer set at
+  // that tier's CURRENT schema_version_id.
+  const intakeState = useMemo<TripIntakeState>(
+    () =>
+      tripIntakeState({
+        lines,
+        schemas: intakeSchemasQuery.data,
+        committed: intakeFormData,
+      }),
+    [intakeSchemasQuery.data, lines, intakeFormData],
+  );
+
+  // issue #3351 — ONE decision, read by the primary control's label, by its
+  // disabled state, and by `handleContinue`, so the three can never disagree.
+  const detailsDecision = useMemo(
+    () =>
+      nextTripCheckoutStep("details", {
+        isFree: totals.isFree,
+        ...intakeState,
+      }),
+    [totals.isFree, intakeState],
+  );
 
   // ORCH-1178 — the cart step ALWAYS shows now, so the funnel is index → buyer
-  // → [intake] → payment: 3 steps without an intake form, 4 with. (Supersedes
-  // the ORCH-1176 bookableTierCount-derived 2|3, which collapsed the single-tier
-  // trip to 2 — that collapse is gone.) Reuse the SAME intake-presence predicate
-  // that decides whether Continue routes to /intake, so the counter and the
-  // routing can never disagree.
-  const totalSteps = tripFunnelTotalSteps(hasAnyIntakeSchema);
+  // → [intake] → [payment]. (Supersedes the ORCH-1176 bookableTierCount-derived
+  // 2|3, which collapsed the single-tier trip to 2 — that collapse is gone.)
+  // issue #3351 — the total is now `isFree`-aware: a FREE cart never reaches the
+  // payment step, so free+intake is 3 and free+no-intake is 2. Derived from the
+  // same `hasIntake` fact the routing turns on, so the counter and the routing
+  // can never disagree, and the denominator never moves mid-flow because it does
+  // not read `intakeComplete`.
+  const totalSteps = tripFunnelTotalSteps({
+    isFree: totals.isFree,
+    hasIntake: intakeState.hasIntake,
+  });
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -356,6 +414,87 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     }
   }, [router, tripEventId]);
 
+  /**
+   * issue #3351 — THE ONE PLACE A FREE TRIP RESERVATION IS CREATED. There is
+   * exactly one `createTicketCheckout` call in this file, and nothing about the
+   * request is assembled anywhere else, so #3353 relocates ONE call into its
+   * shared seam rather than redesigning this rail.
+   *
+   * It is invoked ONLY from `handleContinue`'s `submit_free` arm — i.e. only
+   * from a deliberate buyer tap. Seth's OQ-2 decision: nothing on this route
+   * may submit a reservation without a tap, so there is no effect, no timer and
+   * no token that can fire this.
+   *
+   * The single-shot ref is cleared ONLY in the catch. A refusal re-enables the
+   * control so a deliberate second tap retries; a success never re-arms it, so
+   * a remount cannot resubmit. An automatic retry of a free reservation whose
+   * reply was lost is exactly how #2462/#2511 gave guests two orders.
+   */
+  const freeReservationFiredRef = useRef<boolean>(false);
+  const runFreeReservation = useCallback(async (): Promise<void> => {
+    if (tripEventId === null) return;
+    if (freeReservationFiredRef.current) return;
+    freeReservationFiredRef.current = true;
+    // issue #3351 — the answers the traveller committed on /intake, flattened
+    // by the shared helper into the array shape `ticket-checkout-create`
+    // matches by `ticket_type_id`. The conditional spread is load-bearing:
+    // `ticketCheckoutService` omits `intake_form_data` from the wire body when
+    // the array is empty, so a free trip with NO schema sends byte-identically
+    // to before this change.
+    const intakeArray = tripIntakeFormDataArray(intakeFormData, lines);
+    try {
+      setSubmitting(true);
+      // ORCH-0876: createTicketCheckout is event_type-agnostic — passes
+      // the events-row id (here the trip's id). Tr3 RPC branches on
+      // v_event.event_type='trip' server-side.
+      const result = await createTicketCheckout({
+        eventId: tripEventId,
+        buyer,
+        lines,
+        ...(intakeArray.length > 0 ? { intakeFormData: intakeArray } : {}),
+      });
+      if (result.kind !== "free_completed") {
+        throw new Error("Free reservation unexpectedly required payment.");
+      }
+      recordResult({
+        orderId: result.orderId,
+        ticketIds: result.tickets.map((ticket) => ticket.ticketId),
+        checkoutSessionId: result.checkoutSessionId,
+        // issue #2323 — see checkout/[eventId]/buyer.tsx. Free reservations
+        // reach /confirm with no query string, so the possession proof must
+        // ride the order result or the attendance claim can never be minted.
+        ...(typeof result.buyerStatusToken === "string" &&
+          result.buyerStatusToken.length > 0
+          ? { buyerStatusToken: result.buyerStatusToken }
+          : {}),
+        paidAt: new Date().toISOString(),
+        paymentMethod: "free",
+        total: result.totalCents / 100,
+        totalCents: result.totalCents,
+        currency: result.currency,
+        paymentStatus: result.paymentStatus,
+        notificationStatus: result.notificationStatus,
+        tickets: result.tickets,
+      });
+      router.replace(`/checkout-trip/${tripEventId}/confirm` as never);
+    } catch (error) {
+      freeReservationFiredRef.current = false;
+      // issue #2337 — the guest already holds this reservation; saying
+      // anything else pushes them to reserve a second time.
+      if (isFreeReservationAlreadyExists(error)) {
+        setSubmitError(FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE);
+        return;
+      }
+      // issue #3351 — every refusal this rail shows is a mapped sentence. The
+      // token `intake_form_required` now maps to one that says the organiser
+      // needs answers and that NOTHING was reserved, instead of falling through
+      // to "your ticket may already be reserved".
+      setSubmitError(freeCheckoutErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [tripEventId, intakeFormData, lines, buyer, recordResult, router]);
+
   const handleContinue = useCallback(async (): Promise<void> => {
     setNameTouched(true);
     setEmailTouched(true);
@@ -363,86 +502,54 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     if (!validation.isValid) return;
     if (tripEventId === null) return;
     setSubmitError(null);
-    if (totals.isFree) {
-      // ORCH-0880 [Tr5 Traveler Intake Forms] — when free trip has intake
-      // schemas, the buyer must complete /intake BEFORE the free reservation
-      // is created (so intake_form_data is included in the createTicketCheckout
-      // call to satisfy I-PROPOSED-TR5-INTAKE-REQUIRED-BLOCKS-CHECKOUT).
-      if (hasAnyIntakeSchema) {
+    // issue #3351 — ONE switch on the owner's decision. No other navigation and
+    // no other create call may live in this handler.
+    switch (detailsDecision) {
+      case "wait":
+        // The schema read has not settled (or failed): the control is already
+        // disabled, and no request may be issued with unknown questions.
+        return;
+      case "go_intake":
         router.push(`/checkout-trip/${tripEventId}/intake` as never);
         return;
+      case "submit_free":
+        await runFreeReservation();
+        return;
+      case "go_payment":
+        router.push(`/checkout-trip/${tripEventId}/payment` as never);
+        return;
+      case "go_details_finalize":
+        // Only the intake screen's exit produces this; unreachable from here.
+        return;
+      default: {
+        const unreachable: never = detailsDecision;
+        void unreachable;
+        return;
       }
-      try {
-        setSubmitting(true);
-        // ORCH-0876: createTicketCheckout is event_type-agnostic — passes
-        // the events-row id (here the trip's id). Tr3 RPC branches on
-        // v_event.event_type='trip' server-side.
-        const result = await createTicketCheckout({
-          eventId: tripEventId,
-          buyer,
-          lines,
-        });
-        if (result.kind !== "free_completed") {
-          throw new Error("Free reservation unexpectedly required payment.");
-        }
-        recordResult({
-          orderId: result.orderId,
-          ticketIds: result.tickets.map((ticket) => ticket.ticketId),
-          checkoutSessionId: result.checkoutSessionId,
-          // issue #2323 — see checkout/[eventId]/buyer.tsx. Free reservations
-          // reach /confirm with no query string, so the possession proof must
-          // ride the order result or the attendance claim can never be minted.
-          ...(typeof result.buyerStatusToken === "string" &&
-            result.buyerStatusToken.length > 0
-            ? { buyerStatusToken: result.buyerStatusToken }
-            : {}),
-          paidAt: new Date().toISOString(),
-          paymentMethod: "free",
-          total: result.totalCents / 100,
-          totalCents: result.totalCents,
-          currency: result.currency,
-          paymentStatus: result.paymentStatus,
-          notificationStatus: result.notificationStatus,
-          tickets: result.tickets,
-        });
-        router.replace(`/checkout-trip/${tripEventId}/confirm` as never);
-      } catch (error) {
-        // issue #2337 — the guest already holds this reservation; saying
-        // anything else pushes them to reserve a second time.
-        if (isFreeReservationAlreadyExists(error)) {
-          setSubmitError(FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE);
-          return;
-        }
-        setSubmitError(freeCheckoutErrorMessage(error));
-      } finally {
-        setSubmitting(false);
-      }
-      return;
     }
-    // ORCH-0880 [Tr5 Traveler Intake Forms] — paid trips with intake
-    // schemas route to /intake BEFORE /payment so buyer answers required
-    // questions before the Stripe Checkout Session is created (per
-    // I-PROPOSED-TR5-INTAKE-REQUIRED-BLOCKS-CHECKOUT gate in
-    // ticket-checkout-create).
-    if (hasAnyIntakeSchema) {
-      router.push(`/checkout-trip/${tripEventId}/intake` as never);
-      return;
-    }
-    router.push(`/checkout-trip/${tripEventId}/payment` as never);
   }, [
     validation.isValid,
     tripEventId,
-    totals.isFree,
-    hasAnyIntakeSchema,
-    lines,
-    buyer,
-    recordResult,
+    detailsDecision,
     router,
+    runFreeReservation,
   ]);
 
-  const continueLabel = totals.isFree
-    ? "Reserve free spot"
-    : "Continue to payment";
+  // issue #3351 — the label states what the tap actually does. A paid trip with
+  // questions used to say "Continue to payment" and open a form instead.
+  const continueLabel =
+    detailsDecision === "go_intake"
+      ? "Continue"
+      : totals.isFree
+        ? "Reserve free spot"
+        : "Continue to payment";
+
+  // issue #3351 — the schema read failed, so we cannot know whether the
+  // organiser asks anything. Say so and keep the control disabled rather than
+  // submit with no answers.
+  const bannerMessage =
+    submitError ??
+    (intakeSchemasQuery.isError ? INTAKE_SCHEMA_UNAVAILABLE_MESSAGE : null);
 
   if (trip === null || hasNoLines) {
     return (
@@ -638,8 +745,8 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
             Email me about this organiser&apos;s future trips and events
           </Text>
         </Pressable>
-        {submitError !== null ? (
-          <Text style={styles.errorText}>{submitError}</Text>
+        {bannerMessage !== null ? (
+          <Text style={styles.errorText}>{bannerMessage}</Text>
         ) : null}
       </ScrollView>
 
@@ -674,7 +781,11 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
           size="lg"
           fullWidth
           loading={submitting}
-          disabled={!validation.isValid || submitting}
+          // issue #3351 — `!intakeState.settled` fails the rail CLOSED while the
+          // intake schema read is unresolved or failed. Before this, an
+          // unresolved read read as "no questions", so a free trip with a
+          // required form submitted with no answers and took the server's 400.
+          disabled={!validation.isValid || submitting || !intakeState.settled}
         />
       </View>
     </View>

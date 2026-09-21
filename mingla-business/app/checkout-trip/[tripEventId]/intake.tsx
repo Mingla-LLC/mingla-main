@@ -101,6 +101,17 @@ import { Toast } from "../../../src/components/ui/Toast";
 import {
   IntakeFormRenderer,
 } from "../../../src/components/checkout/intake/IntakeQuestionRenderers";
+// issue #3351 [free trip intake loop] — this screen no longer decides its own
+// exit. It used to `router.replace` back to /buyer whenever the cart was free,
+// while /buyer pushed back here whenever a schema EXISTED, so a free trip with
+// any question bounced between the two forever. Both screens now ask the one
+// owner, and the owner keys on whether the answers are COMMITTED.
+import {
+  nextTripCheckoutStep,
+  tripIntakeState,
+  type TripIntakeState,
+} from "./tripCheckoutStepOrder";
+import { tripFunnelTotalSteps } from "./tripFunnelSteps";
 
 const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -186,6 +197,31 @@ export default function TripIntakeScreen(): React.ReactElement {
   const [tierIdx, setTierIdx] = useState<number>(0);
   const activeTier = tiersWithSchemas[tierIdx] ?? null;
 
+  // issue #3351 — the same facts /buyer reads, from the same owner. Used for
+  // the exit decision and for the step pill's denominator; this screen keeps no
+  // predicate of its own about the funnel.
+  const intakeState = useMemo<TripIntakeState>(
+    () =>
+      tripIntakeState({
+        lines,
+        schemas: schemasQuery.data,
+        committed: intakeFormData,
+      }),
+    [lines, schemasQuery.data, intakeFormData],
+  );
+
+  // issue #3351 — the inline pill's denominator now comes from the owner of the
+  // step count: free+intake 3, paid+intake 4. A FREE cart never reaches the
+  // payment step, which is why this screen said "3 OF 3" while the details step
+  // it had just come from said "2 OF 4". The numerator stays the literal 3 —
+  // the intake step is always third — and the inline header stays inline
+  // because CheckoutHeader is visually locked and cannot carry the tier
+  // subtitle this screen needs.
+  const stepShape = {
+    isFree: totals.isFree,
+    hasIntake: intakeState.hasIntake,
+  };
+
   // Per-tier local answer state. Keyed by ticketTypeId so switching tiers
   // doesn't lose in-progress answers.
   const [answersByTier, setAnswersByTier] = useState<
@@ -259,15 +295,29 @@ export default function TripIntakeScreen(): React.ReactElement {
       return;
     }
     // If query loaded and there are zero tiers with schemas, this route
-    // shouldn't have been reached — bounce to payment.
+    // shouldn't have been reached — bounce onward.
+    // issue #3351 — the bounce asks the owner where "onward" is instead of
+    // deciding for itself. It used to send a FREE cart to /payment, where the
+    // paid screen's own guard renders an empty shell; a free cart must never be
+    // navigated to the payment step from anywhere.
     if (
       schemasQuery.data !== undefined &&
       tiersWithSchemas.length === 0 &&
       buyer.email.length > 0
     ) {
-      router.replace(`/checkout-trip/${tripEventId}/payment` as never);
+      const bounce = nextTripCheckoutStep("intake", {
+        isFree: totals.isFree,
+        ...intakeState,
+      });
+      if (bounce === "go_details_finalize") {
+        router.replace(`/checkout-trip/${tripEventId}/buyer` as never);
+        return;
+      }
+      if (bounce === "go_payment") {
+        router.replace(`/checkout-trip/${tripEventId}/payment` as never);
+      }
     }
-  }, [tripEventId, lines.length, schemasQuery.data, tiersWithSchemas.length, buyer.email.length, router]);
+  }, [tripEventId, lines.length, schemasQuery.data, tiersWithSchemas.length, buyer.email.length, totals.isFree, intakeState, router]);
 
   // ---- Handlers ---------------------------------------------------------
   const handleBack = useCallback((): void => {
@@ -355,20 +405,37 @@ export default function TripIntakeScreen(): React.ReactElement {
       // Draft persistence is best-effort; cart commit is the durable path.
     }
 
-    // Advance to next tier OR /payment.
+    // Advance to the next tier. This per-tier step is this screen's own
+    // business and is unchanged by issue #3351.
     if (tierIdx < totalTiers - 1) {
       setTierIdx(tierIdx + 1);
       scrollViewRef.current?.scrollTo({ y: 0, animated: false });
       return;
     }
-    // All tiers complete → /payment (or /confirm if free).
-    if (totals.isFree) {
-      router.replace(`/checkout-trip/${tripEventId}/buyer` as never);
-      // buyer.tsx Continue handler does free-flow finalize; intake answers
-      // are already in cart.intakeFormData for the next createTicketCheckout.
+    // issue #3351 — the LAST tier's exit is the owner's call, not this screen's.
+    //
+    // The `intake` rows of the decision table deliberately ignore
+    // `intakeComplete`, and that matters HERE: `setIntakeTierData` above has not
+    // landed in this closure yet, so a completion read taken at this point is
+    // stale by one commit and would send a traveller who has just answered
+    // everything straight back to the form. /buyer reads the same fact one
+    // navigation later, when the dispatch HAS landed, and there it is correct.
+    const decision = nextTripCheckoutStep("intake", {
+      isFree: totals.isFree,
+      ...intakeState,
+    });
+    if (decision === "go_details_finalize") {
+      // Seth's OQ-2 decision: finishing the questions does NOT reserve. The
+      // traveller returns to the details step, sees what they are about to
+      // reserve, and taps Reserve. `push` (not `replace`) so Back from the
+      // details step reaches this form again and answers can still be changed.
+      router.push(`/checkout-trip/${tripEventId}/buyer` as never);
       return;
     }
-    router.push(`/checkout-trip/${tripEventId}/payment` as never);
+    if (decision === "go_payment") {
+      router.push(`/checkout-trip/${tripEventId}/payment` as never);
+    }
+    // "wait" — the schema read has not settled; navigate nowhere.
   }, [
     activeTier,
     tripEventId,
@@ -376,6 +443,7 @@ export default function TripIntakeScreen(): React.ReactElement {
     tierIdx,
     totalTiers,
     totals.isFree,
+    intakeState,
     setIntakeTierData,
     buyer.email,
     router,
@@ -452,7 +520,7 @@ export default function TripIntakeScreen(): React.ReactElement {
         </View>
         <View style={styles.stepPill}>
           <Text style={styles.stepPillLabel}>
-            3 OF {totals.isFree ? 3 : 4}
+            3 OF {tripFunnelTotalSteps(stepShape)}
           </Text>
         </View>
       </View>

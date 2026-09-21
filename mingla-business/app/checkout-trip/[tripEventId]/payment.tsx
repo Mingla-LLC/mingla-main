@@ -81,6 +81,13 @@ import {
   tripFunnelTotalSteps,
   tripPaymentStepIndex,
 } from "./tripFunnelSteps";
+// issue #3351 [free trip intake loop] — the flattener and the presence probe
+// both live in the step-order owner now, so the trip route holds exactly one
+// copy of each.
+import {
+  tripIntakeFormDataArray,
+  tripIntakeState,
+} from "./tripCheckoutStepOrder";
 import { supabase } from "../../../src/services/supabase";
 
 const NativeCheckoutPaymentBoundary = React.lazy(
@@ -189,14 +196,15 @@ function CheckoutTripPaymentScreenContent({
   // (keyed by ticket_type_id in CartContext) into the array shape expected
   // by ticket-checkout-create. Empty when buyer is purchasing tiers without
   // schemas OR when the intake step hasn't run yet.
-  const intakeFormDataArray: unknown[] = React.useMemo(() => {
-    const out: unknown[] = [];
-    for (const ticketTypeId of Object.keys(intakeFormData)) {
-      const entry = intakeFormData[ticketTypeId];
-      if (entry !== undefined && entry !== null) out.push(entry);
-    }
-    return out;
-  }, [intakeFormData]);
+  // issue #3351 — the same flattener the free rail uses (tripCheckoutStepOrder),
+  // so the two rails can never disagree about the shape they send. It also
+  // restricts the entries to tiers actually in the cart; for every cart the
+  // intake screen can produce the output is identical to the inline loop this
+  // replaces.
+  const intakeFormDataArray: unknown[] = React.useMemo(
+    () => tripIntakeFormDataArray(intakeFormData, lines),
+    [intakeFormData, lines],
+  );
 
   // Web Stripe-cancel-return sessionStorage restore (mirror ORCH-0789/0790).
   const [restoreChecked, setRestoreChecked] = useState<boolean>(
@@ -611,16 +619,27 @@ function CheckoutTripPaymentScreenContent({
   // bookableTierCount-derived 2|3.) Reuse the SAME per-cart-line intake-presence
   // predicate buyer.tsx uses to route Continue → /intake, so the payment counter
   // and the funnel can never disagree.
-  const hasAnyIntakeSchema = React.useMemo<boolean>(() => {
-    if (intakeSchemasQuery.data === undefined) return false;
-    for (const line of lines) {
-      const schema = intakeSchemasQuery.data.get(line.ticketTypeId);
-      if (schema !== undefined && schema.questions.length > 0) return true;
-    }
-    return false;
-  }, [intakeSchemasQuery.data, lines]);
-  const totalSteps = tripFunnelTotalSteps(hasAnyIntakeSchema);
-  const paymentStepIndex = tripPaymentStepIndex(hasAnyIntakeSchema);
+  // issue #3351 — presence comes from the step-order owner, not from a second
+  // hand-rolled predicate, and the total is `isFree`-aware. A free cart never
+  // reaches this screen (the guard below returns a shell), so in practice this
+  // reads the paid column: 4 with questions, 3 without.
+  const hasAnyIntakeSchema = React.useMemo<boolean>(
+    () =>
+      tripIntakeState({
+        lines,
+        schemas: intakeSchemasQuery.data,
+        committed: intakeFormData,
+      }).hasIntake,
+    [intakeSchemasQuery.data, lines, intakeFormData],
+  );
+  const totalSteps = tripFunnelTotalSteps({
+    isFree: totals.isFree,
+    hasIntake: hasAnyIntakeSchema,
+  });
+  const paymentStepIndex = tripPaymentStepIndex({
+    isFree: totals.isFree,
+    hasIntake: hasAnyIntakeSchema,
+  });
 
   // Defensive shell while guards redirect.
   if (
