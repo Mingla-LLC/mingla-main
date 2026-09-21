@@ -315,7 +315,12 @@ DECLARE
     'complete_source_refund_notification_delivery',
     'issue_1427_admin_list_stay_operations',
     'issue_1427_admin_retry_stay_notification',
-    'issue_1427_admin_stay_group_projection'
+    'issue_1427_admin_stay_group_projection',
+    -- #2079/#1221: resolves who a source-refund status notice goes to. It READS
+    -- one notification_outbox row to reach the refund behind a delivery and
+    -- never inserts, which the writes_outbox check below independently proves —
+    -- park it here and make it insert and this suite rejects it outright.
+    'resolve_source_refund_notification_recipient'
   ];
   v_unclassified text;
   v_missing_cc text;
