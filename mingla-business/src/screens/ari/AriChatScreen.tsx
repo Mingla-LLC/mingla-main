@@ -1047,6 +1047,12 @@ const styles = StyleSheet.create({
   emptyHeroPress: {
     flex: 1,
     width: "100%",
+    // The clamp is a margin, so without this the content still PAINTS past the
+    // clamped box and is only trimmed at the overlay's own bounds — a sliver of
+    // the body sentence kept drawing behind the composer pill even though the
+    // accessibility rectangle already stopped at the composer's top edge. Clip
+    // here so the drawn box and the measured box are the same box.
+    overflow: "hidden",
   },
   flexSpacer: {
     flex: 1,
