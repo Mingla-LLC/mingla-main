@@ -55,9 +55,9 @@ Class A runs as three shards, so there are now four artifacts:
 | `gate-results-A` | **shard 1's rows only** (about a third of the class), each carrying `"shard": 1` |
 | `gate-results-A-shard-2` | shard 2's rows, each `"shard": 2` |
 | `gate-results-A-shard-3` | shard 3's rows, each `"shard": 3` |
-| **`gate-results-A-aggregate`** | **the canonical full-class array** — every execution exactly once, same row objects and same top-level shape a single unsharded run produced, plus an additive `shard` field |
+| **`class-a-shard-aggregate`** | **the canonical full-class array** — every execution exactly once, same row objects and same top-level shape a single unsharded run produced, plus an additive `shard` field |
 
-**Read `gate-results-A-aggregate`**, not `gate-results-A`. Every existing `jq`
+**Read `class-a-shard-aggregate`**, not `gate-results-A`. Every existing `jq`
 expression works unchanged against it; `gate-results-A` keeps its name only because
 that name is inside shard 1's sealed step array and cannot be changed. The aggregate
 is written by the `class-a-shard-completeness` job and **only after** it has proved
@@ -65,6 +65,13 @@ the shards partition the class: one result file per shard, the multiset of
 `(script, mode)` exactly equal to the registry's class A set, and every row's
 `shard` equal to the shard the recomputed plan assigns it. A missing, cancelled,
 skipped or never-started shard is a non-zero exit there, never a neutral pass.
+
+Its name sits deliberately OUTSIDE the `gate-results-A*` namespace it downloads. An
+aggregate named inside that namespace is matched by the job's own download pattern:
+harmless in a clean run, but on a "Re-run failed jobs" click the download returns a
+fourth file, the job refuses the unexpected count, and it cannot go green again
+without re-running the whole workflow. The plan gate asserts statically that the
+upload name cannot match the download pattern, so this cannot come back.
 
 ### Refreshing the class A shard cost table
 
@@ -74,7 +81,7 @@ the plan with nobody looking at the diff:
 
 ```bash
 for r in <three or more recent run ids>; do
-  gh run download "$r" -n gate-results-A-aggregate -D /tmp/costs/"$r"
+  gh run download "$r" -n class-a-shard-aggregate -D /tmp/costs/"$r"
 done
 # review: prints the key-by-key diff, the resulting planned shard loads, and the
 # worst imbalance the new table would produce. Refuses fewer than three samples,

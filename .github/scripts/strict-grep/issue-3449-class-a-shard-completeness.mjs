@@ -66,6 +66,21 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
 
+/**
+ * The canonical full-class record's file name, and the artifact that carries it.
+ *
+ * DELIBERATELY OUTSIDE THE gate-results-A* NAMESPACE. The completeness job
+ * downloads `gate-results-A*`; if its own output were named inside that namespace
+ * the pattern would match it. Inside a clean run that is harmless — the artifact
+ * does not exist when the download runs — but on a "Re-run failed jobs" click the
+ * download can return one file more than there are shards, the job refuses the
+ * unexpected count, and it stays red until the WHOLE workflow is re-run. That is
+ * fail-closed and never falsely green, so it was robustness rather than safety,
+ * but the collision is removed at source rather than tolerated. Discovery below is
+ * unchanged and still refuses any genuinely unexpected gate-results-A* sibling.
+ */
+export const AGGREGATE_FILE = "class-a-shard-aggregate.json";
+
 /** Exit 0 only when every clause holds; 1 when a row FAILED; 2 for every "could not look". */
 export const EXIT_OK = 0;
 export const EXIT_ROW_FAILED = 1;
@@ -288,12 +303,12 @@ function runAggregate() {
   const inputIndex = process.argv.indexOf("--input");
   const inputDir = inputIndex === -1 ? null : process.argv[inputIndex + 1];
   if (!inputDir) {
-    console.error("usage: node .github/scripts/strict-grep/issue-3449-class-a-shard-completeness.mjs --aggregate --input <dir> [--out <file>]");
+    console.error(`usage: node .github/scripts/strict-grep/issue-3449-class-a-shard-completeness.mjs --aggregate --input <dir> [--out ${AGGREGATE_FILE}]`);
     process.exitCode = EXIT_INCONCLUSIVE;
     return;
   }
   const outIndex = process.argv.indexOf("--out");
-  const outPath = path.resolve(REPO_ROOT, outIndex === -1 ? "gate-results-A-aggregate.json" : process.argv[outIndex + 1]);
+  const outPath = path.resolve(REPO_ROOT, outIndex === -1 ? AGGREGATE_FILE : process.argv[outIndex + 1]);
 
   let manifest;
   let costs;

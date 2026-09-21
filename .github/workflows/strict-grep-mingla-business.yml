@@ -819,7 +819,17 @@ jobs:
   # and two shards' rows are SILENTLY OVERWRITTEN — a green run that lost 693
   # executions, the precise failure this job exists to prevent.
   #
-  # gate-results-A-aggregate is the CANONICAL full-class record: same array of the
+  # ITS OWN ARTIFACT IS DELIBERATELY OUTSIDE THE gate-results-A* NAMESPACE.
+  # This job downloads `gate-results-A*`. If its own output were also named
+  # gate-results-A-something, the pattern would match it: harmless inside a clean
+  # run (the artifact does not exist yet when the download runs), but on a
+  # "Re-run failed jobs" click the download returns FOUR files, the job refuses the
+  # unexpected count, and it can stay red permanently — forcing a whole-workflow
+  # re-run to clear something that was already fixed. Fail-closed, never falsely
+  # green, but a real trap, so the collision is removed at source. The plan gate
+  # asserts statically that this upload name cannot match this download pattern.
+  #
+  # class-a-shard-aggregate is the CANONICAL full-class record: same array of the
   # same row objects a single unsharded run produced, all executions, each row
   # carrying an additive `shard`. Acceptance tooling should read it rather than
   # gate-results-A, which is now shard 1's rows only.
@@ -843,13 +853,13 @@ jobs:
           pattern: gate-results-A*
           path: shard-results
       - name: "Prove the class A shards partition the class"
-        run: node .github/scripts/strict-grep/issue-3449-class-a-shard-completeness.mjs --aggregate --input shard-results --out gate-results-A-aggregate.json
+        run: node .github/scripts/strict-grep/issue-3449-class-a-shard-completeness.mjs --aggregate --input shard-results --out class-a-shard-aggregate.json
       - name: Upload the class A aggregate
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gate-results-A-aggregate
-          path: gate-results-A-aggregate.json
+          name: class-a-shard-aggregate
+          path: class-a-shard-aggregate.json
           if-no-files-found: error
 
   dep-gates:

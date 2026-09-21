@@ -85,6 +85,8 @@ export const RUN_BATCH_CLASS_A = "node .github/scripts/strict-grep/run-batch.mjs
 export const BUDGET_MODULE = ".github/scripts/strict-grep/issue-2594-class-a-budget.mjs";
 export const BUDGET_ENFORCE_RUN = `node ${BUDGET_MODULE} --enforce`;
 export const COMPLETENESS_MODULE = ".github/scripts/strict-grep/issue-3449-class-a-shard-completeness.mjs";
+export const AGGREGATE_ARTIFACT = "class-a-shard-aggregate";
+export const AGGREGATE_FILE = "class-a-shard-aggregate.json";
 export const SHARD_TIMEOUT_MINUTES = 15;
 export const ADJUDICATOR_TIMEOUT_MINUTES = 5;
 export const BUDGET_SECONDS = "600";
@@ -151,6 +153,23 @@ const permissionPairs = (value) =>
   value && typeof value === "object" && !Array.isArray(value)
     ? JSON.stringify(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)))
     : null;
+
+/**
+ * Does an artifact-download glob match an artifact name? Artifact names carry no
+ * path separators, so `*` is any run of characters and `?` is exactly one; every
+ * other character is literal. Deliberately GENEROUS about what counts as a match:
+ * a false positive here is a loud error a human resolves in one read, while a false
+ * negative is the trap this guard exists to catch.
+ */
+export function artifactPatternMatches(pattern, name) {
+  if (!pattern || !name) return false;
+  const source = [...pattern].map((character) => {
+    if (character === "*") return ".*";
+    if (character === "?") return ".";
+    return character.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }).join("");
+  return new RegExp(`^${source}$`).test(name);
+}
 
 const steps = (job) => (Array.isArray(job?.steps) ? job.steps : []);
 const runLines = (job) => steps(job).map((step) => String(step?.run ?? "").trim());
@@ -482,6 +501,20 @@ export function auditHostDocuments({ documents, manifest, notes = [] }) {
       if (!artifactNames.has(artifact)) artifactNames.set(artifact, []);
       artifactNames.get(artifact).push(key);
     }
+
+    // THE STRUCTURAL GUARD. This job's OWN upload must not match its OWN download
+    // pattern. If it does, a clean run is still fine — the artifact does not exist
+    // when the download runs — but a "Re-run failed jobs" click makes the download
+    // return one file more than there are shards, the job refuses the unexpected
+    // count, and it stays red until the WHOLE workflow is re-run, to clear something
+    // that was already fixed. Fail-closed and never falsely green, so this is
+    // robustness rather than safety; it is asserted STATICALLY because the failure
+    // only appears on a re-run of a red job, which is the worst possible moment and
+    // the least likely to be reproduced deliberately.
+    const downloadPattern = String(download?.with?.pattern ?? "");
+    if (artifact && artifactPatternMatches(downloadPattern, artifact)) {
+      errors.push(`completeness job "${key}" uploads "${artifact}", which MATCHES its own download pattern "${downloadPattern}". On a re-run of this job alone the download returns its own previous output as an extra file, the count check refuses it, and the job cannot go green again without re-running the whole host. Name the aggregate outside the pattern it downloads.`);
+    }
     for (const context of REQUIRED_CONTEXTS) {
       if (job.name === context) errors.push(`completeness job "${key}" must not be named "${context}": that is a required status context on main.`);
     }
@@ -589,8 +622,8 @@ function fixtureHostDocuments({ shards = [1, 2, 3], mutate = (document) => docum
       { uses: "actions/checkout@v4" },
       { uses: "actions/setup-node@v4", with: { "node-version": "20" } },
       { uses: "actions/download-artifact@v4", with: { pattern: "gate-results-A*", path: "shard-results" } },
-      { run: `node ${COMPLETENESS_MODULE} --aggregate --input shard-results --out gate-results-A-aggregate.json` },
-      { if: "always()", uses: "actions/upload-artifact@v4", with: { name: "gate-results-A-aggregate", path: "gate-results-A-aggregate.json", "if-no-files-found": "error" } },
+      { run: `node ${COMPLETENESS_MODULE} --aggregate --input shard-results --out ${AGGREGATE_FILE}` },
+      { if: "always()", uses: "actions/upload-artifact@v4", with: { name: AGGREGATE_ARTIFACT, path: AGGREGATE_FILE, "if-no-files-found": "error" } },
     ],
   };
   jobs[ALERT_JOB_KEY] = {
@@ -775,6 +808,32 @@ export function runSelfTest(log = console.log) {
       return document;
     },
   }), "must not set merge-multiple");
+  expectError("the aggregate named back inside its own download pattern", wiring({
+    mutate: (document) => {
+      for (const step of document.jobs["class-a-shard-completeness"].steps) {
+        if (String(step.uses ?? "").includes("upload-artifact")) {
+          step.with.name = "gate-results-A-aggregate";
+          step.with.path = "gate-results-A-aggregate.json";
+        }
+        if (String(step.run ?? "").includes("--aggregate")) {
+          step.run = `node ${COMPLETENESS_MODULE} --aggregate --input shard-results --out gate-results-A-aggregate.json`;
+        }
+      }
+      return document;
+    },
+  }), "MATCHES its own download pattern");
+  // And the model itself, both directions, so the guard cannot pass by failing to
+  // understand the glob it is checking.
+  assert.equal(artifactPatternMatches("gate-results-A*", "gate-results-A-aggregate"), true);
+  assert.equal(artifactPatternMatches("gate-results-A*", "gate-results-A"), true);
+  assert.equal(artifactPatternMatches("gate-results-A*", "gate-results-A-shard-2"), true);
+  assert.equal(artifactPatternMatches("gate-results-A*", AGGREGATE_ARTIFACT), false);
+  assert.equal(artifactPatternMatches("gate-results-A*", "class-a-shard-aggregate"), false);
+  assert.equal(artifactPatternMatches("gate-results-?", "gate-results-A"), true);
+  assert.equal(artifactPatternMatches("gate-results-?", "gate-results-AB"), false);
+  assert.equal(artifactPatternMatches("", "anything"), false);
+  assertions += 8;
+
   expectError("a job key absent from the alert's needs", wiring({
     mutate: (document) => {
       document.jobs[ALERT_JOB_KEY].needs = document.jobs[ALERT_JOB_KEY].needs.filter((key) => key !== "static-gates-shard-2");
