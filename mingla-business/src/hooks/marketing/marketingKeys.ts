@@ -79,6 +79,17 @@ export const marketingKeys = {
     circle: (brandId: string, ring: "all" | "follower" | "extended"): readonly unknown[] =>
       [...marketingKeys.people.all(brandId), "circle", ring] as const,
   },
+  offeringInvites: {
+    all: ["business", "offeringInvitePlan"] as const,
+    plan: (eventId: string): readonly unknown[] =>
+      ["business", "offeringInvitePlan", eventId] as const,
+    quote: (eventId: string, selectionRevision: number): readonly unknown[] =>
+      ["business", "offeringInvitePlan", eventId, "quote", selectionRevision] as const,
+    activeBookPeople: (brandId: string, search: string | null): readonly unknown[] =>
+      ["business", "offeringInvitePlan", "people", brandId, search?.trim() ?? ""] as const,
+    manualGroups: (brandId: string): readonly unknown[] =>
+      ["business", "offeringInvitePlan", "manualGroups", brandId] as const,
+  },
   templates: {
     all: ["marketing", "templates"] as const,
     starter: ["marketing", "templates", "starter"] as const,

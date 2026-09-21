@@ -322,13 +322,15 @@ describe("issue #3047 — the RSVP publish / guest-status / Ari RPCs are deploy-
   });
 
   test("all seven routines ship in ONE migration, so no second set is stranded", () => {
+    // [TEST-MOD-APPROVED #1780] Compare each routine's FIRST post-head definer.
+    // A later migration (#1780 wizard invites) may legitimately redefine one
+    // routine; that does not strand the set #3047 shipped together.
     const files = ALL_RSVP_RPCS.map(
       (rpc) =>
         reachableDefinersOf(rpc)
           .filter((m) => m.version > PRODUCTION_HEAD_AT_FIX)
           .map((m) => m.file)
-          .sort()
-          .join(","),
+          .sort()[0],
     );
     expect(new Set(files).size).toBe(1);
     expect(files[0]).toContain("20270616003047");

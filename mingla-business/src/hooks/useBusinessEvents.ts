@@ -189,22 +189,28 @@ export const mergeServerAndLegacyLiveEvents = (
 };
 
 export const usePublishBusinessEventDraft = (): {
-  publishDraft: (draft: DraftEvent) => Promise<PublishedBusinessEvent>;
+  publishDraft: (
+    draft: DraftEvent,
+    invites?: { selectionRevision: number | null; confirmed: boolean },
+  ) => Promise<PublishedBusinessEvent>;
   isPending: boolean;
 } => {
   const queryClient = useQueryClient();
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
-  const mutation = useMutation<PublishedBusinessEvent, Error, DraftEvent>({
-    mutationFn: (draft) => {
+  const mutation = useMutation<PublishedBusinessEvent, Error, {
+    draft: DraftEvent;
+    invites?: { selectionRevision: number | null; confirmed: boolean };
+  }>({
+    mutationFn: ({ draft, invites }) => {
       // #1931 — a legacy draft already stored as `private` stays SELECTED in the wizard
       // but MUST NOT publish while Private ticket sales are not ready. This is the
       // CLIENT half only; `business_publish_event_draft` independently raises the typed
       // `private_access_not_ready`, so deleting this block cannot admit a Private publish.
       const blocked = privatePublishBlockReason(draft.visibility);
       if (blocked !== null) return Promise.reject(new Error(blocked));
-      return publishBusinessEventDraft(draft, draft.clientRevision ?? 0);
+      return publishBusinessEventDraft(draft, draft.clientRevision ?? 0, invites);
     },
-    onSuccess: (published, draft) => {
+    onSuccess: (published, { draft }) => {
       deleteDraft(draft.id);
       queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });
       queryClient.setQueryData<DraftEvent[]>(
@@ -233,7 +239,7 @@ export const usePublishBusinessEventDraft = (): {
   });
 
   return {
-    publishDraft: mutation.mutateAsync,
+    publishDraft: (draft, invites) => mutation.mutateAsync({ draft, invites }),
     isPending: mutation.isPending,
   };
 };

@@ -35,6 +35,7 @@ const createRsvpRequestId = (): string => {
 export const publishRsvpDraft = async (
   draft: DraftEvent,
   clientRevision: number | null = draft.clientRevision ?? null,
+  invites?: { selectionRevision: number | null; confirmed: boolean },
 ): Promise<PublishedBusinessEvent> => {
   void clientRevision;
   // I-PROPOSED-1150-RSVP-OWN-PUBLISH-RPC: this MUST call the RSVP publish RPC,
@@ -43,6 +44,12 @@ export const publishRsvpDraft = async (
   const { data, error } = await supabase.rpc("business_publish_rsvp_graph", {
     p_event_id: draft.id,
     p_client_request_id: createRsvpRequestId(),
+    ...(invites?.selectionRevision !== null && invites?.selectionRevision !== undefined
+      ? {
+          p_invite_selection_revision: invites.selectionRevision,
+          p_invite_selection_confirmed: invites.confirmed,
+        }
+      : {}),
   });
 
   // issue #3047 — `error` here is a PostgREST PLAIN OBJECT, not an Error. Thrown

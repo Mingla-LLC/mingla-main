@@ -85,6 +85,23 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     if (/(orderRefundService|publishedEventEditGuards|tierEditGuardCopy|eventCoverMediaService|businessEvents|pricingSwitchesService|refundPolicyWrites|refundPolicyTerms)$/.test(name)) return {};
     if (name === "@mingla/brand-assets") return { MINGLA_BUSINESS_LOGO: 1 };
     if (name.endsWith("/createDeferredTurnoutIntelProvider")) return { createDeferredTurnoutIntelProvider: () => leaf("IntelProvider") };
+    // #1780: the create host now also mounts the invite-selection surfaces
+    // (Your Book picker, review summary, publish confirmation) and the #3446
+    // Android back hook. None of them is this suite's subject — the typed
+    // guest count on Step 5 and the host/edit parity are — so they are
+    // substituted as inert leaves and hooks, exactly like the other
+    // infrastructure boundaries above. The invite flag is off, which is the
+    // shipped default, so the invite step is not in the create host's stepper.
+    // Real invite behaviour is proved by the #1780 suites.
+    if (name.endsWith("/context/AuthContext")) return { useAuth: () => ({ isAuthReady: true, user: { id: "issue-3402-user" }, signOut: jest.fn() }) };
+    if (name.endsWith("/useFeatureFlag")) return { useFeatureFlag: () => ({ data: false, isLoading: false }) };
+    // [TEST-MOD-APPROVED #1780] One summary, shared by the hook classifier and
+    // the lazy module bridge below.
+    const inviteSummaryStub = { plan: { data: undefined }, quote: { data: undefined }, refreshAuthoritative: async () => ({ plan: null, quote: null }) };
+    if (name.endsWith("/useOfferingInvitePlan")) return { useOfferingInvitePlanSummary: () => inviteSummaryStub };
+    if (name.endsWith("/useWizardHardwareBack")) return { useWizardHardwareBack: () => undefined };
+    if (name.endsWith("/LazyInvitePeopleStep")) return { InvitePlanSummaryBridge: ({ onChange }: { onChange: (s: unknown) => void }) => { const R = require("react"); R.useEffect(() => { onChange(inviteSummaryStub); }, [onChange]); return null; }, PENDING_WIZARD_INVITE_SUMMARY: { plan: { data: undefined, isPending: true, isFetching: true, isError: false }, quote: { data: undefined, isPending: true, isFetching: true, isError: false }, refreshAuthoritative: async () => ({ plan: null, quote: null }) }, InvitePeopleStep: leaf("InvitePeopleStep"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary") }; // [TEST-MOD-APPROVED #1780] lazy owner, same inert leaves
+    if (name.endsWith("/InvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary") };
     const exportName = name.split("/").pop()!;
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep7Preview|PublishErrorsSheet|ChangeSummaryModal|EditAfterPublishBanner|ThemeControlRow|ThemeSheet)$/.test(exportName)) return { [exportName]: leaf(exportName) };
     throw new Error(`Unclassified host boundary: ${name}`);
