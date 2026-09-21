@@ -79,10 +79,17 @@ Deno.test("#3526 TESTER-DEFECT — EVERY derived Gemini sender sets thinking_lev
   // bills those tokens as output at $3.75/1M. The implementor's suite asserts
   // this over a hand-written list of six files; this one derives the list, and
   // the four public growth tools fall out of the gap.
+  // issue #3526 round 2 — COUNT the requests, do not merely detect one. A
+  // presence check passed `growth-tools-run`, which builds TWO requests, when
+  // the thinking line was deleted from one of them. Caught by the implementor's
+  // own fails-on-revert run; strengthened here too so the two suites do not
+  // share a blind spot.
   const missing: string[] = [];
   for (const abs of deriveGeminiSenders()) {
     const src = Deno.readTextFileSync(abs).replace(/\/\/[^\n]*/g, "");
-    if (!/thinkingConfig\s*:\s*\{\s*thinking_level/.test(src)) missing.push(short(abs));
+    const configs = (src.match(/generationConfig\s*:/g) ?? []).length;
+    const levels = (src.match(/thinkingConfig\s*:\s*\{\s*thinking_level/g) ?? []).length;
+    if (levels < configs) missing.push(`${short(abs)} (${levels}/${configs})`);
   }
   assertEquals(
     missing,

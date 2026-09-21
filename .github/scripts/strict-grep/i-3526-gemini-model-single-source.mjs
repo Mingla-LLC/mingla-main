@@ -265,6 +265,23 @@ export function checkSources(files, modelId) {
         `owner is exactly how competitor-intel-worker kept calling the retired model.`,
       );
     }
+    // issue #3526 round 2 — the owner was FULLY exempt, so a retired model's
+    // spelling could sit inside it untouched: restoring the all-hyphen
+    // `ai.google.dev/pricing/gemini-2-5-flash` pricing URL left the gate at
+    // PASS. Found by the fails-on-revert run. The owner may name exactly ONE
+    // model — the one it declares — and nothing else.
+    if (isOwner && modelId) {
+      const canonical = modelId.replace(/\./g, "-");
+      for (const hit of normalized.match(MODEL_LITERAL_G) ?? []) {
+        if (hit.toLowerCase() !== modelId && hit.toLowerCase() !== canonical) {
+          failures.push(
+            `G-1 ${rel}: the single source names "${hit}" as well as its declared ` +
+            `"${modelId}". The owner may name exactly one model; a second ` +
+            `spelling here is a stale reference the next repin will miss.`,
+          );
+        }
+      }
+    }
     const legacyThinking = THINKING_BUDGET.exec(code);
     if (legacyThinking) {
       failures.push(
@@ -407,6 +424,16 @@ function runSelfTest() {
     {
       name: "G-1 scope: the owner file itself may declare the literal",
       files: [{ rel: OWNER, source: OK_OWNER }],
+      expect: 0,
+    },
+    {
+      name: "G-1 REVERT: the owner carrying a SECOND, retired model spelling",
+      files: [{ rel: OWNER, source: OK_OWNER + '\nconst u = "https://ai.google.dev/pricing/gemini-2-5-flash";' }],
+      expect: 1,
+    },
+    {
+      name: "G-1 scope: the owner may repeat its OWN id in the hyphen form",
+      files: [{ rel: OWNER, source: OK_OWNER + '\nconst u = "https://x/pricing/gemini-3-6-flash";' }],
       expect: 0,
     },
     {

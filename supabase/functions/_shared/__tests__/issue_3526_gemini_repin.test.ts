@@ -212,8 +212,17 @@ Deno.test("#3526 EVERY derived Gemini sender sets thinking_level and none sends 
   const legacyParam: string[] = [];
   for (const path of senders) {
     const code = (byPath.get(path) ?? "").replace(/\/\/[^\n]*/g, "");
-    if (!code.includes("thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL }")) {
-      missingThinking.push(path);
+    // COUNT, don't just detect. `growth-tools-run` builds TWO requests — an
+    // ungrounded structured pass and a grounded competition pass — and a
+    // presence check was satisfied by either one. Deleting the thinking line
+    // from one of the two left this test green, which the fails-on-revert run
+    // caught. Every generationConfig a sender builds must carry the level.
+    const configs = (code.match(/generationConfig\s*:/g) ?? []).length;
+    const levels =
+      (code.match(/thinkingConfig:\s*\{\s*thinking_level:\s*GEMINI_THINKING_LEVEL_MINIMAL\s*\}/g) ?? [])
+        .length;
+    if (levels < configs) {
+      missingThinking.push(`${path} (${levels}/${configs} requests)`);
     }
     if (new RegExp(LEGACY_THINKING_PARAM).test(code)) legacyParam.push(path);
   }
