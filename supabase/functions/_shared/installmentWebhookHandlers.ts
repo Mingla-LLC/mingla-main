@@ -25,6 +25,10 @@
 // @ts-ignore — Deno ESM import
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { writeAudit } from "./audit.ts";
+// The one reader of a PaymentIntent's charge id. The router imports this
+// module too; the cycle is safe because both sides only export function
+// declarations and neither calls the other while the module loads.
+import { paymentIntentChargeId } from "./stripeWebhookRouter.ts";
 
 type StripeWebhookEvent = {
   type: string;
@@ -101,10 +105,11 @@ export async function handleInstallmentPaymentSucceeded(
     ? metadata["mingla_brand_id"]
     : null;
 
-  // Charge id from PI (Stripe expands latest_charge by default for many events).
-  const charges = pi["charges"] as { data?: Array<Record<string, unknown>> } | undefined;
-  const latestCharge = charges?.data?.[0] ?? null;
-  const chargeId = latestCharge !== null ? objectString(latestCharge, "id") : null;
+  // Charge id from the PaymentIntent. The pinned Stripe API sends
+  // `latest_charge` (an id, or an object when expanded) and no `charges` list,
+  // so reading only `charges.data[0]` saved a null charge id on every
+  // collected installment. The shared helper reads `latest_charge` first.
+  const chargeId = paymentIntentChargeId(pi);
 
   // Predicate-bound UPDATE: only mark collected if row is still scheduled.
   // Idempotent — concurrent cron + webhook arrivals serialize safely.
