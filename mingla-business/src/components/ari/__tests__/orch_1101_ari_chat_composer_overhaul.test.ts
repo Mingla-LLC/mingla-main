@@ -126,10 +126,26 @@ describe("ORCH-1101 · Bug A — composer is one line tall on web (no bottom gap
     expect(inputBar).toMatch(/Platform\.OS === ["']web["']/);
   });
 
-  it("makes AriChatScreen inputWrap.paddingBottom platform-aware (web → spacing.sm, no phantom 80px)", () => {
-    // The web branch must short-circuit to spacing.sm BEFORE the keyboard/nav math.
+  it("makes AriChatScreen inputWrap.paddingBottom WIDTH-aware (wide desktop web → spacing.sm, no phantom 80px; narrow web → nav clearance) [TEST-MOD-APPROVED #3460]", () => {
+    // [TEST-MOD-APPROVED #3460] The original form of this assertion pinned
+    // `Platform.OS === "web" ? spacing.sm` — which is the DEFECT #3460 fixed,
+    // not the contract ORCH-1101 meant. ORCH-1101's real premise was "wide
+    // desktop web has a left rail, not a floating BottomNav capsule". That is a
+    // WIDTH condition; it shipped as a PLATFORM condition, so it also stripped
+    // the clearance from every web viewport under WIDE_DESKTOP_MIN_WIDTH (1024),
+    // where the capsule DOES exist and captured every tap meant for the Attach
+    // button, the input and Send (147 of 147 sampled points returned a nav
+    // element on real mobile Safari at 402x714).
+    //
+    // What ORCH-1101 actually guarded is UNCHANGED and still asserted: wide
+    // desktop web still short-circuits to spacing.sm and still never reaches the
+    // phantom 80px. Only the gate it hangs off moved from the platform to the
+    // width, via the same `useResponsiveLayout()` hook the nav itself reads
+    // (I-DESKTOP-GATE-VIA-HOOK). The narrow-web value is proven by execution in
+    // src/screens/ari/__tests__/issue_3460_ari_composer_narrow_web_clearance
+    // .happy.test.ts, not by this string.
     expect(chatScreen).toMatch(
-      /paddingBottom:\s*[\s\S]*?Platform\.OS === ["']web["']\s*\?\s*spacing\.sm/,
+      /paddingBottom:\s*[\s\S]*?Platform\.OS === ["']web["']\s*\?\s*isWideDesktop\s*\?\s*spacing\.sm/,
     );
     // The phantom-80px clearance is still present for native, gated behind the
     // non-web keyboard branch (BOTTOM_NAV_CLEARANCE_PX kept for native).
