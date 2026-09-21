@@ -90,20 +90,36 @@ const HOST_PADDING_BOTTOM = spacing.xxl;
  * as fitting the orb, and measuring cannot tell us the difference: `onLayout`
  * reports the box, never the ink.
  *
+ * The ink runs `halo` past the box ABOVE it too, which is why the top offset
+ * below is floored at the halo: without that the halo is clipped by the chat
+ * column's own top edge, which is exactly what it did on an iPhone SE at
+ * accessibility-medium.
+ *
  * AriOrb owns these numbers; this is a mirror, and AriOrb is outside this
  * rework's file allowlist. The mirror cannot drift silently — T-11 in
- * issue_3429_ari_rework4_empty_state_priority.implementor.test.ts reads
+ * issue_3429_ari_rework4_empty_state_priority.implementor.test.tsx reads
  * AriOrb.tsx and fails if either table there stops agreeing with this one.
  *
  * Below the smallest entry the orb is hidden rather than shrunk further: `sm`
  * is the size the assistant bubble already uses, so it is a real designed
  * appearance; anything under it is a dot, not the Ari mark.
  */
-const ORB_LADDER: { size: AriOrbSize; paintsBelowBoxTopPx: number }[] = [
-  { size: "lg", paintsBelowBoxTopPx: 56 + 18 },
-  { size: "md", paintsBelowBoxTopPx: 32 + 10 },
-  { size: "sm", paintsBelowBoxTopPx: 24 + 6 },
+const ORB_LADDER: { size: AriOrbSize; dimPx: number; haloPx: number }[] = [
+  { size: "lg", dimPx: 56, haloPx: 18 },
+  { size: "md", dimPx: 32, haloPx: 10 },
+  { size: "sm", dimPx: 24, haloPx: 6 },
 ];
+
+/**
+ * How much room the decorative content leaves above itself, at minimum.
+ *
+ * It is the LARGEST halo on the ladder, not the chosen rung's — deliberately.
+ * A per-rung floor would make the content's top position depend on which rung
+ * won, so the hero would shift whenever the orb changed size. One constant
+ * keeps the top edge a function of the measurements alone, and it clears every
+ * rung's ink by construction.
+ */
+const ORB_INK_HEADROOM_PX = Math.max(...ORB_LADDER.map((step) => step.haloPx));
 
 /** Track a subtree's measured height without re-rendering on equal values. */
 function useMeasuredHeight(): [number, (event: LayoutChangeEvent) => void] {
@@ -162,27 +178,34 @@ export const EmptyState: React.FC = () => {
   const [bodyBottomPx, handleBodyLayout] = useRowBottom();
 
   const measured = restingHeightPx > 0 && heroContentPx > 0 && hintHeightPx > 0;
-  // Where the decorative content starts, from the top of the resting box. This
-  // is exactly what `justifyContent: "center"` used to resolve to for the whole
-  // group, and it does not reference the clamp — so it never moves.
-  const heroTopOffsetPx = Math.max(
-    0,
-    Math.round((restingHeightPx - HOST_PADDING_BOTTOM - heroContentPx - hintHeightPx) / 2),
+  // What `justifyContent: "center"` used to resolve to for the whole group. It
+  // does not reference the clamp, so it never moves.
+  const centredTopOffsetPx = Math.round(
+    (restingHeightPx - HOST_PADDING_BOTTOM - heroContentPx - hintHeightPx) / 2,
   );
   // How much of the resting box is still visible once the clamp lifts the
-  // bottom edge to the composer's top...
+  // bottom edge to the composer's top.
   const visibleHeightPx = restingHeightPx - viewportBottomClampPx - HOST_PADDING_BOTTOM;
-  // ...and what the decorative zone may occupy once the hint row has taken its
-  // share of it. Capped, never margined: a margin is not shrinkable, so at an
-  // extreme clamp (tall attachment tray + keyboard on a small phone) it would
-  // push the hint row off the visible box — the exact failure this fix ends.
-  const heroMaxHeightPx = Math.max(0, visibleHeightPx - hintHeightPx - heroTopOffsetPx);
-  // The largest orb whose INK fits the decorative zone. Stepping down through
-  // AriOrb's own sizes keeps the halo a circle at every keyboard height; the
-  // choice reads only the cap and the constants above, never a measurement of
-  // the orb, so it cannot feed back into the layout that produced the cap.
+
+  // Where the decorative content starts, from the top of the resting box —
+  // centred, but never so high that an orb's halo would be cut by the chat
+  // column's own top edge. Keyboard-independent either way, so it never moves.
+  const heroTopOffsetPx = measured
+    ? Math.max(ORB_INK_HEADROOM_PX, centredTopOffsetPx)
+    : 0;
+  // What the decorative zone may occupy once the hint row has taken its share.
+  // Capped, never margined: a margin is not shrinkable, so at an extreme clamp
+  // (tall attachment tray + keyboard on a small phone) it would push the hint
+  // row off the visible box — the exact failure REWORK-4 ended.
+  const heroMaxHeightPx = measured
+    ? Math.max(0, visibleHeightPx - hintHeightPx - heroTopOffsetPx)
+    : 0;
+  // The largest orb whose INK fits below that offset. Stepping down through
+  // AriOrb's own sizes keeps the halo a circle at every keyboard height, and
+  // the choice reads only the cap and the constants above — never a measurement
+  // of the orb — so it cannot feed back into the layout that produced the cap.
   const orb = measured
-    ? ORB_LADDER.find((step) => step.paintsBelowBoxTopPx <= heroMaxHeightPx)
+    ? ORB_LADDER.find((step) => step.dimPx + step.haloPx <= heroMaxHeightPx)
     : ORB_LADDER[0];
   // A text row that cannot be shown IN FULL is not shown. The rows are in
   // document order, so hiding one always hides the ones below it and never

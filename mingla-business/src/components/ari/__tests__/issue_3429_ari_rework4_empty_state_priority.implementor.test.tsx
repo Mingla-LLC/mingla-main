@@ -136,6 +136,8 @@ const SCALES = [
 ] as const;
 
 const HOST_PADDING_BOTTOM = spacing.xxl;
+/** Mirrors ORB_INK_HEADROOM_PX: the largest halo on the ladder. */
+const ORB_INK_HEADROOM = 18;
 
 interface Mounted {
   host: Record<string, unknown>;
@@ -293,10 +295,12 @@ describe("#3429 REWORK-4 N-1 — the attach hint is the last content dropped", (
       for (const scale of SCALES) {
         const m = mount(device.restingHeightPx, 0, scale.heroPx, scale.hintPx);
         const contentBox = device.restingHeightPx - HOST_PADDING_BOTTOM;
-        // (a) The hero starts exactly where `justifyContent: "center"` used to
-        // put the group — the resting layout did not move.
+        // (a) The hero starts where `justifyContent: "center"` used to put the
+        // group — floored at the orb's ink headroom, so a halo is never cut by
+        // the chat column's top edge. On every unclamped combination here the
+        // centred value wins, so the resting layout did not move.
         const centred = Math.round((contentBox - scale.heroPx - scale.hintPx) / 2);
-        expect(heroTop(m)).toBe(Math.max(0, centred));
+        expect(heroTop(m)).toBe(Math.max(ORB_INK_HEADROOM, centred));
 
         if (scale.heroPx + scale.hintPx <= contentBox) {
           // (b) The content fits, so nothing is capped and the hint sits
@@ -451,7 +455,7 @@ describe("#3429 REWORK-4 N-1 — the attach hint is the last content dropped", (
     const halo = table(orbSource, "HALO_MULT_PX");
 
     const ladder = [...emptySource.matchAll(
-      /\{\s*size:\s*"(\w+)",\s*paintsBelowBoxTopPx:\s*(\d+)\s*\+\s*(\d+)\s*\}/g,
+      /\{\s*size:\s*"(\w+)",\s*dimPx:\s*(\d+),\s*haloPx:\s*(\d+)\s*\}/g,
     )].map(([, size, a, b]) => ({ size, a: Number(a), b: Number(b) }));
     expect(ladder.length).toBeGreaterThanOrEqual(3);
 
