@@ -127,6 +127,26 @@ export const FREE_CHECKOUT_INTAKE_STALE_MESSAGE =
   "The organizer updated this event's questions, so the answers you gave are out of date. Reopen the tickets and answer them again — nothing was reserved.";
 
 /**
+ * issue #3351 [free trip intake loop] — THE REFUSAL THAT USED TO IMPLY A
+ * DUPLICATE.
+ *
+ * `ticket-checkout-create` answers `400 {"error":"intake_form_required", ...}`
+ * (index.ts:1077-1086) when a trip tier's required questions have no non-empty
+ * answer. That token was absent from the table below, so the mapper fell all
+ * the way through to FREE_CHECKOUT_UNKNOWN_MESSAGE — "Your ticket may already
+ * be reserved" — under a refusal raised BEFORE anything is written. Verified
+ * at runtime on buyer web (#3351 investigation, Lap D).
+ *
+ * "Nothing was reserved" is provably true here, to the same standard the
+ * nineteen raise sentences meet: no insert, upsert, update or rpc executes in
+ * that request path before the intake gate at index.ts:1017. The sentence names
+ * who wants what, says what to do next, and names no button — so it reads
+ * correctly on every surface that shares this mapper.
+ */
+export const FREE_CHECKOUT_INTAKE_REQUIRED_MESSAGE =
+  "The organiser asks everyone a few questions before this spot can be held. Answer them, then reserve again — nothing was reserved.";
+
+/**
  * issue #2511 item 6 — THE HONEST ANSWER WHEN WE DO NOT KNOW.
  *
  * This replaces FREE_CHECKOUT_FAILED_MESSAGE on the terminal arm. That arm is
@@ -223,6 +243,8 @@ export const FREE_CHECKOUT_MESSAGES: readonly string[] = [
   FREE_CHECKOUT_SOLD_OUT_MESSAGE,
   FREE_CHECKOUT_CONFLICT_MESSAGE,
   FREE_CHECKOUT_INTAKE_STALE_MESSAGE,
+  // issue #3351
+  FREE_CHECKOUT_INTAKE_REQUIRED_MESSAGE,
   // issue #2511
   FREE_CHECKOUT_UNKNOWN_MESSAGE,
   ...Object.values(FREE_CHECKOUT_MESSAGE_BY_RAISE),
@@ -369,6 +391,10 @@ const FREE_CHECKOUT_MESSAGE_BY_CODE: Readonly<Record<string, string>> = Object
     checkout_finalize_failed: FREE_CHECKOUT_CONFLICT_MESSAGE,
     // The organizer moved the intake schema under the answers. (index.ts:751)
     intake_schema_stale: FREE_CHECKOUT_INTAKE_STALE_MESSAGE,
+    // issue #3351 — a trip tier's required questions have no answer yet.
+    // Raised BEFORE any write, so "nothing was reserved" is provable.
+    // (ticket-checkout-create/index.ts:1077-1086)
+    intake_form_required: FREE_CHECKOUT_INTAKE_REQUIRED_MESSAGE,
   });
 
 const lookup = (code: string | null): string | undefined =>

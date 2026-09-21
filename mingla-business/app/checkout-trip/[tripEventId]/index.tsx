@@ -55,6 +55,11 @@ import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { decideAutoSkip } from "./autoSkipDecision";
 import { tripFunnelTotalSteps } from "./tripFunnelSteps";
 import {
+  tripCounterShape,
+  tripIntakeState,
+  type TripIntakeState,
+} from "./tripCheckoutStepOrder";
+import {
   parseSeededTripLines,
   resolveSeededCartPlanChoice,
 } from "../../../src/components/trip/tripCartPlanChoice";
@@ -199,15 +204,37 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   const intakeSchemasQuery = useTripIntakeSchemasByEvent(tripEventId ?? "", {
     enabled: tripEventId !== null,
   });
-  const hasAnyIntakeSchema = React.useMemo<boolean>(() => {
-    if (intakeSchemasQuery.data === undefined || trip === null) return false;
-    for (const tier of trip.pricingTiers) {
-      const schema = intakeSchemasQuery.data.get(tier.ticketTypeId);
-      if (schema !== undefined && schema.questions.length > 0) return true;
-    }
-    return false;
-  }, [intakeSchemasQuery.data, trip]);
-  const totalSteps = tripFunnelTotalSteps(hasAnyIntakeSchema);
+  // issue #3351 [free trip intake loop] — presence is read through the step
+  // ORDER owner so this screen holds no second hand-rolled predicate over the
+  // schema query. The cart is empty on first mount, so the probe runs over ALL
+  // the trip's tiers (a stable answer) rather than over cart lines.
+  const intakeState = React.useMemo<TripIntakeState>(
+    () =>
+      tripIntakeState({
+        lines: trip === null ? [] : trip.pricingTiers,
+        // issue #3351 P2-1 — the cart step's intake facts are settled only once
+        // BOTH the trip's tiers and the schema read are in. Passing the schema
+        // map while the trip is still loading would report "no questions" for a
+        // trip whose tiers are not known yet, and the counter would then grow.
+        schemas: trip === null ? undefined : intakeSchemasQuery.data,
+        committed: {},
+      }),
+    [intakeSchemasQuery.data, trip],
+  );
+  // issue #3351 — the total is `isFree`-aware: a FREE cart never reaches the
+  // payment step, so free+intake is 3 and free+no-intake is 2.
+  // P2-1 — and it is derived FAIL-CLOSED. This is the screen the defect was
+  // visible on: the cart is empty until a tier is picked, `useCartTotals()`
+  // reports an empty cart as NOT free, so a multi-tier free trip opened at
+  // "1 OF 4" and flipped to "1 OF 3" on the first tap. With no cart line the
+  // trip's own tiers answer it instead.
+  const counterShape = tripCounterShape({
+    cartIsFree: totals.isFree,
+    cartIsEmpty: totals.isEmpty,
+    tiers: trip === null ? undefined : trip.pricingTiers,
+    intake: intakeState,
+  });
+  const totalSteps = tripFunnelTotalSteps(counterShape);
 
   // ORCH-1130 ADDENDUM (Seth-BINDING) — the price shown beside the Continue CTA
   // (the Subtotal) follows the current pay-full vs pay-over-time selection

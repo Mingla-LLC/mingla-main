@@ -101,10 +101,14 @@ describe("ORCH-1178 happy — single-tier trip stays on the cart step", () => {
     expect(src).toContain("multiSeedNavigatedRef.current = true");
   });
 
-  test("counter: a no-intake trip reads 1 OF 3 / 2 OF 3 / 3 OF 3 (index/buyer/payment)", () => {
-    expect(tripFunnelTotalSteps(false)).toBe(3);
+  test("counter: a PAID no-intake trip reads 1 OF 3 / 2 OF 3 / 3 OF 3 (index/buyer/payment); a FREE one reads 1 OF 2 / 2 OF 2", () => {
+    expect(tripFunnelTotalSteps({ isFree: false, hasIntake: false })).toBe(3);
+    // issue #3351 — a FREE cart never reaches the payment step, so its funnel is
+    // cart → details = 2. This suite previously asserted 3 for every no-intake
+    // trip, free or paid, which is the wrong expectation the free rail was told.
+    expect(tripFunnelTotalSteps({ isFree: true, hasIntake: false })).toBe(2);
     // index stepIndex 0 → "1 OF 3"; buyer stepIndex 1 → "2 OF 3".
-    expect(tripPaymentStepIndex(false)).toBe(2); // payment "3 OF 3".
+    expect(tripPaymentStepIndex({ isFree: false, hasIntake: false })).toBe(2); // payment "3 OF 3".
     // index.tsx renders the cart step at "1 OF N".
     const idx = strip(read("index.tsx"));
     expect(idx).toContain("stepIndex={0}");
@@ -157,26 +161,43 @@ describe("ORCH-1178 adversarial", () => {
     );
   });
 
-  test("(d) intake-required trip reads N=4 across the funnel (index/buyer 1..2, intake 3, payment 4)", () => {
-    expect(tripFunnelTotalSteps(true)).toBe(4);
+  test("(d) an intake trip reads N=4 across a PAID funnel and N=3 across a FREE one, and the intake pill's denominator comes from the owner", () => {
+    expect(tripFunnelTotalSteps({ isFree: false, hasIntake: true })).toBe(4);
     // payment is the LAST step → stepIndex 3 ("4 OF 4").
-    expect(tripPaymentStepIndex(true)).toBe(3);
-    // The intake page renders its own inline "3 OF {free?3:4}" header.
+    expect(tripPaymentStepIndex({ isFree: false, hasIntake: true })).toBe(3);
+    // issue #3351 — free + intake is cart → details → intake = 3. The old N=4
+    // claim was the wrong expectation: the details step said "2 OF 4" while the
+    // intake screen it pushed to said "3 OF 3".
+    expect(tripFunnelTotalSteps({ isFree: true, hasIntake: true })).toBe(3);
+    // The intake page still renders its own inline "3 OF N" header, but the
+    // denominator is now derived from tripFunnelSteps rather than a literal.
     const intake = strip(read("intake.tsx"));
-    expect(intake).toMatch(/3 OF \{totals\.isFree \? 3 : 4\}/);
+    expect(intake).toMatch(/3 OF \{tripFunnelTotalSteps\(/);
+    expect(intake).not.toMatch(/totals\.isFree \? 3 : 4/);
     // index + buyer + payment derive totalSteps from the intake-aware helper.
     for (const f of ["index.tsx", "buyer.tsx", "payment.tsx"]) {
       expect(strip(read(f))).toMatch(/tripFunnelTotalSteps\(/);
     }
   });
 
-  test("the pure helpers are total + correct for both branches", () => {
-    expect(tripFunnelTotalSteps(false)).toBe(3);
-    expect(tripFunnelTotalSteps(true)).toBe(4);
-    expect(tripPaymentStepIndex(false)).toBe(2);
-    expect(tripPaymentStepIndex(true)).toBe(3);
-    // last-step index is always total - 1.
-    expect(tripPaymentStepIndex(false)).toBe(tripFunnelTotalSteps(false) - 1);
-    expect(tripPaymentStepIndex(true)).toBe(tripFunnelTotalSteps(true) - 1);
+  test("the pure helpers are total + correct for all FOUR {isFree, hasIntake} shapes", () => {
+    // issue #3351 — the helpers took one boolean (hasIntake) and were blind to
+    // isFree, so the free rail was given the paid totals. All four shapes now.
+    expect(tripFunnelTotalSteps({ isFree: false, hasIntake: false })).toBe(3);
+    expect(tripFunnelTotalSteps({ isFree: false, hasIntake: true })).toBe(4);
+    expect(tripFunnelTotalSteps({ isFree: true, hasIntake: false })).toBe(2);
+    expect(tripFunnelTotalSteps({ isFree: true, hasIntake: true })).toBe(3);
+    expect(tripPaymentStepIndex({ isFree: false, hasIntake: false })).toBe(2);
+    expect(tripPaymentStepIndex({ isFree: false, hasIntake: true })).toBe(3);
+    expect(tripPaymentStepIndex({ isFree: true, hasIntake: false })).toBe(1);
+    expect(tripPaymentStepIndex({ isFree: true, hasIntake: true })).toBe(2);
+    // last-step index is always total - 1, in every shape.
+    for (const isFree of [false, true]) {
+      for (const hasIntake of [false, true]) {
+        expect(tripPaymentStepIndex({ isFree, hasIntake })).toBe(
+          tripFunnelTotalSteps({ isFree, hasIntake }) - 1,
+        );
+      }
+    }
   });
 });
