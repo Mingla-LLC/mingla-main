@@ -16810,7 +16810,7 @@
       "providerWorkflow": ".github/workflows/issue-1985-ari-task-state.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "f05668cad33a108158cf0f119f5bb6dfd4087196204703a42436b067b7f7df91",
+        "sourceSha256": "4e0161d9236f27354bba3c5bdba21f6d3524ac4c32aca2f204c8e6db1a4d0b58",
         "triggers": [
           "pull_request",
           "push"
@@ -16861,10 +16861,13 @@
           "supabase/functions/_shared/__tests__/issue_1985_rework2_integrity.test.ts",
           "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts",
           "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts",
-          "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_rework1.implementor.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_attachment_reclaim.implementor.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_turn_control_auth_order.implementor.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_attachment_boundaries.tester.adversarial.test.ts",
+          "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_boundaries.tester.adversarial.test.ts",
+          "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_reclaim.implementor.test.ts",
+          "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_rework1.implementor.test.ts",
           "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_structure.adversarial.test.ts",
           "supabase/functions/_shared/__tests__/issue_3429_ari_attachments.implementor.test.ts",
           "supabase/functions/_shared/__tests__/issue_3429_ari_failure_copy.snapshot.json",
+          "supabase/functions/_shared/__tests__/issue_3429_ari_turn_control_auth_order.implementor.test.ts",
           "supabase/functions/_shared/agentAttachmentFinalize.ts",
           "supabase/functions/_shared/agentAttachments.ts",
           "supabase/functions/_shared/agentChoices.ts",
