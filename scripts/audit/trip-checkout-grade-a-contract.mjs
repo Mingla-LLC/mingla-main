@@ -18,7 +18,23 @@ const ROUTES = [
   },
   {
     file: "intake.tsx",
-    mustInclude: ["schemasQuery.isLoading", "lines.length === 0", "createTicketCheckout"],
+    // issue #3351 [free trip intake loop] — this route's third marker was
+    // `createTicketCheckout`. DO NOT RESTORE IT. That marker encoded the
+    // pre-#3351 arrangement in which the intake screen was expected to submit
+    // the free reservation, and that arrangement is what produced the defect:
+    // two screens each naming the other as the finisher, with nothing recording
+    // that the questions had been answered, so a free trip with any question
+    // bounced forever and made ZERO reservation requests. Submission now lives
+    // at exactly ONE call site in buyer.tsx, where this audit still requires
+    // the marker. This screen's contract is the opposite one, so it is asserted
+    // in both directions: it must route through the step-order owner, and it
+    // must not submit.
+    mustInclude: [
+      "schemasQuery.isLoading",
+      "lines.length === 0",
+      'nextTripCheckoutStep("intake"',
+    ],
+    mustExclude: ["createTicketCheckout"],
     label: "intake",
   },
   {
@@ -62,6 +78,13 @@ for (const route of ROUTES) {
   for (const snippet of route.mustInclude) {
     if (!text.includes(snippet)) {
       fail(`${route.label} (${route.file}) missing required marker: ${snippet}`);
+    }
+  }
+  // issue #3351 — some contracts are about what a route must NOT do. A
+  // presence-only audit cannot catch a second submit path being reintroduced.
+  for (const snippet of route.mustExclude ?? []) {
+    if (text.includes(snippet)) {
+      fail(`${route.label} (${route.file}) must NOT contain: ${snippet}`);
     }
   }
 }
