@@ -115,6 +115,7 @@ import { tripFunnelTotalSteps } from "./tripFunnelSteps";
 // between this screen and /intake forever and made zero reservation requests.
 import {
   nextTripCheckoutStep,
+  tripCounterShape,
   tripIntakeFormDataArray,
   tripIntakeState,
   type TripIntakeState,
@@ -194,6 +195,15 @@ const NAME_MIN_CHARS = 2;
  * This lives here, not in `checkoutErrorCopy.ts`: it describes a client-side
  * read failure, not one of the server's bounded refusal tokens.
  */
+/**
+ * issue #3351 P2-2 — the primary control is correctly disabled while the intake
+ * schema read is in flight, and a control that does nothing without saying why
+ * is the dead-tap pattern the Constitution's rule 1 exists to stop. Same voice
+ * as the failure sentence below; it makes no claim that anything is held.
+ */
+const INTAKE_SCHEMA_LOADING_MESSAGE =
+  "Checking whether the organiser has any questions for you. Nothing is reserved yet.";
+
 const INTAKE_SCHEMA_UNAVAILABLE_MESSAGE =
   "We could not load this trip's questions, so we cannot hold your spot yet. Go back and reopen this trip to try again — nothing was reserved.";
 
@@ -320,10 +330,17 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   // same `hasIntake` fact the routing turns on, so the counter and the routing
   // can never disagree, and the denominator never moves mid-flow because it does
   // not read `intakeComplete`.
-  const totalSteps = tripFunnelTotalSteps({
-    isFree: totals.isFree,
-    hasIntake: intakeState.hasIntake,
+  // issue #3351 P2-1 — the counter reads the FAIL-CLOSED shape, never the raw
+  // facts: an unsettled schema read must not shrink the total on a trip that
+  // does ask questions. `handleContinue` still reads the raw `intakeState`,
+  // because navigation must WAIT for the truth rather than assume it.
+  const counterShape = tripCounterShape({
+    cartIsFree: totals.isFree,
+    cartIsEmpty: totals.isEmpty,
+    tiers: trip?.pricingTiers,
+    intake: intakeState,
   });
+  const totalSteps = tripFunnelTotalSteps(counterShape);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -774,6 +791,10 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
             </Text>
           </View>
         ) : null}
+        {/* issue #3351 P2-2 — why the control below is not tappable yet. */}
+        {intakeSchemasQuery.isError === false && intakeState.settled === false ? (
+          <Text style={styles.pendingNote}>{INTAKE_SCHEMA_LOADING_MESSAGE}</Text>
+        ) : null}
         <Button
           label={continueLabel}
           onPress={handleContinue}
@@ -952,6 +973,15 @@ const styles = StyleSheet.create({
     borderTopColor: "rgba(255, 255, 255, 0.06)",
   },
   bottomBarHidden: { transform: [{ translateY: 200 }] },
+  // issue #3351 P2-2 — a quiet explanatory note, not an error: it sits above the
+  // disabled primary control and reads in the secondary text tone.
+  pendingNote: {
+    marginBottom: spacing.sm,
+    fontSize: 12,
+    lineHeight: 17,
+    color: textTokens.tertiary,
+    fontWeight: "500",
+  },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",

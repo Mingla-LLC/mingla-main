@@ -85,8 +85,10 @@ import {
 // both live in the step-order owner now, so the trip route holds exactly one
 // copy of each.
 import {
+  tripCounterShape,
   tripIntakeFormDataArray,
   tripIntakeState,
+  type TripIntakeState,
 } from "./tripCheckoutStepOrder";
 import { supabase } from "../../../src/services/supabase";
 
@@ -623,23 +625,26 @@ function CheckoutTripPaymentScreenContent({
   // hand-rolled predicate, and the total is `isFree`-aware. A free cart never
   // reaches this screen (the guard below returns a shell), so in practice this
   // reads the paid column: 4 with questions, 3 without.
-  const hasAnyIntakeSchema = React.useMemo<boolean>(
+  const intakeState = React.useMemo<TripIntakeState>(
     () =>
       tripIntakeState({
         lines,
         schemas: intakeSchemasQuery.data,
         committed: intakeFormData,
-      }).hasIntake,
+      }),
     [intakeSchemasQuery.data, lines, intakeFormData],
   );
-  const totalSteps = tripFunnelTotalSteps({
-    isFree: totals.isFree,
-    hasIntake: hasAnyIntakeSchema,
+  // issue #3351 P2-1 — the same fail-closed derivation every other pill uses,
+  // so the denominator this screen shows is the one the buyer has been reading
+  // since the cart step.
+  const counterShape = tripCounterShape({
+    cartIsFree: totals.isFree,
+    cartIsEmpty: totals.isEmpty,
+    tiers: trip === null ? undefined : trip.pricingTiers,
+    intake: intakeState,
   });
-  const paymentStepIndex = tripPaymentStepIndex({
-    isFree: totals.isFree,
-    hasIntake: hasAnyIntakeSchema,
-  });
+  const totalSteps = tripFunnelTotalSteps(counterShape);
+  const paymentStepIndex = tripPaymentStepIndex(counterShape);
 
   // Defensive shell while guards redirect.
   if (

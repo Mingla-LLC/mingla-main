@@ -108,6 +108,7 @@ import {
 // owner, and the owner keys on whether the answers are COMMITTED.
 import {
   nextTripCheckoutStep,
+  tripCounterShape,
   tripIntakeState,
   type TripIntakeState,
 } from "./tripCheckoutStepOrder";
@@ -217,10 +218,13 @@ export default function TripIntakeScreen(): React.ReactElement {
   // the intake step is always third — and the inline header stays inline
   // because CheckoutHeader is visually locked and cannot carry the tier
   // subtitle this screen needs.
-  const stepShape = {
-    isFree: totals.isFree,
-    hasIntake: intakeState.hasIntake,
-  };
+  // issue #3351 P2-1 — the same fail-closed derivation every other pill uses.
+  const counterShape = tripCounterShape({
+    cartIsFree: totals.isFree,
+    cartIsEmpty: totals.isEmpty,
+    tiers: publicTripQuery.data?.trip.pricingTiers,
+    intake: intakeState,
+  });
 
   // Per-tier local answer state. Keyed by ticketTypeId so switching tiers
   // doesn't lose in-progress answers.
@@ -520,7 +524,7 @@ export default function TripIntakeScreen(): React.ReactElement {
         </View>
         <View style={styles.stepPill}>
           <Text style={styles.stepPillLabel}>
-            3 OF {tripFunnelTotalSteps(stepShape)}
+            3 OF {tripFunnelTotalSteps(counterShape)}
           </Text>
         </View>
       </View>

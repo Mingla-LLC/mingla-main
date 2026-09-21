@@ -35,6 +35,7 @@ import { describe, expect, test } from "@jest/globals";
 
 import {
   nextTripCheckoutStep,
+  tripCounterShape,
   tripIntakeFormDataArray,
   tripIntakeState,
   type TripStepDecision,
@@ -823,5 +824,288 @@ describe("T-10 issue #3351 — nothing reserves without a buyer tap (Seth's OQ-2
     expect(cartContext).toContain("paymentPlanChoice: TripPaymentPlanChoice");
     expect(cartContext).toContain("marketingOptIn: false");
     expect(cartContext).toContain("SET_PAYMENT_PLAN_CHOICE");
+  });
+});
+
+
+// ===========================================================================
+// T-11 — the counter's input is derived FAIL-CLOSED (EXECUTES real code)
+// ===========================================================================
+
+describe("T-11 issue #3351 P2-1 — the denominator never reads 'not yet' as 'no'", () => {
+  const UNSETTLED = { settled: false, hasIntake: false, intakeComplete: false };
+  const SETTLED_INTAKE = { settled: true, hasIntake: true, intakeComplete: false };
+  const SETTLED_NO_INTAKE = { settled: true, hasIntake: false, intakeComplete: true };
+  const FREE_TIERS = [{ priceCents: 0 }, { priceCents: 0 }];
+  const MIXED_TIERS = [{ priceCents: 0 }, { priceCents: 5000 }];
+  const PAID_TIERS = [{ priceCents: 5000 }];
+
+  test("an unsettled schema read ASSUMES the intake step exists", () => {
+    expect(
+      tripCounterShape({
+        cartIsFree: true,
+        cartIsEmpty: false,
+        tiers: FREE_TIERS,
+        intake: UNSETTLED,
+      }).hasIntake,
+    ).toBe(true);
+  });
+
+  test("that assumption holds whatever the cart looks like", () => {
+    for (const cartIsFree of [false, true]) {
+      for (const cartIsEmpty of [false, true]) {
+        for (const tiers of [undefined, FREE_TIERS, PAID_TIERS]) {
+          expect(
+            tripCounterShape({ cartIsFree, cartIsEmpty, tiers, intake: UNSETTLED })
+              .hasIntake,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  test("once settled it reports the truth, in both directions", () => {
+    expect(
+      tripCounterShape({
+        cartIsFree: true,
+        cartIsEmpty: false,
+        tiers: FREE_TIERS,
+        intake: SETTLED_INTAKE,
+      }).hasIntake,
+    ).toBe(true);
+    expect(
+      tripCounterShape({
+        cartIsFree: true,
+        cartIsEmpty: false,
+        tiers: FREE_TIERS,
+        intake: SETTLED_NO_INTAKE,
+      }).hasIntake,
+    ).toBe(false);
+  });
+
+  test("an EMPTY cart on an all-free trip does not read as the paid rail", () => {
+    expect(
+      tripCounterShape({
+        cartIsFree: false, // useCartTotals(): an empty cart is never "free"
+        cartIsEmpty: true,
+        tiers: FREE_TIERS,
+        intake: SETTLED_INTAKE,
+      }).isFree,
+    ).toBe(true);
+  });
+
+  test("an EMPTY cart with an unknown tier list still does not read as paid", () => {
+    expect(
+      tripCounterShape({
+        cartIsFree: false,
+        cartIsEmpty: true,
+        tiers: undefined,
+        intake: UNSETTLED,
+      }).isFree,
+    ).toBe(true);
+    expect(
+      tripCounterShape({
+        cartIsFree: false,
+        cartIsEmpty: true,
+        tiers: [],
+        intake: UNSETTLED,
+      }).isFree,
+    ).toBe(true);
+  });
+
+  test("an EMPTY cart on a trip that charges for anything reads as paid", () => {
+    for (const tiers of [PAID_TIERS, MIXED_TIERS]) {
+      expect(
+        tripCounterShape({
+          cartIsFree: false,
+          cartIsEmpty: true,
+          tiers,
+          intake: SETTLED_INTAKE,
+        }).isFree,
+      ).toBe(false);
+    }
+  });
+
+  test("a NON-empty cart is the authority on what it costs — the tiers are ignored", () => {
+    expect(
+      tripCounterShape({
+        cartIsFree: true,
+        cartIsEmpty: false,
+        tiers: MIXED_TIERS,
+        intake: SETTLED_INTAKE,
+      }).isFree,
+    ).toBe(true);
+    expect(
+      tripCounterShape({
+        cartIsFree: false,
+        cartIsEmpty: false,
+        tiers: FREE_TIERS,
+        intake: SETTLED_INTAKE,
+      }).isFree,
+    ).toBe(false);
+  });
+});
+
+// ===========================================================================
+// T-12 — the journey's denominator, walked (EXECUTES real code)
+// ===========================================================================
+
+describe("T-12 issue #3351 P2-1 — the number after OF does not move within a journey", () => {
+  const FREE_TIERS = [{ priceCents: 0 }, { priceCents: 0 }];
+  const PAID_TIERS = [{ priceCents: 5000 }, { priceCents: 7500 }];
+
+  /**
+   * The states a buyer actually passes through on a MULTI-TIER trip, in order:
+   * the cart step before any tier is picked (empty cart), the cart step after
+   * (cart present), and every later screen. Each yields a denominator; the
+   * contract is that the set of distinct denominators has exactly one member.
+   */
+  const denominatorsAcrossJourney = (args: {
+    tiers: readonly { priceCents: number }[];
+    cartIsFree: boolean;
+    intake: { settled: boolean; hasIntake: boolean; intakeComplete: boolean };
+  }): number[] => {
+    const { tiers, cartIsFree, intake } = args;
+    const states = [
+      { cartIsEmpty: true, tiers: args.tiers, intake }, // cart step, nothing picked
+      { cartIsEmpty: false, tiers: args.tiers, intake }, // tier picked
+      { cartIsEmpty: false, tiers: args.tiers, intake }, // details
+      { cartIsEmpty: false, tiers: args.tiers, intake }, // intake / payment
+    ];
+    void tiers;
+    return states.map((state) =>
+      tripFunnelTotalSteps(
+        tripCounterShape({
+          cartIsFree,
+          cartIsEmpty: state.cartIsEmpty,
+          tiers: state.tiers,
+          intake: state.intake,
+        }),
+      ),
+    );
+  };
+
+  test("a MULTI-TIER FREE trip with questions reads 3 from the first paint (P2-1 bullet 1)", () => {
+    const seen = denominatorsAcrossJourney({
+      tiers: FREE_TIERS,
+      cartIsFree: true,
+      intake: { settled: true, hasIntake: true, intakeComplete: false },
+    });
+    expect(new Set(seen).size).toBe(1);
+    expect(seen[0]).toBe(3);
+  });
+
+  test("a MULTI-TIER FREE trip with no questions reads 2 throughout", () => {
+    const seen = denominatorsAcrossJourney({
+      tiers: FREE_TIERS,
+      cartIsFree: true,
+      intake: { settled: true, hasIntake: false, intakeComplete: true },
+    });
+    expect(new Set(seen).size).toBe(1);
+    expect(seen[0]).toBe(2);
+  });
+
+  test("a MULTI-TIER PAID trip with questions reads 4 throughout", () => {
+    const seen = denominatorsAcrossJourney({
+      tiers: PAID_TIERS,
+      cartIsFree: false,
+      intake: { settled: true, hasIntake: true, intakeComplete: false },
+    });
+    expect(new Set(seen).size).toBe(1);
+    expect(seen[0]).toBe(4);
+  });
+
+  test("a trip WITH questions shows its true total before the schema read settles (P2-1 bullet 2)", () => {
+    const pending = tripFunnelTotalSteps(
+      tripCounterShape({
+        cartIsFree: true,
+        cartIsEmpty: false,
+        tiers: FREE_TIERS,
+        intake: { settled: false, hasIntake: false, intakeComplete: false },
+      }),
+    );
+    const settled = tripFunnelTotalSteps(
+      tripCounterShape({
+        cartIsFree: true,
+        cartIsEmpty: false,
+        tiers: FREE_TIERS,
+        intake: { settled: true, hasIntake: true, intakeComplete: false },
+      }),
+    );
+    expect(pending).toBe(3);
+    expect(settled).toBe(3);
+    expect(pending).toBe(settled);
+  });
+
+  test("the RAW reading — the one this replaces — moves in both reported ways", () => {
+    // Bullet 1: an empty cart read raw reports the paid funnel on a free trip.
+    const rawEmptyCart = tripFunnelTotalSteps({ isFree: false, hasIntake: true });
+    const rawPicked = tripFunnelTotalSteps({ isFree: true, hasIntake: true });
+    expect(rawEmptyCart).not.toBe(rawPicked);
+    // Bullet 2: an unsettled read raw reports "no questions".
+    const rawPending = tripFunnelTotalSteps({ isFree: true, hasIntake: false });
+    const rawSettled = tripFunnelTotalSteps({ isFree: true, hasIntake: true });
+    expect(rawPending).not.toBe(rawSettled);
+  });
+});
+
+// ===========================================================================
+// T-13 — the screens are WIRED to the fail-closed shape (source contract)
+// ===========================================================================
+
+describe("T-13 issue #3351 P2 — every pill is wired to the owner, and the dead button explains itself", () => {
+  const index = strip(readRoute("index.tsx"));
+  const buyer = strip(readRoute("buyer.tsx"));
+  const intake = strip(readRoute("intake.tsx"));
+  const payment = strip(readRoute("payment.tsx"));
+
+  test("all four pill-bearing screens derive their shape from tripCounterShape", () => {
+    for (const src of [index, buyer, intake, payment]) {
+      expect(src).toMatch(/tripCounterShape\(/);
+      expect(src).toMatch(/cartIsEmpty: totals\.isEmpty/);
+    }
+  });
+
+  test("no screen feeds the RAW facts straight into the step total any more", () => {
+    for (const src of [index, buyer, intake, payment]) {
+      expect(src).not.toMatch(/tripFunnelTotalSteps\(\{[\s\S]{0,120}isFree: totals\.isFree/);
+      expect(src).not.toMatch(/hasIntake: intakeState\.hasIntake/);
+      expect(src).not.toMatch(/hasIntake: hasAnyIntakeSchema/);
+    }
+  });
+
+  test("the cart step consults the trip's own tiers when there is no cart line", () => {
+    expect(index).toMatch(/tiers: trip === null \? undefined : trip\.pricingTiers/);
+  });
+
+  test("navigation still reads the RAW intake facts, never the fail-closed shape", () => {
+    // The decision must WAIT for the truth; assuming it would route a buyer to
+    // a form that may not exist, or reserve a cart that costs money.
+    const from = buyer.indexOf('nextTripCheckoutStep("details"');
+    expect(from).toBeGreaterThan(-1);
+    const tail = buyer.slice(from);
+    // The call's own argument object, nothing after it.
+    const args = tail.slice(0, tail.indexOf("})") + 2);
+    expect(args).toContain("...intakeState");
+    expect(args).not.toContain("counterShape");
+  });
+
+  test("the disabled primary control says why it is disabled", () => {
+    expect(buyer).toContain("INTAKE_SCHEMA_LOADING_MESSAGE");
+    expect(buyer).toContain(
+      "Checking whether the organiser has any questions for you.",
+    );
+    // It must not claim anything about a reservation existing.
+    expect(buyer).not.toContain("may already be reserved");
+    const sentence = buyer.slice(
+      buyer.indexOf("const INTAKE_SCHEMA_LOADING_MESSAGE"),
+    ).split(";")[0];
+    expect(sentence).toContain("Nothing is reserved yet");
+  });
+
+  test("the note is shown only while the read is genuinely pending", () => {
+    expect(buyer).toMatch(
+      /intakeSchemasQuery\.isError === false && intakeState\.settled === false/,
+    );
   });
 });

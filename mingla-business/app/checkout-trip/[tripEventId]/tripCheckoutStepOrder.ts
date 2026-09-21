@@ -190,6 +190,75 @@ export function nextTripCheckoutStep(
   return isFree ? "go_details_finalize" : "go_payment";
 }
 
+/** A trip pricing tier, reduced to the only field the step counter reads. */
+export interface TripStepTier {
+  priceCents: number;
+}
+
+export interface TripCounterShapeInput {
+  /** `useCartTotals().isFree` — false for an EMPTY cart, which is the trap. */
+  cartIsFree: boolean;
+  /** `useCartTotals().isEmpty`. */
+  cartIsEmpty: boolean;
+  /**
+   * The trip's own pricing tiers, `undefined` until the trip read resolves.
+   * Only consulted when the cart is empty.
+   */
+  tiers: readonly TripStepTier[] | undefined;
+  /** The intake facts from `tripIntakeState`. */
+  intake: TripIntakeState;
+}
+
+/**
+ * issue #3351 P2-1 — THE COUNTER'S INPUT, DERIVED FAIL-CLOSED.
+ *
+ * The step TOTAL is a promise: the number after "OF" must not move while the
+ * buyer is looking at it (SC-8 / R-27). Reading `totals.isFree` and
+ * `intake.hasIntake` raw breaks that promise twice, because both answer
+ * "no" when they mean "not yet":
+ *
+ *  - `useCartTotals().isFree` is `!isEmpty && subtotal === 0`, so an EMPTY cart
+ *    is reported as NOT free. On a multi-tier free trip the cart step therefore
+ *    opened at "1 OF 4" and flipped to "1 OF 3" the moment a tier was picked.
+ *  - `hasIntake` is `false` while the schema read is in flight, so a trip that
+ *    DOES ask questions showed "2 OF 2" and then grew.
+ *
+ * Both are fixed by never letting "not yet" read as "no":
+ *
+ *  1. Until the schema read settles, ASSUME THE INTAKE STEP EXISTS. A trip that
+ *     asks questions then shows its true total from the first paint; a trip
+ *     that asks none settles DOWNWARD once, which is the gentler direction and
+ *     is confined to the first mount (the query is cached at `staleTime` 30s,
+ *     so the later screens read it already settled).
+ *  2. An ABSENT cart must not imply the paid rail. With no cart line the trip's
+ *     own tiers answer it: every tier free → the free funnel. Only a genuinely
+ *     mixed trip is unknowable, and there the first tier the buyer picks
+ *     settles it.
+ *
+ * THIS IS THE COUNTER'S INPUT ONLY. `nextTripCheckoutStep` must keep reading
+ * the RAW `TripIntakeState`, because navigation has to WAIT for the truth
+ * ("wait") rather than assume it — assuming there is intake would send a buyer
+ * to a form that may not exist, and assuming a cart is free would submit a
+ * reservation for a cart that costs money. One owner, two readings, and the
+ * difference is deliberate.
+ */
+export function tripCounterShape(
+  input: TripCounterShapeInput,
+): { isFree: boolean; hasIntake: boolean } {
+  const { cartIsFree, cartIsEmpty, tiers, intake } = input;
+  const hasIntake = intake.settled ? intake.hasIntake : true;
+  // A cart with a line in it is the authority on what it costs.
+  if (!cartIsEmpty) return { isFree: cartIsFree, hasIntake };
+  // No cart yet. An unknown or empty tier list must not read as "paid".
+  if (tiers === undefined || tiers.length === 0) {
+    return { isFree: true, hasIntake };
+  }
+  return {
+    isFree: tiers.every((tier) => tier.priceCents === 0),
+    hasIntake,
+  };
+}
+
 /**
  * The ONE flattener from the cart's per-tier answer map to the array shape
  * `ticket-checkout-create` reads (`intake_form_data`). Entries keep
