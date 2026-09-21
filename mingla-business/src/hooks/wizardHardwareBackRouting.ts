@@ -10,11 +10,13 @@
 //      releases it). Android can deliver the IME hide and hardwareBackPress for
 //      one press in either order, hence the short window (see
 //      WIZARD_KEYBOARD_BACK_WINDOW_MS).
-//      EXCEPTION (#3446 rework): "the keyboard is up" means the keyboard owner
-//      is still TELLING THE TRUTH. Once we have asked the keyboard to dismiss
-//      and no hide has confirmed it yet, `visible` is a stale value we caused,
-//      so it is not treated as authoritative (see
-//      WIZARD_KEYBOARD_DISMISS_SETTLE_MS).
+//      EXCEPTION (#3446 rework, #3462 retest): "the keyboard is up" means the
+//      keyboard owner is still TELLING THE TRUTH. Once we have asked the
+//      keyboard to dismiss, `visible` is a value WE caused and have not seen
+//      updated, so it is not read again until a REAL visibility change settles
+//      that request -- a hide (the dismissal worked) or a show (the keyboard
+//      genuinely came back). Nothing else ends the window: no clock, no press
+//      count (see `hasOutstandingDismissRequest`).
 //   1. A press is still in flight (latch not idle) -> do nothing.
 //   2. The wizard is busy (publish / autosave / invite pre-check / discard)
 //      -> do nothing.
@@ -72,43 +74,6 @@ export type WizardHardwareBackLatch = "idle" | "stepping" | "exiting";
  */
 export const WIZARD_KEYBOARD_BACK_WINDOW_MS = 300;
 
-/**
- * #3446 rework — how long a dismissal WE asked for keeps `visible` from being
- * treated as authoritative.
- *
- * The window above assumes the keyboard owner's `visible` is true only while
- * the keyboard really is up. It is not, for the interval after we call
- * Keyboard.dismiss(). `useKeyboardIsVisible` reads
- * react-native-keyboard-controller, whose flag flips on the IME inset
- * animation's onEnd (KeyboardAnimationCallback.kt) — strictly later than the
- * framework's own WindowInsets flag. Device evidence on emulator-5564
- * (Android 15, gesture nav; /tmp/issue1780-retest-r4/CHECK3a-timing.txt): after
- * a back press dismissed the IME, the framework flag flipped at +82 ms, but a
- * second back press at 237, 311 and 340 ms was STILL read as "keyboard visible"
- * and swallowed by rule 0, while presses at 565, 570 and 622 ms stepped back.
- * So the library flag lags the real dismissal by somewhere in (340, 565] ms on
- * that device, and during that lag the host presses back and nothing happens.
- *
- * The cure is not a longer or shorter window on the hide stamp — there is no
- * hide stamp yet. It is to remember that WE asked for the dismissal, and treat
- * `visible` as stale until a hide confirms it. The hook clears the request on
- * the very next visibility change, in both directions: a hide means the request
- * was fulfilled, and a show means the keyboard is genuinely up again and
- * `visible` is authoritative once more. So in normal operation this constant is
- * never reached.
- *
- * It exists only for the case where the confirming hide never arrives (a missed
- * library event, a dismissal the IME ignores). Without a bound, one such miss
- * would leave `visible` permanently distrusted for the life of that focus, and
- * a genuinely-visible-keyboard press would step back instead of dismissing —
- * the very bug #3446 fixed, in the other direction. 1,000 ms is roughly 1.8x
- * the worst lag measured above and about 4x the Android IME hide animation
- * (~250 ms), so it cannot expire while a real dismissal is still in flight, and
- * a stuck request self-heals within one second. A stale request simply stops
- * suppressing `visible`; the next genuine dismissal stamps a fresh one.
- */
-export const WIZARD_KEYBOARD_DISMISS_SETTLE_MS = 1_000;
-
 export interface WizardHardwareBackKeyboard {
   /** The keyboard owner reports the soft keyboard visible (last commit). */
   visible: boolean;
@@ -122,6 +87,11 @@ export interface WizardHardwareBackKeyboard {
   /**
    * When WE last asked the keyboard to dismiss, with no visibility change since
    * to confirm or contradict it; null when no such request is outstanding.
+   *
+   * The timestamp records WHEN, for ordering and for reading a trace; the rule
+   * below deliberately never COMPARES it against `now`. Any comparison is a
+   * deadline, and a deadline on this request is the #3462 dead tap (see
+   * `hasOutstandingDismissRequest`).
    *
    * Optional: a caller that does not track its own dismissals (the decision
    * table, and any surface that never calls Keyboard.dismiss) behaves exactly
@@ -142,17 +112,46 @@ const isThenable = (value: unknown): value is Promise<void> =>
   typeof (value as { then?: unknown }).then === "function";
 
 /**
- * True while a dismissal we asked for has neither been confirmed by a
- * visibility change nor aged past the settle bound. While this holds, the
- * keyboard owner's `visible` is a value we caused and have not seen updated, so
- * rule 0 must not read it.
+ * True while a dismissal WE asked for has not yet been settled by a visibility
+ * change. While this holds, the keyboard owner's `visible` is a value we caused
+ * and have not seen updated, so rule 0 must not read it.
+ *
+ * There is NO time bound, and adding one back is the bug. #3446's first cut
+ * bounded the request at 1,000 ms; the #3462 device round (emulator-5564,
+ * Android 15, two wizards, seven reproductions) pressed back after a dismissal
+ * and got NOTHING for roughly 1-3 seconds. The reason is structural, not a
+ * matter of picking a bigger number:
+ *
+ *   - The owner is `useKeyboardIsVisible` -> `useKeyboardState().isVisible` ->
+ *     `KeyboardController.isVisible()`, which is `!isClosed` where `isClosed`
+ *     is flipped ONLY by the library's `keyboardDidHide` / `keyboardDidShow`
+ *     listeners (react-native-keyboard-controller 1.18.5,
+ *     lib/commonjs/module.js). On Android `keyboardDidHide` is emitted from the
+ *     IME inset animation's onEnd, and React still has to commit the update.
+ *   - So `visible` is a LATCH that stays `true` for the whole dismissal, and
+ *     how long that takes is set by animation scheduling and main-thread load.
+ *     It is not bounded by anything this module can know. The first cut assumed
+ *     a 565 ms worst case from one unloaded measurement; the device round put
+ *     it past 3 s.
+ *   - Any deadline therefore has the same shape of failure: when it expires
+ *     while the latch is still stale, rule 0 reads `visible` and swallows the
+ *     press. A dead tap is Constitution rule 1, non-negotiable.
+ *
+ * So the request is authoritative until the truth arrives, and only the truth
+ * ends it. The hook clears it on the next visibility change in either
+ * direction: a hide is the confirmation we were waiting for, and a show means
+ * the keyboard is genuinely up again and `visible` is authoritative once more.
+ *
+ * What this gives up, stated plainly: if the library were to drop the
+ * confirming `keyboardDidHide` entirely AND the keyboard were still up, a press
+ * would step back instead of dismissing. That costs one step, not a dead tap,
+ * and it self-heals immediately -- stepping back unmounts the focused input, so
+ * the IME hides and that hide is the visibility change that clears the request.
+ * The bound it replaces bought nothing here: it could not observe the missing
+ * event either, it only restored the swallow.
  */
-const hasOutstandingDismissRequest = (keyboard: WizardHardwareBackKeyboard): boolean => {
-  const requestedAt = keyboard.dismissRequestedAt ?? null;
-  return (
-    requestedAt !== null && keyboard.now - requestedAt <= WIZARD_KEYBOARD_DISMISS_SETTLE_MS
-  );
-};
+const hasOutstandingDismissRequest = (keyboard: WizardHardwareBackKeyboard): boolean =>
+  (keyboard.dismissRequestedAt ?? null) !== null;
 
 const isKeyboardBackPress = (keyboard: WizardHardwareBackKeyboard): boolean =>
   // A visible keyboard only counts when nothing we did could be why it still

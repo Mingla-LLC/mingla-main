@@ -21,12 +21,15 @@
 //   the hide and the press in either order; the window and the claim rule
 //   live in wizardHardwareBackRouting.ts (WIZARD_KEYBOARD_BACK_WINDOW_MS).
 //   The keyboard owner's flag is BEHIND the dismissal it is reporting — the
-//   library flips it on the IME inset animation's onEnd, which device
-//   evidence puts 340-565 ms after the press — so this hook also records the
-//   dismissal it asked for and stops reading `visible` until a visibility
-//   change settles it (WIZARD_KEYBOARD_DISMISS_SETTLE_MS). Without that, a
-//   second press inside the lag was swallowed as another keyboard dismissal
-//   and the wizard did not move.
+//   library flips it only on keyboardDidHide, emitted from the IME inset
+//   animation's onEnd — so this hook also records the dismissal it asked for
+//   and stops reading `visible` until a visibility change settles it. Without
+//   that, a second press inside the lag was swallowed as another keyboard
+//   dismissal and the wizard did not move. The record is settled by the truth
+//   and by nothing else: no timer expires it, because the lag is set by
+//   main-thread load and the #3462 device round measured it past 3 s, so any
+//   deadline just re-opens the dead window (see hasOutstandingDismissRequest
+//   in wizardHardwareBackRouting.ts).
 // - Subscribe ONCE per focus (useFocusEffect with EMPTY deps). BackHandler
 //   runs listeners newest-first. Re-subscribing on every render would push
 //   this listener ahead of any overlay listener registered later in the tree
@@ -72,7 +75,8 @@ interface KeyboardTrack {
    * When we last called Keyboard.dismiss() with no visibility change since.
    * The keyboard owner's flag flips only at the end of the IME hide animation,
    * so between the two `visible` is stale and must not be read as authoritative
-   * (see WIZARD_KEYBOARD_DISMISS_SETTLE_MS).
+   * (see hasOutstandingDismissRequest in wizardHardwareBackRouting.ts). The
+   * stamp is the ordering record; only a visibility change clears it.
    */
   dismissRequestedAt: number | null;
 }

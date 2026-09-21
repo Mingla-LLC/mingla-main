@@ -124,7 +124,6 @@ import { useWizardHardwareBack } from "../useWizardHardwareBack.native";
 import {
   WIZARD_KEYBOARD_BACK_WINDOW_MS,
   // #3446 rework — appended cases below only.
-  WIZARD_KEYBOARD_DISMISS_SETTLE_MS,
   dispatchWizardHardwareBackPress,
   type WizardHardwareBackConfig,
   type WizardHardwareBackKeyboard,
@@ -586,7 +585,15 @@ describe("#3446 rework — a press inside the keyboard owner's dismissal lag ste
     expect(RN.mockBack.fallthrough).toBe(0);
   });
 
-  test("K-14 a dismissal request that is never confirmed expires, and visible is trusted again", async () => {
+  test("K-14 a dismissal request that is never confirmed does NOT expire: the press still steps", async () => {
+    // [TEST-MOD-APPROVED #3446] This case asserted the opposite until the
+    // #3462 device round: that past a 1,000 ms settle bound the owner's
+    // `visible` became authoritative again and a second press dismissed
+    // instead of stepping. That assertion was wrong. The owner's flag is a
+    // latch that stays stale for as long as the IME hide takes to reach a
+    // React commit, which emulator-5564 put past 3 s under load, so the
+    // expiry IS the dead tap — the host pressed back and nothing happened.
+    // The request now ends only on a real visibility change.
     const o = owners();
     mockKeyboard.visible = true;
     await mount(configOf({ ...o }));
@@ -594,13 +601,11 @@ describe("#3446 rework — a press inside the keyboard owner's dismissal lag ste
     expect(await press()).toBe(true);
     expect(RN.Keyboard.dismiss).toHaveBeenCalledTimes(1);
 
-    // The confirming hide never arrives (a missed library event). Past the
-    // settle bound the owner's `visible` is authoritative again, so a press
-    // with the keyboard genuinely up dismisses rather than stepping.
-    clock += WIZARD_KEYBOARD_DISMISS_SETTLE_MS + 1;
+    clock += 1_000 + 1;
     expect(await press()).toBe(true);
-    expect(RN.Keyboard.dismiss).toHaveBeenCalledTimes(2);
-    expect(o.onStepBack).toHaveBeenCalledTimes(0);
+    expect(o.onStepBack).toHaveBeenCalledTimes(1);
+    expect(RN.Keyboard.dismiss).toHaveBeenCalledTimes(1);
+    expect(RN.mockBack.fallthrough).toBe(0);
   });
 });
 
@@ -617,13 +622,22 @@ describe("#3446 rework — dispatchWizardHardwareBackPress dismissal-request rul
     return { decision, stepBacks: onStepBack.mock.calls.length };
   };
 
-  test("R-1 the settle bound covers the measured lag and self-heals within a second", () => {
-    // Greater than the longest device gap that was still read as visible
-    // (340 ms) and than the longest that stepped (622 ms), so it cannot expire
-    // mid-dismissal; and bounded so a missed hide cannot distrust `visible`
-    // for the life of the focus.
-    expect(WIZARD_KEYBOARD_DISMISS_SETTLE_MS).toBeGreaterThan(622);
-    expect(WIZARD_KEYBOARD_DISMISS_SETTLE_MS).toBeLessThanOrEqual(1_000);
+  test("R-1 the request has NO deadline: an arbitrarily old one still suppresses `visible`", () => {
+    // [TEST-MOD-APPROVED #3446] Replaces the numeric assertions on the retired
+    // WIZARD_KEYBOARD_DISMISS_SETTLE_MS. A deadline of ANY size re-opens the
+    // #3462 dead window, because nothing bounds how long the keyboard owner's
+    // latch stays stale — it is main-thread scheduling, not an animation
+    // duration. So the rule carries no bound at all.
+    for (const age of [1_000, 1_001, 3_000, 30_000, 24 * 60 * 60 * 1_000]) {
+      const { decision, stepBacks } = decideWith({
+        visible: true,
+        unclaimedHideAt: null,
+        now: NOW_R,
+        dismissRequestedAt: NOW_R - age,
+      });
+      expect(decision.action).toBe("step_back");
+      expect(stepBacks).toBe(1);
+    }
   });
 
   test("R-2 visible + outstanding request is NOT a keyboard press", () => {
@@ -637,12 +651,11 @@ describe("#3446 rework — dispatchWizardHardwareBackPress dismissal-request rul
     expect(stepBacks).toBe(1);
   });
 
-  test("R-3 visible with no request, or with an expired one, IS a keyboard press", () => {
-    for (const dismissRequestedAt of [
-      null,
-      undefined,
-      NOW_R - WIZARD_KEYBOARD_DISMISS_SETTLE_MS - 1,
-    ]) {
+  test("R-3 visible with no request of ours IS a keyboard press", () => {
+    // [TEST-MOD-APPROVED #3446] The third row (a request older than the retired
+    // settle bound) moved to R-1, where it now proves the opposite: an old
+    // request still steps back, because it never expires.
+    for (const dismissRequestedAt of [null, undefined]) {
       const { decision, stepBacks } = decideWith({
         visible: true,
         unclaimedHideAt: null,
@@ -654,23 +667,27 @@ describe("#3446 rework — dispatchWizardHardwareBackPress dismissal-request rul
     }
   });
 
-  test("R-4 the request boundary is inclusive, one ms past it is not", () => {
-    expect(
-      decideWith({
-        visible: true,
-        unclaimedHideAt: null,
-        now: NOW_R,
-        dismissRequestedAt: NOW_R - WIZARD_KEYBOARD_DISMISS_SETTLE_MS,
-      }).decision.action,
-    ).toBe("step_back");
-    expect(
-      decideWith({
-        visible: true,
-        unclaimedHideAt: null,
-        now: NOW_R,
-        dismissRequestedAt: NOW_R - WIZARD_KEYBOARD_DISMISS_SETTLE_MS - 1,
-      }).decision.action,
-    ).toBe("dismiss_keyboard");
+  test("R-4 `now` never enters the request decision, so no boundary exists to cross", () => {
+    // [TEST-MOD-APPROVED #3446] Replaces the settle-bound boundary rows. The
+    // decision must be identical for every `now`: any dependence on `now` is a
+    // deadline, and a deadline is the #3462 dead window.
+    for (const now of [
+      NOW_R,
+      NOW_R + 1,
+      NOW_R + 999,
+      NOW_R + 1_000,
+      NOW_R + 1_001,
+      NOW_R + 1_000_000,
+    ]) {
+      expect(
+        decideWith({
+          visible: true,
+          unclaimedHideAt: null,
+          now,
+          dismissRequestedAt: NOW_R,
+        }).decision.action,
+      ).toBe("step_back");
+    }
   });
 
   test("R-5 an unclaimed hide still swallows a press even while a request is outstanding", () => {
@@ -684,5 +701,222 @@ describe("#3446 rework — dispatchWizardHardwareBackPress dismissal-request rul
     });
     expect(decision.action).toBe("dismiss_keyboard");
     expect(stepBacks).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3462 retest (P2-1) — the gap sweep. APPENDED; nothing above is changed
+// except the four cases that pinned the retired settle bound, each marked
+// [TEST-MOD-APPROVED #3446] at its own site.
+//
+// Device finding, emulator-5564 (Android 15, gesture nav), two wizards, seven
+// reproductions: after a hardware back press dismissed the soft keyboard, the
+// NEXT back press did nothing for roughly 1-3 seconds. A no-keyboard control
+// (two presses 94 ms apart) stepped twice, so presses were reaching the app.
+//
+// Mechanism: the keyboard owner is `useKeyboardIsVisible` ->
+// `useKeyboardState().isVisible` -> `KeyboardController.isVisible()`, which is
+// `!isClosed` with `isClosed` flipped ONLY by the library's keyboardDidHide /
+// keyboardDidShow listeners (react-native-keyboard-controller 1.18.5,
+// lib/commonjs/module.js). It is a LATCH, stale-true for the whole dismissal,
+// and how long that takes is main-thread scheduling. The first cut bounded our
+// dismissal request at 1,000 ms; past that, rule 0 read the still-stale
+// `visible` and swallowed the press.
+//
+// These cases drive the REAL hook and the REAL routing module, advancing the
+// test clock WITHOUT committing a keyboard change — which is exactly what the
+// stale latch is — across the sweep the retest will press on the device.
+//
+// Fails on revert: restore the time-bounded predicate
+//   const hasOutstandingDismissRequest = (k) => {
+//     const at = k.dismissRequestedAt ?? null;
+//     return at !== null && k.now - at <= 1_000;
+//   };
+// and G-1 (1.5 s, 5 s rows), G-2 (1.5 s, 5 s rows), G-3, K-14, R-1 and R-4 go
+// red. G-4, G-5 and G-6 stay green under both, which is the point: they are
+// the unchanged-behaviour half of the contract.
+// ---------------------------------------------------------------------------
+describe("#3462 P2-1 — every press after a back-dismissal acts, at every gap", () => {
+  const SWEEP_MS = [250, 700, 1_500, 5_000];
+
+  test("G-1 dismiss, wait, press: steps back at 250 ms, 700 ms, 1.5 s and 5 s", async () => {
+    for (const gap of SWEEP_MS) {
+      const o = owners();
+      RN.mockBack.reset();
+      RN.Keyboard.dismiss.mockClear();
+      mockKeyboard.visible = true;
+      await mount(configOf({ ...o }));
+
+      // Press 1: the keyboard is genuinely up, so it only dismisses.
+      expect(await press()).toBe(true);
+      expect(RN.Keyboard.dismiss).toHaveBeenCalledTimes(1);
+      expect(o.onStepBack).toHaveBeenCalledTimes(0);
+
+      // The owner NEVER commits the hide: `visible` stays stale true, which is
+      // the loaded device. The press must still step.
+      clock += gap;
+      expect(await press()).toBe(true);
+      expect(o.onStepBack).toHaveBeenCalledTimes(1);
+      expect(o.onExit).toHaveBeenCalledTimes(0);
+      // Nothing was dismissed a second time: it was not read as a keyboard press.
+      expect(RN.Keyboard.dismiss).toHaveBeenCalledTimes(1);
+      expect(RN.mockBack.fallthrough).toBe(0);
+
+      await act(async () => {
+        mounted.splice(0).forEach((tree) => tree.unmount());
+      });
+    }
+  });
+
+  test("G-2 on Step 1 the same sweep exits, once, at every gap", async () => {
+    for (const gap of SWEEP_MS) {
+      const o = owners();
+      RN.mockBack.reset();
+      RN.Keyboard.dismiss.mockClear();
+      mockKeyboard.visible = true;
+      await mount(configOf({ ...o, isFirstStep: true }));
+
+      expect(await press()).toBe(true);
+      expect(o.onExit).toHaveBeenCalledTimes(0);
+
+      clock += gap;
+      expect(await press()).toBe(true);
+      expect(o.onExit).toHaveBeenCalledTimes(1);
+      expect(o.onStepBack).toHaveBeenCalledTimes(0);
+      expect(RN.Keyboard.dismiss).toHaveBeenCalledTimes(1);
+      expect(RN.mockBack.fallthrough).toBe(0);
+
+      await act(async () => {
+        mounted.splice(0).forEach((tree) => tree.unmount());
+      });
+    }
+  });
+
+  test("G-3 one focus, the whole sweep: four presses, four steps, no dead press", async () => {
+    // The device sweep is one continuous session, not four fresh trials. With
+    // the owner never catching up, EVERY press in it must move the wizard —
+    // there is no gap, early or late, in which one is swallowed.
+    const o = owners();
+    mockKeyboard.visible = true;
+    await mount(configOf({ ...o }));
+
+    expect(await press()).toBe(true);
+    expect(RN.Keyboard.dismiss).toHaveBeenCalledTimes(1);
+
+    let expected = 0;
+    for (const gap of SWEEP_MS) {
+      clock += gap;
+      expect(await press()).toBe(true);
+      expected += 1;
+      expect(o.onStepBack).toHaveBeenCalledTimes(expected);
+    }
+    expect(o.onStepBack).toHaveBeenCalledTimes(SWEEP_MS.length);
+    expect(RN.Keyboard.dismiss).toHaveBeenCalledTimes(1);
+    expect(o.onExit).toHaveBeenCalledTimes(0);
+    expect(RN.mockBack.fallthrough).toBe(0);
+  });
+
+  test("G-4 unchanged: a hide we did not ask for still swallows EXACTLY one press", async () => {
+    const o = owners();
+    mockKeyboard.visible = true;
+    const config = configOf({ ...o });
+    const tree = await mount(config);
+
+    // The keyboard hid for its own reason (Continue, tap-outside, the IME's
+    // own key). No press claimed it and we asked for nothing.
+    await keyboardCommits(tree, config, false);
+    clock += 120;
+
+    expect(await press()).toBe(true);
+    expect(o.onStepBack).toHaveBeenCalledTimes(0);
+    expect(RN.Keyboard.dismiss).toHaveBeenCalledTimes(0);
+
+    clock += 60;
+    expect(await press()).toBe(true);
+    expect(o.onStepBack).toHaveBeenCalledTimes(1);
+    expect(RN.mockBack.fallthrough).toBe(0);
+  });
+
+  test("G-5 unchanged: a show after our dismissal means the next press only dismisses", async () => {
+    const o = owners();
+    mockKeyboard.visible = true;
+    const config = configOf({ ...o });
+    const tree = await mount(config);
+
+    // Press 1 dismisses. The hide commits, the host taps a field again and the
+    // keyboard genuinely comes back, so `visible` is authoritative once more.
+    expect(await press()).toBe(true);
+    clock += 300;
+    await keyboardCommits(tree, config, false);
+    clock += 900;
+    await keyboardCommits(tree, config, true);
+
+    clock += 1_500;
+    expect(await press()).toBe(true);
+    expect(RN.Keyboard.dismiss).toHaveBeenCalledTimes(2);
+    expect(o.onStepBack).toHaveBeenCalledTimes(0);
+    expect(o.onExit).toHaveBeenCalledTimes(0);
+    expect(RN.mockBack.fallthrough).toBe(0);
+  });
+
+  test("G-6 unchanged: a show WITHOUT an intervening hide also restores `visible`", async () => {
+    // Belt and braces on G-5: whichever direction the owner moves in, the very
+    // next commit ends our request. Here the hide is skipped entirely.
+    const o = owners();
+    const config = configOf({ ...o });
+    const tree = await mount(config);
+
+    await keyboardCommits(tree, config, true);
+    expect(await press()).toBe(true);
+    expect(RN.Keyboard.dismiss).toHaveBeenCalledTimes(1);
+
+    clock += 2_000;
+    await keyboardCommits(tree, config, false);
+    await keyboardCommits(tree, config, true);
+
+    clock += 2_000;
+    expect(await press()).toBe(true);
+    expect(RN.Keyboard.dismiss).toHaveBeenCalledTimes(2);
+    expect(o.onStepBack).toHaveBeenCalledTimes(0);
+  });
+
+  test("G-7 unchanged: a plain visible keyboard, nothing of ours pending, only dismisses", async () => {
+    const o = owners();
+    mockKeyboard.visible = true;
+    await mount(configOf({ ...o }));
+
+    clock += 5_000;
+    expect(await press()).toBe(true);
+    expect(RN.Keyboard.dismiss).toHaveBeenCalledTimes(1);
+    expect(o.onStepBack).toHaveBeenCalledTimes(0);
+    expect(o.onExit).toHaveBeenCalledTimes(0);
+    expect(RN.mockBack.fallthrough).toBe(0);
+  });
+
+  test("G-8 the decision table: a request of any age beats a stale `visible`", () => {
+    const onStepBack = jest.fn<() => void | Promise<void>>();
+    const onExit = jest.fn<() => void>();
+    const NOW_G = 900_000;
+    for (const age of [0, 1, 250, 700, 1_000, 1_001, 1_500, 5_000, 3_600_000]) {
+      const decision = dispatchWizardHardwareBackPress(
+        "idle",
+        {
+          isFirstStep: false,
+          busy: false,
+          exitSurfaced: false,
+          onStepBack,
+          onExit,
+        },
+        {
+          visible: true,
+          unclaimedHideAt: null,
+          now: NOW_G,
+          dismissRequestedAt: NOW_G - age,
+        },
+      );
+      expect(decision.action).toBe("step_back");
+    }
+    expect(onStepBack).toHaveBeenCalledTimes(9);
+    expect(onExit).toHaveBeenCalledTimes(0);
   });
 });
