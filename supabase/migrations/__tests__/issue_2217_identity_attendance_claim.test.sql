@@ -42,6 +42,18 @@ BEGIN
   IF to_regclass('auth.identities') IS NULL THEN
     RAISE EXCEPTION 'auth.identities is missing - the lane must provision the GoTrue identity stub as supabase_admin before running this file';
   END IF;
+  -- #3524 — `public.account_owns_order_contact` reads TWO more GoTrue tables,
+  -- because on this project `mailer_autoconfirm` is on and the bare existence
+  -- of a `provider='email'` identity therefore proves nothing: a public signup
+  -- at anyone's address mints one with no mail ever sent. The positive proof is
+  -- an `otp`/`magiclink`/`recovery` session, which lives in `auth.sessions` +
+  -- `auth.mfa_amr_claims`. The predicate FAILS CLOSED when they are absent, so
+  -- without them I-04 and I-07 would not be proving the buyer is let in - they
+  -- would be measuring a database that cannot answer. Fail LOUDLY instead.
+  IF to_regclass('auth.sessions') IS NULL
+     OR to_regclass('auth.mfa_amr_claims') IS NULL THEN
+    RAISE EXCEPTION 'auth.sessions / auth.mfa_amr_claims are missing - the lane must provision the GoTrue session stub as supabase_admin before running this file';
+  END IF;
 END $guard$;
 
 SET session_replication_role = replica;
@@ -75,6 +87,39 @@ INSERT INTO auth.identities(user_id, provider, provider_id, identity_data) VALUE
   -- An IdP identity that did NOT assert the mailbox.
   (pg_temp.i2217_uuid('unverified'), 'google', 'google-2217',
    '{"email":"unverified2217@example.test","email_verified":false}'::jsonb);
+
+-- ── THE POSITIVE PROOFS, added by #3524 ──────────────────────────────────
+--
+-- Until #3524 this file needed none of the rows below: the old predicate
+-- accepted a `provider='email'` identity on its own. #3524 measured that this
+-- project runs `mailer_autoconfirm` with signups open, so that row is minted
+-- for ANY address by anyone, and `account_owns_order_contact` now demands
+-- evidence the address or number was actually REACHED. These rows are that
+-- evidence for the two honest personas. NOTHING is added for `attacker` or
+-- `unverified` - I-02, I-03 and I-08 keep exactly the shapes they had.
+--
+-- `owner` is the buyer who signs in with an email one-time code, which is what
+-- the identity row above has always claimed to model ("a code was mailed there
+-- and returned"). GoTrue records that as an `otp` row in `auth.mfa_amr_claims`
+-- against the session it minted; it does NOT set `identity_data.email_verified`
+-- (measured on production: 0 of 40 email identities carry it, including the 11
+-- that have genuinely completed an email OTP), so the code path, not the flag,
+-- is the proof. `now()` is transaction-constant, so the session and the
+-- identity share one instant and the predicate's
+-- `sessions.created_at >= identities.updated_at` binding holds - the proof is
+-- for the address the identity carries right now.
+INSERT INTO auth.sessions(id, user_id)
+VALUES (pg_temp.i2217_uuid('s-owner'), pg_temp.i2217_uuid('owner'));
+INSERT INTO auth.mfa_amr_claims(session_id, authentication_method)
+VALUES (pg_temp.i2217_uuid('s-owner'), 'otp');
+
+-- `phoneuser` proves possession through #2269's ledger - OUR row, service-role
+-- only, written only after Twilio approved a code AT THAT NUMBER. The GoTrue
+-- phone identity seeded above stays exactly as it was: I-03 still proves the
+-- bare-digit -> E.164 restoration from it, and this row is what turns that
+-- knowledge into possession for I-07.
+INSERT INTO public.verified_phone_identities(user_id, phone_e164)
+VALUES (pg_temp.i2217_uuid('phoneuser'), '+15550002217');
 
 INSERT INTO public.creator_accounts(id, email)
 VALUES (pg_temp.i2217_uuid('creator'), 'i2217-creator@example.test');
@@ -177,6 +222,23 @@ BEGIN
   SELECT count(*) INTO n FROM public.verified_account_identifiers(v_phoneuser)
    WHERE kind = 'phone' AND value = '+15550002217';
   IF n <> 1 THEN RAISE EXCEPTION 'I-03 bare GoTrue phone was not restored to E.164'; END IF;
+
+  -- ── THE ADDRESS CHANGES HANDS, and it has to, because GoTrue will not let
+  --    two accounts hold it at once. `auth.users.email` is UNIQUE here exactly
+  --    as it is in GoTrue, so the squatter of I-02/I-03 and the real buyer of
+  --    I-04 cannot both carry 'buyer2217@example.test' in the same instant.
+  --    They are therefore modelled in sequence: the attacker holds it while
+  --    I-02 and I-03 measure them, and only then does it pass to the account
+  --    that can also prove it read a code there. #3524's email arm requires
+  --    `auth.users.email` to match the order contact, so this is not a
+  --    convenience - it is the shape a real signed-in buyer has.
+  --
+  --    The attacker keeps its own confirmed mailbox and its own identity; it
+  --    loses only a string it never proved. Nothing below re-tests it, and
+  --    I-02/I-03 have already run against the full adversarial shape.
+  UPDATE auth.users SET email = NULL WHERE id = v_attacker;
+  UPDATE auth.users SET email = 'buyer2217@example.test', email_confirmed_at = now()
+   WHERE id = v_owner;
 
   -- ── I-04 the real buyer signs in and the ticket is there.
   r := public.claim_attendance_by_verified_identity(v_owner);

@@ -173,7 +173,10 @@ jobs:
             -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text" \
             -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone_confirmed_at timestamptz" \
             -c "CREATE TABLE IF NOT EXISTS auth.identities (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), provider_id text, user_id uuid NOT NULL, identity_data jsonb NOT NULL DEFAULT '{}'::jsonb, provider text NOT NULL, last_sign_in_at timestamptz, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())" \
-            -c "GRANT SELECT, INSERT, UPDATE, DELETE ON auth.identities TO postgres"
+            -c "GRANT SELECT, INSERT, UPDATE, DELETE ON auth.identities TO postgres" \
+            -c "CREATE TABLE IF NOT EXISTS auth.sessions (id uuid PRIMARY KEY, user_id uuid NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz DEFAULT now())" \
+            -c "CREATE TABLE IF NOT EXISTS auth.mfa_amr_claims (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), session_id uuid NOT NULL, authentication_method text NOT NULL, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())" \
+            -c "GRANT SELECT, INSERT, UPDATE, DELETE ON auth.sessions, auth.mfa_amr_claims TO postgres"
       # R-01..R-04, EXECUTED. R-01 reads the arming timestamp back out of
       # `orders` — a row, not a log line. R-02 is the founder's exact journey:
       # a FREE order bought with one email, claimed by an account signed in with
