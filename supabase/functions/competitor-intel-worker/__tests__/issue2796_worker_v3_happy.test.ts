@@ -112,7 +112,10 @@ Deno.test("issue 2814 accepts the bounded provider schema and grounds legacy-upg
   const previous = Deno.env.get("GEMINI_API_KEY");
   try {
     Deno.env.set("GEMINI_API_KEY", "test");
-    assertEquals(PROMPT_CONTRACT_VERSION, "competitor-brief-v3.4");
+    // issue #3541 — v3.5 states the output bounds in the instruction text.
+    // This line is a VERSION PIN, not one of the #2814 schema constraints the
+    // rest of this test guards; those stay forbidden below.
+    assertEquals(PROMPT_CONTRACT_VERSION, "competitor-brief-v3.5");
     const serializedSchema = JSON.stringify(PROVIDER_RESPONSE_SCHEMA);
     for (const forbidden of [
       "minItems",
@@ -493,4 +496,287 @@ Deno.test("issue 2820 makes the sole primary action first before report bindings
     "a-third",
   ]);
   assertEquals(actions.map((action) => action.is_primary), [true, false, false]);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// issue #3541 — the synthesis output budget
+//
+// The bounds live in the PROMPT, not in PROVIDER_RESPONSE_SCHEMA. Issue #2814
+// proved schema constraints make Gemini refuse the request outright, and the
+// "issue 2814 accepts the bounded provider schema" test above keeps them out.
+// These tests hold the other end: that the bounds are actually stated
+// somewhere, that they match what validateBrief accepts, and that the output
+// budget stays inside what SYNTHESIS_TIMEOUT_MS can deliver.
+// ══════════════════════════════════════════════════════════════════════════
+import { assertRejects } from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import {
+  MAX_SYNTHESIS_OUTPUT_TOKENS,
+  MEASURED_SYNTHESIS_CANDIDATE_TOKENS,
+  MEASURED_SYNTHESIS_MS_PER_OUTPUT_TOKEN,
+  RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED,
+  SYNTHESIS_TIMEOUT_MS,
+  validateBrief,
+} from "../index.ts";
+
+const issue3541Observations = [{
+  sourceId: "11111111-1111-4111-8111-111111111111",
+  kind: "website",
+  facts: { profile: { name: "Shiro", bio: "Pan-Asian dining" } },
+  checkedAt: "2026-09-22T00:00:00.000Z",
+  latestObservedAt: null,
+  publicUrl: "https://example.com",
+  fingerprint: "c".repeat(64),
+}];
+
+// A brief validateBrief accepts, with the three model-supplied arrays set to
+// whatever lengths the caller asks for. Used to RECOVER validateBrief's bounds
+// by observation instead of restating them, so the prompt and the validator
+// cannot drift apart and both still look right.
+function issue3541BriefWithLengths(
+  facts: number,
+  interpretations: number,
+  actions: number,
+) {
+  return {
+    what_changed: Array.from({ length: facts }, (_unused, index) => ({
+      id: `f${index + 1}`,
+      text: `A public detail changed on the site, item ${index + 1}.`,
+      source_id: issue3541Observations[0].sourceId,
+      evidence_id: "e1",
+      confidence: "observed",
+    })),
+    why_it_matters: Array.from(
+      { length: interpretations },
+      (_unused, index) => ({
+        text: `This reads as a shift in their weekend positioning, ${
+          index + 1
+        }.`,
+        evidence_ids: ["e1"],
+        confidence: "interpretation",
+      }),
+    ),
+    worth_doing: Array.from({ length: actions }, (_unused, index) => ({
+      id: `a${index + 1}`,
+      text: `Publish one specific weekend offer, option ${index + 1}.`,
+      kind: "offer",
+      confidence: "suggested_action",
+      // validateBrief demands exactly one primary action.
+      is_primary: index === 0,
+    })),
+    evidence: [{
+      id: "e1",
+      source_id: issue3541Observations[0].sourceId,
+      public_url: issue3541Observations[0].publicUrl,
+      checked_at: issue3541Observations[0].checkedAt,
+      observation: "Pan-Asian dining sits in the site header.",
+    }],
+  };
+}
+
+// Scan a length range and report the inclusive window validateBrief accepts.
+function issue3541AcceptedRange(
+  build: (length: number) => ReturnType<typeof issue3541BriefWithLengths>,
+): { min: number; max: number } {
+  const accepted: number[] = [];
+  for (let length = 0; length <= 6; length++) {
+    try {
+      validateBrief(build(length), issue3541Observations as never);
+      accepted.push(length);
+    } catch {
+      // rejected at this length
+    }
+  }
+  if (accepted.length === 0) throw new Error("no accepted length");
+  return { min: accepted[0], max: accepted[accepted.length - 1] };
+}
+
+// Drives the real synthesis path and hands back BOTH the outgoing provider
+// request and the receipt the worker wrote, so every assertion below measures
+// what actually left the process rather than what the source says.
+async function issue3541Synthesis(
+  finishReason: string,
+  text: string,
+): Promise<{ request: Record<string, any>; receipt: Record<string, unknown> }> {
+  let request: Record<string, any> = {};
+  let receipt: Record<string, unknown> = {};
+  const db = {
+    from(_table: string) {
+      const chain: Record<string, any> = {};
+      for (const method of ["select", "eq", "order", "limit", "in", "is"]) {
+        chain[method] = () => chain;
+      }
+      chain.maybeSingle = async () => ({ data: null, error: null });
+      chain.single = async () => ({ data: null, error: null });
+      return chain;
+    },
+    async rpc(name: string, args: Record<string, any>) {
+      if (name === "issue_2725_record_model_usage") {
+        receipt = args.p_receipt as Record<string, unknown>;
+        return { data: "receipt-1", error: null };
+      }
+      return { data: null, error: null };
+    },
+  } as never;
+  const job = {
+    id: "job-1",
+    competitor_id: "22222222-2222-4222-8222-222222222222",
+    brand_id: "brand-1",
+    venue_listing_id: "venue-1",
+    source_set_fingerprint: "a".repeat(64),
+    capability_snapshot: { website: 1 },
+    lease_owner: "owner-1",
+    attempt_count: 1,
+    funding_lane: "manual" as const,
+    manual_tool_lead_id: null,
+  } as never;
+  const fetcher = (async (
+    _input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => {
+    request = JSON.parse(String(init?.body));
+    return new Response(
+      JSON.stringify({
+        candidates: [{ finishReason, content: { parts: [{ text }] } }],
+        usageMetadata: {
+          promptTokenCount: 4_000,
+          candidatesTokenCount: MEASURED_SYNTHESIS_CANDIDATE_TOKENS,
+          thoughtsTokenCount: 0,
+          totalTokenCount: 4_000 + MEASURED_SYNTHESIS_CANDIDATE_TOKENS,
+        },
+        modelVersion: "gemini-3.6-flash",
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as unknown as typeof fetch;
+  const previous = Deno.env.get("GEMINI_API_KEY");
+  Deno.env.set("GEMINI_API_KEY", "test-key");
+  try {
+    await assertRejects(
+      () =>
+        synthesizeBrief(
+          "Competitor",
+          "Lagos",
+          issue3541Observations as never,
+          [{
+            sourceId: issue3541Observations[0].sourceId,
+            kind: "website",
+            before: null,
+            after: issue3541Observations[0].facts,
+            changedPaths: [],
+          }] as never,
+          venue as never,
+          fetcher,
+          { db, job },
+        ),
+      Error,
+      "synthesis_failed",
+    );
+  } finally {
+    previous === undefined
+      ? Deno.env.delete("GEMINI_API_KEY")
+      : Deno.env.set("GEMINI_API_KEY", previous);
+  }
+  return { request, receipt };
+}
+
+// The document the provider actually returned on 2026-09-22: valid JSON up to
+// the point the budget ran out, then nothing.
+const ISSUE_3541_TRUNCATED =
+  '{"what_changed":[{"id":"f1","text":"The site now leads with a weekend tast';
+
+Deno.test("issue 3541 states the output bounds in the prompt, matching validateBrief", async () => {
+  // Recovered by probing validateBrief, not copied from it, so a prompt line
+  // and the validator cannot drift apart and both still look right.
+  const facts = issue3541AcceptedRange((length) =>
+    issue3541BriefWithLengths(length, 1, 1)
+  );
+  const interpretations = issue3541AcceptedRange((length) =>
+    issue3541BriefWithLengths(1, length, 1)
+  );
+  const actions = issue3541AcceptedRange((length) =>
+    issue3541BriefWithLengths(1, 1, length)
+  );
+  const { request } = await issue3541Synthesis("STOP", ISSUE_3541_TRUNCATED);
+  const sent = String(request.contents[0].parts[0].text);
+  // Guard the guard: if the prompt stopped carrying the instruction block at
+  // all, the includes() checks below would be testing an empty string.
+  assertEquals(sent.includes("Length limits"), true);
+  assertEquals(sent.includes(`what_changed: at most ${facts.max} items`), true);
+  assertEquals(
+    sent.includes(`why_it_matters: at most ${interpretations.max}`),
+    true,
+  );
+  assertEquals(sent.includes(`worth_doing: at most ${actions.max}`), true);
+  // The bounds the validator holds but validateBrief does not express.
+  assertEquals(sent.includes("theme_signals: at most 2"), true);
+  assertEquals(sent.includes("comparisons: at most 5"), true);
+  assertEquals(sent.includes("changed_paths must always be []"), true);
+  assertEquals(sent.includes("at most 3 ids"), true);
+  assertEquals(sent.includes("240"), true);
+});
+
+Deno.test("issue 3541 keeps every bound OUT of the provider schema", () => {
+  // The other half of the #2814 guard above. That test forbids minItems,
+  // maxItems, minimum and maximum; maxLength was never in this schema and is
+  // not covered there, yet it is the most state-expensive constraint class for
+  // a constrained decoder — one character counter per string field. Bounding
+  // strings is exactly the change that would re-trigger #2814's HTTP 400.
+  const serialized = JSON.stringify(PROVIDER_RESPONSE_SCHEMA);
+  for (const forbidden of ["maxLength", "minLength", "pattern"]) {
+    assertEquals([forbidden, serialized.includes(`"${forbidden}"`)], [
+      forbidden,
+      false,
+    ]);
+  }
+});
+
+Deno.test("issue 3541 sizes the output budget inside what the synthesis timeout can deliver", async () => {
+  // The wall, recomputed from the 2026-09-22 receipt rather than restated:
+  // 1,185 candidate tokens in 6,753 ms is all the throughput evidence there is.
+  const timeoutTokenCeiling = Math.floor(
+    SYNTHESIS_TIMEOUT_MS / MEASURED_SYNTHESIS_MS_PER_OUTPUT_TOKEN,
+  );
+  assertEquals(MAX_SYNTHESIS_OUTPUT_TOKENS < timeoutTokenCeiling, true);
+  // And it must clear the point production was actually cut off at, WITH ROOM.
+  // A bare `budget > observed` would have passed at the broken 1,200, where
+  // the model produced 1,185 — 98.8% of the budget. The defect is the absence
+  // of margin, so that is what this measures: the largest output ever observed
+  // must leave at least a third of the budget unspent.
+  assertEquals(
+    MEASURED_SYNTHESIS_CANDIDATE_TOKENS / MAX_SYNTHESIS_OUTPUT_TOKENS <= 2 / 3,
+    true,
+  );
+  // Measured on the wire, not read off the source.
+  const { request } = await issue3541Synthesis("STOP", ISSUE_3541_TRUNCATED);
+  assertEquals(
+    request.generationConfig.maxOutputTokens,
+    MAX_SYNTHESIS_OUTPUT_TOKENS,
+  );
+});
+
+Deno.test("issue 3541 records a MAX_TOKENS finish as an output budget defect", async () => {
+  const { receipt } = await issue3541Synthesis(
+    "MAX_TOKENS",
+    ISSUE_3541_TRUNCATED,
+  );
+  // Prove the input really carried the finish reason, so the class below
+  // cannot be right for the wrong reason.
+  assertEquals(receipt.finish_reason, "MAX_TOKENS");
+  assertEquals(receipt.usage_complete, true);
+  assertEquals(receipt.result_class, RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED);
+  // The negative half: the old class must be gone, not merely joined.
+  assertEquals(receipt.result_class === "provider_error", false);
+  assertEquals(receipt.result_class === "invalid_result", false);
+});
+
+Deno.test("issue 3541 leaves a non-MAX_TOKENS bad body classed as a provider error", async () => {
+  // Same harness, same unparseable body, only the finish reason differs — so a
+  // default leaking through would show up here as the budget class.
+  const { receipt } = await issue3541Synthesis("STOP", ISSUE_3541_TRUNCATED);
+  assertEquals(receipt.finish_reason, "STOP");
+  assertEquals(receipt.result_class, "provider_error");
+  assertEquals(
+    receipt.result_class === RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED,
+    false,
+  );
 });
