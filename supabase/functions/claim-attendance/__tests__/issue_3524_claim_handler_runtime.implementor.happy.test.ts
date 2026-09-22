@@ -175,6 +175,56 @@ const testOpts = { sanitizeOps: false, sanitizeResources: false };
 
 Deno.test({
   ...testOpts,
+  name: "#3524 runtime: an unproved inbox answers its OWN 409, not the mismatch",
+  fn: async () => {
+    // The refusal that tells the rightful buyer their inbox is simply unproved
+    // has to be distinguishable at the wire, or the app cannot offer the code
+    // that fixes it — it would render the sign-out sheet and send them in a
+    // circle. Driven through the real handler rather than grepped, because the
+    // mapping is the thing under test.
+    const { response, body, tables } = await invoke(CLAIM, claimRequest({
+      version: 1, kind: "order", eventId: UUID_EVENT, sourceId: UUID_SOURCE,
+      token: TOKEN,
+    }), {
+      begin_attendance_claim_attempt: admitted,
+      claim_attendance_internal_v2: {
+        result: "contact_unproved",
+        contactMasked: "a•••@e•••.test",
+        contactChannel: "email",
+      },
+    });
+
+    assert(response.status === 409, `expected 409, got ${response.status}`);
+    assert(body.ok === false, "the body says it did not succeed");
+    assert(
+      body.error === "claim_contact_unproved",
+      `the two refusals must not collapse into one code, got ${String(body.error)}`,
+    );
+    assert(body.contactMasked === "a•••@e•••.test", "the masked hint is passed through");
+    assert(body.contactChannel === "email", "and which channel it is");
+    assert(
+      response.headers.get("cache-control") === "no-store",
+      "a refusal carrying a purchase hint is never cached",
+    );
+    assert(
+      !JSON.stringify(body).includes("@example.test") ||
+        JSON.stringify(body).includes("•••"),
+      "no unmasked contact leaves the handler",
+    );
+    const ledger = tables.find((t: TableLog[number]) => t.table.startsWith("attendance_claim_attempts"));
+    assert(ledger !== undefined, "the attempt ledger was closed");
+    assert(ledger.method === "PATCH", `expected a PATCH, got ${ledger.method}`);
+    assert(
+      (ledger.body as Record<string, unknown>).outcome === "contact_unproved",
+      "the ledger must record THIS outcome, so the rate limiter and the funnel "
+        + "can tell the two refusals apart. Got "
+        + String((ledger.body as Record<string, unknown>).outcome),
+    );
+  },
+});
+
+Deno.test({
+  ...testOpts,
   name: "#3524 runtime: an identity mismatch really answers 409 with the masked hint",
   fn: async () => {
     const { response, body, tables } = await invoke(CLAIM, claimRequest({
