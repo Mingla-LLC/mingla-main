@@ -236,7 +236,8 @@ jobs:
             supabase/migrations/__tests__/issue_3524_forwarded_email_cannot_take_the_ticket.tester.adversarial.test.sql \
             supabase/migrations/__tests__/issue_3524_handoff_replay.tester.adversarial.test.sql \
             supabase/migrations/__tests__/issue_3524_claim_without_chat_is_told_truthfully.tester.adversarial.test.sql \
-            supabase/migrations/__tests__/issue_3524_no_consent_row_is_attendance_only.tester.adversarial.test.sql; do
+            supabase/migrations/__tests__/issue_3524_no_consent_row_is_attendance_only.tester.adversarial.test.sql \
+            supabase/migrations/__tests__/issue_3524_knowing_an_address_is_not_owning_it.tester.adversarial.test.sql; do
             if [[ -f "$tester_sql" ]]; then
               psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f "$tester_sql"
             fi
