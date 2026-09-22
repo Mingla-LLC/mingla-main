@@ -138,7 +138,15 @@ VALUES
 
 -- #3524 — THE TOKEN RAIL'S OWN ORDER. Same buyer address, a live claim-token
 -- digest, and DELIBERATELY NEVER ARMED for the identity rail, so it can never
--- enter a sweep and can never change an I-04 count. It exists so this lane can
+-- enter a sweep and can never change an I-04 count.
+--
+-- THE DIGEST BYTE IS NAMESPACED, and that is load-bearing rather than tidy.
+-- `orders_attendance_claim_unconsumed_digest_uniq` is a UNIQUE index over every
+-- unconsumed digest in the table, and three lanes run this file in the SAME
+-- database as #871's suite, whose race order carries `repeat('ab',32)`. Reusing
+-- a byte another fixture already holds fails the second suite to run on an
+-- INSERT, and the failure reads exactly like a real regression. `22` is unused
+-- across supabase/migrations/__tests__. It exists so this lane can
 -- see what the token rail ANSWERS for an account that cannot prove the address:
 -- the answer must be `identity_mismatch`, which is a truthful refusal the buyer
 -- can act on, and never `invalid`, which would be a lie about a valid token.
@@ -149,7 +157,7 @@ INSERT INTO public.orders(id, event_id, buyer_email, buyer_phone_e164, buyer_nam
                           attendance_claim_token_generation)
 VALUES (pg_temp.i2217_uuid('o-token'), pg_temp.i2217_uuid('event'),
         'buyer2217@example.test', '+15550009996', 'Token', 1000, 'USD', 'paid', 'legacy',
-        decode(repeat('ab', 32), 'hex'), now(), 'legacy_v1');
+        decode(repeat('22', 32), 'hex'), now(), 'legacy_v1');
 
 -- The teammate is a REAL buyer as well as brand staff — the only shape that can
 -- distinguish "not evicted because still entitled" from "not evicted because staff".
@@ -161,7 +169,12 @@ VALUES (pg_temp.i2217_uuid('o-team'), pg_temp.i2217_uuid('event'), pg_temp.i2217
 INSERT INTO public.tickets(id, order_id, ticket_type_id, event_id, qr_code, status, approval_status)
 SELECT pg_temp.i2217_uuid('t-'||tag), pg_temp.i2217_uuid('o-'||tag), pg_temp.i2217_uuid('tier'),
        pg_temp.i2217_uuid('event'), 'qr-2217-'||tag, 'valid', 'auto'
-  FROM unnest(ARRAY['email','unarmed','phone','refunded','unverif','postref','team','token']) tag;
+  FROM unnest(ARRAY['email','unarmed','phone','refunded','unverif','postref','team']) tag;
+-- #3524 — the token-rail order's ticket, added beside the population above
+-- rather than into it, so not one existing line of this file changes.
+INSERT INTO public.tickets(id, order_id, ticket_type_id, event_id, qr_code, status, approval_status)
+VALUES (pg_temp.i2217_uuid('t-token'), pg_temp.i2217_uuid('o-token'), pg_temp.i2217_uuid('tier'),
+        pg_temp.i2217_uuid('event'), 'qr-2217-token', 'valid', 'auto');
 
 SET session_replication_role = origin;
 
@@ -341,7 +354,7 @@ BEGIN
   END IF;
   r := public.claim_attendance_internal(
          v_owner, 'order', pg_temp.i2217_uuid('event'),
-         pg_temp.i2217_uuid('o-token'), decode(repeat('ab', 32), 'hex'));
+         pg_temp.i2217_uuid('o-token'), decode(repeat('22', 32), 'hex'));
   IF r->>'result' <> 'identity_mismatch' THEN
     RAISE EXCEPTION 'I-04b the token rail answered % instead of identity_mismatch', r;
   END IF;
@@ -366,6 +379,7 @@ BEGIN
   INSERT INTO auth.mfa_amr_claims(session_id, authentication_method)
   VALUES (pg_temp.i2217_uuid('s-owner-otp'), 'otp');
 
+  -- ── I-04 the real buyer signs in and the ticket is there.
   r := public.claim_attendance_by_verified_identity(v_owner);
   IF (r->>'count')::int <> 1 THEN RAISE EXCEPTION 'I-04 owner claim was %', r; END IF;
   IF NOT EXISTS (SELECT 1 FROM public.orders

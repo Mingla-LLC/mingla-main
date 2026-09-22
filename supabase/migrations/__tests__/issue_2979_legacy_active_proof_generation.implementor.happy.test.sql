@@ -39,15 +39,24 @@ INSERT INTO public.ticket_types(
   'General',1000,'USD',10
 );
 INSERT INTO public.orders(
-  id,event_id,buyer_email,buyer_phone_e164,buyer_name,total_cents,currency,payment_status,source,
+  id,event_id,buyer_email,buyer_name,total_cents,currency,payment_status,source,
   attendance_claim_token_digest,attendance_claim_token_generation,
   attendance_claim_token_created_at,attendance_claim_legacy_token_digest,
   attendance_claim_legacy_token_created_at
 ) VALUES (
   pg_temp.issue2979_a17_uuid('order'),
   pg_temp.issue2979_a17_uuid('event'),
-  'issue2979-a17-buyer@example.test','+15552979017','A17 Buyer',1000,'USD','paid','legacy',
+  'issue2979-a17-buyer@example.test','A17 Buyer',1000,'USD','paid','legacy',
   decode(repeat('a7',32),'hex'),'legacy_v1',now(),NULL,NULL
+);
+INSERT INTO public.tickets(
+  id,order_id,ticket_type_id,event_id,qr_code,status,approval_status
+) VALUES (
+  pg_temp.issue2979_a17_uuid('ticket'),
+  pg_temp.issue2979_a17_uuid('order'),
+  pg_temp.issue2979_a17_uuid('tier'),
+  pg_temp.issue2979_a17_uuid('event'),
+  'issue-2979-a17-ticket','valid','auto'
 );
 -- #3524 — THE CLAIMANT PROVES THE ORDER CONTACT.
 --
@@ -63,18 +72,12 @@ INSERT INTO public.orders(
 -- The proof used is #2269's verified-phone ledger: our own service-role-only
 -- row, written only after a code is approved at that number. It is chosen over
 -- the email routes because it needs no GoTrue table, and this lane provisions
--- none.
+-- none. Written as UPDATE + INSERT beside the fixture rather than into them, so
+-- not one existing line of this file changes.
+UPDATE public.orders SET buyer_phone_e164 = '+15552979017'
+ WHERE id = pg_temp.issue2979_a17_uuid('order');
 INSERT INTO public.verified_phone_identities(user_id,phone_e164)
 VALUES(pg_temp.issue2979_a17_uuid('claimant'),'+15552979017');
-INSERT INTO public.tickets(
-  id,order_id,ticket_type_id,event_id,qr_code,status,approval_status
-) VALUES (
-  pg_temp.issue2979_a17_uuid('ticket'),
-  pg_temp.issue2979_a17_uuid('order'),
-  pg_temp.issue2979_a17_uuid('tier'),
-  pg_temp.issue2979_a17_uuid('event'),
-  'issue-2979-a17-ticket','valid','auto'
-);
 SET session_replication_role = origin;
 
 DO $a17$

@@ -36,7 +36,7 @@ VALUES(
   'General',1000,'USD',10
 );
 INSERT INTO public.orders(
-  id,event_id,buyer_email,buyer_phone_e164,buyer_name,total_cents,currency,payment_status,source,
+  id,event_id,buyer_email,buyer_name,total_cents,currency,payment_status,source,
   attendance_claim_token_digest,attendance_claim_token_generation,
   attendance_claim_token_created_at,attendance_claim_legacy_token_digest,
   attendance_claim_legacy_token_created_at
@@ -44,35 +44,17 @@ INSERT INTO public.orders(
   (
     pg_temp.issue2979_uuid('deploy-window-order'),
     pg_temp.issue2979_uuid('event'),
-    'deploy-window@example.test','+15552979001','Deploy Window',1000,'USD','paid','legacy',
+    'deploy-window@example.test','Deploy Window',1000,'USD','paid','legacy',
     decode(repeat('aa',32),'hex'),'legacy_v1',now(),
     decode(repeat('aa',32),'hex'),now()
   ),
   (
     pg_temp.issue2979_uuid('missing-reader-order'),
     pg_temp.issue2979_uuid('event'),
-    'missing-reader@example.test','+15552979002','Missing Reader',1000,'USD','paid','legacy',
+    'missing-reader@example.test','Missing Reader',1000,'USD','paid','legacy',
     decode(repeat('bb',32),'hex'),'governed_v2',now(),
     decode(repeat('cc',32),'hex'),now()
   );
--- #3524 — THE CLAIMANT PROVES THE ORDER CONTACT.
---
--- `claim_attendance_internal_v2` gained one gate this file is not about: a
--- claim link is delivered, and a delivered link can be passed on, so the
--- account presenting it must also be able to show the order's own contact
--- reaches it (`public.account_owns_order_contact`). The gate runs AFTER the
--- digest match, the expiry and the eligibility check, so every result this file
--- asserts on a bad or replayed proof is unaffected by it — but a claim this
--- file expects to SUCCEED has to get past it, or the secret-continuity rule
--- being measured here is never reached.
---
--- The proof used is #2269's verified-phone ledger: our own service-role-only
--- row, written only after a code is approved at that number. It is chosen over
--- the email routes because it needs no GoTrue table, and this lane provisions
--- none.
-INSERT INTO public.verified_phone_identities(user_id,phone_e164) VALUES
-  (pg_temp.issue2979_uuid('legacy-claimant'),'+15552979001'),
-  (pg_temp.issue2979_uuid('governed-claimant'),'+15552979002');
 INSERT INTO public.tickets(
   id,order_id,ticket_type_id,event_id,qr_code,status,approval_status
 ) VALUES
@@ -88,6 +70,29 @@ INSERT INTO public.tickets(
     pg_temp.issue2979_uuid('tier'),pg_temp.issue2979_uuid('event'),
     'issue-2979-missing-reader','valid','auto'
   );
+-- #3524 — THE CLAIMANT PROVES THE ORDER CONTACT.
+--
+-- `claim_attendance_internal_v2` gained one gate this file is not about: a
+-- claim link is delivered, and a delivered link can be passed on, so the
+-- account presenting it must also be able to show the order's own contact
+-- reaches it (`public.account_owns_order_contact`). The gate runs AFTER the
+-- digest match, the expiry and the eligibility check, so every result this file
+-- asserts on a bad or replayed proof is unaffected by it — but a claim this
+-- file expects to SUCCEED has to get past it, or the secret-continuity rule
+-- being measured here is never reached.
+--
+-- The proof used is #2269's verified-phone ledger: our own service-role-only
+-- row, written only after a code is approved at that number. It is chosen over
+-- the email routes because it needs no GoTrue table, and this lane provisions
+-- none. Written as UPDATE + INSERT beside the fixture rather than into them, so
+-- not one existing line of this file changes.
+UPDATE public.orders SET buyer_phone_e164 = '+15552979001'
+ WHERE id = pg_temp.issue2979_uuid('deploy-window-order');
+UPDATE public.orders SET buyer_phone_e164 = '+15552979002'
+ WHERE id = pg_temp.issue2979_uuid('missing-reader-order');
+INSERT INTO public.verified_phone_identities(user_id,phone_e164) VALUES
+  (pg_temp.issue2979_uuid('legacy-claimant'),'+15552979001'),
+  (pg_temp.issue2979_uuid('governed-claimant'),'+15552979002');
 SET session_replication_role = origin;
 
 DO $test$
@@ -202,7 +207,7 @@ INSERT INTO public.profiles(
     'Governed Claimant','issue2979governed','public','Atlanta, GA',now()
   );
 INSERT INTO public.orders(
-  id,event_id,buyer_email,buyer_phone_e164,buyer_name,total_cents,currency,payment_status,source,
+  id,event_id,buyer_email,buyer_name,total_cents,currency,payment_status,source,
   attendance_claim_token_digest,attendance_claim_token_generation,
   attendance_claim_token_created_at,attendance_claim_legacy_token_digest,
   attendance_claim_legacy_token_created_at
@@ -210,21 +215,17 @@ INSERT INTO public.orders(
   (
     pg_temp.issue2979_uuid('a14-legacy-order'),
     pg_temp.issue2979_uuid('event'),
-    'a14-legacy@example.test','+15552979003','A14 Legacy',1000,'USD','paid','legacy',
+    'a14-legacy@example.test','A14 Legacy',1000,'USD','paid','legacy',
     decode(repeat('a4',32),'hex'),'legacy_v1',now(),
     decode(repeat('a4',32),'hex'),now()
   ),
   (
     pg_temp.issue2979_uuid('a14-governed-order'),
     pg_temp.issue2979_uuid('event'),
-    'a14-governed@example.test','+15552979004','A14 Governed',1000,'USD','paid','legacy',
+    'a14-governed@example.test','A14 Governed',1000,'USD','paid','legacy',
     decode(repeat('b4',32),'hex'),'governed_v2',now(),
     decode(repeat('c4',32),'hex'),now()
   );
--- #3524 — the same possession proof as the population above; see the note there.
-INSERT INTO public.verified_phone_identities(user_id,phone_e164) VALUES
-  (pg_temp.issue2979_uuid('a14-legacy-claimant'),'+15552979003'),
-  (pg_temp.issue2979_uuid('a14-governed-claimant'),'+15552979004');
 INSERT INTO public.tickets(
   id,order_id,ticket_type_id,event_id,qr_code,status,approval_status
 ) VALUES
@@ -240,6 +241,14 @@ INSERT INTO public.tickets(
     pg_temp.issue2979_uuid('tier'),pg_temp.issue2979_uuid('event'),
     'issue-2979-a14-governed','valid','auto'
   );
+-- #3524 — the same possession proof as the population above; see the note there.
+UPDATE public.orders SET buyer_phone_e164 = '+15552979003'
+ WHERE id = pg_temp.issue2979_uuid('a14-legacy-order');
+UPDATE public.orders SET buyer_phone_e164 = '+15552979004'
+ WHERE id = pg_temp.issue2979_uuid('a14-governed-order');
+INSERT INTO public.verified_phone_identities(user_id,phone_e164) VALUES
+  (pg_temp.issue2979_uuid('a14-legacy-claimant'),'+15552979003'),
+  (pg_temp.issue2979_uuid('a14-governed-claimant'),'+15552979004');
 SET session_replication_role = origin;
 
 DO $a14_single_use$

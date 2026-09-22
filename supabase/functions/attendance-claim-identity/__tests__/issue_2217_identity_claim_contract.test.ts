@@ -189,6 +189,8 @@ Deno.test("#2217 the consumer app runs the sweep once per signed-in account", ()
   // failed invoke fails here.
   //   before: "if (error) return { count: 0, eventIds: [] };"
   //   after:  "if (error) return { count: 0, eventIds: [], claims: [] };"
+  // Proven by restoring the old error line in the service: this check goes red,
+  // which is what says the pin still measures the source and not itself.
   assertStringIncludes(
     service,
     "if (error) return { count: 0, eventIds: [], claims: [] };",

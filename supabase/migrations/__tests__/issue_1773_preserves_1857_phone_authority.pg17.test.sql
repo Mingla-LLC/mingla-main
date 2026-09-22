@@ -51,6 +51,11 @@ BEGIN
   -- carried, which is the control: the fingerprint pipeline still reproduces the
   -- original numbers, so the one that moved moved for a reason.
   --
+  -- Proven still live: restoring the previous value fires
+  -- `issue_1773_1857_current_writer_drift` on this signature, and the deliberate
+  -- `ALTER FUNCTION ... SET search_path` self-test below re-proves, on every run,
+  -- that this fingerprint moves when the definition does.
+  --
   -- The BEHAVIOURAL block below is unchanged and was proven to pass against the
   -- new writer on its own merits BEFORE this value was touched: strict-E164
   -- linking, the phone_country_iso revision path, the national-only email path,

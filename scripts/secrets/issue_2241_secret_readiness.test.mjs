@@ -312,6 +312,9 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // module to the import graph that the contract does NOT classify fails the
   // deepEqual with `contract:function_set_mismatch`, before this line is
   // reached. Verified by doing exactly that and restoring.
+  // Proof this replacement BITES rather than merely counting higher: remove the
+  // new function's contract entry and the deepEqual above fails with
+  // `contract:function_set_mismatch` before this line is ever reached.
   assert.equal(Object.keys(contract.functions).length, 236);
   assert.equal(manifest.secrets.length, 88);
 });

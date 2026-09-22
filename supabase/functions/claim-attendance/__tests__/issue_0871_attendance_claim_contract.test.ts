@@ -278,6 +278,8 @@ Deno.test("#871 web landing validates the exact fragment before registered-schem
   // The old line passed a file that navigated on mount as long as it spelled
   // the guard. These lines cannot: they read the effect bodies themselves, and
   // the second pair stops the check being satisfied by deleting all navigation.
+  // Proven by putting the pre-#3524 guarded on-mount launch back into the page:
+  // the old line passes it, and the loop below fails it on `openAppScheme(`.
   for (const body of reactEffectBodies(landing)) {
     for (
       const navigation of [
