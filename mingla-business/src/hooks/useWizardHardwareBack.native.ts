@@ -13,23 +13,32 @@
 //   Toast, the people picker) consumes KEYCODE_BACK inside its native Dialog
 //   and calls onRequestClose. JS hardwareBackPress listeners do not fire while
 //   one is mounted.
-// - The soft keyboard does NOT go first for free. With the keyboard up, one
-//   press hides the IME AND reaches this listener (runtime-proven, #3446
-//   SC-7). So a press while the keyboard owner (useKeyboardIsVisible) says
-//   visible, or just after a hide no press has claimed, only dismisses the
-//   keyboard: no owner runs and the latch is untouched. Android can deliver
-//   the hide and the press in either order; the window and the claim rule
-//   live in wizardHardwareBackRouting.ts (WIZARD_KEYBOARD_BACK_WINDOW_MS).
-//   The keyboard owner's flag is BEHIND the dismissal it is reporting — the
-//   library flips it only on keyboardDidHide, emitted from the IME inset
-//   animation's onEnd — so this hook also records the dismissal it asked for
-//   and stops reading `visible` until a visibility change settles it. Without
-//   that, a second press inside the lag was swallowed as another keyboard
-//   dismissal and the wizard did not move. The record is settled by the truth
-//   and by nothing else: no timer expires it, because the lag is set by
-//   main-thread load and the #3462 device round measured it past 3 s, so any
-//   deadline just re-opens the dead window (see hasOutstandingDismissRequest
-//   in wizardHardwareBackRouting.ts).
+// - The soft keyboard does NOT go first for free, and the platform does not
+//   tell us which way a given press went. Two routes are both real, both
+//   captured on emulator-5564 (Android 15, gesture nav), and nothing in JS can
+//   observe the choice before the fact:
+//     Route A, the dominant one. The IME window consumes KEYCODE_BACK and
+//       hides itself (logcat: ORIGIN_IME, HIDE_SOFT_INPUT_BY_BACK_KEY). The
+//       activity never gets onBackPressed, so this listener NEVER RUNS for
+//       that press. Any bookkeeping of the form "we asked for this dismissal"
+//       is inert on this route — that is what shipped, and it left the next
+//       press dead for 0.2-1.8 s.
+//     Route B. The press reaches JS with the keyboard up. We dismiss it
+//       ourselves and stop; no owner runs and the latch is untouched.
+//   So the rule cannot ask "was this hide caused by a back press?" — the
+//   platform never answers that (getEventParams carries height, duration,
+//   timestamp, target, type, appearance; no cause). It asks the one question
+//   that IS answerable at press time: is the IME up right now?
+// - That answer comes from isImeUp() (wrappers/imeUpTracker.native.ts), a
+//   module-scope flag driven by the keyboard's ONSET events, measured at
+//   +124 ms after the press against +522 ms for keyboardDidHide and later
+//   still for the React commit that the retired model read. It is read
+//   synchronously inside onPress and never during render.
+// - On a dismissal we set the flag down at the same instant we call
+//   Keyboard.dismiss(), so the very next press acts — even 40 ms later, and
+//   without waiting for any event. There is NO clock anywhere on this path:
+//   the routing module is not handed one, so a future deadline is a type error
+//   rather than a judgement call.
 // - Subscribe ONCE per focus (useFocusEffect with EMPTY deps). BackHandler
 //   runs listeners newest-first. Re-subscribing on every render would push
 //   this listener ahead of any overlay listener registered later in the tree
@@ -47,9 +56,8 @@
 //   surfaced UI (a discard dialog or failure toast) and on blur.
 // - Android only. BackHandler is a no-op on iOS, and nothing is registered
 //   there.
-// - No console, no timers, no beforeRemove / usePreventRemove.
+// - No console, no timers, no clock, no beforeRemove / usePreventRemove.
 //   beforeRemove would also intercept the wizards' own router.replace exits.
-//   The keyboard rule compares timestamps; it never schedules anything.
 //
 // Invariant: I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK (docs/INVARIANT_REGISTRY.md).
 
@@ -57,91 +65,40 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { BackHandler, Keyboard, Platform } from "react-native";
 import { useFocusEffect } from "expo-router";
 
-import { useKeyboardIsVisible } from "../wrappers/useKeyboardIsVisible";
+import { isImeUp, noteImeDismissRequested } from "../wrappers/imeUpTracker";
 import {
   dispatchWizardHardwareBackPress,
   type WizardHardwareBackConfig,
   type WizardHardwareBackLatch,
 } from "./wizardHardwareBackRouting";
 
-interface KeyboardTrack {
-  /** useKeyboardIsVisible as of the last commit. */
-  visible: boolean;
-  /** When it last hid, unless a back press claimed that hide. */
-  unclaimedHideAt: number | null;
-  /** A back press was swallowed while visible; the coming hide is its own. */
-  claimed: boolean;
-  /**
-   * When we last called Keyboard.dismiss() with no visibility change since.
-   * The keyboard owner's flag flips only at the end of the IME hide animation,
-   * so between the two `visible` is stale and must not be read as authoritative
-   * (see hasOutstandingDismissRequest in wizardHardwareBackRouting.ts). The
-   * stamp is the ordering record; only a visibility change clears it.
-   */
-  dismissRequestedAt: number | null;
-}
-
 export function useWizardHardwareBack(config: WizardHardwareBackConfig): void {
   const configRef = useRef<WizardHardwareBackConfig>(config);
   const latchRef = useRef<WizardHardwareBackLatch>("idle");
-  const keyboardVisible = useKeyboardIsVisible();
-  const keyboardRef = useRef<KeyboardTrack>({
-    visible: keyboardVisible,
-    unclaimedHideAt: null,
-    claimed: false,
-    dismissRequestedAt: null,
-  });
 
   useLayoutEffect(() => {
     configRef.current = config;
   });
-
-  // Same-commit refresh as the config, for the same reason: a press queued
-  // right behind the keyboard update must see it.
-  useLayoutEffect(() => {
-    const keyboard = keyboardRef.current;
-    if (keyboard.visible === keyboardVisible) return;
-    keyboard.visible = keyboardVisible;
-    keyboard.unclaimedHideAt =
-      !keyboardVisible && !keyboard.claimed ? Date.now() : null;
-    keyboard.claimed = false;
-    // Any visibility change settles an outstanding dismissal request, in both
-    // directions: a hide is the confirmation we were waiting for, and a show
-    // means the keyboard is genuinely up again, so `visible` is authoritative
-    // once more. Either way we stop distrusting it.
-    keyboard.dismissRequestedAt = null;
-  }, [keyboardVisible]);
 
   useFocusEffect(
     useCallback(() => {
       if (Platform.OS !== "android") return undefined;
       latchRef.current = "idle";
       const onPress = (): boolean => {
-        const keyboard = keyboardRef.current;
-        const now = Date.now();
         const decision = dispatchWizardHardwareBackPress(
           latchRef.current,
           configRef.current,
-          {
-            visible: keyboard.visible,
-            unclaimedHideAt: keyboard.unclaimedHideAt,
-            now,
-            dismissRequestedAt: keyboard.dismissRequestedAt,
-          },
+          // Read at the instant of the press, from the IME's onset events.
+          // Never from React state: a press must not be judged against a
+          // value that describes the world before the previous press.
+          { imeUp: isImeUp() },
         );
         latchRef.current = decision.nextLatch;
         if (decision.action === "dismiss_keyboard") {
-          // One hide swallows at most one press.
-          keyboard.unclaimedHideAt = null;
-          if (keyboard.visible) {
-            keyboard.claimed = true;
-            // Record the dismissal we are asking for. Until the keyboard owner
-            // reports a change, `visible` is our own stale value and rule 0
-            // must not act on it, so the NEXT press steps back (or exits on
-            // step 1) instead of being swallowed as a second dismissal.
-            keyboard.dismissRequestedAt = now;
-            Keyboard.dismiss();
-          }
+          // Flag down FIRST, at the same instant as the request. The next
+          // press acts immediately instead of waiting on keyboardWillHide.
+          noteImeDismissRequested();
+          Keyboard.dismiss();
         }
         if (decision.pending !== null) {
           const clear = (): void => {
