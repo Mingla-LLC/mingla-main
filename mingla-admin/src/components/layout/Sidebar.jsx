@@ -37,6 +37,7 @@ import {
   Landmark,
   Megaphone,
   Wrench,
+  RotateCcw,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { NAV_GROUPS } from "../../lib/constants";
@@ -72,6 +73,9 @@ const ICON_MAP = {
   // ISSUE-1354 — Tool Leads nav (all free-tool submissions). Without this entry
   // the Wrench icon silently falls back to LayoutDashboard (renderNavItem).
   Wrench,
+  // ISSUE-3534 — Refund operations nav. Without this entry the RotateCcw icon
+  // silently falls back to LayoutDashboard (the documented ICON_MAP footgun).
+  RotateCcw,
 };
 
 export function Sidebar({
