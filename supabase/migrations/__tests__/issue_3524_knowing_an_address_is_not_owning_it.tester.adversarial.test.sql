@@ -245,6 +245,7 @@ DECLARE
   v_order uuid := pg_temp.k3524_uuid('order');
   m text;
   v_swept jsonb;
+  r jsonb;
 BEGIN
   -- ── PRECONDITION: the email arm can execute at all in this session ───────
   PERFORM pg_temp.k3524_become_buyer('realguest', 'k-real');
@@ -365,7 +366,72 @@ BEGIN
       || 'satisfies the whole rule. Bind the proof to the address: require the '
       || 'amr session to be no older than the email identity.');
 
+  -- ── K. THE FALSE NEGATIVE, AND THAT IT COSTS A SIGN-IN AND NEVER A TICKET ─
+  --
+  -- The binding in J refuses an honest guest too: somebody who signed in by
+  -- code, then legitimately changed their address to the one they bought with,
+  -- has a proof older than the address it would have to vouch for. That is the
+  -- deliberate asymmetry — fail toward the guest re-proving — but it is only
+  -- acceptable if the refusal is the RECOVERABLE one and not a dead end. So
+  -- this measures the whole journey at the CLAIM, not just the predicate:
+  -- identity_mismatch, nothing consumed, and the ticket landing the moment the
+  -- guest reads one more code.
+  -- Angle I swept the order onto the guest who really did read the code, which
+  -- is the correct outcome there. Put it back unclaimed so K measures the
+  -- refusal the binding causes and not a conflict left over from I.
+  UPDATE public.orders
+     SET buyer_user_id = NULL,
+         attendance_claim_token_digest = decode(repeat('ab', 32), 'hex'),
+         attendance_claim_token_generation = 'governed_v2',
+         attendance_claim_token_consumed_at = NULL,
+         attendance_claim_legacy_token_digest = NULL
+   WHERE id = v_order;
+  DELETE FROM public.conversation_participants
+   WHERE user_id = pg_temp.k3524_uuid('realguest');
+  r := public.claim_attendance_internal_v2(
+         pg_temp.k3524_uuid('carryover'), 'order',
+         pg_temp.k3524_uuid('event'), v_order,
+         decode(repeat('ab', 32), 'hex'));
+  PERFORM pg_temp.k3524_expect(r->>'result' = 'identity_mismatch',
+    'K: the refusal must be the RECOVERABLE one — identity_mismatch, which the '
+      || 'sheet renders as "sign out and sign in with that address" — and never '
+      || 'invalid or ineligible. Got ' || coalesce(r->>'result', '(null)'));
+  PERFORM pg_temp.k3524_expect(
+    (SELECT attendance_claim_token_digest IS NOT NULL AND buyer_user_id IS NULL
+       FROM public.orders WHERE id = v_order),
+    'K: and it must consume nothing, so the same link still works afterwards');
+
+  -- One more code, read at the address the account now carries. GoTrue mints a
+  -- session AFTER the identity''s last change, which is exactly what the
+  -- binding asks for.
+  INSERT INTO auth.sessions(id, user_id, created_at)
+  VALUES (pg_temp.k3524_uuid('s-carry-2'), pg_temp.k3524_uuid('carryover'),
+          now() + interval '1 second');
+  INSERT INTO auth.mfa_amr_claims(session_id, authentication_method)
+  VALUES (pg_temp.k3524_uuid('s-carry-2'), 'otp');
+  PERFORM pg_temp.k3524_expect(
+    public.account_owns_order_contact(pg_temp.k3524_uuid('carryover'), v_order),
+    'K: a code read AFTER the address arrived must satisfy the binding — '
+      || 'otherwise the guest is locked out permanently rather than asked to '
+      || 'prove the address once');
+  r := public.claim_attendance_internal_v2(
+         pg_temp.k3524_uuid('carryover'), 'order',
+         pg_temp.k3524_uuid('event'), v_order,
+         decode(repeat('ab', 32), 'hex'));
+  PERFORM pg_temp.k3524_expect(r->>'result' = 'claimed',
+    'K: and the ticket lands on the second attempt. The cost of the binding is '
+      || 'one sign-in, never the ticket. Got ' || coalesce(r->>'result', '(null)'));
+
   -- ── G. fails closed when GoTrue''s amr table is not there ────────────────
+  -- K claimed the order. G is about the PREDICATE, which reads orders and
+  -- identities and never the claim state, so the order is put back the way the
+  -- other angles found it rather than G quietly measuring a claimed row.
+  UPDATE public.orders
+     SET buyer_user_id = NULL,
+         attendance_claim_token_digest = decode(repeat('ab', 32), 'hex'),
+         attendance_claim_token_generation = 'governed_v2',
+         attendance_claim_token_consumed_at = NULL
+   WHERE id = v_order;
   PERFORM pg_temp.k3524_become_buyer('realguest', 'k-real');
   EXECUTE 'ALTER TABLE auth.mfa_amr_claims RENAME TO mfa_amr_claims_hidden';
   PERFORM pg_temp.k3524_expect(
@@ -381,6 +447,36 @@ BEGIN
     public.account_owns_order_contact(pg_temp.k3524_uuid('google'), v_order),
     'G: the provider-asserted arm needs no amr and must still answer');
   EXECUTE 'ALTER TABLE auth.mfa_amr_claims_hidden RENAME TO mfa_amr_claims';
+
+  -- ── G2. the tables are there but the TIMESTAMPS are not ──────────────────
+  --
+  -- The binding in J needs two columns. A database carrying the tables without
+  -- them cannot bind a proof to an address, so the arm must refuse rather than
+  -- fall back to the unbound question — which is precisely the shape J proves
+  -- is exploitable. Nothing else in this suite reaches that branch, because
+  -- every stub here defines both columns.
+  EXECUTE 'ALTER TABLE auth.sessions RENAME COLUMN created_at TO created_at_hidden';
+  PERFORM pg_temp.k3524_become_buyer('realguest', 'k-real');
+  PERFORM pg_temp.k3524_expect(
+    NOT public.account_owns_order_contact(pg_temp.k3524_uuid('realguest'), v_order),
+    'G2: with auth.sessions.created_at absent the email arm must refuse, not '
+      || 'drop the binding and answer the unbound question');
+  EXECUTE 'ALTER TABLE auth.sessions RENAME COLUMN created_at_hidden TO created_at';
+  EXECUTE 'ALTER TABLE auth.identities RENAME COLUMN updated_at TO updated_at_hidden';
+  PERFORM pg_temp.k3524_expect(
+    NOT public.account_owns_order_contact(pg_temp.k3524_uuid('realguest'), v_order),
+    'G2: and the same with auth.identities.updated_at absent');
+  PERFORM pg_temp.k3524_become_buyer('google', 'k-google');
+  PERFORM pg_temp.k3524_expect(
+    public.account_owns_order_contact(pg_temp.k3524_uuid('google'), v_order),
+    'G2: the provider-asserted arm binds nothing and needs neither column, so '
+      || 'it must still answer');
+  EXECUTE 'ALTER TABLE auth.identities RENAME COLUMN updated_at_hidden TO updated_at';
+  PERFORM pg_temp.k3524_become_buyer('realguest', 'k-real');
+  PERFORM pg_temp.k3524_expect(
+    public.account_owns_order_contact(pg_temp.k3524_uuid('realguest'), v_order),
+    'G2: and with both columns back the real guest passes again — the refusals '
+      || 'above were the missing columns and nothing else');
 END;
 $harness$;
 
