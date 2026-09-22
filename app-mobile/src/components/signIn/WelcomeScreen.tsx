@@ -15,11 +15,12 @@ import {
   AccessibilityInfo,
   ScrollView,
   useWindowDimensions,
+  // #3524 — the email panel is an INPUT surface on a screen that had none, so it
+  // needs the keyboard avoidance the OAuth buttons never did.
+  KeyboardAvoidingView,
+  TextInput,
 } from "react-native";
 import { AppleLogo } from "../ui/BrandIcons";
-// #3524 — the email panel is an INPUT surface on a screen that had none, so it
-// needs the keyboard avoidance the OAuth buttons never did.
-import { KeyboardAvoidingView, TextInput } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import { HapticFeedback } from "../../utils/hapticFeedback";
@@ -99,6 +100,22 @@ export default function WelcomeScreen({
   const [emailPanelOpen, setEmailPanelOpen] = useState(
     emailPanelInitiallyOpen && emailSignInAvailable,
   );
+
+  /**
+   * #3524 — the prop can go true while this screen is ALREADY MOUNTED, and the
+   * useState initializer above would never see it.
+   *
+   * That is the signed-out arm of the claim sheet. The sheet renders on top of
+   * this screen, so tapping its `Sign in` does not mount anything new — it closes
+   * the sheet and asks for the panel. A mount-only initializer would leave the
+   * guest looking at the same three buttons they were looking at before, which is
+   * the dead-tap this issue is about, moved one step later.
+   *
+   * It only ever OPENS. It never closes a panel the guest opened themselves.
+   */
+  useEffect(() => {
+    if (emailPanelInitiallyOpen && emailSignInAvailable) setEmailPanelOpen(true);
+  }, [emailPanelInitiallyOpen, emailSignInAvailable]);
   const [emailStep, setEmailStep] = useState<"address" | "code">("address");
   const [emailAddress, setEmailAddress] = useState("");
   const [emailCode, setEmailCode] = useState("");
@@ -862,7 +879,7 @@ const styles = StyleSheet.create({
   // it does not compete with the two primary providers.
   emailButton: {
     minHeight: 52,
-    borderRadius: radius.pill,
+    borderRadius: radius.full,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -903,7 +920,7 @@ const styles = StyleSheet.create({
   emailCodeInput: { letterSpacing: 6, textAlign: "center" },
   emailSubmit: {
     minHeight: 48,
-    borderRadius: radius.pill,
+    borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.lg,
