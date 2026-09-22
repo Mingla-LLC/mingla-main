@@ -121,6 +121,15 @@ jobs:
           node --experimental-strip-types --test \
             app-mobile/src/utils/__tests__/issue_3524_claim_auth_action_preserve.implementor.happy.test.ts
           node app-mobile/src/components/__tests__/issue_3524_claim_sheet_states.implementor.happy.test.tsx
+          # issue #3524 — the tester's Explorer-side adversarial suites, run the
+          # same way and only when they exist, matching the conditional shape the
+          # PG and Deno steps already use for tester files.
+          for tester_ts in \
+            app-mobile/src/utils/__tests__/issue_3524_signout_does_not_destroy_the_claim.tester.adversarial.test.ts; do
+            if [[ -f "$tester_ts" ]]; then
+              node --experimental-strip-types --test "$tester_ts"
+            fi
+          done
       - name: Execute issue 3524 link-interception ownership guards
         run: |
           node .github/scripts/strict-grep/issue-2050-host-route-ownership.mjs --self-test
