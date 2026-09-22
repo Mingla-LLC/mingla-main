@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   attendanceClaimAuthAction,
+  attendanceClaimHandoffIsLive,
   type AttendanceClaimAuthAction,
 } from "../attendanceClaimDeepLink.ts";
 
@@ -149,5 +150,128 @@ test("(8) the in-session handoff flag is disarmed when the claim finishes", () =
       + "and a completed claim attempt. Otherwise the flag outlives both the "
       + "claim and the marker's 30-minute TTL, and the next unrelated account "
       + "switch preserves a claim it should clear.",
+  );
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// RETEST (P2-1). The flag now ages out. Angle 8 above only counted disarm
+// sites; these measure the boundary itself, and the wiring that carries the
+// sheet's decision to the ref the shell actually reads.
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * The TTL constant lives beside the SecureStore marker it governs, in
+ * `attendanceClaimService.ts`, which pulls in the Supabase client and cannot be
+ * imported by this runner. It is read out of the source instead — deliberately,
+ * because reading it here is also what pins the flag and the marker to ONE
+ * number rather than two that can drift.
+ */
+const ttlSource = readFileSync(
+  join(APP_MOBILE, "src/services/attendanceClaimService.ts"),
+  "utf8",
+);
+const ttlMatch = ttlSource.match(
+  /ATTENDANCE_CLAIM_HANDOFF_TTL_MS\s*=\s*([0-9*\s_]+);/,
+);
+const TTL: number = ttlMatch
+  // eslint-disable-next-line no-eval
+  ? Number(eval(ttlMatch[1].replace(/_/g, "")))
+  : Number.NaN;
+const START = 1_000_000;
+
+test("(9) the TTL is the marker's own thirty minutes, and the boundary is inclusive", () => {
+  assert.ok(ttlMatch !== null, "ATTENDANCE_CLAIM_HANDOFF_TTL_MS must be one exported constant");
+  assert.equal(TTL, 30 * 60 * 1000, "the flag must age out on the marker's clock");
+  assert.ok(
+    ttlSource.includes("const HANDOFF_TTL_MS = ATTENDANCE_CLAIM_HANDOFF_TTL_MS"),
+    "the marker's own read must use the SAME constant the flag does — two "
+      + "thirty-minute literals are two numbers that can drift",
+  );
+  assert.equal(
+    attendanceClaimHandoffIsLive(true, START, START + TTL, TTL),
+    true,
+    "EXACTLY at thirty minutes is still live — the marker's own read uses "
+      + "`<= TTL`, and a flag that died a millisecond earlier than the record "
+      + "it mirrors would clear a claim the marker would still have preserved",
+  );
+  assert.equal(
+    attendanceClaimHandoffIsLive(true, START, START + TTL + 1, TTL),
+    false,
+    "one millisecond past thirty minutes is dead",
+  );
+  assert.equal(
+    attendanceClaimHandoffIsLive(true, START, START + TTL - 1, TTL),
+    true,
+    "one millisecond before thirty minutes is live",
+  );
+  assert.equal(
+    attendanceClaimHandoffIsLive(true, START, START, TTL),
+    true,
+    "the instant it is written it is live",
+  );
+});
+
+test("(10) an inactive flag is dead no matter how fresh the start time", () => {
+  assert.equal(attendanceClaimHandoffIsLive(false, START, START, TTL), false);
+  assert.equal(attendanceClaimHandoffIsLive(false, null, START, TTL), false);
+  // A clock that jumps backwards (timezone change, NTP correction) must not
+  // resurrect anything or make a live flag look ancient.
+  assert.equal(
+    attendanceClaimHandoffIsLive(true, START, START - 5_000, TTL),
+    true,
+    "a backwards clock jump leaves the flag live rather than clearing a claim "
+      + "the guest is in the middle of",
+  );
+});
+
+test("(11) an expired flag makes the account change CLEAR again, not preserve", () => {
+  // This is the whole point: the TTL only matters because it feeds the table.
+  const live = attendanceClaimHandoffIsLive(true, START, START + TTL, TTL);
+  const stale = attendanceClaimHandoffIsLive(true, START, START + TTL + 1, TTL);
+  assert.equal(act(A, null, true, live), "preserve");
+  assert.equal(
+    act(A, null, true, stale),
+    "clear",
+    "once the thirty minutes are up, an account change is an ordinary account "
+      + "change again — the pending claim must not follow the device",
+  );
+});
+
+test("(12) reading the flag disarms it, the way a stale marker read deletes it", () => {
+  const index = read("app/index.tsx");
+  const body = index.slice(
+    index.indexOf("const attendanceClaimHandoffLive"),
+    index.indexOf("const attendanceClaimSettled"),
+  );
+  assert.ok(body.length > 0, "the shell must have one place that answers this");
+  assert.ok(
+    body.includes("attendanceClaimHandoffActiveRef.current = false")
+      && body.includes("attendanceClaimHandoffStartedAtRef.current = null")
+      && body.includes("clearAttendanceClaimHandoffMarker"),
+    "a stale read must disarm BOTH halves and delete the marker, or the ref "
+      + "and the record it mirrors drift apart again",
+  );
+  assert.ok(
+    !/\bawait\b/.test(body),
+    "and it must stay synchronous — an async read here resolves after the auth "
+      + "effect has already decided, which is why this is a ref at all",
+  );
+});
+
+test("(13) the sheet tells the shell the claim is over, on every path that deletes the marker", () => {
+  const sheet = read("src/components/AttendanceClaimSheet.tsx");
+  const settled = (sheet.match(/onClaimSettled\(\)/g) ?? []).length;
+  const cleared = (sheet.match(/clearAttendanceClaimHandoffMarker\(\)/g) ?? []).length;
+  assert.ok(
+    settled >= cleared && settled >= 2,
+    `the sheet deletes the marker in ${cleared} place(s) and reports settled in `
+      + `${settled}. The shell's ref is the value the decision actually reads and `
+      + "the sheet cannot touch it, so every marker delete must be accompanied "
+      + "by the callback or the two disagree.",
+  );
+  const index = read("app/index.tsx");
+  assert.ok(
+    index.includes("onClaimSettled={attendanceClaimSettled}"),
+    "and the shell must actually pass it",
   );
 });
