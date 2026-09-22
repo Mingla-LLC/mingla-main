@@ -72,10 +72,19 @@ const BUSINESS_ONELINK_DOMAIN = "biz.usemingla.com"; // BUSINESS branded OneLink
 // host.usemingla.com; #2050 makes the consumer app their exclusive native owner.
 // #3524 — the attendance-claim handoff joins both lists, and the two platforms
 // are deliberately asymmetric: Android matches a pathPrefix, so it claims the
-// whole `/attendance/` family; iOS matches components exactly, so it claims only
-// `/attendance/claim` and its subpath — the one route the app can answer for.
+// whole `/attendance/` family; iOS matches components exactly, so it claims
+// `/attendance/claim` and ONLY that.
+//
+// NOT its subpath. A fragment is not part of a path, so the exact component
+// already matches the only URL anything mints — `/attendance/claim#<fragment>`,
+// from `attendanceClaimUrls` and `attendanceClaimHandoffUrls`. Claiming
+// `/attendance/claim/*` as well would hand iOS a family the app cannot answer
+// for: `isAttendanceClaimUrl` recognises the exact claim path only, so a subpath
+// opens the app and shows nothing, which is the #2245 defect exactly.
+// scripts/issue-2245/declared-app-links-resolve.deno.test.ts asserts that
+// directly, and its A6 control keeps the assertion honest.
 const REQUIRED_CONSUMER_AASA_PATHS = [
-  "/b/*", "/e/*", "/t/*", "/exp/*", "/attendance/claim", "/attendance/claim/*",
+  "/b/*", "/e/*", "/t/*", "/exp/*", "/attendance/claim",
 ];
 const REQUIRED_ANDROID_PATH_PREFIXES = ["/b/", "/e/", "/t/", "/exp/", "/attendance/"];
 

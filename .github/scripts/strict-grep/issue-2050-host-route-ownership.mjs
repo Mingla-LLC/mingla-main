@@ -10,17 +10,25 @@ const CONSUMER = ["/b/", "/e/", "/t/", "/exp/"];
 //
 // Android matches an intent filter BY PREFIX, so the consumer app declares the
 // whole `/attendance/` family in the existing `host.usemingla.com` filter. iOS
-// matches AASA components EXACTLY, so the consumer app claims only
-// `/attendance/claim` and its subpath — it has no other `/attendance/` route to
-// answer for, and claiming a family it cannot serve is how a Universal Link
-// opens an app that then shows nothing.
+// matches AASA components EXACTLY, so the consumer app claims `/attendance/claim`
+// and ONLY that — claiming a family it cannot serve is how a Universal Link opens
+// an app that then shows nothing.
+//
+// NO SUBPATH, and that follows from the same sentence. A fragment is not part of
+// a path, so the exact component already matches the only URL anything mints:
+// `/attendance/claim#<fragment>`. A subpath under it matches nothing that exists
+// and `isAttendanceClaimUrl` does not recognise it, so claiming
+// `/attendance/claim/*` would be claiming precisely such a family.
+// scripts/issue-2245/declared-app-links-resolve.deno.test.ts drives the real
+// modules and asserts it, which is the check that would have caught this list
+// being wrong.
 //
 // Both lists are pinned here rather than derived from each other, so a later
 // change that widens the iOS claim to `/attendance/*`, or narrows the Android
 // one, is a RED gate rather than a silent drift. The Host app gains nothing:
 // `/attendance/` is a buyer route and stays off its side of this file.
 const CONSUMER_ANDROID_EXTRA = ["/attendance/"];
-const CONSUMER_AASA_EXTRA = ["/attendance/claim", "/attendance/claim/*"];
+const CONSUMER_AASA_EXTRA = ["/attendance/claim"];
 const OPERATOR = [
   "/accept-brand-invitation",
   "/accept-scanner-invitation",
