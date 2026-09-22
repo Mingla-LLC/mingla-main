@@ -189,6 +189,12 @@ export const NAV_GROUPS = [
       { id: "business-payments",         label: "Payments",           icon: "CreditCard" },
       { id: "business-orders",           label: "Orders",             icon: "Receipt" },
       { id: "business-money-ledger",     label: "Money ledger",       icon: "Landmark" },
+      // ISSUE-3534 — Refund operations was route-only (App.jsx) with NO nav entry,
+      // so the stuck-refund work queue was reachable only by typing the URL. It sits
+      // next to Money ledger because that is where refunds live, but it is a SEPARATE
+      // item rather than a Money-ledger tab: that page is documented READ-ONLY and this
+      // one retries, escalates and resolves. `RotateCcw` MUST be in Sidebar ICON_MAP.
+      { id: "refund-operations",         label: "Refund operations",  icon: "RotateCcw" },
     ],
   },
   // ISSUE-862 WP1: "Growth" nav group — the Full Rooms Ad Engine (5-channel,
