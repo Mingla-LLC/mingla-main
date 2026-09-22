@@ -25,7 +25,15 @@
  * `otpService.ts` so the two read as siblings rather than as two conventions.
  */
 
+import { Platform } from "react-native";
 import { supabase } from "./supabase";
+import { mixpanelService } from "./mixpanelService";
+import { reportNonFatal } from "../diagnostics/reportNonFatal";
+// #1875's SINGLE transient/permanent decision point. Imported rather than
+// re-expressed: that issue exists because the distinction had been scattered
+// across catch branches, and an email-OTP fault must be judged by the same
+// predicate a Google fault is.
+import { classifyAuthFailure } from "../hooks/useAuthSimple";
 
 export interface SendEmailSignInCodeResult {
   ok: boolean;
@@ -133,6 +141,88 @@ export async function verifyEmailSignInCode(
       error: verifyFailureMessage(
         err instanceof Error ? err.message : "unknown",
       ),
+    };
+  }
+}
+
+/**
+ * #3524 — SIGN IN BY EMAILED CODE, with the app's own failure reporting.
+ *
+ * WHY THESE LIVE HERE AND NOT ON `useAuthSimple`. They hold no hook state —
+ * no `user`, no `isMountedRef`, no effect — so there is nothing a hook gives
+ * them. Putting them in the hook also meant editing `useAuthSimple.ts`, whose
+ * contents #1875 pins byte-for-byte outside its own declared regions precisely
+ * so the sign-in paths cannot drift under a nearby change. Reaching for that
+ * file for two stateless wrappers would have spent that guarantee for nothing.
+ *
+ * WHY THEY EXIST AT ALL. A guest buys a ticket with `alice@example.com`, and
+ * the ticket can only land on an account that has proved it owns that address.
+ * If no Google or Apple account stands behind it, neither provider can prove
+ * it, so before #3524 that guest could not claim their ticket at all.
+ *
+ * Failures go through `classifyAuthFailure` and `reportNonFatal`, the SAME
+ * channel a Google failure takes (#1044's contract), so an email-OTP fault is
+ * as visible in monitoring as any other. Unlike the native paths these raise NO
+ * Alert: they are called from an inline panel that renders the sentence itself,
+ * and an Alert on top of that would be the same message twice. The address is
+ * never logged, and never becomes a reason string.
+ */
+export async function signInWithEmailCode(
+  email: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const result = await sendEmailSignInCode(email);
+    if (!result.ok) {
+      const failure = classifyAuthFailure(
+        "EmailOtpSendFailed",
+        undefined,
+        undefined,
+        result.error ?? "",
+        Platform.OS,
+      );
+      // A blip that the guest can simply retry is not a fault worth a capture;
+      // `shouldReportAuthFailure` is not consulted because it discriminates on
+      // NATIVE provider status codes, of which this path has none.
+      if (failure === "permanent") {
+        reportNonFatal(
+          "auth.signInWithEmailCode.send",
+          new Error("email_otp_send_failed"),
+          { provider: "email", platform: Platform.OS },
+        );
+      }
+    }
+    return result;
+  } catch (err) {
+    reportNonFatal(
+      "auth.signInWithEmailCode.send",
+      err instanceof Error ? err : new Error("email_otp_send_threw"),
+      { provider: "email", platform: Platform.OS },
+    );
+    return { ok: false, error: "We couldn\u2019t send the code. Try again." };
+  }
+}
+
+export async function verifyEmailCode(
+  email: string,
+  code: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const result = await verifyEmailSignInCode(email, code);
+    if (!result.ok) {
+      // The SAME failure channel a Google failure uses. The address is not the
+      // reason string and is never passed here.
+      mixpanelService.trackLoginFailed("email", result.error ?? "verify_failed");
+    }
+    return result;
+  } catch (err) {
+    reportNonFatal(
+      "auth.verifyEmailCode",
+      err instanceof Error ? err : new Error("email_otp_verify_threw"),
+      { provider: "email", platform: Platform.OS },
+    );
+    return {
+      ok: false,
+      error: "We couldn\u2019t verify that code. Try again.",
     };
   }
 }

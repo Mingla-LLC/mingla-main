@@ -85,7 +85,7 @@ const mutations = [
   [".github/scripts/parity/l5-terminal-mutations.sql", "NEW.approval_status:='pending';", "NEW.approval_status:='denied';", "A7 L-5 terminal stale-state mutation"],
   [".github/scripts/parity/l5-terminal-mutations.sql", "CREATE TRIGGER l5_issue_1772_keep_rsvp_pending", "CREATE TRIGGER l5_issue_1772_removed", "A7 L-5 RSVP trigger"],
   [".github/scripts/parity/l5-terminal-mutations.sql", "-- @l5-verify: SELECT is_called FROM public.l5_fired /* issue_1772_terminal_rsvp */", "-- @l5-verify: SELECT false /* issue_1772_terminal_rsvp */", "A7 L-5 mutation witness"],
-  ["supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql", "9815b94c8ae402c9b81d2b6613be66f3", "00000000000000000000000000000000", "A6 #1773 writer fingerprint"],
+  ["supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql", "6fd8b31bf22cb58eabf49c889a55d6df", "00000000000000000000000000000000", "A6 #1773 writer fingerprint"],
   ["mingla-business/src/services/peopleMaintenanceService.ts", '"biz_list_brand_person_merge_candidates"', '"biz_list_brand_person_merge_candidates_removed"', "A6 lazy maintenance RPC owner"],
   ["mingla-business/src/services/peopleService.ts", "export class PeopleServiceError", 'export { mergeBrandPeople } from "./peopleMaintenanceService";\nexport class PeopleServiceError', "A6 no eager maintenance re-export"],
   ["mingla-business/src/hooks/marketing/useBrandPersonMaintenance.ts", 'import AsyncStorage from "@react-native-async-storage/async-storage"', 'const AsyncStorage = null as never', "A6 durable recovery owner"],

@@ -40,6 +40,13 @@ const shell = strip(shellSource);
 const welcomeSource = read("src/components/signIn/WelcomeScreen.tsx");
 const welcome = strip(welcomeSource);
 const authSource = read("src/hooks/useAuthSimple.ts");
+// #3524's two email members are STATELESS, so they are module functions in the
+// email service rather than hook members. `useAuthSimple.ts` is pinned
+// byte-for-byte by #1875 outside that issue's own declared regions, precisely so
+// the sign-in paths cannot drift under a nearby change, and two wrappers that
+// hold no hook state are not a reason to spend that guarantee.
+const emailAuthSource = read("src/services/emailOtpService.ts");
+const appStateSource = read("src/components/AppStateManager.tsx");
 
 // ── 1. The sheet names the account, and offers a way out ─────────────────────
 
@@ -268,15 +275,35 @@ for (const name of ["signInWithGoogle", "signInWithApple", "signOut"]) {
   );
 }
 assert.ok(
-  authSource.includes("signInWithEmailCode") &&
-    authSource.includes("verifyEmailCode"),
-  "and the two email members are ADDED beside them",
+  emailAuthSource.includes("export async function signInWithEmailCode") &&
+    emailAuthSource.includes("export async function verifyEmailCode"),
+  "and the two email members exist beside them, in the email service",
+);
+// STRICTER than naming them: they have to actually REACH the screen, or the
+// guest still cannot prove the purchase address.
+assert.ok(
+  /import \{[^}]*signInWithEmailCode[^}]*verifyEmailCode[^}]*\}\s*from\s*"\.\.\/services\/emailOtpService"/s
+    .test(appStateSource) &&
+    /signInWithEmailCode,\n\s*verifyEmailCode,/.test(appStateSource),
+  "and the shell passes both of them through to the screen",
+);
+// And #1875's pin is not spent: nothing but that issue's own regions may differ
+// in the hook, so the two email members must NOT be members of it.
+assert.ok(
+  !authSource.includes("signInWithEmailCode") &&
+    !authSource.includes("verifyEmailCode"),
+  "useAuthSimple keeps the shape #1875 pins byte-for-byte",
 );
 assert.ok(
-  /classifyAuthFailure\(\s*\n?\s*"EmailOtpSendFailed"/.test(authSource) ||
-    authSource.includes('"EmailOtpSendFailed"'),
+  /classifyAuthFailure\(\s*\n?\s*"EmailOtpSendFailed"/.test(emailAuthSource) ||
+    emailAuthSource.includes('"EmailOtpSendFailed"'),
   "an email-OTP failure is classified through the SAME path a Google failure "
     + "takes, so it is as visible in monitoring as any other",
+);
+assert.ok(
+  /import \{ classifyAuthFailure \} from "\.\.\/hooks\/useAuthSimple"/
+    .test(emailAuthSource),
+  "and it is the ONE shared predicate, imported, not a second copy of it",
 );
 
 // Nothing in the new code logs an address or a code.

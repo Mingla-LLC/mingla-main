@@ -36,6 +36,21 @@ BEGIN
   -- runs on the way into a conflict, F-3) and their ordering. The fingerprint
   -- HAD to move; that is the tripwire working, not a bypass.
   --
+  -- [TEST-MOD-APPROVED #3524] #3524 forward-repins the writer again. Its consent
+  -- migration appends two UPDATE statements after the existing contact-method
+  -- writes, so the person's ATTENDANCE record and their MARKETING permission are
+  -- separate rows and withdrawing the second cannot destroy the first. The patch
+  -- is applied to the LIVE definition rather than written from a file, because
+  -- the live body already carries #1772's separation patch and a static rewrite
+  -- would silently revert it. No existing statement is modified, and the grading
+  -- returns 'unknown' for every non-order arm, so reservations, CSV imports,
+  -- digests and manual adds run byte-identical statements. The fingerprint HAD
+  -- to move; that is the tripwire working, not a bypass.
+  --
+  -- `issue_1770_enqueue_source` is UNCHANGED at the same value it has always
+  -- carried, which is the control: the fingerprint pipeline still reproduces the
+  -- original numbers, so the one that moved moved for a reason.
+  --
   -- The BEHAVIOURAL block below is unchanged and was proven to pass against the
   -- new writer on its own merits BEFORE this value was touched: strict-E164
   -- linking, the phone_country_iso revision path, the national-only email path,
@@ -45,7 +60,7 @@ BEGIN
   -- the enqueue trigger, and its md5 is unchanged -- which is also the control
   -- proving this fingerprint pipeline still reproduces the original values.
   FOR v_signature,v_expected_md5 IN SELECT * FROM (VALUES
-    ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)','9815b94c8ae402c9b81d2b6613be66f3'),
+    ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)','6fd8b31bf22cb58eabf49c889a55d6df'),
     ('public.issue_1770_enqueue_source()','b6f76457afc333703f59d065cd4224ba')
   ) AS expected(signature,definition_md5) LOOP
     SELECT pg_get_functiondef(to_regprocedure(v_signature)) INTO STRICT v_definition;

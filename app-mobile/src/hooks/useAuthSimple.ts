@@ -22,9 +22,6 @@ import { normalizeCategoryArray } from "../utils/categoryUtils";
 // ORCH-0640 ch09: experiencesService DELETED. getUserPreferences retained on preferencesService.
 import { PreferencesService } from "../services/preferencesService";
 import { performPrivateAuthCleanup, signOutWithPrivateCleanup, signOutWithoutPrivateCleanup } from "../utils/authCleanup";
-// #3524 — email one-time-code sign-in. Supabase email OTP is already live on this
-// project (the Host and Admin apps both use it); this is JS-only and OTA-able.
-import { sendEmailSignInCode, verifyEmailSignInCode } from "../services/emailOtpService";
 // #1875 [transient-signin-failure] — user-facing sign-in failure copy is read
 // from fixed i18n keys, never from a caught error's message. Non-hook accessor,
 // same specifier depth as AppStateManager.tsx.
@@ -182,7 +179,7 @@ const TRANSPORT_RETRY_MAX_ATTEMPTS = 2;
  */
 const TRANSPORT_RETRY_DELAYS_MS = Object.freeze([400, 1200]);
 
-const classifyAuthFailure = (
+export const classifyAuthFailure = (
   errName: unknown,
   errCode: unknown,
   errStatus: unknown,
@@ -1237,89 +1234,6 @@ export const useAuthSimple = () => {
     }
   };
 
-  /**
-   * #3524 — SIGN IN BY EMAILED CODE.
-   *
-   * WHY A THIRD METHOD EXISTS AT ALL. A guest buys a ticket with
-   * `alice@example.com` and the ticket can only land on an account that has PROVED
-   * it owns that address (Seth's decision 1). If the purchase address has no
-   * Google and no Apple account behind it, Google and Apple cannot prove it — so
-   * before this, that guest could not claim their ticket at all. That is the dead
-   * end #3524 exists to remove.
-   *
-   * WHY IT IS THE SAME PROOF THE SERVER CHECKS. A successful email OTP makes
-   * GoTrue write a `provider='email'` identity row, and that is exactly what
-   * `verified_account_identifiers` reads. One proof, two consumers.
-   *
-   * THE OTHER TWO PATHS ARE UNTOUCHED. `signInWithGoogle`, `signInWithApple` and
-   * `signOut` are not modified by #3524 — not their bodies, not their signatures,
-   * not their error handling. This is an ADDITION to the returned object.
-   *
-   * Failures are classified and reported through the SAME
-   * `classifyAuthFailure` / `shouldReportAuthFailure` paths a Google failure
-   * takes (#1044's contract), so an email-OTP fault is as visible in monitoring
-   * as any other. Unlike the native paths these do NOT raise an Alert: they are
-   * called from an inline panel that renders the sentence itself, and an Alert on
-   * top of that would be the same message twice.
-   */
-  const signInWithEmailCode = async (
-    email: string,
-  ): Promise<{ ok: boolean; error?: string }> => {
-    try {
-      const result = await sendEmailSignInCode(email);
-      if (!result.ok) {
-        const failure = classifyAuthFailure(
-          "EmailOtpSendFailed",
-          undefined,
-          undefined,
-          result.error ?? "",
-          Platform.OS,
-        );
-        if (failure === "permanent" && shouldReportAuthFailure(undefined)) {
-          reportNonFatal(
-            "auth.signInWithEmailCode.send",
-            new Error("email_otp_send_failed"),
-            { provider: "email", platform: Platform.OS },
-          );
-        }
-      }
-      return result;
-    } catch (err) {
-      // The address is never logged, here or anywhere below.
-      reportNonFatal(
-        "auth.signInWithEmailCode.send",
-        err instanceof Error ? err : new Error("email_otp_send_threw"),
-        { provider: "email", platform: Platform.OS },
-      );
-      return { ok: false, error: "We couldn’t send the code. Try again." };
-    }
-  };
-
-  const verifyEmailCode = async (
-    email: string,
-    code: string,
-  ): Promise<{ ok: boolean; error?: string }> => {
-    try {
-      const result = await verifyEmailSignInCode(email, code);
-      if (!result.ok) {
-        // The SAME failure channel a Google failure uses. The address is not the
-        // reason string and is never passed here.
-        mixpanelService.trackLoginFailed("email", result.error ?? "verify_failed");
-      }
-      return result;
-    } catch (err) {
-      reportNonFatal(
-        "auth.verifyEmailCode",
-        err instanceof Error ? err : new Error("email_otp_verify_threw"),
-        { provider: "email", platform: Platform.OS },
-      );
-      return {
-        ok: false,
-        error: "We couldn’t verify that code. Try again.",
-      };
-    }
-  };
-
   return {
     user,
     loading,
@@ -1327,8 +1241,5 @@ export const useAuthSimple = () => {
     updateProfile,
     signInWithGoogle,
     signInWithApple,
-    // #3524 — additions. Nothing above this line changed.
-    signInWithEmailCode,
-    verifyEmailCode,
   };
 };

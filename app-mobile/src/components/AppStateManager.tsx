@@ -1,6 +1,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthSimple } from "../hooks/useAuthSimple";
+// #3524 — sign in by emailed code. A guest whose purchase address has no Google
+// and no Apple account behind it could not prove ownership of it, and therefore
+// could not claim their own ticket at all. These are stateless, so they are
+// module functions rather than hook members.
+import { signInWithEmailCode, verifyEmailCode } from "../services/emailOtpService";
 import { useAppStore } from "../store/appStore";
 
 export interface UserIdentity {
@@ -85,11 +90,6 @@ export function useAppState() {
     signOut,
     signInWithGoogle,
     signInWithApple,
-    // #3524 — sign in by emailed code. A guest whose purchase address has no
-    // Google and no Apple account behind it could not prove ownership of it, and
-    // therefore could not claim their own ticket at all.
-    signInWithEmailCode,
-    verifyEmailCode,
   } = useAuthSimple();
 
   // Stable ref for signOut so useCallback-wrapped handleSignOut doesn't
