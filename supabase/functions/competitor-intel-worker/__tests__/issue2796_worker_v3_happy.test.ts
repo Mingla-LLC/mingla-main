@@ -494,3 +494,327 @@ Deno.test("issue 2820 makes the sole primary action first before report bindings
   ]);
   assertEquals(actions.map((action) => action.is_primary), [true, false, false]);
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// issue #3541 — the synthesis output budget
+// ══════════════════════════════════════════════════════════════════════════
+import { assertRejects } from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import {
+  MAX_SYNTHESIS_OUTPUT_TOKENS,
+  RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED,
+  SYNTHESIS_OUTPUT_CHARS_PER_TOKEN,
+  synthesisOutputTokenHeadroom,
+  synthesisWorstCaseOutputChars,
+  synthesisWorstCaseOutputTokens,
+  validateBrief,
+} from "../index.ts";
+
+// Every array the schema declares, as [dotted path, node].
+function issue3541SchemaArrays(
+  node: unknown,
+  path = "$",
+  found: Array<[string, Record<string, any>]> = [],
+): Array<[string, Record<string, any>]> {
+  if (!node || typeof node !== "object") return found;
+  const schema = node as Record<string, any>;
+  if (schema.type === "array") {
+    found.push([path, schema]);
+    issue3541SchemaArrays(schema.items, `${path}[]`, found);
+  } else if (schema.type === "object") {
+    for (const [key, value] of Object.entries(schema.properties ?? {})) {
+      issue3541SchemaArrays(value, `${path}.${key}`, found);
+    }
+  }
+  return found;
+}
+
+// Every free-text string the schema declares (enums carry their own bound).
+function issue3541SchemaFreeTextStrings(
+  node: unknown,
+  path = "$",
+  found: Array<[string, Record<string, any>]> = [],
+): Array<[string, Record<string, any>]> {
+  if (!node || typeof node !== "object") return found;
+  const schema = node as Record<string, any>;
+  if (schema.type === "string" && !Array.isArray(schema.enum)) {
+    found.push([path, schema]);
+  } else if (schema.type === "array") {
+    issue3541SchemaFreeTextStrings(schema.items, `${path}[]`, found);
+  } else if (schema.type === "object") {
+    for (const [key, value] of Object.entries(schema.properties ?? {})) {
+      issue3541SchemaFreeTextStrings(value, `${path}.${key}`, found);
+    }
+  }
+  return found;
+}
+
+const issue3541Observations = [{
+  sourceId: "11111111-1111-4111-8111-111111111111",
+  kind: "website",
+  facts: { profile: { name: "Shiro", bio: "Pan-Asian dining" } },
+  checkedAt: "2026-09-22T00:00:00.000Z",
+  latestObservedAt: null,
+  publicUrl: "https://example.com",
+  fingerprint: "c".repeat(64),
+}];
+
+// A brief validateBrief accepts, with the three model-supplied arrays set to
+// whatever lengths the caller asks for. Used to RECOVER validateBrief's bounds
+// by observation instead of restating them, so a schema bound and the validator
+// cannot drift apart and both still look right.
+function issue3541BriefWithLengths(
+  facts: number,
+  interpretations: number,
+  actions: number,
+) {
+  return {
+    what_changed: Array.from({ length: facts }, (_unused, index) => ({
+      id: `f${index + 1}`,
+      text: `A public detail changed on the site, item ${index + 1}.`,
+      source_id: issue3541Observations[0].sourceId,
+      evidence_id: "e1",
+      confidence: "observed",
+    })),
+    why_it_matters: Array.from(
+      { length: interpretations },
+      (_unused, index) => ({
+        text: `This reads as a shift in their weekend positioning, ${
+          index + 1
+        }.`,
+        evidence_ids: ["e1"],
+        confidence: "interpretation",
+      }),
+    ),
+    worth_doing: Array.from({ length: actions }, (_unused, index) => ({
+      id: `a${index + 1}`,
+      text: `Publish one specific weekend offer, option ${index + 1}.`,
+      kind: "offer",
+      confidence: "suggested_action",
+      // validateBrief demands exactly one primary action.
+      is_primary: index === 0,
+    })),
+    evidence: [{
+      id: "e1",
+      source_id: issue3541Observations[0].sourceId,
+      public_url: issue3541Observations[0].publicUrl,
+      checked_at: issue3541Observations[0].checkedAt,
+      observation: "Pan-Asian dining sits in the site header.",
+    }],
+  };
+}
+
+// Scan a length range and report the inclusive window validateBrief accepts.
+function issue3541AcceptedRange(
+  build: (length: number) => ReturnType<typeof issue3541BriefWithLengths>,
+): { min: number; max: number } {
+  const accepted: number[] = [];
+  for (let length = 0; length <= 6; length++) {
+    try {
+      validateBrief(build(length), issue3541Observations as never);
+      accepted.push(length);
+    } catch {
+      // rejected at this length
+    }
+  }
+  if (accepted.length === 0) throw new Error("no accepted length");
+  return { min: accepted[0], max: accepted[accepted.length - 1] };
+}
+
+Deno.test("issue 3541 bounds every schema array and every free-text string", () => {
+  const arrays = issue3541SchemaArrays(PROVIDER_RESPONSE_SCHEMA);
+  // Guard the guard: if the walker stops finding arrays, the loop below is
+  // vacuous and would pass over a completely unbounded schema.
+  assertEquals(arrays.length >= 12, true);
+  for (const [path, schema] of arrays) {
+    assertEquals(
+      [path, Number.isInteger(schema.minItems)],
+      [path, true],
+    );
+    assertEquals(
+      [path, Number.isInteger(schema.maxItems)],
+      [path, true],
+    );
+    assertEquals([path, schema.maxItems >= schema.minItems], [path, true]);
+  }
+  const strings = issue3541SchemaFreeTextStrings(PROVIDER_RESPONSE_SCHEMA);
+  assertEquals(strings.length >= 20, true);
+  for (const [path, schema] of strings) {
+    assertEquals([path, Number.isInteger(schema.maxLength)], [path, true]);
+  }
+});
+
+Deno.test("issue 3541 schema item bounds equal validateBrief's own accepted range", () => {
+  // Recovered from validateBrief by probing it, not copied from it.
+  const facts = issue3541AcceptedRange((length) =>
+    issue3541BriefWithLengths(length, 1, 1)
+  );
+  const interpretations = issue3541AcceptedRange((length) =>
+    issue3541BriefWithLengths(1, length, 1)
+  );
+  const actions = issue3541AcceptedRange((length) =>
+    issue3541BriefWithLengths(1, 1, length)
+  );
+  const properties = (PROVIDER_RESPONSE_SCHEMA as Record<string, any>)
+    .properties;
+  assertEquals(
+    [properties.what_changed.minItems, properties.what_changed.maxItems],
+    [facts.min, facts.max],
+  );
+  assertEquals(
+    [properties.why_it_matters.minItems, properties.why_it_matters.maxItems],
+    [interpretations.min, interpretations.max],
+  );
+  assertEquals(
+    [properties.worth_doing.minItems, properties.worth_doing.maxItems],
+    [actions.min, actions.max],
+  );
+  // validateDecisionReport ties these two arrays to the briefs above, so the
+  // schema has to carry the SAME window, not merely a window of its own.
+  assertEquals(
+    [
+      properties.interpretation_meta.minItems,
+      properties.interpretation_meta.maxItems,
+    ],
+    [interpretations.min, interpretations.max],
+  );
+  assertEquals(
+    [properties.action_plan.minItems, properties.action_plan.maxItems],
+    [actions.min, actions.max],
+  );
+});
+
+Deno.test("issue 3541 keeps the bounded worst case inside the output budget", () => {
+  const chars = synthesisWorstCaseOutputChars();
+  assertEquals(Number.isFinite(chars) && chars > 0, true);
+  // The arithmetic in the comment above MAX_SYNTHESIS_OUTPUT_TOKENS, redone.
+  assertEquals(
+    synthesisWorstCaseOutputTokens(),
+    Math.ceil(chars / SYNTHESIS_OUTPUT_CHARS_PER_TOKEN),
+  );
+  assertEquals(
+    synthesisWorstCaseOutputTokens() <= MAX_SYNTHESIS_OUTPUT_TOKENS,
+    true,
+  );
+  assertEquals(synthesisOutputTokenHeadroom() >= 0, true);
+  // The budget must also still be the one actually sent to the provider.
+  const source = Deno.readTextFileSync(new URL("../index.ts", import.meta.url));
+  assertEquals(source.includes("maxOutputTokens: MAX_SYNTHESIS_OUTPUT_TOKENS"), true);
+});
+
+// A minimal provider + database harness. The response is a REAL provider-shaped
+// body, so finish_reason travels the same path it travels in production; the
+// receipt is whatever the worker hands issue_2725_record_model_usage.
+async function issue3541SynthesisReceipt(
+  finishReason: string,
+  text: string,
+): Promise<Record<string, unknown>> {
+  let receipt: Record<string, unknown> = {};
+  const db = {
+    from(_table: string) {
+      const chain: Record<string, any> = {};
+      for (const method of ["select", "eq", "order", "limit", "in", "is"]) {
+        chain[method] = () => chain;
+      }
+      chain.maybeSingle = async () => ({ data: null, error: null });
+      chain.single = async () => ({ data: null, error: null });
+      return chain;
+    },
+    async rpc(name: string, args: Record<string, any>) {
+      if (name === "issue_2725_record_model_usage") {
+        receipt = args.p_receipt as Record<string, unknown>;
+        return { data: "receipt-1", error: null };
+      }
+      return { data: null, error: null };
+    },
+  } as never;
+  const job = {
+    id: "job-1",
+    competitor_id: "22222222-2222-4222-8222-222222222222",
+    brand_id: "brand-1",
+    venue_listing_id: "venue-1",
+    source_set_fingerprint: "a".repeat(64),
+    capability_snapshot: { website: 1 },
+    lease_owner: "owner-1",
+    attempt_count: 1,
+    funding_lane: "manual" as const,
+    manual_tool_lead_id: null,
+  } as never;
+  const fetcher = (async () =>
+    new Response(
+      JSON.stringify({
+        candidates: [{ finishReason, content: { parts: [{ text }] } }],
+        usageMetadata: {
+          promptTokenCount: 4_000,
+          candidatesTokenCount: 1_185,
+          thoughtsTokenCount: 0,
+          totalTokenCount: 5_185,
+        },
+        modelVersion: "gemini-3.6-flash",
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as unknown as typeof fetch;
+  const previous = Deno.env.get("GEMINI_API_KEY");
+  Deno.env.set("GEMINI_API_KEY", "test-key");
+  try {
+    await assertRejects(
+      () =>
+        synthesizeBrief(
+          "Competitor",
+          "Lagos",
+          issue3541Observations as never,
+          [{
+            sourceId: issue3541Observations[0].sourceId,
+            kind: "website",
+            before: null,
+            after: issue3541Observations[0].facts,
+            changedPaths: [],
+          }] as never,
+          venue as never,
+          fetcher,
+          { db, job },
+        ),
+      Error,
+      "synthesis_failed",
+    );
+  } finally {
+    previous === undefined
+      ? Deno.env.delete("GEMINI_API_KEY")
+      : Deno.env.set("GEMINI_API_KEY", previous);
+  }
+  return receipt;
+}
+
+// The document the provider actually returned on 2026-09-22: valid JSON up to
+// the point the budget ran out, then nothing.
+const ISSUE_3541_TRUNCATED =
+  '{"what_changed":[{"id":"f1","text":"The site now leads with a weekend tast';
+
+Deno.test("issue 3541 records a MAX_TOKENS finish as an output budget defect", async () => {
+  const receipt = await issue3541SynthesisReceipt(
+    "MAX_TOKENS",
+    ISSUE_3541_TRUNCATED,
+  );
+  // Prove the input really carried the finish reason, so the class below
+  // cannot be right for the wrong reason.
+  assertEquals(receipt.finish_reason, "MAX_TOKENS");
+  assertEquals(receipt.usage_complete, true);
+  assertEquals(receipt.result_class, RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED);
+  // The negative half: the old class must be gone, not merely joined.
+  assertEquals(receipt.result_class === "provider_error", false);
+  assertEquals(receipt.result_class === "invalid_result", false);
+});
+
+Deno.test("issue 3541 leaves a non-MAX_TOKENS bad body classed as a provider error", async () => {
+  // Same harness, same unparseable body, only the finish reason differs — so a
+  // default leaking through would show up here as the budget class.
+  const receipt = await issue3541SynthesisReceipt(
+    "STOP",
+    ISSUE_3541_TRUNCATED,
+  );
+  assertEquals(receipt.finish_reason, "STOP");
+  assertEquals(receipt.result_class, "provider_error");
+  assertEquals(
+    receipt.result_class === RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED,
+    false,
+  );
+});

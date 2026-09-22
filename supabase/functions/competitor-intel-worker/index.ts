@@ -54,13 +54,13 @@ export const PRICING_VERSION = GEMINI_PRICING_VERSION;
 //   THROWS on any unbounded array or string, so this constant cannot silently
 //   go back to being a guess.
 //
-//     SYNTHESIS_WORST_CASE_OUTPUT_CHARS = 11,301
+//     synthesisWorstCaseOutputChars() = 11,301
 //       what_changed 1,180 · why_it_matters 682 · worth_doing 1,467
 //       decision 801 · theme_signals 1,163 · interpretation_meta 819
 //       comparisons 3,770 · action_plan 1,410 · envelope 9
 //
 //   chars -> tokens at SYNTHESIS_OUTPUT_CHARS_PER_TOKEN = 3.5:
-//     11,301 / 3.5 = 3,229 tokens (SYNTHESIS_WORST_CASE_OUTPUT_TOKENS)
+//     11,301 / 3.5 = 3,229 tokens (synthesisWorstCaseOutputTokens())
 //   The MEASURED ratio for this worker's own output is 3.885 chars/token
 //   (3,711 chars / 955 candidate tokens, recovered from real
 //   tool_competitor_model_usage_receipts rows and recorded in
@@ -72,7 +72,7 @@ export const PRICING_VERSION = GEMINI_PRICING_VERSION;
 //     3,229 worst case + 271 headroom = 3,500
 //
 //   The 271 (8.4%) is the whole margin; there is no second fudge factor.
-//   SYNTHESIS_OUTPUT_TOKEN_HEADROOM below carries it and the tests fail if it
+//   synthesisOutputTokenHeadroom() below carries it and the tests fail if it
 //   goes negative.
 //
 // HOW IT RELATES TO SYNTHESIS_TIMEOUT_MS (15,000 ms) — READ THIS BEFORE
@@ -611,15 +611,22 @@ export function synthesisWorstCaseOutputChars(
       throw new Error(`synthesis_schema_unbounded:${path}`);
   }
 }
-export const SYNTHESIS_WORST_CASE_OUTPUT_CHARS = synthesisWorstCaseOutputChars();
 // ceil(worst case chars / chars-per-token). The budget above must cover this.
-export const SYNTHESIS_WORST_CASE_OUTPUT_TOKENS = Math.ceil(
-  SYNTHESIS_WORST_CASE_OUTPUT_CHARS / SYNTHESIS_OUTPUT_CHARS_PER_TOKEN,
-);
+//
+// Deliberately a FUNCTION and not a module-scope constant: the estimator throws
+// on an unbounded schema, and a throw at module scope would stop this edge
+// function booting at all — a worse outcome than the truncation it guards
+// against. The tests call it; production never has to.
+export function synthesisWorstCaseOutputTokens(): number {
+  return Math.ceil(
+    synthesisWorstCaseOutputChars() / SYNTHESIS_OUTPUT_CHARS_PER_TOKEN,
+  );
+}
 // What is left over once the worst case is paid for, in tokens. Positive by
 // construction; the tests assert it and the comment above explains the size.
-export const SYNTHESIS_OUTPUT_TOKEN_HEADROOM = MAX_SYNTHESIS_OUTPUT_TOKENS -
-  SYNTHESIS_WORST_CASE_OUTPUT_TOKENS;
+export function synthesisOutputTokenHeadroom(): number {
+  return MAX_SYNTHESIS_OUTPUT_TOKENS - synthesisWorstCaseOutputTokens();
+}
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
