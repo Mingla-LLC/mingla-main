@@ -591,7 +591,14 @@ REVOKE ALL ON FUNCTION public.account_carries_order_email(uuid, uuid)
 GRANT EXECUTE ON FUNCTION public.account_carries_order_email(uuid, uuid) TO service_role;
 
 -- ===========================================================================
--- (3) The attempt ledger learns the two new terminal outcomes.
+-- (3) The attempt ledger learns the three new terminal outcomes.
+--
+--     THIS LIST AND THE EDGE FUNCTION'S `Outcome` UNION ARE ONE CONTRACT, and
+--     nothing in the type system connects them: the handler writes this column
+--     over PostgREST, so a value the union allows and this CHECK does not is
+--     rejected at RUNTIME, on a real person's claim, while every test that
+--     stubs the table stays green. `contact_unproved` was exactly that for a
+--     short while. The #3524 suite now reads both sides and compares them.
 -- ===========================================================================
 ALTER TABLE public.attendance_claim_attempts
   DROP CONSTRAINT IF EXISTS attendance_claim_attempts_outcome_check;
@@ -600,10 +607,10 @@ ALTER TABLE public.attendance_claim_attempts
     outcome IS NULL OR outcome IN (
       'success', 'idempotent_success', 'invalid', 'ineligible',
       'conflict', 'rate_limited', 'internal_error',
-      -- #3524: a claim refused because the account has not proved it owns the
-      -- purchase contact, and one refused because the emailed link aged out.
-      -- Both are recorded so the rate limiter still sees the attempt.
-      'identity_mismatch', 'expired'
+      -- #3524: the three refusals that are not faults - a different person, a
+      -- rightful buyer whose inbox is not yet proved, and a link that aged out.
+      -- All are recorded so the rate limiter still sees the attempt.
+      'identity_mismatch', 'contact_unproved', 'expired'
     )
   );
 

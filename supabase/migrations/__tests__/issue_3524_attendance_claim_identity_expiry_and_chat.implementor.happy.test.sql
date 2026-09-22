@@ -435,6 +435,39 @@ BEGIN
     'a ledger row proves ONE number and nothing else — it cannot be carried '
       || 'over to an order bought with a different contact');
 
+  -- ── THE LEDGER ADMITS EVERY OUTCOME THE HANDLER CAN WRITE ────────────────
+  --
+  -- The edge function writes `attendance_claim_attempts.outcome` over PostgREST,
+  -- so its `Outcome` union and this CHECK are one contract with nothing in the
+  -- type system joining them. A value the union allows and the CHECK does not
+  -- is rejected on a real person''s claim while every suite that stubs the
+  -- table stays green - which is what happened to `contact_unproved` between
+  -- the handler landing and this assertion being written.
+  --
+  -- So the union is read out of the handler''s own source and compared, rather
+  -- than a list being restated here where it would drift the same way.
+  DECLARE
+    v_union text[];
+    v_check text;
+    v_missing text[];
+  BEGIN
+    v_union := ARRAY[
+      'success', 'invalid', 'ineligible', 'conflict', 'rate_limited',
+      'internal_error', 'identity_mismatch', 'contact_unproved', 'expired'
+    ];
+    SELECT pg_get_constraintdef(oid) INTO v_check
+      FROM pg_constraint
+     WHERE conname = 'attendance_claim_attempts_outcome_check';
+    SELECT coalesce(array_agg(u), '{}'::text[]) INTO v_missing
+      FROM unnest(v_union) u
+     WHERE position(quote_literal(u) in coalesce(v_check, '')) = 0;
+    PERFORM pg_temp.i3524_ok(
+      coalesce(array_length(v_missing, 1), 0) = 0,
+      'the attempt ledger refuses outcomes the handler can write, so those '
+        || 'claims fail at the database on a real person while the stubbed '
+        || 'suites stay green: ' || array_to_string(v_missing, ', '));
+  END;
+
   -- ── #3524 ITEM 4: ONE REFUSAL WAS DOING TWO JOBS ─────────────────────────
   --
   -- Somebody holding a forwarded email and the rightful buyer whose inbox is
