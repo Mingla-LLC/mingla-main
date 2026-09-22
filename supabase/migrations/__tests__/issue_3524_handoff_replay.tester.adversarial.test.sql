@@ -67,16 +67,55 @@ BEGIN
     ) THEN
       EXECUTE 'ALTER TABLE auth.users ADD COLUMN phone text';
     END IF;
+    -- #3524 REWORK (P0-1) — HOW the session was obtained is now part of the
+    -- predicate, so the fixture has to be able to say it.
+    --
+    -- `account_owns_order_contact` no longer accepts the bare existence of a
+    -- `provider='email'` identity, because this project runs
+    -- `mailer_autoconfirm` and a public signup mints one for ANY address with
+    -- no mail sent. It now requires positive evidence that the mailbox was
+    -- actually reached: either the provider asserted `email_verified`, or
+    -- GoTrue recorded an `otp`/`magiclink`/`recovery` authentication for the
+    -- account. That record lives in `auth.mfa_amr_claims`, which — like
+    -- `auth.identities` — does not exist on the CI image.
+    --
+    -- Standing these two up is what lets a RIGHTFUL buyer in this fixture be a
+    -- buyer who genuinely read a code out of their mailbox. Not one assertion
+    -- below changed; the fixture simply stopped describing an account that the
+    -- hardened rule is right to refuse. Both tables roll back with this
+    -- transaction.
+    EXECUTE $ddl$
+      CREATE TABLE auth.sessions(
+        id      uuid PRIMARY KEY,
+        user_id uuid NOT NULL
+      )
+    $ddl$;
+    EXECUTE $ddl$
+      CREATE TABLE auth.mfa_amr_claims(
+        session_id            uuid NOT NULL,
+        authentication_method text NOT NULL
+      )
+    $ddl$;
   END IF;
 END;
 $ident$;
 
 SET session_replication_role = replica;
 
-INSERT INTO auth.users(id) VALUES
-  (pg_temp.h3524_uuid('creator')),
-  (pg_temp.h3524_uuid('buyer')),
-  (pg_temp.h3524_uuid('stranger'));
+-- #3524 REWORK (P0-1) — see the stub block above. The buyer who scanned the
+-- code proved their mailbox with an emailed one-time code; the stranger holding
+-- the phone did not.
+INSERT INTO auth.users(id, email) VALUES
+  (pg_temp.h3524_uuid('creator'),  NULL),
+  (pg_temp.h3524_uuid('buyer'),    'scan-buyer@example.test'),
+  (pg_temp.h3524_uuid('stranger'), 'scan-stranger@example.test');
+
+INSERT INTO auth.sessions(id, user_id) VALUES
+  (pg_temp.h3524_uuid('sess-buyer'),    pg_temp.h3524_uuid('buyer')),
+  (pg_temp.h3524_uuid('sess-stranger'), pg_temp.h3524_uuid('stranger'));
+INSERT INTO auth.mfa_amr_claims(session_id, authentication_method) VALUES
+  (pg_temp.h3524_uuid('sess-buyer'),    'otp'),
+  (pg_temp.h3524_uuid('sess-stranger'), 'password');
 
 INSERT INTO auth.identities(id, user_id, provider, identity_data) VALUES
   ('h3524-buyer', pg_temp.h3524_uuid('buyer'), 'email',

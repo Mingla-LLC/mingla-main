@@ -45,9 +45,30 @@ BEGIN;
 --       * 30 days bounds the forwarded-email window.
 --
 --     GRANDFATHERING IS EXPLICIT: tokens minted before this migration are
---     governed by the same `created_at + 30 days` rule. This migration
---     invalidates no token by itself — an order whose token was minted inside
---     the window stays claimable.
+--     governed by the same `created_at + 30 days` rule.
+--
+--     THREE LIVE LINKS DIE THE DAY THIS APPLIES, AND SAYING OTHERWISE WOULD BE
+--     A LIE IN THE RELEASE'S OWN RECORD. An earlier draft of this note claimed
+--     "no token is invalidated by the migration itself". Measured read-only
+--     against production on 2026-09-22:
+--
+--       unclaimed orders still holding a claim token   = 11
+--         of those, token already older than 30 days   =  3
+--       oldest token        = 2026-08-19 10:18 UTC
+--       oldest still inside = 2026-08-27 12:18 UTC
+--       newest token        = 2026-09-21 15:19 UTC
+--
+--     Three guests will tap a link that worked yesterday and read "This link
+--     has expired." That is accepted, not overlooked, and it is recoverable:
+--     all 11 are armed for the identity rail, so those three land their ticket
+--     by signing in with the purchase address — which is exactly, word for
+--     word, what the expired copy tells them to do. The identity rail has no
+--     expiry, which is why 30 days is safe to enforce at all.
+--
+--     The alternative — grandfathering pre-migration tokens to an open window —
+--     was rejected: it would keep a forwarded email from August able to move a
+--     ticket forever, which is the defect this release exists to close, and it
+--     would make the rule depend on when a token happened to be minted.
 -- ===========================================================================
 CREATE OR REPLACE FUNCTION public.attendance_claim_token_ttl()
 RETURNS interval
@@ -141,50 +162,177 @@ REVOKE ALL ON FUNCTION public.mask_contact_for_claim(text, text)
 GRANT EXECUTE ON FUNCTION public.mask_contact_for_claim(text, text) TO service_role;
 
 -- ===========================================================================
--- (2) account_owns_order_contact — THE identity predicate. One expression.
+-- (2) account_owns_order_contact — THE identity predicate. One expression,
+--     evaluated by BOTH claim rails and by nothing else.
 --
---     Both claim rails evaluate ownership through THIS function and nothing
---     else. The normalisation is the identity rail's own, unchanged:
---       email — lower(btrim(...)), non-empty;
---       phone — matched only when it satisfies '^\+[1-9][0-9]{1,14}$'.
+--     ── WHAT THIS FUNCTION MUST NOT CLAIM ──────────────────────────────────
 --
---     `verified_account_identifiers` derives its answers only from
---     `auth.identities` (GoTrue-owned, never client-writable) and the
---     service-role-only `verified_phone_identities` ledger. Knowing that a
---     stranger bought with alice@example.com buys nothing: to present that
---     identifier you must first receive a code at that mailbox or number.
+--     An earlier draft of this comment said: "Knowing that a stranger bought
+--     with alice@example.com buys nothing: to present that identifier you must
+--     first receive a code at that mailbox or number."
+--
+--     ON THIS PROJECT'S LIVE CONFIGURATION THAT SENTENCE WAS FALSE, and it is
+--     deleted rather than softened. Measured read-only on 2026-09-22 against
+--     `gqnoajqerqhnvulmnyvv`:
+--
+--       GET /auth/v1/settings  ->  "mailer_autoconfirm": true,
+--                                  "disable_signup": false
+--       auth.users             ->  160 users, 160 confirmed,
+--                                  160 with confirmation_sent_at IS NULL,
+--                                  159 confirmed within 2s of creation
+--
+--     So a public signup with a buyer's address yields an auto-confirmed
+--     session and a `provider='email'` identity carrying that address, with no
+--     mail ever sent. `verified_account_identifiers` accepts an email identity
+--     on `i.provider = 'email'` ALONE — it does not require `email_verified` —
+--     so the mere existence of that row satisfied this predicate. Anyone who
+--     knew a buyer's address could claim their ticket.
+--
+--     A migration that asserts a property the platform does not enforce is
+--     worse than one that says nothing, because the next reader believes it.
+--
+--     ── WHAT THIS FUNCTION NOW REQUIRES ────────────────────────────────────
+--
+--     POSITIVE EVIDENCE that the address or number was actually reached, never
+--     the bare existence of an identity row.
+--
+--     PHONE — unchanged, and independently verified: `verified_phone_identities`
+--     is OUR OWN service-role-only ledger, written only after a Twilio code was
+--     received at that number. Nothing about it was weakened by autoconfirm.
+--
+--     EMAIL — one of exactly two proofs, both positive:
+--
+--       (a) THE PROVIDER ASSERTS IT. The identity carries
+--           `identity_data->>'email_verified'` true. Measured: all 75 Google and
+--           all 44 Apple identities carry it; NO email identity does.
+--
+--       (b) A CODE OR LINK WAS ACTUALLY RECEIVED AT THAT MAILBOX. The account
+--           holds a `provider='email'` identity for the address, that address is
+--           the account's OWN `auth.users.email`, and the account has completed
+--           an authentication that can only succeed by reading that mailbox —
+--           `auth.mfa_amr_claims.authentication_method` in ('otp','magiclink',
+--           'recovery'). This is the identity minted by #3524's own email
+--           one-time-code sign-in.
+--
+--     WHY NOT SIMPLY REQUIRE `email_verified` ON THE EMAIL ARM. Because it is
+--     never set on this platform's email identities and requiring it would
+--     delete the email arm outright. Measured, read-only, 2026-09-22:
+--
+--       cohort            provider  identities  email_verified=true
+--       signed in by OTP  email     11          0
+--       password only     email     20          0
+--       (any)             google    75          75
+--       (any)             apple     44          44
+--
+--     The 11 belong to accounts that have genuinely completed an email OTP
+--     (23 such sessions since 2026-07-14, the most recent 2026-09-22 13:39 UTC).
+--     GoTrue does not stamp the claim on them, so the claim cannot be the test.
+--     `mfa_amr_claims` is where GoTrue records HOW a session was obtained, and
+--     `otp` is obtainable only by reading the code out of the mailbox.
+--
+--     ── THE RESIDUAL, STATED PLAINLY ───────────────────────────────────────
+--
+--     This is evidence that the account reached that mailbox, not a per-address
+--     cryptographic binding, and the amr evidence lives with the session rather
+--     than forever. Two consequences, both deliberate:
+--
+--       * It can produce a FALSE NEGATIVE — a guest whose proving session is
+--         gone signs in by email code again and claims. That costs one sign-in
+--         and never the ticket, and the `expired`/mismatch copy already says so.
+--       * It must never produce a FALSE POSITIVE. That asymmetry is the whole
+--         design: fail closed, toward the guest re-proving.
+--
+--     THE BELT-AND-BRACES FIX IS NOT CODE AND IS NOT MINE: turning
+--     `mailer_autoconfirm` OFF for the project removes the free-signup path at
+--     the source. This function does not wait for it, and does not assume it.
+--
+--     FAILS CLOSED ON A DATABASE WITHOUT GoTrue. `auth.identities`,
+--     `auth.sessions` and `auth.mfa_amr_claims` are all absent from the
+--     `supabase/postgres` CI image (that is why `verified_account_identifiers`
+--     guards them too), so the email arm is skipped there and the phone arm
+--     answers alone. Absent evidence is never treated as evidence.
 --
 --     NEVER a second predicate. If a future reader needs this rule, they call
---     this function.
+--     this function — including `claim_attendance_by_verified_identity`, which
+--     calls it per candidate order rather than re-expressing it inline.
 -- ===========================================================================
 CREATE OR REPLACE FUNCTION public.account_owns_order_contact(
   p_user_id uuid,
   p_order_id uuid
 )
 RETURNS boolean
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $function$
-  SELECT EXISTS (
-    SELECT 1
-      FROM public.orders o
-      CROSS JOIN LATERAL public.verified_account_identifiers(p_user_id) v
-     WHERE o.id = p_order_id
-       AND (
-         (v.kind = 'email'
-           AND btrim(coalesce(o.buyer_email, '')) <> ''
-           AND lower(btrim(o.buyer_email)) = v.value)
-         OR (v.kind = 'phone'
-           AND coalesce(o.buyer_phone_e164, '') ~ '^\+[1-9][0-9]{1,14}$'
-           AND o.buyer_phone_e164 = v.value)
-       )
-  );
+DECLARE
+  v_email text;
+  v_phone text;
+  v_proved boolean := false;
+BEGIN
+  IF p_user_id IS NULL OR p_order_id IS NULL THEN RETURN false; END IF;
+
+  SELECT lower(btrim(coalesce(o.buyer_email, ''))),
+         coalesce(o.buyer_phone_e164, '')
+    INTO v_email, v_phone
+    FROM public.orders o
+   WHERE o.id = p_order_id;
+  IF NOT FOUND THEN RETURN false; END IF;
+
+  -- PHONE ARM. Our own ledger, written only after a received code. Unchanged.
+  IF v_phone ~ '^\+[1-9][0-9]{1,14}$' AND EXISTS (
+    SELECT 1 FROM public.verified_phone_identities v
+     WHERE v.user_id = p_user_id AND v.phone_e164 = v_phone
+  ) THEN
+    RETURN true;
+  END IF;
+
+  IF v_email = '' THEN RETURN false; END IF;
+  -- No GoTrue on this database: the email arm has no evidence to read, so it
+  -- answers false rather than guessing.
+  IF to_regclass('auth.identities') IS NULL THEN RETURN false; END IF;
+
+  -- EMAIL ARM (a) — a provider asserted the address.
+  EXECUTE $ev$
+    SELECT EXISTS (
+      SELECT 1 FROM auth.identities i
+       WHERE i.user_id = $1
+         AND lower(btrim(coalesce(i.identity_data->>'email', ''))) = $2
+         AND lower(coalesce(i.identity_data->>'email_verified', '')) IN ('true', 't')
+    )
+  $ev$ INTO v_proved USING p_user_id, v_email;
+  IF v_proved THEN RETURN true; END IF;
+
+  -- EMAIL ARM (b) — a code or link was read out of that mailbox.
+  IF to_regclass('auth.mfa_amr_claims') IS NULL
+     OR to_regclass('auth.sessions') IS NULL THEN
+    RETURN false;
+  END IF;
+  EXECUTE $ev$
+    SELECT EXISTS (
+      SELECT 1
+        FROM auth.identities i
+        JOIN auth.users u ON u.id = i.user_id
+       WHERE i.user_id = $1
+         AND i.provider = 'email'
+         AND lower(btrim(coalesce(i.identity_data->>'email', ''))) = $2
+         AND lower(btrim(coalesce(u.email, ''))) = $2
+         AND EXISTS (
+           SELECT 1
+             FROM auth.mfa_amr_claims a
+             JOIN auth.sessions s ON s.id = a.session_id
+            WHERE s.user_id = $1
+              AND a.authentication_method IN ('otp', 'magiclink', 'recovery')
+         )
+    )
+  $ev$ INTO v_proved USING p_user_id, v_email;
+  RETURN coalesce(v_proved, false);
+END;
 $function$;
 
 COMMENT ON FUNCTION public.account_owns_order_contact(uuid, uuid) IS
-  '#3524: THE single identity predicate both claim rails use. True only when the accounts GoTrue-proved identifiers include the orders buyer_email or buyer_phone_e164, using the identity rails own normalisation. Possession of a claim link or a handoff code is necessary and never sufficient. No other function may re-express this rule.';
+  '#3524: THE single identity predicate both claim rails use. Requires POSITIVE evidence that the order contact was reached: the verified-phone ledger, or an email identity that a provider asserted (email_verified) or that the account proved by reading a code or link out of that mailbox (mfa_amr_claims otp/magiclink/recovery). The mere existence of a provider=email identity is NOT sufficient, because this project runs mailer_autoconfirm and a public signup mints one for any address. Fails closed where GoTrue is absent. No other function may re-express this rule.';
 
 REVOKE ALL ON FUNCTION public.account_owns_order_contact(uuid, uuid)
   FROM PUBLIC, anon, authenticated;
@@ -688,6 +836,7 @@ DECLARE
   v_handoff_id uuid;
   v_current bytea;
   v_legacy bytea;
+  v_result jsonb;
 BEGIN
   IF p_user_id IS NULL OR p_event_id IS NULL OR p_source_id IS NULL
      OR p_code_digest IS NULL OR octet_length(p_code_digest) <> 32
@@ -706,9 +855,6 @@ BEGIN
    FOR UPDATE;
   IF NOT FOUND THEN RETURN jsonb_build_object('result', 'invalid'); END IF;
 
-  UPDATE public.attendance_claim_handoffs
-     SET consumed_at = now() WHERE id = v_handoff_id;
-
   SELECT o.attendance_claim_token_digest,
          o.attendance_claim_legacy_token_digest
     INTO v_current, v_legacy
@@ -719,15 +865,42 @@ BEGIN
     RETURN jsonb_build_object('result', 'invalid');
   END IF;
 
-  RETURN public.claim_attendance_internal_v2(
+  -- #3524 — CONSUME ONLY ON SUCCESS, exactly as the token rail does.
+  --
+  -- This used to set `consumed_at` here, BEFORE the claim body ran. The claim
+  -- body RETURNS `identity_mismatch` rather than raising, so the transaction
+  -- committed with the code burned, and the journey the whole mismatch flow
+  -- exists to create dead-ended on this rail:
+  --
+  --   a guest scans on a phone signed into the wrong account
+  --     -> the sheet correctly says "sign out and sign in with that address"
+  --     -> they do exactly that, and the pending claim resumes with the stored
+  --        credential, which is this code
+  --     -> already consumed, so the server answers `invalid`
+  --     -> the sheet renders the terminal invalid phase and clears the intent
+  --     -> the guest is told their link is bad and given no way forward, and
+  --        has to walk back to a desktop for a code nothing told them to get.
+  --
+  -- The row is held FOR UPDATE for the whole transaction, so nothing else can
+  -- redeem it while the claim body decides, and single use is still single use:
+  -- the code is consumed if and only if the ticket actually moved. R-24's rule
+  -- — a refusal consumes nothing — now holds on BOTH rails rather than one.
+  v_result := public.claim_attendance_internal_v2(
     p_user_id, p_kind, p_event_id, p_source_id,
     v_current, coalesce(v_legacy, v_current));
+
+  IF v_result->>'result' = 'claimed' THEN
+    UPDATE public.attendance_claim_handoffs
+       SET consumed_at = now() WHERE id = v_handoff_id;
+  END IF;
+
+  RETURN v_result;
 END;
 $function$;
 
 COMMENT ON FUNCTION public.redeem_attendance_claim_handoff(
   uuid, text, uuid, uuid, bytea) IS
-  '#3524: consumes a handoff code single-use and then calls claim_attendance_internal_v2 — THE claim body — so the identity predicate, the expiry, the chat join and the readback run in the one place they exist. A consumed or expired code is refused before anything else happens.';
+  '#3524: redeems a handoff code and calls claim_attendance_internal_v2 — THE claim body — so the identity predicate, the expiry, the chat join and the readback run in the one place they exist. A consumed or expired code is refused before anything else happens, and the code is consumed ONLY when the claim succeeds: a refusal consumes nothing here exactly as on the token rail, so the guest can sign in as the right account and finish with the same code.';
 
 REVOKE ALL ON FUNCTION public.redeem_attendance_claim_handoff(
   uuid, text, uuid, uuid, bytea) FROM PUBLIC, anon, authenticated;
@@ -774,10 +947,18 @@ BEGIN
       JOIN public.brands b ON b.id = e.brand_id
      WHERE o.buyer_user_id IS NULL
        AND o.attendance_identity_claim_armed_at IS NOT NULL
-       AND ((btrim(coalesce(o.buyer_email, '')) <> ''
-          AND lower(btrim(o.buyer_email)) = ANY (v_emails))
-        OR (coalesce(o.buyer_phone_e164, '') ~ '^\+[1-9][0-9]{1,14}$'
-          AND o.buyer_phone_e164 = ANY (v_phones)))
+       -- #3524 — ONE PREDICATE, LITERALLY. This arm used to re-express the
+       -- ownership rule inline against the two identifier arrays. Two
+       -- expressions can drift, and the invariant this release pre-stages says
+       -- they cannot, so the sweep now calls the same function the token rail
+       -- calls, once per candidate order. The arrays above survive only as the
+       -- cheap "has this account proved anything at all" short-circuit; they no
+       -- longer decide anything.
+       --
+       -- This is also what carries the P0 fix onto THIS rail. The sweep needs
+       -- no claim link at all, so leaving it on the old rule would have left
+       -- the hole open on the wider of the two rails.
+       AND public.account_owns_order_contact(p_user_id, o.id)
        AND o.payment_status IN ('paid', 'partial_refund')
        AND e.event_type IN ('event', 'trip', 'experience')
        AND e.visibility = 'public' AND e.deleted_at IS NULL

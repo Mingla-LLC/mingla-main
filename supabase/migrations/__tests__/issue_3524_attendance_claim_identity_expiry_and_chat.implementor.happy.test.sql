@@ -47,6 +47,48 @@ BEGIN
 END;
 $$;
 
+-- ---------------------------------------------------------------------------
+-- #3524 REWORK (P0-1) — the GoTrue arm, stood up so the EMAIL half of the
+-- predicate is reachable on the CI image, which ships none of these tables.
+--
+-- The predicate no longer accepts a bare `provider='email'` identity. This
+-- project runs `mailer_autoconfirm: true` with signups open, so that row is
+-- free to anyone who knows an address — 160 of 160 live users are confirmed
+-- with `confirmation_sent_at IS NULL`. It now requires POSITIVE evidence that
+-- the mailbox was reached: `email_verified` asserted by a provider, or an
+-- `otp`/`magiclink`/`recovery` authentication recorded by GoTrue.
+--
+-- All of it rolls back with this transaction.
+-- ---------------------------------------------------------------------------
+DO $ident$
+BEGIN
+  IF to_regclass('auth.identities') IS NULL THEN
+    EXECUTE $ddl$
+      CREATE TABLE auth.identities(
+        id            text NOT NULL,
+        user_id       uuid NOT NULL,
+        provider      text NOT NULL,
+        identity_data jsonb NOT NULL DEFAULT '{}'::jsonb
+      )
+    $ddl$;
+    EXECUTE $ddl$
+      CREATE TABLE auth.sessions(id uuid PRIMARY KEY, user_id uuid NOT NULL)
+    $ddl$;
+    EXECUTE $ddl$
+      CREATE TABLE auth.mfa_amr_claims(
+        session_id uuid NOT NULL, authentication_method text NOT NULL)
+    $ddl$;
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'auth' AND table_name = 'users'
+         AND column_name = 'phone'
+    ) THEN
+      EXECUTE 'ALTER TABLE auth.users ADD COLUMN phone text';
+    END IF;
+  END IF;
+END;
+$ident$;
+
 SET session_replication_role = replica;
 
 -- ── The host ────────────────────────────────────────────────────────────────
@@ -84,6 +126,34 @@ INSERT INTO auth.users(id) VALUES
   (pg_temp.i3524_uuid('owner3')),
   (pg_temp.i3524_uuid('owner4')),
   (pg_temp.i3524_uuid('owner5'));
+-- #3524 REWORK (P0-1) — four accounts, ONE address, four kinds of evidence.
+-- `auth.users.email` is UNIQUE, exactly as GoTrue enforces it, so each cohort
+-- gets its own address and its own identically-shaped order.
+INSERT INTO auth.users(id, email) VALUES
+  (pg_temp.i3524_uuid('ev-signup'),  'ev-signup@example.test'),
+  (pg_temp.i3524_uuid('ev-otp'),     'ev-otp@example.test'),
+  (pg_temp.i3524_uuid('ev-oauth'),   'ev-oauth@example.test'),
+  (pg_temp.i3524_uuid('ev-nothing'), 'ev-nothing@example.test');
+INSERT INTO auth.identities(id, user_id, provider, identity_data) VALUES
+  -- A free autoconfirmed password signup: the row exists, nothing was received.
+  ('i3524-signup', pg_temp.i3524_uuid('ev-signup'), 'email',
+   jsonb_build_object('email', 'ev-signup@example.test', 'email_verified', false)),
+  -- The same shape, but this account really did read a code out of the mailbox.
+  ('i3524-otp', pg_temp.i3524_uuid('ev-otp'), 'email',
+   jsonb_build_object('email', 'ev-otp@example.test', 'email_verified', false)),
+  -- Google/Apple: the provider asserts the address.
+  ('i3524-oauth', pg_temp.i3524_uuid('ev-oauth'), 'google',
+   jsonb_build_object('email', 'ev-oauth@example.test', 'email_verified', true)),
+  -- An identity with no evidence of any kind.
+  ('i3524-nothing', pg_temp.i3524_uuid('ev-nothing'), 'email',
+   jsonb_build_object('email', 'ev-nothing@example.test'));
+INSERT INTO auth.sessions(id, user_id) VALUES
+  (pg_temp.i3524_uuid('s-signup'), pg_temp.i3524_uuid('ev-signup')),
+  (pg_temp.i3524_uuid('s-otp'),    pg_temp.i3524_uuid('ev-otp'));
+INSERT INTO auth.mfa_amr_claims(session_id, authentication_method) VALUES
+  (pg_temp.i3524_uuid('s-signup'), 'password'),
+  (pg_temp.i3524_uuid('s-otp'),    'otp');
+
 INSERT INTO public.verified_phone_identities(user_id, phone_e164, verified_at) VALUES
   (pg_temp.i3524_uuid('owner'),  '+15550100101', now()),
   (pg_temp.i3524_uuid('owner2'), '+15550100102', now()),
@@ -119,8 +189,34 @@ INSERT INTO public.orders(
    'erin@example.test', '+15550100105', 'Erin', 1000, 'USD', 'paid', 'online_checkout',
    decode(repeat('55', 32), 'hex'), 'governed_v2', now());
 
+INSERT INTO public.orders(
+  id, event_id, buyer_email, buyer_phone_e164, buyer_name, total_cents, currency,
+  payment_status, source, attendance_claim_token_digest,
+  attendance_claim_token_generation, attendance_claim_token_created_at
+) VALUES
+  (pg_temp.i3524_uuid('order-ev-signup'), pg_temp.i3524_uuid('event'),
+   'ev-signup@example.test', '+15550100191', 'Signup', 1000, 'USD',
+   'paid', 'online_checkout', decode(repeat('61', 32), 'hex'), 'governed_v2', now()),
+  (pg_temp.i3524_uuid('order-ev-otp'), pg_temp.i3524_uuid('event'),
+   'ev-otp@example.test', '+15550100192', 'Otp', 1000, 'USD',
+   'paid', 'online_checkout', decode(repeat('62', 32), 'hex'), 'governed_v2', now()),
+  (pg_temp.i3524_uuid('order-ev-oauth'), pg_temp.i3524_uuid('event'),
+   'ev-oauth@example.test', '+15550100193', 'Oauth', 1000, 'USD',
+   'paid', 'online_checkout', decode(repeat('63', 32), 'hex'), 'governed_v2', now()),
+  (pg_temp.i3524_uuid('order-ev-nothing'), pg_temp.i3524_uuid('event'),
+   'ev-nothing@example.test', '+15550100194', 'Nothing', 1000, 'USD',
+   'paid', 'online_checkout', decode(repeat('64', 32), 'hex'), 'governed_v2', now());
+
 INSERT INTO public.tickets(id, order_id, ticket_type_id, event_id, qr_code, status, approval_status)
 VALUES
+  (pg_temp.i3524_uuid('tk-ev-signup'), pg_temp.i3524_uuid('order-ev-signup'),
+   pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-signup', 'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-ev-otp'), pg_temp.i3524_uuid('order-ev-otp'),
+   pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-otp', 'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-ev-oauth'), pg_temp.i3524_uuid('order-ev-oauth'),
+   pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-oauth', 'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-ev-nothing'), pg_temp.i3524_uuid('order-ev-nothing'),
+   pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-nothing', 'valid', 'auto'),
   (pg_temp.i3524_uuid('tk-fresh'),   pg_temp.i3524_uuid('order-fresh'),
    pg_temp.i3524_uuid('tier'),     pg_temp.i3524_uuid('event'), 'i3524-fresh',   'valid', 'auto'),
   (pg_temp.i3524_uuid('tk-old'),     pg_temp.i3524_uuid('order-old'),
@@ -155,6 +251,38 @@ BEGIN
     NOT public.account_owns_order_contact(
       pg_temp.i3524_uuid('stranger'), pg_temp.i3524_uuid('order-fresh')),
     'an account that proved nothing does NOT own the order contact');
+
+  -- ── (1b) #3524 REWORK, P0-1 — WHAT MAY SATISFY THE PREDICATE ─────────────
+  --
+  -- Four accounts, one address, four kinds of evidence. Before the rework all
+  -- four returned true, because the predicate accepted the bare existence of a
+  -- `provider='email'` identity — and on a project running `mailer_autoconfirm`
+  -- with open signups, that row is free to anyone who knows the address. Only
+  -- two of the four may pass now.
+  PERFORM pg_temp.i3524_ok(
+    NOT public.account_owns_order_contact(
+      pg_temp.i3524_uuid('ev-signup'), pg_temp.i3524_uuid('order-ev-signup')),
+    'a FREE autoconfirmed signup carrying the buyer''s address proves nothing '
+      || 'and must NOT own the order contact');
+  PERFORM pg_temp.i3524_ok(
+    NOT public.account_owns_order_contact(
+      pg_temp.i3524_uuid('ev-nothing'), pg_temp.i3524_uuid('order-ev-nothing')),
+    'an email identity with no evidence of any kind must NOT own it either');
+  PERFORM pg_temp.i3524_ok(
+    public.account_owns_order_contact(
+      pg_temp.i3524_uuid('ev-otp'), pg_temp.i3524_uuid('order-ev-otp')),
+    'an account that READ A CODE out of that mailbox (amr = otp) owns it');
+  PERFORM pg_temp.i3524_ok(
+    public.account_owns_order_contact(
+      pg_temp.i3524_uuid('ev-oauth'), pg_temp.i3524_uuid('order-ev-oauth')),
+    'and so does one whose provider asserted email_verified');
+
+  -- The evidence must belong to THIS account, not to anybody who happens to
+  -- have done an OTP somewhere.
+  PERFORM pg_temp.i3524_ok(
+    NOT public.account_owns_order_contact(
+      pg_temp.i3524_uuid('stranger'), pg_temp.i3524_uuid('order-ev-otp')),
+    'an unrelated account with no identity for the address owns nothing');
 
   -- The masking helper is pinned by case, not merely present.
   PERFORM pg_temp.i3524_ok(

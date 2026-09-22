@@ -82,18 +82,50 @@ BEGIN
     ) THEN
       EXECUTE 'ALTER TABLE auth.users ADD COLUMN phone text';
     END IF;
+    -- #3524 REWORK (P0-1) — HOW the session was obtained is now part of the
+    -- predicate, so the fixture has to be able to say it.
+    --
+    -- `account_owns_order_contact` no longer accepts the bare existence of a
+    -- `provider='email'` identity, because this project runs
+    -- `mailer_autoconfirm` and a public signup mints one for ANY address with
+    -- no mail sent. It now requires positive evidence that the mailbox was
+    -- actually reached: either the provider asserted `email_verified`, or
+    -- GoTrue recorded an `otp`/`magiclink`/`recovery` authentication for the
+    -- account. That record lives in `auth.mfa_amr_claims`, which — like
+    -- `auth.identities` — does not exist on the CI image.
+    --
+    -- Standing these two up is what lets a RIGHTFUL buyer in this fixture be a
+    -- buyer who genuinely read a code out of their mailbox. Not one assertion
+    -- below changed; the fixture simply stopped describing an account that the
+    -- hardened rule is right to refuse. Both tables roll back with this
+    -- transaction.
+    EXECUTE $ddl$
+      CREATE TABLE auth.sessions(
+        id      uuid PRIMARY KEY,
+        user_id uuid NOT NULL
+      )
+    $ddl$;
+    EXECUTE $ddl$
+      CREATE TABLE auth.mfa_amr_claims(
+        session_id            uuid NOT NULL,
+        authentication_method text NOT NULL
+      )
+    $ddl$;
   END IF;
 END;
 $ident$;
 
 SET session_replication_role = replica;
 
-INSERT INTO auth.users(id) VALUES
-  (pg_temp.t3524_uuid('creator')),
-  (pg_temp.t3524_uuid('rightful')),
-  (pg_temp.t3524_uuid('forwarded')),
-  (pg_temp.t3524_uuid('phoneuser')),
-  (pg_temp.t3524_uuid('nobody'));
+-- #3524 REWORK (P0-1) — `email` is set because the hardened predicate binds an
+-- email identity to the account's OWN address before it will look at how the
+-- session was obtained.
+INSERT INTO auth.users(id, email) VALUES
+  (pg_temp.t3524_uuid('creator'),   NULL),
+  (pg_temp.t3524_uuid('rightful'),  'Buyer@Example.Test'),
+  (pg_temp.t3524_uuid('forwarded'), 'thief@example.test'),
+  (pg_temp.t3524_uuid('phoneuser'), NULL),
+  (pg_temp.t3524_uuid('nobody'),    'moved@example.test');
 
 INSERT INTO auth.identities(id, user_id, provider, identity_data) VALUES
   ('t3524-rightful', pg_temp.t3524_uuid('rightful'), 'email',
@@ -102,6 +134,23 @@ INSERT INTO auth.identities(id, user_id, provider, identity_data) VALUES
    jsonb_build_object('email', 'thief@example.test')),
   ('t3524-moved', pg_temp.t3524_uuid('nobody'), 'email',
    jsonb_build_object('email', 'moved@example.test'));
+
+-- #3524 REWORK (P0-1) — WHO ACTUALLY READ A CODE OUT OF THEIR MAILBOX.
+--
+-- `rightful` and `nobody` did: they hold an `otp` session, which GoTrue mints
+-- only on a successful `verifyOtp`, which requires the code that was emailed to
+-- that address. `forwarded` — the thief holding the forwarded email — holds a
+-- `password` session, which under `mailer_autoconfirm` costs nothing and proves
+-- nothing. That asymmetry is the P0 fix, and it is what every assertion below
+-- now measures.
+INSERT INTO auth.sessions(id, user_id) VALUES
+  (pg_temp.t3524_uuid('sess-rightful'),  pg_temp.t3524_uuid('rightful')),
+  (pg_temp.t3524_uuid('sess-forwarded'), pg_temp.t3524_uuid('forwarded')),
+  (pg_temp.t3524_uuid('sess-nobody'),    pg_temp.t3524_uuid('nobody'));
+INSERT INTO auth.mfa_amr_claims(session_id, authentication_method) VALUES
+  (pg_temp.t3524_uuid('sess-rightful'),  'otp'),
+  (pg_temp.t3524_uuid('sess-forwarded'), 'password'),
+  (pg_temp.t3524_uuid('sess-nobody'),    'otp');
 
 INSERT INTO public.verified_phone_identities(user_id, phone_e164)
 VALUES (pg_temp.t3524_uuid('phoneuser'), '+2348012345678');

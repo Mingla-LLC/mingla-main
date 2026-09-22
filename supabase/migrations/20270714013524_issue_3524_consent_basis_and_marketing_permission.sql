@@ -213,6 +213,24 @@ BEGIN
     INTO v_def;
   v_before := v_def;
 
+  -- #3524 — IDEMPOTENCE, AND WHY IT IS NOT OPTIONAL HERE.
+  --
+  -- This block APPENDS the grading UPDATE after an anchor that survives its own
+  -- edit. Re-running it therefore appended a SECOND copy, then a third, without
+  -- limit — a tester produced five by accident. The operator applies migrations,
+  -- and a migration the operator cannot safely re-run is a trap laid for the
+  -- person holding it.
+  --
+  -- The guard is a RETURN, not a silent skip: the notice says what happened.
+  -- Following #1772's own precedent in this file's ancestor — take the live
+  -- definition, look before you inject, and be loud either way.
+  IF position('issue_3524_grade_marketing_consent' in v_def) > 0 THEN
+    RAISE NOTICE
+      '#3524: biz_resolve_brand_person_source already carries the marketing '
+      'consent grading; leaving it exactly as it is.';
+    RETURN;
+  END IF;
+
   v_email_anchor :=
     '    INSERT INTO public.brand_person_contact_method_sources(contact_method_id,source_link_id,provenance_kind,exportable)
     VALUES(v_existing,v_link,v_provenance,true) ON CONFLICT DO NOTHING;';
