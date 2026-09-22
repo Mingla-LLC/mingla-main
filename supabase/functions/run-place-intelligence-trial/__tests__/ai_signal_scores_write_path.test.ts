@@ -55,7 +55,7 @@ const SLICE: Record<string, unknown> = {
     reasoning: "x",
     evaluated_at: "2026-05-30T18:00:00.000Z",
     prompt_version: "v4",
-    model: "gemini-2.5-flash",
+    model: "gemini-3.6-flash",
   },
 };
 

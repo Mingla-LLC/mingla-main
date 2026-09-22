@@ -24,10 +24,27 @@ const CARD = path.join(COMP, "ActiveRunCard.jsx");
 describe("ORCH-1013 ADVERSARIAL — RunRemainderOnAllConfirmModal cost gates", () => {
   const src = fs.readFileSync(MODAL, "utf8");
 
-  it("perPlaceCostUsd default matches the SPEC ($0.0040)", () => {
+  // issue #3526 P0-1 — this assertion PINNED the defect. A client-side default
+  // rate is how the admin came to show "$4.82, no confirmation needed" for a
+  // Baltimore run the server priced at $10.72 and refused. The modal must now
+  // hold NO rate at all: the server publishes per_place_cost_usd and the modal
+  // renders what it is told, blocking when it is told nothing.
+  it("holds no per-place rate of its own — the server owns the cost model", () => {
     assert.ok(
-      /DEFAULT_PER_PLACE_COST_USD\s*=\s*0\.004\b/.test(src),
-      "default per-place cost must be $0.0040 (SPEC §3 B.5)",
+      !/DEFAULT_PER_PLACE_COST_USD/.test(src),
+      "a client-side default rate is a second owner of the cost model",
+    );
+    assert.ok(
+      !/\b0\.00[0-9]+\b/.test(src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "")),
+      "no per-place rate literal may survive in this modal's active code",
+    );
+    assert.ok(
+      src.includes("costModel"),
+      "the modal must take the server's cost model as a prop",
+    );
+    assert.ok(
+      src.includes("costUnknown"),
+      "the modal must have an explicit unknown-cost state rather than guessing",
     );
   });
 
@@ -62,9 +79,18 @@ describe("ORCH-1013 ADVERSARIAL — RunRemainderOnAllConfirmModal cost gates", (
   });
 
   it("Gemini pricing URL is linked, not just text", () => {
+    // issue #3526 — the href used to be a hardcoded
+    // `ai.google.dev/pricing/gemini-2-5-flash`: an ALL-HYPHEN third spelling of
+    // the retired model that neither a `gemini-2.5-flash` nor a
+    // `GEMINI_2_5_FLASH` sweep could match, rendered live on the
+    // spend-authorisation screen. It comes from the server now.
     assert.ok(
-      /href=["']https:\/\/ai\.google\.dev\/pricing\/gemini-2-5-flash/.test(src),
-      "Gemini pricing must be an actual href, not a string literal",
+      /href=\{costModel\?\.pricingReferenceUrl/.test(src),
+      "the pricing href must come from the server's cost model",
+    );
+    assert.ok(
+      !/gemini-\d+[-.]\d+-flash/i.test(src),
+      "no model-version spelling may be hardcoded in this modal",
     );
     assert.ok(
       src.includes('target="_blank"') && src.includes('rel="noopener noreferrer"'),
@@ -201,8 +227,15 @@ describe("ORCH-1013 ADVERSARIAL — IntelligenceOverviewTab bulk wiring", () => 
 
   it("onToast is wired into the dispatcher (per-city failures surface)", () => {
     assert.ok(
-      src.includes("useBulkRunDispatcher({ onToast: addToast })"),
+      /useBulkRunDispatcher\(\{\s*onToast:\s*addToast/.test(src),
       "dispatcher must receive the toast emitter for 409/500 surfacing",
+    );
+    // issue #3526 P0-1 — the dispatcher computed `remaining * 0.004 > 5` from
+    // two hardcoded numbers and never retried the resulting 400. It must be
+    // handed the server's cost model.
+    assert.ok(
+      /useBulkRunDispatcher\([\s\S]{0,120}costModel/.test(src),
+      "dispatcher must receive the server's cost model, not compute its own",
     );
   });
 });

@@ -4,7 +4,7 @@
 // per-signal slice of place_pool.ai_signal_scores, the canonical 6-key shape
 // pinned by I-AI-SIGNAL-SCORES-SHAPE-CONTRACT. Gemini 2.5 Flash structured-
 // output contract per COMMS-0003:
-//   https://ai.google.dev/gemini-api/docs/models/gemini#gemini-2.5-flash
+//   https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash
 //   https://ai.google.dev/gemini-api/docs/structured-output
 //
 // Imported by run-signal-scorer/index.ts (Deno edge fn) and scorer.test.ts (Deno tests).

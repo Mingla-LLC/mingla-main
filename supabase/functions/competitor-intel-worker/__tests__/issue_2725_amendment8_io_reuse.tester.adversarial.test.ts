@@ -135,7 +135,7 @@ Deno.test("issue 2725 amendment 8 missing usage writes a null receipt and never 
             evidence_ids: ["e1"], confidence: "interpretation" }],
           worth_doing: [{ id: "a1", text: "Review the evidence.", kind: "review",
             confidence: "suggested_action", is_primary: true }],
-        }) }] }, }], modelVersion: "gemini-2.5-flash-001" }),
+        }) }] }, }], modelVersion: "gemini-3.6-flash" }),
         { headers: { "content-type": "application/json" } });
     }) as typeof fetch;
     await assertRejects(() => synthesizeBrief(
@@ -151,7 +151,11 @@ Deno.test("issue 2725 amendment 8 missing usage writes a null receipt and never 
     assertEquals(measuredReceipt.thinking_tokens, 0);
     assertEquals(measuredReceipt.reserved_microusd, 50000);
     assertEquals(generatedRequest.generationConfig.temperature, 0);
-    assertEquals(generatedRequest.generationConfig.thinkingConfig.thinkingBudget, 0);
+    // issue #3526: Gemini 3 replaced thinkingBudget with thinking_level.
+    assertEquals(
+      generatedRequest.generationConfig.thinkingConfig.thinking_level,
+      "minimal",
+    );
     assertEquals(generatedRequest.generationConfig.candidateCount, 1);
     assertEquals(generatedRequest.generationConfig.maxOutputTokens, 1200);
     assertEquals(generatedRequest.generationConfig.responseJsonSchema.additionalProperties, false);

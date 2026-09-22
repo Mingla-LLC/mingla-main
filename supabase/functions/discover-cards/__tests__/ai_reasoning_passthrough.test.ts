@@ -78,7 +78,7 @@ Deno.test('T-U-01: extractor returns {signalId: reasoning} when present', () => 
       inappropriate_for: false,
       reasoning: 'Intimate booth seating and curated wine list.',
       prompt_version: 'v4',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       evaluated_at: '2026-05-08T08:09:50.856Z',
     },
   };

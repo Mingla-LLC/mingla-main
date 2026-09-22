@@ -58,7 +58,7 @@ import { RefundOperationsPage } from "./pages/RefundOperationsPage";
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
 // ORCH-1014: PhotoLabelingPage + PhotoScorerPage DELETED — DEC-099 Cut 1
-//   cleanup; Gemini 2.5 Flash intelligence pipeline (ORCH-1008/1013) replaces
+//   cleanup; the Gemini intelligence pipeline (ORCH-1008/1013) replaces
 //   what they did. NAV is now 10 items.
 // ORCH-0671: PhotoPoolManagementPage DELETED — bouncer-blind ghost page replaced by Photos tab on Place Pool page.
 // ORCH-0640 ch08: AIValidationPage + CardPoolManagementPage DELETED.

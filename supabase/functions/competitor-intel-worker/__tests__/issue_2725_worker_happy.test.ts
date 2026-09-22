@@ -23,7 +23,11 @@ import {
 import { normalizeCompetitorSource } from "../../_shared/competitorSourceIdentity.ts";
 import { observeCompetitorWebsite } from "../../_shared/competitorWebsiteObservation.ts";
 Deno.test("issue 2725 amendment 8 pricing is exact and rejects invented usage", () => {
-  assertEquals(geminiCostMicrousd(350, 500, 0), 1355);
+  // issue #3526 — repriced for gemini-3.6-flash: input 0.75 microUSD/token
+  // (was 0.30), output 3.75 (was 2.50). ceil(350*0.75 + 500*3.75) = 2138.
+  assertEquals(geminiCostMicrousd(350, 500, 0), 2138);
+  // Thinking tokens bill at the OUTPUT rate, unchanged in shape from 2.5.
+  assertEquals(geminiCostMicrousd(350, 500, 100), 2513);
   assertThrows(() => geminiCostMicrousd(1, Number.NaN, 0));
   assertThrows(() => geminiCostMicrousd(-1, 0, 0));
 });
@@ -238,7 +242,7 @@ Deno.test("issue 2725 first check synthesizes relevance but cannot invent histor
             thoughtsTokenCount: 0,
             totalTokenCount: 850,
           },
-          modelVersion: "gemini-2.5-flash",
+          modelVersion: "gemini-3.6-flash",
         }),
         { headers: { "content-type": "application/json" } },
       );
@@ -254,7 +258,8 @@ Deno.test("issue 2725 first check synthesizes relevance but cannot invent histor
     assertEquals(prompt.includes('\\"first_check\\":true'), true);
     assertEquals(prompt.includes('\\"must_not_claim_change\\":true'), true);
     assertEquals(prompt.includes('"temperature":0'), true);
-    assertEquals(prompt.includes('"thinkingBudget":0'), true);
+    // issue #3526: Gemini 3 replaced thinkingBudget with thinking_level.
+    assertEquals(prompt.includes('"thinking_level":"minimal"'), true);
     assertEquals(prompt.includes('"candidateCount":1'), true);
     assertEquals(prompt.includes('"responseJsonSchema"'), true);
     assertEquals(

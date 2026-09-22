@@ -24,7 +24,10 @@ import { Spinner } from "../ui/Spinner";
 import { useToast } from "../../context/ToastContext";
 import { invokeWithRefresh } from "../../lib/supabase";
 import { extractFunctionError } from "../../lib/edgeFunctionError";
-import { fetchIntelligenceCoverage } from "../../services/intelligenceCoverageService";
+import {
+  estimateCostUsd,
+  fetchIntelligenceCoverage,
+} from "../../services/intelligenceCoverageService";
 import { timeAgo } from "../../lib/formatters";
 import { RunRemainderConfirmModal } from "./RunRemainderConfirmModal";
 // ORCH-1013 Finding B — bulk launch ("Run remainder on all").
@@ -36,7 +39,8 @@ import { useBulkRunDispatcher } from "../../hooks/useBulkRunDispatcher";
 import { BoundaryReadinessBadge } from "./BoundaryReadinessBadge";
 import { DetailsReadinessBadge } from "./DetailsReadinessBadge";
 
-const PER_PLACE_COST_USD = 0.0040;
+// issue #3526 P0-1 — the client-side rate is GONE. The server publishes the
+// cost model on `intelligence_coverage`; see services/intelligenceCostModel.js.
 
 // ORCH-1015 — readiness predicates used by both the 3-band layout (§3 B.2)
 // and the smart-skip bulk button (§3 C.2). Keep these helpers HERE (not in a
@@ -194,14 +198,18 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
   const [checkingActiveRun, setCheckingActiveRun] = useState(false);
   // ORCH-1013 Finding B — bulk-launch modal + 3-concurrent dispatcher.
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
-  const dispatcher = useBulkRunDispatcher({ onToast: addToast });
+  // issue #3526 P0-1 — null until the server answers, and never defaulted.
+  const [costModel, setCostModel] = useState(null);
+  const dispatcher = useBulkRunDispatcher({ onToast: addToast, costModel });
 
   const refresh = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const data = await fetchIntelligenceCoverage();
-      setRows(data);
+      const { rows: coverageRows, costModel: serverCostModel } =
+        await fetchIntelligenceCoverage();
+      setRows(coverageRows);
+      setCostModel(serverCostModel);
     } catch (err) {
       setError(err?.message || "Couldn't load coverage");
       if (!silent) {
@@ -580,7 +588,7 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
         cityId={modalCity?.id}
         cityName={modalCity?.name}
         remainingCount={modalCity?.remaining_count ?? 0}
-        perPlaceCostUsd={PER_PLACE_COST_USD}
+        costModel={costModel}
         onStarted={() => {
           // Refresh table + switch to results tab so operator can watch progress.
           refresh({ silent: true });
@@ -597,17 +605,18 @@ export function IntelligenceOverviewTab({ onSwitchToResults, onTabChange }) {
         onClose={() => setBulkModalOpen(false)}
         candidateCities={readyCities}
         skippedCities={skippedCities}
-        perPlaceCostUsd={PER_PLACE_COST_USD}
+        costModel={costModel}
         onConfirm={(cities) => {
           dispatcher.enqueue(cities);
-          const totalCost = cities.reduce(
-            (sum, c) => sum + Number(c.remaining_count || 0) * PER_PLACE_COST_USD,
+          const totalPlaces = cities.reduce(
+            (sum, c) => sum + Number(c.remaining_count || 0),
             0,
           );
+          const totalCost = estimateCostUsd(totalPlaces, costModel);
           addToast({
             variant: "info",
             title: "Bulk remainder queued",
-            description: `${cities.length} cit${cities.length === 1 ? "y" : "ies"}, ~$${totalCost.toFixed(2)} total. Up to 3 run at a time.`,
+            description: `${cities.length} cit${cities.length === 1 ? "y" : "ies"}, ${totalCost === null ? "cost unknown" : `~$${totalCost.toFixed(2)} total`}. Up to 3 run at a time.`,
           });
           // Surface the in-flight runs ASAP — the control tower poll picks them
           // up within 5s anyway.

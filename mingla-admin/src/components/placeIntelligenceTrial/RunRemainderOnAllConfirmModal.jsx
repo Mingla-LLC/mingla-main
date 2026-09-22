@@ -11,25 +11,36 @@
  * totals block so the operator sees them, but they NEVER enter the dispatcher
  * (onConfirm fires with safeCities only). Per SPEC §3 C.2 + C.3.
  *
- * Gemini 2.5 Flash pricing reference (COMMS-0003):
- * https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-30).
+ * issue #3526 — the model name, the per-place rate, the cost guard and the
+ * pricing link all arrive on the server's cost_model. This file pins none of
+ * them; see services/intelligenceCostModel.js.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, ExternalLink } from "lucide-react";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { Button } from "../ui/Button";
+import { AlertCard } from "../ui/Card";
+import {
+  estimateCostUsd,
+  formatPerPlaceCost,
+} from "../../services/intelligenceCoverageService";
 
-const COST_REVIEW_THRESHOLD_USD = 10;
+// issue #3526 P1-R1 — the typed-confirmation threshold is a DOLLAR amount and
+// it moved to the server's cost_model with the rate and the guard. A client
+// copy of it is the same defect as a client copy of the rate.
 const TYPED_CONFIRM_PHRASE = "RUN ALL";
-const DEFAULT_PER_PLACE_COST_USD = 0.004;
+// issue #3526 P0-1 — the client-side default rate is gone. It was one of five
+// copies of a number the server had already moved, and a default is exactly how
+// a stale rate survives a repin. The cost model arrives from the server; see
+// services/intelligenceCostModel.js.
 
 export function RunRemainderOnAllConfirmModal({
   open,
   onClose,
   candidateCities = [],
   skippedCities = [],
-  perPlaceCostUsd = DEFAULT_PER_PLACE_COST_USD,
+  costModel,
   onConfirm,
 }) {
   const [acknowledged, setAcknowledged] = useState(false);
@@ -47,14 +58,21 @@ export function RunRemainderOnAllConfirmModal({
     [safeCities],
   );
   const totalCost = useMemo(
-    () => +(sumRemaining * perPlaceCostUsd).toFixed(2),
-    [sumRemaining, perPlaceCostUsd],
+    () => estimateCostUsd(sumRemaining, costModel),
+    [sumRemaining, costModel],
   );
 
-  const requiresTypedConfirm = totalCost > COST_REVIEW_THRESHOLD_USD;
+  // issue #3526 P0-1 — an unknown cost blocks the bulk launcher outright. This
+  // dialog queues every eligible city at once; guessing the rate here is the
+  // most expensive place in the app to be wrong.
+  const costUnknown = totalCost === null;
+  const reviewThreshold = costModel?.costReviewThresholdUsd ?? null;
+  const requiresTypedConfirm = !costUnknown && reviewThreshold !== null &&
+    totalCost > reviewThreshold;
   const typedMatches = typed.trim() === TYPED_CONFIRM_PHRASE;
   const canConfirm =
     safeCities.length > 0 &&
+    !costUnknown &&
     acknowledged &&
     (!requiresTypedConfirm || typedMatches);
 
@@ -73,10 +91,13 @@ export function RunRemainderOnAllConfirmModal({
 
   if (!open) return null;
 
-  const costColor =
-    totalCost > 10
+  // issue #3526 — thresholds key off the SERVER's guard, not a client copy.
+  const guard = costModel?.costGuardUsd ?? null;
+  const costColor = costUnknown
+    ? "text-[var(--color-warning-700)]"
+    : guard !== null && totalCost > guard * 2
       ? "text-[var(--color-error-700)]"
-      : totalCost > 5
+      : guard !== null && totalCost > guard
         ? "text-[var(--color-warning-700)]"
         : "text-[var(--color-text-primary)]";
 
@@ -93,9 +114,10 @@ export function RunRemainderOnAllConfirmModal({
         <div className="flex flex-col gap-4">
           <p className="text-sm text-[var(--color-text-primary)] leading-6">
             This will queue a remainder run for every city where Boundary +
-            Details are both current, using Gemini 2.5 Flash. Cities needing
-            reseed or detail refresh are listed below as skipped — fix those
-            in Place Pool first.
+            Details are both current
+            {costModel?.modelId ? `, using ${costModel.modelId}` : ""}. Cities
+            needing reseed or detail refresh are listed below as skipped — fix
+            those in Place Pool first.
           </p>
 
           {/* Per-city list */}
@@ -109,8 +131,10 @@ export function RunRemainderOnAllConfirmModal({
                   {c.city_name}
                 </span>
                 <span className="text-xs font-mono tabular-nums text-[var(--color-text-secondary)] shrink-0">
-                  {Number(c.remaining_count || 0).toLocaleString()} places · ~$
-                  {(c.remaining_count * perPlaceCostUsd).toFixed(2)}
+                  {Number(c.remaining_count || 0).toLocaleString()} places
+                  {costUnknown
+                    ? ""
+                    : ` · ~$${estimateCostUsd(c.remaining_count, costModel).toFixed(2)}`}
                 </span>
               </div>
             ))}
@@ -123,17 +147,18 @@ export function RunRemainderOnAllConfirmModal({
             </div>
             <div className="flex items-baseline justify-between font-mono tabular-nums text-sm">
               <span className="text-[var(--color-text-secondary)]">
-                {sumRemaining.toLocaleString()} places × $
-                {perPlaceCostUsd.toFixed(4)}
+                {sumRemaining.toLocaleString()} places
+                {costModel ? ` × ${formatPerPlaceCost(costModel)}` : ""}
               </span>
               <span className={["font-semibold", costColor].join(" ")}>
-                ~${totalCost.toFixed(2)}
+                {costUnknown ? "cost unknown" : `~$${totalCost.toFixed(2)}`}
               </span>
             </div>
             <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
-              Gemini 2.5 Flash, server-side. Pricing:{" "}
+              {costModel?.modelId ?? "Model"}, server-side
+              {costModel?.pricingVersion ? ` (${costModel.pricingVersion})` : ""}. Pricing:{" "}
               <a
-                href="https://ai.google.dev/pricing/gemini-2-5-flash"
+                href={costModel?.pricingReferenceUrl || "https://ai.google.dev/gemini-api/docs/pricing"}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline hover:text-[var(--color-text-secondary)]"
@@ -175,7 +200,7 @@ export function RunRemainderOnAllConfirmModal({
           {requiresTypedConfirm && (
             <div className="border-l-4 border-l-[var(--color-warning-500)] bg-[var(--color-warning-50)] p-4 rounded-r-lg">
               <h4 className="text-sm font-semibold text-[var(--color-warning-700)] mb-1">
-                Cost exceeds ${COST_REVIEW_THRESHOLD_USD}
+                Cost exceeds ${reviewThreshold?.toFixed(2)}
               </h4>
               <p className="text-xs text-[var(--color-warning-700)] mb-2">
                 Type <span className="font-mono">{TYPED_CONFIRM_PHRASE}</span>{" "}
@@ -202,19 +227,35 @@ export function RunRemainderOnAllConfirmModal({
             </div>
           )}
 
-          {/* Acknowledgement checkbox */}
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              ref={checkboxRef}
-              type="checkbox"
-              checked={acknowledged}
-              onChange={(e) => setAcknowledged(e.target.checked)}
-              className="mt-0.5 cursor-pointer"
+          {/* Acknowledgement checkbox.
+              issue #3526 P3-R4 — an unknown cost blocks the launcher outright,
+              so inviting a tick that can never enable "Queue all" was a dead tap
+              (Constitution #1) beside a disabled button with no stated reason
+              (Constitution #3). */}
+          {costUnknown ? (
+            <AlertCard
+              variant="warning"
+              title="Cost unavailable — nothing can be queued"
+              description={
+                "The server did not return a per-place cost, so these runs cannot be " +
+                "priced and the spend cannot be authorised. Reload the page; if it " +
+                "persists the intelligence edge function needs redeploying."
+              }
             />
-            <span className="text-sm text-[var(--color-text-primary)]">
-              I understand this will charge ~${totalCost.toFixed(2)} on the Gemini API.
-            </span>
-          </label>
+          ) : (
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                ref={checkboxRef}
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => setAcknowledged(e.target.checked)}
+                className="mt-0.5 cursor-pointer"
+              />
+              <span className="text-sm text-[var(--color-text-primary)]">
+                {`I understand this will charge ~$${totalCost.toFixed(2)} on the Gemini API.`}
+              </span>
+            </label>
+          )}
 
           <p className="text-xs text-[var(--color-text-tertiary)] italic">
             Up to 3 cities will run at a time. Remaining cities queue
@@ -235,6 +276,17 @@ export function RunRemainderOnAllConfirmModal({
             onClose?.();
           }}
           disabled={!canConfirm}
+          title={
+            costUnknown
+              ? "The server did not return a per-place cost, so these runs cannot be priced."
+              : safeCities.length === 0
+                ? "No city has un-evaluated places to run."
+                : !acknowledged
+                  ? "Tick the acknowledgement to continue."
+                  : requiresTypedConfirm && !typedMatches
+                    ? `Type "${TYPED_CONFIRM_PHRASE}" to confirm a run above $${reviewThreshold?.toFixed(2)}.`
+                    : undefined
+          }
         >
           Queue all
         </Button>

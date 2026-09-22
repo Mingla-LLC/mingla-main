@@ -15,7 +15,7 @@ import { buildAiSignalScoresSlice } from "../index.ts";
 
 const EVAL_AT = "2026-05-30T18:00:00.000Z";
 const PROMPT_VERSION = "v4";
-const MODEL = "gemini-2.5-flash";
+const MODEL = "gemini-3.6-flash";
 
 Deno.test("Test A — happy path: 3-signal Q2 produces exact 6-field shape per signal", () => {
   const input = [
