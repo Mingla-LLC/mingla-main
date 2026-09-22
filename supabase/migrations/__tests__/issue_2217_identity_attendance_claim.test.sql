@@ -88,20 +88,21 @@ INSERT INTO auth.identities(user_id, provider, provider_id, identity_data) VALUE
   (pg_temp.i2217_uuid('unverified'), 'google', 'google-2217',
    '{"email":"unverified2217@example.test","email_verified":false}'::jsonb);
 
--- ── #3524: THE PHONE PROOF, seeded ───────────────────────────────────────
+-- ── #3524: WHAT THIS FIXTURE DELIBERATELY DOES NOT SEED ──────────────────
 --
--- `phoneuser` proves possession of the order's number through #2269's ledger -
--- OUR row, service-role only, written only after Twilio approved a code AT THAT
--- NUMBER. The GoTrue phone identity seeded above stays exactly as it was: I-03
--- still proves the bare-digit -> E.164 restoration from it, and this row is what
--- turns that restored identifier into proven possession for I-07.
+-- NO verified-phone ledger row, and no email proof.
 --
--- The EMAIL proof is deliberately NOT seeded. I-04 now adds it mid-test, one
--- piece of evidence at a time, so the rule being measured is which evidence
--- moves a ticket rather than which rows the fixture happened to create.
-INSERT INTO public.verified_phone_identities(user_id, phone_e164)
-VALUES (pg_temp.i2217_uuid('phoneuser'), '+15550002217');
-
+-- `phoneuser` holds a GoTrue `provider='phone'` identity and NOTHING ELSE, and
+-- that is the shape this file must keep measuring: on this project the Phone
+-- provider requires confirmation through Twilio Verify, so such an identity
+-- could only be written for an account that received the SMS and returned the
+-- code. Measured read-only 2026-09-22, 62 live accounts hold proof of exactly
+-- that kind and no ledger row, and the provider is now disabled, so they cannot
+-- acquire the other kind. I-07 is their case.
+--
+-- The EMAIL proof is not seeded either. I-04 adds it mid-test, one piece of
+-- evidence at a time, so what is measured is which evidence moves a ticket
+-- rather than which rows the fixture happened to create.
 INSERT INTO public.creator_accounts(id, email)
 VALUES (pg_temp.i2217_uuid('creator'), 'i2217-creator@example.test');
 INSERT INTO public.brands(id, account_id, name, slug)
@@ -421,8 +422,21 @@ BEGIN
   IF n <> 1 THEN RAISE EXCEPTION 'I-06 duplicate chat participant rows: %', n; END IF;
 
   -- ── I-07 phone-only match, across the bare-digits / E.164 boundary.
+  --
+  --    #3524 — AND ON THE GoTrue IDENTITY ALONE. Assert the ledger row is
+  --    absent FIRST, so this check cannot quietly start passing on the other
+  --    proof: if a future fixture seeds one, this line fires rather than
+  --    letting the claim below succeed for the wrong reason. The two proofs are
+  --    not interchangeable in what they cover — 62 live accounts hold only
+  --    this one, and with the provider disabled they can never hold the other.
+  IF EXISTS (SELECT 1 FROM public.verified_phone_identities
+              WHERE user_id = v_phoneuser) THEN
+    RAISE EXCEPTION 'I-07 precondition lost: a ledger row would let this claim succeed without the GoTrue phone identity being read at all';
+  END IF;
   r := public.claim_attendance_by_verified_identity(v_phoneuser);
-  IF (r->>'count')::int <> 1 THEN RAISE EXCEPTION 'I-07 phone claim was %', r; END IF;
+  IF (r->>'count')::int <> 1 THEN
+    RAISE EXCEPTION 'I-07 an account whose phone possession is recorded as a GoTrue identity was refused its own ticket: %', r;
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM public.orders
                   WHERE id = pg_temp.i2217_uuid('o-phone') AND buyer_user_id = v_phoneuser) THEN
     RAISE EXCEPTION 'I-07 phone order did not transfer';

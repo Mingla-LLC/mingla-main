@@ -272,6 +272,32 @@ VALUES
   (pg_temp.i3524_uuid('tk-handoff'), pg_temp.i3524_uuid('order-handoff'),
    pg_temp.i3524_uuid('tier'),     pg_temp.i3524_uuid('event'), 'i3524-handoff', 'valid', 'auto');
 
+-- ── #3524: THE OTHER PHONE PROOF ────────────────────────────────────────────
+--
+-- `gtphone` holds a GoTrue `provider='phone'` identity and NO ledger row. On
+-- this project the Phone provider requires confirmation through Twilio Verify,
+-- so that identity could only be written for an account that received the SMS
+-- and returned the code; the ledger is simply the newer of the two mechanisms
+-- for recording the same event. Measured read-only 2026-09-22, 62 live accounts
+-- hold proof of exactly this kind and no ledger row, and the provider is now
+-- disabled, so they can never acquire the other kind.
+--
+-- Two orders, so the assertions can separate "this arm answers" from "this arm
+-- answers for the right number": one bought with `gtphone`'s number, one bought
+-- with a number it has never proved.
+INSERT INTO auth.users(id) VALUES (pg_temp.i3524_uuid('gtphone'));
+INSERT INTO auth.identities(id, user_id, provider, identity_data)
+VALUES ('i3524-gtphone', pg_temp.i3524_uuid('gtphone'), 'phone',
+        jsonb_build_object('phone', '15550100201'));
+INSERT INTO public.orders(
+  id, event_id, buyer_email, buyer_phone_e164, buyer_name, total_cents, currency,
+  payment_status, source
+) VALUES
+  (pg_temp.i3524_uuid('order-gtphone'), pg_temp.i3524_uuid('event'),
+   NULL, '+15550100201', 'GoTrue Phone', 1000, 'USD', 'paid', 'online_checkout'),
+  (pg_temp.i3524_uuid('order-othernum'), pg_temp.i3524_uuid('event'),
+   NULL, '+15550100299', 'Other Number', 1000, 'USD', 'paid', 'online_checkout');
+
 SET session_replication_role = origin;
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -346,20 +372,60 @@ BEGIN
       || 'owns their order contact');
 
   -- THE PHONE ARM CANNOT BE ATTACKED THIS WAY, and here is the proof rather
-  -- than the assertion. Its evidence is our own ledger row, which IS the
-  -- (account, number) pair — there is no second, editable place where the
-  -- address lives, so nothing can be re-pointed at a number that never
-  -- received a code. Re-pointing GoTrue's own phone field reaches nothing:
-  -- this arm does not read it.
+  -- than the assertion. Both of its proofs ARE the (account, number) pair: the
+  -- ledger row is that pair by construction, and the GoTrue identity carries
+  -- the number it was confirmed with. Neither leaves a second, independently
+  -- editable place holding the number this arm matches on, so there is nothing
+  -- to re-point at a number that never received a code — which is what the
+  -- assertions below measure, one per proof.
   PERFORM pg_temp.i3524_ok(
     public.account_owns_order_contact(
       pg_temp.i3524_uuid('owner'), pg_temp.i3524_uuid('order-fresh')),
     'the phone arm still answers on the ledger pair alone');
+  -- [TEST-MOD-APPROVED #3524] This line used to read:
+  --
+  --   before: pg_get_functiondef(...) NOT LIKE '%u.phone%'
+  --           'and it never reads auth.users.phone, so a change there cannot
+  --            reach it'
+  --
+  --   after:  the three behavioural assertions below.
+  --
+  -- WHY IT CHANGED. The arm it described accepted the verified-phone ledger and
+  -- nothing else. That is not the rule this project needs: the ledger is the
+  -- NEWER of two mechanisms for recording a received code, and 62 live accounts
+  -- hold only the older one — a GoTrue `provider='phone'` identity, which on a
+  -- project that requires phone confirmation through Twilio Verify is the same
+  -- evidence written in an earlier place. Accepting only the ledger refused
+  -- those accounts their own tickets, with no way back, because the Phone
+  -- provider is disabled and the ledger's only writer sits behind it. So the
+  -- arm now reads both, normalising the identity's number exactly as
+  -- `verified_account_identifiers` does, which is what `u.phone` appears for.
+  --
+  -- WHY THE REPLACEMENT IS STRONGER. The old line was a grep over source text:
+  -- it could not tell an arm that reads a number from one that trusts it, and
+  -- it passed an arm that answered for numbers nobody proved, so long as the
+  -- arm spelled things a certain way. These assert the property that line was
+  -- standing in for — a phone proof names the number it proved — by asking the
+  -- predicate itself, and they additionally pin the two readers to the same
+  -- answer, which no source grep can do.
   PERFORM pg_temp.i3524_ok(
-    pg_get_functiondef(
-      'public.account_owns_order_contact(uuid,uuid)'::regprocedure)
-      NOT LIKE '%u.phone%',
-    'and it never reads auth.users.phone, so a change there cannot reach it');
+    public.account_owns_order_contact(
+      pg_temp.i3524_uuid('gtphone'), pg_temp.i3524_uuid('order-gtphone')),
+    'an account whose phone possession is recorded as a GoTrue identity, with '
+      || 'no ledger row, still owns the order bought with that number');
+  PERFORM pg_temp.i3524_ok(
+    NOT public.account_owns_order_contact(
+      pg_temp.i3524_uuid('gtphone'), pg_temp.i3524_uuid('order-othernum')),
+    'and it proves THAT number and no other — a phone proof names the number '
+      || 'it proved');
+  PERFORM pg_temp.i3524_ok(
+    (SELECT count(*) FROM public.verified_account_identifiers(
+       pg_temp.i3524_uuid('gtphone'))
+      WHERE kind = 'phone' AND value = '+15550100201') = 1
+    AND (SELECT count(*) FROM public.verified_phone_identities
+          WHERE user_id = pg_temp.i3524_uuid('gtphone')) = 0,
+    'and the reachability reader and this predicate agree on which number that '
+      || 'identity carries, with no ledger row in play');
   PERFORM pg_temp.i3524_ok(
     (SELECT count(*) FROM public.verified_phone_identities
       WHERE user_id = pg_temp.i3524_uuid('owner')) = 1

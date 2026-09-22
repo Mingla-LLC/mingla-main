@@ -246,9 +246,38 @@ COMMENT ON FUNCTION public.verified_account_identifiers(uuid) IS
 --     POSITIVE EVIDENCE that the address or number was actually reached, never
 --     the bare existence of an identity row.
 --
---     PHONE — unchanged, and independently verified: `verified_phone_identities`
---     is OUR OWN service-role-only ledger, written only after a Twilio code was
---     received at that number. Nothing about it was weakened by autoconfirm.
+--     THE TWO ARMS NEEDED OPPOSITE TREATMENT, and the reason is two toggles a
+--     reader can go and look at rather than take on trust. In the project's
+--     Auth settings, read 2026-09-22:
+--
+--       User Signups  -> Confirm email: OFF
+--       Phone         -> Enable phone confirmations: ON
+--                        SMS provider: Twilio Verify
+--
+--     So on this project an EMAIL identity records an address nobody had to
+--     reach, and a PHONE identity records a number somebody did: it could only
+--     be written for an account that received a Verify SMS and returned the
+--     code, because phone confirmation was required throughout the period every
+--     such identity was created.
+--
+--     PHONE — TWO PROOFS, and both are a received code:
+--
+--       (i)  `verified_phone_identities(user_id, phone_e164)` — OUR OWN
+--            service-role-only ledger, written by `record_verified_phone` and
+--            by nothing else, after Twilio Verify returns `approved`.
+--       (ii) a GoTrue `provider='phone'` identity whose number, normalised to
+--            E.164, is the order's number.
+--
+--     (ii) IS NOT OPTIONAL AND ITS ABSENCE IS NOT CONSERVATIVE. The ledger is
+--     the newer of the two mechanisms. Measured read-only 2026-09-22: 75 phone
+--     identities exist and 13 ledger rows, so 62 accounts hold proof of exactly
+--     one kind — the older kind. Accepting only (i) refuses those 62 their own
+--     tickets, and they have no way back: the Phone provider is DISABLED, so no
+--     new GoTrue phone identity can be minted, and `record_verified_phone` runs
+--     only inside `verify-otp`, which a disabled provider's sign-in never
+--     reaches. An earlier draft of this function accepted (i) alone and this
+--     paragraph claimed the arm was unchanged. It was not, and the claim is
+--     corrected here rather than quietly dropped.
 --
 --     EMAIL — one of exactly two proofs, both positive:
 --
@@ -291,14 +320,13 @@ COMMENT ON FUNCTION public.verified_account_identifiers(uuid) IS
 --     rest on an unaudited third-party default; that is how the first hole got
 --     here.
 --
---     THE PHONE ARM NEEDS NO EQUIVALENT, and this is not an oversight. Its
---     proof is `verified_phone_identities(user_id, phone_e164)` — OUR row,
---     written only after a code was received AT THAT NUMBER. The pair IS the
---     proof, so there is no separate address for a later edit to re-point:
---     making the ledger vouch for a different number means getting a code at
---     that different number. Note also that this arm reads the ledger ALONE and
---     never `auth.users.phone`, so a change to the GoTrue phone field cannot
---     reach it.
+--     THE PHONE ARM NEEDS NO EQUIVALENT BINDING, and this is not an oversight.
+--     Both of its proofs name the number they proved. The ledger row IS the
+--     (account, number) pair, so there is no separate value for a later edit to
+--     re-point. The GoTrue identity's number is read from the identity itself,
+--     and the provider that could mint a new one is disabled; the arm matches
+--     on that number and answers only for the order that carries it, which is
+--     asserted directly — a proved phone must not carry an unrelated order.
 --
 --     WHY NOT SIMPLY REQUIRE `email_verified` ON THE EMAIL ARM. Because it is
 --     never set on this platform's email identities and requiring it would
@@ -356,6 +384,7 @@ DECLARE
   v_email text;
   v_phone text;
   v_proved boolean := false;
+  v_number_expr text;
 BEGIN
   IF p_user_id IS NULL OR p_order_id IS NULL THEN RETURN false; END IF;
 
@@ -366,12 +395,48 @@ BEGIN
    WHERE o.id = p_order_id;
   IF NOT FOUND THEN RETURN false; END IF;
 
-  -- PHONE ARM. Our own ledger, written only after a received code. Unchanged.
-  IF v_phone ~ '^\+[1-9][0-9]{1,14}$' AND EXISTS (
-    SELECT 1 FROM public.verified_phone_identities v
-     WHERE v.user_id = p_user_id AND v.phone_e164 = v_phone
-  ) THEN
-    RETURN true;
+  -- PHONE ARM — EITHER OF TWO PROOFS, and both are a code received at that
+  -- number. See the block comment above for why the GoTrue arm is a proof on
+  -- this project and why the email equivalent is not.
+  IF v_phone ~ '^\+[1-9][0-9]{1,14}$' THEN
+    -- (i) OUR OWN LEDGER. Service-role only, written by `record_verified_phone`
+    -- and by nothing else, after Twilio Verify returns `approved`. Present on
+    -- every database, including the CI image that has no auth schema to read.
+    IF EXISTS (
+      SELECT 1 FROM public.verified_phone_identities v
+       WHERE v.user_id = p_user_id AND v.phone_e164 = v_phone
+    ) THEN
+      RETURN true;
+    END IF;
+    -- (ii) THE GoTrue PHONE IDENTITY, normalised to E.164 exactly as
+    -- `verified_account_identifiers` normalises it, so the reachability reader
+    -- and this one cannot disagree about which number an identity carries.
+    IF to_regclass('auth.identities') IS NOT NULL THEN
+      -- `auth.users.phone` is absent from the stock CI image and added by the
+      -- lanes that need it, so the column is read only where it exists — the
+      -- same fail-closed idiom the email arm uses for its two timestamps.
+      v_number_expr := CASE
+        WHEN EXISTS (
+          SELECT 1 FROM information_schema.columns
+           WHERE table_schema = 'auth' AND table_name = 'users'
+             AND column_name = 'phone'
+        ) THEN 'coalesce(i.identity_data->>''phone'', u.phone)'
+        ELSE 'i.identity_data->>''phone'''
+      END;
+      EXECUTE format($ev$
+        SELECT EXISTS (
+          SELECT 1
+            FROM auth.identities i
+            JOIN auth.users u ON u.id = i.user_id
+           WHERE i.user_id = $1
+             AND i.provider = 'phone'
+             AND %1$s ~ '^[+]?[1-9][0-9]{1,14}$'
+             AND '+' || regexp_replace(%1$s, '[^0-9]', '', 'g') = $2
+        )
+      $ev$, v_number_expr) INTO v_proved USING p_user_id, v_phone;
+      IF v_proved THEN RETURN true; END IF;
+      v_proved := false;
+    END IF;
   END IF;
 
   IF v_email = '' THEN RETURN false; END IF;
@@ -440,7 +505,7 @@ END;
 $function$;
 
 COMMENT ON FUNCTION public.account_owns_order_contact(uuid, uuid) IS
-  '#3524: THE single identity predicate both claim rails use. Requires POSITIVE evidence that the order contact was reached: the verified-phone ledger, or an email identity that a provider asserted (email_verified) or that the account proved by reading a code or link out of that mailbox (mfa_amr_claims otp/magiclink/recovery) with the proving session no older than that identitys last change, so a proof earned at one address cannot vouch for another. The mere existence of a provider=email identity is NOT sufficient, because this project runs mailer_autoconfirm and a public signup mints one for any address. Fails closed where GoTrue is absent. No other function may re-express this rule.';
+  '#3524: THE single identity predicate both claim rails use. Requires POSITIVE evidence that the order contact was reached. PHONE: the verified-phone ledger OR a GoTrue provider=phone identity carrying that number - this project requires phone confirmation through Twilio Verify, so either is a received code, and the ledger is only the newer of the two mechanisms. EMAIL: an identity a provider asserted (email_verified) or one the account proved by reading a code or link out of that mailbox (mfa_amr_claims otp/magiclink/recovery) with the proving session no older than that identitys last change, so a proof earned at one address cannot vouch for another. The arms differ because the settings differ: phone confirmation is ON and email confirmation is OFF. The mere existence of a provider=email identity is NOT sufficient, because this project runs mailer_autoconfirm and a public signup mints one for any address. Fails closed where GoTrue is absent. No other function may re-express this rule.';
 
 REVOKE ALL ON FUNCTION public.account_owns_order_contact(uuid, uuid)
   FROM PUBLIC, anon, authenticated;
