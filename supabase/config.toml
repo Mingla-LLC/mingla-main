@@ -700,6 +700,12 @@ verify_jwt = true
 [functions.attendance-claim-backfill]
 verify_jwt = false
 
+# #3524 — mints the SHORT-LIVED desktop→phone handoff code. Anon by
+# necessity: the desktop buyer has no Mingla account yet, and the claim
+# fragment IS the credential. It mints; it never claims.
+[functions.attendance-claim-handoff]
+verify_jwt = false
+
 # Issue #1789 (#1767 Phase 1) — venue QR print sheet (SPEC #1788 P-27). The
 # gateway is open so the 401 body is ours, but the function REQUIRES a Bearer
 # in-code (userIdFromAuthHeader) and gates on rank >= event_manager for the

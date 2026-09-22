@@ -375,6 +375,20 @@
         "app.qr_token_pepper"
       ]
     },
+    "attendance-claim-handoff": {
+      "migration_fallback_top_level": [
+        "ATTENDANCE_CLAIM_PEPPER"
+      ],
+      "optional_top_level": [],
+      "required_bundle_fields": {
+        "AD_CONVERSION_TOKENS": [
+          "ATTENDANCE_CLAIM_PEPPER"
+        ]
+      },
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
     "attendance-claim-identity": {
       "migration_fallback_top_level": [],
       "optional_top_level": [],

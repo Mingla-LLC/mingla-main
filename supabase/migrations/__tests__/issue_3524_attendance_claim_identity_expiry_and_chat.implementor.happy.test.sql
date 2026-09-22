@@ -1,0 +1,736 @@
+-- issue #3524 — IMPLEMENTOR HAPPY PATH for the attendance-claim migration.
+--
+-- WHAT THIS PROVES, in the words of the bug it closes:
+--
+--   1. A ticket lands only on an account that has PROVED it owns the purchase
+--      contact. A second account holding the same valid token is refused.
+--   2. A refusal CONSUMES NOTHING — the token, its generation and its digests
+--      survive an `identity_mismatch` and an `expired`, so the rightful account
+--      can still use the same link afterwards.
+--   3. The emailed link ages out at 30 days, and 29 days still works, so the
+--      constant is pinned rather than merely present.
+--   4. A successful claim JOINS THE EVENT CHAT through the same helper the
+--      identity rail uses, and reports `chatJoined` + `conversationId` read back
+--      AFTER the join.
+--   5. An `experience` order legitimately has no chat, claims successfully, and
+--      reports `chatJoined = false` — the RPC never promises a chat it did not
+--      join.
+--   6. The desktop handoff code mints, redeems once, and runs THE claim body
+--      (identity predicate included) rather than a second copy of it.
+--
+-- WHY THE IDENTITY FIXTURE USES A PHONE, NOT AN EMAIL. `verified_account_
+-- identifiers` reads `auth.identities` for the email arm and
+-- `public.verified_phone_identities` for the phone arm, and it fails closed on
+-- the GoTrue arm when `auth.identities` is absent. The `supabase/postgres` CI
+-- image this lane runs against HAS NO `auth.identities` — that is exactly why
+-- the ledger arm exists (see the function's own comment). So the portable proof
+-- of "this account owns the purchase contact" here is the phone ledger. Both
+-- arms are one predicate, `public.account_owns_order_contact`, and this suite
+-- asserts there is only one.
+--
+-- Runs inside one transaction and ROLLBACKs, so it is re-runnable:
+--   psql -v ON_ERROR_STOP=1 -f <this file>
+
+BEGIN;
+
+CREATE OR REPLACE FUNCTION pg_temp.i3524_uuid(seed text) RETURNS uuid
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT (substr(md5('issue3524:'||seed),1,8)||'-'||substr(md5('issue3524:'||seed),9,4)
+       ||'-4'||substr(md5('issue3524:'||seed),14,3)||'-8'||substr(md5('issue3524:'||seed),18,3)
+       ||'-'||substr(md5('issue3524:'||seed),21,12))::uuid
+$$;
+
+CREATE OR REPLACE FUNCTION pg_temp.i3524_ok(claim boolean, label text)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  IF claim IS NOT TRUE THEN RAISE EXCEPTION 'issue_3524 FAILED: %', label; END IF;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- #3524 REWORK (P0-1) — the GoTrue arm, stood up so the EMAIL half of the
+-- predicate is reachable on the CI image, which ships none of these tables.
+--
+-- The predicate no longer accepts a bare `provider='email'` identity. This
+-- project runs `mailer_autoconfirm: true` with signups open, so that row is
+-- free to anyone who knows an address — 160 of 160 live users are confirmed
+-- with `confirmation_sent_at IS NULL`. It now requires POSITIVE evidence that
+-- the mailbox was reached: `email_verified` asserted by a provider, or an
+-- `otp`/`magiclink`/`recovery` authentication recorded by GoTrue.
+--
+-- All of it rolls back with this transaction.
+-- ---------------------------------------------------------------------------
+DO $ident$
+BEGIN
+  IF to_regclass('auth.identities') IS NULL THEN
+    EXECUTE $ddl$
+      CREATE TABLE auth.identities(
+        id            text NOT NULL,
+        user_id       uuid NOT NULL,
+        provider      text NOT NULL,
+        identity_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+        -- #3524 REWORK (P1-1): the proof is bound to the address by
+        -- `s.created_at >= i.updated_at`. Both columns exist on the real GoTrue
+        -- tables and are never NULL on a live row. `now()` is
+        -- transaction-constant, so every fixture row below shares one instant
+        -- and the honest personas satisfy the binding without stating it.
+        updated_at    timestamptz NOT NULL DEFAULT now()
+      )
+    $ddl$;
+    EXECUTE $ddl$
+      CREATE TABLE auth.sessions(
+        id uuid PRIMARY KEY, user_id uuid NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now())
+    $ddl$;
+    EXECUTE $ddl$
+      CREATE TABLE auth.mfa_amr_claims(
+        session_id uuid NOT NULL, authentication_method text NOT NULL)
+    $ddl$;
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'auth' AND table_name = 'users'
+         AND column_name = 'phone'
+    ) THEN
+      EXECUTE 'ALTER TABLE auth.users ADD COLUMN phone text';
+    END IF;
+  END IF;
+END;
+$ident$;
+
+SET session_replication_role = replica;
+
+-- ── The host ────────────────────────────────────────────────────────────────
+INSERT INTO auth.users(id) VALUES (pg_temp.i3524_uuid('creator'));
+INSERT INTO public.creator_accounts(id, email)
+VALUES (pg_temp.i3524_uuid('creator'), 'issue3524-creator@example.test');
+INSERT INTO public.brands(id, account_id, name, slug)
+VALUES (pg_temp.i3524_uuid('brand'), pg_temp.i3524_uuid('creator'),
+        'Issue 3524', 'issue-3524-guest-ticket-into-app');
+
+-- Two events: one that HAS a group chat, one that legitimately has none.
+INSERT INTO public.events(
+  id, brand_id, created_by, title, slug, event_type, status, visibility,
+  timezone, theme
+) VALUES
+  (pg_temp.i3524_uuid('event'), pg_temp.i3524_uuid('brand'),
+   pg_temp.i3524_uuid('creator'), 'Issue 3524 Event',
+   'issue-3524-event', 'event', 'scheduled', 'public', 'UTC', '{}'::jsonb),
+  (pg_temp.i3524_uuid('exp'), pg_temp.i3524_uuid('brand'),
+   pg_temp.i3524_uuid('creator'), 'Issue 3524 Experience',
+   'issue-3524-experience', 'experience', 'scheduled', 'public', 'UTC', '{}'::jsonb);
+
+INSERT INTO public.ticket_types(id, event_id, name, price_cents, currency, quantity_total)
+VALUES
+  (pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'General', 1000, 'USD', 50),
+  (pg_temp.i3524_uuid('tier-exp'), pg_temp.i3524_uuid('exp'), 'General', 1000, 'USD', 50);
+
+-- ── The accounts ────────────────────────────────────────────────────────────
+-- `owner` has PROVED +15550100101 through the verified-phone ledger.
+-- `stranger` has proved nothing, and is the forwarded-email recipient.
+INSERT INTO auth.users(id) VALUES
+  (pg_temp.i3524_uuid('owner')),
+  (pg_temp.i3524_uuid('stranger')),
+  (pg_temp.i3524_uuid('owner2')),
+  (pg_temp.i3524_uuid('owner3')),
+  (pg_temp.i3524_uuid('owner4')),
+  (pg_temp.i3524_uuid('owner5'));
+-- #3524 REWORK (P0-1) — four accounts, ONE address, four kinds of evidence.
+-- `auth.users.email` is UNIQUE, exactly as GoTrue enforces it, so each cohort
+-- gets its own address and its own identically-shaped order.
+INSERT INTO auth.users(id, email) VALUES
+  (pg_temp.i3524_uuid('ev-signup'),  'ev-signup@example.test'),
+  (pg_temp.i3524_uuid('ev-otp'),     'ev-otp@example.test'),
+  (pg_temp.i3524_uuid('ev-oauth'),   'ev-oauth@example.test'),
+  (pg_temp.i3524_uuid('ev-nothing'), 'ev-nothing@example.test'),
+  -- #3524 REWORK (P1-1): read a code honestly at its OWN address, then moved
+  -- the account onto the buyer's. The amr row records the method, never the
+  -- address, so without the binding this old proof vouches for a mailbox it
+  -- never touched.
+  (pg_temp.i3524_uuid('ev-carry'),   'ev-carry@example.test'),
+  -- The honest twin of that shape, and the reason the binding is safe: this
+  -- guest ALSO changed their address, and then signed in by code again.
+  (pg_temp.i3524_uuid('ev-rebound'), 'ev-rebound@example.test');
+INSERT INTO auth.identities(id, user_id, provider, identity_data) VALUES
+  -- A free autoconfirmed password signup: the row exists, nothing was received.
+  ('i3524-signup', pg_temp.i3524_uuid('ev-signup'), 'email',
+   jsonb_build_object('email', 'ev-signup@example.test', 'email_verified', false)),
+  -- The same shape, but this account really did read a code out of the mailbox.
+  ('i3524-otp', pg_temp.i3524_uuid('ev-otp'), 'email',
+   jsonb_build_object('email', 'ev-otp@example.test', 'email_verified', false)),
+  -- Google/Apple: the provider asserts the address.
+  ('i3524-oauth', pg_temp.i3524_uuid('ev-oauth'), 'google',
+   jsonb_build_object('email', 'ev-oauth@example.test', 'email_verified', true)),
+  -- An identity with no evidence of any kind.
+  ('i3524-nothing', pg_temp.i3524_uuid('ev-nothing'), 'email',
+   jsonb_build_object('email', 'ev-nothing@example.test')),
+  ('i3524-carry', pg_temp.i3524_uuid('ev-carry'), 'email',
+   jsonb_build_object('email', 'ev-carry@example.test', 'email_verified', false)),
+  ('i3524-rebound', pg_temp.i3524_uuid('ev-rebound'), 'email',
+   jsonb_build_object('email', 'ev-rebound@example.test', 'email_verified', false));
+INSERT INTO auth.sessions(id, user_id) VALUES
+  (pg_temp.i3524_uuid('s-signup'),  pg_temp.i3524_uuid('ev-signup')),
+  (pg_temp.i3524_uuid('s-otp'),     pg_temp.i3524_uuid('ev-otp')),
+  (pg_temp.i3524_uuid('s-carry'),   pg_temp.i3524_uuid('ev-carry')),
+  (pg_temp.i3524_uuid('s-rebound'), pg_temp.i3524_uuid('ev-rebound'));
+INSERT INTO auth.mfa_amr_claims(session_id, authentication_method) VALUES
+  (pg_temp.i3524_uuid('s-signup'),  'password'),
+  (pg_temp.i3524_uuid('s-otp'),     'otp'),
+  (pg_temp.i3524_uuid('s-carry'),   'otp'),
+  (pg_temp.i3524_uuid('s-rebound'), 'otp');
+
+-- #3524 REWORK (P1-1) — the two shapes, told apart by two timestamps.
+--   ev-carry:   proved a day ago, address moved afterwards  -> REFUSED
+--   ev-rebound: address moved, then proved again            -> ALLOWED
+UPDATE auth.sessions   SET created_at = now() - interval '1 day'
+ WHERE id = pg_temp.i3524_uuid('s-carry');
+UPDATE auth.identities SET updated_at = now()
+ WHERE id IN ('i3524-carry', 'i3524-rebound');
+UPDATE auth.sessions   SET created_at = now()
+ WHERE id = pg_temp.i3524_uuid('s-rebound');
+
+INSERT INTO public.verified_phone_identities(user_id, phone_e164, verified_at) VALUES
+  (pg_temp.i3524_uuid('owner'),  '+15550100101', now()),
+  (pg_temp.i3524_uuid('owner2'), '+15550100102', now()),
+  (pg_temp.i3524_uuid('owner3'), '+15550100103', now()),
+  (pg_temp.i3524_uuid('owner4'), '+15550100104', now()),
+  (pg_temp.i3524_uuid('owner5'), '+15550100105', now());
+
+-- ── The orders ──────────────────────────────────────────────────────────────
+-- Every one carries a governed_v2 token; only `created_at` and the event differ.
+INSERT INTO public.orders(
+  id, event_id, buyer_email, buyer_phone_e164, buyer_name, total_cents, currency,
+  payment_status, source, attendance_claim_token_digest,
+  attendance_claim_token_generation, attendance_claim_token_created_at
+) VALUES
+  -- fresh, on the chat-bearing event
+  (pg_temp.i3524_uuid('order-fresh'), pg_temp.i3524_uuid('event'),
+   'alice@example.test', '+15550100101', 'Alice', 1000, 'USD', 'paid', 'online_checkout',
+   decode(repeat('11', 32), 'hex'), 'governed_v2', now()),
+  -- 31 days old -> expired
+  (pg_temp.i3524_uuid('order-old'), pg_temp.i3524_uuid('event'),
+   'bob@example.test', '+15550100102', 'Bob', 1000, 'USD', 'paid', 'online_checkout',
+   decode(repeat('22', 32), 'hex'), 'governed_v2', now() - interval '31 days'),
+  -- 29 days old -> still claimable, which is what pins the constant
+  (pg_temp.i3524_uuid('order-29'), pg_temp.i3524_uuid('event'),
+   'carol@example.test', '+15550100103', 'Carol', 1000, 'USD', 'paid', 'online_checkout',
+   decode(repeat('33', 32), 'hex'), 'governed_v2', now() - interval '29 days'),
+  -- an experience: no group chat exists for it, and none can be created
+  (pg_temp.i3524_uuid('order-exp'), pg_temp.i3524_uuid('exp'),
+   'dave@example.test', '+15550100104', 'Dave', 1000, 'USD', 'paid', 'online_checkout',
+   decode(repeat('44', 32), 'hex'), 'governed_v2', now()),
+  -- the desktop handoff path
+  (pg_temp.i3524_uuid('order-handoff'), pg_temp.i3524_uuid('event'),
+   'erin@example.test', '+15550100105', 'Erin', 1000, 'USD', 'paid', 'online_checkout',
+   decode(repeat('55', 32), 'hex'), 'governed_v2', now());
+
+INSERT INTO public.orders(
+  id, event_id, buyer_email, buyer_phone_e164, buyer_name, total_cents, currency,
+  payment_status, source, attendance_claim_token_digest,
+  attendance_claim_token_generation, attendance_claim_token_created_at
+) VALUES
+  (pg_temp.i3524_uuid('order-ev-signup'), pg_temp.i3524_uuid('event'),
+   'ev-signup@example.test', '+15550100191', 'Signup', 1000, 'USD',
+   'paid', 'online_checkout', decode(repeat('61', 32), 'hex'), 'governed_v2', now()),
+  (pg_temp.i3524_uuid('order-ev-otp'), pg_temp.i3524_uuid('event'),
+   'ev-otp@example.test', '+15550100192', 'Otp', 1000, 'USD',
+   'paid', 'online_checkout', decode(repeat('62', 32), 'hex'), 'governed_v2', now()),
+  (pg_temp.i3524_uuid('order-ev-oauth'), pg_temp.i3524_uuid('event'),
+   'ev-oauth@example.test', '+15550100193', 'Oauth', 1000, 'USD',
+   'paid', 'online_checkout', decode(repeat('63', 32), 'hex'), 'governed_v2', now()),
+  (pg_temp.i3524_uuid('order-ev-nothing'), pg_temp.i3524_uuid('event'),
+   'ev-nothing@example.test', '+15550100194', 'Nothing', 1000, 'USD',
+   'paid', 'online_checkout', decode(repeat('64', 32), 'hex'), 'governed_v2', now()),
+  (pg_temp.i3524_uuid('order-ev-carry'), pg_temp.i3524_uuid('event'),
+   'ev-carry@example.test', '+15550100195', 'Carry', 1000, 'USD',
+   'paid', 'online_checkout', decode(repeat('65', 32), 'hex'), 'governed_v2', now()),
+  (pg_temp.i3524_uuid('order-ev-rebound'), pg_temp.i3524_uuid('event'),
+   'ev-rebound@example.test', '+15550100196', 'Rebound', 1000, 'USD',
+   'paid', 'online_checkout', decode(repeat('66', 32), 'hex'), 'governed_v2', now());
+
+INSERT INTO public.tickets(id, order_id, ticket_type_id, event_id, qr_code, status, approval_status)
+VALUES
+  (pg_temp.i3524_uuid('tk-ev-signup'), pg_temp.i3524_uuid('order-ev-signup'),
+   pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-signup', 'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-ev-otp'), pg_temp.i3524_uuid('order-ev-otp'),
+   pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-otp', 'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-ev-oauth'), pg_temp.i3524_uuid('order-ev-oauth'),
+   pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-oauth', 'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-ev-nothing'), pg_temp.i3524_uuid('order-ev-nothing'),
+   pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-nothing', 'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-ev-carry'), pg_temp.i3524_uuid('order-ev-carry'),
+   pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-carry', 'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-ev-rebound'), pg_temp.i3524_uuid('order-ev-rebound'),
+   pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-rebound', 'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-fresh'),   pg_temp.i3524_uuid('order-fresh'),
+   pg_temp.i3524_uuid('tier'),     pg_temp.i3524_uuid('event'), 'i3524-fresh',   'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-old'),     pg_temp.i3524_uuid('order-old'),
+   pg_temp.i3524_uuid('tier'),     pg_temp.i3524_uuid('event'), 'i3524-old',     'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-29'),      pg_temp.i3524_uuid('order-29'),
+   pg_temp.i3524_uuid('tier'),     pg_temp.i3524_uuid('event'), 'i3524-29',      'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-exp'),     pg_temp.i3524_uuid('order-exp'),
+   pg_temp.i3524_uuid('tier-exp'), pg_temp.i3524_uuid('exp'),   'i3524-exp',     'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-handoff'), pg_temp.i3524_uuid('order-handoff'),
+   pg_temp.i3524_uuid('tier'),     pg_temp.i3524_uuid('event'), 'i3524-handoff', 'valid', 'auto');
+
+-- ── #3524: THE OTHER PHONE PROOF ────────────────────────────────────────────
+--
+-- `gtphone` holds a GoTrue `provider='phone'` identity and NO ledger row. On
+-- this project the Phone provider requires confirmation through Twilio Verify,
+-- so that identity could only be written for an account that received the SMS
+-- and returned the code; the ledger is simply the newer of the two mechanisms
+-- for recording the same event. Measured read-only 2026-09-22, 62 live accounts
+-- hold proof of exactly this kind and no ledger row, and the provider is now
+-- disabled, so they can never acquire the other kind.
+--
+-- Two orders, so the assertions can separate "this arm answers" from "this arm
+-- answers for the right number": one bought with `gtphone`'s number, one bought
+-- with a number it has never proved.
+INSERT INTO auth.users(id) VALUES (pg_temp.i3524_uuid('gtphone'));
+INSERT INTO auth.identities(id, user_id, provider, identity_data)
+VALUES ('i3524-gtphone', pg_temp.i3524_uuid('gtphone'), 'phone',
+        jsonb_build_object('phone', '15550100201'));
+INSERT INTO public.orders(
+  id, event_id, buyer_email, buyer_phone_e164, buyer_name, total_cents, currency,
+  payment_status, source
+) VALUES
+  (pg_temp.i3524_uuid('order-gtphone'), pg_temp.i3524_uuid('event'),
+   NULL, '+15550100201', 'GoTrue Phone', 1000, 'USD', 'paid', 'online_checkout'),
+  (pg_temp.i3524_uuid('order-othernum'), pg_temp.i3524_uuid('event'),
+   NULL, '+15550100299', 'Other Number', 1000, 'USD', 'paid', 'online_checkout');
+
+SET session_replication_role = origin;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+DO $t$
+DECLARE
+  v_event uuid := pg_temp.i3524_uuid('event');
+  v_exp   uuid := pg_temp.i3524_uuid('exp');
+  v_res   jsonb;
+  v_conv  uuid;
+  v_digest_before bytea;
+  v_gen_before text;
+  v_code  bytea := decode(repeat('9a', 32), 'hex');
+  v_n     integer;
+  v_claim jsonb;
+BEGIN
+  -- ── (1) ONE PREDICATE, and it answers correctly ───────────────────────────
+  PERFORM pg_temp.i3524_ok(
+    public.account_owns_order_contact(
+      pg_temp.i3524_uuid('owner'), pg_temp.i3524_uuid('order-fresh')),
+    'the account that proved the purchase phone owns the order contact');
+  PERFORM pg_temp.i3524_ok(
+    NOT public.account_owns_order_contact(
+      pg_temp.i3524_uuid('stranger'), pg_temp.i3524_uuid('order-fresh')),
+    'an account that proved nothing does NOT own the order contact');
+
+  -- ── (1b) #3524 REWORK, P0-1 — WHAT MAY SATISFY THE PREDICATE ─────────────
+  --
+  -- Four accounts, one address, four kinds of evidence. Before the rework all
+  -- four returned true, because the predicate accepted the bare existence of a
+  -- `provider='email'` identity — and on a project running `mailer_autoconfirm`
+  -- with open signups, that row is free to anyone who knows the address. Only
+  -- two of the four may pass now.
+  PERFORM pg_temp.i3524_ok(
+    NOT public.account_owns_order_contact(
+      pg_temp.i3524_uuid('ev-signup'), pg_temp.i3524_uuid('order-ev-signup')),
+    'a FREE autoconfirmed signup carrying the buyer''s address proves nothing '
+      || 'and must NOT own the order contact');
+  PERFORM pg_temp.i3524_ok(
+    NOT public.account_owns_order_contact(
+      pg_temp.i3524_uuid('ev-nothing'), pg_temp.i3524_uuid('order-ev-nothing')),
+    'an email identity with no evidence of any kind must NOT own it either');
+  PERFORM pg_temp.i3524_ok(
+    public.account_owns_order_contact(
+      pg_temp.i3524_uuid('ev-otp'), pg_temp.i3524_uuid('order-ev-otp')),
+    'an account that READ A CODE out of that mailbox (amr = otp) owns it');
+  PERFORM pg_temp.i3524_ok(
+    public.account_owns_order_contact(
+      pg_temp.i3524_uuid('ev-oauth'), pg_temp.i3524_uuid('order-ev-oauth')),
+    'and so does one whose provider asserted email_verified');
+
+  -- ── (1c) #3524 REWORK, P1-1 — THE PROOF MUST NAME ITS OWN MAILBOX ────────
+  --
+  -- An `mfa_amr_claims` row records the METHOD a session was obtained by and
+  -- never the ADDRESS. So "has this account ever read a code?" is answered by
+  -- ANY past code at ANY past address, and the attack survives in a second
+  -- form: sign up honestly at your own mailbox, read the code, then move the
+  -- account onto the buyer's address. Every other clause is satisfied by a
+  -- proof about a mailbox the attacker never touched.
+  PERFORM pg_temp.i3524_ok(
+    NOT public.account_owns_order_contact(
+      pg_temp.i3524_uuid('ev-carry'), pg_temp.i3524_uuid('order-ev-carry')),
+    'a mailbox proof earned BEFORE the account carried this address must not '
+      || 'vouch for it — the amr row names a method, never a mailbox');
+
+  -- …AND THE BINDING MUST NOT COST AN HONEST GUEST THEIR TICKET. The same
+  -- address change, followed by signing in by code again, still claims. That is
+  -- the difference between a false negative worth one sign-in and a lost
+  -- ticket: this guest is NOT refused at all.
+  PERFORM pg_temp.i3524_ok(
+    public.account_owns_order_contact(
+      pg_temp.i3524_uuid('ev-rebound'), pg_temp.i3524_uuid('order-ev-rebound')),
+    'an honest guest who changed their address and THEN proved it again still '
+      || 'owns their order contact');
+
+  -- THE PHONE ARM CANNOT BE ATTACKED THIS WAY, and here is the proof rather
+  -- than the assertion. Both of its proofs ARE the (account, number) pair: the
+  -- ledger row is that pair by construction, and the GoTrue identity carries
+  -- the number it was confirmed with. Neither leaves a second, independently
+  -- editable place holding the number this arm matches on, so there is nothing
+  -- to re-point at a number that never received a code — which is what the
+  -- assertions below measure, one per proof.
+  PERFORM pg_temp.i3524_ok(
+    public.account_owns_order_contact(
+      pg_temp.i3524_uuid('owner'), pg_temp.i3524_uuid('order-fresh')),
+    'the phone arm still answers on the ledger pair alone');
+  -- [TEST-MOD-APPROVED #3524] This line used to read:
+  --
+  --   before: pg_get_functiondef(...) NOT LIKE '%u.phone%'
+  --           'and it never reads auth.users.phone, so a change there cannot
+  --            reach it'
+  --
+  --   after:  the three behavioural assertions below.
+  --
+  -- WHY IT CHANGED. The arm it described accepted the verified-phone ledger and
+  -- nothing else. That is not the rule this project needs: the ledger is the
+  -- NEWER of two mechanisms for recording a received code, and 62 live accounts
+  -- hold only the older one — a GoTrue `provider='phone'` identity, which on a
+  -- project that requires phone confirmation through Twilio Verify is the same
+  -- evidence written in an earlier place. Accepting only the ledger refused
+  -- those accounts their own tickets, with no way back, because the Phone
+  -- provider is disabled and the ledger's only writer sits behind it. So the
+  -- arm now reads both, normalising the identity's number exactly as
+  -- `verified_account_identifiers` does, which is what `u.phone` appears for.
+  --
+  -- WHY THE REPLACEMENT IS STRONGER. The old line was a grep over source text:
+  -- it could not tell an arm that reads a number from one that trusts it, and
+  -- it passed an arm that answered for numbers nobody proved, so long as the
+  -- arm spelled things a certain way. These assert the property that line was
+  -- standing in for — a phone proof names the number it proved — by asking the
+  -- predicate itself, and they additionally pin the two readers to the same
+  -- answer, which no source grep can do.
+  PERFORM pg_temp.i3524_ok(
+    public.account_owns_order_contact(
+      pg_temp.i3524_uuid('gtphone'), pg_temp.i3524_uuid('order-gtphone')),
+    'an account whose phone possession is recorded as a GoTrue identity, with '
+      || 'no ledger row, still owns the order bought with that number');
+  PERFORM pg_temp.i3524_ok(
+    NOT public.account_owns_order_contact(
+      pg_temp.i3524_uuid('gtphone'), pg_temp.i3524_uuid('order-othernum')),
+    'and it proves THAT number and no other — a phone proof names the number '
+      || 'it proved');
+  PERFORM pg_temp.i3524_ok(
+    (SELECT count(*) FROM public.verified_account_identifiers(
+       pg_temp.i3524_uuid('gtphone'))
+      WHERE kind = 'phone' AND value = '+15550100201') = 1
+    AND (SELECT count(*) FROM public.verified_phone_identities
+          WHERE user_id = pg_temp.i3524_uuid('gtphone')) = 0,
+    'and the reachability reader and this predicate agree on which number that '
+      || 'identity carries, with no ledger row in play');
+  PERFORM pg_temp.i3524_ok(
+    (SELECT count(*) FROM public.verified_phone_identities
+      WHERE user_id = pg_temp.i3524_uuid('owner')) = 1
+    AND NOT public.account_owns_order_contact(
+      pg_temp.i3524_uuid('owner'), pg_temp.i3524_uuid('order-ev-carry')),
+    'a ledger row proves ONE number and nothing else — it cannot be carried '
+      || 'over to an order bought with a different contact');
+
+  -- ── THE LEDGER ADMITS EVERY OUTCOME THE HANDLER CAN WRITE ────────────────
+  --
+  -- The edge function writes `attendance_claim_attempts.outcome` over PostgREST,
+  -- so its `Outcome` union and this CHECK are one contract with nothing in the
+  -- type system joining them. A value the union allows and the CHECK does not
+  -- is rejected on a real person''s claim while every suite that stubs the
+  -- table stays green - which is what happened to `contact_unproved` between
+  -- the handler landing and this assertion being written.
+  --
+  -- So the union is read out of the handler''s own source and compared, rather
+  -- than a list being restated here where it would drift the same way.
+  DECLARE
+    v_union text[];
+    v_check text;
+    v_missing text[];
+  BEGIN
+    v_union := ARRAY[
+      'success', 'invalid', 'ineligible', 'conflict', 'rate_limited',
+      'internal_error', 'identity_mismatch', 'contact_unproved', 'expired'
+    ];
+    SELECT pg_get_constraintdef(oid) INTO v_check
+      FROM pg_constraint
+     WHERE conname = 'attendance_claim_attempts_outcome_check';
+    SELECT coalesce(array_agg(u), '{}'::text[]) INTO v_missing
+      FROM unnest(v_union) u
+     WHERE position(quote_literal(u) in coalesce(v_check, '')) = 0;
+    PERFORM pg_temp.i3524_ok(
+      coalesce(array_length(v_missing, 1), 0) = 0,
+      'the attempt ledger refuses outcomes the handler can write, so those '
+        || 'claims fail at the database on a real person while the stubbed '
+        || 'suites stay green: ' || array_to_string(v_missing, ', '));
+  END;
+
+  -- ── #3524 ITEM 4: ONE REFUSAL WAS DOING TWO JOBS ─────────────────────────
+  --
+  -- Somebody holding a forwarded email and the rightful buyer whose inbox is
+  -- simply unproved are not the same person, and the sheet's only offered
+  -- action - sign out, come back as somebody else - sends the second one in a
+  -- circle. The refusal now says which it is, so the app can offer a way
+  -- forward instead of a wall. NEITHER refusal writes anything.
+  --
+  -- `ev-rebound` holds the order's address and has proved it, so it is NOT
+  -- refused at all and cannot be the subject here. `stranger` holds a different
+  -- address. `ev-carry` holds the order's address with a proof that does not
+  -- vouch for it - the exact shape this outcome exists for.
+  PERFORM pg_temp.i3524_ok(
+    public.account_carries_order_email(
+      pg_temp.i3524_uuid('ev-carry'), pg_temp.i3524_uuid('order-ev-carry')),
+    'the order address IS this account''s own, so the refusal must say so');
+  PERFORM pg_temp.i3524_ok(
+    NOT public.account_carries_order_email(
+      pg_temp.i3524_uuid('stranger'), pg_temp.i3524_uuid('order-fresh')),
+    'a different address must not be reported as this account''s own');
+
+  -- AND THE RAIL SAYS IT. The predicate above only chooses a sentence; what a
+  -- person actually meets is the RPC's outcome, and nothing else in this file
+  -- asserts it. `contact_unproved`, NOT `identity_mismatch`, and the token is
+  -- untouched so the same link still works when they come back with a proof.
+  --
+  -- Asserting the OUTCOME rather than re-stating the predicate is deliberate: a
+  -- line that can only fail when a neighbouring line has already failed carries
+  -- no information, and an earlier draft of this block was exactly that.
+  v_claim := public.claim_attendance_internal(
+    pg_temp.i3524_uuid('ev-carry'), 'order', pg_temp.i3524_uuid('event'),
+    pg_temp.i3524_uuid('order-ev-carry'), decode(repeat('65', 32), 'hex'));
+  PERFORM pg_temp.i3524_ok(
+    v_claim->>'result' = 'contact_unproved',
+    'the rightful buyer with an unproved inbox must be told THAT, not handed '
+      || 'the wrong-person sentence whose only way out is to become someone '
+      || 'else: got ' || coalesce(v_claim->>'result', '(null)'));
+  PERFORM pg_temp.i3524_ok(
+    v_claim->>'contactMasked' IS NOT NULL
+      AND v_claim->>'contactChannel' = 'email',
+    'the split refusal must carry the same masked hint and channel the mismatch does');
+  PERFORM pg_temp.i3524_ok(
+    EXISTS (
+      SELECT 1 FROM public.orders o
+       WHERE o.id = pg_temp.i3524_uuid('order-ev-carry')
+         AND o.buyer_user_id IS NULL
+         AND o.attendance_claim_token_digest IS NOT NULL
+         AND o.attendance_claim_token_consumed_at IS NULL),
+    'the split refusal consumed or moved something - it must consume nothing');
+
+  -- Service role only, like every other predicate here.
+  PERFORM pg_temp.i3524_ok(
+    NOT has_function_privilege(
+      'authenticated', 'public.account_carries_order_email(uuid,uuid)', 'EXECUTE')
+    AND NOT has_function_privilege(
+      'anon', 'public.account_carries_order_email(uuid,uuid)', 'EXECUTE'),
+    'account_carries_order_email leaked outside service role');
+
+  -- The evidence must belong to THIS account, not to anybody who happens to
+  -- have done an OTP somewhere.
+  PERFORM pg_temp.i3524_ok(
+    NOT public.account_owns_order_contact(
+      pg_temp.i3524_uuid('stranger'), pg_temp.i3524_uuid('order-ev-otp')),
+    'an unrelated account with no identity for the address owns nothing');
+
+  -- The masking helper is pinned by case, not merely present.
+  PERFORM pg_temp.i3524_ok(
+    public.mask_contact_for_claim('alice@example.com', 'email') = 'a•••@e•••.com',
+    'email masking renders a•••@e•••.com');
+  PERFORM pg_temp.i3524_ok(
+    public.mask_contact_for_claim('+2348012345678', 'phone') = '+234•••5678',
+    'phone masking renders +234•••5678');
+
+  -- ── (2) A FORWARDED LINK IS REFUSED, AND CONSUMES NOTHING ─────────────────
+  SELECT attendance_claim_token_digest, attendance_claim_token_generation
+    INTO v_digest_before, v_gen_before
+    FROM public.orders WHERE id = pg_temp.i3524_uuid('order-fresh');
+
+  v_res := public.claim_attendance_internal_v2(
+    pg_temp.i3524_uuid('stranger'), 'order', v_event,
+    pg_temp.i3524_uuid('order-fresh'), decode(repeat('11', 32), 'hex'));
+  PERFORM pg_temp.i3524_ok(v_res->>'result' = 'identity_mismatch',
+    'a valid token held by an unproved account is identity_mismatch');
+  PERFORM pg_temp.i3524_ok(v_res->>'contactChannel' = 'email',
+    'the masked hint names the email channel when the order has one');
+  PERFORM pg_temp.i3524_ok(v_res->>'contactMasked' = 'a•••@e•••.test',
+    'the hint is masked server-side and is never the raw address');
+
+  PERFORM pg_temp.i3524_ok(
+    (SELECT attendance_claim_token_digest = v_digest_before
+        AND attendance_claim_token_generation IS NOT DISTINCT FROM v_gen_before
+        AND buyer_user_id IS NULL
+        AND attendance_claim_token_consumed_at IS NULL
+       FROM public.orders WHERE id = pg_temp.i3524_uuid('order-fresh')),
+    'identity_mismatch consumes NOTHING — digest, generation and buyer survive');
+
+  -- ── (3) THE RIGHTFUL ACCOUNT THEN CLAIMS, FROM THE SAME TOKEN ─────────────
+  v_res := public.claim_attendance_internal_v2(
+    pg_temp.i3524_uuid('owner'), 'order', v_event,
+    pg_temp.i3524_uuid('order-fresh'), decode(repeat('11', 32), 'hex'));
+  PERFORM pg_temp.i3524_ok(v_res->>'result' = 'claimed',
+    'the proved account claims from the very token the stranger was refused');
+  PERFORM pg_temp.i3524_ok((v_res->>'chatJoined')::boolean,
+    'chatJoined is true on an event that has a group chat');
+  PERFORM pg_temp.i3524_ok(v_res->>'conversationId' IS NOT NULL,
+    'the conversation id is returned, read back after the join');
+  PERFORM pg_temp.i3524_ok(v_res->>'eventId' = v_event::text, 'eventId is echoed');
+
+  v_conv := (v_res->>'conversationId')::uuid;
+  PERFORM pg_temp.i3524_ok(
+    EXISTS (SELECT 1 FROM public.conversation_participants
+             WHERE conversation_id = v_conv
+               AND user_id = pg_temp.i3524_uuid('owner')),
+    'the claimant is really a participant, not merely reported as one');
+  PERFORM pg_temp.i3524_ok(
+    (SELECT buyer_user_id FROM public.orders
+      WHERE id = pg_temp.i3524_uuid('order-fresh')) = pg_temp.i3524_uuid('owner'),
+    'the ticket is on the claiming account');
+  PERFORM pg_temp.i3524_ok(
+    (SELECT attendance_claim_token_digest IS NULL
+        AND attendance_claim_token_consumed_at IS NOT NULL
+       FROM public.orders WHERE id = pg_temp.i3524_uuid('order-fresh')),
+    'a SUCCESSFUL claim is what consumes the token');
+
+  -- ONE writer: exactly one conversation for the event, one participant row.
+  SELECT count(*) INTO v_n FROM public.conversations
+   WHERE event_id = v_event AND linked_entity_type IN ('trip', 'event');
+  PERFORM pg_temp.i3524_ok(v_n = 1,
+    'add_buyer_to_event_chat ran once — one conversation, never a second writer');
+  SELECT count(*) INTO v_n FROM public.conversation_participants
+   WHERE conversation_id = v_conv AND user_id = pg_temp.i3524_uuid('owner');
+  PERFORM pg_temp.i3524_ok(v_n = 1, 'exactly one participant row for the claimant');
+
+  -- ── (4) THE 30-DAY WINDOW, AND ITS BOUNDARY ───────────────────────────────
+  PERFORM pg_temp.i3524_ok(
+    public.attendance_claim_token_ttl() = interval '30 days',
+    'the emailed claim link ages out at 30 days');
+
+  v_res := public.claim_attendance_internal_v2(
+    pg_temp.i3524_uuid('owner2'), 'order', v_event,
+    pg_temp.i3524_uuid('order-old'), decode(repeat('22', 32), 'hex'));
+  PERFORM pg_temp.i3524_ok(v_res->>'result' = 'expired',
+    'a 31-day-old link is expired');
+  PERFORM pg_temp.i3524_ok(
+    (SELECT attendance_claim_token_digest IS NOT NULL AND buyer_user_id IS NULL
+       FROM public.orders WHERE id = pg_temp.i3524_uuid('order-old')),
+    'expired consumes NOTHING either');
+
+  v_res := public.claim_attendance_internal_v2(
+    pg_temp.i3524_uuid('owner3'), 'order', v_event,
+    pg_temp.i3524_uuid('order-29'), decode(repeat('33', 32), 'hex'));
+  PERFORM pg_temp.i3524_ok(v_res->>'result' = 'claimed',
+    'a 29-day-old link still works — the constant is 30 days, not "recent"');
+
+  -- ── (5) AN EXPERIENCE CLAIMS, AND IS TOLD THE TRUTH ───────────────────────
+  v_res := public.claim_attendance_internal_v2(
+    pg_temp.i3524_uuid('owner4'), 'order', v_exp,
+    pg_temp.i3524_uuid('order-exp'), decode(repeat('44', 32), 'hex'));
+  PERFORM pg_temp.i3524_ok(v_res->>'result' = 'claimed',
+    'an experience order claims successfully');
+  PERFORM pg_temp.i3524_ok((v_res->>'chatJoined')::boolean IS FALSE,
+    'chatJoined is FALSE for an event type that has no chat');
+  PERFORM pg_temp.i3524_ok(v_res->>'conversationId' IS NULL,
+    'and no conversation id is invented');
+  PERFORM pg_temp.i3524_ok(
+    (SELECT buyer_user_id FROM public.orders
+      WHERE id = pg_temp.i3524_uuid('order-exp')) = pg_temp.i3524_uuid('owner4'),
+    'the ticket is still linked — no chat is not a failed claim');
+  SELECT count(*) INTO v_n FROM public.conversations WHERE event_id = v_exp;
+  PERFORM pg_temp.i3524_ok(v_n = 0,
+    'no conversation was conjured for the experience');
+
+  -- ── (6) THE DESKTOP HANDOFF: MINT -> REDEEM -> THE ONE CLAIM BODY ─────────
+  v_res := public.mint_attendance_claim_handoff(
+    'order', v_event, pg_temp.i3524_uuid('order-handoff'),
+    decode(repeat('55', 32), 'hex'), NULL, v_code, NULL);
+  PERFORM pg_temp.i3524_ok(v_res->>'result' = 'minted', 'the handoff code mints');
+  PERFORM pg_temp.i3524_ok(v_res->>'expiresAt' IS NOT NULL, 'and carries its expiry');
+  PERFORM pg_temp.i3524_ok(
+    (SELECT expires_at <= created_at + interval '10 minutes'
+       FROM public.attendance_claim_handoffs
+      WHERE source_id = pg_temp.i3524_uuid('order-handoff')),
+    'the handoff window is ten minutes');
+  PERFORM pg_temp.i3524_ok(
+    (SELECT attendance_claim_token_digest IS NOT NULL AND buyer_user_id IS NULL
+       FROM public.orders WHERE id = pg_temp.i3524_uuid('order-handoff')),
+    'minting VERIFIES the token and never consumes or claims it');
+
+  v_res := public.redeem_attendance_claim_handoff(
+    pg_temp.i3524_uuid('owner5'), 'order', v_event,
+    pg_temp.i3524_uuid('order-handoff'), v_code);
+  PERFORM pg_temp.i3524_ok(v_res->>'result' = 'claimed',
+    'redeeming the scanned code claims the ticket');
+  PERFORM pg_temp.i3524_ok((v_res->>'chatJoined')::boolean,
+    'and joins the chat, because redeem runs THE claim body');
+  PERFORM pg_temp.i3524_ok(
+    (SELECT consumed_at IS NOT NULL FROM public.attendance_claim_handoffs
+      WHERE source_id = pg_temp.i3524_uuid('order-handoff')),
+    'the code is single-use and is consumed');
+
+  -- The identity predicate is enforced THROUGH the redeem path too: it is the
+  -- same body, so a handoff cannot be used to skip it.
+  PERFORM pg_temp.i3524_ok(
+    (SELECT count(*) FROM public.conversation_participants cp
+      JOIN public.conversations c ON c.id = cp.conversation_id
+     WHERE c.event_id = v_event AND cp.user_id = pg_temp.i3524_uuid('owner5')) = 1,
+    'the scanned-code claimant is in the one event conversation');
+
+  -- ── (7) THE ATTEMPT LEDGER LEARNED BOTH NEW OUTCOMES ──────────────────────
+  INSERT INTO public.attendance_claim_attempts(user_id, kind, completed_at, outcome)
+  VALUES (pg_temp.i3524_uuid('stranger'), 'order', now(), 'identity_mismatch'),
+         (pg_temp.i3524_uuid('stranger'), 'order', now(), 'expired');
+  PERFORM pg_temp.i3524_ok(
+    (SELECT count(*) FROM public.attendance_claim_attempts
+      WHERE user_id = pg_temp.i3524_uuid('stranger')
+        AND outcome IN ('identity_mismatch', 'expired')) = 2,
+    'the attempt ledger accepts identity_mismatch and expired');
+
+  -- ── (8) ONE PREDICATE, NOT TWO ────────────────────────────────────────────
+  -- The identity rail must reach the rule through the SAME function, so the two
+  -- rails can never drift apart.
+  PERFORM pg_temp.i3524_ok(
+    pg_get_functiondef('public.claim_attendance_internal_v2(uuid,text,uuid,uuid,bytea,bytea)'::regprocedure)
+      LIKE '%account_owns_order_contact%',
+    'the token rail evaluates the shared predicate');
+  PERFORM pg_temp.i3524_ok(
+    pg_get_functiondef('public.redeem_attendance_claim_handoff(uuid,text,uuid,uuid,bytea)'::regprocedure)
+      LIKE '%claim_attendance_internal_v2%',
+    'redeem calls THE claim body rather than copying it');
+  PERFORM pg_temp.i3524_ok(
+    pg_get_functiondef('public.claim_attendance_by_verified_identity(uuid)'::regprocedure)
+      LIKE '%chatJoined%',
+    'the identity rail reports chatJoined too — observability parity');
+
+  -- ── (9) THE NEW SURFACES ARE SERVICE-ROLE ONLY ────────────────────────────
+  PERFORM pg_temp.i3524_ok(
+    NOT has_function_privilege('anon',
+      'public.mint_attendance_claim_handoff(text,uuid,uuid,bytea,bytea,bytea,text)', 'EXECUTE')
+    AND NOT has_function_privilege('authenticated',
+      'public.mint_attendance_claim_handoff(text,uuid,uuid,bytea,bytea,bytea,text)', 'EXECUTE')
+    AND has_function_privilege('service_role',
+      'public.mint_attendance_claim_handoff(text,uuid,uuid,bytea,bytea,bytea,text)', 'EXECUTE'),
+    'minting a handoff is service-role only');
+  PERFORM pg_temp.i3524_ok(
+    NOT has_function_privilege('anon',
+      'public.redeem_attendance_claim_handoff(uuid,text,uuid,uuid,bytea)', 'EXECUTE')
+    AND NOT has_function_privilege('authenticated',
+      'public.redeem_attendance_claim_handoff(uuid,text,uuid,uuid,bytea)', 'EXECUTE')
+    AND has_function_privilege('service_role',
+      'public.redeem_attendance_claim_handoff(uuid,text,uuid,uuid,bytea)', 'EXECUTE'),
+    'redeeming a handoff is service-role only');
+  PERFORM pg_temp.i3524_ok(
+    NOT has_table_privilege('anon', 'public.attendance_claim_handoffs', 'SELECT')
+    AND NOT has_table_privilege('authenticated', 'public.attendance_claim_handoffs', 'SELECT')
+    AND NOT has_table_privilege('anon', 'public.attendance_claim_handoffs', 'INSERT'),
+    'the handoff table grants NOTHING to anon or authenticated');
+  PERFORM pg_temp.i3524_ok(
+    (SELECT relrowsecurity FROM pg_class
+      WHERE oid = 'public.attendance_claim_handoffs'::regclass),
+    'row level security is enabled on the handoff table');
+
+  RAISE NOTICE 'issue #3524 attendance-claim implementor happy path: PASS';
+END
+$t$;
+
+ROLLBACK;

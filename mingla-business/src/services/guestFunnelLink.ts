@@ -310,22 +310,96 @@ export function buildConfirmationFunnelOneLinkUrl(
  *
  * NEVER returns a store URL for `platform === 'other'`: a desktop buyer must
  * not be dropped into a mobile store listing.
+ *
+ * ISSUE #3524 — THAT LAST SENTENCE USED TO BECOME FALSE THE INSTANT THE ONELINK
+ * WENT LIVE. The OneLink arm returned before the platform branch was ever
+ * reached, so with `GUEST_FUNNEL_ONELINK_URL` set, a desktop buyer got the
+ * OneLink — whose own desktop 301 lands on an iOS App Store listing (curl-verified
+ * 2026-08-18 and re-verified on three desktop user-agents on 2026-09-21: Windows
+ * Chrome and Linux Firefox 301 straight to `apps.apple.com/US/app/id6760440898`,
+ * and macOS Safari gets a 200 page that scripts to the same place).
+ *
+ * The platform branch now runs FIRST for `'other'`. The comment above is true on
+ * BOTH arms, which is what makes it a guarantee instead of a description of
+ * today's flag value. This is code-side protection that does not depend on the
+ * AppsFlyer template being fixed.
  */
 export function resolveConfirmationAppTarget(
   e: GuestFunnelEntity,
   platform: Platform,
 ): GuestFunnelTarget {
   const oneLinkUrl = buildConfirmationFunnelOneLinkUrl(e);
+  // #3524 — `platform !== 'other'` is the whole correction. The OneLink IS the
+  // device-awareness for a phone, and it is exactly wrong for a desktop.
+  if (oneLinkUrl !== null && platform !== "other") {
+    return { mode: "onelink", ctaUrl: oneLinkUrl, qrUrl: oneLinkUrl, store: "onelink" };
+  }
+  if (platform === "other") {
+    return {
+      mode: "store_direct",
+      ctaUrl: DOWNLOAD_PAGE_URL,
+      qrUrl: DOWNLOAD_PAGE_URL,
+      store: "download_page",
+    };
+  }
+  const ctaUrl = platform === "ios" ? APP_STORE_URL : PLAY_STORE_URL;
+  const store: GuestFunnelStore = platform === "ios" ? "app_store" : "play";
+  return {
+    mode: oneLinkUrl !== null ? "onelink" : "store_direct",
+    ctaUrl: oneLinkUrl ?? ctaUrl,
+    qrUrl: oneLinkUrl ?? DOWNLOAD_PAGE_URL,
+    store: oneLinkUrl !== null ? "onelink" : store,
+  };
+}
+
+/**
+ * Resolve the EMAIL LANDING PAGE's destination — issue #3524.
+ *
+ * This is the page `host.usemingla.com/attendance/claim` renders when the
+ * operating system did NOT intercept the Universal Link / App Link. Its audience
+ * is therefore, by construction, either a device without the app or a browser
+ * that ignored the link — so its job is to get the app onto the device with the
+ * attribution intact, never to guess at a store listing for an OS the guest is
+ * not holding.
+ *
+ * Contract, and it differs from `resolveConfirmationAppTarget` in exactly one
+ * way that matters:
+ *
+ *   ios / android  -> the OneLink when live, else that platform's store.
+ *   other          -> DOWNLOAD_PAGE_URL, on the LIVE ARM AND THE DARK ARM.
+ *                     This function never returns a store listing for a desktop,
+ *                     under any flag value. A desktop gets the
+ *                     continue-on-phone sheet, and these are the badges beside it.
+ *
+ * `qrUrl` mirrors `ctaUrl` on the live arm and `DOWNLOAD_PAGE_URL` on the dark
+ * arm, matching the other two resolvers so no two of them can disagree about
+ * what a QR encodes.
+ *
+ * The OneLink grammar is NOT re-invented here: it reuses
+ * `buildConfirmationFunnelOneLinkUrl` and mints its channel at the call site,
+ * the `buildBusinessInviteDownloadUrl` precedent. A third grammar would be a
+ * third thing to keep in step with the AppsFlyer template.
+ */
+export function resolveClaimPageTarget(
+  e: GuestFunnelEntity,
+  platform: Platform,
+): GuestFunnelTarget {
+  if (platform === "other") {
+    return {
+      mode: "store_direct",
+      ctaUrl: DOWNLOAD_PAGE_URL,
+      qrUrl: DOWNLOAD_PAGE_URL,
+      store: "download_page",
+    };
+  }
+  const base = buildConfirmationFunnelOneLinkUrl(e);
+  const oneLinkUrl = base === null
+    ? null
+    : base.replace("c=ticket_confirmation", "c=attendance_claim");
   if (oneLinkUrl !== null) {
     return { mode: "onelink", ctaUrl: oneLinkUrl, qrUrl: oneLinkUrl, store: "onelink" };
   }
-  const ctaUrl =
-    platform === "ios"
-      ? APP_STORE_URL
-      : platform === "android"
-        ? PLAY_STORE_URL
-        : DOWNLOAD_PAGE_URL;
-  const store: GuestFunnelStore =
-    platform === "ios" ? "app_store" : platform === "android" ? "play" : "download_page";
+  const ctaUrl = platform === "ios" ? APP_STORE_URL : PLAY_STORE_URL;
+  const store: GuestFunnelStore = platform === "ios" ? "app_store" : "play";
   return { mode: "store_direct", ctaUrl, qrUrl: DOWNLOAD_PAGE_URL, store };
 }

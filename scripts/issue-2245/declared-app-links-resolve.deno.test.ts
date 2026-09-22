@@ -83,6 +83,13 @@ import {
   executeDeepLink,
   parseDeepLink,
 } from "../../app-mobile/src/services/deepLinkService.ts";
+// #3524 — the shell's FIRST intake. These are the real modules the shell calls,
+// not a restatement of them, for the same reason the rest of this file drives
+// `parseDeepLink` and `executeDeepLink` rather than describing what they do.
+import {
+  isAttendanceClaimUrl,
+  parseAttendanceClaimUrl,
+} from "../../app-mobile/src/utils/attendanceClaimDeepLink.ts";
 
 const REPO_ROOT = new URL("../../", import.meta.url).pathname;
 const read = (rel: string): string => Deno.readTextFileSync(REPO_ROOT + rel);
@@ -176,12 +183,57 @@ Deno.test("the shell really does capture /invite/ before the parser sees it", ()
   );
 });
 
+/**
+ * #3524 — `app/index.tsx` hands an attendance-claim URL to
+ * `receiveAttendanceClaimUrl` BEFORE the Stripe callback and before
+ * `handleDeepLink`, in both Linking paths, and returns when it is taken. So the
+ * claim URL never reaches `parseDeepLink`, which has no case for it and would
+ * return null.
+ *
+ * That ordering is the reason the claim arm of `resolveDeclaredUrl` below is
+ * correct, and modelling an ordering without checking it is how a model rots —
+ * the same reasoning, and the same shape, as the `/invite/` pin above.
+ */
+Deno.test("the shell really does take an attendance-claim URL before the parser sees it", () => {
+  const src = read(SHELL);
+  for (
+    const [taken, fallback, where] of [
+      [
+        "if (await receiveAttendanceClaimUrl(url)) return;",
+        "handleDeepLink(url);",
+        "the cold-start Linking.getInitialURL path",
+      ],
+      [
+        "if (await receiveAttendanceClaimUrl(event.url)) return;",
+        "handleDeepLink(event.url);",
+        "the warm Linking.addEventListener path",
+      ],
+    ] as const
+  ) {
+    const at = src.indexOf(taken);
+    assert(
+      at !== -1,
+      `${SHELL} no longer takes the attendance claim first in ${where}. If that intake moved, this suite's model of ATTENDANCE_CLAIM must move with it — do not delete this assertion.`,
+    );
+    const after = src.indexOf(fallback, at);
+    assert(
+      after !== -1 && at < after,
+      `${SHELL} now reaches the generic deep-link fallback before the attendance claim in ${where}. parseDeepLink has no case for a claim URL, so the claim would be dropped and the person would land on whatever screen was already showing.`,
+    );
+  }
+  assert(
+    src.includes("isAttendanceClaimUrl"),
+    `${SHELL} no longer consults isAttendanceClaimUrl, so the claim intake is no longer the predicate this suite drives`,
+  );
+});
+
 // ─── Resolving one URL through the real modules ─────────────────────────────
 
 type Outcome =
   | { kind: "file-route"; segment: string }
   | { kind: "shell-page"; page: string; params: Record<string, string> }
   | { kind: "referral-capture" }
+  | { kind: "attendance-claim" }
   | { kind: "dead"; why: string };
 
 /**
@@ -204,7 +256,17 @@ function resolveDeclaredUrl(url: string): Outcome {
   }
 
   // `redirectSystemPath` said "/", so app/index.tsx mounts and ALSO receives the
-  // raw URL via Linking. Everything below is what the shell then does with it.
+  // raw URL via Linking. Everything below is what the shell then does with it,
+  // IN THE ORDER THE SHELL DOES IT.
+
+  // #3524 — the claim sheet is a real destination: the person sees their ticket
+  // being connected. The credential rides in the fragment and is deliberately
+  // kept out of the generic parser, which is why `parseDeepLink` has no case for
+  // it. A claim URL the shell takes but cannot parse still lands the sheet, in
+  // its invalid state, which is a screen and not a blank — so what makes this
+  // arm honest is the control in A6, not this line.
+  if (isAttendanceClaimUrl(url)) return { kind: "attendance-claim" };
+
   if (url.includes("/invite/")) return { kind: "referral-capture" };
 
   const dest: Destination | null = parseDeepLink(url);
@@ -319,6 +381,16 @@ function androidClaims(): Claim[] {
 }
 
 /**
+ * #3524 — the one attendance-claim URL, named once so the A6 control below
+ * exercises the identical string the probes do.
+ */
+const ATTENDANCE_CLAIM_URL =
+  "https://host.usemingla.com/attendance/claim" +
+  "#v=1&kind=order&event=0a0870b0-c117-4707-bdf4-21fc64bebcab" +
+  "&source=1b1981c1-d228-4818-8e05-32fd75cfcbdc" +
+  "&token=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+/**
  * One concrete URL per declared pattern. Keyed `host + pattern` so the apex and
  * host.usemingla.com claims never share a probe by accident.
  *
@@ -358,6 +430,14 @@ const PROBES: Readonly<Record<string, readonly string[]>> = {
   "host.usemingla.com/t/": ["https://host.usemingla.com/t/alte-nights/lagos-weekender"],
   "host.usemingla.com/exp/*": ["https://host.usemingla.com/exp/alte-nights/pottery"],
   "host.usemingla.com/exp/": ["https://host.usemingla.com/exp/alte-nights/pottery"],
+  // ── #3524, the attendance claim ──
+  // The ONLY shape anything mints is `/attendance/claim#<fragment>`; the two
+  // writers are `attendanceClaimUrls` and `attendanceClaimHandoffUrls` in
+  // supabase/functions/_shared/attendanceClaim.ts. A fragment is not part of a
+  // path, so this URL is what BOTH the iOS `/attendance/claim` component and
+  // the Android `/attendance/` prefix actually match in the wild.
+  "host.usemingla.com/attendance/claim": [ATTENDANCE_CLAIM_URL],
+  "host.usemingla.com/attendance/": [ATTENDANCE_CLAIM_URL],
 };
 
 /**
@@ -506,4 +586,24 @@ Deno.test("A6 NON-VACUITY: an unbacked claim IS reported dead by this same code"
   // And the positive control: a real deep link is not reported dead.
   const real = resolveDeclaredUrl("https://host.usemingla.com/e/alte-nights/rooftop-sessions");
   assertEquals(real.kind, "file-route", "a genuine file-route deep link is being reported dead");
+
+  // #3524 — THE ATTENDANCE-CLAIM ARM HAS ITS OWN CONTROLS, because that arm
+  // answers on a predicate rather than on a parse, and a predicate that said
+  // yes to everything would make A3 trivially true for this whole host.
+  assertEquals(
+    resolveDeclaredUrl(ATTENDANCE_CLAIM_URL).kind,
+    "attendance-claim",
+    "the shell's claim intake no longer recognises the URL the server mints",
+  );
+  assert(
+    parseAttendanceClaimUrl(ATTENDANCE_CLAIM_URL) !== null,
+    "the claim URL the probes use no longer parses to an intent, so the arm would be reporting a sheet that opens on nothing",
+  );
+  // A path that merely LOOKS like the claim is not taken by that arm, and is
+  // still reported dead by the code above.
+  assertEquals(
+    resolveDeclaredUrl("https://host.usemingla.com/attendance/claim/sub#kind=order").kind,
+    "dead",
+    "a subpath under the claim route was reported live — the shell's predicate matches the exact claim path only, so a subpath opens the app on nothing",
+  );
 });

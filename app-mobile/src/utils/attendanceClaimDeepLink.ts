@@ -1,12 +1,29 @@
+/**
+ * #3524 — WHICH credential arrived.
+ *
+ *   token   — from the confirmation email. Verified against the order's stored
+ *             digest. 30-day window.
+ *   handoff — from the desktop scan sheet. Consumed single-use on redemption.
+ *             10-minute window.
+ *
+ * This REPLACES the old bare `token: string` field rather than sitting beside it.
+ * With both present a call site could read the wrong one and silently send a
+ * handoff code where a token was expected; with one discriminated field that is
+ * not representable.
+ */
+export type AttendanceClaimCredential =
+  | { kind: "token"; value: string }
+  | { kind: "handoff"; value: string };
+
 export type ParsedAttendanceClaim = {
   version: 1;
   kind: "order" | "rsvp";
   eventId: string;
   sourceId: string;
-  token: string;
+  credential: AttendanceClaimCredential;
 };
 
-export type AttendanceClaimAuthAction = "none" | "clear" | "resume";
+export type AttendanceClaimAuthAction = "none" | "clear" | "resume" | "preserve";
 
 export type AttendanceClaimSingleFlight = {
   run: (task: () => Promise<void>) => Promise<void>;
@@ -41,17 +58,76 @@ export const createAttendanceClaimSingleFlight =
     };
   };
 
+/**
+ * What the pending claim should do when the signed-in account changes.
+ *
+ * "clear" EXISTS FOR A REASON AND IT IS NOT NEGOTIABLE: account A's claim intent
+ * must not follow the device into account B. Somebody signs out, hands the phone
+ * over, and the next person must not inherit a pending ticket.
+ *
+ * #3524 ADDS "preserve", AND IT IS NOT A HOLE IN THAT RULE. It fires only when
+ * `handoffActive` is true, and that marker is written by exactly one action — the
+ * guest tapping "Use a different account" on the claim sheet, immediately before
+ * sign-out — with a 30-minute life. So "preserve" means "this flow CAUSED the
+ * account change", not "an account change happened".
+ *
+ * And even then the claim still cannot land on the wrong account: the server
+ * requires the new account to independently prove it owns the order's purchase
+ * email or phone (`public.account_owns_order_contact`). TWO GUARDS, NOT ONE. A
+ * forged marker buys an attacker a sheet they cannot complete.
+ *
+ * "preserve" performs NO state change: it does not clear the intent, does not
+ * clear the marker, and does not open or close the sheet. The following
+ * null -> new-user-id transition is an ordinary "resume".
+ */
 export const attendanceClaimAuthAction = (
   previousUserId: string | null | undefined,
   nextUserId: string | null,
   hasIntent: boolean,
+  handoffActive = false,
 ): AttendanceClaimAuthAction => {
   if (previousUserId === undefined) return "none";
-  if (previousUserId !== null && previousUserId !== nextUserId) return "clear";
+  if (previousUserId !== null && previousUserId !== nextUserId) {
+    return handoffActive ? "preserve" : "clear";
+  }
   if (previousUserId === null && nextUserId !== null && hasIntent) {
     return "resume";
   }
   return "none";
+};
+
+/**
+ * #3524 — IS A DELIBERATE ACCOUNT HANDOFF STILL IN FLIGHT?
+ *
+ * Extracted as a pure function on purpose. The shell holds the flag in a ref so
+ * the auth effect can read it SYNCHRONOUSLY — an async SecureStore read there
+ * resolves after the effect has already decided, which is the bug the marker
+ * exists to prevent. But a ref cannot be tested, and "the flag is disarmed in at
+ * least two places" is a count, not a behaviour: it stays true after you move
+ * the disarm somewhere useless.
+ *
+ * So the DECISION lives here, where it can be driven:
+ *
+ *   * a flag that was never set is not a handoff;
+ *   * a flag older than the marker's own 30 minutes is not a handoff either —
+ *     it aged out exactly as `readAttendanceClaimHandoffMarker` ages out the
+ *     record it mirrors;
+ *   * a flag with no recorded start is treated as live, because that is the
+ *     one case where we know a handoff happened and not when, and the claim
+ *     still cannot land without the account proving the purchase contact.
+ *
+ * `now` and `ttlMs` are parameters so the boundary is testable without waiting
+ * half an hour.
+ */
+export const attendanceClaimHandoffIsLive = (
+  active: boolean,
+  startedAt: number | null,
+  now: number,
+  ttlMs: number,
+): boolean => {
+  if (!active) return false;
+  if (startedAt === null) return true;
+  return now - startedAt <= ttlMs;
 };
 
 export type RosterAuthorizationFailure =
@@ -83,20 +159,36 @@ export const parseAttendanceClaimUrl = (
   const hashIndex = url.indexOf("#");
   if (hashIndex < 0) return null;
   const params = new URLSearchParams(url.slice(hashIndex + 1));
-  const requiredKeys = ["v", "kind", "event", "source", "token"];
+  const keys = [...params.keys()];
+  // #3524 — either the emailed `token` form or the scanned `hc` form. The
+  // exhaustiveness stays exhaustive: five keys, no duplicates, no strangers, and
+  // NEVER both credentials. Relaxing that is how a claim boundary starts
+  // tolerating shapes nobody designed.
+  if (keys.includes("token") && keys.includes("hc")) return null;
+  const credentialKey: "token" | "hc" = keys.includes("hc") ? "hc" : "token";
+  const requiredKeys = ["v", "kind", "event", "source", credentialKey];
   if (
-    [...params.keys()].length !== requiredKeys.length ||
+    keys.length !== requiredKeys.length ||
     requiredKeys.some((key) => params.getAll(key).length !== 1) ||
-    [...params.keys()].some((key) => !requiredKeys.includes(key))
+    keys.some((key) => !requiredKeys.includes(key))
   ) return null;
   const kind = params.get("kind");
   const eventId = params.get("event");
   const sourceId = params.get("source");
-  const token = params.get("token");
+  const credential = params.get(credentialKey);
   if (
     params.get("v") !== "1" || (kind !== "order" && kind !== "rsvp") ||
-    eventId === null || sourceId === null || token === null ||
-    !UUID.test(eventId) || !UUID.test(sourceId) || !TOKEN.test(token)
+    eventId === null || sourceId === null || credential === null ||
+    !UUID.test(eventId) || !UUID.test(sourceId) || !TOKEN.test(credential)
   ) return null;
-  return { version: 1, kind, eventId, sourceId, token };
+  return {
+    version: 1,
+    kind,
+    eventId,
+    sourceId,
+    credential: {
+      kind: credentialKey === "hc" ? "handoff" : "token",
+      value: credential,
+    },
+  };
 };

@@ -37,6 +37,24 @@ VALUES(
   pg_temp.issue2979_tester_uuid('event'),
   'General',1000,'USD',20
 );
+-- #3524 — THE CLAIMANT PROVES THE ORDER CONTACT.
+--
+-- `claim_attendance_internal_v2` gained one gate this file is not about: a
+-- claim link is delivered, and a delivered link can be passed on, so the
+-- account presenting it must also be able to show the order's own contact
+-- reaches it (`public.account_owns_order_contact`). The gate runs AFTER the
+-- digest match, the expiry and the eligibility check, so every result this file
+-- asserts on a bad or replayed proof is unaffected by it — but a claim this
+-- file expects to SUCCEED has to get past it, or the secret-continuity rule
+-- being measured here is never reached.
+--
+-- The proof used is #2269's verified-phone ledger: our own service-role-only
+-- row, written only after a code is approved at that number. It is chosen over
+-- the email routes because it needs no GoTrue table, and this lane provisions
+-- none.
+INSERT INTO public.verified_phone_identities(user_id,phone_e164) VALUES
+  (pg_temp.issue2979_tester_uuid('claimant-a'),'+15555550101'),
+  (pg_temp.issue2979_tester_uuid('claimant-b'),'+15555550102');
 SET session_replication_role = origin;
 
 -- Scenario A: a successful proof claim must cancel/reconcile queued recovery

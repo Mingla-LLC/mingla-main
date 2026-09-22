@@ -21,6 +21,18 @@ on:
       - "supabase/migrations/__tests__/issue_0871*"
       - "supabase/migrations/__tests__/issue_2979*"
       - "supabase/migrations/__tests__/issue_3060*"
+      # issue #3524 — the guest-ticket-into-app release. Its suites land in THIS
+      # lane rather than a new issue-*.yml, per the fail-closed registry rule.
+      - "supabase/migrations/20270714003524_issue_3524_attendance_claim_identity_expiry_and_chat.sql"
+      - "supabase/migrations/20270714013524_issue_3524_consent_basis_and_marketing_permission.sql"
+      - "supabase/migrations/__tests__/issue_3524*"
+      - "supabase/functions/attendance-claim-handoff/**"
+      - "supabase/functions/attendance-claim-identity/**"
+      - "supabase/functions/record-consent/**"
+      - "supabase/functions/_shared/email/appLink.ts"
+      - "supabase/config.toml"
+      - ".github/scripts/strict-grep/issue-2050-host-route-ownership.mjs"
+      - ".github/scripts/strict-grep/__tests__/i-aasa-claims-match-native-routes.test.mjs"
       - "docs/INVARIANT_REGISTRY.md"
       - ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs"
       - ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs"
@@ -53,6 +65,9 @@ jobs:
         run: >-
           deno check
           supabase/functions/claim-attendance/index.ts
+          supabase/functions/attendance-claim-handoff/index.ts
+          supabase/functions/attendance-claim-identity/index.ts
+          supabase/functions/record-consent/index.ts
           supabase/functions/attendance-claim-link/index.ts
           supabase/functions/attendance-claim-backfill/index.ts
           supabase/functions/ticket-confirmation-dispatch/index.ts
@@ -93,6 +108,54 @@ jobs:
         run: |
           node .github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs --self-test
           node .github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs
+      - name: Execute issue 3524 edge and mobile contracts
+        run: |
+          deno test --allow-read \
+            supabase/functions/claim-attendance/__tests__/issue_3524_claim_credentials.implementor.happy.test.ts \
+            supabase/functions/attendance-claim-handoff/__tests__/issue_3524_handoff_contract.implementor.happy.test.ts
+          for test_file in \
+            supabase/functions/claim-attendance/__tests__/issue_3524_claim_credentials.tester.adversarial.test.ts \
+            supabase/functions/attendance-claim-handoff/__tests__/issue_3524_handoff_contract.tester.adversarial.test.ts; do
+            if [[ -f "$test_file" ]]; then deno test --allow-read "$test_file"; fi
+          done
+          node --experimental-strip-types --test \
+            app-mobile/src/utils/__tests__/issue_3524_claim_auth_action_preserve.implementor.happy.test.ts
+      # issue #3524 REWORK (P2-4) — the handlers INVOKED, not grepped. The
+      # sibling suites assert HTTP behaviour by searching index.ts, which is how
+      # the consume-before-claim defect reached the tester with a green suite.
+      # These drive the real handler with a real Request and read the real
+      # Response; serve() is aliased to the existing capture shim.
+      - name: Execute issue 3524 edge-handler runtime contracts
+        run: |
+          deno test \
+            --import-map=supabase/functions/claim-attendance/__tests__/_importmap.test.json \
+            --allow-read --allow-env --allow-net \
+            supabase/functions/claim-attendance/__tests__/issue_3524_claim_handler_runtime.implementor.happy.test.ts
+          for test_file in \
+            supabase/functions/claim-attendance/__tests__/issue_3524_claim_handler_runtime.tester.adversarial.test.ts; do
+            if [[ -f "$test_file" ]]; then
+              deno test \
+                --import-map=supabase/functions/claim-attendance/__tests__/_importmap.test.json \
+                --allow-read --allow-env --allow-net "$test_file"
+            fi
+          done
+      - name: Execute issue 3524 consumer-app contracts
+        run: |
+          node app-mobile/src/components/__tests__/issue_3524_claim_sheet_states.implementor.happy.test.tsx
+          # issue #3524 — the tester's Explorer-side adversarial suites, run the
+          # same way and only when they exist, matching the conditional shape the
+          # PG and Deno steps already use for tester files.
+          for tester_ts in \
+            app-mobile/src/utils/__tests__/issue_3524_signout_does_not_destroy_the_claim.tester.adversarial.test.ts; do
+            if [[ -f "$tester_ts" ]]; then
+              node --experimental-strip-types --test "$tester_ts"
+            fi
+          done
+      - name: Execute issue 3524 link-interception ownership guards
+        run: |
+          node .github/scripts/strict-grep/issue-2050-host-route-ownership.mjs --self-test
+          node .github/scripts/strict-grep/issue-2050-host-route-ownership.mjs
+          node --test .github/scripts/strict-grep/__tests__/i-aasa-claims-match-native-routes.test.mjs
       - name: Install buyer-web dependencies
         working-directory: mingla-business
         run: npm ci
@@ -102,6 +165,8 @@ jobs:
           npx jest
           src/utils/__tests__/issue_0871_attendance_claim_public_route.implementor.happy.test.ts
           src/utils/__tests__/issue_0871_attendance_claim_auth_boundary.tester.adversarial.test.ts
+          src/utils/__tests__/issue_3524_claim_page_no_auto_navigation.implementor.happy.test.ts
+          src/services/__tests__/issue_3524_confirmation_desktop_arm.implementor.happy.test.ts
           --runInBand
 
   issue-871-pg17:
@@ -159,6 +224,24 @@ jobs:
           if [[ -f "$tester_sql" ]]; then
             psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f "$tester_sql"
           fi
+      - name: Execute issue 3524 attendance-claim and consent contracts
+        env:
+          PGPASSWORD: ${{ format('issue-871-ci-{0}', github.run_id) }}
+        run: |
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3524_attendance_claim_identity_expiry_and_chat.implementor.happy.test.sql
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3524_consent_basis_and_marketing_permission.implementor.happy.test.sql
+          for tester_sql in \
+            supabase/migrations/__tests__/issue_3524_forwarded_email_cannot_take_the_ticket.tester.adversarial.test.sql \
+            supabase/migrations/__tests__/issue_3524_handoff_replay.tester.adversarial.test.sql \
+            supabase/migrations/__tests__/issue_3524_claim_without_chat_is_told_truthfully.tester.adversarial.test.sql \
+            supabase/migrations/__tests__/issue_3524_no_consent_row_is_attendance_only.tester.adversarial.test.sql \
+            supabase/migrations/__tests__/issue_3524_knowing_an_address_is_not_owning_it.tester.adversarial.test.sql; do
+            if [[ -f "$tester_sql" ]]; then
+              psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f "$tester_sql"
+            fi
+          done
       - name: Execute issue 3060 exact-set closure contracts
         env:
           PGPASSWORD: ${{ format('issue-871-ci-{0}', github.run_id) }}

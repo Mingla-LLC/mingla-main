@@ -500,6 +500,12 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         email: buyer.email,
         countryCode: phoneCountry,
         userId: null,
+        // #3524 — the route param we already hold. The server resolves the host
+        // from it, so the legal record says WHICH business the buyer agreed to
+        // hear from instead of recording the grant Mingla-globally. Nothing else
+        // on this path changes: the write still happens before the order exists
+        // and is still non-blocking (#2689's ordering and submitInFlight guard).
+        eventId,
       });
       if (!consentResult.ok) {
         console.error(

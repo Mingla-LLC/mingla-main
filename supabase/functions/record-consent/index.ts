@@ -100,9 +100,22 @@ interface RecordConsentRequest {
   email?: string | null;
   /** ISO-2 buyer country at grant (e.g. derived from the phone country). */
   countryCode?: string | null;
+  /**
+   * #3524 — the offering the grant happened on, so the server can record WHICH
+   * HOST the consent was given to.
+   *
+   * THERE IS NO `brandId` FIELD AND THERE MUST NEVER BE ONE. This endpoint is
+   * `verify_jwt = false`: anyone can POST to it. A client-supplied brand id
+   * would let a caller attribute consent to a host that never received it,
+   * which is precisely the thing `brand_id` exists to make trustworthy. The
+   * brand is resolved from this event id server-side, with the service client.
+   */
+  eventId?: string | null;
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function hashIp(ip: string): Promise<string> {
   const data = new TextEncoder().encode(ip);
@@ -218,6 +231,43 @@ serve(async (req: Request): Promise<Response> => {
     typeof body.userId === "string" && body.userId.length > 0
       ? body.userId
       : null;
+  const disclosureVersion =
+    typeof body.disclosureVersion === "string" &&
+      body.disclosureVersion.trim().length > 0
+      ? body.disclosureVersion.trim()
+      : null;
+
+  // #3524 — resolve the host server-side from the offering. A caller cannot name
+  // a brand; it can only name an event, and we look up who owns it.
+  //
+  // WHEN THIS DOES NOT RESOLVE, THE WRITE STILL SUCCEEDS with all three fields
+  // NULL. The consumer onboarding surface (app-mobile OnboardingFlow) has no
+  // brand at all and must keep working byte-identically; a consent row with no
+  // brand is exactly what it has always written.
+  const eventId =
+    typeof body.eventId === "string" && UUID_REGEX.test(body.eventId.trim())
+      ? body.eventId.trim()
+      : null;
+  let brandId: string | null = null;
+  if (eventId !== null) {
+    const { data: eventRow, error: eventErr } = await admin
+      .from("events")
+      .select("brand_id")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (eventErr) {
+      // Not fatal. The legal record is keyed by contact + disclosure_text, and
+      // losing the attribution is strictly better than losing the grant.
+      console.warn("[record-consent] brand resolve failed", eventErr.message);
+    } else if (typeof eventRow?.brand_id === "string") {
+      brandId = eventRow.brand_id;
+    }
+  }
+  const resolvedEventId = brandId !== null ? eventId : null;
+  // 'captured' means the brand was known at the moment of the grant. Nothing in
+  // this release writes 'derived'; that value is reserved for an attribution
+  // made afterwards, so a reader can always tell the two apart.
+  const brandAttribution = brandId !== null ? "captured" : null;
 
   const sinceIso = new Date(Date.now() - DEDUPE_WINDOW_MS).toISOString();
   const toInsert: Array<Record<string, unknown>> = [];
@@ -258,6 +308,14 @@ serve(async (req: Request): Promise<Response> => {
         disclosure_text: disclosureText,
         ip_hash: ipHash,
         country_code: countryCode,
+        // #3524 — the wording version ACTUALLY SHOWN. The checkout has been
+        // sending this since #2689 and this function silently dropped it, so a
+        // legal record that looked complete was missing the one field that says
+        // which words the buyer agreed to.
+        disclosure_version: disclosureVersion,
+        brand_id: brandId,
+        event_id: resolvedEventId,
+        brand_attribution: brandAttribution,
       });
     }
   }
@@ -279,7 +337,13 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   return new Response(
-    JSON.stringify({ ok: true, inserted, deduped, version: body.disclosureVersion ?? null }),
+    JSON.stringify({
+      ok: true,
+      inserted,
+      deduped,
+      version: disclosureVersion,
+      brandAttributed: brandId !== null,
+    }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
 });

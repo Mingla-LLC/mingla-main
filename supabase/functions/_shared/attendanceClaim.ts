@@ -70,36 +70,110 @@ export const isAttendanceClaimKind = (
   value: unknown,
 ): value is AttendanceClaimKind => value === "order" || value === "rsvp";
 
+/** #3524 — a desktop->phone exchange code. Same alphabet and length as a claim
+ * token (32 random bytes, base64url) but a DIFFERENT credential with a
+ * different lifetime: ten minutes, one use, and it is what a QR may carry. */
+export const isExactHandoffCode = (code: string): boolean =>
+  /^[A-Za-z0-9_-]{43}$/.test(code);
+
+/**
+ * #3524 — WHICH credential the caller presented.
+ *
+ * A discriminated shape, NOT two optional fields: with `token?: string` and
+ * `handoffCode?: string` a call site can silently read the one that is absent.
+ * There is exactly one credential per request and the type says so.
+ */
+export type AttendanceClaimCredential =
+  | { kind: "token"; value: string }
+  | { kind: "handoff"; value: string };
+
 export type AttendanceClaimRequest = {
   version: 1;
   kind: AttendanceClaimKind;
   eventId: string;
   sourceId: string;
-  token: string;
+  credential: AttendanceClaimCredential;
 };
 
+/**
+ * Exactly five keys, and exactly ONE of `token` / `handoffCode` — never both,
+ * never neither, never an extra key. The strictness is deliberate (#871) and it
+ * stays strict: widening the accepted shape is how a claim boundary starts
+ * tolerating things nobody designed.
+ */
 export const parseAttendanceClaimRequest = (
   value: unknown,
 ): AttendanceClaimRequest | null => {
   if (
     !isRecord(value) ||
     Object.keys(value).some((key) =>
-      !["version", "kind", "eventId", "sourceId", "token"].includes(key)
+      !["version", "kind", "eventId", "sourceId", "token", "handoffCode"]
+        .includes(key)
     )
   ) return null;
+  if (Object.keys(value).length !== 5) return null;
+  const hasToken = "token" in value;
+  const hasHandoff = "handoffCode" in value;
+  if (hasToken === hasHandoff) return null;
   if (
     value.version !== 1 || !isAttendanceClaimKind(value.kind) ||
-    !isUuid(value.eventId) || !isUuid(value.sourceId) ||
-    typeof value.token !== "string" ||
-    !isExactClaimToken(value.kind, value.token)
+    !isUuid(value.eventId) || !isUuid(value.sourceId)
   ) return null;
+  let credential: AttendanceClaimCredential;
+  if (hasToken) {
+    if (
+      typeof value.token !== "string" ||
+      !isExactClaimToken(value.kind, value.token)
+    ) return null;
+    credential = { kind: "token", value: value.token };
+  } else {
+    if (
+      typeof value.handoffCode !== "string" ||
+      !isExactHandoffCode(value.handoffCode)
+    ) return null;
+    credential = { kind: "handoff", value: value.handoffCode };
+  }
   return {
     version: 1,
     kind: value.kind,
     eventId: value.eventId,
     sourceId: value.sourceId,
-    token: value.token,
+    credential,
   };
+};
+
+/**
+ * #3524 — the TypeScript twin of `public.mask_contact_for_claim`.
+ *
+ * It exists only so an edge function can format an order it has ALREADY read.
+ * The authority on a mismatch response is the SQL helper; the two are pinned to
+ * the same cases by tests. Neither ever emits an unmasked purchase contact, and
+ * a client must never receive one it did not already hold.
+ *
+ *   email  alice@example.com  ->  a•••@e•••.com
+ *   phone  +2348012345678     ->  +234•••5678   (under 8 digits -> '+•••')
+ */
+export const maskContactForClaim = (
+  value: string | null | undefined,
+  channel: "email" | "phone",
+): string | null => {
+  const trimmed = (value ?? "").trim();
+  if (trimmed === "") return null;
+  if (channel === "phone") {
+    const digits = trimmed.replace(/[^0-9]/g, "");
+    if (digits.length < 8) return "+•••";
+    return `+${digits.slice(0, 3)}•••${digits.slice(-4)}`;
+  }
+  const lowered = trimmed.toLowerCase();
+  const at = lowered.indexOf("@");
+  if (at < 1 || at === lowered.length - 1) return null;
+  const local = lowered.slice(0, at);
+  const domain = lowered.slice(at + 1);
+  const dot = domain.indexOf(".");
+  const label = dot === -1 ? domain : domain.slice(0, dot);
+  const rest = dot === -1 ? "" : domain.slice(dot);
+  if (label === "") return null;
+  return `${local[0]}•••@${label[0]}•••${rest}`;
 };
 
 export type AttendanceClaimLinkRequest = {
@@ -188,6 +262,34 @@ export const attendanceClaimUrls = (input: {
     event: input.eventId,
     source: input.sourceId,
     token: input.token,
+  }).toString();
+  return {
+    webClaimUrl: `https://host.usemingla.com/attendance/claim#${fragment}`,
+    appClaimUrl: `com.mingla.app.v2://attendance-claim#${fragment}`,
+  };
+};
+
+/**
+ * #3524 — the handoff-code URL grammar. A SIBLING of `attendanceClaimUrls`, not
+ * a conditional inside it: two named builders, one grammar each, so a reader can
+ * see at the call site which credential is travelling. The token form and the
+ * handoff form must never be reachable through the same branch.
+ *
+ * The web URL is what the desktop QR encodes. It carries the handoff code and
+ * NEVER the claim token.
+ */
+export const attendanceClaimHandoffUrls = (input: {
+  kind: AttendanceClaimKind;
+  eventId: string;
+  sourceId: string;
+  code: string;
+}): { webClaimUrl: string; appClaimUrl: string } => {
+  const fragment = new URLSearchParams({
+    v: "1",
+    kind: input.kind,
+    event: input.eventId,
+    source: input.sourceId,
+    hc: input.code,
   }).toString();
   return {
     webClaimUrl: `https://host.usemingla.com/attendance/claim#${fragment}`,

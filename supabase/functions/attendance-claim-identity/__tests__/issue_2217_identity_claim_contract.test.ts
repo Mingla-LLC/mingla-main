@@ -178,9 +178,22 @@ Deno.test("#2217 the consumer app runs the sweep once per signed-in account", ()
   );
   // Silent by design: this fires on every sign-in, including for people who
   // never bought anything.
+  //
+  // [TEST-MOD-APPROVED #3524] The pinned literal grew by one field because the
+  // sweep's return shape grew by one field: #3524 adds `claims`, the per-order
+  // chat-join detail, so the token rail and the identity rail report the same
+  // thing. The rule this line has always carried — an errored sweep returns an
+  // EMPTY result and never throws — is unchanged, and the pin is now STRICTER
+  // than before: it additionally requires the new `claims` array to be empty on
+  // the error path, so a future edit that leaked a partial claim list out of a
+  // failed invoke fails here.
+  //   before: "if (error) return { count: 0, eventIds: [] };"
+  //   after:  "if (error) return { count: 0, eventIds: [], claims: [] };"
+  // Proven by restoring the old error line in the service: this check goes red,
+  // which is what says the pin still measures the source and not itself.
   assertStringIncludes(
     service,
-    "if (error) return { count: 0, eventIds: [] };",
+    "if (error) return { count: 0, eventIds: [], claims: [] };",
   );
 
   assertStringIncludes(shell, "claimAttendanceByVerifiedIdentity()");

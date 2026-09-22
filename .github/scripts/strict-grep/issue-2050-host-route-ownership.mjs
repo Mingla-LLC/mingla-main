@@ -5,6 +5,30 @@ import path from "node:path";
 const ROOT = process.cwd();
 const HOST = "host.usemingla.com";
 const CONSUMER = ["/b/", "/e/", "/t/", "/exp/"];
+// #3524 — the attendance-claim handoff, and the ONE place in this file where the
+// two platforms are deliberately not mirror images.
+//
+// Android matches an intent filter BY PREFIX, so the consumer app declares the
+// whole `/attendance/` family in the existing `host.usemingla.com` filter. iOS
+// matches AASA components EXACTLY, so the consumer app claims `/attendance/claim`
+// and ONLY that — claiming a family it cannot serve is how a Universal Link opens
+// an app that then shows nothing.
+//
+// NO SUBPATH, and that follows from the same sentence. A fragment is not part of
+// a path, so the exact component already matches the only URL anything mints:
+// `/attendance/claim#<fragment>`. A subpath under it matches nothing that exists
+// and `isAttendanceClaimUrl` does not recognise it, so claiming
+// `/attendance/claim/*` would be claiming precisely such a family.
+// scripts/issue-2245/declared-app-links-resolve.deno.test.ts drives the real
+// modules and asserts it, which is the check that would have caught this list
+// being wrong.
+//
+// Both lists are pinned here rather than derived from each other, so a later
+// change that widens the iOS claim to `/attendance/*`, or narrows the Android
+// one, is a RED gate rather than a silent drift. The Host app gains nothing:
+// `/attendance/` is a buyer route and stays off its side of this file.
+const CONSUMER_ANDROID_EXTRA = ["/attendance/"];
+const CONSUMER_AASA_EXTRA = ["/attendance/claim"];
 const OPERATOR = [
   "/accept-brand-invitation",
   "/accept-scanner-invitation",
@@ -26,7 +50,9 @@ export function validate(consumer, hostApp, aasa) {
     .flatMap((filter) => filter.data ?? [])
     .filter((item) => item.host === HOST);
   const consumerPrefixes = consumerHost.map((item) => item.pathPrefix).sort();
-  if (!same(consumerPrefixes, [...CONSUMER].sort())) fail("consumer Android Host routes drifted");
+  if (!same(consumerPrefixes, [...CONSUMER, ...CONSUMER_ANDROID_EXTRA].sort())) {
+    fail("consumer Android Host routes drifted");
+  }
 
   const operatorHost = hostApp.expo.android.intentFilters
     .flatMap((filter) => filter.data ?? [])
@@ -46,7 +72,7 @@ export function validate(consumer, hostApp, aasa) {
     item.path === route || item.pathPrefix?.startsWith(`${route}/`) || item.pathPrefix === route))) {
     fail("browser-only route was claimed by a native app");
   }
-  if (CONSUMER.some((route) => OPERATOR.some((other) =>
+  if ([...CONSUMER, ...CONSUMER_ANDROID_EXTRA].some((route) => OPERATOR.some((other) =>
     route.startsWith(`${other}/`) || other.startsWith(route)))) {
     fail("consumer and Host route families overlap");
   }
@@ -60,7 +86,10 @@ export function validate(consumer, hostApp, aasa) {
   const consumerAasa = consumerDetail?.components?.map((item) => item["/"]).sort() ?? [];
   const expectedHostAasa = OPERATOR.flatMap((route) => [route, `${route}/*`]).sort();
   if (!same(hostAasa, expectedHostAasa)) fail("Host AASA ownership drifted");
-  if (!same(consumerAasa, CONSUMER.map((route) => `${route}*`).sort())) {
+  if (!same(
+    consumerAasa,
+    [...CONSUMER.map((route) => `${route}*`), ...CONSUMER_AASA_EXTRA].sort(),
+  )) {
     fail("consumer AASA ownership drifted");
   }
 
@@ -94,6 +123,31 @@ if (process.argv.includes("--self-test")) {
     (_, h) => h.expo.android.intentFilters[0].data.push({ scheme: "https", host: HOST, pathPrefix: "/pay/" }),
     (c) => c.expo.android.intentFilters[1].data.pop(),
     (_, __, a) => a.applinks.details[0].components.pop(),
+    // #3524 — the attendance claim disappearing from either platform must be
+    // RED, not a quiet half-shipped handoff.
+    (c) => {
+      const data = c.expo.android.intentFilters[1].data;
+      const i = data.findIndex((item) => item.pathPrefix === "/attendance/");
+      data.splice(i, 1);
+    },
+    (_, __, a) => {
+      const consumer = a.applinks.details.find((detail) =>
+        detail.appIDs?.includes("782KVMY869.com.mingla.app.v2"));
+      consumer.components = consumer.components.filter((item) =>
+        item["/"] !== "/attendance/claim");
+    },
+    // …and widening the iOS claim from the one route the app can serve to the
+    // whole family must be RED too.
+    (_, __, a) => {
+      const consumer = a.applinks.details.find((detail) =>
+        detail.appIDs?.includes("782KVMY869.com.mingla.app.v2"));
+      consumer.components = consumer.components.map((item) =>
+        item["/"].startsWith("/attendance/") ? { ...item, "/": "/attendance/*" } : item);
+    },
+    // The Host app must NOT acquire the buyer's attendance route.
+    (_, h) => h.expo.android.intentFilters[0].data.push({
+      scheme: "https", host: HOST, pathPrefix: "/attendance/",
+    }),
   ];
   for (const mutate of mutations) {
     const fixture = structuredClone(good);
@@ -102,7 +156,9 @@ if (process.argv.includes("--self-test")) {
     try { validate(...fixture); } catch { rejected = true; }
     if (!rejected) fail("BAD fixture passed");
   }
-  console.log("PASS issue-2050 Host route ownership: GOOD + 5 BAD fixtures");
+  console.log(
+    `PASS issue-2050 Host route ownership: GOOD + ${mutations.length} BAD fixtures`,
+  );
 } else {
   validate(...load());
   console.log("PASS issue-2050 Host route ownership");

@@ -84,6 +84,34 @@
  * (curl-verified 2026-08-18) — a desktop buyer would be dropped on a mobile
  * store listing, which `resolveConfirmationAppTarget` explicitly refuses to do
  * for 'other'.
+ *
+ * ISSUE #3524/#3525 — THE FLIP WAS ATTEMPTED AND IS BLOCKED. RE-MEASURED
+ * 2026-09-21 AND AGAIN 2026-09-22 (identical both times, by two different
+ * agents) against
+ * `https://go.usemingla.com/w36m?pid=email&c=ticket_confirmation`
+ * with three desktop user-agents. All three land on an iOS App Store listing:
+ *
+ *   Windows / Chrome 140  -> HTTP 301  Location: https://apps.apple.com/US/app/id6760440898?mt=8
+ *   Linux   / Firefox 131 -> HTTP 301  Location: https://apps.apple.com/US/app/id6760440898?mt=8
+ *   macOS   / Safari 18.6 -> HTTP 200, and the body scripts to
+ *                            https://apps.apple.com/US/app/id6760440898?mt=8&c=ticket_confirmation&pid=email
+ *
+ * The AppsFlyer template `w36m` DECLARES `Default: https://usemingla.com/download`,
+ * and that default is not being honoured for desktop traffic. `usemingla.com/download`
+ * appears nowhere in any of the three responses.
+ *
+ * SO THE FIX IS NOT CODE. It is the template's own desktop/default redirect, in
+ * the AppsFlyer account. Until that is corrected, flipping this constant would
+ * send every desktop recipient of a ticket confirmation to an iPhone store
+ * listing — exactly what Seth's #3524 decision 5 forbids.
+ *
+ * DO NOT WORK AROUND IT by pointing the email somewhere else:
+ * `i-2240-email-app-link-sole-owner.mjs` enforces that the email and the
+ * confirmation page land in the SAME place, and breaking that is a separate
+ * decision. #3524 hardens the PAGE side regardless — `resolveConfirmationAppTarget`
+ * and the new `resolveClaimPageTarget` now return the download page for
+ * `platform === 'other'` on BOTH arms — so a desktop buyer on a Mingla surface is
+ * safe whatever this constant becomes.
  */
 
 import { SHELL_TOKENS } from "./shell.ts";

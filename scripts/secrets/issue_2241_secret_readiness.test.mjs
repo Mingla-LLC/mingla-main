@@ -299,6 +299,12 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // agent-turn-control — each declared in function-env.contract.json from the
   // scanner's own env reads.
   //
+  // [TEST-MOD-APPROVED #3524] 235 -> 236: #3524 adds one edge function,
+  // `attendance-claim-handoff`, which mints the ten-minute desktop-to-phone
+  // handoff code. Its contract entry is the scanner's own env reads, and it is
+  // the same shape as its sibling `attendance-claim-link` because it reads the
+  // same pepper ring through the same bundle-first getter.
+  //
   // Note for #3528: this line is a COUNT, and a count signals "something
   // changed", not "something is wrong". The assertion that carries the meaning
   // is the `deepEqual(auditFunctionSecretContract(), [])` above it, which is
@@ -306,12 +312,18 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // module to the import graph that the contract does NOT classify fails the
   // deepEqual with `contract:function_set_mismatch`, before this line is
   // reached. Verified by doing exactly that and restoring.
-  assert.equal(Object.keys(contract.functions).length, 235);
+  // Proof this replacement BITES rather than merely counting higher: remove the
+  // new function's contract entry and the deepEqual above fails with
+  // `contract:function_set_mismatch` before this line is ever reached.
+  assert.equal(Object.keys(contract.functions).length, 236);
   assert.equal(manifest.secrets.length, 88);
 });
 
 test("#2241 happy: every exact direct reader is bundle-first with only its matching fallback", () => {
   const readers = {
+    "supabase/functions/attendance-claim-handoff/index.ts": [
+      "resolveAttendanceClaimPepperRing",
+    ],
     "supabase/functions/attendance-claim-link/index.ts": [
       "resolveAttendanceClaimPepperRing",
     ],

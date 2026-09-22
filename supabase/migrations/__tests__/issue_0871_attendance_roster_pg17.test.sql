@@ -8,6 +8,41 @@ LANGUAGE sql IMMUTABLE AS $$
   SELECT (substr(md5(seed),1,8)||'-'||substr(md5(seed),9,4)||'-4'||substr(md5(seed),14,3)||'-8'||substr(md5(seed),18,3)||'-'||substr(md5(seed),21,12))::uuid
 $$;
 
+-- #3524 — WHY THIS FILE NOW TOUCHES auth.identities.
+--
+-- `public.claim_attendance_internal` gained an identity gate:
+-- `public.account_owns_order_contact` must agree that the claimant can prove the
+-- ORDER CONTACT before the proof is consumed, because a claim link is mailed and
+-- a mailed link can be forwarded. The gate runs AFTER the digest match, the
+-- expiry and the eligibility check, so every earlier assertion in this file is
+-- untouched by it — but the RACE at the end needs BOTH racers to get past it,
+-- or the race never reaches the atomic UPDATE it exists to measure and the
+-- "exactly one winner, proof consumed once" proof becomes unfalsifiable.
+--
+-- The predicate's cheapest positive proof is a PROVIDER-ASSERTED address
+-- (`identity_data.email_verified` true), which needs only `auth.identities` —
+-- no session or amr rows. That table is absent from the supabase/postgres image
+-- and this lane provisions no GoTrue stub, so the file stands one up itself (it
+-- runs as `supabase_admin`) and REMOVES IT AGAIN at the end, so the sibling
+-- #3524 suites in this lane still find the database in the state they expect and
+-- build their own. The stub is created ONLY when the table is genuinely absent,
+-- and the teardown drops ONLY a table this session created — on any database
+-- with real GoTrue the flag is never set and nothing is dropped.
+DO $stub$
+BEGIN
+  IF to_regclass('auth.identities') IS NULL THEN
+    CREATE TEMP TABLE issue871_auth_identities_stub(created boolean NOT NULL);
+    INSERT INTO issue871_auth_identities_stub VALUES (true);
+    EXECUTE $ddl$
+      CREATE TABLE auth.identities(
+        id text NOT NULL, user_id uuid NOT NULL, provider text NOT NULL,
+        identity_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+        updated_at timestamptz NOT NULL DEFAULT now())
+    $ddl$;
+  END IF;
+END
+$stub$;
+
 SET session_replication_role = replica;
 INSERT INTO auth.users(id) VALUES
   (pg_temp.issue871_uuid('owner')),
@@ -59,6 +94,30 @@ INSERT INTO public.orders(id,event_id,buyer_email,buyer_name,total_cents,currenc
 VALUES(pg_temp.issue871_uuid('race-order'),pg_temp.issue871_uuid('race-event'),'race@example.test','Race',1000,'USD','paid','legacy',decode(repeat('ab',32),'hex'),now(),'legacy_v1');
 INSERT INTO public.tickets(id,order_id,ticket_type_id,event_id,qr_code,status,approval_status)
 VALUES(pg_temp.issue871_uuid('race-ticket'),pg_temp.issue871_uuid('race-order'),pg_temp.issue871_uuid('race-tier'),pg_temp.issue871_uuid('race-event'),'race-qr','valid','auto');
+
+-- #3524 — BOTH racers can prove the race order's address, and they must be able
+-- to. This file measures the ATOMIC WRITE: two eligible claimants holding the
+-- same valid proof, exactly one owner afterwards, the digest consumed once. If
+-- only one of them could clear the identity gate the loser would be refused
+-- before the UPDATE and the concurrency would never be exercised — the check
+-- would pass while proving nothing (#2136's lesson, and the reason this file
+-- executes SQL at all).
+--
+-- The shape is the PROVIDER-ASSERTED one: `identity_data.email_verified` true,
+-- which `account_owns_order_contact` accepts on its own and which every Google
+-- and Apple identity on production carries (measured 2026-09-22: 75/75 and
+-- 44/44). Two accounts asserting one address is a fixture convenience, not a
+-- claim about GoTrue; what is asserted below is what happens when two eligible
+-- claimants collide, not how they came to be eligible.
+-- The two `id` values are written as BARE literals on purpose: GoTrue's own
+-- `auth.identities.id` is a uuid, the stub the sibling #3524 suites build uses
+-- text, and an untyped literal in uuid spelling is accepted by both. A cast
+-- either way would pin this file to one of the two shapes.
+INSERT INTO auth.identities(id,user_id,provider,identity_data) VALUES
+  ('a0871a00-0000-4000-8000-000000000001',pg_temp.issue871_uuid('attacker'),'google',
+   '{"email":"race@example.test","email_verified":true}'::jsonb),
+  ('a0871a00-0000-4000-8000-000000000002',pg_temp.issue871_uuid('contender'),'apple',
+   '{"email":"race@example.test","email_verified":true}'::jsonb);
 
 INSERT INTO public.event_rsvps(id,event_id,user_id,guest_name,guest_email,guest_phone,rsvp_status,approval_status,
   pass_recovery_token_hash,pass_recovery_token_created_at)
@@ -379,3 +438,16 @@ BEGIN
   END IF;
 END;
 $race$;
+
+-- #3524 — remove the stub this file stood up, so the sibling #3524 suites in
+-- this lane find `auth.identities` absent and build the shape they need. Drops
+-- ONLY a table this session created; on a database with real GoTrue the flag
+-- above is never set and this is a no-op.
+DO $unstub$
+BEGIN
+  IF to_regclass('pg_temp.issue871_auth_identities_stub') IS NOT NULL THEN
+    EXECUTE 'DROP TABLE auth.identities';
+    DROP TABLE issue871_auth_identities_stub;
+  END IF;
+END
+$unstub$;

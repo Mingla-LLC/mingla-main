@@ -18516,7 +18516,7 @@
       "providerWorkflow": ".github/workflows/issue-2217-confirmation-app-cta-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "28ca14867d0d07b4213600ab6524c28bc1260ed3916acff8513ece29e413a358",
+        "sourceSha256": "ceac117df16f20084e00d2858a4bfcd0e60f1673a2378d35318d64814d092e83",
         "triggers": [
           "pull_request",
           "push",
@@ -18920,7 +18920,7 @@
       "providerWorkflow": ".github/workflows/issue-2269-verified-phone-claim-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "dd606ca311df00a9a2d221c8d1dd15ff642cbbdc7d63bdfafd2d7c558a357fe6",
+        "sourceSha256": "d41edc9b7c00f4aacbfaea095dbb45bfa684513c1b36dad781ff2400e8e03fce",
         "triggers": [
           "pull_request",
           "push",
@@ -19247,7 +19247,7 @@
       "providerWorkflow": ".github/workflows/issue-2323-free-order-claim-and-cta-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "177ee6427772cf8f348bfce7abd266882a267a7ece596f09fab6b98f8f37e52e",
+        "sourceSha256": "8fc46243564d9f7c88257308ef594b25999d012a864dc0162f381170f341843c",
         "triggers": [
           "pull_request",
           "push",
@@ -19968,7 +19968,7 @@
       "providerWorkflow": ".github/workflows/issue-871-attendance-entitlement-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5b1f3fcd10aef132d3a7d2dd652e8d44004dc1f8e436f4672a3602b0c0c1eb6b",
+        "sourceSha256": "e651e11279ac167dd12529361823fb82d6ffb304f34fac0e7857528fba9cb4fb",
         "triggers": [
           "pull_request"
         ],
@@ -19976,6 +19976,8 @@
           "!mingla-business/scripts/ci/bundle-baseline.json",
           ".github/ci-batch/MANIFEST.json",
           ".github/scripts/strict-grep/MANIFEST.json",
+          ".github/scripts/strict-grep/__tests__/i-aasa-claims-match-native-routes.test.mjs",
+          ".github/scripts/strict-grep/issue-2050-host-route-ownership.mjs",
           ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs",
           ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs",
           ".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs",
@@ -19984,20 +19986,28 @@
           "app-mobile/**",
           "docs/INVARIANT_REGISTRY.md",
           "mingla-business/**",
+          "supabase/config.toml",
           "supabase/functions/_shared/attendanceClaim.ts",
+          "supabase/functions/_shared/email/appLink.ts",
           "supabase/functions/_shared/governedAdSecret.ts",
           "supabase/functions/attendance-claim-backfill/**",
+          "supabase/functions/attendance-claim-handoff/**",
+          "supabase/functions/attendance-claim-identity/**",
           "supabase/functions/attendance-claim-link/**",
           "supabase/functions/claim-attendance/**",
+          "supabase/functions/record-consent/**",
           "supabase/functions/rsvp-notify/**",
           "supabase/functions/ticket-confirmation-dispatch/**",
           "supabase/migrations/20270302000871_issue_0871_attendance_claim_foundation.sql",
           "supabase/migrations/20270302000872_issue_0871_entitled_guest_roster.sql",
           "supabase/migrations/20270614002987_issue_2979_attendance_claim_secret_continuity.sql",
           "supabase/migrations/20270614003060_issue_3060_attendance_noncustomer_closure.sql",
+          "supabase/migrations/20270714003524_issue_3524_attendance_claim_identity_expiry_and_chat.sql",
+          "supabase/migrations/20270714013524_issue_3524_consent_basis_and_marketing_permission.sql",
           "supabase/migrations/__tests__/issue_0871*",
           "supabase/migrations/__tests__/issue_2979*",
-          "supabase/migrations/__tests__/issue_3060*"
+          "supabase/migrations/__tests__/issue_3060*",
+          "supabase/migrations/__tests__/issue_3524*"
         ],
         "jobKeys": [
           "issue-871-contract",

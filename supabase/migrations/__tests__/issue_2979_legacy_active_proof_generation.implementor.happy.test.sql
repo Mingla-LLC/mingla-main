@@ -58,6 +58,26 @@ INSERT INTO public.tickets(
   pg_temp.issue2979_a17_uuid('event'),
   'issue-2979-a17-ticket','valid','auto'
 );
+-- #3524 — THE CLAIMANT PROVES THE ORDER CONTACT.
+--
+-- `claim_attendance_internal_v2` gained one gate this file is not about: a
+-- claim link is delivered, and a delivered link can be passed on, so the
+-- account presenting it must also be able to show the order's own contact
+-- reaches it (`public.account_owns_order_contact`). The gate runs AFTER the
+-- digest match, the expiry and the eligibility check, so every result this file
+-- asserts on a bad or replayed proof is unaffected by it — but a claim this
+-- file expects to SUCCEED has to get past it, or the secret-continuity rule
+-- being measured here is never reached.
+--
+-- The proof used is #2269's verified-phone ledger: our own service-role-only
+-- row, written only after a code is approved at that number. It is chosen over
+-- the email routes because it needs no GoTrue table, and this lane provisions
+-- none. Written as UPDATE + INSERT beside the fixture rather than into them, so
+-- not one existing line of this file changes.
+UPDATE public.orders SET buyer_phone_e164 = '+15552979017'
+ WHERE id = pg_temp.issue2979_a17_uuid('order');
+INSERT INTO public.verified_phone_identities(user_id,phone_e164)
+VALUES(pg_temp.issue2979_a17_uuid('claimant'),'+15552979017');
 SET session_replication_role = origin;
 
 DO $a17$

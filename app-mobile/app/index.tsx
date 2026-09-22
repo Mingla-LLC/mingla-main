@@ -83,6 +83,7 @@ import AppLoadingScreen from '../src/components/AppLoadingScreen';
 import { AttendanceClaimSheet } from "../src/components/AttendanceClaimSheet";
 import {
   attendanceClaimAuthAction,
+  attendanceClaimHandoffIsLive,
   attendanceClaimReviewModalPolicy,
 } from "../src/utils/attendanceClaimDeepLink";
 import {
@@ -94,6 +95,11 @@ import {
   resolveAttendanceOfferingPath,
   type AttendanceClaimIntent,
   claimAttendanceByVerifiedIdentity,
+  // #3524 — the deliberate-account-handoff marker. It is what keeps a pending
+  // claim alive across the sign-out the mismatch flow performs on purpose.
+  readAttendanceClaimHandoffMarker,
+  clearAttendanceClaimHandoffMarker,
+  ATTENDANCE_CLAIM_HANDOFF_TTL_MS,
 } from "../src/services/attendanceClaimService";
 
 // ORCH-1125: PersistQueryClientProvider + AnimatedSplashScreen + asyncStoragePersister
@@ -234,6 +240,9 @@ function AppContent() {
     handleSignOut,
     handleGoogleSignIn,
     handleAppleSignIn,
+    // #3524 — sign in by emailed code, so a guest can prove the purchase address.
+    signInWithEmailCode,
+    verifyEmailCode,
     currentPage,
     setCurrentPage,
     showPreferences,
@@ -328,6 +337,164 @@ function AppContent() {
     setAttendanceClaimPresentationPending(false);
   }, []);
   const attendanceClaimUserRef = useRef<string | null | undefined>(undefined);
+  /**
+   * #3524 — true while a DELIBERATE account handoff is in flight.
+   *
+   * A ref, not state, and read synchronously: the auth-change effect fires the
+   * instant GoTrue drops the session, and an async SecureStore read would resolve
+   * after that effect had already cleared the pending claim.
+   *
+   * Seeded from SecureStore on mount so the marker survives a cold start between
+   * the sign-out and the new sign-in, and set by the sheet's own action before it
+   * calls signOut.
+   */
+  const attendanceClaimHandoffActiveRef = useRef(false);
+  /**
+   * #3524 — WHEN the handoff started, so the flag can age out the way the
+   * SecureStore marker does.
+   *
+   * The marker has a 30-minute TTL and deletes itself on a stale read. The ref
+   * had no TTL at all: it was seeded once on mount and cleared in exactly one
+   * place, so a flag set at 09:00 was still true at 17:00. Keeping the instant
+   * beside the boolean lets the decision below apply the same 30 minutes
+   * SYNCHRONOUSLY — an async SecureStore read there would resolve after the
+   * auth effect had already decided, which is the whole reason this is a ref.
+   */
+  const attendanceClaimHandoffStartedAtRef = useRef<number | null>(null);
+  /**
+   * #3524 — THE ONE PLACE THAT ANSWERS "is a deliberate handoff in flight?".
+   *
+   * Both halves, together: the flag must be set, AND it must not have outlived
+   * the marker's 30 minutes. Reading it disarms a stale flag, exactly as
+   * `readAttendanceClaimHandoffMarker` deletes a stale marker, so the two
+   * cannot drift apart.
+   */
+  const attendanceClaimHandoffLive = useCallback((): boolean => {
+    const live = attendanceClaimHandoffIsLive(
+      attendanceClaimHandoffActiveRef.current,
+      attendanceClaimHandoffStartedAtRef.current,
+      Date.now(),
+      ATTENDANCE_CLAIM_HANDOFF_TTL_MS,
+    );
+    if (!live && attendanceClaimHandoffActiveRef.current) {
+      // Aged out. Disarm both halves so the stale flag cannot answer again,
+      // mirroring the stale-marker delete in readAttendanceClaimHandoffMarker.
+      attendanceClaimHandoffActiveRef.current = false;
+      attendanceClaimHandoffStartedAtRef.current = null;
+      void clearAttendanceClaimHandoffMarker();
+    }
+    return live;
+  }, []);
+  /**
+   * #3524 — the claim is over, whatever the outcome. Disarms the in-memory twin
+   * of the marker the sheet just deleted. Without this the flag outlived the
+   * claim for the rest of the app session and the NEXT, unrelated account
+   * change preserved a pending claim it should have cleared — showing a
+   * stranger's masked purchase address to whoever signed in next.
+   */
+  const attendanceClaimSettled = useCallback((): void => {
+    attendanceClaimHandoffActiveRef.current = false;
+    attendanceClaimHandoffStartedAtRef.current = null;
+  }, []);
+  /** Opens the sign-in screen with the email-code panel already expanded, so a
+   * guest sent here by "that's not me" does not have to find it. */
+  const [attendanceClaimWantsEmailSignIn, setAttendanceClaimWantsEmailSignIn] =
+    useState(false);
+
+  useEffect(() => {
+    void readAttendanceClaimHandoffMarker().then((marker) => {
+      attendanceClaimHandoffActiveRef.current = marker !== null;
+      attendanceClaimHandoffStartedAtRef.current = marker?.startedAt ?? null;
+      if (marker !== null) setAttendanceClaimWantsEmailSignIn(true);
+    });
+  }, []);
+
+  /**
+   * #3524 — WHOSE ACCOUNT THE SHEET IS ABOUT TO USE.
+   *
+   * The email first, the E.164 phone when there is no email, and `null` when
+   * neither resolves (the sheet then falls back to the old generic sentence
+   * rather than rendering "Connect this ticket to null?").
+   */
+  const attendanceClaimSignedInIdentifier = useMemo<string | null>(() => {
+    const email = user?.email?.trim();
+    if (email) return email;
+    const phone = user?.phone?.trim();
+    return phone ? phone : null;
+  }, [user?.email, user?.phone]);
+
+  /**
+   * #3524 — "that's not me / use a different account".
+   *
+   * THE REF IS SET SYNCHRONOUSLY, BEFORE ANY AWAIT. `handleSignOut` is async and
+   * the GoTrue auth listener fires while it is still in flight; if the ref were
+   * set after the await, the auth effect would have already taken the `"clear"`
+   * branch and destroyed the pending claim. That is the whole bug this guards.
+   *
+   * The SecureStore marker is written by the sheet itself, immediately before it
+   * calls this, so the preserve decision also survives a cold start between the
+   * sign-out and the new sign-in.
+   *
+   * `handleSignOut` is the app's ONE sign-out path — it runs
+   * `performPrivateAuthCleanup` (which is what `signOut({skipPrivateCleanup:
+   * false})` composes to) and resets the shell's own UI state. Neither touches
+   * SecureStore, so the pending claim and its marker survive.
+   */
+  const attendanceClaimUseDifferentAccount = useCallback((): void => {
+    attendanceClaimHandoffActiveRef.current = true;
+    attendanceClaimHandoffStartedAtRef.current = Date.now();
+    setAttendanceClaimWantsEmailSignIn(true);
+    closeAttendanceClaimPresentation();
+    void handleSignOut();
+  }, [closeAttendanceClaimPresentation, handleSignOut]);
+
+  /**
+   * #3524 — the signed-out arm's `Sign in`.
+   *
+   * It used to be wired to `closeAttendanceClaimPresentation` alone: a button
+   * labelled "Sign in" that only dismissed the sheet. The sign-in surface is
+   * already mounted underneath (AppContent renders `WelcomeScreen` whenever
+   * `!isAuthenticated`), so reaching it means closing the sheet AND asking for
+   * the email-code panel — which is the one method that can prove the purchase
+   * address. Google and Apple stay exactly where they are, above it.
+   */
+  const attendanceClaimGoToSignIn = useCallback((): void => {
+    setAttendanceClaimWantsEmailSignIn(true);
+    closeAttendanceClaimPresentation();
+  }, [closeAttendanceClaimPresentation]);
+
+  /**
+   * #3524 — route to the event's group chat after a successful claim.
+   *
+   * Uses the EXISTING `conversation` deep-link shape — `setDeepLinkParams({tab:
+   * 'messages', conversationId, eventId})` then `setCurrentPage('connections')`
+   * — rather than a second router. `deepLinkService` is untouched.
+   *
+   * Returns false instead of throwing when there is nothing to open, so the sheet
+   * can say "you're connected, but we couldn't open the chat" and never make a
+   * routing failure look like a claim failure.
+   */
+  const attendanceClaimOpenChat = useCallback(
+    async (conversationId: string): Promise<boolean> => {
+      if (!conversationId) return false;
+      const params: Record<string, string> = {
+        tab: "messages",
+        conversationId,
+      };
+      const eventId = attendanceClaimIntent?.eventId;
+      if (eventId) params.eventId = eventId;
+      closeAttendanceClaimPresentation();
+      setDeepLinkParams(params);
+      setCurrentPage("connections");
+      return true;
+    },
+    [
+      attendanceClaimIntent?.eventId,
+      closeAttendanceClaimPresentation,
+      setCurrentPage,
+      setDeepLinkParams,
+    ],
+  );
   // #2217 — reconnect a ticket bought as a guest BEFORE this app existed on the
   // device. The #871 deep-link token cannot survive a store install, so once an
   // account exists we ask the server whether any ARMED guest order matches an
@@ -353,9 +520,23 @@ function AppContent() {
       previousUserId,
       nextUserId,
       attendanceClaimIntent !== null,
+      // #3524 — the marker is read SYNCHRONOUSLY from the ref that the sheet's
+      // "use a different account" action set before calling signOut. A SecureStore
+      // read here would be async and this effect would already have cleared the
+      // claim by the time it resolved, which is precisely the bug.
+      attendanceClaimHandoffLive(),
     );
+    // #3524 — "preserve" performs NO state change. This flow caused the account
+    // change, so the intent, the marker and the sheet are all left exactly as
+    // they are; the following null -> new-user-id transition is an ordinary
+    // "resume". The claim still cannot land on the new account unless that account
+    // independently proves it owns the purchase email or phone. Two guards.
+    if (authAction === "preserve") return;
     if (authAction === "clear") {
       void clearAttendanceClaimIntent();
+      void clearAttendanceClaimHandoffMarker();
+      attendanceClaimHandoffActiveRef.current = false;
+      attendanceClaimHandoffStartedAtRef.current = null;
       setAttendanceClaimIntent(null);
       closeAttendanceClaimPresentation();
     } else if (authAction === "resume") {
@@ -2498,8 +2679,14 @@ function AppContent() {
       intent={attendanceClaimIntent}
       initialInvalid={attendanceClaimInvalid}
       signedIn={isAuthenticated}
+      // #3524 — the sheet NAMES the account it is about to use, offers a way to
+      // reject it, and routes to the chat it actually joined.
+      signedInIdentifier={attendanceClaimSignedInIdentifier}
       onClose={closeAttendanceClaimPresentation}
-      onSignIn={closeAttendanceClaimPresentation}
+      onSignIn={attendanceClaimGoToSignIn}
+      onUseDifferentAccount={attendanceClaimUseDifferentAccount}
+      onOpenChat={attendanceClaimOpenChat}
+      onClaimSettled={attendanceClaimSettled}
       onSeeGuestList={async (eventId) => {
         const path = await resolveAttendanceOfferingPath(eventId);
         if (path === null) return false;
@@ -2563,6 +2750,11 @@ function AppContent() {
         <WelcomeScreen
           onGoogleSignIn={handleGoogleSignIn}
           onAppleSignIn={handleAppleSignIn}
+          // #3524 — the third way in. Google and Apple above are untouched:
+          // same props, same handlers, same order on the screen.
+          onSendEmailCode={signInWithEmailCode}
+          onVerifyEmailCode={verifyEmailCode}
+          emailPanelInitiallyOpen={attendanceClaimWantsEmailSignIn}
         />
       </ErrorBoundary>
       {attendanceClaimOverlay}

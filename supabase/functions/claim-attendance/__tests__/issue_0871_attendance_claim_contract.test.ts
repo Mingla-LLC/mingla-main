@@ -35,6 +35,40 @@ const root = new URL("../../../../", import.meta.url);
 const read = (path: string): string =>
   Deno.readTextFileSync(new URL(path, root));
 
+/**
+ * Every `useEffect(` body in a source file, brace-matched.
+ *
+ * Used to prove a rule about WHEN code runs rather than merely that some guard
+ * identifier is spelled somewhere in the file: an effect body is the only place
+ * a React screen can act without a user gesture.
+ */
+const reactEffectBodies = (source: string): string[] => {
+  const bodies: string[] = [];
+  const marker = "useEffect(";
+  let cursor = source.indexOf(marker);
+  while (cursor !== -1) {
+    const open = source.indexOf("{", cursor + marker.length);
+    if (open === -1) break;
+    let depth = 0;
+    let end = -1;
+    for (let i = open; i < source.length; i += 1) {
+      const ch = source[i];
+      if (ch === "{") depth += 1;
+      else if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (end === -1) break;
+    bodies.push(source.slice(open, end + 1));
+    cursor = source.indexOf(marker, end);
+  }
+  return bodies;
+};
+
 Deno.test("#871 handler boundary accepts only the exact entity/token contracts", () => {
   assertEquals(
     parseAttendanceClaimRequest({
@@ -228,7 +262,46 @@ Deno.test("#871 native and HTTPS fragment forms parse identically and reject amb
 Deno.test("#871 web landing validates the exact fragment before registered-scheme launch", () => {
   const landing = read("mingla-business/app/attendance/claim.tsx");
   assertStringIncludes(landing, "window.history.replaceState");
-  assertStringIncludes(landing, "autoAttemptedRef.current");
+  // [TEST-MOD-APPROVED #3524] `autoAttemptedRef.current` was the at-most-once
+  // guard on this page's ON-MOUNT scheme launch. #3524 deleted that launch
+  // outright rather than guarding it: on react-native-web `Linking.openURL` is
+  // `window.open(url, "_blank", "noopener")`, a browser blocks a pop-up nobody
+  // asked for, and a new tab pointed at a scheme no app claims is a dead tab.
+  // That is the same defect #2326 measured on a real iPhone and a real Galaxy
+  // A72 for the sibling confirmation card; this page never got that fix.
+  //
+  // "Launch automatically, but only once" is WEAKER than "never launch
+  // automatically", so the rule is re-asserted here at greater strength:
+  //   before: assertStringIncludes(landing, "autoAttemptedRef.current");
+  //   after:  no `useEffect` body in this file may navigate at all, AND the
+  //           launch must still be reachable from a press handler.
+  // The old line passed a file that navigated on mount as long as it spelled
+  // the guard. These lines cannot: they read the effect bodies themselves, and
+  // the second pair stops the check being satisfied by deleting all navigation.
+  // Proven by putting the pre-#3524 guarded on-mount launch back into the page:
+  // the old line passes it, and the loop below fails it on `openAppScheme(`.
+  for (const body of reactEffectBodies(landing)) {
+    for (
+      const navigation of [
+        "openAttendanceClaimWithFallback(",
+        "openAppScheme(",
+        "openExternal(",
+        "navigateFromTap(",
+        "openOnIos(",
+        "openOnAndroid(",
+        "Linking.openURL(",
+        "window.open(",
+      ]
+    ) {
+      assert(
+        !body.includes(navigation),
+        `${navigation} navigates from a useEffect on the claim landing`,
+      );
+    }
+  }
+  assert(reactEffectBodies(landing).length > 0, "no useEffect bodies parsed");
+  assertStringIncludes(landing, "onPress={isIos ? openOnIos : openOnAndroid}");
+  assertStringIncludes(landing, "openAttendanceClaimWithFallback(");
   const fragment =
     attendanceClaimUrls({ kind: "order", eventId, sourceId, token })
       .webClaimUrl.split("#")[1] ?? "";
@@ -412,10 +485,23 @@ Deno.test("#871 post-claim probe distinguishes authorization, privacy and recove
   assertStringIncludes(sheet, 'rosterState === "authorized"');
   assertStringIncludes(sheet, 'rosterState === "private"');
   assertStringIncludes(sheet, ': "route_error"');
+  // [TEST-MOD-APPROVED #3524] The rule is that the backdrop cannot dismiss the
+  // sheet while a round-trip is in flight; the pin named the ONE wait that
+  // existed when it was written.
+  //   before: 'backdropPressBehavior={submitting ? "none" : "close"}'
+  //   after:  the same guard, now covering the emailed-code round-trip too.
+  // #3524 adds a second wait — sending and confirming the code — and a backdrop
+  // tap during it would strand the person between two screens with a code in
+  // their inbox. Strictly stronger: the old string is satisfied by a sheet that
+  // dismisses mid-code, this one is not.
   assertStringIncludes(
     sheet,
-    'backdropPressBehavior={submitting ? "none" : "close"}',
+    'backdropPressBehavior={submitting || codeBusy ? "none" : "close"}',
   );
+  // And the two siblings that must move with it, which the old pin did not
+  // cover at all: the pan-down and the close button obey the same wait.
+  assertStringIncludes(sheet, "enablePanDownToClose={!(submitting || codeBusy)}");
+  assertStringIncludes(sheet, "const dismiss = submitting || codeBusy ? () => undefined : onClose;");
   assertStringIncludes(service, 'return "private"');
   assertStringIncludes(service, 'return "unavailable"');
   assertStringIncludes(service, 'return "error"');

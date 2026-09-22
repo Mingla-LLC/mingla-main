@@ -38,6 +38,17 @@
 //   - drop go.usemingla.com from the CONSUMER config              -> test (c-consumer) fails
 //   - drop biz.usemingla.com from, OR re-add go. to, the BUSINESS config
 //                                                                 -> test (c-business) fails (#1050)
+//   - drop /attendance/claim from the consumer AASA, or /attendance/ from
+//     app-mobile app.json                                          -> test (a) fails (#3524)
+//   - delete receiveAttendanceClaimUrl, isAttendanceClaimUrl, or
+//     SERVED_ROUTE_SEGMENTS, or add an app-mobile/app/attendance route
+//                                                                 -> test (d) fails (#3524)
+//
+// #3524 widened (b)'s definition of "backed" by exactly one named case: a
+// SHELL-CONSUMED segment, where +native-intent deliberately routes to "/" so the
+// shell's Linking listener can read a credential carried in the URL FRAGMENT.
+// Test (d) keeps that narrow — it re-asserts that a stray /z/* is still red and
+// that the exemption dies the moment its consuming code does.
 
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -59,8 +70,23 @@ const BUSINESS_ONELINK_DOMAIN = "biz.usemingla.com"; // BUSINESS branded OneLink
 
 // The consumer entity share-URL builders emit /b, /e, /t, and /exp on
 // host.usemingla.com; #2050 makes the consumer app their exclusive native owner.
-const REQUIRED_CONSUMER_AASA_PATHS = ["/b/*", "/e/*", "/t/*", "/exp/*"];
-const REQUIRED_ANDROID_PATH_PREFIXES = ["/b/", "/e/", "/t/", "/exp/"];
+// #3524 — the attendance-claim handoff joins both lists, and the two platforms
+// are deliberately asymmetric: Android matches a pathPrefix, so it claims the
+// whole `/attendance/` family; iOS matches components exactly, so it claims
+// `/attendance/claim` and ONLY that.
+//
+// NOT its subpath. A fragment is not part of a path, so the exact component
+// already matches the only URL anything mints — `/attendance/claim#<fragment>`,
+// from `attendanceClaimUrls` and `attendanceClaimHandoffUrls`. Claiming
+// `/attendance/claim/*` as well would hand iOS a family the app cannot answer
+// for: `isAttendanceClaimUrl` recognises the exact claim path only, so a subpath
+// opens the app and shows nothing, which is the #2245 defect exactly.
+// scripts/issue-2245/declared-app-links-resolve.deno.test.ts asserts that
+// directly, and its A6 control keeps the assertion honest.
+const REQUIRED_CONSUMER_AASA_PATHS = [
+  "/b/*", "/e/*", "/t/*", "/exp/*", "/attendance/claim",
+];
+const REQUIRED_ANDROID_PATH_PREFIXES = ["/b/", "/e/", "/t/", "/exp/", "/attendance/"];
 
 const readJson = (rel) => JSON.parse(readFileSync(join(REPO_ROOT, rel), "utf8"));
 
@@ -86,13 +112,58 @@ const routeSegment = (claimPath) =>
 // A claimed path is "backed" if a matching expo-router file route exists under
 // app-mobile/app/ — either a directory (app/b/, app/t/, app/exp/, app/e/) or a
 // leaf file (app/<seg>.tsx / .ts / <seg>/index.tsx).
-const hasNativeRoute = (segment) => {
+const hasFileRoute = (segment) => {
   const base = join(REPO_ROOT, "app-mobile", "app", segment);
   if (existsSync(base) && statSync(base).isDirectory()) return true;
   return [`${base}.tsx`, `${base}.ts`, join(base, "index.tsx"), join(base, "index.ts")].some(
     (p) => existsSync(p),
   );
 };
+
+// #3524 — THE SECOND WAY A CLAIM CAN BE BACKED, and the reason this is not a
+// hole in the invariant.
+//
+// `app-mobile/app/+native-intent.tsx` sends any segment outside its
+// `SERVED_ROUTE_SEGMENTS` set to `"/"`. For most segments that is the #2180
+// protection (a OneLink template id like `/w36m` is not a screen). For a small,
+// NAMED set it is the destination on purpose: the shell mounts, its `Linking`
+// listener receives the URL BYTE-FOR-BYTE — fragment included — and a receiver
+// in `app/index.tsx` consumes it. That is exactly how `/orders`, `/chat` and
+// `/invite` already work, and for `/attendance/claim` it is load-bearing: the
+// claim credential rides in the FRAGMENT, and a file route would push a screen
+// instead of letting the listener see it.
+//
+// So the exemption is narrow and it PROVES ITSELF rather than asserting itself:
+// the segment must be in this map AND both named files must exist AND each must
+// contain its named proof string. A stray `/z/*` is still red, because `z` is
+// neither a file route nor listed here; and deleting the receiver turns
+// `/attendance/claim` red even though the AASA never changed.
+const SHELL_CONSUMED_SEGMENTS = {
+  attendance: {
+    why: "#3524 — the claim credential is in the URL fragment; app/index.tsx's "
+      + "Linking listener consumes it after +native-intent routes it to '/'.",
+    proofs: [
+      ["app-mobile/app/+native-intent.tsx", "SERVED_ROUTE_SEGMENTS"],
+      ["app-mobile/app/index.tsx", "receiveAttendanceClaimUrl"],
+      ["app-mobile/src/utils/attendanceClaimDeepLink.ts", "isAttendanceClaimUrl"],
+    ],
+  },
+};
+
+const isShellConsumed = (segment) => {
+  const entry = SHELL_CONSUMED_SEGMENTS[segment];
+  if (entry === undefined) return false;
+  // A segment listed here must NOT also be a file route — two owners for one
+  // claimed path is the ambiguity this whole invariant exists to prevent.
+  if (hasFileRoute(segment)) return false;
+  return entry.proofs.every(([rel, needle]) => {
+    const abs = join(REPO_ROOT, rel);
+    return existsSync(abs) && readFileSync(abs, "utf8").includes(needle);
+  });
+};
+
+const hasNativeRoute = (segment) =>
+  hasFileRoute(segment) || isShellConsumed(segment);
 
 test("(a) consumer AASA block claims every public guest route", () => {
   const paths = claimedPaths(consumerBlock(loadAasa()));
@@ -189,5 +260,54 @@ test("(c-business) business app (mingla-business) declares biz.usemingla.com and
   assert.ok(
     !hasAutoVerifyHttpsHost(filters, ONELINK_DOMAIN),
     `business (mingla-business/app.json) must NOT declare an autoVerify https intentFilter for ${ONELINK_DOMAIN} — go. is consumer-only and re-breaks Android <=11 verification (#1050)`,
+  );
+});
+
+// #3524 — (d) THE EXEMPTION MUST NOT BE A BLANK CHEQUE.
+//
+// `/attendance/claim` is claimed in the AASA with no `app-mobile/app/attendance`
+// file route on purpose: the credential rides in the URL fragment and
+// `+native-intent.tsx` routes the segment to "/" so `app/index.tsx`'s Linking
+// listener can consume it byte-for-byte. Test (b) accepts that ONLY through
+// `SHELL_CONSUMED_SEGMENTS`, and only while the consuming code is actually
+// there. This arm proves both halves of that, so the widened definition cannot
+// quietly become "anything goes".
+test("(d) the shell-consumed exemption is narrow, proved, and still rejects a stray claim (#3524)", () => {
+  // A segment nobody declared is still unbacked — the original /z/* case.
+  assert.equal(hasNativeRoute("z"), false, "a stray /z/* claim must stay unbacked");
+  assert.equal(isShellConsumed("z"), false, "an undeclared segment is not shell-consumed");
+
+  // `attendance` is backed ONLY via the exemption, never via a file route.
+  assert.equal(
+    hasFileRoute("attendance"),
+    false,
+    "app-mobile/app/attendance must NOT exist — a file route would push a screen "
+      + "instead of letting the Linking listener see the fragment (R-38)",
+  );
+  assert.equal(isShellConsumed("attendance"), true);
+  assert.equal(hasNativeRoute("attendance"), true);
+
+  // …and the exemption is only true while every named proof is present. Delete
+  // the receiver and this goes red even though the AASA never changed.
+  for (const [rel, needle] of SHELL_CONSUMED_SEGMENTS.attendance.proofs) {
+    const abs = join(REPO_ROOT, rel);
+    assert.ok(existsSync(abs), `shell-consumed proof file missing: ${rel}`);
+    assert.ok(
+      readFileSync(abs, "utf8").includes(needle),
+      `${rel} must still contain ${needle} — the AASA claim for /attendance/claim `
+        + "is backed by that code and by nothing else",
+    );
+  }
+
+  // The Business app must never acquire the buyer's attendance route.
+  const businessFilters =
+    readJson("mingla-business/app.json").expo.android?.intentFilters ?? [];
+  assert.ok(
+    !businessFilters.some((f) =>
+      (f.data ?? []).some((d) =>
+        d.host === CONSUMER_HOST && (d.pathPrefix ?? d.path ?? "").startsWith("/attendance"),
+      ),
+    ),
+    "mingla-business/app.json must NOT claim /attendance on host.usemingla.com",
   );
 });

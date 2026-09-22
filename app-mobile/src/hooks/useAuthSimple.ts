@@ -179,7 +179,7 @@ const TRANSPORT_RETRY_MAX_ATTEMPTS = 2;
  */
 const TRANSPORT_RETRY_DELAYS_MS = Object.freeze([400, 1200]);
 
-const classifyAuthFailure = (
+export const classifyAuthFailure = (
   errName: unknown,
   errCode: unknown,
   errStatus: unknown,
