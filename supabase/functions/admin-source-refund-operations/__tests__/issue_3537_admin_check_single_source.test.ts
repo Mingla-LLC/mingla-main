@@ -10,6 +10,12 @@
 // Every other admin surface authorises through `is_admin_user()`, which matches
 // on EMAIL via `auth.uid()`. Three mechanisms; two unsatisfiable.
 //
+// Every refusal test asserts the resolver ASKED is_admin_user before refusing.
+// Without that, a refusal test passes on the broken code too — broken code refuses
+// everyone, so "refused" alone proves the gate is shut, not that it shut for the
+// right reason. The one exception is the unauthenticated case, which must refuse
+// with NO lookup at all, and asserts exactly that.
+//
 // These tests drive the REAL resolvers against a fake client. A source grep for
 // "is_admin_user" would pass while the call was unreachable, or while its result
 // was ignored — only running it proves the gate both opens and closes.
@@ -65,18 +71,31 @@ Deno.test("#3537 operations: a non-admin is refused", async () => {
   const f = fakeClient({ user: USER, isAdmin: false });
   const ctx = await resolveAdminRequestContext(AUTH, (() => f.client) as never);
   assertEquals(ctx.isActiveAdmin, false, "a non-admin must be refused");
+  assert(
+    f.rpcCalls.includes("is_admin_user"),
+    "must refuse ON the database's answer, not refuse without ever asking",
+  );
 });
 
 Deno.test("#3537 operations: a null answer is refused, not treated as truthy", async () => {
   const f = fakeClient({ user: USER, isAdmin: null });
   const ctx = await resolveAdminRequestContext(AUTH, (() => f.client) as never);
   assertEquals(ctx.isActiveAdmin, false, "a null rpc result must NOT open the gate");
+  assert(
+    f.rpcCalls.includes("is_admin_user"),
+    "must refuse ON the database's answer, not refuse without ever asking",
+  );
 });
 
 Deno.test("#3537 operations: an unauthenticated caller is refused", async () => {
   const f = fakeClient({ user: null, isAdmin: true });
   const ctx = await resolveAdminRequestContext(AUTH, (() => f.client) as never);
   assertEquals(ctx.isActiveAdmin, false, "no auth user must be refused");
+  assertEquals(
+    f.rpcCalls,
+    [],
+    "an unauthenticated caller must be refused BEFORE any admin lookup",
+  );
 });
 
 Deno.test("#3537 action: an active admin is authorised and audited by real identity", async () => {
@@ -95,6 +114,10 @@ Deno.test("#3537 action: a non-admin is refused", async () => {
   const f = fakeClient({ user: USER, isAdmin: false });
   const ctx = await resolveAdminActionContext(AUTH, (() => f.client) as never);
   assertEquals(ctx.isActiveAdmin, false);
+  assert(
+    f.rpcCalls.includes("is_admin_user"),
+    "must refuse ON the database's answer, not refuse without ever asking",
+  );
 });
 
 Deno.test("#3537 neither resolver queries admin_users directly any more", async () => {
