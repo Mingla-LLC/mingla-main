@@ -737,10 +737,13 @@ Deno.test("issue 3541 sizes the output budget inside what the synthesis timeout 
     SYNTHESIS_TIMEOUT_MS / MEASURED_SYNTHESIS_MS_PER_OUTPUT_TOKEN,
   );
   assertEquals(MAX_SYNTHESIS_OUTPUT_TOKENS < timeoutTokenCeiling, true);
-  // And it must clear the point production was actually cut off at, with room.
-  // At 1,200 the old budget sat 15 tokens above it, which is no margin at all.
+  // And it must clear the point production was actually cut off at, WITH ROOM.
+  // A bare `budget > observed` would have passed at the broken 1,200, where
+  // the model produced 1,185 — 98.8% of the budget. The defect is the absence
+  // of margin, so that is what this measures: the largest output ever observed
+  // must leave at least a third of the budget unspent.
   assertEquals(
-    MAX_SYNTHESIS_OUTPUT_TOKENS > MEASURED_SYNTHESIS_CANDIDATE_TOKENS,
+    MEASURED_SYNTHESIS_CANDIDATE_TOKENS / MAX_SYNTHESIS_OUTPUT_TOKENS <= 2 / 3,
     true,
   );
   // Measured on the wire, not read off the source.
