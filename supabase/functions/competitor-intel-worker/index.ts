@@ -110,6 +110,20 @@ export const MAX_SYNTHESIS_OUTPUT_TOKENS = 3_500;
 // The conversion used above. Kept separate so the tests can redo the
 // arithmetic instead of restating the answer.
 export const SYNTHESIS_OUTPUT_CHARS_PER_TOKEN = 3.5;
+// issue #3541 — the result_class recorded when the provider stopped because it
+// hit MAX_SYNTHESIS_OUTPUT_TOKENS. Distinct from "provider_error" on purpose:
+// the call worked and the bill was paid, so the next reader must be sent to
+// this file, not to Google's status page.
+//
+// Nothing constrains this value on the way in. issue_2725_record_model_usage
+// writes p_receipt->>'result_class' straight into
+// tool_competitor_model_usage_receipts.result_class, which is `text NOT NULL`
+// with no CHECK and no enum; issue_2725_finish_job never reads result_class at
+// all (it branches on p_safe_error); issue_2725_settle_zero_cost takes a
+// p_result_class argument its body ignores. There is no dashboard or admin
+// reader of the column. So a new value cannot break a consumer, and no
+// migration is needed to introduce one.
+export const RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED = "output_budget_exceeded";
 const MAX_SYNTHESIS_REQUEST_BYTES = 65_536;
 const PROVIDER_TIMEOUT_MS = 12_000;
 const SYNTHESIS_TIMEOUT_MS = 15_000;
@@ -1920,6 +1934,9 @@ export async function synthesizeBrief(
       geminiErrorFingerprint(response.status, errorBody),
     ); // ORCH-1201 Layer-C
   }
+  // issue #3541 — read once, used by the result classification below AND by
+  // the receipt, so the two can never disagree about what the provider said.
+  const finishReason = result.candidates?.[0]?.finishReason ?? null;
   const u = result.usageMetadata;
   const promptTokens = u?.promptTokenCount,
     candidateTokens = u?.candidatesTokenCount,
@@ -1987,13 +2004,34 @@ export async function synthesizeBrief(
       owner_facts: foundation.owner_facts,
     },
   };
-  let resultClass = response.ok && parsed ? "accepted" : "provider_error";
+  // issue #3541 — a MAX_TOKENS finish is OUR defect, not Google's.
+  //
+  // This used to record "provider_error", which is what sent the next reader
+  // to check on Google for eleven days while the actual cause was the output
+  // budget on line ~39. The HTTP call succeeded, the usage metadata was
+  // complete, the bill was paid — the answer simply did not fit. That deserves
+  // its own name, and RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED points at
+  // MAX_SYNTHESIS_OUTPUT_TOKENS instead of at the provider.
+  //
+  // It wins over BOTH of the other failure classes below. Truncated JSON
+  // usually fails to parse ("provider_error" before), but JSON that happens to
+  // close cleanly at the cut parses and then fails validation
+  // ("invalid_result" before) — the same defect must not report two different
+  // names depending on where the knife landed.
+  const outputBudgetExceeded = finishReason === "MAX_TOKENS";
+  let resultClass = response.ok && parsed
+    ? "accepted"
+    : outputBudgetExceeded
+    ? RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED
+    : "provider_error";
   if (usageComplete && parsed) {
     try {
       validateBrief(candidate, observations);
       if (!legacyV2Fixture) validateDecisionReport(candidate.decision_report, candidate, observations);
     } catch {
-      resultClass = "invalid_result";
+      resultClass = outputBudgetExceeded
+        ? RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED
+        : "invalid_result";
     }
   }
   const outputBytes = new TextEncoder().encode(
@@ -2030,7 +2068,7 @@ export async function synthesizeBrief(
           total_tokens: totalTokens ?? null,
           provider_model_version: result.modelVersion ?? null,
           latency_ms: Date.now() - started,
-          finish_reason: result.candidates?.[0]?.finishReason ?? null,
+          finish_reason: finishReason,
           result_class: usageComplete ? resultClass : "usage_missing",
           pricing_version: PRICING_VERSION,
           reserved_microusd: RESERVED_MICROUSD,
