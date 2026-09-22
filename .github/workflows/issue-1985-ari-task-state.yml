@@ -3,20 +3,42 @@ name: Issue 1985 Ari task state
 on:
   push:
     paths:
+      - "supabase/config.toml"
       - "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql"
+      - "supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.tester.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_first_turn_identity.tester_round2.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_choice_payload_authority.tester_round3.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_message_role_authority.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_3429_ari_chat_context.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_3429_ari_turn_authority.tester_adversarial.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_3429_ari_attachment_processing_lease.implementor.pg17.test.sql"
       - "supabase/functions/_shared/agentConversationState.ts"
       - "supabase/functions/_shared/agentConversationPlanner.ts"
       - "supabase/functions/_shared/agentRelativeTime.ts"
       - "supabase/functions/_shared/agentChoices.ts"
       - "supabase/functions/_shared/agentSystemPrompt.ts"
       - "supabase/functions/_shared/agentRateLimit.ts"
+      - "supabase/functions/_shared/agentAttachments.ts"
+      - "supabase/functions/_shared/agentAttachmentFinalize.ts"
+      - "supabase/functions/_shared/agentTurnSweep.ts"
+      - "supabase/functions/_shared/agentGemini.ts"
+      - "supabase/functions/_shared/agentReliability.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachments.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_structure.adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_rework1.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_reclaim.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_turn_control_auth_order.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_boundaries.tester.adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_failure_copy.snapshot.json"
+      - "supabase/functions/_shared/__tests__/fixtures/issue_3429/**"
+      - "supabase/functions/agent-attachment-cleanup/**"
+      - "supabase/functions/agent-attachments/**"
       - "supabase/functions/agent-chat/**"
       - "supabase/functions/agent-confirm-action/**"
+      - "supabase/functions/agent-conversation/**"
+      - "supabase/functions/agent-turn-control/**"
       - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts"
@@ -25,10 +47,32 @@ on:
       - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts"
       - "mingla-business/src/components/ari/**"
+      - "mingla-business/src/components/ari/__tests__/issue_3429_ari_picker_permission.implementor.test.ts"
+      - "mingla-business/src/components/ari/__tests__/issue_3429_ari_web_dialogs.implementor.test.ts"
       - "mingla-business/src/hooks/useAgentChat.ts"
       - "mingla-business/src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_chat_polish.implementor.test.ts"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_delivery_state.implementor.test.ts"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_rework_races.implementor.test.tsx"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_turn_scope.tester.adversarial.test.tsx"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_activity_terminal.implementor.test.tsx"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_conversation_scope.implementor.test.tsx"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_heic_metric.implementor.test.tsx"
+      - "mingla-business/src/hooks/useAriAttachments.ts"
       - "mingla-business/src/screens/ari/AriChatScreen.tsx"
       - "mingla-business/src/services/agentChatService.ts"
+      - "mingla-business/src/services/agentReliability.ts"
+      - "mingla-business/src/services/ariAttachmentService.ts"
+      - "mingla-business/src/services/ariAttachmentFileReader.native.ts"
+      - "mingla-business/src/services/ariAttachmentFileReader.ts"
+      - "mingla-business/src/services/ariImagePreparation.ts"
+      - "mingla-business/src/services/ariPrepareImage.native.ts"
+      - "mingla-business/src/services/ariPrepareImage.ts"
+      - "mingla-business/src/services/ariTurnView.ts"
+      - "mingla-business/src/services/__tests__/issue_3429_ari_upload_and_finalize.implementor.test.ts"
+      - "mingla-business/src/services/__tests__/issue_3429_ari_image_preparation.implementor.test.ts"
+      - "mingla-business/src/services/ariPolishAnalytics.ts"
+      - "mingla-business/src/services/ariTurnService.ts"
       - "mingla-business/src/store/ariConversationSelectionStore.ts"
       - "mingla-business/src/store/__tests__/issue_1985_active_conversation_persistence.test.ts"
       - "mingla-business/src/store/__tests__/issue_1985_first_created_conversation_selection.tester_adversarial.test.ts"
@@ -42,20 +86,42 @@ on:
     # issue #2881 — ready_for_review is required wherever the draft gate is set.
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - "supabase/config.toml"
       - "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql"
+      - "supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.tester.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_first_turn_identity.tester_round2.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_choice_payload_authority.tester_round3.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_message_role_authority.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_3429_ari_chat_context.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_3429_ari_turn_authority.tester_adversarial.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_3429_ari_attachment_processing_lease.implementor.pg17.test.sql"
       - "supabase/functions/_shared/agentConversationState.ts"
       - "supabase/functions/_shared/agentConversationPlanner.ts"
       - "supabase/functions/_shared/agentRelativeTime.ts"
       - "supabase/functions/_shared/agentChoices.ts"
       - "supabase/functions/_shared/agentSystemPrompt.ts"
       - "supabase/functions/_shared/agentRateLimit.ts"
+      - "supabase/functions/_shared/agentAttachments.ts"
+      - "supabase/functions/_shared/agentAttachmentFinalize.ts"
+      - "supabase/functions/_shared/agentTurnSweep.ts"
+      - "supabase/functions/_shared/agentGemini.ts"
+      - "supabase/functions/_shared/agentReliability.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachments.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_structure.adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_rework1.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_reclaim.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_turn_control_auth_order.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_attachment_boundaries.tester.adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3429_ari_failure_copy.snapshot.json"
+      - "supabase/functions/_shared/__tests__/fixtures/issue_3429/**"
+      - "supabase/functions/agent-attachment-cleanup/**"
+      - "supabase/functions/agent-attachments/**"
       - "supabase/functions/agent-chat/**"
       - "supabase/functions/agent-confirm-action/**"
+      - "supabase/functions/agent-conversation/**"
+      - "supabase/functions/agent-turn-control/**"
       - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts"
@@ -64,10 +130,32 @@ on:
       - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts"
       - "mingla-business/src/components/ari/**"
+      - "mingla-business/src/components/ari/__tests__/issue_3429_ari_picker_permission.implementor.test.ts"
+      - "mingla-business/src/components/ari/__tests__/issue_3429_ari_web_dialogs.implementor.test.ts"
       - "mingla-business/src/hooks/useAgentChat.ts"
       - "mingla-business/src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_chat_polish.implementor.test.ts"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_delivery_state.implementor.test.ts"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_rework_races.implementor.test.tsx"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_turn_scope.tester.adversarial.test.tsx"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_activity_terminal.implementor.test.tsx"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_conversation_scope.implementor.test.tsx"
+      - "mingla-business/src/hooks/__tests__/issue_3429_ari_heic_metric.implementor.test.tsx"
+      - "mingla-business/src/hooks/useAriAttachments.ts"
       - "mingla-business/src/screens/ari/AriChatScreen.tsx"
       - "mingla-business/src/services/agentChatService.ts"
+      - "mingla-business/src/services/agentReliability.ts"
+      - "mingla-business/src/services/ariAttachmentService.ts"
+      - "mingla-business/src/services/ariAttachmentFileReader.native.ts"
+      - "mingla-business/src/services/ariAttachmentFileReader.ts"
+      - "mingla-business/src/services/ariImagePreparation.ts"
+      - "mingla-business/src/services/ariPrepareImage.native.ts"
+      - "mingla-business/src/services/ariPrepareImage.ts"
+      - "mingla-business/src/services/ariTurnView.ts"
+      - "mingla-business/src/services/__tests__/issue_3429_ari_upload_and_finalize.implementor.test.ts"
+      - "mingla-business/src/services/__tests__/issue_3429_ari_image_preparation.implementor.test.ts"
+      - "mingla-business/src/services/ariPolishAnalytics.ts"
+      - "mingla-business/src/services/ariTurnService.ts"
       - "mingla-business/src/store/ariConversationSelectionStore.ts"
       - "mingla-business/src/store/__tests__/issue_1985_active_conversation_persistence.test.ts"
       - "mingla-business/src/store/__tests__/issue_1985_first_created_conversation_selection.tester_adversarial.test.ts"
@@ -99,6 +187,16 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 30s
+      # Issue #3429 REWORK-1: a second, fixture-free database proves the chain
+      # applies without Vault secrets, like every other replay lane.
+      postgres-vaultless:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 30s
     steps:
       - uses: actions/checkout@v4
       - name: Full migration replay and server-owned state authority
@@ -113,6 +211,12 @@ jobs:
           find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
             | sort -z \
             | while IFS= read -r -d '' migration; do
+                if [[ "$(basename "$migration")" == "20270712003429_issue_3429_ari_chat_context.sql" ]]; then
+                  psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+                    -c "SELECT vault.create_secret('http://127.0.0.1:54321', 'supabase_url', 'CI fixture only');" \
+                    -c "SELECT vault.create_secret('ci-service-role-fixture', 'service_role_key', 'CI fixture only');" \
+                    >/dev/null
+                fi
                 psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
               done
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -125,6 +229,37 @@ jobs:
             -f supabase/migrations/__tests__/issue_1985_choice_payload_authority.tester_round3.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1985_message_role_authority.implementor.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3429_ari_chat_context.implementor.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3429_ari_turn_authority.tester_adversarial.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3429_ari_attachment_processing_lease.implementor.pg17.test.sql
+      - name: "Vault-less full replay applies the #3429 migration with advisories only"
+        env:
+          PGPASSWORD: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..90}; do
+            if pg_isready -h localhost -p 5433 -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          advisories="$(mktemp)"
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                if [[ "$(basename "$migration")" == "20270712003429_issue_3429_ari_chat_context.sql" ]]; then
+                  psql -h localhost -p 5433 -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null 2>"$advisories"
+                else
+                  psql -h localhost -p 5433 -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+                fi
+              done
+          cat "$advisories"
+          grep -F "Issue #3429 advisory: Vault secret supabase_url is missing" "$advisories"
+          grep -F "Issue #3429 advisory: Vault secret service_role_key is missing" "$advisories"
+          test "$(psql -h localhost -p 5433 -U postgres -d postgres -tAc "SELECT count(*) FROM vault.decrypted_secrets WHERE name IN ('supabase_url', 'service_role_key')")" = "0"
+          test "$(psql -h localhost -p 5433 -U postgres -d postgres -tAc "SELECT count(*) FROM cron.job WHERE jobname = 'issue_3429_ari_attachment_cleanup'")" = "1"
+          test "$(psql -h localhost -p 5433 -U postgres -d postgres -tAc "SELECT to_regclass('public.agent_attachments') IS NOT NULL")" = "t"
 
   ari-task-state:
     if: ${{ github.event.pull_request.draft != true }}
@@ -136,11 +271,11 @@ jobs:
         with:
           deno-version: "1.46.x"
       - name: Run task reducer and planning regressions
-        run: deno test --allow-read supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts supabase/functions/_shared/__tests__/issue_1985_rework2_integrity.test.ts supabase/functions/_shared/__tests__/issue_1985_dst_boundaries.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts
+        run: deno test --allow-read supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts supabase/functions/_shared/__tests__/issue_1985_rework2_integrity.test.ts supabase/functions/_shared/__tests__/issue_1985_dst_boundaries.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_attachments.implementor.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_attachment_structure.adversarial.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_attachment_rework1.implementor.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_attachment_reclaim.implementor.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_turn_control_auth_order.implementor.test.ts supabase/functions/_shared/__tests__/issue_3429_ari_attachment_boundaries.tester.adversarial.test.ts
       - name: Type-check edge and shared task boundaries
-        run: deno check supabase/functions/_shared/agentConversationState.ts supabase/functions/_shared/agentRelativeTime.ts supabase/functions/_shared/agentConversationPlanner.ts supabase/functions/_shared/agentChoices.ts supabase/functions/_shared/agentSystemPrompt.ts supabase/functions/_shared/agentRateLimit.ts supabase/functions/agent-chat/index.ts supabase/functions/agent-confirm-action/index.ts
+        run: deno check supabase/functions/_shared/agentConversationState.ts supabase/functions/_shared/agentRelativeTime.ts supabase/functions/_shared/agentConversationPlanner.ts supabase/functions/_shared/agentChoices.ts supabase/functions/_shared/agentSystemPrompt.ts supabase/functions/_shared/agentRateLimit.ts supabase/functions/_shared/agentAttachments.ts supabase/functions/_shared/agentAttachmentFinalize.ts supabase/functions/_shared/agentTurnSweep.ts supabase/functions/_shared/agentGemini.ts supabase/functions/_shared/agentReliability.ts supabase/functions/agent-attachment-cleanup/index.ts supabase/functions/agent-attachments/index.ts supabase/functions/agent-chat/index.ts supabase/functions/agent-confirm-action/index.ts supabase/functions/agent-conversation/index.ts supabase/functions/agent-turn-control/index.ts
       - name: Prove Class A task-state guard and protected security guards
-        run: node .github/scripts/strict-grep/issue-1985-ari-task-state.mjs --self-test && node .github/scripts/strict-grep/issue-1985-ari-task-state.mjs && node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs && node .github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs
+        run: node .github/scripts/strict-grep/issue-1985-ari-task-state.mjs --self-test && node .github/scripts/strict-grep/issue-1985-ari-task-state.mjs && node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs --self-test && node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs && node .github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -149,7 +284,7 @@ jobs:
       - run: npm ci --ignore-scripts
         working-directory: mingla-business
       - name: Run Business typed-choice and superseded-V1 contracts
-        run: npx jest src/components/ari/__tests__/issue_1985_choice_payloads.test.tsx src/components/ari/__tests__/issue_1985_value_choices.adversarial.test.tsx src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts src/components/ari/__tests__/orch_1103_choices_chips.test.ts src/store/__tests__/issue_1985_active_conversation_persistence.test.ts src/store/__tests__/issue_1985_first_created_conversation_selection.tester_adversarial.test.ts --runInBand
+        run: npx jest src/components/ari/__tests__/issue_1985_choice_payloads.test.tsx src/components/ari/__tests__/issue_1985_value_choices.adversarial.test.tsx src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts src/components/ari/__tests__/orch_1103_choices_chips.test.ts src/store/__tests__/issue_1985_active_conversation_persistence.test.ts src/store/__tests__/issue_1985_first_created_conversation_selection.tester.adversarial.test.ts src/hooks/__tests__/issue_3429_ari_chat_polish.implementor.test.ts src/hooks/__tests__/issue_3429_ari_delivery_state.implementor.test.ts src/hooks/__tests__/issue_3429_ari_rework_races.implementor.test.tsx src/hooks/__tests__/issue_3429_ari_turn_scope.tester.adversarial.test.tsx src/components/ari/__tests__/issue_3429_ari_picker_permission.implementor.test.ts src/components/ari/__tests__/issue_3429_ari_web_dialogs.implementor.test.ts src/hooks/__tests__/issue_3429_ari_activity_terminal.implementor.test.tsx src/hooks/__tests__/issue_3429_ari_conversation_scope.implementor.test.tsx src/hooks/__tests__/issue_3429_ari_heic_metric.implementor.test.tsx src/services/__tests__/issue_3429_ari_upload_and_finalize.implementor.test.ts src/services/__tests__/issue_3429_ari_image_preparation.implementor.test.ts --runInBand
         working-directory: mingla-business
       - name: Type-check Business client
         run: node .github/scripts/strict-grep/issue-1985-business-typecheck.mjs

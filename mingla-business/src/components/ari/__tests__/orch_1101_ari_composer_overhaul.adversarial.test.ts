@@ -181,9 +181,14 @@ describe("ORCH-1101 ADV-4 · composer height is bounded on a long multiline valu
 
 describe("ORCH-1101 ADV-5 · no send/primary fill is translucent (Android opaque policy)", () => {
   it("the send disc backgroundColor is an opaque token, never rgba/hsla/opacity", () => {
+    // [TEST-MOD-APPROVED #3429] (b) assertion unchanged; the slice window is
+    // repaired. #3429 renamed the "+" style suggestBtn -> attachBtn, so the end
+    // marker was -1 and the window ran to end of file — a #2113-class runaway
+    // window that swept an unrelated disabled-state opacity into the check.
+    // The sendBtn block itself is byte-identical to main.
     const sendBtnBlock = inputBarCode.slice(
       inputBarCode.indexOf("sendBtn:"),
-      inputBarCode.indexOf("suggestBtn:"),
+      inputBarCode.indexOf("attachBtn:"),
     );
     expect(sendBtnBlock).toMatch(/backgroundColor:\s*ariPalette\.userBubble/);
     expect(sendBtnBlock).not.toMatch(/backgroundColor:\s*["']?(rgba|hsla)/i);

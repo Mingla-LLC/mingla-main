@@ -12,7 +12,7 @@
  *   - Toast (canonical app-wide toast — supports tap, close button, swipe-up to dismiss)
  */
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Keyboard,
@@ -20,6 +20,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -41,12 +42,14 @@ import {
 import { AriOrb } from "../../components/ari/AriOrb";
 import { AiDisclosureModal } from "../../components/ari/AiDisclosureModal";
 import { ConversationDrawer } from "../../components/ari/ConversationDrawer";
-import { EmptyState } from "../../components/ari/EmptyState";
+import { AriEmptyStateLayoutContext, EmptyState } from "../../components/ari/EmptyState";
 import { InputBar } from "../../components/ari/InputBar";
 import { MessageList } from "../../components/ari/MessageList";
 import type { ConfirmOutcome } from "../../components/ari/toolProposalTypes";
-import { QuickReplyChips } from "../../components/ari/QuickReplyChips";
 import { StreamingText } from "../../components/ari/StreamingText";
+import { AriActivity } from "../../components/ari/AriActivity";
+import { AriAttachmentTray } from "../../components/ari/AriAttachmentCards";
+import { AriAttachmentSourceSheet } from "../../components/ari/AriAttachmentSourceSheet";
 import { Toast } from "../../components/ui/Toast";
 import { useShareNetworkState } from "../../components/ui/useShareNetworkState";
 import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
@@ -54,6 +57,7 @@ import { BrandSwitcherSheet } from "../../components/brand/BrandSwitcherSheet";
 import { ariChatErrorCopy, shouldReportAriChatError } from "./ariChatErrorCopy";
 
 import { useAgentChat } from "../../hooks/useAgentChat";
+import { useAriAttachments } from "../../hooks/useAriAttachments";
 import { useAriPreferences } from "../../hooks/useAriPreferences";
 import { useConfirmPendingAction } from "../../hooks/useConfirmPendingAction";
 import { useConversationList } from "../../hooks/useConversationList";
@@ -135,6 +139,30 @@ const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({
   );
 };
 
+/**
+ * ORCH-1890 — THE keyboard-open lift. One site, at module scope.
+ *
+ * How far the composer column is lifted off the bottom of the screen: the
+ * keyboard plus its Done bar plus the clearance when the keyboard is up, and
+ * the resting occupancy when it is down. Both consumers read this — the
+ * composer's own bottom padding and the empty-state clamp — because rule (E)
+ * of the keyboard gate matches with a NON-GLOBAL regex and validates only the
+ * FIRST lift site it finds; a second site is invisible to it, which is how
+ * REWORK-2's clamp went unguarded until #1890's singularity suite caught it.
+ *
+ * It lives at module scope rather than inside the component so it is outside
+ * the region #1850's A-5 stripper deletes (that check treats the props
+ * interface's `{` plus its docblock as one JSX comment and drops ~490 lines
+ * with it, so a use inside the component body is invisible to it).
+ *
+ * Do NOT add a measured pill height: this positions the pill's bottom edge, so
+ * any pill-height term is the double count #1890 removed.
+ */
+const composerOccupiedPxFor = (keyboardHeight: number, restingOccupiedPx: number): number =>
+  keyboardHeight > 0
+    ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
+    : restingOccupiedPx;
+
 export interface AriChatScreenProps {
   /**
    * #2830 — render inside a host that already owns the page chrome.
@@ -181,9 +209,18 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // #1841 — library-backed; 0 on web and while the keyboard is closed. Same
   // value, same timing as the deleted listener pair; no bespoke plumbing.
   const keyboardHeight = useKeyboardHeight();
-  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [attachmentSourceOpen, setAttachmentSourceOpen] = useState(false);
+  // P2-6: the empty-state hero clears the real composer column (tray, failure
+  // details, helper and pill), measured without the keyboard lift.
+  const [composerContentHeight, setComposerContentHeight] = useState(60);
+  // R-2: the height of the hero's own (keyboard-independent) box, measured.
+  // It is what keeps the hero ANCHORED — the scroll content keeps this height
+  // whatever the keyboard does, so opening the keyboard shrinks the viewport
+  // instead of re-centering the orb.
+  const [emptyHeroBoxHeight, setEmptyHeroBoxHeight] = useState(0);
+  const [draftText, setDraftText] = useState("");
+  const composerInputRef = useRef<React.ElementRef<typeof TextInput> | null>(null);
   const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
-  const [retryText, setRetryText] = useState<string | null>(null);
   const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
   const [cooldownNow, setCooldownNow] = useState(() => Date.now());
   // ORCH-1101 REWORK Bug #6 — dismiss the AI-disclosure sheet the instant the
@@ -234,7 +271,14 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       setStoredConversationSelection(conversationScopeKey, conversationId);
     }
   }, [conversationScopeKey, setStoredConversationSelection]);
+  const surface = websiteSplit ? "website" as const : "main" as const;
   const chat = useAgentChat(null, selectedBrandId, persistConversationSelection);
+  React.useEffect(() => chat.setSurface(surface), [chat.setSurface, surface]);
+  const attachments = useAriAttachments({
+    brandId: selectedBrandId,
+    conversationId: chat.conversationId,
+    surface,
+  });
   const [restoredConversationScope, setRestoredConversationScope] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -281,9 +325,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     if (previousBrandId.current === selectedBrandId) return;
     previousBrandId.current = selectedBrandId;
     setDrawerOpen(false);
-    setSuggestionsOpen(false);
+    setAttachmentSourceOpen(false);
+    setDraftText("");
     setLocalError(null);
-    setRetryText(null);
     setRateLimitUntil(null);
     Keyboard.dismiss();
   }, [currentBrand?.displayName, selectedBrandId]);
@@ -307,17 +351,24 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     });
   };
 
-  const handleSend = async (text: string): Promise<boolean> => {
+  const handleSend = (text: string): boolean => {
     if (!online) {
-      setLocalError("You're offline. Reconnect to continue this plan.");
+      setLocalError("You’re offline. Reconnect to send.");
       return false;
     }
     if (rateLimitUntil !== null && rateLimitUntil > Date.now()) return false;
+    const selectedFiles = attachments.consumeReady();
+    if (selectedFiles === null) return false;
+    if (!text.trim() && selectedFiles.length === 0) return false;
+    // Composer ownership transfers to one local row in this synchronous event.
+    setDraftText("");
     setLocalError(null);
-    const result = await chat.sendMessage(text);
+    void chat.sendMessage(text, selectedFiles).then((result) => {
     if (result.kind === "error") {
+      // P2-2: a stop the person asked for is represented only by its row or
+      // callout — never an error toast or a non-fatal report.
+      if (result.code === "TURN_STOPPED" || result.code === "STOP_BEFORE_ACCEPTANCE") return;
       if (["BRAND_CONTEXT_REQUIRED", "BRAND_ACCESS_DENIED", "CONVERSATION_BRAND_MISMATCH", "LEGACY_CONVERSATION_UNSCOPED", "TENANT_SCOPE_UNAVAILABLE", "UNAUTHORIZED"].includes(result.code)) {
-        setRetryText(text);
       } else if (result.code === "RATE_LIMITED") {
         const parsedUntil = result.cooldown_until ? Date.parse(result.cooldown_until) : Number.NaN;
         const fallbackMs = Math.max(1, result.retry_after_seconds ?? 5) * 1000;
@@ -356,10 +407,16 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         }
         setLocalError(ariChatErrorCopy(result.code));
       }
-      return false;
+      return;
     }
     if (result.kind === "text" && result.handoff_route) router.push(result.handoff_route as never);
-    setRetryText(null);
+    }).catch((error: unknown) => {
+      // #3184 — the screen owns no connection sentence. A throw here has no
+      // registry code (the transport layer already returns TRANSPORT_UNAVAILABLE
+      // as a result when the request never reached Mingla), so show the
+      // module's internal-failure copy instead of blaming the network.
+      setLocalError(error instanceof Error ? error.message : ariChatErrorCopy("EDGE_ERROR"));
+    });
     return true;
   };
 
@@ -389,6 +446,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   ): Promise<ConfirmOutcome> => {
     if (!chat.pendingAction) return { ok: false };
     setLocalError(null);
+    // D-1: watch the proposal's own turn; its callout appears only once
+    // approved_action_started arrives and clears when this confirm resolves.
+    chat.beginConfirmedActivity(chat.pendingAction.pending_action_id);
+    try {
     let result: Awaited<ReturnType<typeof confirm.confirm>>;
     try {
       result = await confirm.confirm(chat.pendingAction.pending_action_id, editedArgs);
@@ -436,6 +497,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     }
     if (!keepPending) chat.clearPendingAction();
     return { ok: true, brandId };
+    } finally {
+      chat.finishConfirmedActivity();
+    }
   };
 
   const handleCancelProposal = async (): Promise<void> => {
@@ -466,6 +530,47 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const legacyReadOnly = !!selectedBrandId && activeConversation?.brand_id === null;
   const brandSelectionRequired = !selectedBrandId && (brands.data?.length ?? 0) > 0;
   const brandName = currentBrand?.displayName ?? "selected brand";
+  // #3429 REWORK-2 R-2 — the empty state is an absolute overlay whose bottom
+  // padding is deliberately keyboard-independent (that is what stops the orb
+  // jumping when the keyboard opens). The composer, however, DOES rise by the
+  // keyboard height, so with the keyboard up it was drawing straight over the
+  // first-run copy and the whole "Tap (+) to attach context" hint — on an
+  // iPhone SE the body sentence was cut mid-word and the hint row vanished.
+  //
+  // This is how far the composer's top edge rises above its resting position.
+  // It is applied as a bottom margin on the hero's VISIBLE REGION only, never
+  // to the hero's own box, so:
+  //   - the visible region's bottom edge is clamped to the composer's top
+  //     edge, so the two rectangles can never intersect;
+  //   - the content box keeps the hero box's full resting height, so the orb
+  //     and headline stay exactly where they were (no jump).
+  //
+  // #3429 REWORK-4 N-1 — what the clamp excludes is TRIMMED, not scrollable.
+  // An earlier version of this comment promised the excluded content "stays
+  // reachable by scrolling"; it never was. The box below is deliberately not a
+  // ScrollView (see there), so nothing scrolls and no gesture brings trimmed
+  // content back — only dismissing the keyboard does. Because trimming is
+  // real, WHAT gets trimmed matters, and that is decided inside EmptyState:
+  // the clamp is handed to it through AriEmptyStateLayoutContext so it can
+  // sacrifice the decorative hero first and always keep the attach hint.
+  // Web has no soft keyboard, so this is 0 there and nothing changes.
+  const composerRestingOccupiedPx =
+    Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX;
+  // The one lift, read by both consumers — see `composerOccupiedPxFor`.
+  const composerOccupiedPx = composerOccupiedPxFor(
+    keyboardHeight,
+    composerRestingOccupiedPx,
+  );
+  const emptyHeroComposerClamp = Math.max(
+    0,
+    composerOccupiedPx + spacing.sm - composerRestingOccupiedPx,
+  );
+  // #3429 REWORK-4 N-1 — the hero's drop order is EmptyState's to enforce, and
+  // this is the only number it needs from the screen.
+  const emptyStateLayout = React.useMemo(
+    () => ({ viewportBottomClampPx: emptyHeroComposerClamp }),
+    [emptyHeroComposerClamp],
+  );
   const rateLimited = rateLimitUntil !== null && rateLimitUntil > cooldownNow;
   const cooldownSeconds = rateLimited ? Math.max(1, Math.ceil((rateLimitUntil - cooldownNow) / 1000)) : 0;
 
@@ -496,8 +601,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   }, [recovery?.code]);
 
   const handleRecovery = (): void => {
-    if (recovery?.code === "TENANT_SCOPE_UNAVAILABLE" && retryText) {
-      void handleSend(retryText);
+    if (recovery?.code === "TENANT_SCOPE_UNAVAILABLE") {
+      void chat.retryTenantRecovery().catch((error: unknown) => {
+        setLocalError(error instanceof Error ? error.message : "Ari couldn’t retry that message.");
+      });
     } else if (recovery?.code === "UNAUTHORIZED") {
       router.replace("/" as never);
     } else if (recovery?.code === "BRAND_CONTEXT_REQUIRED" || recovery?.code === "BRAND_ACCESS_DENIED") {
@@ -539,6 +646,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           </Pressable>
         </View>
       ) : null}
+      <View style={[styles.ariPane, websiteSplit && isWideDesktop ? styles.websiteAriPane : null]}>
       {/* Header — the embedding host owns the page title, so it is dropped
           there rather than stacking two headers in one column. */}
       <View style={[styles.header, embedded ? styles.headerEmbedded : null]}>
@@ -588,23 +696,84 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 orb. Its paddingBottom keeps the hero above the resting composer
                 and is keyboard-independent, so it stays put when the keyboard
                 opens. Tapping anywhere dismisses the keyboard — the only escape
-                on a multiline composer where Return inserts a newline. */}
-            <Pressable
+                on a multiline composer where Return inserts a newline.
+                REWORK-2 R-2: the hero box below is still keyboard-independent
+                (that is the no-jump contract). The keyboard lift is applied to
+                the SCROLL VIEWPORT inside it instead, clamping the viewport's
+                bottom edge to the composer's top edge. */}
+            <View
               style={[
                 styles.emptyOverlay,
                 {
                   paddingBottom:
                     Math.max(insets.bottom, spacing.md) +
                     BOTTOM_NAV_CLEARANCE_PX +
-                    60,
+                    60 +
+                    Math.max(0, composerContentHeight - 60),
                 },
               ]}
-              onPress={() => Keyboard.dismiss()}
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss keyboard"
             >
-              <EmptyState />
-            </Pressable>
+              {/* This wrapper is the hero's resting box: it fills the padded
+                  overlay and the clamp never touches it, so its measured
+                  height is the keyboard-independent height the scroll content
+                  keeps. That is what anchors the orb. */}
+              <View
+                style={styles.emptyHeroBox}
+                onLayout={(event) => {
+                  const next = Math.round(event.nativeEvent.layout.height);
+                  setEmptyHeroBoxHeight((previous) =>
+                    previous === next ? previous : next
+                  );
+                }}
+              >
+                {/* The clamp lands HERE, on the visible region: this Pressable
+                    is both the tap-to-dismiss target and — because an
+                    accessibilityRole flattens its subtree — the single node a
+                    screen reader and an accessibility-frame dump see for the
+                    empty state. Clamping it is what makes that rectangle stop
+                    at the composer's top edge instead of running underneath it.
+                    The dismiss target should not extend under the composer
+                    either. The box inside keeps the measured RESTING height,
+                    so the orb does not move when the keyboard opens. */}
+                <Pressable
+                  style={[
+                    styles.emptyHeroPress,
+                    { marginBottom: emptyHeroComposerClamp },
+                  ]}
+                  onPress={() => Keyboard.dismiss()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Dismiss keyboard"
+                >
+                  {/* Deliberately NOT a ScrollView: the ORCH-0892 / #1841
+                      gate blocks a react-native ScrollView in a file that has a
+                      TextInput, and it is right to — a scroller near a focused
+                      field belongs to the keyboard library. Nothing here hosts
+                      a field, and this box must NOT be keyboard-aware: an
+                      auto-scrolling container would reintroduce exactly the orb
+                      jump ORCH-1057 removed. A plain box whose content keeps the
+                      measured RESTING height is what anchors the hero, and
+                      dismissing the keyboard (tap anywhere here) restores the
+                      full height.
+
+                      #3429 REWORK-4 N-1: because this box keeps the RESTING
+                      height while the Pressable above it shrinks to the clamp,
+                      this box's own bottom is trimmed — there is no scrolling
+                      and no gesture that recovers it. EmptyState therefore owns
+                      the drop order, and gets the clamp through the context
+                      below so the attach hint outlives the decorative hero. */}
+                  <View
+                    style={[
+                      styles.emptyHeroContent,
+                      { minHeight: emptyHeroBoxHeight },
+                    ]}
+                  >
+                    <AriEmptyStateLayoutContext.Provider value={emptyStateLayout}>
+                      <EmptyState />
+                    </AriEmptyStateLayoutContext.Provider>
+                  </View>
+                </Pressable>
+              </View>
+            </View>
             <View style={styles.flexSpacer} pointerEvents="none" />
           </>
         ) : (
@@ -614,11 +783,18 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
             isExecuting={confirm.isExecuting}
             onConfirm={handleConfirm}
             onCancel={handleCancelProposal}
-            isThinking={chat.isSending && !chat.pendingAction}
-            renderThinking={() => <StreamingText visible />}
+            isThinking={!!chat.activeTurn}
+            renderThinking={() => chat.activeTurn ? (
+              <AriActivity
+                turn={chat.activeTurn}
+                surface={surface}
+                onStop={() => chat.stopTurn(chat.activeTurn!.clientTurnId)}
+                onRetry={() => chat.retryTurn(chat.activeTurn!.clientTurnId)}
+              />
+            ) : null}
             brandNamesById={brandNamesById}
             accountId={accountId}
-            onSeedMessage={(text) => void handleSend(text)}
+            onSeedMessage={(text) => { setDraftText(text); composerInputRef.current?.focus(); }}
             // ORCH-1103 REWORK 2 — a disambiguation / no-brand-handoff chip tap
             // sends the chip label as a normal user turn (Q2 conversational
             // feedback; Gemini re-proposes with the resolved target).
@@ -629,13 +805,24 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 return;
               }
               void chat.retryTurn(clientTurnId).then((result) => {
-                if (result?.kind === "error") setLocalError(result.message);
+                if (result?.kind === "error" && result.code === "OFFLINE") {
+                  setLocalError(result.message);
+                }
               }).catch((error: unknown) => {
                 setLocalError(error instanceof Error
                   ? error.message
                   : "Ari could not retry that message. Try again.");
               });
             }}
+            onEditTurn={(clientTurnId) => {
+              const restored = chat.editTurn(clientTurnId);
+              if (!restored) return;
+              setDraftText(restored.text);
+              attachments.restoreDrafts(restored.attachments);
+              requestAnimationFrame(() => composerInputRef.current?.focus());
+            }}
+            onDiscardTurn={chat.discardTurn}
+            surface={surface}
             choicesDisabled={chat.isSending || !online}
             attachedCovers={attachedCovers}
             onAttachDone={(cover) => {
@@ -655,11 +842,36 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           style={[
             styles.inputWrap,
             {
-              // ORCH-1101 Bug A (screen side): on desktop web there is no soft
-              // keyboard (keyboardHeight stays 0) and no floating BottomNav
-              // capsule (the business web nav is a side rail), so the old
+              // ORCH-1101 Bug A (screen side): on WIDE desktop web there is no
+              // soft keyboard (keyboardHeight stays 0) and no floating BottomNav
+              // capsule (the business web nav is a left side rail), so the old
               // `insets.bottom + BOTTOM_NAV_CLEARANCE_PX` reserved a phantom
-              // 80px gap below the composer. Web → spacing.sm only.
+              // 80px gap below the composer. Wide desktop web → spacing.sm only.
+              //
+              // #3460 [narrow-web-nav-overlap] — that premise is about WIDTH, not
+              // platform, and it was written as `Platform.OS === "web"`, which is
+              // also true for every web viewport UNDER `WIDE_DESKTOP_MIN_WIDTH`
+              // (1024, inclusive). Below 1024 `BottomNav.web.tsx` renders
+              // `MobileWebCapsule` — a floating capsule in `navWrap`
+              // (`position:absolute; bottom:0`, painted after `<Slot/>`) whose
+              // `pointerEvents="box-none"` compiles in react-native-web 0.21.2 to
+              // `<selector> > * { pointer-events: auto }`, so its full-width direct
+              // child captures taps across the whole 80pt band. With only
+              // `spacing.sm` (8pt) of clearance the composer sat INSIDE that band:
+              // `document.elementFromPoint` returned a nav element at 147 of 147
+              // points sampled across the Attach (+) button, the input and Send on
+              // real mobile Safari at 402x714, and real taps never reached the
+              // controls. The clearance therefore follows `isWideDesktop` — the
+              // same hook the nav itself gates on (I-DESKTOP-GATE-VIA-HOOK) — so
+              // narrow web gets the same 80pt capsule clearance native gets, and
+              // >=1024 keeps ORCH-1101's phantom-gap fix byte-for-byte.
+              //
+              // NOT fixed by adding `/ari` to `(tabs)/_layout.tsx`'s
+              // `hideBottomNav` list: `/campaigns/compose` and `/analytics` are
+              // sub-routes a user can back out of, whereas `/ari` IS a top-level
+              // tab (and Website → Edit with Ari redirects INTO it at
+              // `/(tabs)/ari?sitesIntent=edit`), so hiding the capsule there would
+              // strand a phone-web user on a screen with no navigation.
               //
               // Native: when the keyboard is up, this padding IS the composer's
               // position. `inputWrap` carries only paddingHorizontal/paddingTop
@@ -683,37 +895,37 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               // safe-area inset.
               paddingBottom:
                 Platform.OS === "web"
-                  ? spacing.sm
-                  : keyboardHeight > 0
-                    ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
-                    : Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX,
+                  ? isWideDesktop
+                    ? spacing.sm
+                    // #3460 — narrow web HAS the floating capsule, so it needs the
+                    // same clearance the native branch below reserves.
+                    : Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX
+                  // ORCH-1101 ADV-3 checks that the web result precedes the
+                  // native clearance term IN THIS EXPRESSION, so the resting
+                  // value is spelled out here rather than passed as
+                  // `composerRestingOccupiedPx`. Same value, same owner for the
+                  // lift itself — the ternary still lives in one place.
+                  : composerOccupiedPxFor(
+                      keyboardHeight,
+                      Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX,
+                    ),
             },
           ]}
         >
-          {suggestionsOpen && online && !recovery && !rateLimited ? (
-            <View style={styles.suggestionsPanel}>
-              <QuickReplyChips
-                chips={[
-                  "Create a brand called Sample Events",
-                  "What events do I have this week?",
-                  "Help me schedule a Friday event",
-                ]}
-                onSelect={(chip) => {
-                  setSuggestionsOpen(false);
-                  void handleSend(chip);
-                }}
-                layout="stack"
-              />
-            </View>
-          ) : null}
           {/* #1890 — the measuring wrapper is gone with the double count it fed.
               `inputWrap`'s paddingBottom already positions this pill's bottom
               edge; nothing needs the pill's own height. */}
           {recovery ? <RecoveryPanel recovery={recovery} onAction={handleRecovery} /> : (
-            <>
+            <View
+              style={styles.composerColumn}
+              onLayout={(event) => {
+                const next = Math.round(event.nativeEvent.layout.height);
+                setComposerContentHeight((previous) => previous === next ? previous : next);
+              }}
+            >
               {!online ? (
                 <RecoveryPanel
-                  recovery={{ code: "OFFLINE", title: "You're offline", body: "Reconnect to continue this plan." }}
+                  recovery={{ code: "OFFLINE", title: "You’re offline", body: "Reconnect to send." }}
                   onAction={() => undefined}
                 />
               ) : null}
@@ -727,15 +939,67 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   onAction={() => undefined}
                 />
               ) : null}
+              {attachments.errorMessage ? (
+                <View style={styles.attachmentError} accessibilityRole="alert">
+                  <Text style={styles.attachmentErrorText}>{attachments.errorMessage}</Text>
+                  {attachments.photoPermissionRecovery ? (
+                    <View style={styles.attachmentRecoveryActions}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Choose documents instead"
+                        onPress={() => void attachments.addFiles("documents")}
+                        style={styles.attachmentRecoveryAction}
+                      >
+                        <Text style={styles.attachmentRecoveryActionText}>Choose documents</Text>
+                      </Pressable>
+                      {attachments.photoPermissionRecovery.canOpenSettings ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Open photo permissions in Settings"
+                          onPress={() => void attachments.openPhotoPermissionSettings()}
+                          style={styles.attachmentRecoveryAction}
+                        >
+                          <Text style={styles.attachmentRecoveryActionText}>Open Settings</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : null}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Dismiss attachment message"
+                    onPress={attachments.clearError}
+                    style={styles.attachmentErrorDismiss}
+                  >
+                    <Text style={styles.attachmentErrorDismissText}>Dismiss</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              <AriAttachmentTray
+                attachments={attachments.attachments}
+                onRemove={attachments.removeAttachment}
+                onRetry={(localId) => void attachments.retryAttachment(localId)}
+                onRemoveAll={attachments.removeAll}
+              />
+              {chat.isSending ? <Text style={styles.composerHelper}>Ari is finishing your last message.</Text> : null}
               <InputBar
                 onSend={handleSend}
-                disabled={chat.isSending || brands.isLoading || rateLimited || !conversationSelectionReady}
+                value={draftText}
+                onChangeText={setDraftText}
+                inputRef={composerInputRef}
+                hasReadyAttachments={attachments.attachments.length > 0 && attachments.allReady}
+                disabled={brands.isLoading || !conversationSelectionReady}
+                sendDisabled={chat.isSending || rateLimited || !online || !attachments.allReady}
+                attachDisabled={!online || !attachments.canAttachMore}
                 placeholder={!conversationSelectionReady ? "Restoring your chat…" : !online ? "Reconnect to continue…" : brands.isLoading ? "Checking brand access…" : rateLimited ? "Sending paused…" : "Ask Ari…"}
-                onShowSuggestions={() => setSuggestionsOpen((v) => !v)}
+                onAttach={() => {
+                  if (Platform.OS === "web") void attachments.addFiles("all");
+                  else setAttachmentSourceOpen(true);
+                }}
               />
-            </>
+            </View>
           )}
         </View>
+      </View>
       </View>
 
       <ConversationDrawer
@@ -749,9 +1013,16 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         isLoading={conversations.isLoading}
         isError={conversations.isError}
         onRetry={conversations.refetch}
+        surface={surface}
       />
 
       <BrandSwitcherSheet visible={brandSwitcherOpen} onClose={() => setBrandSwitcherOpen(false)} />
+
+      <AriAttachmentSourceSheet
+        visible={attachmentSourceOpen}
+        onClose={() => setAttachmentSourceOpen(false)}
+        onSelect={(source) => void attachments.addFiles(source)}
+      />
 
       <AiDisclosureModal
         visible={disclosureNeeded}
@@ -765,6 +1036,14 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
     backgroundColor: canvas.discover,
+  },
+  ariPane: { flex: 1, minWidth: 0 },
+  websiteAriPane: {
+    flexGrow: 0,
+    flexShrink: 1,
+    flexBasis: 500,
+    minWidth: ariThread.websiteAriMinWidth,
+    maxWidth: ariThread.websiteAriMaxWidth,
   },
   websiteSplitHost: { flexDirection: "row", gap: spacing.lg, padding: spacing.md },
   websiteDraftPane: {
@@ -830,6 +1109,30 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
+    // P2-6: when a tall attachment tray lifts the hero, it clips inside the
+    // chat column instead of drawing over the header.
+    overflow: "hidden",
+  },
+  // REWORK-2 R-2 — the hero's resting box (never clamped: it is what the
+  // scroll content's minHeight is measured from, and therefore what keeps the
+  // orb anchored) and the viewport that IS clamped to the composer's top.
+  emptyHeroBox: {
+    flex: 1,
+    width: "100%",
+  },
+  emptyHeroContent: {
+    flexGrow: 1,
+    width: "100%",
+  },
+  emptyHeroPress: {
+    flex: 1,
+    width: "100%",
+    // The clamp is a margin, so without this the content still PAINTS past the
+    // clamped box and is only trimmed at the overlay's own bounds — a sliver of
+    // the body sentence kept drawing behind the composer pill even though the
+    // accessibility rectangle already stopped at the composer's top edge. Clip
+    // here so the drawn box and the measured box are the same box.
+    overflow: "hidden",
   },
   flexSpacer: {
     flex: 1,
@@ -837,10 +1140,28 @@ const styles = StyleSheet.create({
   inputWrap: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
+    width: "100%",
+    maxWidth: ariThread.threadMaxWidth,
+    alignSelf: "center",
   },
-  suggestionsPanel: {
-    marginBottom: spacing.sm,
+  composerColumn: { width: "100%" },
+  composerHelper: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16, marginBottom: spacing.xs },
+  attachmentError: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    paddingLeft: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: Platform.OS === "android" ? "#2b1d15" : "rgba(235, 120, 37, 0.12)",
   },
+  attachmentErrorText: { flex: 1, color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
+  attachmentRecoveryActions: { flexDirection: "row", gap: spacing.xs, paddingLeft: spacing.md, paddingBottom: spacing.sm, width: "100%" },
+  attachmentRecoveryAction: { minHeight: 40, justifyContent: "center", paddingHorizontal: spacing.sm, borderRadius: radius.sm, backgroundColor: ariThread.composerSurface },
+  attachmentRecoveryActionText: { color: accent.warm, fontSize: 14, fontWeight: "600" },
+  attachmentErrorDismiss: { minWidth: 64, minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.sm },
+  attachmentErrorDismissText: { color: accent.warm, fontSize: 14, fontWeight: "600" },
   recoveryPanel: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -855,7 +1176,7 @@ const styles = StyleSheet.create({
   recoveryBody: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
   recoveryAction: { minHeight: 44, width: "100%", alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: ariPalette.userBubble },
   recoveryActionFocused: Platform.OS === "web" ? ({ outlineWidth: 2, outlineStyle: "solid", outlineColor: ariPalette.flame, outlineOffset: 2 } as object) : {},
-  recoveryActionText: { color: textTokens.inverse, fontWeight: "700", textAlign: "center" },
+  recoveryActionText: { color: ariThread.onUserBubble, fontWeight: "700", textAlign: "center" },
 });
 
 export default AriChatScreen;

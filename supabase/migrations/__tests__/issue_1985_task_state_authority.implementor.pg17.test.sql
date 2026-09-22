@@ -37,9 +37,11 @@ SELECT set_config(
 );
 SET LOCAL ROLE authenticated;
 
+-- [TEST-MOD-APPROVED #3429] #3429 makes title provenance service-owned so a
+-- user cannot overwrite the generated lifecycle. The retained #1985 invariant
+-- is that an owner may still edit the non-authoritative summary field.
 UPDATE public.agent_conversations
-SET title = 'after metadata edit',
-    summary = 'owner-visible context remains editable'
+SET summary = 'owner-visible context remains editable'
 WHERE id = '00000000-0000-4000-8000-000000001983';
 
 DO $$
@@ -48,12 +50,22 @@ BEGIN
     SELECT 1
     FROM public.agent_conversations
     WHERE id = '00000000-0000-4000-8000-000000001983'
-      AND title = 'after metadata edit'
       AND summary = 'owner-visible context remains editable'
   ) THEN
     RAISE EXCEPTION
       'issue_1985_task_state_authority: legitimate owner metadata update failed';
   END IF;
+
+  BEGIN
+    UPDATE public.agent_conversations
+    SET title = 'forged owner title', title_source = 'user'
+    WHERE id = '00000000-0000-4000-8000-000000001983';
+    RAISE EXCEPTION
+      'issue_1985_task_state_authority: authenticated title provenance update was accepted';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      NULL;
+  END;
 
   BEGIN
     PERFORM public.commit_agent_task_assistant_turn(

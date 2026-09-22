@@ -28,6 +28,8 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { AriOrb } from "./AriOrb";
+import { toAccessibleText, toSegments } from "./ariBubbleSegments";
+import { SemanticRevealText } from "./SemanticRevealText";
 
 export interface ChatBubbleProps {
   role: "user" | "assistant";
@@ -40,33 +42,16 @@ export interface ChatBubbleProps {
    *  cluster reads as one smooth column. Default true (last/only bubble). */
   tail?: boolean;
   accessibilityLabel?: string;
+  reveal?: boolean;
+  revealSkipSignal?: number;
+  surface?: "main" | "website";
 }
 
-interface Segment {
-  kind: "paragraph" | "bullet";
-  text: string;
-}
-
-/** Split already-parsed plain text into paragraph / bullet segments.
- *  Container-level formatting only (no inline markdown). */
-function toSegments(raw: string): Segment[] {
-  const paragraphs = raw.split(/\n\n+/);
-  const out: Segment[] = [];
-  for (const para of paragraphs) {
-    const lines = para.split("\n");
-    // If every line in this paragraph is a bullet, render hanging bullets.
-    const allBullets =
-      lines.length > 0 && lines.every((l) => /^\s*[•-]\s+/.test(l));
-    if (allBullets) {
-      for (const line of lines) {
-        out.push({ kind: "bullet", text: line.replace(/^\s*[•-]\s+/, "") });
-      }
-    } else {
-      out.push({ kind: "paragraph", text: para });
-    }
-  }
-  return out;
-}
+/** The segmenter lives in its own leaf module so neither this file nor
+ *  `SemanticRevealText` has to import the other (I-PROPOSED-K). Re-exported
+ *  here because this is where callers have always imported it from. */
+export type { AriBubbleSegment } from "./ariBubbleSegments";
+export { toAccessibleText, toSegments } from "./ariBubbleSegments";
 
 const BubbleText: React.FC<{ text: string; style: object }> = ({ text, style }) => {
   const segments = toSegments(text);
@@ -102,13 +87,16 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
   hideOrb = false,
   tail = true,
   accessibilityLabel,
+  reveal = false,
+  revealSkipSignal = 0,
+  surface = "main",
 }) => {
   if (role === "user") {
     return (
       <View
         style={styles.userRow}
         accessibilityRole="text"
-        accessibilityLabel={accessibilityLabel ?? `You said: ${text}`}
+        accessibilityLabel={accessibilityLabel ?? `You said: ${toAccessibleText(text)}`}
       >
         <View
           style={[
@@ -124,8 +112,9 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
   return (
     <View
       style={styles.ariRow}
+      accessible={!reveal}
       accessibilityRole="text"
-      accessibilityLabel={accessibilityLabel ?? `Ari said: ${text}`}
+      accessibilityLabel={!reveal ? accessibilityLabel ?? `Ari said: ${toAccessibleText(text)}` : undefined}
     >
       <View style={styles.orbWrap}>
         {!hideOrb ? <AriOrb size="sm" decorative /> : <View style={styles.orbSpacer} />}
@@ -133,7 +122,14 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
       <View
         style={[styles.ariBubble, tail ? styles.ariTail : styles.noTail]}
       >
-        <BubbleText text={text} style={styles.ariText} />
+        {reveal ? (
+          <SemanticRevealText
+            text={text}
+            textStyle={styles.ariText}
+            skipSignal={revealSkipSignal}
+            surface={surface}
+          />
+        ) : <BubbleText text={text} style={styles.ariText} />}
       </View>
     </View>
   );
@@ -161,7 +157,7 @@ const styles = StyleSheet.create({
     borderRadius: ariThread.bubbleRadius, // 16 base on all corners
     paddingHorizontal: ariThread.bubblePadH, // 12
     paddingVertical: ariThread.bubblePadV, // 8
-    maxWidth: "80%",
+    maxWidth: "84%",
     // iOS: subtle ember lift. Android/web: no shadow (opaque fill carries it).
     ...Platform.select({
       ios: {
@@ -187,7 +183,8 @@ const styles = StyleSheet.create({
     borderRadius: ariThread.bubbleRadius, // 16 base
     paddingHorizontal: ariThread.bubblePadH,
     paddingVertical: ariThread.bubblePadV,
-    maxWidth: "80%",
+    maxWidth: ariThread.bubbleMaxWidth,
+    flexShrink: 1,
     overflow: "hidden",
     ...Platform.select({
       android: {},
@@ -206,7 +203,7 @@ const styles = StyleSheet.create({
   userText: {
     fontSize: ariThread.bodyFont,
     lineHeight: ariThread.bodyLine,
-    color: textTokens.inverse,
+    color: ariThread.onUserBubble,
     letterSpacing: -0.1,
   },
   ariText: {

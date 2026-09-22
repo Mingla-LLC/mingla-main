@@ -8,6 +8,7 @@
  */
 
 import { supabase } from "./supabase";
+import type { AriSentAttachment } from "./ariAttachmentService";
 // Type-only cite keeps #2060 gates happy without pulling the recovery registry
 // into the web boot chunk (ORCH-1083). Runtime assert below is structural.
 import type { AriResponseEnvelope } from "./agentReliability";
@@ -37,7 +38,7 @@ export interface AgentChoiceSubmissionV2 {
 }
 
 export type AgentChatResponse =
-  | { kind: "text"; text: string; conversation_id: string; message_id: string; task_state_revision: number; choices?: AgentChoicesV2; handoff_route?: string }
+  | { kind: "text"; text: string; conversation_id: string; message_id: string; task_state_revision: number; client_turn_id: string; attempt_status: "completed"; conversation_title: string; choices?: AgentChoicesV2; handoff_route?: string }
   | {
       kind: "pending_action";
       pending_action_id: string;
@@ -46,6 +47,9 @@ export type AgentChatResponse =
       conversation_id: string;
       message_id: string;
       task_state_revision: number;
+      client_turn_id: string;
+      attempt_status: "completed";
+      conversation_title: string;
     }
   | { kind: "error"; code: string; message: string; retry_after_seconds?: number; cooldown_until?: string };
 
@@ -87,6 +91,7 @@ export interface SendMessageArgs {
   locale: string;
   choice_response?: AgentChoiceSubmissionV2;
   brand_id?: string | null;
+  attachment_ids?: string[];
 }
 
 export interface ConfirmActionArgs {
@@ -328,13 +333,23 @@ export interface AgentConversation {
   brand_id: string | null;
   created_at: string;
   updated_at: string;
+  title_source?: "legacy" | "provisional" | "generated" | "manual" | "legacy_fallback";
+  title_generation_version?: string | null;
+  title_generated_at?: string | null;
 }
 
 export interface AgentMessage {
   id: string;
   conversation_id: string;
   role: "user" | "assistant" | "tool";
-  content: { text?: string; structured?: unknown; local_delivery?: "sending" | "failed" } | Record<string, unknown>;
+  content: {
+    text?: string;
+    structured?: unknown;
+    local_delivery?: "sending" | "sent" | "failed" | "stopped";
+    local_error?: string;
+    attachments?: AriSentAttachment[];
+    local_reveal?: boolean;
+  } | Record<string, unknown>;
   client_turn_id: string | null;
   tool_calls: {
     tool_name: string;
@@ -359,7 +374,7 @@ export interface AgentUserProfileRow {
 export async function fetchConversations(): Promise<AgentConversation[]> {
   const { data, error } = await supabase
     .from("agent_conversations")
-    .select("id, title, brand_id, created_at, updated_at")
+    .select("id, title, brand_id, created_at, updated_at, title_source, title_generation_version, title_generated_at")
     .order("updated_at", { ascending: false })
     .limit(50);
   if (error) throw error;
@@ -367,13 +382,42 @@ export async function fetchConversations(): Promise<AgentConversation[]> {
 }
 
 export async function fetchMessages(conversationId: string): Promise<AgentMessage[]> {
-  const { data, error } = await supabase
+  const [messagesResult, attachmentsResult] = await Promise.all([
+    supabase
     .from("agent_messages")
     .select("id, conversation_id, role, content, tool_calls, tool_results, client_turn_id, created_at")
     .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as AgentMessage[];
+    .order("created_at", { ascending: true }),
+    supabase
+      .from("agent_attachments")
+      .select("id,message_id,original_filename,verified_mime,file_type,verified_size_bytes,display_order,state")
+      .eq("conversation_id", conversationId)
+      .eq("state", "ready")
+      .order("display_order", { ascending: true }),
+  ]);
+  if (messagesResult.error) throw messagesResult.error;
+  if (attachmentsResult.error) throw attachmentsResult.error;
+  const attachmentsByMessage = new Map<string, AriSentAttachment[]>();
+  for (const row of attachmentsResult.data ?? []) {
+    if (!row.message_id) continue;
+    const current = attachmentsByMessage.get(row.message_id) ?? [];
+    current.push({
+      id: row.id,
+      original_filename: row.original_filename,
+      verified_mime: row.verified_mime,
+      file_type: row.file_type as AriSentAttachment["file_type"],
+      verified_size_bytes: row.verified_size_bytes,
+      display_order: row.display_order,
+      state: "ready",
+    });
+    attachmentsByMessage.set(row.message_id, current);
+  }
+  return (messagesResult.data ?? []).map((raw) => {
+    const message = raw as AgentMessage;
+    const attachments = attachmentsByMessage.get(message.id);
+    if (!attachments?.length) return message;
+    return { ...message, content: { ...message.content, attachments } };
+  });
 }
 
 export async function fetchProfile(): Promise<AgentUserProfileRow | null> {
@@ -407,44 +451,50 @@ export async function acknowledgeDisclosure(): Promise<void> {
 }
 
 export async function deleteConversation(conversationId: string): Promise<void> {
-  // CASCADE removes messages + pending actions.
-  // .select("id") chained per I-PROPOSED-I MUTATION-ROWCOUNT-VERIFIED — if
-  // the conversation row doesn't exist (already deleted or RLS denial),
-  // supabase-js without .select() silently treats 0-row delete as success.
-  const { data, error } = await supabase
-    .from("agent_conversations")
-    .delete()
-    .eq("id", conversationId)
-    .select("id");
-  if (error) throw error;
-  if (!data || data.length === 0) {
-    throw new Error("Conversation not found or already deleted");
-  }
+  const { data, error } = await supabase.functions.invoke<{ deleted?: boolean }>(
+    "agent-conversation",
+    { body: { action: "delete", conversation_id: conversationId } },
+  );
+  if (error || !data?.deleted) throw new Error("Conversation not found or already deleted");
 }
 
 export async function deleteAllAriData(): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-  // CASCADE handles agent_messages and agent_pending_actions.
-  // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0821 delete-all-Ari-data is intentionally
-  // tolerant of 0-row outcomes — a user who never used Ari has zero rows in
-  // these tables, and the action is still semantically "deleted everything"
-  // when there was nothing to delete. .select("id") is chained so the
-  // rowcount IS verified at the supabase-js layer, but a 0-count return is
-  // not treated as an error here.
-  const conversationsResult = await supabase
-    .from("agent_conversations")
-    .delete()
-    .eq("user_id", user.id)
-    .select("id");
-  if (conversationsResult.error) throw conversationsResult.error;
-  // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0821 — same rationale as above for
-  // agent_user_profile (single-row table, may not exist for users who never
-  // saw the AI disclosure modal).
-  const profileResult = await supabase
-    .from("agent_user_profile")
-    .delete()
-    .eq("user_id", user.id)
-    .select("id");
-  if (profileResult.error) throw profileResult.error;
+  const { data, error } = await supabase.functions.invoke<{ deleted?: boolean }>(
+    "agent-conversation",
+    { body: { action: "delete_all" } },
+  );
+  if (error || !data?.deleted) throw new Error("Couldn't delete Ari data");
+}
+
+export async function renameAgentConversation(
+  conversationId: string,
+  title: string,
+): Promise<AgentConversation> {
+  const { data, error } = await supabase.functions.invoke<{ conversation?: AgentConversation }>(
+    "agent-conversation",
+    { body: { action: "rename", conversation_id: conversationId, title } },
+  );
+  if (error || !data?.conversation) throw new Error("Couldn't rename this conversation.");
+  return data.conversation;
+}
+
+export async function regenerateAgentConversationTitle(
+  conversationId: string,
+  confirmReplaceManual = false,
+): Promise<AgentConversation> {
+  const { data, error } = await supabase.functions.invoke<{
+    conversation?: AgentConversation;
+    code?: string;
+    message?: string;
+  }>("agent-conversation", {
+    body: {
+      action: "regenerate",
+      conversation_id: conversationId,
+      confirm_replace_manual: confirmReplaceManual,
+    },
+  });
+  if (error || !data?.conversation) {
+    throw new Error(data?.message ?? "Couldn’t update the title. Your previous title is unchanged.");
+  }
+  return data.conversation;
 }

@@ -27,6 +27,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { AgentMessage } from "../../services/agentChatService";
+import { AriSentAttachments } from "./AriAttachmentCards";
 import { ChatBubble } from "./ChatBubble";
 import { ToolProposalCard } from "./ToolProposalCard";
 import { ResponseCard } from "./ResponseCard";
@@ -38,6 +39,14 @@ import { buildChoiceSubmission, choiceLabel, choicesOf } from "./agentChoices";
 import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
 import type { PendingActionView } from "../../hooks/useAgentChat";
 
+// #3429 TRIM — this used to be a `React.lazy` "to keep the file-card module off
+// the eager path". It never did: AriChatScreen.tsx statically imports
+// `AriAttachmentTray` from this very module, so by the time any chat row renders
+// the module is already resolved. All the split point bought was a second entry
+// edge, which Metro answers by hoisting AriAttachmentCards (and its service and
+// analytics deps) out of the lazy `ari` chunk into the EAGER `__common` chunk —
+// the exact opposite of the intent. Static import keeps them in `ari`.
+
 /**
  * ORCH-1103 — the result of committing a pending action. `brandId` is set when
  * the executed tool returned a brand (create_brand / update_brand), which the
@@ -46,6 +55,9 @@ import type { PendingActionView } from "../../hooks/useAgentChat";
  */
 export type { ConfirmOutcome } from "./toolProposalTypes";
 import type { ConfirmOutcome } from "./toolProposalTypes";
+// #3429 REWORK-2 R-4 — the failed-delivery row renders the ONE connection
+// sentence #3184 owns, not a second wording of its own.
+import { ARI_CHAT_CONNECTION_COPY } from "../../screens/ari/ariChatErrorCopy";
 
 export interface MessageListProps {
   messages: AgentMessage[];
@@ -86,6 +98,9 @@ export interface MessageListProps {
    * so the receipt overlays the attached cover from this map when present.
    */
   attachedCovers?: Record<string, { url: string | null; type: string | null }>;
+  onEditTurn?: (clientTurnId: string) => void;
+  onDiscardTurn?: (clientTurnId: string) => void;
+  surface?: "main" | "website";
 }
 
 /**
@@ -139,6 +154,9 @@ export const MessageList: React.FC<MessageListProps> = ({
   choicesDisabled = false,
   onAttachDone,
   attachedCovers = {},
+  onEditTurn,
+  onDiscardTurn,
+  surface = "main",
 }) => {
   const listRef = useRef<FlatList<ListItem>>(null);
 
@@ -149,6 +167,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   const [resolvedChoice, setResolvedChoice] = useState<{ messageId: string; optionId: string } | null>(null);
   const [clarifyDraft, setClarifyDraft] = useState<Record<string, string>>({});
   const [multiDraft, setMultiDraft] = useState<Record<string, string[]>>({});
+  const [revealSkipSignal, setRevealSkipSignal] = useState(0);
 
   // A failed typed turn remains in the thread as a retryable optimistic row.
   // Re-open the choice when the message set changes so an error never strands
@@ -209,7 +228,8 @@ export const MessageList: React.FC<MessageListProps> = ({
       continue;
     }
     const text = (m.content as any)?.text ?? "";
-    if (!text) continue; // empty rows shouldn't render an empty bubble
+    const attachments = (m.content as { attachments?: unknown[] })?.attachments ?? [];
+    if (!text && attachments.length === 0) continue;
     raw.push({
       kind: "message",
       message: m,
@@ -353,6 +373,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       }}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
+      onScrollBeginDrag={() => setRevealSkipSignal((value) => value + 1)}
       renderItem={({ item }) => {
         if (item.kind === "thinking") {
           return <View>{renderThinking?.()}</View>;
@@ -376,7 +397,8 @@ export const MessageList: React.FC<MessageListProps> = ({
           return renderToolResult(m, onSeedMessage, attachedCovers);
         }
         const text = (m.content as any)?.text ?? "";
-        if (!text) return null; // empty rows shouldn't render an empty bubble
+        const attachments = ((m.content as { attachments?: unknown }).attachments ?? []) as import("../../services/ariAttachmentService").AriSentAttachment[];
+        if (!text && attachments.length === 0) return null;
         const localDelivery = (m.content as { local_delivery?: string }).local_delivery;
 
         // ORCH-1103 REWORK 2 — render disambiguation / no-brand-handoff chips
@@ -386,21 +408,40 @@ export const MessageList: React.FC<MessageListProps> = ({
         const choices = choicesOf(m);
         const bubble = (
           <View>
-            <ChatBubble
-              role={m.role === "user" ? "user" : "assistant"}
-              text={text}
-              hideOrb={item.hideOrb}
-              tail={item.tail}
-            />
+            {m.role === "user" && attachments.length ? (
+              <AriSentAttachments attachments={attachments} surface={surface} />
+            ) : null}
+            {text ? (
+              <ChatBubble
+                role={m.role === "user" ? "user" : "assistant"}
+                text={text}
+                hideOrb={item.hideOrb}
+                tail={item.tail}
+                reveal={m.role === "assistant" && (m.content as { local_reveal?: boolean }).local_reveal === true}
+                revealSkipSignal={revealSkipSignal}
+                surface={surface}
+              />
+            ) : null}
+            {m.role === "user" && localDelivery && localDelivery !== "failed" ? (
+              localDelivery === "sending" ? (
+                <Text style={styles.deliveryMeta}>Sending…</Text>
+              ) : (
+                // P2-1: Sent (with its check) as soon as the turn is accepted.
+                <View style={styles.deliverySent} accessible accessibilityRole="text" accessibilityLabel="Sent">
+                  <Check size={12} color={ariThread.tertiaryText} strokeWidth={2.25} />
+                  <Text style={styles.deliverySentText}>Sent</Text>
+                </View>
+              )
+            ) : null}
             {m.role === "user" && localDelivery === "failed" && m.client_turn_id ? (
-              <Pressable
-                onPress={() => onRetryTurn?.(m.client_turn_id as string)}
-                style={styles.retryTurn}
-                accessibilityRole="button"
-                accessibilityLabel={`Retry sending ${text}`}
-              >
-                <Text style={styles.retryTurnText}>Not sent · Retry</Text>
-              </Pressable>
+              <View style={styles.deliveryFailure} accessibilityRole="alert">
+                <Text style={styles.deliveryFailureCopy}>{(m.content as { local_error?: string }).local_error ?? ARI_CHAT_CONNECTION_COPY}</Text>
+                <View style={styles.deliveryActions}>
+                  <Pressable onPress={() => onRetryTurn?.(m.client_turn_id as string)} style={styles.retryTurn} accessibilityRole="button" accessibilityLabel={`Retry sending ${text}`}><Text style={styles.retryTurnText}>Retry</Text></Pressable>
+                  <Pressable onPress={() => onEditTurn?.(m.client_turn_id as string)} style={styles.retryTurn} accessibilityRole="button" accessibilityLabel={`Edit ${text}`}><Text style={styles.retryTurnText}>Edit</Text></Pressable>
+                  <Pressable onPress={() => onDiscardTurn?.(m.client_turn_id as string)} style={styles.retryTurn} accessibilityRole="button" accessibilityLabel={`Discard ${text}`}><Text style={styles.retryTurnText}>Discard</Text></Pressable>
+                </View>
+              </View>
             ) : null}
           </View>
         );
@@ -662,6 +703,9 @@ const styles = StyleSheet.create({
     // "fix" this back.
     paddingTop: spacing.xl,
     paddingBottom: spacing.sm,
+    width: "100%",
+    maxWidth: ariThread.threadMaxWidth,
+    alignSelf: "center",
   },
   // ORCH-1103 REWORK 2 — chips sit under the Ari bubble, indented past the orb
   // gutter (24px orb + orbGap, matching ChatBubble's orbWrap) so they align with
@@ -677,10 +721,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   retryTurnText: {
-    color: semantic.error,
+    color: ariThread.actionText,
     fontSize: typography.bodySm.fontSize,
     fontWeight: "600",
   },
+  deliveryMeta: { alignSelf: "flex-end", color: ariThread.tertiaryText, fontSize: 12, lineHeight: 16, marginTop: spacing.xs },
+  deliverySent: { alignSelf: "flex-end", flexDirection: "row", alignItems: "center", gap: 4, marginTop: spacing.xs },
+  deliverySentText: { color: ariThread.tertiaryText, fontSize: 12, lineHeight: 16 },
+  deliveryFailure: { alignSelf: "flex-end", width: "84%", borderWidth: 1, borderColor: semantic.error, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingTop: spacing.sm, marginTop: spacing.xs },
+  deliveryFailureCopy: { color: ariThread.secondaryText, fontSize: 14, lineHeight: 20 },
+  deliveryActions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end" },
   successRibbon: {
     alignSelf: "flex-start",
     flexDirection: "row",

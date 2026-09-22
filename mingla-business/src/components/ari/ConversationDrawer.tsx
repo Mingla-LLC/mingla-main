@@ -13,8 +13,8 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { AlertTriangle } from "lucide-react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { AlertTriangle, Ellipsis, Sparkles } from "lucide-react-native";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -27,11 +27,47 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { Sheet } from "../ui/Sheet";
+// ORCH-0892: a file that hosts a TextInput scrolls through the keyboard-aware
+// wrapper (KeyboardAwareScrollView on native, ScrollView on web).
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import {
   deleteConversation,
+  regenerateAgentConversationTitle,
+  renameAgentConversation,
   type AgentConversation,
 } from "../../services/agentChatService";
 import { agentQueryKeys } from "../../hooks/agentQueryKeys";
+import { captureAriTitleAction } from "../../services/ariPolishAnalytics";
+
+/**
+ * D-9: ConfirmDialog (web-capable, unlike Alert) loads only when a dialog opens.
+ * Its animation stack must stay out of this drawer's import graph, which the
+ * #2013 containment suite mounts without a native animation runtime.
+ */
+const ConfirmDialog = React.lazy(() =>
+  import("../ui/ConfirmDialog").then((module) => ({ default: module.ConfirmDialog }))
+);
+
+export function conversationDisplayTitle(conversation: AgentConversation): string {
+  const title = conversation.title?.trim();
+  const fallback = `Conversation · ${new Date(conversation.updated_at).toLocaleDateString()}`;
+  // P3-1: the legacy backfill stores the bare word "Conversation"; show the
+  // same dated fallback an untitled conversation gets.
+  if (conversation.title_source === "legacy_fallback" && title === "Conversation") return fallback;
+  if (title && title.toLowerCase() !== "untitled conversation") return title;
+  return fallback;
+}
+
+function friendlyDate(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const value = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const days = Math.round((start - value) / 86_400_000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 export interface ConversationDrawerProps {
   visible: boolean;
@@ -44,6 +80,7 @@ export interface ConversationDrawerProps {
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  surface?: "main" | "website";
 }
 
 export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
@@ -57,16 +94,36 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   isLoading,
   isError,
   onRetry,
+  surface = "main",
 }) => {
   const qc = useQueryClient();
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [menuConversation, setMenuConversation] = useState<AgentConversation | null>(null);
+  const [renameConversation, setRenameConversation] = useState<AgentConversation | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  // D-9: web-capable confirmations and inline notices (Alert is a no-op on web).
+  const [regenerateConfirm, setRegenerateConfirm] = useState<AgentConversation | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<AgentConversation | null>(null);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState<string[] | null>(null);
+  const [drawerNotice, setDrawerNotice] = useState<string | null>(null);
+  const [menuNotice, setMenuNotice] = useState<string | null>(null);
+  const [renameNotice, setRenameNotice] = useState<string | null>(null);
 
   // Reset select state every time the drawer closes
   React.useEffect(() => {
     if (!visible) {
       setSelectMode(false);
       setSelectedIds(new Set());
+      setMenuConversation(null);
+      setRenameConversation(null);
+      setRegenerateConfirm(null);
+      setDeleteConfirm(null);
+      setBulkDeleteConfirm(null);
+      setDrawerNotice(null);
+      setMenuNotice(null);
+      setRenameNotice(null);
     }
   }, [visible]);
 
@@ -92,83 +149,98 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
     [qc],
   );
 
-  const handleLongPressSingle = useCallback(
+  const handleDeleteSingle = useCallback(
     (c: AgentConversation): void => {
       if (selectMode) {
         toggleSelect(c.id);
         return;
       }
-      Alert.alert(
-        c.title ?? "Untitled conversation",
-        "Delete this conversation? This can't be undone.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: async () => {
-              optimisticDelete([c.id]);
-              try {
-                await deleteConversation(c.id);
-              } catch (err) {
-                // Roll back optimistic removal by refetching the truth.
-                qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
-                Alert.alert(
-                  "Couldn't delete",
-                  err instanceof Error ? err.message : "Unknown error",
-                );
-                return;
-              }
-              qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
-              if (c.id === activeId) {
-                qc.invalidateQueries({ queryKey: agentQueryKeys.messages(c.id) });
-                onSelect(null);
-              }
-            },
-          },
-        ],
-      );
+      setMenuNotice(null);
+      setDeleteConfirm(c);
     },
-    [activeId, onSelect, optimisticDelete, qc, selectMode, toggleSelect],
+    [selectMode, toggleSelect],
   );
+
+  const confirmDeleteSingle = useCallback(async (): Promise<void> => {
+    const c = deleteConfirm;
+    if (!c) return;
+    setDeleteConfirm(null);
+    setMenuConversation(null);
+    setDrawerNotice(null);
+    optimisticDelete([c.id]);
+    try {
+      await deleteConversation(c.id);
+    } catch {
+      // Roll back optimistic removal by refetching the truth.
+      qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
+      setDrawerNotice("Couldn’t delete that conversation. Check your connection and try again.");
+      return;
+    }
+    qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
+    captureAriTitleAction(surface, "deleted");
+    if (c.id === activeId) {
+      qc.invalidateQueries({ queryKey: agentQueryKeys.messages(c.id) });
+      onSelect(null);
+    }
+  }, [activeId, deleteConfirm, onSelect, optimisticDelete, qc, surface]);
+
+  const regenerateTitle = useCallback(async (c: AgentConversation, confirmed = false): Promise<void> => {
+    setRegeneratingId(c.id);
+    setMenuNotice(null);
+    try {
+      await regenerateAgentConversationTitle(c.id, confirmed);
+      captureAriTitleAction(surface, "regenerated");
+      await qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
+      setMenuConversation(null);
+    } catch {
+      setMenuNotice("Couldn’t update the title. Your previous title is unchanged.");
+    } finally {
+      setRegeneratingId(null);
+    }
+  }, [qc, surface]);
+
+  const handleRegenerate = useCallback((c: AgentConversation): void => {
+    if (c.title_source === "manual") {
+      setMenuNotice(null);
+      setRegenerateConfirm(c);
+      return;
+    }
+    void regenerateTitle(c);
+  }, [regenerateTitle]);
 
   const handleBulkDelete = useCallback((): void => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    Alert.alert(
-      `Delete ${ids.length} ${ids.length === 1 ? "conversation" : "conversations"}?`,
-      "This can't be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            optimisticDelete(ids);
-            const deletedActive = activeId !== null && ids.includes(activeId);
-            // Fire all deletions in parallel
-            const results = await Promise.allSettled(
-              ids.map((id) => deleteConversation(id)),
-            );
-            const failed = results.filter((r) => r.status === "rejected");
-            qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
-            if (deletedActive) {
-              qc.invalidateQueries({ queryKey: agentQueryKeys.messages(activeId) });
-              onSelect(null);
-            }
-            setSelectMode(false);
-            setSelectedIds(new Set());
-            if (failed.length > 0) {
-              Alert.alert(
-                "Some deletions failed",
-                `${failed.length} of ${ids.length} couldn't be deleted. The list has been refreshed.`,
-              );
-            }
-          },
-        },
-      ],
+    setDrawerNotice(null);
+    setBulkDeleteConfirm(ids);
+  }, [selectedIds]);
+
+  const confirmBulkDelete = useCallback(async (): Promise<void> => {
+    const ids = bulkDeleteConfirm;
+    if (!ids || ids.length === 0) return;
+    setBulkDeleteConfirm(null);
+    optimisticDelete(ids);
+    const deletedActive = activeId !== null && ids.includes(activeId);
+    // Fire all deletions in parallel
+    const results = await Promise.allSettled(
+      ids.map((id) => deleteConversation(id)),
     );
-  }, [activeId, onSelect, optimisticDelete, qc, selectedIds]);
+    const failed = results.filter((r) => r.status === "rejected");
+    const deletedCount = ids.length - failed.length;
+    if (deletedCount > 0) captureAriTitleAction(surface, "deleted");
+    qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
+    if (deletedActive) {
+      qc.invalidateQueries({ queryKey: agentQueryKeys.messages(activeId) });
+      onSelect(null);
+    }
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    if (failed.length > 0) {
+      setDrawerNotice(
+        `Some deletions failed. ${failed.length} of ${ids.length} couldn’t be deleted. The list has been refreshed.`,
+      );
+    }
+  }, [activeId, bulkDeleteConfirm, onSelect, optimisticDelete, qc, surface]);
 
   const handleRowPress = useCallback(
     (c: AgentConversation): void => {
@@ -193,6 +265,7 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Exit select mode"
           hitSlop={8}
+          style={styles.headerControl}
         >
           <Text style={styles.headerAction}>Done</Text>
         </Pressable>
@@ -203,6 +276,7 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Select multiple conversations to delete"
           hitSlop={8}
+          style={styles.headerControl}
         >
           <Text style={styles.headerAction}>Select</Text>
         </Pressable>
@@ -214,31 +288,55 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   const renderRow = (c: AgentConversation, readOnly: boolean): React.ReactNode => {
     const isActive = c.id === activeId;
     const isSelected = selectedIds.has(c.id);
-    const date = new Date(c.updated_at).toLocaleDateString();
-    const title = c.title ?? "Untitled conversation";
+    const date = friendlyDate(c.updated_at);
+    const title = conversationDisplayTitle(c);
     return (
       <Pressable
         key={c.id}
         onPress={() => handleRowPress(c)}
-        onLongPress={() => handleLongPressSingle(c)}
+        onLongPress={() => selectMode ? toggleSelect(c.id) : setMenuConversation(c)}
         delayLongPress={400}
         style={({ pressed }) => [styles.row, isActive && !selectMode && styles.rowActive, isSelected && styles.rowSelected, pressed && styles.btnPressed]}
         accessibilityRole="button"
         accessibilityLabel={readOnly ? `${title}, older read-only conversation, updated ${date}` : `${title}, updated ${date}`}
-        accessibilityHint={selectMode ? "Tap to toggle selection" : "Tap to open; long-press to delete"}
+        accessibilityHint={selectMode ? "Tap to toggle selection" : "Tap to open; long-press for conversation actions"}
         accessibilityState={{ selected: selectMode ? isSelected : isActive }}
       >
         {selectMode ? (
           <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>{isSelected ? <Text style={styles.checkboxTick}>✓</Text> : null}</View>
         ) : readOnly ? <AlertTriangle size={16} color={textTokens.tertiary} accessibilityElementsHidden /> : null}
-        <Text style={styles.rowTitle} numberOfLines={2}>{title}</Text>
-        <Text style={styles.rowDate}>{date}</Text>
+        <View style={styles.rowCopy}>
+          <View style={styles.titleWithStatus}>
+            <Text style={styles.rowTitle} numberOfLines={3}>{title}</Text>
+            {c.title_source === "provisional" ? (
+              typeof Sparkles === "function"
+                ? <Sparkles size={16} color={ariPalette.flame} accessibilityLabel="Ari is naming this conversation" />
+                : <Text accessibilityLabel="Ari is naming this conversation">···</Text>
+            ) : null}
+          </View>
+          <Text style={styles.rowDate}>{date}</Text>
+        </View>
+        {!selectMode ? (
+          <Pressable
+            style={styles.moreControl}
+            accessibilityRole="button"
+            accessibilityLabel={`More actions for ${title}`}
+            disabled={regeneratingId === c.id}
+            onPress={(event) => { event.stopPropagation(); setMenuConversation(c); }}
+          >
+            {regeneratingId === c.id
+              ? <ActivityIndicator color={ariPalette.flame} />
+              : typeof Ellipsis === "function"
+                ? <Ellipsis size={20} color={textTokens.secondary} />
+                : <Text style={styles.moreFallback}>...</Text>}
+          </Pressable>
+        ) : null}
       </Pressable>
     );
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint="half">
+    <Sheet visible={visible} onClose={onClose} snapPoint={0.82} style={Platform.OS === "web" ? styles.webSheet : undefined}>
       <View style={styles.host}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>Conversations</Text>
@@ -257,6 +355,10 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
           >
             <Text style={styles.newBtnText}>＋ New conversation</Text>
           </Pressable>
+        ) : null}
+
+        {drawerNotice ? (
+          <Text style={styles.inlineNotice} accessibilityRole="alert">{drawerNotice}</Text>
         ) : null}
 
         <ScrollView
@@ -305,6 +407,114 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
             </Pressable>
           </View>
         ) : null}
+
+        <Sheet visible={!!menuConversation} onClose={() => setMenuConversation(null)} snapPoint={310}>
+          {menuConversation ? (
+            <View style={styles.menuBody}>
+              <Text style={styles.menuTitle} numberOfLines={2}>{conversationDisplayTitle(menuConversation)}</Text>
+              <Pressable style={styles.menuAction} accessibilityRole="button" onPress={() => { setRenameDraft(conversationDisplayTitle(menuConversation)); setRenameConversation(menuConversation); setMenuConversation(null); }}><Text style={styles.menuActionText}>Rename conversation</Text></Pressable>
+              <Pressable style={styles.menuAction} accessibilityRole="button" disabled={regeneratingId === menuConversation.id} onPress={() => handleRegenerate(menuConversation)}><Text style={styles.menuActionText}>Regenerate title</Text></Pressable>
+              <Pressable style={styles.menuAction} accessibilityRole="button" onPress={() => handleDeleteSingle(menuConversation)}><Text style={styles.deleteActionText}>Delete</Text></Pressable>
+              {menuNotice ? (
+                <Text style={styles.inlineNotice} accessibilityRole="alert">{menuNotice}</Text>
+              ) : null}
+            </View>
+          ) : null}
+          {/* D-9: confirmations render INSIDE the sheet that opened them so iOS
+              presents them from that sheet's own modal (#1369 pattern). */}
+          {regenerateConfirm ? (
+          <React.Suspense fallback={null}>
+          <ConfirmDialog
+            visible={!!regenerateConfirm}
+            onClose={() => setRegenerateConfirm(null)}
+            onConfirm={() => {
+              const target = regenerateConfirm;
+              setRegenerateConfirm(null);
+              if (target) void regenerateTitle(target, true);
+            }}
+            title="Replace your name with a new Ari title?"
+            description="Your current name will stay unless Ari creates a replacement."
+            cancelLabel="Cancel"
+            confirmLabel="Regenerate"
+            initialFocus="cancel"
+            testID="ari-regenerate-title-confirm"
+          />
+          </React.Suspense>
+          ) : null}
+          {deleteConfirm ? (
+          <React.Suspense fallback={null}>
+          <ConfirmDialog
+            visible={!!deleteConfirm}
+            onClose={() => setDeleteConfirm(null)}
+            onConfirm={confirmDeleteSingle}
+            title={deleteConfirm ? conversationDisplayTitle(deleteConfirm) : "Delete conversation"}
+            description="Delete this conversation? This can't be undone."
+            cancelLabel="Cancel"
+            confirmLabel="Delete"
+            destructive
+            initialFocus="cancel"
+            testID="ari-delete-conversation-confirm"
+          />
+          </React.Suspense>
+          ) : null}
+        </Sheet>
+
+        <Sheet visible={!!renameConversation} onClose={() => setRenameConversation(null)} snapPoint={300}>
+          <View style={styles.menuBody}>
+            <Text style={styles.menuTitle}>Rename conversation</Text>
+            {renameNotice ? (
+              <Text style={styles.inlineNotice} accessibilityRole="alert">{renameNotice}</Text>
+            ) : null}
+            <TextInput
+              value={renameDraft}
+              onChangeText={setRenameDraft}
+              maxLength={60}
+              autoFocus
+              placeholder="Conversation name"
+              placeholderTextColor={textTokens.tertiary}
+              style={styles.renameInput}
+              accessibilityLabel="Conversation name"
+            />
+            <View style={styles.renameActions}>
+              <Pressable style={styles.menuAction} accessibilityRole="button" onPress={() => setRenameConversation(null)}><Text style={styles.menuActionText}>Cancel</Text></Pressable>
+              <Pressable
+                style={[styles.saveAction, !renameDraft.trim() && styles.btnDisabled]}
+                accessibilityRole="button"
+                accessibilityLabel="Save conversation name"
+                disabled={!renameDraft.trim()}
+                onPress={async () => {
+                  if (!renameConversation || !renameDraft.trim()) return;
+                  setRenameNotice(null);
+                  try {
+                    await renameAgentConversation(renameConversation.id, renameDraft.trim());
+                    captureAriTitleAction(surface, "renamed");
+                    await qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
+                    setRenameConversation(null);
+                  } catch {
+                    setRenameNotice("Couldn’t rename. Your previous title is unchanged.");
+                  }
+                }}
+              ><Text style={styles.saveActionText}>Save</Text></Pressable>
+            </View>
+          </View>
+        </Sheet>
+
+        {bulkDeleteConfirm ? (
+        <React.Suspense fallback={null}>
+        <ConfirmDialog
+          visible={!!bulkDeleteConfirm}
+          onClose={() => setBulkDeleteConfirm(null)}
+          onConfirm={confirmBulkDelete}
+          title={`Delete ${bulkDeleteConfirm?.length ?? 0} ${(bulkDeleteConfirm?.length ?? 0) === 1 ? "conversation" : "conversations"}?`}
+          description="This can't be undone."
+          cancelLabel="Cancel"
+          confirmLabel="Delete"
+          destructive
+          initialFocus="cancel"
+          testID="ari-bulk-delete-confirm"
+        />
+        </React.Suspense>
+        ) : null}
       </View>
     </Sheet>
   );
@@ -318,6 +528,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     gap: spacing.sm,
   },
+  webSheet: { width: 440, maxHeight: "80%" },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -326,8 +537,8 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   title: {
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 20,
+    lineHeight: 32,
     fontWeight: "600",
     color: textTokens.primary,
     letterSpacing: -0.2,
@@ -338,6 +549,7 @@ const styles = StyleSheet.create({
     color: ariPalette.flame,
     letterSpacing: -0.1,
   },
+  headerControl: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
   newBtn: {
     paddingVertical: 10,
     paddingHorizontal: spacing.md,
@@ -346,7 +558,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
     borderColor: glass.border.profileBase,
-    minHeight: 44,
+    minHeight: 52,
     justifyContent: "center",
     marginBottom: spacing.xs,
   },
@@ -366,14 +578,14 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    minHeight: 44,
+    minHeight: 64,
     gap: spacing.sm,
   },
   rowActive: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: Platform.OS === "android" ? "#16181b" : glass.tint.profileBase,
     borderWidth: 1,
     borderColor: glass.border.profileBase,
   },
@@ -384,12 +596,16 @@ const styles = StyleSheet.create({
   },
   rowTitle: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "600",
     color: textTokens.primary,
     letterSpacing: -0.1,
   },
   rowDate: {
     fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "500",
     color: textTokens.tertiary,
   },
   checkbox: {
@@ -418,7 +634,11 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   sectionCaption: { fontSize: 12, color: textTokens.secondary, paddingHorizontal: spacing.sm, paddingTop: spacing.sm },
-  loadingRow: { minHeight: 44, borderRadius: radius.md, backgroundColor: glass.tint.profileBase, marginBottom: 4 },
+  rowCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
+  titleWithStatus: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  moreControl: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  moreFallback: { color: textTokens.secondary, fontSize: 16 },
+  loadingRow: { minHeight: 64, borderRadius: 12, backgroundColor: Platform.OS === "android" ? "#16181b" : glass.tint.profileBase, marginBottom: 4, overflow: "hidden" },
   errorState: { alignItems: "center", gap: spacing.sm },
   retryBtn: { minHeight: 44, minWidth: 120, alignItems: "center", justifyContent: "center", borderRadius: radius.md, borderWidth: 1, borderColor: glass.border.profileBase },
   bulkBar: {
@@ -444,7 +664,7 @@ const styles = StyleSheet.create({
     backgroundColor: semantic.errorTint,
     borderWidth: 1,
     borderColor: "rgba(239, 68, 68, 0.5)",
-    minHeight: 36,
+    minHeight: 44,
     justifyContent: "center",
   },
   bulkDeleteText: {
@@ -459,6 +679,16 @@ const styles = StyleSheet.create({
   btnDisabled: {
     opacity: 0.4,
   },
+  menuBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.sm },
+  inlineNotice: { color: semantic.errorText, fontSize: 14, lineHeight: 20 },
+  menuTitle: { color: textTokens.primary, fontSize: 20, lineHeight: 32, fontWeight: "600" },
+  menuAction: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: radius.md },
+  menuActionText: { color: textTokens.primary, fontSize: 15, lineHeight: 20, fontWeight: "600" },
+  deleteActionText: { color: semantic.error, fontSize: 15, lineHeight: 20, fontWeight: "600" },
+  renameInput: { minHeight: 52, color: textTokens.primary, fontSize: 16, lineHeight: 24, borderWidth: 1, borderColor: glass.border.profileBase, borderRadius: radius.md, backgroundColor: Platform.OS === "android" ? "#191c21" : glass.tint.profileBase, paddingHorizontal: spacing.md },
+  renameActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
+  saveAction: { minHeight: 44, minWidth: 88, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: ariPalette.userBubble },
+  saveActionText: { color: "#0c0e12", fontSize: 14, fontWeight: "700" },
 });
 
 export default ConversationDrawer;

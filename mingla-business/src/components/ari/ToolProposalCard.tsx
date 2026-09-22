@@ -56,7 +56,7 @@ const FIELD_LABEL_FONT = 11;
 const FIELD_VALUE_FONT = 13;
 const VERB_FONT = 10;
 const VERB_LETTER_SPACING = 1.1;
-const BUTTON_HEIGHT = ariThread.btnHeight; // 34
+const BUTTON_HEIGHT = ariThread.btnHeight;
 const BUTTON_FONT = 13;
 
 const EMPTY_COVER_PATCH: CoverPatch = {
@@ -877,6 +877,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
       style={styles.card}
     >
       <View style={styles.inner} accessibilityRole="summary">
+        <Text style={styles.reviewBoundary}>Review before Ari acts</Text>
         <View style={styles.headerRow}>
           <AriOrb size="xs" decorative />
           {isTypeConfirm ? <AlertTriangle size={12} color={semantic.error} /> : null}
@@ -1305,10 +1306,13 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
 const styles = StyleSheet.create({
   card: {
     marginVertical: 6,
+    marginLeft: 24 + ariThread.orbGap,
+    maxWidth: ariThread.bubbleMaxWidth,
   },
   inner: {
     padding: CARD_PADDING,
   },
+  reviewBoundary: { color: textTokens.secondary, fontSize: 14, lineHeight: 20, fontWeight: "600", marginBottom: 8 },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1401,7 +1405,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    height: 34,
+    height: ariThread.controlSize,
     paddingHorizontal: 14,
     borderRadius: radius.full,
     backgroundColor: glass.tint.profileElevated,
@@ -1485,7 +1489,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   createAttachCancel: {
-    height: 34,
+    height: ariThread.controlSize,
     paddingHorizontal: spacing.md,
     borderRadius: 10,
     alignItems: "center",
@@ -1495,7 +1499,7 @@ const styles = StyleSheet.create({
     borderColor: glass.border.chrome,
   },
   createAttachConfirm: {
-    height: 34,
+    height: ariThread.controlSize,
     paddingHorizontal: spacing.md,
     borderRadius: 10,
     alignItems: "center",
@@ -1621,7 +1625,7 @@ const styles = StyleSheet.create({
   confirmText: {
     fontSize: BUTTON_FONT,
     fontWeight: "600",
-    color: textTokens.inverse,
+    color: ariThread.onUserBubble,
     letterSpacing: -0.1,
   },
   deleteText: {

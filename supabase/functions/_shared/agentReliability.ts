@@ -49,6 +49,10 @@ export type AriErrorCode =
   | "PAID_ORDER_MUST_REFUND"
   | "REFUND_PREVIEW_UNPRICED"
   | "DOMAIN_ACTION_REFUSED"
+  | "ATTACHMENT_INVALID"
+  | "ATTACHMENT_CONTEXT_LIMIT"
+  | "TURN_STOPPED"
+  | "ACCEPTED_RESPONSE_FAILED"
   | "INTERNAL";
 
 export type AriSuccessCode =
@@ -241,6 +245,36 @@ export const ARI_ERROR_REGISTRY: Readonly<
     operationState: "none",
     userMessage:
       "That money action cannot complete as requested. Review the details and try a different action.",
+  },
+  ATTACHMENT_INVALID: {
+    httpStatus: 400,
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "failed",
+    userMessage:
+      "Ari couldn’t read an attached file. Remove it or attach a different file.",
+  },
+  ATTACHMENT_CONTEXT_LIMIT: {
+    httpStatus: 400,
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "failed",
+    userMessage:
+      "Ari couldn’t use this file because it contains too much information for one message. Remove it and attach a shorter version.",
+  },
+  TURN_STOPPED: {
+    httpStatus: 409,
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "cancelled",
+    userMessage: "Ari stopped. Your message is still here.",
+  },
+  ACCEPTED_RESPONSE_FAILED: {
+    httpStatus: 502,
+    retryability: "after_backoff",
+    safeToRetry: true,
+    operationState: "failed",
+    userMessage: "Ari couldn’t finish this response. Your message is safe.",
   },
   INTERNAL: {
     httpStatus: 500,
@@ -446,6 +480,21 @@ export function mapLegacyAriErrorCode(legacy: string): AriErrorCode {
     // purpose, so none of them can reach INTERNAL.
     case "MEDIA_REJECTED":
       return "VALIDATION_FAILED";
+    case "CONTEXT_LIMIT_EXCEEDED":
+      return "ATTACHMENT_CONTEXT_LIMIT";
+    case "ATTACHMENT_INVALID":
+    case "ATTACHMENT_SCOPE_DENIED":
+    case "UPLOAD_INCOMPLETE":
+    case "MIME_MISMATCH":
+    case "CORRUPT_FILE":
+    case "ENCRYPTED_FILE":
+    case "UNREADABLE_FILE":
+      return "ATTACHMENT_INVALID";
+    case "CANCELLED":
+    case "TURN_STOPPED":
+      return "TURN_STOPPED";
+    case "ACCEPTED_RESPONSE_FAILED":
+      return "ACCEPTED_RESPONSE_FAILED";
     case "INVALID_STATE":
     case "SESSION_EXPIRED":
     case "IDEMPOTENCY_CONFLICT":

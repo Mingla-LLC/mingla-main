@@ -99,6 +99,46 @@ function errorResponse(
   return ariErrorResponse(status, code, message);
 }
 
+async function appendPendingActivity(args: {
+  client: SupabaseClient;
+  userId: string;
+  conversationId: string | null;
+  pendingActionId: string;
+  eventType: "approved_action_started" | "finalizing_started";
+}): Promise<void> {
+  if (!args.conversationId) return;
+  const { data: proposal } = await args.client.from("agent_messages")
+    .select("client_turn_id")
+    .eq("user_id", args.userId)
+    .eq("conversation_id", args.conversationId)
+    .eq("role", "assistant")
+    .contains("tool_calls", { pending_action_id: args.pendingActionId })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (typeof proposal?.client_turn_id !== "string") return;
+  const { data: attempt } = await args.client.from("agent_turn_attempts")
+    .select("id,attempt_number")
+    .eq("user_id", args.userId)
+    .eq("conversation_id", args.conversationId)
+    .eq("client_turn_id", proposal.client_turn_id)
+    .maybeSingle();
+  if (!attempt) return;
+  const { error } = await args.client.rpc("append_agent_activity_event", {
+    p_attempt_id: attempt.id,
+    p_user_id: args.userId,
+    p_attempt_number: attempt.attempt_number,
+    p_event_type: args.eventType,
+    p_now: new Date().toISOString(),
+  });
+  if (error) {
+    console.error(JSON.stringify({
+      event: "ari_activity_write_failed",
+      phase: args.eventType,
+    }));
+  }
+}
+
 const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "create_brand",
   "create_event",
@@ -1044,6 +1084,13 @@ async function handleConfirmAction(args: {
       );
     }
     emitAriPhase("execution_claimed", { operationState: "executing" });
+    await appendPendingActivity({
+      client: pendingStateClient,
+      userId,
+      conversationId: pending.conversation_id,
+      pendingActionId: pending.id,
+      eventType: "approved_action_started",
+    });
   }
 
   // Execute
@@ -1068,6 +1115,13 @@ async function handleConfirmAction(args: {
     if (!isAmbiguous) {
       let terminalMessageId: string | undefined;
       try {
+        await appendPendingActivity({
+          client: pendingStateClient,
+          userId,
+          conversationId: pending.conversation_id,
+          pendingActionId: pending.id,
+          eventType: "finalizing_started",
+        });
         const terminalized = await terminalizePending(pendingStateClient, {
           id: pending.id,
           userId,
@@ -1131,6 +1185,13 @@ async function handleConfirmAction(args: {
   let terminalMessageId: string | undefined;
   let receiptDurable = false;
   try {
+    await appendPendingActivity({
+      client: pendingStateClient,
+      userId,
+      conversationId: pending.conversation_id,
+      pendingActionId: pending.id,
+      eventType: "finalizing_started",
+    });
     const terminalized = await terminalizePending(pendingStateClient, {
       id: pending.id,
       userId,

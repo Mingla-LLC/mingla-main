@@ -90,6 +90,7 @@ const createLucideIcon = iconOf(
 // real imports; the INV-4 drift gate fails CI if a `lucide-react-native` import
 // names an icon missing from this map.
 //
+//   AlertCircle      src/components/ari/{AriActivity,AriAttachmentCards}.tsx (#3429)
 //   AlertTriangle    src/components/ari/ToolProposalCard.tsx
 //   ArrowLeft        src/components/venue/* (ORCH-1196)
 //   ArrowUp          src/components/ari/InputBar.tsx
@@ -98,6 +99,7 @@ const createLucideIcon = iconOf(
 //   Calendar         src/components/venue/* (ORCH-1196)
 //   CalendarDays     src/components/stay/StaySuiteShell.tsx
 //   Check            src/components/ari/{QuickReplyChips,MessageList,ClarifyingCard}.tsx
+//   CheckCircle2     src/components/ari/AriAttachmentCards.tsx (#3429)
 //   CheckSquare      src/components/ari/MultiSelectPrompt.tsx
 //   ChevronDown      src/components/venue/* (ORCH-1196)
 //   ChevronLeft      src/components/venue/ReservationCalendarToolbar.tsx (#2737)
@@ -106,10 +108,15 @@ const createLucideIcon = iconOf(
 //   Circle           src/components/stay/StaySuiteShell.tsx
 //   Clock            src/components/venue/* (ORCH-1196)
 //   ClipboardList    src/components/venue/VenueOrdersModule.tsx (#1791)
+//   Cloud            src/components/ari/AriActivity.tsx (#3429)
 //   CreditCard       src/components/stay/StaySuiteShell.tsx
+//   Ellipsis         src/components/ari/ConversationDrawer.tsx (#3429)
 //   FileCheck2       src/components/stay/StaySuiteShell.tsx
+//   FileText         src/components/ari/{AriAttachmentCards,AriAttachmentSourceSheet}.tsx (#3429)
+//   Files            src/components/ari/AriActivity.tsx (#3429)
 //   Flag             src/components/venue/* (ORCH-1196)
 //   Home             src/components/stay/StaySuiteShell.tsx
+//   Image            src/components/ari/{AriAttachmentCards,AriAttachmentSourceSheet}.tsx (#3429)
 //   LayoutGrid       src/components/venue/* (ORCH-1196)
 //   List             src/components/venue/* (ORCH-1196)
 //   Menu             src/screens/ari/AriChatScreen.tsx
@@ -119,6 +126,8 @@ const createLucideIcon = iconOf(
 //   Play             src/components/ari/ToolProposalCard.tsx
 //   Plus             src/components/ari/{ToolProposalCard,EmptyState}.tsx
 //   Radio            src/components/marketing/AudiencePickerSheet.tsx (#1778)
+//   RotateCw         src/components/ari/{AriActivity,AriAttachmentCards}.tsx (#3429)
+//   Search           src/components/ari/AriActivity.tsx (#3429)
 //   Settings         src/screens/ari/AriChatScreen.tsx
 //   ShoppingBag      src/components/marketing/AudiencePickerSheet.tsx (#1778)
 //   Square           src/components/ari/MultiSelectPrompt.tsx
@@ -146,6 +155,8 @@ const createLucideIcon = iconOf(
 //
 //   HelpCircle       (fallback only — the always-real "unknown icon" affordance)
 const USED_ICONS = {
+  // Issue #3429 — Ari activity/attachment failure glyph.
+  AlertCircle: iconOf(require("lucide-react/dist/esm/icons/alert-circle.js")),
   AlertTriangle: iconOf(
     require("lucide-react/dist/esm/icons/alert-triangle.js"),
   ),
@@ -171,6 +182,10 @@ const USED_ICONS = {
   ),
   CalendarDays: iconOf(require("lucide-react/dist/esm/icons/calendar-days.js")),
   Check: iconOf(require("lucide-react/dist/esm/icons/check.js")),
+  // Issue #3429 — Ari Ready and sent-file checks.
+  CheckCircle2: iconOf(
+    require("lucide-react/dist/esm/icons/check-circle-2.js"),
+  ),
   CheckSquare: iconOf(require("lucide-react/dist/esm/icons/check-square.js")),
   ChevronDown: iconOf(require("lucide-react/dist/esm/icons/chevron-down.js")),
   ChevronLeft: iconOf(require("lucide-react/dist/esm/icons/chevron-left.js")),
@@ -181,12 +196,21 @@ const USED_ICONS = {
     require("lucide-react/dist/esm/icons/clipboard-list.js"),
   ),
   Clock: iconOf(require("lucide-react/dist/esm/icons/clock.js")),
+  // Issue #3429 — Ari "Reconnecting to Ari…" callout.
+  Cloud: iconOf(require("lucide-react/dist/esm/icons/cloud.js")),
+  // Issue #3429 — Ari conversation More control.
+  Ellipsis: iconOf(require("lucide-react/dist/esm/icons/ellipsis.js")),
   // Issue #2534 — PublicBrandPage social chips.
   Facebook: iconOf(require("lucide-react/dist/esm/icons/facebook.js")),
+  // Issue #3429 — Ari document tiles and the attachment-reading activity.
+  FileText: iconOf(require("lucide-react/dist/esm/icons/file-text.js")),
+  Files: iconOf(require("lucide-react/dist/esm/icons/files.js")),
   Flag: iconOf(require("lucide-react/dist/esm/icons/flag.js")),
   // Issue #2534 — PublicBrandPage website + Instagram chips.
   Globe2: iconOf(require("lucide-react/dist/esm/icons/globe-2.js")),
   Instagram: iconOf(require("lucide-react/dist/esm/icons/instagram.js")),
+  // Issue #3429 — Ari photo tiles and the Add context Photos row.
+  Image: iconOf(require("lucide-react/dist/esm/icons/image.js")),
   LayoutGrid: iconOf(require("lucide-react/dist/esm/icons/layout-grid.js")),
   // Issue #2534 — PublicBrandPage social chip.
   Linkedin: iconOf(require("lucide-react/dist/esm/icons/linkedin.js")),
@@ -223,6 +247,9 @@ const USED_ICONS = {
     ["path", { d: "M7.753 16.239a6 6 0 0 1 0-8.478", key: "r2q7qm" }],
     ["circle", { cx: "12", cy: "12", r: "2", key: "1c9p78" }],
   ]),
+  // Issue #3429 — Ari retry controls and the workspace-read activity.
+  RotateCw: iconOf(require("lucide-react/dist/esm/icons/rotate-cw.js")),
+  Search: iconOf(require("lucide-react/dist/esm/icons/search.js")),
   Settings: iconOf(require("lucide-react/dist/esm/icons/settings.js")),
   ShoppingBag: createLucideIcon("shopping-bag", [
     ["path", { d: "M16 10a4 4 0 0 1-8 0", key: "1ltviw" }],

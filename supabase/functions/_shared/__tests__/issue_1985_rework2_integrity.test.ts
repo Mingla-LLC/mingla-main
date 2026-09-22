@@ -177,20 +177,26 @@ Deno.test("#1985 R2-3 first-turn identity and task response commit are database-
     migration,
     /CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_messages_user_client_turn\s+ON public\.agent_messages \(user_id, client_turn_id\)/,
   );
-  assertMatch(
-    migration,
-    /CREATE OR REPLACE FUNCTION public\.claim_agent_first_turn/,
+  // [TEST-MOD-APPROVED #3429] The old first-turn and task-only RPC names are
+  // superseded by the digest-bound logical-turn authority. Retained invariant:
+  // one client id is claimed once and its current attempt commits atomically.
+  const turnAuthority = await source(
+    "supabase/migrations/20270712003429_issue_3429_ari_chat_context.sql",
   );
   assertMatch(migration, /EXCEPTION WHEN unique_violation/);
   assertMatch(
-    migration,
-    /CREATE OR REPLACE FUNCTION public\.commit_agent_task_assistant_turn/,
+    turnAuthority,
+    /CREATE OR REPLACE FUNCTION public\.claim_agent_chat_turn/,
   );
-  const updateAt = migration.indexOf(
+  assertMatch(
+    turnAuthority,
+    /CREATE OR REPLACE FUNCTION public\.commit_agent_chat_assistant_turn/,
+  );
+  const updateAt = turnAuthority.indexOf(
     "UPDATE public.agent_conversations",
-    migration.indexOf("commit_agent_task_assistant_turn"),
+    turnAuthority.indexOf("commit_agent_chat_assistant_turn"),
   );
-  const insertAt = migration.indexOf(
+  const insertAt = turnAuthority.indexOf(
     "INSERT INTO public.agent_messages",
     updateAt,
   );
@@ -198,8 +204,8 @@ Deno.test("#1985 R2-3 first-turn identity and task response commit are database-
     updateAt >= 0 && insertAt > updateAt,
     "state CAS and assistant insert must share the same RPC transaction",
   );
-  assertMatch(chat, /\.rpc\(\s*"claim_agent_first_turn"/);
-  assertMatch(chat, /\.rpc\(\s*"commit_agent_task_assistant_turn"/);
+  assertMatch(chat, /\.rpc\(\s*"claim_agent_chat_turn"/);
+  assertMatch(chat, /\.rpc\(\s*"commit_agent_chat_assistant_turn"/);
   assertMatch(chat, /TASK_REPLACED_BY_NEW_TASK/);
   assertMatch(chat, /reason: "task_replaced"/);
 });
@@ -232,10 +238,13 @@ Deno.test("#1985 R2-5 retry errors are rendered and retry awaits its typed resul
     screen,
     /const displayError = localError \?\? chat\.errorMessage/,
   );
+  // [TEST-MOD-APPROVED #3429] Retry is now also reachable from the activity
+  // rail; retained invariant: its typed result is awaited and an offline
+  // rejection renders the returned message.
   assertMatch(screen, /chat\.retryTurn\(clientTurnId\)\.then\(\(result\)/);
   assertMatch(
     screen,
-    /if \(result\?\.kind === "error"\) setLocalError\(result\.message\)/,
+    /if \(result\?\.kind === "error" && result\.code === "OFFLINE"\)\s*\{\s*setLocalError\(result\.message\)/,
   );
 });
 
@@ -255,16 +264,16 @@ Deno.test("#1985 R2-6 provider follow-up and Business delivery ownership preserv
     /const schemaResponse = schemaErrorResponse\(err\);\s*if \(schemaResponse\) return schemaResponse;/s,
   );
 
-  assertMatch(hook, /content: \{ text \}/);
-  assertMatch(
-    hook,
-    /setOptimisticMessages\(\(prev\) => prev\.filter\(\(m\) => m\.id !== vars\.optimisticId\)\)/,
-  );
-  assertMatch(hook, /function makeFailedMessage\(/);
-  assertMatch(hook, /id: `failed-\$\{clientTurnId\}`/);
+  assertMatch(hook, /const text = turn\.displayText/);
+  // [TEST-MOD-APPROVED #3429] Separate optimistic/failed arrays and their
+  // synthetic failed ids are superseded by one LocalTurn per client id.
+  // Retained invariant: retry reuses the exact payload and immutable id.
+  assertMatch(hook, /interface LocalTurn/);
+  assertMatch(hook, /current\.some\(\(candidate\) => candidate\.clientTurnId === clientTurnId\)/);
+  assertMatch(hook, /return sendTurn\([\s\S]*latest\.attachments, clientTurnId\)/);
   assertMatch(hook, /export function reconcileAgentDeliveryMessages\(/);
   assertMatch(
     hook,
-    /server\.client_turn_id === failed\.client_turn_id/,
+    /server\.client_turn_id === local\.client_turn_id/,
   );
 });

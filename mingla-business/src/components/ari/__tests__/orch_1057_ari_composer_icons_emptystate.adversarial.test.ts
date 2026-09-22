@@ -130,11 +130,24 @@ describe("ORCH-1057 adversarial · Item C — empty-state hierarchy invariant", 
   });
 });
 
-describe("ORCH-1057 adversarial · hard guard — suggestions content byte-stable", () => {
-  it("ADV-7 keeps the 3 example prompt strings EXACTLY as the originals", () => {
-    expect(chatScreen).toContain("Create a brand called Sample Events");
-    expect(chatScreen).toContain("What events do I have this week?");
-    expect(chatScreen).toContain("Help me schedule a Friday event");
+describe("ORCH-1057 adversarial · hard guard — first-run guidance byte-stable", () => {
+  // [TEST-MOD-APPROVED #3429] (a) superseded: the three screen-level example
+  // prompts belonged to the "+" suggestions panel, which #3429 replaced with
+  // "Add context" — issue_3429_ari_chat_polish.implementor.test.ts pins their
+  // removal ("SAMPLE_PROMPTS" and 'Try asking Ari' must be absent from the
+  // screen). ADV-7's protection is that the first-run guidance copy cannot
+  // drift silently, so it now pins the copy that replaced it, byte for byte.
+  it("ADV-7 keeps the first-run hint copy EXACTLY as shipped", () => {
+    expect(emptyState).toContain("Tap ");
+    // [TEST-MOD-APPROVED #3429] REWORK-2 R-3: "byte-stable" has to mean the
+    // bytes users see. As a bare substring this passed on the source comment or
+    // the accessibilityLabel alone, so ADV-7 could not detect a change to the
+    // shipped sentence at all. Anchored to the rendered <Text>, it can.
+    expect(emptyState).toContain(
+      '<Text style={styles.hintText}> to attach context</Text>',
+    );
+    expect(emptyState).toContain('accessibilityLabel="Tap the plus button to attach context"');
+    expect(chatScreen).not.toContain("SAMPLE_PROMPTS");
   });
 
   it("ADV-7b no screen-shift fix was smuggled in (sheet/keyboard logic untouched)", () => {

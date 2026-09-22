@@ -293,7 +293,20 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // in api-health-probe; it had never run) and removed its contract entry. The
   // pin still does its job — any entry dropped WITHOUT a matching retirement
   // moves this count and fails here.
-  assert.equal(Object.keys(contract.functions).length, 231);
+  //
+  // [TEST-MOD-APPROVED #3429] 231 -> 235: #3429 adds four Ari edge functions —
+  // agent-attachment-cleanup, agent-attachments, agent-conversation and
+  // agent-turn-control — each declared in function-env.contract.json from the
+  // scanner's own env reads.
+  //
+  // Note for #3528: this line is a COUNT, and a count signals "something
+  // changed", not "something is wrong". The assertion that carries the meaning
+  // is the `deepEqual(auditFunctionSecretContract(), [])` above it, which is
+  // why this edit was made only after proving that one still bites: adding a
+  // module to the import graph that the contract does NOT classify fails the
+  // deepEqual with `contract:function_set_mismatch`, before this line is
+  // reached. Verified by doing exactly that and restoring.
+  assert.equal(Object.keys(contract.functions).length, 235);
   assert.equal(manifest.secrets.length, 88);
 });
 
