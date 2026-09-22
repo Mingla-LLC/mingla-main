@@ -157,7 +157,12 @@ Deno.test("issue 2725 amendment 8 missing usage writes a null receipt and never 
       "minimal",
     );
     assertEquals(generatedRequest.generationConfig.candidateCount, 1);
-    assertEquals(generatedRequest.generationConfig.maxOutputTokens, 1200);
+    // issue #3541 — 1200 was the ceiling the answer was cut off against
+    // (finish_reason MAX_TOKENS, candidate_tokens 1183/1189/1185 on three
+    // separate weeks). The literal stays a literal on purpose: it catches an
+    // accidental drift that a derived assertion would absorb. The DERIVATION
+    // of 3500 is asserted separately, in issue2796_worker_v3_happy.test.ts.
+    assertEquals(generatedRequest.generationConfig.maxOutputTokens, 2200);
     assertEquals(generatedRequest.generationConfig.responseJsonSchema.additionalProperties, false);
     assertEquals(Number.isInteger(generatedRequest.generationConfig.seed), true);
   } finally {

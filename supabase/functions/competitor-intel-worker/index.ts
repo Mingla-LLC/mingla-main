@@ -31,15 +31,89 @@ const RESERVED_MICROUSD = 50_000;
 // place. Line ~1500 used to hardcode the literal in the URL and ignore this
 // constant entirely — that is the exact trap the single-source gate now blocks.
 export const GEMINI_MODEL_ID = SHARED_GEMINI_MODEL_ID;
-export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.4";
+// issue #3541 — v3.5 states the output bounds in the instruction text. The
+// version is part of the synthesis cache key AND of
+// tool_competitor_synthesis_results' unique key, so bumping it is what stops a
+// v3.4 result being reused for a v3.5 request.
+export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.5";
 // issue #3526 — stamped next to actual_microusd on every job row. Bumped in the
 // same change as the rates: without it a $0.30-rate row and a $0.75-rate row
 // are indistinguishable to a later reader.
 export const PRICING_VERSION = GEMINI_PRICING_VERSION;
-export const MAX_SYNTHESIS_OUTPUT_TOKENS = 1_200;
+// issue #3541 — WHY THIS NUMBER. It is sized against SYNTHESIS_TIMEOUT_MS,
+// not against the schema, and the derivation is here so the next person can
+// check it instead of trusting it.
+//
+// WHAT WENT WRONG AT 1,200. The largest brief that ever passed validation was
+// 955 candidate tokens (2026-08-29 03:08). 1,200 is 1.26x that — no margin at
+// all. Ordinary model drift walked straight into it: finish_reason MAX_TOKENS
+// with 1183 / 1189 / 1185 candidate tokens on three separate weeks and two
+// different models, every one within six tokens of the ceiling. Output that
+// clusters that tightly is a wall, not content.
+//
+// WHY THE TIMEOUT SETS THE NUMBER AND THE SCHEMA CANNOT.
+// PROVIDER_RESPONSE_SCHEMA is deliberately unbounded — issue #2814 proved that
+// minItems/maxItems/minimum/maximum on this schema make Gemini refuse the
+// request outright ("the specified schema produces a constraint that has too
+// many states for serving", HTTP 400, no candidate and no usage metadata at
+// all), and the guard in issue2796_worker_v3_happy.test.ts keeps them out. So
+// the only ceiling that can be raised here is the one the clock imposes.
+//
+//   Measured, 2026-09-22 receipt: 1,185 candidate tokens in 6,753 ms on
+//   gemini-3.6-flash at thinking_level "minimal"
+//     => 5.699 ms per output token (MEASURED_SYNTHESIS_MS_PER_OUTPUT_TOKEN)
+//   Read pessimistically — the whole 6,753 ms treated as generation, no credit
+//   for connect or time-to-first-token:
+//     floor(15,000 / 5.699) = 2,632 tokens is all SYNTHESIS_TIMEOUT_MS can buy
+//
+//     2,200 = 83.6% of that wall, leaving ~2,460 ms of slack
+//
+//   Read with ~1,500 ms of connect + TTFT the model runs at ~225 tok/s, so
+//   2,200 tokens takes ~11.3 s — comfortable under either reading. A budget
+//   ABOVE 2,632 could only ever convert a truncation into a timeout abort,
+//   which is a worse failure: an abort writes no usage metadata at all.
+//
+// HOW IT RELATES TO THE SHAPE THE VALIDATORS ACCEPT. The largest document
+// validateBrief and validateDecisionReport would both accept — every array at
+// its maximum and every free-text field at its character ceiling
+// simultaneously — serializes to 10,351 characters, about 2,588 tokens at 4
+// chars/token. That is ABOVE this budget and above the 2,632-token wall, so no
+// budget can cover it inside 15 s. That ceiling is not what the model should
+// be aiming at, and the v3.5 prompt now says so explicitly: the bounds live in
+// the instruction text, where they cost the constrained decoder nothing. At
+// 2,200 the budget is 2.3x the largest brief that has ever actually passed.
+//
+// HOW IT RELATES TO RESERVED_MICROUSD (50,000) — comfortable.
+//   Output 2,200 x GEMINI_OUTPUT_MICROUSD_PER_TOKEN (3.75) = 8,250. Input is
+//   capped by MAX_SYNTHESIS_REQUEST_BYTES (65,536 bytes, ~16,400 tokens) x
+//   GEMINI_INPUT_MICROUSD_PER_TOKEN (0.75) = 12,300. Worst case ~20,550
+//   microUSD against a 50,000 reservation — which matters because the receipts
+//   table CHECKs actual_microusd <= reserved_microusd, so an overshoot would
+//   fail the receipt write outright. Today's truncated call cost 5,796.
+export const MAX_SYNTHESIS_OUTPUT_TOKENS = 2_200;
+// The 2026-09-22 receipt, kept as numbers so the tests can redo the division
+// rather than restate its answer.
+export const MEASURED_SYNTHESIS_CANDIDATE_TOKENS = 1_185;
+export const MEASURED_SYNTHESIS_LATENCY_MS = 6_753;
+export const MEASURED_SYNTHESIS_MS_PER_OUTPUT_TOKEN =
+  MEASURED_SYNTHESIS_LATENCY_MS / MEASURED_SYNTHESIS_CANDIDATE_TOKENS;
+// issue #3541 — the result_class recorded when the provider stopped because it
+// hit MAX_SYNTHESIS_OUTPUT_TOKENS. Distinct from "provider_error" on purpose:
+// the call worked and the bill was paid, so the next reader must be sent to
+// this file, not to Google's status page.
+//
+// Nothing constrains this value on the way in. issue_2725_record_model_usage
+// writes p_receipt->>'result_class' straight into
+// tool_competitor_model_usage_receipts.result_class, which is `text NOT NULL`
+// with no CHECK and no enum; issue_2725_finish_job never reads result_class at
+// all (it branches on p_safe_error); issue_2725_settle_zero_cost takes a
+// p_result_class argument its body ignores. There is no dashboard or admin
+// reader of the column. So a new value cannot break a consumer, and no
+// migration is needed to introduce one.
+export const RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED = "output_budget_exceeded";
 const MAX_SYNTHESIS_REQUEST_BYTES = 65_536;
 const PROVIDER_TIMEOUT_MS = 12_000;
-const SYNTHESIS_TIMEOUT_MS = 15_000;
+export const SYNTHESIS_TIMEOUT_MS = 15_000;
 const WORKER_CLAIM_LIMIT = 3;
 export const PROVIDER_RESPONSE_SCHEMA = {
   type: "object",
@@ -1487,11 +1561,60 @@ export async function synthesizeBrief(
   if (!key) throw new Error("model_configuration_missing");
   const requestBody = {
     contents: [{
+      // issue #3541 — THE OUTPUT BOUNDS LIVE HERE, IN THE PROMPT, AND NOT IN
+      // PROVIDER_RESPONSE_SCHEMA. That is not a stylistic choice.
+      //
+      // Issue #2814 proved that putting minItems/maxItems/minimum/maximum on
+      // this schema makes Gemini refuse the whole request — "the specified
+      // schema produces a constraint that has too many states for serving",
+      // HTTP 400, no candidate and no usage metadata — and
+      // issue2796_worker_v3_happy.test.ts guards them back out. That budget is
+      // spent by responseJsonSchema alone; instruction text costs the
+      // constrained decoder nothing, so it is the one lever that can bound the
+      // answer without re-triggering that 400.
+      //
+      // Every number below is one the code ALREADY enforces or throws away.
+      // Nothing here is invented:
+      //   what_changed 3          validateBrief (length > 3 -> invalid_synthesis)
+      //                           and parsed.what_changed.slice(0, 3)
+      //   why_it_matters 2        validateBrief (length > 2) and
+      //                           parsed.why_it_matters.slice(0, 2)
+      //   worth_doing 3           validateBrief (length > 3) and
+      //                           primaryActionFirst (primary + 2)
+      //   exactly one primary     validateBrief (primary !== 1)
+      //   theme_signals 2         groundedThemeSignals' Math.min(2, ...) and
+      //                           validateDecisionReport (synthesizedThemes > 2)
+      //   comparisons 5           groundedDecisionComparisons' `accepted.length
+      //                           >= 5` break and validateDecisionReport
+      //   changed_paths empty     groundedThemeSignals hardcodes [] and
+      //                           validateDecisionReport throws on a synthesis
+      //                           signal with any
+      //   id arrays 3             boundedIds in groundedDecisionBindings and the
+      //                           .slice(0, 3) calls in the other helpers
+      //   240 / 180 / 160 / 140   the normalizedDecisionText and
+      //                           boundedDecisionText ceilings on owner_facts
+      //                           text and decision.rationale (240), signal
+      //                           summary (180), decision.headline (160) and
+      //                           comparison owner/competitor text (140)
+      // The 240 on what_changed / why_it_matters / worth_doing text is the one
+      // figure argued rather than copied: nothing downstream truncates those
+      // three, so they take the contract's own sentence ceiling.
+      //
+      // These lines are instruction only. They do NOT relax validateBrief or
+      // validateDecisionReport, and a model that ignores them still fails the
+      // same way it always did.
       parts: [{
         text:
           `Return JSON only. Contract ${PROMPT_CONTRACT_VERSION}. Build a sourced venue-relevant competitor brief from this bounded before/after input: ${
             JSON.stringify(prompt)
-          }`,
+          }
+Length limits — anything past them is discarded before it is read, so spending output on it wastes the answer:
+- what_changed: at most 3 items. why_it_matters: at most 2. worth_doing: at most 3, with exactly one is_primary true.
+- theme_signals: at most 2, and changed_paths must always be [].
+- comparisons: at most 5. interpretation_meta: exactly one per why_it_matters. action_plan: exactly one per worth_doing.
+- Every signal_ids, owner_fact_ids and evidence_ids array: at most 3 ids, reused verbatim from the input.
+- Free text ceilings, in characters: what_changed.text, why_it_matters.text, worth_doing.text and decision.rationale 240; theme_signals.summary 180; decision.headline 160; comparisons.owner_text and comparisons.competitor_text 140; theme_signals.label 60.
+Write to those limits, not to the token budget. A shorter brief that stays inside them is correct; a longer one is cut off and thrown away.`,
       }],
     }],
     generationConfig: {
@@ -1594,6 +1717,9 @@ export async function synthesizeBrief(
       geminiErrorFingerprint(response.status, errorBody),
     ); // ORCH-1201 Layer-C
   }
+  // issue #3541 — read once, used by the result classification below AND by
+  // the receipt, so the two can never disagree about what the provider said.
+  const finishReason = result.candidates?.[0]?.finishReason ?? null;
   const u = result.usageMetadata;
   const promptTokens = u?.promptTokenCount,
     candidateTokens = u?.candidatesTokenCount,
@@ -1661,13 +1787,34 @@ export async function synthesizeBrief(
       owner_facts: foundation.owner_facts,
     },
   };
-  let resultClass = response.ok && parsed ? "accepted" : "provider_error";
+  // issue #3541 — a MAX_TOKENS finish is OUR defect, not Google's.
+  //
+  // This used to record "provider_error", which is what sent the next reader
+  // to check on Google for eleven days while the actual cause was
+  // MAX_SYNTHESIS_OUTPUT_TOKENS. The HTTP call succeeded, the usage metadata
+  // was complete, the bill was paid — the answer simply did not fit. That
+  // deserves its own name, and RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED points at
+  // this file instead of at the provider.
+  //
+  // It wins over BOTH of the other failure classes below. Truncated JSON
+  // usually fails to parse ("provider_error" before), but JSON that happens to
+  // close cleanly at the cut parses and then fails validation
+  // ("invalid_result" before) — the same defect must not report two different
+  // names depending on where the knife landed.
+  const outputBudgetExceeded = finishReason === "MAX_TOKENS";
+  let resultClass = response.ok && parsed
+    ? "accepted"
+    : outputBudgetExceeded
+    ? RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED
+    : "provider_error";
   if (usageComplete && parsed) {
     try {
       validateBrief(candidate, observations);
       if (!legacyV2Fixture) validateDecisionReport(candidate.decision_report, candidate, observations);
     } catch {
-      resultClass = "invalid_result";
+      resultClass = outputBudgetExceeded
+        ? RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED
+        : "invalid_result";
     }
   }
   const outputBytes = new TextEncoder().encode(
@@ -1704,7 +1851,7 @@ export async function synthesizeBrief(
           total_tokens: totalTokens ?? null,
           provider_model_version: result.modelVersion ?? null,
           latency_ms: Date.now() - started,
-          finish_reason: result.candidates?.[0]?.finishReason ?? null,
+          finish_reason: finishReason,
           result_class: usageComplete ? resultClass : "usage_missing",
           pricing_version: PRICING_VERSION,
           reserved_microusd: RESERVED_MICROUSD,

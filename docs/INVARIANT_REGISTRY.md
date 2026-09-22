@@ -10118,6 +10118,25 @@ independent tester returns PASS.
 
 All eight #2725 rules were established ACTIVE after independent final integration PASS on 2026-08-28.
 
+## DRAFT — issue #3541 (competitor brief output budget)
+
+### I-PROPOSED-3541-BOUNDS-LIVE-IN-THE-PROMPT (DRAFT)
+- **Rule:** The competitor synthesis output is bounded by INSTRUCTION TEXT in the prompt, never by constraints in `PROVIDER_RESPONSE_SCHEMA`. No `minItems`, `maxItems`, `minimum`, `maximum`, `maxLength`, `minLength` or `pattern` may appear in that schema. Every count and length stated in the prompt is derived from a site that already enforces or discards it (`validateBrief`, `validateDecisionReport`, `primaryActionFirst`, `groundedThemeSignals`, `groundedDecisionComparisons`, `boundedIds`), never invented.
+- **Why:** issue #2814 (2026-08-29) established that a bounded schema is rejected outright — `INVALID_ARGUMENT: the specified schema produces a constraint that has too many states for serving`, HTTP 400, zero candidate bytes. Re-adding bounds there trades a truncation for a hard failure. The pre-existing #2814 guard forbids only the four numeric keywords; `maxLength` and `pattern` are the most decoder-state-expensive class and were NOT covered, so the guard could have gone green on the change that reintroduced the outage.
+- **Enforcement:** `issue2796_worker_v3_happy.test.ts` — the #2814 guard, plus the #3541 test that forbids the string-constraint keywords the #2814 guard misses, plus the test that recovers the prompt's stated bounds by probing `validateBrief` rather than restating its literals.
+
+### I-PROPOSED-3541-BUDGET-SIZED-TO-THE-CLOCK (DRAFT)
+- **Rule:** `MAX_SYNTHESIS_OUTPUT_TOKENS` is sized to what `SYNTHESIS_TIMEOUT_MS` can actually deliver at measured throughput, with margin, and must leave a real margin above the observed output — not merely exceed the last truncation point. A budget above the timeout's reach converts a truncation into a timeout and is a defect.
+- **Why:** measured 6,753 ms / 1,185 tokens ⇒ ~2,632 tokens is everything a 15 s call can buy. The largest document `validateBrief` and `validateDecisionReport` would both accept is ~2,588 tokens, which is above the budget AND close to that wall: **no budget can cover the validators' own ceiling inside 15 s.** Only the prompt instruction keeps the model away from it.
+- **Enforcement:** `issue2796_worker_v3_happy.test.ts` margin assertion, and the derivation recorded in the constant's comment.
+
+### I-PROPOSED-3541-TRUNCATION-IS-OURS (DRAFT)
+- **Rule:** A `finish_reason` of `MAX_TOKENS` is recorded as `output_budget_exceeded`, never as `provider_error` or `invalid_result`, in both the unparseable and parsed-but-invalid branches.
+- **Why:** the label named the provider while the cause was our own configuration, which is why the fault survived eleven days and an entire outage investigation. A label names the subsystem at fault, never the actor that reported it (#3543).
+- **Enforcement:** `issue2796_worker_v3_happy.test.ts` — the positive assertion driven from a real provider-shaped `MAX_TOKENS` response, plus the negative control proving a non-`MAX_TOKENS` bad body still reports `provider_error`.
+
+Registered DRAFT at #3541 IMPLEMENT. Flip DRAFT → ACTIVE at CLOSE, after one real production run on `competitor-brief-v3.5` shows `finish_reason = STOP` with the answer inside the budget.
+
 ## ACTIVE — issue #2796 (premium competitor decision report)
 
 ### I-PROPOSED-2796-V3-EXACT-PROVENANCE (ACTIVE)

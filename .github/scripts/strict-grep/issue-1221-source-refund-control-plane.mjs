@@ -425,7 +425,7 @@ export function evaluateIssue1221(files, migrationNames, trackedEntries = []) {
       'name: "HMAC"',
       "value.length > 1024",
       "no-store, private",
-      'from("admin_users")',
+      'rpc("is_admin_user")',
       "decodeCursor(body.cursor)",
       "allowedEnumValues",
     ],
@@ -513,10 +513,28 @@ export function evaluateIssue1221(files, migrationNames, trackedEntries = []) {
     "X-Source-Refund-Recipient-Kid",
     "X-Source-Refund-Recipient-Key-B64",
     "sourceRefundRecipientFingerprint",
-    '.eq("id", authData.user.id)',
+    'rpc("is_admin_user")',
   ], failures);
   const adminActionSource =
     files["supabase/functions/admin-source-refund-action/index.ts"] ?? "";
+  // ISSUE-3537 — this gate used to REQUIRE the broken shape: from("admin_users")
+  // in operations and .eq("id", authData.user.id) in action. Both are
+  // unsatisfiable — admin_users has no user_id column, and its rows carry no FK
+  // to auth.users — so the gate pinned an authorization check that refused every
+  // admin for 54 days while reporting PASS. Requiring is_admin_user() is only
+  // half the repair; forbidding the old shape is what stops it coming back.
+  for (
+    const file of [
+      "supabase/functions/admin-source-refund-operations/index.ts",
+      "supabase/functions/admin-source-refund-action/index.ts",
+    ]
+  ) {
+    if ((files[file] ?? "").includes('from("admin_users")')) {
+      failures.push(
+        `${file} must authorize through is_admin_user(), never a direct admin_users query`,
+      );
+    }
+  }
   if (
     adminActionSource.includes('.from("source_refunds")') ||
     adminActionSource.includes('.from("reservation_checkout_sessions")') ||
@@ -722,6 +740,42 @@ if (process.argv.includes("--self-test")) {
       )
     ) {
       finish([`mandatory #1221 test path deletion escaped: ${requiredTest}`]);
+    }
+  }
+  // ISSUE-3537 — prove both halves of the admin-authorization rule still bite.
+  // Reverting to the shape this gate once REQUIRED must red, in both functions:
+  // once for losing is_admin_user(), once for the direct admin_users query.
+  for (
+    const [file, brokenMatch] of [
+      [
+        "supabase/functions/admin-source-refund-operations/index.ts",
+        '.eq("user_id", authData.user.id)',
+      ],
+      [
+        "supabase/functions/admin-source-refund-action/index.ts",
+        '.eq("id", authData.user.id)',
+      ],
+    ]
+  ) {
+    const revertedAdmin = { ...real.files };
+    revertedAdmin[file] = revertedAdmin[file]
+      .replace('rpc("is_admin_user")', 'from("admin_users").select("status")')
+      + `\nconst reverted = service.from("admin_users")${brokenMatch};\n`;
+    const revertedFailures = evaluateIssue1221(
+      revertedAdmin,
+      real.migrationNames,
+    );
+    if (
+      !revertedFailures.some((failure) =>
+        failure.includes("must authorize through is_admin_user()")
+      ) ||
+      !revertedFailures.some((failure) =>
+        failure.includes('missing required contract marker: rpc("is_admin_user")')
+      )
+    ) {
+      finish([
+        `self-test mutation escaped the admin authorization guard in ${file}`,
+      ]);
     }
   }
   const mutated = { ...real.files };
