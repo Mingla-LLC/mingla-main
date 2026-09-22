@@ -288,6 +288,24 @@ BEGIN
     RAISE EXCEPTION 'I-04a the armed order moved on an address match alone';
   END IF;
 
+  --    AND THE MARKETING SIDE IS UNTOUCHED, asserted on the SAME account in the
+  --    SAME instant. `public.verified_account_identifiers` answers a DIFFERENT
+  --    question - "can we reach this person by email?" - and any address on the
+  --    account is the right answer to it. #1778's
+  --    `issue_1778_circle_authorized_contact` is the reader that turns a silent
+  --    "no identifier" into `channel_unavailable`, which is a brand's circle mail
+  --    not being sent. So the account that was just refused the TICKET must
+  --    still be REACHABLE, and this pair of assertions is what stops a future
+  --    reader narrowing the shared function and quietly shrinking that reach.
+  SELECT count(*) INTO n
+    FROM public.issue_1778_circle_authorized_contact(
+           pg_temp.i2217_uuid('brand'), v_owner, 'email')
+   WHERE normalized_contact = 'buyer2217@example.test'
+     AND reason <> 'channel_unavailable';
+  IF n <> 1 THEN
+    RAISE EXCEPTION 'I-04a an account with no mailbox proof lost its circle-mail contact - reachability is not an ownership proof and must not move with one';
+  END IF;
+
   -- ── I-04b A PASSWORD SESSION IS NOT A MAILBOX PROOF, AND THE REFUSAL IS
   --    TRUTHFUL. The owner now also holds a session whose ONLY authentication
   --    method is `password`. On a project that confirms addresses without

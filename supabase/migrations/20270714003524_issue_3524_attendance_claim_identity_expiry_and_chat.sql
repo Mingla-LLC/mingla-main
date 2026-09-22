@@ -187,6 +187,36 @@ REVOKE ALL ON FUNCTION public.mask_contact_for_claim(text, text)
 GRANT EXECUTE ON FUNCTION public.mask_contact_for_claim(text, text) TO service_role;
 
 -- ===========================================================================
+-- (1b) WHAT `public.verified_account_identifiers` IS FOR, written down here
+--      because this release is the moment the two questions were separated and
+--      the next reader will arrive at that function holding the wrong one.
+--
+--      IT ANSWERS ONE QUESTION: "CAN WE REACH THIS PERSON?" Any address or
+--      number on the account is a correct answer to that, and the function is
+--      CORRECT as it stands. It is read by #2979's secret continuity and by
+--      #1778's `issue_1778_circle_authorized_contact`, which turns an empty
+--      answer into `channel_unavailable` — a brand's circle mail not being sent.
+--      Narrowing it would shrink real reach and would read, later, as a
+--      marketing defect rather than as the change it was.
+--
+--      IT IS NOT AN OWNERSHIP PROOF AND MUST NOT BE USED AS ONE. "Does this
+--      account own the address this ticket was bought with?" is a different
+--      question with a different answer, and `account_owns_order_contact` below
+--      is the only function that answers it. Asking one function both questions
+--      is the defect this release closes; the fix is the separation, not a
+--      tightening. On the identity rail this function now survives only as the
+--      cheap "has this account proved anything at all" short-circuit — it no
+--      longer decides whether an order moves.
+--
+--      Asserted, not just asserted-in-prose: `#2217 I-04a` refuses the ticket to
+--      an account and, in the same instant, requires
+--      `issue_1778_circle_authorized_contact` to still hand that same account a
+--      usable contact. Narrowing either function fires one of those two lines.
+-- ===========================================================================
+COMMENT ON FUNCTION public.verified_account_identifiers(uuid) IS
+  '#2217/#2269/#3524: THE REACHABILITY QUESTION - which identifiers an account can be reached at. email - auth.identities. phone - the GoTrue provider=phone identity UNION public.verified_phone_identities, the service-role-only ledger verify-otp writes when Twilio approves. NOT AN OWNERSHIP PROOF: whether an account owns the contact an order was bought with is answered ONLY by public.account_owns_order_contact, and #3524 separated the two rather than narrowing this one, because #1778 circle mail reads this function and an empty answer there is mail that is never sent. Deliberately reads NEITHER auth.users.phone_confirmed_at / email_confirmed_at (set on accounts that have no such contact at all, so they carry no information) NOR profiles.phone (user-writable, so it records a claim rather than a verification).';
+
+-- ===========================================================================
 -- (2) account_owns_order_contact — THE identity predicate. One expression,
 --     evaluated by BOTH claim rails and by nothing else.
 --
@@ -198,23 +228,18 @@ GRANT EXECUTE ON FUNCTION public.mask_contact_for_claim(text, text) TO service_r
 --
 --     ON THIS PROJECT'S LIVE CONFIGURATION THAT SENTENCE WAS FALSE, and it is
 --     deleted rather than softened. Measured read-only on 2026-09-22 against
---     `gqnoajqerqhnvulmnyvv`:
---
---       GET /auth/v1/settings  ->  "mailer_autoconfirm": true,
---                                  "disable_signup": false
---       auth.users             ->  160 users, 160 confirmed,
---                                  160 with confirmation_sent_at IS NULL,
---                                  159 confirmed within 2s of creation
---
---     So a public signup with a buyer's address yields an auto-confirmed
---     session and a `provider='email'` identity carrying that address, with no
---     mail ever sent. `verified_account_identifiers` accepts an email identity
---     on `i.provider = 'email'` ALONE — it does not require `email_verified` —
---     so the mere existence of that row satisfied this predicate. Anyone who
---     knew a buyer's address could claim their ticket.
+--     `gqnoajqerqhnvulmnyvv`: of 160 accounts, 160 are confirmed, 160 were never
+--     sent a confirmation mail at all, and 159 were confirmed within two seconds
+--     of creation. Mail confirmation is automatic here, so neither
+--     `email_confirmed_at` nor the existence of a `provider='email'` identity
+--     carries information about who can read the mailbox, and a predicate built
+--     on either of them is asserting a property nothing enforces.
 --
 --     A migration that asserts a property the platform does not enforce is
 --     worse than one that says nothing, because the next reader believes it.
+--     This repository is public; what follows states the rule this function
+--     enforces and the evidence for each clause, deliberately not the shape of
+--     anything it refuses.
 --
 --     ── WHAT THIS FUNCTION NOW REQUIRES ────────────────────────────────────
 --
@@ -243,16 +268,10 @@ GRANT EXECUTE ON FUNCTION public.mask_contact_for_claim(text, text) TO service_r
 --     ── WHY (b) NEEDS THAT LAST CLAUSE: THE PROOF MUST NAME ITS MAILBOX ────
 --
 --     An `auth.mfa_amr_claims` row records the METHOD a session was obtained
---     by. It does NOT record the address. Without the binding, the question
---     "did this account ever read a code?" is answered by ANY past code, at ANY
---     past address — so the attack survives in a second form:
---
---       1. sign up honestly at attacker@example.com and read the code;
---       2. change the account's address to the buyer's;
---       3. the identity now carries the buyer's address, `auth.users.email`
---          carries it too, and the amr row from step 1 still sits there.
---
---     Every clause was satisfied by a proof about a DIFFERENT mailbox.
+--     by. It does NOT record the address. So the unbound question "did this
+--     account ever read a code?" can be answered by a code read at an address
+--     the account no longer holds, and the answer would then be about a
+--     DIFFERENT mailbox from the one being claimed.
 --
 --     `s.created_at >= i.updated_at` closes it: GoTrue stamps `updated_at` on
 --     the identity when its data changes, so a session minted before that

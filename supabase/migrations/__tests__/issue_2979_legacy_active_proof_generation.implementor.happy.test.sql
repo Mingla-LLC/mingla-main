@@ -39,16 +39,33 @@ INSERT INTO public.ticket_types(
   'General',1000,'USD',10
 );
 INSERT INTO public.orders(
-  id,event_id,buyer_email,buyer_name,total_cents,currency,payment_status,source,
+  id,event_id,buyer_email,buyer_phone_e164,buyer_name,total_cents,currency,payment_status,source,
   attendance_claim_token_digest,attendance_claim_token_generation,
   attendance_claim_token_created_at,attendance_claim_legacy_token_digest,
   attendance_claim_legacy_token_created_at
 ) VALUES (
   pg_temp.issue2979_a17_uuid('order'),
   pg_temp.issue2979_a17_uuid('event'),
-  'issue2979-a17-buyer@example.test','A17 Buyer',1000,'USD','paid','legacy',
+  'issue2979-a17-buyer@example.test','+15552979017','A17 Buyer',1000,'USD','paid','legacy',
   decode(repeat('a7',32),'hex'),'legacy_v1',now(),NULL,NULL
 );
+-- #3524 — THE CLAIMANT PROVES THE ORDER CONTACT.
+--
+-- `claim_attendance_internal_v2` gained one gate this file is not about: a
+-- claim link is delivered, and a delivered link can be passed on, so the
+-- account presenting it must also be able to show the order's own contact
+-- reaches it (`public.account_owns_order_contact`). The gate runs AFTER the
+-- digest match, the expiry and the eligibility check, so every result this file
+-- asserts on a bad or replayed proof is unaffected by it — but a claim this
+-- file expects to SUCCEED has to get past it, or the secret-continuity rule
+-- being measured here is never reached.
+--
+-- The proof used is #2269's verified-phone ledger: our own service-role-only
+-- row, written only after a code is approved at that number. It is chosen over
+-- the email routes because it needs no GoTrue table, and this lane provisions
+-- none.
+INSERT INTO public.verified_phone_identities(user_id,phone_e164)
+VALUES(pg_temp.issue2979_a17_uuid('claimant'),'+15552979017');
 INSERT INTO public.tickets(
   id,order_id,ticket_type_id,event_id,qr_code,status,approval_status
 ) VALUES (
