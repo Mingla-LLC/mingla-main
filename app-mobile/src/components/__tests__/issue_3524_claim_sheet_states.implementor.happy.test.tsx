@@ -320,6 +320,14 @@ assert.ok(
 
 // ── #3524 ITEM 4: the refusal splits, and the split reaches the screen ──────
 //
+// A NOTE ON WHICH VIEW EACH LINE SEARCHES. `sheet` is comment-stripped;
+// `sheetSource` is raw. Anything whose literal ALSO appears in a comment in that
+// file — a copy string the code explains, a prop the code justifies — must be
+// asserted against `sheet`, or the explanation satisfies the check after the
+// code it explains is gone. Four of the lines below were written against the raw
+// view and were exactly that; they were found by asking, of every literal
+// asserted here, whether it survives in comments alone.
+//
 // THE DEFECT THIS SECTION EXISTS FOR. One refusal was doing two jobs. The
 // rightful buyer whose inbox was simply unproved got the SAME sheet as somebody
 // holding a forwarded email, and that sheet's only action is to sign out and
@@ -388,7 +396,7 @@ assert.ok(
 
 // The approved copy, and nothing that promises permanence.
 assert.ok(
-  sheetSource.includes("the address on this account"),
+  sheet.includes("the address on this account"),
   "screen 1 must name the address as this account's own",
 );
 assert.ok(
@@ -401,7 +409,7 @@ assert.ok(
   "screen 2 must carry the approved ask",
 );
 assert.ok(
-  sheetSource.includes("Confirm and connect") && sheetSource.includes("Send it again"),
+  sheet.includes("Confirm and connect") && sheet.includes("Send it again"),
   "screen 2 must carry both approved controls",
 );
 assert.ok(
@@ -413,18 +421,24 @@ assert.ok(
 
 // The code step lives INSIDE the sheet, keyboard-aware, one OTP writer.
 assert.ok(
-  /BottomSheetTextInput/.test(sheetSource),
+  /BottomSheetTextInput/.test(sheet),
   "the code field must be the sheet-aware input, or the keyboard covers it",
 );
 // The sheet-aware input alone is not the whole contract: the sheet has to lift
 // with the keyboard, and the submitting tap must not be eaten by the dismiss.
 // This is the configuration the app's other form sheets already use.
+//
+// ASSERTED ON THE COMMENT-STRIPPED VIEW, and that is load-bearing rather than
+// tidy. The sheet explains these two props in a comment directly above them, so
+// a search over the raw source is satisfied by the explanation even when the
+// prop itself is gone — the check would pass a build where the keyboard covers
+// the field. `sheet` is the stripped view the file already keeps for this.
 assert.ok(
-  /keyboardBehavior="interactive"/.test(sheetSource),
+  /keyboardBehavior="interactive"/.test(sheet),
   "the sheet must lift with the keyboard, or the field is covered at the low snap",
 );
 assert.ok(
-  /keyboardShouldPersistTaps: "handled"/.test(sheetSource),
+  /keyboardShouldPersistTaps: "handled"/.test(sheet),
   "without persistent taps the first press on Confirm and connect only closes "
     + "the keyboard — a two-tap button at the moment of completion",
 );
