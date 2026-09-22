@@ -208,11 +208,53 @@ GRANT EXECUTE ON FUNCTION public.mask_contact_for_claim(text, text) TO service_r
 --
 --       (b) A CODE OR LINK WAS ACTUALLY RECEIVED AT THAT MAILBOX. The account
 --           holds a `provider='email'` identity for the address, that address is
---           the account's OWN `auth.users.email`, and the account has completed
---           an authentication that can only succeed by reading that mailbox —
+--           the account's OWN `auth.users.email`, the account has completed an
+--           authentication that can only succeed by reading that mailbox —
 --           `auth.mfa_amr_claims.authentication_method` in ('otp','magiclink',
---           'recovery'). This is the identity minted by #3524's own email
---           one-time-code sign-in.
+--           'recovery') — AND THE PROVING SESSION IS NO OLDER THAN THAT
+--           IDENTITY'S LAST CHANGE. This is the identity minted by #3524's own
+--           email one-time-code sign-in.
+--
+--     ── WHY (b) NEEDS THAT LAST CLAUSE: THE PROOF MUST NAME ITS MAILBOX ────
+--
+--     An `auth.mfa_amr_claims` row records the METHOD a session was obtained
+--     by. It does NOT record the address. Without the binding, the question
+--     "did this account ever read a code?" is answered by ANY past code, at ANY
+--     past address — so the attack survives in a second form:
+--
+--       1. sign up honestly at attacker@example.com and read the code;
+--       2. change the account's address to the buyer's;
+--       3. the identity now carries the buyer's address, `auth.users.email`
+--          carries it too, and the amr row from step 1 still sits there.
+--
+--     Every clause was satisfied by a proof about a DIFFERENT mailbox.
+--
+--     `s.created_at >= i.updated_at` closes it: GoTrue stamps `updated_at` on
+--     the identity when its data changes, so a session minted before that
+--     change cannot vouch for the address the identity now holds. An honest
+--     guest who signs in by code AFTER their address is in place is unaffected.
+--
+--     Measured read-only on 2026-09-22, this costs nothing today: 0 of 40 email
+--     identities have ever been updated after creation, 0 have an
+--     `identity_data.email` differing from `auth.users.email`, no
+--     `sessions.created_at` or `identities.updated_at` is NULL, and all 11
+--     accounts that satisfied the unbound rule still satisfy the bound one.
+--
+--     Whether GoTrue on this project even permits step 2 without confirming the
+--     new address is UNSETTLED — 0 users here have ever changed an email, so
+--     the behaviour is unexercised, and settling it needs a write against live
+--     auth. The clause means the answer does not matter. A control should not
+--     rest on an unaudited third-party default; that is how the first hole got
+--     here.
+--
+--     THE PHONE ARM NEEDS NO EQUIVALENT, and this is not an oversight. Its
+--     proof is `verified_phone_identities(user_id, phone_e164)` — OUR row,
+--     written only after a code was received AT THAT NUMBER. The pair IS the
+--     proof, so there is no separate address for a later edit to re-point:
+--     making the ledger vouch for a different number means getting a code at
+--     that different number. Note also that this arm reads the ledger ALONE and
+--     never `auth.users.phone`, so a change to the GoTrue phone field cannot
+--     reach it.
 --
 --     WHY NOT SIMPLY REQUIRE `email_verified` ON THE EMAIL ARM. Because it is
 --     never set on this platform's email identities and requiring it would
@@ -304,9 +346,23 @@ BEGIN
   $ev$ INTO v_proved USING p_user_id, v_email;
   IF v_proved THEN RETURN true; END IF;
 
-  -- EMAIL ARM (b) — a code or link was read out of that mailbox.
+  -- EMAIL ARM (b) — a code or link was read out of THIS mailbox.
   IF to_regclass('auth.mfa_amr_claims') IS NULL
      OR to_regclass('auth.sessions') IS NULL THEN
+    RETURN false;
+  END IF;
+  -- The binding below needs two timestamps. If a database has the tables but
+  -- not the columns, the proof cannot be bound to an address and this arm must
+  -- not answer at all — the same fail-closed rule as a missing table.
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'auth' AND table_name = 'sessions'
+       AND column_name = 'created_at'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'auth' AND table_name = 'identities'
+       AND column_name = 'updated_at'
+  ) THEN
     RETURN false;
   END IF;
   EXECUTE $ev$
@@ -324,6 +380,14 @@ BEGIN
              JOIN auth.sessions s ON s.id = a.session_id
             WHERE s.user_id = $1
               AND a.authentication_method IN ('otp', 'magiclink', 'recovery')
+              -- THE PROOF IS BOUND TO THE ADDRESS IT PROVED. See the block
+              -- comment above: an amr row records the METHOD and never the
+              -- ADDRESS, so without this a code read honestly at the
+              -- attacker's own mailbox, followed by an address change, vouches
+              -- for a mailbox it never touched. A session that predates the
+              -- identity's last change cannot speak for the address that
+              -- identity now carries. NULL on either side is NOT a pass.
+              AND s.created_at >= i.updated_at
          )
     )
   $ev$ INTO v_proved USING p_user_id, v_email;
@@ -332,7 +396,7 @@ END;
 $function$;
 
 COMMENT ON FUNCTION public.account_owns_order_contact(uuid, uuid) IS
-  '#3524: THE single identity predicate both claim rails use. Requires POSITIVE evidence that the order contact was reached: the verified-phone ledger, or an email identity that a provider asserted (email_verified) or that the account proved by reading a code or link out of that mailbox (mfa_amr_claims otp/magiclink/recovery). The mere existence of a provider=email identity is NOT sufficient, because this project runs mailer_autoconfirm and a public signup mints one for any address. Fails closed where GoTrue is absent. No other function may re-express this rule.';
+  '#3524: THE single identity predicate both claim rails use. Requires POSITIVE evidence that the order contact was reached: the verified-phone ledger, or an email identity that a provider asserted (email_verified) or that the account proved by reading a code or link out of that mailbox (mfa_amr_claims otp/magiclink/recovery) with the proving session no older than that identitys last change, so a proof earned at one address cannot vouch for another. The mere existence of a provider=email identity is NOT sufficient, because this project runs mailer_autoconfirm and a public signup mints one for any address. Fails closed where GoTrue is absent. No other function may re-express this rule.';
 
 REVOKE ALL ON FUNCTION public.account_owns_order_contact(uuid, uuid)
   FROM PUBLIC, anon, authenticated;

@@ -67,14 +67,24 @@ BEGIN
     EXECUTE $ddl$
       CREATE TABLE auth.identities(
         id text NOT NULL, user_id uuid NOT NULL, provider text NOT NULL,
-        identity_data jsonb NOT NULL DEFAULT '{}'::jsonb)
+        identity_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+        -- #3524 REWORK (P1-1) — the two timestamps angle J turns on. Both exist
+        -- on the real GoTrue tables (verified read-only against production:
+        -- auth.identities.updated_at and auth.sessions.created_at, both
+        -- timestamptz, neither NULL on any live row). `now()` is
+        -- transaction-constant in PostgreSQL, so every fixture row inserted
+        -- below shares one instant and `s.created_at >= i.updated_at` holds for
+        -- every honest persona without anyone having to state a timestamp.
+        updated_at timestamptz NOT NULL DEFAULT now())
     $ddl$;
     IF NOT EXISTS (
       SELECT 1 FROM information_schema.columns
        WHERE table_schema='auth' AND table_name='users' AND column_name='phone'
     ) THEN EXECUTE 'ALTER TABLE auth.users ADD COLUMN phone text'; END IF;
     EXECUTE $ddl$
-      CREATE TABLE auth.sessions(id uuid PRIMARY KEY, user_id uuid NOT NULL)
+      CREATE TABLE auth.sessions(
+        id uuid PRIMARY KEY, user_id uuid NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now())
     $ddl$;
     EXECUTE $ddl$
       CREATE TABLE auth.mfa_amr_claims(
@@ -137,6 +147,20 @@ INSERT INTO auth.sessions(id, user_id) VALUES
   (pg_temp.k3524_uuid('s-mis'),    pg_temp.k3524_uuid('mismatched')),
   (pg_temp.k3524_uuid('s-carry'),  pg_temp.k3524_uuid('carryover'));
 -- NOTE: 'borrower' deliberately has NO session of its own.
+
+-- #3524 REWORK (P1-1) — ANGLE J'S WHOLE CONSTRUCTION, IN TWO TIMESTAMPS.
+--
+-- `carryover` read a code honestly, a day ago, at the address it held THEN.
+-- Its identity was re-pointed at the buyer's address afterwards — which is what
+-- `k3524_become_buyer` does to it below, and what a real
+-- `PUT /auth/v1/user` would do. So its proving session PREDATES its identity's
+-- last change, and a proof about a different mailbox must not vouch for this
+-- one. Every other persona's session and identity share the fixture's single
+-- `now()`, which is the honest case: they proved the address they hold.
+UPDATE auth.sessions   SET created_at = now() - interval '1 day'
+ WHERE id = pg_temp.k3524_uuid('s-carry');
+UPDATE auth.identities SET updated_at = now()
+ WHERE id = 'k-carry';
 
 INSERT INTO auth.mfa_amr_claims(session_id, authentication_method) VALUES
   (pg_temp.k3524_uuid('s-free'),   'password'),

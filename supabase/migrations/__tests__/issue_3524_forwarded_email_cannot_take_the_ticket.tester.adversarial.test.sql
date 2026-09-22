@@ -68,7 +68,13 @@ BEGIN
         id            text NOT NULL,
         user_id       uuid NOT NULL,
         provider      text NOT NULL,
-        identity_data jsonb NOT NULL DEFAULT '{}'::jsonb
+        identity_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+        -- #3524 REWORK (P1-1): `s.created_at >= i.updated_at` binds a mailbox
+        -- proof to the address it proved. Both columns exist on the real GoTrue
+        -- tables and are never NULL on a live row; `now()` is
+        -- transaction-constant, so every fixture row below shares one instant
+        -- and an honest persona satisfies the binding without stating it.
+        updated_at    timestamptz NOT NULL DEFAULT now()
       )
     $ddl$;
     -- The GoTrue phone arm of `verified_account_identifiers` joins
@@ -101,8 +107,9 @@ BEGIN
     -- transaction.
     EXECUTE $ddl$
       CREATE TABLE auth.sessions(
-        id      uuid PRIMARY KEY,
-        user_id uuid NOT NULL
+        id         uuid PRIMARY KEY,
+        user_id    uuid NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
       )
     $ddl$;
     EXECUTE $ddl$

@@ -68,11 +68,19 @@ BEGIN
         id            text NOT NULL,
         user_id       uuid NOT NULL,
         provider      text NOT NULL,
-        identity_data jsonb NOT NULL DEFAULT '{}'::jsonb
+        identity_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+        -- #3524 REWORK (P1-1): the proof is bound to the address by
+        -- `s.created_at >= i.updated_at`. Both columns exist on the real GoTrue
+        -- tables and are never NULL on a live row. `now()` is
+        -- transaction-constant, so every fixture row below shares one instant
+        -- and the honest personas satisfy the binding without stating it.
+        updated_at    timestamptz NOT NULL DEFAULT now()
       )
     $ddl$;
     EXECUTE $ddl$
-      CREATE TABLE auth.sessions(id uuid PRIMARY KEY, user_id uuid NOT NULL)
+      CREATE TABLE auth.sessions(
+        id uuid PRIMARY KEY, user_id uuid NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now())
     $ddl$;
     EXECUTE $ddl$
       CREATE TABLE auth.mfa_amr_claims(
@@ -133,7 +141,15 @@ INSERT INTO auth.users(id, email) VALUES
   (pg_temp.i3524_uuid('ev-signup'),  'ev-signup@example.test'),
   (pg_temp.i3524_uuid('ev-otp'),     'ev-otp@example.test'),
   (pg_temp.i3524_uuid('ev-oauth'),   'ev-oauth@example.test'),
-  (pg_temp.i3524_uuid('ev-nothing'), 'ev-nothing@example.test');
+  (pg_temp.i3524_uuid('ev-nothing'), 'ev-nothing@example.test'),
+  -- #3524 REWORK (P1-1): read a code honestly at its OWN address, then moved
+  -- the account onto the buyer's. The amr row records the method, never the
+  -- address, so without the binding this old proof vouches for a mailbox it
+  -- never touched.
+  (pg_temp.i3524_uuid('ev-carry'),   'ev-carry@example.test'),
+  -- The honest twin of that shape, and the reason the binding is safe: this
+  -- guest ALSO changed their address, and then signed in by code again.
+  (pg_temp.i3524_uuid('ev-rebound'), 'ev-rebound@example.test');
 INSERT INTO auth.identities(id, user_id, provider, identity_data) VALUES
   -- A free autoconfirmed password signup: the row exists, nothing was received.
   ('i3524-signup', pg_temp.i3524_uuid('ev-signup'), 'email',
@@ -146,13 +162,31 @@ INSERT INTO auth.identities(id, user_id, provider, identity_data) VALUES
    jsonb_build_object('email', 'ev-oauth@example.test', 'email_verified', true)),
   -- An identity with no evidence of any kind.
   ('i3524-nothing', pg_temp.i3524_uuid('ev-nothing'), 'email',
-   jsonb_build_object('email', 'ev-nothing@example.test'));
+   jsonb_build_object('email', 'ev-nothing@example.test')),
+  ('i3524-carry', pg_temp.i3524_uuid('ev-carry'), 'email',
+   jsonb_build_object('email', 'ev-carry@example.test', 'email_verified', false)),
+  ('i3524-rebound', pg_temp.i3524_uuid('ev-rebound'), 'email',
+   jsonb_build_object('email', 'ev-rebound@example.test', 'email_verified', false));
 INSERT INTO auth.sessions(id, user_id) VALUES
-  (pg_temp.i3524_uuid('s-signup'), pg_temp.i3524_uuid('ev-signup')),
-  (pg_temp.i3524_uuid('s-otp'),    pg_temp.i3524_uuid('ev-otp'));
+  (pg_temp.i3524_uuid('s-signup'),  pg_temp.i3524_uuid('ev-signup')),
+  (pg_temp.i3524_uuid('s-otp'),     pg_temp.i3524_uuid('ev-otp')),
+  (pg_temp.i3524_uuid('s-carry'),   pg_temp.i3524_uuid('ev-carry')),
+  (pg_temp.i3524_uuid('s-rebound'), pg_temp.i3524_uuid('ev-rebound'));
 INSERT INTO auth.mfa_amr_claims(session_id, authentication_method) VALUES
-  (pg_temp.i3524_uuid('s-signup'), 'password'),
-  (pg_temp.i3524_uuid('s-otp'),    'otp');
+  (pg_temp.i3524_uuid('s-signup'),  'password'),
+  (pg_temp.i3524_uuid('s-otp'),     'otp'),
+  (pg_temp.i3524_uuid('s-carry'),   'otp'),
+  (pg_temp.i3524_uuid('s-rebound'), 'otp');
+
+-- #3524 REWORK (P1-1) — the two shapes, told apart by two timestamps.
+--   ev-carry:   proved a day ago, address moved afterwards  -> REFUSED
+--   ev-rebound: address moved, then proved again            -> ALLOWED
+UPDATE auth.sessions   SET created_at = now() - interval '1 day'
+ WHERE id = pg_temp.i3524_uuid('s-carry');
+UPDATE auth.identities SET updated_at = now()
+ WHERE id IN ('i3524-carry', 'i3524-rebound');
+UPDATE auth.sessions   SET created_at = now()
+ WHERE id = pg_temp.i3524_uuid('s-rebound');
 
 INSERT INTO public.verified_phone_identities(user_id, phone_e164, verified_at) VALUES
   (pg_temp.i3524_uuid('owner'),  '+15550100101', now()),
@@ -205,7 +239,13 @@ INSERT INTO public.orders(
    'paid', 'online_checkout', decode(repeat('63', 32), 'hex'), 'governed_v2', now()),
   (pg_temp.i3524_uuid('order-ev-nothing'), pg_temp.i3524_uuid('event'),
    'ev-nothing@example.test', '+15550100194', 'Nothing', 1000, 'USD',
-   'paid', 'online_checkout', decode(repeat('64', 32), 'hex'), 'governed_v2', now());
+   'paid', 'online_checkout', decode(repeat('64', 32), 'hex'), 'governed_v2', now()),
+  (pg_temp.i3524_uuid('order-ev-carry'), pg_temp.i3524_uuid('event'),
+   'ev-carry@example.test', '+15550100195', 'Carry', 1000, 'USD',
+   'paid', 'online_checkout', decode(repeat('65', 32), 'hex'), 'governed_v2', now()),
+  (pg_temp.i3524_uuid('order-ev-rebound'), pg_temp.i3524_uuid('event'),
+   'ev-rebound@example.test', '+15550100196', 'Rebound', 1000, 'USD',
+   'paid', 'online_checkout', decode(repeat('66', 32), 'hex'), 'governed_v2', now());
 
 INSERT INTO public.tickets(id, order_id, ticket_type_id, event_id, qr_code, status, approval_status)
 VALUES
@@ -217,6 +257,10 @@ VALUES
    pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-oauth', 'valid', 'auto'),
   (pg_temp.i3524_uuid('tk-ev-nothing'), pg_temp.i3524_uuid('order-ev-nothing'),
    pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-nothing', 'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-ev-carry'), pg_temp.i3524_uuid('order-ev-carry'),
+   pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-carry', 'valid', 'auto'),
+  (pg_temp.i3524_uuid('tk-ev-rebound'), pg_temp.i3524_uuid('order-ev-rebound'),
+   pg_temp.i3524_uuid('tier'), pg_temp.i3524_uuid('event'), 'i3524-ev-rebound', 'valid', 'auto'),
   (pg_temp.i3524_uuid('tk-fresh'),   pg_temp.i3524_uuid('order-fresh'),
    pg_temp.i3524_uuid('tier'),     pg_temp.i3524_uuid('event'), 'i3524-fresh',   'valid', 'auto'),
   (pg_temp.i3524_uuid('tk-old'),     pg_temp.i3524_uuid('order-old'),
@@ -276,6 +320,53 @@ BEGIN
     public.account_owns_order_contact(
       pg_temp.i3524_uuid('ev-oauth'), pg_temp.i3524_uuid('order-ev-oauth')),
     'and so does one whose provider asserted email_verified');
+
+  -- ── (1c) #3524 REWORK, P1-1 — THE PROOF MUST NAME ITS OWN MAILBOX ────────
+  --
+  -- An `mfa_amr_claims` row records the METHOD a session was obtained by and
+  -- never the ADDRESS. So "has this account ever read a code?" is answered by
+  -- ANY past code at ANY past address, and the attack survives in a second
+  -- form: sign up honestly at your own mailbox, read the code, then move the
+  -- account onto the buyer's address. Every other clause is satisfied by a
+  -- proof about a mailbox the attacker never touched.
+  PERFORM pg_temp.i3524_ok(
+    NOT public.account_owns_order_contact(
+      pg_temp.i3524_uuid('ev-carry'), pg_temp.i3524_uuid('order-ev-carry')),
+    'a mailbox proof earned BEFORE the account carried this address must not '
+      || 'vouch for it — the amr row names a method, never a mailbox');
+
+  -- …AND THE BINDING MUST NOT COST AN HONEST GUEST THEIR TICKET. The same
+  -- address change, followed by signing in by code again, still claims. That is
+  -- the difference between a false negative worth one sign-in and a lost
+  -- ticket: this guest is NOT refused at all.
+  PERFORM pg_temp.i3524_ok(
+    public.account_owns_order_contact(
+      pg_temp.i3524_uuid('ev-rebound'), pg_temp.i3524_uuid('order-ev-rebound')),
+    'an honest guest who changed their address and THEN proved it again still '
+      || 'owns their order contact');
+
+  -- THE PHONE ARM CANNOT BE ATTACKED THIS WAY, and here is the proof rather
+  -- than the assertion. Its evidence is our own ledger row, which IS the
+  -- (account, number) pair — there is no second, editable place where the
+  -- address lives, so nothing can be re-pointed at a number that never
+  -- received a code. Re-pointing GoTrue's own phone field reaches nothing:
+  -- this arm does not read it.
+  PERFORM pg_temp.i3524_ok(
+    public.account_owns_order_contact(
+      pg_temp.i3524_uuid('owner'), pg_temp.i3524_uuid('order-fresh')),
+    'the phone arm still answers on the ledger pair alone');
+  PERFORM pg_temp.i3524_ok(
+    pg_get_functiondef(
+      'public.account_owns_order_contact(uuid,uuid)'::regprocedure)
+      NOT LIKE '%u.phone%',
+    'and it never reads auth.users.phone, so a change there cannot reach it');
+  PERFORM pg_temp.i3524_ok(
+    (SELECT count(*) FROM public.verified_phone_identities
+      WHERE user_id = pg_temp.i3524_uuid('owner')) = 1
+    AND NOT public.account_owns_order_contact(
+      pg_temp.i3524_uuid('owner'), pg_temp.i3524_uuid('order-ev-carry')),
+    'a ledger row proves ONE number and nothing else — it cannot be carried '
+      || 'over to an order bought with a different contact');
 
   -- The evidence must belong to THIS account, not to anybody who happens to
   -- have done an OTP somewhere.
