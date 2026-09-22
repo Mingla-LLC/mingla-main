@@ -207,16 +207,16 @@ Deno.test({
     assert(
       args.p_legacy_proof_digest !== null &&
         args.p_legacy_proof_digest !== undefined,
-      "a claim must ALWAYS carry a second candidate: an order can be holding a "
-        + "previously issued digest, and the database compares that slot only "
-        + "when one is supplied. Sending null makes the preserved link "
-        + "unredeemable and leaves the rest of the fix inert.",
+      "a claim must ALWAYS carry a second candidate: an order can be holding a " +
+        "previously issued digest, and the database compares that slot only " +
+        "when one is supplied. Sending null makes the preserved link " +
+        "unredeemable and leaves the rest of the fix inert.",
     );
     assert(
       args.p_legacy_proof_digest === governed,
-      "and with a single reader that candidate is the same digest, because the "
-        + "preserved digest was minted under this same pepper. Got "
-        + String(args.p_legacy_proof_digest),
+      "and with a single reader that candidate is the same digest, because the " +
+        "preserved digest was minted under this same pepper. Got " +
+        String(args.p_legacy_proof_digest),
     );
   },
 });
@@ -263,7 +263,10 @@ Deno.test({
     const args = claimArgs(rpcs, "claim_attendance_internal_v2");
     const direct = await expectedDigest(TOKEN, DIRECT_PEPPER);
 
-    assert(args.p_current_proof_digest === direct, "the direct secret is current");
+    assert(
+      args.p_current_proof_digest === direct,
+      "the direct secret is current",
+    );
     assert(
       args.p_legacy_proof_digest === direct,
       "and it is the only legacy verifier there has ever been",
@@ -292,8 +295,8 @@ Deno.test({
     );
     assert(
       args.p_legacy_proof_digest === governed,
-      "and it carries a second candidate for the same reason the phone does. "
-        + "Got " + String(args.p_legacy_proof_digest),
+      "and it carries a second candidate for the same reason the phone does. " +
+        "Got " + String(args.p_legacy_proof_digest),
     );
     assert(
       args.p_code_digest !== args.p_current_proof_digest,
@@ -304,11 +307,15 @@ Deno.test({
 
 Deno.test({
   ...testOpts,
-  name: "#3524 the desktop sheet still reads a previous pepper when there is one",
+  name:
+    "#3524 the desktop sheet still reads a previous pepper when there is one",
   fn: async () => {
     const { rpcs } = await invoke(HANDOFF, handoffRequest(), {
       mint_attendance_claim_handoff: { result: "invalid" },
-    }, { AD_CONVERSION_TOKENS: BUNDLE, ATTENDANCE_CLAIM_PEPPER: DIRECT_PEPPER });
+    }, {
+      AD_CONVERSION_TOKENS: BUNDLE,
+      ATTENDANCE_CLAIM_PEPPER: DIRECT_PEPPER,
+    });
     const args = claimArgs(rpcs, "mint_attendance_claim_handoff");
 
     assert(
@@ -322,7 +329,8 @@ Deno.test({
 
 Deno.test({
   ...testOpts,
-  name: "#3524 the identity rail carries no proof at all, so it needs no candidate",
+  name:
+    "#3524 the identity rail carries no proof at all, so it needs no candidate",
   fn: async () => {
     // Stated as a test rather than left as an assumption: the sign-in sweep
     // never presents a digest. It matches verified identifiers and the SQL it
@@ -342,7 +350,9 @@ Deno.test({
       "it reads no pepper and computes no digest",
     );
     assert(
-      identity.includes('admin.rpc(\n      "claim_attendance_by_verified_identity"'),
+      identity.includes(
+        'admin.rpc(\n      "claim_attendance_by_verified_identity"',
+      ),
       "it claims by verified identity, which resolves the order's own digests",
     );
   },
