@@ -17,6 +17,9 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { AppleLogo } from "../ui/BrandIcons";
+// #3524 — the email panel is an INPUT surface on a screen that had none, so it
+// needs the keyboard avoidance the OAuth buttons never did.
+import { KeyboardAvoidingView, TextInput } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import { HapticFeedback } from "../../utils/hapticFeedback";
@@ -45,7 +48,26 @@ import { BUTTON_MAX_FONT_SCALE } from '../../constants/dynamicType';
 interface WelcomeScreenProps {
   onGoogleSignIn: () => Promise<void>;
   onAppleSignIn: () => Promise<void>;
+  /**
+   * #3524 — sign in by emailed code. Optional so every existing render site
+   * keeps compiling and behaving IDENTICALLY: with these absent the third option
+   * is not rendered at all and this screen is byte-for-byte what it was.
+   */
+  onSendEmailCode?: (email: string) => Promise<{ ok: boolean; error?: string }>;
+  onVerifyEmailCode?: (
+    email: string,
+    code: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  /** Opens the panel already expanded — how the claim sheet's "that's not me"
+   * flow lands here, so the guest does not have to find it. */
+  emailPanelInitiallyOpen?: boolean;
 }
+
+/** One resend per 30 seconds, with a visible countdown. A guest tapping resend
+ * four times in a row is how an account gets provider-rate-limited and then told
+ * something unhelpful. */
+const RESEND_COOLDOWN_SECONDS = 30;
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const WELCOME_TAGLINE = "Places, plans, and experiences\nworth showing up for";
 const WELCOME_TAGLINE_ACCESSIBILITY =
@@ -59,6 +81,9 @@ const WELCOME_WORDMARK_WIDTH = 108;
 export default function WelcomeScreen({
   onGoogleSignIn,
   onAppleSignIn,
+  onSendEmailCode,
+  onVerifyEmailCode,
+  emailPanelInitiallyOpen = false,
 }: WelcomeScreenProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -67,8 +92,83 @@ export default function WelcomeScreen({
     useState(false);
   const [isAppleSignInInProgress, setIsAppleSignInInProgress] = useState(false);
 
+  // #3524 — the email panel's own state. Two steps: address, then the 6-digit
+  // code. Nothing here is logged.
+  const emailSignInAvailable = onSendEmailCode !== undefined &&
+    onVerifyEmailCode !== undefined;
+  const [emailPanelOpen, setEmailPanelOpen] = useState(
+    emailPanelInitiallyOpen && emailSignInAvailable,
+  );
+  const [emailStep, setEmailStep] = useState<"address" | "code">("address");
+  const [emailAddress, setEmailAddress] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+  // Always a SENTENCE, never a raw provider message.
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [resendIn, setResendIn] = useState(0);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const handle = setInterval(
+      () => setResendIn((prior) => (prior <= 1 ? 0 : prior - 1)),
+      1000,
+    );
+    return () => clearInterval(handle);
+  }, [resendIn]);
+
   const isAnyAuthInProgress =
-    isGoogleSignInInProgress || isAppleSignInInProgress;
+    isGoogleSignInInProgress || isAppleSignInInProgress || emailBusy;
+
+  const sendEmailCode = async (): Promise<void> => {
+    if (onSendEmailCode === undefined || emailBusy) return;
+    const address = emailAddress.trim().toLowerCase();
+    if (!EMAIL_SHAPE.test(address)) {
+      setEmailError("Enter the email address you used at checkout.");
+      return;
+    }
+    setEmailBusy(true);
+    setEmailError(null);
+    try {
+      const result = await onSendEmailCode(address);
+      if (!result.ok) {
+        setEmailError(result.error ?? "We couldn’t send the code. Try again.");
+        return;
+      }
+      setEmailStep("code");
+      setResendIn(RESEND_COOLDOWN_SECONDS);
+      AccessibilityInfo.announceForAccessibility(
+        "We emailed you a six digit code.",
+      );
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
+  const submitEmailCode = async (): Promise<void> => {
+    if (onVerifyEmailCode === undefined || emailBusy) return;
+    const code = emailCode.trim();
+    if (code.length < 6) {
+      setEmailError("Enter the 6-digit code we emailed you.");
+      return;
+    }
+    setEmailBusy(true);
+    setEmailError(null);
+    try {
+      const result = await onVerifyEmailCode(
+        emailAddress.trim().toLowerCase(),
+        code,
+      );
+      if (!result.ok) {
+        setEmailError(
+          result.error ?? "We couldn’t verify that code. Try again.",
+        );
+      }
+      // On success the auth listener takes over and this screen unmounts. There
+      // is deliberately no navigation call here.
+    } finally {
+      setEmailBusy(false);
+    }
+  };
 
   // Animated values for entrance animation
   const logoOpacity = useRef(new Animated.Value(0)).current;
@@ -285,9 +385,28 @@ export default function WelcomeScreen({
           translucent
         />
 
+        {/*
+          #3524 — this screen gained its FIRST text inputs, so it gained the two
+          things an input surface needs:
+
+            KeyboardAvoidingView — the email and code fields sit at the bottom of
+              the stack, directly under where the iOS keyboard comes up. Without
+              this the guest types into a field they cannot see.
+            keyboardShouldPersistTaps="handled" — without it, the first tap on
+              "Email me a code" only dismisses the keyboard and does nothing else.
+              That is a dead tap, and a dead tap on the button that sends the code
+              is indistinguishable from the feature being broken.
+
+          Both are additive: with the keyboard down this renders exactly as before.
+        */}
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoider}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
         <ScrollView
           bounces={false}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={[
             styles.idleContent,
             { paddingBottom: Math.max(insets.bottom, WELCOME_CONTENT_GUTTER) },
@@ -421,6 +540,193 @@ export default function WelcomeScreen({
             </TouchableOpacity>
           </Animated.View>
 
+          {/*
+            #3524 — CONTINUE WITH EMAIL. The third way in.
+
+            A guest buys a ticket with an address that has no Google and no Apple
+            account behind it. Their ticket can only land on an account that has
+            PROVED it owns that address, so before this they could not claim it at
+            all — which is the dead end #3524 exists to remove.
+
+            The panel is INLINE, not a route: the claim sheet sends the guest
+            straight here mid-claim, and a route push would have to carry and
+            restore the pending claim across a navigation it does not own.
+          */}
+          {emailSignInAvailable ? (
+            <Animated.View
+              style={[
+                styles.buttonAnimWrapper,
+                {
+                  opacity: googleOpacity,
+                  transform: [{ translateY: googleTranslateY }],
+                },
+              ]}
+            >
+              {!emailPanelOpen ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    HapticFeedback.light();
+                    setEmailPanelOpen(true);
+                  }}
+                  style={[
+                    styles.emailButton,
+                    isAnyAuthInProgress && styles.buttonDisabled,
+                  ]}
+                  disabled={isAnyAuthInProgress}
+                  activeOpacity={0.9}
+                  accessibilityLabel="Continue with email"
+                  accessibilityRole="button"
+                  accessibilityHint="Signs you in with a code we email you"
+                  accessibilityState={{ disabled: isAnyAuthInProgress }}
+                  testID="welcome-continue-with-email"
+                >
+                  <Text
+                    style={styles.emailButtonText}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+                  >
+                    Continue with email
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.emailPanel} testID="welcome-email-panel">
+                  {emailStep === "address" ? (
+                    <>
+                      <Text style={styles.emailPanelLabel}>
+                        We’ll email you a 6-digit code.
+                      </Text>
+                      <TextInput
+                        value={emailAddress}
+                        onChangeText={(next) => {
+                          setEmailAddress(next);
+                          setEmailError(null);
+                        }}
+                        placeholder="you@example.com"
+                        placeholderTextColor="rgba(255,255,255,.45)"
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        autoComplete="email"
+                        textContentType="emailAddress"
+                        returnKeyType="send"
+                        onSubmitEditing={() => void sendEmailCode()}
+                        editable={!emailBusy}
+                        style={styles.emailInput}
+                        accessibilityLabel="Email address"
+                        testID="welcome-email-address"
+                      />
+                      <TouchableOpacity
+                        onPress={() => void sendEmailCode()}
+                        style={[
+                          styles.emailSubmit,
+                          emailBusy && styles.buttonDisabled,
+                        ]}
+                        disabled={emailBusy}
+                        activeOpacity={0.9}
+                        accessibilityRole="button"
+                        accessibilityLabel="Email me a sign-in code"
+                        accessibilityState={{
+                          disabled: emailBusy,
+                          busy: emailBusy,
+                        }}
+                        testID="welcome-email-send"
+                      >
+                        {emailBusy ? (
+                          <ActivityIndicator size="small" color="#111827" />
+                        ) : (
+                          <Text
+                            style={styles.emailSubmitText}
+                            maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+                          >
+                            Email me a code
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.emailPanelLabel}>
+                        Enter the 6-digit code we emailed you.
+                      </Text>
+                      <TextInput
+                        value={emailCode}
+                        onChangeText={(next) => {
+                          setEmailCode(next.replace(/[^0-9]/g, "").slice(0, 6));
+                          setEmailError(null);
+                        }}
+                        placeholder="123456"
+                        placeholderTextColor="rgba(255,255,255,.45)"
+                        keyboardType="number-pad"
+                        autoComplete="one-time-code"
+                        textContentType="oneTimeCode"
+                        returnKeyType="done"
+                        onSubmitEditing={() => void submitEmailCode()}
+                        editable={!emailBusy}
+                        maxLength={6}
+                        style={[styles.emailInput, styles.emailCodeInput]}
+                        accessibilityLabel="Six digit sign-in code"
+                        testID="welcome-email-code"
+                      />
+                      <TouchableOpacity
+                        onPress={() => void submitEmailCode()}
+                        style={[
+                          styles.emailSubmit,
+                          emailBusy && styles.buttonDisabled,
+                        ]}
+                        disabled={emailBusy}
+                        activeOpacity={0.9}
+                        accessibilityRole="button"
+                        accessibilityLabel="Sign in with this code"
+                        accessibilityState={{
+                          disabled: emailBusy,
+                          busy: emailBusy,
+                        }}
+                        testID="welcome-email-verify"
+                      >
+                        {emailBusy ? (
+                          <ActivityIndicator size="small" color="#111827" />
+                        ) : (
+                          <Text
+                            style={styles.emailSubmitText}
+                            maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+                          >
+                            Sign in
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => void sendEmailCode()}
+                        style={styles.emailGhost}
+                        disabled={emailBusy || resendIn > 0}
+                        accessibilityRole="button"
+                        accessibilityLabel={resendIn > 0
+                          ? `Resend available in ${resendIn} seconds`
+                          : "Send a new code"}
+                        accessibilityState={{ disabled: emailBusy || resendIn > 0 }}
+                        testID="welcome-email-resend"
+                      >
+                        <Text style={styles.emailGhostText}>
+                          {resendIn > 0
+                            ? `Send a new code in ${resendIn}s`
+                            : "Send a new code"}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                  {emailError !== null ? (
+                    <Text
+                      style={styles.emailError}
+                      accessibilityLiveRegion="polite"
+                      testID="welcome-email-error"
+                    >
+                      {emailError}
+                    </Text>
+                  ) : null}
+                </View>
+              )}
+            </Animated.View>
+          ) : null}
+
           {/* Terms & Privacy */}
           <Animated.View style={[styles.termsWrapper, { opacity: termsOpacity }]}>
             <Text style={styles.termsText}>
@@ -447,6 +753,7 @@ export default function WelcomeScreen({
           </Animated.View>
         </View>
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   );
@@ -464,6 +771,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  keyboardAvoider: { flex: 1 },
   idleContent: {
     flexGrow: 1,
     alignItems: "center",
@@ -548,6 +856,78 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 12,
     ...shadows.sm,
+  },
+  // #3524 — the email option and its inline panel. Same pill geometry as the
+  // Google button so the three options read as one stack, with a lighter fill so
+  // it does not compete with the two primary providers.
+  emailButton: {
+    minHeight: 52,
+    borderRadius: radius.pill,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: "rgba(255,255,255,.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,.28)",
+  },
+  emailButtonText: {
+    color: "#ffffff",
+    fontSize: s(16),
+    fontWeight: fontWeights.semibold,
+  },
+  emailPanel: {
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
+    backgroundColor: "rgba(0,0,0,.38)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,.22)",
+  },
+  emailPanelLabel: {
+    color: "rgba(255,255,255,.82)",
+    fontSize: s(14),
+    lineHeight: vs(20),
+  },
+  emailInput: {
+    minHeight: 48,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    color: "#ffffff",
+    fontSize: s(16),
+    backgroundColor: "rgba(255,255,255,.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,.26)",
+  },
+  emailCodeInput: { letterSpacing: 6, textAlign: "center" },
+  emailSubmit: {
+    minHeight: 48,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+    backgroundColor: "#ffffff",
+  },
+  emailSubmitText: {
+    color: "#111827",
+    fontSize: s(16),
+    fontWeight: fontWeights.semibold,
+  },
+  emailGhost: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emailGhostText: {
+    color: "rgba(255,255,255,.72)",
+    fontSize: s(14),
+    textDecorationLine: "underline",
+  },
+  emailError: {
+    color: "#FCA5A5",
+    fontSize: s(13),
+    lineHeight: vs(19),
   },
   googleButtonText: {
     color: colors.text.primary,

@@ -85,6 +85,11 @@ export function useAppState() {
     signOut,
     signInWithGoogle,
     signInWithApple,
+    // #3524 — sign in by emailed code. A guest whose purchase address has no
+    // Google and no Apple account behind it could not prove ownership of it, and
+    // therefore could not claim their own ticket at all.
+    signInWithEmailCode,
+    verifyEmailCode,
   } = useAuthSimple();
 
   // Stable ref for signOut so useCallback-wrapped handleSignOut doesn't
@@ -890,5 +895,9 @@ export function useAppState() {
     handleSignOut,
     handleGoogleSignIn,
     handleAppleSignIn,
+    // #3524 — passed straight through to WelcomeScreen's email panel, which
+    // renders the error sentence itself (so these must NOT raise an Alert).
+    signInWithEmailCode,
+    verifyEmailCode,
   };
 }

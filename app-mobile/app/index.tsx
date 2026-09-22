@@ -94,6 +94,10 @@ import {
   resolveAttendanceOfferingPath,
   type AttendanceClaimIntent,
   claimAttendanceByVerifiedIdentity,
+  // #3524 — the deliberate-account-handoff marker. It is what keeps a pending
+  // claim alive across the sign-out the mismatch flow performs on purpose.
+  readAttendanceClaimHandoffMarker,
+  clearAttendanceClaimHandoffMarker,
 } from "../src/services/attendanceClaimService";
 
 // ORCH-1125: PersistQueryClientProvider + AnimatedSplashScreen + asyncStoragePersister
@@ -234,6 +238,9 @@ function AppContent() {
     handleSignOut,
     handleGoogleSignIn,
     handleAppleSignIn,
+    // #3524 — sign in by emailed code, so a guest can prove the purchase address.
+    signInWithEmailCode,
+    verifyEmailCode,
     currentPage,
     setCurrentPage,
     showPreferences,
@@ -328,6 +335,29 @@ function AppContent() {
     setAttendanceClaimPresentationPending(false);
   }, []);
   const attendanceClaimUserRef = useRef<string | null | undefined>(undefined);
+  /**
+   * #3524 — true while a DELIBERATE account handoff is in flight.
+   *
+   * A ref, not state, and read synchronously: the auth-change effect fires the
+   * instant GoTrue drops the session, and an async SecureStore read would resolve
+   * after that effect had already cleared the pending claim.
+   *
+   * Seeded from SecureStore on mount so the marker survives a cold start between
+   * the sign-out and the new sign-in, and set by the sheet's own action before it
+   * calls signOut.
+   */
+  const attendanceClaimHandoffActiveRef = useRef(false);
+  /** Opens the sign-in screen with the email-code panel already expanded, so a
+   * guest sent here by "that's not me" does not have to find it. */
+  const [attendanceClaimWantsEmailSignIn, setAttendanceClaimWantsEmailSignIn] =
+    useState(false);
+
+  useEffect(() => {
+    void readAttendanceClaimHandoffMarker().then((marker) => {
+      attendanceClaimHandoffActiveRef.current = marker !== null;
+      if (marker !== null) setAttendanceClaimWantsEmailSignIn(true);
+    });
+  }, []);
   // #2217 — reconnect a ticket bought as a guest BEFORE this app existed on the
   // device. The #871 deep-link token cannot survive a store install, so once an
   // account exists we ask the server whether any ARMED guest order matches an
@@ -353,9 +383,22 @@ function AppContent() {
       previousUserId,
       nextUserId,
       attendanceClaimIntent !== null,
+      // #3524 — the marker is read SYNCHRONOUSLY from the ref that the sheet's
+      // "use a different account" action set before calling signOut. A SecureStore
+      // read here would be async and this effect would already have cleared the
+      // claim by the time it resolved, which is precisely the bug.
+      attendanceClaimHandoffActiveRef.current,
     );
+    // #3524 — "preserve" performs NO state change. This flow caused the account
+    // change, so the intent, the marker and the sheet are all left exactly as
+    // they are; the following null -> new-user-id transition is an ordinary
+    // "resume". The claim still cannot land on the new account unless that account
+    // independently proves it owns the purchase email or phone. Two guards.
+    if (authAction === "preserve") return;
     if (authAction === "clear") {
       void clearAttendanceClaimIntent();
+      void clearAttendanceClaimHandoffMarker();
+      attendanceClaimHandoffActiveRef.current = false;
       setAttendanceClaimIntent(null);
       closeAttendanceClaimPresentation();
     } else if (authAction === "resume") {
