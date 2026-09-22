@@ -49,7 +49,16 @@ export async function recordApiCall(
     const url = Deno.env.get("SUPABASE_URL");
     const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!url || !key) return;
-    const c = createClient(url, key);
+    // issue #3526 — persistSession/autoRefreshToken OFF. The default client
+    // starts a token-refresh INTERVAL, and this recorder is called
+    // fire-and-forget from every Gemini response site. In an edge isolate that
+    // is a timer nobody clears; in Deno tests it trips the resource sanitizer
+    // ("An interval was started in this test, but never completed"), which is
+    // how it was found when M-4 wired the recorder into eight more call sites.
+    // A one-shot insert never needs a refreshing session.
+    const c = createClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
     await c.from("api_health_observations").insert({
       service_key: serviceKey,
       ok,

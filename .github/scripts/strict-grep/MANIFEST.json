@@ -25,8 +25,8 @@
     "is the FOURTH: it raises this to 653 and adds its own batch:E row in the same PR. P2/P3 are exact",
     "equalities, so a row cannot be registered before its file exists."
   ],
-  "expectedStrictGrepMjsFiles": 653,
-  "selfTestWiredFloor": 417,
+  "expectedStrictGrepMjsFiles": 654,
+  "selfTestWiredFloor": 418,
   "classAShardCount": 3,
   "unenforcedCap": 2,
   "fixtureCap": 9,
@@ -59,6 +59,20 @@
       ],
       "selfTest": "none",
       "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/i-3526-gemini-model-single-source.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-3526-gemini-model-single-source"
+      ]
     },
     {
       "script": ".github/scripts/strict-grep/issue-2148-ci-postgres-wave-shadow.tester.test.mjs",

@@ -5,14 +5,16 @@
  *   - city + mode + status pill + processed/total + percent
  *   - progress bar (matches existing token language at TrialResultsTab L718-L723)
  *   - succeeded / failed / cost so far / live ETA
- *   - Gemini cost cross-check (processed * $0.0040 vs cost_so_far) with a
+ *   - Gemini cost cross-check (processed * the server's own per-place rate
+ *     vs cost_so_far) with a
  *     ±$0.0010/place tolerance warning when drift > 25%
  *   - soft-cancel button (lucide-react X) → CancelRunConfirmModal → POST
  *     {action:'cancel_trial', run_id}
  *   - terminal-state pills (Cancelled / Done / Failed) + View affordance
  *
  * Gemini pricing reference (COMMS-0003):
- * https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-30).
+ * issue #3526 — the cost cross-check now compares the server against its own
+ * per-place estimate; this card holds no pricing constant or citation.
  *
  * SPEC §3 B.3 + §7-D5 (icon=X not Square).
  */
@@ -33,8 +35,18 @@ import { invokeWithRefresh } from "../../lib/supabase";
 import { extractFunctionError } from "../../lib/edgeFunctionError";
 import { useToast } from "../../context/ToastContext";
 
-const PER_PLACE_COST_USD = 0.004;
-const COST_DRIFT_TOLERANCE_USD_PER_PLACE = 0.001; // ±25% of $0.0040
+// issue #3526 P0-1 — this card held its own $0.004 baseline and a 0.001
+// tolerance COMMENTED as "±25% of $0.0040". When the server's rate moved to
+// $0.0089 the baseline was 45% low and the tolerance had silently become ±11%,
+// so the "Cost drift > 25% — verify Gemini pricing" badge would have fired on
+// EVERY run — an alarm that is always on is an alarm nobody reads.
+//
+// There is no client constant now, and none is needed: the server already told
+// us what IT priced this very run at, in run.estimated_cost_usd over
+// run.total_count. That is the authoritative per-place rate for this run, so
+// the cross-check compares the server against itself and the tolerance is a
+// true fraction of it.
+const COST_DRIFT_TOLERANCE_FRACTION = 0.25;
 const COST_DRIFT_MIN_PROCESSED = 10;
 
 function modeIcon(mode) {
@@ -101,16 +113,24 @@ export function ActiveRunCard({ run, onCancelled, onViewRun }) {
   const pct = total > 0 ? (processed / total) * 100 : 0;
   const pctLabel = total > 0 ? Math.round(pct) : 0;
 
+  // The rate the SERVER priced this run at. null when the run carries no
+  // estimate — in which case there is nothing to cross-check against and the
+  // badge stays silent rather than firing on a number we invented.
+  const serverPerPlaceCost = useMemo(() => {
+    if (!(total > 0) || !(estCost > 0)) return null;
+    return estCost / total;
+  }, [estCost, total]);
   const expectedCost = useMemo(
-    () => +(processed * PER_PLACE_COST_USD).toFixed(4),
-    [processed],
+    () => (serverPerPlaceCost === null ? null : +(processed * serverPerPlaceCost).toFixed(4)),
+    [processed, serverPerPlaceCost],
   );
   const costDriftWarn = useMemo(() => {
     if (processed < COST_DRIFT_MIN_PROCESSED) return false;
+    if (expectedCost === null || serverPerPlaceCost === null) return false;
     const diff = Math.abs(costSoFar - expectedCost);
-    const tolerance = processed * COST_DRIFT_TOLERANCE_USD_PER_PLACE;
+    const tolerance = processed * serverPerPlaceCost * COST_DRIFT_TOLERANCE_FRACTION;
     return diff > tolerance;
-  }, [processed, costSoFar, expectedCost]);
+  }, [processed, costSoFar, expectedCost, serverPerPlaceCost]);
 
   const isTerminal = ["complete", "cancelled", "failed"].includes(run.status);
   const isRunning = run.status === "running";
@@ -223,15 +243,21 @@ export function ActiveRunCard({ run, onCancelled, onViewRun }) {
         {/* Cost cross-check (italic, font-mono, optional warning) */}
         <div className="text-[10px] text-[var(--color-text-tertiary)] italic font-mono flex items-center gap-1.5">
           <span>
-            {processed.toLocaleString()} × $
-            {PER_PLACE_COST_USD.toFixed(4)} = $
-            {expectedCost.toFixed(4)} expected · $
-            {costSoFar.toFixed(4)} actual
+            {serverPerPlaceCost === null ? (
+              <>{costSoFar.toFixed(4)} actual · no server estimate to compare</>
+            ) : (
+              <>
+                {processed.toLocaleString()} × $
+                {serverPerPlaceCost.toFixed(4)} = $
+                {expectedCost.toFixed(4)} expected · $
+                {costSoFar.toFixed(4)} actual
+              </>
+            )}
           </span>
           {costDriftWarn && (
             <AlertTriangle
               className="w-3 h-3 text-[var(--color-warning-700)] shrink-0"
-              aria-label="Cost drift from $0.0040/place baseline > 25% — verify Gemini pricing"
+              aria-label="Cost drift from the server's own per-place estimate > 25% — verify Gemini pricing"
             />
           )}
         </div>

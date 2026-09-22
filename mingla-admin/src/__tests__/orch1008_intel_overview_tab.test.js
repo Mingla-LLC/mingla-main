@@ -25,21 +25,34 @@ const TAB = path.join(
 );
 
 describe("ORCH-1008 Phase 3 — intelligenceCoverageService estimators", () => {
-  it("estimateRemainderCostUsd uses default $0.0040/place", () => {
-    assert.equal(estimateRemainderCostUsd(0), 0);
-    assert.equal(estimateRemainderCostUsd(100), 0.4);
-    assert.equal(estimateRemainderCostUsd(1500), 6);
-    assert.equal(estimateRemainderCostUsd(11344), 45.376);
+  // issue #3526 P0-1 — the "$0.0040 default" this block used to assert WAS the
+  // defect. It was the fifth client copy of a rate the edge function had
+  // already moved to $0.0089, and a caller that omitted the argument priced a
+  // run at 45% of its real cost. The rate is now a REQUIRED argument sourced
+  // from the server's cost_model, and an unknown rate yields null, not a
+  // confident wrong number.
+  it("estimateRemainderCostUsd requires a rate and returns null without one", () => {
+    assert.equal(estimateRemainderCostUsd(100), null);
+    assert.equal(estimateRemainderCostUsd(100, undefined), null);
+    assert.equal(estimateRemainderCostUsd(100, 0), null);
+    assert.equal(estimateRemainderCostUsd(100, -0.001), null);
+    assert.equal(estimateRemainderCostUsd(100, NaN), null);
   });
 
-  it("estimateRemainderCostUsd honors override rate", () => {
+  it("estimateRemainderCostUsd prices against the rate it is given", () => {
+    assert.equal(estimateRemainderCostUsd(0, 0.0089), 0);
+    assert.equal(estimateRemainderCostUsd(100, 0.0089), 0.89);
     assert.equal(estimateRemainderCostUsd(100, 0.0075), 0.75);
+    // The live example from the verdict: Baltimore, 1,205 remaining. The old
+    // default priced this at $4.82 and sent confirm_high_cost=false; the server
+    // charges $10.72 and refuses without the flag.
+    assert.equal(estimateRemainderCostUsd(1205, 0.0089), 10.7245);
   });
 
-  it("estimateRemainderCostUsd handles invalid input safely", () => {
-    assert.equal(estimateRemainderCostUsd(-1), 0);
-    assert.equal(estimateRemainderCostUsd(NaN), 0);
-    assert.equal(estimateRemainderCostUsd(undefined), 0);
+  it("estimateRemainderCostUsd handles invalid counts safely", () => {
+    assert.equal(estimateRemainderCostUsd(-1, 0.0089), 0);
+    assert.equal(estimateRemainderCostUsd(NaN, 0.0089), 0);
+    assert.equal(estimateRemainderCostUsd(undefined, 0.0089), 0);
   });
 
   it("estimateRemainderMinutes rounds up at 30s/place", () => {

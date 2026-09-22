@@ -24,6 +24,15 @@ import {
   MINGLA_SIGNAL_IDS,
 } from "../_shared/photoAestheticEnums.ts";
 import { recordApiCall } from "../_shared/apiHealthLog.ts"; // ORCH-1201-R2 Layer-C (Serper depletion)
+// issue #3526 — single source for the model id, endpoint and thinking level.
+import {
+  GEMINI_MODEL_ID,
+  GEMINI_PRICING_REFERENCE_URL,
+  GEMINI_PRICING_VERSION,
+  GEMINI_THINKING_LEVEL_MINIMAL,
+  geminiErrorFingerprint,
+  geminiGenerateContentUrl,
+} from "../_shared/geminiModel.ts";
 import {
   COLLAGE_CACHE_CONTROL_SECONDS,
   composeCollage,
@@ -69,10 +78,11 @@ type Provider = "anthropic" | "gemini";
 */
 
 // ORCH-0713 Gemini A/B (2026-05-05) — became sole provider per ORCH-0733.
-const GEMINI_MODEL_ID = "gemini-2.5-flash";
-const GEMINI_MODEL_NAME_SHORT = "gemini-2.5-flash";
-const GEMINI_API_URL =
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
+// issue #3526 — both the long id and the short name now come from the single
+// source. They were two separate literals holding the same string, which is
+// precisely how a repin leaves one of them stale.
+const GEMINI_MODEL_NAME_SHORT = GEMINI_MODEL_ID;
+const GEMINI_API_URL = geminiGenerateContentUrl();
 const SERPER_REVIEWS_URL = "https://google.serper.dev/reviews";
 const COLLAGE_BUCKET = "place-collages";
 // PROMPT_VERSION:
@@ -298,6 +308,10 @@ async function callAnthropicWithRetry(
 interface GeminiUsage {
   promptTokenCount: number;
   candidatesTokenCount: number;
+  // issue #3526 — Gemini bills thinking tokens at the OUTPUT rate. This path
+  // never read them, so under a 3.x default of `medium` thinking it would have
+  // spent tokens it did not count. Same field competitor-intel-worker reads.
+  thoughtsTokenCount: number;
 }
 
 const V8_TIMING_VERSION = "orch-0737-v8";
@@ -488,10 +502,28 @@ async function callGeminiWithRetry(
     }
     diagnostics.gemini_http_statuses.push(res.status);
 
-    if (res.ok) break;
+    if (res.ok) {
+      // issue #3526 M-4 — Layer-C passive health observation. This function
+      // recorded Serper but never Gemini, so the whole GEMINI_API_KEY surface
+      // was invisible to the health tables.
+      void recordApiCall("gemini", true, elapsedMs(started), res.status); // ORCH-1201 Layer-C
+      break;
+    }
 
     const status = res.status;
     lastErrText = await res.text();
+    // issue #3526 M-5 — status and detail in ONE structured object.
+    console.error("[place-intel-trial] Gemini HTTP", {
+      status,
+      detail: lastErrText.slice(0, 200),
+    });
+    void recordApiCall(
+      "gemini",
+      false,
+      elapsedMs(started),
+      status,
+      geminiErrorFingerprint(status, lastErrText),
+    ); // ORCH-1201 Layer-C
     const isRetryable = status === 429 || (status >= 500 && status < 600);
     if (!isRetryable || attempt === MAX_ATTEMPTS) {
       diagnostics.gemini_total_ms = elapsedMs(started);
@@ -535,8 +567,13 @@ async function callGeminiWithRetry(
     ? {
       promptTokenCount: payload.usageMetadata.promptTokenCount || 0,
       candidatesTokenCount: payload.usageMetadata.candidatesTokenCount || 0,
+      thoughtsTokenCount: payload.usageMetadata.thoughtsTokenCount || 0,
     }
-    : { promptTokenCount: 0, candidatesTokenCount: 0 };
+    : {
+      promptTokenCount: 0,
+      candidatesTokenCount: 0,
+      thoughtsTokenCount: 0,
+    };
   diagnostics.gemini_total_ms = elapsedMs(started);
   diagnostics.gemini_final_outcome = "ok";
   return { payload, usage, diagnostics };
@@ -786,7 +823,95 @@ if (import.meta.main) {
 // preview_run — ORCH-0734 city-scoped sampled-sync
 // ═══════════════════════════════════════════════════════════════════════════
 
-const PER_PLACE_COST_USD = 0.0040; // ORCH-0734 — measured on run e15f5d8f (32 anchors → $0.1292)
+// issue #3526 — RE-MEASURED off the real population, not hand-multiplied.
+//
+// Measurement (read-only probe against production, 2026-09-21):
+//   n = 33,947 completed gemini rows, retry_count = 0
+//   mean cost_usd = $0.003576  (the old 0.0040 came from ONE 32-anchor run)
+// Token split, recovered from the same population:
+//   mean stored q2_response = 3,524 chars; 3.89 chars/output-token calibrated
+//   on real tool_competitor_model_usage_receipts rows (3,711 chars / 955
+//   candidate tokens) ⇒ C ≈ 906 output tokens ⇒ P ≈ 4,370 input tokens.
+//   Input is therefore only ~37% of the OLD dollar cost, so the blended
+//   repricing multiplier is ~1.87x, NOT the 2.5x input ratio.
+// Bounds under the new rates (input 2.5x, output 1.5x):
+//   lower  $0.00536 (all-output)  ·  derived $0.00668  ·  upper $0.00894 (all-input)
+//
+// WHAT 0.0089 IS, PRECISELY. It is an upper bound on the repriced historical
+// NON-THINKING mean, less 0.44%: the arithmetic ceiling (all-input, multiplier
+// 2.5) is $0.0089390, and 0.0089 sits $0.000039 below it. Calling it "the upper
+// bound" flat, as the first version of this comment did, is very slightly false.
+//
+// WHERE IT IS OPTIMISTIC, WHICH MATTERS MORE. Those historical cost_usd values
+// were produced by a computeCostUsdGemini that never billed thinking, while
+// this path sent no thinkingConfig at all — so 2.5-flash's dynamic thinking ran
+// and went uncounted. The $0.003576 mean is therefore an UNDER-COUNT of true
+// 2.5-flash spend, and repricing an under-count cannot bound true 3.6 spend now
+// that the cost function DOES bill thoughts. Headroom to 0.0089 in billed
+// thinking tokens per place:
+//   at the derived split (x≈0.37, $0.006686):  ≈ 590 tokens — comfortable at
+//                                              thinking_level "minimal"
+//   at the all-input extreme:                  already negative
+//
+// ⚠ PROVISIONAL — re-measure on the FIRST live 3.6 run (issue #3526 SC-4) and
+// update BOTH this constant AND the matching 0.0089 in
+// supabase/migrations/20270713003526_issue_3526_drift_trigger_gemini_repin.sql
+// (tg_meta_orch_1009_sub_d_drift_queue_reeval):
+//   SELECT avg(cost_usd) FROM place_intelligence_trial_runs
+//    WHERE status='completed' AND model='gemini-3.6-flash' AND retry_count=0;
+const PER_PLACE_COST_USD = 0.0089;
+
+// issue #3526 P0-1 — THE SERVER OWNS THE COST MODEL. Constitution #2.
+//
+// The admin app used to keep FIVE independent copies of 0.0040 and decide
+// `confirm_high_cost` from its own arithmetic. When this constant moved to
+// 0.0089 the two sides disagreed and a live city became unstartable: Baltimore,
+// 1,205 remaining — admin showed $4.82 and sent confirm=false, the server
+// computed $10.72 and returned 400 cost_above_guard, and the dispatcher never
+// retried. A dead button in production.
+//
+// The client no longer computes cost. It ASKS. This object rides on the two
+// read actions the admin already calls (`intelligence_coverage`,
+// `city_coverage`), and the admin renders what it is told. There is no
+// client-side fallback rate ON PURPOSE: a client that guesses is a client that
+// owns the truth again, and on a spend-authorisation screen a wrong number is
+// worse than an absent one (Constitution #9 — missing is hidden, never faked).
+//
+// `cost_drift_tolerance_usd_per_place` is DERIVED, not typed: the admin's drift
+// badge was a hardcoded 0.001 described as "±25% of $0.0040", so it silently
+// became ±11% when the rate moved and would have fired on every run.
+export const COST_DRIFT_TOLERANCE_FRACTION = 0.25;
+
+// issue #3526 P1-R1 — the LAST dollar amount the admin still owned. Both
+// confirmation modals held `COST_REVIEW_THRESHOLD_USD = 10`: the point above
+// which the operator must type the city name, not just tick a box. It has no
+// server counterpart today, which is exactly why it survived round 2 — but a
+// client-owned dollar figure governing a spend confirmation is the same class
+// of defect as the per-place rate, and leaving it forces the gate to carry an
+// exemption. Published instead, so the rule "the admin holds no dollar amount"
+// is absolute and needs no allowlist.
+const COST_REVIEW_THRESHOLD_USD = 10.0;
+
+export function buildCostModel(): {
+  per_place_cost_usd: number;
+  cost_guard_usd: number;
+  cost_drift_tolerance_usd_per_place: number;
+  cost_review_threshold_usd: number;
+  pricing_version: string;
+  pricing_reference_url: string;
+  model_id: string;
+} {
+  return {
+    per_place_cost_usd: PER_PLACE_COST_USD,
+    cost_guard_usd: COST_GUARD_USD,
+    cost_drift_tolerance_usd_per_place:
+      +(PER_PLACE_COST_USD * COST_DRIFT_TOLERANCE_FRACTION).toFixed(6),
+    cost_review_threshold_usd: COST_REVIEW_THRESHOLD_USD,
+    pricing_version: GEMINI_PRICING_VERSION,
+    pricing_reference_url: GEMINI_PRICING_REFERENCE_URL,
+    model_id: GEMINI_MODEL_ID,
+  };
+}
 const SAMPLE_SIZE_DEFAULT = 200;
 const SAMPLE_SIZE_MIN = 50;
 const SAMPLE_SIZE_MAX = 500;
@@ -1298,11 +1423,12 @@ async function handleStartRun(
     ? Math.min(sampleSize as number, totalServable)
     : sampledIds.length;
 
-  // Gemini 2.5 Flash per-place cost. COMMS-0003: pricing reference
-  // https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-29).
-  // PER_PLACE_COST_USD = 0.0040 is the measured 32-anchor cost; update both
-  // here AND in PER_PLACE_COST_USD constant on line ~637 if Google moves the
-  // rate.
+  // Gemini per-place cost. Pricing reference
+  // https://ai.google.dev/gemini-api/docs/pricing (verified 2026-09-21).
+  // issue #3526 — PER_PLACE_COST_USD is re-measured off the real population
+  // (see the constant's comment); update it there AND in the drift-trigger
+  // migration if Google moves the rate. NOTE: Google doubles both rates on
+  // 2027-01-01, which needs a second pass (issue #3526 OQ-1).
   const estCost = +(effectiveCount * PER_PLACE_COST_USD).toFixed(4);
 
   // ORCH-0737: cost guard. Sample mode: hard reject above $5.
@@ -1588,7 +1714,7 @@ async function handleRunTrialForPlace(
 // External-API doc: Gemini 2.5 Flash invoked via the existing trial pipeline
 // (the queued child is drained by handleProcessChunk → processOnePlace).
 // See https://ai.google.dev/api/generate-content#function_calling (cited at
-// line 1092 above) + https://ai.google.dev/pricing/gemini-2-5-flash for
+// line 1092 above) + GEMINI_PRICING_REFERENCE_URL (_shared/geminiModel.ts) for
 // per-place cost (~$0.0040). COMMS-0003.
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -2104,6 +2230,14 @@ async function callGeminiQuestion(args: {
       // headroom; Gemini 2.5 Flash supports up to 64K output tokens.
       maxOutputTokens: 8000,
       temperature: 0.3,
+      // issue #3526 — this call site sent NO thinking config at all. On
+      // Gemini 2.5 Flash that was survivable; a Gemini 3 model with no
+      // thinking_level defaults to `medium` and bills those tokens as output,
+      // so the trial would have spent thinking tokens it never counted. Set it
+      // explicitly at the floor, matching the worker's intent and preserving
+      // today's cost shape. If Q2 quality regresses (SC-7) the fallback is
+      // "low" — and PER_PLACE_COST_USD must then be re-measured at that level.
+      thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
     },
   };
 
@@ -2145,6 +2279,10 @@ async function callGeminiQuestion(args: {
     totalCost += computeCostUsdGemini({
       promptTokens: usage.promptTokenCount,
       candidatesTokens: usage.candidatesTokenCount,
+      // issue #3526 — thinking bills at the OUTPUT rate. Omitting it silently
+      // under-reported spend; under a 3.x model's default thinking level the
+      // under-report would have been the larger part of the bill.
+      thinkingTokens: usage.thoughtsTokenCount,
     });
 
     const candidates = payload?.candidates || [];
@@ -2618,6 +2756,8 @@ async function handleCityCoverage(
     estimated_retry_cost_usd:
       +(retrySelection.retryableCount * PER_PLACE_COST_USD).toFixed(4),
     failure_classes: retrySelection.failureClasses,
+    // issue #3526 P0-1 — same cost model as intelligence_coverage.
+    cost_model: buildCostModel(),
   });
 }
 
@@ -2665,7 +2805,7 @@ async function insertRetryChildrenInChunks(
 // COMMS-0003 — external API parameters/pricing must cite provider docs URL.
 // This action is Supabase-only (no Gemini calls) but the file-level Gemini
 // 2.5 Flash pricing citation is preserved in the q1/q2 helpers above:
-//   https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-30).
+//   GEMINI_PRICING_REFERENCE_URL in _shared/geminiModel.ts (issue #3526).
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ORCH-1017 — the Intelligence Coverage operational constants (90-day stale
@@ -2727,7 +2867,9 @@ async function handleIntelligenceCoverage(
     needs_refresh_count: r.needs_refresh_count ?? 0,
   }));
 
-  return json({ rows });
+  // issue #3526 P0-1 — the cost model rides along so the admin never has to
+  // hold its own copy of the rate or the guard.
+  return json({ rows, cost_model: buildCostModel() });
 }
 
 async function handleRetryFailedRun(

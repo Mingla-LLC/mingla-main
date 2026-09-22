@@ -45,6 +45,7 @@ import {
   type DepletionObs,
   evaluateBalanceForSignal,
   evaluateCronJobHealth,
+  geminiProbeOk,
   type HealthStatus,
   indicatorToStatus,
   matchClassBDepletion,
@@ -52,13 +53,21 @@ import {
   STATUS_PAGE_URLS,
   tallyDeliveryRows,
 } from "./logic.ts";
+// issue #3526 M-2 — the probe must exercise the SAME model production calls.
+import {
+  GEMINI_API_BASE,
+  GEMINI_MODEL_ID,
+  GEMINI_THINKING_LEVEL_MINIMAL,
+} from "../_shared/geminiModel.ts";
 
 // ORCH-1201-R2 — per-service monitoring class + depletion signal (DB-driven).
 type MonitoringClass = "A" | "B" | "C" | "D" | "E" | "F";
 interface DepletionSignal {
   status_feed?: string | null;
   balance?: { kind: string; warn: number | null; crit: number | null; unit?: string };
-  reactive?: ClassBReactive;
+  // issue #3526 — may be a single matcher (every pre-#3526 service) or an
+  // ARRAY of them (gemini, which needs 429/403/404 distinguished).
+  reactive?: ClassBReactive | ClassBReactive[];
   header?: ClassBHeader & { cache_last_seen?: boolean };
   processor?: { restriction_fields?: string[]; balance_display_only?: boolean };
   synthetic?: boolean;
@@ -181,18 +190,64 @@ function synthRow(
   };
 }
 
+// issue #3526 M-2 — this probe used to call ListModels ONLY:
+//   GET /v1beta/models?key=… ; ok = res.ok && Array.isArray(body.models)
+// It reported `healthy / 200` at 16:00:10Z on 2026-09-21, TWENTY MINUTES before
+// a generation call returned 404 "this model is no longer available to new
+// users". A model-list call structurally cannot see a generation-time refusal:
+// the list endpoint answers "does this key work", not "can this key call THIS
+// model". Four days of outage looked green.
+//
+// It now issues a real `:generateContent` against the pinned GEMINI_MODEL_ID.
+// Cost is negligible — a handful of tokens, hourly, thinking at the floor:
+// ≈$0.09/year. The #1620 bodyVerdict discipline is kept: a 200 that cannot show
+// the model ran is a FAILURE, never "healthy".
+//
+// issue #3526 P2-5 — the verdict does NOT depend on maxOutputTokens. A 200 with
+// no `candidates` (thinking consumed the budget) is judged on what the response
+// SAYS — finishReason MAX_TOKENS, or modelVersion plus usage showing generated
+// tokens. See geminiProbeOk in logic.ts for why any finite budget was a guess.
 async function probeGemini(): Promise<ProbeResult> {
   const key = Deno.env.get("GEMINI_API_KEY");
   if (!key) return { ok: false, latencyMs: null, status: "unknown", detail: { error: "GEMINI_API_KEY missing" } };
   try {
     const { res, latencyMs } = await timedFetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
+      `${GEMINI_API_BASE}/${GEMINI_MODEL_ID}:generateContent?key=${encodeURIComponent(key)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "ping" }] }],
+          generationConfig: {
+            // issue #3526 P2-5 — 16 rather than 1 so `minimal` thinking usually
+            // leaves room for a candidate. That is a CONVENIENCE, not the fix:
+            // any finite budget is a guess about Google's thinking floor, so
+            // geminiProbeOk no longer depends on one. A candidate-less 200 is
+            // judged on the evidence in the response body instead. ≈$0.15/year
+            // at hourly cadence; cost is not the constraint here.
+            maxOutputTokens: 16,
+            temperature: 0,
+            thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
+          },
+        }),
+      },
     );
-    const body = await res.json().catch(() => null) as { models?: unknown[] } | null;
-    const ok = res.ok && Array.isArray(body?.models);
-    // #1620: bodyVerdict, NOT httpToStatus — a 200 without a `models` array is a
-    // failure and must never resolve to "healthy".
-    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: {} };
+    const body = await res.json().catch(() => null) as
+      | { candidates?: unknown[]; error?: { status?: string; message?: string } }
+      | null;
+    // The verdict comes from the GENERATION call, not a list call. A 200 that
+    // carries no candidate array is a failure (#1620 bodyVerdict discipline).
+    const ok = geminiProbeOk(res.ok, body);
+    const detail: Record<string, unknown> = {};
+    if (!ok) {
+      // issue #3526 M-5 — keep the provider's own words next to the status.
+      // A bare `404` sends the reader to the wrong place; the sentence beside
+      // it names the retired model.
+      detail.error_status = body?.error?.status ?? null;
+      detail.error_message = (body?.error?.message ?? "").slice(0, 200);
+      detail.probed_model = GEMINI_MODEL_ID;
+    }
+    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
   }
@@ -1092,12 +1147,22 @@ serve(async (req) => {
             cached,
           );
           if (dep.depleted) {
+            // issue #3526 — a retirement or a refusal is NOT a depletion.
+            // Reporting `depleted: true` for a 404 would send the next reader
+            // to check billing instead of the model pin.
+            const kind = dep.kind ?? "depletion";
             checkRows.push({
               service_key: key, layer: "passive", status: "down",
               latency_ms: null, mode: null, http_status: null,
-              detail: { depleted: true, error_code: dep.lastErrorCode, error_text: dep.lastErrorText, source: "class_b_depletion" },
+              detail: {
+                depleted: kind === "depletion",
+                signal_kind: kind,
+                error_code: dep.lastErrorCode,
+                error_text: dep.lastErrorText,
+                source: `class_b_${kind}`,
+              },
             });
-            continue; // depletion owns this service's passive status
+            continue; // the matched signal owns this service's passive status
           }
         }
 

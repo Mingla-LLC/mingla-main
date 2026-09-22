@@ -16,8 +16,9 @@
  * On error: stays open, surfaces inline AlertCard with extracted message;
  *   409 concurrent_run shows the "View running run" affordance via onConcurrentRun.
  *
- * Gemini 2.5 Flash pricing reference:
- * https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-29).
+ * issue #3526 — the model name, the per-place rate, the cost guard and the
+ * pricing link all arrive on the server's cost_model. This file pins none of
+ * them; see services/intelligenceCostModel.js.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -29,12 +30,17 @@ import { invokeWithRefresh } from "../../lib/supabase";
 import { extractFunctionError } from "../../lib/edgeFunctionError";
 import { useToast } from "../../context/ToastContext";
 import {
-  estimateRemainderCostUsd,
+  estimateCostUsd,
   estimateRemainderMinutes,
+  formatPerPlaceCost,
+  needsHighCostConfirmation,
 } from "../../services/intelligenceCoverageService";
 
-const COST_GUARD_USD = 5;
-const COST_REVIEW_THRESHOLD_USD = 10;
+// issue #3526 — this modal holds NO dollar amount. The guard and the
+// typed-confirmation threshold both arrive on the server's cost_model: a client
+// copy of the guard is how Baltimore showed "$4.82, no confirmation needed" for
+// a run the server priced at $10.72 and refused, and a client copy of the
+// escalation threshold is the same defect wearing a different name (P1-R1).
 
 export function RunRemainderConfirmModal({
   open,
@@ -42,7 +48,10 @@ export function RunRemainderConfirmModal({
   cityId,
   cityName,
   remainingCount,
-  perPlaceCostUsd = 0.0040,
+  // issue #3526 P0-1 — the server's cost model. NO default: an absent model
+  // means "we cannot price this run", and the modal says so instead of
+  // inventing a rate.
+  costModel,
   onStarted,
   onConcurrentRun,
 }) {
@@ -56,19 +65,26 @@ export function RunRemainderConfirmModal({
   const typedInputRef = useRef(null);
 
   const estCost = useMemo(
-    () => estimateRemainderCostUsd(remainingCount, perPlaceCostUsd),
-    [remainingCount, perPlaceCostUsd],
+    () => estimateCostUsd(remainingCount, costModel),
+    [remainingCount, costModel],
   );
   const estMinutes = useMemo(
     () => estimateRemainderMinutes(remainingCount),
     [remainingCount],
   );
 
-  const requiresTypedConfirm = estCost > COST_REVIEW_THRESHOLD_USD;
-  const sendConfirmHighCost = estCost > COST_GUARD_USD;
+  // issue #3526 P0-1 — costUnknown is a hard block, not a soft warning. If the
+  // server has not told us the rate we cannot compute confirm_high_cost, and
+  // starting the run would repeat exactly the mismatch this change fixes.
+  const costUnknown = estCost === null;
+  const reviewThreshold = costModel?.costReviewThresholdUsd ?? null;
+  const requiresTypedConfirm = !costUnknown && reviewThreshold !== null &&
+    estCost > reviewThreshold;
+  const sendConfirmHighCost = needsHighCostConfirmation(remainingCount, costModel) === true;
   const typedMatches = typedName.trim() === (cityName || "");
   const canRun =
     !submitting &&
+    !costUnknown &&
     remainingCount > 0 &&
     acknowledged &&
     (!requiresTypedConfirm || typedMatches);
@@ -150,10 +166,14 @@ export function RunRemainderConfirmModal({
 
   if (!open) return null;
 
-  const costColor =
-    estCost > 10
+  // issue #3526 — the amber/red thresholds key off the SERVER's guard, not a
+  // client copy of 5. Unknown cost is amber: it is not safe and not zero.
+  const guard = costModel?.costGuardUsd ?? null;
+  const costColor = costUnknown
+    ? "text-[var(--color-warning-700)]"
+    : guard !== null && estCost > guard * 2
       ? "text-[var(--color-error-700)]"
-      : estCost > 5
+      : guard !== null && estCost > guard
         ? "text-[var(--color-warning-700)]"
         : "text-[var(--color-text-primary)]";
 
@@ -172,7 +192,8 @@ export function RunRemainderConfirmModal({
               {Number(remainingCount || 0).toLocaleString()}
             </span>{" "}
             un-evaluated servable place{remainingCount === 1 ? "" : "s"} in{" "}
-            <span className="font-semibold">{cityName}</span> using Gemini 2.5 Flash.
+            <span className="font-semibold">{cityName}</span>
+            {costModel?.modelId ? ` using ${costModel.modelId}` : ""}.
           </p>
 
           {/* Cost breakdown box */}
@@ -182,16 +203,18 @@ export function RunRemainderConfirmModal({
             </div>
             <div className="flex items-baseline justify-between font-mono tabular-nums text-sm">
               <span className="text-[var(--color-text-secondary)]">
-                {Number(remainingCount || 0).toLocaleString()} places × ${perPlaceCostUsd.toFixed(4)}
+                {Number(remainingCount || 0).toLocaleString()} places
+                {costModel ? ` × ${formatPerPlaceCost(costModel)}` : ""}
               </span>
               <span className={["font-semibold", costColor].join(" ")}>
-                ~${estCost.toFixed(2)}
+                {costUnknown ? "cost unknown" : `~$${estCost.toFixed(2)}`}
               </span>
             </div>
             <p className="text-xs text-[var(--color-text-tertiary)] mt-1">
-              Gemini 2.5 Flash, server-side. Pricing:{" "}
+              {costModel?.modelId ?? "Model"}, server-side
+              {costModel?.pricingVersion ? ` (${costModel.pricingVersion})` : ""}. Pricing:{" "}
               <a
-                href="https://ai.google.dev/pricing/gemini-2-5-flash"
+                href={costModel?.pricingReferenceUrl || "https://ai.google.dev/gemini-api/docs/pricing"}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline hover:text-[var(--color-text-secondary)]"
@@ -221,7 +244,7 @@ export function RunRemainderConfirmModal({
           {requiresTypedConfirm && (
             <div className="border-l-4 border-l-[var(--color-warning-500)] bg-[var(--color-warning-50)] p-4 rounded-r-lg">
               <h4 className="text-sm font-semibold text-[var(--color-warning-700)] mb-1">
-                Cost exceeds ${COST_REVIEW_THRESHOLD_USD}
+                Cost exceeds ${reviewThreshold?.toFixed(2)}
               </h4>
               <p className="text-xs text-[var(--color-warning-700)] mb-2">
                 Type the city name below to confirm.
@@ -247,19 +270,35 @@ export function RunRemainderConfirmModal({
             </div>
           )}
 
-          {/* Acknowledgement checkbox */}
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              ref={checkboxRef}
-              type="checkbox"
-              checked={acknowledged}
-              onChange={(e) => setAcknowledged(e.target.checked)}
-              className="mt-0.5 cursor-pointer"
+          {/* Acknowledgement checkbox.
+              issue #3526 P3-R4 — when the cost is unknown the run can never
+              start, so inviting a tick was a dead tap (Constitution #1) beside a
+              disabled button that gave no reason (Constitution #3). The
+              checkbox is unavailable and the modal says WHY, in one place. */}
+          {costUnknown ? (
+            <AlertCard
+              variant="warning"
+              title="Cost unavailable — this run cannot start"
+              description={
+                "The server did not return a per-place cost, so this run cannot be " +
+                "priced and the spend cannot be authorised. Reload the page; if it " +
+                "persists the intelligence edge function needs redeploying."
+              }
             />
-            <span className="text-sm text-[var(--color-text-primary)]">
-              I understand this will charge ~${estCost.toFixed(2)} on the Gemini API.
-            </span>
-          </label>
+          ) : (
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                ref={checkboxRef}
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => setAcknowledged(e.target.checked)}
+                className="mt-0.5 cursor-pointer"
+              />
+              <span className="text-sm text-[var(--color-text-primary)]">
+                {`I understand this will charge ~$${estCost.toFixed(2)} on the Gemini API.`}
+              </span>
+            </label>
+          )}
 
           {/* Error */}
           {errorMessage && (
@@ -301,6 +340,15 @@ export function RunRemainderConfirmModal({
           onClick={handleRun}
           loading={submitting}
           disabled={!canRun}
+          title={
+            costUnknown
+              ? "The server did not return a per-place cost, so this run cannot be priced."
+              : !acknowledged
+                ? "Tick the acknowledgement to continue."
+                : requiresTypedConfirm && !typedMatches
+                  ? `Type "${cityName}" to confirm a run above $${reviewThreshold?.toFixed(2)}.`
+                  : undefined
+          }
         >
           Run trial
         </Button>

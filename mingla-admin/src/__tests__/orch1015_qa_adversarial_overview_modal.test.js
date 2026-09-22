@@ -178,13 +178,31 @@ describe("ORCH-1015 QA — modal `safeCities` filter + cost wiring", () => {
     );
   });
 
-  it("modal per-city cost line uses perPlaceCostUsd prop, NOT hardcoded 0.004", () => {
-    // The per-line cost expression must reference perPlaceCostUsd, not the
-    // DEFAULT_PER_PLACE_COST_USD constant (the prop wins when caller passes 0.0040).
-    const perLine = MODAL_SRC.match(
-      /c\.remaining_count \* perPlaceCostUsd/,
+  // issue #3526 P0-1 — this asserted the per-city line multiplied by a
+  // `perPlaceCostUsd` PROP, which defaulted to a client-owned 0.004. The prop
+  // and its default are gone: the server owns the cost model and the modal
+  // renders what it is told, blocking when it is told nothing. The assertion
+  // keeps its purpose — "the per-city figure is computed, not invented" — and
+  // now pins it to the server-sourced path.
+  it("modal per-city cost line is priced from the server's cost model", () => {
+    assert.ok(
+      MODAL_SRC.includes("estimateCostUsd(c.remaining_count, costModel)"),
+      "per-city cost must be priced from the server's cost model",
     );
-    assert.ok(perLine, "per-city cost must multiply by `perPlaceCostUsd` prop");
+    assert.ok(
+      !MODAL_SRC.includes("perPlaceCostUsd"),
+      "the client-owned per-place prop must be gone (issue #3526 G-5)",
+    );
+    assert.ok(
+      !/\b0\.00[0-9]+\b/.test(
+        MODAL_SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, ""),
+      ),
+      "no per-place rate literal may survive in this modal",
+    );
+    assert.ok(
+      MODAL_SRC.includes("costUnknown"),
+      "an unpriceable run must be an explicit state, not a silent zero",
+    );
   });
 
   it("modal `onConfirm` fires with safeCities (NOT candidateCities), so skipped never leak", () => {

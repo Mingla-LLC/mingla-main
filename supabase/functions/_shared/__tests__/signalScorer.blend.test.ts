@@ -15,7 +15,7 @@
 //
 // Gemini Q2 score shape pinned by I-AI-SIGNAL-SCORES-SHAPE-CONTRACT (Sub-A);
 // model + structured-output contract documented at:
-//   https://ai.google.dev/gemini-api/docs/models/gemini#gemini-2.5-flash
+//   https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash
 //   https://ai.google.dev/gemini-api/docs/structured-output
 
 import { assertEquals, assert, assertAlmostEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
@@ -77,7 +77,7 @@ function aiEntry(overrides: Partial<AiSignalEntry> = {}): AiSignalEntry {
     reasoning: 'Test reasoning — intimate booth seating, candle-lit, curated wine list.',
     evaluated_at: '2026-05-08T08:09:50.856Z',
     prompt_version: DEFAULT_EXPECTED_PROMPT_VERSION,
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.6-flash',
     ...overrides,
   };
 }

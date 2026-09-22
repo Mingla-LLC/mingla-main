@@ -15,7 +15,8 @@
  * tower hydrates them on reopen.
  *
  * Gemini pricing reference (COMMS-0003):
- * https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-30).
+ * issue #3526 — pricing comes from the server's cost_model; this hook holds
+ * no rate of its own.
  *
  * Contract (SPEC §3 B.6):
  *   state.queue       — [{ city_id, city_name, remaining_count, status,
@@ -29,6 +30,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invokeWithRefresh } from "../lib/supabase";
 import { extractFunctionError } from "../lib/edgeFunctionError";
+import { needsHighCostConfirmation } from "../services/intelligenceCostModel.js";
 
 const MAX_CONCURRENT = 3;
 const STAGGER_MS = 2_000;
@@ -39,7 +41,16 @@ function countInFlight(queue) {
     .length;
 }
 
-export function useBulkRunDispatcher({ onToast } = {}) {
+export function useBulkRunDispatcher({ onToast, costModel } = {}) {
+  // issue #3526 P0-1 — the dispatcher used to compute
+  //   const estCost = remaining * 0.004;  const confirmHighCost = estCost > 5;
+  // from two hardcoded numbers. When the server moved to $0.0089 the flag went
+  // out false for cities the server priced above its guard, the call came back
+  // 400 cost_above_guard, and the code below marks the city `failed` WITHOUT
+  // retrying — so Baltimore (1,205 remaining) could not be started at all.
+  // Both numbers now come from the server's cost_model.
+  const costModelRef = useRef(costModel ?? null);
+  costModelRef.current = costModel ?? null;
   const [state, setState] = useState({ queue: [], inFlight: 0 });
   const queueRef = useRef([]);
   const tickIntervalRef = useRef(null);
@@ -76,8 +87,32 @@ export function useBulkRunDispatcher({ onToast } = {}) {
     syncState();
 
     try {
-      const estCost = Math.max(0, city.remaining_count) * 0.004;
-      const confirmHighCost = estCost > 5;
+      const confirmHighCost = needsHighCostConfirmation(
+        Math.max(0, city.remaining_count),
+        costModelRef.current,
+      );
+      if (confirmHighCost === null) {
+        // No cost model means we cannot price the run, and a guess is what made
+        // this button dead in the first place. Fail loudly instead of sending a
+        // flag we have not computed.
+        const i0 = queueRef.current.findIndex((c) => c.city_id === city.city_id);
+        if (i0 >= 0) {
+          queueRef.current[i0] = {
+            ...queueRef.current[i0],
+            status: "failed",
+            error: "Cost model unavailable from the server — cannot price this run.",
+          };
+        }
+        if (onToast) {
+          onToast({
+            variant: "warning",
+            title: `Couldn't start ${city.city_name}`,
+            description: "Cost model unavailable from the server — reload the page.",
+          });
+        }
+        syncState();
+        return;
+      }
       const { data, error: startErr } = await invokeWithRefresh(
         "run-place-intelligence-trial",
         {
