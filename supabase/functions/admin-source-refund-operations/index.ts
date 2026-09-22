@@ -221,25 +221,40 @@ type ResolveAdminRequestContext = (
   authorization: string,
 ) => Promise<AdminRequestContext>;
 
-async function resolveAdminRequestContext(
+// ISSUE-3537 — `makeClient` is injected ONLY so a test can drive this real
+// resolver against a fake client and prove the admin gate at runtime. It
+// defaults to the real createClient, so production behaviour is unchanged.
+export async function resolveAdminRequestContext(
   authorization: string,
+  makeClient: typeof createClient = createClient,
 ): Promise<AdminRequestContext> {
   const url = Deno.env.get("SUPABASE_URL") ?? "";
   const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  const user = createClient(url, anon, {
+  const user = makeClient(url, anon, {
     global: { headers: { Authorization: authorization } },
   });
   const { data: authData } = await user.auth.getUser();
   if (!authData.user) {
     return { userId: null, isActiveAdmin: false };
   }
-  const service = createClient(url, serviceKey);
-  const { data: admin } = await service.from("admin_users").select("status")
-    .eq("user_id", authData.user.id).eq("status", "active").maybeSingle();
+  const service = makeClient(url, serviceKey);
+  // ISSUE-3537 — single source of truth for "is this caller an admin".
+  // Both admin refund functions previously queried admin_users directly and BOTH
+  // were permanently closed to everyone:
+  //   * operations matched .eq("user_id", …) — admin_users has NO user_id column
+  //     (id, email, role, status, invited_by, created_at, accepted_at), so PostgREST
+  //     errored and the check read false for every caller, always.
+  //   * action matched .eq("id", auth user id) — but ALL FIVE admin_users rows are
+  //     orphaned (no FK to auth.users), so that never matched either.
+  // Meanwhile every other admin surface authorises through is_admin_user(), which
+  // matches on EMAIL via auth.uid(). Three mechanisms, two of them unsatisfiable.
+  // Call the database's own check with the USER-scoped client so auth.uid() is the
+  // caller — SECURITY DEFINER, owner postgres, granted to authenticated.
+  const { data: isAdmin } = await user.rpc("is_admin_user");
   return {
     userId: authData.user.id,
-    isActiveAdmin: Boolean(admin),
+    isActiveAdmin: isAdmin === true,
     rpc: async (name, args) => await service.rpc(name, args),
   };
 }
