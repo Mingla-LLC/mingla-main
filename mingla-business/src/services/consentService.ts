@@ -30,6 +30,17 @@ export interface RecordConsentInput {
   countryCode?: string | null;
   /** The authenticated user id, when present (anon checkout = null). */
   userId?: string | null;
+  /**
+   * #3524 — the offering this grant happened on, so the server can record WHICH
+   * HOST the consent was given to.
+   *
+   * THERE IS NO `brandId` FIELD AND THERE MUST NEVER BE ONE. `record-consent` is
+   * verify_jwt=false: a client-named brand would let any caller attribute consent
+   * to a host that never received it, which is the exact property `brand_id`
+   * exists to make trustworthy. The edge function resolves the brand from this
+   * event id server-side and ignores anything else.
+   */
+  eventId?: string | null;
 }
 
 export interface RecordConsentResult {
@@ -55,6 +66,7 @@ export const recordConsent = async (
       email: input.email ?? null,
       countryCode: input.countryCode ?? null,
       userId: input.userId ?? null,
+      eventId: input.eventId ?? null,
     },
   });
   if (error) {

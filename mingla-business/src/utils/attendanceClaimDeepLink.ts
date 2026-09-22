@@ -2,6 +2,11 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const REQUIRED_KEYS = ["v", "kind", "event", "source", "token"];
+// #3524 — the desktop->phone handoff form carries `hc` (a short-lived exchange
+// code) where the email form carries `token`. Same alphabet and length, a
+// DIFFERENT credential: ten minutes, one use, and it is the only one a QR may
+// carry. Exactly five keys either way, and exactly one of the two.
+const HANDOFF_KEYS = ["v", "kind", "event", "source", "hc"];
 
 export const ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY =
   "__minglaAttendanceClaimFragment";
@@ -107,28 +112,66 @@ export const createAttendanceClaimFragmentScrubber = (
   );
 };
 
-export const attendanceAppUrlFromFragment = (raw: string): string | null => {
+/**
+ * #3524 — the VALIDATED components of a claim fragment, or null.
+ *
+ * One validator, two consumers: `attendanceAppUrlFromFragment` builds the app
+ * scheme from it, and the desktop scan sheet needs the same `kind` / `event` /
+ * `source` / token to ask the server for a handoff code. A second parser on the
+ * page would be a second place for the exhaustiveness rule to drift.
+ */
+export type ParsedAttendanceClaimFragment = Readonly<{
+  kind: "order" | "rsvp";
+  eventId: string;
+  sourceId: string;
+  credentialKey: "token" | "hc";
+  credential: string;
+}>;
+
+export const attendanceClaimFromFragment = (
+  raw: string,
+): ParsedAttendanceClaimFragment | null => {
   const params = new URLSearchParams(raw);
+  const keys = [...params.keys()];
+  // #3524 — pick the shape by which credential key is present, then validate
+  // that shape EXHAUSTIVELY. The exhaustiveness is the #871/#2979 protection and
+  // it is not relaxed: five keys, no duplicates, no strangers, and never both
+  // `token` and `hc`.
+  const shape = keys.includes("hc") ? HANDOFF_KEYS : REQUIRED_KEYS;
+  if (keys.includes("hc") && keys.includes("token")) return null;
   if (
-    [...params.keys()].length !== REQUIRED_KEYS.length ||
-    REQUIRED_KEYS.some((key) => params.getAll(key).length !== 1) ||
-    [...params.keys()].some((key) => !REQUIRED_KEYS.includes(key))
+    keys.length !== shape.length ||
+    shape.some((key) => params.getAll(key).length !== 1) ||
+    keys.some((key) => !shape.includes(key))
   ) return null;
   const kind = params.get("kind");
   const event = params.get("event");
   const source = params.get("source");
-  const token = params.get("token");
+  const credentialKey = shape === HANDOFF_KEYS ? "hc" : "token";
+  const credential = params.get(credentialKey);
   if (
     params.get("v") !== "1" || (kind !== "order" && kind !== "rsvp") ||
-    event === null || source === null || token === null ||
-    !UUID.test(event) || !UUID.test(source) || !TOKEN.test(token)
+    event === null || source === null || credential === null ||
+    !UUID.test(event) || !UUID.test(source) || !TOKEN.test(credential)
   ) return null;
+  return {
+    kind,
+    eventId: event,
+    sourceId: source,
+    credentialKey,
+    credential,
+  };
+};
+
+export const attendanceAppUrlFromFragment = (raw: string): string | null => {
+  const parsed = attendanceClaimFromFragment(raw);
+  if (parsed === null) return null;
   const fragment = new URLSearchParams({
     v: "1",
-    kind,
-    event,
-    source,
-    token,
+    kind: parsed.kind,
+    event: parsed.eventId,
+    source: parsed.sourceId,
+    [parsed.credentialKey]: parsed.credential,
   }).toString();
   return `com.mingla.app.v2://attendance-claim#${fragment}`;
 };

@@ -28,7 +28,9 @@
           { "/": "/b/*", "comment": "Consumer app public brand and venue links" },
           { "/": "/e/*", "comment": "Consumer app public event links" },
           { "/": "/t/*", "comment": "Consumer app public trip links" },
-          { "/": "/exp/*", "comment": "Consumer app public experience links" }
+          { "/": "/exp/*", "comment": "Consumer app public experience links" },
+          { "/": "/attendance/claim", "comment": "Consumer app attendance claim handoff" },
+          { "/": "/attendance/claim/*", "comment": "Consumer app attendance claim subpath" }
         ]
       }
     ]
