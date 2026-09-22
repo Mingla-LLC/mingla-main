@@ -43,6 +43,18 @@ export const DOWNLOAD_PAGE_URL = "https://usemingla.com/download";
  * A CODE constant, NOT an env var: EXPO_PUBLIC_* web-export inlining is
  * non-deterministic across build paths (COMMS-0028 class); a code flip is
  * auditable and unit-testable (SPEC §4.1 rationale).
+ *
+ * ⚠️ #3525 — THE FLIP WAS ATTEMPTED IN #3524 AND IS BLOCKED. It stays `null`.
+ * Re-measured 2026-09-22 against
+ * `https://go.usemingla.com/w36m?pid=email&c=ticket_confirmation`: all three
+ * desktop user-agents land on an iOS App Store listing, not on the template's
+ * own declared `Default: https://usemingla.com/download`. Flipping this today
+ * would drop every desktop recipient of a ticket confirmation on an iPhone
+ * store page. THE FIX IS AN APPSFLYER ACCOUNT CHANGE, NOT CODE — the template's
+ * desktop/default arm. The full measurement, verbatim, lives in the one place
+ * that must move at the same instant as this line:
+ * `supabase/functions/_shared/email/appLink.ts`, whose docblock
+ * `i-2240-email-app-link-sole-owner.mjs` pins to this constant.
  */
 export const GUEST_FUNNEL_ONELINK_URL: string | null = null;
 

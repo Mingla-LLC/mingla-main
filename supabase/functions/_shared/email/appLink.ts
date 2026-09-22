@@ -86,7 +86,9 @@
  * for 'other'.
  *
  * ISSUE #3524/#3525 — THE FLIP WAS ATTEMPTED AND IS BLOCKED. RE-MEASURED
- * 2026-09-21 against `https://go.usemingla.com/w36m?pid=email&c=ticket_confirmation`
+ * 2026-09-21 AND AGAIN 2026-09-22 (identical both times, by two different
+ * agents) against
+ * `https://go.usemingla.com/w36m?pid=email&c=ticket_confirmation`
  * with three desktop user-agents. All three land on an iOS App Store listing:
  *
  *   Windows / Chrome 140  -> HTTP 301  Location: https://apps.apple.com/US/app/id6760440898?mt=8

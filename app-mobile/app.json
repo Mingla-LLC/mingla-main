@@ -119,6 +119,11 @@
               "scheme": "https",
               "host": "host.usemingla.com",
               "pathPrefix": "/exp/"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/attendance/"
             }
           ],
           "category": [
