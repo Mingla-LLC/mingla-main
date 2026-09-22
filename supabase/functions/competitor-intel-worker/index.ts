@@ -1625,9 +1625,12 @@ Write to those limits, not to the token budget. A shorter brief that stays insid
       // issue #3526 — Gemini 3 removed `thinkingBudget`; the replacement is
       // `thinking_level`. `minimal` is the floor and ONLY gemini-3.6-flash
       // offers it (3.7/3.8 stop at `low`), which is why the repin picked 3.6.
-      // SYNTHESIS_TIMEOUT_MS (15s) and MAX_SYNTHESIS_OUTPUT_TOKENS (1,200) are
+      // SYNTHESIS_TIMEOUT_MS (15s) and MAX_SYNTHESIS_OUTPUT_TOKENS (2,200) are
       // both sized for a non-thinking model; the default `medium` would blow
-      // through both.
+      // through both. issue #3541 raised the budget 1,200 -> 2,200 and this
+      // line kept saying 1,200 — the exact class of defect #3541 was about, so
+      // it is corrected rather than left: a reader chasing a truncation must
+      // not be told the wrong live budget.
       thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
       candidateCount: 1,
       maxOutputTokens: MAX_SYNTHESIS_OUTPUT_TOKENS,
