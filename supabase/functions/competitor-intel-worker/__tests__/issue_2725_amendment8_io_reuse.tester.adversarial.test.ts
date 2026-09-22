@@ -162,7 +162,7 @@ Deno.test("issue 2725 amendment 8 missing usage writes a null receipt and never 
     // separate weeks). The literal stays a literal on purpose: it catches an
     // accidental drift that a derived assertion would absorb. The DERIVATION
     // of 3500 is asserted separately, in issue2796_worker_v3_happy.test.ts.
-    assertEquals(generatedRequest.generationConfig.maxOutputTokens, 3500);
+    assertEquals(generatedRequest.generationConfig.maxOutputTokens, 2200);
     assertEquals(generatedRequest.generationConfig.responseJsonSchema.additionalProperties, false);
     assertEquals(Number.isInteger(generatedRequest.generationConfig.seed), true);
   } finally {

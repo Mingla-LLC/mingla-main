@@ -31,85 +31,72 @@ const RESERVED_MICROUSD = 50_000;
 // place. Line ~1500 used to hardcode the literal in the URL and ignore this
 // constant entirely — that is the exact trap the single-source gate now blocks.
 export const GEMINI_MODEL_ID = SHARED_GEMINI_MODEL_ID;
-export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.4";
+// issue #3541 — v3.5 states the output bounds in the instruction text. The
+// version is part of the synthesis cache key AND of
+// tool_competitor_synthesis_results' unique key, so bumping it is what stops a
+// v3.4 result being reused for a v3.5 request.
+export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.5";
 // issue #3526 — stamped next to actual_microusd on every job row. Bumped in the
 // same change as the rates: without it a $0.30-rate row and a $0.75-rate row
 // are indistinguishable to a later reader.
 export const PRICING_VERSION = GEMINI_PRICING_VERSION;
-// issue #3541 — WHY THIS NUMBER, AND HOW TO CHECK IT.
+// issue #3541 — WHY THIS NUMBER. It is sized against SYNTHESIS_TIMEOUT_MS,
+// not against the schema, and the derivation is here so the next person can
+// check it instead of trusting it.
 //
-// It is not a guess and it is not "1,200 plus some". It is the serialized size
-// of the LARGEST document PROVIDER_RESPONSE_SCHEMA can now legally produce,
-// converted to tokens. Before #3541 the schema carried no maxItems and no
-// maxLength anywhere, so there WAS no worst case: the model wrote an unbounded
-// document against a fixed ceiling and was cut off mid-JSON (finish_reason
-// MAX_TOKENS, candidate_tokens 1183 / 1189 / 1185 on three separate weeks and
-// two different models — all within six tokens of 1,200, which is a wall, not
-// content).
+// WHAT WENT WRONG AT 1,200. The largest brief that ever passed validation was
+// 955 candidate tokens (2026-08-29 03:08). 1,200 is 1.26x that — no margin at
+// all. Ordinary model drift walked straight into it: finish_reason MAX_TOKENS
+// with 1183 / 1189 / 1185 candidate tokens on three separate weeks and two
+// different models, every one within six tokens of the ceiling. Output that
+// clusters that tightly is a wall, not content.
 //
-// DERIVATION — reproduce it, do not trust it:
-//   synthesisWorstCaseOutputChars() below walks PROVIDER_RESPONSE_SCHEMA and
-//   sums the maximum JSON it permits: every key, quote, colon, comma and brace,
-//   maxItems x maxLength, the longest enum member, the widest integer. It
-//   THROWS on any unbounded array or string, so this constant cannot silently
-//   go back to being a guess.
+// WHY THE TIMEOUT SETS THE NUMBER AND THE SCHEMA CANNOT.
+// PROVIDER_RESPONSE_SCHEMA is deliberately unbounded — issue #2814 proved that
+// minItems/maxItems/minimum/maximum on this schema make Gemini refuse the
+// request outright ("the specified schema produces a constraint that has too
+// many states for serving", HTTP 400, no candidate and no usage metadata at
+// all), and the guard in issue2796_worker_v3_happy.test.ts keeps them out. So
+// the only ceiling that can be raised here is the one the clock imposes.
 //
-//     synthesisWorstCaseOutputChars() = 11,301
-//       what_changed 1,180 · why_it_matters 682 · worth_doing 1,467
-//       decision 801 · theme_signals 1,163 · interpretation_meta 819
-//       comparisons 3,770 · action_plan 1,410 · envelope 9
+//   Measured, 2026-09-22 receipt: 1,185 candidate tokens in 6,753 ms on
+//   gemini-3.6-flash at thinking_level "minimal"
+//     => 5.699 ms per output token (MEASURED_SYNTHESIS_MS_PER_OUTPUT_TOKEN)
+//   Read pessimistically — the whole 6,753 ms treated as generation, no credit
+//   for connect or time-to-first-token:
+//     floor(15,000 / 5.699) = 2,632 tokens is all SYNTHESIS_TIMEOUT_MS can buy
 //
-//   chars -> tokens at SYNTHESIS_OUTPUT_CHARS_PER_TOKEN = 3.5:
-//     11,301 / 3.5 = 3,229 tokens (synthesisWorstCaseOutputTokens())
-//   The MEASURED ratio for this worker's own output is 3.885 chars/token
-//   (3,711 chars / 955 candidate tokens, recovered from real
-//   tool_competitor_model_usage_receipts rows and recorded in
-//   run-place-intelligence-trial/index.ts), which would give 2,909. 3.5 is
-//   deliberately BELOW the measurement: this bounded shape is far denser in
-//   punctuation, uuids and short ids than the prose-heavy sample was, and a
-//   lower chars-per-token divisor yields MORE tokens — the safe direction.
+//     2,200 = 83.6% of that wall, leaving ~2,460 ms of slack
 //
-//     3,229 worst case + 271 headroom = 3,500
+//   Read with ~1,500 ms of connect + TTFT the model runs at ~225 tok/s, so
+//   2,200 tokens takes ~11.3 s — comfortable under either reading. A budget
+//   ABOVE 2,632 could only ever convert a truncation into a timeout abort,
+//   which is a worse failure: an abort writes no usage metadata at all.
 //
-//   The 271 (8.4%) is the whole margin; there is no second fudge factor.
-//   synthesisOutputTokenHeadroom() below carries it and the tests fail if it
-//   goes negative.
+// HOW IT RELATES TO THE SHAPE THE VALIDATORS ACCEPT. The largest document
+// validateBrief and validateDecisionReport would both accept — every array at
+// its maximum and every free-text field at its character ceiling
+// simultaneously — serializes to 10,351 characters, about 2,588 tokens at 4
+// chars/token. That is ABOVE this budget and above the 2,632-token wall, so no
+// budget can cover it inside 15 s. That ceiling is not what the model should
+// be aiming at, and the v3.5 prompt now says so explicitly: the bounds live in
+// the instruction text, where they cost the constrained decoder nothing. At
+// 2,200 the budget is 2.3x the largest brief that has ever actually passed.
 //
-// HOW IT RELATES TO SYNTHESIS_TIMEOUT_MS (15,000 ms) — READ THIS BEFORE
-// RAISING ANYTHING AGAIN. The budget is now larger than the timeout can spend.
-//   The only measured point is 2026-09-22: 1,185 candidate tokens in 6,753 ms
-//   on gemini-3.6-flash at thinking_level "minimal". Read as pure throughput
-//   with no fixed overhead that is 175 tok/s, so 15,000 ms buys ~2,630 tokens.
-//   Allowing ~1,500 ms of connect + time-to-first-token it is ~225 tok/s, so
-//   15,000 ms buys ~3,000 tokens. Either reading puts the timeout ceiling
-//   BELOW the 3,229-token worst case.
-//   That is deliberate and it is not the same bug. A document the timeout
-//   cannot deliver now aborts as usage_metadata_missing instead of arriving
-//   truncated, and every document the timeout CAN deliver — which the bounded
-//   shape makes the normal case, since the model is no longer asked for
-//   material we throw away — now fits the budget. Sizing the budget DOWN to
-//   ~2,600 would instead re-create the original defect for any brief between
-//   2,600 and 3,229 tokens.
-//   SYNTHESIS_TIMEOUT_MS is NOT raised here on purpose: this worker claims up
-//   to WORKER_CLAIM_LIMIT (3) jobs per invocation and each job already spends
-//   up to PROVIDER_TIMEOUT_MS (12,000 ms) per source before synthesis, so the
-//   per-invocation wall clock is the thing that would move. Measure a real
-//   bounded run first (candidate_tokens and latency_ms are both on the
-//   receipt), then decide.
-//
-// HOW IT RELATES TO RESERVED_MICROUSD (50,000) — comfortable, not tight.
-//   Output: 3,500 x GEMINI_OUTPUT_MICROUSD_PER_TOKEN (3.75) = 13,125.
-//   Input: MAX_SYNTHESIS_REQUEST_BYTES caps the request at 65,536 bytes
-//   (~16,400 tokens at 4 bytes/token) x GEMINI_INPUT_MICROUSD_PER_TOKEN (0.75)
-//   = 12,300. Absolute worst case ~25,425 microUSD, roughly half the 50,000
-//   reservation — which matters because the receipts table CHECKs
-//   actual_microusd <= reserved_microusd and reserved_microusd = 50000, so
-//   overshooting would fail the receipt write outright. Today's truncated call
-//   cost 5,796; a realistic bounded brief lands well under 15,000.
-export const MAX_SYNTHESIS_OUTPUT_TOKENS = 3_500;
-// The conversion used above. Kept separate so the tests can redo the
-// arithmetic instead of restating the answer.
-export const SYNTHESIS_OUTPUT_CHARS_PER_TOKEN = 3.5;
+// HOW IT RELATES TO RESERVED_MICROUSD (50,000) — comfortable.
+//   Output 2,200 x GEMINI_OUTPUT_MICROUSD_PER_TOKEN (3.75) = 8,250. Input is
+//   capped by MAX_SYNTHESIS_REQUEST_BYTES (65,536 bytes, ~16,400 tokens) x
+//   GEMINI_INPUT_MICROUSD_PER_TOKEN (0.75) = 12,300. Worst case ~20,550
+//   microUSD against a 50,000 reservation — which matters because the receipts
+//   table CHECKs actual_microusd <= reserved_microusd, so an overshoot would
+//   fail the receipt write outright. Today's truncated call cost 5,796.
+export const MAX_SYNTHESIS_OUTPUT_TOKENS = 2_200;
+// The 2026-09-22 receipt, kept as numbers so the tests can redo the division
+// rather than restate its answer.
+export const MEASURED_SYNTHESIS_CANDIDATE_TOKENS = 1_185;
+export const MEASURED_SYNTHESIS_LATENCY_MS = 6_753;
+export const MEASURED_SYNTHESIS_MS_PER_OUTPUT_TOKEN =
+  MEASURED_SYNTHESIS_LATENCY_MS / MEASURED_SYNTHESIS_CANDIDATE_TOKENS;
 // issue #3541 — the result_class recorded when the provider stopped because it
 // hit MAX_SYNTHESIS_OUTPUT_TOKENS. Distinct from "provider_error" on purpose:
 // the call worked and the bill was paid, so the next reader must be sent to
@@ -126,45 +113,8 @@ export const SYNTHESIS_OUTPUT_CHARS_PER_TOKEN = 3.5;
 export const RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED = "output_budget_exceeded";
 const MAX_SYNTHESIS_REQUEST_BYTES = 65_536;
 const PROVIDER_TIMEOUT_MS = 12_000;
-const SYNTHESIS_TIMEOUT_MS = 15_000;
+export const SYNTHESIS_TIMEOUT_MS = 15_000;
 const WORKER_CLAIM_LIMIT = 3;
-// issue #3541 — BOUND EVERY ARRAY AND EVERY FREE-TEXT STRING.
-//
-// Every number below is the bound the code ALREADY enforces or truncates to.
-// Nothing here is invented, and nothing here narrows what validateBrief or
-// validateDecisionReport require — a schema the validator would reject is a
-// bug in the schema, never a reason to loosen the validator.
-//
-// SHARED CEILINGS, each cited once here rather than eight times below:
-//   ID_MAX          64  boundedIds -> boundedDecisionText(id, 64) in
-//                       validateDecisionReport. The longest id this worker
-//                       ever mints is `of-event-description-<uuid>` (57) in
-//                       buildDecisionFoundation, so 64 is the real ceiling and
-//                       only owner_fact_ids needs it.
-//   SIGNAL_ID_MAX   24  every signal id this worker mints is `s-<kind>-<n>`,
-//                       `s-delta-<n>`, `s-cadence-<n>`, `s-format-<n>` or
-//                       `s-theme-<n>` in buildDecisionFoundation /
-//                       groundedThemeSignals — 14 characters at the longest.
-//                       24 covers them and every model-minted theme id, and
-//                       stays inside the validator's 64.
-//   EVIDENCE_ID_MAX  8  evidence ids are minted `e${index + 1}` in
-//                       synthesizeBrief and buildDecisionFoundation, and
-//                       validateDecisionReport caps signal_evidence at 8.
-//   SOURCE_ID_MAX   40  source_id must equal a tool_competitor_sources.id,
-//                       which is a uuid (36).
-//   SENTENCE_MAX   240  the contract's sentence ceiling, taken from
-//                       validateDecisionReport's own free-text bounds:
-//                       boundedDecisionText(report.decision.rationale, 240)
-//                       and boundedDecisionText(item.text, 240) on owner_facts.
-//                       Used for what_changed.text, why_it_matters.text and
-//                       worth_doing.text, which nothing downstream truncates —
-//                       this is the one place a bound is argued from the
-//                       contract rather than copied from a slice().
-//   ID_LIST_MAX      3  every id array is sliced to 3 (boundedIds in
-//                       groundedDecisionBindings, and the .slice(0, 3) calls in
-//                       groundedThemeSignals and groundedDecisionComparisons)
-//                       and validated as boundedIds(..., 1, 3, ...) or
-//                       boundedIds(..., 0, 3, ...).
 export const PROVIDER_RESPONSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -181,73 +131,45 @@ export const PROVIDER_RESPONSE_SCHEMA = {
   properties: {
     what_changed: {
       type: "array",
-      // validateBrief: length < 1 || length > 3 -> invalid_synthesis.
-      // synthesizeBrief: parsed.what_changed.slice(0, 3).
-      // prompt contract: max_facts 3 / "1-3 objects".
-      minItems: 1,
-      maxItems: 3,
       items: {
         type: "object",
         additionalProperties: false,
         required: ["id", "text", "source_id", "evidence_id", "confidence"],
         properties: {
-          // model-minted fact id; validateBrief requires only a unique
-          // non-empty string, so this takes SIGNAL_ID_MAX.
-          id: { type: "string", maxLength: 24 },
-          // SENTENCE_MAX — nothing downstream truncates this field.
-          text: { type: "string", maxLength: 240 },
-          // validateBrief: !sourceIds.has(f.source_id) -> invalid_synthesis.
-          source_id: { type: "string", maxLength: 40 },
-          // validateBrief: !evidenceIds.has(f.evidence_id) -> invalid_synthesis.
-          evidence_id: { type: "string", maxLength: 8 },
+          id: { type: "string" },
+          text: { type: "string" },
+          source_id: { type: "string" },
+          evidence_id: { type: "string" },
           confidence: { type: "string", enum: ["observed"] },
         },
       },
     },
     why_it_matters: {
       type: "array",
-      // validateBrief: length < 1 || length > 2 -> invalid_synthesis.
-      // synthesizeBrief: parsed.why_it_matters.slice(0, 2).
-      minItems: 1,
-      maxItems: 2,
       items: {
         type: "object",
         additionalProperties: false,
         required: ["text", "evidence_ids", "confidence"],
         properties: {
-          text: { type: "string", maxLength: 240 },
-          evidence_ids: {
-            type: "array",
-            // validateBrief requires >= 1; ID_LIST_MAX caps the top.
-            minItems: 1,
-            maxItems: 3,
-            items: { type: "string", maxLength: 8 },
-          },
+          text: { type: "string" },
+          evidence_ids: { type: "array", items: { type: "string" } },
           confidence: { type: "string", enum: ["interpretation"] },
         },
       },
     },
     worth_doing: {
       type: "array",
-      // validateBrief: length < 1 || length > 3 -> invalid_synthesis.
-      // primaryActionFirst returns at most 3 (primary + 2).
-      minItems: 1,
-      maxItems: 3,
       items: {
         type: "object",
         additionalProperties: false,
         required: ["id", "text", "kind", "confidence", "is_primary"],
         properties: {
-          // validateDecisionReport ties action_plan[i].action_id to this id.
-          id: { type: "string", maxLength: 24 },
-          text: { type: "string", maxLength: 240 },
-          // a short label, bounded like the signal label
-          // (boundedDecisionText(item.label, 60) in validateDecisionReport).
-          kind: { type: "string", maxLength: 60 },
+          id: { type: "string" },
+          text: { type: "string" },
+          kind: { type: "string" },
           confidence: { type: "string", enum: ["suggested_action"] },
           is_primary: { type: "boolean" },
-          // optional passthrough; ID_MAX.
-          target_id: { type: "string", maxLength: 64 },
+          target_id: { type: "string" },
         },
       },
     },
@@ -265,35 +187,14 @@ export const PROVIDER_RESPONSE_SCHEMA = {
       properties: {
         class: { type: "string", enum: ["watch", "opportunity", "act"] },
         confidence: { type: "string", enum: ["high", "medium", "low"] },
-        // groundedDecisionBindings: normalizedDecisionText(headline, 160);
-        // validateDecisionReport: boundedDecisionText(headline, 160).
-        headline: { type: "string", maxLength: 160 },
-        // groundedDecisionBindings: normalizedDecisionText(rationale, 240);
-        // validateDecisionReport: boundedDecisionText(rationale, 240).
-        rationale: { type: "string", maxLength: 240 },
-        // validateDecisionReport: boundedIds(signal_ids, 1, 3, signalIds).
-        signal_ids: {
-          type: "array",
-          minItems: 1,
-          maxItems: 3,
-          items: { type: "string", maxLength: 24 },
-        },
-        // validateDecisionReport: boundedIds(owner_fact_ids, 0, 3, ownerIds).
-        owner_fact_ids: {
-          type: "array",
-          minItems: 0,
-          maxItems: 3,
-          items: { type: "string", maxLength: 64 },
-        },
+        headline: { type: "string" },
+        rationale: { type: "string" },
+        signal_ids: { type: "array", items: { type: "string" } },
+        owner_fact_ids: { type: "array", items: { type: "string" } },
       },
     },
     theme_signals: {
       type: "array",
-      // groundedThemeSignals stops at Math.min(2, Math.max(0, maxThemes)) and
-      // is called with 6 - foundation.signals.length; validateDecisionReport
-      // throws when synthesizedThemes > 2. prompt contract: "0-2 objects".
-      minItems: 0,
-      maxItems: 2,
       items: {
         type: "object",
         additionalProperties: false,
@@ -310,10 +211,7 @@ export const PROVIDER_RESPONSE_SCHEMA = {
           "changed_paths",
         ],
         properties: {
-          // groundedThemeSignals: normalizedDecisionText(record.id, 64), but
-          // the ids it mints are `s-theme-<n>`; SIGNAL_ID_MAX keeps every
-          // signal id array below consistent with this one.
-          id: { type: "string", maxLength: 24 },
+          id: { type: "string" },
           kind: { type: "string", enum: ["theme"] },
           derivation: { type: "string", enum: ["synthesis"] },
           dimension: {
@@ -327,21 +225,10 @@ export const PROVIDER_RESPONSE_SCHEMA = {
               "source_presence",
             ],
           },
-          // groundedThemeSignals: normalizedDecisionText(record.label, 60);
-          // validateDecisionReport: boundedDecisionText(item.label, 60).
-          label: { type: "string", maxLength: 60 },
-          // groundedThemeSignals: normalizedDecisionText(record.summary, 180);
-          // validateDecisionReport: boundedDecisionText(item.summary, 180).
-          summary: { type: "string", maxLength: 180 },
-          source_id: { type: "string", maxLength: 40 },
-          evidence_ids: {
-            type: "array",
-            // groundedThemeSignals: .slice(0, 3), and it drops the item when
-            // none survive; validateDecisionReport: boundedIds(..., 1, 3, ...).
-            minItems: 1,
-            maxItems: 3,
-            items: { type: "string", maxLength: 8 },
-          },
+          label: { type: "string" },
+          summary: { type: "string" },
+          source_id: { type: "string" },
+          evidence_ids: { type: "array", items: { type: "string" } },
           metrics: {
             type: "object",
             additionalProperties: false,
@@ -351,39 +238,19 @@ export const PROVIDER_RESPONSE_SCHEMA = {
               "images_28d",
               "videos_28d",
             ],
-            // numberOrNull accepts 0..20 only, and validateDecisionReport
-            // rejects a metric above 20. A synthesis-derived signal must in
-            // fact carry all four as null (validateDecisionReport throws when
-            // any metric is non-null on derivation "synthesis", and
-            // groundedThemeSignals hardcodes null), but the bounds are stated
-            // so the estimator has a finite number to sum.
             properties: {
-              posts_7d: { type: "integer", nullable: true, minimum: 0, maximum: 20 },
-              posts_28d: { type: "integer", nullable: true, minimum: 0, maximum: 20 },
-              images_28d: { type: "integer", nullable: true, minimum: 0, maximum: 20 },
-              videos_28d: { type: "integer", nullable: true, minimum: 0, maximum: 20 },
+              posts_7d: { type: "integer", nullable: true },
+              posts_28d: { type: "integer", nullable: true },
+              images_28d: { type: "integer", nullable: true },
+              videos_28d: { type: "integer", nullable: true },
             },
           },
-          changed_paths: {
-            type: "array",
-            // groundedThemeSignals hardcodes changed_paths: [], and
-            // validateDecisionReport throws when a synthesis-derived signal
-            // has changed_paths.length > 0. Empty is the only accepted value,
-            // so the model is told to spend nothing here.
-            minItems: 0,
-            maxItems: 0,
-            items: { type: "string", maxLength: 80 },
-          },
+          changed_paths: { type: "array", items: { type: "string" } },
         },
       },
     },
     interpretation_meta: {
       type: "array",
-      // groundedDecisionBindings builds exactly why_it_matters.length entries
-      // and validateDecisionReport throws unless the lengths match, so this is
-      // why_it_matters' own 1..2.
-      minItems: 1,
-      maxItems: 2,
       items: {
         type: "object",
         additionalProperties: false,
@@ -395,37 +262,21 @@ export const PROVIDER_RESPONSE_SCHEMA = {
           "signal_ids",
           "owner_fact_ids",
         ],
-        // validateDecisionReport: item.index !== index -> invalid.
         properties: {
-          index: { type: "integer", minimum: 0, maximum: 1 },
+          index: { type: "integer" },
           signal_type: {
             type: "string",
             enum: ["threat", "opportunity", "neutral"],
           },
           confidence: { type: "string", enum: ["high", "medium", "low"] },
           priority: { type: "string", enum: ["high", "medium"] },
-          signal_ids: {
-            type: "array",
-            minItems: 1,
-            maxItems: 3,
-            items: { type: "string", maxLength: 24 },
-          },
-          owner_fact_ids: {
-            type: "array",
-            minItems: 0,
-            maxItems: 3,
-            items: { type: "string", maxLength: 64 },
-          },
+          signal_ids: { type: "array", items: { type: "string" } },
+          owner_fact_ids: { type: "array", items: { type: "string" } },
         },
       },
     },
     comparisons: {
       type: "array",
-      // groundedDecisionComparisons: `if (accepted.length >= 5) break;`
-      // validateDecisionReport: report.comparisons.length > 5 -> invalid.
-      // prompt contract: "0-5 objects".
-      minItems: 0,
-      maxItems: 5,
       items: {
         type: "object",
         additionalProperties: false,
@@ -440,9 +291,7 @@ export const PROVIDER_RESPONSE_SCHEMA = {
           "owner_fact_ids",
         ],
         properties: {
-          // groundedDecisionComparisons mints `c-grounded-<n>` when the model's
-          // id is missing or already used.
-          id: { type: "string", maxLength: 24 },
+          id: { type: "string" },
           dimension: {
             type: "string",
             enum: [
@@ -454,10 +303,8 @@ export const PROVIDER_RESPONSE_SCHEMA = {
               "source_presence",
             ],
           },
-          // groundedDecisionComparisons: normalizedDecisionText(..., 140);
-          // validateDecisionReport: boundedDecisionText(..., 140).
-          owner_text: { type: "string", maxLength: 140 },
-          competitor_text: { type: "string", maxLength: 140 },
+          owner_text: { type: "string" },
+          competitor_text: { type: "string" },
           outcome: {
             type: "string",
             enum: [
@@ -468,31 +315,13 @@ export const PROVIDER_RESPONSE_SCHEMA = {
             ],
           },
           confidence: { type: "string", enum: ["high", "medium", "low"] },
-          // groundedDecisionComparisons: .slice(0, 3) on both id arrays;
-          // validateDecisionReport: boundedIds(..., 1, 3, ...) and
-          // boundedIds(..., 0, 3, ...).
-          signal_ids: {
-            type: "array",
-            minItems: 1,
-            maxItems: 3,
-            items: { type: "string", maxLength: 24 },
-          },
-          owner_fact_ids: {
-            type: "array",
-            minItems: 0,
-            maxItems: 3,
-            items: { type: "string", maxLength: 64 },
-          },
+          signal_ids: { type: "array", items: { type: "string" } },
+          owner_fact_ids: { type: "array", items: { type: "string" } },
         },
       },
     },
     action_plan: {
       type: "array",
-      // groundedDecisionBindings maps over worth_doing, and
-      // validateDecisionReport throws unless action_plan.length equals
-      // worth_doing.length, so this is worth_doing's own 1..3.
-      minItems: 1,
-      maxItems: 3,
       items: {
         type: "object",
         additionalProperties: false,
@@ -508,125 +337,23 @@ export const PROVIDER_RESPONSE_SCHEMA = {
           "owner_fact_ids",
         ],
         properties: {
-          // validateDecisionReport: item.index !== index -> invalid.
-          index: { type: "integer", minimum: 0, maximum: 2 },
-          // must equal worth_doing[index].id.
-          action_id: { type: "string", maxLength: 24 },
+          index: { type: "integer" },
+          action_id: { type: "string" },
           timeframe: {
             type: "string",
             enum: ["this_week", "this_month", "bigger_project"],
           },
           impact: { type: "string", enum: ["high", "medium"] },
           confidence: { type: "string", enum: ["high", "medium", "low"] },
-          // validateDecisionReport: item.order !== index + 1 -> invalid.
-          order: { type: "integer", minimum: 1, maximum: 3 },
+          order: { type: "integer" },
           is_primary: { type: "boolean" },
-          signal_ids: {
-            type: "array",
-            minItems: 1,
-            maxItems: 3,
-            items: { type: "string", maxLength: 24 },
-          },
-          owner_fact_ids: {
-            type: "array",
-            minItems: 0,
-            maxItems: 3,
-            items: { type: "string", maxLength: 64 },
-          },
+          signal_ids: { type: "array", items: { type: "string" } },
+          owner_fact_ids: { type: "array", items: { type: "string" } },
         },
       },
     },
   },
 } as const;
-// issue #3541 — the worst case, computed rather than asserted.
-//
-// Walks PROVIDER_RESPONSE_SCHEMA and returns the number of characters the
-// largest document it permits would serialize to: every key, every quote,
-// colon, comma and brace, max items x max string length, the longest enum
-// member, and the widest integer (or "null" where nullable is wider).
-// Optional properties are counted, because the worst case includes them.
-//
-// It THROWS on an unbounded array or string. That is the point: before #3541
-// the schema had no bounds at all, so there was no worst case to compute, and
-// this function makes that state unrepresentable rather than merely discouraged.
-export function synthesisWorstCaseOutputChars(
-  node: unknown = PROVIDER_RESPONSE_SCHEMA,
-  path = "$",
-): number {
-  if (!node || typeof node !== "object") {
-    throw new Error(`synthesis_schema_unbounded:${path}`);
-  }
-  const schema = node as Record<string, any>;
-  const nullChars = schema.nullable === true ? 4 : 0;
-  switch (schema.type) {
-    case "object": {
-      const properties = (schema.properties ?? {}) as Record<string, unknown>;
-      const keys = Object.keys(properties);
-      // `{}` plus one comma between each pair of properties.
-      let total = 2 + Math.max(0, keys.length - 1);
-      for (const key of keys) {
-        // `"key":`
-        total += key.length + 3 +
-          synthesisWorstCaseOutputChars(properties[key], `${path}.${key}`);
-      }
-      return Math.max(total, nullChars);
-    }
-    case "array": {
-      const maxItems = schema.maxItems;
-      if (!Number.isInteger(maxItems)) {
-        throw new Error(`synthesis_schema_unbounded:${path}[]`);
-      }
-      if (maxItems === 0) return Math.max(2, nullChars);
-      const item = synthesisWorstCaseOutputChars(schema.items, `${path}[]`);
-      // `[]` plus one comma between each pair of items.
-      return Math.max(2 + maxItems * item + (maxItems - 1), nullChars);
-    }
-    case "string": {
-      if (Array.isArray(schema.enum)) {
-        return Math.max(
-          ...schema.enum.map((value: string) => String(value).length + 2),
-          nullChars,
-        );
-      }
-      if (!Number.isInteger(schema.maxLength)) {
-        throw new Error(`synthesis_schema_unbounded:${path}`);
-      }
-      return Math.max(schema.maxLength + 2, nullChars);
-    }
-    case "integer":
-    case "number": {
-      if (!Number.isFinite(schema.maximum) || !Number.isFinite(schema.minimum)) {
-        throw new Error(`synthesis_schema_unbounded:${path}`);
-      }
-      return Math.max(
-        String(schema.maximum).length,
-        String(schema.minimum).length,
-        nullChars,
-      );
-    }
-    case "boolean":
-      // `false`
-      return Math.max(5, nullChars);
-    default:
-      throw new Error(`synthesis_schema_unbounded:${path}`);
-  }
-}
-// ceil(worst case chars / chars-per-token). The budget above must cover this.
-//
-// Deliberately a FUNCTION and not a module-scope constant: the estimator throws
-// on an unbounded schema, and a throw at module scope would stop this edge
-// function booting at all — a worse outcome than the truncation it guards
-// against. The tests call it; production never has to.
-export function synthesisWorstCaseOutputTokens(): number {
-  return Math.ceil(
-    synthesisWorstCaseOutputChars() / SYNTHESIS_OUTPUT_CHARS_PER_TOKEN,
-  );
-}
-// What is left over once the worst case is paid for, in tokens. Positive by
-// construction; the tests assert it and the comment above explains the size.
-export function synthesisOutputTokenHeadroom(): number {
-  return MAX_SYNTHESIS_OUTPUT_TOKENS - synthesisWorstCaseOutputTokens();
-}
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -1834,11 +1561,60 @@ export async function synthesizeBrief(
   if (!key) throw new Error("model_configuration_missing");
   const requestBody = {
     contents: [{
+      // issue #3541 — THE OUTPUT BOUNDS LIVE HERE, IN THE PROMPT, AND NOT IN
+      // PROVIDER_RESPONSE_SCHEMA. That is not a stylistic choice.
+      //
+      // Issue #2814 proved that putting minItems/maxItems/minimum/maximum on
+      // this schema makes Gemini refuse the whole request — "the specified
+      // schema produces a constraint that has too many states for serving",
+      // HTTP 400, no candidate and no usage metadata — and
+      // issue2796_worker_v3_happy.test.ts guards them back out. That budget is
+      // spent by responseJsonSchema alone; instruction text costs the
+      // constrained decoder nothing, so it is the one lever that can bound the
+      // answer without re-triggering that 400.
+      //
+      // Every number below is one the code ALREADY enforces or throws away.
+      // Nothing here is invented:
+      //   what_changed 3          validateBrief (length > 3 -> invalid_synthesis)
+      //                           and parsed.what_changed.slice(0, 3)
+      //   why_it_matters 2        validateBrief (length > 2) and
+      //                           parsed.why_it_matters.slice(0, 2)
+      //   worth_doing 3           validateBrief (length > 3) and
+      //                           primaryActionFirst (primary + 2)
+      //   exactly one primary     validateBrief (primary !== 1)
+      //   theme_signals 2         groundedThemeSignals' Math.min(2, ...) and
+      //                           validateDecisionReport (synthesizedThemes > 2)
+      //   comparisons 5           groundedDecisionComparisons' `accepted.length
+      //                           >= 5` break and validateDecisionReport
+      //   changed_paths empty     groundedThemeSignals hardcodes [] and
+      //                           validateDecisionReport throws on a synthesis
+      //                           signal with any
+      //   id arrays 3             boundedIds in groundedDecisionBindings and the
+      //                           .slice(0, 3) calls in the other helpers
+      //   240 / 180 / 160 / 140   the normalizedDecisionText and
+      //                           boundedDecisionText ceilings on owner_facts
+      //                           text and decision.rationale (240), signal
+      //                           summary (180), decision.headline (160) and
+      //                           comparison owner/competitor text (140)
+      // The 240 on what_changed / why_it_matters / worth_doing text is the one
+      // figure argued rather than copied: nothing downstream truncates those
+      // three, so they take the contract's own sentence ceiling.
+      //
+      // These lines are instruction only. They do NOT relax validateBrief or
+      // validateDecisionReport, and a model that ignores them still fails the
+      // same way it always did.
       parts: [{
         text:
           `Return JSON only. Contract ${PROMPT_CONTRACT_VERSION}. Build a sourced venue-relevant competitor brief from this bounded before/after input: ${
             JSON.stringify(prompt)
-          }`,
+          }
+Length limits — anything past them is discarded before it is read, so spending output on it wastes the answer:
+- what_changed: at most 3 items. why_it_matters: at most 2. worth_doing: at most 3, with exactly one is_primary true.
+- theme_signals: at most 2, and changed_paths must always be [].
+- comparisons: at most 5. interpretation_meta: exactly one per why_it_matters. action_plan: exactly one per worth_doing.
+- Every signal_ids, owner_fact_ids and evidence_ids array: at most 3 ids, reused verbatim from the input.
+- Free text ceilings, in characters: what_changed.text, why_it_matters.text, worth_doing.text and decision.rationale 240; theme_signals.summary 180; decision.headline 160; comparisons.owner_text and comparisons.competitor_text 140; theme_signals.label 60.
+Write to those limits, not to the token budget. A shorter brief that stays inside them is correct; a longer one is cut off and thrown away.`,
       }],
     }],
     generationConfig: {
@@ -2014,11 +1790,11 @@ export async function synthesizeBrief(
   // issue #3541 — a MAX_TOKENS finish is OUR defect, not Google's.
   //
   // This used to record "provider_error", which is what sent the next reader
-  // to check on Google for eleven days while the actual cause was the output
-  // budget on line ~39. The HTTP call succeeded, the usage metadata was
-  // complete, the bill was paid — the answer simply did not fit. That deserves
-  // its own name, and RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED points at
-  // MAX_SYNTHESIS_OUTPUT_TOKENS instead of at the provider.
+  // to check on Google for eleven days while the actual cause was
+  // MAX_SYNTHESIS_OUTPUT_TOKENS. The HTTP call succeeded, the usage metadata
+  // was complete, the bill was paid — the answer simply did not fit. That
+  // deserves its own name, and RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED points at
+  // this file instead of at the provider.
   //
   // It wins over BOTH of the other failure classes below. Truncated JSON
   // usually fails to parse ("provider_error" before), but JSON that happens to

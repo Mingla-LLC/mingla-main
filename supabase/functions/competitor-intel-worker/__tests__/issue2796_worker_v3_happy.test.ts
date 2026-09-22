@@ -112,7 +112,10 @@ Deno.test("issue 2814 accepts the bounded provider schema and grounds legacy-upg
   const previous = Deno.env.get("GEMINI_API_KEY");
   try {
     Deno.env.set("GEMINI_API_KEY", "test");
-    assertEquals(PROMPT_CONTRACT_VERSION, "competitor-brief-v3.4");
+    // issue #3541 — v3.5 states the output bounds in the instruction text.
+    // This line is a VERSION PIN, not one of the #2814 schema constraints the
+    // rest of this test guards; those stay forbidden below.
+    assertEquals(PROMPT_CONTRACT_VERSION, "competitor-brief-v3.5");
     const serializedSchema = JSON.stringify(PROVIDER_RESPONSE_SCHEMA);
     for (const forbidden of [
       "minItems",
@@ -497,56 +500,23 @@ Deno.test("issue 2820 makes the sole primary action first before report bindings
 
 // ══════════════════════════════════════════════════════════════════════════
 // issue #3541 — the synthesis output budget
+//
+// The bounds live in the PROMPT, not in PROVIDER_RESPONSE_SCHEMA. Issue #2814
+// proved schema constraints make Gemini refuse the request outright, and the
+// "issue 2814 accepts the bounded provider schema" test above keeps them out.
+// These tests hold the other end: that the bounds are actually stated
+// somewhere, that they match what validateBrief accepts, and that the output
+// budget stays inside what SYNTHESIS_TIMEOUT_MS can deliver.
 // ══════════════════════════════════════════════════════════════════════════
 import { assertRejects } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
   MAX_SYNTHESIS_OUTPUT_TOKENS,
+  MEASURED_SYNTHESIS_CANDIDATE_TOKENS,
+  MEASURED_SYNTHESIS_MS_PER_OUTPUT_TOKEN,
   RESULT_CLASS_OUTPUT_BUDGET_EXCEEDED,
-  SYNTHESIS_OUTPUT_CHARS_PER_TOKEN,
-  synthesisOutputTokenHeadroom,
-  synthesisWorstCaseOutputChars,
-  synthesisWorstCaseOutputTokens,
+  SYNTHESIS_TIMEOUT_MS,
   validateBrief,
 } from "../index.ts";
-
-// Every array the schema declares, as [dotted path, node].
-function issue3541SchemaArrays(
-  node: unknown,
-  path = "$",
-  found: Array<[string, Record<string, any>]> = [],
-): Array<[string, Record<string, any>]> {
-  if (!node || typeof node !== "object") return found;
-  const schema = node as Record<string, any>;
-  if (schema.type === "array") {
-    found.push([path, schema]);
-    issue3541SchemaArrays(schema.items, `${path}[]`, found);
-  } else if (schema.type === "object") {
-    for (const [key, value] of Object.entries(schema.properties ?? {})) {
-      issue3541SchemaArrays(value, `${path}.${key}`, found);
-    }
-  }
-  return found;
-}
-
-// Every free-text string the schema declares (enums carry their own bound).
-function issue3541SchemaFreeTextStrings(
-  node: unknown,
-  path = "$",
-  found: Array<[string, Record<string, any>]> = [],
-): Array<[string, Record<string, any>]> {
-  if (!node || typeof node !== "object") return found;
-  const schema = node as Record<string, any>;
-  if (schema.type === "string" && !Array.isArray(schema.enum)) {
-    found.push([path, schema]);
-  } else if (schema.type === "array") {
-    issue3541SchemaFreeTextStrings(schema.items, `${path}[]`, found);
-  } else if (schema.type === "object") {
-    for (const [key, value] of Object.entries(schema.properties ?? {})) {
-      issue3541SchemaFreeTextStrings(value, `${path}.${key}`, found);
-    }
-  }
-  return found;
-}
 
 const issue3541Observations = [{
   sourceId: "11111111-1111-4111-8111-111111111111",
@@ -560,7 +530,7 @@ const issue3541Observations = [{
 
 // A brief validateBrief accepts, with the three model-supplied arrays set to
 // whatever lengths the caller asks for. Used to RECOVER validateBrief's bounds
-// by observation instead of restating them, so a schema bound and the validator
+// by observation instead of restating them, so the prompt and the validator
 // cannot drift apart and both still look right.
 function issue3541BriefWithLengths(
   facts: number,
@@ -620,94 +590,14 @@ function issue3541AcceptedRange(
   return { min: accepted[0], max: accepted[accepted.length - 1] };
 }
 
-Deno.test("issue 3541 bounds every schema array and every free-text string", () => {
-  const arrays = issue3541SchemaArrays(PROVIDER_RESPONSE_SCHEMA);
-  // Guard the guard: if the walker stops finding arrays, the loop below is
-  // vacuous and would pass over a completely unbounded schema.
-  assertEquals(arrays.length >= 12, true);
-  for (const [path, schema] of arrays) {
-    assertEquals(
-      [path, Number.isInteger(schema.minItems)],
-      [path, true],
-    );
-    assertEquals(
-      [path, Number.isInteger(schema.maxItems)],
-      [path, true],
-    );
-    assertEquals([path, schema.maxItems >= schema.minItems], [path, true]);
-  }
-  const strings = issue3541SchemaFreeTextStrings(PROVIDER_RESPONSE_SCHEMA);
-  assertEquals(strings.length >= 20, true);
-  for (const [path, schema] of strings) {
-    assertEquals([path, Number.isInteger(schema.maxLength)], [path, true]);
-  }
-});
-
-Deno.test("issue 3541 schema item bounds equal validateBrief's own accepted range", () => {
-  // Recovered from validateBrief by probing it, not copied from it.
-  const facts = issue3541AcceptedRange((length) =>
-    issue3541BriefWithLengths(length, 1, 1)
-  );
-  const interpretations = issue3541AcceptedRange((length) =>
-    issue3541BriefWithLengths(1, length, 1)
-  );
-  const actions = issue3541AcceptedRange((length) =>
-    issue3541BriefWithLengths(1, 1, length)
-  );
-  const properties = (PROVIDER_RESPONSE_SCHEMA as Record<string, any>)
-    .properties;
-  assertEquals(
-    [properties.what_changed.minItems, properties.what_changed.maxItems],
-    [facts.min, facts.max],
-  );
-  assertEquals(
-    [properties.why_it_matters.minItems, properties.why_it_matters.maxItems],
-    [interpretations.min, interpretations.max],
-  );
-  assertEquals(
-    [properties.worth_doing.minItems, properties.worth_doing.maxItems],
-    [actions.min, actions.max],
-  );
-  // validateDecisionReport ties these two arrays to the briefs above, so the
-  // schema has to carry the SAME window, not merely a window of its own.
-  assertEquals(
-    [
-      properties.interpretation_meta.minItems,
-      properties.interpretation_meta.maxItems,
-    ],
-    [interpretations.min, interpretations.max],
-  );
-  assertEquals(
-    [properties.action_plan.minItems, properties.action_plan.maxItems],
-    [actions.min, actions.max],
-  );
-});
-
-Deno.test("issue 3541 keeps the bounded worst case inside the output budget", () => {
-  const chars = synthesisWorstCaseOutputChars();
-  assertEquals(Number.isFinite(chars) && chars > 0, true);
-  // The arithmetic in the comment above MAX_SYNTHESIS_OUTPUT_TOKENS, redone.
-  assertEquals(
-    synthesisWorstCaseOutputTokens(),
-    Math.ceil(chars / SYNTHESIS_OUTPUT_CHARS_PER_TOKEN),
-  );
-  assertEquals(
-    synthesisWorstCaseOutputTokens() <= MAX_SYNTHESIS_OUTPUT_TOKENS,
-    true,
-  );
-  assertEquals(synthesisOutputTokenHeadroom() >= 0, true);
-  // The budget must also still be the one actually sent to the provider.
-  const source = Deno.readTextFileSync(new URL("../index.ts", import.meta.url));
-  assertEquals(source.includes("maxOutputTokens: MAX_SYNTHESIS_OUTPUT_TOKENS"), true);
-});
-
-// A minimal provider + database harness. The response is a REAL provider-shaped
-// body, so finish_reason travels the same path it travels in production; the
-// receipt is whatever the worker hands issue_2725_record_model_usage.
-async function issue3541SynthesisReceipt(
+// Drives the real synthesis path and hands back BOTH the outgoing provider
+// request and the receipt the worker wrote, so every assertion below measures
+// what actually left the process rather than what the source says.
+async function issue3541Synthesis(
   finishReason: string,
   text: string,
-): Promise<Record<string, unknown>> {
+): Promise<{ request: Record<string, any>; receipt: Record<string, unknown> }> {
+  let request: Record<string, any> = {};
   let receipt: Record<string, unknown> = {};
   const db = {
     from(_table: string) {
@@ -739,20 +629,25 @@ async function issue3541SynthesisReceipt(
     funding_lane: "manual" as const,
     manual_tool_lead_id: null,
   } as never;
-  const fetcher = (async () =>
-    new Response(
+  const fetcher = (async (
+    _input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => {
+    request = JSON.parse(String(init?.body));
+    return new Response(
       JSON.stringify({
         candidates: [{ finishReason, content: { parts: [{ text }] } }],
         usageMetadata: {
           promptTokenCount: 4_000,
-          candidatesTokenCount: 1_185,
+          candidatesTokenCount: MEASURED_SYNTHESIS_CANDIDATE_TOKENS,
           thoughtsTokenCount: 0,
-          totalTokenCount: 5_185,
+          totalTokenCount: 4_000 + MEASURED_SYNTHESIS_CANDIDATE_TOKENS,
         },
         modelVersion: "gemini-3.6-flash",
       }),
       { status: 200, headers: { "content-type": "application/json" } },
-    )) as unknown as typeof fetch;
+    );
+  }) as unknown as typeof fetch;
   const previous = Deno.env.get("GEMINI_API_KEY");
   Deno.env.set("GEMINI_API_KEY", "test-key");
   try {
@@ -781,7 +676,7 @@ async function issue3541SynthesisReceipt(
       ? Deno.env.delete("GEMINI_API_KEY")
       : Deno.env.set("GEMINI_API_KEY", previous);
   }
-  return receipt;
+  return { request, receipt };
 }
 
 // The document the provider actually returned on 2026-09-22: valid JSON up to
@@ -789,8 +684,75 @@ async function issue3541SynthesisReceipt(
 const ISSUE_3541_TRUNCATED =
   '{"what_changed":[{"id":"f1","text":"The site now leads with a weekend tast';
 
+Deno.test("issue 3541 states the output bounds in the prompt, matching validateBrief", async () => {
+  // Recovered by probing validateBrief, not copied from it, so a prompt line
+  // and the validator cannot drift apart and both still look right.
+  const facts = issue3541AcceptedRange((length) =>
+    issue3541BriefWithLengths(length, 1, 1)
+  );
+  const interpretations = issue3541AcceptedRange((length) =>
+    issue3541BriefWithLengths(1, length, 1)
+  );
+  const actions = issue3541AcceptedRange((length) =>
+    issue3541BriefWithLengths(1, 1, length)
+  );
+  const { request } = await issue3541Synthesis("STOP", ISSUE_3541_TRUNCATED);
+  const sent = String(request.contents[0].parts[0].text);
+  // Guard the guard: if the prompt stopped carrying the instruction block at
+  // all, the includes() checks below would be testing an empty string.
+  assertEquals(sent.includes("Length limits"), true);
+  assertEquals(sent.includes(`what_changed: at most ${facts.max} items`), true);
+  assertEquals(
+    sent.includes(`why_it_matters: at most ${interpretations.max}`),
+    true,
+  );
+  assertEquals(sent.includes(`worth_doing: at most ${actions.max}`), true);
+  // The bounds the validator holds but validateBrief does not express.
+  assertEquals(sent.includes("theme_signals: at most 2"), true);
+  assertEquals(sent.includes("comparisons: at most 5"), true);
+  assertEquals(sent.includes("changed_paths must always be []"), true);
+  assertEquals(sent.includes("at most 3 ids"), true);
+  assertEquals(sent.includes("240"), true);
+});
+
+Deno.test("issue 3541 keeps every bound OUT of the provider schema", () => {
+  // The other half of the #2814 guard above. That test forbids minItems,
+  // maxItems, minimum and maximum; maxLength was never in this schema and is
+  // not covered there, yet it is the most state-expensive constraint class for
+  // a constrained decoder — one character counter per string field. Bounding
+  // strings is exactly the change that would re-trigger #2814's HTTP 400.
+  const serialized = JSON.stringify(PROVIDER_RESPONSE_SCHEMA);
+  for (const forbidden of ["maxLength", "minLength", "pattern"]) {
+    assertEquals([forbidden, serialized.includes(`"${forbidden}"`)], [
+      forbidden,
+      false,
+    ]);
+  }
+});
+
+Deno.test("issue 3541 sizes the output budget inside what the synthesis timeout can deliver", async () => {
+  // The wall, recomputed from the 2026-09-22 receipt rather than restated:
+  // 1,185 candidate tokens in 6,753 ms is all the throughput evidence there is.
+  const timeoutTokenCeiling = Math.floor(
+    SYNTHESIS_TIMEOUT_MS / MEASURED_SYNTHESIS_MS_PER_OUTPUT_TOKEN,
+  );
+  assertEquals(MAX_SYNTHESIS_OUTPUT_TOKENS < timeoutTokenCeiling, true);
+  // And it must clear the point production was actually cut off at, with room.
+  // At 1,200 the old budget sat 15 tokens above it, which is no margin at all.
+  assertEquals(
+    MAX_SYNTHESIS_OUTPUT_TOKENS > MEASURED_SYNTHESIS_CANDIDATE_TOKENS,
+    true,
+  );
+  // Measured on the wire, not read off the source.
+  const { request } = await issue3541Synthesis("STOP", ISSUE_3541_TRUNCATED);
+  assertEquals(
+    request.generationConfig.maxOutputTokens,
+    MAX_SYNTHESIS_OUTPUT_TOKENS,
+  );
+});
+
 Deno.test("issue 3541 records a MAX_TOKENS finish as an output budget defect", async () => {
-  const receipt = await issue3541SynthesisReceipt(
+  const { receipt } = await issue3541Synthesis(
     "MAX_TOKENS",
     ISSUE_3541_TRUNCATED,
   );
@@ -807,10 +769,7 @@ Deno.test("issue 3541 records a MAX_TOKENS finish as an output budget defect", a
 Deno.test("issue 3541 leaves a non-MAX_TOKENS bad body classed as a provider error", async () => {
   // Same harness, same unparseable body, only the finish reason differs — so a
   // default leaking through would show up here as the budget class.
-  const receipt = await issue3541SynthesisReceipt(
-    "STOP",
-    ISSUE_3541_TRUNCATED,
-  );
+  const { receipt } = await issue3541Synthesis("STOP", ISSUE_3541_TRUNCATED);
   assertEquals(receipt.finish_reason, "STOP");
   assertEquals(receipt.result_class, "provider_error");
   assertEquals(
