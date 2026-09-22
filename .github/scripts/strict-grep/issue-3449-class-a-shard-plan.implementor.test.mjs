@@ -95,9 +95,13 @@ const costs = () => loadShardCosts(path.join(HERE, "class-a-shard-costs.json"));
  * the purity test at the bottom of this file for why.
  */
 const EXPECTED_PLAN = Object.freeze({
-  executions: 1033,
-  loadsSeconds: [168.8, 168.8, 168.8],
-  counts: [340, 351, 342],
+  // issue #3526 re-derived these after registering ONE new batch:A gate
+  // (i-3526-gemini-model-single-source.mjs, modes [self-test, plain] = +2
+  // executions), exactly as the note above instructs. Read off
+  // `node .github/scripts/strict-grep/issue-3449-class-a-shard-plan.mjs`.
+  executions: 1035,
+  loadsSeconds: [168.9, 168.9, 168.8],
+  counts: [341, 352, 342],
 });
 
 const tempDir = (label) => fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), `issue-3449-${label}-`));

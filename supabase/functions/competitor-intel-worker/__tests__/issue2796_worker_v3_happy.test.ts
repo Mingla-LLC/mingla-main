@@ -64,7 +64,13 @@ Deno.test("issue 2796 worker keeps deterministic one-call and cost bounds in sou
   const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
   assertEquals(source.includes("maxOutputTokens: MAX_SYNTHESIS_OUTPUT_TOKENS"), true);
   assertEquals(source.includes("temperature: 0"), true);
-  assertEquals(source.includes("thinkingConfig: { thinkingBudget: 0 }"), true);
+  // issue #3526: Gemini 3 replaced thinkingBudget with thinking_level.
+  assertEquals(
+    source.includes(
+      "thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL }",
+    ),
+    true,
+  );
   assertEquals(source.includes("candidateCount: 1"), true);
   assertEquals(source.includes("MAX_SYNTHESIS_REQUEST_BYTES = 65_536"), true);
   assertEquals(source.includes("RESERVED_MICROUSD = 50_000"), true);
@@ -213,7 +219,7 @@ Deno.test("issue 2814 accepts the bounded provider schema and grounds legacy-upg
           thoughtsTokenCount: 0,
           totalTokenCount: 200,
         },
-        modelVersion: "gemini-2.5-flash",
+        modelVersion: "gemini-3.6-flash",
       }), { headers: { "content-type": "application/json" } });
     }) as typeof fetch;
     const brief = await synthesizeBrief(
@@ -385,7 +391,7 @@ Deno.test("issue 2817 grounds every malformed theme and comparison field before 
           thoughtsTokenCount: 0,
           totalTokenCount: 200,
         },
-        modelVersion: "gemini-2.5-flash",
+        modelVersion: "gemini-3.6-flash",
       }), { headers: { "content-type": "application/json" } })) as typeof fetch;
 
     const brief = await synthesizeBrief(

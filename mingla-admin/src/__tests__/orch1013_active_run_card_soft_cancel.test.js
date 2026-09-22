@@ -91,14 +91,36 @@ describe("ORCH-1013 Finding B — ActiveRunCard soft-cancel", () => {
     );
   });
 
-  it("cost cross-check shows expected vs actual with ±$0.0010/place tolerance", () => {
+  // issue #3526 P0-1 — this used to require a hardcoded
+  // `COST_DRIFT_TOLERANCE_USD_PER_PLACE = 0.001` described in its own name as
+  // "±25% of $0.0040". That absolute was the defect: when the server's rate
+  // moved to $0.0089 the tolerance silently became ±11% and the drift badge
+  // would have fired on EVERY run — an alarm that is always on is an alarm
+  // nobody reads. The card holds no dollar amount now; it derives the rate from
+  // `run.estimated_cost_usd / run.total_count`, the figure the server priced
+  // THIS run at, and takes a true 25% fraction of it. What is asserted is
+  // therefore the ratio and the derivation, not a frozen dollar figure.
+  it("cost cross-check derives its baseline from the server and tolerates a true 25%", () => {
     assert.ok(
-      src.includes("COST_DRIFT_TOLERANCE_USD_PER_PLACE"),
-      "must declare a drift tolerance constant",
+      /COST_DRIFT_TOLERANCE_FRACTION\s*=\s*0\.25\b/.test(src),
+      "tolerance must be a dimensionless 25% fraction, not a frozen dollar amount",
     );
     assert.ok(
-      /COST_DRIFT_TOLERANCE_USD_PER_PLACE\s*=\s*0\.001\b/.test(src),
-      "tolerance must be $0.0010 per place (±25% of $0.0040)",
+      src.includes("estCost / total"),
+      "the per-place baseline must come from the server's own estimate for this run",
+    );
+    assert.ok(
+      /tolerance\s*=\s*processed \* serverPerPlaceCost \* COST_DRIFT_TOLERANCE_FRACTION/
+        .test(src),
+      "the tolerance must scale with the server rate, not with a client constant",
+    );
+    assert.ok(
+      !/\b0\.00[0-9]+\b/.test(src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "")),
+      "the card must hold no per-place rate literal at all (issue #3526 G-5)",
+    );
+    assert.ok(
+      src.includes("serverPerPlaceCost === null"),
+      "with no server estimate the badge must stay silent rather than fire on an invented baseline",
     );
     assert.ok(
       src.includes("expected") && src.includes("actual"),

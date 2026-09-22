@@ -6,10 +6,15 @@
 
 // ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
 import { recordApiCall } from "./apiHealthLog.ts";
+// issue #3526 — model id + thinking level come from the single source.
+import {
+  GEMINI_MODEL_ID,
+  GEMINI_THINKING_LEVEL_MINIMAL,
+  geminiErrorFingerprint,
+  geminiGenerateContentUrl,
+} from "./geminiModel.ts";
 
-const GEMINI_MODEL_ID = "gemini-2.5-flash";
-const GEMINI_API_URL =
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
+const GEMINI_API_URL = geminiGenerateContentUrl();
 const MAX_MALFORMED_RETRIES = 2;
 const MAX_OUTPUT_TOKENS = 1500;
 const TEMPERATURE = 0.3;
@@ -494,6 +499,10 @@ export async function callGemini(args: {
     generationConfig: {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
       temperature: TEMPERATURE,
+      // issue #3526 — Gemini 3 removed `thinkingBudget`. Without an explicit
+      // thinking_level a 3.x model defaults to `medium` and bills the thinking
+      // tokens as OUTPUT. Set it, never inherit it.
+      thinkingConfig: { thinking_level: GEMINI_THINKING_LEVEL_MINIMAL },
     },
   };
 
@@ -519,17 +528,10 @@ export async function callGemini(args: {
       const text = await response.text().catch(() => "");
       // ORCH-1201-R2 Layer-C: capture the Gemini depletion fingerprint. A 429 with
       // error.status=RESOURCE_EXHAUSTED is true quota exhaustion (vs transient).
-      let depErr: { code?: string; text?: string } | undefined;
-      if (response.status === 429) {
-        let parsedStatus = "";
-        try {
-          parsedStatus = (JSON.parse(text)?.error?.status as string) ?? "";
-        } catch { /* non-JSON body */ }
-        depErr = {
-          code: parsedStatus || "RESOURCE_EXHAUSTED",
-          text: text.slice(0, 300),
-        };
-      }
+      // issue #3526 M-3: this used to fire ONLY on 429, so the 17-Sep 403 and the
+      // 21-Sep 404 both recorded error_code=NULL and were unmatchable by any
+      // depletion/retirement signal. Fingerprint EVERY refusal class now.
+      const depErr = geminiErrorFingerprint(response.status, text);
       void recordApiCall(
         "gemini",
         false,

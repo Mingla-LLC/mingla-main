@@ -15,7 +15,8 @@
  * BOTH activeRuns.length === 0 AND terminalRuns.length === 0. No empty card frame.
  *
  * Gemini pricing reference (COMMS-0003):
- * https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-30).
+ * issue #3526 — pricing comes from the server's cost_model; no model name or
+ * price card is pinned in this app.
  *
  * SPEC §3 B.2.
  */

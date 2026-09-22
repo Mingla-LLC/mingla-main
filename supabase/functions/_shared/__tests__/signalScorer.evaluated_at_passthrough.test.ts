@@ -72,7 +72,7 @@ function aiEntry(overrides: Partial<AiSignalEntry> = {}): AiSignalEntry {
     reasoning: "test reasoning",
     evaluated_at: "2026-05-30T18:00:00.000Z",
     prompt_version: DEFAULT_EXPECTED_PROMPT_VERSION,
-    model: "gemini-2.5-flash",
+    model: "gemini-3.6-flash",
     ...overrides,
   };
 }

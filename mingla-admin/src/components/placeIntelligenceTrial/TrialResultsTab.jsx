@@ -21,6 +21,13 @@ import {
 import { supabase, invokeWithRefresh } from "../../lib/supabase";
 import { extractFunctionError } from "../../lib/edgeFunctionError";
 import { useToast } from "../../context/ToastContext";
+// issue #3526 P0-1 — the cost model comes from the server, never from here.
+import {
+  estimateCostUsd,
+  formatPerPlaceCost,
+  needsHighCostConfirmation,
+  normalizeCostModel,
+} from "../../services/intelligenceCoverageService";
 import { SectionCard, AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
@@ -45,14 +52,16 @@ function formatPercent(n) {
 // ── Tab ─────────────────────────────────────────────────────────────────────
 
 // ORCH-0733 — Anthropic dropped per DEC-101/DEC-102; Gemini sole provider.
-// Browser-side per-place throttle for Gemini Flash 2.5: free tier is 15 RPM
+// Browser-side per-place throttle for Gemini Flash: free tier is 15 RPM
 // (~4s floor); paid tier 1 is effectively unbounded. 1s pad keeps under both.
 const PER_PLACE_BROWSER_THROTTLE_MS = 1_000;
 
-// ORCH-0734 — actual measured cost on run e15f5d8f (32 anchors → $0.1292).
-// Used for confirm-dialog estimate. Adjusted from 0.0038 (rounded estimate
-// from earlier v3 measurement) to 0.0040 (defensive over-estimate; harmless).
-const PER_PLACE_COST_USD = 0.0040;
+// issue #3526 P0-1 — the client-side rate and the client-side $5 guard are
+// GONE. They were copies of numbers the edge function owns, and when the edge
+// moved to $0.0089 this tab priced every run at 45% of its real cost while the
+// server refused the ones it considered expensive. `costModel` comes back on
+// `city_coverage`; see services/intelligenceCostModel.js for why there is no
+// fallback.
 
 // ORCH-0734 — sample-mode bounds. Operator picks 50-500 places per city run.
 const SAMPLE_SIZE_DEFAULT = 200;
@@ -97,6 +106,8 @@ export function TrialResultsTab() {
   const [activeRunId, setActiveRunId] = useState(null);
   const [_activeRun, setActiveRun] = useState(null);
   const [cityCoverage, setCityCoverage] = useState(null);
+  // issue #3526 P0-1 — null until the server answers; never defaulted.
+  const [costModel, setCostModel] = useState(null);
   const [coverageLoading, setCoverageLoading] = useState(false);
   const [retryingFailed, setRetryingFailed] = useState(false);
   // ORCH-1008 Phase 4 — modal state for remainder confirmation. ORCH-1013
@@ -117,6 +128,9 @@ export function TrialResultsTab() {
       });
       if (error) throw new Error(await extractFunctionError(error, "city_coverage failed"));
       setCityCoverage(data || null);
+      // issue #3526 P0-1 — the server publishes its cost model on the same
+      // read the tab already performs.
+      setCostModel(normalizeCostModel(data?.cost_model));
       return data || null;
     } catch (err) {
       if (!quiet) {
@@ -294,7 +308,16 @@ export function TrialResultsTab() {
     }
 
     const totalPlaces = selectedCity.servable_count;
-    const estCostNum = +(totalPlaces * PER_PLACE_COST_USD).toFixed(2);
+    const estCostNum = estimateCostUsd(totalPlaces, costModel);
+    if (estCostNum === null) {
+      addToast({
+        variant: "error",
+        title: "Cost model unavailable",
+        description: "The server did not return a per-place cost. Reload before starting a run.",
+      });
+      isRunningRef.current = false;
+      return;
+    }
     const estMinutes = Math.ceil((totalPlaces * PER_PLACE_WALL_SECONDS) / 60);
     const estTimeStr = estMinutes >= 60 ? `~${(estMinutes / 60).toFixed(1)} hrs` : `~${estMinutes} min`;
 
@@ -311,10 +334,10 @@ export function TrialResultsTab() {
     }
 
     // Second confirm if cost > $5 guard
-    const exceedsGuard = estCostNum > 5;
+    const exceedsGuard = needsHighCostConfirmation(totalPlaces, costModel) === true;
     if (exceedsGuard && !window.confirm(
       `⚠️ This run will charge approximately $${estCostNum.toFixed(2)} on the Gemini API.\n\n` +
-      `The default cost guard is $5. You're authorizing an override.\n\n` +
+      `The server's cost guard is $${costModel.costGuardUsd.toFixed(2)}. You're authorizing an override.\n\n` +
       `I understand this will charge ~$${estCostNum.toFixed(2)}. Confirm again?`
     )) {
       isRunningRef.current = false;
@@ -384,12 +407,23 @@ export function TrialResultsTab() {
     }
 
     const effectiveSample = Math.min(sampleSize, selectedCity.servable_count);
-    const estCost = (effectiveSample * PER_PLACE_COST_USD).toFixed(2);
+    const estCostSample = estimateCostUsd(effectiveSample, costModel);
+    if (estCostSample === null) {
+      addToast({
+        variant: "error",
+        title: "Cost model unavailable",
+        description: "The server did not return a per-place cost. Reload before starting a run.",
+      });
+      isRunningRef.current = false;
+      return;
+    }
+    const estCost = estCostSample.toFixed(2);
     const estMinutes = Math.ceil((effectiveSample * PER_PLACE_WALL_SECONDS) / 60);
 
     if (!window.confirm(
       `About to run trial for ${effectiveSample} places sampled from ${selectedCity.name}, ${selectedCity.country} ` +
-      `(${selectedCity.servable_count} servable total) using Gemini 2.5 Flash. ` +
+      `(${selectedCity.servable_count} servable total)` +
+      `${costModel?.modelId ? ` using ${costModel.modelId}` : ""}. ` +
       `Estimated cost ~$${estCost}, ~${estMinutes} minute wall time. ` +
       `Don't refresh the page during the run. Continue?`
     )) {
@@ -525,7 +559,18 @@ export function TrialResultsTab() {
       return;
     }
 
-    const estimatedCost = Number(cityCoverage.estimated_retry_cost_usd || retryCount * PER_PLACE_COST_USD);
+    // issue #3526 P0-1 — the server already prices the retry. The old fallback
+    // multiplied by a stale client rate; there is no client rate now, so an
+    // absent server figure is an error, not a guess.
+    const estimatedCost = Number(cityCoverage.estimated_retry_cost_usd);
+    if (!Number.isFinite(estimatedCost)) {
+      addToast({
+        variant: "error",
+        title: "Retry cost unavailable",
+        description: "The server did not price this retry. Reload before retrying.",
+      });
+      return;
+    }
     if (!window.confirm(
       `Retry ${retryCount} failed ${selectedCity.name} places.\n\n` +
       `Estimated Gemini cost: ~$${estimatedCost.toFixed(2)}.\n` +
@@ -535,10 +580,10 @@ export function TrialResultsTab() {
       return;
     }
 
-    const exceedsGuard = estimatedCost > 5;
+    const exceedsGuard = costModel !== null && estimatedCost > costModel.costGuardUsd;
     if (exceedsGuard && !window.confirm(
       `This retry will charge approximately $${estimatedCost.toFixed(2)} on the Gemini API.\n\n` +
-      `The default cost guard is $5. Confirm override?`
+      `The server's cost guard is $${costModel.costGuardUsd.toFixed(2)}. Confirm override?`
     )) {
       return;
     }
@@ -603,11 +648,12 @@ export function TrialResultsTab() {
       : mode === "remainder"
         ? remainderCount
         : Math.min(sampleSize, selectedCity.servable_count);
-  const estCostNum = effectiveCount * PER_PLACE_COST_USD;
-  const estCostUsd = estCostNum.toFixed(2);
+  const estCostNum = estimateCostUsd(effectiveCount, costModel);
+  const costUnknown = estCostNum === null;
+  const estCostUsd = costUnknown ? "—" : estCostNum.toFixed(2);
   const estMinutes = Math.ceil((effectiveCount * PER_PLACE_WALL_SECONDS) / 60);
   const estTimeStr = estMinutes >= 60 ? `~${(estMinutes / 60).toFixed(1)} hrs` : `~${estMinutes} min`;
-  const exceedsCostGuard = estCostNum > 5;
+  const exceedsCostGuard = needsHighCostConfirmation(effectiveCount, costModel) === true;
   // ORCH-0737 block while active full-city run; ORCH-1008: also block remainder
   // with zero remaining (avoids the no_remainder 400).
   const canRun = !!cityId
@@ -809,14 +855,15 @@ export function TrialResultsTab() {
               <div className="rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] px-4 py-3">
                 <div className="flex items-baseline justify-between gap-2 font-mono tabular-nums text-sm">
                   <span className="text-[var(--color-text-secondary)]">
-                    {Number(effectiveCount).toLocaleString()} places × ${PER_PLACE_COST_USD.toFixed(4)}
+                    {Number(effectiveCount).toLocaleString()} places
+                    {costModel ? ` × ${formatPerPlaceCost(costModel)}` : ""}
                   </span>
                   <span
                     className={[
                       "font-semibold",
-                      estCostNum > 10
-                        ? "text-[var(--color-error-700)]"
-                        : estCostNum > 5
+                      costUnknown
+                        ? "text-[var(--color-warning-700)]"
+                        : exceedsCostGuard
                           ? "text-[var(--color-warning-700)]"
                           : "text-[var(--color-text-primary)]",
                     ].join(" ")}
@@ -849,7 +896,9 @@ export function TrialResultsTab() {
               run with its own soft-cancel affordance. */}
           <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-[var(--gray-200)]">
             <span className="text-xs text-[var(--color-text-tertiary)] uppercase tracking-wide font-mono shrink-0">AI Provider</span>
-            <span className="text-xs font-medium text-[var(--color-text-primary)]">Gemini 2.5 Flash</span>
+            <span className="text-xs font-medium text-[var(--color-text-primary)]">
+              {costModel?.modelId ?? "Gemini"}
+            </span>
             <span className="text-xs text-[var(--color-text-tertiary)]">· v4 prompt</span>
             <span className="text-[10px] text-[var(--color-text-tertiary)] italic ml-auto">
               Locked sole provider. Anthropic dropped 2026-05-05 after A/B comparison.
@@ -1009,7 +1058,7 @@ export function TrialResultsTab() {
         cityId={cityId}
         cityName={selectedCity?.name}
         remainingCount={remainderCount}
-        perPlaceCostUsd={PER_PLACE_COST_USD}
+        costModel={costModel}
         onStarted={({ runId: newRunId, cityName: newCityName }) => {
           setActiveRunId(newRunId);
           setActiveRun({

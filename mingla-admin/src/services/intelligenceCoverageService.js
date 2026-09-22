@@ -54,13 +54,24 @@
  *
  * Sorted by servable_count desc.
  *
- * Gemini 2.5 Flash pricing reference (for cost preview math):
- * https://ai.google.dev/pricing/gemini-2-5-flash (verified 2026-05-29).
+ * issue #3526 — cost preview math uses the server's cost_model:
+ * issue #3526 — pricing now comes from the server's cost_model, not a citation
+ * pinned in this file. See services/intelligenceCostModel.js.
  * COMMS-0003 — external API parameters/pricing must cite provider docs URL.
  */
 
 import { invokeWithRefresh } from "../lib/supabase";
 import { extractFunctionError } from "../lib/edgeFunctionError";
+import { normalizeCostModel } from "./intelligenceCostModel.js";
+
+// issue #3526 — re-exported so every consumer imports the cost model helpers
+// from the same place as the coverage fetch.
+export {
+  estimateCostUsd,
+  formatPerPlaceCost,
+  needsHighCostConfirmation,
+  normalizeCostModel,
+} from "./intelligenceCostModel.js";
 
 // Estimators live in a pure-math sibling so the Node test runner can exercise
 // them without importing the supabase-js client.
@@ -79,5 +90,9 @@ export async function fetchIntelligenceCoverage() {
   if (!data || !Array.isArray(data.rows)) {
     throw new Error("intelligence_coverage returned malformed payload");
   }
-  return data.rows;
+  // issue #3526 P0-1 — the server publishes the cost model; the client no
+  // longer holds one. `costModel` is null against an edge function that
+  // predates the change, and every consumer must render "unknown" rather than
+  // fall back to a rate of its own.
+  return { rows: data.rows, costModel: normalizeCostModel(data.cost_model) };
 }

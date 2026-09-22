@@ -142,7 +142,7 @@ Deno.test("issue 2725 rework uses GEMINI_API_KEY and keeps a concrete first brie
               thoughtsTokenCount: 0,
               totalTokenCount: 480,
             },
-            modelVersion: "gemini-2.5-flash",
+            modelVersion: "gemini-3.6-flash",
           }),
           { headers: { "content-type": "application/json" } },
         );

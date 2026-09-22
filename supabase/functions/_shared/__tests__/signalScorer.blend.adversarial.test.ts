@@ -85,7 +85,7 @@ function aiEntry(extra: Partial<AiSignalEntry> = {}): AiSignalEntry {
     reasoning: 'baseline reasoning',
     evaluated_at: '2026-05-30T00:00:00.000Z',
     prompt_version: DEFAULT_EXPECTED_PROMPT_VERSION,
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.6-flash',
     ...extra,
   };
 }
