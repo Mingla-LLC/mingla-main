@@ -607,6 +607,18 @@ export function AttendanceClaimSheet({
       backdropPressBehavior={submitting || codeBusy ? "none" : "close"}
       wrapInRNModal
       theme="dark"
+      // #3524 — THE CODE FIELD MUST NOT SIT UNDER THE KEYBOARD, and the tap
+      // that submits it must not be spent dismissing one. Stated here rather
+      // than inherited, exactly as the app's other form sheets state it
+      // (ReportUserModal, CustomHolidayModal): `interactive` lifts the sheet
+      // with the keyboard so the field stays visible at either snap point, and
+      // `keyboardShouldPersistTaps: "handled"` is what stops the first press on
+      // "Confirm and connect" being swallowed as a dismiss while the keyboard
+      // is up — a two-tap button at the exact moment of completion.
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      scrollProps={{ keyboardShouldPersistTaps: "handled" }}
       backgroundStyle={styles.sheet}
       header={header}
       scrollMode="scroll"

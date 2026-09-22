@@ -416,6 +416,18 @@ assert.ok(
   /BottomSheetTextInput/.test(sheetSource),
   "the code field must be the sheet-aware input, or the keyboard covers it",
 );
+// The sheet-aware input alone is not the whole contract: the sheet has to lift
+// with the keyboard, and the submitting tap must not be eaten by the dismiss.
+// This is the configuration the app's other form sheets already use.
+assert.ok(
+  /keyboardBehavior="interactive"/.test(sheetSource),
+  "the sheet must lift with the keyboard, or the field is covered at the low snap",
+);
+assert.ok(
+  /keyboardShouldPersistTaps: "handled"/.test(sheetSource),
+  "without persistent taps the first press on Confirm and connect only closes "
+    + "the keyboard — a two-tap button at the moment of completion",
+);
 assert.ok(
   !/@gorhom\/bottom-sheet/.test(sheetSource),
   "the sheet must take that input from the primitive, not from @gorhom directly",
