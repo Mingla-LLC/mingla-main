@@ -29,6 +29,19 @@ const mockLifecycleCalls: string[] = [];
 const mockOpenUrl = jest.fn<(url: string) => Promise<never>>(
   () => new Promise<never>(() => undefined),
 );
+/**
+ * issue #3524 — THE THREE WAYS THIS ROUTE COULD MOVE THE BROWSER.
+ *
+ * `openExternal` uses `window.open` and falls back to `location.assign`;
+ * `openAppScheme` uses `location.assign`; the pre-#3524 code used
+ * `Linking.openURL`, which on react-native-web is `window.open`. All three are
+ * spied so the assertion below can say "nothing navigated" and mean it, rather
+ * than meaning "the one function we happened to mock was not called".
+ */
+const mockWindowOpen = jest.fn<(url: string, target?: string) => unknown>(
+  () => null,
+);
+const mockLocationAssign = jest.fn<(url: string) => void>(() => undefined);
 
 jest.mock("react-native", () => ({
   Linking: { openURL: (url: string) => mockOpenUrl(url) },
@@ -112,15 +125,19 @@ const flushRoute = async (): Promise<void> => {
 beforeEach(() => {
   mockLifecycleCalls.splice(0);
   mockOpenUrl.mockClear();
+  mockWindowOpen.mockClear();
+  mockLocationAssign.mockClear();
   visibleUrl = CLEAN_URL;
   scheduledFrames = [];
   replacements = [];
 
   const browserWindow = {
+    open: (url: string, target?: string): unknown => mockWindowOpen(url, target),
     location: {
       hash: "",
       pathname: "/attendance/claim",
       search: "?source=acceptance",
+      assign: (url: string): void => mockLocationAssign(url),
     },
     history: {
       back: jest.fn(),
@@ -202,7 +219,34 @@ describe("issue #2979 attendance claim route fragment scrub integration", () => 
       window,
       ATTENDANCE_CLAIM_FRAGMENT_HANDOFF_KEY,
     )).toBe(false);
-    expect(mockOpenUrl).toHaveBeenCalledWith(APP_URL);
+    // ─── issue #3524 INVERTS THIS ONE ASSERTION, AND ONLY THIS ONE ──────────
+    //
+    // This line used to read `expect(mockOpenUrl).toHaveBeenCalledWith(APP_URL)`
+    // — it proved the route AUTO-OPENED the app on mount, with no tap anywhere.
+    // That behaviour is the #3524 defect, not a protection: a browser blocks a
+    // pop-up nobody asked for, and on iOS Safari an unhandled scheme raises a
+    // blocking "the address is invalid" alert. The guest's very first moment on
+    // the page was a warning or a dead tab. #3524 R-27a deletes the auto-attempt
+    // outright: nothing on this route may initiate a navigation outside a user
+    // gesture, ever.
+    //
+    // So the assertion is inverted rather than removed, and it is STRONGER than
+    // what it replaces: it watches all three ways this route could move the
+    // browser, not just the one the old code happened to use. Every other
+    // assertion in this test — consume, scrub, parse, the handoff key, the four
+    // history replacements — is the #2979 protection and is untouched.
+    expect(mockOpenUrl).not.toHaveBeenCalled();
+    expect(mockWindowOpen).not.toHaveBeenCalled();
+    expect(mockLocationAssign).not.toHaveBeenCalled();
+    for (const spy of [mockOpenUrl, mockWindowOpen, mockLocationAssign]) {
+      for (const call of spy.mock.calls) {
+        expect(call[0]).not.toBe(APP_URL);
+      }
+    }
+    // The fragment is still PARSED on mount — the tap handler needs the app URL
+    // ready before the gesture, because an await between the tap and the first
+    // navigation is #2326's ordering bug. Parsing is not navigating.
+    expect(mockLifecycleCalls).toContain("parse");
     expect(replacements[0]).toEqual({ state: launchState, url: CLEAN_URL });
 
     visibleUrl = "/attendance/claim";
