@@ -102,15 +102,36 @@ serve(async (req) => {
     if (error) throw error;
 
     const result = data as {
-      claimed?: Array<{ orderId?: string; eventId?: string }>;
+      claimed?: Array<{
+        orderId?: string;
+        eventId?: string;
+        // #3524 — read back after add_buyer_to_event_chat, so the sweep is no
+        // longer silent about the half it can fail. `add_buyer_to_event_chat`
+        // returns silently when the event type has no chat, and an `experience`
+        // legitimately has none.
+        chatJoined?: boolean;
+        conversationId?: string | null;
+      }>;
       count?: number;
     } | null;
     const claimed = Array.isArray(result?.claimed) ? result.claimed : [];
     const eventIds = claimed.flatMap((entry) =>
       typeof entry?.eventId === "string" ? [entry.eventId] : []
     );
+    // #3524 — passed through UNCHANGED. Nothing renders this yet; it is
+    // observability parity with the token rail, not a new surface.
+    const claims = claimed.flatMap((entry) =>
+      typeof entry?.eventId === "string"
+        ? [{
+          orderId: typeof entry.orderId === "string" ? entry.orderId : null,
+          eventId: entry.eventId,
+          chatJoined: entry.chatJoined === true,
+          conversationId: entry.conversationId ?? null,
+        }]
+        : []
+    );
     outcome = eventIds.length > 0 ? "success" : "idempotent_success";
-    return json(200, { ok: true, count: eventIds.length, eventIds });
+    return json(200, { ok: true, count: eventIds.length, eventIds, claims });
   } catch {
     outcome = "internal_error";
     return json(500, { ok: false, error: "claim_failed" });
