@@ -392,10 +392,41 @@ BEGIN
          pg_temp.k3524_uuid('carryover'), 'order',
          pg_temp.k3524_uuid('event'), v_order,
          decode(repeat('ab', 32), 'hex'));
-  PERFORM pg_temp.k3524_expect(r->>'result' = 'identity_mismatch',
-    'K: the refusal must be the RECOVERABLE one — identity_mismatch, which the '
-      || 'sheet renders as "sign out and sign in with that address" — and never '
+  -- [TEST-MOD-APPROVED #3524] This line named the outcome rather than the
+  -- property, and the outcome it named has since been split.
+  --
+  --   before: r->>'result' = 'identity_mismatch'
+  --           "the RECOVERABLE one ... which the sheet renders as
+  --            'sign out and sign in with that address'"
+  --   after:  r->>'result' = 'contact_unproved', and NEVER identity_mismatch,
+  --           invalid or ineligible.
+  --
+  -- WHY, AND WHY IT IS STRONGER. This angle's own prose says what it wants: a
+  -- refusal that is recoverable and not a dead end, whose remedy is the one
+  -- performed eleven lines below — read one more code and the ticket lands.
+  -- When it was written there was one recoverable refusal, so naming it and
+  -- naming the property were the same thing. They are no longer. `carryover`
+  -- holds the order''s address on its own account, so the sign-out sentence
+  -- sends exactly this persona in a circle: out, back in the same way, same
+  -- wall. `contact_unproved` is the refusal whose offered action IS the remedy
+  -- this angle then carries out.
+  --
+  -- The old line passed on a refusal that offers this persona nothing; this one
+  -- cannot, and it additionally refuses the three dead ends the old line
+  -- excluded. Everything else in K — nothing consumed, one more code, claimed —
+  -- is unchanged.
+  PERFORM pg_temp.k3524_expect(r->>'result' = 'contact_unproved',
+    'K: the refusal must be the one this persona can ACT on — contact_unproved, '
+      || 'which offers the code that lands the ticket below — and never '
+      || 'identity_mismatch (whose only action is to become someone else), '
       || 'invalid or ineligible. Got ' || coalesce(r->>'result', '(null)'));
+  PERFORM pg_temp.k3524_expect(
+    r->>'result' NOT IN ('identity_mismatch', 'invalid', 'ineligible'),
+    'K: and it must not be any of the three that dead-end this persona');
+  PERFORM pg_temp.k3524_expect(
+    r->>'contactMasked' IS NOT NULL AND r->>'contactChannel' = 'email',
+    'K: the recoverable refusal must still carry the masked hint and channel, '
+      || 'or the sheet cannot name the inbox it is asking about');
   PERFORM pg_temp.k3524_expect(
     (SELECT attendance_claim_token_digest IS NOT NULL AND buyer_user_id IS NULL
        FROM public.orders WHERE id = v_order),

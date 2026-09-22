@@ -485,10 +485,23 @@ Deno.test("#871 post-claim probe distinguishes authorization, privacy and recove
   assertStringIncludes(sheet, 'rosterState === "authorized"');
   assertStringIncludes(sheet, 'rosterState === "private"');
   assertStringIncludes(sheet, ': "route_error"');
+  // [TEST-MOD-APPROVED #3524] The rule is that the backdrop cannot dismiss the
+  // sheet while a round-trip is in flight; the pin named the ONE wait that
+  // existed when it was written.
+  //   before: 'backdropPressBehavior={submitting ? "none" : "close"}'
+  //   after:  the same guard, now covering the emailed-code round-trip too.
+  // #3524 adds a second wait — sending and confirming the code — and a backdrop
+  // tap during it would strand the person between two screens with a code in
+  // their inbox. Strictly stronger: the old string is satisfied by a sheet that
+  // dismisses mid-code, this one is not.
   assertStringIncludes(
     sheet,
-    'backdropPressBehavior={submitting ? "none" : "close"}',
+    'backdropPressBehavior={submitting || codeBusy ? "none" : "close"}',
   );
+  // And the two siblings that must move with it, which the old pin did not
+  // cover at all: the pan-down and the close button obey the same wait.
+  assertStringIncludes(sheet, "enablePanDownToClose={!(submitting || codeBusy)}");
+  assertStringIncludes(sheet, "const dismiss = submitting || codeBusy ? () => undefined : onClose;");
   assertStringIncludes(service, 'return "private"');
   assertStringIncludes(service, 'return "unavailable"');
   assertStringIncludes(service, 'return "error"');

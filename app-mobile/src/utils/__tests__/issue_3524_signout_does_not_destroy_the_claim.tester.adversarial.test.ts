@@ -85,10 +85,27 @@ test("(5) preserve is reachable ONLY through a genuine change of account", () =>
 
 test("(6) the marker is written with NO await before the sign-out", () => {
   const sheet = read("src/components/AttendanceClaimSheet.tsx");
-  const body = sheet.slice(
-    sheet.indexOf("const handoffToAnotherAccount"),
-    sheet.indexOf("const submitting = phase ==="),
-  );
+  // [TEST-MOD-APPROVED #3524] The subject is `handoffToAnotherAccount`'s OWN
+  // body. It used to be sliced positionally, from that name to whatever
+  // declaration happened to follow it, which made the assertion depend on what
+  // was defined NEARBY: adding a callback in between put somebody else's
+  // `await` inside the window, and removing the neighbour would have silently
+  // widened it. Brace-matched instead, so it measures its subject and only its
+  // subject. The rule is unchanged and the assertions below are untouched.
+  const body = (() => {
+    const at = sheet.indexOf("const handoffToAnotherAccount");
+    if (at < 0) return "";
+    const open = sheet.indexOf("{", at);
+    let depth = 0;
+    for (let i = open; i < sheet.length; i += 1) {
+      if (sheet[i] === "{") depth += 1;
+      else if (sheet[i] === "}") {
+        depth -= 1;
+        if (depth === 0) return sheet.slice(at, i + 1);
+      }
+    }
+    return "";
+  })();
   assert.ok(
     body.length > 0,
     "handoffToAnotherAccount must exist in AttendanceClaimSheet.tsx",

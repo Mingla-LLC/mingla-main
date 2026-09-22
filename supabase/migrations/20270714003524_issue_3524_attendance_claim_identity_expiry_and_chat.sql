@@ -344,6 +344,25 @@ COMMENT ON FUNCTION public.verified_account_identifiers(uuid) IS
 --     `mfa_amr_claims` is where GoTrue records HOW a session was obtained, and
 --     `otp` is obtainable only by reading the code out of the mailbox.
 --
+--     ── THE EMAIL PROOF IS DURABLE, NOT PERMANENT ──────────────────────────
+--
+--     STATED AS THE RULE, because it decides what a person experiences and the
+--     next reader should not have to discover it. The email arm's proof is held
+--     by the session that earned it. While that session lives, the account is
+--     proved and a later ticket on the same address is claimed without being
+--     asked again. When it ends and the person returns with a password sign-in
+--     alone, the account is unproved once more and the app asks for one code.
+--
+--     That is a repeat, not a lockout, and it is why the refusal splits: the
+--     `contact_unproved` sentence exists so being asked again costs one code
+--     rather than a dead end. NOTHING in the product may promise otherwise -
+--     no screen copy may imply this is the last time. Measured 2026-09-22,
+--     sessions here are long-lived, so in practice the ask is rare; "rare" is
+--     not "never" and the copy says neither.
+--
+--     The phone arm has no equivalent: both of its proofs are rows, not
+--     sessions, so they do not age.
+--
 --     ── THE RESIDUAL, STATED PLAINLY ───────────────────────────────────────
 --
 --     This is evidence that the account reached that mailbox, not a per-address
@@ -505,11 +524,71 @@ END;
 $function$;
 
 COMMENT ON FUNCTION public.account_owns_order_contact(uuid, uuid) IS
-  '#3524: THE single identity predicate both claim rails use. Requires POSITIVE evidence that the order contact was reached. PHONE: the verified-phone ledger OR a GoTrue provider=phone identity carrying that number - this project requires phone confirmation through Twilio Verify, so either is a received code, and the ledger is only the newer of the two mechanisms. EMAIL: an identity a provider asserted (email_verified) or one the account proved by reading a code or link out of that mailbox (mfa_amr_claims otp/magiclink/recovery) with the proving session no older than that identitys last change, so a proof earned at one address cannot vouch for another. The arms differ because the settings differ: phone confirmation is ON and email confirmation is OFF. The mere existence of a provider=email identity is NOT sufficient, because this project runs mailer_autoconfirm and a public signup mints one for any address. Fails closed where GoTrue is absent. No other function may re-express this rule.';
+  '#3524: THE single identity predicate both claim rails use. Requires POSITIVE evidence that the order contact was reached. PHONE: the verified-phone ledger OR a GoTrue provider=phone identity carrying that number - this project requires phone confirmation through Twilio Verify, so either is a received code, and the ledger is only the newer of the two mechanisms. EMAIL: an identity a provider asserted (email_verified) or one the account proved by reading a code or link out of that mailbox (mfa_amr_claims otp/magiclink/recovery) with the proving session no older than that identitys last change, so a proof earned at one address cannot vouch for another. The email proof is DURABLE, NOT PERMANENT: it is held by the session that earned it, so an account that returns with a password sign-in alone after that session ends is unproved again and is asked for one more code - which is what the contact_unproved outcome exists to make cheap. No copy may imply otherwise. The arms differ because the settings differ: phone confirmation is ON and email confirmation is OFF. The mere existence of a provider=email identity is NOT sufficient, because this project runs mailer_autoconfirm and a public signup mints one for any address. Fails closed where GoTrue is absent. No other function may re-express this rule.';
 
 REVOKE ALL ON FUNCTION public.account_owns_order_contact(uuid, uuid)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.account_owns_order_contact(uuid, uuid) TO service_role;
+
+-- ===========================================================================
+-- (2c) account_carries_order_email — WHICH REFUSAL THE GUEST DESERVES.
+--
+--     NOT AN OWNERSHIP PREDICATE, and it must never be read as one.
+--     `account_owns_order_contact` decides whether an order moves; this decides
+--     only which of two truthful sentences the refusal carries, AFTER that one
+--     has already said no. It grants nothing, and no rail writes on it.
+--
+--     THE DEFECT IT CLOSES. One refusal was doing two jobs. A stranger holding a
+--     forwarded email and the rightful buyer who simply has not proved their
+--     mailbox both got `identity_mismatch`, whose only offered action is to sign
+--     out and come back as somebody else. For the buyer that is a circle: they
+--     sign out, sign in again the same way, and meet the same wall. The address
+--     on their account IS the address on the order; what is missing is the
+--     proof, and the way out is to get one, not to change accounts.
+--
+--     THE COMPARISON LIVES HERE AND NOWHERE ELSE. The client never sees an
+--     unmasked purchase contact and never compares addresses; it renders the
+--     outcome this function's caller chose. One authority, and it is the RPC.
+--
+--     EMAIL ONLY, deliberately. A phone contact keeps the mismatch sentence: the
+--     phone arm accepts either of two received-code proofs, so a genuine owner
+--     passes it, and this project's Phone provider is disabled, so there is no
+--     in-app way to re-prove a number even if we asked.
+-- ===========================================================================
+CREATE OR REPLACE FUNCTION public.account_carries_order_email(
+  p_user_id uuid,
+  p_order_id uuid
+)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+DECLARE
+  v_email text;
+  v_same boolean := false;
+BEGIN
+  IF p_user_id IS NULL OR p_order_id IS NULL THEN RETURN false; END IF;
+  SELECT lower(btrim(coalesce(o.buyer_email, '')))
+    INTO v_email FROM public.orders o WHERE o.id = p_order_id;
+  IF NOT FOUND OR v_email = '' THEN RETURN false; END IF;
+  EXECUTE $ev$
+    SELECT EXISTS (
+      SELECT 1 FROM auth.users u
+       WHERE u.id = $1 AND lower(btrim(coalesce(u.email, ''))) = $2
+    )
+  $ev$ INTO v_same USING p_user_id, v_email;
+  RETURN coalesce(v_same, false);
+END;
+$function$;
+
+COMMENT ON FUNCTION public.account_carries_order_email(uuid, uuid) IS
+  '#3524: whether the order contact is THIS account''s own email address. Chooses which refusal sentence a rejected claim carries - "prove this inbox" rather than "you are the wrong person" - and NOTHING else. It is not an ownership proof, it grants no claim, and public.account_owns_order_contact has already refused before it is consulted.';
+
+REVOKE ALL ON FUNCTION public.account_carries_order_email(uuid, uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.account_carries_order_email(uuid, uuid) TO service_role;
 
 -- ===========================================================================
 -- (3) The attempt ledger learns the two new terminal outcomes.
@@ -755,6 +834,23 @@ BEGIN
       v_channel := 'phone';
       v_masked := public.mask_contact_for_claim(v_buyer_phone, 'phone');
     END IF;
+    -- #3524 — TWO REFUSALS, BECAUSE THERE ARE TWO PEOPLE HERE. Someone holding a
+    -- forwarded email is not the same as the rightful buyer who has not yet
+    -- proved their mailbox, and telling them both to sign out and come back as
+    -- somebody else sends the second one in a circle. When the order's address
+    -- IS the address on this account, what is missing is a proof, so the refusal
+    -- says so and the app can offer to send one.
+    --
+    -- Email only; a phone contact keeps the mismatch sentence. Both refusals
+    -- return HERE, before any write, so the token and its digests survive either
+    -- one and the rightful account can still finish with the same link.
+    IF v_channel = 'email'
+       AND public.account_carries_order_email(p_user_id, p_source_id) THEN
+      RETURN jsonb_build_object(
+        'result', 'contact_unproved',
+        'contactMasked', v_masked,
+        'contactChannel', v_channel);
+    END IF;
     RETURN jsonb_build_object(
       'result', 'identity_mismatch',
       'contactMasked', v_masked,
@@ -825,7 +921,7 @@ $function$;
 
 COMMENT ON FUNCTION public.claim_attendance_internal_v2(
   uuid, text, uuid, uuid, bytea, bytea) IS
-  '#3524: THE claim body. Order arm additionally requires the 30-day token window and public.account_owns_order_contact, joins the event chat through add_buyer_to_event_chat, and returns chatJoined + conversationId read back after the join. identity_mismatch and expired consume nothing. The rsvp arm keeps its possession semantics unchanged.';
+  '#3524: THE claim body. Order arm additionally requires the 30-day token window and public.account_owns_order_contact, joins the event chat through add_buyer_to_event_chat, and returns chatJoined + conversationId read back after the join. A refusal splits in two so each one can be acted on: contact_unproved when the order address is this account''s own and only a mailbox proof is missing, identity_mismatch otherwise. identity_mismatch, contact_unproved and expired all consume nothing. The rsvp arm keeps its possession semantics unchanged.';
 
 REVOKE ALL ON FUNCTION public.claim_attendance_internal_v2(
   uuid, text, uuid, uuid, bytea, bytea) FROM PUBLIC, anon, authenticated;

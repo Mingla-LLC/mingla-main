@@ -356,8 +356,33 @@ BEGIN
   r := public.claim_attendance_internal(
          v_owner, 'order', pg_temp.i2217_uuid('event'),
          pg_temp.i2217_uuid('o-token'), decode(repeat('22', 32), 'hex'));
-  IF r->>'result' <> 'identity_mismatch' THEN
-    RAISE EXCEPTION 'I-04b the token rail answered % instead of identity_mismatch', r;
+  -- [TEST-MOD-APPROVED #3524] This line named the outcome; the outcome has since
+  -- been split and this persona belongs to the other half.
+  --
+  --   before: r->>'result' <> 'identity_mismatch'  -> fail
+  --   after:  r->>'result' must be 'contact_unproved', and must never be
+  --           'invalid', 'ineligible' or 'identity_mismatch'.
+  --
+  -- WHY, AND WHY IT IS STRONGER. What this check has always been for is that a
+  -- holder of a genuinely valid link is refused TRUTHFULLY and given something
+  -- to do about it - never `invalid`, which would call their good link bad, and
+  -- never silence. When it was written there was one such refusal, so naming it
+  -- and naming the property were the same thing.
+  --
+  -- They are no longer. The owner here carries the purchase address on their own
+  -- account and is short only a mailbox proof, so `identity_mismatch` - whose
+  -- offered action is to sign out and return as somebody else - would send them
+  -- in a circle. `contact_unproved` is the refusal they can act on. The old line
+  -- passed on a refusal that offers this account nothing; this one does not, and
+  -- it additionally excludes the two dead ends the old line already excluded.
+  IF r->>'result' <> 'contact_unproved' THEN
+    RAISE EXCEPTION 'I-04b the token rail answered % instead of contact_unproved - a valid link held by the account that owns the address must be refused in the form its holder can act on', r;
+  END IF;
+  IF r->>'result' IN ('invalid', 'ineligible', 'identity_mismatch') THEN
+    RAISE EXCEPTION 'I-04b the token rail dead-ended a holder of a valid link: %', r;
+  END IF;
+  IF r->>'contactMasked' IS NULL OR r->>'contactChannel' <> 'email' THEN
+    RAISE EXCEPTION 'I-04b the refusal lost the masked hint the sheet names the inbox with: %', r;
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.orders o

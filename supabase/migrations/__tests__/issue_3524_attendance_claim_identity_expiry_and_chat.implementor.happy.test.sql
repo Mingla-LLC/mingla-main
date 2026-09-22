@@ -311,6 +311,7 @@ DECLARE
   v_gen_before text;
   v_code  bytea := decode(repeat('9a', 32), 'hex');
   v_n     integer;
+  v_claim jsonb;
 BEGIN
   -- ── (1) ONE PREDICATE, and it answers correctly ───────────────────────────
   PERFORM pg_temp.i3524_ok(
@@ -433,6 +434,64 @@ BEGIN
       pg_temp.i3524_uuid('owner'), pg_temp.i3524_uuid('order-ev-carry')),
     'a ledger row proves ONE number and nothing else — it cannot be carried '
       || 'over to an order bought with a different contact');
+
+  -- ── #3524 ITEM 4: ONE REFUSAL WAS DOING TWO JOBS ─────────────────────────
+  --
+  -- Somebody holding a forwarded email and the rightful buyer whose inbox is
+  -- simply unproved are not the same person, and the sheet's only offered
+  -- action - sign out, come back as somebody else - sends the second one in a
+  -- circle. The refusal now says which it is, so the app can offer a way
+  -- forward instead of a wall. NEITHER refusal writes anything.
+  --
+  -- `ev-rebound` holds the order's address and has proved it, so it is NOT
+  -- refused at all and cannot be the subject here. `stranger` holds a different
+  -- address. `ev-carry` holds the order's address with a proof that does not
+  -- vouch for it - the exact shape this outcome exists for.
+  PERFORM pg_temp.i3524_ok(
+    public.account_carries_order_email(
+      pg_temp.i3524_uuid('ev-carry'), pg_temp.i3524_uuid('order-ev-carry')),
+    'the order address IS this account''s own, so the refusal must say so');
+  PERFORM pg_temp.i3524_ok(
+    NOT public.account_carries_order_email(
+      pg_temp.i3524_uuid('stranger'), pg_temp.i3524_uuid('order-fresh')),
+    'a different address must not be reported as this account''s own');
+
+  -- AND THE RAIL SAYS IT. The predicate above only chooses a sentence; what a
+  -- person actually meets is the RPC's outcome, and nothing else in this file
+  -- asserts it. `contact_unproved`, NOT `identity_mismatch`, and the token is
+  -- untouched so the same link still works when they come back with a proof.
+  --
+  -- Asserting the OUTCOME rather than re-stating the predicate is deliberate: a
+  -- line that can only fail when a neighbouring line has already failed carries
+  -- no information, and an earlier draft of this block was exactly that.
+  v_claim := public.claim_attendance_internal(
+    pg_temp.i3524_uuid('ev-carry'), 'order', pg_temp.i3524_uuid('event'),
+    pg_temp.i3524_uuid('order-ev-carry'), decode(repeat('65', 32), 'hex'));
+  PERFORM pg_temp.i3524_ok(
+    v_claim->>'result' = 'contact_unproved',
+    'the rightful buyer with an unproved inbox must be told THAT, not handed '
+      || 'the wrong-person sentence whose only way out is to become someone '
+      || 'else: got ' || coalesce(v_claim->>'result', '(null)'));
+  PERFORM pg_temp.i3524_ok(
+    v_claim->>'contactMasked' IS NOT NULL
+      AND v_claim->>'contactChannel' = 'email',
+    'the split refusal must carry the same masked hint and channel the mismatch does');
+  PERFORM pg_temp.i3524_ok(
+    EXISTS (
+      SELECT 1 FROM public.orders o
+       WHERE o.id = pg_temp.i3524_uuid('order-ev-carry')
+         AND o.buyer_user_id IS NULL
+         AND o.attendance_claim_token_digest IS NOT NULL
+         AND o.attendance_claim_token_consumed_at IS NULL),
+    'the split refusal consumed or moved something - it must consume nothing');
+
+  -- Service role only, like every other predicate here.
+  PERFORM pg_temp.i3524_ok(
+    NOT has_function_privilege(
+      'authenticated', 'public.account_carries_order_email(uuid,uuid)', 'EXECUTE')
+    AND NOT has_function_privilege(
+      'anon', 'public.account_carries_order_email(uuid,uuid)', 'EXECUTE'),
+    'account_carries_order_email leaked outside service role');
 
   -- The evidence must belong to THIS account, not to anybody who happens to
   -- have done an OTP somewhere.

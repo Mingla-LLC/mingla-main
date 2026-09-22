@@ -39,6 +39,7 @@ export class AttendanceClaimError extends Error {
       | "claim_ineligible"
       | "claim_rate_limited"
       | "claim_identity_mismatch"
+      | "claim_contact_unproved"
       | "claim_expired"
       | "network",
     detail?: {
@@ -170,6 +171,9 @@ const CLAIM_ERROR_CODES = [
   "claim_ineligible",
   "claim_rate_limited",
   "claim_identity_mismatch",
+  // #3524 — the rightful buyer whose inbox is not yet proved. Carries the same
+  // server-masked hint as the mismatch and, like it, consumes nothing.
+  "claim_contact_unproved",
   "claim_expired",
 ] as const;
 

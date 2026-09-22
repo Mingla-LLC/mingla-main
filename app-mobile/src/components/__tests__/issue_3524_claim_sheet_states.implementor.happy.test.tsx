@@ -318,6 +318,145 @@ assert.ok(
     + "is exactly the person this exists for",
 );
 
+// ── #3524 ITEM 4: the refusal splits, and the split reaches the screen ──────
+//
+// THE DEFECT THIS SECTION EXISTS FOR. One refusal was doing two jobs. The
+// rightful buyer whose inbox was simply unproved got the SAME sheet as somebody
+// holding a forwarded email, and that sheet's only action is to sign out and
+// come back as someone else — which for them is a circle back to this wall.
+// So the assertion that carries the meaning is not "a new phase exists", it is
+// "the unproved-same case renders confirm-the-inbox and NOT the mismatch copy".
+
+// The server is the only authority: the sheet branches on the server's code and
+// never on a comparison of its own.
+assert.ok(
+  /error\.code === "claim_contact_unproved"/.test(sheetSource),
+  "the sheet must branch on the server's own outcome for the unproved case",
+);
+assert.ok(
+  !/signedInIdentifier\s*===\s*maskedContact|maskedContact\s*===\s*signedInIdentifier/
+    .test(sheetSource),
+  "the client must never compare the two contacts — the RPC is the one authority",
+);
+
+// THE ONE THAT WOULD HAVE CAUGHT IT.
+{
+  // The BRANCH, not the analytics ternary that names the same code earlier.
+  const unproved = sheetSource.indexOf('if (error.code === "claim_contact_unproved")');
+  const mismatch = sheetSource.indexOf('if (error.code === "claim_identity_mismatch")');
+  assert.ok(unproved > 0 && mismatch > 0, "both refusal branches must exist");
+  // Each arm is its OWN body, brace-matched, not a fixed window — a window runs
+  // into the next branch and then asserts about somebody else's code.
+  const armAt = (from) => {
+    const open = sheetSource.indexOf("{", from);
+    let depth = 0;
+    for (let i = open; i < sheetSource.length; i += 1) {
+      if (sheetSource[i] === "{") depth += 1;
+      else if (sheetSource[i] === "}") {
+        depth -= 1;
+        if (depth === 0) return sheetSource.slice(open, i + 1);
+      }
+    }
+    throw new Error("unbalanced branch body");
+  };
+  const unprovedArm = armAt(unproved);
+  const mismatchArm = armAt(mismatch);
+  assert.ok(
+    /setPhase\("confirm_inbox"\)/.test(unprovedArm),
+    "an unproved-but-matching contact must land on confirm-the-inbox, not the "
+      + "sign-out sheet — that is the circle this issue removes",
+  );
+  assert.ok(
+    !/setPhase\("mismatch"\)/.test(unprovedArm),
+    "the unproved case must NOT render the mismatch copy",
+  );
+  assert.ok(
+    /setPhase\("mismatch"\)/.test(mismatchArm),
+    "a genuinely different address must still get the mismatch sheet",
+  );
+  assert.ok(
+    !/clearAttendanceClaimIntent/.test(unprovedArm),
+    "the unproved refusal must not clear the pending intent — nothing was consumed",
+  );
+}
+
+assert.ok(
+  /error\.code === "claim_contact_unproved" \? "contact_unproved"/.test(sheetSource),
+  "the new refusal needs its own funnel outcome — folded into network it reads "
+    + "as a fault, and this is the one refusal the guest can act on",
+);
+
+// The approved copy, and nothing that promises permanence.
+assert.ok(
+  sheetSource.includes("the address on this account"),
+  "screen 1 must name the address as this account's own",
+);
+assert.ok(
+  sheetSource.includes("We just need to check you can open that inbox."),
+  "screen 1 must carry the approved ask",
+);
+assert.ok(sheetSource.includes("Email me a code"), "screen 1's primary");
+assert.ok(
+  sheetSource.includes("Enter the 6-digit code we sent to"),
+  "screen 2 must carry the approved ask",
+);
+assert.ok(
+  sheetSource.includes("Confirm and connect") && sheetSource.includes("Send it again"),
+  "screen 2 must carry both approved controls",
+);
+assert.ok(
+  !/never (?:see|ask) (?:this|you) again|only once|won.t ask again|from now on/i
+    .test(sheetSource),
+  "no copy may imply the proof is permanent — it is bound to the proving "
+    + "session, so it is durable, not forever",
+);
+
+// The code step lives INSIDE the sheet, keyboard-aware, one OTP writer.
+assert.ok(
+  /BottomSheetTextInput/.test(sheetSource),
+  "the code field must be the sheet-aware input, or the keyboard covers it",
+);
+assert.ok(
+  !/@gorhom\/bottom-sheet/.test(sheetSource),
+  "the sheet must take that input from the primitive, not from @gorhom directly",
+);
+assert.ok(
+  /from "\.\.\/services\/emailOtpService"/.test(sheetSource) &&
+    /sendEmailSignInCode/.test(sheetSource) &&
+    /verifyEmailSignInCode/.test(sheetSource),
+  "the sheet must reuse emailOtpService — one writer for the emailed code",
+);
+assert.ok(
+  !/router\.(push|navigate)|useRouter/.test(sheetSource),
+  "the code step must not navigate — the person must not leave the ticket they "
+    + "are connecting",
+);
+
+// A successful confirm falls through to the ORDINARY claim.
+{
+  const at = sheetSource.indexOf("const confirmCode");
+  const body = sheetSource.slice(at, at + 900);
+  assert.ok(
+    /await submit\(\)/.test(body),
+    "a confirmed code must fall through to submit(), not re-implement the claim",
+  );
+  assert.ok(
+    !/setPhase\("success"\)/.test(body),
+    "the confirm path must not set the success phase itself — screen 3 is "
+      + "reached through the ordinary claim or not at all",
+  );
+}
+
+// The resend is rate-limited; the secondaries are siblings of the primary.
+assert.ok(
+  /resendAt/.test(sheetSource) && /disabled=\{codeBusy \|\| !resendArmed\}/.test(sheetSource),
+  "Send it again must have a cooldown so it cannot be hammered",
+);
+assert.ok(
+  sheetSource.indexOf("const secondary") < sheetSource.indexOf("{secondary}"),
+  "the secondary controls must be rendered as siblings of the primary button",
+);
+
 console.log(
   "issue #3524 claim sheet, shell wiring and email sign-in contracts passed",
 );

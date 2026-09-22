@@ -7,7 +7,10 @@ import {
   Text,
   View,
 } from "react-native";
-import { BaseBottomSheet } from "./ui/BaseBottomSheet";
+// `BottomSheetTextInput` is re-exported by the primitive on purpose: a
+// strict-grep gate forbids any other app-mobile file importing @gorhom directly,
+// and a raw RN input inside a sheet sits under the keyboard.
+import { BaseBottomSheet, BottomSheetTextInput } from "./ui/BaseBottomSheet";
 import { Icon } from "./ui/Icon";
 import { colors } from "../constants/designSystem";
 import { postHogService } from "../services/postHogService";
@@ -21,6 +24,11 @@ import {
   type AttendanceClaimIntent,
 } from "../services/attendanceClaimService";
 import { createAttendanceClaimSingleFlight } from "../utils/attendanceClaimDeepLink";
+// ONE writer for the emailed code. This sheet does not open a second OTP path.
+import {
+  sendEmailSignInCode,
+  verifyEmailSignInCode,
+} from "../services/emailOtpService";
 
 /**
  * #3524 — THE SHEET NOW NAMES THE ACCOUNT, AND TELLS THE TRUTH ABOUT THE CHAT.
@@ -51,6 +59,11 @@ type Phase =
   | "success"
   | "no_chat"
   | "mismatch"
+  // #3524 — the rightful buyer, one proof short. Both are NON-TERMINAL: neither
+  // clears the pending intent, because the server consumed nothing and the same
+  // link must still work afterwards.
+  | "confirm_inbox"
+  | "code"
   | "expired"
   | "private"
   | "network"
@@ -96,6 +109,10 @@ export function AttendanceClaimSheet({
   const [claimedEventId, setClaimedEventId] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [maskedContact, setMaskedContact] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [resendAt, setResendAt] = useState(0);
   const singleFlightRef = useRef(createAttendanceClaimSingleFlight());
 
   useEffect(() => {
@@ -104,6 +121,10 @@ export function AttendanceClaimSheet({
       setClaimedEventId(null);
       setConversationId(null);
       setMaskedContact(null);
+      setCode("");
+      setCodeBusy(false);
+      setCodeError(null);
+      setResendAt(0);
     }
   }, [initialInvalid, intent, visible]);
 
@@ -154,6 +175,10 @@ export function AttendanceClaimSheet({
           ? error.code === "claim_rate_limited" ? "rate_limited"
           : error.code === "claim_ineligible" ? "ineligible"
           : error.code === "claim_identity_mismatch" ? "identity_mismatch"
+          // #3524 — its own funnel outcome. Folded into "network" it would read
+          // as a fault, and the one refusal worth measuring separately is the
+          // one the guest can act on.
+          : error.code === "claim_contact_unproved" ? "contact_unproved"
           : error.code === "claim_expired" ? "expired"
           : error.code === "claim_invalid" ? "invalid"
           : "network"
@@ -171,6 +196,15 @@ export function AttendanceClaimSheet({
           if (error.code === "claim_identity_mismatch") {
             setMaskedContact(error.contactMasked);
             setPhase("mismatch");
+            return;
+          }
+          // #3524 — the address on this account IS the one on the order; only
+          // the proof is missing. Offer to send one, here, rather than the
+          // sign-out that would bring them straight back to this wall. The
+          // intent is deliberately NOT cleared.
+          if (error.code === "claim_contact_unproved") {
+            setMaskedContact(error.contactMasked);
+            setPhase("confirm_inbox");
             return;
           }
           if (error.code === "claim_expired") {
@@ -215,11 +249,63 @@ export function AttendanceClaimSheet({
     onUseDifferentAccount();
   }, [maskedContact, onUseDifferentAccount]);
 
+  /**
+   * #3524 — SEND THE CODE.
+   *
+   * The address used is `signedInIdentifier`, the account's OWN email. That is
+   * sound precisely because the server answered `contact_unproved`, which says
+   * the order's address and this account's address are the same one — so the
+   * client never needs, and never receives, the unmasked purchase contact. The
+   * masked hint is for the eye only and is never sent anywhere.
+   */
+  const sendCode = useCallback(async (): Promise<void> => {
+    if (signedInIdentifier === null || codeBusy) return;
+    setCodeBusy(true);
+    setCodeError(null);
+    const result = await sendEmailSignInCode(signedInIdentifier);
+    setCodeBusy(false);
+    if (!result.ok) {
+      setCodeError(result.error ?? "We couldn’t send the code. Try again.");
+      return;
+    }
+    // 30s before "Send it again" arms, so the control cannot be hammered.
+    setResendAt(Date.now() + 30_000);
+    setCode("");
+    setPhase("code");
+    AccessibilityInfo.announceForAccessibility("We sent you a code.");
+  }, [codeBusy, signedInIdentifier]);
+
+  /**
+   * Confirm, then fall through to the ORDINARY claim path — `submit()` — so the
+   * success and no-chat states, and the chat join itself, are reached exactly as
+   * they are on every other route. Nothing about them is special-cased here.
+   */
+  const confirmCode = useCallback(async (): Promise<void> => {
+    if (signedInIdentifier === null || codeBusy) return;
+    const entered = code.trim();
+    if (entered.length !== 6) {
+      setCodeError("Enter the 6-digit code.");
+      return;
+    }
+    setCodeBusy(true);
+    setCodeError(null);
+    const result = await verifyEmailSignInCode(signedInIdentifier, entered);
+    setCodeBusy(false);
+    if (!result.ok) {
+      setCodeError(result.error ?? "That code didn’t work. Try again.");
+      return;
+    }
+    await submit();
+  }, [code, codeBusy, signedInIdentifier, submit]);
+
   const submitting = phase === "submitting";
+  // The primary is busy while the claim is in flight OR while the emailed-code
+  // round-trip is. Two different waits, one disabled state.
+  const busy = submitting || codeBusy;
   // Back / swipe-down / backdrop are all a NO-OP while submitting. There is no
   // BackHandler listener to add: `wrapInRNModal` short-circuits the sheet's own
   // listener and RN's <Modal onRequestClose> reaches this same handler.
-  const dismiss = submitting ? () => undefined : onClose;
+  const dismiss = submitting || codeBusy ? () => undefined : onClose;
 
   const readyBody = signedInIdentifier !== null
     ? `Connect this ticket to ${signedInIdentifier}?`
@@ -245,6 +331,8 @@ export function AttendanceClaimSheet({
     : readyBody;
 
   const label = !signedIn ? "Sign in"
+    : phase === "confirm_inbox" ? "Email me a code"
+    : phase === "code" ? "Confirm and connect"
     : phase === "success" ? "Open the chat"
     : phase === "no_chat" ? "See who’s going"
     : phase === "mismatch" ? "Sign out and continue"
@@ -258,6 +346,7 @@ export function AttendanceClaimSheet({
     ? "checkmark-circle"
     : phase === "private" ? "lock-closed"
     : phase === "mismatch" ? "person-circle"
+    : phase === "confirm_inbox" || phase === "code" ? "mail"
     : phase === "invalid" || phase === "rate" || phase === "network" ||
         phase === "route_error" || phase === "expired"
     ? "alert-circle"
@@ -270,6 +359,14 @@ export function AttendanceClaimSheet({
     }
     if (phase === "mismatch") {
       handoffToAnotherAccount();
+      return;
+    }
+    if (phase === "confirm_inbox") {
+      await sendCode();
+      return;
+    }
+    if (phase === "code") {
+      await confirmCode();
       return;
     }
     if (phase === "success") {
@@ -322,6 +419,61 @@ export function AttendanceClaimSheet({
    * `maskedContact` ARRIVES ALREADY MASKED FROM THE SERVER. This component never
    * receives or renders an unmasked purchase contact, and it does not log one.
    */
+  /**
+   * #3524 — CONFIRM THE INBOX. Two lines, so a screen reader pauses between the
+   * address and the ask. Says what is needed and nothing about what happens
+   * next time: this proof is durable, not permanent, and copy that implied
+   * otherwise would be a promise the rule does not make.
+   */
+  const confirmInboxBody = (
+    <>
+      <Text style={styles.copy}>
+        This ticket was bought with{" "}
+        <Text style={styles.copyStrong}>{maskedContact ?? "this address"}</Text>
+        {" "}— the address on this account.
+      </Text>
+      <Text style={styles.copy}>
+        We just need to check you can open that inbox.
+      </Text>
+      {codeError !== null
+        ? <Text style={styles.error} accessibilityLiveRegion="polite">{codeError}</Text>
+        : null}
+    </>
+  );
+
+  /** The code step, INSIDE the sheet: the person never leaves the ticket they
+   * are connecting. `BottomSheetTextInput` coordinates with the sheet so the
+   * keyboard cannot cover the field. */
+  const codeBody = (
+    <>
+      <Text style={styles.copy}>
+        Enter the 6-digit code we sent to{" "}
+        <Text style={styles.copyStrong}>{maskedContact ?? "your inbox"}</Text>.
+      </Text>
+      <BottomSheetTextInput
+        value={code}
+        onChangeText={(next: string) => {
+          setCode(next.replace(/[^0-9]/g, "").slice(0, 6));
+          setCodeError(null);
+        }}
+        keyboardType="number-pad"
+        inputMode="numeric"
+        textContentType="oneTimeCode"
+        autoComplete="one-time-code"
+        maxLength={6}
+        editable={!codeBusy}
+        style={styles.codeInput}
+        placeholder="000000"
+        placeholderTextColor="rgba(255,255,255,.35)"
+        accessibilityLabel="Six digit code"
+        testID="attendance-claim-code-input"
+      />
+      {codeError !== null
+        ? <Text style={styles.error} accessibilityLiveRegion="polite">{codeError}</Text>
+        : null}
+    </>
+  );
+
   const mismatchBody = (
     <>
       <Text style={styles.copy}>
@@ -345,7 +497,7 @@ export function AttendanceClaimSheet({
         <Icon name={iconName} size={22} color="#111827" />
       </View>
       <Text style={styles.title}>Connect attendance</Text>
-      {!submitting ? (
+      {!(submitting || codeBusy) ? (
         <Pressable
           onPress={dismiss}
           style={styles.close}
@@ -361,7 +513,40 @@ export function AttendanceClaimSheet({
   // The always-present escape hatch on the ready state, and the Cancel on the
   // mismatch. Both are their OWN Pressable siblings of the primary button, never
   // nested inside it — a nested Pressable flattens the accessibility subtree.
-  const secondary = phase === "mismatch"
+  const resendArmed = Date.now() >= resendAt;
+  const secondary = phase === "confirm_inbox"
+    ? (
+      <Pressable
+        onPress={onClose}
+        disabled={codeBusy}
+        accessibilityRole="button"
+        accessibilityLabel="Cancel and keep this ticket for later"
+        accessibilityState={{ disabled: codeBusy }}
+        style={styles.secondary}
+        testID="attendance-claim-confirm-inbox-cancel"
+      >
+        <Text style={styles.secondaryText}>Cancel</Text>
+      </Pressable>
+    )
+    : phase === "code"
+    ? (
+      <Pressable
+        onPress={() => void sendCode()}
+        disabled={codeBusy || !resendArmed}
+        accessibilityRole="button"
+        accessibilityLabel="Send the code again"
+        accessibilityState={{ disabled: codeBusy || !resendArmed }}
+        style={styles.secondary}
+        testID="attendance-claim-code-resend"
+      >
+        <Text
+          style={[styles.secondaryText, !resendArmed ? styles.secondaryMuted : null]}
+        >
+          Send it again
+        </Text>
+      </Pressable>
+    )
+    : phase === "mismatch"
     ? (
       <Pressable
         onPress={onClose}
@@ -393,17 +578,17 @@ export function AttendanceClaimSheet({
     <View style={styles.footer}>
       <Pressable
         onPress={() => void action()}
-        disabled={submitting}
+        disabled={busy}
         accessibilityRole="button"
-        accessibilityState={{ disabled: submitting, busy: submitting }}
+        accessibilityState={{ disabled: busy, busy }}
         style={({ pressed }) => [
           styles.button,
-          submitting ? styles.buttonDisabled : null,
-          pressed && !submitting ? styles.buttonPressed : null,
+          busy ? styles.buttonDisabled : null,
+          pressed && !busy ? styles.buttonPressed : null,
         ]}
         testID="attendance-claim-primary"
       >
-        {submitting
+        {busy
           ? <ActivityIndicator color="#111827" accessibilityLabel="Connecting attendance" />
           : <Text style={styles.buttonText}>{label}</Text>}
       </Pressable>
@@ -418,8 +603,8 @@ export function AttendanceClaimSheet({
       snapPoints={["50%", "90%"]}
       initialIndex={0}
       enableDynamicSizing={false}
-      enablePanDownToClose={!submitting}
-      backdropPressBehavior={submitting ? "none" : "close"}
+      enablePanDownToClose={!(submitting || codeBusy)}
+      backdropPressBehavior={submitting || codeBusy ? "none" : "close"}
       wrapInRNModal
       theme="dark"
       backgroundStyle={styles.sheet}
@@ -435,6 +620,10 @@ export function AttendanceClaimSheet({
         </View>
         {signedIn && phase === "mismatch"
           ? mismatchBody
+          : signedIn && phase === "confirm_inbox"
+          ? confirmInboxBody
+          : signedIn && phase === "code"
+          ? codeBody
           : <Text style={styles.copy}>{body}</Text>}
       </View>
       {footer}
@@ -476,6 +665,18 @@ const styles = StyleSheet.create({
     minHeight: 44, marginTop: 10, alignItems: "center", justifyContent: "center",
     paddingHorizontal: 16,
   },
+  error: {
+    color: "#fca5a5", fontSize: 13, lineHeight: 19, textAlign: "center",
+    maxWidth: 360, marginTop: 4,
+  },
+  codeInput: {
+    marginTop: 16, minHeight: 56, width: "100%", maxWidth: 260,
+    borderRadius: 14, borderWidth: 1, borderColor: "rgba(255,255,255,.18)",
+    backgroundColor: "rgba(255,255,255,.06)", color: "#ffffff",
+    fontSize: 24, lineHeight: 30, fontWeight: "700", letterSpacing: 6,
+    textAlign: "center", paddingHorizontal: 16,
+  },
+  secondaryMuted: { opacity: 0.5, textDecorationLine: "none" },
   secondaryText: {
     color: "rgba(255,255,255,.82)", fontSize: 15, lineHeight: 22,
     fontWeight: "600", textDecorationLine: "underline", textAlign: "center",

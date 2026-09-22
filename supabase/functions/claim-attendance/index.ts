@@ -17,11 +17,13 @@ type Outcome =
   | "conflict"
   | "rate_limited"
   | "internal_error"
-  // #3524 — a claim refused because the account has not proved it owns the
-  // purchase contact, and one refused because the emailed link aged out. Both
-  // are recorded so the per-user rate limiter still sees the attempt, and
-  // NEITHER consumes the token.
+  // #3524 — the three refusals that are not faults. `identity_mismatch` is a
+  // different person; `contact_unproved` is the rightful buyer whose inbox is
+  // not yet proved, told so it can be acted on rather than sent in a circle;
+  // `expired` is a link that aged out. All three are recorded so the per-user
+  // rate limiter still sees the attempt, and NONE of them consumes the token.
   | "identity_mismatch"
+  | "contact_unproved"
   | "expired";
 
 const STRICT_BEARER_TOKEN = /^Bearer ([^\s]+)$/i;
@@ -192,6 +194,7 @@ serve(async (req) => {
         | "conflict"
         | "secret_unavailable"
         | "identity_mismatch"
+        | "contact_unproved"
         | "expired";
     };
     if (result.result === "secret_unavailable") {
@@ -205,6 +208,19 @@ serve(async (req) => {
     // the purchase contact. The masked hint comes FROM THE SERVER, already
     // masked; this function never has an unmasked contact to leak. The token is
     // untouched, so the rightful account can still use the same link.
+    // #3524 — the rightful buyer whose inbox is simply unproved. Beside
+    // `claim_identity_mismatch`, carrying the same already-masked hint, and
+    // consuming nothing for the same reason: the app offers to send a code and
+    // the same link must still work when they come back with one.
+    if (result.result === "contact_unproved") {
+      outcome = "contact_unproved";
+      return claimJson(409, {
+        ok: false,
+        error: "claim_contact_unproved",
+        contactMasked: result.contactMasked ?? null,
+        contactChannel: result.contactChannel ?? null,
+      });
+    }
     if (result.result === "identity_mismatch") {
       outcome = "identity_mismatch";
       return claimJson(409, {
