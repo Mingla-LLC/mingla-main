@@ -6,11 +6,36 @@
 --     took `p_user_id` and a digest and compared nothing else, so a forwarded
 --     confirmation email handed the ticket to whoever happened to be signed in.
 --     Seth's decision 1 on #3524: "a ticket only ever lands on an account that
---     has PROVED it owns the purchase email." The identity rail
---     (`claim_attendance_by_verified_identity`, #2217) already enforced exactly
---     that. This migration gives the token rail the SAME predicate — extracted
---     into `public.account_owns_order_contact` so there is exactly ONE
---     expression of it and no second writer can drift from it.
+--     has PROVED it owns the purchase email."
+--
+--     AN EARLIER VERSION OF THIS PARAGRAPH SAID THE IDENTITY RAIL
+--     (`claim_attendance_by_verified_identity`, #2217) "already enforced exactly
+--     that", and that this migration merely extracted it. THAT WAS WRONG, and
+--     it is corrected here rather than softened, because it is the one sentence
+--     that would tell a reviewer no behaviour changed when behaviour changed a
+--     great deal. #2217's rule lives in `public.verified_account_identifiers`,
+--     and its email arm accepts an identity on `i.provider = 'email'` without
+--     any proof that the mailbox was ever reached. Measured read-only on
+--     production 2026-09-22: of 160 accounts, 160 carry `email_confirmed_at`
+--     and 160 were never sent a confirmation mail at all (159 stamped within
+--     two seconds of signup) — the project runs with mail autoconfirmation on,
+--     so neither that column nor a `provider='email'` identity carries
+--     information about mailbox control.
+--
+--     THIS MIGRATION THEREFORE CHANGES THE RULE, it does not relocate it. The
+--     new rule is `public.account_owns_order_contact`, the single expression
+--     BOTH rails now evaluate: a claim requires POSITIVE evidence that the
+--     order's own email address or phone number was reached — a
+--     provider-asserted address, a code or link read out of that mailbox, or
+--     #2269's verified-phone ledger. What that rules out, and the production
+--     measurements behind each clause, is set out in full at
+--     `account_owns_order_contact` below.
+--
+--     `verified_account_identifiers` KEEPS ITS WEAKER ARM and is deliberately
+--     untouched here: it is read by callers beyond this issue, so narrowing it
+--     is a separate and larger decision. It survives on the identity rail only
+--     as a cheap "has this account proved anything at all" short-circuit; it no
+--     longer decides whether an order moves.
 --
 -- (2) THE LINK NEVER EXPIRED. Nothing tested
 --     `attendance_claim_token_created_at` against a window, so a 256-bit bearer

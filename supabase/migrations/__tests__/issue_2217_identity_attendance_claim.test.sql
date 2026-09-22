@@ -88,36 +88,17 @@ INSERT INTO auth.identities(user_id, provider, provider_id, identity_data) VALUE
   (pg_temp.i2217_uuid('unverified'), 'google', 'google-2217',
    '{"email":"unverified2217@example.test","email_verified":false}'::jsonb);
 
--- ── THE POSITIVE PROOFS, added by #3524 ──────────────────────────────────
+-- ── #3524: THE PHONE PROOF, seeded ───────────────────────────────────────
 --
--- Until #3524 this file needed none of the rows below: the old predicate
--- accepted a `provider='email'` identity on its own. #3524 measured that this
--- project runs `mailer_autoconfirm` with signups open, so that row is minted
--- for ANY address by anyone, and `account_owns_order_contact` now demands
--- evidence the address or number was actually REACHED. These rows are that
--- evidence for the two honest personas. NOTHING is added for `attacker` or
--- `unverified` - I-02, I-03 and I-08 keep exactly the shapes they had.
+-- `phoneuser` proves possession of the order's number through #2269's ledger -
+-- OUR row, service-role only, written only after Twilio approved a code AT THAT
+-- NUMBER. The GoTrue phone identity seeded above stays exactly as it was: I-03
+-- still proves the bare-digit -> E.164 restoration from it, and this row is what
+-- turns that restored identifier into proven possession for I-07.
 --
--- `owner` is the buyer who signs in with an email one-time code, which is what
--- the identity row above has always claimed to model ("a code was mailed there
--- and returned"). GoTrue records that as an `otp` row in `auth.mfa_amr_claims`
--- against the session it minted; it does NOT set `identity_data.email_verified`
--- (measured on production: 0 of 40 email identities carry it, including the 11
--- that have genuinely completed an email OTP), so the code path, not the flag,
--- is the proof. `now()` is transaction-constant, so the session and the
--- identity share one instant and the predicate's
--- `sessions.created_at >= identities.updated_at` binding holds - the proof is
--- for the address the identity carries right now.
-INSERT INTO auth.sessions(id, user_id)
-VALUES (pg_temp.i2217_uuid('s-owner'), pg_temp.i2217_uuid('owner'));
-INSERT INTO auth.mfa_amr_claims(session_id, authentication_method)
-VALUES (pg_temp.i2217_uuid('s-owner'), 'otp');
-
--- `phoneuser` proves possession through #2269's ledger - OUR row, service-role
--- only, written only after Twilio approved a code AT THAT NUMBER. The GoTrue
--- phone identity seeded above stays exactly as it was: I-03 still proves the
--- bare-digit -> E.164 restoration from it, and this row is what turns that
--- knowledge into possession for I-07.
+-- The EMAIL proof is deliberately NOT seeded. I-04 now adds it mid-test, one
+-- piece of evidence at a time, so the rule being measured is which evidence
+-- moves a ticket rather than which rows the fixture happened to create.
 INSERT INTO public.verified_phone_identities(user_id, phone_e164)
 VALUES (pg_temp.i2217_uuid('phoneuser'), '+15550002217');
 
@@ -155,6 +136,21 @@ VALUES
   -- is the ONLY fixture that isolates the claim scan's own payment predicate.
   (pg_temp.i2217_uuid('o-postref'),  pg_temp.i2217_uuid('event'), 'buyer2217@example.test',   '+15550009995', 'PostRef',   1000,'USD','paid','legacy');
 
+-- #3524 — THE TOKEN RAIL'S OWN ORDER. Same buyer address, a live claim-token
+-- digest, and DELIBERATELY NEVER ARMED for the identity rail, so it can never
+-- enter a sweep and can never change an I-04 count. It exists so this lane can
+-- see what the token rail ANSWERS for an account that cannot prove the address:
+-- the answer must be `identity_mismatch`, which is a truthful refusal the buyer
+-- can act on, and never `invalid`, which would be a lie about a valid token.
+INSERT INTO public.orders(id, event_id, buyer_email, buyer_phone_e164, buyer_name,
+                          total_cents, currency, payment_status, source,
+                          attendance_claim_token_digest,
+                          attendance_claim_token_created_at,
+                          attendance_claim_token_generation)
+VALUES (pg_temp.i2217_uuid('o-token'), pg_temp.i2217_uuid('event'),
+        'buyer2217@example.test', '+15550009996', 'Token', 1000, 'USD', 'paid', 'legacy',
+        decode(repeat('ab', 32), 'hex'), now(), 'legacy_v1');
+
 -- The teammate is a REAL buyer as well as brand staff — the only shape that can
 -- distinguish "not evicted because still entitled" from "not evicted because staff".
 INSERT INTO public.orders(id, event_id, buyer_user_id, buyer_email, buyer_name,
@@ -165,7 +161,7 @@ VALUES (pg_temp.i2217_uuid('o-team'), pg_temp.i2217_uuid('event'), pg_temp.i2217
 INSERT INTO public.tickets(id, order_id, ticket_type_id, event_id, qr_code, status, approval_status)
 SELECT pg_temp.i2217_uuid('t-'||tag), pg_temp.i2217_uuid('o-'||tag), pg_temp.i2217_uuid('tier'),
        pg_temp.i2217_uuid('event'), 'qr-2217-'||tag, 'valid', 'auto'
-  FROM unnest(ARRAY['email','unarmed','phone','refunded','unverif','postref','team']) tag;
+  FROM unnest(ARRAY['email','unarmed','phone','refunded','unverif','postref','team','token']) tag;
 
 SET session_replication_role = origin;
 
@@ -178,6 +174,9 @@ DECLARE
   v_phoneuser uuid := pg_temp.i2217_uuid('phoneuser');
   v_unverified uuid := pg_temp.i2217_uuid('unverified');
   v_teammate uuid := pg_temp.i2217_uuid('teammate');
+  v_digest bytea;
+  v_generation text;
+  v_minted timestamptz;
   n integer;
 BEGIN
   -- ── I-01 arming is possession-gated, idempotent, and refuses the ineligible.
@@ -223,24 +222,132 @@ BEGIN
    WHERE kind = 'phone' AND value = '+15550002217';
   IF n <> 1 THEN RAISE EXCEPTION 'I-03 bare GoTrue phone was not restored to E.164'; END IF;
 
-  -- ── THE ADDRESS CHANGES HANDS, and it has to, because GoTrue will not let
-  --    two accounts hold it at once. `auth.users.email` is UNIQUE here exactly
-  --    as it is in GoTrue, so the squatter of I-02/I-03 and the real buyer of
-  --    I-04 cannot both carry 'buyer2217@example.test' in the same instant.
-  --    They are therefore modelled in sequence: the attacker holds it while
-  --    I-02 and I-03 measure them, and only then does it pass to the account
-  --    that can also prove it read a code there. #3524's email arm requires
-  --    `auth.users.email` to match the order contact, so this is not a
-  --    convenience - it is the shape a real signed-in buyer has.
+  -- ── I-04, REWRITTEN FOR #3524. ────────────────────────────────────────
   --
-  --    The attacker keeps its own confirmed mailbox and its own identity; it
-  --    loses only a string it never proved. Nothing below re-tests it, and
-  --    I-02/I-03 have already run against the full adversarial shape.
+  -- [TEST-MOD-APPROVED #3524] This check used to open with a single line:
+  --
+  --     before: r := public.claim_attendance_by_verified_identity(v_owner);
+  --             IF (r->>'count')::int <> 1 THEN
+  --               RAISE EXCEPTION 'I-04 owner claim was %', r; END IF;
+  --
+  --     after:  the SAME call is made THREE times against the SAME account and
+  --             the SAME armed order, and the fixture adds exactly one piece of
+  --             evidence between them. Nothing may move on the first two calls;
+  --             the ticket must move on the third.
+  --
+  -- WHY IT CHANGED. The old line asserted only that the buyer gets their ticket,
+  -- and under the rule in force at the time an account satisfied that by holding
+  -- a `provider='email'` identity carrying the purchase address. Seth's decision
+  -- on #3524 overturned that rule: an address match alone must never move a
+  -- ticket. So a check that passes on an address match alone no longer states
+  -- the rule this codebase enforces, and it is rewritten to state the new one.
+  --
+  -- The new shape is STRICTLY STRONGER. The old line could not fail when a
+  -- predicate accepted too much - it asked only for a claim to succeed. These
+  -- lines fail in BOTH directions: they fail if an unproved account is handed
+  -- the ticket, and they fail if a proved account is refused it. Every other
+  -- I-04 assertion below (unarmed, refunded, armed-then-refunded) is unchanged,
+  -- character for character.
+  --
+  -- WHAT COUNTS AS PROOF, and why the flag cannot be the test. Measured
+  -- read-only on production 2026-09-22: `identity_data->>'email_verified'` is
+  -- true on 77 of 77 Google and 44 of 44 Apple identities and on 0 of 40 email
+  -- identities - Supabase writes it false at signup and never revises it. So an
+  -- email-provider account's only route is a GoTrue authentication that can
+  -- only complete by reading the mailbox, which is recorded as an
+  -- `otp`/`magiclink`/`recovery` row in `auth.mfa_amr_claims`.
+  --
+  -- THE ADDRESS MOVES FIRST, and it has to: `auth.users.email` is UNIQUE here
+  -- exactly as it is in GoTrue, so the I-02/I-03 squatter and the I-04 real
+  -- buyer cannot both carry 'buyer2217@example.test' in one instant. They are
+  -- modelled in sequence; I-02 and I-03 have already run against the full
+  -- adversarial shape, and nothing below re-tests the attacker.
   UPDATE auth.users SET email = NULL WHERE id = v_attacker;
   UPDATE auth.users SET email = 'buyer2217@example.test', email_confirmed_at = now()
    WHERE id = v_owner;
 
-  -- ── I-04 the real buyer signs in and the ticket is there.
+  -- ── I-04a KNOWING THE ADDRESS MOVES NOTHING.
+  --    The owner now has the strongest shape the OLD rule recognised: the
+  --    purchase address on `auth.users`, confirmed, plus a `provider='email'`
+  --    identity carrying it. It must be handed nothing.
+  --
+  --    First prove this is a statement about the CLAIM PREDICATE and not about
+  --    an empty identifier list - the sweep short-circuits when an account has
+  --    proved nothing at all, and a refusal from that arm would measure nothing.
+  SELECT count(*) INTO n FROM public.verified_account_identifiers(v_owner)
+   WHERE kind = 'email' AND value = 'buyer2217@example.test';
+  IF n <> 1 THEN
+    RAISE EXCEPTION 'I-04a precondition lost: the owner address is no longer reported as an identifier, so the refusal below would not be the claim predicate';
+  END IF;
+  r := public.claim_attendance_by_verified_identity(v_owner);
+  IF (r->>'count')::int <> 0 THEN
+    RAISE EXCEPTION 'I-04a an account with no mailbox proof claimed %', r;
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.orders
+              WHERE id = pg_temp.i2217_uuid('o-email') AND buyer_user_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'I-04a the armed order moved on an address match alone';
+  END IF;
+
+  -- ── I-04b A PASSWORD SESSION IS NOT A MAILBOX PROOF, AND THE REFUSAL IS
+  --    TRUTHFUL. The owner now also holds a session whose ONLY authentication
+  --    method is `password`. On a project that confirms addresses without
+  --    sending mail, completing a password sign-in says nothing about who can
+  --    read the mailbox, so the answer must still be no.
+  INSERT INTO auth.sessions(id, user_id)
+  VALUES (pg_temp.i2217_uuid('s-owner-pw'), v_owner);
+  INSERT INTO auth.mfa_amr_claims(session_id, authentication_method)
+  VALUES (pg_temp.i2217_uuid('s-owner-pw'), 'password');
+
+  r := public.claim_attendance_by_verified_identity(v_owner);
+  IF (r->>'count')::int <> 0 THEN
+    RAISE EXCEPTION 'I-04b a password-only session was accepted as a mailbox proof: %', r;
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.orders
+              WHERE id = pg_temp.i2217_uuid('o-email') AND buyer_user_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'I-04b the armed order moved on a password-only session';
+  END IF;
+
+  --    THE TOKEN RAIL, ON THE SAME ACCOUNT, IN THIS LANE. `o-token` carries a
+  --    live claim-token digest and is never armed for the sweep. The refusal
+  --    must be `identity_mismatch` - the one result that tells the holder of a
+  --    genuinely valid link to go and prove the address - and never `invalid`,
+  --    which would claim the link itself is no good. And it must consume
+  --    NOTHING, or a single refused attempt would destroy the credential the
+  --    rightful account still needs.
+  SELECT o.attendance_claim_token_digest, o.attendance_claim_token_generation,
+         o.attendance_claim_token_created_at
+    INTO v_digest, v_generation, v_minted
+    FROM public.orders o WHERE o.id = pg_temp.i2217_uuid('o-token');
+  IF v_digest IS NULL THEN
+    RAISE EXCEPTION 'I-04b fixture lost the token digest before the rail was called';
+  END IF;
+  r := public.claim_attendance_internal(
+         v_owner, 'order', pg_temp.i2217_uuid('event'),
+         pg_temp.i2217_uuid('o-token'), decode(repeat('ab', 32), 'hex'));
+  IF r->>'result' <> 'identity_mismatch' THEN
+    RAISE EXCEPTION 'I-04b the token rail answered % instead of identity_mismatch', r;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.orders o
+     WHERE o.id = pg_temp.i2217_uuid('o-token')
+       AND o.buyer_user_id IS NULL
+       AND o.attendance_claim_token_digest = v_digest
+       AND o.attendance_claim_token_generation IS NOT DISTINCT FROM v_generation
+       AND o.attendance_claim_token_created_at IS NOT DISTINCT FROM v_minted
+       AND o.attendance_claim_token_consumed_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'I-04b a refused claim consumed or mutated the token';
+  END IF;
+
+  -- ── I-04c THE PROOF ARRIVES AND THE TICKET FOLLOWS. One more row, and one
+  --    only: a session whose authentication method is the email one-time code.
+  --    `now()` is transaction-constant, so this session is no older than the
+  --    identity it vouches for and the predicate's address binding holds.
+  INSERT INTO auth.sessions(id, user_id)
+  VALUES (pg_temp.i2217_uuid('s-owner-otp'), v_owner);
+  INSERT INTO auth.mfa_amr_claims(session_id, authentication_method)
+  VALUES (pg_temp.i2217_uuid('s-owner-otp'), 'otp');
+
   r := public.claim_attendance_by_verified_identity(v_owner);
   IF (r->>'count')::int <> 1 THEN RAISE EXCEPTION 'I-04 owner claim was %', r; END IF;
   IF NOT EXISTS (SELECT 1 FROM public.orders
