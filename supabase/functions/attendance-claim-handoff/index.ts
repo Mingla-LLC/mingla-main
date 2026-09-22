@@ -93,9 +93,16 @@ serve(async (req) => {
         raw,
         pepperRing.previous.secret,
       );
-    } else if (pepperRing.current.generation === "legacy_v1") {
-      // In the bundle-absent compatibility state, the current direct secret is
-      // also the only legacy verifier. Same arm as `claim-attendance`.
+    } else {
+      // #3524 — WITH NO PREVIOUS READER, THE CURRENT ONE IS BOTH. An order can
+      // be holding a second digest minted under this same pepper, because two
+      // callers arm the same order and the one that arms second carries the
+      // outgoing digest across instead of dropping it. That slot is only
+      // compared when a legacy candidate is supplied, so the desktop sheet must
+      // supply one for the same reason the phone does — otherwise the sheet
+      // refuses a link the phone would accept. It is also the bundle-absent
+      // compatibility state, where the current direct secret is the only legacy
+      // verifier. Same arm as `claim-attendance`.
       legacyProof = proof;
     }
 

@@ -143,9 +143,19 @@ serve(async (req) => {
               raw,
               pepperRing.previous.secret,
             );
-          } else if (pepperRing.current.generation === "legacy_v1") {
-            // In the bundle-absent compatibility state, the current direct
-            // secret is also the only legacy verifier.
+          } else {
+            // #3524 — WITH NO PREVIOUS READER, THE CURRENT ONE IS BOTH.
+            //
+            // An order can be holding a SECOND digest that was minted under
+            // this same pepper: two callers arm the same order — the
+            // confirmation email and the buyer's own confirmation screen — and
+            // whichever arms second carries the outgoing digest across rather
+            // than dropping it, so both links stay redeemable. That second slot
+            // is only ever compared when a legacy candidate is supplied, so
+            // supplying the same proof is what makes the preserved link work at
+            // all. It is also the bundle-absent compatibility state, where the
+            // current direct secret is the only legacy verifier there has ever
+            // been.
             legacyProof = proof;
           }
         }

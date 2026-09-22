@@ -19968,7 +19968,7 @@
       "providerWorkflow": ".github/workflows/issue-871-attendance-entitlement-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e651e11279ac167dd12529361823fb82d6ffb304f34fac0e7857528fba9cb4fb",
+        "sourceSha256": "4c85dd78c9c5b4e02654c7450052aa6e85e3bd631aaccbd1cfabb9907282ba8f",
         "triggers": [
           "pull_request"
         ],
@@ -20004,6 +20004,7 @@
           "supabase/migrations/20270614003060_issue_3060_attendance_noncustomer_closure.sql",
           "supabase/migrations/20270714003524_issue_3524_attendance_claim_identity_expiry_and_chat.sql",
           "supabase/migrations/20270714013524_issue_3524_consent_basis_and_marketing_permission.sql",
+          "supabase/migrations/20270715003524_issue_3524_claim_rotation_keeps_the_previous_link.sql",
           "supabase/migrations/__tests__/issue_0871*",
           "supabase/migrations/__tests__/issue_2979*",
           "supabase/migrations/__tests__/issue_3060*",

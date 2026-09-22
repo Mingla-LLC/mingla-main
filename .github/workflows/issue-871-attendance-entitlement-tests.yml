@@ -25,6 +25,7 @@ on:
       # lane rather than a new issue-*.yml, per the fail-closed registry rule.
       - "supabase/migrations/20270714003524_issue_3524_attendance_claim_identity_expiry_and_chat.sql"
       - "supabase/migrations/20270714013524_issue_3524_consent_basis_and_marketing_permission.sql"
+      - "supabase/migrations/20270715003524_issue_3524_claim_rotation_keeps_the_previous_link.sql"
       - "supabase/migrations/__tests__/issue_3524*"
       - "supabase/functions/attendance-claim-handoff/**"
       - "supabase/functions/attendance-claim-identity/**"
@@ -130,9 +131,11 @@ jobs:
           deno test \
             --import-map=supabase/functions/claim-attendance/__tests__/_importmap.test.json \
             --allow-read --allow-env --allow-net \
-            supabase/functions/claim-attendance/__tests__/issue_3524_claim_handler_runtime.implementor.happy.test.ts
+            supabase/functions/claim-attendance/__tests__/issue_3524_claim_handler_runtime.implementor.happy.test.ts \
+            supabase/functions/claim-attendance/__tests__/issue_3524_rotation_legacy_candidate.implementor.happy.test.ts
           for test_file in \
-            supabase/functions/claim-attendance/__tests__/issue_3524_claim_handler_runtime.tester.adversarial.test.ts; do
+            supabase/functions/claim-attendance/__tests__/issue_3524_claim_handler_runtime.tester.adversarial.test.ts \
+            supabase/functions/claim-attendance/__tests__/issue_3524_rotation_legacy_candidate.tester.adversarial.test.ts; do
             if [[ -f "$test_file" ]]; then
               deno test \
                 --import-map=supabase/functions/claim-attendance/__tests__/_importmap.test.json \
@@ -232,7 +235,10 @@ jobs:
             -f supabase/migrations/__tests__/issue_3524_attendance_claim_identity_expiry_and_chat.implementor.happy.test.sql
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3524_consent_basis_and_marketing_permission.implementor.happy.test.sql
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3524_claim_rotation_keeps_the_previous_link.implementor.happy.test.sql
           for tester_sql in \
+            supabase/migrations/__tests__/issue_3524_claim_rotation_keeps_the_previous_link.tester.adversarial.test.sql \
             supabase/migrations/__tests__/issue_3524_forwarded_email_cannot_take_the_ticket.tester.adversarial.test.sql \
             supabase/migrations/__tests__/issue_3524_handoff_replay.tester.adversarial.test.sql \
             supabase/migrations/__tests__/issue_3524_claim_without_chat_is_told_truthfully.tester.adversarial.test.sql \
