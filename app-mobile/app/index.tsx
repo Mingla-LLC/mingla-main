@@ -83,6 +83,7 @@ import AppLoadingScreen from '../src/components/AppLoadingScreen';
 import { AttendanceClaimSheet } from "../src/components/AttendanceClaimSheet";
 import {
   attendanceClaimAuthAction,
+  attendanceClaimHandoffIsLive,
   attendanceClaimReviewModalPolicy,
 } from "../src/utils/attendanceClaimDeepLink";
 import {
@@ -98,6 +99,7 @@ import {
   // claim alive across the sign-out the mismatch flow performs on purpose.
   readAttendanceClaimHandoffMarker,
   clearAttendanceClaimHandoffMarker,
+  ATTENDANCE_CLAIM_HANDOFF_TTL_MS,
 } from "../src/services/attendanceClaimService";
 
 // ORCH-1125: PersistQueryClientProvider + AnimatedSplashScreen + asyncStoragePersister
@@ -347,6 +349,53 @@ function AppContent() {
    * calls signOut.
    */
   const attendanceClaimHandoffActiveRef = useRef(false);
+  /**
+   * #3524 — WHEN the handoff started, so the flag can age out the way the
+   * SecureStore marker does.
+   *
+   * The marker has a 30-minute TTL and deletes itself on a stale read. The ref
+   * had no TTL at all: it was seeded once on mount and cleared in exactly one
+   * place, so a flag set at 09:00 was still true at 17:00. Keeping the instant
+   * beside the boolean lets the decision below apply the same 30 minutes
+   * SYNCHRONOUSLY — an async SecureStore read there would resolve after the
+   * auth effect had already decided, which is the whole reason this is a ref.
+   */
+  const attendanceClaimHandoffStartedAtRef = useRef<number | null>(null);
+  /**
+   * #3524 — THE ONE PLACE THAT ANSWERS "is a deliberate handoff in flight?".
+   *
+   * Both halves, together: the flag must be set, AND it must not have outlived
+   * the marker's 30 minutes. Reading it disarms a stale flag, exactly as
+   * `readAttendanceClaimHandoffMarker` deletes a stale marker, so the two
+   * cannot drift apart.
+   */
+  const attendanceClaimHandoffLive = useCallback((): boolean => {
+    const live = attendanceClaimHandoffIsLive(
+      attendanceClaimHandoffActiveRef.current,
+      attendanceClaimHandoffStartedAtRef.current,
+      Date.now(),
+      ATTENDANCE_CLAIM_HANDOFF_TTL_MS,
+    );
+    if (!live && attendanceClaimHandoffActiveRef.current) {
+      // Aged out. Disarm both halves so the stale flag cannot answer again,
+      // mirroring the stale-marker delete in readAttendanceClaimHandoffMarker.
+      attendanceClaimHandoffActiveRef.current = false;
+      attendanceClaimHandoffStartedAtRef.current = null;
+      void clearAttendanceClaimHandoffMarker();
+    }
+    return live;
+  }, []);
+  /**
+   * #3524 — the claim is over, whatever the outcome. Disarms the in-memory twin
+   * of the marker the sheet just deleted. Without this the flag outlived the
+   * claim for the rest of the app session and the NEXT, unrelated account
+   * change preserved a pending claim it should have cleared — showing a
+   * stranger's masked purchase address to whoever signed in next.
+   */
+  const attendanceClaimSettled = useCallback((): void => {
+    attendanceClaimHandoffActiveRef.current = false;
+    attendanceClaimHandoffStartedAtRef.current = null;
+  }, []);
   /** Opens the sign-in screen with the email-code panel already expanded, so a
    * guest sent here by "that's not me" does not have to find it. */
   const [attendanceClaimWantsEmailSignIn, setAttendanceClaimWantsEmailSignIn] =
@@ -355,6 +404,7 @@ function AppContent() {
   useEffect(() => {
     void readAttendanceClaimHandoffMarker().then((marker) => {
       attendanceClaimHandoffActiveRef.current = marker !== null;
+      attendanceClaimHandoffStartedAtRef.current = marker?.startedAt ?? null;
       if (marker !== null) setAttendanceClaimWantsEmailSignIn(true);
     });
   }, []);
@@ -392,6 +442,7 @@ function AppContent() {
    */
   const attendanceClaimUseDifferentAccount = useCallback((): void => {
     attendanceClaimHandoffActiveRef.current = true;
+    attendanceClaimHandoffStartedAtRef.current = Date.now();
     setAttendanceClaimWantsEmailSignIn(true);
     closeAttendanceClaimPresentation();
     void handleSignOut();
@@ -473,7 +524,7 @@ function AppContent() {
       // "use a different account" action set before calling signOut. A SecureStore
       // read here would be async and this effect would already have cleared the
       // claim by the time it resolved, which is precisely the bug.
-      attendanceClaimHandoffActiveRef.current,
+      attendanceClaimHandoffLive(),
     );
     // #3524 — "preserve" performs NO state change. This flow caused the account
     // change, so the intent, the marker and the sheet are all left exactly as
@@ -485,6 +536,7 @@ function AppContent() {
       void clearAttendanceClaimIntent();
       void clearAttendanceClaimHandoffMarker();
       attendanceClaimHandoffActiveRef.current = false;
+      attendanceClaimHandoffStartedAtRef.current = null;
       setAttendanceClaimIntent(null);
       closeAttendanceClaimPresentation();
     } else if (authAction === "resume") {
@@ -2634,6 +2686,7 @@ function AppContent() {
       onSignIn={attendanceClaimGoToSignIn}
       onUseDifferentAccount={attendanceClaimUseDifferentAccount}
       onOpenChat={attendanceClaimOpenChat}
+      onClaimSettled={attendanceClaimSettled}
       onSeeGuestList={async (eventId) => {
         const path = await resolveAttendanceOfferingPath(eventId);
         if (path === null) return false;

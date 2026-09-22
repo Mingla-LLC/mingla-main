@@ -96,6 +96,40 @@ export const attendanceClaimAuthAction = (
   return "none";
 };
 
+/**
+ * #3524 — IS A DELIBERATE ACCOUNT HANDOFF STILL IN FLIGHT?
+ *
+ * Extracted as a pure function on purpose. The shell holds the flag in a ref so
+ * the auth effect can read it SYNCHRONOUSLY — an async SecureStore read there
+ * resolves after the effect has already decided, which is the bug the marker
+ * exists to prevent. But a ref cannot be tested, and "the flag is disarmed in at
+ * least two places" is a count, not a behaviour: it stays true after you move
+ * the disarm somewhere useless.
+ *
+ * So the DECISION lives here, where it can be driven:
+ *
+ *   * a flag that was never set is not a handoff;
+ *   * a flag older than the marker's own 30 minutes is not a handoff either —
+ *     it aged out exactly as `readAttendanceClaimHandoffMarker` ages out the
+ *     record it mirrors;
+ *   * a flag with no recorded start is treated as live, because that is the
+ *     one case where we know a handoff happened and not when, and the claim
+ *     still cannot land without the account proving the purchase contact.
+ *
+ * `now` and `ttlMs` are parameters so the boundary is testable without waiting
+ * half an hour.
+ */
+export const attendanceClaimHandoffIsLive = (
+  active: boolean,
+  startedAt: number | null,
+  now: number,
+  ttlMs: number,
+): boolean => {
+  if (!active) return false;
+  if (startedAt === null) return true;
+  return now - startedAt <= ttlMs;
+};
+
 export type RosterAuthorizationFailure =
   | "attendance_required"
   | "guest_list_private"

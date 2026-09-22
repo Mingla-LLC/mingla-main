@@ -120,6 +120,27 @@ jobs:
           done
           node --experimental-strip-types --test \
             app-mobile/src/utils/__tests__/issue_3524_claim_auth_action_preserve.implementor.happy.test.ts
+      # issue #3524 REWORK (P2-4) — the handlers INVOKED, not grepped. The
+      # sibling suites assert HTTP behaviour by searching index.ts, which is how
+      # the consume-before-claim defect reached the tester with a green suite.
+      # These drive the real handler with a real Request and read the real
+      # Response; serve() is aliased to the existing capture shim.
+      - name: Execute issue 3524 edge-handler runtime contracts
+        run: |
+          deno test \
+            --import-map=supabase/functions/claim-attendance/__tests__/_importmap.test.json \
+            --allow-read --allow-env --allow-net \
+            supabase/functions/claim-attendance/__tests__/issue_3524_claim_handler_runtime.implementor.happy.test.ts
+          for test_file in \
+            supabase/functions/claim-attendance/__tests__/issue_3524_claim_handler_runtime.tester.adversarial.test.ts; do
+            if [[ -f "$test_file" ]]; then
+              deno test \
+                --import-map=supabase/functions/claim-attendance/__tests__/_importmap.test.json \
+                --allow-read --allow-env --allow-net "$test_file"
+            fi
+          done
+      - name: Execute issue 3524 consumer-app contracts
+        run: |
           node app-mobile/src/components/__tests__/issue_3524_claim_sheet_states.implementor.happy.test.tsx
           # issue #3524 — the tester's Explorer-side adversarial suites, run the
           # same way and only when they exist, matching the conditional shape the

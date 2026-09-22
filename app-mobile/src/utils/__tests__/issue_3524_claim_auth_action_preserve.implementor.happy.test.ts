@@ -28,6 +28,7 @@ import { test } from "node:test";
 
 import {
   attendanceClaimAuthAction,
+  attendanceClaimHandoffIsLive,
   isAttendanceClaimUrl,
   parseAttendanceClaimUrl,
 } from "../attendanceClaimDeepLink.ts";
@@ -200,5 +201,86 @@ test("#3524 the claim URL parser carries a DISCRIMINATED credential", () => {
     isAttendanceClaimUrl("https://host.usemingla.com/attendance/claims#x=1"),
     false,
     "a neighbouring path is not a claim URL",
+  );
+});
+
+// ── #3524 REWORK (P2-1) ─────────────────────────────────────────────────────
+//
+// The flag that feeds `handoffActive` used to be set in one place and cleared in
+// one place, with no TTL at all: set at 09:00, still true at 17:00. After a
+// claim finished it stayed armed for the rest of the app session, so the NEXT,
+// unrelated account change took "preserve" where the table says "clear".
+//
+// The identity predicate still stopped the ticket landing on the wrong account.
+// What it did not stop was a stranger's pending claim — and the masked purchase
+// address printed on it — being presented to whoever signed in next. That is
+// the disclosure `"clear"` exists to prevent, and Constitution #6.
+//
+// These drive the DECISION rather than counting how many times a line appears.
+
+const TTL = 30 * 60 * 1000;
+const T0 = 1_700_000_000_000;
+
+test("#3524 a handoff flag ages out on the marker's own 30 minutes", () => {
+  assert.equal(
+    attendanceClaimHandoffIsLive(true, T0, T0, TTL), true,
+    "a handoff that just started is live",
+  );
+  assert.equal(
+    attendanceClaimHandoffIsLive(true, T0, T0 + TTL - 1, TTL), true,
+    "and is still live one millisecond inside the window",
+  );
+  assert.equal(
+    attendanceClaimHandoffIsLive(true, T0, T0 + TTL, TTL), true,
+    "the boundary itself is inclusive, matching the marker's own <= test",
+  );
+  assert.equal(
+    attendanceClaimHandoffIsLive(true, T0, T0 + TTL + 1, TTL), false,
+    "one millisecond past it, the flag is NOT a handoff any more",
+  );
+  assert.equal(
+    attendanceClaimHandoffIsLive(true, T0, T0 + 8 * 60 * 60 * 1000, TTL), false,
+    "and eight hours later it is certainly not one — the case that used to "
+      + "preserve a stranger's claim across an unrelated sign-in",
+  );
+});
+
+test("#3524 a flag that was never armed is never a handoff", () => {
+  for (const startedAt of [null, T0, T0 - TTL * 10]) {
+    assert.equal(
+      attendanceClaimHandoffIsLive(false, startedAt, T0, TTL), false,
+      "an unarmed flag answers false whatever timestamp sits beside it",
+    );
+  }
+  // The one case we treat as live: armed, but we do not know when. A handoff
+  // demonstrably happened, and the claim still cannot land without the account
+  // proving the purchase contact — R-5's second guard.
+  assert.equal(attendanceClaimHandoffIsLive(true, null, T0, TTL), true);
+});
+
+test("#3524 an aged-out flag makes the account change CLEAR again, end to end", () => {
+  const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  // Inside the window: this flow caused the change, so the claim survives it.
+  assert.equal(
+    attendanceClaimAuthAction(
+      A, B, true, attendanceClaimHandoffIsLive(true, T0, T0 + 60_000, TTL)),
+    "preserve",
+  );
+
+  // Outside it: the same flag, the same account change, and the pending claim
+  // is destroyed exactly as it would be for a stranger picking up the phone.
+  assert.equal(
+    attendanceClaimAuthAction(
+      A, B, true, attendanceClaimHandoffIsLive(true, T0, T0 + TTL + 1, TTL)),
+    "clear",
+  );
+
+  // And after the claim settles, the shell disarms the flag outright.
+  assert.equal(
+    attendanceClaimAuthAction(
+      A, B, true, attendanceClaimHandoffIsLive(false, null, T0, TTL)),
+    "clear",
   );
 });

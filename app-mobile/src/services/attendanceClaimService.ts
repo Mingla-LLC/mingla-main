@@ -71,7 +71,13 @@ const TTL_MS = 24 * 60 * 60 * 1000;
  * NOTHING ELSE WRITES THIS KEY.
  */
 const HANDOFF_KEY = "mingla_attendance_claim_handoff_v1";
-const HANDOFF_TTL_MS = 30 * 60 * 1000;
+/**
+ * #3524 — EXPORTED so the shell's in-memory flag ages out on the SAME 30
+ * minutes this record does. Two copies of the number would be two things to
+ * keep in step, and the one that drifted would be the one nobody tested.
+ */
+export const ATTENDANCE_CLAIM_HANDOFF_TTL_MS = 30 * 60 * 1000;
+const HANDOFF_TTL_MS = ATTENDANCE_CLAIM_HANDOFF_TTL_MS;
 
 export type AttendanceClaimHandoffMarker = {
   version: 1;

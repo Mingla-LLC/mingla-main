@@ -61,6 +61,7 @@ type Phase =
 export function AttendanceClaimSheet({
   visible, intent, initialInvalid = false, signedIn, signedInIdentifier = null,
   onClose, onSignIn, onSeeGuestList, onUseDifferentAccount, onOpenChat,
+  onClaimSettled,
 }: {
   visible: boolean;
   intent: AttendanceClaimIntent | null;
@@ -74,6 +75,22 @@ export function AttendanceClaimSheet({
   onSeeGuestList: (eventId: string) => Promise<boolean>;
   onUseDifferentAccount: () => void;
   onOpenChat: (conversationId: string) => Promise<boolean>;
+  /**
+   * #3524 — THE CLAIM IS OVER, WHATEVER THE OUTCOME.
+   *
+   * This sheet deletes the SecureStore handoff marker on every path R-2 names,
+   * but the decision that actually reads it is an in-memory ref in the shell,
+   * and the sheet cannot reach that ref. Without this callback the flag stayed
+   * true for the rest of the app session — outliving the claim AND the marker's
+   * own 30 minutes — so the next, unrelated account change took "preserve"
+   * where the table says "clear". The identity predicate still stopped the
+   * ticket landing on the wrong account; what it did not stop was a stranger's
+   * pending claim, and the masked purchase address on it, being shown to
+   * whoever signed in next.
+   *
+   * Called wherever the marker is deleted, so the two never disagree.
+   */
+  onClaimSettled: () => void;
 }): React.ReactElement {
   const [phase, setPhase] = useState<Phase>("ready");
   const [claimedEventId, setClaimedEventId] = useState<string | null>(null);
@@ -111,6 +128,7 @@ export function AttendanceClaimSheet({
         await clearAttendanceClaimIntent();
         // The claim landed, so whatever account handoff got us here is finished.
         await clearAttendanceClaimHandoffMarker();
+        onClaimSettled();
         setClaimedEventId(result.eventId);
         setConversationId(result.conversationId);
         if (result.chatJoined && result.conversationId !== null) {
@@ -173,13 +191,15 @@ export function AttendanceClaimSheet({
         setPhase("network");
       }
     });
-  }, [intent]);
+  }, [intent, onClaimSettled]);
 
   const terminalDone = useCallback((): void => {
     void clearAttendanceClaimIntent();
     void clearAttendanceClaimHandoffMarker();
+    // The in-memory twin of that marker, which lives in the shell.
+    onClaimSettled();
     onClose();
-  }, [onClose]);
+  }, [onClaimSettled, onClose]);
 
   /**
    * "Use a different account" / "Sign out and continue".

@@ -1,0 +1,6 @@
+{
+  "$comment": "issue #3524 — claim-attendance and attendance-claim-handoff both call serve() at module load with no import.meta.main guard, so importing them would bind a real listener. This aliases the std URL they import to the existing capture shim in _shared/__tests__, so serve() records the handler and the runtime tests can invoke it with a real Request and read the ACTUAL Response. The shim is REUSED, not copied: one shim, one behaviour. Test-only; no edge function resolves through this map at deploy time.",
+  "imports": {
+    "https://deno.land/std@0.190.0/http/server.ts": "../../_shared/__tests__/_serveShim.ts"
+  }
+}
