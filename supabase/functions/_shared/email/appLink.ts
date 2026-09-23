@@ -145,6 +145,18 @@ const { BRAND_ORANGE_BUTTON } = SHELL_TOKENS;
  * In that case the block still renders and the button falls back to
  * `MINGLA_APP_LINK_URL`. A confirmation email must never lose its route into the
  * app, so `resolveAppCtaUrl` has no "no link" arm at all.
+ *
+ * ⚠️ AND YES, A PER-ORDER CREDENTIAL NOW TRAVELS IN THIS BUTTON. This module used
+ * to argue the opposite — that a per-order secret in an email link is readable by
+ * every forwarding hop — and that argument was about interpolating an id into the
+ * DOWNLOAD PAGE's path, which is still forbidden (see `MINGLA_APP_LINK_URL`
+ * below). What travels here is the #871/#3524 attendance claim URL: a
+ * purpose-built credential that is hashed at rest under a pepper ring, rotatable,
+ * expiring, and issued by `issue_order_attendance_claim_proof_v2` precisely so it
+ * CAN be emailed. It was already being emailed — by the second block this change
+ * removes, and by `attendance-claim-backfill`'s recovery notice. Nothing is newly
+ * exposed; the link moved from a card below the footer onto the one button the
+ * email already had.
  */
 
 /**
