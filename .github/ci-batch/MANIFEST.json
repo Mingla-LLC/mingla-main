@@ -18689,7 +18689,7 @@
       "providerWorkflow": ".github/workflows/issue-2240-email-app-link-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "97f3d3636e963adfbaaaff9907d8abee6f219d6f1bbe497cd404140e30762f37",
+        "sourceSha256": "c5da8d285b8ac8bfabe1bea6a096575278996f72d9992f6f2249d8aaf0147c75",
         "triggers": [
           "pull_request",
           "push",
@@ -18708,12 +18708,18 @@
           "mingla-marketing/next.config.ts",
           "mingla-marketing/vercel.json",
           "scripts/apex-route-model/**",
+          "supabase/functions/_shared/attendanceClaim.ts",
           "supabase/functions/_shared/email/__tests__/issue_2240_email_app_link.test.ts",
+          "supabase/functions/_shared/email/__tests__/issue_3524_confirmation_email_single_cta.test.ts",
           "supabase/functions/_shared/email/appLink.ts",
+          "supabase/functions/_shared/email/escape.ts",
           "supabase/functions/_shared/email/experienceConfirmationEmail.ts",
+          "supabase/functions/_shared/email/index.ts",
           "supabase/functions/_shared/email/shell.ts",
           "supabase/functions/_shared/email/ticketBody.ts",
-          "supabase/functions/_shared/email/tripConfirmationEmail.ts"
+          "supabase/functions/_shared/email/tripConfirmationEmail.ts",
+          "supabase/functions/_shared/email/types.ts",
+          "supabase/functions/ticket-confirmation-dispatch/index.ts"
         ],
         "jobKeys": [
           "issue-2240-live-destination",
