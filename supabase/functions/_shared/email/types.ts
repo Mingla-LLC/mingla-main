@@ -70,6 +70,17 @@ export interface RenderInput {
   // a custom From identity. Production paths leave this undefined and let
   // the module resolve from EMAIL_SENDERS.
   sender?: SenderIdentity;
+  /**
+   * #3524 FOLLOW-UP — the per-order attendance claim URL, already minted by the
+   * caller, for the single "Open in Mingla" CTA in a ticket confirmation body.
+   *
+   * It lives on `RenderInput` rather than on `body` because it is not part of the
+   * order's content: the same `TicketBodyInput` renders with or without it, and
+   * that input is shared with the PDF and SMS paths, which carry no link. Only
+   * the ticket-confirmation variants read it; omit it and the CTA falls back to
+   * `MINGLA_APP_LINK_URL` (see `_shared/email/appLink.ts`).
+   */
+  appCtaClaimUrl?: string | null;
 }
 
 export interface RenderResult {

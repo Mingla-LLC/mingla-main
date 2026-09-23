@@ -59,6 +59,13 @@ interface TripConfirmationInput {
     currency: string;
   };
   supportEmail?: string;
+  /**
+   * #3524 FOLLOW-UP — the per-order attendance claim URL, already minted by
+   * `ticket-confirmation-dispatch`. Optional: an order whose buyer already has an
+   * account, or whose proof was armed first by the checkout confirm screen, has
+   * none, and the single CTA then falls back to the download page (appLink.ts).
+   */
+  appCtaClaimUrl?: string | null;
 }
 
 interface TripConfirmationResult {
@@ -119,14 +126,18 @@ function escapeHtml(text: string): string {
 
 // #2240 — destination AND markup come from appLink.ts. The old body built an
 // /orders/{id}/chat URL on the marketing host, a route that has never existed
-// (HTTP 404), so the order id is gone: nothing about the app CTA is per-order.
-// The noun is a ternary over two AppCtaHeadline members, never an
-// interpolation, so no caller value can reach the unescaped headline slot.
-function renderDownloadAppCta(eventType: "event" | "trip"): string {
+// (HTTP 404).
+//
+// #3524 FOLLOW-UP — this is the trip email's ONLY call to action, and it carries
+// the per-order claim URL when the dispatch has minted one. The headline is a
+// single `AppCtaHeadline` member, never an interpolation, so no caller value can
+// reach the unescaped headline slot. The `"event" | "trip"` discriminator this
+// function used to take is gone: only the `"trip"` arm was ever reachable from
+// this file, and the event arm's copy belongs to `ticketBody.ts`.
+function renderDownloadAppCta(appCtaClaimUrl?: string | null): string {
   return renderAppCtaHtml(
-    eventType === "trip"
-      ? "Join your trip chat in the Mingla app"
-      : "Join your event chat in the Mingla app",
+    "Your ticket, the trip chat, and who's going — all in the app",
+    appCtaClaimUrl,
   );
 }
 
@@ -246,7 +257,7 @@ export function renderTripConfirmationEmail(
                 <tr><td style="padding:8px 0;font-size:14px;color:#475569;border-top:1px solid #E5E7EB;">Total paid</td><td style="padding:8px 0;font-size:16px;font-weight:700;color:#0F172A;text-align:right;border-top:1px solid #E5E7EB;">${escapeHtml(priceLabel)}</td></tr>
               </table>
 
-              ${renderDownloadAppCta("trip")}
+              ${renderDownloadAppCta(input.appCtaClaimUrl)}
 
               <p style="font-size:13px;color:#475569;margin:24px 0 0 0;line-height:1.5;">Questions about your trip? Reply directly to ${escapeHtml(input.brand.name)} — they'll receive your message at the email they set up for the brand.</p>
             </td>
@@ -282,8 +293,12 @@ export function renderTripConfirmationEmail(
     `Order: ${input.order.shortId}`,
     `Total paid: ${priceLabel}`,
     ``,
-    // #2240 — same working link the HTML body carries, from the same constant.
-    appCtaTextLine("Join your trip chat in the Mingla app"),
+    // #2240 — the SAME working link the HTML body carries, from the same
+    // resolver and the same claim URL, so the two bodies cannot diverge.
+    appCtaTextLine(
+      "Your ticket, the trip chat, and who's going — all in the app",
+      input.appCtaClaimUrl,
+    ),
     ``,
     `Reply to ${input.brand.name} with questions.`,
     `Support: ${supportEmail}`,

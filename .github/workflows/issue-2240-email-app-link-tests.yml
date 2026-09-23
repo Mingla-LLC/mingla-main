@@ -31,7 +31,19 @@ on:
       - "supabase/functions/_shared/email/tripConfirmationEmail.ts"
       - "supabase/functions/_shared/email/experienceConfirmationEmail.ts"
       - "supabase/functions/_shared/email/shell.ts"
+      - "supabase/functions/_shared/email/escape.ts"
       - "supabase/functions/_shared/email/__tests__/issue_2240_email_app_link.test.ts"
+      # #3524's follow-up folded the "Connect your attendance" block into this
+      # CTA, so the CTA's destination is now EITHER the order's claim URL or the
+      # constant. The renderer that threads it, the type that carries it, the
+      # builder that mints it and the dispatch that passes it are all part of the
+      # answer this lane gives, so all four re-trigger it. Landed here rather than
+      # in a new issue-*.yml, per the fail-closed registry rule.
+      - "supabase/functions/_shared/email/index.ts"
+      - "supabase/functions/_shared/email/types.ts"
+      - "supabase/functions/_shared/email/__tests__/issue_3524_confirmation_email_single_cta.test.ts"
+      - "supabase/functions/_shared/attendanceClaim.ts"
+      - "supabase/functions/ticket-confirmation-dispatch/index.ts"
       # The destination itself, and every layer that decides whether it resolves.
       - "mingla-marketing/app/download/**"
       - "mingla-marketing/lib/device-platform.ts"
@@ -70,7 +82,7 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      # 7 tests, no network. Fails when the rendered destination stops resolving
+      # 8 tests, no network. Fails when the rendered destination stops resolving
       # against the real route table, when the resolver stops being falsifiable
       # (the dead #2240 path must come back UNRESOLVED), when any template stops
       # emitting exactly one app link, or when the plain-text body diverges from
@@ -79,10 +91,29 @@ jobs:
         run: >-
           deno test --allow-env --allow-read --no-check
           supabase/functions/_shared/email/__tests__/issue_2240_email_app_link.test.ts
+      # #3524 follow-up: ONE call to action, carrying the order's claim URL when
+      # there is one and the download page when there is not. 11 tests, no
+      # network. Fails when the button loses the claim URL, when an order with no
+      # claim URL loses its button entirely, when the plain-text twin stops
+      # matching the HTML href on either arm, when any offering type borrows
+      # another's copy, when a second CTA reappears in a body, or when the
+      # dispatch goes back to appending one after the body.
+      - name: "#3524 the confirmation email carries ONE CTA, and it is the claim link"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/_shared/email/__tests__/issue_3524_confirmation_email_single_cta.test.ts
       - run: deno check supabase/functions/_shared/email/appLink.ts
       - run: deno check supabase/functions/_shared/email/ticketBody.ts
       - run: deno check supabase/functions/_shared/email/tripConfirmationEmail.ts
       - run: deno check supabase/functions/_shared/email/experienceConfirmationEmail.ts
+      - run: deno check supabase/functions/_shared/email/index.ts
+      # #3524: A8 reads the dispatch as TEXT, so a source assertion could pass
+      # over an identifier that does not exist. THIS is what proves they do — and
+      # it type-checks the threaded claim URL through all three offering arms.
+      - run: deno check supabase/functions/ticket-confirmation-dispatch/index.ts
+      - run: >-
+          deno check
+          supabase/functions/_shared/email/__tests__/issue_3524_confirmation_email_single_cta.test.ts
       # The sole-owner gate, both modes. `run-batch.mjs --class A` also runs it
       # from the strict-grep workflow; naming it here means a PR that only edits
       # an email template still proves the gate on the change that needs it.

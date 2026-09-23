@@ -55,6 +55,13 @@ interface ExperienceConfirmationInput {
     currency: string;
   };
   supportEmail?: string;
+  /**
+   * #3524 FOLLOW-UP — the per-order attendance claim URL, already minted by
+   * `ticket-confirmation-dispatch`. Optional: an order whose buyer already has an
+   * account, or whose proof was armed first by the checkout confirm screen, has
+   * none, and the single CTA then falls back to the download page (appLink.ts).
+   */
+  appCtaClaimUrl?: string | null;
 }
 
 interface ExperienceConfirmationResult {
@@ -66,6 +73,27 @@ interface ExperienceConfirmationResult {
 
 const DEFAULT_SUPPORT_EMAIL = "support@usemingla.com";
 const DEFAULT_FROM_NAME = "Mingla";
+
+// #2240 — destination AND markup come from appLink.ts, never from this file.
+//
+// #3524 FOLLOW-UP — this is the experience email's ONLY call to action, and it
+// carries the per-order claim URL when the dispatch has minted one.
+//
+// THE COPY LEADS WITH THE TICKET NOW, BUT IT STILL DOES NOT PROMISE A CHAT, AND
+// THAT IS DELIBERATE. An experience has no group chat anywhere in the schema:
+// `conversations_linked_entity_type_check` has no `experience` member and
+// `add_buyer_to_event_chat` is gated to ('event','trip'), so the claim rail
+// returns `chatJoined: false` for every paid experience order and a shipped
+// migration test asserts that is correct. The event and trip variants say "the
+// event chat" / "the trip chat"; this one says "the details". "Who's going" is
+// on all three because connecting the ticket unlocks the guest list whatever the
+// offering type. Adding a chat noun here needs a migration, not a copy edit.
+function renderExperienceAppCta(appCtaClaimUrl?: string | null): string {
+  return renderAppCtaHtml(
+    "Your ticket, the details, and who's going — all in the app",
+    appCtaClaimUrl,
+  );
+}
 
 function requireEnv(key: string, fallback?: string, resolved?: string): string {
   const raw = resolved ?? Deno.env.get(key);
@@ -220,7 +248,7 @@ export function renderExperienceConfirmationEmail(
                 <tr><td style="padding:8px 0;font-size:14px;color:#475569;border-top:1px solid #E5E7EB;">Total paid</td><td style="padding:8px 0;font-size:16px;font-weight:700;color:#0F172A;text-align:right;border-top:1px solid #E5E7EB;">${escapeHtml(priceLabel)}</td></tr>
               </table>
 
-              ${renderAppCtaHtml("Your ticket + details are in the Mingla app")}
+              ${renderExperienceAppCta(input.appCtaClaimUrl)}
 
               <p style="font-size:13px;color:#475569;margin:24px 0 0 0;line-height:1.5;">Questions? Reply directly to ${escapeHtml(input.brand.name)} — they'll receive your message at the email they set up for the brand.</p>
             </td>
@@ -256,8 +284,12 @@ export function renderExperienceConfirmationEmail(
     `Order: ${input.order.shortId}`,
     `Total paid: ${priceLabel}`,
     ``,
-    // #2240 — same working link the HTML body carries, from the same constant.
-    appCtaTextLine("Your ticket + details are in the Mingla app"),
+    // #2240 — the SAME working link the HTML body carries, from the same
+    // resolver and the same claim URL, so the two bodies cannot diverge.
+    appCtaTextLine(
+      "Your ticket, the details, and who's going — all in the app",
+      input.appCtaClaimUrl,
+    ),
     ``,
     `Reply to ${input.brand.name} with questions.`,
     `Support: ${supportEmail}`,
