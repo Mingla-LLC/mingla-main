@@ -79,14 +79,18 @@ const DEFAULT_FROM_NAME = "Mingla";
 // #3524 FOLLOW-UP — this is the experience email's ONLY call to action, and it
 // carries the per-order claim URL when the dispatch has minted one.
 //
-// THE COPY CHANGED, AND THE OLD COPY WAS THE DEFECT. This template used to say
-// "Your ticket + details are in the Mingla app" — the one confirmation email of
-// the three that promised no group chat. Experiences DO come with a group chat,
-// like events and trips (Seth, 2026-09-22), so the omission was wrong rather
-// than deliberate. Do not restore a chat-free variant here.
+// THE COPY LEADS WITH THE TICKET NOW, BUT IT STILL DOES NOT PROMISE A CHAT, AND
+// THAT IS DELIBERATE. An experience has no group chat anywhere in the schema:
+// `conversations_linked_entity_type_check` has no `experience` member and
+// `add_buyer_to_event_chat` is gated to ('event','trip'), so the claim rail
+// returns `chatJoined: false` for every paid experience order and a shipped
+// migration test asserts that is correct. The event and trip variants say "the
+// event chat" / "the trip chat"; this one says "the details". "Who's going" is
+// on all three because connecting the ticket unlocks the guest list whatever the
+// offering type. Adding a chat noun here needs a migration, not a copy edit.
 function renderExperienceAppCta(appCtaClaimUrl?: string | null): string {
   return renderAppCtaHtml(
-    "Your ticket, the experience chat, and who's going — all in the app",
+    "Your ticket, the details, and who's going — all in the app",
     appCtaClaimUrl,
   );
 }
@@ -283,7 +287,7 @@ export function renderExperienceConfirmationEmail(
     // #2240 — the SAME working link the HTML body carries, from the same
     // resolver and the same claim URL, so the two bodies cannot diverge.
     appCtaTextLine(
-      "Your ticket, the experience chat, and who's going — all in the app",
+      "Your ticket, the details, and who's going — all in the app",
       input.appCtaClaimUrl,
     ),
     ``,

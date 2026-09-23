@@ -88,8 +88,15 @@ const EVENT_HEADLINE: AppCtaHeadline =
   "Your ticket, the event chat, and who's going — all in the app";
 const TRIP_HEADLINE: AppCtaHeadline =
   "Your ticket, the trip chat, and who's going — all in the app";
+/**
+ * The experience line says "the details", NOT "the experience chat", and that is
+ * a verified fact about the schema rather than a wording preference: there is no
+ * `experience` member in `conversations_linked_entity_type_check` and
+ * `add_buyer_to_event_chat` is gated to ('event','trip'), so the claim rail
+ * returns `chatJoined: false` for every paid experience order. A5 pins this.
+ */
 const EXPERIENCE_HEADLINE: AppCtaHeadline =
-  "Your ticket, the experience chat, and who's going — all in the app";
+  "Your ticket, the details, and who's going — all in the app";
 
 function ticketBodyInput() {
   return {
@@ -367,29 +374,38 @@ Deno.test("A4 no confirmation email renders a second call to action", () => {
 
 // ─── A5 — offering-aware copy, each type its own noun ───────────────────────
 
-Deno.test("A5 each offering type renders its own copy, ticket first and chat second", () => {
+Deno.test("A5 each offering type renders its own copy, ticket first and its own middle noun", () => {
+  // The middle noun is what differs, and the experience one is NOT a chat: the
+  // schema cannot create one for an experience (no `experience` member in
+  // `conversations_linked_entity_type_check`, `add_buyer_to_event_chat` gated to
+  // ('event','trip')), so promising one would be a lie the database enforces.
   const nounFor: Record<string, string> = {
     event: "the event chat",
     trip: "the trip chat",
-    experience: "the experience chat",
+    experience: "the details",
   };
   const rendered = renderAllThree(CLAIM_URL);
   assertEquals(rendered.length, 3, "three offering types expected");
+  assertEquals(
+    new Set(Object.values(nounFor)).size,
+    3,
+    "the three middle nouns must be DISTINCT, or the cross-check below cannot fail",
+  );
 
   for (const { name, headline, html, text } of rendered) {
     // The copy is in BOTH bodies, not just the one someone looked at.
     assertStringIncludes(html, headline, `${name}: HTML is missing its headline`);
     assertStringIncludes(text, headline, `${name}: text is missing its headline`);
 
-    // Ticket first, chat second, who's going last — Seth's order, asserted as
-    // an ORDER rather than as three independent substrings.
+    // Ticket first, the offering's own noun second, who's going last — Seth's
+    // order, asserted as an ORDER rather than as three independent substrings.
     const ticketAt = headline.indexOf("Your ticket");
-    const chatAt = headline.indexOf(nounFor[name]);
+    const nounAt = headline.indexOf(nounFor[name]);
     const goingAt = headline.indexOf("who's going");
     assert(ticketAt === 0, `${name}: the headline must lead with the ticket`);
     assert(
-      chatAt > ticketAt && goingAt > chatAt,
-      `${name}: expected ticket, then chat, then who's going — got "${headline}"`,
+      nounAt > ticketAt && goingAt > nounAt,
+      `${name}: expected ticket, then "${nounFor[name]}", then who's going — got "${headline}"`,
     );
 
     // …and it names ITS OWN offering, not a neighbour's.
@@ -407,10 +423,14 @@ Deno.test("A5 each offering type renders its own copy, ticket first and chat sec
   }
 });
 
-Deno.test("A5 the experience email no longer ships the chat-free copy", () => {
-  // It was the odd one out: "Your ticket + details are in the Mingla app",
-  // the only confirmation of the three that promised no group chat. Seth
-  // (2026-09-22): every offering type comes with one.
+Deno.test("A5 the experience email leads with the ticket, and promises NO chat", () => {
+  // Two claims in one place because they pull in opposite directions and both
+  // have to hold. The copy DID have to change — it used to read "Your ticket +
+  // details are in the Mingla app", which buried the ticket and marketed
+  // nothing. But it must NOT have gained a chat: an experience has none, in the
+  // schema, and `claim_attendance_internal_v2` returns `chatJoined: false` for
+  // every paid experience order. Promising one would be a lie the database
+  // enforces, so a chat noun here needs a migration, not a copy edit.
   for (const claimUrl of [CLAIM_URL, null]) {
     const experience = renderAllThree(claimUrl).find((r) =>
       r.name === "experience"
@@ -418,7 +438,11 @@ Deno.test("A5 the experience email no longer ships the chat-free copy", () => {
     for (const body of [experience.html, experience.text]) {
       assert(
         !body.includes("Your ticket + details are in the Mingla app"),
-        "the experience email still ships the pre-#3524 chat-free CTA copy",
+        "the experience email still ships the pre-#3524 CTA copy, which buried the ticket",
+      );
+      assert(
+        !/\bchat\b/i.test(body),
+        "the experience email promises a chat. There is no `experience` member in conversations_linked_entity_type_check and add_buyer_to_event_chat is gated to ('event','trip') — the database cannot create one.",
       );
     }
   }

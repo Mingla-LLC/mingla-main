@@ -209,23 +209,35 @@ export function resolveAppCtaUrl(claimUrl?: string | null): string {
  * interpolation.
  *
  * #3524 FOLLOW-UP — WHAT THE COPY NOW SAYS, AND WHY. Seth's order is ticket
- * first, chat second, who's going: the button is the buyer's ticket before it is
- * anything else, and the reason to open the app is the room full of people going
- * with them. Every offering type gets its own member so the noun is the buyer's
- * own noun ("the event chat" / "the trip chat" / "the experience chat") rather
- * than a generic one, and so that adding a fourth offering type is a compile
- * error here rather than a wrong word in a shipped email.
+ * first, then what opening the app gets you, then who's going: the button is the
+ * buyer's ticket before it is anything else, and the reason to open the app is
+ * the room full of people going with them. Every offering type gets its OWN
+ * member so the middle noun is true for that offering rather than generically
+ * plausible, and so that adding a fourth offering type is a compile error here
+ * rather than a wrong word in a shipped email.
  *
- * EVERY OFFERING TYPE HAS A GROUP CHAT — events, trips and experiences alike
- * (Seth, 2026-09-22). The experience template previously said "ticket + details"
- * and promised no chat; that was the odd one out, and it was wrong, not
- * deliberate. Do not reintroduce a chat-free variant on the theory that some
- * offering lacks one.
+ * ⚠️ AN EXPERIENCE HAS NO GROUP CHAT, AND THIS COPY MUST NOT PROMISE ONE.
+ * Verified in the schema, not assumed: `conversations_linked_entity_type_check`
+ * admits only ('direct','session','trip','event','support') — there is no
+ * `experience` conversation kind at all — and
+ * `add_buyer_to_event_chat` finds-or-creates only
+ * `AND e.event_type IN ('event','trip')`, returning silently otherwise. A paid
+ * experience order DOES run that helper from the checkout finalize base; it
+ * no-ops. `claim_attendance_internal_v2` reads the membership back and returns
+ * `chatJoined: false`, and a shipped migration test asserts that as CORRECT
+ * ("no conversation was conjured for the experience"). So the experience member
+ * says "the details", not "the experience chat". Restoring a chat noun here
+ * needs a MIGRATION first — a new `linked_entity_type`, plus widening the
+ * trigger and the helper — not a copy edit.
+ *
+ * "WHO'S GOING" IS HONEST ON ALL THREE, and is deliberately not conditional:
+ * connecting the ticket unlocks the guest list whatever the offering type, which
+ * is a different rail from the chat.
  */
 export type AppCtaHeadline =
   | "Your ticket, the event chat, and who's going — all in the app"
   | "Your ticket, the trip chat, and who's going — all in the app"
-  | "Your ticket, the experience chat, and who's going — all in the app";
+  | "Your ticket, the details, and who's going — all in the app";
 
 /**
  * The whole CTA block — the ONLY way an email may render "Open in Mingla", and
