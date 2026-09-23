@@ -784,6 +784,70 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'create-an-unlisted-rsvp-event-in-nigeria',
+    episode: 14,
+    title: 'Create an unlisted RSVP event in Nigeria',
+    blurb:
+      'An invite-style RSVP night in Lagos: cap the room, approve every guest, hide the public details and share an Unlisted link.',
+    duration: '2:33',
+    durationIso: 'PT2M33S',
+    chapter: 'creating',
+    intents: ['Take RSVPs'],
+    surfaces: ['iOS'],
+    bambooEntryId: null,
+    uploadedAt: '2026-09-23',
+    // Nothing is burned into this render, so the sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Create an RSVP event',
+        body:
+          'From Harmattan Club on Home, tap +, Create event and RSVP event. This is a guest list, not a ticket sale: people reply Going or Not going, and the creator has six steps rather than a Tickets step.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+      {
+        title: 'Name it, set the atmosphere and describe it',
+        body:
+          "Name it Members' Table: November and keep it In person. Choose Intimate, Classy and Exclusive, then Afrobeats, R and B, and Jazz. Use the description to tell guests that every RSVP is reviewed.",
+      },
+      {
+        title: 'Set Saturday night in Lagos',
+        body:
+          'Set Saturday 7 November 2026, from 19:00 to 23:00, and choose Africa/Lagos so guests see the correct local time.',
+      },
+      {
+        title: 'Choose Harmattan Club and keep its address hidden',
+        body:
+          'Choose Harmattan Club at 12 Ozumba Mbadiwe Road and leave Hide address on. The live page names the venue without exposing the street; the full location is shared only after a guest is going.',
+      },
+      {
+        title: 'Add the dinner cover and gallery',
+        body:
+          'Add the dinner video as the cover, then add three photos underneath for guests to swipe through.',
+      },
+      {
+        title: 'Make every place deliberate',
+        body:
+          'Limit the guest list to 40, keep extras off, start a waitlist and choose Approve each RSVP. One RSVP means one place, and you decide who is confirmed.',
+      },
+      {
+        title: 'Offer an optional chip-in',
+        body:
+          'Turn on chip-ins, suggest ₦500 and set ₦100 as the minimum. It is still optional: guests can RSVP without paying, so this is not a ticket price.',
+      },
+      {
+        title: 'Keep attendance details private',
+        body:
+          'Keep the guest list private and hide the spots-left count. The live page therefore shows neither attendee names nor the remaining capacity.',
+      },
+      {
+        title: 'Publish Unlisted and share the link',
+        body:
+          'Choose Unlisted, leave the discovery feed off and publish, then share the live link directly. Unlisted is link-based, not identity-gated: anyone with the link can open the page, but Mingla does not promote it in discovery. The live page keeps both the address and spots-left count hidden.',
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>
