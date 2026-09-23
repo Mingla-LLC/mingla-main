@@ -36,7 +36,7 @@ for (const [label, pattern] of [
   ['chapter', /chapter: 'creating',/],
   ['RSVP intent', /intents: \['Take RSVPs'\],/],
   ['iOS surface', /surfaces: \['iOS'\],/],
-  ['truthful pending Bamboo id', /bambooEntryId: null,/],
+  ['published Bamboo id', /bambooEntryId: '0_8i2089c8',/],
   ['upload date', /uploadedAt: '2026-09-23',/],
   ['caption availability', /hasCaptions: true,/],
 ]) {

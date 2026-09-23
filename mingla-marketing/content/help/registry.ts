@@ -795,7 +795,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
     chapter: 'creating',
     intents: ['Take RSVPs'],
     surfaces: ['iOS'],
-    bambooEntryId: null,
+    bambooEntryId: '0_8i2089c8',
     uploadedAt: '2026-09-23',
     // Nothing is burned into this render, so the sidecar track is the caption.
     hasCaptions: true,
