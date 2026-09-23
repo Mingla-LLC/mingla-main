@@ -160,15 +160,32 @@ function renderCalendarSection(input: TicketBodyInput): string {
   return renderCalendarBlockHtml(links);
 }
 
-// #2240 — the destination and the markup both come from appLink.ts now. The
-// order id used to be interpolated into an /orders/{id}/chat path on the
-// marketing host that has never existed (HTTP 404); nothing about the app CTA
-// is per-order, so no id is passed at all.
-function renderDownloadAppCta(): string {
-  return renderAppCtaHtml("Join your event chat in the Mingla app");
+// #2240 — the destination and the markup both come from appLink.ts. The order id
+// used to be interpolated into an /orders/{id}/chat path on the marketing host
+// that has never existed (HTTP 404).
+//
+// #3524 FOLLOW-UP — the CTA is now per-order when the caller has a minted claim
+// URL, and this email's ONLY call to action. `appLink.ts` still owns both the
+// markup and the fallback destination: what is threaded through here is the
+// already-minted URL, never a path this file builds.
+function renderDownloadAppCta(appCtaClaimUrl?: string | null): string {
+  return renderAppCtaHtml(
+    "Your ticket, the event chat, and who's going — all in the app",
+    appCtaClaimUrl,
+  );
 }
 
-export function renderTicketBody(input: TicketBodyInput): {
+/**
+ * `appCtaClaimUrl` — the per-order attendance claim URL, when the caller has
+ * one. It is a SECOND PARAMETER rather than a field on `TicketBodyInput` because
+ * it is not part of the order's content: the same body input renders with or
+ * without it, and `TicketBodyInput` is shared with the PDF and SMS paths that
+ * carry no link at all. Omit it and the button falls back to the download page.
+ */
+export function renderTicketBody(
+  input: TicketBodyInput,
+  appCtaClaimUrl?: string | null,
+): {
   html: string;
   text: string;
   subject: string;
@@ -214,7 +231,7 @@ export function renderTicketBody(input: TicketBodyInput): {
     ${renderLineItems(input.order)}
     ${orderShortLineHtml}
     ${renderCalendarSection(input)}
-    ${renderDownloadAppCta()}`;
+    ${renderDownloadAppCta(appCtaClaimUrl)}`;
 
   const totalText = input.order.totalCents > 0
     ? formatMoneyFromCents(input.order.totalCents, input.order.currency)
@@ -246,8 +263,12 @@ export function renderTicketBody(input: TicketBodyInput): {
     vatNoteText,
     "",
     `Order #${input.order.shortId}`,
-    // #2240 — same working link the HTML body carries, from the same constant.
-    appCtaTextLine("Join your event chat in the Mingla app"),
+    // #2240 — the SAME working link the HTML body carries, from the same
+    // resolver and the same `appCtaClaimUrl`, so the two bodies cannot diverge.
+    appCtaTextLine(
+      "Your ticket, the event chat, and who's going — all in the app",
+      appCtaClaimUrl,
+    ),
     "",
     "Your tickets are attached as a PDF — each one has a unique QR code for entry.",
   ].filter((line) => line !== null && line !== undefined);

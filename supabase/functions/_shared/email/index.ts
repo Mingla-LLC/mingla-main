@@ -73,7 +73,13 @@ export function renderTransactionalEmail(input: RenderInput): RenderResult {
     case "ticket_confirmation_paid":
     case "ticket_confirmation_free":
     case "ticket_confirmation_pending": {
-      const rendered = renderTicketBody(input.body as TicketBodyInput);
+      // #3524 FOLLOW-UP — the per-order claim URL, when the caller minted one,
+      // reaches the body's ONE CTA here. `undefined` is the honest default: the
+      // CTA then falls back to the download page rather than disappearing.
+      const rendered = renderTicketBody(
+        input.body as TicketBodyInput,
+        input.appCtaClaimUrl,
+      );
       bodyHtml = rendered.html;
       text = rendered.text;
       subject = rendered.subject;

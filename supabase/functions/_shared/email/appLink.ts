@@ -114,45 +114,125 @@
  * safe whatever this constant becomes.
  */
 
+import { escapeHtml } from "./escape.ts";
 import { SHELL_TOKENS } from "./shell.ts";
 
 const { BRAND_ORANGE_BUTTON } = SHELL_TOKENS;
 
 /**
- * THE destination. Mirrors `DOWNLOAD_PAGE_URL` in
+ * ─── #3524 FOLLOW-UP: ONE BLOCK, AND IT CARRIES THE REAL LINK ────────────────
+ *
+ * Until this change a ticket confirmation shipped TWO competing calls to
+ * action. This module rendered "Open in Mingla" at the bottom of the body,
+ * pointing at the download page; and then `ticket-confirmation-dispatch`
+ * CONCATENATED a second "Connect your attendance" block onto the finished body,
+ * pointing at the per-order claim URL. The marketed button went nowhere useful
+ * and the useful link was an afterthought below the fold.
+ *
+ * It was bolted on at the end for a real reason: the claim URL is minted AFTER
+ * the body is rendered, because minting is a write against
+ * `issue_order_attendance_claim_proof_v2` and the mint ORDER matters (#3551 —
+ * the checkout confirm screen mints too, and whichever ran second used to
+ * overwrite the other's proof). So the fix is NOT to mint earlier. It is to let
+ * the caller thread the already-minted URL INTO the render: every template now
+ * takes an optional claim URL and hands it to `renderAppCtaHtml` /
+ * `appCtaTextLine`, and the dispatch re-renders the body once the mint has
+ * returned instead of appending a second block to it.
+ *
+ * THE FALLBACK IS A PRODUCT DECISION, NOT A CONVENIENCE. An order can legitimately
+ * have no claim URL — the buyer already has an account, or the confirm screen
+ * armed the proof first and the dispatch's issuance came back `already_issued`.
+ * In that case the block still renders and the button falls back to
+ * `MINGLA_APP_LINK_URL`. A confirmation email must never lose its route into the
+ * app, so `resolveAppCtaUrl` has no "no link" arm at all.
+ */
+
+/**
+ * The FALLBACK destination, and the sole app-destination literal in the
+ * repository's email layer. Mirrors `DOWNLOAD_PAGE_URL` in
  * `mingla-business/src/constants/storeLinks.ts` (byte-compared by
  * `i-2240-email-app-link-sole-owner.mjs`), which is what
  * `resolveConfirmationAppTarget` hands a caller that cannot name a platform.
  *
- * NEVER interpolate an order id, a slug, or any per-buyer value into this URL.
- * Nothing on this path is per-order: the ticket is reconnected to the account
- * AFTER install by #2217's `attendance-claim-identity`, which matches the
- * account's own provider-verified email/phone against the order. A per-order
- * secret in an email link would be readable by every forwarding hop.
+ * NEVER interpolate an order id, a slug, or any per-buyer value into THIS URL.
+ * Nothing on this path is per-order. A per-order value belongs in the claim URL
+ * the caller passes to `resolveAppCtaUrl`, which is minted per order, single-use
+ * and revocable — not spliced into the download page's path.
  */
 export const MINGLA_APP_LINK_URL = "https://usemingla.com/download";
+
+/**
+ * THE ONE PLACE the CTA's destination is decided. `renderAppCtaHtml` and
+ * `appCtaTextLine` both call it and neither may name a URL of its own, which is
+ * what keeps #2240's plain-text twin in lockstep with the HTML by construction
+ * rather than by review. The gate enforces exactly that: see rule 6 in
+ * `i-2240-email-app-link-sole-owner.mjs`.
+ *
+ * The claim URL arrives as a `string` because it is minted at runtime and cannot
+ * be a closed union, so this is the module's one open input. It is therefore
+ * VALIDATED rather than trusted: anything that is not a non-empty `https://`
+ * URL degrades to `MINGLA_APP_LINK_URL`. An empty string, a `javascript:` URL or
+ * a null from a failed mint can never become the button's href, and the failure
+ * mode of a bad input is the download page — never a broken or hostile link.
+ */
+export function resolveAppCtaUrl(claimUrl?: string | null): string {
+  if (typeof claimUrl === "string") {
+    const candidate = claimUrl.trim();
+    if (candidate.startsWith("https://") && candidate.length > "https://".length) {
+      return candidate;
+    }
+  }
+  return MINGLA_APP_LINK_URL;
+}
 
 /**
  * The CTA copy, as a CLOSED UNION rather than a `string`.
  *
  * The headline is interpolated into HTML without escaping, so accepting a bare
  * `string` would be an injection seam the moment someone passed a brand or
- * buyer value through it. A union of the three literals the product actually
- * uses makes that unrepresentable — `renderAppCtaHtml(\`… ${brand.name} …\`)`
- * does not compile — which is a stronger guarantee than a lint rule and needs
- * no gate to enforce it. The trip template picks between two members with a
- * ternary rather than building its noun by interpolation.
+ * buyer value through it. A union of the literals the product actually uses
+ * makes that unrepresentable — `renderAppCtaHtml(\`… ${brand.name} …\`)` does
+ * not compile — which is a stronger guarantee than a lint rule and needs no gate
+ * to enforce it. A template picks a member; it never builds its noun by
+ * interpolation.
+ *
+ * #3524 FOLLOW-UP — WHAT THE COPY NOW SAYS, AND WHY. Seth's order is ticket
+ * first, chat second, who's going: the button is the buyer's ticket before it is
+ * anything else, and the reason to open the app is the room full of people going
+ * with them. Every offering type gets its own member so the noun is the buyer's
+ * own noun ("the event chat" / "the trip chat" / "the experience chat") rather
+ * than a generic one, and so that adding a fourth offering type is a compile
+ * error here rather than a wrong word in a shipped email.
+ *
+ * EVERY OFFERING TYPE HAS A GROUP CHAT — events, trips and experiences alike
+ * (Seth, 2026-09-22). The experience template previously said "ticket + details"
+ * and promised no chat; that was the odd one out, and it was wrong, not
+ * deliberate. Do not reintroduce a chat-free variant on the theory that some
+ * offering lacks one.
  */
 export type AppCtaHeadline =
-  | "Join your event chat in the Mingla app"
-  | "Join your trip chat in the Mingla app"
-  | "Your ticket + details are in the Mingla app";
+  | "Your ticket, the event chat, and who's going — all in the app"
+  | "Your ticket, the trip chat, and who's going — all in the app"
+  | "Your ticket, the experience chat, and who's going — all in the app";
 
-/** The whole CTA block — the ONLY way an email may render "Open in Mingla". */
-export function renderAppCtaHtml(headline: AppCtaHeadline): string {
+/**
+ * The whole CTA block — the ONLY way an email may render "Open in Mingla", and
+ * now the ONLY call to action a confirmation email carries.
+ *
+ * `claimUrl` is the per-order attendance claim URL when the caller has one. The
+ * href is HTML-attribute escaped because a claim URL carries a query-shaped
+ * fragment (`#v=1&kind=order&…`), and a raw `&` in an attribute is wrong even
+ * where browsers tolerate it. The plain-text twin carries the same URL
+ * unescaped, which is what "the same link" means across the two bodies.
+ */
+export function renderAppCtaHtml(
+  headline: AppCtaHeadline,
+  claimUrl?: string | null,
+): string {
+  const href = escapeHtml(resolveAppCtaUrl(claimUrl));
   return `<div style="margin-top:32px;padding:24px;background:#FFF5EC;border-radius:12px;border:1px solid #FFD9B8;text-align:center;">
     <p style="margin:0;font-size:15px;color:#6B5A47;">${headline}</p>
-    <a href="${MINGLA_APP_LINK_URL}"
+    <a href="${href}"
        style="display:inline-block;margin-top:12px;padding:12px 24px;background:${BRAND_ORANGE_BUTTON};color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">
       Open in Mingla
     </a>
@@ -161,9 +241,13 @@ export function renderAppCtaHtml(headline: AppCtaHeadline): string {
 
 /**
  * The plain-text twin. #2240's requirement is that the text body carry the SAME
- * working link as the HTML — both come from `MINGLA_APP_LINK_URL` above, so
- * they cannot diverge.
+ * working link as the HTML. Both bodies route through `resolveAppCtaUrl` and
+ * neither names a URL of its own, so a caller that passes the same `claimUrl`
+ * to both cannot make them diverge.
  */
-export function appCtaTextLine(headline: AppCtaHeadline): string {
-  return `${headline}: ${MINGLA_APP_LINK_URL}`;
+export function appCtaTextLine(
+  headline: AppCtaHeadline,
+  claimUrl?: string | null,
+): string {
+  return `${headline}: ${resolveAppCtaUrl(claimUrl)}`;
 }

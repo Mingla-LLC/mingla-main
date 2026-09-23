@@ -49,7 +49,6 @@ import { ticketPdfStoragePath } from "../_shared/ticketPdfPath.ts";
 import { renderTripConfirmationEmail } from "../_shared/email/tripConfirmationEmail.ts";
 // ORCH-1195 FIX 4 — experience-shaped confirmation (includes the itinerary/stops).
 import { renderExperienceConfirmationEmail } from "../_shared/email/experienceConfirmationEmail.ts";
-import { renderAttendanceClaimAvailableEmail } from "../_shared/email/ticketBody.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
 // ORCH-0869 (Tr3) Stage 1b: installment-kind renderers. Routed via body.kind
 // from installmentWebhookHandlers.ts and process-scheduled-installments.
@@ -1181,6 +1180,34 @@ export const handler = async (req: Request): Promise<Response> => {
   let renderedEmail: ReturnType<typeof renderTransactionalEmail> | null = null;
   let renderedPdf: Awaited<ReturnType<typeof buildTicketPdf>> | null = null;
   let renderError: { code: string; message: string } | null = null;
+  /**
+   * #3524 FOLLOW-UP — WHY THE RENDER IS A CLOSURE NOW.
+   *
+   * The confirmation email used to carry TWO calls to action: the "Open in
+   * Mingla" button inside the body (pointing at the download page) and a second
+   * "Connect your attendance" block CONCATENATED onto the finished body below it
+   * (carrying the real per-order claim URL). The second block existed because of
+   * an ordering problem, not a design choice: the claim URL is minted further
+   * down, inside the notification loop, and by then the body was already a
+   * string.
+   *
+   * MINTING CANNOT MOVE EARLIER. Issuance is a write against
+   * `issue_order_attendance_claim_proof_v2`, and the order in which it runs
+   * relative to the checkout confirm screen's own mint is exactly what #3551
+   * fixed. So the mint stays where it is, and the BODY becomes late instead: this
+   * closure captures everything the templates need except the claim URL, and is
+   * invoked a second time once the mint has returned one.
+   *
+   * It is called eagerly with `null` right below, so a render failure still
+   * surfaces before the send loop is entered (and the PDF is still built exactly
+   * once). The second call differs only in one string, on inputs that have
+   * already rendered successfully.
+   */
+  let renderEmailBody:
+    | ((appCtaClaimUrl: string | null) => ReturnType<
+      typeof renderTransactionalEmail
+    >)
+    | null = null;
 
   try {
     // ORCH-0859 (Tr2): branch by event_type. Trip orders use trip-shaped
@@ -1214,7 +1241,8 @@ export const handler = async (req: Request): Promise<Response> => {
         ?.business_trip as
           | Record<string, unknown>
           | undefined) ?? {};
-      renderedEmail = renderTripConfirmationEmail({
+      renderEmailBody = (appCtaClaimUrl) => renderTripConfirmationEmail({
+        appCtaClaimUrl,
         recipient: {
           name: order.buyer_name,
           email: order.buyer_email ?? "",
@@ -1260,7 +1288,8 @@ export const handler = async (req: Request): Promise<Response> => {
         start_time: string | null;
         price_cents: number | null;
       }>;
-      renderedEmail = renderExperienceConfirmationEmail({
+      renderEmailBody = (appCtaClaimUrl) => renderExperienceConfirmationEmail({
+        appCtaClaimUrl,
         recipient: {
           name: order.buyer_name,
           email: order.buyer_email ?? "",
@@ -1290,15 +1319,19 @@ export const handler = async (req: Request): Promise<Response> => {
         },
       });
     } else {
-      renderedEmail = renderTransactionalEmail({
+      renderEmailBody = (appCtaClaimUrl) => renderTransactionalEmail({
         variant: context.bodyInput.variant,
         recipient: {
           name: order.buyer_name,
           email: order.buyer_email ?? "",
         },
         body: context.bodyInput,
+        appCtaClaimUrl,
       });
     }
+    // The download-page arm: what an order with no claim URL really sends, and
+    // what proves the render works before the send loop is entered.
+    renderedEmail = renderEmailBody(null);
     assertNotResendSandbox(renderedEmail.from);
     renderedPdf = await buildTicketPdf({
       event: {
@@ -1530,26 +1563,36 @@ export const handler = async (req: Request): Promise<Response> => {
               }).webClaimUrl;
             }
           }
+          // #3524 FOLLOW-UP — ONE CTA, CARRYING THE REAL LINK.
+          //
+          // This used to append a whole second "Connect your attendance" block
+          // to the finished body, so a buyer got two competing buttons and the
+          // marketed one ("Open in Mingla") went to the download page while the
+          // useful one sat below it. The claim URL now goes THROUGH the template:
+          // the body is re-rendered with it, which moves the link onto the one
+          // button the email already had.
+          //
+          // No claim URL is a normal outcome, not an error — the buyer already
+          // has an account, or the checkout confirm screen armed the proof first
+          // and issuance came back `already_issued`. Then `renderedEmail` (the
+          // eager `null` render) is sent as-is and its button falls back to the
+          // download page. A confirmation email never loses its route into the
+          // app.
+          //
+          // A throw here is deliberately NOT caught and downgraded: it would mean
+          // the render broke on inputs that already rendered once, and the loop's
+          // existing catch marks the notification retryable. Silently sending the
+          // fallback instead would resurrect the defect this change removes.
+          const emailToSend =
+            attendanceWebClaimUrl !== null && renderEmailBody !== null
+              ? renderEmailBody(attendanceWebClaimUrl)
+              : renderedEmail;
           const sent = await sendResendEmailWithAttachment({
-            from: formatSenderHeader(renderedEmail.from),
+            from: formatSenderHeader(emailToSend.from),
             to: notification.recipient,
-            subject: renderedEmail.subject,
-            html: attendanceWebClaimUrl
-              ? `${renderedEmail.html}${
-                renderAttendanceClaimAvailableEmail({
-                  eventTitle: context.bodyInput.event.title,
-                  claimUrl: attendanceWebClaimUrl,
-                }).html
-              }`
-              : renderedEmail.html,
-            text: attendanceWebClaimUrl
-              ? `${renderedEmail.text}\n\n${
-                renderAttendanceClaimAvailableEmail({
-                  eventTitle: context.bodyInput.event.title,
-                  claimUrl: attendanceWebClaimUrl,
-                }).text
-              }`
-              : renderedEmail.text,
+            subject: emailToSend.subject,
+            html: emailToSend.html,
+            text: emailToSend.text,
             attachments,
           });
           await supabase.from("ticket_order_notifications").update({
