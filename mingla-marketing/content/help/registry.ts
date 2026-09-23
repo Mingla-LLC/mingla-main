@@ -725,6 +725,65 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'run-a-free-rsvp-night',
+    episode: 13,
+    title: 'Run a free RSVP night',
+    blurb:
+      'No tickets, just a list — cap the numbers, let guests bring extras, approve people automatically or one at a time, and take an optional chip-in.',
+    duration: '2:18',
+    durationIso: 'PT2M18S',
+    chapter: 'creating',
+    intents: ['Sell tickets'],
+    surfaces: ['iOS'],
+    bambooEntryId: '0_gncrd7ft',
+    uploadedAt: '2026-09-22',
+    // Nothing is burned into this render, so the sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Create an RSVP, not a ticketed event',
+        body:
+          'On Home, switch to the brand you are hosting under, then tap +, Create event and — this time — RSVP event. The app describes it as “Guests reply Going or Not going. No tickets — like a private invite.” It is six steps rather than seven, because there is no Tickets step at all.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+      {
+        title: 'Name it, and tag the night',
+        body:
+          'The format stays In person. Pick a party type, then the vibe tags and the genres — those become the tags guests see on the page. Then a line about the night.',
+      },
+      {
+        title: 'One date, and your timezone',
+        body:
+          'Step two: pick the date, then when doors open and when it ends. The timezone row shows the one your guests will see the times in.',
+      },
+      {
+        title: 'The venue, and whether the address shows',
+        body:
+          'Step three takes the venue name and its address. Leave “Hide address until ticket purchase” off and the address shows on the public event page, so people can find you without asking.',
+      },
+      {
+        title: 'Cover and photos',
+        body:
+          'Add a video cover, then the photos that sit under it — guests swipe through them after the video.',
+      },
+      {
+        title: 'The step that only exists on an RSVP',
+        body:
+          'Step five. Limit the guest list and set the number the room holds. Let guests bring extras — each extra counts toward your limit, so the number you set is the number that turns up. Start a waitlist for when it fills. Then approvals: auto-approve puts a guest in the moment they tap Going, or you can approve each RSVP yourself.',
+      },
+      {
+        title: 'An optional chip-in, not a ticket price',
+        body:
+          'Turn on “Let guests chip in”, suggest an amount and set a minimum. Guests pay what they like, or nothing — it stays optional. Payouts are on from the moment you publish, with no extra setup.',
+      },
+      {
+        title: 'Who can see what, then publish',
+        body:
+          'Keep the guest list private if you would rather people did not see who is going, or hide how many spots are left. Public, plus Mingla’s discovery feed, means anyone can find it. Publish and the invite link goes live immediately — the page shows who is going, how many spots remain, and Going, Maybe or Can’t go.',
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>
