@@ -848,6 +848,70 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'create-a-recurring-event-in-nigeria',
+    episode: 15,
+    title: 'Create a recurring event in Nigeria',
+    blurb:
+      'A weekly Lagos event with eight Sunday dates, a ₦100 Rooftop Pass, Paystack payouts and a street address that stays private until purchase.',
+    duration: '2:40',
+    durationIso: 'PT2M40S',
+    chapter: 'creating',
+    intents: ['Sell tickets'],
+    surfaces: ['iOS'],
+    bambooEntryId: '0_vorph0mx',
+    uploadedAt: '2026-09-24',
+    // Nothing is burned into this render, so the sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Create a ticketed event from Harmattan Club',
+        body:
+          'Start at Harmattan Club on Home, tap +, Create event and Ticketed event. Keep the format In person: this series has a physical venue and sells a pass for each occurrence.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+      {
+        title: 'Name the night and finish the description',
+        body:
+          'Name it Sunday Rooftop Sessions and choose Club Night. Add Social, Vibrant and Laid-back, then Afrobeats, Afro House and Amapiano. Close the keyboard and review the complete rooftop description before moving on.',
+      },
+      {
+        title: 'Repeat it across eight Sundays',
+        body:
+          'Start on Sunday 18 October 2026, from 19:00 to 23:00. Choose weekly recurrence, repeat every Sunday, keep eight occurrences and use Africa/Lagos so every date is shown in the right local time.',
+      },
+      {
+        title: 'Choose the venue and withhold its street address',
+        body:
+          'Choose Harmattan Club at 12 Ozumba Mbadiwe Road and leave Hide address on. The live page can name the venue, but the full location is shared only after a guest gets tickets.',
+      },
+      {
+        title: 'Build the recurring-event look',
+        body:
+          'Add a static cover and three gallery photos. Use the warm orange theme, Poppins and the Shimmer reveal so every occurrence has the same finished visual identity.',
+      },
+      {
+        title: 'Create the ₦100 Rooftop Pass',
+        body:
+          'Name the ticket Rooftop Pass, price it at ₦100 and set 60 tickets per night. Sell online and at the door, enable the waitlist, limit each buyer to four and allow transfers. On this Nigerian brand, online naira sales are paid through Paystack.',
+      },
+      {
+        title: 'Keep the event public and the remaining count private',
+        body:
+          'In Settings, keep the event Public. Leave approval off, keep transfers and in-person payments on, and hide the remaining ticket count from the public page.',
+      },
+      {
+        title: 'Preview, then publish the whole series',
+        body:
+          'Preview the guest page and check the schedule, pass and privacy choices. Publish the recurring event only when the page is correct; Mingla confirms that all eight occurrences will be created together.',
+      },
+      {
+        title: 'Verify what guests can buy',
+        body:
+          'On the live page, confirm that guests can choose from eight Sundays, the Rooftop Pass is ₦100, the complete description is readable and the street address remains private until they get tickets.',
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>
