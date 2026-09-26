@@ -19,9 +19,7 @@
  * ladder; this sheet never consults the device clock.
  */
 
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
+import type { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 // ORCH-1193 [sheet-cutoff]: body ScrollView via SmartScrollView wrapper so the
@@ -38,7 +36,6 @@ import {
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
-import { GlassCard } from "../ui/GlassCard";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 import { WebDateTimeInput } from "../ui/WebDateTimeInput";
@@ -75,6 +72,38 @@ export interface MenuCategorySheetProps {
 }
 
 type TimePickerMode = "start" | "end" | null;
+
+type DeferredDateTimePickerProps = React.ComponentProps<
+  (typeof import("@react-native-community/datetimepicker"))["default"]
+>;
+type DeferredPickerGlassCardProps = React.ComponentProps<
+  (typeof import("../ui/GlassCard"))["GlassCard"]
+>;
+
+/**
+ * The ordinary category sheet must stay importable in the stock Business Jest
+ * lane. Both native-only dependencies reach ESM/native modules at evaluation
+ * time, so resolve them only after a native picker is actually opened.
+ */
+const DeferredDateTimePicker = (
+  props: DeferredDateTimePickerProps,
+): React.ReactElement => {
+  const pickerModule =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("@react-native-community/datetimepicker") as typeof import("@react-native-community/datetimepicker");
+  const Picker = pickerModule.default;
+  return <Picker {...props} />;
+};
+
+const DeferredPickerGlassCard = (
+  props: DeferredPickerGlassCardProps,
+): React.ReactElement => {
+  const glassCardModule =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("../ui/GlassCard") as typeof import("../ui/GlassCard");
+  const PickerGlassCard = glassCardModule.GlassCard;
+  return <PickerGlassCard {...props} />;
+};
 
 const dateFromHhmm = (hhmm: string, fallback: string): Date => {
   const canonical = normalizeTimeInput(hhmm) ?? fallback;
@@ -432,7 +461,10 @@ export function MenuCategorySheet({
           style={styles.pickerDockWrap}
           testID="menu-category-time-picker-dock"
         >
-          <GlassCard variant="elevated" style={styles.pickerDockCard}>
+          <DeferredPickerGlassCard
+            variant="elevated"
+            style={styles.pickerDockCard}
+          >
             <View style={styles.pickerDoneRow}>
               <Text style={styles.pickerDockTitle}>
                 {pickerMode === "start" ? "Start time" : "End time"}
@@ -446,7 +478,7 @@ export function MenuCategorySheet({
               />
             </View>
             {tempPickerValue !== null ? (
-              <DateTimePicker
+              <DeferredDateTimePicker
                 value={tempPickerValue}
                 mode="time"
                 display="spinner"
@@ -457,12 +489,12 @@ export function MenuCategorySheet({
                 testID="menu-category-native-time-picker"
               />
             ) : null}
-          </GlassCard>
+          </DeferredPickerGlassCard>
         </View>
       ) : null}
 
       {pickerMode !== null && Platform.OS === "android" ? (
-        <DateTimePicker
+        <DeferredDateTimePicker
           value={
             tempPickerValue ??
             dateFromHhmm(

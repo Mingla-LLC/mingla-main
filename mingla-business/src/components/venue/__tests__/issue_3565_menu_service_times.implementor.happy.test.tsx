@@ -230,13 +230,17 @@ describe("#3565 menu service times", () => {
     const save = byTestID("menu-category-save");
     expect(save.props.disabled).toBe(false);
     call(save, "onPress");
-    expect(mockSave).toHaveBeenCalledWith({
-      name: "Evening Plates",
-      description: null,
-      serviceWindowStart: "17:00",
-      serviceWindowEnd: "22:30",
-      serviceDays: null,
-    });
+    // #3561 composes a stable retry id into the same payload. This guard owns
+    // the service-window fields and must allow that independently guarded id.
+    expect(mockSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "Evening Plates",
+        description: null,
+        serviceWindowStart: "17:00",
+        serviceWindowEnd: "22:30",
+        serviceDays: null,
+      }),
+    );
   });
 
   test("web renders visible native time inputs and clear returns to all day", () => {
