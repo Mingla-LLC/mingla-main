@@ -64,6 +64,12 @@ export type ButtonVariant = "primary" | "secondary" | "ghost" | "destructive";
 export type ButtonSize = "sm" | "md" | "lg";
 export type ButtonShape = "pill" | "square";
 
+const CHECKABLE_ACCESSIBILITY_ROLES: ReadonlySet<AccessibilityRole> = new Set([
+  "checkbox",
+  "radio",
+  "togglebutton",
+]);
+
 // ORCH-1162 Bug 3 — optional brand-accent override for the `primary` variant.
 // The WCAG contrast helpers live in the pure, unit-testable buttonAccentContrast
 // util (they mirror packages/offering-rendering/themePalette.ts). The label color
@@ -333,7 +339,9 @@ export const Button = forwardRef<
       accessibilityRole={accessibilityRole}
       accessibilityState={{ ...accessibilityState, disabled, busy: loading }}
       aria-checked={
-        accessibilityRole === "checkbox" ? accessibilityState?.checked : undefined
+        CHECKABLE_ACCESSIBILITY_ROLES.has(accessibilityRole)
+          ? accessibilityState?.checked
+          : undefined
       }
       accessibilityLabel={accessibilityLabel ?? label}
       testID={testID}
