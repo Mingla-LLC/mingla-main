@@ -68,7 +68,7 @@ export interface MenuCategorySheetProps {
   category: Menu | null;
   onSave: (input: MenuCategorySheetSaveInput) => void;
   saving: boolean;
-  saveFailed: boolean;
+  saveFailed?: boolean;
   /** Delete the category being edited (edit mode + manager). Omit to hide. */
   onDelete?: (id: string) => void;
   deleting?: boolean;
@@ -82,7 +82,7 @@ export function MenuCategorySheet({
   category,
   onSave,
   saving,
-  saveFailed,
+  saveFailed = false,
   onDelete,
   deleting = false,
   canDelete = false,

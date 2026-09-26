@@ -57,6 +57,12 @@ const mockUpsertMutate =
   >();
 const mockIdleMutate = jest.fn();
 
+jest.mock("@react-native-community/datetimepicker", () => ({
+  __esModule: true,
+  default: (props: Record<string, unknown>) =>
+    React.createElement("NativeDateTimePicker", props),
+}));
+
 jest.mock("../../../hooks/useCurrentBrand", () => ({
   useCurrentBrand: () => ({ defaultCurrency: "USD" }),
 }));
@@ -168,6 +174,36 @@ const call = (node: TestNode, propName: string, ...args: unknown[]): void => {
   (handler as (...values: unknown[]) => void)(...args);
 };
 
+const setServiceTime = (testID: string, hhmm: string): void => {
+  const control = input(testID);
+  if (typeof control.props.onChangeText === "function") {
+    act(() => call(control, "onChangeText", hhmm));
+    return;
+  }
+
+  act(() => call(control, "onPress"));
+  const [hours = "0", minutes = "0"] = hhmm.split(":");
+  const selected = new Date(2026, 0, 1, Number(hours), Number(minutes));
+  const picker = tree.root.findByProps({
+    testID: "menu-category-native-time-picker",
+  });
+  act(() =>
+    call(
+      picker,
+      "onChange",
+      {
+        type: "set",
+        nativeEvent: { timestamp: selected.getTime(), utcOffset: 0 },
+      },
+      selected,
+    ),
+  );
+  const done = tree.root
+    .findAllByType("MockButton")
+    .find((node) => node.props.label === "Done");
+  if (done !== undefined) act(() => call(done, "onPress"));
+};
+
 const mutationCall = (
   index: number,
 ): {
@@ -219,10 +255,10 @@ describe("#3561 category-save recovery", () => {
     act(() => {
       call(input("menu-category-name"), "onChangeText", "Late plates");
       call(input("menu-category-desc"), "onChangeText", "Everything after ten");
-      call(input("menu-category-window-start"), "onChangeText", "22:00");
-      call(input("menu-category-window-end"), "onChangeText", "02:00");
-      call(button("Sun"), "onPress");
     });
+    setServiceTime("menu-category-window-start", "22:00");
+    setServiceTime("menu-category-window-end", "02:00");
+    act(() => call(button("Sun"), "onPress"));
 
     act(() => call(button("Add category"), "onPress"));
     const first = mutationCall(0);
@@ -255,8 +291,6 @@ describe("#3561 category-save recovery", () => {
     expect(input("menu-category-desc").props.value).toBe(
       "Everything after ten",
     );
-    expect(input("menu-category-window-start").props.value).toBe("22:00");
-    expect(input("menu-category-window-end").props.value).toBe("02:00");
     expect(button("Sun").props.variant).toBe("secondary");
     expect(button("Try again").props.accessibilityLabel).toBe(
       "Try saving category again",
@@ -265,6 +299,10 @@ describe("#3561 category-save recovery", () => {
     act(() => call(button("Try again"), "onPress"));
     const retry = mutationCall(1);
     expect(retry.input.id).toBe(first.input.id);
+    expect(retry.input).toMatchObject({
+      serviceWindowStart: "22:00",
+      serviceWindowEnd: "02:00",
+    });
     expect(
       tree.root.findAllByProps({ testID: "menu-category-save-error" }),
     ).toHaveLength(0);
