@@ -1,5 +1,14 @@
 # Invariant Registry
 
+## ACTIVE — issue #3566 (menu money drafts are saved exactly or rejected)
+
+### I-PROPOSED-3566-MENU-MONEY-DRAFT-INTEGRITY (ACTIVE)
+
+- **Rule:** Every nonblank `MenuItemSheet` Price or private Cost draft is parsed in full by one deterministic, currency-scale-aware grammar before `onSave`. A valid draft becomes the exact in-range integer minor-unit amount it expresses; an invalid draft keeps its raw text, renders a field-associated accessible error, disables Save, and cannot reach the writer. Blank alone becomes `null`, while zero remains a real amount.
+- **Relationship:** Extends active `I-PROPOSED-1186-MENU-DISPLAY-ONLY` without changing stored menu integers, public readers, brand-currency rendering, blank price-on-request behavior, private-cost confidentiality, or server-authoritative order pricing. Preserves `I-PROPOSED-962-NO-GBP-IN-PREBANK-MONEY-SURFACES`: a brand without an established currency receives code-free validation copy and never sees the internal GBP crash guard.
+- **Enforcement:** `mingla-business/src/components/venue/__tests__/menuMoneyDraft.issue3566.test.ts` (implementor happy path) and `menuMoneyDraft.issue3566.tester-adversarial.test.ts` (independent tester) are both selected by the required, all-PR `mingla-business jest (full suite)` gate through the stock `jest.config.cjs` `__tests__/**/*.test.ts` match. Both guards require recorded fail-on-revert/pass-on-restore proof before #3566 can close.
+- **Status:** ACTIVE in the #3566 implementation PR; review-ready requires both suites, the dedicated workflow, and every repository check green.
+
 ## DRAFT — issue #3351 (a free trip with intake reaches its reservation)
 
 ### I-PROPOSED-3351-TRIP-CHECKOUT-STEP-ORDER-HAS-ONE-OWNER (DRAFT)

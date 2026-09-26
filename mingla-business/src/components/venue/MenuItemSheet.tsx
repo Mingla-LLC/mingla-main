@@ -3,8 +3,9 @@
  *
  * Mirrors VenueTableSheet + the VenueSettingsModule currency-aware price input.
  * Name (required), description, price (optional, currency-aware), availability
- * toggle. Price uses majorFromMinor (hydrate) / minorFromMajor (commit) so it is
- * zero-decimal-currency safe; a BLANK price commits NULL ("price on request").
+ * toggle. Price uses majorFromMinor to hydrate and the exact menu-draft parser
+ * to commit, so it is zero-decimal-currency safe; a BLANK price commits NULL
+ * ("price on request").
  * The currency is the brand default_currency (NO per-item currency picker, never
  * GBP-defaulted).
  *
@@ -27,7 +28,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -38,11 +39,16 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 import {
+  formatCurrency,
   majorFromMinor,
-  minorFromMajor,
   normalizeCurrency,
 } from "../../utils/currency";
 import type { MenuItem } from "../../services/menusService";
+import {
+  menuMoneyFractionDigits,
+  parseMenuMoneyDraft,
+  type MenuMoneyDraftResult,
+} from "./menuMoneyDraft";
 
 export interface MenuItemSheetSaveInput {
   name: string;
@@ -138,49 +144,63 @@ export function MenuItemSheet({
     );
   }, [visible, item, code]);
 
-  // Parse the draft → integer cents (currency-aware; zero-decimal safe). A
-  // blank / non-numeric draft → null ("price on request"). Negative → null.
-  const priceCents = useMemo<number | null>(() => {
-    const trimmed = priceDraft.replace(/,/g, "").trim();
-    if (trimmed.length === 0) return null;
-    const major = Number.parseFloat(trimmed);
-    if (!Number.isFinite(major) || major < 0) return null;
-    return minorFromMajor(major, code);
-  }, [priceDraft, code]);
-
-  // Same currency-aware parse as the price. Blank -> null (not yet costed).
-  const costCents = useMemo<number | null>(() => {
-    const trimmed = costDraft.replace(/,/g, "").trim();
-    if (trimmed.length === 0) return null;
-    const major = Number.parseFloat(trimmed);
-    if (!Number.isFinite(major) || major < 0) return null;
-    return minorFromMajor(major, code);
-  }, [costDraft, code]);
+  const priceResult = useMemo<MenuMoneyDraftResult>(
+    () => parseMenuMoneyDraft(priceDraft, code),
+    [priceDraft, code],
+  );
+  const costResult = useMemo<MenuMoneyDraftResult>(
+    () => parseMenuMoneyDraft(costDraft, code),
+    [costDraft, code],
+  );
+  const fractionDigits = menuMoneyFractionDigits(code);
+  const priceError = menuMoneyDraftError(
+    priceResult,
+    code,
+    brandHasCurrency,
+    fractionDigits,
+  );
+  const costError = menuMoneyDraftError(
+    costResult,
+    code,
+    brandHasCurrency,
+    fractionDigits,
+  );
+  const moneyPlaceholder = fractionDigits === 0 ? "0" : "0.00";
 
   const showDelete = isEdit && canDelete && onDelete !== undefined;
-  const canSave = name.trim().length > 0 && !saving;
+  const canSave =
+    name.trim().length > 0 &&
+    !saving &&
+    priceResult.kind !== "invalid" &&
+    costResult.kind !== "invalid";
   const snap = useMemo<number>(() => 0.9, []);
 
   const handleSave = useCallback((): void => {
-    if (!canSave) return;
+    if (
+      priceResult.kind === "invalid" ||
+      costResult.kind === "invalid" ||
+      !canSave
+    ) {
+      return;
+    }
     onSave({
       name: name.trim(),
       description: description.trim().length > 0 ? description.trim() : null,
-      priceCents,
+      priceCents: priceResult.cents,
       isAvailable,
       allowsNotes,
       prepStation,
-      costCents,
+      costCents: costResult.cents,
     });
   }, [
     canSave,
     name,
     description,
-    priceCents,
+    priceResult,
     isAvailable,
     allowsNotes,
     prepStation,
-    costCents,
+    costResult,
     onSave,
   ]);
 
@@ -230,10 +250,24 @@ export function MenuItemSheet({
               value={priceDraft}
               onChangeText={setPriceDraft}
               variant="number"
-              placeholder="0.00"
+              placeholder={moneyPlaceholder}
               accessibilityLabel={`Item price${brandHasCurrency ? ` in ${code}` : ""}`}
+              error={priceError}
+              errorId="menu-item-price-error"
+              renderErrorMessage={false}
               testID="menu-item-price"
             />
+            {priceError !== null ? (
+              <Text
+                accessibilityRole="alert"
+                aria-live="assertive"
+                nativeID="menu-item-price-error"
+                style={styles.moneyError}
+                testID="menu-item-price-error"
+              >
+                {priceError}
+              </Text>
+            ) : null}
           </Field>
           <Text style={styles.helper}>
             Leave blank to show “Price on request”.
@@ -252,10 +286,24 @@ export function MenuItemSheet({
               value={costDraft}
               onChangeText={setCostDraft}
               variant="number"
-              placeholder="0.00"
+              placeholder={moneyPlaceholder}
               accessibilityLabel={`What this item costs you${brandHasCurrency ? ` in ${code}` : ""}`}
+              error={costError}
+              errorId="menu-item-cost-error"
+              renderErrorMessage={false}
               testID="menu-item-cost"
             />
+            {costError !== null ? (
+              <Text
+                accessibilityRole="alert"
+                aria-live="assertive"
+                nativeID="menu-item-cost-error"
+                style={styles.moneyError}
+                testID="menu-item-cost-error"
+              >
+                {costError}
+              </Text>
+            ) : null}
           </Field>
           <Text style={styles.helper}>
             Only you ever see this. Guests never do.
@@ -363,6 +411,34 @@ const STATION_CHOICES: readonly {
   { label: "Somewhere else", value: "other" },
 ];
 
+function menuMoneyDraftError(
+  result: MenuMoneyDraftResult,
+  code: string,
+  brandHasCurrency: boolean,
+  fractionDigits: 0 | 2,
+): string | null {
+  if (result.kind !== "invalid") return null;
+  if (result.reason === "format") {
+    return "Enter a valid amount, for example 14.90.";
+  }
+  if (result.reason === "precision") {
+    if (fractionDigits === 0) {
+      return brandHasCurrency
+        ? `${code} uses whole amounts; remove the decimal places.`
+        : "Use whole amounts; remove the decimal places.";
+    }
+    return brandHasCurrency
+      ? `${code} supports at most 2 decimal places.`
+      : "Use no more than 2 decimal places.";
+  }
+  if (!brandHasCurrency) {
+    return fractionDigits === 0
+      ? "Amount must be 100,000,000 or less."
+      : "Amount must be 1,000,000.00 or less.";
+  }
+  return `Amount must be ${formatCurrency(100_000_000, code, true)} or less.`;
+}
+
 interface FieldProps {
   label: string;
   children: React.ReactNode;
@@ -446,6 +522,12 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: textTokens.tertiary,
     marginTop: spacing.xxs,
+  },
+  moneyError: {
+    ...typography.bodySm,
+    color: semantic.errorText,
+    fontWeight: "600",
+    marginTop: spacing.xs,
   },
   toggleRow: {
     flexDirection: "row",
