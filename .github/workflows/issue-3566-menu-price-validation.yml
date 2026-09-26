@@ -3,8 +3,15 @@ name: issue-3566-menu-price-validation
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    # #2885 AC-4: the machine-written boot-payload baseline cannot affect this
+    # menu-money suite. If any other file changes beside it, GitHub still runs
+    # the workflow normally.
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
   push:
     branches: [main]
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
   workflow_dispatch:
 
 concurrency:
