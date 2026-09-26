@@ -1,0 +1,56 @@
+name: issue-3566-menu-price-validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: issue-3566-menu-price-validation-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
+permissions:
+  contents: read
+
+jobs:
+  issue-3566-menu-money-draft-integrity:
+    if: ${{ github.event.pull_request.draft != true }}
+    name: "#3566 menu money drafts are exact and save-safe"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: "#3566 exact implementor and tester suites are both selected"
+        shell: bash
+        run: |
+          set -euo pipefail
+          implementor='src/components/venue/__tests__/menuMoneyDraft.issue3566.test.ts'
+          tester='src/components/venue/__tests__/menuMoneyDraft.issue3566.tester-adversarial.test.ts'
+          mapfile -t listed < <(npx jest --listTests "$implementor" "$tester")
+          printf '%s\n' "${listed[@]}"
+          if [[ "${#listed[@]}" -ne 2 ]]; then
+            echo "Expected exactly 2 #3566 suites; Jest selected ${#listed[@]}." >&2
+            exit 1
+          fi
+          for expected in "$implementor" "$tester"; do
+            matches=$(printf '%s\n' "${listed[@]}" | grep -F -c "/$expected")
+            if [[ "$matches" -ne 1 ]]; then
+              echo "Expected exactly one selected suite at $expected; found $matches." >&2
+              exit 1
+            fi
+          done
+      - name: "#3566 implementor happy-path suite"
+        run: npx jest --runInBand src/components/venue/__tests__/menuMoneyDraft.issue3566.test.ts
+      - name: "#3566 tester adversarial suite"
+        run: npx jest --runInBand src/components/venue/__tests__/menuMoneyDraft.issue3566.tester-adversarial.test.ts
