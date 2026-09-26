@@ -149,6 +149,13 @@ export function MenuCategorySheet({
     () => validateServiceWindow(windowDraft),
     [windowDraft],
   );
+  const windowSummary = useMemo(
+    () =>
+      windowError === null
+        ? serviceWindowSummary(windowDraft)
+        : "Finish setting the service window",
+    [windowDraft, windowError],
+  );
   const canSave = name.trim().length > 0 && windowError === null && !saving;
   const snap = useMemo<number>(() => 0.9, []);
 
@@ -379,7 +386,7 @@ export function MenuCategorySheet({
             accessibilityLiveRegion="polite"
             testID="menu-category-window-summary"
           >
-            {serviceWindowSummary(windowDraft)}
+            {windowSummary}
           </Text>
           {windowError !== null ? (
             <Text
