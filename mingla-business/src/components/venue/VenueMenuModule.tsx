@@ -60,6 +60,7 @@ import { MenuCategorySheet } from "./MenuCategorySheet";
 import type { MenuCategorySheetSaveInput } from "./MenuCategorySheet";
 import { MenuItemSheet } from "./MenuItemSheet";
 import type { MenuItemSheetSaveInput } from "./MenuItemSheet";
+import { serviceWindowSummary } from "./menuDepth";
 import { VenueHubEmptyState } from "./VenueHubEmptyState";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
@@ -116,7 +117,8 @@ export interface VenueMenuModuleProps {
  */
 const MENU_VISIBILITY_COPY = {
   public: {
-    emptyBody: "Add categories and priced items. Guests see your menu on your public page.",
+    emptyBody:
+      "Add categories and priced items. Guests see your menu on your public page.",
     intro: "Your menu shows on your public venue page. Build it by category.",
   },
   not_yet: {
@@ -400,7 +402,11 @@ export function VenueMenuModule({
         <VenueHubEmptyState
           icon="menu"
           title="Build your menu"
-          body={canMutate ? visibilityCopy.emptyBody : "No menu yet. Ask a manager or owner to add one."}
+          body={
+            canMutate
+              ? visibilityCopy.emptyBody
+              : "No menu yet. Ask a manager or owner to add one."
+          }
           actionLabel={canMutate ? "Add a category" : undefined}
           onAction={canMutate ? openAddCategory : undefined}
           testID="venue-menu-empty"
@@ -470,6 +476,21 @@ export function VenueMenuModule({
                   {menu.description}
                 </Text>
               ) : null}
+              <Text
+                style={styles.categorySchedule}
+                accessibilityLabel={`Schedule: ${serviceWindowSummary({
+                  start: menu.serviceWindowStart,
+                  end: menu.serviceWindowEnd,
+                  days: menu.serviceDays,
+                })}`}
+                testID={`venue-menu-category-schedule-${menu.id}`}
+              >
+                {serviceWindowSummary({
+                  start: menu.serviceWindowStart,
+                  end: menu.serviceWindowEnd,
+                  days: menu.serviceDays,
+                })}
+              </Text>
             </View>
             {canMutate ? (
               <View style={styles.actionCluster}>
@@ -780,6 +801,11 @@ const styles = StyleSheet.create({
   categoryDesc: {
     ...typography.bodySm,
     color: textTokens.secondary,
+  },
+  categorySchedule: {
+    ...typography.bodySm,
+    color: textTokens.tertiary,
+    marginTop: spacing.xxs,
   },
   divider: {
     height: StyleSheet.hairlineWidth,

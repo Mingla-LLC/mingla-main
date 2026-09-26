@@ -19,13 +19,18 @@
  * ladder; this sheet never consults the device clock.
  */
 
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 // ORCH-1193 [sheet-cutoff]: body ScrollView via SmartScrollView wrapper so the
 // CTA clears the keyboard + 42dp Done bar (I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE).
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
+  glass,
+  radius,
   semantic,
   spacing,
   text as textTokens,
@@ -33,8 +38,10 @@ import {
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { GlassCard } from "../ui/GlassCard";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
+import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 import type { Menu } from "../../services/menusService";
 import {
   DAY_LABELS,
@@ -67,6 +74,30 @@ export interface MenuCategorySheetProps {
   testID?: string;
 }
 
+type TimePickerMode = "start" | "end" | null;
+
+const dateFromHhmm = (hhmm: string, fallback: string): Date => {
+  const canonical = normalizeTimeInput(hhmm) ?? fallback;
+  const [hours = "0", minutes = "0"] = canonical.split(":");
+  const date = new Date();
+  date.setHours(Number(hours), Number(minutes), 0, 0);
+  return date;
+};
+
+const hhmmFromDate = (date: Date): string =>
+  `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
+
+const localizedTimeLabel = (hhmm: string, emptyLabel: string): string => {
+  const canonical = normalizeTimeInput(hhmm);
+  if (canonical === null) return emptyLabel;
+  return dateFromHhmm(canonical, canonical).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
 export function MenuCategorySheet({
   visible,
   onClose,
@@ -84,11 +115,15 @@ export function MenuCategorySheet({
   const [windowStart, setWindowStart] = useState<string>("");
   const [windowEnd, setWindowEnd] = useState<string>("");
   const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+  const [pickerMode, setPickerMode] = useState<TimePickerMode>(null);
+  const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState<boolean>(false);
 
   useEffect(() => {
     if (!visible) {
       setConfirmDeleteOpen(false);
+      setPickerMode(null);
+      setTempPickerValue(null);
       return;
     }
     setName(category?.name ?? "");
@@ -114,6 +149,13 @@ export function MenuCategorySheet({
     () => validateServiceWindow(windowDraft),
     [windowDraft],
   );
+  const windowSummary = useMemo(
+    () =>
+      windowError === null
+        ? serviceWindowSummary(windowDraft)
+        : "Finish setting the service window",
+    [windowDraft, windowError],
+  );
   const canSave = name.trim().length > 0 && windowError === null && !saving;
   const snap = useMemo<number>(() => 0.9, []);
 
@@ -125,13 +167,63 @@ export function MenuCategorySheet({
     );
   }, []);
 
+  const commitTimePickerValue = useCallback(
+    (mode: TimePickerMode, value: Date): void => {
+      if (mode === "start") setWindowStart(hhmmFromDate(value));
+      else if (mode === "end") setWindowEnd(hhmmFromDate(value));
+    },
+    [],
+  );
+
+  const openTimePicker = useCallback(
+    (mode: Exclude<TimePickerMode, null>): void => {
+      const current = mode === "start" ? windowStart : windowEnd;
+      const fallback = mode === "start" ? "09:00" : "17:00";
+      setTempPickerValue(dateFromHhmm(current, fallback));
+      setPickerMode(mode);
+    },
+    [windowStart, windowEnd],
+  );
+
+  const handleTimePickerChange = useCallback(
+    (event: DateTimePickerEvent, selected?: Date): void => {
+      if (Platform.OS === "android") {
+        const mode = pickerMode;
+        setPickerMode(null);
+        setTempPickerValue(null);
+        if (event.type === "dismissed" || selected === undefined) return;
+        commitTimePickerValue(mode, selected);
+        return;
+      }
+      if (selected !== undefined) setTempPickerValue(selected);
+    },
+    [pickerMode, commitTimePickerValue],
+  );
+
+  const closeTimePicker = useCallback((): void => {
+    if (pickerMode !== null && tempPickerValue !== null) {
+      commitTimePickerValue(pickerMode, tempPickerValue);
+    }
+    setPickerMode(null);
+    setTempPickerValue(null);
+  }, [pickerMode, tempPickerValue, commitTimePickerValue]);
+
+  const clearTimes = useCallback((): void => {
+    setWindowStart("");
+    setWindowEnd("");
+    setPickerMode(null);
+    setTempPickerValue(null);
+  }, []);
+
   const handleSave = useCallback((): void => {
     if (!canSave) return;
     onSave({
       name: name.trim(),
       description: description.trim().length > 0 ? description.trim() : null,
       serviceWindowStart:
-        windowDraft.start === null ? null : normalizeTimeInput(windowDraft.start),
+        windowDraft.start === null
+          ? null
+          : normalizeTimeInput(windowDraft.start),
       serviceWindowEnd:
         windowDraft.end === null ? null : normalizeTimeInput(windowDraft.end),
       serviceDays: windowDraft.days,
@@ -183,28 +275,95 @@ export function MenuCategorySheet({
           <Text style={styles.groupLabel}>When it&apos;s served</Text>
           <View style={styles.windowRow}>
             <View style={styles.windowCol}>
-              <Field label="From (24h)">
-                <Input
-                  value={windowStart}
-                  onChangeText={setWindowStart}
-                  placeholder="07:00"
-                  accessibilityLabel="Service window start time"
-                  testID="menu-category-window-start"
-                />
+              <Field label="From">
+                {Platform.OS === "web" ? (
+                  <WebDateTimeInput
+                    type="time"
+                    value={windowStart}
+                    onChangeValue={setWindowStart}
+                    ariaLabel="Service start time"
+                    hasError={windowError !== null}
+                    testID="menu-category-window-start"
+                  />
+                ) : (
+                  <Pressable
+                    onPress={() => openTimePicker("start")}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Service start time, ${localizedTimeLabel(
+                      windowStart,
+                      "not set",
+                    )}`}
+                    accessibilityHint="Opens the time picker"
+                    style={({ pressed }) => [
+                      styles.timeTrigger,
+                      windowError !== null && styles.timeTriggerError,
+                      pressed && styles.pressed,
+                    ]}
+                    testID="menu-category-window-start"
+                  >
+                    <Text
+                      style={[
+                        styles.timeTriggerText,
+                        windowStart.length === 0 &&
+                          styles.timeTriggerPlaceholder,
+                      ]}
+                    >
+                      {localizedTimeLabel(windowStart, "Set start time")}
+                    </Text>
+                  </Pressable>
+                )}
               </Field>
             </View>
             <View style={styles.windowCol}>
-              <Field label="Until (24h)">
-                <Input
-                  value={windowEnd}
-                  onChangeText={setWindowEnd}
-                  placeholder="11:00"
-                  accessibilityLabel="Service window end time"
-                  testID="menu-category-window-end"
-                />
+              <Field label="Until">
+                {Platform.OS === "web" ? (
+                  <WebDateTimeInput
+                    type="time"
+                    value={windowEnd}
+                    onChangeValue={setWindowEnd}
+                    ariaLabel="Service end time"
+                    hasError={windowError !== null}
+                    testID="menu-category-window-end"
+                  />
+                ) : (
+                  <Pressable
+                    onPress={() => openTimePicker("end")}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Service end time, ${localizedTimeLabel(
+                      windowEnd,
+                      "not set",
+                    )}`}
+                    accessibilityHint="Opens the time picker"
+                    style={({ pressed }) => [
+                      styles.timeTrigger,
+                      windowError !== null && styles.timeTriggerError,
+                      pressed && styles.pressed,
+                    ]}
+                    testID="menu-category-window-end"
+                  >
+                    <Text
+                      style={[
+                        styles.timeTriggerText,
+                        windowEnd.length === 0 && styles.timeTriggerPlaceholder,
+                      ]}
+                    >
+                      {localizedTimeLabel(windowEnd, "Set end time")}
+                    </Text>
+                  </Pressable>
+                )}
               </Field>
             </View>
           </View>
+          {windowStart.length > 0 || windowEnd.length > 0 ? (
+            <Button
+              label="Clear times — serve all day"
+              onPress={clearTimes}
+              variant="secondary"
+              size="sm"
+              style={styles.clearTimes}
+              testID="menu-category-window-clear"
+            />
+          ) : null}
           <View style={styles.dayRow}>
             {DAY_LABELS.map((label, index) => {
               const isoDay = index + 1;
@@ -222,11 +381,20 @@ export function MenuCategorySheet({
               );
             })}
           </View>
-          <Text style={styles.windowSummary}>
-            {serviceWindowSummary(windowDraft)}
+          <Text
+            style={styles.windowSummary}
+            accessibilityLiveRegion="polite"
+            testID="menu-category-window-summary"
+          >
+            {windowSummary}
           </Text>
           {windowError !== null ? (
-            <Text style={styles.windowError} testID="menu-category-window-error">
+            <Text
+              style={styles.windowError}
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+              testID="menu-category-window-error"
+            >
               {windowError}
             </Text>
           ) : null}
@@ -258,6 +426,56 @@ export function MenuCategorySheet({
           ) : null}
         </ScrollView>
       </View>
+
+      {pickerMode !== null && Platform.OS === "ios" ? (
+        <View
+          style={styles.pickerDockWrap}
+          testID="menu-category-time-picker-dock"
+        >
+          <GlassCard variant="elevated" style={styles.pickerDockCard}>
+            <View style={styles.pickerDoneRow}>
+              <Text style={styles.pickerDockTitle}>
+                {pickerMode === "start" ? "Start time" : "End time"}
+              </Text>
+              <Button
+                label="Done"
+                variant="primary"
+                size="md"
+                onPress={closeTimePicker}
+                testID="menu-category-time-picker-done"
+              />
+            </View>
+            {tempPickerValue !== null ? (
+              <DateTimePicker
+                value={tempPickerValue}
+                mode="time"
+                display="spinner"
+                onChange={handleTimePickerChange}
+                textColor="#FFFFFF"
+                themeVariant="dark"
+                style={styles.timePicker}
+                testID="menu-category-native-time-picker"
+              />
+            ) : null}
+          </GlassCard>
+        </View>
+      ) : null}
+
+      {pickerMode !== null && Platform.OS === "android" ? (
+        <DateTimePicker
+          value={
+            tempPickerValue ??
+            dateFromHhmm(
+              pickerMode === "start" ? windowStart : windowEnd,
+              "09:00",
+            )
+          }
+          mode="time"
+          display="default"
+          onChange={handleTimePickerChange}
+          testID="menu-category-native-time-picker"
+        />
+      ) : null}
 
       {showDelete ? (
         <ConfirmDialog
@@ -338,6 +556,29 @@ const styles = StyleSheet.create({
   windowCol: {
     flex: 1,
   },
+  timeTrigger: {
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    alignItems: "flex-start",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    borderRadius: radius.md,
+    backgroundColor: glass.tint.profileBase,
+  },
+  timeTriggerError: {
+    borderColor: semantic.error,
+  },
+  timeTriggerText: {
+    ...typography.body,
+    color: textTokens.primary,
+  },
+  timeTriggerPlaceholder: {
+    color: textTokens.quaternary,
+  },
+  clearTimes: {
+    alignSelf: "flex-start",
+  },
   dayRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -356,6 +597,30 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: semantic.error,
     marginTop: spacing.xxs,
+  },
+  pressed: {
+    opacity: 0.6,
+  },
+  pickerDockWrap: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  pickerDockCard: {
+    gap: spacing.sm,
+  },
+  pickerDoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  pickerDockTitle: {
+    ...typography.bodySm,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  timePicker: {
+    width: "100%",
   },
   saveBtn: {
     marginTop: spacing.lg,
