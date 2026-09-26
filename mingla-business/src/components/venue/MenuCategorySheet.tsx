@@ -19,7 +19,13 @@
  * ladder; this sheet never consults the device clock.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { StyleSheet, Text, View } from "react-native";
 // ORCH-1193 [sheet-cutoff]: body ScrollView via SmartScrollView wrapper so the
 // CTA clears the keyboard + 42dp Done bar (I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE).
@@ -27,6 +33,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   semantic,
+  radius,
   spacing,
   text as textTokens,
   typography,
@@ -44,6 +51,7 @@ import {
 } from "./menuDepth";
 
 export interface MenuCategorySheetSaveInput {
+  id: string;
   name: string;
   description: string | null;
   // Issue #1789 (SPEC #1788 P-12) — null/null = always available.
@@ -60,6 +68,7 @@ export interface MenuCategorySheetProps {
   category: Menu | null;
   onSave: (input: MenuCategorySheetSaveInput) => void;
   saving: boolean;
+  saveFailed: boolean;
   /** Delete the category being edited (edit mode + manager). Omit to hide. */
   onDelete?: (id: string) => void;
   deleting?: boolean;
@@ -73,6 +82,7 @@ export function MenuCategorySheet({
   category,
   onSave,
   saving,
+  saveFailed,
   onDelete,
   deleting = false,
   canDelete = false,
@@ -85,11 +95,18 @@ export function MenuCategorySheet({
   const [windowEnd, setWindowEnd] = useState<string>("");
   const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState<boolean>(false);
+  const addSessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!visible) {
       setConfirmDeleteOpen(false);
+      addSessionIdRef.current = null;
       return;
+    }
+    if (category === null && addSessionIdRef.current === null) {
+      addSessionIdRef.current = createMenuCategoryId();
+    } else if (category !== null) {
+      addSessionIdRef.current = null;
     }
     setName(category?.name ?? "");
     setDescription(category?.description ?? "");
@@ -127,16 +144,22 @@ export function MenuCategorySheet({
 
   const handleSave = useCallback((): void => {
     if (!canSave) return;
+    const id =
+      category?.id ?? addSessionIdRef.current ?? createMenuCategoryId();
+    if (category === null) addSessionIdRef.current = id;
     onSave({
+      id,
       name: name.trim(),
       description: description.trim().length > 0 ? description.trim() : null,
       serviceWindowStart:
-        windowDraft.start === null ? null : normalizeTimeInput(windowDraft.start),
+        windowDraft.start === null
+          ? null
+          : normalizeTimeInput(windowDraft.start),
       serviceWindowEnd:
         windowDraft.end === null ? null : normalizeTimeInput(windowDraft.end),
       serviceDays: windowDraft.days,
     });
-  }, [canSave, name, description, windowDraft, onSave]);
+  }, [canSave, category, name, description, windowDraft, onSave]);
 
   const handleConfirmDelete = useCallback((): void => {
     if (category === null || onDelete === undefined) return;
@@ -226,19 +249,46 @@ export function MenuCategorySheet({
             {serviceWindowSummary(windowDraft)}
           </Text>
           {windowError !== null ? (
-            <Text style={styles.windowError} testID="menu-category-window-error">
+            <Text
+              style={styles.windowError}
+              testID="menu-category-window-error"
+            >
               {windowError}
             </Text>
           ) : null}
 
+          {saveFailed ? (
+            <View
+              accessible
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
+              style={styles.saveError}
+              testID="menu-category-save-error"
+            >
+              <Text style={styles.saveErrorText}>
+                Category not saved. We couldn’t confirm the save, but your
+                details are still here. It’s safe to try again.
+              </Text>
+            </View>
+          ) : null}
+
           <Button
-            label={isEdit ? "Save category" : "Add category"}
+            label={
+              saveFailed
+                ? "Try again"
+                : isEdit
+                  ? "Save category"
+                  : "Add category"
+            }
             onPress={handleSave}
             variant="primary"
             size="lg"
             fullWidth
             loading={saving}
             disabled={!canSave}
+            accessibilityLabel={
+              saveFailed ? "Try saving category again" : undefined
+            }
             style={styles.saveBtn}
             testID="menu-category-save"
           />
@@ -357,6 +407,18 @@ const styles = StyleSheet.create({
     color: semantic.error,
     marginTop: spacing.xxs,
   },
+  saveError: {
+    gap: spacing.xxs,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    borderColor: semantic.error,
+    backgroundColor: semantic.errorTint,
+  },
+  saveErrorText: {
+    ...typography.bodySm,
+    color: semantic.errorText,
+  },
   saveBtn: {
     marginTop: spacing.lg,
   },
@@ -364,5 +426,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
 });
+
+function createMenuCategoryId(): string {
+  const cryptoValue = (globalThis as { crypto?: { randomUUID?: () => string } })
+    .crypto;
+  if (typeof cryptoValue?.randomUUID === "function") {
+    return cryptoValue.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const random = (Math.random() * 16) | 0;
+    const value = char === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
 
 export default MenuCategorySheet;
