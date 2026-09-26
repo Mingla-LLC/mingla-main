@@ -262,9 +262,9 @@ describe("#3562 readable menu-item identity", () => {
         throw new Error(`Accessible control not found: ${testID}`);
       }
       expect(control.props.accessibilityLabel).toBe(label);
-      expect(
-        pressableStyle(control).minHeight ?? pressableStyle(control).height,
-      ).toBe(44);
+      const style = pressableStyle(control);
+      expect(style.minWidth ?? style.width).toBe(44);
+      expect(style.minHeight ?? style.height).toBe(44);
     }
   });
 

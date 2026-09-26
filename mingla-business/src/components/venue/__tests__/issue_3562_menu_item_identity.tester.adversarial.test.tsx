@@ -250,6 +250,7 @@ describe("#3562 adversarial responsive identity", () => {
     ] as const) {
       const control = nativeControl(testID, label);
       const style = flattenPressable(control);
+      expect(style.minWidth ?? style.width).toBe(44);
       expect(style.minHeight ?? style.height).toBe(44);
     }
   });

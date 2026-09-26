@@ -927,6 +927,7 @@ const styles = StyleSheet.create({
     opacity: 0.3,
   },
   textControl: {
+    minWidth: 44,
     minHeight: 44,
     paddingHorizontal: spacing.xs,
     alignItems: "center",
