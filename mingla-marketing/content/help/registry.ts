@@ -912,6 +912,70 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'create-and-submit-your-venue',
+    episode: 16,
+    title: 'Create and submit your venue',
+    blurb:
+      'Create a complete Brooklyn venue listing with saved hours, six photos, a true video cover, public details and reservations, then submit it to Mingla for review.',
+    duration: '2:38',
+    durationIso: 'PT2M38S',
+    chapter: 'creating',
+    intents: ['Run a venue'],
+    surfaces: ['iOS'],
+    bambooEntryId: '0_btn0u3q2',
+    uploadedAt: '2026-09-25',
+    // Nothing is burned into this render, so the reviewed sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Start a venue listing from Home',
+        body:
+          'In Mingla Host, open + from Home and choose Create venue listing. Enter Lantern Room and check the venue directory before creating anything new.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+      {
+        title: 'Create a fresh Restaurant listing',
+        body:
+          'When the directory has no correct Lantern Room match, choose to create from scratch and select Restaurant. This starts the nine-step venue listing without changing an unrelated place.',
+      },
+      {
+        title: 'Choose the Brooklyn address',
+        body:
+          'Search for 61 Wythe Avenue and select the complete Brooklyn, New York result. Review the chosen street address before continuing.',
+      },
+      {
+        title: 'Confirm the public name and link',
+        body:
+          'Keep Lantern Room as the listing name and check its available public-page address. This is the name and link guests will see after Mingla approves the venue.',
+      },
+      {
+        title: 'Set the weekly opening hours',
+        body:
+          'Group Monday to Friday at 17:00–23:00, then group Saturday and Sunday at 12:00–23:00. The final Venue Hub proof confirms both saved service periods.',
+      },
+      {
+        title: 'Add the six venue photos',
+        body:
+          'Choose the six existing Lantern Room venue photos, add them together and wait for the complete gallery before continuing.',
+      },
+      {
+        title: 'Use a short venue video as the cover',
+        body:
+          'Upload a short venue video, wait for the green ready confirmation, choose Use this cover and then continue. A venue cover is one video, not a two-picture selection.',
+      },
+      {
+        title: 'Add contact, spend and reservation details',
+        body:
+          'Add the public phone, email and website, set the typical spend to $25–$75, then turn reservations on. Mingla guides the remaining reservation setup after approval.',
+      },
+      {
+        title: 'Review, submit and verify In review',
+        body:
+          'Review the cover, six photos, name, Restaurant category, address, contact details, spend and reservation choice, then Submit for review. The success screen says the listing is not live yet; Venue Hub shows In review, the saved weekday and weekend hours, and the reservation settings below.',
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>

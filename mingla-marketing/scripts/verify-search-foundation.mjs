@@ -47,6 +47,7 @@ const SEARCH_READY_PATHS = [
   '/help/run-a-free-rsvp-night',
   '/help/create-an-unlisted-rsvp-event-in-nigeria',
   '/help/create-a-recurring-event-in-nigeria',
+  '/help/create-and-submit-your-venue',
 ]
 
 const releaseRouteScope = JSON.parse(
@@ -77,6 +78,7 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/help/run-a-free-rsvp-night',
   '/help/create-an-unlisted-rsvp-event-in-nigeria',
   '/help/create-a-recurring-event-in-nigeria',
+  '/help/create-and-submit-your-venue',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [
