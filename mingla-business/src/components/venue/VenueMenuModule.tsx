@@ -26,7 +26,13 @@
  */
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
 import {
   glass,
@@ -63,6 +69,8 @@ import type { MenuItemSheetSaveInput } from "./MenuItemSheet";
 import { VenueHubEmptyState } from "./VenueHubEmptyState";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
+const STACKED_ITEM_ROW_WIDTH = 720;
+const STACKED_ITEM_ROW_FONT_SCALE = 1.3;
 
 /**
  * Issue #1789 — both #1767 children load behind a LAZY boundary, the
@@ -116,7 +124,8 @@ export interface VenueMenuModuleProps {
  */
 const MENU_VISIBILITY_COPY = {
   public: {
-    emptyBody: "Add categories and priced items. Guests see your menu on your public page.",
+    emptyBody:
+      "Add categories and priced items. Guests see your menu on your public page.",
     intro: "Your menu shows on your public venue page. Build it by category.",
   },
   not_yet: {
@@ -134,6 +143,11 @@ export function VenueMenuModule({
   testID,
 }: VenueMenuModuleProps): React.ReactElement {
   const visibilityCopy = MENU_VISIBILITY_COPY[publicVisibility];
+  const { width, fontScale } = useWindowDimensions();
+  const stackItemRows =
+    width <= 0 ||
+    width < STACKED_ITEM_ROW_WIDTH ||
+    fontScale >= STACKED_ITEM_ROW_FONT_SCALE;
   const brand = useCurrentBrand();
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
@@ -400,7 +414,11 @@ export function VenueMenuModule({
         <VenueHubEmptyState
           icon="menu"
           title="Build your menu"
-          body={canMutate ? visibilityCopy.emptyBody : "No menu yet. Ask a manager or owner to add one."}
+          body={
+            canMutate
+              ? visibilityCopy.emptyBody
+              : "No menu yet. Ask a manager or owner to add one."
+          }
           actionLabel={canMutate ? "Add a category" : undefined}
           onAction={canMutate ? openAddCategory : undefined}
           testID="venue-menu-empty"
@@ -502,7 +520,11 @@ export function VenueMenuModule({
           {menu.items.map((item, itemIndex) => (
             <View
               key={item.id}
-              style={[styles.itemRow, !item.isAvailable && styles.itemHidden]}
+              style={[
+                styles.itemRow,
+                stackItemRows && styles.itemRowStacked,
+                !item.isAvailable && styles.itemHidden,
+              ]}
               accessibilityLabel={`${item.name}, ${
                 item.priceCents === null
                   ? "price on request"
@@ -510,57 +532,86 @@ export function VenueMenuModule({
                     ? formatCurrency(item.priceCents, item.currency, true)
                     : "—"
               }, ${item.isAvailable ? "available" : "hidden"}`}
+              testID={`venue-menu-item-${item.id}`}
             >
-              <View style={styles.itemLeft}>
-                <Text style={styles.itemName} numberOfLines={1}>
-                  {item.name}
-                </Text>
+              <View
+                style={[
+                  styles.itemLeft,
+                  stackItemRows && styles.itemLeftStacked,
+                ]}
+                testID={`venue-menu-item-identity-${item.id}`}
+              >
+                <Text style={styles.itemName}>{item.name}</Text>
                 {item.description !== null ? (
-                  <Text style={styles.itemDesc} numberOfLines={2}>
+                  <Text
+                    style={styles.itemDesc}
+                    numberOfLines={3}
+                    ellipsizeMode="tail"
+                  >
                     {item.description}
                   </Text>
                 ) : null}
               </View>
-              <View style={styles.itemRight}>
-                {item.priceCents === null ? (
-                  <Text style={styles.priceOnRequest}>Price on request</Text>
-                ) : brandHasCurrency ? (
-                  <Text style={styles.itemPrice}>
-                    {formatCurrency(item.priceCents, item.currency, true)}
-                  </Text>
-                ) : (
-                  <Text style={styles.itemPrice}>—</Text>
-                )}
-                {/*
-                  #1789 (SPEC #1788 P-15) — ONE-TAP 86, on the row.
-                  The flag always existed; reaching it took ~5 taps behind the
-                  edit form, which is five taps too many when the kitchen just
-                  ran out mid-service. One tap now, and because
-                  public_menus_view filters is_available the dish leaves the
-                  guest menu on the very next read. Manager-plus, deliberately
-                  (OQ-4 ruling: 86 changes what guests can buy, so it holds the
-                  event_manager floor that RLS already enforces server-side).
-                  A SIBLING Pressable, never nested inside another — a nested
-                  Pressable flattens the a11y subtree.
-                */}
-                {canMutate ? (
-                  <Pressable
-                    onPress={() => toggle86(menu, item)}
-                    disabled={togglingItemId === item.id}
-                    accessibilityRole="switch"
-                    accessibilityState={{ checked: item.isAvailable }}
-                    accessibilityLabel={
-                      item.isAvailable
-                        ? `${item.name} is on the menu. Tap to take it off.`
-                        : `${item.name} is off the menu. Tap to put it back.`
-                    }
-                    hitSlop={12}
-                    style={({ pressed }) => [
-                      styles.availabilityToggle,
-                      pressed && styles.pressed,
-                    ]}
-                    testID={`venue-menu-item-86-${item.id}`}
-                  >
+              <View
+                style={[
+                  styles.itemRight,
+                  stackItemRows && styles.itemRightStacked,
+                ]}
+                testID={`venue-menu-item-controls-${item.id}`}
+              >
+                <View style={styles.itemStatusGroup}>
+                  {item.priceCents === null ? (
+                    <Text style={styles.priceOnRequest}>Price on request</Text>
+                  ) : brandHasCurrency ? (
+                    <Text style={styles.itemPrice}>
+                      {formatCurrency(item.priceCents, item.currency, true)}
+                    </Text>
+                  ) : (
+                    <Text style={styles.itemPrice}>—</Text>
+                  )}
+                  {/*
+                    #1789 (SPEC #1788 P-15) — ONE-TAP 86, on the row.
+                    The flag always existed; reaching it took ~5 taps behind the
+                    edit form, which is five taps too many when the kitchen just
+                    ran out mid-service. One tap now, and because
+                    public_menus_view filters is_available the dish leaves the
+                    guest menu on the very next read. Manager-plus, deliberately
+                    (OQ-4 ruling: 86 changes what guests can buy, so it holds the
+                    event_manager floor that RLS already enforces server-side).
+                    A SIBLING Pressable, never nested inside another — a nested
+                    Pressable flattens the a11y subtree.
+                  */}
+                  {canMutate ? (
+                    <Pressable
+                      onPress={() => toggle86(menu, item)}
+                      disabled={togglingItemId === item.id}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: item.isAvailable }}
+                      accessibilityLabel={
+                        item.isAvailable
+                          ? `${item.name} is on the menu. Tap to take it off.`
+                          : `${item.name} is off the menu. Tap to put it back.`
+                      }
+                      hitSlop={12}
+                      style={({ pressed }) => [
+                        styles.availabilityToggle,
+                        pressed && styles.pressed,
+                      ]}
+                      testID={`venue-menu-item-86-${item.id}`}
+                    >
+                      <View
+                        style={[
+                          styles.availabilityDot,
+                          item.isAvailable
+                            ? styles.dotAvailable
+                            : styles.dotUnavailable,
+                        ]}
+                      />
+                      <Text style={styles.availabilityLabel}>
+                        {item.isAvailable ? "On" : "86'd"}
+                      </Text>
+                    </Pressable>
+                  ) : (
                     <View
                       style={[
                         styles.availabilityDot,
@@ -569,20 +620,8 @@ export function VenueMenuModule({
                           : styles.dotUnavailable,
                       ]}
                     />
-                    <Text style={styles.availabilityLabel}>
-                      {item.isAvailable ? "On" : "86'd"}
-                    </Text>
-                  </Pressable>
-                ) : (
-                  <View
-                    style={[
-                      styles.availabilityDot,
-                      item.isAvailable
-                        ? styles.dotAvailable
-                        : styles.dotUnavailable,
-                    ]}
-                  />
-                )}
+                  )}
+                </View>
                 {canMutate ? (
                   <View style={styles.actionCluster}>
                     <ArrowControl
@@ -794,6 +833,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     gap: spacing.sm,
   },
+  itemRowStacked: {
+    flexDirection: "column",
+    alignItems: "stretch",
+  },
   itemHidden: {
     opacity: 0.5,
   },
@@ -801,6 +844,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: spacing.xxs,
+  },
+  itemLeftStacked: {
+    width: "100%",
   },
   itemName: {
     ...typography.body,
@@ -811,6 +857,18 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
   },
   itemRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  itemRightStacked: {
+    width: "100%",
+    alignSelf: "stretch",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    rowGap: spacing.xs,
+  },
+  itemStatusGroup: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
@@ -869,6 +927,7 @@ const styles = StyleSheet.create({
     opacity: 0.3,
   },
   textControl: {
+    minWidth: 44,
     minHeight: 44,
     paddingHorizontal: spacing.xs,
     alignItems: "center",
