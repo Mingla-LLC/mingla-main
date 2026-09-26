@@ -976,6 +976,69 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'polish-your-listing-and-go-live',
+    episode: 17,
+    title: 'Polish your listing and go live',
+    blurb:
+      'Polish a venue listing while it is in review, correct its hours, check the video cover, gallery and public details, save honest venue-fit answers, then verify the approved Live on Mingla page.',
+    duration: '2:05',
+    durationIso: 'PT2M5S',
+    chapter: 'creating',
+    intents: ['Run a venue'],
+    surfaces: ['iOS'],
+    bambooEntryId: '0_dmy8rvuu',
+    uploadedAt: '2026-09-26',
+    // Nothing is burned into this render, so the reviewed sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Review the listing while it is In review',
+        body:
+          'Open Lantern Room from Venue Hub while Mingla is reviewing it. This is the moment to polish the guest-facing details before approval, not a claim that the listing is live already.',
+      },
+      {
+        title: 'Check reservations and protected details',
+        body:
+          'In Settings, confirm reservations are on, fees are off and the no-show policy is correct. Name, address and category are protected identity fields; use Request a change rather than editing them silently.',
+      },
+      {
+        title: 'Correct Sunday closing time',
+        body:
+          'Open Sunday, change its closing time from 23:00 to 22:00, confirm twenty-two hundred and choose Save hours. The public proof at the end must show Sunday 12:00–22:00.',
+      },
+      {
+        title: 'Check Deck readiness',
+        body:
+          'Open Edit photos and details. Confirm that the cover is a real venue video and that the gallery carries the six clear Lantern Room photos already supplied.',
+      },
+      {
+        title: 'Add the public website and check spend',
+        body:
+          'Add https://lanternroom.example as the public website and confirm the typical spend is $25–$75 before moving on.',
+      },
+      {
+        title: 'Answer the venue-fit questions',
+        body:
+          'Answer every quick question honestly: groups, live music, reservations, meals, drinks, vegetarian options and service types. These answers set accurate guest expectations.',
+      },
+      {
+        title: 'Save the profile changes',
+        body:
+          'Choose Save changes and wait for the Changes saved confirmation. The listing remains In review while Mingla checks the submitted profile.',
+      },
+      {
+        title: 'Confirm the green Live on Mingla badge',
+        body:
+          'After Mingla approves the listing, return Home and reopen Lantern Room from Recent. The green Live on Mingla badge is the proof that the public listing is now available.',
+      },
+      {
+        title: 'Audit the public venue page',
+        body:
+          'Open the preview and verify the video cover, gallery, Restaurant category, New York location, title, $25–$75 spend, current status and Booking Available. Then check the recommendation, map, street address, weekly hours with Sunday 12:00–22:00, and the Reserve a table action.',
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>
