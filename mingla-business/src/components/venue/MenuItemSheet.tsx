@@ -538,6 +538,11 @@ export function MenuItemSheet({
                   variant={prepStation === choice.value ? "primary" : "secondary"}
                   size="sm"
                   disabled={optionsSaving}
+                  accessibilityRole="togglebutton"
+                  accessibilityState={{
+                    checked: prepStation === choice.value,
+                  }}
+                  style={styles.stationChip}
                   testID={`menu-item-station-${choice.value ?? "none"}`}
                 />
               ))}
@@ -794,6 +799,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.xs,
+  },
+  stationChip: {
+    minHeight: 44,
+    justifyContent: "center",
   },
   fieldLabel: {
     ...typography.bodySm,
