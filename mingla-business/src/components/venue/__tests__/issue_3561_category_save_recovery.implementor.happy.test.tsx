@@ -180,6 +180,10 @@ const setServiceTime = (testID: string, hhmm: string): void => {
     act(() => call(control, "onChangeText", hhmm));
     return;
   }
+  if (typeof control.props.onChangeValue === "function") {
+    act(() => call(control, "onChangeValue", hhmm));
+    return;
+  }
 
   act(() => call(control, "onPress"));
   const [hours = "0", minutes = "0"] = hhmm.split(":");
