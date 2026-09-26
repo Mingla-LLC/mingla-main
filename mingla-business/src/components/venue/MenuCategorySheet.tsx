@@ -617,7 +617,7 @@ export function MenuCategorySheet({
               testID="menu-category-window-clear"
             />
           ) : null}
-          <View style={styles.dayRow}>
+          <View style={styles.dayRow} accessibilityLabel="Service days">
             {DAY_LABELS.map((label, index) => {
               const isoDay = index + 1;
               const on = days.includes(isoDay);
@@ -628,6 +628,8 @@ export function MenuCategorySheet({
                   onPress={() => toggleDay(isoDay)}
                   variant={on ? "primary" : "secondary"}
                   size="sm"
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: on }}
                   style={styles.dayChip}
                   testID={`menu-category-day-${isoDay}`}
                 />
@@ -930,6 +932,8 @@ const styles = StyleSheet.create({
   },
   dayChip: {
     minWidth: 56,
+    minHeight: 44,
+    justifyContent: "center",
   },
   windowSummary: {
     ...typography.bodySm,

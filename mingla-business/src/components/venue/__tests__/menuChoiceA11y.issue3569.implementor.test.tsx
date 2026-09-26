@@ -109,6 +109,7 @@ describe("issue #3569 menu choice selected-state semantics", () => {
         category={null}
         onSave={jest.fn()}
         saving={false}
+        saveFailed={false}
       />,
     );
     const monday = pressable(tree, "menu-category-day-1");
