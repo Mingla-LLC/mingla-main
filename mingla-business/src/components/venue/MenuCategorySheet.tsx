@@ -19,13 +19,22 @@
  * ladder; this sheet never consults the device clock.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import type { DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 // ORCH-1193 [sheet-cutoff]: body ScrollView via SmartScrollView wrapper so the
 // CTA clears the keyboard + 42dp Done bar (I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE).
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
+  glass,
+  radius,
   semantic,
   spacing,
   text as textTokens,
@@ -35,6 +44,7 @@ import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
+import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 import type { Menu } from "../../services/menusService";
 import {
   DAY_LABELS,
@@ -44,6 +54,7 @@ import {
 } from "./menuDepth";
 
 export interface MenuCategorySheetSaveInput {
+  id: string;
   name: string;
   description: string | null;
   // Issue #1789 (SPEC #1788 P-12) — null/null = always available.
@@ -60,6 +71,7 @@ export interface MenuCategorySheetProps {
   category: Menu | null;
   onSave: (input: MenuCategorySheetSaveInput) => void;
   saving: boolean;
+  saveFailed?: boolean;
   /** Delete the category being edited (edit mode + manager). Omit to hide. */
   onDelete?: (id: string) => void;
   deleting?: boolean;
@@ -67,12 +79,69 @@ export interface MenuCategorySheetProps {
   testID?: string;
 }
 
+type TimePickerMode = "start" | "end" | null;
+
+type DeferredDateTimePickerProps = React.ComponentProps<
+  (typeof import("@react-native-community/datetimepicker"))["default"]
+>;
+type DeferredPickerGlassCardProps = React.ComponentProps<
+  (typeof import("../ui/GlassCard"))["GlassCard"]
+>;
+
+/**
+ * The ordinary category sheet must stay importable in the stock Business Jest
+ * lane. Both native-only dependencies reach ESM/native modules at evaluation
+ * time, so resolve them only after a native picker is actually opened.
+ */
+const DeferredDateTimePicker = (
+  props: DeferredDateTimePickerProps,
+): React.ReactElement => {
+  const pickerModule =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("@react-native-community/datetimepicker") as typeof import("@react-native-community/datetimepicker");
+  const Picker = pickerModule.default;
+  return <Picker {...props} />;
+};
+
+const DeferredPickerGlassCard = (
+  props: DeferredPickerGlassCardProps,
+): React.ReactElement => {
+  const glassCardModule =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("../ui/GlassCard") as typeof import("../ui/GlassCard");
+  const PickerGlassCard = glassCardModule.GlassCard;
+  return <PickerGlassCard {...props} />;
+};
+
+const dateFromHhmm = (hhmm: string, fallback: string): Date => {
+  const canonical = normalizeTimeInput(hhmm) ?? fallback;
+  const [hours = "0", minutes = "0"] = canonical.split(":");
+  const date = new Date();
+  date.setHours(Number(hours), Number(minutes), 0, 0);
+  return date;
+};
+
+const hhmmFromDate = (date: Date): string =>
+  `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
+
+const localizedTimeLabel = (hhmm: string, emptyLabel: string): string => {
+  const canonical = normalizeTimeInput(hhmm);
+  if (canonical === null) return emptyLabel;
+  return dateFromHhmm(canonical, canonical).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
 export function MenuCategorySheet({
   visible,
   onClose,
   category,
   onSave,
   saving,
+  saveFailed = false,
   onDelete,
   deleting = false,
   canDelete = false,
@@ -84,12 +153,23 @@ export function MenuCategorySheet({
   const [windowStart, setWindowStart] = useState<string>("");
   const [windowEnd, setWindowEnd] = useState<string>("");
   const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+  const [pickerMode, setPickerMode] = useState<TimePickerMode>(null);
+  const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState<boolean>(false);
+  const addSessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!visible) {
       setConfirmDeleteOpen(false);
+      setPickerMode(null);
+      setTempPickerValue(null);
+      addSessionIdRef.current = null;
       return;
+    }
+    if (category === null && addSessionIdRef.current === null) {
+      addSessionIdRef.current = createMenuCategoryId();
+    } else if (category !== null) {
+      addSessionIdRef.current = null;
     }
     setName(category?.name ?? "");
     setDescription(category?.description ?? "");
@@ -114,6 +194,13 @@ export function MenuCategorySheet({
     () => validateServiceWindow(windowDraft),
     [windowDraft],
   );
+  const windowSummary = useMemo(
+    () =>
+      windowError === null
+        ? serviceWindowSummary(windowDraft)
+        : "Finish setting the service window",
+    [windowDraft, windowError],
+  );
   const canSave = name.trim().length > 0 && windowError === null && !saving;
   const snap = useMemo<number>(() => 0.9, []);
 
@@ -125,18 +212,72 @@ export function MenuCategorySheet({
     );
   }, []);
 
+  const commitTimePickerValue = useCallback(
+    (mode: TimePickerMode, value: Date): void => {
+      if (mode === "start") setWindowStart(hhmmFromDate(value));
+      else if (mode === "end") setWindowEnd(hhmmFromDate(value));
+    },
+    [],
+  );
+
+  const openTimePicker = useCallback(
+    (mode: Exclude<TimePickerMode, null>): void => {
+      const current = mode === "start" ? windowStart : windowEnd;
+      const fallback = mode === "start" ? "09:00" : "17:00";
+      setTempPickerValue(dateFromHhmm(current, fallback));
+      setPickerMode(mode);
+    },
+    [windowStart, windowEnd],
+  );
+
+  const handleTimePickerChange = useCallback(
+    (event: DateTimePickerEvent, selected?: Date): void => {
+      if (Platform.OS === "android") {
+        const mode = pickerMode;
+        setPickerMode(null);
+        setTempPickerValue(null);
+        if (event.type === "dismissed" || selected === undefined) return;
+        commitTimePickerValue(mode, selected);
+        return;
+      }
+      if (selected !== undefined) setTempPickerValue(selected);
+    },
+    [pickerMode, commitTimePickerValue],
+  );
+
+  const closeTimePicker = useCallback((): void => {
+    if (pickerMode !== null && tempPickerValue !== null) {
+      commitTimePickerValue(pickerMode, tempPickerValue);
+    }
+    setPickerMode(null);
+    setTempPickerValue(null);
+  }, [pickerMode, tempPickerValue, commitTimePickerValue]);
+
+  const clearTimes = useCallback((): void => {
+    setWindowStart("");
+    setWindowEnd("");
+    setPickerMode(null);
+    setTempPickerValue(null);
+  }, []);
+
   const handleSave = useCallback((): void => {
     if (!canSave) return;
+    const id =
+      category?.id ?? addSessionIdRef.current ?? createMenuCategoryId();
+    if (category === null) addSessionIdRef.current = id;
     onSave({
+      id,
       name: name.trim(),
       description: description.trim().length > 0 ? description.trim() : null,
       serviceWindowStart:
-        windowDraft.start === null ? null : normalizeTimeInput(windowDraft.start),
+        windowDraft.start === null
+          ? null
+          : normalizeTimeInput(windowDraft.start),
       serviceWindowEnd:
         windowDraft.end === null ? null : normalizeTimeInput(windowDraft.end),
       serviceDays: windowDraft.days,
     });
-  }, [canSave, name, description, windowDraft, onSave]);
+  }, [canSave, category, name, description, windowDraft, onSave]);
 
   const handleConfirmDelete = useCallback((): void => {
     if (category === null || onDelete === undefined) return;
@@ -183,28 +324,95 @@ export function MenuCategorySheet({
           <Text style={styles.groupLabel}>When it&apos;s served</Text>
           <View style={styles.windowRow}>
             <View style={styles.windowCol}>
-              <Field label="From (24h)">
-                <Input
-                  value={windowStart}
-                  onChangeText={setWindowStart}
-                  placeholder="07:00"
-                  accessibilityLabel="Service window start time"
-                  testID="menu-category-window-start"
-                />
+              <Field label="From">
+                {Platform.OS === "web" ? (
+                  <WebDateTimeInput
+                    type="time"
+                    value={windowStart}
+                    onChangeValue={setWindowStart}
+                    ariaLabel="Service start time"
+                    hasError={windowError !== null}
+                    testID="menu-category-window-start"
+                  />
+                ) : (
+                  <Pressable
+                    onPress={() => openTimePicker("start")}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Service start time, ${localizedTimeLabel(
+                      windowStart,
+                      "not set",
+                    )}`}
+                    accessibilityHint="Opens the time picker"
+                    style={({ pressed }) => [
+                      styles.timeTrigger,
+                      windowError !== null && styles.timeTriggerError,
+                      pressed && styles.pressed,
+                    ]}
+                    testID="menu-category-window-start"
+                  >
+                    <Text
+                      style={[
+                        styles.timeTriggerText,
+                        windowStart.length === 0 &&
+                          styles.timeTriggerPlaceholder,
+                      ]}
+                    >
+                      {localizedTimeLabel(windowStart, "Set start time")}
+                    </Text>
+                  </Pressable>
+                )}
               </Field>
             </View>
             <View style={styles.windowCol}>
-              <Field label="Until (24h)">
-                <Input
-                  value={windowEnd}
-                  onChangeText={setWindowEnd}
-                  placeholder="11:00"
-                  accessibilityLabel="Service window end time"
-                  testID="menu-category-window-end"
-                />
+              <Field label="Until">
+                {Platform.OS === "web" ? (
+                  <WebDateTimeInput
+                    type="time"
+                    value={windowEnd}
+                    onChangeValue={setWindowEnd}
+                    ariaLabel="Service end time"
+                    hasError={windowError !== null}
+                    testID="menu-category-window-end"
+                  />
+                ) : (
+                  <Pressable
+                    onPress={() => openTimePicker("end")}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Service end time, ${localizedTimeLabel(
+                      windowEnd,
+                      "not set",
+                    )}`}
+                    accessibilityHint="Opens the time picker"
+                    style={({ pressed }) => [
+                      styles.timeTrigger,
+                      windowError !== null && styles.timeTriggerError,
+                      pressed && styles.pressed,
+                    ]}
+                    testID="menu-category-window-end"
+                  >
+                    <Text
+                      style={[
+                        styles.timeTriggerText,
+                        windowEnd.length === 0 && styles.timeTriggerPlaceholder,
+                      ]}
+                    >
+                      {localizedTimeLabel(windowEnd, "Set end time")}
+                    </Text>
+                  </Pressable>
+                )}
               </Field>
             </View>
           </View>
+          {windowStart.length > 0 || windowEnd.length > 0 ? (
+            <Button
+              label="Clear times — serve all day"
+              onPress={clearTimes}
+              variant="secondary"
+              size="sm"
+              style={styles.clearTimes}
+              testID="menu-category-window-clear"
+            />
+          ) : null}
           <View style={styles.dayRow}>
             {DAY_LABELS.map((label, index) => {
               const isoDay = index + 1;
@@ -222,23 +430,56 @@ export function MenuCategorySheet({
               );
             })}
           </View>
-          <Text style={styles.windowSummary}>
-            {serviceWindowSummary(windowDraft)}
+          <Text
+            style={styles.windowSummary}
+            accessibilityLiveRegion="polite"
+            testID="menu-category-window-summary"
+          >
+            {windowSummary}
           </Text>
           {windowError !== null ? (
-            <Text style={styles.windowError} testID="menu-category-window-error">
+            <Text
+              style={styles.windowError}
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+              testID="menu-category-window-error"
+            >
               {windowError}
             </Text>
           ) : null}
 
+          {saveFailed ? (
+            <View
+              accessible
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
+              style={styles.saveError}
+              testID="menu-category-save-error"
+            >
+              <Text style={styles.saveErrorText}>
+                Category not saved. We couldn’t confirm the save, but your
+                details are still here. It’s safe to try again.
+              </Text>
+            </View>
+          ) : null}
+
           <Button
-            label={isEdit ? "Save category" : "Add category"}
+            label={
+              saveFailed
+                ? "Try again"
+                : isEdit
+                  ? "Save category"
+                  : "Add category"
+            }
             onPress={handleSave}
             variant="primary"
             size="lg"
             fullWidth
             loading={saving}
             disabled={!canSave}
+            accessibilityLabel={
+              saveFailed ? "Try saving category again" : undefined
+            }
             style={styles.saveBtn}
             testID="menu-category-save"
           />
@@ -258,6 +499,59 @@ export function MenuCategorySheet({
           ) : null}
         </ScrollView>
       </View>
+
+      {pickerMode !== null && Platform.OS === "ios" ? (
+        <View
+          style={styles.pickerDockWrap}
+          testID="menu-category-time-picker-dock"
+        >
+          <DeferredPickerGlassCard
+            variant="elevated"
+            style={styles.pickerDockCard}
+          >
+            <View style={styles.pickerDoneRow}>
+              <Text style={styles.pickerDockTitle}>
+                {pickerMode === "start" ? "Start time" : "End time"}
+              </Text>
+              <Button
+                label="Done"
+                variant="primary"
+                size="md"
+                onPress={closeTimePicker}
+                testID="menu-category-time-picker-done"
+              />
+            </View>
+            {tempPickerValue !== null ? (
+              <DeferredDateTimePicker
+                value={tempPickerValue}
+                mode="time"
+                display="spinner"
+                onChange={handleTimePickerChange}
+                textColor="#FFFFFF"
+                themeVariant="dark"
+                style={styles.timePicker}
+                testID="menu-category-native-time-picker"
+              />
+            ) : null}
+          </DeferredPickerGlassCard>
+        </View>
+      ) : null}
+
+      {pickerMode !== null && Platform.OS === "android" ? (
+        <DeferredDateTimePicker
+          value={
+            tempPickerValue ??
+            dateFromHhmm(
+              pickerMode === "start" ? windowStart : windowEnd,
+              "09:00",
+            )
+          }
+          mode="time"
+          display="default"
+          onChange={handleTimePickerChange}
+          testID="menu-category-native-time-picker"
+        />
+      ) : null}
 
       {showDelete ? (
         <ConfirmDialog
@@ -338,6 +632,29 @@ const styles = StyleSheet.create({
   windowCol: {
     flex: 1,
   },
+  timeTrigger: {
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    alignItems: "flex-start",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    borderRadius: radius.md,
+    backgroundColor: glass.tint.profileBase,
+  },
+  timeTriggerError: {
+    borderColor: semantic.error,
+  },
+  timeTriggerText: {
+    ...typography.body,
+    color: textTokens.primary,
+  },
+  timeTriggerPlaceholder: {
+    color: textTokens.quaternary,
+  },
+  clearTimes: {
+    alignSelf: "flex-start",
+  },
   dayRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -357,6 +674,42 @@ const styles = StyleSheet.create({
     color: semantic.error,
     marginTop: spacing.xxs,
   },
+  pressed: {
+    opacity: 0.6,
+  },
+  pickerDockWrap: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  pickerDockCard: {
+    gap: spacing.sm,
+  },
+  pickerDoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  pickerDockTitle: {
+    ...typography.bodySm,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  timePicker: {
+    width: "100%",
+  },
+  saveError: {
+    gap: spacing.xxs,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    borderColor: semantic.error,
+    backgroundColor: semantic.errorTint,
+  },
+  saveErrorText: {
+    ...typography.bodySm,
+    color: semantic.errorText,
+  },
   saveBtn: {
     marginTop: spacing.lg,
   },
@@ -364,5 +717,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
 });
+
+function createMenuCategoryId(): string {
+  const cryptoValue = (globalThis as { crypto?: { randomUUID?: () => string } })
+    .crypto;
+  if (typeof cryptoValue?.randomUUID === "function") {
+    return cryptoValue.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const random = (Math.random() * 16) | 0;
+    const value = char === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
 
 export default MenuCategorySheet;
