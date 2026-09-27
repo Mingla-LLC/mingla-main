@@ -20,7 +20,13 @@
  */
 
 import type { DateTimePickerEvent } from "@react-native-community/datetimepicker";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 // ORCH-1193 [sheet-cutoff]: body ScrollView via SmartScrollView wrapper so the
 // CTA clears the keyboard + 42dp Done bar (I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE).
@@ -48,6 +54,7 @@ import {
 } from "./menuDepth";
 
 export interface MenuCategorySheetSaveInput {
+  id: string;
   name: string;
   description: string | null;
   // Issue #1789 (SPEC #1788 P-12) — null/null = always available.
@@ -64,6 +71,7 @@ export interface MenuCategorySheetProps {
   category: Menu | null;
   onSave: (input: MenuCategorySheetSaveInput) => void;
   saving: boolean;
+  saveFailed?: boolean;
   /** Delete the category being edited (edit mode + manager). Omit to hide. */
   onDelete?: (id: string) => void;
   deleting?: boolean;
@@ -133,6 +141,7 @@ export function MenuCategorySheet({
   category,
   onSave,
   saving,
+  saveFailed = false,
   onDelete,
   deleting = false,
   canDelete = false,
@@ -147,13 +156,20 @@ export function MenuCategorySheet({
   const [pickerMode, setPickerMode] = useState<TimePickerMode>(null);
   const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState<boolean>(false);
+  const addSessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!visible) {
       setConfirmDeleteOpen(false);
       setPickerMode(null);
       setTempPickerValue(null);
+      addSessionIdRef.current = null;
       return;
+    }
+    if (category === null && addSessionIdRef.current === null) {
+      addSessionIdRef.current = createMenuCategoryId();
+    } else if (category !== null) {
+      addSessionIdRef.current = null;
     }
     setName(category?.name ?? "");
     setDescription(category?.description ?? "");
@@ -246,7 +262,11 @@ export function MenuCategorySheet({
 
   const handleSave = useCallback((): void => {
     if (!canSave) return;
+    const id =
+      category?.id ?? addSessionIdRef.current ?? createMenuCategoryId();
+    if (category === null) addSessionIdRef.current = id;
     onSave({
+      id,
       name: name.trim(),
       description: description.trim().length > 0 ? description.trim() : null,
       serviceWindowStart:
@@ -257,7 +277,7 @@ export function MenuCategorySheet({
         windowDraft.end === null ? null : normalizeTimeInput(windowDraft.end),
       serviceDays: windowDraft.days,
     });
-  }, [canSave, name, description, windowDraft, onSave]);
+  }, [canSave, category, name, description, windowDraft, onSave]);
 
   const handleConfirmDelete = useCallback((): void => {
     if (category === null || onDelete === undefined) return;
@@ -428,14 +448,38 @@ export function MenuCategorySheet({
             </Text>
           ) : null}
 
+          {saveFailed ? (
+            <View
+              accessible
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
+              style={styles.saveError}
+              testID="menu-category-save-error"
+            >
+              <Text style={styles.saveErrorText}>
+                Category not saved. We couldn’t confirm the save, but your
+                details are still here. It’s safe to try again.
+              </Text>
+            </View>
+          ) : null}
+
           <Button
-            label={isEdit ? "Save category" : "Add category"}
+            label={
+              saveFailed
+                ? "Try again"
+                : isEdit
+                  ? "Save category"
+                  : "Add category"
+            }
             onPress={handleSave}
             variant="primary"
             size="lg"
             fullWidth
             loading={saving}
             disabled={!canSave}
+            accessibilityLabel={
+              saveFailed ? "Try saving category again" : undefined
+            }
             style={styles.saveBtn}
             testID="menu-category-save"
           />
@@ -654,6 +698,18 @@ const styles = StyleSheet.create({
   timePicker: {
     width: "100%",
   },
+  saveError: {
+    gap: spacing.xxs,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    borderColor: semantic.error,
+    backgroundColor: semantic.errorTint,
+  },
+  saveErrorText: {
+    ...typography.bodySm,
+    color: semantic.errorText,
+  },
   saveBtn: {
     marginTop: spacing.lg,
   },
@@ -661,5 +717,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
 });
+
+function createMenuCategoryId(): string {
+  const cryptoValue = (globalThis as { crypto?: { randomUUID?: () => string } })
+    .crypto;
+  if (typeof cryptoValue?.randomUUID === "function") {
+    return cryptoValue.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const random = (Math.random() * 16) | 0;
+    const value = char === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
 
 export default MenuCategorySheet;

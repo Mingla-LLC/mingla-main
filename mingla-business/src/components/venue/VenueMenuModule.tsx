@@ -161,6 +161,7 @@ export function VenueMenuModule({
   // ---- sheet state ----
   const [categorySheetOpen, setCategorySheetOpen] = useState<boolean>(false);
   const [editingCategory, setEditingCategory] = useState<Menu | null>(null);
+  const [categorySaveFailed, setCategorySaveFailed] = useState<boolean>(false);
   const [itemSheetOpen, setItemSheetOpen] = useState<boolean>(false);
   const [itemSheetMenuId, setItemSheetMenuId] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
@@ -171,22 +172,29 @@ export function VenueMenuModule({
 
   // ---- category handlers ----
   const openAddCategory = useCallback((): void => {
+    setCategorySaveFailed(false);
     setEditingCategory(null);
     setCategorySheetOpen(true);
   }, []);
   const openEditCategory = useCallback((menu: Menu): void => {
+    setCategorySaveFailed(false);
     setEditingCategory(menu);
     setCategorySheetOpen(true);
+  }, []);
+  const closeCategorySheet = useCallback((): void => {
+    setCategorySheetOpen(false);
+    setEditingCategory(null);
+    setCategorySaveFailed(false);
   }, []);
 
   const handleSaveCategory = useCallback(
     (input: MenuCategorySheetSaveInput): void => {
-      setSaveError(false);
+      setCategorySaveFailed(false);
       const nextSort =
         editingCategory !== null ? editingCategory.sortOrder : menus.length;
       upsertMenu.mutate(
         {
-          id: editingCategory?.id,
+          id: input.id,
           name: input.name,
           description: input.description,
           sortOrder: nextSort,
@@ -197,14 +205,13 @@ export function VenueMenuModule({
         },
         {
           onSuccess: () => {
-            setCategorySheetOpen(false);
-            setEditingCategory(null);
+            closeCategorySheet();
           },
-          onError: () => setSaveError(true),
+          onError: () => setCategorySaveFailed(true),
         },
       );
     },
-    [editingCategory, menus.length, upsertMenu],
+    [closeCategorySheet, editingCategory, menus.length, upsertMenu],
   );
 
   const handleDeleteCategory = useCallback(
@@ -417,10 +424,11 @@ export function VenueMenuModule({
 
         <MenuCategorySheet
           visible={categorySheetOpen}
-          onClose={() => setCategorySheetOpen(false)}
+          onClose={closeCategorySheet}
           category={editingCategory}
           onSave={handleSaveCategory}
           saving={upsertMenu.isPending}
+          saveFailed={categorySaveFailed}
           onDelete={canMutate ? handleDeleteCategory : undefined}
           deleting={deleteMenu.isPending}
           canDelete={canMutate}
@@ -667,10 +675,11 @@ export function VenueMenuModule({
 
       <MenuCategorySheet
         visible={categorySheetOpen}
-        onClose={() => setCategorySheetOpen(false)}
+        onClose={closeCategorySheet}
         category={editingCategory}
         onSave={handleSaveCategory}
         saving={upsertMenu.isPending}
+        saveFailed={categorySaveFailed}
         onDelete={canMutate ? handleDeleteCategory : undefined}
         deleting={deleteMenu.isPending}
         canDelete={canMutate}
