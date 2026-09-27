@@ -986,6 +986,10 @@ jobs:
           # response replay, public read-through, and transactional rollback.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3564_atomic_menu_item_reorder.implementor.pg17.test.sql
+          # Independent #3564 adversarial proof: real dblink sessions serialize
+          # same-menu writers and race concurrent membership changes.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3564_atomic_menu_item_reorder.tester.adversarial.pg17.test.sql
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
