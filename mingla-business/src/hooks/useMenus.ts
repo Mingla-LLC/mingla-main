@@ -16,6 +16,7 @@
  * (I-PROPOSED-1186C-MENU-NOT-EXPERIENCE-STOPS).
  */
 
+import { useEffect, useRef } from "react";
 import {
   useMutation,
   useQuery,
@@ -29,12 +30,26 @@ import { supabase } from "../services/supabase";
 import { fetchBrandMenus, type Menu } from "../services/menusService";
 import { fetchPublicMenus } from "../services/publicMenusService";
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
+import {
+  applyOptimisticMenuItemOrder,
+  canRetryMenuItemReorder,
+  classifyMenuItemReorderError,
+  installCanonicalMenuItemOrder,
+  menuItemRelationshipIsApplied,
+  MenuItemReorderError,
+  parseCanonicalMenuItemOrder,
+  type CanonicalMenuItemOrder,
+  type MenuItemReorderIntent,
+} from "./menuItemReorder";
+import { orderPadKeys } from "./orderPadQueryKeys";
+import { publicMenuBundleKeys } from "./publicMenuBundleQueryKeys";
 
 export const menuKeys = {
   brandMenus: (brandId: string, venueId?: string | null) =>
     ["menus", brandId, venueId ?? "all"] as const,
   publicMenus: (brandSlug: string, venueSlug: string) =>
     ["publicMenus", brandSlug, venueSlug] as const,
+  publicMenusRoot: ["publicMenus"] as const,
 };
 
 // ---- builder read ----
@@ -241,54 +256,172 @@ export interface SortOrderPatch {
   sortOrder: number;
 }
 
-/**
- * Reorder menu ITEMS: write sort_order for the affected rows in one batched
- * upsert. brand_id + menu_id are set per row so the upsert satisfies RLS + the
- * brand-scoping integrity rule. menuId is the parent menu of all rows.
- */
+interface MenuItemReorderMutationContext {
+  operationId: string;
+  scopeKey: string;
+  authoringKey: ReturnType<typeof menuKeys.brandMenus>;
+  snapshot: Menu[] | undefined;
+}
+
+/** Reorder one adjacent menu item through the complete-order atomic RPC. */
 export function useReorderMenuItems(
   brandId: string | null,
   venueId?: string | null,
 ): UseMutationResult<
-  void,
-  Error,
-  { menuId: string; patches: SortOrderPatch[] }
+  CanonicalMenuItemOrder,
+  MenuItemReorderError,
+  MenuItemReorderIntent,
+  MenuItemReorderMutationContext
 > {
   const queryClient = useQueryClient();
+  const activeOperationRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+  const scopeKey = `${brandId ?? "disabled"}:${venueId ?? "disabled"}`;
+  const scopeRef = useRef(scopeKey);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    scopeRef.current = scopeKey;
+    activeOperationRef.current = null;
+    return () => {
+      mountedRef.current = false;
+      activeOperationRef.current = null;
+    };
+  }, [scopeKey]);
+
+  const isCurrent = (intent: MenuItemReorderIntent): boolean =>
+    mountedRef.current &&
+    scopeRef.current === scopeKey &&
+    activeOperationRef.current === intent.operationId &&
+    intent.brandId === brandId &&
+    intent.venueId === venueId;
+
+  const invalidateReaders = (intent: MenuItemReorderIntent): void => {
+    void queryClient.invalidateQueries({
+      queryKey: orderPadKeys.forBrand(intent.brandId),
+    });
+    void queryClient.invalidateQueries({ queryKey: menuKeys.publicMenusRoot });
+    void queryClient.invalidateQueries({ queryKey: publicMenuBundleKeys.all });
+  };
+
   return useMutation<
-    void,
-    Error,
-    { menuId: string; patches: SortOrderPatch[] }
+    CanonicalMenuItemOrder,
+    MenuItemReorderError,
+    MenuItemReorderIntent,
+    MenuItemReorderMutationContext
   >({
-    mutationFn: async ({
-      menuId,
-      patches,
-    }: {
-      menuId: string;
-      patches: SortOrderPatch[];
-    }): Promise<void> => {
-      if (brandId === null) throw new Error("brand_required");
-      if (patches.length === 0) return;
-      const now = new Date().toISOString();
-      const rows = patches.map((p) => ({
-        id: p.id,
-        brand_id: brandId,
-        menu_id: menuId,
-        sort_order: p.sortOrder,
-        updated_at: now,
-      }));
-      const { error } = await supabase
-        .from("menu_items")
-        .upsert(rows, { onConflict: "id" });
-      if (error !== null) throw error as unknown as Error;
-    },
-    onError: () => undefined,
-    onSuccess: () => {
-      if (brandId !== null) {
-        void queryClient.invalidateQueries({
-          queryKey: menuKeys.brandMenus(brandId, venueId),
-        });
+    mutationFn: async (intent): Promise<CanonicalMenuItemOrder> => {
+      if (
+        brandId === null ||
+        venueId === null ||
+        venueId === undefined ||
+        intent.brandId !== brandId ||
+        intent.venueId !== venueId
+      ) {
+        throw new MenuItemReorderError("generic", "scope_mismatch");
       }
+      try {
+        const { data, error } = await supabase.rpc(
+          "biz_reorder_menu_items_v1",
+          {
+            p_brand_id: intent.brandId,
+            p_venue_id: intent.venueId,
+            p_menu_id: intent.menuId,
+            p_expected_items: intent.expectedItems.map((item) => ({
+              id: item.id,
+              sort_order: item.sortOrder,
+            })),
+            p_ordered_item_ids: intent.orderedItemIds,
+          },
+        );
+        if (error !== null) throw classifyMenuItemReorderError(error);
+        const canonical = parseCanonicalMenuItemOrder(data, intent);
+        if (canonical === null) {
+          throw new MenuItemReorderError("uncertain", "invalid_response");
+        }
+        return canonical;
+      } catch (error) {
+        throw classifyMenuItemReorderError(error);
+      }
+    },
+    retry: false,
+    onMutate: async (intent) => {
+      const authoringKey = menuKeys.brandMenus(intent.brandId, intent.venueId);
+      activeOperationRef.current = intent.operationId;
+      await queryClient.cancelQueries({ queryKey: authoringKey, exact: true });
+      const snapshot = queryClient.getQueryData<Menu[]>(authoringKey);
+      if (isCurrent(intent)) {
+        queryClient.setQueryData<Menu[]>(authoringKey, (current) =>
+          applyOptimisticMenuItemOrder(current, intent),
+        );
+      }
+      return { operationId: intent.operationId, scopeKey, authoringKey, snapshot };
+    },
+    onSuccess: (canonical, intent, context) => {
+      if (
+        context === undefined ||
+        context.scopeKey !== scopeKey ||
+        !isCurrent(intent)
+      ) {
+        return;
+      }
+      queryClient.setQueryData<Menu[]>(context.authoringKey, (current) =>
+        installCanonicalMenuItemOrder(current, canonical),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: context.authoringKey,
+        exact: true,
+      });
+      invalidateReaders(intent);
+    },
+    onError: async (rawError, intent, context) => {
+      const error = classifyMenuItemReorderError(rawError);
+      if (
+        context === undefined ||
+        context.operationId !== intent.operationId ||
+        context.scopeKey !== scopeKey ||
+        !isCurrent(intent)
+      ) {
+        return;
+      }
+
+      queryClient.setQueryData<Menu[] | undefined>(
+        context.authoringKey,
+        context.snapshot,
+      );
+      console.error("[reorder_menu_items] failed", {
+        brandId: intent.brandId,
+        venueId: intent.venueId,
+        menuId: intent.menuId,
+        code: error.code,
+        category: error.category,
+      });
+
+      if (error.category === "conflict" || error.category === "uncertain") {
+        try {
+          await queryClient.refetchQueries({
+            queryKey: context.authoringKey,
+            exact: true,
+          });
+        } catch {
+          // The exact pre-mutation snapshot is already restored. A failed
+          // confirmation read remains an uncertain, explicitly retryable state.
+        }
+        if (!isCurrent(intent)) return;
+        const latest = queryClient.getQueryData<Menu[]>(context.authoringKey);
+        if (menuItemRelationshipIsApplied(latest, intent)) {
+          error.resolvedAsSuccess = true;
+          error.authoritativeMenus = latest;
+          invalidateReaders(intent);
+          return;
+        }
+        error.retryable = canRetryMenuItemReorder(latest, intent);
+        return;
+      }
+
+      error.retryable =
+        error.category === "generic" &&
+        canRetryMenuItemReorder(context.snapshot, intent);
     },
   });
 }

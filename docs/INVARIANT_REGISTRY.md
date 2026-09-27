@@ -1,5 +1,14 @@
 # Invariant Registry
 
+## DRAFT — issue #3564 (venue menu item ordering is atomic)
+
+### I-PROPOSED-3564-MENU-ITEM-ORDER-ATOMIC (DRAFT)
+
+- **Rule:** Mingla Host reorders items within one venue-owned menu by sending the complete expected item/position snapshot and complete desired item-ID order to `public.biz_reorder_menu_items_v1`. One authenticated, manager-plus, exact-brand/venue/menu-scoped transaction locks the parent and every current child, rejects incomplete, malformed, foreign, duplicate, or stale sets without a partial write, replaces all positions with one contiguous `0..n-1` set update, and returns the canonical order. A desired order already current and contiguous is a successful idempotent replay even when the caller's expected positions are old.
+- **Scope:** This invariant covers item up/down reorder in Mingla Business iOS, Android, and Web plus the fresh public/staff menu reads it invalidates. It does not change category reorder, item/category CRUD, availability, price or modifier behavior, public layouts, Admin, Ari, Sites, table RLS/grants, or any release path.
+- **Enforcement:** additive migration `20270717003564_issue_3564_atomic_menu_item_reorder.sql`; the registered PostgreSQL 17 implementor suite and independently owned tester suite; Business hook/component implementor suites and independent tester suites; exact optimistic snapshot/rollback and stale-operation/scope containment; and fail-on-revert proof for RPC ownership, locks/snapshot validation, ACL/search path, cache recovery, downstream invalidations, and CI registration.
+- **Status:** DRAFT until #3564 merges, the migration is applied through the reviewed surgical lane, Business Web reaches `READY`, and Business iOS/Android/Web plus public/staff read-through are independently verified. No production migration, web deployment, OTA, or app release is authorized by this DRAFT entry.
+
 ## DRAFT — issue #3567 (Business menu text matches storage before save)
 
 ### I-PROPOSED-3567-MENU-TEXT-STORAGE-PARITY (DRAFT)
