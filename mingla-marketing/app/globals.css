@@ -1,6 +1,42 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@font-face {
+  font-family: "MinglaMochiyArialFallback";
+  src: local("Arial");
+  ascent-override: 91.04%;
+  descent-override: 22.60%;
+  line-gap-override: 0.00%;
+  size-adjust: 127.41%;
+}
+
+@font-face {
+  font-family: "MinglaNunitoArialFallback";
+  src: local("Arial");
+  ascent-override: 99.71%;
+  descent-override: 34.82%;
+  line-gap-override: 0.00%;
+  size-adjust: 101.39%;
+}
+
+@font-face {
+  font-family: "MinglaInterRootArialFallback";
+  src: local("Arial");
+  ascent-override: 90.44%;
+  descent-override: 22.52%;
+  line-gap-override: 0.00%;
+  size-adjust: 107.12%;
+}
+
+@font-face {
+  font-family: "MinglaInterPreviewArialFallback";
+  src: local("Arial");
+  ascent-override: 90.44%;
+  descent-override: 22.52%;
+  line-gap-override: 0.00%;
+  size-adjust: 107.12%;
+}
+
 @theme inline {
   /* ----- Fonts (matches live usemingla.com brand) ----- */
   --font-sans: var(--font-nunito);
