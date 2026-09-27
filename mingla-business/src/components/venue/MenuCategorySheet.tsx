@@ -33,6 +33,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
+  androidOpaque,
   glass,
   radius,
   semantic,
@@ -52,6 +53,14 @@ import {
   serviceWindowSummary,
   validateServiceWindow,
 } from "./menuDepth";
+import { MenuTextCounter } from "./MenuTextCounter";
+import {
+  MENU_TEXT_SAVE_COPY,
+  menuTextFieldIds,
+  validateMenuText,
+  type MenuTextField as MenuTextFieldKind,
+  type MenuTextSaveFailure,
+} from "./menuTextValidation";
 
 export interface MenuCategorySheetSaveInput {
   id: string;
@@ -72,6 +81,10 @@ export interface MenuCategorySheetProps {
   onSave: (input: MenuCategorySheetSaveInput) => void;
   saving: boolean;
   saveFailed?: boolean;
+  /** Typed save failure for parent integrations; legacy boolean remains valid. */
+  saveFailure?: MenuTextSaveFailure | null;
+  /** Clear a parent-owned typed failure when this form starts a new attempt. */
+  onClearSaveFailure?: () => void;
   /** Delete the category being edited (edit mode + manager). Omit to hide. */
   onDelete?: (id: string) => void;
   deleting?: boolean;
@@ -135,6 +148,31 @@ const localizedTimeLabel = (hhmm: string, emptyLabel: string): string => {
   });
 };
 
+const categoryNameIds = menuTextFieldIds("menu-category-name");
+const categoryDescriptionIds = menuTextFieldIds("menu-category-description");
+
+const menuTextAccessibilityHint = (
+  used: number,
+  limit: number,
+): string => `${used} of ${limit} characters will be saved.`;
+
+const fieldFailureMessage = (
+  failure: MenuTextSaveFailure | null,
+  field: MenuTextFieldKind,
+): string | null =>
+  failure?.kind === "field" && failure.field === field
+    ? failure.message
+    : null;
+
+const formFailureMessage = (
+  failure: MenuTextSaveFailure | null,
+  legacySaveFailed: boolean,
+): string | null => {
+  if (failure?.kind === "field") return failure.formMessage;
+  if (failure !== null) return failure.message;
+  return legacySaveFailed ? MENU_TEXT_SAVE_COPY.category.unknown : null;
+};
+
 export function MenuCategorySheet({
   visible,
   onClose,
@@ -142,6 +180,8 @@ export function MenuCategorySheet({
   onSave,
   saving,
   saveFailed = false,
+  saveFailure = null,
+  onClearSaveFailure,
   onDelete,
   deleting = false,
   canDelete = false,
@@ -156,14 +196,25 @@ export function MenuCategorySheet({
   const [pickerMode, setPickerMode] = useState<TimePickerMode>(null);
   const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState<boolean>(false);
+  const [nameBlurred, setNameBlurred] = useState<boolean>(false);
+  const [nameHadNonBlankValue, setNameHadNonBlankValue] =
+    useState<boolean>(false);
   const addSessionIdRef = useRef<string | null>(null);
+  const clearSaveFailureRef = useRef(onClearSaveFailure);
+
+  useEffect(() => {
+    clearSaveFailureRef.current = onClearSaveFailure;
+  }, [onClearSaveFailure]);
 
   useEffect(() => {
     if (!visible) {
       setConfirmDeleteOpen(false);
       setPickerMode(null);
       setTempPickerValue(null);
+      setNameBlurred(false);
+      setNameHadNonBlankValue(false);
       addSessionIdRef.current = null;
+      clearSaveFailureRef.current?.();
       return;
     }
     if (category === null && addSessionIdRef.current === null) {
@@ -171,8 +222,14 @@ export function MenuCategorySheet({
     } else if (category !== null) {
       addSessionIdRef.current = null;
     }
-    setName(category?.name ?? "");
+    const nextName = category?.name ?? "";
+    setName(nextName);
     setDescription(category?.description ?? "");
+    setNameBlurred(false);
+    setNameHadNonBlankValue(
+      validateMenuText("categoryName", nextName).canonicalValue !== "",
+    );
+    clearSaveFailureRef.current?.();
     // Postgres returns `time` as "HH:MM:SS"; the field shows "HH:MM".
     setWindowStart(
       normalizeTimeInput(category?.serviceWindowStart ?? "") ?? "",
@@ -201,8 +258,67 @@ export function MenuCategorySheet({
         : "Finish setting the service window",
     [windowDraft, windowError],
   );
-  const canSave = name.trim().length > 0 && windowError === null && !saving;
+  const nameValidation = useMemo(
+    () => validateMenuText("categoryName", name),
+    [name],
+  );
+  const descriptionValidation = useMemo(
+    () => validateMenuText("categoryDescription", description),
+    [description],
+  );
+  const visibleNameLocalError =
+    nameValidation.error?.kind === "too-long" ||
+    (nameValidation.error?.kind === "required" &&
+      (nameBlurred || nameHadNonBlankValue))
+      ? nameValidation.error.message
+      : null;
+  const nameError =
+    visibleNameLocalError ?? fieldFailureMessage(saveFailure, "categoryName");
+  const descriptionError =
+    descriptionValidation.error?.message ??
+    fieldFailureMessage(saveFailure, "categoryDescription");
+  const saveFailureMessage = formFailureMessage(saveFailure, saveFailed);
+  const nameCounterInvalid =
+    nameValidation.error?.kind === "too-long" ||
+    fieldFailureMessage(saveFailure, "categoryName") !== null;
+  const descriptionCounterInvalid =
+    descriptionValidation.error?.kind === "too-long" ||
+    fieldFailureMessage(saveFailure, "categoryDescription") !== null;
+  const categoryFieldFailureActive =
+    saveFailure?.kind === "field" &&
+    (saveFailure.field === "categoryName" ||
+      saveFailure.field === "categoryDescription");
+  const canSave =
+    nameValidation.isValid &&
+    descriptionValidation.isValid &&
+    !categoryFieldFailureActive &&
+    windowError === null &&
+    !saving;
   const snap = useMemo<number>(() => 0.9, []);
+
+  const handleNameChange = useCallback(
+    (next: string): void => {
+      if (validateMenuText("categoryName", next).canonicalValue !== "") {
+        setNameHadNonBlankValue(true);
+      }
+      onClearSaveFailure?.();
+      setName(next);
+    },
+    [onClearSaveFailure],
+  );
+
+  const handleDescriptionChange = useCallback(
+    (next: string): void => {
+      onClearSaveFailure?.();
+      setDescription(next);
+    },
+    [onClearSaveFailure],
+  );
+
+  const handleClose = useCallback((): void => {
+    onClearSaveFailure?.();
+    onClose();
+  }, [onClearSaveFailure, onClose]);
 
   const toggleDay = useCallback((isoDay: number): void => {
     setDays((current) =>
@@ -261,14 +377,23 @@ export function MenuCategorySheet({
   }, []);
 
   const handleSave = useCallback((): void => {
-    if (!canSave) return;
+    if (
+      !nameValidation.isValid ||
+      !descriptionValidation.isValid ||
+      categoryFieldFailureActive ||
+      windowError !== null ||
+      saving
+    ) {
+      return;
+    }
     const id =
       category?.id ?? addSessionIdRef.current ?? createMenuCategoryId();
     if (category === null) addSessionIdRef.current = id;
+    onClearSaveFailure?.();
     onSave({
       id,
-      name: name.trim(),
-      description: description.trim().length > 0 ? description.trim() : null,
+      name: nameValidation.canonicalValue,
+      description: descriptionValidation.submitValue,
       serviceWindowStart:
         windowDraft.start === null
           ? null
@@ -277,7 +402,17 @@ export function MenuCategorySheet({
         windowDraft.end === null ? null : normalizeTimeInput(windowDraft.end),
       serviceDays: windowDraft.days,
     });
-  }, [canSave, category, name, description, windowDraft, onSave]);
+  }, [
+    nameValidation,
+    descriptionValidation,
+    categoryFieldFailureActive,
+    windowError,
+    saving,
+    category,
+    onClearSaveFailure,
+    onSave,
+    windowDraft,
+  ]);
 
   const handleConfirmDelete = useCallback((): void => {
     if (category === null || onDelete === undefined) return;
@@ -287,7 +422,7 @@ export function MenuCategorySheet({
   return (
     <Sheet
       visible={visible}
-      onClose={onClose}
+      onClose={handleClose}
       snapPoint={snap}
       testID={testID ?? "menu-category-sheet"}
     >
@@ -301,24 +436,71 @@ export function MenuCategorySheet({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Field label="Category name">
+          <MenuTextField
+            label="Category name"
+            labelId={categoryNameIds.labelId}
+            error={nameError}
+            errorId={categoryNameIds.errorId}
+            counter={
+              <MenuTextCounter
+                used={nameValidation.storageCount}
+                limit={nameValidation.limit}
+                invalid={nameCounterInvalid}
+                nativeID={categoryNameIds.counterId}
+                testID="menu-category-name-counter"
+              />
+            }
+          >
             <Input
               value={name}
-              onChangeText={setName}
+              onChangeText={handleNameChange}
+              onBlur={() => setNameBlurred(true)}
               placeholder="e.g. Starters, Drinks"
               accessibilityLabel="Category name"
+              accessibilityHint={menuTextAccessibilityHint(
+                nameValidation.storageCount,
+                nameValidation.limit,
+              )}
+              aria-labelledby={categoryNameIds.labelId}
+              aria-describedby={categoryNameIds.counterId}
+              error={nameError}
+              errorId={`${categoryNameIds.counterId} ${categoryNameIds.errorId}`}
+              renderErrorMessage={false}
               testID="menu-category-name"
             />
-          </Field>
-          <Field label="Description (optional)">
+          </MenuTextField>
+          <MenuTextField
+            label="Description (optional)"
+            labelId={categoryDescriptionIds.labelId}
+            error={descriptionError}
+            errorId={categoryDescriptionIds.errorId}
+            counter={
+              <MenuTextCounter
+                used={descriptionValidation.storageCount}
+                limit={descriptionValidation.limit}
+                invalid={descriptionCounterInvalid}
+                nativeID={categoryDescriptionIds.counterId}
+                testID="menu-category-description-counter"
+              />
+            }
+          >
             <Input
               value={description}
-              onChangeText={setDescription}
+              onChangeText={handleDescriptionChange}
               placeholder="A short line guests see under the heading"
               accessibilityLabel="Category description"
+              accessibilityHint={menuTextAccessibilityHint(
+                descriptionValidation.storageCount,
+                descriptionValidation.limit,
+              )}
+              aria-labelledby={categoryDescriptionIds.labelId}
+              aria-describedby={categoryDescriptionIds.counterId}
+              error={descriptionError}
+              errorId={`${categoryDescriptionIds.counterId} ${categoryDescriptionIds.errorId}`}
+              renderErrorMessage={false}
               testID="menu-category-desc"
             />
-          </Field>
+          </MenuTextField>
 
           {/* Issue #1789 (P-12) — service window. Blank = always available. */}
           <Text style={styles.groupLabel}>When it&apos;s served</Text>
@@ -448,24 +630,22 @@ export function MenuCategorySheet({
             </Text>
           ) : null}
 
-          {saveFailed ? (
+          {saveFailureMessage !== null ? (
             <View
               accessible
               accessibilityRole="alert"
               accessibilityLiveRegion="assertive"
+              aria-live="assertive"
               style={styles.saveError}
               testID="menu-category-save-error"
             >
-              <Text style={styles.saveErrorText}>
-                Category not saved. We couldn’t confirm the save, but your
-                details are still here. It’s safe to try again.
-              </Text>
+              <Text style={styles.saveErrorText}>{saveFailureMessage}</Text>
             </View>
           ) : null}
 
           <Button
             label={
-              saveFailed
+              saveFailureMessage !== null
                 ? "Try again"
                 : isEdit
                   ? "Save category"
@@ -478,7 +658,9 @@ export function MenuCategorySheet({
             loading={saving}
             disabled={!canSave}
             accessibilityLabel={
-              saveFailed ? "Try saving category again" : undefined
+              saveFailureMessage !== null
+                ? "Try saving category again"
+                : undefined
             }
             style={styles.saveBtn}
             testID="menu-category-save"
@@ -582,6 +764,49 @@ interface FieldProps {
   children: React.ReactNode;
 }
 
+interface MenuTextFieldProps extends FieldProps {
+  labelId: string;
+  counter: React.ReactNode;
+  error: string | null;
+  errorId: string;
+}
+
+function MenuTextField({
+  label,
+  labelId,
+  counter,
+  error,
+  errorId,
+  children,
+}: MenuTextFieldProps): React.ReactElement {
+  return (
+    <View style={styles.field}>
+      <View style={styles.fieldHeader}>
+        <Text
+          nativeID={labelId}
+          style={[styles.fieldLabel, styles.menuTextFieldLabel]}
+        >
+          {label}
+        </Text>
+        <View style={styles.menuTextCounterWrap}>{counter}</View>
+      </View>
+      {children}
+      {error !== null ? (
+        <Text
+          nativeID={errorId}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+          aria-live="assertive"
+          style={styles.fieldError}
+          testID={errorId}
+        >
+          {error}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 function Field({ label, children }: FieldProps): React.ReactElement {
   return (
     <View style={styles.field}>
@@ -615,9 +840,29 @@ const styles = StyleSheet.create({
     gap: spacing.xxs,
     marginBottom: spacing.xs,
   },
+  fieldHeader: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+  },
   fieldLabel: {
     ...typography.bodySm,
     color: textTokens.secondary,
+  },
+  menuTextFieldLabel: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  menuTextCounterWrap: {
+    marginLeft: "auto",
+    alignItems: "flex-end",
+  },
+  fieldError: {
+    ...typography.bodySm,
+    color: semantic.errorText,
+    fontWeight: "600",
   },
   groupLabel: {
     ...typography.labelCap,
@@ -704,7 +949,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radius.md,
     borderColor: semantic.error,
-    backgroundColor: semantic.errorTint,
+    backgroundColor:
+      Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint,
   },
   saveErrorText: {
     ...typography.bodySm,
