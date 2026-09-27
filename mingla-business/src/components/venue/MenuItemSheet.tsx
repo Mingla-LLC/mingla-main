@@ -82,6 +82,8 @@ export interface MenuItemSheetProps {
   brandHasCurrency: boolean;
   onSave: (input: MenuItemSheetSaveInput) => void;
   saving: boolean;
+  /** #3563: locks parent edits and dismissal while an options transaction settles. */
+  optionsSaving?: boolean;
   onDelete?: (id: string) => void;
   deleting?: boolean;
   canDelete?: boolean;
@@ -102,6 +104,7 @@ export function MenuItemSheet({
   brandHasCurrency,
   onSave,
   saving,
+  optionsSaving = false,
   onDelete,
   deleting = false,
   canDelete = false,
@@ -171,6 +174,7 @@ export function MenuItemSheet({
   const canSave =
     name.trim().length > 0 &&
     !saving &&
+    !optionsSaving &&
     priceResult.kind !== "invalid" &&
     costResult.kind !== "invalid";
   const snap = useMemo<number>(() => 0.9, []);
@@ -209,11 +213,16 @@ export function MenuItemSheet({
     onDelete(item.id);
   }, [item, onDelete]);
 
+  const handleClose = useCallback((): void => {
+    if (!optionsSaving) onClose();
+  }, [onClose, optionsSaving]);
+
   return (
     <Sheet
       visible={visible}
-      onClose={onClose}
+      onClose={handleClose}
       snapPoint={snap}
+      dismissDisabled={optionsSaving}
       testID={testID ?? "menu-item-sheet"}
     >
       <View style={styles.body}>
@@ -231,6 +240,7 @@ export function MenuItemSheet({
               onChangeText={setName}
               placeholder="e.g. Margherita"
               accessibilityLabel="Item name"
+              disabled={optionsSaving}
               testID="menu-item-name"
             />
           </Field>
@@ -240,6 +250,7 @@ export function MenuItemSheet({
               onChangeText={setDescription}
               placeholder="What's in it"
               accessibilityLabel="Item description"
+              disabled={optionsSaving}
               testID="menu-item-desc"
             />
           </Field>
@@ -255,6 +266,7 @@ export function MenuItemSheet({
               error={priceError}
               errorId="menu-item-price-error"
               renderErrorMessage={false}
+              disabled={optionsSaving}
               testID="menu-item-price"
             />
             {priceError !== null ? (
@@ -291,6 +303,7 @@ export function MenuItemSheet({
               error={costError}
               errorId="menu-item-cost-error"
               renderErrorMessage={false}
+              disabled={optionsSaving}
               testID="menu-item-cost"
             />
             {costError !== null ? (
@@ -314,6 +327,7 @@ export function MenuItemSheet({
             label="Show this item to guests"
             value={isAvailable}
             onValueChange={setIsAvailable}
+            disabled={optionsSaving}
             testID="menu-item-available"
           />
 
@@ -322,6 +336,7 @@ export function MenuItemSheet({
             label="Let guests add a note (no ice, extra hot)"
             value={allowsNotes}
             onValueChange={setAllowsNotes}
+            disabled={optionsSaving}
             testID="menu-item-allows-notes"
           />
           <Text style={styles.helper}>
@@ -340,6 +355,7 @@ export function MenuItemSheet({
                   }
                   variant={prepStation === choice.value ? "primary" : "secondary"}
                   size="sm"
+                  disabled={optionsSaving}
                   testID={`menu-item-station-${choice.value ?? "none"}`}
                 />
               ))}
@@ -369,7 +385,7 @@ export function MenuItemSheet({
               variant="destructive"
               size="md"
               fullWidth
-              disabled={deleting}
+              disabled={deleting || optionsSaving}
               loading={deleting}
               style={styles.deleteBtn}
               testID="menu-item-delete"
@@ -458,6 +474,7 @@ interface ToggleRowProps {
   value: boolean;
   onValueChange: (next: boolean) => void;
   testID: string;
+  disabled?: boolean;
 }
 
 function ToggleRow({
@@ -465,6 +482,7 @@ function ToggleRow({
   value,
   onValueChange,
   testID,
+  disabled = false,
 }: ToggleRowProps): React.ReactElement {
   return (
     <View style={styles.toggleRow}>
@@ -472,6 +490,7 @@ function ToggleRow({
       <BrandSwitch
         value={value}
         onValueChange={onValueChange}
+        disabled={disabled}
         accessibilityLabel={label}
         testID={testID}
       />

@@ -29,6 +29,7 @@ import {
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
+import { orderPadKeys } from "./orderPadQueryKeys";
 import { venueOrdersKeys } from "./useVenueOrders";
 import type {
   OrderPadMenuItem,
@@ -42,18 +43,7 @@ export interface OrderPadMenu {
   groupsByItemId: Record<string, OrderPadModifierGroup[]>;
 }
 
-export const orderPadKeys = {
-  menu: (
-    brandId: string,
-    servingVenueId: string,
-  ): readonly ["orderPadMenu", string, string] =>
-    ["orderPadMenu", brandId, servingVenueId] as const,
-  preview: (
-    brandId: string,
-    fingerprint: string,
-  ): readonly ["orderPadPreview", string, string] =>
-    ["orderPadPreview", brandId, fingerprint] as const,
-};
+export { orderPadKeys } from "./orderPadQueryKeys";
 
 interface MenuRow {
   id: string;
@@ -164,6 +154,7 @@ export const fetchOrderPadMenu = async (
       .select(PAD_MODIFIER_COLUMNS)
       .eq("brand_id", brandId)
       .in("group_id", groups.map((g) => g.id))
+      .eq("is_available", true)
       .order("sort_order", { ascending: true })
       .returns<ModifierRow[]>();
     if (modifierError !== null) throw modifierError;

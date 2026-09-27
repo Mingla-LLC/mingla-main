@@ -24,6 +24,8 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //          — app-mobile/src/services/brandFollowsService.ts
   //   +  2  #1789 menu_modifier_groups (id) + menu_modifiers (id)
   //          — mingla-business/src/hooks/useMenuModifiers.ts:206 and :232
+  //   -  2  #3563 menu_modifier_groups (id) + menu_modifiers (id) call sites
+  //          — mingla-business/src/hooks/useMenuModifiers.ts, REMOVED
   //   +  1  #1974 brand_tax_registration_attestations (brand_id)
   //          — supabase/functions/brand-tax-registrations-list/index.ts
   //   +  1  #1979 venue_reservation_settings (venue_id) call site
@@ -40,7 +42,7 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //          — supabase/functions/_shared/agentAttachmentFinalize.ts:501
   //   +  1  #3429 agent_turn_claim_guards (user_id,client_turn_id)
   //          — supabase/functions/agent-turn-control/index.ts:95
-  //   = 91
+  //   = 89
   //
   // [TEST-MOD-APPROVED #3429] Census +2, both new Ari call sites, both with a
   // real non-partial arbiter. Verified by reading pg_indexes on the live #3429
@@ -84,13 +86,21 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // only the CALL SITE moved from TypeScript into SQL, and this audit
   // enumerates call sites, not indexes.
   //
+  // [TEST-MOD-APPROVED #3563] The two #1789 client call sites were removed:
+  // `useSaveModifierGroup` now makes one authenticated
+  // `biz_save_menu_modifier_group_v1` RPC call instead of separately upserting
+  // `menu_modifier_groups` and `menu_modifiers`. The table arbiters themselves
+  // are unchanged — `menu_modifier_groups_pkey` and `menu_modifiers_pkey` remain
+  // the non-partial `PRIMARY KEY (id)` indexes proved above. Like #1971, this is
+  // a call-site census subtraction, not an arbiter removal or behavior change.
+  //
   // [TEST-MOD-APPROVED #1983] Additive Ari call site on the existing
   // `(user_id, channel, type)` unique key already used by Host
   // `useNotificationTypePrefs`. No new arbiter columns; census +1 only.
   //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 91);
+  assert.equal(sites.length, 89);
   assert.equal(sites.some((site) => site.table === "user_stats"), false);
   assert.equal(sites.some((site) => site.table === "saved_experience_privacy"), false);
   assert.equal(sites.some((site) => site.table === "business_notification_type_preferences"), true);

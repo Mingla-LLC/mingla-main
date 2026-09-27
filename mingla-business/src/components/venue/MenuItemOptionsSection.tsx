@@ -14,8 +14,22 @@
  * The section says that out loud instead of rendering a dead control.
  */
 
-import React, { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  AccessibilityInfo,
+  findNodeHandle,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import {
   radius,
@@ -40,6 +54,7 @@ export interface MenuItemOptionsSectionProps {
   menuItemId: string | null;
   currency: string;
   canMutate: boolean;
+  onSavingChange?: (saving: boolean) => void;
   testID?: string;
 }
 
@@ -48,6 +63,7 @@ export function MenuItemOptionsSection({
   menuItemId,
   currency,
   canMutate,
+  onSavingChange,
   testID,
 }: MenuItemOptionsSectionProps): React.ReactElement {
   const groupsQuery = useMenuModifierGroups(brandId, menuItemId);
@@ -56,36 +72,88 @@ export function MenuItemOptionsSection({
 
   const [editing, setEditing] = useState<MenuModifierGroup | null>(null);
   const [creating, setCreating] = useState<boolean>(false);
-  const [error, setError] = useState<boolean>(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<boolean>(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [focusGroupId, setFocusGroupId] = useState<string | null>(null);
+  const submissionInFlightRef = useRef<boolean>(false);
+  const groupRowRefs = useRef<Map<string, React.ElementRef<typeof Pressable>>>(
+    new Map(),
+  );
 
-  const groups = groupsQuery.data ?? [];
+  const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
+
+  useEffect(() => {
+    onSavingChange?.(saveGroup.isPending);
+  }, [onSavingChange, saveGroup.isPending]);
+
+  useEffect(
+    () => (): void => {
+      submissionInFlightRef.current = false;
+      onSavingChange?.(false);
+    },
+    [onSavingChange],
+  );
+
+  useEffect(() => {
+    if (focusGroupId === null) return;
+    const frame = requestAnimationFrame(() => {
+      const target = groupRowRefs.current.get(focusGroupId);
+      if (target === undefined) return;
+      if (Platform.OS === "web" && hasFocusCapability(target)) target.focus();
+      else {
+        const handle = findNodeHandle(target);
+        if (handle !== null) AccessibilityInfo.setAccessibilityFocus(handle);
+      }
+      setFocusGroupId(null);
+    });
+    return (): void => cancelAnimationFrame(frame);
+  }, [focusGroupId, groups]);
 
   const closeEditor = useCallback((): void => {
+    if (saveGroup.isPending) return;
     setEditing(null);
     setCreating(false);
-  }, []);
+  }, [saveGroup.isPending]);
 
   const handleSave = useCallback(
     (input: Parameters<typeof saveGroup.mutate>[0]): void => {
-      setError(false);
+      if (submissionInFlightRef.current || saveGroup.isPending) return;
+      submissionInFlightRef.current = true;
+      onSavingChange?.(true);
+      setSaveError(null);
+      setSuccessMessage(null);
       saveGroup.mutate(input, {
-        onSuccess: closeEditor,
-        onError: () => setError(true),
+        onSuccess: (savedGroup) => {
+          setEditing(null);
+          setCreating(false);
+          setFocusGroupId(savedGroup.id);
+          const count = savedGroup.modifiers.length;
+          const announcement = `${savedGroup.name} saved with ${count} ${count === 1 ? "option" : "options"}.`;
+          setSuccessMessage(announcement);
+          AccessibilityInfo.announceForAccessibility(announcement);
+        },
+        onError: (error) => setSaveError(modifierGroupSaveError(error)),
+        onSettled: () => {
+          submissionInFlightRef.current = false;
+          onSavingChange?.(false);
+        },
       });
     },
-    [saveGroup, closeEditor],
+    [saveGroup, onSavingChange],
   );
 
   const handleDelete = useCallback(
     (groupId: string): void => {
       if (menuItemId === null) return;
-      setError(false);
+      if (saveGroup.isPending || deleteGroup.isPending) return;
+      setDeleteError(false);
       deleteGroup.mutate(
         { groupId, menuItemId },
-        { onSuccess: closeEditor, onError: () => setError(true) },
+        { onSuccess: closeEditor, onError: () => setDeleteError(true) },
       );
     },
-    [deleteGroup, menuItemId, closeEditor],
+    [deleteGroup, menuItemId, closeEditor, saveGroup.isPending],
   );
 
   if (menuItemId === null) {
@@ -104,9 +172,15 @@ export function MenuItemOptionsSection({
     <View style={styles.host} testID={testID ?? "menu-item-options"}>
       <Text style={styles.groupLabel}>Options</Text>
 
-      {error ? (
+      {deleteError ? (
         <Text style={styles.error} testID="menu-item-options-error">
           Couldn&apos;t save. Check your connection and try again.
+        </Text>
+      ) : null}
+
+      {successMessage !== null ? (
+        <Text accessibilityLiveRegion="polite" style={styles.visuallyHidden}>
+          {successMessage}
         </Text>
       ) : null}
 
@@ -130,6 +204,7 @@ export function MenuItemOptionsSection({
             nextSortOrder={group.sortOrder}
             onSave={handleSave}
             saving={saveGroup.isPending}
+            saveError={saveError}
             onDelete={canMutate ? handleDelete : undefined}
             deleting={deleteGroup.isPending}
             onCancel={closeEditor}
@@ -137,11 +212,18 @@ export function MenuItemOptionsSection({
         ) : (
           <Pressable
             key={group.id}
+            ref={(node) => {
+              if (node === null) groupRowRefs.current.delete(group.id);
+              else groupRowRefs.current.set(group.id, node);
+            }}
             onPress={() => {
+              if (saveGroup.isPending) return;
+              setSaveError(null);
+              setSuccessMessage(null);
               setCreating(false);
               setEditing(group);
             }}
-            disabled={!canMutate}
+            disabled={!canMutate || saveGroup.isPending}
             accessibilityRole="button"
             accessibilityLabel={`Edit the ${group.name} options`}
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
@@ -170,12 +252,18 @@ export function MenuItemOptionsSection({
           nextSortOrder={groups.length}
           onSave={handleSave}
           saving={saveGroup.isPending}
+          saveError={saveError}
           onCancel={closeEditor}
         />
       ) : canMutate && editing === null ? (
         <Button
           label="Add a choice"
-          onPress={() => setCreating(true)}
+          onPress={() => {
+            if (saveGroup.isPending) return;
+            setSaveError(null);
+            setSuccessMessage(null);
+            setCreating(true);
+          }}
           variant="secondary"
           size="sm"
           style={styles.add}
@@ -203,6 +291,12 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: semantic.error,
   },
+  visuallyHidden: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    opacity: 0,
+  },
   row: {
     minHeight: 44,
     justifyContent: "center",
@@ -228,3 +322,27 @@ const styles = StyleSheet.create({
 });
 
 export default MenuItemOptionsSection;
+
+interface FocusCapable {
+  focus: () => void;
+}
+
+function hasFocusCapability(value: unknown): value is FocusCapable {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    "focus" in value &&
+    typeof value.focus === "function"
+  );
+}
+
+function modifierGroupSaveError(error: Error): string {
+  const safe = error as Error & { code?: string; category?: string };
+  if (safe.category === "permission" || safe.code === "42501") {
+    return "You cannot save this group with this account. Your changes are still here.";
+  }
+  if (safe.category === "offline") {
+    return "You are offline. Reconnect, then try again. Your changes are still here.";
+  }
+  return "We could not save this group. Your changes are still here — try again.";
+}

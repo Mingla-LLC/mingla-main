@@ -178,6 +178,7 @@ export function VenueMenuModule({
   const [itemSheetOpen, setItemSheetOpen] = useState<boolean>(false);
   const [itemSheetMenuId, setItemSheetMenuId] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const [optionsSaving, setOptionsSaving] = useState<boolean>(false);
   const [saveError, setSaveError] = useState<boolean>(false);
   // #1789 — the row currently being 86'd, so one tap cannot fire twice.
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
@@ -737,6 +738,7 @@ export function VenueMenuModule({
         brandHasCurrency={brandHasCurrency}
         onSave={handleSaveItem}
         saving={upsertItem.isPending}
+        optionsSaving={optionsSaving}
         onDelete={canMutate ? handleDeleteItem : undefined}
         deleting={deleteItem.isPending}
         canDelete={canMutate}
@@ -748,6 +750,7 @@ export function VenueMenuModule({
                 menuItemId={editingItem?.id ?? null}
                 currency={currency}
                 canMutate={canMutate}
+                onSavingChange={setOptionsSaving}
               />
             </React.Suspense>
           ) : undefined

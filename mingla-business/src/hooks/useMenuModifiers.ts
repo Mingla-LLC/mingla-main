@@ -20,9 +20,15 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
+import { venueOrderingQueryKeys } from "@mingla/brand-rendering/venueOrdering/venueOrderingQueryKeys";
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
+import {
+  isLikelyOfflineError,
+  isPermissionDeniedError,
+} from "../utils/supabaseErrorMessage";
+import { orderPadKeys } from "./orderPadQueryKeys";
 
 export type ModifierSelectionMode = "single" | "multi";
 
@@ -101,7 +107,11 @@ export const fetchMenuModifierGroups = async (
       "id, group_id, name, price_delta_cents, currency, is_available, sort_order",
     )
     .eq("brand_id", brandId)
-    .in("group_id", groups.map((g) => g.id))
+    .in(
+      "group_id",
+      groups.map((g) => g.id),
+    )
+    .eq("is_available", true)
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true })
     .returns<ModifierRow[]>();
@@ -154,13 +164,15 @@ export function useMenuModifierGroups(
     enabled,
     staleTime: 30_000,
     queryFn: () =>
-      enabled ? fetchMenuModifierGroups(brandId, menuItemId) : Promise.resolve([]),
+      enabled
+        ? fetchMenuModifierGroups(brandId, menuItemId)
+        : Promise.resolve([]),
   });
 }
 
 export interface ModifierGroupSaveInput {
-  /** Present → edit; absent → insert. */
-  id?: string;
+  /** Stable UUID minted by the draft before its first request. */
+  id: string;
   menuItemId: string;
   name: string;
   selectionMode: ModifierSelectionMode;
@@ -169,87 +181,208 @@ export interface ModifierGroupSaveInput {
   sortOrder: number;
   /** The full replacement option list for this group. */
   modifiers: {
-    id?: string;
+    id: string;
     name: string;
     priceDeltaCents: number;
     sortOrder: number;
   }[];
-  /** The parent item's currency. Welded server-side; sent so the row is valid. */
-  currency: string;
 }
 
-/**
- * Save a group and its options in one operator gesture. The group upsert runs
- * first because a modifier cannot exist without it; options are then upserted
- * and any option the operator removed is deleted.
- */
+interface CanonicalModifierGroupRow {
+  id: string;
+  menu_item_id: string;
+  name: string;
+  selection_mode: ModifierSelectionMode;
+  min_select: number;
+  max_select: number | null;
+  is_active: boolean;
+  sort_order: number;
+  modifiers: ModifierRow[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isCanonicalModifierRow(value: unknown): value is ModifierRow {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    typeof value.group_id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.price_delta_cents === "number" &&
+    Number.isInteger(value.price_delta_cents) &&
+    typeof value.currency === "string" &&
+    value.currency.length === 3 &&
+    value.currency === value.currency.toUpperCase() &&
+    value.is_available === true &&
+    typeof value.sort_order === "number" &&
+    Number.isInteger(value.sort_order)
+  );
+}
+
+function isCanonicalModifierGroupRow(
+  value: unknown,
+  input: ModifierGroupSaveInput,
+): value is CanonicalModifierGroupRow {
+  if (!isRecord(value) || !Array.isArray(value.modifiers)) return false;
+  const expectedIds = new Set(input.modifiers.map((modifier) => modifier.id));
+  const returnedIds = new Set(
+    value.modifiers
+      .filter(isCanonicalModifierRow)
+      .map((modifier) => modifier.id),
+  );
+  return (
+    value.id === input.id &&
+    value.menu_item_id === input.menuItemId &&
+    typeof value.name === "string" &&
+    (value.selection_mode === "single" || value.selection_mode === "multi") &&
+    typeof value.min_select === "number" &&
+    Number.isInteger(value.min_select) &&
+    (value.max_select === null ||
+      (typeof value.max_select === "number" &&
+        Number.isInteger(value.max_select))) &&
+    value.is_active === true &&
+    typeof value.sort_order === "number" &&
+    Number.isInteger(value.sort_order) &&
+    value.modifiers.every(
+      (modifier) =>
+        isCanonicalModifierRow(modifier) && modifier.group_id === input.id,
+    ) &&
+    value.modifiers.length === input.modifiers.length &&
+    returnedIds.size === expectedIds.size &&
+    [...expectedIds].every((id) => returnedIds.has(id))
+  );
+}
+
+function mapCanonicalModifierGroup(
+  row: CanonicalModifierGroupRow,
+): MenuModifierGroup {
+  return {
+    id: row.id,
+    menuItemId: row.menu_item_id,
+    name: row.name,
+    selectionMode: row.selection_mode,
+    minSelect: row.min_select,
+    maxSelect: row.max_select,
+    isActive: row.is_active,
+    sortOrder: row.sort_order,
+    modifiers: row.modifiers.map((modifier) => ({
+      id: modifier.id,
+      groupId: modifier.group_id,
+      name: modifier.name,
+      priceDeltaCents: modifier.price_delta_cents,
+      currency: modifier.currency,
+      isAvailable: modifier.is_available,
+      sortOrder: modifier.sort_order,
+    })),
+  };
+}
+
+function normalizedModifierErrorCode(error: unknown): string {
+  if (error !== null && typeof error === "object") {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" && /^[A-Z0-9]{1,10}$/i.test(code)) return code;
+  }
+  return "unknown";
+}
+
+export type ModifierGroupSaveFailureCategory =
+  | "offline"
+  | "permission"
+  | "generic";
+
+export function classifyModifierGroupSaveFailure(
+  error: unknown,
+): ModifierGroupSaveFailureCategory {
+  if (isPermissionDeniedError(error)) return "permission";
+  if (isLikelyOfflineError(error)) return "offline";
+  return "generic";
+}
+
+interface SafeModifierGroupSaveError extends Error {
+  code: string;
+  category: ModifierGroupSaveFailureCategory;
+}
+
+/** Save one complete active group/options snapshot through its atomic RPC. */
 export function useSaveModifierGroup(
   brandId: string | null,
-): UseMutationResult<void, Error, ModifierGroupSaveInput> {
+): UseMutationResult<MenuModifierGroup, Error, ModifierGroupSaveInput> {
   const queryClient = useQueryClient();
-  return useMutation<void, Error, ModifierGroupSaveInput>({
-    mutationFn: async (input: ModifierGroupSaveInput): Promise<void> => {
+  return useMutation<MenuModifierGroup, Error, ModifierGroupSaveInput>({
+    mutationFn: async (
+      input: ModifierGroupSaveInput,
+    ): Promise<MenuModifierGroup> => {
       if (brandId === null) throw new Error("brand_required");
-      const groupRow: Record<string, unknown> = {
-        brand_id: brandId,
-        menu_item_id: input.menuItemId,
-        name: input.name,
-        selection_mode: input.selectionMode,
-        min_select: input.minSelect,
-        max_select: input.maxSelect,
-        sort_order: input.sortOrder,
-        updated_at: new Date().toISOString(),
-      };
-      if (input.id !== undefined) groupRow.id = input.id;
-      const { data: savedGroup, error: groupError } = await supabase
-        .from("menu_modifier_groups")
-        .upsert(groupRow, { onConflict: "id" })
-        .select("id")
-        .single();
-      if (groupError !== null) throw groupError as unknown as Error;
-      const groupId = (savedGroup as { id: string }).id;
-
-      const keptIds: string[] = [];
-      const optionRows = input.modifiers.map((modifier) => {
-        const row: Record<string, unknown> = {
-          brand_id: brandId,
-          group_id: groupId,
-          name: modifier.name,
-          price_delta_cents: modifier.priceDeltaCents,
-          currency: input.currency,
-          sort_order: modifier.sortOrder,
-          updated_at: new Date().toISOString(),
-        };
-        if (modifier.id !== undefined) {
-          row.id = modifier.id;
-          keptIds.push(modifier.id);
-        }
-        return row;
-      });
-      if (optionRows.length > 0) {
-        const { error: optionError } = await supabase
-          .from("menu_modifiers")
-          .upsert(optionRows, { onConflict: "id" });
-        if (optionError !== null) throw optionError as unknown as Error;
+      const { data, error } = await supabase.rpc(
+        "biz_save_menu_modifier_group_v1",
+        {
+          p_brand_id: brandId,
+          p_menu_item_id: input.menuItemId,
+          p_group_id: input.id,
+          p_name: input.name,
+          p_selection_mode: input.selectionMode,
+          p_min_select: input.minSelect,
+          p_max_select: input.maxSelect,
+          p_sort_order: input.sortOrder,
+          p_options: input.modifiers.map((modifier) => ({
+            id: modifier.id,
+            name: modifier.name,
+            price_delta_cents: modifier.priceDeltaCents,
+            sort_order: modifier.sortOrder,
+          })),
+        },
+      );
+      if (error !== null) {
+        const category = classifyModifierGroupSaveFailure(error);
+        const safeError = new Error(
+          `modifier_group_save_${category}`,
+        ) as SafeModifierGroupSaveError;
+        safeError.code = normalizedModifierErrorCode(error);
+        safeError.category = category;
+        throw safeError;
       }
-
-      // Remove the options the operator deleted in this gesture.
-      let deleteQuery = supabase
-        .from("menu_modifiers")
-        .delete()
-        .eq("brand_id", brandId)
-        .eq("group_id", groupId);
-      if (keptIds.length > 0) {
-        deleteQuery = deleteQuery.not("id", "in", `(${keptIds.join(",")})`);
+      if (!isCanonicalModifierGroupRow(data, input)) {
+        throw new Error("modifier_group_response_invalid");
       }
-      const { error: deleteError } = await deleteQuery;
-      if (deleteError !== null) throw deleteError as unknown as Error;
+      return mapCanonicalModifierGroup(data);
     },
-    onError: () => undefined,
-    onSuccess: (_data, variables) => {
+    onError: (error, variables) => {
+      console.error("[save_menu_modifier_group] failed", {
+        brandId,
+        menuItemId: variables.menuItemId,
+        groupId: variables.id,
+        code: normalizedModifierErrorCode(error),
+      });
+    },
+    onSuccess: (savedGroup, variables) => {
       if (brandId !== null) {
+        const authoringKey = menuModifierKeys.forItem(
+          brandId,
+          variables.menuItemId,
+        );
+        queryClient.setQueryData<MenuModifierGroup[]>(
+          authoringKey,
+          (current) => {
+            const withoutSaved = (current ?? []).filter(
+              (group) => group.id !== savedGroup.id,
+            );
+            return [...withoutSaved, savedGroup].sort(
+              (left, right) =>
+                left.sortOrder - right.sortOrder ||
+                left.name.localeCompare(right.name),
+            );
+          },
+        );
         void queryClient.invalidateQueries({
-          queryKey: menuModifierKeys.forItem(brandId, variables.menuItemId),
+          queryKey: authoringKey,
+        });
+        void queryClient.invalidateQueries({
+          queryKey: orderPadKeys.forBrand(brandId),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: venueOrderingQueryKeys.all,
         });
       }
     },

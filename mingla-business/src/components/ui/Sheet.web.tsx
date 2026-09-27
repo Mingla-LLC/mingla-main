@@ -132,6 +132,7 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   onClose,
   children,
   dismissOnScrimTap = true,
+  dismissDisabled = false,
   verticalAlign = "center",
   testID,
   style,
@@ -248,7 +249,7 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
       );
 
   const handleScrimPress = (): void => {
-    if (dismissOnScrimTap) onClose();
+    if (!dismissDisabled && dismissOnScrimTap) onClose();
   };
 
   if (!mounted) return null;
@@ -258,7 +259,9 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
       visible={mounted}
       transparent
       animationType="none"
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        if (!dismissDisabled) onClose();
+      }}
       statusBarTranslucent
     >
       <View
