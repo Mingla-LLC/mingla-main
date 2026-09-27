@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "investigationDate": "2026-09-27",
+  "assets": [
+    {
+      "localFile": "MochiyPopOne-latin-400-normal.woff2",
+      "family": "Mochiy Pop One",
+      "style": "normal",
+      "representedWeights": ["400"],
+      "subset": "latin",
+      "googleFontsRepository": {
+        "commit": "23e54b51ddffbc7713c583748e3bd86f62b1fa4a",
+        "path": "ofl/mochiypopone"
+      },
+      "upstreamProject": {
+        "repositoryUrl": "https://github.com/fontdasu/Mochiypop",
+        "commit": "438f3dd27a236961a705b1363eef4130241203ae"
+      },
+      "versionedGstaticSourceUrl": "https://fonts.gstatic.com/s/mochiypopone/v12/QdVPSTA9Jh-gg-5XZP2UmU4O9nw3BXoYZ7Aj.woff2",
+      "byteLength": 18284,
+      "sha256": "5b66adb405feda34a6bf45eadc404aebedcf0858873805fd6a4ba71f12396a63",
+      "copyright": "Copyright 2020 The Mochiypop Project Authors (https://github.com/fontdasu/Mochiypop)",
+      "oflFile": "OFL-Mochiy-Pop-One.txt"
+    },
+    {
+      "localFile": "NunitoSans-latin-wght-normal.woff2",
+      "family": "Nunito Sans",
+      "style": "normal",
+      "representedWeights": ["400", "500", "600", "700"],
+      "subset": "latin",
+      "googleFontsRepository": {
+        "commit": "23e54b51ddffbc7713c583748e3bd86f62b1fa4a",
+        "path": "ofl/nunitosans"
+      },
+      "upstreamProject": {
+        "repositoryUrl": "https://github.com/googlefonts/NunitoSans",
+        "commit": "058bd7a2f33d6ad5ef1df985b3db403622016a8c"
+      },
+      "versionedGstaticSourceUrl": "https://fonts.gstatic.com/s/nunitosans/v19/pe0TMImSLYBIv1o4X1M8ce2xCx3yop4tQpF_MeTm0lfGWVpNn64CL7U8upHZIbMV51Q42ptCp7t1R-tQKr51.woff2",
+      "byteLength": 30948,
+      "sha256": "39184f4d011106f5bfbe3813d3a8c3673663f04a45a9c9f55b1ed15f4d5b1cc9",
+      "copyright": "Copyright 2016 The Nunito Sans Project Authors (https://github.com/Fonthausen/NunitoSans)",
+      "oflFile": "OFL-Nunito-Sans.txt"
+    },
+    {
+      "localFile": "Inter-latin-wght-normal.woff2",
+      "family": "Inter",
+      "style": "normal",
+      "representedWeights": ["400", "500", "600", "700", "800", "900"],
+      "subset": "latin",
+      "googleFontsRepository": {
+        "commit": "23e54b51ddffbc7713c583748e3bd86f62b1fa4a",
+        "path": "ofl/inter"
+      },
+      "upstreamProject": {
+        "repositoryUrl": "https://www.github.com/rsms/inter",
+        "commit": "66647c0bbbe41a850d79d9c76fb13add3378940f"
+      },
+      "versionedGstaticSourceUrl": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2",
+      "byteLength": 48432,
+      "sha256": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4",
+      "copyright": "Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)",
+      "oflFile": "OFL-Inter.txt"
+    }
+  ]
+}

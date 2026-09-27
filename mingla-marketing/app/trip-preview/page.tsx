@@ -6,15 +6,9 @@
 // look. Loads Inter with heavy weights so the 900 hero title matches the app.
 
 import { Suspense } from 'react'
-import { Inter } from 'next/font/google'
+import { previewInter } from '@/app/fonts'
 import { TripPreviewClient } from './TripPreviewClient'
 import { publicNoindexMetadata } from '@/lib/search/metadata'
-
-const previewInter = Inter({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800', '900'],
-  display: 'swap',
-})
 
 export const metadata = publicNoindexMetadata('/trip-preview', {
   title: 'Trip preview',

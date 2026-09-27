@@ -1,5 +1,14 @@
 # Invariant Registry
 
+## DRAFT — issue #3548 (marketing fonts are pinned local build inputs)
+
+### I-PROPOSED-3548-MARKETING-FONTS-BUILD-LOCAL (DRAFT)
+
+- **Rule:** The marketing production build obtains Mochiy Pop One, Nunito Sans, and Inter only from the pinned repository assets recorded for #3548; it preserves the approved `--font-mochiy`, `--font-nunito`, and `--font-inter` variables, the distinct root/preview weight contracts, and four uniquely named Arial fallback faces carrying the exact released Google-loader ascent, descent, line-gap, and size-adjust descriptors approved in the binding #3548 amendment. The local definitions disable automatic fallback adjustment and map immediately to their matching named fallback; any generated adjusted fallback face, collapsed root/preview fallback identity, production `next/font/google` import, or build-time request to `fonts.googleapis.com` or `fonts.gstatic.com` fails CI.
+- **Scope:** Marketing web only: all root-layout routes plus the event and trip preview wrappers, at mobile-web and desktop widths. Consumer iOS/Android, buyer/anonymous Business web, Business iOS/Android, Admin web, Business web preview, backend, storage, database, auth, analytics, and payments remain unchanged.
+- **Enforcement:** `mingla-marketing/scripts/issue-3548-local-fonts.implementor.happy.test.mjs`; the independent #3548 tester suite added during TEST; `mingla-marketing/scripts/issue-3548-deny-google-font-network.cjs` preloaded by both production `next build` invocations; and Web Build Check.
+- **Status:** DRAFT until #3548 merges, merged `main` passes Web Build Check, Vercel production reaches `READY`, and the representative live routes prove self-hosted font parity with zero Google Fonts requests. Record that post-merge proof on #3548 and promote this invariant to ACTIVE in the next qualifying implementation PR.
+
 ## DRAFT — issue #3563 (Business modifier-group replacement is atomic)
 
 ### I-PROPOSED-3563-MENU-MODIFIER-GROUP-ATOMIC-REPLACEMENT (DRAFT)

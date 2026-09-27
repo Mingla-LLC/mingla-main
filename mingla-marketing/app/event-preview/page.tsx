@@ -6,17 +6,9 @@
 // Loads Inter with heavy weights here so the 900 hero title matches the app.
 
 import { Suspense } from 'react'
-import { Inter } from 'next/font/google'
+import { previewInter } from '@/app/fonts'
 import { EventPreviewClient } from './EventPreviewClient'
 import { publicNoindexMetadata } from '@/lib/search/metadata'
-
-// The real event page's default theme font is Inter; the app renders headings at
-// weight 900, which the site-wide Inter (400–700) can't reach — load it here.
-const previewInter = Inter({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800', '900'],
-  display: 'swap',
-})
 
 export const metadata = publicNoindexMetadata('/event-preview', {
   title: 'Event preview',
