@@ -213,10 +213,14 @@ export function MenuItemSheet({
     onDelete(item.id);
   }, [item, onDelete]);
 
+  const handleClose = useCallback((): void => {
+    if (!optionsSaving) onClose();
+  }, [onClose, optionsSaving]);
+
   return (
     <Sheet
       visible={visible}
-      onClose={onClose}
+      onClose={handleClose}
       snapPoint={snap}
       dismissDisabled={optionsSaving}
       testID={testID ?? "menu-item-sheet"}

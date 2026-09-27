@@ -13,25 +13,47 @@ describe("#3563 options editor containment", () => {
     expect(editor).toContain("id: modifier.id");
     expect(editor).toContain("id: createMenuModifierDraftId()");
     expect(editor).not.toContain("optionKeySeed");
+    expect(editor).not.toContain("setName(group?.name");
   });
 
   test("pending state locks edits, destructive actions, cancel, and parent controls", () => {
     const editor = read("src/components/venue/MenuModifierGroupEditor.tsx");
     const itemSheet = read("src/components/venue/MenuItemSheet.tsx");
     const module = read("src/components/venue/VenueMenuModule.tsx");
-    expect(editor.match(/disabled=\{saving\}/g)?.length ?? 0).toBeGreaterThanOrEqual(6);
+    const section = read("src/components/venue/MenuItemOptionsSection.tsx");
+    expect(
+      editor.match(/disabled=\{saving\}/g)?.length ?? 0,
+    ).toBeGreaterThanOrEqual(6);
     expect(editor).toContain('saving ? "Saving options group" : undefined');
     expect(itemSheet).toContain("optionsSaving = false");
     expect(itemSheet).toContain("dismissDisabled={optionsSaving}");
     expect(itemSheet).toContain("!saving &&\n    !optionsSaving");
     expect(module).toContain("onSavingChange={setOptionsSaving}");
+    expect(section).toContain("setFocusGroupId(savedGroup.id)");
+    expect(section).toContain(
+      "if (submissionInFlightRef.current || saveGroup.isPending) return",
+    );
+    expect(section.indexOf("submissionInFlightRef.current = true")).toBeLessThan(
+      section.indexOf("saveGroup.mutate(input"),
+    );
+    expect(section).toContain("onSettled: () =>");
+    expect(section).toContain("submissionInFlightRef.current = false");
   });
 
   test("failure stays beside the retry action with approved safe copy", () => {
     const section = read("src/components/venue/MenuItemOptionsSection.tsx");
-    expect(section).toContain("We could not save this group. Your changes are still here — try again.");
-    expect(section).toContain("You are offline. Reconnect, then try again. Your changes are still here.");
-    expect(section).toContain("You cannot save this group with this account. Your changes are still here.");
+    const editor = read("src/components/venue/MenuModifierGroupEditor.tsx");
+    expect(section).toContain(
+      "We could not save this group. Your changes are still here — try again.",
+    );
+    expect(section).toContain(
+      "You are offline. Reconnect, then try again. Your changes are still here.",
+    );
+    expect(section).toContain(
+      "You cannot save this group with this account. Your changes are still here.",
+    );
     expect(editor).toContain('accessibilityRole="alert"');
+    expect(editor).toContain("color: semantic.errorText");
+    expect(editor).toContain("style={styles.mutationError}");
   });
 });

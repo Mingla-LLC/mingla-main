@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-27 — Saving a venue menu options group now keeps every choice, signed price change and ordering together in one Mingla Host save, so a failed Business save leaves the prior complete group intact instead of exposing an empty or partial group to guests or staff (#3563, PR #TBD)
 - 2026-09-26 — Ordinary dish names stay readable in Mingla Business instead of being squeezed down to a few characters: on phones and at large text sizes, each menu item's full name and useful description now sit above its price, availability and actions, while wider screens keep the existing side-by-side layout. Reorder and Edit actions also keep full 44-point touch targets (#3562, PR #3574)
 - 2026-09-26 — Menu prices and private costs now reject malformed typed or pasted amounts instead of silently saving a different number: Price and Cost accept only complete currency-appropriate amounts or an intentional blank, show an inline error, keep Save blocked, preserve zero-decimal currencies and pre-bank no-currency truth, and protect the exact public price guests see (#3566, PR #3575)
 - 2026-09-26 — Menu service times use proper time controls instead of a text keyboard, keep their saved hours after reopening, and stay readable on the category card. A host can clear both times to make a category available all day, incomplete windows are stopped with a clear message, and selected-day or overnight schedules are shown in full (#3565, PR #3576)

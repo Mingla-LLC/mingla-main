@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { createMenuModifierDraftId } from "../../components/venue/menuModifierDraftId";
+import { classifyModifierGroupSaveFailure } from "../useMenuModifiers";
 
 const repoRoot = path.resolve(__dirname, "../../..");
 const read = (relativePath: string): string =>
@@ -29,10 +30,12 @@ describe("#3563 atomic menu modifier save", () => {
   test("the Business writer has one RPC owner and installs canonical cache before refresh", () => {
     const source = read("src/hooks/useMenuModifiers.ts");
     const saveStart = source.indexOf("export function useSaveModifierGroup");
-    const deleteStart = source.indexOf("export function useDeleteModifierGroup");
+    const deleteStart = source.indexOf(
+      "export function useDeleteModifierGroup",
+    );
     const save = source.slice(saveStart, deleteStart);
 
-    expect(save).toContain('.rpc("biz_save_menu_modifier_group_v1"');
+    expect(save).toMatch(/\.rpc\(\s*"biz_save_menu_modifier_group_v1"/);
     expect(save).not.toContain('.from("menu_modifier_groups")');
     expect(save).not.toContain('.from("menu_modifiers")');
     expect(save).toContain("queryClient.setQueryData");
@@ -50,5 +53,35 @@ describe("#3563 atomic menu modifier save", () => {
     expect(read("src/hooks/useVenueOrderPad.ts")).toContain(
       '.eq("is_available", true)',
     );
+  });
+
+  test("raw transport failures collapse to safe actionable categories", () => {
+    expect(
+      classifyModifierGroupSaveFailure({
+        code: "42501",
+        message: "permission denied for secret row payload",
+      }),
+    ).toBe("permission");
+    expect(
+      classifyModifierGroupSaveFailure({
+        message: "new row violates row-level security policy",
+      }),
+    ).toBe("permission");
+    expect(
+      classifyModifierGroupSaveFailure({
+        code: "",
+        message: "TypeError: Failed to fetch while offline",
+      }),
+    ).toBe("offline");
+    expect(
+      classifyModifierGroupSaveFailure({
+        code: "22023",
+        message: "private database detail",
+      }),
+    ).toBe("generic");
+
+    const source = read("src/hooks/useMenuModifiers.ts");
+    expect(source).toContain("`modifier_group_save_${category}`");
+    expect(source).not.toContain("safeError.message = error.message");
   });
 });

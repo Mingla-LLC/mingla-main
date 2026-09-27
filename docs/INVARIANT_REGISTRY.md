@@ -1,5 +1,14 @@
 # Invariant Registry
 
+## DRAFT — issue #3563 (Business modifier-group replacement is atomic)
+
+### I-PROPOSED-3563-MENU-MODIFIER-GROUP-ATOMIC-REPLACEMENT (DRAFT)
+
+- **Rule:** Mingla Host's Business modifier-group save sends one complete desired active set to `public.biz_save_menu_modifier_group_v1`. One authenticated, manager-plus, brand/item-scoped database transaction owns the group and all supplied stable group/option UUIDs, derives currency from the locked item, reactivates supplied options, tombstones omitted options that have order history, hard-deletes only omitted unreferenced options, and returns canonical active rows. Any refusal, validation error, identity race, or write failure rolls the whole call back; retry reuses the same identities.
+- **Scope:** This invariant covers the Mingla Business iOS, Android, and Web writer and the authenticated RPC it calls. It does not claim global writer atomicity: Ari/edge migration and its schema parity are owned by #3577. Client-side 80-code-point field validation and typed field errors remain owned by #3567.
+- **Enforcement:** migration `20270716003563_issue_3563_atomic_menu_modifier_group_save.sql`; the PostgreSQL 17 implementor suite and independent tester suite; and Business implementor and independent tester suites. Existing modifier-table RLS and #1856 grants remain unchanged. Under the binding ARI/CI split amendment, #3563 does not modify CI providers; local PostgreSQL replay evidence is required before review.
+- **Status:** DRAFT until #3563 merges, the additive migration is applied through the reviewed surgical lane, Business Web reaches `READY`, and Business iOS/Android/Web plus public/staff readback are verified against the deployed RPC. #3577 remains a separate dependency before any global-writer claim can become true.
+
 ## ACTIVE — issue #3566 (menu money drafts are saved exactly or rejected)
 
 ### I-PROPOSED-3566-MENU-MONEY-DRAFT-INTEGRITY (ACTIVE)

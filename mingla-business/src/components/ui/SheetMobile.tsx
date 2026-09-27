@@ -826,12 +826,22 @@ const SheetWeb: React.FC<SheetProps> = ({
   const lastMoveRef = useRef<{ y: number; t: number } | null>(null);
   const velocityRef = useRef<number>(0); // px/ms, positive = downward
 
+  useEffect(() => {
+    if (!dismissDisabled) return;
+    dragStartYRef.current = null;
+    lastMoveRef.current = null;
+    dragYRef.current = 0;
+    velocityRef.current = 0;
+    setDragging(false);
+    setDragY(0);
+  }, [dismissDisabled]);
+
   const endDrag = (commitClose: boolean): void => {
     dragStartYRef.current = null;
     lastMoveRef.current = null;
     dragYRef.current = 0;
     setDragging(false);
-    if (commitClose) {
+    if (commitClose && !dismissDisabled) {
       // Let the CSS close transition (re-enabled once dragging=false) carry the
       // panel the rest of the way as onClose flips `visible`.
       setDragY(0);
@@ -854,6 +864,10 @@ const SheetWeb: React.FC<SheetProps> = ({
 
   const handleDragMove = (clientY: number): void => {
     if (dragStartYRef.current === null) return;
+    if (dismissDisabled) {
+      endDrag(false);
+      return;
+    }
     const delta = clientY - dragStartYRef.current;
     // Clamp to downward-only (no rubber-band upward past the open rest position).
     const next = delta > 0 ? delta : 0;
@@ -869,6 +883,10 @@ const SheetWeb: React.FC<SheetProps> = ({
 
   const handleDragEnd = (): void => {
     if (dragStartYRef.current === null) return;
+    if (dismissDisabled) {
+      endDrag(false);
+      return;
+    }
     // Use the REF, not the `dragY` state: the final pointermove's setState may not
     // have re-rendered (and so re-closured handleDragEnd) before pointerup fires.
     const dragged = dragYRef.current;

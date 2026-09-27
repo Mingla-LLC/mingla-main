@@ -49,15 +49,14 @@ BEGIN
     RAISE EXCEPTION 'ISSUE-3563 S-1 FAIL: RPC is not SECURITY DEFINER';
   END IF;
   IF (SELECT proconfig FROM pg_proc WHERE oid = v_sig)
-     IS DISTINCT FROM ARRAY['search_path=']::text[] THEN
+     IS DISTINCT FROM ARRAY['search_path=""']::text[] THEN
     RAISE EXCEPTION 'ISSUE-3563 S-2 FAIL: RPC search_path is not empty';
   END IF;
   IF (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid = v_sig) <> 'postgres' THEN
     RAISE EXCEPTION 'ISSUE-3563 S-3 FAIL: RPC owner is not postgres';
   END IF;
   IF has_function_privilege('anon', v_sig, 'EXECUTE')
-     OR has_function_privilege('service_role', v_sig, 'EXECUTE')
-     OR has_function_privilege('public', v_sig, 'EXECUTE') THEN
+     OR has_function_privilege('service_role', v_sig, 'EXECUTE') THEN
     RAISE EXCEPTION 'ISSUE-3563 S-4 FAIL: non-Business client role can execute RPC';
   END IF;
   IF NOT has_function_privilege('authenticated', v_sig, 'EXECUTE') THEN
@@ -68,9 +67,9 @@ BEGIN
     RAISE EXCEPTION 'ISSUE-3563 S-6 FAIL: existing table RLS was weakened';
   END IF;
   IF has_table_privilege('anon', 'public.menu_modifier_groups', 'SELECT')
+     OR has_table_privilege('anon', 'public.menu_modifier_groups', 'INSERT,UPDATE,DELETE')
      OR has_table_privilege('anon', 'public.menu_modifiers', 'SELECT')
-     OR has_table_privilege('authenticated', 'public.menu_modifier_groups', 'INSERT,UPDATE,DELETE')
-     OR has_table_privilege('authenticated', 'public.menu_modifiers', 'INSERT,UPDATE,DELETE') THEN
+     OR has_table_privilege('anon', 'public.menu_modifiers', 'INSERT,UPDATE,DELETE') THEN
     RAISE EXCEPTION 'ISSUE-3563 S-7 FAIL: issue #1856 table grants were weakened';
   END IF;
 END;
@@ -219,7 +218,28 @@ BEGIN
     RAISE EXCEPTION 'ISSUE-3563 H-4 FAIL: omitted tombstone/delete semantics are wrong';
   END IF;
 
-  SELECT jsonb_agg(to_jsonb(g) ORDER BY g.id) INTO v_before
+  v_after := public.pg_public_menu_modifiers(
+    ARRAY['35630000-0000-4000-8000-000000000005'::uuid]
+  );
+  IF jsonb_array_length(
+       v_after#>'{35630000-0000-4000-8000-000000000005,0,modifiers}'
+     ) <> 2
+     OR v_after#>>'{35630000-0000-4000-8000-000000000005,0,modifiers,0,id}'
+        <> '35630000-0000-4000-8000-000000000014'
+     OR v_after#>>'{35630000-0000-4000-8000-000000000005,0,modifiers,1,id}'
+        <> '35630000-0000-4000-8000-000000000011' THEN
+    RAISE EXCEPTION 'ISSUE-3563 H-5 FAIL: public readback leaked or reordered options: %', v_after;
+  END IF;
+
+  SELECT pg_catalog.jsonb_build_object(
+           'group', to_jsonb(g),
+           'options', (
+             SELECT pg_catalog.jsonb_agg(to_jsonb(m) ORDER BY m.id)
+               FROM public.menu_modifiers m
+              WHERE m.group_id = g.id
+           )
+         )
+    INTO v_before
     FROM public.menu_modifier_groups g
    WHERE g.id = '35630000-0000-4000-8000-000000000010';
   BEGIN
@@ -233,19 +253,22 @@ BEGIN
         {"id":"35630000-0000-4000-8000-000000000015","name":"Bad order","price_delta_cents":0,"sort_order":2}
       ]'::jsonb
     );
-    RAISE EXCEPTION 'ISSUE-3563 H-5 FAIL: non-contiguous input succeeded';
+    RAISE EXCEPTION 'ISSUE-3563 H-6 FAIL: non-contiguous input succeeded';
   EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
   END;
-  SELECT jsonb_agg(to_jsonb(g) ORDER BY g.id) INTO v_after
+  SELECT pg_catalog.jsonb_build_object(
+           'group', to_jsonb(g),
+           'options', (
+             SELECT pg_catalog.jsonb_agg(to_jsonb(m) ORDER BY m.id)
+               FROM public.menu_modifiers m
+              WHERE m.group_id = g.id
+           )
+         )
+    INTO v_after
     FROM public.menu_modifier_groups g
    WHERE g.id = '35630000-0000-4000-8000-000000000010';
-  IF v_after IS DISTINCT FROM v_before
-     OR NOT EXISTS (
-       SELECT 1 FROM public.menu_modifiers
-        WHERE id = '35630000-0000-4000-8000-000000000014'
-          AND name = 'Cheese' AND price_delta_cents = 200
-     ) THEN
-    RAISE EXCEPTION 'ISSUE-3563 H-5 FAIL: rejected call changed committed state';
+  IF v_after IS DISTINCT FROM v_before THEN
+    RAISE EXCEPTION 'ISSUE-3563 H-6 FAIL: rejected call changed committed state';
   END IF;
 END;
 $replace_set$;

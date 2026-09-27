@@ -18,7 +18,7 @@
  * (I-PROPOSED-1767-NEVER-CROSS-SUM-CURRENCIES).
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -35,10 +35,7 @@ import {
   minorFromMajor,
   normalizeCurrency,
 } from "../../utils/currency";
-import {
-  validateModifierGroup,
-  type ModifierSelectionMode,
-} from "./menuDepth";
+import { validateModifierGroup, type ModifierSelectionMode } from "./menuDepth";
 import type {
   MenuModifierGroup,
   ModifierGroupSaveInput,
@@ -84,32 +81,30 @@ export function MenuModifierGroupEditor({
   const [draftGroupId] = useState<string>(
     () => group?.id ?? createMenuModifierDraftId(),
   );
-  const [name, setName] = useState<string>("");
-  const [mode, setMode] = useState<ModifierSelectionMode>("single");
-  const [required, setRequired] = useState<boolean>(true);
-  const [maxSelect, setMaxSelect] = useState<string>("");
-  const [options, setOptions] = useState<OptionDraft[]>([]);
-
-  useEffect(() => {
-    setName(group?.name ?? "");
-    setMode(group?.selectionMode ?? "single");
-    setRequired((group?.minSelect ?? 1) >= 1);
-    setMaxSelect(
-      group?.maxSelect === null || group?.maxSelect === undefined
-        ? ""
-        : String(group.maxSelect),
-    );
-    setOptions(
-      (group?.modifiers ?? []).map((modifier) => ({
-        id: modifier.id,
-        name: modifier.name,
-        price:
-          modifier.priceDeltaCents === 0
-            ? ""
-            : String(majorFromMinor(modifier.priceDeltaCents, code)),
-      })),
-    );
-  }, [group, code]);
+  // This component is keyed by the draft/group identity at its caller. Hydrate
+  // exactly once so a background query refresh cannot replace an open draft.
+  const [name, setName] = useState<string>(() => group?.name ?? "");
+  const [mode, setMode] = useState<ModifierSelectionMode>(
+    () => group?.selectionMode ?? "single",
+  );
+  const [required, setRequired] = useState<boolean>(
+    () => (group?.minSelect ?? 1) >= 1,
+  );
+  const [maxSelect, setMaxSelect] = useState<string>(() =>
+    group?.maxSelect === null || group?.maxSelect === undefined
+      ? ""
+      : String(group.maxSelect),
+  );
+  const [options, setOptions] = useState<OptionDraft[]>(() =>
+    (group?.modifiers ?? []).map((modifier) => ({
+      id: modifier.id,
+      name: modifier.name,
+      price:
+        modifier.priceDeltaCents === 0
+          ? ""
+          : String(majorFromMinor(modifier.priceDeltaCents, code)),
+    })),
+  );
 
   const parsedMax =
     mode === "single"
@@ -122,8 +117,7 @@ export function MenuModifierGroupEditor({
     name,
     selectionMode: mode,
     minSelect,
-    maxSelect:
-      parsedMax === null || Number.isNaN(parsedMax) ? null : parsedMax,
+    maxSelect: parsedMax === null || Number.isNaN(parsedMax) ? null : parsedMax,
     optionCount: options.filter((o) => o.name.trim().length > 0).length,
   });
 
@@ -135,10 +129,13 @@ export function MenuModifierGroupEditor({
     ]);
   }, [saving]);
 
-  const removeOption = useCallback((id: string): void => {
-    if (saving) return;
-    setOptions((current) => current.filter((o) => o.id !== id));
-  }, [saving]);
+  const removeOption = useCallback(
+    (id: string): void => {
+      if (saving) return;
+      setOptions((current) => current.filter((o) => o.id !== id));
+    },
+    [saving],
+  );
 
   const patchOption = useCallback(
     (id: string, patch: Partial<OptionDraft>): void => {
@@ -315,7 +312,7 @@ export function MenuModifierGroupEditor({
         <Text
           accessibilityRole="alert"
           aria-live="assertive"
-          style={styles.error}
+          style={styles.mutationError}
           testID="modifier-group-save-error"
         >
           {saveError}
@@ -438,6 +435,11 @@ const styles = StyleSheet.create({
   error: {
     ...typography.bodySm,
     color: semantic.error,
+    marginTop: spacing.xs,
+  },
+  mutationError: {
+    ...typography.bodySm,
+    color: semantic.errorText,
     marginTop: spacing.xs,
   },
   save: {

@@ -14,8 +14,22 @@
  * The section says that out loud instead of rendering a dead control.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from "react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  AccessibilityInfo,
+  findNodeHandle,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import {
   radius,
@@ -61,13 +75,40 @@ export function MenuItemOptionsSection({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [focusGroupId, setFocusGroupId] = useState<string | null>(null);
+  const submissionInFlightRef = useRef<boolean>(false);
+  const groupRowRefs = useRef<Map<string, React.ElementRef<typeof Pressable>>>(
+    new Map(),
+  );
 
-  const groups = groupsQuery.data ?? [];
+  const groups = useMemo(() => groupsQuery.data ?? [], [groupsQuery.data]);
 
   useEffect(() => {
     onSavingChange?.(saveGroup.isPending);
-    return (): void => onSavingChange?.(false);
   }, [onSavingChange, saveGroup.isPending]);
+
+  useEffect(
+    () => (): void => {
+      submissionInFlightRef.current = false;
+      onSavingChange?.(false);
+    },
+    [onSavingChange],
+  );
+
+  useEffect(() => {
+    if (focusGroupId === null) return;
+    const frame = requestAnimationFrame(() => {
+      const target = groupRowRefs.current.get(focusGroupId);
+      if (target === undefined) return;
+      if (Platform.OS === "web" && hasFocusCapability(target)) target.focus();
+      else {
+        const handle = findNodeHandle(target);
+        if (handle !== null) AccessibilityInfo.setAccessibilityFocus(handle);
+      }
+      setFocusGroupId(null);
+    });
+    return (): void => cancelAnimationFrame(frame);
+  }, [focusGroupId, groups]);
 
   const closeEditor = useCallback((): void => {
     if (saveGroup.isPending) return;
@@ -77,22 +118,29 @@ export function MenuItemOptionsSection({
 
   const handleSave = useCallback(
     (input: Parameters<typeof saveGroup.mutate>[0]): void => {
-      if (saveGroup.isPending) return;
+      if (submissionInFlightRef.current || saveGroup.isPending) return;
+      submissionInFlightRef.current = true;
+      onSavingChange?.(true);
       setSaveError(null);
       setSuccessMessage(null);
       saveGroup.mutate(input, {
         onSuccess: (savedGroup) => {
           setEditing(null);
           setCreating(false);
+          setFocusGroupId(savedGroup.id);
           const count = savedGroup.modifiers.length;
           const announcement = `${savedGroup.name} saved with ${count} ${count === 1 ? "option" : "options"}.`;
           setSuccessMessage(announcement);
           AccessibilityInfo.announceForAccessibility(announcement);
         },
         onError: (error) => setSaveError(modifierGroupSaveError(error)),
+        onSettled: () => {
+          submissionInFlightRef.current = false;
+          onSavingChange?.(false);
+        },
       });
     },
-    [saveGroup, closeEditor],
+    [saveGroup, onSavingChange],
   );
 
   const handleDelete = useCallback(
@@ -164,6 +212,10 @@ export function MenuItemOptionsSection({
         ) : (
           <Pressable
             key={group.id}
+            ref={(node) => {
+              if (node === null) groupRowRefs.current.delete(group.id);
+              else groupRowRefs.current.set(group.id, node);
+            }}
             onPress={() => {
               if (saveGroup.isPending) return;
               setSaveError(null);
@@ -271,22 +323,25 @@ const styles = StyleSheet.create({
 
 export default MenuItemOptionsSection;
 
+interface FocusCapable {
+  focus: () => void;
+}
+
+function hasFocusCapability(value: unknown): value is FocusCapable {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    "focus" in value &&
+    typeof value.focus === "function"
+  );
+}
+
 function modifierGroupSaveError(error: Error): string {
-  const code = (error as Error & { code?: string }).code ?? "";
-  const message = error.message.toLowerCase();
-  if (
-    code === "42501" ||
-    message.includes("permission") ||
-    message.includes("not authorized") ||
-    message.includes("row-level security")
-  ) {
+  const safe = error as Error & { code?: string; category?: string };
+  if (safe.category === "permission" || safe.code === "42501") {
     return "You cannot save this group with this account. Your changes are still here.";
   }
-  if (
-    message.includes("network") ||
-    message.includes("fetch") ||
-    message.includes("offline")
-  ) {
+  if (safe.category === "offline") {
     return "You are offline. Reconnect, then try again. Your changes are still here.";
   }
   return "We could not save this group. Your changes are still here — try again.";

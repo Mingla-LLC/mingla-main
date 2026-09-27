@@ -1,5 +1,8 @@
+import { ensureSecureRandom } from "../../lib/secureRandomSafe";
+
 /** Issue #3563 — secure, retry-stable UUIDs for unsaved modifier drafts. */
 export function createMenuModifierDraftId(): string {
+  ensureSecureRandom();
   const cryptoValue = (
     globalThis as {
       crypto?: {
