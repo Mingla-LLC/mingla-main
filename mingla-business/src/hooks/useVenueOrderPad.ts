@@ -43,6 +43,8 @@ export interface OrderPadMenu {
 }
 
 export const orderPadKeys = {
+  forBrand: (brandId: string): readonly ["orderPadMenu", string] =>
+    ["orderPadMenu", brandId] as const,
   menu: (
     brandId: string,
     servingVenueId: string,
@@ -164,6 +166,7 @@ export const fetchOrderPadMenu = async (
       .select(PAD_MODIFIER_COLUMNS)
       .eq("brand_id", brandId)
       .in("group_id", groups.map((g) => g.id))
+      .eq("is_available", true)
       .order("sort_order", { ascending: true })
       .returns<ModifierRow[]>();
     if (modifierError !== null) throw modifierError;

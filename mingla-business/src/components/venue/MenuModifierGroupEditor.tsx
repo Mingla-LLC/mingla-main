@@ -43,11 +43,10 @@ import type {
   MenuModifierGroup,
   ModifierGroupSaveInput,
 } from "../../hooks/useMenuModifiers";
+import { createMenuModifierDraftId } from "./menuModifierDraftId";
 
 interface OptionDraft {
-  id?: string;
-  /** Stable key for the render list — never sent to the server. */
-  key: string;
+  id: string;
   name: string;
   /** Major units as typed, e.g. "1.50" or "-3.00". */
   price: string;
@@ -61,14 +60,12 @@ export interface MenuModifierGroupEditorProps {
   nextSortOrder: number;
   onSave: (input: ModifierGroupSaveInput) => void;
   saving: boolean;
+  saveError?: string | null;
   onDelete?: (groupId: string) => void;
   deleting?: boolean;
   onCancel: () => void;
   testID?: string;
 }
-
-let optionKeySeed = 0;
-const nextOptionKey = (): string => `opt-${(optionKeySeed += 1)}`;
 
 export function MenuModifierGroupEditor({
   menuItemId,
@@ -77,12 +74,16 @@ export function MenuModifierGroupEditor({
   nextSortOrder,
   onSave,
   saving,
+  saveError = null,
   onDelete,
   deleting = false,
   onCancel,
   testID,
 }: MenuModifierGroupEditorProps): React.ReactElement {
   const code = normalizeCurrency(currency);
+  const [draftGroupId] = useState<string>(
+    () => group?.id ?? createMenuModifierDraftId(),
+  );
   const [name, setName] = useState<string>("");
   const [mode, setMode] = useState<ModifierSelectionMode>("single");
   const [required, setRequired] = useState<boolean>(true);
@@ -101,7 +102,6 @@ export function MenuModifierGroupEditor({
     setOptions(
       (group?.modifiers ?? []).map((modifier) => ({
         id: modifier.id,
-        key: nextOptionKey(),
         name: modifier.name,
         price:
           modifier.priceDeltaCents === 0
@@ -128,29 +128,32 @@ export function MenuModifierGroupEditor({
   });
 
   const addOption = useCallback((): void => {
+    if (saving) return;
     setOptions((current) => [
       ...current,
-      { key: nextOptionKey(), name: "", price: "" },
+      { id: createMenuModifierDraftId(), name: "", price: "" },
     ]);
-  }, []);
+  }, [saving]);
 
-  const removeOption = useCallback((key: string): void => {
-    setOptions((current) => current.filter((o) => o.key !== key));
-  }, []);
+  const removeOption = useCallback((id: string): void => {
+    if (saving) return;
+    setOptions((current) => current.filter((o) => o.id !== id));
+  }, [saving]);
 
   const patchOption = useCallback(
-    (key: string, patch: Partial<OptionDraft>): void => {
+    (id: string, patch: Partial<OptionDraft>): void => {
+      if (saving) return;
       setOptions((current) =>
-        current.map((o) => (o.key === key ? { ...o, ...patch } : o)),
+        current.map((o) => (o.id === id ? { ...o, ...patch } : o)),
       );
     },
-    [],
+    [saving],
   );
 
   const handleSave = useCallback((): void => {
     if (error !== null || saving) return;
     onSave({
-      id: group?.id,
+      id: draftGroupId,
       menuItemId,
       name: name.trim(),
       selectionMode: mode,
@@ -158,7 +161,6 @@ export function MenuModifierGroupEditor({
       maxSelect:
         parsedMax === null || Number.isNaN(parsedMax) ? null : parsedMax,
       sortOrder: group?.sortOrder ?? nextSortOrder,
-      currency: code,
       modifiers: options
         .filter((option) => option.name.trim().length > 0)
         .map((option, index) => {
@@ -183,6 +185,7 @@ export function MenuModifierGroupEditor({
     saving,
     onSave,
     group,
+    draftGroupId,
     menuItemId,
     name,
     mode,
@@ -205,6 +208,7 @@ export function MenuModifierGroupEditor({
           onChangeText={setName}
           placeholder="e.g. How would you like it?"
           accessibilityLabel="Options group name"
+          disabled={saving}
           testID="modifier-group-name"
         />
       </Field>
@@ -215,6 +219,7 @@ export function MenuModifierGroupEditor({
           onPress={() => setMode("single")}
           variant={mode === "single" ? "primary" : "secondary"}
           size="sm"
+          disabled={saving}
           testID="modifier-group-mode-single"
         />
         <Button
@@ -222,6 +227,7 @@ export function MenuModifierGroupEditor({
           onPress={() => setMode("multi")}
           variant={mode === "multi" ? "primary" : "secondary"}
           size="sm"
+          disabled={saving}
           testID="modifier-group-mode-multi"
         />
         <Button
@@ -229,6 +235,7 @@ export function MenuModifierGroupEditor({
           onPress={() => setRequired((r) => !r)}
           variant={required ? "primary" : "secondary"}
           size="sm"
+          disabled={saving}
           testID="modifier-group-required"
         />
       </View>
@@ -241,6 +248,7 @@ export function MenuModifierGroupEditor({
             variant="number"
             placeholder="3"
             accessibilityLabel="Most options a guest can pick"
+            disabled={saving}
             testID="modifier-group-max"
           />
         </Field>
@@ -248,33 +256,36 @@ export function MenuModifierGroupEditor({
 
       <Text style={styles.sectionLabel}>Options</Text>
       {options.map((option) => (
-        <View key={option.key} style={styles.optionRow}>
+        <View key={option.id} style={styles.optionRow}>
           <View style={styles.optionName}>
             <Input
               value={option.name}
-              onChangeText={(next) => patchOption(option.key, { name: next })}
+              onChangeText={(next) => patchOption(option.id, { name: next })}
               placeholder="e.g. Rare"
               accessibilityLabel="Option name"
-              testID={`modifier-option-name-${option.key}`}
+              disabled={saving}
+              testID={`modifier-option-name-${option.id}`}
             />
           </View>
           <View style={styles.optionPrice}>
             <Input
               value={option.price}
-              onChangeText={(next) => patchOption(option.key, { price: next })}
+              onChangeText={(next) => patchOption(option.id, { price: next })}
               variant="number"
               placeholder={`± ${code}`}
               accessibilityLabel={`Price change for this option in ${code}`}
-              testID={`modifier-option-price-${option.key}`}
+              disabled={saving}
+              testID={`modifier-option-price-${option.id}`}
             />
           </View>
           <Pressable
-            onPress={() => removeOption(option.key)}
+            onPress={() => removeOption(option.id)}
+            disabled={saving}
             accessibilityRole="button"
             accessibilityLabel={`Remove ${option.name.trim().length > 0 ? option.name : "this option"}`}
             hitSlop={8}
             style={({ pressed }) => [styles.remove, pressed && styles.pressed]}
-            testID={`modifier-option-remove-${option.key}`}
+            testID={`modifier-option-remove-${option.id}`}
           >
             <Text style={styles.removeGlyph}>×</Text>
           </Pressable>
@@ -289,6 +300,7 @@ export function MenuModifierGroupEditor({
         onPress={addOption}
         variant="secondary"
         size="sm"
+        disabled={saving}
         style={styles.addOption}
         testID="modifier-option-add"
       />
@@ -296,6 +308,17 @@ export function MenuModifierGroupEditor({
       {error !== null ? (
         <Text style={styles.error} testID="modifier-group-error">
           {error}
+        </Text>
+      ) : null}
+
+      {saveError !== null ? (
+        <Text
+          accessibilityRole="alert"
+          aria-live="assertive"
+          style={styles.error}
+          testID="modifier-group-save-error"
+        >
+          {saveError}
         </Text>
       ) : null}
 
@@ -307,6 +330,7 @@ export function MenuModifierGroupEditor({
         fullWidth
         loading={saving}
         disabled={error !== null || saving}
+        accessibilityLabel={saving ? "Saving options group" : undefined}
         style={styles.save}
         testID="modifier-group-save"
       />
@@ -316,6 +340,7 @@ export function MenuModifierGroupEditor({
         variant="ghost"
         size="sm"
         fullWidth
+        disabled={saving}
         testID="modifier-group-cancel"
       />
       {group !== null && onDelete !== undefined ? (
@@ -326,7 +351,7 @@ export function MenuModifierGroupEditor({
           size="sm"
           fullWidth
           loading={deleting}
-          disabled={deleting}
+          disabled={deleting || saving}
           style={styles.delete}
           testID="modifier-group-delete"
         />

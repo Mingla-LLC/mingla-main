@@ -133,6 +133,8 @@ export interface SheetProps {
   snapPoint?: SheetSnapValue;
   /** Tap on scrim closes sheet. Default `true`. */
   dismissOnScrimTap?: boolean;
+  /** Opt-in lock for a transaction that must not be interrupted. Default false. */
+  dismissDisabled?: boolean;
   /**
    * Wide-desktop web only: vertical placement of the centred card.
    * `"center"` (default) vertically centres it; `"top"` anchors it near the
@@ -253,6 +255,7 @@ const SheetNative: React.FC<SheetProps> = ({
   children,
   snapPoint = "half",
   dismissOnScrimTap = true,
+  dismissDisabled = false,
   testID,
   style,
   panelBackground,
@@ -323,6 +326,7 @@ const SheetNative: React.FC<SheetProps> = ({
   }));
 
   const panGesture = Gesture.Pan()
+    .enabled(!dismissDisabled)
     .onUpdate((event) => {
       // Allow drag down only.
       if (event.translationY > 0) {
@@ -343,7 +347,7 @@ const SheetNative: React.FC<SheetProps> = ({
     });
 
   const handleScrimPress = (): void => {
-    if (dismissOnScrimTap) onClose();
+    if (!dismissDisabled && dismissOnScrimTap) onClose();
   };
 
   if (!mounted) return null;
@@ -363,7 +367,9 @@ const SheetNative: React.FC<SheetProps> = ({
       visible={mounted}
       transparent
       animationType="none"
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        if (!dismissDisabled) onClose();
+      }}
       statusBarTranslucent
     >
       {/* #1022 F-1 — GestureHandlerRootView is REQUIRED here on Android: the
@@ -437,6 +443,7 @@ const SheetNative: React.FC<SheetProps> = ({
                 <WebSafeGestureDetector gesture={panGesture}>
                   <View
                     style={styles.nativeDragCatch}
+                    pointerEvents={dismissDisabled ? "none" : "auto"}
                     testID={
                       testID !== undefined ? `${testID}-drag-handle` : undefined
                     }
@@ -730,6 +737,7 @@ const SheetWeb: React.FC<SheetProps> = ({
   children,
   snapPoint = "half",
   dismissOnScrimTap = true,
+  dismissDisabled = false,
   testID,
   style,
   panelBackground,
@@ -799,7 +807,7 @@ const SheetWeb: React.FC<SheetProps> = ({
   }, [visible, mounted]);
 
   const handleScrimPress = (): void => {
-    if (dismissOnScrimTap) onClose();
+    if (!dismissDisabled && dismissOnScrimTap) onClose();
   };
 
   // ORCH-1207 Bug 2 — WEB drag-to-dismiss. SheetWeb previously closed ONLY via a
@@ -836,6 +844,7 @@ const SheetWeb: React.FC<SheetProps> = ({
   };
 
   const handleDragStart = (clientY: number): void => {
+    if (dismissDisabled) return;
     dragStartYRef.current = clientY;
     dragYRef.current = 0;
     lastMoveRef.current = { y: clientY, t: Date.now() };
@@ -964,7 +973,9 @@ const SheetWeb: React.FC<SheetProps> = ({
       visible={mounted}
       transparent
       animationType="none"
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        if (!dismissDisabled) onClose();
+      }}
       statusBarTranslucent
     >
       <View
@@ -1027,6 +1038,7 @@ const SheetWeb: React.FC<SheetProps> = ({
                 testID !== undefined ? `${testID}-drag-handle` : undefined
               }
               accessibilityLabel="Drag to dismiss sheet"
+              pointerEvents={dismissDisabled ? "none" : "auto"}
               style={[
                 styles.webDragCatch,
                 // Web-only `cursor` (RN-web maps it; the string-style cast keeps
