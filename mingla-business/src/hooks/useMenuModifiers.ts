@@ -20,7 +20,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { venueOrderingQueryKeys } from "@mingla/brand-rendering/venueOrdering";
+import { venueOrderingQueryKeys } from "@mingla/brand-rendering/venueOrdering/venueOrderingQueryKeys";
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
@@ -28,7 +28,7 @@ import {
   isLikelyOfflineError,
   isPermissionDeniedError,
 } from "../utils/supabaseErrorMessage";
-import { orderPadKeys } from "./useVenueOrderPad";
+import { orderPadKeys } from "./orderPadQueryKeys";
 
 export type ModifierSelectionMode = "single" | "multi";
 

@@ -29,6 +29,7 @@ import {
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
+import { orderPadKeys } from "./orderPadQueryKeys";
 import { venueOrdersKeys } from "./useVenueOrders";
 import type {
   OrderPadMenuItem,
@@ -42,20 +43,7 @@ export interface OrderPadMenu {
   groupsByItemId: Record<string, OrderPadModifierGroup[]>;
 }
 
-export const orderPadKeys = {
-  forBrand: (brandId: string): readonly ["orderPadMenu", string] =>
-    ["orderPadMenu", brandId] as const,
-  menu: (
-    brandId: string,
-    servingVenueId: string,
-  ): readonly ["orderPadMenu", string, string] =>
-    ["orderPadMenu", brandId, servingVenueId] as const,
-  preview: (
-    brandId: string,
-    fingerprint: string,
-  ): readonly ["orderPadPreview", string, string] =>
-    ["orderPadPreview", brandId, fingerprint] as const,
-};
+export { orderPadKeys } from "./orderPadQueryKeys";
 
 interface MenuRow {
   id: string;
