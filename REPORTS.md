@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-27 — Menu categories, items, option groups and option names now show storage-accurate character counters before Save, keep over-limit drafts editable while blocking writes the database would reject, preserve every draft after a failed save, and explain validation, permission, offline and unknown failures inside the open Mingla Host editor without falsely blaming the connection (#3567, PR #3580)
 - 2026-09-27 — Marketing builds no longer depend on Google Fonts being reachable: Mingla’s three existing typefaces are pinned and self-hosted with their exact weights and licensing, so unrelated pull requests stop failing on a third-party font response while the site looks unchanged (#3548, PR #3593)
 - 2026-09-27 — Saving a venue menu options group now keeps every choice, signed price change and ordering together in one Mingla Host save, so a failed Business save leaves the prior complete group intact instead of exposing an empty or partial group to guests or staff (#3563, PR #3578)
 - 2026-09-26 — Ordinary dish names stay readable in Mingla Business instead of being squeezed down to a few characters: on phones and at large text sizes, each menu item's full name and useful description now sit above its price, availability and actions, while wider screens keep the existing side-by-side layout. Reorder and Edit actions also keep full 44-point touch targets (#3562, PR #3574)

@@ -47,6 +47,11 @@ import {
 } from "../../hooks/useMenuModifiers";
 import { modifierGroupSummary } from "./menuDepth";
 import { MenuModifierGroupEditor } from "./MenuModifierGroupEditor";
+import {
+  MENU_TEXT_SAVE_COPY,
+  classifyMenuTextSaveFailure,
+  type MenuTextSaveFailure,
+} from "./menuTextValidation";
 
 export interface MenuItemOptionsSectionProps {
   brandId: string | null;
@@ -72,7 +77,7 @@ export function MenuItemOptionsSection({
 
   const [editing, setEditing] = useState<MenuModifierGroup | null>(null);
   const [creating, setCreating] = useState<boolean>(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<MenuTextSaveFailure | null>(null);
   const [deleteError, setDeleteError] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [focusGroupId, setFocusGroupId] = useState<string | null>(null);
@@ -112,6 +117,8 @@ export function MenuItemOptionsSection({
 
   const closeEditor = useCallback((): void => {
     if (saveGroup.isPending) return;
+    setSaveError(null);
+    setSuccessMessage(null);
     setEditing(null);
     setCreating(false);
   }, [saveGroup.isPending]);
@@ -125,6 +132,7 @@ export function MenuItemOptionsSection({
       setSuccessMessage(null);
       saveGroup.mutate(input, {
         onSuccess: (savedGroup) => {
+          setSaveError(null);
           setEditing(null);
           setCreating(false);
           setFocusGroupId(savedGroup.id);
@@ -147,6 +155,8 @@ export function MenuItemOptionsSection({
     (groupId: string): void => {
       if (menuItemId === null) return;
       if (saveGroup.isPending || deleteGroup.isPending) return;
+      setSaveError(null);
+      setSuccessMessage(null);
       setDeleteError(false);
       deleteGroup.mutate(
         { groupId, menuItemId },
@@ -174,7 +184,7 @@ export function MenuItemOptionsSection({
 
       {deleteError ? (
         <Text style={styles.error} testID="menu-item-options-error">
-          Couldn&apos;t save. Check your connection and try again.
+          That menu change wasn&apos;t saved. Try again.
         </Text>
       ) : null}
 
@@ -205,6 +215,7 @@ export function MenuItemOptionsSection({
             onSave={handleSave}
             saving={saveGroup.isPending}
             saveError={saveError}
+            onClearSaveError={() => setSaveError(null)}
             onDelete={canMutate ? handleDelete : undefined}
             deleting={deleteGroup.isPending}
             onCancel={closeEditor}
@@ -253,6 +264,7 @@ export function MenuItemOptionsSection({
           onSave={handleSave}
           saving={saveGroup.isPending}
           saveError={saveError}
+          onClearSaveError={() => setSaveError(null)}
           onCancel={closeEditor}
         />
       ) : canMutate && editing === null ? (
@@ -336,13 +348,22 @@ function hasFocusCapability(value: unknown): value is FocusCapable {
   );
 }
 
-function modifierGroupSaveError(error: Error): string {
-  const safe = error as Error & { code?: string; category?: string };
-  if (safe.category === "permission" || safe.code === "42501") {
-    return "You cannot save this group with this account. Your changes are still here.";
+function modifierGroupSaveError(error: Error): MenuTextSaveFailure {
+  /*
+   * Shared classification preserves #3563's exact safe copy:
+   * "You cannot save this group with this account. Your changes are still here."
+   * "You are offline. Reconnect, then try again. Your changes are still here."
+   * "We could not save this group. Your changes are still here — try again."
+   */
+  const safe = error as Error & { category?: string };
+  if (safe.category === "permission") {
+    return {
+      kind: "permission",
+      message: MENU_TEXT_SAVE_COPY.modifier.permission,
+    };
   }
   if (safe.category === "offline") {
-    return "You are offline. Reconnect, then try again. Your changes are still here.";
+    return { kind: "offline", message: MENU_TEXT_SAVE_COPY.modifier.offline };
   }
-  return "We could not save this group. Your changes are still here — try again.";
+  return classifyMenuTextSaveFailure(error, "modifier");
 }

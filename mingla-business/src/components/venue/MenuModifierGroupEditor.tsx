@@ -19,15 +19,24 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
 import {
+  androidOpaque,
   radius,
   semantic,
   spacing,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { isLargeText } from "../../constants/dynamicType";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import {
@@ -41,6 +50,12 @@ import type {
   ModifierGroupSaveInput,
 } from "../../hooks/useMenuModifiers";
 import { createMenuModifierDraftId } from "./menuModifierDraftId";
+import { MenuTextCounter } from "./MenuTextCounter";
+import {
+  menuTextFieldIds,
+  validateMenuText,
+  type MenuTextSaveFailure,
+} from "./menuTextValidation";
 
 interface OptionDraft {
   id: string;
@@ -48,6 +63,13 @@ interface OptionDraft {
   /** Major units as typed, e.g. "1.50" or "-3.00". */
   price: string;
 }
+
+const modifierGroupNameIds = menuTextFieldIds("modifier-group-name");
+
+const menuTextAccessibilityHint = (
+  used: number,
+  limit: number,
+): string => `${used} of ${limit} characters will be saved.`;
 
 export interface MenuModifierGroupEditorProps {
   menuItemId: string;
@@ -57,7 +79,8 @@ export interface MenuModifierGroupEditorProps {
   nextSortOrder: number;
   onSave: (input: ModifierGroupSaveInput) => void;
   saving: boolean;
-  saveError?: string | null;
+  saveError?: MenuTextSaveFailure | null;
+  onClearSaveError?: () => void;
   onDelete?: (groupId: string) => void;
   deleting?: boolean;
   onCancel: () => void;
@@ -72,12 +95,15 @@ export function MenuModifierGroupEditor({
   onSave,
   saving,
   saveError = null,
+  onClearSaveError,
   onDelete,
   deleting = false,
   onCancel,
   testID,
 }: MenuModifierGroupEditorProps): React.ReactElement {
   const code = normalizeCurrency(currency);
+  const { width, fontScale } = useWindowDimensions();
+  const stackOptionControls = width <= 360 || isLargeText(fontScale);
   const [draftGroupId] = useState<string>(
     () => group?.id ?? createMenuModifierDraftId(),
   );
@@ -105,6 +131,12 @@ export function MenuModifierGroupEditor({
           : String(majorFromMinor(modifier.priceDeltaCents, code)),
     })),
   );
+  const [nameBlurred, setNameBlurred] = useState<boolean>(false);
+  const [nameHadNonBlankValue, setNameHadNonBlankValue] = useState<boolean>(
+    () =>
+      validateMenuText("modifierGroupName", group?.name ?? "")
+        .canonicalValue !== "",
+  );
 
   const parsedMax =
     mode === "single"
@@ -113,13 +145,51 @@ export function MenuModifierGroupEditor({
         ? null
         : Number.parseInt(maxSelect.trim(), 10);
   const minSelect = required ? 1 : 0;
-  const error = validateModifierGroup({
-    name,
-    selectionMode: mode,
-    minSelect,
-    maxSelect: parsedMax === null || Number.isNaN(parsedMax) ? null : parsedMax,
-    optionCount: options.filter((o) => o.name.trim().length > 0).length,
-  });
+  const groupNameValidation = validateMenuText("modifierGroupName", name);
+  const optionValidations = options.map((option) => ({
+    id: option.id,
+    result: validateMenuText("modifierOptionName", option.name),
+  }));
+  const visibleGroupNameLocalError =
+    groupNameValidation.error?.kind === "too-long" ||
+    (groupNameValidation.error?.kind === "required" &&
+      (nameBlurred || nameHadNonBlankValue))
+      ? groupNameValidation.error.message
+      : null;
+  const groupFieldFailure =
+    saveError?.kind === "field" && saveError.field === "modifierGroupName"
+      ? saveError.message
+      : null;
+  const groupNameError = visibleGroupNameLocalError ?? groupFieldFailure;
+  const modifierFieldFailureActive =
+    saveError?.kind === "field" &&
+    (saveError.field === "modifierGroupName" ||
+      saveError.field === "modifierOptionName");
+  const optionNameInvalid = optionValidations.some(
+    ({ result }) => result.error?.kind === "too-long",
+  );
+  const error = groupNameValidation.isValid
+    ? validateModifierGroup({
+        name: groupNameValidation.canonicalValue,
+        selectionMode: mode,
+        minSelect,
+        maxSelect:
+          parsedMax === null || Number.isNaN(parsedMax) ? null : parsedMax,
+        optionCount: optionValidations.filter(
+          ({ result }) => result.canonicalValue !== "",
+        ).length,
+      })
+    : null;
+  const saveFailureMessage =
+    saveError?.kind === "field"
+      ? saveError.formMessage
+      : (saveError?.message ?? null);
+  const canSave =
+    groupNameValidation.isValid &&
+    !optionNameInvalid &&
+    !modifierFieldFailureActive &&
+    error === null &&
+    !saving;
 
   const addOption = useCallback((): void => {
     if (saving) return;
@@ -127,14 +197,16 @@ export function MenuModifierGroupEditor({
       ...current,
       { id: createMenuModifierDraftId(), name: "", price: "" },
     ]);
-  }, [saving]);
+    onClearSaveError?.();
+  }, [onClearSaveError, saving]);
 
   const removeOption = useCallback(
     (id: string): void => {
       if (saving) return;
       setOptions((current) => current.filter((o) => o.id !== id));
+      onClearSaveError?.();
     },
-    [saving],
+    [onClearSaveError, saving],
   );
 
   const patchOption = useCallback(
@@ -143,24 +215,49 @@ export function MenuModifierGroupEditor({
       setOptions((current) =>
         current.map((o) => (o.id === id ? { ...o, ...patch } : o)),
       );
+      onClearSaveError?.();
     },
-    [saving],
+    [onClearSaveError, saving],
+  );
+
+  const handleNameChange = useCallback(
+    (next: string): void => {
+      if (validateMenuText("modifierGroupName", next).canonicalValue !== "") {
+        setNameHadNonBlankValue(true);
+      }
+      onClearSaveError?.();
+      setName(next);
+    },
+    [onClearSaveError],
   );
 
   const handleSave = useCallback((): void => {
-    if (error !== null || saving) return;
+    if (
+      !groupNameValidation.isValid ||
+      optionNameInvalid ||
+      modifierFieldFailureActive ||
+      error !== null ||
+      saving
+    ) {
+      return;
+    }
+    onClearSaveError?.();
     onSave({
       id: draftGroupId,
       menuItemId,
-      name: name.trim(),
+      name: groupNameValidation.canonicalValue,
       selectionMode: mode,
       minSelect,
       maxSelect:
         parsedMax === null || Number.isNaN(parsedMax) ? null : parsedMax,
       sortOrder: group?.sortOrder ?? nextSortOrder,
       modifiers: options
-        .filter((option) => option.name.trim().length > 0)
-        .map((option, index) => {
+        .map((option) => ({
+          option,
+          validation: validateMenuText("modifierOptionName", option.name),
+        }))
+        .filter(({ validation }) => validation.canonicalValue !== "")
+        .map(({ option, validation }, index) => {
           // `minorFromMajor` clamps negatives to 0 by design (it serves prices,
           // which cannot be negative). A modifier delta CAN be, so the sign is
           // carried separately and the magnitude converted.
@@ -170,7 +267,7 @@ export function MenuModifierGroupEditor({
             : 0;
           return {
             id: option.id,
-            name: option.name.trim(),
+            name: validation.canonicalValue,
             priceDeltaCents:
               Number.isFinite(typed) && typed < 0 ? -magnitude : magnitude,
             sortOrder: index,
@@ -178,13 +275,16 @@ export function MenuModifierGroupEditor({
         }),
     });
   }, [
+    groupNameValidation,
+    optionNameInvalid,
+    modifierFieldFailureActive,
     error,
     saving,
+    onClearSaveError,
     onSave,
     group,
     draftGroupId,
     menuItemId,
-    name,
     mode,
     minSelect,
     parsedMax,
@@ -199,21 +299,51 @@ export function MenuModifierGroupEditor({
         {group === null ? "New options group" : "Edit options group"}
       </Text>
 
-      <Field label="What are you asking?">
+      <MenuTextField
+        label="What are you asking?"
+        labelId={modifierGroupNameIds.labelId}
+        error={groupNameError}
+        errorId={modifierGroupNameIds.errorId}
+        counter={
+          <MenuTextCounter
+            used={groupNameValidation.storageCount}
+            limit={groupNameValidation.limit}
+            invalid={
+              groupNameValidation.error?.kind === "too-long" ||
+              groupFieldFailure !== null
+            }
+            nativeID={modifierGroupNameIds.counterId}
+            testID="modifier-group-name-counter"
+          />
+        }
+      >
         <Input
           value={name}
-          onChangeText={setName}
+          onChangeText={handleNameChange}
+          onBlur={() => setNameBlurred(true)}
           placeholder="e.g. How would you like it?"
           accessibilityLabel="Options group name"
+          accessibilityHint={menuTextAccessibilityHint(
+            groupNameValidation.storageCount,
+            groupNameValidation.limit,
+          )}
+          aria-labelledby={modifierGroupNameIds.labelId}
+          aria-describedby={modifierGroupNameIds.counterId}
+          error={groupNameError}
+          errorId={`${modifierGroupNameIds.counterId} ${modifierGroupNameIds.errorId}`}
+          renderErrorMessage={false}
           disabled={saving}
           testID="modifier-group-name"
         />
-      </Field>
+      </MenuTextField>
 
       <View style={styles.modeRow}>
         <Button
           label="Pick one"
-          onPress={() => setMode("single")}
+          onPress={() => {
+            onClearSaveError?.();
+            setMode("single");
+          }}
           variant={mode === "single" ? "primary" : "secondary"}
           size="sm"
           disabled={saving}
@@ -221,7 +351,10 @@ export function MenuModifierGroupEditor({
         />
         <Button
           label="Pick several"
-          onPress={() => setMode("multi")}
+          onPress={() => {
+            onClearSaveError?.();
+            setMode("multi");
+          }}
           variant={mode === "multi" ? "primary" : "secondary"}
           size="sm"
           disabled={saving}
@@ -229,7 +362,10 @@ export function MenuModifierGroupEditor({
         />
         <Button
           label={required ? "Required" : "Optional"}
-          onPress={() => setRequired((r) => !r)}
+          onPress={() => {
+            onClearSaveError?.();
+            setRequired((r) => !r);
+          }}
           variant={required ? "primary" : "secondary"}
           size="sm"
           disabled={saving}
@@ -241,7 +377,10 @@ export function MenuModifierGroupEditor({
         <Field label="Most they can pick (leave blank for no limit)">
           <Input
             value={maxSelect}
-            onChangeText={setMaxSelect}
+            onChangeText={(next) => {
+              onClearSaveError?.();
+              setMaxSelect(next);
+            }}
             variant="number"
             placeholder="3"
             accessibilityLabel="Most options a guest can pick"
@@ -252,42 +391,118 @@ export function MenuModifierGroupEditor({
       ) : null}
 
       <Text style={styles.sectionLabel}>Options</Text>
-      {options.map((option) => (
-        <View key={option.id} style={styles.optionRow}>
-          <View style={styles.optionName}>
-            <Input
-              value={option.name}
-              onChangeText={(next) => patchOption(option.id, { name: next })}
-              placeholder="e.g. Rare"
-              accessibilityLabel="Option name"
-              disabled={saving}
-              testID={`modifier-option-name-${option.id}`}
-            />
+      {options.map((option, optionIndex) => {
+        const validation = validateMenuText(
+          "modifierOptionName",
+          option.name,
+        );
+        const ids = menuTextFieldIds(`modifier-option-name-${option.id}`);
+        const optionError =
+          validation.error?.kind === "too-long"
+            ? validation.error.message
+            : null;
+        return (
+          <View key={option.id} style={styles.optionBlock}>
+            <View style={styles.fieldHeader}>
+              <Text
+                nativeID={ids.labelId}
+                style={[styles.fieldLabel, styles.menuTextFieldLabel]}
+                testID={`modifier-option-header-${option.id}`}
+              >
+                {`Option ${optionIndex + 1}`}
+              </Text>
+              <View style={styles.menuTextCounterWrap}>
+                <MenuTextCounter
+                  used={validation.storageCount}
+                  limit={validation.limit}
+                  invalid={optionError !== null}
+                  nativeID={ids.counterId}
+                  testID={`modifier-option-name-counter-${option.id}`}
+                />
+              </View>
+            </View>
+            <View
+              style={[
+                styles.optionControls,
+                stackOptionControls && styles.optionControlsStacked,
+              ]}
+            >
+              <View
+                style={[
+                  styles.optionName,
+                  stackOptionControls && styles.optionNameStacked,
+                ]}
+              >
+                <Input
+                  value={option.name}
+                  onChangeText={(next) =>
+                    patchOption(option.id, { name: next })
+                  }
+                  placeholder="e.g. Rare"
+                  accessibilityLabel={`Option ${optionIndex + 1} name`}
+                  accessibilityHint={menuTextAccessibilityHint(
+                    validation.storageCount,
+                    validation.limit,
+                  )}
+                  aria-labelledby={ids.labelId}
+                  aria-describedby={ids.counterId}
+                  error={optionError}
+                  errorId={`${ids.counterId} ${ids.errorId}`}
+                  renderErrorMessage={false}
+                  disabled={saving}
+                  testID={`modifier-option-name-${option.id}`}
+                />
+                {optionError !== null ? (
+                  <Text
+                    nativeID={ids.errorId}
+                    accessibilityRole="alert"
+                    accessibilityLiveRegion="assertive"
+                    aria-live="assertive"
+                    style={styles.fieldError}
+                    testID={ids.errorId}
+                  >
+                    {optionError}
+                  </Text>
+                ) : null}
+              </View>
+              <View
+                style={[
+                  styles.optionSecondaryControls,
+                  stackOptionControls && styles.optionSecondaryControlsStacked,
+                ]}
+              >
+                <View style={styles.optionPrice}>
+                  <Input
+                    value={option.price}
+                    onChangeText={(next) =>
+                      patchOption(option.id, { price: next })
+                    }
+                    variant="number"
+                    placeholder={`± ${code}`}
+                    accessibilityLabel={`Price change for option ${optionIndex + 1} in ${code}`}
+                    disabled={saving}
+                    testID={`modifier-option-price-${option.id}`}
+                  />
+                </View>
+                <Pressable
+                  onPress={() => removeOption(option.id)}
+                  disabled={saving}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${validation.canonicalValue !== "" ? validation.canonicalValue : `option ${optionIndex + 1}`}`}
+                  hitSlop={8}
+                  style={({ pressed }) => [
+                    styles.remove,
+                    pressed && styles.pressed,
+                  ]}
+                  testID={`modifier-option-remove-${option.id}`}
+                >
+                  <Text style={styles.removeGlyph}>×</Text>
+                </Pressable>
+              </View>
+            </View>
           </View>
-          <View style={styles.optionPrice}>
-            <Input
-              value={option.price}
-              onChangeText={(next) => patchOption(option.id, { price: next })}
-              variant="number"
-              placeholder={`± ${code}`}
-              accessibilityLabel={`Price change for this option in ${code}`}
-              disabled={saving}
-              testID={`modifier-option-price-${option.id}`}
-            />
-          </View>
-          <Pressable
-            onPress={() => removeOption(option.id)}
-            disabled={saving}
-            accessibilityRole="button"
-            accessibilityLabel={`Remove ${option.name.trim().length > 0 ? option.name : "this option"}`}
-            hitSlop={8}
-            style={({ pressed }) => [styles.remove, pressed && styles.pressed]}
-            testID={`modifier-option-remove-${option.id}`}
-          >
-            <Text style={styles.removeGlyph}>×</Text>
-          </Pressable>
-        </View>
-      ))}
+        );
+      })}
       <Text style={styles.hint}>
         Leave the price blank when an option costs the same. A smaller portion
         can cost less — type a minus.
@@ -303,20 +518,28 @@ export function MenuModifierGroupEditor({
       />
 
       {error !== null ? (
-        <Text style={styles.error} testID="modifier-group-error">
+        <Text
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+          aria-live="assertive"
+          style={styles.error}
+          testID="modifier-group-error"
+        >
           {error}
         </Text>
       ) : null}
 
-      {saveError !== null ? (
-        <Text
+      {saveFailureMessage !== null ? (
+        <View
+          accessible
           accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
           aria-live="assertive"
-          style={styles.mutationError}
+          style={styles.saveError}
           testID="modifier-group-save-error"
         >
-          {saveError}
-        </Text>
+          <Text style={styles.mutationError}>{saveFailureMessage}</Text>
+        </View>
       ) : null}
 
       <Button
@@ -326,7 +549,7 @@ export function MenuModifierGroupEditor({
         size="md"
         fullWidth
         loading={saving}
-        disabled={error !== null || saving}
+        disabled={!canSave}
         accessibilityLabel={saving ? "Saving options group" : undefined}
         style={styles.save}
         testID="modifier-group-save"
@@ -362,6 +585,49 @@ interface FieldProps {
   children: React.ReactNode;
 }
 
+interface MenuTextFieldProps extends FieldProps {
+  labelId: string;
+  counter: React.ReactNode;
+  error: string | null;
+  errorId: string;
+}
+
+function MenuTextField({
+  label,
+  labelId,
+  counter,
+  error,
+  errorId,
+  children,
+}: MenuTextFieldProps): React.ReactElement {
+  return (
+    <View style={styles.field}>
+      <View style={styles.fieldHeader}>
+        <Text
+          nativeID={labelId}
+          style={[styles.fieldLabel, styles.menuTextFieldLabel]}
+        >
+          {label}
+        </Text>
+        <View style={styles.menuTextCounterWrap}>{counter}</View>
+      </View>
+      {children}
+      {error !== null ? (
+        <Text
+          nativeID={errorId}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+          aria-live="assertive"
+          style={styles.fieldError}
+          testID={errorId}
+        >
+          {error}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 function Field({ label, children }: FieldProps): React.ReactElement {
   return (
     <View style={styles.field}>
@@ -384,9 +650,30 @@ const styles = StyleSheet.create({
     gap: spacing.xxs,
     marginBottom: spacing.xs,
   },
+  fieldHeader: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+  },
+  menuTextFieldLabel: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  menuTextCounterWrap: {
+    marginLeft: "auto",
+    alignItems: "flex-end",
+  },
   fieldLabel: {
     ...typography.bodySm,
     color: textTokens.secondary,
+  },
+  fieldError: {
+    ...typography.bodySm,
+    color: semantic.errorText,
+    fontWeight: "600",
+    marginTop: spacing.xxs,
   },
   modeRow: {
     flexDirection: "row",
@@ -399,16 +686,41 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     marginTop: spacing.xs,
   },
-  optionRow: {
+  optionBlock: {
+    gap: spacing.xxs,
+    marginBottom: spacing.xs,
+  },
+  optionControls: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: spacing.xs,
+  },
+  optionControlsStacked: {
+    flexDirection: "column",
+    alignItems: "stretch",
   },
   optionName: {
     flex: 2,
+    minWidth: 0,
+  },
+  optionNameStacked: {
+    flex: 0,
+    width: "100%",
+  },
+  optionSecondaryControls: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.xs,
+  },
+  optionSecondaryControlsStacked: {
+    flex: 0,
+    width: "100%",
   },
   optionPrice: {
     flex: 1,
+    minWidth: 0,
   },
   remove: {
     minWidth: 44,
@@ -440,7 +752,16 @@ const styles = StyleSheet.create({
   mutationError: {
     ...typography.bodySm,
     color: semantic.errorText,
-    marginTop: spacing.xs,
+  },
+  saveError: {
+    gap: spacing.xxs,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    borderColor: semantic.error,
+    overflow: "hidden",
+    backgroundColor:
+      Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint,
   },
   save: {
     marginTop: spacing.sm,

@@ -21,13 +21,21 @@
  * over it (the shipped sub-sheet rule).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Platform, StyleSheet, Text, View } from "react-native";
 // ORCH-1193 [sheet-cutoff]: body ScrollView via SmartScrollView wrapper so the
 // CTA clears the keyboard + 42dp Done bar (I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE).
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
+  androidOpaque,
+  radius,
   semantic,
   spacing,
   text as textTokens,
@@ -49,6 +57,13 @@ import {
   parseMenuMoneyDraft,
   type MenuMoneyDraftResult,
 } from "./menuMoneyDraft";
+import { MenuTextCounter } from "./MenuTextCounter";
+import {
+  menuTextFieldIds,
+  validateMenuText,
+  type MenuTextField as MenuTextFieldKind,
+  type MenuTextSaveFailure,
+} from "./menuTextValidation";
 
 export interface MenuItemSheetSaveInput {
   name: string;
@@ -82,6 +97,10 @@ export interface MenuItemSheetProps {
   brandHasCurrency: boolean;
   onSave: (input: MenuItemSheetSaveInput) => void;
   saving: boolean;
+  /** Typed save failure owned by the parent mutation integration. */
+  saveFailure?: MenuTextSaveFailure | null;
+  /** Clear a stale parent-owned failure on correction, retry, or dismissal. */
+  onClearSaveFailure?: () => void;
   /** #3563: locks parent edits and dismissal while an options transaction settles. */
   optionsSaving?: boolean;
   onDelete?: (id: string) => void;
@@ -96,6 +115,29 @@ export interface MenuItemSheetProps {
   testID?: string;
 }
 
+const itemNameIds = menuTextFieldIds("menu-item-name");
+const itemDescriptionIds = menuTextFieldIds("menu-item-description");
+
+const menuTextAccessibilityHint = (
+  used: number,
+  limit: number,
+): string => `${used} of ${limit} characters will be saved.`;
+
+const fieldFailureMessage = (
+  failure: MenuTextSaveFailure | null,
+  field: MenuTextFieldKind,
+): string | null =>
+  failure?.kind === "field" && failure.field === field
+    ? failure.message
+    : null;
+
+const formFailureMessage = (
+  failure: MenuTextSaveFailure | null,
+): string | null => {
+  if (failure?.kind === "field") return failure.formMessage;
+  return failure?.message ?? null;
+};
+
 export function MenuItemSheet({
   visible,
   onClose,
@@ -104,6 +146,8 @@ export function MenuItemSheet({
   brandHasCurrency,
   onSave,
   saving,
+  saveFailure = null,
+  onClearSaveFailure,
   optionsSaving = false,
   onDelete,
   deleting = false,
@@ -123,14 +167,31 @@ export function MenuItemSheet({
   >(null);
   const [costDraft, setCostDraft] = useState<string>("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState<boolean>(false);
+  const [nameBlurred, setNameBlurred] = useState<boolean>(false);
+  const [nameHadNonBlankValue, setNameHadNonBlankValue] =
+    useState<boolean>(false);
+  const clearSaveFailureRef = useRef(onClearSaveFailure);
+
+  useEffect(() => {
+    clearSaveFailureRef.current = onClearSaveFailure;
+  }, [onClearSaveFailure]);
 
   useEffect(() => {
     if (!visible) {
       setConfirmDeleteOpen(false);
+      setNameBlurred(false);
+      setNameHadNonBlankValue(false);
+      clearSaveFailureRef.current?.();
       return;
     }
-    setName(item?.name ?? "");
+    const nextName = item?.name ?? "";
+    setName(nextName);
     setDescription(item?.description ?? "");
+    setNameBlurred(false);
+    setNameHadNonBlankValue(
+      validateMenuText("itemName", nextName).canonicalValue !== "",
+    );
+    clearSaveFailureRef.current?.();
     // Hydrate the major-unit draft from stored minor cents (currency-aware).
     setPriceDraft(
       item?.priceCents != null && item.priceCents >= 0
@@ -169,27 +230,79 @@ export function MenuItemSheet({
     fractionDigits,
   );
   const moneyPlaceholder = fractionDigits === 0 ? "0" : "0.00";
+  const nameValidation = useMemo(
+    () => validateMenuText("itemName", name),
+    [name],
+  );
+  const descriptionValidation = useMemo(
+    () => validateMenuText("itemDescription", description),
+    [description],
+  );
+  const visibleNameLocalError =
+    nameValidation.error?.kind === "too-long" ||
+    (nameValidation.error?.kind === "required" &&
+      (nameBlurred || nameHadNonBlankValue))
+      ? nameValidation.error.message
+      : null;
+  const nameFieldFailure = fieldFailureMessage(saveFailure, "itemName");
+  const descriptionFieldFailure = fieldFailureMessage(
+    saveFailure,
+    "itemDescription",
+  );
+  const nameError = visibleNameLocalError ?? nameFieldFailure;
+  const descriptionError =
+    descriptionValidation.error?.message ?? descriptionFieldFailure;
+  const saveFailureMessage = formFailureMessage(saveFailure);
+  const itemFieldFailureActive =
+    saveFailure?.kind === "field" &&
+    (saveFailure.field === "itemName" ||
+      saveFailure.field === "itemDescription");
 
   const showDelete = isEdit && canDelete && onDelete !== undefined;
   const canSave =
-    name.trim().length > 0 &&
+    nameValidation.isValid &&
+    descriptionValidation.isValid &&
+    !itemFieldFailureActive &&
     !saving &&
     !optionsSaving &&
     priceResult.kind !== "invalid" &&
     costResult.kind !== "invalid";
   const snap = useMemo<number>(() => 0.9, []);
 
+  const handleNameChange = useCallback(
+    (next: string): void => {
+      if (validateMenuText("itemName", next).canonicalValue !== "") {
+        setNameHadNonBlankValue(true);
+      }
+      onClearSaveFailure?.();
+      setName(next);
+    },
+    [onClearSaveFailure],
+  );
+
+  const handleDescriptionChange = useCallback(
+    (next: string): void => {
+      onClearSaveFailure?.();
+      setDescription(next);
+    },
+    [onClearSaveFailure],
+  );
+
   const handleSave = useCallback((): void => {
     if (
+      !nameValidation.isValid ||
+      !descriptionValidation.isValid ||
+      itemFieldFailureActive ||
       priceResult.kind === "invalid" ||
       costResult.kind === "invalid" ||
       !canSave
     ) {
       return;
     }
+    onClearSaveFailure?.();
     onSave({
-      name: name.trim(),
-      description: description.trim().length > 0 ? description.trim() : null,
+      name: nameValidation.canonicalValue,
+      description: descriptionValidation.submitValue,
       priceCents: priceResult.cents,
       isAvailable,
       allowsNotes,
@@ -198,13 +311,15 @@ export function MenuItemSheet({
     });
   }, [
     canSave,
-    name,
-    description,
+    nameValidation,
+    descriptionValidation,
+    itemFieldFailureActive,
     priceResult,
     isAvailable,
     allowsNotes,
     prepStation,
     costResult,
+    onClearSaveFailure,
     onSave,
   ]);
 
@@ -214,8 +329,9 @@ export function MenuItemSheet({
   }, [item, onDelete]);
 
   const handleClose = useCallback((): void => {
+    if (!optionsSaving) onClearSaveFailure?.();
     if (!optionsSaving) onClose();
-  }, [onClose, optionsSaving]);
+  }, [onClearSaveFailure, onClose, optionsSaving]);
 
   return (
     <Sheet
@@ -234,32 +350,88 @@ export function MenuItemSheet({
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.groupLabel}>Item</Text>
-          <Field label="Item name">
+          <MenuTextField
+            label="Item name"
+            labelId={itemNameIds.labelId}
+            error={nameError}
+            errorId={itemNameIds.errorId}
+            counter={
+              <MenuTextCounter
+                used={nameValidation.storageCount}
+                limit={nameValidation.limit}
+                invalid={
+                  nameValidation.error?.kind === "too-long" ||
+                  nameFieldFailure !== null
+                }
+                nativeID={itemNameIds.counterId}
+                testID="menu-item-name-counter"
+              />
+            }
+          >
             <Input
               value={name}
-              onChangeText={setName}
+              onChangeText={handleNameChange}
+              onBlur={() => setNameBlurred(true)}
               placeholder="e.g. Margherita"
               accessibilityLabel="Item name"
+              accessibilityHint={menuTextAccessibilityHint(
+                nameValidation.storageCount,
+                nameValidation.limit,
+              )}
+              aria-labelledby={itemNameIds.labelId}
+              aria-describedby={itemNameIds.counterId}
+              error={nameError}
+              errorId={`${itemNameIds.counterId} ${itemNameIds.errorId}`}
+              renderErrorMessage={false}
               disabled={optionsSaving}
               testID="menu-item-name"
             />
-          </Field>
-          <Field label="Description (optional)">
+          </MenuTextField>
+          <MenuTextField
+            label="Description (optional)"
+            labelId={itemDescriptionIds.labelId}
+            error={descriptionError}
+            errorId={itemDescriptionIds.errorId}
+            counter={
+              <MenuTextCounter
+                used={descriptionValidation.storageCount}
+                limit={descriptionValidation.limit}
+                invalid={
+                  descriptionValidation.error?.kind === "too-long" ||
+                  descriptionFieldFailure !== null
+                }
+                nativeID={itemDescriptionIds.counterId}
+                testID="menu-item-description-counter"
+              />
+            }
+          >
             <Input
               value={description}
-              onChangeText={setDescription}
+              onChangeText={handleDescriptionChange}
               placeholder="What's in it"
               accessibilityLabel="Item description"
+              accessibilityHint={menuTextAccessibilityHint(
+                descriptionValidation.storageCount,
+                descriptionValidation.limit,
+              )}
+              aria-labelledby={itemDescriptionIds.labelId}
+              aria-describedby={itemDescriptionIds.counterId}
+              error={descriptionError}
+              errorId={`${itemDescriptionIds.counterId} ${itemDescriptionIds.errorId}`}
+              renderErrorMessage={false}
               disabled={optionsSaving}
               testID="menu-item-desc"
             />
-          </Field>
+          </MenuTextField>
 
           <Text style={styles.groupLabel}>Price</Text>
           <Field label={`Price${brandHasCurrency ? ` (${code})` : ""}`}>
             <Input
               value={priceDraft}
-              onChangeText={setPriceDraft}
+              onChangeText={(next) => {
+                onClearSaveFailure?.();
+                setPriceDraft(next);
+              }}
               variant="number"
               placeholder={moneyPlaceholder}
               accessibilityLabel={`Item price${brandHasCurrency ? ` in ${code}` : ""}`}
@@ -296,7 +468,10 @@ export function MenuItemSheet({
           >
             <Input
               value={costDraft}
-              onChangeText={setCostDraft}
+              onChangeText={(next) => {
+                onClearSaveFailure?.();
+                setCostDraft(next);
+              }}
               variant="number"
               placeholder={moneyPlaceholder}
               accessibilityLabel={`What this item costs you${brandHasCurrency ? ` in ${code}` : ""}`}
@@ -326,7 +501,10 @@ export function MenuItemSheet({
           <ToggleRow
             label="Show this item to guests"
             value={isAvailable}
-            onValueChange={setIsAvailable}
+            onValueChange={(next) => {
+              onClearSaveFailure?.();
+              setIsAvailable(next);
+            }}
             disabled={optionsSaving}
             testID="menu-item-available"
           />
@@ -335,7 +513,10 @@ export function MenuItemSheet({
           <ToggleRow
             label="Let guests add a note (no ice, extra hot)"
             value={allowsNotes}
-            onValueChange={setAllowsNotes}
+            onValueChange={(next) => {
+              onClearSaveFailure?.();
+              setAllowsNotes(next);
+            }}
             disabled={optionsSaving}
             testID="menu-item-allows-notes"
           />
@@ -348,11 +529,12 @@ export function MenuItemSheet({
                 <Button
                   key={choice.label}
                   label={choice.label}
-                  onPress={() =>
+                  onPress={() => {
+                    onClearSaveFailure?.();
                     setPrepStation(
                       prepStation === choice.value ? null : choice.value,
-                    )
-                  }
+                    );
+                  }}
                   variant={prepStation === choice.value ? "primary" : "secondary"}
                   size="sm"
                   disabled={optionsSaving}
@@ -366,14 +548,36 @@ export function MenuItemSheet({
             <View testID="menu-item-options-section">{optionsSection}</View>
           ) : null}
 
+          {saveFailureMessage !== null ? (
+            <View
+              accessible
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
+              aria-live="assertive"
+              style={styles.saveError}
+              testID="menu-item-save-error"
+            >
+              <Text style={styles.saveErrorText}>{saveFailureMessage}</Text>
+            </View>
+          ) : null}
+
           <Button
-            label={isEdit ? "Save item" : "Add item"}
+            label={
+              saveFailureMessage !== null
+                ? "Try again"
+                : isEdit
+                  ? "Save item"
+                  : "Add item"
+            }
             onPress={handleSave}
             variant="primary"
             size="lg"
             fullWidth
             loading={saving}
             disabled={!canSave}
+            accessibilityLabel={
+              saveFailureMessage !== null ? "Try saving item again" : undefined
+            }
             style={styles.saveBtn}
             testID="menu-item-save"
           />
@@ -460,6 +664,49 @@ interface FieldProps {
   children: React.ReactNode;
 }
 
+interface MenuTextFieldProps extends FieldProps {
+  labelId: string;
+  counter: React.ReactNode;
+  error: string | null;
+  errorId: string;
+}
+
+function MenuTextField({
+  label,
+  labelId,
+  counter,
+  error,
+  errorId,
+  children,
+}: MenuTextFieldProps): React.ReactElement {
+  return (
+    <View style={styles.field}>
+      <View style={styles.fieldHeader}>
+        <Text
+          nativeID={labelId}
+          style={[styles.fieldLabel, styles.menuTextFieldLabel]}
+        >
+          {label}
+        </Text>
+        <View style={styles.menuTextCounterWrap}>{counter}</View>
+      </View>
+      {children}
+      {error !== null ? (
+        <Text
+          nativeID={errorId}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+          aria-live="assertive"
+          style={styles.fieldError}
+          testID={errorId}
+        >
+          {error}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 function Field({ label, children }: FieldProps): React.ReactElement {
   return (
     <View style={styles.field}>
@@ -528,6 +775,21 @@ const styles = StyleSheet.create({
     gap: spacing.xxs,
     marginBottom: spacing.xs,
   },
+  fieldHeader: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+  },
+  menuTextFieldLabel: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  menuTextCounterWrap: {
+    marginLeft: "auto",
+    alignItems: "flex-end",
+  },
   stationRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -536,6 +798,12 @@ const styles = StyleSheet.create({
   fieldLabel: {
     ...typography.bodySm,
     color: textTokens.secondary,
+  },
+  fieldError: {
+    ...typography.bodySm,
+    color: semantic.errorText,
+    fontWeight: "600",
+    marginTop: spacing.xxs,
   },
   helper: {
     ...typography.caption,
@@ -547,6 +815,20 @@ const styles = StyleSheet.create({
     color: semantic.errorText,
     fontWeight: "600",
     marginTop: spacing.xs,
+  },
+  saveError: {
+    gap: spacing.xxs,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    borderColor: semantic.error,
+    overflow: "hidden",
+    backgroundColor:
+      Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint,
+  },
+  saveErrorText: {
+    ...typography.bodySm,
+    color: semantic.errorText,
   },
   toggleRow: {
     flexDirection: "row",

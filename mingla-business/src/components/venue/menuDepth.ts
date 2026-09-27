@@ -9,6 +9,8 @@
  * node/ts-jest config.
  */
 
+import { validateMenuText } from "./menuTextValidation";
+
 export type ModifierSelectionMode = "single" | "multi";
 
 export interface ModifierGroupDraft {
@@ -26,9 +28,8 @@ export interface ModifierGroupDraft {
 export function validateModifierGroup(
   draft: ModifierGroupDraft,
 ): string | null {
-  const name = draft.name.trim();
-  if (name.length === 0) return "Give this group a name.";
-  if (name.length > 80) return "That name is too long.";
+  const nameValidation = validateMenuText("modifierGroupName", draft.name);
+  if (nameValidation.error !== null) return nameValidation.error.message;
   if (draft.optionCount === 0) return "Add at least one option.";
   if (draft.minSelect < 0 || draft.minSelect > 20) {
     return "The minimum must be between 0 and 20.";
