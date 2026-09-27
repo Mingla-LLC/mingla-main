@@ -1,22 +1,31 @@
 # Invariant Registry
 
-## DRAFT — issue #3548 (marketing fonts are pinned local build inputs)
+## DRAFT — issue #3567 (Business menu text matches storage before save)
 
-### I-PROPOSED-3548-MARKETING-FONTS-BUILD-LOCAL (DRAFT)
+### I-PROPOSED-3567-MENU-TEXT-STORAGE-PARITY (DRAFT)
+
+- **Rule:** Every Mingla Business menu category name/description, item name/description, modifier-group name and modifier-option name is NFC-normalized and trimmed once, then counted by Unicode code point against the exact PostgreSQL limit (120/500/160/600/80/80) before the existing writer can run. Exact-boundary text is accepted; boundary + 1 remains fully editable but disables and handler-blocks Save. No affected draft is truncated or governed by JavaScript UTF-16 `.length` or native `maxLength`. A rejected save keeps the complete draft in its open editor and exposes only safe field, validation, offline, permission or unknown recovery copy—never raw database text or invented connection blame.
+- **Scope:** The shared Mingla Business iOS, Android and Web menu-authoring source and its category, item and modifier editors. Existing PostgreSQL constraints remain authoritative and unchanged. Public readers, consumer/Admin authoring, order/payment math and Ari's independent menu writer are excluded; Ari parity remains owned by #3577.
+- **Enforcement:** pure helper suite `menuTextValidation.issue3567.implementor.test.tsx`, form suites `issue_3567_category_text_validation.implementor.test.tsx` and `issue_3567_item_modifier_text_validation.implementor.test.tsx`, plus independent `issue_3567_menu_text_validation.tester.adversarial.test.tsx`. All are append-only and selected by the required all-PR `mingla-business jest (full suite)` gate through the stock Jest configuration; both implementor and tester seams require recorded fail-on-revert/pass-on-restore proof before activation.
+- **Status:** DRAFT until #3567 merges through the reviewed Business Web deploy lane, production reaches `READY`, and Business iOS/Android/Web runtime checks confirm storage-boundary blocking, retained drafts, accessible recovery and stale-error isolation. No schema, migration, edge or public-reader release is part of activation.
+
+## ACTIVE — issue #3548 (marketing fonts are pinned local build inputs)
+
+### I-PROPOSED-3548-MARKETING-FONTS-BUILD-LOCAL (ACTIVE)
 
 - **Rule:** The marketing production build obtains Mochiy Pop One, Nunito Sans, and Inter only from the pinned repository assets recorded for #3548; it preserves the approved `--font-mochiy`, `--font-nunito`, and `--font-inter` variables, the distinct root/preview weight contracts, and four uniquely named Arial fallback faces carrying the exact released Google-loader ascent, descent, line-gap, and size-adjust descriptors approved in the binding #3548 amendment. The local definitions disable automatic fallback adjustment and map immediately to their matching named fallback; any generated adjusted fallback face, collapsed root/preview fallback identity, production `next/font/google` import, or build-time request to `fonts.googleapis.com` or `fonts.gstatic.com` fails CI.
 - **Scope:** Marketing web only: all root-layout routes plus the event and trip preview wrappers, at mobile-web and desktop widths. Consumer iOS/Android, buyer/anonymous Business web, Business iOS/Android, Admin web, Business web preview, backend, storage, database, auth, analytics, and payments remain unchanged.
 - **Enforcement:** `mingla-marketing/scripts/issue-3548-local-fonts.implementor.happy.test.mjs`; the independent #3548 tester suite added during TEST; `mingla-marketing/scripts/issue-3548-deny-google-font-network.cjs` preloaded by both production `next build` invocations; and Web Build Check.
-- **Status:** DRAFT until #3548 merges, merged `main` passes Web Build Check, Vercel production reaches `READY`, and the representative live routes prove self-hosted font parity with zero Google Fonts requests. Record that post-merge proof on #3548 and promote this invariant to ACTIVE in the next qualifying implementation PR.
+- **Status:** ACTIVE after PR #3593 merged, merged `main` passed Web Build Check, Vercel production reached `READY`, and the representative live routes proved self-hosted font parity with zero Google Fonts requests. The durable post-merge release proof is recorded on issue #3548.
 
-## DRAFT — issue #3563 (Business modifier-group replacement is atomic)
+## ACTIVE — issue #3563 (Business modifier-group replacement is atomic)
 
-### I-PROPOSED-3563-MENU-MODIFIER-GROUP-ATOMIC-REPLACEMENT (DRAFT)
+### I-PROPOSED-3563-MENU-MODIFIER-GROUP-ATOMIC-REPLACEMENT (ACTIVE)
 
 - **Rule:** Mingla Host's Business modifier-group save sends one complete desired active set to `public.biz_save_menu_modifier_group_v1`. One authenticated, manager-plus, brand/item-scoped database transaction owns the group and all supplied stable group/option UUIDs, derives currency from the locked item, reactivates supplied options, tombstones omitted options that have order history, hard-deletes only omitted unreferenced options, and returns canonical active rows. Any refusal, validation error, identity race, or write failure rolls the whole call back; retry reuses the same identities.
 - **Scope:** This invariant covers the Mingla Business iOS, Android, and Web writer and the authenticated RPC it calls. It does not claim global writer atomicity: Ari/edge migration and its schema parity are owned by #3577. Client-side 80-code-point field validation and typed field errors remain owned by #3567.
 - **Enforcement:** migration `20270716003563_issue_3563_atomic_menu_modifier_group_save.sql`; the PostgreSQL 17 implementor suite and independent tester suite; and Business implementor and independent tester suites. Existing modifier-table RLS and #1856 grants remain unchanged. Under the binding ARI/CI split amendment, #3563 does not modify CI providers; local PostgreSQL replay evidence is required before review.
-- **Status:** DRAFT until #3563 merges, the additive migration is applied through the reviewed surgical lane, Business Web reaches `READY`, and Business iOS/Android/Web plus public/staff readback are verified against the deployed RPC. #3577 remains a separate dependency before any global-writer claim can become true.
+- **Status:** ACTIVE after PR #3578 merged, the additive migration was applied through the reviewed surgical lane, Business Web reached `READY`, and Business iOS/Android/Web plus public/staff readback passed against the deployed RPC. The release receipt is recorded on issue #3563. #3577 remains a separate dependency before any global-writer claim can become true.
 
 ## ACTIVE — issue #3566 (menu money drafts are saved exactly or rejected)
 
