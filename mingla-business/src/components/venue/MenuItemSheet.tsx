@@ -118,18 +118,14 @@ export interface MenuItemSheetProps {
 const itemNameIds = menuTextFieldIds("menu-item-name");
 const itemDescriptionIds = menuTextFieldIds("menu-item-description");
 
-const menuTextAccessibilityHint = (
-  used: number,
-  limit: number,
-): string => `${used} of ${limit} characters will be saved.`;
+const menuTextAccessibilityHint = (used: number, limit: number): string =>
+  `${used} of ${limit} characters will be saved.`;
 
 const fieldFailureMessage = (
   failure: MenuTextSaveFailure | null,
   field: MenuTextFieldKind,
 ): string | null =>
-  failure?.kind === "field" && failure.field === field
-    ? failure.message
-    : null;
+  failure?.kind === "field" && failure.field === field ? failure.message : null;
 
 const formFailureMessage = (
   failure: MenuTextSaveFailure | null,
@@ -523,7 +519,7 @@ export function MenuItemSheet({
           <Text style={styles.helper}>
             Notes are capped so a kitchen ticket stays readable.
           </Text>
-          <Field label="Where it&apos;s made (optional)">
+          <Field label="Where it's made (optional)">
             <View style={styles.stationRow}>
               {STATION_CHOICES.map((choice) => (
                 <Button
@@ -535,7 +531,9 @@ export function MenuItemSheet({
                       prepStation === choice.value ? null : choice.value,
                     );
                   }}
-                  variant={prepStation === choice.value ? "primary" : "secondary"}
+                  variant={
+                    prepStation === choice.value ? "primary" : "secondary"
+                  }
                   size="sm"
                   disabled={optionsSaving}
                   accessibilityRole="togglebutton"

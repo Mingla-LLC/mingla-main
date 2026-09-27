@@ -37,9 +37,7 @@ jest.mock("../../ui/Sheet", () => {
       children: React.ReactNode;
       testID?: string;
     }) =>
-      visible
-        ? ReactLocal.createElement("Sheet", { testID }, children)
-        : null,
+      visible ? ReactLocal.createElement("Sheet", { testID }, children) : null,
   };
 });
 jest.mock("../../ui/ConfirmDialog", () => ({ ConfirmDialog: () => null }));
@@ -65,8 +63,9 @@ const TestRenderer = require("react-test-renderer") as {
   act: (callback: () => void | Promise<void>) => void | Promise<void>;
 };
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 async function mount(element: React.ReactElement): Promise<RenderTree> {
   let tree!: RenderTree;
@@ -119,11 +118,14 @@ describe("issue #3569 menu choice selected-state semantics", () => {
       expect.objectContaining({ checked: true }),
     );
     expect(monday.props["aria-checked"]).toBe(true);
+    expect(monday.props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({ minHeight: 44 })]),
+    );
 
     await press(monday);
-    expect(pressable(tree, "menu-category-day-1").props.accessibilityState).toEqual(
-      expect.objectContaining({ checked: false }),
-    );
+    expect(
+      pressable(tree, "menu-category-day-1").props.accessibilityState,
+    ).toEqual(expect.objectContaining({ checked: false }));
     await TestRenderer.act(async () => tree.unmount());
   });
 
@@ -145,14 +147,17 @@ describe("issue #3569 menu choice selected-state semantics", () => {
     expect(kitchen.props.accessibilityState).toEqual(
       expect.objectContaining({ checked: false }),
     );
+    expect(kitchen.props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({ minHeight: 44 })]),
+    );
     await press(kitchen);
-    expect(pressable(tree, "menu-item-station-kitchen").props.accessibilityState).toEqual(
-      expect.objectContaining({ checked: true }),
-    );
+    expect(
+      pressable(tree, "menu-item-station-kitchen").props.accessibilityState,
+    ).toEqual(expect.objectContaining({ checked: true }));
     await press(pressable(tree, "menu-item-station-kitchen"));
-    expect(pressable(tree, "menu-item-station-kitchen").props.accessibilityState).toEqual(
-      expect.objectContaining({ checked: false }),
-    );
+    expect(
+      pressable(tree, "menu-item-station-kitchen").props.accessibilityState,
+    ).toEqual(expect.objectContaining({ checked: false }));
     await TestRenderer.act(async () => tree.unmount());
   });
 
@@ -173,7 +178,9 @@ describe("issue #3569 menu choice selected-state semantics", () => {
     const single = pressable(tree, "modifier-group-mode-single");
     const multi = pressable(tree, "modifier-group-mode-multi");
     expect(group.props.accessibilityRole).toBe("radiogroup");
-    expect(group.props.accessibilityLabel).toBe("How many options can guests pick?");
+    expect(group.props.accessibilityLabel).toBe(
+      "How many options can guests pick?",
+    );
     expect(single.props.accessibilityRole).toBe("radio");
     expect(single.props.accessibilityState).toEqual(
       expect.objectContaining({ checked: true }),
@@ -181,14 +188,20 @@ describe("issue #3569 menu choice selected-state semantics", () => {
     expect(multi.props.accessibilityState).toEqual(
       expect.objectContaining({ checked: false }),
     );
+    expect(single.props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({ minHeight: 44 })]),
+    );
+    expect(multi.props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({ minHeight: 44 })]),
+    );
 
     await press(multi);
-    expect(pressable(tree, "modifier-group-mode-single").props.accessibilityState).toEqual(
-      expect.objectContaining({ checked: false }),
-    );
-    expect(pressable(tree, "modifier-group-mode-multi").props.accessibilityState).toEqual(
-      expect.objectContaining({ checked: true }),
-    );
+    expect(
+      pressable(tree, "modifier-group-mode-single").props.accessibilityState,
+    ).toEqual(expect.objectContaining({ checked: false }));
+    expect(
+      pressable(tree, "modifier-group-mode-multi").props.accessibilityState,
+    ).toEqual(expect.objectContaining({ checked: true }));
     await TestRenderer.act(async () => tree.unmount());
   });
 
@@ -209,6 +222,9 @@ describe("issue #3569 menu choice selected-state semantics", () => {
     expect(required.props.accessibilityLabel).toBe("Options required");
     expect(required.props.accessibilityState).toEqual(
       expect.objectContaining({ checked: true }),
+    );
+    expect(required.props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({ minHeight: 44 })]),
     );
 
     await press(required);

@@ -151,18 +151,14 @@ const localizedTimeLabel = (hhmm: string, emptyLabel: string): string => {
 const categoryNameIds = menuTextFieldIds("menu-category-name");
 const categoryDescriptionIds = menuTextFieldIds("menu-category-description");
 
-const menuTextAccessibilityHint = (
-  used: number,
-  limit: number,
-): string => `${used} of ${limit} characters will be saved.`;
+const menuTextAccessibilityHint = (used: number, limit: number): string =>
+  `${used} of ${limit} characters will be saved.`;
 
 const fieldFailureMessage = (
   failure: MenuTextSaveFailure | null,
   field: MenuTextFieldKind,
 ): string | null =>
-  failure?.kind === "field" && failure.field === field
-    ? failure.message
-    : null;
+  failure?.kind === "field" && failure.field === field ? failure.message : null;
 
 const formFailureMessage = (
   failure: MenuTextSaveFailure | null,

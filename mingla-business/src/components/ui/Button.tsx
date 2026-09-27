@@ -108,9 +108,24 @@ const SIZE_ICON: Record<ButtonSize, number> = { sm: 16, md: 18, lg: 20 };
 // react-native-reanimated cannot animate to a literal-typed weight ("600"),
 // so cast through the Animated style at the call site.
 const SIZE_LABEL: Record<ButtonSize, TextStyle> = {
-  sm: { fontSize: typography.buttonMd.fontSize, lineHeight: typography.buttonMd.lineHeight, fontWeight: typography.buttonMd.fontWeight, letterSpacing: typography.buttonMd.letterSpacing },
-  md: { fontSize: typography.buttonMd.fontSize, lineHeight: typography.buttonMd.lineHeight, fontWeight: typography.buttonMd.fontWeight, letterSpacing: typography.buttonMd.letterSpacing },
-  lg: { fontSize: typography.buttonLg.fontSize, lineHeight: typography.buttonLg.lineHeight, fontWeight: typography.buttonLg.fontWeight, letterSpacing: typography.buttonLg.letterSpacing },
+  sm: {
+    fontSize: typography.buttonMd.fontSize,
+    lineHeight: typography.buttonMd.lineHeight,
+    fontWeight: typography.buttonMd.fontWeight,
+    letterSpacing: typography.buttonMd.letterSpacing,
+  },
+  md: {
+    fontSize: typography.buttonMd.fontSize,
+    lineHeight: typography.buttonMd.lineHeight,
+    fontWeight: typography.buttonMd.fontWeight,
+    letterSpacing: typography.buttonMd.letterSpacing,
+  },
+  lg: {
+    fontSize: typography.buttonLg.fontSize,
+    lineHeight: typography.buttonLg.lineHeight,
+    fontWeight: typography.buttonLg.fontWeight,
+    letterSpacing: typography.buttonLg.letterSpacing,
+  },
 };
 
 interface VariantTokens {
@@ -195,9 +210,12 @@ export const Button = forwardRef<
       ? normalizeHex(accentColor)
       : null;
   const effectiveBg = brandBg ?? tokens.background;
-  const effectiveText = brandBg !== null ? readableTextFor(brandBg) : tokens.text;
+  const effectiveText =
+    brandBg !== null ? readableTextFor(brandBg) : tokens.text;
   const effectiveHoverBg =
-    brandBg !== null ? mixHex(brandBg, "#ffffff", 0.06) : tokens.hoverBackground;
+    brandBg !== null
+      ? mixHex(brandBg, "#ffffff", 0.06)
+      : tokens.hoverBackground;
 
   const handlePressIn = useCallback((): void => {
     if (!interactive) return;
@@ -239,7 +257,8 @@ export const Button = forwardRef<
   }));
 
   const containerHeight = SIZE_HEIGHT[size];
-  const containerRadius = shape === "pill" ? radiusTokens.full : radiusTokens.md;
+  const containerRadius =
+    shape === "pill" ? radiusTokens.full : radiusTokens.md;
   const iconSize = SIZE_ICON[size];
 
   // Disabled state visual — muted grey background + tertiary text +
@@ -291,16 +310,25 @@ export const Button = forwardRef<
         style={[
           styles.container,
           containerStaticStyle,
-          hovered && Platform.OS === "web" ? { backgroundColor: effectiveHoverBg } : null,
+          hovered && Platform.OS === "web"
+            ? { backgroundColor: effectiveHoverBg }
+            : null,
           focused && Platform.OS === "web" ? styles.focusRing : null,
           animatedStyle,
         ]}
       >
         <View style={styles.content}>
           {loading ? (
-            <Spinner size={iconSize <= 18 ? 24 : iconSize <= 22 ? 24 : 36} color={resolvedTextColor} />
+            <Spinner
+              size={iconSize <= 18 ? 24 : iconSize <= 22 ? 24 : 36}
+              color={resolvedTextColor}
+            />
           ) : leadingIcon !== undefined ? (
-            <Icon name={leadingIcon} size={iconSize} color={resolvedTextColor} />
+            <Icon
+              name={leadingIcon}
+              size={iconSize}
+              color={resolvedTextColor}
+            />
           ) : null}
           <Text
             style={[
@@ -322,7 +350,11 @@ export const Button = forwardRef<
             {label}
           </Text>
           {!loading && trailingIcon !== undefined ? (
-            <Icon name={trailingIcon} size={iconSize} color={resolvedTextColor} />
+            <Icon
+              name={trailingIcon}
+              size={iconSize}
+              color={resolvedTextColor}
+            />
           ) : null}
         </View>
       </Animated.View>

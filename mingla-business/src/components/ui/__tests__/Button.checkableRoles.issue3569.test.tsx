@@ -21,14 +21,19 @@ jest.mock("../../../utils/hapticFeedback", () => ({
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TestRenderer = require("react-test-renderer") as {
   create: (element: React.ReactElement) => {
-    root: { findByType: (type: typeof Pressable) => { props: Record<string, unknown> } };
+    root: {
+      findByType: (type: typeof Pressable) => {
+        props: Record<string, unknown>;
+      };
+    };
     unmount: () => void;
   };
   act: (callback: () => void) => void;
 };
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("issue #3569 Button checkable-role semantics", () => {
   it.each(["checkbox", "radio", "togglebutton"] as const)(
@@ -49,7 +54,11 @@ describe("issue #3569 Button checkable-role semantics", () => {
       const pressable = renderer.root.findByType(Pressable);
       expect(pressable.props.accessibilityRole).toBe(role);
       expect(pressable.props.accessibilityState).toEqual(
-        expect.objectContaining({ checked: true, disabled: false, busy: false }),
+        expect.objectContaining({
+          checked: true,
+          disabled: false,
+          busy: false,
+        }),
       );
       expect(pressable.props["aria-checked"]).toBe(true);
 
@@ -69,7 +78,9 @@ describe("issue #3569 Button checkable-role semantics", () => {
       );
     });
 
-    expect(renderer.root.findByType(Pressable).props["aria-checked"]).toBeUndefined();
+    expect(
+      renderer.root.findByType(Pressable).props["aria-checked"],
+    ).toBeUndefined();
     TestRenderer.act(() => renderer.unmount());
   });
 });
