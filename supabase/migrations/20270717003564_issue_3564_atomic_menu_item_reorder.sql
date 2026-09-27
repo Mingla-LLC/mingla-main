@@ -53,10 +53,10 @@ BEGIN
     INTO v_menu
     FROM public.menus candidate
    WHERE candidate.id = p_menu_id
+     AND candidate.brand_id = p_brand_id
+     AND candidate.venue_id = p_venue_id
    FOR UPDATE;
-  IF NOT FOUND
-     OR v_menu.brand_id IS DISTINCT FROM p_brand_id
-     OR v_menu.venue_id IS DISTINCT FROM p_venue_id THEN
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'menu_item_reorder_scope_forbidden'
       USING ERRCODE = '42501';
   END IF;

@@ -405,6 +405,38 @@ describe("#3564 menu-item reorder interaction", () => {
     });
   });
 
+  test("failed confirmation stays visibly uncertain and never claims latest truth loaded", () => {
+    renderModule();
+    press("venue-menu-item-down-alpha");
+    const callbacks = mockReorderMutate.mock.calls[0]?.[1] as {
+      onError: (error: MenuItemReorderError) => void;
+    };
+    const confirmationFailed = new MenuItemReorderError(
+      "conflict",
+      "40001",
+    );
+    confirmationFailed.markConfirmationFailed(true);
+
+    act(() => callbacks.onError(confirmationFailed));
+
+    expect(
+      textExists(
+        "We couldn’t confirm the new order. The previous order is back.",
+      ),
+    ).toBe(true);
+    expect(
+      textExists(
+        "This menu changed elsewhere. We loaded the latest order. Try your move again.",
+      ),
+    ).toBe(false);
+    expect(
+      byTestID("venue-menu-item-reorder-retry-alpha").props.accessibilityLabel,
+    ).toBe("Try moving ALPHA down again");
+    expect(mockAnnounce).toHaveBeenCalledWith(
+      "We couldn’t confirm the new order. The previous order is back.",
+    );
+  });
+
   test("retry that refetches an already-applied relationship settles success without a second write", async () => {
     renderModule();
     press("venue-menu-item-down-alpha");

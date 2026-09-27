@@ -38,8 +38,8 @@ export type MenuItemReorderFailureCategory =
   | "generic";
 
 export class MenuItemReorderError extends Error {
-  readonly category: MenuItemReorderFailureCategory;
-  readonly code: string;
+  category: MenuItemReorderFailureCategory;
+  code: string;
   retryable: boolean;
   resolvedAsSuccess: boolean;
   authoritativeMenus: readonly Menu[] | undefined;
@@ -53,6 +53,15 @@ export class MenuItemReorderError extends Error {
     this.name = "MenuItemReorderError";
     this.category = category;
     this.code = code;
+    this.retryable = retryable;
+    this.resolvedAsSuccess = false;
+    this.authoritativeMenus = undefined;
+  }
+
+  markConfirmationFailed(retryable: boolean): void {
+    this.message = "menu_item_reorder_uncertain";
+    this.category = "uncertain";
+    this.code = "confirmation_failed";
     this.retryable = retryable;
     this.resolvedAsSuccess = false;
     this.authoritativeMenus = undefined;

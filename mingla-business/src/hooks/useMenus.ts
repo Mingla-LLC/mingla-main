@@ -399,13 +399,34 @@ export function useReorderMenuItems(
 
       if (error.category === "conflict" || error.category === "uncertain") {
         try {
-          await queryClient.refetchQueries({
-            queryKey: context.authoringKey,
-            exact: true,
-          });
+          await queryClient.refetchQueries(
+            {
+              queryKey: context.authoringKey,
+              exact: true,
+            },
+            { throwOnError: true },
+          );
         } catch {
-          // The exact pre-mutation snapshot is already restored. A failed
-          // confirmation read remains an uncertain, explicitly retryable state.
+          if (!isCurrent(intent)) return;
+          // A failed refetch leaves TanStack Query in an error state even when
+          // its prior data remains cached. Reinstall the exact rollback snapshot
+          // so the menu stays usable, then return an honest uncertain result;
+          // never interpret that snapshot as newly confirmed server truth.
+          queryClient.setQueryData<Menu[] | undefined>(
+            context.authoringKey,
+            context.snapshot,
+          );
+          error.markConfirmationFailed(
+            canRetryMenuItemReorder(context.snapshot, intent),
+          );
+          console.error("[reorder_menu_items] confirmation failed", {
+            brandId: intent.brandId,
+            venueId: intent.venueId,
+            menuId: intent.menuId,
+            code: error.code,
+            category: error.category,
+          });
+          return;
         }
         if (!isCurrent(intent)) return;
         const latest = queryClient.getQueryData<Menu[]>(context.authoringKey);

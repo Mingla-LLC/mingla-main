@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-
+import React from "react";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from "@tanstack/react-query";
 import type { Menu } from "../../services/menusService";
 import {
   applyOptimisticMenuItemOrder,
@@ -8,9 +13,33 @@ import {
   createAdjacentMenuItemReorderIntent,
   installCanonicalMenuItemOrder,
   menuItemRelationshipIsApplied,
+  MenuItemReorderError,
   parseCanonicalMenuItemOrder,
   rebuildMenuItemReorderIntent,
 } from "../menuItemReorder";
+import { menuKeys, useReorderMenuItems } from "../useMenus";
+
+jest.mock("../../services/supabase", () => ({
+  supabase: { rpc: jest.fn() },
+}));
+
+const mockRpc = (
+  jest.requireMock("../../services/supabase") as {
+    supabase: {
+      rpc: jest.Mock<
+        Promise<{
+          data: unknown;
+          error: { code: string; message: string } | null;
+        }>,
+        unknown[]
+      >;
+    };
+  }
+).supabase.rpc;
+const TestRenderer = jest.requireActual("react-test-renderer") as {
+  create: (node: React.ReactElement) => { unmount: () => void };
+  act: (callback: () => void | Promise<void>) => void | Promise<void>;
+};
 
 const repoRoot = path.resolve(__dirname, "../../..");
 const read = (relativePath: string): string =>
@@ -126,6 +155,98 @@ describe("#3564 atomic menu-item reorder hook", () => {
       .toMatchObject({ category: "uncertain" });
   });
 
+  test("failed active-query confirmation rejects, restores a healthy snapshot, and stays uncertain", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    const authoringKey = menuKeys.brandMenus("brand-a", "venue-a");
+    const snapshot = [menu("dinner", ["a", "b", "c"])];
+    const confirmationFetch = jest.fn(async (): Promise<Menu[]> => {
+      throw new Error("confirmation failed");
+    });
+    queryClient.setQueryData(authoringKey, snapshot);
+
+    let reorder: ReturnType<typeof useReorderMenuItems> | undefined;
+    function Probe(): null {
+      useQuery({
+        queryKey: authoringKey,
+        queryFn: confirmationFetch,
+        staleTime: Infinity,
+        retry: false,
+      });
+      reorder = useReorderMenuItems("brand-a", "venue-a");
+      return null;
+    }
+
+    let tree: { unmount: () => void } | undefined;
+    await TestRenderer.act(async () => {
+      tree = TestRenderer.create(
+        React.createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          React.createElement(Probe),
+        ),
+      );
+      await Promise.resolve();
+    });
+    const intent = createAdjacentMenuItemReorderIntent({
+      operationId: "op-confirmation-failed",
+      brandId: "brand-a",
+      venueId: "venue-a",
+      menu: snapshot[0],
+      movedIndex: 1,
+      direction: "up",
+    });
+    if (intent === null || reorder === undefined) {
+      throw new Error("hook setup failed");
+    }
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: "40001", message: "conflict" },
+    });
+    const consoleError = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    let rejected: unknown;
+
+    await TestRenderer.act(async () => {
+      try {
+        await reorder?.mutateAsync(intent);
+      } catch (error) {
+        rejected = error;
+      }
+    });
+
+    expect(confirmationFetch).toHaveBeenCalledTimes(1);
+    expect(rejected).toBeInstanceOf(MenuItemReorderError);
+    expect(rejected).toMatchObject({
+      category: "uncertain",
+      code: "confirmation_failed",
+      retryable: true,
+      resolvedAsSuccess: false,
+      authoritativeMenus: undefined,
+    });
+    expect(queryClient.getQueryData(authoringKey)).toEqual(snapshot);
+    expect(queryClient.getQueryState(authoringKey)).toMatchObject({
+      status: "success",
+      error: null,
+    });
+    expect(consoleError).toHaveBeenCalledWith(
+      "[reorder_menu_items] confirmation failed",
+      expect.objectContaining({
+        code: "confirmation_failed",
+        category: "uncertain",
+      }),
+    );
+
+    consoleError.mockRestore();
+    await TestRenderer.act(async () => tree?.unmount());
+    queryClient.clear();
+  });
+
   test("writer pins RPC, rollback/stale containment, no auto retry, and lean readers", () => {
     const source = read("src/hooks/useMenus.ts");
     const start = source.indexOf("export function useReorderMenuItems");
@@ -148,6 +269,8 @@ describe("#3564 atomic menu-item reorder hook", () => {
       success.indexOf("invalidateQueries"),
     );
     expect(writer).toContain("menuItemRelationshipIsApplied");
+    expect(writer).toContain("{ throwOnError: true }");
+    expect(writer).toContain("markConfirmationFailed");
     expect(writer).toContain("orderPadKeys.forBrand");
     expect(writer).toContain("menuKeys.publicMenusRoot");
     expect(writer).toContain("publicMenuBundleKeys.all");

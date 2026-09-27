@@ -45,9 +45,9 @@ BEGIN
     RAISE EXCEPTION 'ISSUE-3564 I-CATALOG-5: existing menu policy set changed';
   END IF;
   v_definition := pg_catalog.pg_get_functiondef(v_sig);
-  IF v_definition !~ '(?s)FROM public\.menus candidate.*FOR UPDATE'
+  IF v_definition !~ '(?s)FROM public\.menus candidate\s+WHERE candidate\.id = p_menu_id\s+AND candidate\.brand_id = p_brand_id\s+AND candidate\.venue_id = p_venue_id\s+FOR UPDATE'
      OR v_definition !~ '(?s)FROM public\.menu_items current_item.*ORDER BY current_item\.id.*FOR UPDATE' THEN
-    RAISE EXCEPTION 'ISSUE-3564 I-CATALOG-6: deterministic parent/item locks are missing';
+    RAISE EXCEPTION 'ISSUE-3564 I-CATALOG-6: exact-scope parent or deterministic item locks are missing';
   END IF;
   IF (SELECT pg_catalog.count(*) FROM pg_catalog.regexp_matches(
         v_definition,
