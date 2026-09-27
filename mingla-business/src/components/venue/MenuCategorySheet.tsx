@@ -320,20 +320,41 @@ export function MenuCategorySheet({
     onClose();
   }, [onClearSaveFailure, onClose]);
 
-  const toggleDay = useCallback((isoDay: number): void => {
-    setDays((current) =>
-      current.includes(isoDay)
-        ? current.filter((d) => d !== isoDay)
-        : [...current, isoDay].sort((a, b) => a - b),
-    );
-  }, []);
+  const handleWindowStartChange = useCallback(
+    (next: string): void => {
+      onClearSaveFailure?.();
+      setWindowStart(next);
+    },
+    [onClearSaveFailure],
+  );
+
+  const handleWindowEndChange = useCallback(
+    (next: string): void => {
+      onClearSaveFailure?.();
+      setWindowEnd(next);
+    },
+    [onClearSaveFailure],
+  );
+
+  const toggleDay = useCallback(
+    (isoDay: number): void => {
+      onClearSaveFailure?.();
+      setDays((current) =>
+        current.includes(isoDay)
+          ? current.filter((d) => d !== isoDay)
+          : [...current, isoDay].sort((a, b) => a - b),
+      );
+    },
+    [onClearSaveFailure],
+  );
 
   const commitTimePickerValue = useCallback(
     (mode: TimePickerMode, value: Date): void => {
+      onClearSaveFailure?.();
       if (mode === "start") setWindowStart(hhmmFromDate(value));
       else if (mode === "end") setWindowEnd(hhmmFromDate(value));
     },
-    [],
+    [onClearSaveFailure],
   );
 
   const openTimePicker = useCallback(
@@ -370,11 +391,12 @@ export function MenuCategorySheet({
   }, [pickerMode, tempPickerValue, commitTimePickerValue]);
 
   const clearTimes = useCallback((): void => {
+    onClearSaveFailure?.();
     setWindowStart("");
     setWindowEnd("");
     setPickerMode(null);
     setTempPickerValue(null);
-  }, []);
+  }, [onClearSaveFailure]);
 
   const handleSave = useCallback((): void => {
     if (
@@ -511,7 +533,7 @@ export function MenuCategorySheet({
                   <WebDateTimeInput
                     type="time"
                     value={windowStart}
-                    onChangeValue={setWindowStart}
+                    onChangeValue={handleWindowStartChange}
                     ariaLabel="Service start time"
                     hasError={windowError !== null}
                     testID="menu-category-window-start"
@@ -551,7 +573,7 @@ export function MenuCategorySheet({
                   <WebDateTimeInput
                     type="time"
                     value={windowEnd}
-                    onChangeValue={setWindowEnd}
+                    onChangeValue={handleWindowEndChange}
                     ariaLabel="Service end time"
                     hasError={windowError !== null}
                     testID="menu-category-window-end"
@@ -949,6 +971,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radius.md,
     borderColor: semantic.error,
+    overflow: "hidden",
     backgroundColor:
       Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint,
   },

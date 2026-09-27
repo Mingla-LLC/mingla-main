@@ -67,6 +67,10 @@ import type { MenuCategorySheetSaveInput } from "./MenuCategorySheet";
 import { MenuItemSheet } from "./MenuItemSheet";
 import type { MenuItemSheetSaveInput } from "./MenuItemSheet";
 import { serviceWindowSummary } from "./menuDepth";
+import {
+  classifyMenuTextSaveFailure,
+  type MenuTextSaveFailure,
+} from "./menuTextValidation";
 import { VenueHubEmptyState } from "./VenueHubEmptyState";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
@@ -174,10 +178,13 @@ export function VenueMenuModule({
   // ---- sheet state ----
   const [categorySheetOpen, setCategorySheetOpen] = useState<boolean>(false);
   const [editingCategory, setEditingCategory] = useState<Menu | null>(null);
-  const [categorySaveFailed, setCategorySaveFailed] = useState<boolean>(false);
+  const [categorySaveFailure, setCategorySaveFailure] =
+    useState<MenuTextSaveFailure | null>(null);
   const [itemSheetOpen, setItemSheetOpen] = useState<boolean>(false);
   const [itemSheetMenuId, setItemSheetMenuId] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const [itemSaveFailure, setItemSaveFailure] =
+    useState<MenuTextSaveFailure | null>(null);
   const [optionsSaving, setOptionsSaving] = useState<boolean>(false);
   const [saveError, setSaveError] = useState<boolean>(false);
   // #1789 — the row currently being 86'd, so one tap cannot fire twice.
@@ -186,24 +193,27 @@ export function VenueMenuModule({
 
   // ---- category handlers ----
   const openAddCategory = useCallback((): void => {
-    setCategorySaveFailed(false);
+    setSaveError(false);
+    setCategorySaveFailure(null);
     setEditingCategory(null);
     setCategorySheetOpen(true);
   }, []);
   const openEditCategory = useCallback((menu: Menu): void => {
-    setCategorySaveFailed(false);
+    setSaveError(false);
+    setCategorySaveFailure(null);
     setEditingCategory(menu);
     setCategorySheetOpen(true);
   }, []);
   const closeCategorySheet = useCallback((): void => {
     setCategorySheetOpen(false);
     setEditingCategory(null);
-    setCategorySaveFailed(false);
+    setCategorySaveFailure(null);
   }, []);
 
   const handleSaveCategory = useCallback(
     (input: MenuCategorySheetSaveInput): void => {
-      setCategorySaveFailed(false);
+      setSaveError(false);
+      setCategorySaveFailure(null);
       const nextSort =
         editingCategory !== null ? editingCategory.sortOrder : menus.length;
       upsertMenu.mutate(
@@ -221,7 +231,10 @@ export function VenueMenuModule({
           onSuccess: () => {
             closeCategorySheet();
           },
-          onError: () => setCategorySaveFailed(true),
+          onError: (error) =>
+            setCategorySaveFailure(
+              classifyMenuTextSaveFailure(error, "category"),
+            ),
         },
       );
     },
@@ -230,6 +243,7 @@ export function VenueMenuModule({
 
   const handleDeleteCategory = useCallback(
     (id: string): void => {
+      setCategorySaveFailure(null);
       setSaveError(false);
       deleteMenu.mutate(id, {
         onSuccess: () => {
@@ -244,20 +258,33 @@ export function VenueMenuModule({
 
   // ---- item handlers ----
   const openAddItem = useCallback((menuId: string): void => {
+    setSaveError(false);
+    setItemSaveFailure(null);
     setItemSheetMenuId(menuId);
     setEditingItem(null);
     setItemSheetOpen(true);
   }, []);
   const openEditItem = useCallback((menuId: string, item: MenuItem): void => {
+    setSaveError(false);
+    setItemSaveFailure(null);
     setItemSheetMenuId(menuId);
     setEditingItem(item);
     setItemSheetOpen(true);
   }, []);
 
+  const closeItemSheet = useCallback((): void => {
+    if (optionsSaving) return;
+    setItemSheetOpen(false);
+    setItemSheetMenuId(null);
+    setEditingItem(null);
+    setItemSaveFailure(null);
+  }, [optionsSaving]);
+
   const handleSaveItem = useCallback(
     (input: MenuItemSheetSaveInput): void => {
       if (itemSheetMenuId === null) return;
       setSaveError(false);
+      setItemSaveFailure(null);
       const parentMenu = menus.find((m) => m.id === itemSheetMenuId) ?? null;
       const nextSort =
         editingItem !== null
@@ -283,8 +310,10 @@ export function VenueMenuModule({
             setItemSheetOpen(false);
             setEditingItem(null);
             setItemSheetMenuId(null);
+            setItemSaveFailure(null);
           },
-          onError: () => setSaveError(true),
+          onError: (error) =>
+            setItemSaveFailure(classifyMenuTextSaveFailure(error, "item")),
         },
       );
     },
@@ -326,12 +355,14 @@ export function VenueMenuModule({
 
   const handleDeleteItem = useCallback(
     (id: string): void => {
+      setItemSaveFailure(null);
       setSaveError(false);
       deleteItem.mutate(id, {
         onSuccess: () => {
           setItemSheetOpen(false);
           setEditingItem(null);
           setItemSheetMenuId(null);
+          setItemSaveFailure(null);
         },
         onError: () => setSaveError(true),
       });
@@ -442,7 +473,8 @@ export function VenueMenuModule({
           category={editingCategory}
           onSave={handleSaveCategory}
           saving={upsertMenu.isPending}
-          saveFailed={categorySaveFailed}
+          saveFailure={categorySaveFailure}
+          onClearSaveFailure={() => setCategorySaveFailure(null)}
           onDelete={canMutate ? handleDeleteCategory : undefined}
           deleting={deleteMenu.isPending}
           canDelete={canMutate}
@@ -477,9 +509,9 @@ export function VenueMenuModule({
         />
       ) : null}
 
-      {saveError ? (
+      {saveError && !categorySheetOpen && !itemSheetOpen ? (
         <Text style={styles.errorNote} testID="venue-menu-error">
-          Couldn&apos;t save. Check your connection and try again.
+          That menu change wasn&apos;t saved. Try again.
         </Text>
       ) : null}
 
@@ -714,7 +746,8 @@ export function VenueMenuModule({
         category={editingCategory}
         onSave={handleSaveCategory}
         saving={upsertMenu.isPending}
-        saveFailed={categorySaveFailed}
+        saveFailure={categorySaveFailure}
+        onClearSaveFailure={() => setCategorySaveFailure(null)}
         onDelete={canMutate ? handleDeleteCategory : undefined}
         deleting={deleteMenu.isPending}
         canDelete={canMutate}
@@ -732,12 +765,14 @@ export function VenueMenuModule({
 
       <MenuItemSheet
         visible={itemSheetOpen}
-        onClose={() => setItemSheetOpen(false)}
+        onClose={closeItemSheet}
         item={editingItem}
         currency={currency}
         brandHasCurrency={brandHasCurrency}
         onSave={handleSaveItem}
         saving={upsertItem.isPending}
+        saveFailure={itemSaveFailure}
+        onClearSaveFailure={() => setItemSaveFailure(null)}
         optionsSaving={optionsSaving}
         onDelete={canMutate ? handleDeleteItem : undefined}
         deleting={deleteItem.isPending}
