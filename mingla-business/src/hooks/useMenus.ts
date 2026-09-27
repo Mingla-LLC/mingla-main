@@ -21,6 +21,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
@@ -258,9 +259,43 @@ export interface SortOrderPatch {
 
 interface MenuItemReorderMutationContext {
   operationId: string;
-  scopeKey: string;
   authoringKey: ReturnType<typeof menuKeys.brandMenus>;
+  ownerKey: string;
+  generation: number;
+  lastSettledGeneration: number;
   snapshot: Menu[] | undefined;
+}
+
+interface MenuItemReorderCacheRegistry {
+  owners: Map<string, MenuItemReorderMutationContext>;
+  nextGenerationByKey: Map<string, number>;
+}
+
+// Ownership lives with the QueryClient rather than a hook instance so a late
+// settlement can repair its old cache even after that instance changes scope or
+// unmounts. The per-key generation prevents it from clobbering a newer writer.
+const menuItemReorderCacheRegistries = new WeakMap<
+  QueryClient,
+  MenuItemReorderCacheRegistry
+>();
+
+function menuItemReorderCacheRegistry(
+  queryClient: QueryClient,
+): MenuItemReorderCacheRegistry {
+  const existing = menuItemReorderCacheRegistries.get(queryClient);
+  if (existing !== undefined) return existing;
+  const created: MenuItemReorderCacheRegistry = {
+    owners: new Map(),
+    nextGenerationByKey: new Map(),
+  };
+  menuItemReorderCacheRegistries.set(queryClient, created);
+  return created;
+}
+
+function menuItemReorderOwnerKey(
+  authoringKey: ReturnType<typeof menuKeys.brandMenus>,
+): string {
+  return JSON.stringify(authoringKey);
 }
 
 /** Reorder one adjacent menu item through the complete-order atomic RPC. */
@@ -274,6 +309,7 @@ export function useReorderMenuItems(
   MenuItemReorderMutationContext
 > {
   const queryClient = useQueryClient();
+  const cacheRegistry = menuItemReorderCacheRegistry(queryClient);
   const activeOperationRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const scopeKey = `${brandId ?? "disabled"}:${venueId ?? "disabled"}`;
@@ -349,25 +385,66 @@ export function useReorderMenuItems(
       const authoringKey = menuKeys.brandMenus(intent.brandId, intent.venueId);
       activeOperationRef.current = intent.operationId;
       await queryClient.cancelQueries({ queryKey: authoringKey, exact: true });
-      const snapshot = queryClient.getQueryData<Menu[]>(authoringKey);
+      const ownerKey = menuItemReorderOwnerKey(authoringKey);
+      const priorOwner = cacheRegistry.owners.get(ownerKey);
+      const snapshot =
+        priorOwner?.snapshot ?? queryClient.getQueryData<Menu[]>(authoringKey);
+      if (priorOwner !== undefined) {
+        // A superseding operation starts from the last stable truth, never from
+        // the predecessor's still-unconfirmed optimistic projection.
+        queryClient.setQueryData<Menu[] | undefined>(authoringKey, snapshot);
+      }
+      const generation =
+        (cacheRegistry.nextGenerationByKey.get(ownerKey) ?? 0) + 1;
+      cacheRegistry.nextGenerationByKey.set(ownerKey, generation);
+      const context: MenuItemReorderMutationContext = {
+        operationId: intent.operationId,
+        authoringKey,
+        ownerKey,
+        generation,
+        lastSettledGeneration: priorOwner?.lastSettledGeneration ?? 0,
+        snapshot,
+      };
+      cacheRegistry.owners.set(ownerKey, context);
       if (isCurrent(intent)) {
         queryClient.setQueryData<Menu[]>(authoringKey, (current) =>
           applyOptimisticMenuItemOrder(current, intent),
         );
       }
-      return { operationId: intent.operationId, scopeKey, authoringKey, snapshot };
+      return context;
     },
     onSuccess: (canonical, intent, context) => {
-      if (
-        context === undefined ||
-        context.scopeKey !== scopeKey ||
-        !isCurrent(intent)
-      ) {
+      if (context === undefined || context.operationId !== intent.operationId) {
+        return;
+      }
+      const owner = cacheRegistry.owners.get(context.ownerKey);
+      if (owner !== context) {
+        if (
+          owner !== undefined &&
+          context.generation < owner.generation &&
+          context.generation > owner.lastSettledGeneration
+        ) {
+          // Preserve the newer optimistic view, but advance its rollback base
+          // to include this now-authoritative predecessor settlement.
+          owner.snapshot = installCanonicalMenuItemOrder(
+            owner.snapshot,
+            canonical,
+          );
+          owner.lastSettledGeneration = context.generation;
+        } else if (owner === undefined) {
+          void queryClient.invalidateQueries({
+            queryKey: context.authoringKey,
+            exact: true,
+            refetchType: "none",
+          });
+        }
+        invalidateReaders(intent);
         return;
       }
       queryClient.setQueryData<Menu[]>(context.authoringKey, (current) =>
         installCanonicalMenuItemOrder(current, canonical),
       );
+      cacheRegistry.owners.delete(context.ownerKey);
       void queryClient.invalidateQueries({
         queryKey: context.authoringKey,
         exact: true,
@@ -376,18 +453,17 @@ export function useReorderMenuItems(
     },
     onError: async (rawError, intent, context) => {
       const error = classifyMenuItemReorderError(rawError);
-      if (
-        context === undefined ||
-        context.operationId !== intent.operationId ||
-        context.scopeKey !== scopeKey ||
-        !isCurrent(intent)
-      ) {
+      if (context === undefined || context.operationId !== intent.operationId) {
+        return;
+      }
+      const owner = cacheRegistry.owners.get(context.ownerKey);
+      if (owner !== context) {
         return;
       }
 
       queryClient.setQueryData<Menu[] | undefined>(
         context.authoringKey,
-        context.snapshot,
+        owner.snapshot,
       );
       console.error("[reorder_menu_items] failed", {
         brandId: intent.brandId,
@@ -396,6 +472,16 @@ export function useReorderMenuItems(
         code: error.code,
         category: error.category,
       });
+
+      if (!isCurrent(intent)) {
+        cacheRegistry.owners.delete(context.ownerKey);
+        void queryClient.invalidateQueries({
+          queryKey: context.authoringKey,
+          exact: true,
+          refetchType: "none",
+        });
+        return;
+      }
 
       if (error.category === "conflict" || error.category === "uncertain") {
         try {
@@ -407,7 +493,7 @@ export function useReorderMenuItems(
             { throwOnError: true },
           );
         } catch {
-          if (!isCurrent(intent)) return;
+          if (cacheRegistry.owners.get(context.ownerKey) !== context) return;
           // A failed refetch leaves TanStack Query in an error state even when
           // its prior data remains cached. Reinstall the exact rollback snapshot
           // so the menu stays usable, then return an honest uncertain result;
@@ -426,23 +512,32 @@ export function useReorderMenuItems(
             code: error.code,
             category: error.category,
           });
+          cacheRegistry.owners.delete(context.ownerKey);
           return;
         }
-        if (!isCurrent(intent)) return;
+        if (
+          !isCurrent(intent) ||
+          cacheRegistry.owners.get(context.ownerKey) !== context
+        ) {
+          return;
+        }
         const latest = queryClient.getQueryData<Menu[]>(context.authoringKey);
         if (menuItemRelationshipIsApplied(latest, intent)) {
           error.resolvedAsSuccess = true;
           error.authoritativeMenus = latest;
           invalidateReaders(intent);
+          cacheRegistry.owners.delete(context.ownerKey);
           return;
         }
         error.retryable = canRetryMenuItemReorder(latest, intent);
+        cacheRegistry.owners.delete(context.ownerKey);
         return;
       }
 
       error.retryable =
         error.category === "generic" &&
-        canRetryMenuItemReorder(context.snapshot, intent);
+        canRetryMenuItemReorder(owner.snapshot, intent);
+      cacheRegistry.owners.delete(context.ownerKey);
     },
   });
 }

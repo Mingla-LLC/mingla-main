@@ -16,6 +16,8 @@ import {
   MenuItemReorderError,
   parseCanonicalMenuItemOrder,
   rebuildMenuItemReorderIntent,
+  type CanonicalMenuItemOrder,
+  type MenuItemReorderIntent,
 } from "../menuItemReorder";
 import { menuKeys, useReorderMenuItems } from "../useMenus";
 
@@ -37,7 +39,10 @@ const mockRpc = (
   }
 ).supabase.rpc;
 const TestRenderer = jest.requireActual("react-test-renderer") as {
-  create: (node: React.ReactElement) => { unmount: () => void };
+  create: (node: React.ReactElement) => {
+    update: (node: React.ReactElement) => void;
+    unmount: () => void;
+  };
   act: (callback: () => void | Promise<void>) => void | Promise<void>;
 };
 
@@ -73,6 +78,95 @@ const menu = (id: string, ids: string[]): Menu => ({
   serviceDays: null,
   items: ids.map((idValue, index) => item(idValue, id, index)),
 });
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+}
+
+const deferred = <T,>(): Deferred<T> => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+};
+
+const canonicalFor = (intent: MenuItemReorderIntent) => ({
+  brand_id: intent.brandId,
+  venue_id: intent.venueId,
+  menu_id: intent.menuId,
+  items: intent.orderedItemIds.map((id, sortOrder) => ({ id, sort_order: sortOrder })),
+});
+
+const makeIntent = (
+  menus: readonly Menu[],
+  operationId: string,
+  movedIndex: number,
+  direction: "up" | "down",
+): MenuItemReorderIntent => {
+  const intent = createAdjacentMenuItemReorderIntent({
+    operationId,
+    brandId: "brand-a",
+    venueId: "venue-a",
+    menu: menus[0]!,
+    movedIndex,
+    direction,
+  });
+  if (intent === null) throw new Error("intent missing");
+  return intent;
+};
+
+const mountReorderHook = (): {
+  client: QueryClient;
+  getReorder: () => ReturnType<typeof useReorderMenuItems>;
+  updateScope: (brandId: string, venueId: string) => void;
+  unmount: () => void;
+} => {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+  let reorder: ReturnType<typeof useReorderMenuItems> | undefined;
+  function Probe(props: { brandId: string; venueId: string }): null {
+    reorder = useReorderMenuItems(props.brandId, props.venueId);
+    return null;
+  }
+  const node = (brandId: string, venueId: string): React.ReactElement =>
+    React.createElement(
+      QueryClientProvider,
+      { client },
+      React.createElement(Probe, { brandId, venueId }),
+    );
+  let tree: ReturnType<typeof TestRenderer.create>;
+  TestRenderer.act(() => {
+    tree = TestRenderer.create(node("brand-a", "venue-a"));
+  });
+  return {
+    client,
+    getReorder: () => {
+      if (reorder === undefined) throw new Error("hook missing");
+      return reorder;
+    },
+    updateScope: (brandId, venueId) => {
+      TestRenderer.act(() => tree.update(node(brandId, venueId)));
+    },
+    unmount: () => {
+      TestRenderer.act(() => tree.unmount());
+    },
+  };
+};
+
+const rejectQuietly = async <T,>(promise: Promise<T>): Promise<unknown> => {
+  try {
+    await promise;
+    return undefined;
+  } catch (error) {
+    return error;
+  }
+};
 
 describe("#3564 atomic menu-item reorder hook", () => {
   test("adjacent intent optimistically replaces only the complete target menu", () => {
@@ -245,6 +339,154 @@ describe("#3564 atomic menu-item reorder hook", () => {
     consoleError.mockRestore();
     await TestRenderer.act(async () => tree?.unmount());
     queryClient.clear();
+  });
+
+  test.each(["scope", "unmount"])(
+    "late failure after %s change restores the exact old-scope snapshot",
+    async (ending) => {
+      const original = [menu("dinner", ["a", "b", "c", "d"])];
+      const intent = makeIntent(original, "op-abandoned", 1, "down");
+      const response = deferred<{
+        data: null;
+        error: { code: string; message: string };
+      }>();
+      mockRpc.mockReturnValueOnce(response.promise);
+      const mounted = mountReorderHook();
+      const key = menuKeys.brandMenus("brand-a", "venue-a");
+      mounted.client.setQueryData(key, original);
+      const consoleError = jest
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+      let request!: Promise<CanonicalMenuItemOrder>;
+
+      await TestRenderer.act(async () => {
+        request = mounted.getReorder().mutateAsync(intent);
+        await Promise.resolve();
+      });
+      expect(
+        mounted.client
+          .getQueryData<Menu[]>(key)?.[0]?.items.map(({ id }) => id),
+      ).toEqual(intent.orderedItemIds);
+
+      if (ending === "scope") mounted.updateScope("brand-b", "venue-b");
+      else mounted.unmount();
+      await TestRenderer.act(async () => {
+        response.resolve({
+          data: null,
+          error: { code: "42501", message: "denied" },
+        });
+        await rejectQuietly(request);
+      });
+
+      expect(mounted.client.getQueryData(key)).toEqual(original);
+      consoleError.mockRestore();
+      if (ending === "scope") mounted.unmount();
+      mounted.client.clear();
+    },
+  );
+
+  test("a superseded failure cannot overwrite the newer same-key optimistic owner", async () => {
+    const original = [menu("dinner", ["a", "b", "c", "d"])];
+    const oldIntent = makeIntent(original, "op-old", 1, "down");
+    const newIntent = makeIntent(original, "op-new", 2, "down");
+    const oldResponse = deferred<{
+      data: null;
+      error: { code: string; message: string };
+    }>();
+    const newResponse = deferred<{ data: unknown; error: null }>();
+    mockRpc
+      .mockReturnValueOnce(oldResponse.promise)
+      .mockReturnValueOnce(newResponse.promise);
+    const mounted = mountReorderHook();
+    const key = menuKeys.brandMenus("brand-a", "venue-a");
+    mounted.client.setQueryData(key, original);
+    const consoleError = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    let oldRequest!: Promise<CanonicalMenuItemOrder>;
+    let newRequest!: Promise<CanonicalMenuItemOrder>;
+
+    await TestRenderer.act(async () => {
+      oldRequest = mounted.getReorder().mutateAsync(oldIntent);
+      await Promise.resolve();
+      newRequest = mounted.getReorder().mutateAsync(newIntent);
+      await Promise.resolve();
+    });
+    await TestRenderer.act(async () => {
+      oldResponse.resolve({
+        data: null,
+        error: { code: "42501", message: "stale failure" },
+      });
+      await rejectQuietly(oldRequest);
+    });
+    expect(
+      mounted.client
+        .getQueryData<Menu[]>(key)?.[0]?.items.map(({ id }) => id),
+    ).toEqual(newIntent.orderedItemIds);
+
+    await TestRenderer.act(async () => {
+      newResponse.resolve({ data: canonicalFor(newIntent), error: null });
+      await newRequest;
+    });
+    expect(
+      mounted.client
+        .getQueryData<Menu[]>(key)?.[0]?.items.map(({ id }) => id),
+    ).toEqual(newIntent.orderedItemIds);
+    consoleError.mockRestore();
+    mounted.unmount();
+    mounted.client.clear();
+  });
+
+  test("late old success preserves the newer optimistic view and becomes its rollback base", async () => {
+    const original = [menu("dinner", ["a", "b", "c", "d"])];
+    const oldIntent = makeIntent(original, "op-old-success", 1, "down");
+    const newIntent = makeIntent(original, "op-new-failure", 2, "down");
+    const oldResponse = deferred<{ data: unknown; error: null }>();
+    const newResponse = deferred<{
+      data: null;
+      error: { code: string; message: string };
+    }>();
+    mockRpc
+      .mockReturnValueOnce(oldResponse.promise)
+      .mockReturnValueOnce(newResponse.promise);
+    const mounted = mountReorderHook();
+    const key = menuKeys.brandMenus("brand-a", "venue-a");
+    mounted.client.setQueryData(key, original);
+    const consoleError = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    let oldRequest!: Promise<CanonicalMenuItemOrder>;
+    let newRequest!: Promise<CanonicalMenuItemOrder>;
+
+    await TestRenderer.act(async () => {
+      oldRequest = mounted.getReorder().mutateAsync(oldIntent);
+      await Promise.resolve();
+      newRequest = mounted.getReorder().mutateAsync(newIntent);
+      await Promise.resolve();
+    });
+    await TestRenderer.act(async () => {
+      oldResponse.resolve({ data: canonicalFor(oldIntent), error: null });
+      await oldRequest;
+    });
+    expect(
+      mounted.client
+        .getQueryData<Menu[]>(key)?.[0]?.items.map(({ id }) => id),
+    ).toEqual(newIntent.orderedItemIds);
+
+    await TestRenderer.act(async () => {
+      newResponse.resolve({
+        data: null,
+        error: { code: "42501", message: "new failure" },
+      });
+      await rejectQuietly(newRequest);
+    });
+    expect(
+      mounted.client
+        .getQueryData<Menu[]>(key)?.[0]?.items.map(({ id }) => id),
+    ).toEqual(oldIntent.orderedItemIds);
+    consoleError.mockRestore();
+    mounted.unmount();
+    mounted.client.clear();
   });
 
   test("writer pins RPC, rollback/stale containment, no auto retry, and lean readers", () => {

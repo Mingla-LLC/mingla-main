@@ -253,6 +253,8 @@ export function VenueMenuModule({
   const announcedReconciliationRef = useRef(new Set<string>());
   const itemReorderAffirmedOffline =
     network?.isConnected === false || network?.isInternetReachable === false;
+  const itemReorderAffirmedOfflineRef = useRef(itemReorderAffirmedOffline);
+  itemReorderAffirmedOfflineRef.current = itemReorderAffirmedOffline;
 
   const clearReorderSuccessTimer = useCallback((): void => {
     if (reorderSuccessTimerRef.current !== null) {
@@ -627,7 +629,7 @@ export function VenueMenuModule({
               ? "This menu changed elsewhere. We loaded the latest order. Try your move again."
               : "This menu changed elsewhere. We loaded the latest order. Review the list and choose a new move.";
           } else if (error.category === "uncertain") {
-            message = itemReorderAffirmedOffline
+            message = itemReorderAffirmedOfflineRef.current
               ? "You’re offline. The previous order is back. Reconnect, then try again."
               : "We couldn’t confirm the new order. The previous order is back.";
           }
@@ -652,7 +654,6 @@ export function VenueMenuModule({
       clearReorderSuccessTimer,
       completeItemReorderSuccess,
       focusItemReorderArrow,
-      itemReorderAffirmedOffline,
       reorderItems,
     ],
   );

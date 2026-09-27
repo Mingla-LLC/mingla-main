@@ -566,6 +566,16 @@ describe("#3564 menu-item reorder interaction", () => {
     rerenderModule();
     act(() => callbacks.onError(new MenuItemReorderError("uncertain", "offline", true)));
 
+    expect(
+      textExists(
+        "You’re offline. The previous order is back. Reconnect, then try again.",
+      ),
+    ).toBe(true);
+    expect(
+      textExists(
+        "We couldn’t confirm the new order. The previous order is back.",
+      ),
+    ).toBe(false);
     expect(byTestID("venue-menu-item-reorder-retry-alpha").props.disabled).toBe(
       true,
     );
