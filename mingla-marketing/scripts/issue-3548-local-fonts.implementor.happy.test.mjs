@@ -63,7 +63,7 @@ const EXPECTED_ASSETS = [
     byteLength: 18_284,
     sha256: '5b66adb405feda34a6bf45eadc404aebedcf0858873805fd6a4ba71f12396a63',
     copyright:
-      'Copyright 2020 The Mochiypop Project Authors (https://github.com/fontdasu/Mochiypop)',
+      'Copyright 2020 The MochiyPop Project Authors (https://github.com/fontdasu/Mochiypop)',
     oflFile: 'OFL-Mochiy-Pop-One.txt',
     oflSha256: '76be26178f13ef82866cf6a5c54272191bb583c203ad7035021c7681c9043558',
   },
