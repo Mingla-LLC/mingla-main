@@ -82,10 +82,8 @@ const modifierGroupNameIds = menuTextFieldIds("modifier-group-name");
  */
 const NO_REMOVAL = (): void => undefined;
 
-const menuTextAccessibilityHint = (
-  used: number,
-  limit: number,
-): string => `${used} of ${limit} characters will be saved.`;
+const menuTextAccessibilityHint = (used: number, limit: number): string =>
+  `${used} of ${limit} characters will be saved.`;
 
 export interface MenuModifierGroupEditorProps {
   menuItemId: string;
@@ -382,28 +380,41 @@ export function MenuModifierGroupEditor({
       </MenuTextField>
 
       <View style={styles.modeRow}>
-        <Button
-          label="Pick one"
-          onPress={() => {
-            onClearSaveError?.();
-            setMode("single");
-          }}
-          variant={mode === "single" ? "primary" : "secondary"}
-          size="sm"
-          disabled={saving}
-          testID="modifier-group-mode-single"
-        />
-        <Button
-          label="Pick several"
-          onPress={() => {
-            onClearSaveError?.();
-            setMode("multi");
-          }}
-          variant={mode === "multi" ? "primary" : "secondary"}
-          size="sm"
-          disabled={saving}
-          testID="modifier-group-mode-multi"
-        />
+        <View
+          style={styles.modeChoiceGroup}
+          accessibilityRole="radiogroup"
+          accessibilityLabel="How many options can guests pick?"
+          testID="modifier-group-mode"
+        >
+          <Button
+            label="Pick one"
+            onPress={() => {
+              onClearSaveError?.();
+              setMode("single");
+            }}
+            variant={mode === "single" ? "primary" : "secondary"}
+            size="sm"
+            disabled={saving}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: mode === "single" }}
+            style={styles.choiceControl}
+            testID="modifier-group-mode-single"
+          />
+          <Button
+            label="Pick several"
+            onPress={() => {
+              onClearSaveError?.();
+              setMode("multi");
+            }}
+            variant={mode === "multi" ? "primary" : "secondary"}
+            size="sm"
+            disabled={saving}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: mode === "multi" }}
+            style={styles.choiceControl}
+            testID="modifier-group-mode-multi"
+          />
+        </View>
         <Button
           label={required ? "Required" : "Optional"}
           onPress={() => {
@@ -413,6 +424,10 @@ export function MenuModifierGroupEditor({
           variant={required ? "primary" : "secondary"}
           size="sm"
           disabled={saving}
+          accessibilityRole="togglebutton"
+          accessibilityLabel="Options required"
+          accessibilityState={{ checked: required }}
+          style={styles.choiceControl}
           testID="modifier-group-required"
         />
       </View>
@@ -445,10 +460,7 @@ export function MenuModifierGroupEditor({
 
       <Text style={styles.sectionLabel}>Options</Text>
       {options.map((option, optionIndex) => {
-        const validation = validateMenuText(
-          "modifierOptionName",
-          option.name,
-        );
+        const validation = validateMenuText("modifierOptionName", option.name);
         const ids = menuTextFieldIds(`modifier-option-name-${option.id}`);
         const optionError =
           validation.error?.kind === "too-long"
@@ -809,6 +821,15 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: spacing.xs,
     marginBottom: spacing.xs,
+  },
+  modeChoiceGroup: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  choiceControl: {
+    minHeight: 44,
+    justifyContent: "center",
   },
   sectionLabel: {
     ...typography.labelCap,
