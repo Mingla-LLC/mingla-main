@@ -100,6 +100,17 @@ const OPTIONS_DRAFT_HOLD_REASON =
  * would swap a lockout for a disappearance, which is the same Constitution #3
  * failure the whole issue is about.
  */
+/**
+ * Issue #3572 (rework cycle 3, P3-5) — the discarded draft's group, by IDENTITY
+ * with the name carried alongside purely to render the sentence. Matching the
+ * retraction on the name let a same-named sibling speak for a group that had
+ * genuinely gone.
+ */
+interface DiscardedModifierGroupDraft {
+  id: string;
+  name: string;
+}
+
 export const menuOptionsDraftDiscardedMessage = (groupName: string): string =>
   `“${groupName}” is no longer listed on this item, so your unsaved changes` +
   " to it could not be kept.";
@@ -157,10 +168,17 @@ export function MenuItemOptionsSection({
   /*
    * #3572 (rework, P0-1) — the group whose unsaved draft a refetch took away,
    * held only until the operator starts something else.
+   *
+   * Rework cycle 3 (P3-5): the ID travels with the name. The sentence QUOTES
+   * the name, but its SUBJECT is the group the operator was editing, and that
+   * is identity. `menu_modifier_groups.name` carries no unique constraint and
+   * `validateModifierGroup` never checks uniqueness, so two groups called
+   * "Extras" on one dish is ordinary — and matching the retraction on the name
+   * let a same-named SIBLING retract a notice about a group that really had
+   * gone, putting the silent disappearance back for that case.
    */
-  const [discardedDraftGroupName, setDiscardedDraftGroupName] = useState<
-    string | null
-  >(null);
+  const [discardedDraft, setDiscardedDraft] =
+    useState<DiscardedModifierGroupDraft | null>(null);
   const submissionInFlightRef = useRef<boolean>(false);
   const deletionInFlightRef = useRef<boolean>(false);
   const retryInFlightRef = useRef<boolean>(false);
@@ -261,16 +279,18 @@ export function MenuItemOptionsSection({
    * notice that had just become true.
    */
   if (
-    discardedDraftGroupName !== null &&
+    discardedDraft !== null &&
     (successMessage !== null ||
-      groups.some((group) => group.name === discardedDraftGroupName))
+      groups.some((group) => group.id === discardedDraft.id))
   ) {
-    setDiscardedDraftGroupName(null);
+    setDiscardedDraft(null);
   }
   if (editing !== null && editingGroup === null) {
     // Adjusting state during render: guarded, so it runs once and settles.
     setEditing(null);
-    if (editorDirtyLatch) setDiscardedDraftGroupName(editing.name);
+    if (editorDirtyLatch) {
+      setDiscardedDraft({ id: editing.id, name: editing.name });
+    }
   }
   if (editorDirtyLatch && !editorOnScreen) setEditorDirtyLatch(false);
   const editorDirty = editorDirtyLatch && editorOnScreen;
@@ -329,7 +349,7 @@ export function MenuItemOptionsSection({
     if (saveGroup.isPending) return;
     setSaveError(null);
     setSuccessMessage(null);
-    setDiscardedDraftGroupName(null);
+    setDiscardedDraft(null);
     forgetTransientDeleteFailure();
     setEditing(null);
     setCreating(false);
@@ -348,7 +368,7 @@ export function MenuItemOptionsSection({
       onSavingChange?.(true);
       setSaveError(null);
       setSuccessMessage(null);
-      setDiscardedDraftGroupName(null);
+      setDiscardedDraft(null);
       saveGroup.mutate(input, {
         onSuccess: (savedGroup) => {
           setSaveError(null);
@@ -519,7 +539,7 @@ export function MenuItemOptionsSection({
     <View style={styles.host} testID={testID ?? "menu-item-options"}>
       <Text style={styles.groupLabel}>Options</Text>
 
-      {discardedDraftGroupName !== null ? (
+      {discardedDraft !== null ? (
         <View style={styles.alert} testID="menu-item-options-draft-discarded">
           <Text
             accessibilityRole="alert"
@@ -527,7 +547,7 @@ export function MenuItemOptionsSection({
             aria-live="assertive"
             style={styles.error}
           >
-            {menuOptionsDraftDiscardedMessage(discardedDraftGroupName)}
+            {menuOptionsDraftDiscardedMessage(discardedDraft.name)}
           </Text>
         </View>
       ) : null}
@@ -625,7 +645,7 @@ export function MenuItemOptionsSection({
               if (editorDirty) return;
               setSaveError(null);
               setSuccessMessage(null);
-              setDiscardedDraftGroupName(null);
+              setDiscardedDraft(null);
               /* P2-1 — a transient refusal does not follow the operator. */
               forgetTransientDeleteFailure();
               setCreating(false);
@@ -676,7 +696,7 @@ export function MenuItemOptionsSection({
             if (saveGroup.isPending) return;
             setSaveError(null);
             setSuccessMessage(null);
-            setDiscardedDraftGroupName(null);
+            setDiscardedDraft(null);
             setCreating(true);
           }}
           variant="secondary"

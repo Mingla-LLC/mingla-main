@@ -122,6 +122,19 @@ const GROUP_A: MenuModifierGroup = {
   ],
 };
 
+/**
+ * A SECOND group with the same name on the same item. `menu_modifier_groups`
+ * has no unique constraint on `name` and `validateModifierGroup` never checks
+ * uniqueness, so two groups called "Temperature" (or "Extras", or "Size") on
+ * one dish is ordinary rather than exotic.
+ */
+const GROUP_A_TWIN: MenuModifierGroup = {
+  ...GROUP_A,
+  id: "group-a-twin",
+  sortOrder: 2,
+  modifiers: [],
+};
+
 const GROUP_B: MenuModifierGroup = {
   id: "group-b",
   menuItemId: "item-a",
@@ -707,6 +720,38 @@ describe("#3572 rework — the hold releases, through the shipped primitives", (
       menuOptionsDraftDiscardedMessage("Temperature"),
     );
     // Releasing the notice must not re-engage the hold it came from.
+    expect(held()).toBe(false);
+    expect(pressIsWired("menu-item-save")).toBe(true);
+  });
+
+  test("P3-5: a same-named sibling cannot speak for the group that actually vanished", async () => {
+    groups = [
+      { ...GROUP_A, modifiers: [...GROUP_A.modifiers] },
+      { ...GROUP_A_TWIN, modifiers: [] },
+      { ...GROUP_B, modifiers: [] },
+    ];
+
+    await openItemSheet();
+    openGroupA();
+    type("modifier-option-name-opt-rare", "Blue rare");
+    expect(held()).toBe(true);
+
+    // `group-a` goes; its same-named twin `group-a-twin` stays. The sentence
+    // is about the group the operator was EDITING, which is identity — a
+    // sibling that happens to share the name is a different group and its
+    // presence says nothing about the one whose draft was destroyed.
+    refetchWith([
+      { ...GROUP_A_TWIN, modifiers: [] },
+      { ...GROUP_B, modifiers: [] },
+    ]);
+
+    expect(exists("menu-item-option-group-group-a")).toBe(false);
+    expect(exists("menu-item-option-group-group-a-twin")).toBe(true);
+    expect(exists("menu-item-options-draft-discarded")).toBe(true);
+    expect(screenText()).toContain(
+      menuOptionsDraftDiscardedMessage("Temperature"),
+    );
+    // The hold still released; the loss being stated is the addition.
     expect(held()).toBe(false);
     expect(pressIsWired("menu-item-save")).toBe(true);
   });
