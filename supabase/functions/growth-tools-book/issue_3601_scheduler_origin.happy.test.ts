@@ -258,3 +258,43 @@ Deno.test("#3601 the notification carries the origin in both HTML and plain text
   assertStringIncludes(stripped, "escapeHtml(originLabel(input.source))");
   assertStringIncludes(stripped, "Came from: ${originLabel(input.source)}");
 });
+
+Deno.test("#3601 the origin sits LAST in the notification, after When, Who and Venue", () => {
+  // Row order is an approved contract, not an accident: the three existing rows
+  // keep their positions so the diff stays honest, and When/Who are what gets
+  // scanned first. Pinned here so a later edit cannot quietly reshuffle them.
+  const stripped = executable(indexSource);
+  const at = (needle: string) => {
+    const i = stripped.indexOf(needle);
+    assert(i !== -1, `expected to find ${needle}`);
+    return i;
+  };
+  const whenRow = at(">When</td>");
+  const whoRow = at(">Who</td>");
+  const venueRow = at(">Venue</td>");
+  const originRow = at(">Came from</td>");
+  assert(whenRow < whoRow, "When must precede Who");
+  assert(whoRow < venueRow, "Who must precede Venue");
+  assert(venueRow < originRow, "Came from must be the LAST row");
+
+  // Scoped to the owner body: `Meet: ${input.meetUrl}` also appears earlier in the
+  // BOOKER's confirmation text, so a whole-file indexOf would match the wrong one.
+  const ownerTextStart = at("const ownerText =");
+  const ownerText = stripped.slice(ownerTextStart);
+  const inOwner = (needle: string) => {
+    const i = ownerText.indexOf(needle);
+    assert(i !== -1, `expected to find ${needle} in ownerText`);
+    return i;
+  };
+  assert(inOwner("When: ${when}") < inOwner("Venue: ${input.venue}"));
+  assert(
+    inOwner("Venue: ${input.venue}") <
+      inOwner("Came from: ${originLabel(input.source)}"),
+    "plain text: Came from must follow Venue",
+  );
+  assert(
+    inOwner("Came from: ${originLabel(input.source)}") <
+      inOwner("Meet: ${input.meetUrl}"),
+    "plain text: Came from must precede Meet",
+  );
+});
