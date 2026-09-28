@@ -329,6 +329,11 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
       // ordered replay. Keep the older #1772 references and add only this one.
       "mingla-business/server/__tests__/publicSearchMigration.issue2986.security.test.ts",
       "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs",
+      // [#3564] Both hook suites inspect this retained provider to prove the
+      // PostgreSQL contracts are registered. Normalize only these exact
+      // reviewed references; provider authority and count remain unchanged.
+      "mingla-business/src/hooks/__tests__/useMenus.issue3564.implementor.test.ts",
+      "mingla-business/src/hooks/__tests__/useMenus.issue3564.tester.adversarial.test.ts",
     ]),
   }),
 ]);
