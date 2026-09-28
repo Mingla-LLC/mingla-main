@@ -115,6 +115,9 @@ export function ScheduleClient() {
       email: email.trim(),
       venue: venue || undefined,
       report_url: reportUrl || undefined,
+      // #3601 — always sent. It is never empty (defaults to 'direct'), and the
+      // backend maps 'direct' and absent to the same shared-scheduler-link label.
+      source,
     })
     if (res.ok) {
       captureMarketing('tool_book_confirmed', {
