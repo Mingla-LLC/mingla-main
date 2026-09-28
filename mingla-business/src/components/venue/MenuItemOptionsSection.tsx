@@ -37,11 +37,15 @@
  * erased by the next tap on a different group, could never be released by any
  * server signal, and could outlive the very group it named. All three were the
  * same defect. One render-phase reconciliation now answers "is this still
- * true?" for all three: a refusal is keyed by its group id, pinned to the read
- * it was recorded against, dropped when a NEWER successful read supersedes it,
- * and dropped when its group is no longer in the list. `editing` and the
- * pending confirmation are reconciled against the same list, so nothing on
- * screen can describe — or ask about — a group the server no longer reports.
+ * true?" for all three: a refusal is keyed by its group id, pinned to the
+ * cached list as it stood on the FIRST RENDER THAT SHOWED IT, dropped when a
+ * newer list supersedes that one, and dropped when its group is no longer in
+ * the list. `editing` and the pending confirmation are reconciled against the
+ * same list, so nothing on screen can describe — or ask about — a group the
+ * server no longer reports. Pinning the version at the moment of rendering
+ * rather than at the moment of rejection is cycle 3's fix: a version captured
+ * when the mutation rejected could already be stale, and the refusal was then
+ * dropped before anyone saw it.
  *
  * The read message and the delete message are separate, separately-testable
  * surfaces. A load failure and a save/delete failure are different facts and
@@ -99,6 +103,9 @@ const NO_GROUPS: readonly MenuModifierGroup[] = Object.freeze([]);
  * would be a new identity and churn every memo keyed on it.
  */
 const NO_DELETE_REFUSALS: DeleteRefusalsByGroup = new Map();
+
+/** Stable empty anchor map — same reason, and the value cleared back to. */
+const NO_REFUSAL_ANCHORS: ReadonlyMap<string, number> = new Map();
 
 export interface MenuItemOptionsSectionProps {
   brandId: string | null;
@@ -185,22 +192,22 @@ export function MenuItemOptionsSection({
    *   `hasServerList` — the server has actually answered at least once, so
    *     there IS a list to reconcile against. While it has not, nothing is
    *     dropped: an in-flight first read is not evidence a group is gone.
-   *   `readVersion` — React Query's `dataUpdatedAt`, which advances ONLY when
-   *     a fetch settles successfully. It is the real server signal a refusal
-   *     can be released by. A failed refetch does not advance it, so a refusal
-   *     is never released by a read that failed.
+   *   `readVersion` — React Query's `dataUpdatedAt`, which stamps WHEN THE
+   *     CACHED LIST WAS LAST REPLACED. Cycle 2's comment here said it
+   *     "advances ONLY when a fetch settles successfully"; that is not true,
+   *     and correcting it matters because someone will reason from it. A
+   *     direct `queryClient.setQueryData` advances it too, and
+   *     `useSaveModifierGroup.onSuccess` calls exactly that with a
+   *     locally-merged array before the `invalidateQueries` that refetches —
+   *     so saving ANY OTHER group in the same dish releases a standing
+   *     refusal on a client-side write, a moment before the read it triggers
+   *     returns. Nothing incorrect reaches the screen (that invalidate does
+   *     refetch), but the release is coarser than "only a settled fetch".
+   *     What never advances it is a fetch that FAILED — which is the property
+   *     the release genuinely depends on, and it still holds.
    */
   const hasServerList = Array.isArray(groupsQuery.data);
   const readVersion = groupsQuery.dataUpdatedAt ?? 0;
-  /*
-   * Written during render on purpose: a pure cache of a value this render
-   * already has, idempotent under a double render, and read only inside the
-   * delete mutation's own callbacks — which fire AFTER the render that
-   * captured them, so the refusal is pinned to the newest read the client
-   * holds rather than to whichever one existed when the callback was built.
-   */
-  const readVersionRef = useRef<number>(readVersion);
-  readVersionRef.current = readVersion;
 
   const liveGroupIds = useMemo(
     () => new Set(groups.map((group) => group.id)),
@@ -208,31 +215,67 @@ export function MenuItemOptionsSection({
   );
 
   /*
+   * PR #3615 rework cycle 3 — WHERE a refusal's read version comes from, and
+   * the removal of the mechanism that got it wrong.
+   *
+   * Cycle 2 stamped it inside the delete mutation's `onError`, reading a ref
+   * written during render. That ref held the newest version the component had
+   * RENDERED, never the newest the client HELD: React Query writes the new
+   * `dataUpdatedAt` into the cache the instant a read settles, and the render
+   * that observes it comes afterwards. A rejection landing in that gap was
+   * stamped with the superseded version and dropped by the very next render,
+   * before it was ever shown — a destructive action that failed and then said
+   * nothing at all, which is the exact defect class #3570 and #3571 exist to
+   * remove. The ref is gone; nothing stamps a version at `onError` any more.
+   *
+   * A refusal is anchored HERE instead, on the first render that shows it,
+   * and never re-anchored. That is also what the semantic always claimed: a
+   * refusal survives until the next list AFTER it became visible. The map is
+   * rebuilt from `deleteRefusals` on every run, so a forgotten refusal cannot
+   * leave an anchor behind for a later refusal on the same group to inherit —
+   * which would re-create "born already superseded" by another route.
+   * Written during render, like `dialogGroupRef` below: a pure cache of a
+   * value this render already has, idempotent under a double render.
+   */
+  const refusalAnchorsRef =
+    useRef<ReadonlyMap<string, number>>(NO_REFUSAL_ANCHORS);
+
+  /*
    * A refusal survives exactly as long as both remain true: its group is still
-   * in the list, and the server has not spoken since. A NEWER successful read
-   * supersedes it — that is the release path a terminal refusal previously had
-   * no version of, and it is tied to server state rather than to a client-side
-   * classification that a single unlucky SQLSTATE could latch forever.
+   * in the list, and the cached list has not been replaced since the render
+   * that first showed it. A NEWER list supersedes it — that is the release
+   * path a terminal refusal previously had no version of, and it is tied to
+   * server state rather than to a client-side classification that a single
+   * unlucky SQLSTATE could latch forever.
    */
   const liveRefusals = useMemo<DeleteRefusalsByGroup>(() => {
-    if (deleteRefusals.size === 0 || !hasServerList) return deleteRefusals;
+    if (deleteRefusals.size === 0) {
+      refusalAnchorsRef.current = NO_REFUSAL_ANCHORS;
+      return deleteRefusals;
+    }
+    const anchors = new Map<string, number>();
     const kept = new Map(deleteRefusals);
-    for (const [groupId, refusal] of deleteRefusals) {
+    for (const groupId of deleteRefusals.keys()) {
+      const anchoredAt = refusalAnchorsRef.current.get(groupId) ?? readVersion;
+      anchors.set(groupId, anchoredAt);
+      /* No list to reconcile against yet: anchor, and release nothing. */
+      if (!hasServerList) continue;
       /*
        * ONE predicate on purpose. A refusal survives only while BOTH hold:
-       * its group is still in the list, and no newer successful read has
-       * superseded it. These are deliberately NOT split into two guards — in
-       * production `groups` can only change through a read that advances
-       * `dataUpdatedAt`, so the group-gone half is never independently
-       * observable, and a separate line for it would be a check that carries
-       * no information while looking like a guard. It is kept inside the
-       * predicate as defence in depth against a future writer that mutates
-       * the cached list without a new read.
+       * its group is still in the list, and no newer list has superseded the
+       * one it was anchored to. These are deliberately NOT split into two
+       * guards — in production `groups` can only change through a write that
+       * advances `dataUpdatedAt`, so the group-gone half is never
+       * independently observable, and a separate line for it would be a check
+       * that carries no information while looking like a guard. It is kept
+       * inside the predicate as defence in depth against a future writer that
+       * mutates the cached list without advancing the version.
        */
-      if (!liveGroupIds.has(groupId) || refusal.readAt !== readVersion) {
+      if (!liveGroupIds.has(groupId) || anchoredAt !== readVersion) {
         kept.delete(groupId);
       }
     }
+    refusalAnchorsRef.current = anchors;
     return kept.size === deleteRefusals.size ? deleteRefusals : kept;
   }, [deleteRefusals, liveGroupIds, hasServerList, readVersion]);
 
@@ -271,7 +314,7 @@ export function MenuItemOptionsSection({
    * the literal placeholder — "Remove “this group”?" — mid-dismissal, a
    * false statement a slow-motion capture catches. Hold the last group that
    * was actually asked about until the node is gone. Written during render for
-   * the same reason as `readVersionRef`.
+   * the same reason as `refusalAnchorsRef`.
    */
   if (pendingDeleteTarget !== null) {
     dialogGroupRef.current = pendingDeleteTarget;
@@ -476,13 +519,17 @@ export function MenuItemOptionsSection({
            * live region, so a screen reader re-announced the lie out of
            * context.
            */
+          /*
+           * Cycle 3: NO read version is stamped here. Whatever this callback
+           * could read would be the version of the last render, which the
+           * settled-but-unrendered read in flight beside it may already have
+           * superseded — and a refusal born superseded is dropped before it
+           * is ever shown. The version is anchored on the first render that
+           * shows this refusal, in `liveRefusals` above.
+           */
           setDeleteRefusals((current) => {
             const next = new Map(current);
-            next.set(target.id, {
-              ...failure,
-              groupId: target.id,
-              readAt: readVersionRef.current,
-            });
+            next.set(target.id, { ...failure, groupId: target.id });
             return next;
           });
           /*
@@ -522,6 +569,26 @@ export function MenuItemOptionsSection({
     visibleDeleteFailure !== null && !visibleDeleteFailure.canRetry
       ? visibleDeleteFailure.message
       : null;
+
+  /*
+   * #3571 (PR #3615 rework cycle 3, P3). The OPEN confirmation reads its
+   * error from the RAW refusal store, not the reconciled one, so the copy is
+   * held for as long as its dialog is open.
+   *
+   * Reconciliation exists to stop the SECTION asserting something stale about
+   * a group. The dialog is a different question: it is one attempt the
+   * operator is still inside, and that copy is the assertive alert added so a
+   * VoiceOver or TalkBack operator hears WHY the delete failed. A newer read
+   * settling underneath used to blank it mid-announcement, leaving an open
+   * confirmation with no stated reason for the failure that put it there —
+   * and a sighted operator watching the reason vanish out of a dialog they
+   * were still reading. It clears when the dialog closes, and when a retry
+   * drops the refusal it describes.
+   */
+  const dialogDeleteFailure =
+    pendingDeleteTarget === null
+      ? null
+      : (deleteRefusals.get(pendingDeleteTarget.id) ?? null);
 
   if (menuItemId === null) {
     return (
@@ -689,8 +756,8 @@ export function MenuItemOptionsSection({
         initialFocus="cancel"
         confirmLoading={deleteGroup.isPending}
         errorMessage={
-          visibleDeleteFailure !== null && visibleDeleteFailure.canRetry
-            ? visibleDeleteFailure.message
+          dialogDeleteFailure !== null && dialogDeleteFailure.canRetry
+            ? dialogDeleteFailure.message
             : null
         }
         errorTestID="menu-item-options-delete-dialog-error"
@@ -871,22 +938,19 @@ export interface ScopedModifierGroupDeleteFailure
 }
 
 /**
- * Issue #3571 (PR #3615 rework cycle 2). A refusal also carries WHICH READ it
- * was recorded against, so a later successful read of the group list can
- * supersede it. Without that, a refusal classified from a client-side string
- * match was terminal for the life of the dish sheet with no exit at all — and
- * on a single-group dish, no in-sheet escape whatsoever.
+ * One standing refusal per group id. Never a single shared slot.
+ *
+ * Issue #3571 (PR #3615 rework cycle 3). A refusal used to carry a `readAt`
+ * stamped inside the mutation's `onError` — the read version the component
+ * had last RENDERED, which a read already settled in the cache could have
+ * superseded, so the refusal was dropped before it was ever shown. Which read
+ * a refusal is pinned to is now decided on the first render that shows it and
+ * held beside the store, not on the refusal, so there is no longer any way to
+ * record a version that is already stale. See `liveRefusals`.
  */
-export interface LatchedModifierGroupDeleteFailure
-  extends ScopedModifierGroupDeleteFailure {
-  /** `dataUpdatedAt` of the group list this refusal was recorded against. */
-  readAt: number;
-}
-
-/** One standing refusal per group id. Never a single shared slot. */
 export type DeleteRefusalsByGroup = ReadonlyMap<
   string,
-  LatchedModifierGroupDeleteFailure
+  ScopedModifierGroupDeleteFailure
 >;
 
 export function modifierGroupDeleteError(
