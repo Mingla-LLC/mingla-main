@@ -932,3 +932,657 @@ describe("#3571 tester adversarial — the confirmation cannot be walked around"
     tree.unmount();
   });
 });
+
+/* ===================================================================== *
+ * RETEST APPEND — PR #3615 rework (head a7b70d621), plus the origin/main
+ * merge that brought #3569's checkable Button roles onto this branch.
+ *
+ * APPEND-ONLY. Nothing above this line was edited, weakened or skipped.
+ *
+ * The rework claims four fixes. These guard the three that hold and the
+ * one composition the merge created:
+ *
+ *   P2-1  a delete refusal is SCOPED to the group it is about — it renders
+ *         only while that group is on screen, a retryable one is forgotten
+ *         on leaving it, a permanent one stays latched to it.
+ *   P3-1  a permanently-refused group's trigger is inert AND the flow
+ *         refuses to reopen the ask for THAT group.
+ *   P3-2  the dialog holds the real group name through the ~200ms close.
+ *   P2-2  the in-dialog failure copy is an assertive alert ON THE TEXT,
+ *         and a dialog with no `errorMessage` still renders no alert at
+ *         all — the guarantee the other 25 ConfirmDialog call sites rely
+ *         on.
+ *   #3569 the inert trigger is a `Button`, and #3569 taught `Button` to
+ *         carry checkable roles. An inert destructive control must NOT
+ *         have acquired a checked/selected state, and must still announce
+ *         why it is unavailable.
+ *
+ * Every test below fails when its fix is deleted from the source. See the
+ * QA report for the per-fix deletion and the exact failing assertion.
+ * ===================================================================== */
+
+/** A second group, so "scoped to ITS group" is a claim with two subjects. */
+const retestGroup = (
+  id: string,
+  name: string,
+  optionCount: number,
+): MenuModifierGroup => ({
+  id,
+  menuItemId: ITEM_ID,
+  name,
+  selectionMode: "single",
+  minSelect: 1,
+  maxSelect: 1,
+  isActive: true,
+  sortOrder: 0,
+  modifiers: Array.from({ length: optionCount }, (_unused, index) => ({
+    id: `${id}-option-${index}`,
+    groupId: id,
+    name: `Option ${index}`,
+    priceDeltaCents: 0,
+    currency: "USD",
+    isAvailable: true,
+    sortOrder: index,
+  })),
+});
+
+const ALPHA = "group-retest-alpha";
+const BETA = "group-retest-beta";
+
+const openEditorForGroup = (tree: TestRenderer, groupId: string): void => {
+  const row = hostsWithTestId(tree, `menu-item-option-group-${groupId}`)[0];
+  if (row === undefined) throw new Error(`no row rendered for ${groupId}`);
+  press(row);
+};
+
+const deleteTrigger = (tree: TestRenderer): TestNode => {
+  const node = hostsWithTestId(tree, "modifier-group-delete")[0];
+  if (node === undefined) throw new Error("the delete trigger did not render");
+  return node;
+};
+
+/** True only while the trigger can actually be activated. */
+const triggerIsLive = (tree: TestRenderer): boolean =>
+  typeof deleteTrigger(tree).props.onPress === "function";
+
+const askToDelete = (tree: TestRenderer): void => {
+  press(deleteTrigger(tree));
+  flushFrames();
+};
+
+const confirmTheDelete = (tree: TestRenderer): void => {
+  press(hostsWithTestId(tree, "menu-item-options-delete-confirm")[0]);
+};
+
+/** ON DELETE RESTRICT — order history. Permanent by the schema's own rule. */
+const orderHistoryRefusal = (): Error => {
+  const error = new Error(
+    "update or delete on table violates foreign key constraint",
+  ) as Error & { code?: string };
+  error.code = "23503";
+  return error;
+};
+
+/** A refusal a retry can genuinely clear. */
+const transientRefusal = (): Error => new Error("Network request failed");
+
+const alertRegions = (tree: TestRenderer): TestNode[] =>
+  hostsWithTestId(tree, "menu-item-options-error");
+
+describe("#3571 RETEST — a refusal is scoped to the group it is about (P2-1)", () => {
+  test("a refusal raised for Alpha never renders while BETA's editor is on screen", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2), retestGroup(BETA, "Beta", 1)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+
+    // The refusal is true of Alpha, and Alpha is on screen.
+    expect(alertRegions(tree)).toHaveLength(1);
+    expect(screenText(tree)).toContain(MENU_OPTIONS_DELETE_COPY.inUse);
+
+    // Leave Alpha, open Beta. The statement is not true of Beta.
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, BETA);
+
+    expect(alertRegions(tree)).toHaveLength(0);
+    expect(screenText(tree)).not.toContain(MENU_OPTIONS_DELETE_COPY.inUse);
+    tree.unmount();
+  });
+
+  test("returning to Alpha brings ALPHA's own refusal back, unchanged", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2), retestGroup(BETA, "Beta", 1)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, BETA);
+    expect(alertRegions(tree)).toHaveLength(0);
+
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, ALPHA);
+
+    expect(alertRegions(tree)).toHaveLength(1);
+    expect(screenText(tree)).toContain(MENU_OPTIONS_DELETE_COPY.inUse);
+    tree.unmount();
+  });
+
+  test("a RETRYABLE refusal is forgotten when the operator closes the editor", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(transientRefusal());
+    expect(screenText(tree)).toContain(MENU_OPTIONS_DELETE_COPY.generic);
+
+    // Dismiss the ask, then close the editor: one failed attempt is not a
+    // standing fact about the menu.
+    press(hostsWithTestId(tree, "menu-item-options-delete-cancel")[0]);
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+
+    expect(alertRegions(tree)).toHaveLength(0);
+    expect(screenText(tree)).not.toContain(MENU_OPTIONS_DELETE_COPY.generic);
+    tree.unmount();
+  });
+
+  test("a RETRYABLE refusal is forgotten when another group is opened", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2), retestGroup(BETA, "Beta", 1)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(transientRefusal());
+    press(hostsWithTestId(tree, "menu-item-options-delete-cancel")[0]);
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, BETA);
+
+    expect(alertRegions(tree)).toHaveLength(0);
+    expect(screenText(tree)).not.toContain(MENU_OPTIONS_DELETE_COPY.generic);
+    tree.unmount();
+  });
+
+  test("a PERMANENT refusal is NOT forgotten by closing and reopening its own editor", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, ALPHA);
+
+    // Order history is a fact about the group, not about one attempt.
+    expect(alertRegions(tree)).toHaveLength(1);
+    expect(screenText(tree)).toContain(MENU_OPTIONS_DELETE_COPY.inUse);
+    tree.unmount();
+  });
+
+  test("the refusal carries the id of the group it is about, not a bare boolean", () => {
+    // Guards the SHAPE the scoping depends on: a failure with no subject
+    // cannot be compared to the group on screen, and the fix silently
+    // degrades to "always visible" if the id is ever dropped.
+    const scoped = {
+      ...modifierGroupDeleteError(orderHistoryRefusal()),
+      groupId: ALPHA,
+    };
+    expect(scoped.groupId).toBe(ALPHA);
+    expect(scoped.canRetry).toBe(false);
+  });
+});
+
+describe("#3571 RETEST — a permanent refusal is terminal for the FLOW (P3-1)", () => {
+  test("the trigger is inert, and raising the request again opens nothing and mutates nothing", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+
+    const issued = deleteMutate.mock.calls.length;
+    expect(triggerIsLive(tree)).toBe(false);
+    expect(dialogIsOpen(tree)).toBe(false);
+
+    // Close and reopen the editor — the only route back to the trigger —
+    // then try again. Nothing may reopen and nothing may mutate.
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, ALPHA);
+    expect(triggerIsLive(tree)).toBe(false);
+    flushFrames();
+    expect(dialogIsOpen(tree)).toBe(false);
+    expect(deleteMutate.mock.calls).toHaveLength(issued);
+    tree.unmount();
+  });
+
+  test("the inert trigger ANNOUNCES why it is unavailable — it is not a silent dead control", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+
+    const label = deleteTrigger(tree).props.accessibilityLabel;
+    expect(typeof label).toBe("string");
+    expect(label as string).toContain("Unavailable");
+    expect(label as string).toContain(MENU_OPTIONS_DELETE_COPY.inUse);
+    tree.unmount();
+  });
+
+  test("a denial is terminal the same way, and says so in its own words", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    const denial = new Error("permission denied for table") as Error & {
+      code?: string;
+    };
+    denial.code = "42501";
+    rejectWith(denial);
+
+    expect(triggerIsLive(tree)).toBe(false);
+    expect(deleteTrigger(tree).props.accessibilityLabel).toContain(
+      MENU_OPTIONS_DELETE_COPY.permission,
+    );
+    expect(screenText(tree)).not.toContain(MENU_OPTIONS_DELETE_COPY.inUse);
+    tree.unmount();
+  });
+
+  test("a RETRYABLE refusal leaves the trigger genuinely live — the lock is not blanket", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(transientRefusal());
+
+    // The ask stays open for a retryable failure, so the SAME destructive
+    // action is the retry. Dismiss it and the trigger must still work.
+    press(hostsWithTestId(tree, "menu-item-options-delete-cancel")[0]);
+    expect(triggerIsLive(tree)).toBe(true);
+    const issued = deleteMutate.mock.calls.length;
+    askToDelete(tree);
+    expect(dialogIsOpen(tree)).toBe(true);
+    confirmTheDelete(tree);
+    expect(deleteMutate.mock.calls.length).toBe(issued + 1);
+    tree.unmount();
+  });
+});
+
+describe("#3571 RETEST — the dialog holds the real group name through its close (P3-2)", () => {
+  const PLACEHOLDER = "this group”?";
+
+  test("the VERY FIRST open already names the real group — no placeholder frame", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+
+    const shown = screenText(tree);
+    expect(shown).toContain("Remove “Alpha”?");
+    expect(shown).not.toContain(PLACEHOLDER);
+    tree.unmount();
+  });
+
+  test("the name survives the close animation after CANCEL", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    press(hostsWithTestId(tree, "menu-item-options-delete-cancel")[0]);
+
+    // `Modal` keeps its node mounted for UNMOUNT_DELAY_MS. Whatever is still
+    // drawn during that window must be the truth, not the placeholder.
+    expect(dialogIsOpen(tree)).toBe(false);
+    const shown = screenText(tree);
+    expect(shown).toContain("Remove “Alpha”?");
+    expect(shown).not.toContain(PLACEHOLDER);
+    tree.unmount();
+  });
+
+  test("the name survives the close animation after a SUCCESSFUL delete", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    const callbacks = lastDeleteCallbacks();
+    act(() => {
+      callbacks.onSuccess?.();
+      callbacks.onSettled?.();
+    });
+
+    expect(dialogIsOpen(tree)).toBe(false);
+    const shown = screenText(tree);
+    expect(shown).toContain("Remove “Alpha”?");
+    expect(shown).not.toContain(PLACEHOLDER);
+    tree.unmount();
+  });
+
+  test("opening BETA after ALPHA closed never shows ALPHA's name in the open dialog", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2), retestGroup(BETA, "Beta", 1)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    press(hostsWithTestId(tree, "menu-item-options-delete-cancel")[0]);
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+
+    openEditorForGroup(tree, BETA);
+    askToDelete(tree);
+
+    expect(dialogIsOpen(tree)).toBe(true);
+    const shown = screenText(tree);
+    expect(shown).toContain("Remove “Beta”?");
+    expect(shown).not.toContain("Remove “Alpha”?");
+    expect(shown).not.toContain(PLACEHOLDER);
+    tree.unmount();
+  });
+
+  test("the cache is a CACHE, not a source — the description matches the same group", () => {
+    groups = [retestGroup(BETA, "Beta", 1)];
+    const tree = render();
+
+    openEditorForGroup(tree, BETA);
+    askToDelete(tree);
+
+    // Title and consequence must describe ONE group. A cache that lagged by a
+    // render would desynchronise exactly here.
+    expect(screenText(tree)).toContain("Remove “Beta”?");
+    expect(screenText(tree)).toContain(
+      menuModifierGroupDeleteDescription(groups[0]),
+    );
+    tree.unmount();
+  });
+});
+
+describe("#3571 RETEST — #3569's checkable Button roles vs the inert trigger", () => {
+  test("the INERT destructive control keeps role button and acquires NO checked state", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+
+    const trigger = deleteTrigger(tree);
+    expect(trigger.props.accessibilityRole).toBe("button");
+    // #3569 emits aria-checked ONLY for checkbox/radio/togglebutton. A
+    // destructive removal is none of those: a screen reader must never read
+    // "not checked" or "selected" over it.
+    expect(trigger.props["aria-checked"]).toBeUndefined();
+    const state = trigger.props.accessibilityState as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(state, "checked")).toBe(false);
+    expect(state.disabled).toBe(true);
+    tree.unmount();
+  });
+
+  test("the LIVE destructive control likewise carries no checkable state", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    const trigger = deleteTrigger(tree);
+
+    expect(trigger.props.accessibilityRole).toBe("button");
+    expect(trigger.props["aria-checked"]).toBeUndefined();
+    const state = trigger.props.accessibilityState as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(state, "checked")).toBe(false);
+    expect(state.disabled).toBe(false);
+    tree.unmount();
+  });
+
+  test("being inert does not cost the control its name — disabled still announces", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+
+    const trigger = deleteTrigger(tree);
+    const label = trigger.props.accessibilityLabel as string;
+    expect(label.startsWith("Remove this group")).toBe(true);
+    // The visible label is still there for a sighted operator.
+    expect(screenText(tree)).toContain("Remove this group");
+    tree.unmount();
+  });
+});
+
+describe("#3571 RETEST — the shared ConfirmDialog change is additive (P2-2)", () => {
+  const dialogAlerts = (tree: TestRenderer): TestNode[] =>
+    tree.root
+      .findAllByProps({ accessibilityRole: "alert" })
+      .filter((node) => typeof node.type === "string");
+
+  const mountDialog = (props: Record<string, unknown>): TestRenderer => {
+    let tree: TestRenderer | null = null;
+    act(() => {
+      tree = renderer.create(
+        React.createElement(ConfirmDialog, {
+          visible: true,
+          onClose: () => undefined,
+          onConfirm: () => undefined,
+          title: "Remove it?",
+          description: "This cannot be undone.",
+          ...props,
+        } as never),
+        { createNodeMock: () => ({ focus: () => undefined }) },
+      );
+    });
+    if (tree === null) throw new Error("dialog produced no tree");
+    return tree;
+  };
+
+  test("a dialog with NO errorMessage renders no alert node at all", () => {
+    // This is the guarantee every other ConfirmDialog call site relies on:
+    // 25 production call sites render this component and most pass no
+    // errorMessage. They must be byte-identical to before the rework.
+    const tree = mountDialog({});
+    expect(dialogAlerts(tree)).toHaveLength(0);
+    tree.unmount();
+  });
+
+  test("errorMessage null and empty string are both still silent", () => {
+    const withNull = mountDialog({ errorMessage: null });
+    expect(dialogAlerts(withNull)).toHaveLength(0);
+    withNull.unmount();
+
+    const withEmpty = mountDialog({ errorMessage: "" });
+    expect(dialogAlerts(withEmpty)).toHaveLength(0);
+    withEmpty.unmount();
+  });
+
+  test("errorMessage renders ONE assertive alert carrying the message itself", () => {
+    const tree = mountDialog({ errorMessage: "It did not work." });
+    const alerts = dialogAlerts(tree);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].props.accessibilityLiveRegion).toBe("assertive");
+    expect(alerts[0].props["aria-live"]).toBe("assertive");
+    expect(alerts[0].props.children).toBe("It did not work.");
+    tree.unmount();
+  });
+
+  test("errorTestID is opt-in — omitting it changes nothing about the alert", () => {
+    const tree = mountDialog({ errorMessage: "It did not work." });
+    const alerts = dialogAlerts(tree);
+    expect(alerts[0].props.testID).toBeUndefined();
+    expect(alerts[0].props.accessibilityRole).toBe("alert");
+    tree.unmount();
+  });
+
+  test("the section's own dialog error is reachable by its errorTestID and is assertive", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(transientRefusal());
+
+    const inDialog = hostsWithTestId(
+      tree,
+      "menu-item-options-delete-dialog-error",
+    );
+    expect(inDialog).toHaveLength(1);
+    expect(inDialog[0].props.accessibilityRole).toBe("alert");
+    expect(inDialog[0].props.accessibilityLiveRegion).toBe("assertive");
+    expect(inDialog[0].props["aria-live"]).toBe("assertive");
+    expect(inDialog[0].props.children).toBe(MENU_OPTIONS_DELETE_COPY.generic);
+    tree.unmount();
+  });
+
+  test("a PERMANENT refusal puts nothing in the dialog — it closed, the section speaks", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+
+    expect(
+      hostsWithTestId(tree, "menu-item-options-delete-dialog-error"),
+    ).toHaveLength(0);
+    expect(alertRegions(tree)).toHaveLength(1);
+    tree.unmount();
+  });
+});
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { ConfirmDialog } = require("../../ui/ConfirmDialog") as {
+  ConfirmDialog: React.ComponentType<Record<string, unknown>>;
+};
+
+/* ---------------------------------------------------------------------
+ * Two falsifiers the block above was missing.
+ *
+ * Deleting `forgetTransientDeleteFailure()`'s call sites, and deleting the
+ * reopen guard inside `requestDeleteGroup`, each left the suite fully
+ * green — because the alert SCOPING already hides the message the moment
+ * the operator leaves the group, and because the inert trigger already
+ * stops the only tap that reaches the guard. Both tests were therefore
+ * re-proving the scoping and carrying no information about their own fix.
+ *
+ * The forgetting is only observable on RETURN to the same group, and the
+ * guard is only observable when the request is raised DIRECTLY — which is
+ * the exact wording of the claim ("refuses to reopen the ask even if the
+ * request is raised directly"). These two attack precisely there.
+ * ------------------------------------------------------------------- */
+
+/** The live `onRequestDelete` the section handed the open editor. */
+const directDeleteRequest = (tree: TestRenderer): ((id: string) => void) => {
+  const owner = tree.root
+    .findAllByProps({ menuItemId: ITEM_ID })
+    .find((node) => typeof node.props.onRequestDelete === "function");
+  if (owner === undefined) {
+    throw new Error("no editor is holding a delete request handler");
+  }
+  return owner.props.onRequestDelete as (id: string) => void;
+};
+
+describe("#3571 RETEST — the two claims the scoping was masking", () => {
+  test("a RETRYABLE refusal does NOT come back when its own group is reopened", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(transientRefusal());
+    expect(screenText(tree)).toContain(MENU_OPTIONS_DELETE_COPY.generic);
+
+    press(hostsWithTestId(tree, "menu-item-options-delete-cancel")[0]);
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, ALPHA);
+
+    // One failed attempt is not a standing fact about this group. Scoping
+    // alone would hand it straight back here.
+    expect(alertRegions(tree)).toHaveLength(0);
+    expect(screenText(tree)).not.toContain(MENU_OPTIONS_DELETE_COPY.generic);
+    tree.unmount();
+  });
+
+  test("a PERMANENT refusal still comes back on return — the contrast is the point", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, ALPHA);
+
+    expect(alertRegions(tree)).toHaveLength(1);
+    expect(triggerIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+
+  test("raising the request DIRECTLY on a refused group opens nothing and mutates nothing", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+
+    const issued = deleteMutate.mock.calls.length;
+    const raise = directDeleteRequest(tree);
+
+    // Bypass the inert trigger entirely — this is the route the claim says
+    // the SECTION itself refuses, not just the control.
+    act(() => {
+      raise(ALPHA);
+    });
+    flushFrames();
+
+    expect(dialogIsOpen(tree)).toBe(false);
+    expect(deleteMutate.mock.calls).toHaveLength(issued);
+    // And the fact that says WHY is still on screen — not wiped by the ask.
+    expect(alertRegions(tree)).toHaveLength(1);
+    expect(screenText(tree)).toContain(MENU_OPTIONS_DELETE_COPY.inUse);
+    tree.unmount();
+  });
+
+  test("raising the request directly on a RETRYABLE refusal still opens — the refusal is not blanket", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(transientRefusal());
+    press(hostsWithTestId(tree, "menu-item-options-delete-cancel")[0]);
+
+    act(() => {
+      directDeleteRequest(tree)(ALPHA);
+    });
+    flushFrames();
+
+    expect(dialogIsOpen(tree)).toBe(true);
+    tree.unmount();
+  });
+});

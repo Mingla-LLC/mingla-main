@@ -794,3 +794,183 @@ describe("#3570 tester adversarial — the read state machine is CLOSED", () => 
     tree.unmount();
   });
 });
+
+/* ===================================================================== *
+ * RETEST APPEND — PR #3615 rework (head a7b70d621).
+ *
+ * APPEND-ONLY. Nothing above this line was edited, weakened or skipped.
+ *
+ * P3-3. The read-retry latch is the ONLY escape route from a failed read.
+ * The original latch attached its release to `.finally` on the promise the
+ * refetch returned — so a SYNCHRONOUS throw escaped before `.finally` was
+ * even attached, and a rejection left the derived promise unhandled. Either
+ * way the latch stayed armed forever: the retry control stayed rendered,
+ * stayed enabled, looked entirely healthy, and did nothing for the rest of
+ * the session while every source signal stayed green.
+ *
+ * The rework wraps the call in try/catch and releases in BOTH exits. These
+ * tests drive the three exits a real `refetch()` can take.
+ *
+ * They also pin the half of the latch that must NOT be lost to the fix: a
+ * double activation inside one tick still issues exactly one refetch. A
+ * "fix" that simply deleted the latch would pass every release test and
+ * re-open the double-request defect the latch exists for.
+ * ===================================================================== */
+
+describe("#3570 RETEST — the read-retry latch releases on EVERY exit (P3-3)", () => {
+  const failedRead = (): void => {
+    query = {
+      status: "error",
+      fetchStatus: "idle",
+      isLoading: false,
+      isError: true,
+      isFetching: false,
+      error: transientError(),
+      data: undefined,
+    };
+  };
+
+  const pressRetry = (tree: TestRenderer): void => {
+    const retry = hostsWithTestId(tree, "menu-item-options-read-retry")[0];
+    if (retry === undefined) throw new Error("the retry control did not render");
+    const onPress = retry.props.onPress;
+    if (typeof onPress !== "function") {
+      throw new Error("the retry control is inert — it has no onPress");
+    }
+    act(() => {
+      (onPress as (event: unknown) => void)({});
+    });
+  };
+
+  test("a SYNCHRONOUS throw from refetch still releases the latch", async () => {
+    failedRead();
+    refetchSpy.mockImplementationOnce(() => {
+      throw new Error("refetch threw before it ever returned a promise");
+    });
+    const tree = render();
+
+    pressRetry(tree);
+    expect(refetchSpy).toHaveBeenCalledTimes(1);
+
+    // The throw was swallowed upstream by Button's own onPress guard, so the
+    // ONLY observable difference between a released and a stuck latch is
+    // whether the operator can retry at all.
+    pressRetry(tree);
+    expect(refetchSpy).toHaveBeenCalledTimes(2);
+    tree.unmount();
+  });
+
+  test("a REJECTED promise from refetch releases the latch", async () => {
+    failedRead();
+    refetchSpy.mockReturnValueOnce(Promise.reject(new Error("read rejected")));
+    const tree = render();
+
+    pressRetry(tree);
+    expect(refetchSpy).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    pressRetry(tree);
+    expect(refetchSpy).toHaveBeenCalledTimes(2);
+    tree.unmount();
+  });
+
+  test("a rejected refetch is HANDLED — no unhandled rejection escapes the retry", async () => {
+    failedRead();
+    const escaped: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      escaped.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      refetchSpy.mockReturnValueOnce(
+        Promise.reject(new Error("read rejected")),
+      );
+      const tree = render();
+      pressRetry(tree);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      tree.unmount();
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+    expect(escaped).toHaveLength(0);
+  });
+
+  test("a refetch that returns a NON-promise still releases the latch", async () => {
+    failedRead();
+    refetchSpy.mockReturnValue(undefined);
+    const tree = render();
+
+    pressRetry(tree);
+    expect(refetchSpy).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    pressRetry(tree);
+    expect(refetchSpy).toHaveBeenCalledTimes(2);
+    tree.unmount();
+  });
+
+  test("the latch is still a LATCH — two activations in ONE tick issue one refetch", () => {
+    failedRead();
+    // A pending promise: the release can only arrive on a later microtask, so
+    // this measures the synchronous guard and nothing else.
+    refetchSpy.mockReturnValue(new Promise(() => undefined));
+    const tree = render();
+
+    pressRetry(tree);
+    pressRetry(tree);
+    pressRetry(tree);
+
+    expect(refetchSpy).toHaveBeenCalledTimes(1);
+    tree.unmount();
+  });
+
+  test("a throw on the FIRST retry does not poison the SECOND — the read genuinely recovers", async () => {
+    failedRead();
+    refetchSpy.mockImplementationOnce(() => {
+      throw new Error("transient client fault");
+    });
+    refetchSpy.mockReturnValueOnce(Promise.resolve({}));
+    const tree = render();
+
+    pressRetry(tree);
+    pressRetry(tree);
+    expect(refetchSpy).toHaveBeenCalledTimes(2);
+
+    // And the surface never borrowed the delete voice to say so.
+    expect(hostsWithTestId(tree, "menu-item-options-error")).toHaveLength(0);
+    expect(hostsWithTestId(tree, "menu-item-options-read-error")).toHaveLength(
+      1,
+    );
+    tree.unmount();
+  });
+
+  test("a terminal denial offers no retry at all, so no latch can strand it", () => {
+    query = {
+      status: "error",
+      fetchStatus: "idle",
+      isLoading: false,
+      isError: true,
+      isFetching: false,
+      error: permissionError(),
+      data: undefined,
+    };
+    const tree = render();
+
+    expect(hostsWithTestId(tree, "menu-item-options-read-retry")).toHaveLength(
+      0,
+    );
+    expect(screenText(tree)).toContain(MENU_OPTIONS_READ_COPY.fatalPermission);
+    expect(refetchSpy).not.toHaveBeenCalled();
+    tree.unmount();
+  });
+});
