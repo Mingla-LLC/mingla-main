@@ -346,4 +346,45 @@ describe("#3570 implementor — the options read state machine tells the truth",
     expect(textOf(tree)).not.toContain(STALE_COPY);
     expect(tree.root.findAllByType(View).length).toBeGreaterThan(0);
   });
+
+  /*
+   * PR #3615 rework, P3-3 — the retry latch must release on EVERY exit.
+   *
+   * `refetch()` does not throw under React Query v5, so this is a latent
+   * defect rather than a live one — which is exactly what makes it dangerous:
+   * if it ever did throw, the exception escaped before `.finally` was attached,
+   * the latch stayed closed forever, and the only escape route from a failed
+   * read went permanently dead while every source signal stayed green.
+   */
+  test("a refetch that throws SYNCHRONOUSLY still releases the retry latch", () => {
+    queryStub = {
+      status: "error",
+      fetchStatus: "idle",
+      isLoading: false,
+      isError: true,
+      isFetching: false,
+      error: new Error("network request failed"),
+      data: undefined,
+      refetch,
+    };
+    refetch.mockImplementationOnce(() => {
+      throw new Error("refetch exploded before it returned a promise");
+    });
+    const tree = render();
+    const press = nodesWithTestId(tree, "menu-item-options-read-retry")[0].props
+      .onPress as () => void;
+
+    // The throw must not escape the handler and take the press down with it.
+    act(() => {
+      press();
+    });
+    expect(refetch).toHaveBeenCalledTimes(1);
+
+    // And the control must still be alive: a second activation genuinely asks
+    // the server again.
+    act(() => {
+      press();
+    });
+    expect(refetch).toHaveBeenCalledTimes(2);
+  });
 });

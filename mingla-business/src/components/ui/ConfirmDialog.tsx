@@ -63,6 +63,11 @@ export interface ConfirmDialogProps {
   confirmLoading?: boolean;
   confirmDisabled?: boolean;
   errorMessage?: string | null;
+  /**
+   * Optional handle on the in-dialog failure alert. Omitted by every existing
+   * caller; the alert renders identically without it.
+   */
+  errorTestID?: string;
   closeDisabled?: boolean;
   confirmTestID?: string;
   cancelTestID?: string;
@@ -95,6 +100,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   confirmLoading = false,
   confirmDisabled = false,
   errorMessage = null,
+  errorTestID,
   closeDisabled = false,
   confirmTestID,
   cancelTestID,
@@ -205,8 +211,26 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.description}>{description}</Text>
 
+        {/*
+          Issue #3571 (PR #3615 rework, P2-2) — this is the ONLY failure copy a
+          screen reader can reach while the dialog is open. On iOS the native
+          `Modal` owns the accessibility container, so an assertive live region
+          rendered by the caller BEHIND the dialog is unreachable: without the
+          trio below a VoiceOver/TalkBack operator hears nothing at all and is
+          left with an apparently inert confirm button. Additive for every
+          existing caller — a dialog that passes no `errorMessage` renders
+          nothing here, exactly as before.
+        */}
         {errorMessage !== null && errorMessage.length > 0 ? (
-          <Text style={styles.errorText}>{errorMessage}</Text>
+          <Text
+            accessibilityRole="alert"
+            accessibilityLiveRegion="assertive"
+            aria-live="assertive"
+            style={styles.errorText}
+            testID={errorTestID}
+          >
+            {errorMessage}
+          </Text>
         ) : null}
 
         {variant === "typeToConfirm" ? (

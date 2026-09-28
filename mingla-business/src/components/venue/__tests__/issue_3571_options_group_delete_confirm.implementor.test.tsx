@@ -66,6 +66,40 @@ jest.mock("../../ui/Input", () => ({
     React.createElement("MockInput", props),
 }));
 
+/*
+ * PR #3615 rework, P2-2 — the in-dialog failure alert is proved against the
+ * REAL `ConfirmDialog` further down, so its two unloadable dependencies are
+ * replaced here. Neither carries any part of the contract under test:
+ * `ui/Modal` is a pass-through portal, and reanimated only drives the
+ * hold-to-confirm progress fill, which the `simple` variant never renders.
+ */
+jest.mock("react-native-reanimated", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const ReactLocal = require("react") as typeof React;
+  const view = (props: Record<string, unknown>): React.ReactElement =>
+    ReactLocal.createElement(
+      "ReanimatedView",
+      props,
+      props.children as React.ReactNode,
+    );
+  return {
+    __esModule: true,
+    default: { View: view, Text: view },
+    Easing: { linear: (t: number) => t, out: () => (t: number) => t, in: () => (t: number) => t },
+    cancelAnimation: () => undefined,
+    runOnJS: (fn: unknown) => fn,
+    useAnimatedStyle: () => ({}),
+    useReducedMotion: () => false,
+    useSharedValue: (value: unknown) => ({ value }),
+    withTiming: (value: unknown) => value,
+  };
+});
+
+jest.mock("../../ui/Modal", () => ({
+  Modal: (props: Record<string, unknown>) =>
+    React.createElement("MockModal", props, props.children as React.ReactNode),
+}));
+
 jest.mock("../../../hooks/useMenuModifiers", () => {
   const actual = jest.requireActual(
     "../../../hooks/useMenuModifiers",
@@ -97,13 +131,35 @@ import {
   modifierGroupDeleteError,
 } from "../MenuItemOptionsSection";
 
+// eslint-disable-next-line import/first
+import { MenuModifierGroupEditor } from "../MenuModifierGroupEditor";
+
 const realHooks = jest.requireActual(
   "../../../hooks/useMenuModifiers",
 ) as typeof import("../../../hooks/useMenuModifiers");
 
+/*
+ * PR #3615 rework, P2-2 — the section-level assertions above run against the
+ * inert `MockConfirmDialog`, which has no rendering of its own. The in-dialog
+ * alert is a claim about what the SHIPPED dialog renders, so it is proved
+ * against the real component.
+ */
+const RealConfirmDialog = (
+  jest.requireActual(
+    "../../ui/ConfirmDialog",
+  ) as typeof import("../../ui/ConfirmDialog")
+).ConfirmDialog;
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const renderer = require("react-test-renderer") as RendererApi;
 const act = renderer.act;
+
+// React only enforces act() when told it is in an act environment; without it
+// every update below is merely warned about instead of being scheduled the way
+// the component tree actually schedules it.
+(
+  globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const IN_USE_COPY =
   "Guests have already ordered these choices, so this group can't be removed. Turn the options off instead.";
@@ -479,5 +535,287 @@ describe("#3571 implementor — removing an options group is confirmed, not inst
     );
     expect(textOf(tree)).not.toContain("Couldn't load choices");
     expect(textOf(tree)).not.toContain("Couldn't refresh choices");
+  });
+});
+
+/**
+ * PR #3615 REWORK — the four residual defects the independent adversarial pass
+ * found in the delete-failure messaging.
+ *
+ * Every one of them is a claim about what the operator SEES and HEARS, so each
+ * proof drives the real section and reads what it rendered. Two of them put a
+ * false statement on screen, which is the same defect class #3570 and #3571
+ * exist to remove: a surface that asserts something untrue about the thing in
+ * front of the person using it.
+ */
+
+/** A second, unrelated group — the one a refusal must never follow into. */
+const otherGroup = (): MenuModifierGroup => ({
+  id: "group-3571-beta",
+  menuItemId: "item-3571",
+  name: "Sides",
+  selectionMode: "single",
+  minSelect: 0,
+  maxSelect: 1,
+  isActive: true,
+  sortOrder: 1,
+  modifiers: [],
+});
+
+const openEditorFor = (tree: TestRenderer, groupId: string): void => {
+  const row = nodesWithTestId(tree, `menu-item-option-group-${groupId}`)[0];
+  if (row === undefined) throw new Error(`no row for ${groupId}`);
+  act(() => {
+    (row.props.onPress as () => void)();
+  });
+};
+
+const deleteTriggerOf = (tree: TestRenderer): TestNode => {
+  const trigger = nodesWithTestId(tree, "modifier-group-delete")[0];
+  if (trigger === undefined) throw new Error("the delete trigger did not render");
+  return trigger;
+};
+
+/** Ask, confirm, and settle the mutation with `rejection`. */
+const refuseTheDelete = (tree: TestRenderer, rejection: Error): void => {
+  act(() => {
+    (deleteTriggerOf(tree).props.onPress as () => void)();
+  });
+  act(() => {
+    (dialogOf(tree).props.onConfirm as () => void)();
+  });
+  const callbacks = deleteMutate.mock.calls[deleteMutate.mock.calls.length - 1][1];
+  act(() => {
+    callbacks?.onError?.(rejection);
+    callbacks?.onSettled?.();
+  });
+};
+
+const inUseRejection = (): Error => {
+  const rejection = new Error("modifier_group_delete_in-use") as Error & {
+    category?: string;
+  };
+  rejection.category = "in-use";
+  return rejection;
+};
+
+describe("#3615 rework — a delete refusal is scoped, terminal, announced and named", () => {
+  /*
+   * P2-1. The defect: `deleteFailure` was cleared only when a NEW delete was
+   * requested, so a refusal raised for "Temperature" stayed on screen — as an
+   * assertive live region — above the editor for "Sides". The alert then
+   * asserted something false about the group the operator was looking at, and
+   * a screen reader re-announced it out of context.
+   */
+  test("a refusal raised for one group never renders above a DIFFERENT group", () => {
+    groups = [groupWith(3), otherGroup()];
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    refuseTheDelete(tree, inUseRejection());
+    expect(textOf(tree)).toContain(IN_USE_COPY);
+
+    // The operator leaves Temperature and opens Sides. Nothing about
+    // Temperature may travel with them.
+    openEditorFor(tree, "group-3571-beta");
+    expect(textOf(tree)).not.toContain(IN_USE_COPY);
+    expect(nodesWithTestId(tree, "menu-item-options-error")).toHaveLength(0);
+
+    // And the fact is not destroyed either — it is still true of Temperature,
+    // so returning to Temperature finds it intact.
+    openEditorFor(tree, "group-3571");
+    expect(textOf(tree)).toContain(IN_USE_COPY);
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  test("closing the editor takes a RETRYABLE refusal with it", () => {
+    groups = [groupWith(3)];
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    refuseTheDelete(tree, new Error("Network request failed"));
+    expect(textOf(tree)).toContain(GENERIC_COPY);
+
+    act(() => {
+      (dialogOf(tree).props.onClose as () => void)();
+    });
+    act(() => {
+      (nodesWithTestId(tree, "modifier-group-cancel")[0].props
+        .onPress as () => void)();
+    });
+
+    // One attempt failed; that is not a standing fact about the menu.
+    expect(textOf(tree)).not.toContain(GENERIC_COPY);
+    expect(nodesWithTestId(tree, "menu-item-options-error")).toHaveLength(0);
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  /*
+   * P3-1. "No retry" was true of the DIALOG and false of the FLOW: pressing
+   * the trigger again wiped the terminal message and issued a second mutation
+   * against a delete the database can never accept.
+   */
+  test("a PERMANENT refusal is terminal for the flow, not just for the dialog", () => {
+    groups = [groupWith(3)];
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    refuseTheDelete(tree, inUseRejection());
+    expect(deleteMutate).toHaveBeenCalledTimes(1);
+
+    // The trigger is inert rather than absent — the operator still sees WHAT
+    // is unavailable, and the control carries its own reason for a screen
+    // reader that never heard the live region.
+    const trigger = deleteTriggerOf(tree);
+    expect(trigger.props.disabled).toBe(true);
+    expect(trigger.props.accessibilityLabel).toContain(IN_USE_COPY);
+    act(() => {
+      (trigger.props.onPress as () => void)();
+    });
+    expect(dialogOf(tree).props.visible).toBe(false);
+    expect(deleteMutate).toHaveBeenCalledTimes(1);
+    expect(textOf(tree)).toContain(IN_USE_COPY);
+
+    // The guard is in the FLOW, not only in the disabled control: raising the
+    // request straight at the section changes nothing either.
+    const editor = tree.root.findAllByType(MenuModifierGroupEditor)[0];
+    act(() => {
+      (editor.props.onRequestDelete as (groupId: string) => void)(
+        "group-3571",
+      );
+    });
+    expect(dialogOf(tree).props.visible).toBe(false);
+    expect(deleteMutate).toHaveBeenCalledTimes(1);
+    // The permanent fact is not erasable by the operator's own next tap.
+    expect(textOf(tree)).toContain(IN_USE_COPY);
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  test("a RETRYABLE refusal leaves the trigger live — only the permanent one is inert", () => {
+    groups = [groupWith(3)];
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    refuseTheDelete(tree, new Error("Network request failed"));
+
+    const trigger = deleteTriggerOf(tree);
+    expect(trigger.props.disabled).toBe(false);
+    expect(trigger.props.accessibilityLabel).toBeUndefined();
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  /*
+   * P3-2. `ui/Modal` keeps its node mounted for 200ms after `visible` drops so
+   * the exit animation can play. The group was already null by then, so the
+   * dialog swapped the real name for the literal placeholder mid-dismissal.
+   */
+  test("the dialog keeps the real group name through its close animation", () => {
+    groups = [groupWith(3)];
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    act(() => {
+      (deleteTriggerOf(tree).props.onPress as () => void)();
+    });
+    expect(dialogOf(tree).props.title).toContain("Temperature");
+
+    act(() => {
+      (dialogOf(tree).props.onClose as () => void)();
+    });
+
+    const closing = dialogOf(tree);
+    expect(closing.props.visible).toBe(false);
+    // Still mounted, still rendering — and still about the real group.
+    expect(closing.props.title).toContain("Temperature");
+    expect(closing.props.title).not.toContain("this group");
+    expect(closing.props.description).toContain("Temperature");
+    expect(closing.props.description).not.toContain("This group");
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  /*
+   * P2-2. On iOS the native `Modal` owns the accessibility container, so the
+   * assertive alert the section renders BEHIND the dialog is unreachable while
+   * the dialog is open. For a retryable failure the in-dialog copy is the only
+   * message a screen reader can get to — and it carried no role and no live
+   * region at all.
+   */
+  test("the REAL ConfirmDialog announces the in-dialog failure copy assertively", () => {
+    groups = [groupWith(3)];
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    refuseTheDelete(tree, new Error("Network request failed"));
+
+    const dialogProps = dialogOf(tree).props;
+    expect(dialogProps.visible).toBe(true);
+    expect(dialogProps.errorMessage).toBe(GENERIC_COPY);
+
+    // Hand the REAL dialog exactly the props the section just produced.
+    let dialogTree: TestRenderer | null = null;
+    act(() => {
+      dialogTree = renderer.create(
+        <RealConfirmDialog
+          visible
+          onClose={(): void => undefined}
+          onConfirm={(): void => undefined}
+          title={dialogProps.title as string}
+          description={dialogProps.description as string}
+          variant="simple"
+          destructive
+          confirmLabel="Remove group"
+          cancelLabel="Keep group"
+          errorMessage={dialogProps.errorMessage as string}
+          errorTestID={dialogProps.errorTestID as string}
+        />,
+      );
+    });
+    if (dialogTree === null) throw new Error("the real dialog did not render");
+    const rendered = dialogTree as TestRenderer;
+
+    const alert = rendered.root.findAllByProps({
+      testID: "menu-item-options-delete-dialog-error",
+    })[0];
+    expect(alert).toBeDefined();
+    expect(alert.props.accessibilityRole).toBe("alert");
+    expect(alert.props.accessibilityLiveRegion).toBe("assertive");
+    expect(alert.props["aria-live"]).toBe("assertive");
+    expect(alert.props.children).toBe(GENERIC_COPY);
+
+    act(() => {
+      rendered.unmount();
+    });
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  test("a dialog with no failure renders no alert at all — the change is additive", () => {
+    let dialogTree: TestRenderer | null = null;
+    act(() => {
+      dialogTree = renderer.create(
+        <RealConfirmDialog
+          visible
+          onClose={(): void => undefined}
+          onConfirm={(): void => undefined}
+          title="Remove something?"
+          description="This can't be undone."
+        />,
+      );
+    });
+    if (dialogTree === null) throw new Error("the real dialog did not render");
+    const rendered = dialogTree as TestRenderer;
+
+    const alerts = rendered.root
+      .findAllByType(Text)
+      .filter((node) => node.props.accessibilityRole === "alert");
+    expect(alerts).toHaveLength(0);
+    act(() => {
+      rendered.unmount();
+    });
   });
 });
