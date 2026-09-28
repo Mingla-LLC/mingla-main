@@ -626,9 +626,27 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         websiteSplit && isWideDesktop ? styles.websiteSplitHost : null,
       ]}
     >
-      {websiteSplit && isWideDesktop ? (
-        <View style={styles.websiteDraftPane} testID="ari-website-draft">
-          <Text style={styles.websiteDraftLabel}>Draft</Text>
+      {/*
+        #3583 — "EDIT WITH ARI" NOW SAYS SO ON A PHONE.
+        The website context used to render only when `websiteSplit &&
+        isWideDesktop`, and `isWideDesktop` is false on every native build, so
+        tapping "Edit with Ari" from the Website workspace on iOS or Android
+        landed the owner in a generic Ari conversation with nothing saying it
+        concerned their website and no way back to it. The WIDE-DESKTOP
+        condition still owns the two-COLUMN split (at 390pt a split column
+        gives neither half enough room — #2830's finding stands); what it must
+        not own is whether the owner is told where they are. On a phone the
+        same context renders as a banner above the conversation.
+      */}
+      {websiteSplit ? (
+        <View
+          style={[
+            styles.websiteDraftPane,
+            isWideDesktop ? null : styles.websiteDraftBanner,
+          ]}
+          testID="ari-website-draft"
+        >
+          <Text style={styles.websiteDraftLabel}>Website draft</Text>
           <Text style={styles.websiteDraftBody}>
             Ari edits this website. Open a private preview from the Website
             workspace to see the exact draft, then publish there — publishing
@@ -1056,6 +1074,21 @@ const styles = StyleSheet.create({
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
     justifyContent: "center",
+  },
+  /*
+   * #3583 — the phone variant of the website context. `websiteDraftPane` is a
+   * flex:1.2 COLUMN sized to sit beside the conversation; stacked above it on
+   * a phone that would eat the screen, so this overrides it to a banner that
+   * takes only the height of its own content and leaves the conversation the
+   * room it had.
+   */
+  websiteDraftBanner: {
+    flex: 0,
+    gap: spacing.sm,
+    padding: spacing.md,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    justifyContent: "flex-start",
   },
   websiteDraftLabel: {
     ...typography.micro,

@@ -31,6 +31,7 @@ import {
   clearPublicationOperation,
   createBrandSiteOperationId,
   failedRollbackReviewVersion,
+  isOrphanedPublicationOperation,
   loadProvisionOperation,
   loadPublicationOperation,
   persistProvisionOperation,
@@ -49,6 +50,9 @@ import type {
 import { openWebsiteUrl } from "../../../src/sites/websiteExternalOpen";
 import {
   deriveBusinessWebsiteState,
+  OFFLINE_NOTICE,
+  ORPHANED_PUBLICATION_NOTICE,
+  websiteFailureNotice,
   type StudioReturnResult,
   type WebsiteWorkspacePanel,
   type WorkspaceNotice,
@@ -74,15 +78,28 @@ function safeStudioResult(value: unknown): StudioReturnResult | null {
     : null;
 }
 
+/**
+ * #3583 — EVERY REFUSAL SURFACES.
+ *
+ * This used to return `"offline"` for anything that was not an auth or expiry
+ * code, including every real refusal. The offline effect below then cleared
+ * that notice on the very next render, because `useNetInfoSafe` reports null
+ * forever on every shipped business binary and the device is therefore never
+ * "offline". A failed publish, rollback, preview or editor handoff flashed
+ * "You're offline" for one frame and then showed nothing at all.
+ *
+ * It now returns a notice VALUE built from the failure itself. Core's own
+ * customer-safe sentence is forwarded (it already writes one for every code it
+ * emits) and `websiteFailureNotice` adds the next action. A throw that is not
+ * a typed Website failure still surfaces — as a generic, actionable failure
+ * with a boot-time console record, never as silence (Constitution #3).
+ */
 function noticeFor(error: unknown): WorkspaceNotice {
-  if (!(error instanceof BrandSitesError)) return "offline";
-  if (error.code === "UNAUTHORIZED" || error.code === "FORBIDDEN") {
-    return "unauthorized";
+  if (error instanceof BrandSitesError) {
+    return websiteFailureNotice({ code: error.code, message: error.message });
   }
-  if (error.code.includes("EXPIRED") || error.code.includes("REPLAY")) {
-    return "expired";
-  }
-  return "offline";
+  console.warn("[website] untyped Website failure surfaced to the owner", error);
+  return websiteFailureNotice({ code: null, message: null });
 }
 
 export default function BrandWebsiteRoute(): React.ReactElement {
@@ -98,6 +115,25 @@ export default function BrandWebsiteRoute(): React.ReactElement {
   const network = useNetInfoSafe();
   // I-DESKTOP-GATE-VIA-HOOK: the shell never gates itself; the route does.
   const { isWideDesktop } = useResponsiveLayout();
+  /*
+   * #3583 — THIS IS PERMANENTLY FALSE ON EVERY SHIPPED BUSINESS BINARY.
+   *
+   * `useNetInfoSafe` returns null until a native build ships RNCNetInfo —
+   * #1758's transitional assume-online fallback, whose marker and exit
+   * condition live in `src/lib/netinfoSafe.ts`, which owns them. (Named
+   * without its bracketed marker on purpose: this route only REFERS to that
+   * fallback, and repeating the literal token here would read as a second
+   * declaration of transitional code this file does not own.)
+   *
+   * So `network` is null and neither comparison can be true. That is the
+   * correct degrade — assume online rather than crash route eval — but it
+   * made the old error mapper's "offline" fallback a black hole, because the
+   * effect below clears an offline notice the instant the device is not
+   * offline.
+   *
+   * Nothing routes through here except a REAL network signal now. Every other
+   * failure is a `failed` notice that no network check can clear.
+   */
   const offline =
     network?.isConnected === false || network?.isInternetReachable === false;
   const role = useCurrentBrandRole(safeBrandId || null);
@@ -256,11 +292,14 @@ export default function BrandWebsiteRoute(): React.ReactElement {
 
   useEffect(() => {
     if (!offline) return;
-    setNotice("offline");
+    setNotice(OFFLINE_NOTICE);
   }, [offline]);
 
   useEffect(() => {
-    if (offline || notice !== "offline") return;
+    // #3583 — this clears the OFFLINE notice only. It used to clear whatever
+    // notice happened to be labelled "offline", which the old error mapper
+    // made every refusal.
+    if (offline || notice?.kind !== "offline") return;
     setNotice(null);
     void Promise.all([
       refetchSite(),
@@ -347,20 +386,90 @@ export default function BrandWebsiteRoute(): React.ReactElement {
     [publish, rollback, validation?.checked_pages],
   );
 
+  /*
+   * #3583 — DO NOT CLAIM AN OPERATION CORE HAS NOT ACCEPTED.
+   *
+   * This used to persist the operation FIRST and call Core second. When the
+   * first-publish readiness gate refuses, `brand_site_authorize_operation`
+   * raises and the whole transaction rolls back, so Core writes no receipt and
+   * no publication row — there is no operation. The local pointer was then the
+   * only thing in the world saying one existed, and the workspace followed it
+   * onto "Publishing your website" forever, with a status check that re-sent
+   * the same doomed id and a reset path that wanted a failure receipt Core had
+   * never written. Clearing app storage was the only way out.
+   *
+   * The order is now: ask Core, and record the operation only once Core has
+   * accepted it. A refusal leaves exactly what Core left — nothing — and
+   * surfaces as a real message.
+   *
+   * THE TRADE THIS MAKES, DELIBERATELY: if the app dies inside the request
+   * round-trip after Core accepted, the local pointer is lost. That degrades
+   * to a VISIBLE state, not a stuck one — Core has the receipt, the site's own
+   * authoritative status carries the publish, and the workspace shows
+   * "Verifying publication status" with the durable receipt behind it. A lost
+   * pointer is recoverable; a pointer to an operation that never existed is
+   * not.
+   */
   const startPublication = useCallback(
     async (operation: PersistedPublicationOperation): Promise<void> => {
       setNotice(null);
-      setPublicationOperation(operation);
-      await persistPublicationOperation(operation);
       try {
         await runPublication(operation);
       } catch (error) {
         setNotice(noticeFor(error));
-        await refetchPublicationReceipt();
+        return;
       }
+      setPublicationOperation(operation);
+      await persistPublicationOperation(operation);
+      await refetchPublicationReceipt();
     },
     [refetchPublicationReceipt, runPublication],
   );
+
+  /*
+   * #3583 — RECOVER THE INSTALLS THAT ARE ALREADY STUCK.
+   *
+   * The reorder above stops NEW poisoned pointers. This clears the ones
+   * already on disk: a persisted operation whose receipt answers NOT_FOUND
+   * after React Query's retries names an operation Core has no record of, and
+   * Core writes the receipt in the same transaction that authorizes the
+   * operation, so a missing receipt is proof the operation never existed.
+   *
+   * Dropping it is safe by construction — a local pointer carries no server
+   * authority and cannot publish anything by itself — and it returns the owner
+   * to the panel they were trying to use, with a notice that says plainly that
+   * nothing was published.
+   */
+  const publicationReceiptErrorCode =
+    publicationReceipt.error instanceof BrandSitesError
+      ? publicationReceipt.error.code
+      : null;
+
+  useEffect(() => {
+    if (
+      !isOrphanedPublicationOperation(
+        publicationOperation,
+        publicationReceiptErrorCode,
+      )
+    ) return;
+    const orphan = publicationOperation;
+    let active = true;
+    void clearPublicationOperation(orphan).then(() => {
+      if (!active) return;
+      setPublicationOperation(null);
+      setValidation(null);
+      setValidationFailure(null);
+      setSelectedVersion(null);
+      setPanel(orphan.kind === "rollback" ? "versions" : "publish_review");
+      setNotice({
+        ...ORPHANED_PUBLICATION_NOTICE,
+        reference: orphan.operationId,
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [publicationOperation, publicationReceiptErrorCode]);
 
   const publicationPollingTimedOut =
     publicationOperation !== null &&
@@ -460,7 +569,7 @@ export default function BrandWebsiteRoute(): React.ReactElement {
           provision.isPending || publish.isPending || rollback.isPending
         }
         onRetry={() => {
-          if (notice === "unauthorized") {
+          if (notice?.kind === "unauthorized") {
             router.replace(`/brand/${safeBrandId}` as never);
             return;
           }
