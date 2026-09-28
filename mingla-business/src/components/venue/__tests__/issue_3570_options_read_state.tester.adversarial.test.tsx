@@ -1307,3 +1307,439 @@ describe("#3570 RETEST c2 — only a settled SUCCESSFUL read releases a refusal"
     tree.unmount();
   });
 });
+
+/* ===================================================================== *
+ * RETEST CYCLE 3 APPEND — PR #3615 at head 1d9273dad.
+ *
+ * APPEND-ONLY. Nothing above this line was edited, weakened or skipped.
+ *
+ * Cycle 2's release mechanism stamped a refusal's read version inside the
+ * delete mutation's `onError`, from a ref written during render. That ref
+ * held the newest version the component had RENDERED; React Query writes a
+ * new `dataUpdatedAt` into the cache the instant a read settles, and the
+ * render that observes it comes afterwards. A rejection landing in that gap
+ * was stamped with the superseded version and dropped by the very next
+ * render — a failed delete that painted NOTHING.
+ *
+ * Cycle 3 removes the ref. The version is anchored in `liveRefusals`, on the
+ * first run that sees the refusal, and never re-anchored. The structural
+ * claim is that the render which would drop a refusal cannot be the render
+ * that would first have shown it, because that render is where the anchor is
+ * taken. These tests drive the original race at both failure classes and at
+ * two version steps, and then prove the anchor did not become a new latch.
+ *
+ * ONE TRAP IS DELIBERATELY AVOIDED. Cycle 3 also holds the OPEN dialog's
+ * copy by reading the RAW refusal store instead of the reconciled one. A
+ * race test that asserted on the dialog's `errorMessage` would therefore
+ * pass on the hold alone, with the anchor fix absent — the assertion would
+ * carry no information about the thing it names. Every race test below
+ * asserts on the SECTION alert, which is derived from `liveRefusals` and is
+ * untouched by the hold.
+ * ===================================================================== */
+
+/** Confirms the OPEN dialog, which is the retry route once it is showing. */
+const confirmOpenDialog = (tree: TestRenderer): void => {
+  const dialog = nodesWithTestId(tree, "menu-item-options-delete-dialog")[0];
+  act(() => {
+    (dialog.props.onConfirm as () => void)();
+  });
+};
+
+/*
+ * This suite prop-mocks `ConfirmDialog`, so `cancelTestID` is a PROP on the
+ * mock and not a rendered control. Dismissal goes through the dialog's own
+ * `onClose`, which is the same handler the real Cancel button invokes.
+ */
+const closeOpenDialog = (tree: TestRenderer): void => {
+  const dialog = nodesWithTestId(tree, "menu-item-options-delete-dialog")[0];
+  act(() => {
+    (dialog.props.onClose as () => void)();
+  });
+};
+
+const dialogErrorMessage = (tree: TestRenderer): unknown =>
+  nodesWithTestId(tree, "menu-item-options-delete-dialog")[0].props
+    .errorMessage;
+
+/** A refusal a retry can genuinely clear — keeps the confirmation open. */
+const retryableRefusal = (): Error => new Error("Network request failed");
+
+describe("#3570 RETEST c3 — a refusal cannot be born already superseded", () => {
+  test("a version that advanced BEFORE the rejection no longer swallows a PERMANENT refusal", () => {
+    settledReadAt([groupFixture("g1")], 100);
+    const tree = render();
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+
+    // The read settles in the CACHE. No render has observed it yet — this is
+    // the exact gap cycle 2 stamped into.
+    settledReadAt([groupFixture("g1")], 200);
+    rejectLatestDelete(orderHistoryRefusal());
+
+    // The render that first sees this refusal is the render that anchors it,
+    // so it cannot also be the render that drops it.
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(screenText(tree)).toContain("can't be removed");
+    expect(removalIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+
+  test("nor a RETRYABLE one — the SECTION alert renders, not merely the dialog's held copy", () => {
+    settledReadAt([groupFixture("g1")], 100);
+    const tree = render();
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+
+    settledReadAt([groupFixture("g1")], 200);
+    rejectLatestDelete(retryableRefusal());
+
+    /*
+     * `menu-item-options-error` is fed by `liveRefusals`. The cycle-3 dialog
+     * hold reads the RAW store and cannot satisfy this assertion, so this
+     * measures the anchor and nothing else.
+     */
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(screenText(tree)).toContain(DELETE_GENERIC_COPY);
+    tree.unmount();
+  });
+
+  test("two version steps before a single render still leave the refusal visible", () => {
+    settledReadAt([groupFixture("g1")], 100);
+    const tree = render();
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+
+    // Two successive reads settle while the delete is in flight.
+    settledReadAt([groupFixture("g1")], 200);
+    settledReadAt([groupFixture("g1")], 300);
+    rejectLatestDelete(orderHistoryRefusal());
+
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(removalIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+
+  test("the anchor is not a new latch — the next version AFTER it was shown still releases", () => {
+    settledReadAt([groupFixture("g1")], 100);
+    const tree = render();
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+    settledReadAt([groupFixture("g1")], 200);
+    rejectLatestDelete(orderHistoryRefusal());
+    expect(deleteAlertCount(tree)).toBe(1);
+
+    // Anchored at 200 because that is the list it was first shown against.
+    // The next replacement supersedes it exactly as the semantic says.
+    settledReadAt([groupFixture("g1")], 300);
+    rerenderSection(tree);
+
+    expect(deleteAlertCount(tree)).toBe(0);
+    expect(removalIsLive(tree)).toBe(true);
+    tree.unmount();
+  });
+
+  test("a refusal raised with NO version movement is anchored to the list it was shown against", () => {
+    settledReadAt([groupFixture("g1")], 100);
+    const tree = render();
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(orderHistoryRefusal());
+
+    expect(deleteAlertCount(tree)).toBe(1);
+    rerenderSection(tree);
+    rerenderSection(tree);
+    // Re-rendering at the same version must not re-anchor OR release.
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(removalIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+});
+
+describe("#3570 RETEST c3 — the anchor map is rebuilt, so no anchor outlives its refusal", () => {
+  test("a FORGOTTEN refusal leaves no anchor for the next refusal on that group to inherit", () => {
+    settledReadAt([groupFixture("g1")], 100);
+    const tree = render();
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(retryableRefusal());
+    expect(deleteAlertCount(tree)).toBe(1);
+
+    // Dismiss the ask and leave the editor: a retryable refusal is forgotten,
+    // and its anchor must go with it.
+    closeOpenDialog(tree);
+    act(() => {
+      (
+        nodesWithTestId(tree, "modifier-group-cancel")[0].props
+          .onPress as () => void
+      )();
+    });
+    expect(deleteAlertCount(tree)).toBe(0);
+
+    // The list is replaced while nothing is refused.
+    settledReadAt([groupFixture("g1")], 200);
+    rerenderSection(tree);
+
+    // Refuse the SAME group again. A persisted anchor of 100 would make this
+    // refusal born superseded against version 200 and it would never paint.
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(orderHistoryRefusal());
+
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(removalIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+
+  test("a refusal raised on a group that ALREADY had one is anchored afresh", () => {
+    settledReadAt([groupFixture("g1")], 100);
+    const tree = render();
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(retryableRefusal());
+    expect(deleteAlertCount(tree)).toBe(1);
+
+    // Retry from the open confirmation; the cache moves under the retry.
+    confirmOpenDialog(tree);
+    settledReadAt([groupFixture("g1")], 200);
+    rejectLatestDelete(orderHistoryRefusal());
+
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(screenText(tree)).toContain("can't be removed");
+    expect(removalIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+
+  test("a released refusal leaves no anchor either — the same group can be refused again", () => {
+    settledReadAt([groupFixture("g1")], 100);
+    const tree = render();
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(orderHistoryRefusal());
+
+    settledReadAt([groupFixture("g1")], 200);
+    rerenderSection(tree);
+    expect(deleteAlertCount(tree)).toBe(0);
+    expect(removalIsLive(tree)).toBe(true);
+
+    // The release re-armed the control; asking again must produce a refusal
+    // that is visible, not one anchored to the version it was released at.
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(orderHistoryRefusal());
+
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(removalIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+
+  test("two groups refused either side of a version change each stand on their own anchor", () => {
+    const both = [groupFixture("g1"), groupFixture("g2")];
+    settledReadAt(both, 100);
+    const tree = render();
+
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(orderHistoryRefusal());
+    expect(deleteAlertCount(tree)).toBe(1);
+
+    // A new list arrives. g1's refusal was anchored at 100 and is superseded.
+    settledReadAt(both, 200);
+    rerenderSection(tree);
+    expect(deleteAlertCount(tree)).toBe(0);
+
+    // g2 is refused against the NEW list and must stand on its own anchor.
+    act(() => {
+      (
+        nodesWithTestId(tree, "modifier-group-cancel")[0].props
+          .onPress as () => void
+      )();
+    });
+    openGroupEditor(tree, "g2");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(orderHistoryRefusal());
+
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(removalIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+});
+
+describe("#3570 RETEST c3 — the open confirmation holds its own copy (P3)", () => {
+  test("a newer list no longer blanks the OPEN confirmation's stated reason", () => {
+    settledReadAt([groupFixture("g1")], 100);
+    const tree = render();
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(retryableRefusal());
+    expect(dialogErrorMessage(tree)).toBe(DELETE_GENERIC_COPY);
+
+    settledReadAt([groupFixture("g1")], 200);
+    rerenderSection(tree);
+
+    // The dialog is one attempt the operator is still inside. Its assertive
+    // copy must not be pulled out from under a screen reader mid-sentence.
+    expect(dialogErrorMessage(tree)).toBe(DELETE_GENERIC_COPY);
+    // The SECTION is a different question and is correctly reconciled away.
+    expect(deleteAlertCount(tree)).toBe(0);
+    tree.unmount();
+  });
+
+  test("closing the confirmation clears the held copy — the hold is scoped to the dialog", () => {
+    settledReadAt([groupFixture("g1")], 100);
+    const tree = render();
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(retryableRefusal());
+    expect(dialogErrorMessage(tree)).toBe(DELETE_GENERIC_COPY);
+
+    closeOpenDialog(tree);
+
+    expect(dialogErrorMessage(tree)).toBeNull();
+    tree.unmount();
+  });
+
+  test("the held copy is keyed to the group being asked about, never another group's", () => {
+    const both = [groupFixture("g1"), groupFixture("g2")];
+    settledReadAt(both, 100);
+    const tree = render();
+
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(retryableRefusal());
+    closeOpenDialog(tree);
+    act(() => {
+      (
+        nodesWithTestId(tree, "modifier-group-cancel")[0].props
+          .onPress as () => void
+      )();
+    });
+
+    // g2's fresh ask must not inherit g1's copy.
+    openGroupEditor(tree, "g2");
+    const trigger = nodesWithTestId(tree, "modifier-group-delete")[0];
+    act(() => {
+      (trigger.props.onPress as (event: unknown) => void)({});
+    });
+    expect(dialogErrorMessage(tree)).toBeNull();
+    tree.unmount();
+  });
+});
+
+/* ---------------------------------------------------------------------
+ * The rebuild's own falsifier.
+ *
+ * The single-group "forgotten refusal" test above does NOT measure the
+ * rebuild: forgetting the only refusal empties the store, and the
+ * `deleteRefusals.size === 0` early return clears the anchor map on that
+ * path regardless of whether it is rebuilt or persisted. A persistent map
+ * passes it, so on its own it is a check that carries no information about
+ * the thing it names.
+ *
+ * The rebuild is only observable while ANOTHER refusal keeps the store
+ * non-empty, so the early return never fires and a forgotten group's
+ * anchor would survive to be inherited. That is this test.
+ * ------------------------------------------------------------------- */
+
+describe("#3570 RETEST c3 — the rebuild, measured where it is actually observable", () => {
+  test("a forgotten group's anchor cannot be inherited while another refusal keeps the store alive", () => {
+    const both = [groupFixture("g1"), groupFixture("g2")];
+    settledReadAt(both, 100);
+    const tree = render();
+
+    // g1 is refused permanently and STAYS in the store for the whole test,
+    // so `deleteRefusals.size` is never 0 and the early return never runs.
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(orderHistoryRefusal());
+    act(() => {
+      (
+        nodesWithTestId(tree, "modifier-group-cancel")[0].props
+          .onPress as () => void
+      )();
+    });
+
+    // g2 is refused retryably, then forgotten by leaving its editor.
+    openGroupEditor(tree, "g2");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(retryableRefusal());
+    closeOpenDialog(tree);
+    act(() => {
+      (
+        nodesWithTestId(tree, "modifier-group-cancel")[0].props
+          .onPress as () => void
+      )();
+    });
+
+    // A new list arrives. g1's refusal is superseded but its ENTRY remains
+    // in the store, so the map is still rebuilt rather than reset.
+    settledReadAt(both, 200);
+    rerenderSection(tree);
+
+    // Refuse g2 again against the NEW list. A persisted anchor of 100 would
+    // make this refusal born superseded and it would never paint.
+    openGroupEditor(tree, "g2");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(orderHistoryRefusal());
+
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(screenText(tree)).toContain("can't be removed");
+    expect(removalIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+});
+
+describe("#3570 RETEST c3 — the two remaining ways the gap can end", () => {
+  test("a read that THREW inside the gap still lets the refusal paint", () => {
+    settledReadAt([groupFixture("g1")], 100);
+    const tree = render();
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+
+    // The in-flight read fails outright while the delete is in flight, so
+    // there is no list to reconcile against when the rejection lands.
+    const threw: VersionedQuery = {
+      status: "error",
+      fetchStatus: "idle",
+      isLoading: false,
+      isError: true,
+      isFetching: false,
+      error: transientError(),
+      data: [groupFixture("g1")],
+    };
+    threw.dataUpdatedAt = 100;
+    query = threw;
+    rejectLatestDelete(orderHistoryRefusal());
+
+    // `hasServerList` short-circuits the drop, and a failed fetch never
+    // advances the version anyway — belt and braces, both hold.
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(hostsWithTestId(tree, "menu-item-options-read-error")).toHaveLength(
+      1,
+    );
+    tree.unmount();
+  });
+
+  test("if the GROUP itself vanished inside the gap, saying nothing is correct", () => {
+    settledReadAt([groupFixture("g1"), groupFixture("g2")], 100);
+    const tree = render();
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+
+    // The list that landed during the delete no longer reports g1 at all.
+    settledReadAt([groupFixture("g2")], 200);
+    rejectLatestDelete(orderHistoryRefusal());
+
+    /*
+     * This is the ONE shape where a rejected delete paints no alert, and it
+     * is right: the group is not on screen, so "this group can't be removed"
+     * would be a statement about something the owner can no longer see —
+     * which is the cycle-1 defect this same reconciliation removed. The
+     * group's disappearance IS the feedback. Recorded explicitly so a later
+     * reader does not mistake it for the swallowed-refusal defect.
+     */
+    expect(deleteAlertCount(tree)).toBe(0);
+    expect(hostsWithTestId(tree, "menu-item-option-group-g1")).toHaveLength(0);
+    expect(hostsWithTestId(tree, "menu-item-options-add")).toHaveLength(1);
+    expect(screenText(tree)).not.toContain("can't be removed");
+    tree.unmount();
+  });
+});
