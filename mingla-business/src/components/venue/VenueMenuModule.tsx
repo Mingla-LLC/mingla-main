@@ -25,8 +25,17 @@
  * (I-PROPOSED-1186C-MENU-NOT-EXPERIENCE-STOPS).
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
+  AccessibilityInfo,
+  AppState,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -35,6 +44,8 @@ import {
 } from "react-native";
 
 import {
+  accent,
+  androidOpaque,
   glass,
   radius,
   semantic,
@@ -61,7 +72,16 @@ import {
   useUpsertMenu,
   useUpsertMenuItem,
 } from "../../hooks/useMenus";
+import {
+  createAdjacentMenuItemReorderIntent,
+  menuItemRelationshipIsApplied,
+  rebuildMenuItemReorderIntent,
+  type MenuItemReorderError,
+  type MenuItemReorderIntent,
+} from "../../hooks/menuItemReorder";
+import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import type { Menu, MenuItem } from "../../services/menusService";
+import { randomId } from "../../utils/randomId";
 import { MenuCategorySheet } from "./MenuCategorySheet";
 import type { MenuCategorySheetSaveInput } from "./MenuCategorySheet";
 import { MenuItemSheet } from "./MenuItemSheet";
@@ -76,6 +96,22 @@ import { VenueHubEmptyState } from "./VenueHubEmptyState";
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 const STACKED_ITEM_ROW_WIDTH = 720;
 const STACKED_ITEM_ROW_FONT_SCALE = 1.3;
+const REORDER_SUCCESS_MS = 2_500;
+
+interface MenuItemReorderFeedback {
+  operationId: string;
+  itemId: string;
+  itemName: string;
+  status: "pending" | "success" | "error";
+  message: string;
+  intent: MenuItemReorderIntent;
+  retryable: boolean;
+}
+
+type ItemReorderArrowDirection = "up" | "down";
+type FocusablePressable = React.ElementRef<typeof Pressable> & {
+  focus?: () => void;
+};
 
 /**
  * Issue #1789 — both #1767 children load behind a LAZY boundary, the
@@ -148,6 +184,7 @@ export function VenueMenuModule({
   testID,
 }: VenueMenuModuleProps): React.ReactElement {
   const visibilityCopy = MENU_VISIBILITY_COPY[publicVisibility];
+  const network = useNetInfoSafe();
   const { width, fontScale } = useWindowDimensions();
   const stackItemRows =
     width <= 0 ||
@@ -166,6 +203,7 @@ export function VenueMenuModule({
   const brandHasCurrency = currencyCodeOrNull(brand?.defaultCurrency) !== null;
 
   const menusQuery = useBrandMenus(brandId, venueId);
+  const refetchMenus = menusQuery.refetch;
   const menus = useMemo(() => menusQuery.data ?? [], [menusQuery.data]);
 
   const upsertMenu = useUpsertMenu(brandId, venueId);
@@ -190,6 +228,105 @@ export function VenueMenuModule({
   // #1789 — the row currently being 86'd, so one tap cannot fire twice.
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
   const [spotsSheetOpen, setSpotsSheetOpen] = useState<boolean>(false);
+  const [itemReorderFeedback, setItemReorderFeedback] =
+    useState<MenuItemReorderFeedback | null>(null);
+  const activeItemReorderRef = useRef<string | null>(null);
+  const reorderSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const reorderFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const itemReorderArrowRefs = useRef(
+    new Map<
+      string,
+      Partial<Record<ItemReorderArrowDirection, FocusablePressable>>
+    >(),
+  );
+  const appStateRef = useRef(AppState.currentState);
+  const deferredItemReorderSuccessRef = useRef<{
+    intent: MenuItemReorderIntent;
+    itemName: string;
+  } | null>(null);
+  const lastItemReorderSuccessRef = useRef<MenuItemReorderIntent | null>(null);
+  const observedSuccessOperationRef = useRef<string | null>(null);
+  const announcedReconciliationRef = useRef(new Set<string>());
+  const itemReorderAffirmedOffline =
+    network?.isConnected === false || network?.isInternetReachable === false;
+  const itemReorderAffirmedOfflineRef = useRef(itemReorderAffirmedOffline);
+  itemReorderAffirmedOfflineRef.current = itemReorderAffirmedOffline;
+
+  const clearReorderSuccessTimer = useCallback((): void => {
+    if (reorderSuccessTimerRef.current !== null) {
+      clearTimeout(reorderSuccessTimerRef.current);
+      reorderSuccessTimerRef.current = null;
+    }
+  }, []);
+
+  const clearReorderFocusTimer = useCallback((): void => {
+    if (reorderFocusTimerRef.current !== null) {
+      clearTimeout(reorderFocusTimerRef.current);
+      reorderFocusTimerRef.current = null;
+    }
+  }, []);
+
+  const rememberItemReorderArrow = useCallback(
+    (
+      itemId: string,
+      direction: ItemReorderArrowDirection,
+      control: FocusablePressable | null,
+    ): void => {
+      const remembered = itemReorderArrowRefs.current.get(itemId) ?? {};
+      if (control === null) {
+        delete remembered[direction];
+        if (remembered.up === undefined && remembered.down === undefined) {
+          itemReorderArrowRefs.current.delete(itemId);
+        }
+        return;
+      }
+      remembered[direction] = control;
+      itemReorderArrowRefs.current.set(itemId, remembered);
+    },
+    [],
+  );
+
+  const focusItemReorderArrow = useCallback(
+    (itemId: string, direction: ItemReorderArrowDirection): void => {
+      if (Platform.OS !== "web") return;
+      clearReorderFocusTimer();
+      reorderFocusTimerRef.current = setTimeout(() => {
+        itemReorderArrowRefs.current.get(itemId)?.[direction]?.focus?.();
+        reorderFocusTimerRef.current = null;
+      }, 0);
+    },
+    [clearReorderFocusTimer],
+  );
+
+  useEffect(() => {
+    const arrowRefs = itemReorderArrowRefs.current;
+    activeItemReorderRef.current = null;
+    deferredItemReorderSuccessRef.current = null;
+    lastItemReorderSuccessRef.current = null;
+    observedSuccessOperationRef.current = null;
+    announcedReconciliationRef.current.clear();
+    clearReorderSuccessTimer();
+    clearReorderFocusTimer();
+    setItemReorderFeedback(null);
+    return () => {
+      activeItemReorderRef.current = null;
+      deferredItemReorderSuccessRef.current = null;
+      lastItemReorderSuccessRef.current = null;
+      observedSuccessOperationRef.current = null;
+      clearReorderSuccessTimer();
+      clearReorderFocusTimer();
+      arrowRefs.clear();
+    };
+  }, [
+    brandId,
+    clearReorderFocusTimer,
+    clearReorderSuccessTimer,
+    venueId,
+  ]);
 
   // ---- category handlers ----
   const openAddCategory = useCallback((): void => {
@@ -390,27 +527,391 @@ export function VenueMenuModule({
     [menus, reorderMenus],
   );
 
+  const completeItemReorderSuccess = useCallback(
+    (
+      intent: MenuItemReorderIntent,
+      itemName: string,
+      authoritativeMenus?: readonly Menu[],
+    ): void => {
+      if (activeItemReorderRef.current !== intent.operationId) return;
+      if (appStateRef.current !== "active") {
+        deferredItemReorderSuccessRef.current = { intent, itemName };
+        return;
+      }
+
+      const authoritativeMenu = authoritativeMenus?.find(
+        (menu) => menu.id === intent.menuId,
+      );
+      const authoritativePosition = authoritativeMenu?.items.findIndex(
+        (item) => item.id === intent.movedItemId,
+      );
+      const desiredPosition = intent.orderedItemIds.indexOf(intent.movedItemId);
+      const position =
+        authoritativePosition !== undefined && authoritativePosition >= 0
+          ? authoritativePosition + 1
+          : desiredPosition + 1;
+      const total = authoritativeMenu?.items.length ?? intent.orderedItemIds.length;
+      const announcement = `${itemName} moved to position ${position} of ${total}. Order saved.`;
+
+      activeItemReorderRef.current = null;
+      deferredItemReorderSuccessRef.current = null;
+      lastItemReorderSuccessRef.current = intent;
+      clearReorderSuccessTimer();
+      setItemReorderFeedback({
+        operationId: intent.operationId,
+        itemId: intent.movedItemId,
+        itemName,
+        status: "success",
+        message: "Order saved.",
+        intent,
+        retryable: false,
+      });
+      AccessibilityInfo.announceForAccessibility(announcement);
+      reorderSuccessTimerRef.current = setTimeout(() => {
+        setItemReorderFeedback((current) =>
+          current?.operationId === intent.operationId &&
+          current.status === "success"
+            ? null
+            : current,
+        );
+        reorderSuccessTimerRef.current = null;
+      }, REORDER_SUCCESS_MS);
+    },
+    [clearReorderSuccessTimer],
+  );
+
+  const runItemReorder = useCallback(
+    (
+      intent: MenuItemReorderIntent,
+      itemName: string,
+      operationAlreadyClaimed = false,
+    ): boolean => {
+      if (
+        (operationAlreadyClaimed &&
+          activeItemReorderRef.current !== intent.operationId) ||
+        (!operationAlreadyClaimed && activeItemReorderRef.current !== null)
+      ) {
+        return false;
+      }
+      clearReorderSuccessTimer();
+      lastItemReorderSuccessRef.current = null;
+      observedSuccessOperationRef.current = null;
+      activeItemReorderRef.current = intent.operationId;
+      setItemReorderFeedback({
+        operationId: intent.operationId,
+        itemId: intent.movedItemId,
+        itemName,
+        status: "pending",
+        message: "Saving new position…",
+        intent,
+        retryable: false,
+      });
+      reorderItems.mutate(intent, {
+        onSuccess: () => completeItemReorderSuccess(intent, itemName),
+        onError: (error: MenuItemReorderError) => {
+          if (activeItemReorderRef.current !== intent.operationId) return;
+          if (error.resolvedAsSuccess) {
+            completeItemReorderSuccess(
+              intent,
+              itemName,
+              error.authoritativeMenus,
+            );
+            return;
+          }
+
+          let message =
+            "Couldn’t save the new order. The previous order is back.";
+          if (error.category === "permission") {
+            message =
+              "You can’t reorder this menu with this account. The previous order is back.";
+          } else if (error.category === "conflict") {
+            message = error.retryable
+              ? "This menu changed elsewhere. We loaded the latest order. Try your move again."
+              : "This menu changed elsewhere. We loaded the latest order. Review the list and choose a new move.";
+          } else if (error.category === "uncertain") {
+            message = itemReorderAffirmedOfflineRef.current
+              ? "You’re offline. The previous order is back. Reconnect, then try again."
+              : "We couldn’t confirm the new order. The previous order is back.";
+          }
+          activeItemReorderRef.current = null;
+          deferredItemReorderSuccessRef.current = null;
+          setItemReorderFeedback({
+            operationId: intent.operationId,
+            itemId: intent.movedItemId,
+            itemName,
+            status: "error",
+            message,
+            intent,
+            retryable: error.retryable,
+          });
+          AccessibilityInfo.announceForAccessibility(message);
+          focusItemReorderArrow(intent.movedItemId, intent.direction);
+        },
+      });
+      return true;
+    },
+    [
+      clearReorderSuccessTimer,
+      completeItemReorderSuccess,
+      focusItemReorderArrow,
+      reorderItems,
+    ],
+  );
+
   const moveItem = useCallback(
     (menu: Menu, index: number, dir: -1 | 1): void => {
-      const target = index + dir;
-      if (target < 0 || target >= menu.items.length) return;
-      const a = menu.items[index];
-      const b = menu.items[target];
-      if (a === undefined || b === undefined) return;
+      if (
+        brandId === null ||
+        venueId === null ||
+        activeItemReorderRef.current !== null
+      ) {
+        return;
+      }
+      const moved = menu.items[index];
+      if (moved === undefined) return;
+      const intent = createAdjacentMenuItemReorderIntent({
+        operationId: randomId(),
+        brandId,
+        venueId,
+        menu,
+        movedIndex: index,
+        direction: dir === -1 ? "up" : "down",
+      });
+      if (intent === null) return;
       setSaveError(false);
-      reorderItems.mutate(
-        {
-          menuId: menu.id,
-          patches: [
-            { id: a.id, sortOrder: b.sortOrder },
-            { id: b.id, sortOrder: a.sortOrder },
-          ],
-        },
-        { onError: () => setSaveError(true) },
-      );
+      if (!runItemReorder(intent, moved.name)) return;
+      const desiredIndex = index + dir;
+      if (desiredIndex === 0 && dir === -1) {
+        focusItemReorderArrow(moved.id, "down");
+      } else if (desiredIndex === menu.items.length - 1 && dir === 1) {
+        focusItemReorderArrow(moved.id, "up");
+      }
     },
-    [reorderItems],
+    [brandId, focusItemReorderArrow, runItemReorder, venueId],
   );
+
+  const retryItemReorder = useCallback(async (): Promise<void> => {
+    const feedback = itemReorderFeedback;
+    if (
+      feedback?.status !== "error" ||
+      itemReorderAffirmedOffline ||
+      activeItemReorderRef.current !== null
+    ) {
+      return;
+    }
+
+    const operationId = randomId();
+    const confirmingIntent = { ...feedback.intent, operationId };
+    activeItemReorderRef.current = operationId;
+    setItemReorderFeedback({
+      ...feedback,
+      operationId,
+      status: "pending",
+      message: "Saving new position…",
+      intent: confirmingIntent,
+      retryable: false,
+    });
+
+    let latestMenus: readonly Menu[] | undefined;
+    try {
+      const result = await refetchMenus();
+      if (result.isError) throw result.error;
+      latestMenus = result.data;
+    } catch {
+      if (activeItemReorderRef.current !== operationId) return;
+      const message =
+        "We couldn’t confirm the new order. The previous order is back.";
+      activeItemReorderRef.current = null;
+      setItemReorderFeedback({
+        ...feedback,
+        operationId,
+        status: "error",
+        message,
+        intent: confirmingIntent,
+        retryable: true,
+      });
+      AccessibilityInfo.announceForAccessibility(message);
+      return;
+    }
+    if (activeItemReorderRef.current !== operationId) return;
+
+    if (menuItemRelationshipIsApplied(latestMenus, feedback.intent)) {
+      completeItemReorderSuccess(
+        confirmingIntent,
+        feedback.itemName,
+        latestMenus,
+      );
+      return;
+    }
+
+    const retryIntent = rebuildMenuItemReorderIntent(
+      latestMenus,
+      feedback.intent,
+      operationId,
+    );
+    if (retryIntent === null) {
+      const message =
+        "This menu changed elsewhere. We loaded the latest order. Review the list and choose a new move.";
+      activeItemReorderRef.current = null;
+      setItemReorderFeedback({
+        ...feedback,
+        operationId,
+        message,
+        intent: confirmingIntent,
+        retryable: false,
+      });
+      AccessibilityInfo.announceForAccessibility(message);
+      return;
+    }
+    runItemReorder(retryIntent, feedback.itemName, true);
+  }, [
+    completeItemReorderSuccess,
+    itemReorderAffirmedOffline,
+    itemReorderFeedback,
+    refetchMenus,
+    runItemReorder,
+  ]);
+
+  const reconcileDeferredItemReorderSuccess = useCallback(async (): Promise<void> => {
+    const deferred = deferredItemReorderSuccessRef.current;
+    if (deferred === null) return;
+    let latestMenus: readonly Menu[] | undefined;
+    try {
+      const result = await refetchMenus();
+      if (result.isError) throw result.error;
+      latestMenus = result.data;
+    } catch {
+      if (activeItemReorderRef.current !== deferred.intent.operationId) return;
+      const message =
+        "We couldn’t confirm the new order. The previous order is back.";
+      activeItemReorderRef.current = null;
+      deferredItemReorderSuccessRef.current = null;
+      setItemReorderFeedback({
+        operationId: deferred.intent.operationId,
+        itemId: deferred.intent.movedItemId,
+        itemName: deferred.itemName,
+        status: "error",
+        message,
+        intent: deferred.intent,
+        retryable: true,
+      });
+      AccessibilityInfo.announceForAccessibility(message);
+      return;
+    }
+    if (activeItemReorderRef.current !== deferred.intent.operationId) return;
+    if (menuItemRelationshipIsApplied(latestMenus, deferred.intent)) {
+      completeItemReorderSuccess(
+        deferred.intent,
+        deferred.itemName,
+        latestMenus,
+      );
+      return;
+    }
+    activeItemReorderRef.current = null;
+    deferredItemReorderSuccessRef.current = null;
+    setItemReorderFeedback(null);
+    AccessibilityInfo.announceForAccessibility(
+      "Menu order changed elsewhere. Showing the latest order.",
+    );
+  }, [completeItemReorderSuccess, refetchMenus]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      appStateRef.current = nextState;
+      if (nextState === "active") {
+        void reconcileDeferredItemReorderSuccess();
+      }
+    });
+    return () => subscription.remove();
+  }, [reconcileDeferredItemReorderSuccess]);
+
+  useEffect(() => {
+    const settled = lastItemReorderSuccessRef.current;
+    if (
+      settled === null ||
+      announcedReconciliationRef.current.has(settled.operationId)
+    ) {
+      return;
+    }
+    const menu = menus.find(
+      (candidate) =>
+        candidate.id === settled.menuId &&
+        candidate.brandId === settled.brandId &&
+        candidate.venueId === settled.venueId,
+    );
+    if (
+      menu !== undefined &&
+      menu.items.map((item) => item.id).join(",") ===
+        settled.orderedItemIds.join(",")
+    ) {
+      observedSuccessOperationRef.current = settled.operationId;
+      return;
+    }
+    if (observedSuccessOperationRef.current !== settled.operationId) return;
+    announcedReconciliationRef.current.add(settled.operationId);
+    AccessibilityInfo.announceForAccessibility(
+      "Menu order changed elsewhere. Showing the latest order.",
+    );
+  }, [itemReorderFeedback?.operationId, itemReorderFeedback?.status, menus]);
+
+  const itemReorderPending = itemReorderFeedback?.status === "pending";
+  const itemReorderUnavailable = (menu: Menu): boolean =>
+    venueId === null || venueId === undefined || menu.venueId !== venueId;
+  const renderItemReorderFeedback = (ownerId: string): React.ReactElement | null => {
+    if (itemReorderFeedback === null) return null;
+    return (
+      <View
+        key={`${itemReorderFeedback.operationId}:${itemReorderFeedback.message}`}
+        style={[
+          styles.reorderFeedback,
+          itemReorderFeedback.status === "error" &&
+            styles.reorderFeedbackError,
+          itemReorderFeedback.status === "error" &&
+            stackItemRows &&
+            styles.reorderFeedbackStacked,
+          itemReorderFeedback.status === "error" &&
+            Platform.OS === "android" &&
+            styles.reorderFeedbackErrorAndroid,
+        ]}
+        accessibilityLiveRegion={
+          itemReorderFeedback.status === "pending" ? "polite" : "none"
+        }
+        testID={`venue-menu-item-reorder-feedback-${ownerId}`}
+      >
+        <Text
+          style={[
+            styles.reorderFeedbackText,
+            itemReorderFeedback.status === "pending" &&
+              styles.reorderFeedbackPendingText,
+            itemReorderFeedback.status === "success" &&
+              styles.reorderFeedbackSuccessText,
+            itemReorderFeedback.status === "error" &&
+              styles.reorderFeedbackErrorText,
+          ]}
+        >
+          {itemReorderFeedback.message}
+        </Text>
+        {itemReorderFeedback.status === "error" &&
+        itemReorderFeedback.retryable ? (
+          <Pressable
+            onPress={() => void retryItemReorder()}
+            disabled={itemReorderAffirmedOffline}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: itemReorderAffirmedOffline }}
+            accessibilityLabel={`Try moving ${itemReorderFeedback.itemName} ${itemReorderFeedback.intent.direction} again`}
+            style={({ pressed }) => [
+              styles.reorderRetry,
+              itemReorderAffirmedOffline && styles.iconDisabled,
+              pressed && !itemReorderAffirmedOffline && styles.pressed,
+            ]}
+            testID={`venue-menu-item-reorder-retry-${ownerId}`}
+          >
+            <Text style={styles.reorderRetryText}>Try again</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  };
 
   // ---- render: loading ----
   if (menusQuery.isLoading) {
@@ -574,9 +1075,17 @@ export function VenueMenuModule({
 
           <View style={styles.divider} />
 
-          {menu.items.map((item, itemIndex) => (
-            <View
-              key={item.id}
+          <View
+            accessibilityState={{
+              busy:
+                itemReorderPending &&
+                itemReorderFeedback.intent.menuId === menu.id,
+            }}
+            testID={`venue-menu-item-list-${menu.id}`}
+          >
+            {menu.items.map((item, itemIndex) => (
+              <React.Fragment key={item.id}>
+                <View
               style={[
                 styles.itemRow,
                 stackItemRows && styles.itemRowStacked,
@@ -682,17 +1191,49 @@ export function VenueMenuModule({
                 {canMutate ? (
                   <View style={styles.actionCluster}>
                     <ArrowControl
-                      label={`Move ${item.name} up`}
+                      label={`Move ${item.name} up, position ${itemIndex + 1} of ${menu.items.length}`}
                       glyph="▲"
-                      disabled={itemIndex === 0}
+                      position={`Position ${itemIndex + 1} of ${menu.items.length}`}
+                      hint={
+                        itemReorderUnavailable(menu)
+                          ? "Save this category to this venue before changing item order."
+                          : itemIndex > 0
+                            ? `Moves before ${menu.items[itemIndex - 1]?.name}`
+                            : "This item is already first in the menu."
+                      }
+                      busy={itemReorderPending}
+                      disabled={
+                        itemReorderUnavailable(menu) ||
+                        itemIndex === 0 ||
+                        itemReorderPending
+                      }
                       onPress={() => moveItem(menu, itemIndex, -1)}
+                      controlRef={(control) =>
+                        rememberItemReorderArrow(item.id, "up", control)
+                      }
                       testID={`venue-menu-item-up-${item.id}`}
                     />
                     <ArrowControl
-                      label={`Move ${item.name} down`}
+                      label={`Move ${item.name} down, position ${itemIndex + 1} of ${menu.items.length}`}
                       glyph="▼"
-                      disabled={itemIndex === menu.items.length - 1}
+                      position={`Position ${itemIndex + 1} of ${menu.items.length}`}
+                      hint={
+                        itemReorderUnavailable(menu)
+                          ? "Save this category to this venue before changing item order."
+                          : itemIndex < menu.items.length - 1
+                            ? `Moves after ${menu.items[itemIndex + 1]?.name}`
+                            : "This item is already last in the menu."
+                      }
+                      busy={itemReorderPending}
+                      disabled={
+                        itemReorderUnavailable(menu) ||
+                        itemIndex === menu.items.length - 1 ||
+                        itemReorderPending
+                      }
                       onPress={() => moveItem(menu, itemIndex, 1)}
+                      controlRef={(control) =>
+                        rememberItemReorderArrow(item.id, "down", control)
+                      }
                       testID={`venue-menu-item-down-${item.id}`}
                     />
                     <TextControl
@@ -704,8 +1245,27 @@ export function VenueMenuModule({
                   </View>
                 ) : null}
               </View>
-            </View>
-          ))}
+                </View>
+                {itemReorderFeedback?.itemId === item.id
+                  ? renderItemReorderFeedback(item.id)
+                  : null}
+              </React.Fragment>
+            ))}
+          </View>
+
+          {itemReorderUnavailable(menu) && canMutate ? (
+            <Text
+              style={styles.unassignedReorderNotice}
+              testID={`venue-menu-item-reorder-unassigned-${menu.id}`}
+            >
+              Save this category to this venue before changing item order.
+            </Text>
+          ) : null}
+
+          {itemReorderFeedback?.intent.menuId === menu.id &&
+          !menu.items.some((item) => item.id === itemReorderFeedback.itemId)
+            ? renderItemReorderFeedback(`menu-${menu.id}`)
+            : null}
 
           {canMutate ? (
             <Pressable
@@ -800,6 +1360,10 @@ interface ControlProps {
   glyph: string;
   onPress: () => void;
   disabled?: boolean;
+  busy?: boolean;
+  hint?: string;
+  position?: string;
+  controlRef?: (control: FocusablePressable | null) => void;
   testID: string;
 }
 
@@ -808,15 +1372,22 @@ function ArrowControl({
   glyph,
   onPress,
   disabled = false,
+  busy = false,
+  hint,
+  position,
+  controlRef,
   testID,
 }: ControlProps): React.ReactElement {
   return (
     <Pressable
+      ref={controlRef}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled }}
+      accessibilityHint={hint}
+      accessibilityValue={position === undefined ? undefined : { text: position }}
+      accessibilityState={{ disabled, busy }}
       style={({ pressed }) => [
         styles.iconControl,
         disabled && styles.iconDisabled,
@@ -974,6 +1545,66 @@ const styles = StyleSheet.create({
   },
   dotUnavailable: {
     backgroundColor: textTokens.quaternary,
+  },
+  reorderFeedback: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    gap: spacing.sm,
+  },
+  reorderFeedbackError: {
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    gap: spacing.md,
+    borderWidth: 1,
+    borderColor: semantic.error,
+    borderRadius: radius.md,
+    backgroundColor: semantic.errorTint,
+  },
+  reorderFeedbackErrorAndroid: {
+    backgroundColor: androidOpaque.errorFill,
+    overflow: "hidden",
+    elevation: 0,
+  },
+  reorderFeedbackStacked: {
+    flexDirection: "column",
+    alignItems: "stretch",
+  },
+  reorderFeedbackText: {
+    flexShrink: 1,
+  },
+  reorderFeedbackPendingText: {
+    ...typography.caption,
+    color: textTokens.tertiary,
+  },
+  reorderFeedbackSuccessText: {
+    ...typography.bodySm,
+    color: semantic.success,
+  },
+  reorderFeedbackErrorText: {
+    ...typography.bodySm,
+    color: semantic.errorText,
+    fontWeight: "600",
+  },
+  reorderRetry: {
+    minHeight: 44,
+    minWidth: 88,
+    paddingHorizontal: spacing.xs,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reorderRetryText: {
+    ...typography.buttonMd,
+    color: accent.warm,
+  },
+  unassignedReorderNotice: {
+    ...typography.caption,
+    color: textTokens.tertiary,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
   },
   // ---- controls ----
   actionCluster: {

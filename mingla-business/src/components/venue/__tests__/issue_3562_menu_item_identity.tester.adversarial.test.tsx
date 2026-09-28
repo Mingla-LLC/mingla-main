@@ -244,8 +244,14 @@ describe("#3562 adversarial responsive identity", () => {
     expect(flattenPressable(toggle).minHeight).toBe(44);
 
     for (const [testID, label] of [
-      ["venue-menu-item-up-long-item", `Move ${LONG_DISH_NAME} up`],
-      ["venue-menu-item-down-long-item", `Move ${LONG_DISH_NAME} down`],
+      [
+        "venue-menu-item-up-long-item",
+        `Move ${LONG_DISH_NAME} up, position 1 of 1`,
+      ],
+      [
+        "venue-menu-item-down-long-item",
+        `Move ${LONG_DISH_NAME} down, position 1 of 1`,
+      ],
       ["venue-menu-item-edit-long-item", `Edit ${LONG_DISH_NAME}`],
     ] as const) {
       const control = nativeControl(testID, label);

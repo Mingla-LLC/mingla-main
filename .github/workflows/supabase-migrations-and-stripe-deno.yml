@@ -29,6 +29,11 @@ on:
       - "supabase/functions/competitor-intel-worker/**"
       - "supabase/functions/growth-tools-run/**"
       - "supabase/functions/growth-tools-report/**"
+      # Issue #3601 — scheduler origin line + info@ on the invite and the
+      # notification. This directory was in NO workflow before #3601, so its
+      # suites would never have run. Listed in BOTH filters deliberately:
+      # push-only is the "green on main, never ran on the PR" trap.
+      - "supabase/functions/growth-tools-book/**"
       # Issue #1772 — service-only non-user contact erasure, terminal ingest
       # mapping, and the capacity-safe credential-envelope proof.
       - "supabase/functions/support-brand-person-erasure/**"
@@ -173,6 +178,11 @@ on:
       - "supabase/functions/competitor-intel-worker/**"
       - "supabase/functions/growth-tools-run/**"
       - "supabase/functions/growth-tools-report/**"
+      # Issue #3601 — scheduler origin line + info@ on the invite and the
+      # notification. This directory was in NO workflow before #3601, so its
+      # suites would never have run. Listed in BOTH filters deliberately:
+      # push-only is the "green on main, never ran on the PR" trap.
+      - "supabase/functions/growth-tools-book/**"
       # Issue #1772 — same guarded sources and proof as the push filter.
       - "supabase/functions/support-brand-person-erasure/**"
       - "supabase/functions/brand-person-ingest-worker/**"
@@ -980,6 +990,16 @@ jobs:
             -f supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.happy.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.adversarial.pg17.test.sql
+          # Issue #3564 — the Business menu builder replaces one menu's full
+          # item order through a manager-plus atomic RPC. This implementor suite
+          # pins its narrow ACL, complete-set/snapshot boundary, idempotent lost-
+          # response replay, public read-through, and transactional rollback.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3564_atomic_menu_item_reorder.implementor.pg17.test.sql
+          # Independent #3564 adversarial proof: real dblink sessions serialize
+          # same-menu writers and race concurrent membership changes.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3564_atomic_menu_item_reorder.tester.adversarial.pg17.test.sql
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
@@ -2539,6 +2559,37 @@ jobs:
             supabase/functions/support-brand-person-erasure/issue_1772_non_user_erasure.happy.test.ts \
             supabase/functions/brand-person-ingest-worker/issue_1772_erasure_tombstone.happy.test.ts \
             supabase/functions/brand-people-export-worker/issue_1772_erasure_race.*.test.ts
+
+  issue-3601-scheduler-origin:
+    if: ${{ github.event.pull_request.draft != true }}
+    name: "Issue #3601 — scheduler origin line, guest list, and notify recipients"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: "Issue #3601 — booking description + recipient contracts"
+        run: |
+          set -euo pipefail
+          # COMPILE FIRST (#3601 rework). Neither suite below IMPORTS index.ts —
+          # both reach it with Deno.readTextFile, so every "is it wired in" proof
+          # is a text scan over a string. Without this line a broken import in
+          # index.ts left this lane fully green while handleBook threw, the throw
+          # was swallowed at index.ts:520-527, and EVERY booking returned HTTP
+          # 500. `deno check` takes no permission flags and resolves the
+          # ../_shared/** and deno.land module graph itself, which is why it is a
+          # separate command and NOT extra flags on the `deno test` below.
+          deno check \
+            supabase/functions/growth-tools-book/index.ts \
+            supabase/functions/growth-tools-book/bookingDetails.ts
+          # Hermetic: bookingDetails.ts has zero imports, so there is no network
+          # and no env to prime. --allow-read is for the index.ts wiring scan.
+          # --allow-net is deliberately NOT granted; adding it would let a future
+          # edit reach Google or Resend from a suite that must stay offline.
+          deno test --allow-env --allow-read \
+            supabase/functions/growth-tools-book/issue_3601_scheduler_origin.*.test.ts
 
   ad-creative-library-deno-tests:
     if: ${{ github.event.pull_request.draft != true }}

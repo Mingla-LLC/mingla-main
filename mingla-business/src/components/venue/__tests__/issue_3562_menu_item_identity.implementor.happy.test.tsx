@@ -251,8 +251,14 @@ describe("#3562 readable menu-item identity", () => {
     expect(pressableStyle(toggle).minHeight).toBe(44);
 
     for (const [testID, label] of [
-      ["venue-menu-item-up-item-a", "Move Charred Suya Cauliflower up"],
-      ["venue-menu-item-down-item-a", "Move Charred Suya Cauliflower down"],
+      [
+        "venue-menu-item-up-item-a",
+        "Move Charred Suya Cauliflower up, position 1 of 2",
+      ],
+      [
+        "venue-menu-item-down-item-a",
+        "Move Charred Suya Cauliflower down, position 1 of 2",
+      ],
       ["venue-menu-item-edit-item-a", "Edit Charred Suya Cauliflower"],
     ] as const) {
       const control = tree.root

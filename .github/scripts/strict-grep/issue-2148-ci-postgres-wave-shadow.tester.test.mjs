@@ -131,6 +131,11 @@ const PARTIAL_REFERENCE_DELTAS = [{
     // the historical seal; the live manifest keeps the full record.
     "mingla-business/server/__tests__/publicSearchMigration.issue2986.security.test.ts",
     "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs",
+    // [TEST-MOD-APPROVED #3564] Independently mirror the two hook suites that
+    // inspect this retained provider's SQL registration. Removal or widening
+    // remains RED against the unchanged frozen authority below.
+    "mingla-business/src/hooks/__tests__/useMenus.issue3564.implementor.test.ts",
+    "mingla-business/src/hooks/__tests__/useMenus.issue3564.tester.adversarial.test.ts",
   ],
 }];
 const independentlyNormalizePartialReferences = (discovered, declarations = PARTIAL_REFERENCE_DELTAS) => {
