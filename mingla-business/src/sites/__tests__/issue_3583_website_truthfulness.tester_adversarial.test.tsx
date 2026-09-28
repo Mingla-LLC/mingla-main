@@ -374,7 +374,8 @@ describe("#3583 D1 adversarial — nothing a server says is a network state", ()
       "offline",
       "NETWORK_OFFLINE",
       "",
-      " ",
+      // Built, not literal: `src/**` must diff as text (#1735).
+      String.fromCharCode(0),
       "A".repeat(500),
     ];
     for (const code of fuzz) {
