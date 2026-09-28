@@ -63,6 +63,25 @@ export interface PendingActionView {
   tool_args: Record<string, unknown>;
 }
 
+/**
+ * issue #3605 — value equality for the pending-action slot.
+ *
+ * The id alone is not enough: an edited proposal keeps its id while its args
+ * change, and the card must re-render for that. Args are compared by their
+ * serialised form because they arrive as a fresh parse of a jsonb column on
+ * every fetch and are never reference-equal to the previous copy.
+ */
+export function samePendingAction(
+  a: PendingActionView | null,
+  b: PendingActionView | null,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.pending_action_id === b.pending_action_id &&
+    a.tool_name === b.tool_name &&
+    JSON.stringify(a.tool_args) === JSON.stringify(b.tool_args);
+}
+
 type AriSurface = "main" | "website";
 
 export interface AriEditableTurn {
@@ -801,7 +820,16 @@ export function useAgentChat(
         unresolved = { pending_action_id: call.pending_action_id, tool_name: call.tool_name, tool_args: call.args };
       }
     }
-    setPendingAction(unresolved);
+    // issue #3605 — keep the SAME object when nothing changed.
+    //
+    // `serverMessages` is `messagesQuery.data ?? []`, so its identity is fresh
+    // on any render where the query has no data, and this effect re-runs on
+    // identity. A plain `setPendingAction(unresolved)` handed React a brand-new
+    // object literal every run, which is a state change every run, which is a
+    // render every run — React error #185, "maximum update depth exceeded",
+    // with no cycle visible in either file on its own. Equality by VALUE closes
+    // the loop: an unchanged pending action is not a state change.
+    setPendingAction((current) => samePendingAction(current, unresolved) ? current : unresolved);
   }, [currentScope, serverMessages]);
 
   // D-2: only the selected conversation's local turns render anywhere.
