@@ -1343,7 +1343,7 @@ export function VenueMenuModule({
               <LazyMenuItemOptionsSection
                 brandId={brandId}
                 menuItemId={editingItem?.id ?? null}
-                currency={currency}
+                itemCurrency={editingItem?.currency ?? currency}
                 canMutate={canMutate}
                 onSavingChange={setOptionsSaving}
               />

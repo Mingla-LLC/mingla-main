@@ -85,6 +85,41 @@ export function canResetFailedPublicationOperation(
   );
 }
 
+/**
+ * #3583 — THE PERMANENTLY STUCK FIRST PUBLISH.
+ *
+ * `brand_site_authorize_operation` writes the operation receipt in the SAME
+ * transaction that authorizes the operation. When the first-publish readiness
+ * gate refuses (`RAISE EXCEPTION 'sites_readiness_blocked'`), that exception
+ * rolls the whole function back, so NO receipt row is ever written and the
+ * receipt route answers NOT_FOUND forever.
+ *
+ * The workspace had already persisted the operation to AsyncStorage before
+ * making the call, so it sat on state "Publishing your website" permanently:
+ * the receipt never resolved, "Check the same operation" re-sent the identical
+ * doomed id, and `canResetFailedPublicationOperation` refused because it wants
+ * a receipt whose status is "failed" — a receipt that was never written.
+ * Clearing app storage was the only escape, and this is the exact path a newly
+ * onboarded second brand takes.
+ *
+ * Two halves fix it. The route no longer persists an operation Core has not
+ * accepted (see `startPublication`), and THIS predicate recovers every install
+ * already carrying a poisoned pointer: a persisted operation whose receipt
+ * 404s after React Query's retries is provably an operation Core never
+ * created, so the local pointer is the only thing claiming it exists and it is
+ * safe — and required — to drop.
+ *
+ * `receiptErrorCode` is the `BrandSitesError.code` from the receipt query, or
+ * null when the query has not failed. Only NOT_FOUND qualifies: an unavailable
+ * service or a conflict says nothing about whether the receipt exists.
+ */
+export function isOrphanedPublicationOperation(
+  operation: PersistedPublicationOperation | null,
+  receiptErrorCode: string | null,
+): operation is PersistedPublicationOperation {
+  return operation !== null && receiptErrorCode === "NOT_FOUND";
+}
+
 export function failedRollbackReviewVersion(
   operation: PersistedPublicationOperation,
   versions: BrandSiteVersion[],

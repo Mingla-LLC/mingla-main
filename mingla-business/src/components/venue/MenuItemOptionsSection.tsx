@@ -85,7 +85,7 @@ export interface MenuItemOptionsSectionProps {
   brandId: string | null;
   /** Null while the item is unsaved — groups need a real item id. */
   menuItemId: string | null;
-  currency: string;
+  itemCurrency: string;
   canMutate: boolean;
   onSavingChange?: (saving: boolean) => void;
   testID?: string;
@@ -94,7 +94,7 @@ export interface MenuItemOptionsSectionProps {
 export function MenuItemOptionsSection({
   brandId,
   menuItemId,
-  currency,
+  itemCurrency,
   canMutate,
   onSavingChange,
   testID,
@@ -365,7 +365,7 @@ export function MenuItemOptionsSection({
             key={group.id}
             menuItemId={menuItemId}
             group={group}
-            currency={currency}
+            currency={itemCurrency}
             nextSortOrder={group.sortOrder}
             onSave={handleSave}
             saving={saveGroup.isPending}
@@ -414,7 +414,7 @@ export function MenuItemOptionsSection({
         <MenuModifierGroupEditor
           menuItemId={menuItemId}
           group={null}
-          currency={currency}
+          currency={itemCurrency}
           nextSortOrder={groups.length}
           onSave={handleSave}
           saving={saveGroup.isPending}

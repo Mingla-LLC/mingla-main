@@ -114,6 +114,24 @@ const WEBSITE_RAIL: readonly SuiteDesktopModule[] = [
   { key: "address", label: "Address" },
 ];
 
+/*
+ * #3583 — THE RAIL ONLY OFFERS WHAT EXISTS.
+ *
+ * The full rail rendered unconditionally at >=1024px, including for a brand
+ * with no website at all, and every entry below Overview was a dead tap:
+ * Publishing offered a Check-draft button whose only outcome was a refusal,
+ * Versions showed an empty history, and Analytics stated that a website that
+ * did not exist remained live.
+ *
+ * Before setup there is exactly one honest destination. The derive
+ * (`deriveBusinessWebsiteState`) enforces the same rule underneath, so a panel
+ * reached any other way still resolves to the setup state rather than to a
+ * section about a website nobody has yet.
+ */
+const WEBSITE_RAIL_BEFORE_SETUP: readonly SuiteDesktopModule[] = [
+  { key: "overview", label: "Overview" },
+];
+
 function railKeyForPanel(panel: WebsiteWorkspacePanel): string {
   if (panel === "publish_review") return "publish";
   if (panel === "versions" || panel === "rollback_review") return "versions";
@@ -217,13 +235,19 @@ export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = (props) => {
       </View>
     );
   }
-  if (props.notice === "unauthorized") {
+  /*
+   * #3583 — the notice carries its own words now.
+   *
+   * These two used to hardcode their copy because a notice was a bare label.
+   * It is a value: the title, the body and the support reference come from the
+   * failure itself, so Core's own customer-safe sentence reaches the owner
+   * instead of being discarded on the way.
+   */
+  if (props.notice?.kind === "unauthorized") {
     return (
       <View style={styles.centered} testID="website-unauthorized">
-        <Text style={styles.title}>Website access changed</Text>
-        <Text style={styles.body}>
-          Your role no longer has access to this brand website.
-        </Text>
+        <Text style={styles.title}>{props.notice.title}</Text>
+        <Text style={styles.body}>{props.notice.body}</Text>
         <Button
           label="Return to Brand Profile"
           onPress={props.onRetry}
@@ -232,14 +256,11 @@ export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = (props) => {
       </View>
     );
   }
-  if (props.notice === "offline") {
+  if (props.notice?.kind === "offline") {
     return (
       <View style={styles.centered} testID="website-offline">
-        <Text style={styles.title}>You’re offline</Text>
-        <Text style={styles.body}>
-          Your live website is unaffected. Reconnect to check the durable
-          operation receipt.
-        </Text>
+        <Text style={styles.title}>{props.notice.title}</Text>
+        <Text style={styles.body}>{props.notice.body}</Text>
         <Button label="Try again" onPress={props.onRetry} variant="secondary" />
       </View>
     );
@@ -273,7 +294,39 @@ export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = (props) => {
         </View>
       </View>
 
-      {props.notice === "expired" || props.journeyState === 30 ? (
+      {/*
+        #3583 — A REFUSAL IS VISIBLE, AND IT DOES NOT TAKE THE WORKSPACE AWAY.
+        A failed publish, rollback, preview or editor handoff renders here, at
+        the top of whatever section the owner is in, with what happened and the
+        next action. It is deliberately NOT a full-screen takeover like the
+        offline and access notices above: the owner needs the controls they
+        were using in order to act on it.
+      */}
+      {props.notice?.kind === "failed" ? (
+        <PanelCard title={props.notice.title} testID="website-failure">
+          {/*
+            No reassurance sub-heading here ON PURPOSE. "Nothing was
+            published" is provable for a refusal Core rolled back, and the
+            notice body says so in exactly those cases — but it is NOT
+            provable when a response was simply lost in transit, and a blanket
+            claim would be the same fabrication this issue exists to remove.
+          */}
+          <Text style={styles.body}>{props.notice.body}</Text>
+          {props.notice.reference ? (
+            <Text style={styles.meta} selectable>
+              Reference · {props.notice.reference}
+            </Text>
+          ) : null}
+          <Button
+            label="Try again"
+            onPress={props.onRetry}
+            variant="secondary"
+            fullWidth
+          />
+        </PanelCard>
+      ) : null}
+
+      {props.notice?.kind === "expired" || props.journeyState === 30 ? (
         <PanelCard
           title="Your secure Studio session ended"
           testID="website-session-expired"
@@ -654,8 +707,18 @@ export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = (props) => {
       {props.journeyState === 23 ? (
         <PanelCard title="Website analytics" testID="website-analytics">
           {props.analytics === null ? (
+            /*
+              #3583 — this used to read "Analytics are unavailable. Your
+              website remains live." The second sentence was fabricated data
+              (Constitution #9), not a copy slip: the rail could open this
+              section for a brand with NO website, and even with one, a
+              website in draft, error or suspended state is not live. A failure
+              to read analytics is never evidence about the website's state, so
+              this says only what it knows.
+            */
             <Text style={styles.body}>
-              Analytics are unavailable. Your website remains live.
+              Mingla couldn’t load your analytics just now. Open this section
+              again in a moment.
             </Text>
           ) : (
             <View style={styles.metricRow}>
@@ -762,8 +825,10 @@ export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = (props) => {
   if (props.isWideDesktop) {
     return (
       <SuiteDesktopShell
-        modules={WEBSITE_RAIL}
-        activeModule={railKeyForPanel(props.panel)}
+        modules={props.site === null ? WEBSITE_RAIL_BEFORE_SETUP : WEBSITE_RAIL}
+        activeModule={
+          props.site === null ? "overview" : railKeyForPanel(props.panel)
+        }
         onSelect={(key) => props.onSetPanel(panelForRailKey(key))}
         workspaceSelfScrolls
         scrollBottomPad={0}
