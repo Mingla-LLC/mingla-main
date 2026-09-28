@@ -7,7 +7,7 @@
 // NOT Workspace domain-wide delegation. Two actions:
 //
 //   POST {action:"slots"}                → {slots:[{start,end}]} (UTC ISO)
-//   POST {action:"book", start, name, email, venue?, report_url?}
+//   POST {action:"book", start, name, email, venue?, report_url?, source?}
 //                                        → {ok:true, event_url, meet_url, start}
 //
 // Config secret GOOGLE_CALENDAR_KEYS = "client_id|client_secret|refresh_token".
@@ -33,6 +33,16 @@ import {
 } from "../_shared/email/senders.ts";
 import { minglaLogoUrl } from "../_shared/brandAssets.ts";
 import { resolveRuntimeString } from "../_shared/runtimeConfig.ts";
+// #3601 — pure, zero-import builders for the calendar description, the guest
+// list, and the notification recipient list. Extracted so both regression
+// suites can assert on the rendered strings without touching Google or Resend.
+import {
+  buildAttendees,
+  buildEventDescription,
+  buildNotifyRecipients,
+  originLabel,
+  sanitizeLine,
+} from "./bookingDetails.ts";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -230,7 +240,7 @@ function emailButton(href: string, label: string): string {
 }
 
 async function sendResend(input: {
-  to: string;
+  to: string[];
   subject: string;
   html: string;
   text: string;
@@ -260,7 +270,7 @@ async function sendResend(input: {
     },
     body: JSON.stringify({
       from: formatSenderHeader(sender),
-      to: [input.to],
+      to: input.to,
       reply_to: input.replyTo,
       subject: input.subject,
       html: input.html,
@@ -283,6 +293,7 @@ async function sendBookingEmails(input: {
   email: string;
   venue: string;
   reportUrl: string;
+  source: string;
   meetUrl: string | null;
   eventUrl: string | null;
 }): Promise<void> {
@@ -320,6 +331,9 @@ async function sendBookingEmails(input: {
     input.venue
       ? `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Venue</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(input.venue)}</td></tr>`
       : "",
+    // #3601 — unconditional, matching the calendar: the origin is never blank, so
+    // a blank can never be ambiguous between "came in cold" and "we lost the tag".
+    `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Came from</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(originLabel(input.source))}</td></tr>`,
   ].filter(Boolean).join("");
   const links = [
     input.meetUrl ? `${emailButton(input.meetUrl, "Join the Meet")} ` : "",
@@ -334,19 +348,20 @@ async function sendBookingEmails(input: {
   const ownerText =
     `New Mingla call booked.\n\nWhen: ${when}\nWho: ${input.name} <${input.email}>` +
     (input.venue ? `\nVenue: ${input.venue}` : "") +
+    `\nCame from: ${originLabel(input.source)}` +
     (input.meetUrl ? `\nMeet: ${input.meetUrl}` : "") +
     (input.reportUrl ? `\nReport: ${input.reportUrl}` : "");
 
   const results = await Promise.allSettled([
     sendResend({
-      to: input.email,
+      to: [input.email],
       subject: "You’re booked — your Mingla call",
       html: shell(bookerBody, `Confirmed: ${when}`),
       text: bookerText,
       replyTo: REPLY_TO,
     }),
     sendResend({
-      to: NOTIFY_TO,
+      to: buildNotifyRecipients(NOTIFY_TO),
       subject: `New Mingla call — ${input.venue || input.name} (${when})`,
       html: shell(ownerBody, `${input.name} booked a call`),
       text: ownerText,
@@ -375,14 +390,18 @@ async function handleBook(
   body: Record<string, unknown>,
 ): Promise<Response> {
   const start = typeof body.start === "string" ? body.start : "";
-  const name = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
+  // #3601 — sanitizeLine at PARSE TIME, so the event `summary` (which interpolates
+  // `venue`) is protected by the same pass as the description, without its format
+  // changing. Control characters become a space; non-strings become "".
+  const name = sanitizeLine(body.name, 120);
   const email = typeof body.email === "string"
     ? body.email.trim().toLowerCase()
     : "";
-  const venue = typeof body.venue === "string" ? body.venue.trim().slice(0, 120) : "";
-  const reportUrl = typeof body.report_url === "string"
-    ? body.report_url.trim().slice(0, 500)
-    : "";
+  const venue = sanitizeLine(body.venue, 120);
+  const reportUrl = sanitizeLine(body.report_url, 500);
+  // Optional, and never trusted from the client: the page's own 40-char cap is
+  // re-applied server-side. An absent `source` renders the shared-link origin.
+  const source = sanitizeLine(body.source, 40);
   const startMs = Date.parse(start);
   if (
     !Number.isFinite(startMs) || name.length < 2 || !EMAIL_RE.test(email) ||
@@ -407,13 +426,6 @@ async function handleBook(
     return json({ error: "slot_taken" }, 409);
   }
 
-  const descLines = [
-    `Intro call booked from the Mingla Venue Website Grader.`,
-    venue ? `Venue: ${venue}` : "",
-    `Booked by: ${name} (${email})`,
-    reportUrl ? `Their report: ${reportUrl}` : "",
-  ].filter(Boolean);
-
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${
       encodeURIComponent(CALENDAR_ID)
@@ -426,10 +438,10 @@ async function handleBook(
       },
       body: JSON.stringify({
         summary: `Mingla call${venue ? ` — ${venue}` : ""}`,
-        description: descLines.join("\n"),
+        description: buildEventDescription({ name, email, venue, reportUrl, source }),
         start: { dateTime: new Date(startMs).toISOString() },
         end: { dateTime: new Date(endMs).toISOString() },
-        attendees: [{ email, displayName: name }],
+        attendees: buildAttendees(email, name),
         conferenceData: {
           createRequest: {
             requestId: crypto.randomUUID(),
@@ -462,6 +474,7 @@ async function handleBook(
     email,
     venue,
     reportUrl,
+    source,
     meetUrl: meet,
     eventUrl: ev.htmlLink ?? null,
   });

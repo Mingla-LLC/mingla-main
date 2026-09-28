@@ -386,6 +386,8 @@ export async function bookCall(input: {
   email: string
   venue?: string
   report_url?: string
+  /** #3601 — funnel/standalone-link origin tag; renders on the calendar invite. */
+  source?: string
 }): Promise<
   | { ok: true; event_url: string | null; meet_url: string | null; start: string }
   | { ok: false; error: GrowthToolsError }
