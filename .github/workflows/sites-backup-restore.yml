@@ -2,10 +2,46 @@ name: "Mingla Sites · Backup and restore"
 
 # #2893 activates #2830's production recovery boundary. Production credentials
 # exist only in the protected environment and are never available to pull requests.
+#
+# [WORKFLOW-MOD-APPROVED #3606] Recovery freshness is no longer refilled by one
+# drifting daily dispatch, and lateness is no longer invisible.
+#
+# Measured before #3606: the nominal 07:23Z schedule was dispatched between
+# 11:56Z and 13:06Z over ten consecutive days — 4.5 to 5.7 hours late and
+# trending later — while the public runtime resolver re-checks recovery evidence
+# on EVERY page request against a 26-hour budget. On 2026-09-28 the live pilot
+# host came within 47 minutes of returning 404 on every route and nothing fired,
+# because `deactivate` and `alert` below only trigger when a run FAILS. A run
+# that is hours late, or that never starts, produces no failure.
+#
+# Two structural changes, both deliberately in the fail-closed direction:
+#   1. A second daily backup cron, 12 hours from the first, so no single
+#      dispatch is load-bearing for public availability.
+#   2. An hourly `recovery_freshness` watchdog that reports remaining headroom
+#      and pages BEFORE the budget runs out.
+#
+# The watchdog shares this workflow because `.github/workflows/` additions are
+# gated by I-PROPOSED-2148-CI-TOPOLOGY-BOUNDED; it is routed by cron identity.
+# The routing polarity is EXCLUSION, never inclusion: every job with a
+# production side effect asks "is this NOT the watchdog cron?", so a routing
+# expression that stops matching re-arms the side effect instead of silently
+# disabling it. `issue_3606_recovery_freshness.*.test.mjs` pins the cron literal
+# and every exclusion to the same string, so changing one without the other is
+# a red contract run, not a live surprise.
 on:
   schedule:
     - cron: "23 7 * * *"
+    - cron: "23 19 * * *"
+    - cron: "37 * * * *"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "backup = take and verify a snapshot; freshness-check = watchdog only"
+        type: choice
+        default: backup
+        options:
+          - backup
+          - freshness-check
   pull_request:
     paths:
       - ".github/workflows/sites-backup-restore.yml"
@@ -39,13 +75,19 @@ jobs:
           scripts/sites/__tests__/issue_3154_abandoned_upload_grants.tester.adversarial.test.mjs
           scripts/sites/__tests__/issue_2948_backup_window_absent.test.mjs
           scripts/sites/__tests__/issue_2948_readback_wiring.test.mjs
+          scripts/sites/__tests__/issue_3606_recovery_freshness.implementor.test.mjs
+          scripts/sites/__tests__/issue_3606_recovery_freshness.tester.adversarial.test.mjs
 
   backup_restore:
     name: "Private backup and isolated restore"
     needs: contracts
+    # #3606 — the hourly watchdog cron must never take a snapshot. Exclusion, not
+    # inclusion: an expression that stops matching runs the backup anyway.
     if: >-
       github.event_name != 'pull_request' &&
-      github.ref == 'refs/heads/main'
+      github.ref == 'refs/heads/main' &&
+      github.event.schedule != '37 * * * *' &&
+      github.event.inputs.mode != 'freshness-check'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: mingla-sites-production
@@ -187,10 +229,17 @@ jobs:
     # Any scheduled/main run that does not finish the production backup and
     # restore successfully is signed-deactivated before the safe alert. This
     # includes a skipped backup_restore job caused by a contract failure.
+    #
+    # #3606 — the watchdog cron deliberately skips backup_restore, which would
+    # otherwise read as "did not finish successfully" and deactivate the pilot
+    # every hour. Only that exact routing is excused; every other skip still
+    # deactivates, so a contract failure is unchanged.
     if: >-
       always() &&
       github.event_name != 'pull_request' &&
       github.ref == 'refs/heads/main' &&
+      github.event.schedule != '37 * * * *' &&
+      github.event.inputs.mode != 'freshness-check' &&
       needs.backup_restore.result != 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -211,10 +260,13 @@ jobs:
   alert:
     name: "Safe recovery failure alert"
     needs: [contracts, backup_restore, deactivate]
+    # #3606 — same watchdog-cron exclusion as `deactivate`, for the same reason.
     if: >-
       always() &&
       github.event_name != 'pull_request' &&
       github.ref == 'refs/heads/main' &&
+      github.event.schedule != '37 * * * *' &&
+      github.event.inputs.mode != 'freshness-check' &&
       (needs.contracts.result != 'success' ||
       needs.backup_restore.result != 'success' ||
       needs.deactivate.result == 'failure')
@@ -235,3 +287,31 @@ jobs:
           gh api --method POST \
             "repos/${GITHUB_REPOSITORY}/issues/2830/comments" \
             -f body="$body" >/dev/null
+
+  recovery_freshness:
+    name: "Recovery freshness watchdog"
+    # #3606 criterion 3 — alert on LATENESS, not only on failure. This job asks
+    # how much of the resolver's 26-hour budget is left and pages before it runs
+    # out, so a run that never starts can no longer take the public site down in
+    # silence. It reads only this repository's own Actions history: no production
+    # credentials, no database, no signing keys, so it is safe to run hourly.
+    if: >-
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event.schedule == '37 * * * *' ||
+      github.event.inputs.mode == 'freshness-check')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Report remaining recovery headroom and page on lateness
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/sites/check-recovery-freshness.mjs
