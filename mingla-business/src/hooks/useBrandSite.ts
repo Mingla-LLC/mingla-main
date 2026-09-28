@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  BrandSitesError,
   createStudioExchange,
   createBrandSitePreview,
   getBrandSiteOperation,
@@ -18,6 +19,30 @@ export const brandSiteKeys = {
   all: ["brand-sites"] as const,
   detail: (brandId: string) => ["brand-sites", brandId] as const,
 };
+
+/**
+ * #3583 — a missing site id is a TYPED Website failure, not a bare Error.
+ *
+ * These three mutations used to throw `new Error("Website unavailable")`. The
+ * route's error mapper only recognises `BrandSitesError`, so anything else fell
+ * through to the "offline" branch that the network effect then cleared on the
+ * next render — the silent path. The desktop rail could reach it for real:
+ * it renders at >=1024px whether or not a website exists, and its Publishing
+ * section's Check-draft button called `useValidateBrandSiteDraft` with a null
+ * site id.
+ *
+ * The rail no longer offers those sections before setup exists, and the derive
+ * no longer lets a panel outrank a missing site. This is the floor under both:
+ * if a null site id ever reaches a mutation again, it surfaces as a real,
+ * actionable message instead of nothing.
+ */
+function siteUnavailable(): BrandSitesError {
+  return new BrandSitesError(
+    "SITE_UNAVAILABLE",
+    "Mingla could not find this brand\u2019s website.",
+    false,
+  );
+}
 
 export function useBrandSite(brandId: string, enabled: boolean) {
   const { isAuthReady } = useAuth();
@@ -72,7 +97,7 @@ export function useStudioExchange(brandId: string) {
 export function useBrandSitePreview(brandId: string, siteId: string | null) {
   return useMutation({
     mutationFn: async (returnSurface: "web" | "native") => {
-      if (!siteId) throw new Error("Website unavailable");
+      if (!siteId) throw siteUnavailable();
       const draft = await validateBrandSiteDraft({ brandId, siteId });
       return createBrandSitePreview({
         siteId,
@@ -112,7 +137,7 @@ export function usePublishBrandSite(brandId: string, siteId: string | null) {
       operationId: string;
       validation: Awaited<ReturnType<typeof validateBrandSiteDraft>>;
     }) => {
-      if (!siteId) throw new Error("Website unavailable");
+      if (!siteId) throw siteUnavailable();
       return publishBrandSite({
         siteId,
         operationId: input.operationId,
@@ -143,7 +168,7 @@ export function useValidateBrandSiteDraft(
 ) {
   return useMutation({
     mutationFn: async () => {
-      if (!siteId) throw new Error("Website unavailable");
+      if (!siteId) throw siteUnavailable();
       return validateBrandSiteDraft({ brandId, siteId });
     },
   });
