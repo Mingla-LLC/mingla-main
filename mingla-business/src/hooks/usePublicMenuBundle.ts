@@ -19,11 +19,9 @@ import {
   fetchPublicMenuBundle,
   type PublicMenuBundle,
 } from "../services/publicMenusService";
+import { publicMenuBundleKeys } from "./publicMenuBundleQueryKeys";
 
-export const publicMenuBundleKeys = {
-  detail: (brandSlug: string, venueSlug: string) =>
-    ["publicMenuBundle", brandSlug, venueSlug] as const,
-};
+export { publicMenuBundleKeys } from "./publicMenuBundleQueryKeys";
 
 const EMPTY: PublicMenuBundle = { groups: [], windows: {} };
 

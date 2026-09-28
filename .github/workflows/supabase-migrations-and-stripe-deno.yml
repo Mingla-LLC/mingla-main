@@ -980,6 +980,16 @@ jobs:
             -f supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.happy.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.adversarial.pg17.test.sql
+          # Issue #3564 — the Business menu builder replaces one menu's full
+          # item order through a manager-plus atomic RPC. This implementor suite
+          # pins its narrow ACL, complete-set/snapshot boundary, idempotent lost-
+          # response replay, public read-through, and transactional rollback.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3564_atomic_menu_item_reorder.implementor.pg17.test.sql
+          # Independent #3564 adversarial proof: real dblink sessions serialize
+          # same-menu writers and race concurrent membership changes.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3564_atomic_menu_item_reorder.tester.adversarial.pg17.test.sql
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
