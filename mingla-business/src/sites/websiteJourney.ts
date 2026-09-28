@@ -79,7 +79,8 @@ export const OFFLINE_NOTICE: WorkspaceNoticeDetail = {
  * evidence of that (Constitution #9).
  */
 const FAILURE_NEXT_STEP: Record<string, string> = {
-  FORBIDDEN: "Ask a brand admin to run this step.",
+  // No FORBIDDEN / UNAUTHORIZED entry: those two are answered above, by the
+  // `unauthorized` notice, and never reach this map.
   NOT_FOUND: "Reload the Website workspace and try again.",
   INVALID_STATE:
     "Nothing was published. This website is not ready for that step yet \u2014 quote the reference below if it keeps refusing.",
