@@ -30,6 +30,19 @@
  * ordered is RESTRICTed by order history and can NEVER be deleted, so it is
  * told so plainly and offered no retry.
  *
+ * RECONCILIATION (issue #3571, PR #3615 rework cycle 2). A delete refusal, the
+ * open editor and the open confirmation are all statements ABOUT A GROUP, and
+ * the group list is server truth that moves underneath them. Held in a single
+ * unkeyed slot and never checked against that list, one refusal could be
+ * erased by the next tap on a different group, could never be released by any
+ * server signal, and could outlive the very group it named. All three were the
+ * same defect. One render-phase reconciliation now answers "is this still
+ * true?" for all three: a refusal is keyed by its group id, pinned to the read
+ * it was recorded against, dropped when a NEWER successful read supersedes it,
+ * and dropped when its group is no longer in the list. `editing` and the
+ * pending confirmation are reconciled against the same list, so nothing on
+ * screen can describe — or ask about — a group the server no longer reports.
+ *
  * The read message and the delete message are separate, separately-testable
  * surfaces. A load failure and a save/delete failure are different facts and
  * this section must never conflate them.
@@ -81,6 +94,12 @@ import {
 /** Stable empty list — a fresh `[]` every render churns the focus effect. */
 const NO_GROUPS: readonly MenuModifierGroup[] = Object.freeze([]);
 
+/**
+ * Stable empty refusal store, for the same reason: a fresh `Map` every render
+ * would be a new identity and churn every memo keyed on it.
+ */
+const NO_DELETE_REFUSALS: DeleteRefusalsByGroup = new Map();
+
 export interface MenuItemOptionsSectionProps {
   brandId: string | null;
   /** Null while the item is unsaved — groups need a real item id. */
@@ -106,8 +125,13 @@ export function MenuItemOptionsSection({
   const [editing, setEditing] = useState<MenuModifierGroup | null>(null);
   const [creating, setCreating] = useState<boolean>(false);
   const [saveError, setSaveError] = useState<MenuTextSaveFailure | null>(null);
-  const [deleteFailure, setDeleteFailure] =
-    useState<ScopedModifierGroupDeleteFailure | null>(null);
+  /*
+   * PR #3615 rework cycle 2. ONE REFUSAL PER GROUP. A single slot could only
+   * ever hold one subject, so recording Beta's ask destroyed Alpha's standing
+   * refusal — the terminal state was erasable by the owner's own next tap.
+   */
+  const [deleteRefusals, setDeleteRefusals] =
+    useState<DeleteRefusalsByGroup>(NO_DELETE_REFUSALS);
   const [pendingDeleteGroup, setPendingDeleteGroup] =
     useState<MenuModifierGroup | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -118,20 +142,8 @@ export function MenuItemOptionsSection({
   const groupRowRefs = useRef<Map<string, React.ElementRef<typeof Pressable>>>(
     new Map(),
   );
-  /*
-   * #3571 (PR #3615 rework, P3-2). `Modal` keeps its node mounted for 200ms
-   * after `visible` drops so the exit animation can play. `pendingDeleteGroup`
-   * is already null by then, so the dialog used to swap the real group name for
-   * the literal placeholder — "Remove “this group”?" — mid-dismissal, a false
-   * statement a slow-motion capture catches. Hold the last group that was
-   * actually asked about until the node is gone. Written during render on
-   * purpose: it is a pure cache of a value this render already has, so it is
-   * idempotent under a double render and needs no effect (and no extra pass
-   * that would itself render the placeholder once).
-   */
+  /* #3571 P3-2 — the dialog's last-asked-about group; written at its use site. */
   const dialogGroupRef = useRef<MenuModifierGroup | null>(null);
-  if (pendingDeleteGroup !== null) dialogGroupRef.current = pendingDeleteGroup;
-  const dialogGroup = pendingDeleteGroup ?? dialogGroupRef.current;
 
   /*
    * #3570 — the read state, not the list length, decides what is said. The old
@@ -164,6 +176,107 @@ export function MenuItemOptionsSection({
     () => groupsQuery.data ?? NO_GROUPS,
     [groupsQuery.data],
   );
+
+  /*
+   * PR #3615 rework cycle 2 — THE RECONCILIATION, and the only place that
+   * decides whether a statement about a group is still true.
+   *
+   * Two facts come from the query, not from a string match:
+   *   `hasServerList` — the server has actually answered at least once, so
+   *     there IS a list to reconcile against. While it has not, nothing is
+   *     dropped: an in-flight first read is not evidence a group is gone.
+   *   `readVersion` — React Query's `dataUpdatedAt`, which advances ONLY when
+   *     a fetch settles successfully. It is the real server signal a refusal
+   *     can be released by. A failed refetch does not advance it, so a refusal
+   *     is never released by a read that failed.
+   */
+  const hasServerList = Array.isArray(groupsQuery.data);
+  const readVersion = groupsQuery.dataUpdatedAt ?? 0;
+  /*
+   * Written during render on purpose: a pure cache of a value this render
+   * already has, idempotent under a double render, and read only inside the
+   * delete mutation's own callbacks — which fire AFTER the render that
+   * captured them, so the refusal is pinned to the newest read the client
+   * holds rather than to whichever one existed when the callback was built.
+   */
+  const readVersionRef = useRef<number>(readVersion);
+  readVersionRef.current = readVersion;
+
+  const liveGroupIds = useMemo(
+    () => new Set(groups.map((group) => group.id)),
+    [groups],
+  );
+
+  /*
+   * A refusal survives exactly as long as both remain true: its group is still
+   * in the list, and the server has not spoken since. A NEWER successful read
+   * supersedes it — that is the release path a terminal refusal previously had
+   * no version of, and it is tied to server state rather than to a client-side
+   * classification that a single unlucky SQLSTATE could latch forever.
+   */
+  const liveRefusals = useMemo<DeleteRefusalsByGroup>(() => {
+    if (deleteRefusals.size === 0 || !hasServerList) return deleteRefusals;
+    const kept = new Map(deleteRefusals);
+    for (const [groupId, refusal] of deleteRefusals) {
+      /*
+       * ONE predicate on purpose. A refusal survives only while BOTH hold:
+       * its group is still in the list, and no newer successful read has
+       * superseded it. These are deliberately NOT split into two guards — in
+       * production `groups` can only change through a read that advances
+       * `dataUpdatedAt`, so the group-gone half is never independently
+       * observable, and a separate line for it would be a check that carries
+       * no information while looking like a guard. It is kept inside the
+       * predicate as defence in depth against a future writer that mutates
+       * the cached list without a new read.
+       */
+      if (!liveGroupIds.has(groupId) || refusal.readAt !== readVersion) {
+        kept.delete(groupId);
+      }
+    }
+    return kept.size === deleteRefusals.size ? deleteRefusals : kept;
+  }, [deleteRefusals, liveGroupIds, hasServerList, readVersion]);
+
+  /*
+   * The same question asked of the open editor. `editing` held a group the
+   * server had stopped reporting, so the section rendered no rows, no editor
+   * and — because "Add a choice" is gated on nothing being edited — no way to
+   * act at all, underneath an assertive alert about the vanished group.
+   */
+  let editingGroupId = editing?.id ?? null;
+  if (
+    editingGroupId !== null &&
+    hasServerList &&
+    !liveGroupIds.has(editingGroupId)
+  ) {
+    editingGroupId = null;
+  }
+
+  /*
+   * And of the open confirmation. Asking about a group the server no longer
+   * reports could only ever produce a doomed mutation.
+   */
+  let pendingDeleteTarget = pendingDeleteGroup;
+  if (
+    pendingDeleteTarget !== null &&
+    hasServerList &&
+    !liveGroupIds.has(pendingDeleteTarget.id)
+  ) {
+    pendingDeleteTarget = null;
+  }
+
+  /*
+   * #3571 (PR #3615 rework, P3-2). `Modal` keeps its node mounted for 200ms
+   * after `visible` drops so the exit animation can play. The pending group is
+   * already gone by then, so the dialog used to swap the real group name for
+   * the literal placeholder — "Remove “this group”?" — mid-dismissal, a
+   * false statement a slow-motion capture catches. Hold the last group that
+   * was actually asked about until the node is gone. Written during render for
+   * the same reason as `readVersionRef`.
+   */
+  if (pendingDeleteTarget !== null) {
+    dialogGroupRef.current = pendingDeleteTarget;
+  }
+  const dialogGroup = pendingDeleteTarget ?? dialogGroupRef.current;
 
   useEffect(() => {
     onSavingChange?.(saveGroup.isPending);
@@ -200,9 +313,35 @@ export function MenuItemOptionsSection({
    * its group id, and only ever renders while that group is the one on screen.
    */
   const forgetTransientDeleteFailure = useCallback((): void => {
-    setDeleteFailure((current) =>
-      current !== null && current.canRetry ? null : current,
-    );
+    setDeleteRefusals((current) => {
+      if (current.size === 0) return current;
+      const kept = new Map(current);
+      for (const [groupId, refusal] of current) {
+        if (refusal.canRetry) kept.delete(groupId);
+      }
+      return kept.size === current.size ? current : kept;
+    });
+  }, []);
+
+  /**
+   * Drops ONE group's refusal and leaves every other group's standing.
+   *
+   * The `key !== groupId` guard IS the cycle-2 fix. Cycle 1 cleared the single
+   * shared slot at this point, so a tap on any OTHER group erased a standing
+   * permanent refusal, erased the only on-screen explanation of it, and
+   * re-armed a delete the database can never accept. Remove that guard and
+   * every group's refusal is wiped again — which is the defect itself.
+   */
+  const forgetDeleteRefusalFor = useCallback((groupId: string): void => {
+    setDeleteRefusals((current) => {
+      if (current.size === 0) return current;
+      const kept = new Map(current);
+      for (const key of current.keys()) {
+        if (key !== groupId) continue;
+        kept.delete(key);
+      }
+      return kept.size === current.size ? current : kept;
+    });
   }, []);
 
   const closeEditor = useCallback((): void => {
@@ -287,17 +426,24 @@ export function MenuItemOptionsSection({
        * fact stays on screen instead of being erasable by the next tap. The
        * trigger is disabled alongside this guard, so no tap lands dead.
        */
-      if (
-        deleteFailure !== null &&
-        deleteFailure.groupId === groupId &&
-        !deleteFailure.canRetry
-      ) {
-        return;
-      }
-      setDeleteFailure(null);
+      const standing = liveRefusals.get(groupId) ?? null;
+      if (standing !== null && !standing.canRetry) return;
+      /*
+       * PR #3615 rework cycle 2. Scoped to the group BEING ASKED ABOUT. This
+       * reset used to be unconditional, so one tap on any other group erased a
+       * permanent refusal, erased the only on-screen explanation of it, and
+       * re-armed a delete the database can never accept.
+       */
+      forgetDeleteRefusalFor(groupId);
       setPendingDeleteGroup(target);
     },
-    [groups, saveGroup.isPending, deleteGroup.isPending, deleteFailure],
+    [
+      groups,
+      saveGroup.isPending,
+      deleteGroup.isPending,
+      liveRefusals,
+      forgetDeleteRefusalFor,
+    ],
   );
 
   const cancelDeleteGroup = useCallback((): void => {
@@ -306,14 +452,14 @@ export function MenuItemOptionsSection({
   }, [deleteGroup.isPending]);
 
   const confirmDeleteGroup = useCallback((): void => {
-    const target = pendingDeleteGroup;
+    const target = pendingDeleteTarget;
     if (target === null || menuItemId === null) return;
     if (deletionInFlightRef.current) return;
     if (saveGroup.isPending || deleteGroup.isPending) return;
     deletionInFlightRef.current = true;
     setSaveError(null);
     setSuccessMessage(null);
-    setDeleteFailure(null);
+    forgetDeleteRefusalFor(target.id);
     deleteGroup.mutate(
       { groupId: target.id, menuItemId },
       {
@@ -330,7 +476,15 @@ export function MenuItemOptionsSection({
            * live region, so a screen reader re-announced the lie out of
            * context.
            */
-          setDeleteFailure({ ...failure, groupId: target.id });
+          setDeleteRefusals((current) => {
+            const next = new Map(current);
+            next.set(target.id, {
+              ...failure,
+              groupId: target.id,
+              readAt: readVersionRef.current,
+            });
+            return next;
+          });
           /*
            * A failure that can never succeed must not keep a retry in front of
            * the operator. Close the ask; the inline alert carries the truth.
@@ -345,11 +499,12 @@ export function MenuItemOptionsSection({
       },
     );
   }, [
-    pendingDeleteGroup,
+    pendingDeleteTarget,
     menuItemId,
     deleteGroup,
     saveGroup.isPending,
     closeEditor,
+    forgetDeleteRefusalFor,
   ]);
 
   /*
@@ -358,11 +513,11 @@ export function MenuItemOptionsSection({
    * group currently being asked about. Anything else and the message would be
    * a statement about a group that is not on screen.
    */
-  const visibleGroupId = pendingDeleteGroup?.id ?? editing?.id ?? null;
+  const visibleGroupId = pendingDeleteTarget?.id ?? editingGroupId ?? null;
   const visibleDeleteFailure =
-    deleteFailure !== null && deleteFailure.groupId === visibleGroupId
-      ? deleteFailure
-      : null;
+    visibleGroupId === null
+      ? null
+      : (liveRefusals.get(visibleGroupId) ?? null);
   const removalBlockedReason =
     visibleDeleteFailure !== null && !visibleDeleteFailure.canRetry
       ? visibleDeleteFailure.message
@@ -440,7 +595,7 @@ export function MenuItemOptionsSection({
       ) : null}
 
       {groups.map((group) =>
-        editing?.id === group.id ? (
+        editingGroupId === group.id ? (
           <MenuModifierGroupEditor
             key={group.id}
             menuItemId={menuItemId}
@@ -505,7 +660,7 @@ export function MenuItemOptionsSection({
           onClearSaveError={() => setSaveError(null)}
           onCancel={closeEditor}
         />
-      ) : canMutate && editing === null ? (
+      ) : canMutate && editingGroupId === null ? (
         <Button
           label="Add a choice"
           onPress={() => {
@@ -522,7 +677,7 @@ export function MenuItemOptionsSection({
       ) : null}
 
       <ConfirmDialog
-        visible={pendingDeleteGroup !== null}
+        visible={pendingDeleteTarget !== null}
         onClose={cancelDeleteGroup}
         onConfirm={confirmDeleteGroup}
         title={menuModifierGroupDeleteTitle(dialogGroup)}
@@ -714,6 +869,25 @@ export interface ScopedModifierGroupDeleteFailure
   extends MenuModifierGroupDeleteFailure {
   groupId: string;
 }
+
+/**
+ * Issue #3571 (PR #3615 rework cycle 2). A refusal also carries WHICH READ it
+ * was recorded against, so a later successful read of the group list can
+ * supersede it. Without that, a refusal classified from a client-side string
+ * match was terminal for the life of the dish sheet with no exit at all — and
+ * on a single-group dish, no in-sheet escape whatsoever.
+ */
+export interface LatchedModifierGroupDeleteFailure
+  extends ScopedModifierGroupDeleteFailure {
+  /** `dataUpdatedAt` of the group list this refusal was recorded against. */
+  readAt: number;
+}
+
+/** One standing refusal per group id. Never a single shared slot. */
+export type DeleteRefusalsByGroup = ReadonlyMap<
+  string,
+  LatchedModifierGroupDeleteFailure
+>;
 
 export function modifierGroupDeleteError(
   error: Error,
