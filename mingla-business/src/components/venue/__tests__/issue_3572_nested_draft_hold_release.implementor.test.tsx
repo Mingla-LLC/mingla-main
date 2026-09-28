@@ -71,8 +71,20 @@ const upsertItemMutate =
       callbacks?: Record<string, unknown>,
     ) => void
   >();
-const saveGroupMutate = jest.fn<(input: ModifierGroupSaveInput) => void>();
+interface SaveGroupCallbacks {
+  onSuccess?: (saved: MenuModifierGroup) => void;
+  onError?: (error: Error) => void;
+  onSettled?: () => void;
+}
+
+const saveGroupMutate =
+  jest.fn<
+    (input: ModifierGroupSaveInput, callbacks?: SaveGroupCallbacks) => void
+  >();
 const idleMutate = jest.fn();
+
+/** Flipped by the save mock so `isPending` behaves like the real mutation. */
+let saveGroupPending = false;
 
 /**
  * "Rare" carries no delta, "Blue" carries 250 cents — so its hydrated draft
@@ -358,7 +370,10 @@ jest.mock("../../../hooks/useMenuModifiers", () => {
       data: groups,
       refetch: jest.fn(),
     }),
-    useSaveModifierGroup: () => ({ isPending: false, mutate: saveGroupMutate }),
+    useSaveModifierGroup: () => ({
+      isPending: saveGroupPending,
+      mutate: saveGroupMutate,
+    }),
     useDeleteModifierGroup: () => ({ isPending: false, mutate: idleMutate }),
   };
 });
@@ -548,6 +563,11 @@ beforeEach(() => {
   upsertItemMutate.mockReset();
   saveGroupMutate.mockReset();
   idleMutate.mockReset();
+  saveGroupPending = false;
+  // The real mutation is pending from the call until it settles.
+  saveGroupMutate.mockImplementation(() => {
+    saveGroupPending = true;
+  });
   groups = [
     { ...GROUP_A, modifiers: [...GROUP_A.modifiers] },
     { ...GROUP_B, modifiers: [] },
@@ -661,6 +681,66 @@ describe("#3572 rework — the hold releases, through the shipped primitives", (
     expect(node("menu-item-options-hold-note").props.children).toBe(note);
     // P3-1: no id pointing at an association nothing ever consumed.
     expect(node("menu-item-options-hold-note").props.nativeID).toBeUndefined();
+  });
+
+  test("P2-4: a corrective refetch that brings the group back takes the notice with it", async () => {
+    await openItemSheet();
+    openGroupA();
+    type("modifier-option-name-opt-rare", "Blue rare");
+
+    refetchWith([{ ...GROUP_B, modifiers: [] }]);
+
+    // Control: the sentence is true here — the group really is not listed.
+    expect(exists("menu-item-options-draft-discarded")).toBe(true);
+    expect(exists("menu-item-option-group-group-a")).toBe(false);
+
+    // The transient absence corrects itself. The sentence must not survive it:
+    // the row and "no longer listed on this item" cannot share a screen.
+    refetchWith([
+      { ...GROUP_A, modifiers: [...GROUP_A.modifiers] },
+      { ...GROUP_B, modifiers: [] },
+    ]);
+
+    expect(exists("menu-item-option-group-group-a")).toBe(true);
+    expect(exists("menu-item-options-draft-discarded")).toBe(false);
+    expect(screenText()).not.toContain(
+      menuOptionsDraftDiscardedMessage("Temperature"),
+    );
+    // Releasing the notice must not re-engage the hold it came from.
+    expect(held()).toBe(false);
+    expect(pressIsWired("menu-item-save")).toBe(true);
+  });
+
+  test("P3-3: a save already in flight that then succeeds retracts the notice it raced", async () => {
+    await openItemSheet();
+    openGroupA();
+    type("modifier-option-name-opt-rare", "Blue rare");
+
+    pressReal("modifier-group-save");
+    expect(saveGroupMutate).toHaveBeenCalledTimes(1);
+    const callbacks = saveGroupMutate.mock.calls[0]?.[1];
+    if (callbacks === undefined) throw new Error("save took no callbacks");
+
+    // The refetch lands INSIDE the save window, so the draft looks discarded.
+    refetchWith([{ ...GROUP_B, modifiers: [] }]);
+    expect(exists("menu-item-options-draft-discarded")).toBe(true);
+
+    // ...but the write was already on its way, and it lands.
+    act(() => {
+      callbacks.onSuccess?.({
+        ...GROUP_A,
+        modifiers: [{ ...GROUP_A.modifiers[0]!, name: "Blue rare" }],
+      });
+      saveGroupPending = false;
+      callbacks.onSettled?.();
+    });
+
+    // "saved with 1 option" and "could not be kept" cannot both be true.
+    expect(screenText()).toContain("Temperature saved with 1 option.");
+    expect(exists("menu-item-options-draft-discarded")).toBe(false);
+    expect(screenText()).not.toContain(
+      menuOptionsDraftDiscardedMessage("Temperature"),
+    );
   });
 
   test("P2-3: the sibling-group row refuses on its own, not only through `disabled`", async () => {

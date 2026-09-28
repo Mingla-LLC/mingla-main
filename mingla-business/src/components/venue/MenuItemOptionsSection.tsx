@@ -241,6 +241,32 @@ export function MenuItemOptionsSection({
       ? null
       : (groups.find((group) => group.id === editing.id) ?? null);
   const editorOnScreen = creating || editingGroup !== null;
+  /*
+   * Rework cycle 2 (P2-4, P3-3) — the discard notice is reconciled by the same
+   * block, because a sentence that was true when it was written can be made
+   * false by the very next refetch, and this one is read out of an assertive
+   * live region.
+   *
+   * It names a group and says that group is no longer listed, so a corrective
+   * refetch that brings the group BACK renders the row and the sentence
+   * denying it side by side (P2-4). And a save that was already in flight when
+   * the group vanished can still SUCCEED, which means the changes were kept
+   * after all — leaving "could not be kept" on screen beside "saved with 1
+   * option" (P3-3). A failed save deliberately keeps the notice: there the
+   * changes really were lost, the editor is gone, and nothing else would say
+   * so.
+   *
+   * It runs BEFORE the set below on purpose. Both read this render's value, so
+   * clearing second would queue its `null` after a freshly set name and wipe a
+   * notice that had just become true.
+   */
+  if (
+    discardedDraftGroupName !== null &&
+    (successMessage !== null ||
+      groups.some((group) => group.name === discardedDraftGroupName))
+  ) {
+    setDiscardedDraftGroupName(null);
+  }
   if (editing !== null && editingGroup === null) {
     // Adjusting state during render: guarded, so it runs once and settles.
     setEditing(null);
