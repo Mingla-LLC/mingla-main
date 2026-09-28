@@ -974,3 +974,336 @@ describe("#3570 RETEST — the read-retry latch releases on EVERY exit (P3-3)", 
     tree.unmount();
   });
 });
+
+/* ===================================================================== *
+ * RETEST CYCLE 2 APPEND — PR #3615 at head b2ae5acc8.
+ *
+ * APPEND-ONLY. Nothing above this line was edited, weakened or skipped.
+ *
+ * Cycle 2 replaced the single unkeyed refusal slot with a per-group map and
+ * introduced a DELIBERATE SEMANTIC CHANGE: a delete refusal is no longer
+ * permanent. It is released by a newer SUCCESSFUL read, tracked through
+ * React Query's `dataUpdatedAt`. That boundary is the whole risk surface,
+ * because the release must be driven by the server having actually spoken
+ * and by nothing else.
+ *
+ * This suite is where that boundary can be attacked at all: its query
+ * double is a steerable object, so `dataUpdatedAt` and the error/data shape
+ * can be moved independently. The #3571 suite's double is a fixed literal
+ * with no `dataUpdatedAt`, so the version there is pinned at 0 and only the
+ * group-membership half is reachable — the two suites cover different
+ * halves on purpose.
+ *
+ * What must hold:
+ *   - a newer successful read releases, and genuinely re-arms the trigger;
+ *   - a FAILED refetch releases nothing (`dataUpdatedAt` does not advance);
+ *   - a read that THREW releases nothing and does not close the editor
+ *     (`hasServerList`) — an unanswered read is not evidence a group is gone;
+ *   - re-rendering at the same version releases nothing;
+ *   - refusals raised at the same version stand together, one per group.
+ * ===================================================================== */
+
+/** The section reads `dataUpdatedAt`; the declared double predates it. */
+type VersionedQuery = QueryShape & { dataUpdatedAt?: number };
+/** `update` exists on the real renderer; the declared interface predates it. */
+type UpdatableRenderer = TestRenderer & {
+  update: (node: React.ReactElement) => void;
+};
+
+const sectionUnderTest = (): React.ReactElement => (
+  <MenuItemOptionsSection
+    brandId="brand-3570"
+    menuItemId="item-3570"
+    itemCurrency="USD"
+    canMutate
+  />
+);
+
+const rerenderSection = (tree: TestRenderer): void => {
+  act(() => {
+    (tree as UpdatableRenderer).update(sectionUnderTest());
+  });
+};
+
+/** A settled successful read carrying `data` and stamped with `version`. */
+const settledReadAt = (data: MenuModifierGroup[], version: number): void => {
+  const next: VersionedQuery = {
+    status: "success",
+    fetchStatus: "idle",
+    isLoading: false,
+    isError: false,
+    isFetching: false,
+    error: null,
+    data,
+  };
+  next.dataUpdatedAt = version;
+  query = next;
+};
+
+const openGroupEditor = (tree: TestRenderer, groupId: string): void => {
+  const row = nodesWithTestId(tree, `menu-item-option-group-${groupId}`)[0];
+  if (row === undefined) throw new Error(`no row rendered for ${groupId}`);
+  act(() => {
+    (row.props.onPress as () => void)();
+  });
+};
+
+/*
+ * The 44pt floor and the inert state both live on the HOST Pressable, not on
+ * the composite `Button` element — whose `onPress` prop is the handler that
+ * was HANDED to Button, still a function even when Button strips it. Reading
+ * the composite node reports every disabled control as live.
+ */
+const removalTriggerHost = (tree: TestRenderer): TestNode | undefined =>
+  hostsWithTestId(tree, "modifier-group-delete")[0];
+
+const removalIsLive = (tree: TestRenderer): boolean => {
+  const host = removalTriggerHost(tree);
+  return host !== undefined && typeof host.props.onPress === "function";
+};
+
+const askAndConfirmDelete = (tree: TestRenderer): void => {
+  const trigger = nodesWithTestId(tree, "modifier-group-delete")[0];
+  act(() => {
+    (trigger.props.onPress as (event: unknown) => void)({});
+  });
+  const dialog = nodesWithTestId(tree, "menu-item-options-delete-dialog")[0];
+  act(() => {
+    (dialog.props.onConfirm as () => void)();
+  });
+};
+
+const rejectLatestDelete = (error: Error): void => {
+  const calls = deleteMutate.mock.calls;
+  const callbacks = calls[calls.length - 1][1] as DeleteCallbacks;
+  act(() => {
+    callbacks.onError?.(error);
+    callbacks.onSettled?.();
+  });
+};
+
+/** The shape PostgreSQL actually emits for a referential refusal. */
+const orderHistoryRefusal = (): Error => {
+  const error = new Error(
+    'update or delete on table "menu_modifier_groups" violates foreign key ' +
+      'constraint "venue_order_item_modifiers_menu_modifier_id_fkey" on table ' +
+      '"venue_order_item_modifiers"',
+  ) as Error & { code?: string };
+  error.code = "23503";
+  return error;
+};
+
+const deleteAlertCount = (tree: TestRenderer): number =>
+  hostsWithTestId(tree, "menu-item-options-error").length;
+
+/** Drives one group to a standing permanent refusal at `version`. */
+const refuseGroupAt = (
+  groupId: string,
+  data: MenuModifierGroup[],
+  version: number,
+): TestRenderer => {
+  settledReadAt(data, version);
+  const tree = render();
+  openGroupEditor(tree, groupId);
+  askAndConfirmDelete(tree);
+  rejectLatestDelete(orderHistoryRefusal());
+  return tree;
+};
+
+describe("#3570 RETEST c2 — only a settled SUCCESSFUL read releases a refusal", () => {
+  test("a newer successful read releases the refusal and genuinely re-arms the trigger", () => {
+    const tree = refuseGroupAt("g1", [groupFixture("g1")], 100);
+
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(removalIsLive(tree)).toBe(false);
+
+    settledReadAt([groupFixture("g1")], 200);
+    rerenderSection(tree);
+
+    // The deliberate cycle-2 semantic: the lock is no longer permanent.
+    expect(deleteAlertCount(tree)).toBe(0);
+    expect(removalIsLive(tree)).toBe(true);
+    tree.unmount();
+  });
+
+  test("a FAILED refetch releases NOTHING — the version did not advance", () => {
+    const tree = refuseGroupAt("g1", [groupFixture("g1")], 100);
+
+    // React Query keeps the last good `data` and does NOT advance
+    // `dataUpdatedAt` when a refetch fails. The refusal must survive it.
+    const failed: VersionedQuery = {
+      status: "error",
+      fetchStatus: "idle",
+      isLoading: false,
+      isError: true,
+      isFetching: false,
+      error: transientError(),
+      data: [groupFixture("g1")],
+    };
+    failed.dataUpdatedAt = 100;
+    query = failed;
+    rerenderSection(tree);
+
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(removalIsLive(tree)).toBe(false);
+    // And the read failure is still its own separate surface.
+    expect(hostsWithTestId(tree, "menu-item-options-read-error")).toHaveLength(
+      1,
+    );
+    tree.unmount();
+  });
+
+  test("a read that THREW releases nothing and does not close the editor", () => {
+    const tree = refuseGroupAt("g1", [groupFixture("g1")], 100);
+
+    // `hasServerList` is false here: there is no list to reconcile against,
+    // so an unanswered read must not be read as "the group is gone".
+    const threw: VersionedQuery = {
+      status: "error",
+      fetchStatus: "idle",
+      isLoading: false,
+      isError: true,
+      isFetching: false,
+      error: transientError(),
+      data: undefined,
+    };
+    threw.dataUpdatedAt = 100;
+    query = threw;
+    rerenderSection(tree);
+
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(screenText(tree)).toContain(MENU_OPTIONS_READ_COPY.fatal);
+    // The escape route out of the failed read is still offered.
+    expect(hostsWithTestId(tree, "menu-item-options-read-retry")).toHaveLength(
+      1,
+    );
+    tree.unmount();
+  });
+
+  test("re-rendering at the SAME version releases nothing", () => {
+    const tree = refuseGroupAt("g1", [groupFixture("g1")], 100);
+
+    rerenderSection(tree);
+    rerenderSection(tree);
+
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(removalIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+
+  test("an in-flight refetch at the same version releases nothing", () => {
+    const tree = refuseGroupAt("g1", [groupFixture("g1")], 100);
+
+    const fetching: VersionedQuery = {
+      status: "success",
+      fetchStatus: "fetching",
+      isLoading: false,
+      isError: false,
+      isFetching: true,
+      error: null,
+      data: [groupFixture("g1")],
+    };
+    fetching.dataUpdatedAt = 100;
+    query = fetching;
+    rerenderSection(tree);
+
+    // A read that has not settled has not spoken.
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(removalIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+
+  test("two groups refused at the same version stand TOGETHER, one alert each", () => {
+    const both = [groupFixture("g1"), groupFixture("g2")];
+    const tree = refuseGroupAt("g1", both, 100);
+    expect(deleteAlertCount(tree)).toBe(1);
+
+    // Leave g1, refuse g2 as well — no read has settled in between, so both
+    // refusals are stamped with the same version and both must stand.
+    act(() => {
+      (
+        nodesWithTestId(tree, "modifier-group-cancel")[0].props
+          .onPress as () => void
+      )();
+    });
+    openGroupEditor(tree, "g2");
+    askAndConfirmDelete(tree);
+    rejectLatestDelete(orderHistoryRefusal());
+
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(removalIsLive(tree)).toBe(false);
+
+    // Back to g1: its own refusal is still standing and still inert.
+    act(() => {
+      (
+        nodesWithTestId(tree, "modifier-group-cancel")[0].props
+          .onPress as () => void
+      )();
+    });
+    openGroupEditor(tree, "g1");
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(removalIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+
+  test("a newer read that lands BEFORE the rejection stamps the refusal correctly", () => {
+    // The render-written version ref exists so a refusal is pinned to the
+    // newest read the component has RENDERED, not to whichever version
+    // existed when the mutation callback was built. Drive exactly that: the
+    // version advances and is rendered while the delete is still in flight.
+    settledReadAt([groupFixture("g1")], 100);
+    const tree = render();
+    openGroupEditor(tree, "g1");
+    askAndConfirmDelete(tree);
+
+    settledReadAt([groupFixture("g1")], 200);
+    rerenderSection(tree);
+    rejectLatestDelete(orderHistoryRefusal());
+
+    // Stamped at 200, not 100 — so it is not born already superseded.
+    expect(deleteAlertCount(tree)).toBe(1);
+    expect(removalIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+
+  test("the group vanishing clears its alert AND gives 'Add a choice' back", () => {
+    const tree = refuseGroupAt("g1", [groupFixture("g1")], 100);
+    expect(hostsWithTestId(tree, "menu-item-options-add")).toHaveLength(0);
+
+    settledReadAt([], 200);
+    rerenderSection(tree);
+
+    // Both halves together: no statement about a group that is not there,
+    // and the section is not left with zero controls.
+    expect(deleteAlertCount(tree)).toBe(0);
+    expect(hostsWithTestId(tree, "menu-item-options-add")).toHaveLength(1);
+    expect(screenText(tree)).not.toContain("can't be removed");
+    tree.unmount();
+  });
+
+  test("a group removed and RE-ADDED under the same id carries no stale refusal", () => {
+    const tree = refuseGroupAt("g1", [groupFixture("g1")], 100);
+
+    settledReadAt([], 200);
+    rerenderSection(tree);
+    settledReadAt([groupFixture("g1")], 300);
+    rerenderSection(tree);
+
+    // Same id, but two settled reads have spoken since the refusal.
+    expect(deleteAlertCount(tree)).toBe(0);
+    expect(removalIsLive(tree)).toBe(true);
+    tree.unmount();
+  });
+
+  test("a reorder that changes no membership still releases — the version is the authority", () => {
+    const tree = refuseGroupAt("g1", [groupFixture("g1"), groupFixture("g2")], 100);
+    expect(deleteAlertCount(tree)).toBe(1);
+
+    settledReadAt([groupFixture("g2"), groupFixture("g1")], 200);
+    rerenderSection(tree);
+
+    expect(deleteAlertCount(tree)).toBe(0);
+    expect(removalIsLive(tree)).toBe(true);
+    tree.unmount();
+  });
+});

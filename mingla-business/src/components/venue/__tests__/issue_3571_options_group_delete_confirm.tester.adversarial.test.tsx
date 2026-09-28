@@ -1586,3 +1586,296 @@ describe("#3571 RETEST — the two claims the scoping was masking", () => {
     tree.unmount();
   });
 });
+
+/* ===================================================================== *
+ * RETEST CYCLE 2 APPEND — PR #3615 at head b2ae5acc8.
+ *
+ * APPEND-ONLY. Nothing above this line was edited, weakened or skipped.
+ *
+ * Cycle 1 found that the single unkeyed `deleteFailure` slot made a
+ * "terminal" refusal erasable by the owner's next tap on ANY other group,
+ * which also wiped the only on-screen explanation and re-armed a delete the
+ * database can never accept. Cycle 2 replaced the slot with a per-group map.
+ *
+ * This suite mounts the REAL `ConfirmDialog`, `Modal` and `Button`, so the
+ * inert trigger measured here is the shipped control and not a prop on a
+ * stub. Its query double carries no `dataUpdatedAt`, so the read version is
+ * pinned at 0 throughout and the version-release path cannot fire — which
+ * makes this the right place to prove that the PER-GROUP isolation holds on
+ * its own, with no help from the release. The release boundary itself is
+ * attacked in the #3570 suite, whose query double is steerable.
+ * ===================================================================== */
+
+describe("#3571 RETEST c2 — one refusal per group, isolated from every other", () => {
+  test("asking about BETA does not erase ALPHA's standing refusal", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2), retestGroup(BETA, "Beta", 1)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+    expect(alertRegions(tree)).toHaveLength(1);
+    expect(triggerIsLive(tree)).toBe(false);
+
+    // Leave Alpha, open Beta, and raise Beta's ask. In cycle 1 this single
+    // tap wiped Alpha's refusal, its explanation, and its inert trigger.
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, BETA);
+    askToDelete(tree);
+    expect(dialogIsOpen(tree)).toBe(true);
+    press(hostsWithTestId(tree, "menu-item-options-delete-cancel")[0]);
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+
+    openEditorForGroup(tree, ALPHA);
+    expect(alertRegions(tree)).toHaveLength(1);
+    expect(screenText(tree)).toContain(MENU_OPTIONS_DELETE_COPY.inUse);
+    expect(triggerIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+
+  test("CONFIRMING a delete on BETA does not erase ALPHA's standing refusal", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2), retestGroup(BETA, "Beta", 1)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, BETA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    const callbacks = lastDeleteCallbacks();
+    act(() => {
+      callbacks.onSuccess?.();
+      callbacks.onSettled?.();
+    });
+
+    // Beta's own delete succeeded; Alpha's refusal is about Alpha.
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    rerender(tree);
+    openEditorForGroup(tree, ALPHA);
+    expect(alertRegions(tree)).toHaveLength(1);
+    expect(triggerIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+
+  test("two groups refused in sequence: each alert shows only with ITS group", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2), retestGroup(BETA, "Beta", 1)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, BETA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    const denial = new Error("permission denied for table") as Error & {
+      code?: string;
+    };
+    denial.code = "42501";
+    rejectWith(denial);
+
+    // Beta is on screen: Beta's reason, and exactly one alert.
+    expect(alertRegions(tree)).toHaveLength(1);
+    expect(screenText(tree)).toContain(MENU_OPTIONS_DELETE_COPY.permission);
+    expect(screenText(tree)).not.toContain(MENU_OPTIONS_DELETE_COPY.inUse);
+
+    // Alpha is on screen: Alpha's reason, and still exactly one alert.
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, ALPHA);
+    expect(alertRegions(tree)).toHaveLength(1);
+    expect(screenText(tree)).toContain(MENU_OPTIONS_DELETE_COPY.inUse);
+    expect(screenText(tree)).not.toContain(MENU_OPTIONS_DELETE_COPY.permission);
+    tree.unmount();
+  });
+
+  test("each refused group keeps its OWN reason on its own inert trigger", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2), retestGroup(BETA, "Beta", 1)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+    const alphaLabel = deleteTrigger(tree).props.accessibilityLabel as string;
+
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, BETA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    const denial = new Error("permission denied for table") as Error & {
+      code?: string;
+    };
+    denial.code = "42501";
+    rejectWith(denial);
+    const betaLabel = deleteTrigger(tree).props.accessibilityLabel as string;
+
+    expect(alphaLabel).toContain(MENU_OPTIONS_DELETE_COPY.inUse);
+    expect(betaLabel).toContain(MENU_OPTIONS_DELETE_COPY.permission);
+    expect(alphaLabel).not.toBe(betaLabel);
+    tree.unmount();
+  });
+
+  test("a RETRYABLE refusal on one group does not disturb another group's PERMANENT one", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2), retestGroup(BETA, "Beta", 1)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, BETA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(transientRefusal());
+    press(hostsWithTestId(tree, "menu-item-options-delete-cancel")[0]);
+
+    // Leaving Beta forgets Beta's transient failure and must leave Alpha's
+    // permanent one untouched.
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, BETA);
+    expect(alertRegions(tree)).toHaveLength(0);
+    expect(triggerIsLive(tree)).toBe(true);
+
+    press(hostsWithTestId(tree, "modifier-group-cancel")[0]);
+    openEditorForGroup(tree, ALPHA);
+    expect(alertRegions(tree)).toHaveLength(1);
+    expect(triggerIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+
+  test("the sole group vanishing clears the alert and gives 'Add a choice' back", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+    expect(alertRegions(tree)).toHaveLength(1);
+    expect(hostsWithTestId(tree, "menu-item-options-add")).toHaveLength(0);
+
+    groups = [];
+    rerender(tree);
+
+    // Cycle 1 left BOTH a false assertive alert and zero controls here.
+    expect(alertRegions(tree)).toHaveLength(0);
+    expect(hostsWithTestId(tree, "menu-item-options-add")).toHaveLength(1);
+    expect(screenText(tree)).not.toContain(MENU_OPTIONS_DELETE_COPY.inUse);
+    tree.unmount();
+  });
+
+  test("a vanished group takes its editor and its open ask with it", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2), retestGroup(BETA, "Beta", 1)];
+    const tree = render();
+
+    openEditorForGroup(tree, ALPHA);
+    askToDelete(tree);
+    expect(dialogIsOpen(tree)).toBe(true);
+
+    // The server stops reporting Alpha while its confirmation is open.
+    // Asking about a group the server no longer reports could only ever
+    // produce a doomed mutation.
+    const issued = deleteMutate.mock.calls.length;
+    groups = [retestGroup(BETA, "Beta", 1)];
+    rerender(tree);
+
+    expect(dialogIsOpen(tree)).toBe(false);
+    expect(alertRegions(tree)).toHaveLength(0);
+    expect(hostsWithTestId(tree, "modifier-group-delete")).toHaveLength(0);
+    expect(hostsWithTestId(tree, "menu-item-options-add")).toHaveLength(1);
+    expect(deleteMutate.mock.calls).toHaveLength(issued);
+    tree.unmount();
+  });
+
+  test("the surviving group is untouched when another group vanishes", () => {
+    groups = [retestGroup(ALPHA, "Alpha", 2), retestGroup(BETA, "Beta", 1)];
+    const tree = render();
+
+    openEditorForGroup(tree, BETA);
+    askToDelete(tree);
+    confirmTheDelete(tree);
+    rejectWith(orderHistoryRefusal());
+
+    // Alpha disappears; Beta's refusal is about Beta and must stand.
+    groups = [retestGroup(BETA, "Beta", 1)];
+    rerender(tree);
+
+    expect(alertRegions(tree)).toHaveLength(1);
+    expect(screenText(tree)).toContain(MENU_OPTIONS_DELETE_COPY.inUse);
+    expect(triggerIsLive(tree)).toBe(false);
+    tree.unmount();
+  });
+});
+
+describe("#3571 RETEST c2 — the referential-refusal probe is a shape, not a phrase", () => {
+  test("the statement PostgreSQL actually emits is still read as order history", () => {
+    const real = {
+      code: "23503",
+      message:
+        'update or delete on table "menu_modifier_groups" violates foreign ' +
+        'key constraint "venue_order_item_modifiers_menu_modifier_id_fkey" ' +
+        'on table "venue_order_item_modifiers"',
+      details:
+        'Key (id)=(abc) is still referenced from table ' +
+        '"venue_order_item_modifiers".',
+    };
+    expect(realHooks.isModifierGroupInUseError(real)).toBe(true);
+    expect(realHooks.classifyModifierGroupDeleteFailure(real)).toBe("in-use");
+  });
+
+  test("the same statement WITHOUT a code is still read as order history", () => {
+    const codeless = {
+      message:
+        'update or delete on table "menu_modifier_groups" violates foreign ' +
+        'key constraint "x" on table "venue_order_item_modifiers"',
+    };
+    expect(realHooks.isModifierGroupInUseError(codeless)).toBe(true);
+  });
+
+  test("the detail line alone is enough", () => {
+    expect(
+      realHooks.isModifierGroupInUseError({
+        message: "delete failed",
+        details: 'Key (id)=(abc) is still referenced from table "orders".',
+      }),
+    ).toBe(true);
+  });
+
+  test("a passing MENTION of the phrase is no longer read as order history", () => {
+    // A wrapped log line, an echoed response body, or copy that merely
+    // quotes the phrase must not tell the owner guests have ordered these
+    // choices — and must not make the refusal permanent.
+    const quoted = {
+      message:
+        'The request failed. If this says "violates foreign key constraint" ' +
+        "please contact support.",
+    };
+    expect(realHooks.isModifierGroupInUseError(quoted)).toBe(false);
+    expect(realHooks.classifyModifierGroupDeleteFailure(quoted)).toBe(
+      "generic",
+    );
+    expect(modifierGroupDeleteError(new Error(quoted.message)).canRetry).toBe(
+      true,
+    );
+  });
+
+  test("a gateway body that merely contains the phrase is retryable, not permanent", () => {
+    const echoed = {
+      message:
+        "502 Bad Gateway — upstream returned: violates foreign key constraint",
+    };
+    expect(realHooks.isModifierGroupInUseError(echoed)).toBe(false);
+    expect(
+      modifierGroupDeleteError(new Error(echoed.message)).message,
+    ).toBe(MENU_OPTIONS_DELETE_COPY.generic);
+  });
+});
