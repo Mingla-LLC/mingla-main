@@ -247,50 +247,56 @@ const CALLBACK_SOURCE = await Deno.readTextFile(
  *    a guard; it is a habit. State it as an invariant instead.
  * ------------------------------------------------------------------ */
 
-Deno.test("#2830 every site-scoped callback route binds the URL site to the signed site", () => {
-  /*
-   * Find every route in the callback router whose path pattern captures a site
-   * id, then require that the branch handling it compares that id with
-   * `envelope.site_id`. The comparison is written identically everywhere it
-   * appears, so its ABSENCE is what this looks for.
-   */
-  const SITE_CAPTURE = "sites\\/([^/]+)";
-  const routes: string[] = [];
-  for (
-    const match of CALLBACK_SOURCE.matchAll(
-      /const (\w+Match)\s*=\s*path\.match\(([\s\S]{0,240}?)\);/g,
-    )
-  ) {
-    if (match[2].includes(SITE_CAPTURE)) routes.push(match[1]);
-  }
-  assert(
-    routes.length >= 8,
-    `expected the callback to declare at least 8 site-scoped routes, found ${routes.length}`,
-  );
-  const unguarded: string[] = [];
-  for (const route of routes) {
+Deno.test({
+  name:
+    "#2830 every site-scoped callback route binds the URL site to the signed site",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: () => {
     /*
-     * The branch runs from `if (<route>` to the next `const <name>Match` or the
-     * end of the router. Anything shorter risks reading a neighbour's guard as
-     * this route's, which would make the test pass for the wrong reason.
+     * Find every route in the callback router whose path pattern captures a site
+     * id, then require that the branch handling it compares that id with
+     * `envelope.site_id`. The comparison is written identically everywhere it
+     * appears, so its ABSENCE is what this looks for.
      */
-    const start = CALLBACK_SOURCE.indexOf(`if (${route}`);
-    assert(start > 0, `no handler branch found for ${route}`);
-    const nextRoute = CALLBACK_SOURCE.slice(start + 1).search(
-      /\n\s*const \w+Match = path\.match\(/,
+    const SITE_CAPTURE = "sites\\/([^/]+)";
+    const routes: string[] = [];
+    for (
+      const match of CALLBACK_SOURCE.matchAll(
+        /const (\w+Match)\s*=\s*path\.match\(([\s\S]{0,240}?)\);/g,
+      )
+    ) {
+      if (match[2].includes(SITE_CAPTURE)) routes.push(match[1]);
+    }
+    assert(
+      routes.length >= 8,
+      `expected the callback to declare at least 8 site-scoped routes, found ${routes.length}`,
     );
-    const branch = CALLBACK_SOURCE.slice(
-      start,
-      nextRoute < 0 ? undefined : start + 1 + nextRoute,
+    const unguarded: string[] = [];
+    for (const route of routes) {
+      /*
+       * The branch runs from `if (<route>` to the next `const <name>Match` or the
+       * end of the router. Anything shorter risks reading a neighbour's guard as
+       * this route's, which would make the test pass for the wrong reason.
+       */
+      const start = CALLBACK_SOURCE.indexOf(`if (${route}`);
+      assert(start > 0, `no handler branch found for ${route}`);
+      const nextRoute = CALLBACK_SOURCE.slice(start + 1).search(
+        /\n\s*const \w+Match = path\.match\(/,
+      );
+      const branch = CALLBACK_SOURCE.slice(
+        start,
+        nextRoute < 0 ? undefined : start + 1 + nextRoute,
+      );
+      if (!branch.includes("!== envelope.site_id")) unguarded.push(route);
+    }
+    assert(
+      unguarded.length === 0,
+      `site-scoped callback routes with no envelope/site binding: ${
+        unguarded.join(", ")
+      }. Every such route must refuse with TENANT_MISMATCH when the site in the URL is not the site the envelope was signed for.`,
     );
-    if (!branch.includes("!== envelope.site_id")) unguarded.push(route);
-  }
-  assert(
-    unguarded.length === 0,
-    `site-scoped callback routes with no envelope/site binding: ${
-      unguarded.join(", ")
-    }. Every such route must refuse with TENANT_MISMATCH when the site in the URL is not the site the envelope was signed for.`,
-  );
+  },
 });
 
 /* ------------------------------------------------------------------ *
@@ -502,138 +508,162 @@ async function verifies(
   }
 }
 
-Deno.test("#2830 the freshness window holds at the millisecond either side of it", async () => {
-  const path = "/internal/v1/sites/x/edge";
-  const body = "{}";
-  const exact = await buildEnvelope({
-    path,
-    body,
-    siteId: SITE_A,
-    issuedOffsetMs: -1,
-    lifetimeMs: 60_000,
-  });
-  assert(
-    await verifies(exact, body, path),
-    "a lifetime of exactly 60s is the documented maximum and must verify",
-  );
-  const tooLong = await buildEnvelope({
-    path,
-    body,
-    siteId: SITE_A,
-    issuedOffsetMs: -1,
-    lifetimeMs: 60_001,
-  });
-  assert(
-    !(await verifies(tooLong, body, path)),
-    "a lifetime one millisecond past the maximum must be refused",
-  );
-  const expired = await buildEnvelope({
-    path,
-    body,
-    siteId: SITE_A,
-    issuedOffsetMs: -120_000,
-    lifetimeMs: 60_000,
-  });
-  assert(
-    !(await verifies(expired, body, path)),
-    "an envelope whose expiry has passed must be refused",
-  );
-  const fromTheFuture = await buildEnvelope({
-    path,
-    body,
-    siteId: SITE_A,
-    issuedOffsetMs: 6_000,
-    lifetimeMs: 60_000,
-  });
-  assert(
-    !(await verifies(fromTheFuture, body, path)),
-    "an envelope issued beyond the allowed clock skew must be refused",
-  );
-});
-
-Deno.test("#2830 a rotated key id cannot be paired with a different key's bytes", async () => {
-  const path = "/internal/v1/sites/x/edge";
-  const body = "{}";
-  const honestPrevious = await buildEnvelope({
-    path,
-    body,
-    siteId: SITE_A,
-    kid: CMS_PREV_KID,
-    keyB64: CMS_PREV_KEY_B64,
-  });
-  assert(
-    await verifies(honestPrevious, body, path),
-    "the previous key must keep verifying through a rotation",
-  );
-  const mismatched = await buildEnvelope({
-    path,
-    body,
-    siteId: SITE_A,
-    kid: CMS_PREV_KID,
-    keyB64: CMS_KEY_B64,
-  });
-  assert(
-    !(await verifies(mismatched, body, path)),
-    "naming the previous key while signing with the current one must be refused",
-  );
-});
-
-Deno.test("#2830 the body digest is over bytes, not over meaning", async () => {
-  const path = "/internal/v1/sites/x/edge";
-  const signedBody = JSON.stringify({ alpha: 1, beta: 2 });
-  const envelope = await buildEnvelope({
-    path,
-    body: signedBody,
-    siteId: SITE_A,
-  });
-  assert(
-    await verifies(envelope, signedBody, path),
-    "the body it was signed over must verify",
-  );
-  const reordered = JSON.stringify({ beta: 2, alpha: 1 });
-  assert(
-    reordered !== signedBody,
-    "the fixture must actually differ byte for byte",
-  );
-  assert(
-    !(await verifies(envelope, reordered, path)),
-    "a semantically identical body with different bytes must not verify",
-  );
-  const trailingSpace = `${signedBody} `;
-  assert(
-    !(await verifies(envelope, trailingSpace, path)),
-    "a single appended byte must not verify",
-  );
-});
-
-Deno.test("#2830 an envelope with one field too many or too few is refused", async () => {
-  const path = "/internal/v1/sites/x/edge";
-  const body = "{}";
-  const envelope = await buildEnvelope({ path, body, siteId: SITE_A });
-  assert(await verifies(envelope, body, path), "the control must verify");
-  assert(
-    !(await verifies({ ...envelope, extra: "field" }, body, path)),
-    "an envelope carrying an unknown field must be refused",
-  );
-  const { nonce: _dropped, ...missing } = envelope;
-  assert(
-    !(await verifies(missing, body, path)),
-    "an envelope missing a signed field must be refused",
-  );
-  assert(
-    !(await verifies(
-      { ...envelope, audience: "mingla-site-cms" },
-      body,
+Deno.test({
+  name: "#2830 the freshness window holds at the millisecond either side of it",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const path = "/internal/v1/sites/x/edge";
+    const body = "{}";
+    const exact = await buildEnvelope({
       path,
-    )),
-    "an envelope addressed to a different audience must be refused",
-  );
-  assert(
-    !(await verifies({ ...envelope, path: "/internal/v1/other" }, body, path)),
-    "an envelope signed for a different path must be refused",
-  );
-  assert(
-    !(await verifies(envelope, body, path, "GET")),
-    "an envelope signed for POST must not verify a GET",
-  );
+      body,
+      siteId: SITE_A,
+      issuedOffsetMs: -1,
+      lifetimeMs: 60_000,
+    });
+    assert(
+      await verifies(exact, body, path),
+      "a lifetime of exactly 60s is the documented maximum and must verify",
+    );
+    const tooLong = await buildEnvelope({
+      path,
+      body,
+      siteId: SITE_A,
+      issuedOffsetMs: -1,
+      lifetimeMs: 60_001,
+    });
+    assert(
+      !(await verifies(tooLong, body, path)),
+      "a lifetime one millisecond past the maximum must be refused",
+    );
+    const expired = await buildEnvelope({
+      path,
+      body,
+      siteId: SITE_A,
+      issuedOffsetMs: -120_000,
+      lifetimeMs: 60_000,
+    });
+    assert(
+      !(await verifies(expired, body, path)),
+      "an envelope whose expiry has passed must be refused",
+    );
+    const fromTheFuture = await buildEnvelope({
+      path,
+      body,
+      siteId: SITE_A,
+      issuedOffsetMs: 6_000,
+      lifetimeMs: 60_000,
+    });
+    assert(
+      !(await verifies(fromTheFuture, body, path)),
+      "an envelope issued beyond the allowed clock skew must be refused",
+    );
+  },
+});
+
+Deno.test({
+  name: "#2830 a rotated key id cannot be paired with a different key's bytes",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const path = "/internal/v1/sites/x/edge";
+    const body = "{}";
+    const honestPrevious = await buildEnvelope({
+      path,
+      body,
+      siteId: SITE_A,
+      kid: CMS_PREV_KID,
+      keyB64: CMS_PREV_KEY_B64,
+    });
+    assert(
+      await verifies(honestPrevious, body, path),
+      "the previous key must keep verifying through a rotation",
+    );
+    const mismatched = await buildEnvelope({
+      path,
+      body,
+      siteId: SITE_A,
+      kid: CMS_PREV_KID,
+      keyB64: CMS_KEY_B64,
+    });
+    assert(
+      !(await verifies(mismatched, body, path)),
+      "naming the previous key while signing with the current one must be refused",
+    );
+  },
+});
+
+Deno.test({
+  name: "#2830 the body digest is over bytes, not over meaning",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const path = "/internal/v1/sites/x/edge";
+    const signedBody = JSON.stringify({ alpha: 1, beta: 2 });
+    const envelope = await buildEnvelope({
+      path,
+      body: signedBody,
+      siteId: SITE_A,
+    });
+    assert(
+      await verifies(envelope, signedBody, path),
+      "the body it was signed over must verify",
+    );
+    const reordered = JSON.stringify({ beta: 2, alpha: 1 });
+    assert(
+      reordered !== signedBody,
+      "the fixture must actually differ byte for byte",
+    );
+    assert(
+      !(await verifies(envelope, reordered, path)),
+      "a semantically identical body with different bytes must not verify",
+    );
+    const trailingSpace = `${signedBody} `;
+    assert(
+      !(await verifies(envelope, trailingSpace, path)),
+      "a single appended byte must not verify",
+    );
+  },
+});
+
+Deno.test({
+  name: "#2830 an envelope with one field too many or too few is refused",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const path = "/internal/v1/sites/x/edge";
+    const body = "{}";
+    const envelope = await buildEnvelope({ path, body, siteId: SITE_A });
+    assert(await verifies(envelope, body, path), "the control must verify");
+    assert(
+      !(await verifies({ ...envelope, extra: "field" }, body, path)),
+      "an envelope carrying an unknown field must be refused",
+    );
+    const { nonce: _dropped, ...missing } = envelope;
+    assert(
+      !(await verifies(missing, body, path)),
+      "an envelope missing a signed field must be refused",
+    );
+    assert(
+      !(await verifies(
+        { ...envelope, audience: "mingla-site-cms" },
+        body,
+        path,
+      )),
+      "an envelope addressed to a different audience must be refused",
+    );
+    assert(
+      !(await verifies(
+        { ...envelope, path: "/internal/v1/other" },
+        body,
+        path,
+      )),
+      "an envelope signed for a different path must be refused",
+    );
+    assert(
+      !(await verifies(envelope, body, path, "GET")),
+      "an envelope signed for POST must not verify a GET",
+    );
+  },
 });

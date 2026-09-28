@@ -195,49 +195,56 @@ function routine(name: string): string {
  * The gap: one binding path checks the brand, its sibling does not.
  * ------------------------------------------------------------------ */
 
-Deno.test("#3149 both attribution binding paths check the brand of the order they bind", () => {
-  const trigger = routine("brand_site_bind_checkout_attribution");
-  const rpc = routine("brand_site_consume_attribution");
+Deno.test({
+  name:
+    "#3149 both attribution binding paths check the brand of the order they bind",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: () => {
+    const trigger = routine("brand_site_bind_checkout_attribution");
+    const rpc = routine("brand_site_consume_attribution");
 
-  /*
-   * The ticket-rail trigger is the reference implementation. If this assertion
-   * ever fails it means the reference lost its guard, and the comparison below
-   * would then pass for the wrong reason.
-   */
-  assert(
-    /touch\.brand_id\s*=\s*NEW\.brand_id/.test(trigger),
-    "the ticket-rail trigger no longer binds a touch to the checkout's brand; the reference for this invariant is gone",
-  );
-  assert(
-    /order_id\s*=\s*NEW\.order_id/.test(trigger),
-    "the ticket-rail trigger no longer writes order_id; the fixture is stale",
-  );
+    /*
+     * The ticket-rail trigger is the reference implementation. If this assertion
+     * ever fails it means the reference lost its guard, and the comparison below
+     * would then pass for the wrong reason.
+     */
+    assert(
+      /touch\.brand_id\s*=\s*NEW\.brand_id/.test(trigger),
+      "the ticket-rail trigger no longer binds a touch to the checkout's brand; the reference for this invariant is gone",
+    );
+    assert(
+      /order_id\s*=\s*NEW\.order_id/.test(trigger),
+      "the ticket-rail trigger no longer writes order_id; the fixture is stale",
+    );
 
-  /*
-   * The venue-order RPC writes the SAME column from a caller-supplied order id.
-   * It must reach the order's brand and compare it with the touch's, exactly as
-   * its sibling does.
-   */
-  assert(
-    /p_order_id/.test(rpc),
-    "the RPC no longer takes an order id; the fixture is stale",
-  );
-  /*
-   * The guard has to READ the order to learn its brand — there is no other way
-   * to compare it with the touch's. So the falsifiable question is whether the
-   * routine reads an orders table at all. Matching on the words "brand_id"
-   * alone would pass on the audit-log insert at the bottom of this very
-   * routine, which is the sort of assertion that reports a guard that is not
-   * there.
-   */
-  assert(
-    /FROM\s+public\.\w*orders?\b/i.test(rpc),
-    "brand_site_consume_attribution binds a caller-supplied order id to a touch without ever reading that order, so it cannot compare the order's brand with the touch's. Its sibling brand_site_bind_checkout_attribution does compare them, and both write the same column, which carries a UNIQUE partial index and no foreign key.",
-  );
+    /*
+     * The venue-order RPC writes the SAME column from a caller-supplied order id.
+     * It must reach the order's brand and compare it with the touch's, exactly as
+     * its sibling does.
+     */
+    assert(
+      /p_order_id/.test(rpc),
+      "the RPC no longer takes an order id; the fixture is stale",
+    );
+    /*
+     * The guard has to READ the order to learn its brand — there is no other way
+     * to compare it with the touch's. So the falsifiable question is whether the
+     * routine reads an orders table at all. Matching on the words "brand_id"
+     * alone would pass on the audit-log insert at the bottom of this very
+     * routine, which is the sort of assertion that reports a guard that is not
+     * there.
+     */
+    assert(
+      /FROM\s+public\.\w*orders?\b/i.test(rpc),
+      "brand_site_consume_attribution binds a caller-supplied order id to a touch without ever reading that order, so it cannot compare the order's brand with the touch's. Its sibling brand_site_bind_checkout_attribution does compare them, and both write the same column, which carries a UNIQUE partial index and no foreign key.",
+    );
+  },
 });
 
 Deno.test({
-  name: "#3149 a signed runtime cannot spend its touch on another brand's order",
+  name:
+    "#3149 a signed runtime cannot spend its touch on another brand's order",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: () =>
@@ -381,7 +388,9 @@ Deno.test({
           );
           assert(
             response.status === 400,
-            `a token of shape ${JSON.stringify(badToken)} must be refused, got ${response.status}`,
+            `a token of shape ${
+              JSON.stringify(badToken)
+            } must be refused, got ${response.status}`,
           );
         }
         assert(
