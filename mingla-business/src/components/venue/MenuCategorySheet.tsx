@@ -151,18 +151,14 @@ const localizedTimeLabel = (hhmm: string, emptyLabel: string): string => {
 const categoryNameIds = menuTextFieldIds("menu-category-name");
 const categoryDescriptionIds = menuTextFieldIds("menu-category-description");
 
-const menuTextAccessibilityHint = (
-  used: number,
-  limit: number,
-): string => `${used} of ${limit} characters will be saved.`;
+const menuTextAccessibilityHint = (used: number, limit: number): string =>
+  `${used} of ${limit} characters will be saved.`;
 
 const fieldFailureMessage = (
   failure: MenuTextSaveFailure | null,
   field: MenuTextFieldKind,
 ): string | null =>
-  failure?.kind === "field" && failure.field === field
-    ? failure.message
-    : null;
+  failure?.kind === "field" && failure.field === field ? failure.message : null;
 
 const formFailureMessage = (
   failure: MenuTextSaveFailure | null,
@@ -617,7 +613,7 @@ export function MenuCategorySheet({
               testID="menu-category-window-clear"
             />
           ) : null}
-          <View style={styles.dayRow}>
+          <View style={styles.dayRow} accessibilityLabel="Service days">
             {DAY_LABELS.map((label, index) => {
               const isoDay = index + 1;
               const on = days.includes(isoDay);
@@ -628,6 +624,8 @@ export function MenuCategorySheet({
                   onPress={() => toggleDay(isoDay)}
                   variant={on ? "primary" : "secondary"}
                   size="sm"
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: on }}
                   style={styles.dayChip}
                   testID={`menu-category-day-${isoDay}`}
                 />
@@ -930,6 +928,8 @@ const styles = StyleSheet.create({
   },
   dayChip: {
     minWidth: 56,
+    minHeight: 44,
+    justifyContent: "center",
   },
   windowSummary: {
     ...typography.bodySm,
