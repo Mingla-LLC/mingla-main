@@ -81,6 +81,16 @@ import {
 /** Stable empty list — a fresh `[]` every render churns the focus effect. */
 const NO_GROUPS: readonly MenuModifierGroup[] = Object.freeze([]);
 
+/**
+ * Issue #3572 — why a sibling group cannot be opened while the editor holds
+ * work that has not been written yet. Switching groups unmounts the open draft,
+ * which is the same silent discard the parent Save used to perform. Said out
+ * loud on the control it blocks, because a dead-looking row that never explains
+ * itself is the silent failure in a new costume (Constitution #3).
+ */
+const OPTIONS_DRAFT_HOLD_REASON =
+  "Save or cancel the options group you are editing first.";
+
 export interface MenuItemOptionsSectionProps {
   brandId: string | null;
   /** Null while the item is unsaved — groups need a real item id. */
@@ -88,6 +98,15 @@ export interface MenuItemOptionsSectionProps {
   itemCurrency: string;
   canMutate: boolean;
   onSavingChange?: (saving: boolean) => void;
+  /**
+   * Issue #3572 — true while the open editor holds work that has not been
+   * written yet. The parent item sheet receives this whole section as an opaque
+   * React node, so without this signal its Save button and every one of its
+   * dismissal routes are blind to an unsaved options draft and destroy it on
+   * unmount. This section owns CLEARING the signal, because it is the only
+   * layer that can see a successful save, a deliberate cancel, and the unmount.
+   */
+  onDirtyChange?: (dirty: boolean) => void;
   testID?: string;
 }
 
@@ -97,6 +116,7 @@ export function MenuItemOptionsSection({
   itemCurrency,
   canMutate,
   onSavingChange,
+  onDirtyChange,
   testID,
 }: MenuItemOptionsSectionProps): React.ReactElement {
   const groupsQuery = useMenuModifierGroups(brandId, menuItemId);
@@ -112,6 +132,11 @@ export function MenuItemOptionsSection({
     useState<MenuModifierGroup | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [focusGroupId, setFocusGroupId] = useState<string | null>(null);
+  /*
+   * #3572 — the aggregate nested-draft status. The editor panel reports its own
+   * dirtiness from its edit handlers; this flag is what the parent sheet sees.
+   */
+  const [editorDirty, setEditorDirty] = useState<boolean>(false);
   const submissionInFlightRef = useRef<boolean>(false);
   const deletionInFlightRef = useRef<boolean>(false);
   const retryInFlightRef = useRef<boolean>(false);
@@ -169,12 +194,22 @@ export function MenuItemOptionsSection({
     onSavingChange?.(saveGroup.isPending);
   }, [onSavingChange, saveGroup.isPending]);
 
+  useEffect(() => {
+    onDirtyChange?.(editorDirty);
+  }, [onDirtyChange, editorDirty]);
+
   useEffect(
     () => (): void => {
       submissionInFlightRef.current = false;
       onSavingChange?.(false);
+      /*
+       * #3572 — the lock dies with the section. Leaving it engaged would leave
+       * the parent sheet permanently unsaveable and undismissable after the
+       * editor is gone: a guard that cannot be released is its own outage.
+       */
+      onDirtyChange?.(false);
     },
-    [onSavingChange],
+    [onSavingChange, onDirtyChange],
   );
 
   useEffect(() => {
@@ -212,6 +247,12 @@ export function MenuItemOptionsSection({
     forgetTransientDeleteFailure();
     setEditing(null);
     setCreating(false);
+    /*
+     * #3572 — Cancel is a DELIBERATE discard, so the lock releases here. This
+     * is the operator's way out of a blocked parent save; it is never reached
+     * by a dismissal, a parent save, or a failed nested save.
+     */
+    setEditorDirty(false);
   }, [saveGroup.isPending, forgetTransientDeleteFailure]);
 
   const handleSave = useCallback(
@@ -226,6 +267,13 @@ export function MenuItemOptionsSection({
           setSaveError(null);
           setEditing(null);
           setCreating(false);
+          /*
+           * #3572 — the draft is now server truth, so the parent is released.
+           * Deliberately NOT done in `onError`: a failed nested save keeps the
+           * draft AND keeps the parent blocked, or the exact hole this guard
+           * exists to close reopens on the retry path.
+           */
+          setEditorDirty(false);
           setFocusGroupId(savedGroup.id);
           const count = savedGroup.modifiers.length;
           const announcement = `${savedGroup.name} saved with ${count} ${count === 1 ? "option" : "options"}.`;
@@ -454,6 +502,7 @@ export function MenuItemOptionsSection({
             onRequestDelete={canMutate ? requestDeleteGroup : undefined}
             removalBlockedReason={removalBlockedReason}
             deleting={deleteGroup.isPending}
+            onDirtyChange={setEditorDirty}
             onCancel={closeEditor}
           />
         ) : (
@@ -472,9 +521,13 @@ export function MenuItemOptionsSection({
               setCreating(false);
               setEditing(group);
             }}
-            disabled={!canMutate || saveGroup.isPending}
+            disabled={!canMutate || saveGroup.isPending || editorDirty}
             accessibilityRole="button"
-            accessibilityLabel={`Edit the ${group.name} options`}
+            accessibilityLabel={
+              editorDirty
+                ? `Edit the ${group.name} options. Unavailable. ${OPTIONS_DRAFT_HOLD_REASON}`
+                : `Edit the ${group.name} options`
+            }
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
             testID={`menu-item-option-group-${group.id}`}
           >
@@ -503,6 +556,7 @@ export function MenuItemOptionsSection({
           saving={saveGroup.isPending}
           saveError={saveError}
           onClearSaveError={() => setSaveError(null)}
+          onDirtyChange={setEditorDirty}
           onCancel={closeEditor}
         />
       ) : canMutate && editing === null ? (
