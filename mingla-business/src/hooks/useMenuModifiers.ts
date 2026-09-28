@@ -27,6 +27,7 @@ import { supabase } from "../services/supabase";
 import {
   isLikelyOfflineError,
   isPermissionDeniedError,
+  normalizeSupabaseError,
 } from "../utils/supabaseErrorMessage";
 import { orderPadKeys } from "./orderPadQueryKeys";
 
@@ -389,6 +390,44 @@ export function useSaveModifierGroup(
   });
 }
 
+export type ModifierGroupDeleteFailureCategory =
+  | "in-use"
+  | "permission"
+  | "offline"
+  | "generic";
+
+/**
+ * Issue #3571 — a delete that can NEVER succeed must not be narrated as one
+ * that might.
+ *
+ * Deleting a group CASCADEs into `menu_modifiers`
+ * (`20270305001789_issue_1789_qr_spots_menu_depth_and_ordering_settings.sql:566`),
+ * but `venue_order_item_modifiers.menu_modifier_id` is ON DELETE RESTRICT
+ * (`20270310001790_issue_1790_venue_order_family.sql:327`). So any group whose
+ * options have ever been ordered raises SQLSTATE 23503 and can never be
+ * removed — a permanent answer, not a transient one.
+ */
+export function isModifierGroupInUseError(raw: unknown): boolean {
+  const error = normalizeSupabaseError(raw, "");
+  if (error.code === "23503") return true;
+  const probe = `${error.message} ${error.details ?? ""}`.toLowerCase();
+  return probe.includes("violates foreign key constraint");
+}
+
+export function classifyModifierGroupDeleteFailure(
+  error: unknown,
+): ModifierGroupDeleteFailureCategory {
+  if (isModifierGroupInUseError(error)) return "in-use";
+  if (isPermissionDeniedError(error)) return "permission";
+  if (isLikelyOfflineError(error)) return "offline";
+  return "generic";
+}
+
+export interface SafeModifierGroupDeleteError extends Error {
+  code: string;
+  category: ModifierGroupDeleteFailureCategory;
+}
+
 export function useDeleteModifierGroup(
   brandId: string | null,
 ): UseMutationResult<void, Error, { groupId: string; menuItemId: string }> {
@@ -401,9 +440,33 @@ export function useDeleteModifierGroup(
         .delete()
         .eq("id", groupId)
         .eq("brand_id", brandId);
-      if (error !== null) throw error as unknown as Error;
+      /*
+       * Issue #3571 — this used to rethrow the raw PostgREST object and then
+       * DISCARD it in `onError`, so every consumer collapsed "guests already
+       * ordered this" and "you are offline" into one boolean and told the
+       * operator to "try again" on a constraint that can never relax. Classify
+       * once here and carry a safe, typed category — never the raw database
+       * text.
+       */
+      if (error !== null) {
+        const category = classifyModifierGroupDeleteFailure(error);
+        const safeError = new Error(
+          `modifier_group_delete_${category}`,
+        ) as SafeModifierGroupDeleteError;
+        safeError.code = normalizedModifierErrorCode(error);
+        safeError.category = category;
+        throw safeError;
+      }
     },
-    onError: () => undefined,
+    onError: (deleteRejection, variables) => {
+      console.error("[delete_menu_modifier_group] failed", {
+        brandId,
+        menuItemId: variables.menuItemId,
+        groupId: variables.groupId,
+        code: normalizedModifierErrorCode(deleteRejection),
+        category: (deleteRejection as SafeModifierGroupDeleteError).category,
+      });
+    },
     onSuccess: (_data, variables) => {
       if (brandId !== null) {
         void queryClient.invalidateQueries({

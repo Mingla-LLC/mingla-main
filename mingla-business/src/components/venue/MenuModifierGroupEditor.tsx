@@ -81,7 +81,12 @@ export interface MenuModifierGroupEditorProps {
   saving: boolean;
   saveError?: MenuTextSaveFailure | null;
   onClearSaveError?: () => void;
-  onDelete?: (groupId: string) => void;
+  /**
+   * Issue #3571 — ASKS the parent to start a removal. It must NEVER delete on
+   * its own: the parent owns the confirmation, and this control's job ends at
+   * raising the request.
+   */
+  onRequestDelete?: (groupId: string) => void;
   deleting?: boolean;
   onCancel: () => void;
   testID?: string;
@@ -96,7 +101,7 @@ export function MenuModifierGroupEditor({
   saving,
   saveError = null,
   onClearSaveError,
-  onDelete,
+  onRequestDelete,
   deleting = false,
   onCancel,
   testID,
@@ -563,12 +568,12 @@ export function MenuModifierGroupEditor({
         disabled={saving}
         testID="modifier-group-cancel"
       />
-      {group !== null && onDelete !== undefined ? (
+      {group !== null && onRequestDelete !== undefined ? (
         <Button
           label="Remove this group"
-          onPress={() => onDelete(group.id)}
+          onPress={() => onRequestDelete(group.id)}
           variant="destructive"
-          size="sm"
+          size="md"
           fullWidth
           loading={deleting}
           disabled={deleting || saving}
@@ -768,6 +773,9 @@ const styles = StyleSheet.create({
   },
   delete: {
     marginTop: spacing.xs,
+    // #3571 — a destructive control sitting directly under an identically wide
+    // Cancel must not be below the 44pt target.
+    minHeight: 44,
   },
 });
 
