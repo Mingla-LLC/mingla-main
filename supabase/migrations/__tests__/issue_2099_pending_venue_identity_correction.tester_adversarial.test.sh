@@ -126,9 +126,9 @@ WIRE_RUN=$((WIRE_RUN + 1)); ok "W-1: an absent tester guard fails the job closed
 # W-2 — BOTH events. §D7 says PR and push, so the branch list is read rather
 # than assumed: a `push:` key pointed at a branch that never receives this code
 # would satisfy a naive token check and enforce nothing.
-printf '%s' "$wf" | grep -qE '^on:' || fail "W-2: the workflow has no trigger block"
-printf '%s' "$wf" | grep -qE '^  pull_request:' || fail "W-2: no pull_request trigger"
-printf '%s' "$wf" | grep -qE '^  push:' || fail "W-2: no push trigger"
+grep -qE '^on:' "$WORKFLOW" || fail "W-2: the workflow has no trigger block"
+grep -qE '^  pull_request:' "$WORKFLOW" || fail "W-2: no pull_request trigger"
+grep -qE '^  push:' "$WORKFLOW" || fail "W-2: no push trigger"
 push_branches="$(printf '%s\n' "$wf" | awk '/^  push:/{f=1;next} /^  [a-z_]+:/{f=0} f && /branches:/{print}')"
 [ -n "$push_branches" ] || fail "W-2: the push trigger names no branches"
 printf '%s' "$push_branches" | grep -q 'main' \
@@ -137,7 +137,7 @@ WIRE_RUN=$((WIRE_RUN + 1)); ok "W-2: the workflow runs on pull_request and on pu
 
 # W-3 — this guard's own path is in the paths filter, so landing the file
 # actually triggers the workflow instead of matching nothing.
-printf '%s' "$wf" | grep -q "$GUARD_REL" \
+grep -q "$GUARD_REL" "$WORKFLOW" \
   || fail "W-3: $GUARD_REL is not in the workflow's paths filter"
 WIRE_RUN=$((WIRE_RUN + 1)); ok "W-3: this guard's path is in the workflow paths filter"
 
