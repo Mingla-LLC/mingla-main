@@ -26,6 +26,8 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //          — mingla-business/src/hooks/useMenuModifiers.ts:206 and :232
   //   -  2  #3563 menu_modifier_groups (id) + menu_modifiers (id) call sites
   //          — mingla-business/src/hooks/useMenuModifiers.ts, REMOVED
+  //   -  1  #3564 menu_items (id) call site
+  //          — mingla-business/src/hooks/useMenus.ts, REMOVED
   //   +  1  #1974 brand_tax_registration_attestations (brand_id)
   //          — supabase/functions/brand-tax-registrations-list/index.ts
   //   +  1  #1979 venue_reservation_settings (venue_id) call site
@@ -42,7 +44,7 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //          — supabase/functions/_shared/agentAttachmentFinalize.ts:501
   //   +  1  #3429 agent_turn_claim_guards (user_id,client_turn_id)
   //          — supabase/functions/agent-turn-control/index.ts:95
-  //   = 89
+  //   = 88
   //
   // [TEST-MOD-APPROVED #3429] Census +2, both new Ari call sites, both with a
   // real non-partial arbiter. Verified by reading pg_indexes on the live #3429
@@ -94,13 +96,19 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // the non-partial `PRIMARY KEY (id)` indexes proved above. Like #1971, this is
   // a call-site census subtraction, not an arbiter removal or behavior change.
   //
+  // [TEST-MOD-APPROVED #3564] The menu-item reorder call site was removed:
+  // `useReorderMenuItems` now makes one authenticated
+  // `biz_reorder_menu_items_v1` RPC call instead of partially upserting
+  // `menu_items` on `id`. The table primary key is unchanged. This is another
+  // call-site census subtraction, not an arbiter removal or behavior change.
+  //
   // [TEST-MOD-APPROVED #1983] Additive Ari call site on the existing
   // `(user_id, channel, type)` unique key already used by Host
   // `useNotificationTypePrefs`. No new arbiter columns; census +1 only.
   //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 89);
+  assert.equal(sites.length, 88);
   assert.equal(sites.some((site) => site.table === "user_stats"), false);
   assert.equal(sites.some((site) => site.table === "saved_experience_privacy"), false);
   assert.equal(sites.some((site) => site.table === "business_notification_type_preferences"), true);
