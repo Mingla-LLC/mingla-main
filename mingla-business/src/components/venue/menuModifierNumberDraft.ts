@@ -8,7 +8,10 @@ export const MODIFIER_MAXIMUM_ERROR_COPY = {
   range: "The maximum must be between 1 and 20.",
 } as const;
 
-const MAX_SAFE_INTEGER_TEXT = String(Number.MAX_SAFE_INTEGER);
+// The stored maximum is at most two significant digits. Four raw digits keep
+// established short leading-zero forms (`002`, `0021`) classifiable by value,
+// while longer digit-only pastes are malformed in full rather than collapsed.
+const MAX_MODIFIER_MAXIMUM_DRAFT_DIGITS = 4;
 
 /** Parse the complete multi-choice maximum draft without numeric coercion. */
 export const parseModifierMaximumDraft = (
@@ -19,15 +22,11 @@ export const parseModifierMaximumDraft = (
   if (!/^\d+$/.test(trimmed)) {
     return { kind: "invalid", reason: "format" };
   }
-
-  const normalizedDigits = trimmed.replace(/^0+(?=\d)/, "");
-  if (
-    normalizedDigits.length > MAX_SAFE_INTEGER_TEXT.length ||
-    (normalizedDigits.length === MAX_SAFE_INTEGER_TEXT.length &&
-      normalizedDigits > MAX_SAFE_INTEGER_TEXT)
-  ) {
+  if (trimmed.length > MAX_MODIFIER_MAXIMUM_DRAFT_DIGITS) {
     return { kind: "invalid", reason: "format" };
   }
+
+  const normalizedDigits = trimmed.replace(/^0+(?=\d)/, "");
   if (
     normalizedDigits.length > 2 ||
     (normalizedDigits.length === 2 && normalizedDigits > "20")

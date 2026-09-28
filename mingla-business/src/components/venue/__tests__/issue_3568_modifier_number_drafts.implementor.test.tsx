@@ -246,6 +246,7 @@ describe("whole maximum grammar", () => {
     "1,000",
     "2 0",
     "9".repeat(500),
+    `${"0".repeat(500)}2`,
   ])("rejects malformed %s as format", (draft) => {
     expect(parseModifierMaximumDraft(draft)).toEqual({
       kind: "invalid",
@@ -377,6 +378,27 @@ describe("real modifier editor boundary", () => {
           },
         ],
       }),
+    );
+  });
+
+  test("an oversized zero-prefixed maximum stays visible and cannot cross Save", () => {
+    renderEditor();
+    const oversizedDraft = `${"0".repeat(500)}2`;
+
+    change("modifier-group-max", oversizedDraft);
+
+    expect(byTestID("modifier-group-max").props).toMatchObject({
+      value: oversizedDraft,
+      error: "Enter a whole number from 1 to 20.",
+    });
+    expect(byTestID("modifier-group-save").props.disabled).toBe(true);
+    press("modifier-group-save");
+    expect(save).not.toHaveBeenCalled();
+
+    change("modifier-group-max", "002");
+    press("modifier-group-save");
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ maxSelect: 2 }),
     );
   });
 
