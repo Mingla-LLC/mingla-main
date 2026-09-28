@@ -2070,13 +2070,24 @@ async function handle(req: Request): Promise<Response> {
             );
           }
 
-          // Follow-up Gemini call to summarise the read result
+          // Follow-up Gemini call to summarise the read result.
+          //
+          // issue #3605 — the model's own `thoughtSignature` rides back on the
+          // echoed functionCall part. Without it Gemini 3.x answers HTTP 400
+          // ("Function call is missing a thought_signature in functionCall
+          // parts") and the catch below turns that into `followup = undefined`,
+          // so the user saw the bare fallback "Here's what I found." with the
+          // real answer stranded in structured content. Measured in production
+          // on 2026-09-28: three reads, three 400s, three empty answers.
           const followupContents: GeminiContentMessage[] = [
             ...contents,
             {
               role: "model",
               parts: [{
                 functionCall: { name: tool.name, args: gemini.toolCall.args },
+                ...(gemini.toolCall.thoughtSignature
+                  ? { thoughtSignature: gemini.toolCall.thoughtSignature }
+                  : {}),
               }],
             },
             {
@@ -2103,6 +2114,24 @@ async function handle(req: Request): Promise<Response> {
           } catch (err: unknown) {
             const schemaResponse = schemaErrorResponse(err);
             if (schemaResponse) return schemaResponse;
+            // issue #3605 — this catch used to be silent. A dead follow-up is
+            // indistinguishable from a terse model reply once it becomes
+            // "Here's what I found.", so #3605 sat in production answering
+            // every website question with an empty shell and left no log line
+            // to find it by. Say so, every time.
+            const failure = err as { kind?: unknown; detail?: unknown };
+            console.error(
+              "[agent-chat] read follow-up failed",
+              JSON.stringify({
+                fn: "agent-chat",
+                issue: "3605",
+                tool_name: tool.name,
+                kind: typeof failure?.kind === "string" ? failure.kind : null,
+                detail: typeof failure?.detail === "string"
+                  ? failure.detail.slice(0, 300)
+                  : null,
+              }),
+            );
             followup = undefined;
           }
           const text = followup?.textResponse ?? "Here's what I found.";

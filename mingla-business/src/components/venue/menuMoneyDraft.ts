@@ -83,19 +83,10 @@ const isAboveMaximum = (centsDigits: string): boolean =>
   (centsDigits.length === MAX_MENU_MONEY_CENTS_TEXT.length &&
     centsDigits > MAX_MENU_MONEY_CENTS_TEXT);
 
-/**
- * Parse one complete Price/Cost draft into exact integer minor units.
- *
- * The accepted language is intentionally deterministic across native and web:
- * canonical comma grouping with dot decimals, ungrouped comma decimals, and
- * explicit dot grouping with comma decimals. The whole trimmed draft must
- * match; no numeric-prefix coercion or floating-point rounding is used.
- */
-export const parseMenuMoneyDraft = (
-  draft: string,
+const parseTrimmedMenuMoneyDraft = (
+  trimmed: string,
   currencyCode: string,
 ): MenuMoneyDraftResult => {
-  const trimmed = draft.trim();
   if (trimmed.length === 0) return { kind: "blank", cents: null };
 
   const parts = splitMoneyDraft(trimmed);
@@ -117,4 +108,53 @@ export const parseMenuMoneyDraft = (
   }
 
   return { kind: "valid", cents: Number(centsDigits) };
+};
+
+/**
+ * Parse one complete Price/Cost draft into exact integer minor units.
+ *
+ * The accepted language is intentionally deterministic across native and web:
+ * canonical comma grouping with dot decimals, ungrouped comma decimals, and
+ * explicit dot grouping with comma decimals. The whole trimmed draft must
+ * match; no numeric-prefix coercion or floating-point rounding is used.
+ */
+export const parseMenuMoneyDraft = (
+  draft: string,
+  currencyCode: string,
+): MenuMoneyDraftResult =>
+  parseTrimmedMenuMoneyDraft(draft.trim(), currencyCode);
+
+/**
+ * Parse one complete signed modifier-price draft into exact minor units.
+ *
+ * The unsigned parser remains the Price/Cost owner. This wrapper adds exactly
+ * one optional leading ASCII minus without allowing whitespace after the sign
+ * or changing any of the unsigned locale, precision, or range rules.
+ */
+export const parseSignedMenuMoneyDraft = (
+  draft: string,
+  currencyCode: string,
+): MenuMoneyDraftResult => {
+  const trimmed = draft.trim();
+  if (trimmed.length === 0) return { kind: "blank", cents: null };
+  if (!trimmed.startsWith("-")) {
+    return parseTrimmedMenuMoneyDraft(trimmed, currencyCode);
+  }
+
+  const magnitudeDraft = trimmed.slice(1);
+  if (magnitudeDraft.length === 0 || magnitudeDraft.trim() !== magnitudeDraft) {
+    return { kind: "invalid", reason: "format" };
+  }
+
+  const magnitude = parseTrimmedMenuMoneyDraft(magnitudeDraft, currencyCode);
+  if (magnitude.kind !== "valid") {
+    return magnitude.kind === "blank"
+      ? { kind: "invalid", reason: "format" }
+      : magnitude;
+  }
+
+  return {
+    kind: "valid",
+    cents: magnitude.cents === 0 ? 0 : -magnitude.cents,
+  };
 };

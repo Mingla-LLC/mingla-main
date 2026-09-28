@@ -6,6 +6,8 @@
 
 // ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
 import { recordApiCall } from "./apiHealthLog.ts";
+// issue #3605 — the two Gemini 3.x contents rules, enforced on the way out.
+import { sanitizeGeminiContents } from "./agentGeminiContents.ts";
 // issue #3526 — model id + thinking level come from the single source.
 import {
   GEMINI_MODEL_ID,
@@ -36,7 +38,14 @@ export interface GeminiContentMessage {
   parts: Array<
     | { text: string }
     | { inlineData: { mimeType: string; data: string } }
-    | { functionCall: { name: string; args: Record<string, unknown> } }
+    // issue #3605 — `thoughtSignature` is the opaque token a Gemini 3.x model
+    // returns beside every functionCall. Echoing the call back without it is
+    // HTTP 400 "Function call is missing a thought_signature in functionCall
+    // parts", which is what silently broke every Ari inline read. Carry it.
+    | {
+      functionCall: { name: string; args: Record<string, unknown> };
+      thoughtSignature?: string;
+    }
     | { functionResponse: { name: string; response: Record<string, unknown> } }
   >;
 }
@@ -50,6 +59,12 @@ export interface GeminiUsage {
 export interface GeminiToolCall {
   name: string;
   args: Record<string, unknown>;
+  /**
+   * issue #3605 — the model's own signature for this call. Undefined only for
+   * a provider that did not send one; when it IS present the caller MUST put
+   * it back on the functionCall part it echoes into the next request.
+   */
+  thoughtSignature?: string;
 }
 
 export interface GeminiResult {
@@ -477,8 +492,16 @@ export async function callGemini(args: {
     );
   }
 
+  // issue #3605 — one chokepoint, both shape rules. Every caller of callGemini
+  // (the first hop, the read follow-up, and any future hop) gets a transcript
+  // Gemini 3.x will accept: no unsigned functionCall, no orphan
+  // functionResponse. Enforced HERE rather than at each call site because a
+  // call site that forgets it does not fail loudly — it returns a 400 the
+  // follow-up's catch swallows into "Here's what I found."
+  const contents = sanitizeGeminiContents(args.contents);
+
   const requestBody = {
-    contents: args.contents,
+    contents,
     systemInstruction: { parts: [{ text: args.systemPrompt }] },
     tools: [
       {
@@ -579,9 +602,19 @@ export async function callGemini(args: {
     let textParts: string[] = [];
     for (const part of parts) {
       if ("functionCall" in part && part.functionCall) {
+        // issue #3605 — Gemini 3.x puts the signature on the PART (sibling of
+        // `functionCall`); older shapes nested it. Read both, keep whichever
+        // exists, and never invent one: an absent signature is a fact the
+        // repair pass downstream has to act on, not a field to fabricate.
+        const signature = typeof part.thoughtSignature === "string"
+          ? part.thoughtSignature
+          : typeof part.functionCall.thoughtSignature === "string"
+          ? part.functionCall.thoughtSignature
+          : undefined;
         toolCall = {
           name: part.functionCall.name,
           args: (part.functionCall.args ?? {}) as Record<string, unknown>,
+          ...(signature ? { thoughtSignature: signature } : {}),
         };
       } else if ("text" in part && typeof part.text === "string") {
         textParts.push(part.text);
@@ -617,8 +650,18 @@ interface GeminiResponse {
   candidates?: Array<{
     content?: {
       parts?: Array<
-        | { text: string }
-        | { functionCall: { name: string; args?: Record<string, unknown> } }
+        | { text: string; thoughtSignature?: string }
+        | {
+          // issue #3605 — model this explicitly. While the signature was not
+          // in this interface the parser could not see it, so every echoed
+          // call went out unsigned and every follow-up turn 400'd.
+          functionCall: {
+            name: string;
+            args?: Record<string, unknown>;
+            thoughtSignature?: string;
+          };
+          thoughtSignature?: string;
+        }
       >;
     };
     finishReason?: string;

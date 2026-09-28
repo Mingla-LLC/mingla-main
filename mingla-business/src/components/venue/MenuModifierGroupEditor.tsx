@@ -40,8 +40,8 @@ import { isLargeText } from "../../constants/dynamicType";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import {
+  formatCurrency,
   majorFromMinor,
-  minorFromMajor,
   normalizeCurrency,
 } from "../../utils/currency";
 import { validateModifierGroup, type ModifierSelectionMode } from "./menuDepth";
@@ -51,6 +51,15 @@ import type {
 } from "../../hooks/useMenuModifiers";
 import { createMenuModifierDraftId } from "./menuModifierDraftId";
 import { MenuTextCounter } from "./MenuTextCounter";
+import {
+  menuMoneyFractionDigits,
+  parseSignedMenuMoneyDraft,
+  type MenuMoneyDraftResult,
+} from "./menuMoneyDraft";
+import {
+  modifierMaximumDraftError,
+  parseModifierMaximumDraft,
+} from "./menuModifierNumberDraft";
 import {
   menuTextFieldIds,
   validateMenuText,
@@ -136,17 +145,24 @@ export function MenuModifierGroupEditor({
         .canonicalValue !== "",
   );
 
+  const maximumResult = parseModifierMaximumDraft(maxSelect);
+  const maximumError =
+    mode === "multi" ? modifierMaximumDraftError(maximumResult) : null;
+  const maximumInvalid = mode === "multi" && maximumResult.kind === "invalid";
   const parsedMax =
     mode === "single"
       ? 1
-      : maxSelect.trim().length === 0
-        ? null
-        : Number.parseInt(maxSelect.trim(), 10);
+      : maximumResult.kind === "valid"
+        ? maximumResult.value
+        : maximumResult.kind === "blank"
+          ? null
+          : undefined;
   const minSelect = required ? 1 : 0;
   const groupNameValidation = validateMenuText("modifierGroupName", name);
   const optionValidations = options.map((option) => ({
     id: option.id,
     result: validateMenuText("modifierOptionName", option.name),
+    priceResult: parseSignedMenuMoneyDraft(option.price, code),
   }));
   const visibleGroupNameLocalError =
     groupNameValidation.error?.kind === "too-long" ||
@@ -166,18 +182,21 @@ export function MenuModifierGroupEditor({
   const optionNameInvalid = optionValidations.some(
     ({ result }) => result.error?.kind === "too-long",
   );
-  const error = groupNameValidation.isValid
-    ? validateModifierGroup({
-        name: groupNameValidation.canonicalValue,
-        selectionMode: mode,
-        minSelect,
-        maxSelect:
-          parsedMax === null || Number.isNaN(parsedMax) ? null : parsedMax,
-        optionCount: optionValidations.filter(
-          ({ result }) => result.canonicalValue !== "",
-        ).length,
-      })
-    : null;
+  const optionPriceInvalid = optionValidations.some(
+    ({ priceResult }) => priceResult.kind === "invalid",
+  );
+  const error =
+    groupNameValidation.isValid && parsedMax !== undefined
+      ? validateModifierGroup({
+          name: groupNameValidation.canonicalValue,
+          selectionMode: mode,
+          minSelect,
+          maxSelect: parsedMax,
+          optionCount: optionValidations.filter(
+            ({ result }) => result.canonicalValue !== "",
+          ).length,
+        })
+      : null;
   const saveFailureMessage =
     saveError?.kind === "field"
       ? saveError.formMessage
@@ -185,6 +204,8 @@ export function MenuModifierGroupEditor({
   const canSave =
     groupNameValidation.isValid &&
     !optionNameInvalid &&
+    !optionPriceInvalid &&
+    !maximumInvalid &&
     !modifierFieldFailureActive &&
     error === null &&
     !saving;
@@ -233,6 +254,8 @@ export function MenuModifierGroupEditor({
     if (
       !groupNameValidation.isValid ||
       optionNameInvalid ||
+      optionPriceInvalid ||
+      maximumInvalid ||
       modifierFieldFailureActive ||
       error !== null ||
       saving
@@ -246,28 +269,26 @@ export function MenuModifierGroupEditor({
       name: groupNameValidation.canonicalValue,
       selectionMode: mode,
       minSelect,
-      maxSelect:
-        parsedMax === null || Number.isNaN(parsedMax) ? null : parsedMax,
+      maxSelect: parsedMax ?? null,
       sortOrder: group?.sortOrder ?? nextSortOrder,
       modifiers: options
         .map((option) => ({
           option,
           validation: validateMenuText("modifierOptionName", option.name),
+          priceResult: parseSignedMenuMoneyDraft(option.price, code),
         }))
         .filter(({ validation }) => validation.canonicalValue !== "")
-        .map(({ option, validation }, index) => {
-          // `minorFromMajor` clamps negatives to 0 by design (it serves prices,
-          // which cannot be negative). A modifier delta CAN be, so the sign is
-          // carried separately and the magnitude converted.
-          const typed = Number.parseFloat(option.price.replace(/,/g, ""));
-          const magnitude = Number.isFinite(typed)
-            ? minorFromMajor(Math.abs(typed), code)
-            : 0;
+        .map(({ option, validation, priceResult }, index) => {
+          if (priceResult.kind === "invalid") {
+            throw new Error(
+              "Modifier numeric validation barrier was bypassed.",
+            );
+          }
           return {
             id: option.id,
             name: validation.canonicalValue,
             priceDeltaCents:
-              Number.isFinite(typed) && typed < 0 ? -magnitude : magnitude,
+              priceResult.kind === "blank" ? 0 : priceResult.cents,
             sortOrder: index,
           };
         }),
@@ -275,6 +296,8 @@ export function MenuModifierGroupEditor({
   }, [
     groupNameValidation,
     optionNameInvalid,
+    optionPriceInvalid,
+    maximumInvalid,
     modifierFieldFailureActive,
     error,
     saving,
@@ -389,7 +412,11 @@ export function MenuModifierGroupEditor({
       </View>
 
       {mode === "multi" ? (
-        <Field label="Most they can pick (leave blank for no limit)">
+        <Field
+          label="Most they can pick (leave blank for no limit)"
+          error={maximumError}
+          errorId="modifier-group-max-error"
+        >
           <Input
             value={maxSelect}
             onChangeText={(next) => {
@@ -397,8 +424,13 @@ export function MenuModifierGroupEditor({
               setMaxSelect(next);
             }}
             variant="number"
+            inputMode="numeric"
             placeholder="3"
             accessibilityLabel="Most options a guest can pick"
+            accessibilityHint="Leave blank for no limit."
+            error={maximumError}
+            errorId="modifier-group-max-error"
+            renderErrorMessage={false}
             disabled={saving}
             testID="modifier-group-max"
           />
@@ -413,6 +445,9 @@ export function MenuModifierGroupEditor({
           validation.error?.kind === "too-long"
             ? validation.error.message
             : null;
+        const priceResult = parseSignedMenuMoneyDraft(option.price, code);
+        const priceError = modifierPriceDraftError(priceResult, code);
+        const priceErrorId = `modifier-option-price-error-${option.id}`;
         return (
           <View key={option.id} style={styles.optionBlock}>
             <View style={styles.fieldHeader}>
@@ -489,9 +524,14 @@ export function MenuModifierGroupEditor({
                     onChangeText={(next) =>
                       patchOption(option.id, { price: next })
                     }
-                    variant="number"
+                    variant="text"
+                    inputMode="text"
                     placeholder={`± ${code}`}
                     accessibilityLabel={`Price change for option ${optionIndex + 1} in ${code}`}
+                    accessibilityHint="Leave blank when this option costs the same. Use a minus when it costs less."
+                    error={priceError}
+                    errorId={priceErrorId}
+                    renderErrorMessage={false}
                     disabled={saving}
                     testID={`modifier-option-price-${option.id}`}
                   />
@@ -512,6 +552,18 @@ export function MenuModifierGroupEditor({
                 </Pressable>
               </View>
             </View>
+            {priceError !== null ? (
+              <Text
+                nativeID={priceErrorId}
+                accessibilityRole="alert"
+                accessibilityLiveRegion="assertive"
+                aria-live="assertive"
+                style={styles.fieldError}
+                testID={priceErrorId}
+              >
+                {priceError}
+              </Text>
+            ) : null}
           </View>
         );
       })}
@@ -595,6 +647,8 @@ export function MenuModifierGroupEditor({
 interface FieldProps {
   label: string;
   children: React.ReactNode;
+  error?: string | null;
+  errorId?: string;
 }
 
 interface MenuTextFieldProps extends FieldProps {
@@ -640,13 +694,46 @@ function MenuTextField({
   );
 }
 
-function Field({ label, children }: FieldProps): React.ReactElement {
+function Field({
+  label,
+  children,
+  error = null,
+  errorId,
+}: FieldProps): React.ReactElement {
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
       {children}
+      {error !== null && errorId !== undefined ? (
+        <Text
+          nativeID={errorId}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+          aria-live="assertive"
+          style={styles.fieldError}
+          testID={errorId}
+        >
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
+}
+
+function modifierPriceDraftError(
+  result: MenuMoneyDraftResult,
+  code: string,
+): string | null {
+  if (result.kind !== "invalid") return null;
+  if (result.reason === "format") {
+    return "Enter a valid price change, for example -1.50 or 2.00.";
+  }
+  if (result.reason === "precision") {
+    return menuMoneyFractionDigits(code) === 0
+      ? `${code} uses whole amounts; remove the decimal places.`
+      : `${code} supports at most 2 decimal places.`;
+  }
+  return `Price change must be ${formatCurrency(100_000_000, code, true)} or less in either direction.`;
 }
 
 const styles = StyleSheet.create({

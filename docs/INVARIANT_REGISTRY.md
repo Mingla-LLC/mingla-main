@@ -1,5 +1,14 @@
 # Invariant Registry
 
+## DRAFT — issue #3568 (modifier number drafts are exact before save)
+
+### I-PROPOSED-3568-MENU-MODIFIER-NUMBER-DRAFT-INTEGRITY (DRAFT)
+
+- **Rule:** Every visible Mingla Host option price change is parsed in full by the deterministic signed menu-money grammar, using the loaded item's currency scale, before the atomic modifier writer can run; blank alone means zero, and valid positive or negative drafts become the exact bounded integer minor units they express. A multi-choice maximum is either intentionally blank/null or a complete ASCII-digit integer from 1 through 20; single-choice mode submits one without rewriting the dormant multi draft. Any nonblank invalid draft remains exactly editable, owns a stable field-associated accessible error, disables Save, and is independently handler-blocked rather than rounded, truncated, clamped, or reinterpreted.
+- **Scope:** The shared Mingla Business iOS, Android, and Web modifier-group editor. The existing #3563 atomic RPC, stable identities, pending locks, table RLS/grants, public/staff readers, #3566 unsigned Price/Cost grammar, #3567 text limits, consumer/Admin authoring, Ari/edge writers, schema, migrations, and app versions remain unchanged.
+- **Enforcement:** `mingla-business/src/components/venue/__tests__/issue_3568_modifier_number_drafts.implementor.test.tsx`, the independently owned #3568 tester suite added during TEST, the required all-PR `mingla-business jest (full suite)` lane, and recorded fail-on-revert/pass-on-restore receipts for parser, handler, keyboard, error-association, and item-currency seams.
+- **Status:** DRAFT until #3568 merges through the reviewed Business Web deploy lane, production reaches `READY`, Business iOS/Android/Web runtime proves real-keyboard entry and accessible correction, and both mutation receipts pass on the immutable release head. No schema, migration, edge, OTA, TestFlight, Play, or consumer/Admin release is authorized by this entry.
+
 ## DRAFT — issue #3564 (venue menu item ordering is atomic)
 
 ### I-PROPOSED-3564-MENU-ITEM-ORDER-ATOMIC (DRAFT)
