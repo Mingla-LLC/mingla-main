@@ -308,7 +308,7 @@ const sectionElement = (): React.ReactElement => (
   <MenuItemOptionsSection
     brandId="brand-3571-adv"
     menuItemId={ITEM_ID}
-    currency="USD"
+    itemCurrency="USD"
     canMutate
   />
 );

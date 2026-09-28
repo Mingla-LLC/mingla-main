@@ -137,7 +137,7 @@ const render = (): TestRenderer => {
       <MenuItemOptionsSection
         brandId="brand-3571"
         menuItemId="item-3571"
-        currency="USD"
+        itemCurrency="USD"
         canMutate
       />,
     );
