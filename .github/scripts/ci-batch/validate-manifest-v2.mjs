@@ -184,10 +184,23 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
     // [#2899] Sites recovery is a new live workflow provider after the frozen
     // #2148 seal. Subtract only its exact independently discovered consumer;
     // omission or widening remains a hard failure without moving c0813….
+    //
+    // [#3606] Three MORE files join this existing record. The recovery freshness
+    // watchdog and its two regression suites live under `scripts/sites/`, which
+    // this workflow already claims, so discovery derives them as its consumers
+    // the moment they exist — the drift fires on the FILES landing, not on the
+    // workflow edit. Discovery sorts plain lexicographically, so the watchdog
+    // script sorts after the `__tests__` directory. The subtraction is by exact
+    // content, so this list and MANIFEST.json's entry move together or both fail
+    // closed. This adds reference files to an EXISTING record; no provider is
+    // added and the provider count does not move.
     issue: 2899,
     workflow: "sites-backup-restore.yml",
     referenceFiles: Object.freeze([
       "scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs",
+      "scripts/sites/__tests__/issue_3606_recovery_freshness.implementor.test.mjs",
+      "scripts/sites/__tests__/issue_3606_recovery_freshness.tester.adversarial.test.mjs",
+      "scripts/sites/check-recovery-freshness.mjs",
     ]),
   }),
   Object.freeze({
