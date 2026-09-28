@@ -11,7 +11,9 @@
  * yet). The synthesis mirrors the SQL-side authority verbatim:
  * `public.biz_brand_effective_rank` grants brand_owner via
  * `b.account_id = p_user_id AND b.deleted_at IS NULL` — see
- * 20260819000000_orch_1047_account_owner_to_brand_owner_rename.sql:134-164.
+ * 20260819000000_orch_1047_*.sql:134-164 (wildcarded deliberately: that
+ * filename spells the dead pre-rename role label, which the ORCH-1047 gate
+ * forbids in active source).
  * The server performs no intermediate account lookup and neither does this
  * hook; #3602 removed the one it used to attempt.
  *
@@ -225,10 +227,13 @@ export const useCurrentBrandRole = (
   let role: BrandRole | null = data?.role ?? null;
   let accepted: boolean = data?.accepted ?? false;
 
-  // [TRANSITIONAL] stub-mode synthesis fallback — fires when the DB chain
-  // returns no role (typically because the brand is a local-only stub from
-  // `brandList.STUB_BRANDS` and isn't persisted to the production DB yet).
-  // Maps the existing local-only `Brand.role` enum to the 6-role enum:
+  // [TRANSITIONAL] stub-mode synthesis fallback.
+  // EXIT CONDITION: remove once every brand is persisted with membership rows.
+  //
+  // Fires when the DB chain returns no role (typically because the brand is a
+  // local-only stub from `brandList.STUB_BRANDS` and isn't persisted to the
+  // production DB yet). Maps the existing local-only `Brand.role` enum to the
+  // 6-role enum:
   //   "owner" → "brand_owner" (rank 60 — top of hierarchy)
   //   "admin" → "brand_admin"   (rank 50)
   //
@@ -241,10 +246,8 @@ export const useCurrentBrandRole = (
   // answers for real and `data.role` wins above, so this branch now genuinely
   // only covers un-persisted local brands. Do NOT read this as dead code and
   // delete it in passing — 40+ consumers depend on the role it produces, and
-  // removing it needs its own blast-radius pass (#3602 §10 q2).
-  //
-  // EXIT CONDITION: remove once every brand is persisted with membership rows.
-  // Also documented in the file header.
+  // removing it needs its own blast-radius pass (#3602 §10 q2). The exit
+  // condition above is also documented in the file header.
   if (role === null && stubBrandRole !== null) {
     // #1863 §4.0.2 — a local-only stub brand has no membership row to accept
     // and the operator is its creator, so the synthesised role is accepted.
