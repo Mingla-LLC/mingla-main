@@ -118,12 +118,18 @@ export default function BrandWebsiteRoute(): React.ReactElement {
   /*
    * #3583 — THIS IS PERMANENTLY FALSE ON EVERY SHIPPED BUSINESS BINARY.
    *
-   * `useNetInfoSafe` returns null until a native build ships RNCNetInfo
-   * (#1758's [TRANSITIONAL] assume-online fallback), so `network` is null and
-   * neither comparison can be true. That is the correct degrade — assume
-   * online rather than crash route eval — but it made the old error mapper's
-   * "offline" fallback a black hole, because the effect below clears an
-   * offline notice the instant the device is not offline.
+   * `useNetInfoSafe` returns null until a native build ships RNCNetInfo —
+   * #1758's transitional assume-online fallback, whose marker and exit
+   * condition live in `src/lib/netinfoSafe.ts`, which owns them. (Named
+   * without its bracketed marker on purpose: this route only REFERS to that
+   * fallback, and repeating the literal token here would read as a second
+   * declaration of transitional code this file does not own.)
+   *
+   * So `network` is null and neither comparison can be true. That is the
+   * correct degrade — assume online rather than crash route eval — but it
+   * made the old error mapper's "offline" fallback a black hole, because the
+   * effect below clears an offline notice the instant the device is not
+   * offline.
    *
    * Nothing routes through here except a REAL network signal now. Every other
    * failure is a `failed` notice that no network check can clear.
