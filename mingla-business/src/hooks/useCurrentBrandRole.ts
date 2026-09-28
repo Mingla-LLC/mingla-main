@@ -94,6 +94,74 @@ interface QueryResult {
 
 const DISABLED_KEY = ["brand-role-disabled"] as const;
 
+/**
+ * The role read, extracted from the inline `queryFn` so it is directly
+ * executable outside React.
+ *
+ * Exported for the #3602 regression tests: the required jest lane runs
+ * `testEnvironment: "node"` with the ts-jest preset and no React Native / RTL,
+ * so a test cannot mount the hook there. This mirrors the sibling convention
+ * already in this directory — `useCreatorAccount.ts` exports
+ * `fetchCreatorAccount` for exactly the same reason, and its test imports it
+ * directly.
+ *
+ * Callers are responsible for the `enabled` guard; this executor assumes a
+ * usable session and a non-null brand id.
+ */
+export const fetchCurrentBrandRole = async (
+  brandId: string,
+  userId: string,
+): Promise<QueryResult> => {
+  // Step 1: try brand_team_members for active row.
+  // #1863 §4.0.2 — `accepted_at` joins the select so the payments predicate
+  // can mirror the server's acceptance requirement. Additive column only.
+  const { data: memberRow, error: memberErr } = await supabase
+    .from("brand_team_members")
+    .select("role, permissions_override, accepted_at")
+    .eq("brand_id", brandId)
+    .eq("user_id", userId)
+    .is("removed_at", null)
+    .maybeSingle();
+  if (memberErr) throw memberErr;
+  if (memberRow !== null) {
+    return {
+      role: memberRow.role as BrandRole,
+      permissionsOverride:
+        (memberRow.permissions_override as Record<string, unknown> | null) ?? {},
+      accepted: memberRow.accepted_at !== null,
+    };
+  }
+  // Step 2: brand_owner synthesis fallback for solo operators.
+  // Without this, every existing solo operator loses access on deploy.
+  // Cycle 17e-A: filter deleted_at IS NULL per I-PROPOSED-A — soft-deleted
+  // brands MUST NOT grant role synthesis to anyone (closed brand = no access).
+  const { data: brandRow, error: brandErr } = await supabase
+    .from("brands")
+    .select("account_id")
+    .eq("id", brandId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (brandErr) throw brandErr;
+  if (brandRow === null) {
+    return { role: null, permissionsOverride: {}, accepted: false };
+  }
+  const { data: accountRow, error: accountErr } = await supabase
+    .from("creator_accounts")
+    .select("user_id")
+    .eq("id", brandRow.account_id)
+    .maybeSingle();
+  if (accountErr) throw accountErr;
+  if (accountRow !== null && accountRow.user_id === userId) {
+    // #1863 §4.0.2 — the brand-owner trigger writes accepted_at =
+    // created_at (20260819000000_orch_1047_*.sql:195-213), and a
+    // synthesised owner is by definition an accepted relationship.
+    // Returning `false` here would lock every solo operator out of their
+    // own payments surface.
+    return { role: "brand_owner", permissionsOverride: {}, accepted: true };
+  }
+  return { role: null, permissionsOverride: {}, accepted: false };
+};
+
 export const useCurrentBrandRole = (
   brandId: string | null,
 ): CurrentBrandRoleState => {
@@ -128,55 +196,7 @@ export const useCurrentBrandRole = (
       if (!enabled || brandId === null || userId === null) {
         return { role: null, permissionsOverride: {}, accepted: false };
       }
-      // Step 1: try brand_team_members for active row.
-      // #1863 §4.0.2 — `accepted_at` joins the select so the payments predicate
-      // can mirror the server's acceptance requirement. Additive column only.
-      const { data: memberRow, error: memberErr } = await supabase
-        .from("brand_team_members")
-        .select("role, permissions_override, accepted_at")
-        .eq("brand_id", brandId)
-        .eq("user_id", userId)
-        .is("removed_at", null)
-        .maybeSingle();
-      if (memberErr) throw memberErr;
-      if (memberRow !== null) {
-        return {
-          role: memberRow.role as BrandRole,
-          permissionsOverride:
-            (memberRow.permissions_override as Record<string, unknown> | null) ??
-            {},
-          accepted: memberRow.accepted_at !== null,
-        };
-      }
-      // Step 2: brand_owner synthesis fallback for solo operators.
-      // Without this, every existing solo operator loses access on deploy.
-      // Cycle 17e-A: filter deleted_at IS NULL per I-PROPOSED-A — soft-deleted
-      // brands MUST NOT grant role synthesis to anyone (closed brand = no access).
-      const { data: brandRow, error: brandErr } = await supabase
-        .from("brands")
-        .select("account_id")
-        .eq("id", brandId)
-        .is("deleted_at", null)
-        .maybeSingle();
-      if (brandErr) throw brandErr;
-      if (brandRow === null) {
-        return { role: null, permissionsOverride: {}, accepted: false };
-      }
-      const { data: accountRow, error: accountErr } = await supabase
-        .from("creator_accounts")
-        .select("user_id")
-        .eq("id", brandRow.account_id)
-        .maybeSingle();
-      if (accountErr) throw accountErr;
-      if (accountRow !== null && accountRow.user_id === userId) {
-        // #1863 §4.0.2 — the brand-owner trigger writes accepted_at =
-        // created_at (20260819000000_orch_1047_*.sql:195-213), and a
-        // synthesised owner is by definition an accepted relationship.
-        // Returning `false` here would lock every solo operator out of their
-        // own payments surface.
-        return { role: "brand_owner", permissionsOverride: {}, accepted: true };
-      }
-      return { role: null, permissionsOverride: {}, accepted: false };
+      return await fetchCurrentBrandRole(brandId, userId);
     },
   });
 
