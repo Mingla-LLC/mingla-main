@@ -1492,3 +1492,109 @@ describe("#3572 tester adversarial RETEST 2 — the notice is taken back the mom
     ).toBe(true);
   });
 });
+
+/* ------------------------------------------------------------------------- *
+ * RETEST CYCLE 3 — appended at head `977c5c5c0`, after the P3-5 fix keyed the
+ * retraction on identity. Nothing above this line was touched.
+ *
+ * One test, deliberately. The implementor's own P3-5 proof asserts only that
+ * the notice IS present, which is sound against the two disjunct deletions —
+ * removing a disjunct can only make the retraction fire LESS, so a presence
+ * assertion cannot be broken by one. But presence-only is one-directional in
+ * two ways it does not cover:
+ *
+ *   1. It never exercises the id key in the FIRING direction with a twin on
+ *      screen. It proves a sibling cannot retract; it does not prove the real
+ *      group returning still can while that sibling is there.
+ *   2. Over two identically-named groups it cannot see WHICH group the notice
+ *      is about, so an id and a name that had drifted apart would read the
+ *      same.
+ *
+ * This closes both on one timeline, with the twin present throughout, and it
+ * is falsifiable in both directions: keying back to `name` reds the presence
+ * half, deleting `groups.some(...)` reds the retraction half.
+ * ------------------------------------------------------------------------- */
+
+/** A second group with the SAME name on the same item. */
+const GROUP_A_TWIN: MenuModifierGroup = {
+  ...GROUP_A,
+  id: "group-a-twin",
+  sortOrder: 2,
+  modifiers: [],
+};
+
+const freshGroupA = (): MenuModifierGroup => ({
+  ...GROUP_A,
+  modifiers: [...GROUP_A.modifiers],
+});
+
+describe("#3572 tester adversarial RETEST 3 — the retraction follows identity, in both directions", () => {
+  test("with a same-named twin on screen throughout, the notice tracks the group that actually went", async () => {
+    groups = [
+      freshGroupA(),
+      { ...GROUP_A_TWIN },
+      { ...GROUP_B, modifiers: [] },
+    ];
+    await openItemSheet();
+    openGroupA();
+    dirtyGroupA();
+    expect(held()).toBe(true);
+
+    /*
+     * (a) `group-a` goes; `group-a-twin` stays, carrying the same name.
+     *
+     * `menu_modifier_groups.name` has no unique constraint and
+     * `validateModifierGroup` never checks uniqueness, so this is an ordinary
+     * dish, not a contrived one. A retraction keyed on the name would let the
+     * twin speak for the group that actually vanished and the loss would go
+     * unstated — the silent disappearance, back for this case.
+     */
+    refetchWith([{ ...GROUP_A_TWIN }, { ...GROUP_B, modifiers: [] }]);
+    expect(exists("menu-item-option-group-group-a")).toBe(false);
+    expect(exists("menu-item-option-group-group-a-twin")).toBe(true);
+    expect(discardNoticeShown()).toBe(true);
+    expect(sentenceOnScreen(DISCARD_SENTENCE)).toBe(true);
+    expect(held()).toBe(false);
+    expect(pressIsWired("menu-item-save")).toBe(true);
+
+    /*
+     * (b) The FIRING direction, which presence alone never reaches: the real
+     * group comes back while the twin is still there. Identity is what makes
+     * this a return rather than a coincidence, and the sentence must be taken
+     * back.
+     */
+    refetchWith([
+      freshGroupA(),
+      { ...GROUP_A_TWIN },
+      { ...GROUP_B, modifiers: [] },
+    ]);
+    expect(exists("menu-item-option-group-group-a")).toBe(true);
+    expect(discardNoticeShown()).toBe(false);
+    expect(sentenceOnScreen(DISCARD_SENTENCE)).toBe(false);
+
+    /*
+     * (c) Round again, with the twin RENAMED in the very refetch that drops
+     * the edited group. Now the two groups are distinguishable, so this reads
+     * WHICH group the notice is about — the one that went, not the one still
+     * listed. Two identically-named groups cannot tell those apart, which is
+     * why an id and a name that had drifted would look identical without this.
+     */
+    openGroupA();
+    dirtyGroupA();
+    refetchWith([
+      { ...GROUP_A_TWIN, name: "Doneness" },
+      { ...GROUP_B, modifiers: [] },
+    ]);
+    expect(discardNoticeShown()).toBe(true);
+    expect(sentenceOnScreen(DISCARD_SENTENCE)).toBe(true);
+    expect(sentenceOnScreen("“Doneness” is no longer listed")).toBe(false);
+
+    // (d) And the twin leaving too changes nothing: the notice is about
+    // `group-a`, and `group-a` is still gone.
+    refetchWith([{ ...GROUP_B, modifiers: [] }]);
+    expect(discardNoticeShown()).toBe(true);
+    expect(sentenceOnScreen(DISCARD_SENTENCE)).toBe(true);
+    expect(held()).toBe(false);
+    expect(pressIsWired("menu-item-save")).toBe(true);
+  });
+});
