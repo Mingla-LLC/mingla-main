@@ -383,9 +383,11 @@ describe("#3572 implementor — an unsaved options draft holds the item sheet", 
 
     const note = node("menu-item-options-hold-note");
     expect(note.props.children).toBe(MENU_ITEM_OPTIONS_HOLD_NOTE);
+    // Rework (P2-2): the sentence now also names the field freeze it causes.
     expect(MENU_ITEM_OPTIONS_HOLD_NOTE).toBe(
-      "Save or cancel the options group first. Until then this item can't be" +
-        " saved or closed — nothing you typed is lost.",
+      "Save or cancel the options group first. Until then the item's own" +
+        " fields are read-only and it can't be saved, deleted or closed —" +
+        " nothing you typed is lost.",
     );
     // Reachable by a screen reader the moment it appears, on native and on web.
     expect(note.props.accessibilityRole).toBe("alert");

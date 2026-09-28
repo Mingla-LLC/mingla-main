@@ -91,6 +91,19 @@ const NO_GROUPS: readonly MenuModifierGroup[] = Object.freeze([]);
 const OPTIONS_DRAFT_HOLD_REASON =
   "Save or cancel the options group you are editing first.";
 
+/**
+ * Issue #3572 (rework, P0-1) — said out loud when a refetch takes the group an
+ * operator was editing off this item.
+ *
+ * The draft dies with the editor and there is nothing left to save it into, so
+ * the loss is a FACT the operator must be told. Releasing the hold silently
+ * would swap a lockout for a disappearance, which is the same Constitution #3
+ * failure the whole issue is about.
+ */
+export const menuOptionsDraftDiscardedMessage = (groupName: string): string =>
+  `“${groupName}” is no longer listed on this item, so your unsaved changes` +
+  " to it could not be kept.";
+
 export interface MenuItemOptionsSectionProps {
   brandId: string | null;
   /** Null while the item is unsaved — groups need a real item id. */
@@ -134,9 +147,20 @@ export function MenuItemOptionsSection({
   const [focusGroupId, setFocusGroupId] = useState<string | null>(null);
   /*
    * #3572 — the aggregate nested-draft status. The editor panel reports its own
-   * dirtiness from its edit handlers; this flag is what the parent sheet sees.
+   * dirtiness from its edit handlers; this LATCH is what the editor writes to.
+   *
+   * It is deliberately not what the parent sheet sees: `editorDirty` below is
+   * derived from it AND from whether an editor is actually on screen. See the
+   * reconciliation block.
    */
-  const [editorDirty, setEditorDirty] = useState<boolean>(false);
+  const [editorDirtyLatch, setEditorDirtyLatch] = useState<boolean>(false);
+  /*
+   * #3572 (rework, P0-1) — the group whose unsaved draft a refetch took away,
+   * held only until the operator starts something else.
+   */
+  const [discardedDraftGroupName, setDiscardedDraftGroupName] = useState<
+    string | null
+  >(null);
   const submissionInFlightRef = useRef<boolean>(false);
   const deletionInFlightRef = useRef<boolean>(false);
   const retryInFlightRef = useRef<boolean>(false);
@@ -189,6 +213,41 @@ export function MenuItemOptionsSection({
     () => groupsQuery.data ?? NO_GROUPS,
     [groupsQuery.data],
   );
+
+  /*
+   * #3572 (rework, P0-1) — RENDER-PHASE RECONCILIATION against the live list.
+   *
+   * The same mechanism PR #3615 already uses for the delete refusal and the
+   * confirmation dialog's title: the live `groups` decide what is on screen,
+   * during render, with no effect and therefore no committed frame in which
+   * the surface contradicts the data.
+   *
+   * `editing` is a SNAPSHOT taken when a row was tapped, and the editor renders
+   * only from inside `groups.map`. So when a refetch drops that group — a
+   * reconnect (`refetchOnReconnect`) at a moment when another device, another
+   * tab or another staff member has removed it — the editor unmounts through
+   * none of the three places that clear the lock, and it cannot grow an unmount
+   * hook of its own (the merged #3563 no-`useEffect` gate).
+   *
+   * Latching the hold independently of the editor is therefore an outage
+   * waiting for a Wi-Fi blip: no editor, no Cancel, no "Add a choice", Save
+   * disabled, every dismissal route refused, and a note on screen promising
+   * that nothing typed was lost. The hold is DERIVED from the editor that is
+   * actually rendered, by the same predicate that decides whether it renders at
+   * all, so it can never outlive its editor.
+   */
+  const editingGroup =
+    editing === null
+      ? null
+      : (groups.find((group) => group.id === editing.id) ?? null);
+  const editorOnScreen = creating || editingGroup !== null;
+  if (editing !== null && editingGroup === null) {
+    // Adjusting state during render: guarded, so it runs once and settles.
+    setEditing(null);
+    if (editorDirtyLatch) setDiscardedDraftGroupName(editing.name);
+  }
+  if (editorDirtyLatch && !editorOnScreen) setEditorDirtyLatch(false);
+  const editorDirty = editorDirtyLatch && editorOnScreen;
 
   useEffect(() => {
     onSavingChange?.(saveGroup.isPending);
@@ -244,6 +303,7 @@ export function MenuItemOptionsSection({
     if (saveGroup.isPending) return;
     setSaveError(null);
     setSuccessMessage(null);
+    setDiscardedDraftGroupName(null);
     forgetTransientDeleteFailure();
     setEditing(null);
     setCreating(false);
@@ -252,7 +312,7 @@ export function MenuItemOptionsSection({
      * is the operator's way out of a blocked parent save; it is never reached
      * by a dismissal, a parent save, or a failed nested save.
      */
-    setEditorDirty(false);
+    setEditorDirtyLatch(false);
   }, [saveGroup.isPending, forgetTransientDeleteFailure]);
 
   const handleSave = useCallback(
@@ -262,6 +322,7 @@ export function MenuItemOptionsSection({
       onSavingChange?.(true);
       setSaveError(null);
       setSuccessMessage(null);
+      setDiscardedDraftGroupName(null);
       saveGroup.mutate(input, {
         onSuccess: (savedGroup) => {
           setSaveError(null);
@@ -273,7 +334,7 @@ export function MenuItemOptionsSection({
            * draft AND keeps the parent blocked, or the exact hole this guard
            * exists to close reopens on the retry path.
            */
-          setEditorDirty(false);
+          setEditorDirtyLatch(false);
           setFocusGroupId(savedGroup.id);
           const count = savedGroup.modifiers.length;
           const announcement = `${savedGroup.name} saved with ${count} ${count === 1 ? "option" : "options"}.`;
@@ -406,7 +467,7 @@ export function MenuItemOptionsSection({
    * group currently being asked about. Anything else and the message would be
    * a statement about a group that is not on screen.
    */
-  const visibleGroupId = pendingDeleteGroup?.id ?? editing?.id ?? null;
+  const visibleGroupId = pendingDeleteGroup?.id ?? editingGroup?.id ?? null;
   const visibleDeleteFailure =
     deleteFailure !== null && deleteFailure.groupId === visibleGroupId
       ? deleteFailure
@@ -431,6 +492,19 @@ export function MenuItemOptionsSection({
   return (
     <View style={styles.host} testID={testID ?? "menu-item-options"}>
       <Text style={styles.groupLabel}>Options</Text>
+
+      {discardedDraftGroupName !== null ? (
+        <View style={styles.alert} testID="menu-item-options-draft-discarded">
+          <Text
+            accessibilityRole="alert"
+            accessibilityLiveRegion="assertive"
+            aria-live="assertive"
+            style={styles.error}
+          >
+            {menuOptionsDraftDiscardedMessage(discardedDraftGroupName)}
+          </Text>
+        </View>
+      ) : null}
 
       {visibleDeleteFailure !== null ? (
         <View style={styles.alert} testID="menu-item-options-error">
@@ -488,7 +562,7 @@ export function MenuItemOptionsSection({
       ) : null}
 
       {groups.map((group) =>
-        editing?.id === group.id ? (
+        editingGroup?.id === group.id ? (
           <MenuModifierGroupEditor
             key={group.id}
             menuItemId={menuItemId}
@@ -502,7 +576,7 @@ export function MenuItemOptionsSection({
             onRequestDelete={canMutate ? requestDeleteGroup : undefined}
             removalBlockedReason={removalBlockedReason}
             deleting={deleteGroup.isPending}
-            onDirtyChange={setEditorDirty}
+            onDirtyChange={setEditorDirtyLatch}
             onCancel={closeEditor}
           />
         ) : (
@@ -514,8 +588,18 @@ export function MenuItemOptionsSection({
             }}
             onPress={() => {
               if (saveGroup.isPending) return;
+              /*
+               * #3572 (rework, P2-3) — the handler REFUSES on its own, the way
+               * `MenuItemSheet.handleSave` and `handleClose` do. `disabled` was
+               * the only barrier here, so the one route in this guard whose
+               * refusal was a visual state is now a real one: opening a sibling
+               * unmounts the open draft, which is the same silent discard the
+               * parent Save used to perform.
+               */
+              if (editorDirty) return;
               setSaveError(null);
               setSuccessMessage(null);
+              setDiscardedDraftGroupName(null);
               /* P2-1 — a transient refusal does not follow the operator. */
               forgetTransientDeleteFailure();
               setCreating(false);
@@ -556,7 +640,7 @@ export function MenuItemOptionsSection({
           saving={saveGroup.isPending}
           saveError={saveError}
           onClearSaveError={() => setSaveError(null)}
-          onDirtyChange={setEditorDirty}
+          onDirtyChange={setEditorDirtyLatch}
           onCancel={closeEditor}
         />
       ) : canMutate && editing === null ? (
@@ -566,6 +650,7 @@ export function MenuItemOptionsSection({
             if (saveGroup.isPending) return;
             setSaveError(null);
             setSuccessMessage(null);
+            setDiscardedDraftGroupName(null);
             setCreating(true);
           }}
           variant="secondary"

@@ -140,12 +140,20 @@ export interface MenuItemSheetProps {
  * — what is held, how to release it, and that nothing has been lost. A disabled
  * button with no explanation would be the same silent failure in a new costume
  * (Constitution #3).
+ *
+ * REWORK (P2-2). The hold reaches this sheet as the single `optionsSaving`
+ * signal, and `optionsSaving` also carries `disabled=` on the item's own eight
+ * fields, so while an options draft is unsaved those fields are read-only too.
+ * Separating the two halves would mean writing the item's fields against a
+ * narrower prop, which deletes the `disabled={optionsSaving}` literal that the
+ * merged #3563 gate pins — so the freeze STAYS and the sentence names it. A
+ * control that goes inert without saying why is the same Constitution #3
+ * failure whichever direction it points.
  */
 export const MENU_ITEM_OPTIONS_HOLD_NOTE =
-  "Save or cancel the options group first. Until then this item can't be saved" +
-  " or closed — nothing you typed is lost.";
-
-const menuItemOptionsHoldNoteId = "menu-item-options-hold-note";
+  "Save or cancel the options group first. Until then the item's own fields" +
+  " are read-only and it can't be saved, deleted or closed — nothing you" +
+  " typed is lost.";
 
 const itemNameIds = menuTextFieldIds("menu-item-name");
 const itemDescriptionIds = menuTextFieldIds("menu-item-description");
@@ -610,7 +618,6 @@ export function MenuItemSheet({
 
           {optionsDirty ? (
             <Text
-              nativeID={menuItemOptionsHoldNoteId}
               accessibilityRole="alert"
               accessibilityLiveRegion="assertive"
               aria-live="assertive"
