@@ -974,3 +974,351 @@ describe("#3572 tester adversarial — the shipped primitives, not their doubles
     expect(pressIsWired("menu-item-save")).toBe(false);
   });
 });
+
+/* ------------------------------------------------------------------------- *
+ * RETEST — appended at head `c734d366f`, after the P0-1 / P2-1 / P2-2 / P2-3
+ * rework. Nothing above this line was touched.
+ *
+ * The rework derives the hold from the editor that is actually rendered, using
+ * the SAME predicate that decides whether it renders, and moves the dirty
+ * comparison onto the payload the save would WRITE. Both are structural claims,
+ * so these tests attack them structurally: not "does this one sequence work"
+ * but "is there any frame in which the hold exists without a way out", and "is
+ * there any edit the comparison now calls clean that the save would still
+ * write" — the second being the dangerous direction, because a false clean
+ * silently restores the original data loss.
+ * ------------------------------------------------------------------------- */
+
+/** A refetch lands with a different list, exactly as a reconnect would. */
+const refetchWith = (next: MenuModifierGroup[]): void => {
+  groups = next;
+  act(() => {
+    (tree as unknown as { update: (n: React.ReactElement) => void }).update(
+      <VenueMenuModule brandId="brand-a" venueId="venue-a" />,
+    );
+  });
+};
+
+const screenText = (): string =>
+  tree.root
+    .findAllByProps({})
+    .map((candidate) => candidate.props.children)
+    .filter((child): child is string => typeof child === "string")
+    .join(" ␟ ");
+
+/**
+ * The whole P0-1 fix in one sentence: the hold may never exist without a
+ * control that releases it. Every editor — the one inside `groups.map` and the
+ * one for a brand-new group — renders `modifier-group-cancel`, so "the hold is
+ * on" must imply "Cancel is on screen". The lockout was exactly the state where
+ * that implication failed.
+ */
+const holdAlwaysHasAWayOut = (): boolean =>
+  !held() || exists("modifier-group-cancel");
+
+describe("#3572 tester adversarial RETEST — the hold cannot outlive its editor", () => {
+  test("no perturbation produces a frame where the hold is on and there is no way out", async () => {
+    const perturbations: [string, () => void][] = [
+      [
+        "the edited group vanishes",
+        () => refetchWith([{ ...GROUP_B, modifiers: [] }]),
+      ],
+      ["the list empties entirely", () => refetchWith([])],
+      [
+        "the group vanishes, then comes back",
+        () => {
+          refetchWith([{ ...GROUP_B, modifiers: [] }]);
+          refetchWith([
+            { ...GROUP_A, modifiers: [...GROUP_A.modifiers] },
+            { ...GROUP_B, modifiers: [] },
+          ]);
+        },
+      ],
+      [
+        "two refetches inside one burst",
+        () => {
+          groups = [{ ...GROUP_B, modifiers: [] }];
+          act(() => {
+            const api = tree as unknown as {
+              update: (n: React.ReactElement) => void;
+            };
+            api.update(<VenueMenuModule brandId="brand-a" venueId="venue-a" />);
+            groups = [];
+            api.update(<VenueMenuModule brandId="brand-a" venueId="venue-a" />);
+          });
+        },
+      ],
+    ];
+
+    for (const [label, perturb] of perturbations) {
+      groups = [
+        { ...GROUP_A, modifiers: [...GROUP_A.modifiers] },
+        { ...GROUP_B, modifiers: [] },
+      ];
+      await openItemSheet();
+      openGroupA();
+      dirtyGroupA();
+      // Control: the hold is genuinely engaged, with its way out, before each.
+      expect(holdAlwaysHasAWayOut()).toBe(true);
+      expect(held()).toBe(true);
+
+      perturb();
+
+      // The assertion that the lockout failed.
+      expect([label, holdAlwaysHasAWayOut()]).toEqual([label, true]);
+      // And the sheet is genuinely usable again, not merely un-held.
+      expect([label, pressIsWired("menu-item-save")]).toEqual([label, true]);
+      tapScrim();
+      expect([label, sheetIsOpen()]).toEqual([label, false]);
+    }
+  });
+
+  test("the group vanishing while the delete confirmation is open still releases everything", async () => {
+    await openItemSheet();
+    openGroupA();
+    dirtyGroupA();
+    pressReal("modifier-group-delete");
+    expect(exists("menu-item-options-delete-confirm")).toBe(true);
+    expect(held()).toBe(true);
+
+    refetchWith([{ ...GROUP_B, modifiers: [] }]);
+
+    expect(held()).toBe(false);
+    expect(holdAlwaysHasAWayOut()).toBe(true);
+    expect(exists("menu-modifier-group-editor")).toBe(false);
+    expect(pressIsWired("menu-item-save")).toBe(true);
+    expect(pressIsWired("menu-item-delete")).toBe(true);
+    expect(exists("menu-item-options-draft-discarded")).toBe(true);
+    tapScrim();
+    expect(sheetIsOpen()).toBe(false);
+  });
+
+  test("the whole list emptying releases the hold, states the loss, and gives the Add control back", async () => {
+    await openItemSheet();
+    openGroupA();
+    dirtyGroupA();
+
+    refetchWith([]);
+
+    expect(held()).toBe(false);
+    expect(exists("menu-modifier-group-editor")).toBe(false);
+    // The loss is STATED. Releasing the hold silently would trade a lockout for
+    // a disappearance, which is the same failure pointing the other way.
+    expect(screenText()).toContain(
+      "“Temperature” is no longer listed on this item, so your" +
+        " unsaved changes to it could not be kept.",
+    );
+    expect(screenText()).not.toContain(MENU_ITEM_OPTIONS_HOLD_NOTE);
+    expect(exists("menu-item-options-add")).toBe(true);
+    expect(pressIsWired("menu-item-save")).toBe(true);
+  });
+
+  test("a brand-new group's dirty draft is NOT collateral — the list changing under it keeps the hold", async () => {
+    groups = [{ ...GROUP_A, modifiers: [...GROUP_A.modifiers] }];
+    await openItemSheet();
+    pressReal("menu-item-options-add");
+    type("modifier-group-name", "Sides");
+    expect(held()).toBe(true);
+
+    // A new group belongs to no server row, so no refetch can invalidate it.
+    // Releasing here would discard real typed work on a Wi-Fi blip.
+    refetchWith([]);
+
+    expect(held()).toBe(true);
+    expect(holdAlwaysHasAWayOut()).toBe(true);
+    expect(valueOf("modifier-group-name")).toBe("Sides");
+    expect(exists("menu-item-options-draft-discarded")).toBe(false);
+    expect(pressIsWired("menu-item-save")).toBe(false);
+
+    // Still releasable the ordinary way.
+    pressReal("modifier-group-cancel");
+    expect(held()).toBe(false);
+    expect(pressIsWired("menu-item-save")).toBe(true);
+  });
+});
+
+describe("#3572 tester adversarial RETEST — the signature compares what would be WRITTEN", () => {
+  /*
+   * The dangerous direction. A comparison that under-reports is not a stuck
+   * guard, it is the original bug back: the item saves, the sheet closes, the
+   * options subtree unmounts, and the change the operator typed is gone. So
+   * every edit below is one the save WOULD carry, and each must hold.
+   */
+  test("no edit the save would carry is ever reported clean", async () => {
+    await openItemSheet();
+    openGroupA();
+
+    const writesSomething: [string, () => void, () => void][] = [
+      [
+        "an option renamed",
+        () => type("modifier-option-name-opt-rare", "Medium"),
+        () => type("modifier-option-name-opt-rare", "Rare"),
+      ],
+      [
+        "an existing option's name cleared, which drops it from the payload",
+        () => type("modifier-option-name-opt-rare", ""),
+        () => type("modifier-option-name-opt-rare", "Rare"),
+      ],
+      [
+        "a price delta that parses to different cents",
+        () => type("modifier-option-price-opt-rare", "2.50"),
+        () => type("modifier-option-price-opt-rare", ""),
+      ],
+      [
+        "required turned off, which writes minSelect 0",
+        () => pressReal("modifier-group-required"),
+        () => pressReal("modifier-group-required"),
+      ],
+      [
+        "the selection mode changed",
+        () => pressReal("modifier-group-mode-multi"),
+        () => pressReal("modifier-group-mode-single"),
+      ],
+      [
+        "the group renamed to something canonicalisation keeps",
+        () => type("modifier-group-name", "Doneness"),
+        () => type("modifier-group-name", "Temperature"),
+      ],
+    ];
+
+    for (const [label, edit, undo] of writesSomething) {
+      expect([label, held()]).toEqual([label, false]);
+      edit();
+      expect([label, held()]).toEqual([label, true]);
+      expect([label, pressIsWired("menu-item-save")]).toEqual([label, false]);
+      undo();
+      expect([label, held()]).toEqual([label, false]);
+    }
+  });
+
+  test("a maximum is a written value in multi mode and dead text in single mode", async () => {
+    await openItemSheet();
+    openGroupA();
+
+    pressReal("modifier-group-mode-multi");
+    expect(held()).toBe(true);
+
+    // In multi mode the maximum IS written, so changing it holds.
+    type("modifier-group-max", "3");
+    expect(held()).toBe(true);
+
+    // Text the parser refuses is not a value, but it is also not nothing: the
+    // group save is blocked while it stands, so reporting "no unsaved change"
+    // over a field the operator is mid-way through fixing would be a lie.
+    type("modifier-group-max", "abc");
+    expect(held()).toBe(true);
+
+    /*
+     * Returning to single mode makes the maximum unwritable — `handleSave`
+     * hard-codes 1 and never reads the field, which is not even rendered any
+     * more. This is the exact sequence that used to hold the item forever with
+     * nothing on screen to put back, and it is the line Episode 18 narrates.
+     */
+    pressReal("modifier-group-mode-single");
+    expect(exists("modifier-group-max")).toBe(false);
+    expect(held()).toBe(false);
+    expect(pressIsWired("menu-item-save")).toBe(true);
+    expect(pressIsWired("menu-item-delete")).toBe(true);
+    tapScrim();
+    expect(sheetIsOpen()).toBe(false);
+  });
+
+  test("text the save canonicalises away never holds the item — either end of the string", async () => {
+    await openItemSheet();
+    openGroupA();
+
+    for (const typed of ["Temperature ", " Temperature", "  Temperature  "]) {
+      type("modifier-group-name", typed);
+      expect([typed, held()]).toEqual([typed, false]);
+    }
+    for (const typed of ["Rare ", " Rare"]) {
+      type("modifier-option-name-opt-rare", typed);
+      expect([typed, held()]).toEqual([typed, false]);
+    }
+    // A price written the long way is the same money.
+    type("modifier-option-price-opt-rare", "0");
+    expect(held()).toBe(false);
+    type("modifier-option-price-opt-rare", "0.00");
+    expect(held()).toBe(false);
+  });
+});
+
+describe("#3572 tester adversarial RETEST — the held sentence is true of every control it names", () => {
+  test("the sentence is exact, and every field it calls read-only genuinely is", async () => {
+    await openItemSheet();
+    openGroupA();
+    dirtyGroupA();
+
+    // The copy Seth is approving for the tutorial, character for character.
+    expect(MENU_ITEM_OPTIONS_HOLD_NOTE).toBe(
+      "Save or cancel the options group first. Until then the item's own" +
+        " fields are read-only and it can't be saved, deleted or closed —" +
+        " nothing you typed is lost.",
+    );
+    expect(node("menu-item-options-hold-note").props.children).toBe(
+      MENU_ITEM_OPTIONS_HOLD_NOTE,
+    );
+    expect(pressableFor("menu-item-save").props.accessibilityLabel).toBe(
+      `Save item. Unavailable. ${MENU_ITEM_OPTIONS_HOLD_NOTE}`,
+    );
+
+    // "the item's own fields are read-only" — all six of them.
+    for (const field of [
+      "menu-item-name",
+      "menu-item-desc",
+      "menu-item-price",
+      "menu-item-cost",
+      "menu-item-available",
+      "menu-item-allows-notes",
+    ]) {
+      const controls = nodes(field).filter(
+        (candidate) => candidate.props.disabled !== undefined,
+      );
+      expect([field, controls.length]).not.toEqual([field, 0]);
+      for (const control of controls) {
+        expect([field, control.props.disabled]).toEqual([field, true]);
+      }
+    }
+    // ...and the prep-station chips, which are fields in everything but name.
+    for (const station of ["kitchen", "bar", "other"]) {
+      expect([station, pressIsWired(`menu-item-station-${station}`)]).toEqual([
+        station,
+        false,
+      ]);
+    }
+
+    // "it can't be saved, deleted or closed" — all three, at the primitive.
+    expect(pressIsWired("menu-item-save")).toBe(false);
+    expect(pressIsWired("menu-item-delete")).toBe(false);
+    tapScrim();
+    requestClose();
+    expect(sheetIsOpen()).toBe(true);
+
+    // "nothing you typed is lost" — the draft is still there to prove it, and
+    // the editor holding it is on screen, which is what makes the claim safe.
+    expect(valueOf("modifier-option-name-opt-rare")).toBe("Blue rare");
+    expect(exists("modifier-group-cancel")).toBe(true);
+  });
+
+  test("the sibling row refuses in its own handler, and the draft survives the attempt", async () => {
+    await openItemSheet();
+    openGroupA();
+    dirtyGroupA();
+
+    const sibling = nodes("menu-item-option-group-group-b").find(
+      (candidate) => typeof candidate.props.onPress === "function",
+    );
+    if (sibling === undefined) throw new Error("no sibling row rendered");
+    expect(sibling.props.disabled).toBe(true);
+
+    // Invoked directly, past `disabled` — the barrier must not be a style.
+    act(() => {
+      (sibling.props.onPress as () => void)();
+    });
+
+    expect(exists("modifier-option-name-opt-rare")).toBe(true);
+    expect(valueOf("modifier-option-name-opt-rare")).toBe("Blue rare");
+    expect(held()).toBe(true);
+    expect(holdAlwaysHasAWayOut()).toBe(true);
+  });
+});
