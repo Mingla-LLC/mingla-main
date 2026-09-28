@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-27 — Menu choice controls now tell screen readers exactly what is selected: service days behave as independent checkboxes, prep stations and Required or Optional behave as toggles, and Pick one or Pick several behaves as one labelled radio group, while every choice keeps its 44-point touch target across Mingla Host web, iPhone and Android (#3569, PR #3596)
 - 2026-09-27 — Menu categories, items, option groups and option names now show storage-accurate character counters before Save, keep over-limit drafts editable while blocking writes the database would reject, preserve every draft after a failed save, and explain validation, permission, offline and unknown failures inside the open Mingla Host editor without falsely blaming the connection (#3567, PR #3580)
 - 2026-09-27 — Marketing builds no longer depend on Google Fonts being reachable: Mingla’s three existing typefaces are pinned and self-hosted with their exact weights and licensing, so unrelated pull requests stop failing on a third-party font response while the site looks unchanged (#3548, PR #3593)
 - 2026-09-27 — Saving a venue menu options group now keeps every choice, signed price change and ordering together in one Mingla Host save, so a failed Business save leaves the prior complete group intact instead of exposing an empty or partial group to guests or staff (#3563, PR #3578)
