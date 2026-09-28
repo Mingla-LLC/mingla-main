@@ -147,7 +147,9 @@ Deno.test("#3601 the notification goes to NOTIFY_TO and info@, in that order", (
 
 Deno.test("#3601 info@ is never emailed twice when NOTIFY_TO already points at it", () => {
   assertEquals(buildNotifyRecipients("info@usemingla.com").length, 1);
-  assertEquals(buildNotifyRecipients("info@usemingla.com"), [INFO_NOTIFY_EMAIL]);
+  assertEquals(buildNotifyRecipients("info@usemingla.com"), [
+    INFO_NOTIFY_EMAIL,
+  ]);
   assertEquals(buildNotifyRecipients("Info@UseMingla.com").length, 1);
   assertEquals(buildNotifyRecipients("  info@usemingla.com  ").length, 1);
 });
@@ -178,7 +180,10 @@ Deno.test("#3601 no client string can introduce a line break into the descriptio
   assertEquals(lines.filter((l) => l.startsWith("Came from: ")).length, 1);
   assertEquals(lines.filter((l) => l.startsWith("Booked by: ")).length, 1);
   assertEquals(lines[3], "Booked by: Jane Doe (jane@example.com)");
-  assert(!description.includes("\n\n"), "description must never contain a blank line");
+  assert(
+    !description.includes("\n\n"),
+    "description must never contain a blank line",
+  );
   assert(!description.includes("\r"));
   assert(!description.includes("\u2028"));
   assert(!description.includes("\u2029"));
@@ -195,7 +200,10 @@ Deno.test("#3601 control characters are replaced by a space, never deleted", () 
   assertStringIncludes(description, "Venue: Blue Note");
   assertStringIncludes(description, "Booked by: Jane Doe (jane@example.com)");
   assertStringIncludes(description, "Came from: cold email");
-  assert(!description.includes("BlueNote"), "deleting would hide the injection");
+  assert(
+    !description.includes("BlueNote"),
+    "deleting would hide the injection",
+  );
 });
 
 Deno.test("#3601 a 200-character source is truncated to 40 characters", () => {
