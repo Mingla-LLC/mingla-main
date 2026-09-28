@@ -1322,3 +1322,173 @@ describe("#3572 tester adversarial RETEST — the held sentence is true of every
     expect(holdAlwaysHasAWayOut()).toBe(true);
   });
 });
+
+/* ------------------------------------------------------------------------- *
+ * RETEST CYCLE 2 — appended at head `c6e64ad34`, after the P2-4 / P3-3 fix.
+ * Nothing above this line was touched.
+ *
+ * The discard notice is a sentence read out of an assertive live region, and a
+ * sentence that was true when it was written can be made false by the very
+ * next refetch. One guarded statement now reconciles it, with two disjuncts,
+ * and the point of these four tests is that each disjunct is INDEPENDENTLY
+ * load-bearing and neither test can be satisfied by the other's disjunct:
+ *
+ *   - the group comes back          -> only `groups.some(...)` can clear it
+ *   - a save in flight then SUCCEEDS -> only `successMessage !== null` can,
+ *     because the invalidation refetch has not landed and the live list still
+ *     lacks the group at that moment. The test asserts that explicitly, so it
+ *     cannot silently start passing for the other reason.
+ *
+ * The two tests after them guard the opposite direction — a reconciliation
+ * that clears too eagerly would turn the lockout's replacement into the
+ * disappearance it was supposed to prevent.
+ * ------------------------------------------------------------------------- */
+
+const discardNoticeShown = (): boolean =>
+  exists("menu-item-options-draft-discarded");
+
+const sentenceOnScreen = (fragment: string): boolean =>
+  screenText().includes(fragment);
+
+const DISCARD_SENTENCE =
+  "“Temperature” is no longer listed on this item, so your unsaved" +
+  " changes to it could not be kept.";
+
+describe("#3572 tester adversarial RETEST 2 — the notice is taken back the moment it stops being true", () => {
+  test("the group coming back takes the notice with it, and only the list disjunct can do that", async () => {
+    await openItemSheet();
+    openGroupA();
+    dirtyGroupA();
+
+    refetchWith([{ ...GROUP_B, modifiers: [] }]);
+    expect(discardNoticeShown()).toBe(true);
+    expect(sentenceOnScreen(DISCARD_SENTENCE)).toBe(true);
+
+    // A corrective refetch brings it back. No save ran, so there is no success
+    // message: the list disjunct is the only thing that can clear this.
+    refetchWith([
+      { ...GROUP_A, modifiers: [...GROUP_A.modifiers] },
+      { ...GROUP_B, modifiers: [] },
+    ]);
+
+    // The row and the sentence denying it must never share the screen.
+    expect(exists("menu-item-option-group-group-a")).toBe(true);
+    expect(discardNoticeShown()).toBe(false);
+    expect(sentenceOnScreen(DISCARD_SENTENCE)).toBe(false);
+    expect(held()).toBe(false);
+    expect(pressIsWired("menu-item-save")).toBe(true);
+  });
+
+  test("a save that succeeds after the discard takes the notice back, with the list still lacking the group", async () => {
+    await openItemSheet();
+    openGroupA();
+    dirtyGroupA();
+
+    pressReal("modifier-group-save");
+    const call = saveGroupMutate.mock.calls[0];
+    if (call === undefined) throw new Error("the group save never fired");
+
+    // The refetch lands mid-flight and the group is gone from the list.
+    refetchWith([{ ...GROUP_B, modifiers: [] }]);
+    expect(discardNoticeShown()).toBe(true);
+
+    /*
+     * The write then SUCCEEDS, so the changes were kept after all. The
+     * invalidation refetch has not landed yet, which is the whole reason the
+     * list disjunct cannot carry this case — asserted, not assumed, so this
+     * test can never quietly start passing for the other reason.
+     */
+    act(() => {
+      (call[1] as SaveGroupCallbacks).onSuccess?.({
+        ...GROUP_A,
+        modifiers: [{ ...GROUP_A.modifiers[0]!, name: "Blue rare" }],
+      });
+      (call[1] as SaveGroupCallbacks).onSettled?.();
+    });
+    expect(groups.some((group) => group.id === "group-a")).toBe(false);
+    expect(groups.some((group) => group.name === "Temperature")).toBe(false);
+
+    // "could not be kept" and "saved with 1 option" must never share a screen.
+    expect(discardNoticeShown()).toBe(false);
+    expect(sentenceOnScreen(DISCARD_SENTENCE)).toBe(false);
+    expect(sentenceOnScreen("Temperature saved with 1 option.")).toBe(true);
+    expect(held()).toBe(false);
+    expect(pressIsWired("menu-item-save")).toBe(true);
+  });
+
+  test("a save that FAILS after the discard keeps the notice, because nothing else would say so", async () => {
+    await openItemSheet();
+    openGroupA();
+    dirtyGroupA();
+
+    pressReal("modifier-group-save");
+    const call = saveGroupMutate.mock.calls[0];
+    if (call === undefined) throw new Error("the group save never fired");
+
+    refetchWith([{ ...GROUP_B, modifiers: [] }]);
+    act(() => {
+      (call[1] as SaveGroupCallbacks).onError?.(new Error("network"));
+      (call[1] as SaveGroupCallbacks).onSettled?.();
+    });
+
+    /*
+     * Here the changes really were lost. The editor is gone with the group, and
+     * the group's own save-failure surface renders INSIDE that editor, so this
+     * notice is the only thing on screen that can state the loss. Clearing it
+     * would trade the lockout for the silent disappearance the notice exists
+     * to prevent.
+     */
+    expect(exists("menu-modifier-group-editor")).toBe(false);
+    expect(exists("modifier-group-save-error")).toBe(false);
+    expect(discardNoticeShown()).toBe(true);
+    expect(sentenceOnScreen(DISCARD_SENTENCE)).toBe(true);
+    expect(sentenceOnScreen("saved with")).toBe(false);
+
+    // Stated, not trapped: the sheet is usable again.
+    expect(held()).toBe(false);
+    expect(pressIsWired("menu-item-save")).toBe(true);
+  });
+
+  test("a success message left over from an EARLIER save cannot swallow a later notice", async () => {
+    await openItemSheet();
+    openGroupA();
+    dirtyGroupA();
+
+    // Save group A for real, which leaves "Temperature saved with 1 option."
+    pressReal("modifier-group-save");
+    const first = saveGroupMutate.mock.calls[0];
+    if (first === undefined) throw new Error("the group save never fired");
+    const saved: MenuModifierGroup = {
+      ...GROUP_A,
+      modifiers: [{ ...GROUP_A.modifiers[0]!, name: "Blue rare" }],
+    };
+    groups = [saved, { ...GROUP_B, modifiers: [] }];
+    act(() => {
+      (first[1] as SaveGroupCallbacks).onSuccess?.(saved);
+      (first[1] as SaveGroupCallbacks).onSettled?.();
+    });
+    expect(sentenceOnScreen("Temperature saved with 1 option.")).toBe(true);
+
+    /*
+     * Now a DIFFERENT group is opened and dirtied, and that one vanishes. If
+     * the success message from the previous save were still live, the
+     * `successMessage` disjunct would swallow this notice and the second loss
+     * would go unstated. Entering an editor is the only route to a dirty
+     * draft, and every route into an editor clears the success message — this
+     * is that argument, tested rather than reasoned.
+     */
+    press("menu-item-option-group-group-b");
+    type("modifier-group-name", "Extras and sides");
+    expect(held()).toBe(true);
+
+    refetchWith([saved]);
+
+    expect(discardNoticeShown()).toBe(true);
+    expect(
+      sentenceOnScreen(
+        "“Extras” is no longer listed on this item, so your unsaved" +
+          " changes to it could not be kept.",
+      ),
+    ).toBe(true);
+  });
+});
