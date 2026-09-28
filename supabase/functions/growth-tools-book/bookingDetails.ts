@@ -59,11 +59,24 @@ const ORIGIN_LABELS: Record<string, string> = {
  * The `typeof` guard is defence in depth: the declared parameter is a string, and
  * every in-repo caller passes `sanitizeLine(...)` output, but a non-string must
  * not throw on a public unauthenticated function.
+ *
+ * DO NOT "simplify" the `Object.hasOwn` guard back to `ORIGIN_LABELS[key] ?? key`.
+ * `ORIGIN_LABELS` is a plain object literal, so a bracket lookup walks
+ * `Object.prototype`, and `??` only fires on nullish — an inherited member is not
+ * nullish, so it is returned as the label. `toLowerCase()` shields the mixed-case
+ * inherited names by accident, which leaves the all-lowercase ones: BOTH
+ * `constructor` (`function Object() { [native code] }`) AND `__proto__`
+ * (`[object Object]`) leaked onto the prospect's own calendar invite and into the
+ * notification Seth and info@ read, from a URL anyone can type
+ * (`usemingla.com/schedule?source=__proto__`). It also broke the declared `string`
+ * return type. The own-property test is the only structural close — a guard
+ * against the specific names would miss the next one.
  */
 export function originLabel(source: string): string {
   const s = typeof source === "string" ? source.trim() : "";
   if (s === "" || s.toLowerCase() === "direct") return SHARED_LINK_ORIGIN_LABEL;
-  return ORIGIN_LABELS[s.toLowerCase()] ?? s;
+  const key = s.toLowerCase();
+  return Object.hasOwn(ORIGIN_LABELS, key) ? ORIGIN_LABELS[key] : s;
 }
 
 /**

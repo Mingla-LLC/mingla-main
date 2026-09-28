@@ -2573,6 +2573,17 @@ jobs:
       - name: "Issue #3601 — booking description + recipient contracts"
         run: |
           set -euo pipefail
+          # COMPILE FIRST (#3601 rework). Neither suite below IMPORTS index.ts —
+          # both reach it with Deno.readTextFile, so every "is it wired in" proof
+          # is a text scan over a string. Without this line a broken import in
+          # index.ts left this lane fully green while handleBook threw, the throw
+          # was swallowed at index.ts:520-527, and EVERY booking returned HTTP
+          # 500. `deno check` takes no permission flags and resolves the
+          # ../_shared/** and deno.land module graph itself, which is why it is a
+          # separate command and NOT extra flags on the `deno test` below.
+          deno check \
+            supabase/functions/growth-tools-book/index.ts \
+            supabase/functions/growth-tools-book/bookingDetails.ts
           # Hermetic: bookingDetails.ts has zero imports, so there is no network
           # and no env to prime. --allow-read is for the index.ts wiring scan.
           # --allow-net is deliberately NOT granted; adding it would let a future
