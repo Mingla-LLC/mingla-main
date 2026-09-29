@@ -426,11 +426,7 @@ async function readControl(
   return outcome;
 }
 
-async function invokeControl(
-  client: SupabaseClient,
-  input: Record<string, unknown>,
-): Promise<unknown> {
-  const outcome = await readControl(client, input);
+function settleControl(outcome: SitesControlOutcome): unknown {
   if (outcome.kind === "ok") return outcome.data;
   if (outcome.kind === "refused") {
     throw new ToolError(outcome.code, SITES_TOOL_MESSAGES[outcome.code]);
@@ -441,6 +437,95 @@ async function invokeControl(
   );
 }
 
+/**
+ * #3614 — which site does this brand actually have?
+ *
+ * Answered through the CALLER's client on purpose. `brand_sites` is
+ * UNIQUE (brand_id) and carries exactly one read policy,
+ * `biz_brand_effective_rank(brand_id, auth.uid()) >= 20` — the same floor
+ * `brand_site_internal_authorize` enforces before it will address a site. So
+ * this read grants nothing that the call it is disambiguating did not already
+ * require, and a caller who may not see the row simply gets null.
+ *
+ * Never throws: it exists only to qualify a refusal that has already happened,
+ * so an unreadable answer must leave that refusal exactly as it was rather than
+ * replace it with a second, less honest one. The `catch` also covers a client
+ * that has no PostgREST surface at all (the Sites suites exercise one).
+ */
+async function authoritativeSiteId(
+  client: SupabaseClient,
+  brandId: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await client
+      .from("brand_sites")
+      .select("id")
+      .eq("brand_id", brandId)
+      .limit(1);
+    if (error) return null;
+    const row = Array.isArray(data)
+      ? (data[0] as { id?: unknown } | undefined)
+      : (data as { id?: unknown } | null);
+    const id = row?.id;
+    return isUuid(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * #3614 — a Website refusal that is really a WRONG ADDRESS.
+ *
+ * Every Website tool asks the model for `site_id`. On 2026-09-28 the model
+ * answered with the About PAGE's id: `get_site_page` returns a page as
+ * `{ id, role, slug, … }` and `get_brand_site` returns the site as `{ id, … }`,
+ * so both results carry a bare `id` and only one of them addresses a site.
+ * brand-site-control loads the site with `SELECT … INTO STRICT`, so an id that
+ * is not a site RAISES inside `brand_site_internal_authorize`, and that route
+ * answers every error from that RPC with FORBIDDEN 403. The operator's
+ * confirmed draft edit was therefore terminalized as
+ * "This Website action is not available for your role" — for an operator whose
+ * role was never in question — and every later turn in the same conversation
+ * aborted, because the model kept re-reading the poisoned id out of the
+ * history.
+ *
+ * A refusal Ari cannot substantiate must not be passed on. brand-site-control
+ * returns 403 ONLY from its own pre-flight gates, before it signs anything for
+ * the CMS (a refusal the CMS itself reported comes back as 409), so on a 403
+ * nothing has happened yet and asking again costs nothing. If the brand's real
+ * site is a DIFFERENT site, the refusal was about the address and not the role:
+ * re-address the call ONCE and let brand-site-control authorize it again from
+ * scratch, against the brand the operator confirmed on the card. If the brand's
+ * site is the one we just addressed, or cannot be read, the refusal stands
+ * verbatim — this never converts a real "no" into a yes.
+ */
+async function invokeSiteControl(
+  client: SupabaseClient,
+  brandId: string,
+  siteId: string,
+  build: (siteId: string) => Record<string, unknown>,
+): Promise<unknown> {
+  const outcome = await readControl(client, build(siteId));
+  if (
+    outcome.kind === "refused" && outcome.code === "FORBIDDEN" &&
+    outcome.status === 403
+  ) {
+    const resolved = await authoritativeSiteId(client, brandId);
+    if (resolved !== null && resolved !== siteId) {
+      // Id-free on purpose (same rule as the outage monitor above).
+      console.warn(
+        "[agentSiteTools] sites address corrected",
+        JSON.stringify({
+          fn: "agentSiteTools",
+          reason: "site_id_is_not_this_brands_site",
+        }),
+      );
+      return settleControl(await readControl(client, build(resolved)));
+    }
+  }
+  return settleControl(outcome);
+}
+
 async function cmsTool(
   name: string,
   args: Record<string, unknown>,
@@ -448,14 +533,16 @@ async function cmsTool(
   operationId: string,
 ): Promise<unknown> {
   const { brandId, siteId } = requiredIds(args);
-  return await invokeControl(client, {
-    route: `/v1/sites/${siteId}/ari`,
+  return await invokeSiteControl(client, brandId, siteId, (id) => ({
+    route: `/v1/sites/${id}/ari`,
     method: "POST",
     operation_id: operationId,
     action: name,
     brand_id: brandId,
-    args,
-  });
+    // The CMS reads the address out of `args` too, so a re-addressed call must
+    // not carry the model's id in its payload.
+    args: { ...args, site_id: id },
+  }));
 }
 
 const getBrandSite = tool(
@@ -764,16 +851,17 @@ function publicationTool(
       "arguments_digest",
     ],
     async (args, client, _userId, context) => {
-      const { siteId } = requiredIds(args);
-      return await invokeControl(client, {
-        route: `/v1/sites/${siteId}/${route}`,
+      const { brandId, siteId } = requiredIds(args);
+      const operationId = requireAgentOperationId(context);
+      return await invokeSiteControl(client, brandId, siteId, (id) => ({
+        route: `/v1/sites/${id}/${route}`,
         method: "POST",
-        operation_id: requireAgentOperationId(context),
-        brand_id: args.brand_id,
+        operation_id: operationId,
+        brand_id: brandId,
         expected_revision: args.expected_revision,
         source_digest: args.source_digest,
         arguments_digest: args.arguments_digest,
-      });
+      }));
     },
   );
 }
@@ -784,15 +872,15 @@ const getOperation = tool(
   { brand_id: UUID, site_id: UUID, operation_id: UUID },
   ["brand_id", "site_id", "operation_id"],
   async (args, client, userId) => {
-    const { siteId } = requiredIds(args);
+    const { brandId, siteId } = requiredIds(args);
     if (!isUuid(args.operation_id)) {
       throw new ToolError("INVALID_ARGS", "operation_id must be a UUID");
     }
     await assertAgentReadBrand(client, userId, args.brand_id);
-    return await invokeControl(client, {
-      route: `/v1/sites/${siteId}/operations/${args.operation_id}`,
+    return await invokeSiteControl(client, brandId, siteId, (id) => ({
+      route: `/v1/sites/${id}/operations/${args.operation_id}`,
       method: "GET",
-    });
+    }));
   },
 );
 
@@ -802,12 +890,12 @@ const listVersions = tool(
   { brand_id: UUID, site_id: UUID },
   ["brand_id", "site_id"],
   async (args, client, userId) => {
-    const { siteId } = requiredIds(args);
+    const { brandId, siteId } = requiredIds(args);
     await assertAgentReadBrand(client, userId, args.brand_id);
-    return await invokeControl(client, {
-      route: `/v1/sites/${siteId}/versions`,
+    return await invokeSiteControl(client, brandId, siteId, (id) => ({
+      route: `/v1/sites/${id}/versions`,
       method: "GET",
-    });
+    }));
   },
 );
 

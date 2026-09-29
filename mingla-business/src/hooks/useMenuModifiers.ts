@@ -396,6 +396,21 @@ export type ModifierGroupDeleteFailureCategory =
   | "offline"
   | "generic";
 
+/*
+ * PR #3615 rework cycle 2. The code-less fallback used to be a bare substring
+ * probe: ANY rejection whose message or details merely CONTAINED the phrase
+ * "violates foreign key constraint" — a wrapped log line, an echoed response
+ * body, a message that only quotes the phrase — was told to the owner as
+ * "guests have already ordered these choices" and permanently disabled a
+ * legitimate destructive control. Match the shape PostgreSQL actually emits
+ * for a referential refusal instead: the "<verb> on table … violates foreign
+ * key constraint" statement, or the "is still referenced from table" detail
+ * line. A passing mention of the phrase no longer decides it.
+ */
+const FK_VIOLATION_STATEMENT =
+  /\b(?:update|insert|delete)\b[^\n]{0,80}\bon table\b[^\n]{0,240}\bviolates foreign key constraint\b/i;
+const FK_VIOLATION_DETAIL = /\bis still referenced from table\b/i;
+
 /**
  * Issue #3571 — a delete that can NEVER succeed must not be narrated as one
  * that might.
@@ -410,8 +425,14 @@ export type ModifierGroupDeleteFailureCategory =
 export function isModifierGroupInUseError(raw: unknown): boolean {
   const error = normalizeSupabaseError(raw, "");
   if (error.code === "23503") return true;
-  const probe = `${error.message} ${error.details ?? ""}`.toLowerCase();
-  return probe.includes("violates foreign key constraint");
+  const message = error.message;
+  const details = error.details ?? "";
+  return (
+    FK_VIOLATION_STATEMENT.test(message) ||
+    FK_VIOLATION_STATEMENT.test(details) ||
+    FK_VIOLATION_DETAIL.test(message) ||
+    FK_VIOLATION_DETAIL.test(details)
+  );
 }
 
 export function classifyModifierGroupDeleteFailure(

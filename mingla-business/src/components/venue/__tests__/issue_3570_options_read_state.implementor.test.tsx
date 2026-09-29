@@ -85,6 +85,16 @@ import { MenuItemOptionsSection } from "../MenuItemOptionsSection";
 const renderer = require("react-test-renderer") as RendererApi;
 const act = renderer.act;
 
+/*
+ * PR #3615 rework cycle 2. React only schedules updates the way the component
+ * tree actually schedules them when it is told it is in an act environment;
+ * without this every `update()` below is merely warned about, and a real
+ * warning would then be indistinguishable from the noise.
+ */
+(
+  globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
 const EMPTY_COPY =
   "No choices yet. Add one so guests can say how they want it.";
 const LOADING_COPY = "Loading options…";
@@ -386,5 +396,87 @@ describe("#3570 implementor — the options read state machine tells the truth",
       press();
     });
     expect(refetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+/* =====================================================================
+ * PR #3615 REWORK CYCLE 2 — the READ side of the same reconciliation.
+ *
+ * The delete-refusal symptoms live in the #3571 suite. This is the read-state
+ * half of the one root cause: the section never asked the group list whether
+ * the group it had an editor open on still existed. A successful read that no
+ * longer returns it left the section with no rows, no editor and no "Add a
+ * choice" — the Add control is gated on nothing being edited, and `editing`
+ * still pointed at a group the server had stopped reporting. Zero controls,
+ * under the success-shaped "No choices yet."
+ * ================================================================== */
+
+/** Re-renders the SAME tree so a changed query result is observed in place. */
+const rerenderSection = (tree: TestRenderer): void => {
+  act(() => {
+    (tree as unknown as { update: (node: React.ReactElement) => void }).update(
+      <MenuItemOptionsSection
+        brandId="brand-3570"
+        menuItemId="item-3570"
+        itemCurrency="USD"
+        canMutate
+      />,
+    );
+  });
+};
+
+describe("#3615 rework cycle 2 — an open editor is reconciled against the read", () => {
+  test("a settled read that no longer returns the edited group never leaves the section with zero controls", () => {
+    queryStub = settledSuccess([group("g-1", "Temperature")]);
+    const tree = render();
+
+    const row = nodesWithTestId(tree, "menu-item-option-group-g-1")[0];
+    act(() => {
+      (row.props.onPress as () => void)();
+    });
+    // The editor is genuinely open, so Add is correctly hidden and the
+    // editor's own controls are on screen.
+    expect(nodesWithTestId(tree, "modifier-group-cancel")).not.toHaveLength(0);
+    expect(nodesWithTestId(tree, "menu-item-options-add")).toHaveLength(0);
+
+    // The group is removed elsewhere and the read SETTLES SUCCESSFULLY
+    // without it — this is server truth, not a failed refresh.
+    queryStub = settledSuccess([]);
+    rerenderSection(tree);
+
+    // The editor goes with its group, and the surface is actionable again.
+    expect(nodesWithTestId(tree, "modifier-group-cancel")).toHaveLength(0);
+    expect(textOf(tree)).toContain(EMPTY_COPY);
+    expect(nodesWithTestId(tree, "menu-item-options-add")).not.toHaveLength(0);
+    tree.unmount();
+  });
+
+  test("a FAILED refresh never discards the open editor — only a settled read reconciles", () => {
+    // The mirror image, and the reason the reconciliation is gated on the
+    // server having actually answered: a read that threw is not evidence that
+    // a group is gone, and must not close the editor out from under an owner.
+    queryStub = settledSuccess([group("g-1", "Temperature")]);
+    const tree = render();
+    const row = nodesWithTestId(tree, "menu-item-option-group-g-1")[0];
+    act(() => {
+      (row.props.onPress as () => void)();
+    });
+    expect(nodesWithTestId(tree, "modifier-group-cancel")).not.toHaveLength(0);
+
+    queryStub = {
+      status: "error",
+      fetchStatus: "idle",
+      isLoading: false,
+      isError: true,
+      isFetching: false,
+      error: new Error("failed to fetch"),
+      data: [group("g-1", "Temperature")],
+      refetch,
+    };
+    rerenderSection(tree);
+
+    expect(nodesWithTestId(tree, "modifier-group-cancel")).not.toHaveLength(0);
+    expect(textOf(tree)).toContain(STALE_COPY);
+    tree.unmount();
   });
 });

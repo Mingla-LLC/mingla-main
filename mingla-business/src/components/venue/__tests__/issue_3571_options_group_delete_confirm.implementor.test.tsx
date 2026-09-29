@@ -48,6 +48,13 @@ const deleteMutate =
   jest.fn<(variables: DeleteVariables, callbacks?: DeleteCallbacks) => void>();
 let deletePending = false;
 let groups: MenuModifierGroup[] = [];
+/*
+ * PR #3615 rework cycle 2. React Query's `dataUpdatedAt` advances only when a
+ * fetch settles SUCCESSFULLY, so it is the one signal a terminal delete
+ * refusal can honestly be released by. Bumping this stands in for a successful
+ * refetch of the group list.
+ */
+let groupsUpdatedAt = 1;
 
 jest.mock("../../ui/Button", () => ({
   Button: (props: Record<string, unknown>) =>
@@ -114,6 +121,7 @@ jest.mock("../../../hooks/useMenuModifiers", () => {
       isFetching: false,
       error: null,
       data: groups,
+      dataUpdatedAt: groupsUpdatedAt,
       refetch: jest.fn(),
     }),
     useSaveModifierGroup: () => ({ isPending: false, mutate: jest.fn() }),
@@ -231,6 +239,7 @@ beforeEach(() => {
   deleteMutate.mockReset();
   deletePending = false;
   groups = [groupWith(3)];
+  groupsUpdatedAt = 1;
 });
 
 describe("#3571 implementor — removing an options group is confirmed, not instant", () => {
@@ -816,6 +825,439 @@ describe("#3615 rework — a delete refusal is scoped, terminal, announced and n
     expect(alerts).toHaveLength(0);
     act(() => {
       rendered.unmount();
+    });
+  });
+});
+
+/* =====================================================================
+ * PR #3615 REWORK CYCLE 2 — one root cause, three symptoms.
+ *
+ * The retest of cycle 1 found that `MenuItemOptionsSection` held delete
+ * refusals in a single unkeyed slot and never reconciled `editing` or that
+ * slot against the live `groups` list. One defect produced three symptoms,
+ * and each test below attacks exactly one of them:
+ *
+ *   1. the permanent lock was erased by the next tap on another group;
+ *   2. the terminal lock had no release tied to any server signal;
+ *   3. a refusal outlived the group it named, and took every control on the
+ *      section with it.
+ *
+ * Each fails when its own fix line is deleted from the source. The
+ * per-symptom deletion is recorded in the implementation report.
+ * ================================================================== */
+
+/** Re-renders the SAME tree so a changed query result is observed in place. */
+const rerenderSection = (tree: TestRenderer): void => {
+  act(() => {
+    (tree as unknown as { update: (node: React.ReactElement) => void }).update(
+      <MenuItemOptionsSection
+        brandId="brand-3571"
+        menuItemId="item-3571"
+        itemCurrency="USD"
+        canMutate
+      />,
+    );
+  });
+};
+
+describe("#3615 rework cycle 2 — a refusal is reconciled against server truth", () => {
+  /*
+   * SYMPTOM 1. `requestDeleteGroup` cleared the whole refusal slot, for ANY
+   * group. One tap on a second group's Remove therefore erased a permanent
+   * refusal about the first, erased the only on-screen explanation of it, and
+   * re-armed a delete the database can never accept — the app contradicting
+   * on camera what it said thirty seconds earlier.
+   */
+  test("asking about ANOTHER group cannot erase a standing permanent refusal", () => {
+    groups = [groupWith(3), otherGroup()];
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    refuseTheDelete(tree, inUseRejection());
+    expect(deleteMutate).toHaveBeenCalledTimes(1);
+    expect(textOf(tree)).toContain(IN_USE_COPY);
+
+    // Leave Temperature, open Sides, and raise the ask about SIDES. This is
+    // the exact tap that used to wipe Temperature's refusal.
+    openEditorFor(tree, "group-3571-beta");
+    act(() => {
+      (deleteTriggerOf(tree).props.onPress as () => void)();
+    });
+    expect(dialogOf(tree).props.visible).toBe(true);
+    // Back out of Sides without deleting anything at all.
+    act(() => {
+      (dialogOf(tree).props.onClose as () => void)();
+    });
+
+    // Return to Temperature. Its refusal is a fact about Temperature and
+    // nothing the operator did to Sides can have touched it.
+    openEditorFor(tree, "group-3571");
+    expect(nodesWithTestId(tree, "menu-item-options-error")).not.toHaveLength(
+      0,
+    );
+    expect(textOf(tree)).toContain(IN_USE_COPY);
+
+    const trigger = deleteTriggerOf(tree);
+    expect(trigger.props.disabled).toBe(true);
+    act(() => {
+      (trigger.props.onPress as () => void)();
+    });
+    // And the flow itself still refuses, so no second doomed mutation exists.
+    const editor = tree.root.findAllByType(MenuModifierGroupEditor)[0];
+    act(() => {
+      (editor.props.onRequestDelete as (groupId: string) => void)(
+        "group-3571",
+      );
+    });
+    expect(dialogOf(tree).props.visible).toBe(false);
+    expect(deleteMutate).toHaveBeenCalledTimes(1);
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  /*
+   * SYMPTOM 2. Nothing released a permanent refusal — not a successful
+   * refetch, not a role change, not closing the editor. On a single-group dish
+   * there was no in-sheet escape at all, and the lock was decided by a
+   * client-side classification, so one misread SQLSTATE disabled a legitimate
+   * destructive control for the life of the dish sheet behind copy that may
+   * have been untrue. `dataUpdatedAt` advances only when a read SETTLES
+   * SUCCESSFULLY, so it is a real server signal and not a client guess.
+   */
+  test("a NEWER successful read of the group list releases the terminal lock", () => {
+    groups = [groupWith(3)];
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    refuseTheDelete(tree, inUseRejection());
+    expect(deleteTriggerOf(tree).props.disabled).toBe(true);
+    expect(textOf(tree)).toContain(IN_USE_COPY);
+
+    // A re-render that carries no newer read is NOT a release. A refusal is
+    // not forgotten just because the component painted again.
+    rerenderSection(tree);
+    expect(deleteTriggerOf(tree).props.disabled).toBe(true);
+    expect(textOf(tree)).toContain(IN_USE_COPY);
+
+    // Now the group list is genuinely re-read, and it still reports the group.
+    groupsUpdatedAt = 2;
+    rerenderSection(tree);
+
+    expect(nodesWithTestId(tree, "menu-item-options-error")).toHaveLength(0);
+    expect(textOf(tree)).not.toContain(IN_USE_COPY);
+    const releasedTrigger = deleteTriggerOf(tree);
+    expect(releasedTrigger.props.disabled).toBe(false);
+    act(() => {
+      (releasedTrigger.props.onPress as () => void)();
+    });
+    expect(dialogOf(tree).props.visible).toBe(true);
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  /*
+   * SYMPTOM 3. A refusal outlived its subject. With the group gone from a
+   * refetch the assertive alert about it stayed on screen, and because
+   * `editing` still pointed at the vanished group the section rendered no
+   * rows, no editor and no "Add a choice" — zero controls, underneath an
+   * assertive statement about a group that does not exist and the contradictory
+   * "No choices yet."
+   *
+   * The read version is deliberately held constant here: this test must be
+   * falsified by the group-gone reconciliation alone, not by the newer-read
+   * release that symptom 2 owns.
+   */
+  test("a refusal about a group the list no longer returns leaves with it, and the section stays actionable", () => {
+    groups = [groupWith(3)];
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    refuseTheDelete(tree, inUseRejection());
+    expect(textOf(tree)).toContain(IN_USE_COPY);
+    // While the editor is genuinely open, Add is correctly hidden.
+    expect(nodesWithTestId(tree, "menu-item-options-add")).toHaveLength(0);
+
+    // Another manager, another device or another tab removes the group.
+    groups = [];
+    rerenderSection(tree);
+
+    // Nothing on screen asserts anything about the group that is gone.
+    expect(nodesWithTestId(tree, "menu-item-options-error")).toHaveLength(0);
+    expect(textOf(tree)).not.toContain(IN_USE_COPY);
+    // And the section can still be acted on — it is not a dead surface the
+    // owner has to close the whole dish to escape.
+    expect(textOf(tree)).toContain("No choices yet");
+    expect(nodesWithTestId(tree, "modifier-group-cancel")).toHaveLength(0);
+    expect(nodesWithTestId(tree, "menu-item-options-add")).not.toHaveLength(0);
+    act(() => {
+      tree.unmount();
+    });
+  });
+});
+
+/* ================================================================== *
+ * PR #3615 REWORK CYCLE 3 — the refusal that was born already
+ * superseded, and never rendered at all.
+ *
+ * APPEND-ONLY. Nothing above this line was edited, weakened or skipped.
+ *
+ * Cycle 2 released a refusal on a newer read, and stamped WHICH read it
+ * was recorded against inside the delete mutation's `onError`, from a
+ * ref written during render. That ref could only ever hold the newest
+ * version the component had RENDERED — never the newest the client
+ * HELD. React Query writes the new `dataUpdatedAt` into the cache the
+ * instant a read settles; the render that observes it comes afterwards.
+ * A rejection landing in that gap was stamped with the superseded
+ * version and dropped by the very next render, before anyone saw it:
+ *
+ *   - permanent refusal: the confirmation closed, the group stayed, and
+ *     NOTHING was said. A destructive action failed in silence, which is
+ *     the exact defect class #3570 and #3571 were opened to remove;
+ *   - retryable refusal: worse. The confirmation stayed OPEN carrying no
+ *     reason at all, so the obvious next action was to tap Remove again
+ *     on a delete that had just failed.
+ *
+ * The window is narrow — `refetchOnWindowFocus` is off globally, so it
+ * needs a reconnect refetch, a configured retry succeeding, or another
+ * group's save writing the cached list — but every one of those is real.
+ *
+ * Each test below drives exactly that ordering: the cached list's version
+ * advances while the mutation is in flight, and NO render happens in
+ * between, which is the whole point. `groupsUpdatedAt` is the version the
+ * mock query reports, read fresh on every render.
+ * ================================================================== */
+
+/** Ask, and confirm — but leave the mutation in flight. */
+const askThenConfirmDelete = (tree: TestRenderer): void => {
+  act(() => {
+    (deleteTriggerOf(tree).props.onPress as () => void)();
+  });
+  act(() => {
+    (dialogOf(tree).props.onConfirm as () => void)();
+  });
+};
+
+/** Settle the in-flight delete with `rejection`. */
+const rejectPendingDelete = (rejection: Error): void => {
+  const callbacks =
+    deleteMutate.mock.calls[deleteMutate.mock.calls.length - 1][1];
+  act(() => {
+    callbacks?.onError?.(rejection);
+    callbacks?.onSettled?.();
+  });
+};
+
+const sectionAlerts = (tree: TestRenderer): TestNode[] =>
+  nodesWithTestId(tree, "menu-item-options-error");
+
+describe("#3615 rework cycle 3 — a refusal can never be born already superseded", () => {
+  test("a read settling inside the delete's in-flight window cannot swallow a PERMANENT refusal", () => {
+    groups = [groupWith(3)];
+    groupsUpdatedAt = 1;
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+
+    // The last render the component performed saw version 1.
+    askThenConfirmDelete(tree);
+
+    // A read settles in the CACHE while the delete is still in flight —
+    // a reconnect refetch, a retry succeeding, or another group's save
+    // writing the list. No render has observed it yet.
+    groupsUpdatedAt = 2;
+    rejectPendingDelete(inUseRejection());
+
+    // The owner MUST be told. Under the defect the dialog closed, the
+    // group stayed, and the screen carried no error copy at all.
+    expect(sectionAlerts(tree)).not.toHaveLength(0);
+    expect(textOf(tree)).toContain(IN_USE_COPY);
+    // And the refusal is a real refusal, not a flicker: the trigger is inert.
+    expect(deleteTriggerOf(tree).props.disabled).toBe(true);
+    // The ask is closed, because this failure can never succeed.
+    expect(dialogOf(tree).props.visible).toBe(false);
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  test("a read settling inside the delete's in-flight window cannot swallow a RETRYABLE refusal", () => {
+    groups = [groupWith(3)];
+    groupsUpdatedAt = 1;
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+
+    askThenConfirmDelete(tree);
+    groupsUpdatedAt = 2;
+    rejectPendingDelete(new Error("boom"));
+
+    // The section states the failure. This is the assertion the P1 owns:
+    // the in-dialog copy alone would be satisfied by the dialog's own
+    // hold, so the silence must be disproved where the refusal lives.
+    expect(sectionAlerts(tree)).not.toHaveLength(0);
+    expect(textOf(tree)).toContain(GENERIC_COPY);
+    // The dialog stays open because this IS retryable — and it says why
+    // the last attempt failed, instead of sitting there blank inviting a
+    // second tap on a delete that just failed.
+    expect(dialogOf(tree).props.visible).toBe(true);
+    expect(dialogOf(tree).props.errorMessage).toBe(GENERIC_COPY);
+    // Exactly one attempt has been made.
+    expect(deleteMutate).toHaveBeenCalledTimes(1);
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  test("a control run with NO version change still renders exactly the same refusal", () => {
+    // The two tests above must fail because of the race and nothing else.
+    groups = [groupWith(3)];
+    groupsUpdatedAt = 1;
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    askThenConfirmDelete(tree);
+    rejectPendingDelete(inUseRejection());
+
+    expect(sectionAlerts(tree)).not.toHaveLength(0);
+    expect(textOf(tree)).toContain(IN_USE_COPY);
+    expect(deleteTriggerOf(tree).props.disabled).toBe(true);
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  test("the release still works: the anchored refusal is dropped by the NEXT read after it was shown", () => {
+    // Anchoring on first render must not turn the refusal permanent again.
+    groups = [groupWith(3)];
+    groupsUpdatedAt = 1;
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    askThenConfirmDelete(tree);
+    groupsUpdatedAt = 2;
+    rejectPendingDelete(inUseRejection());
+    expect(textOf(tree)).toContain(IN_USE_COPY);
+
+    // Version 2 is the version this refusal was anchored to, so the read
+    // AFTER it releases — one read later than before, which is exactly
+    // what "survives until the next read after it became visible" means.
+    groupsUpdatedAt = 3;
+    rerenderSection(tree);
+
+    expect(sectionAlerts(tree)).toHaveLength(0);
+    expect(textOf(tree)).not.toContain(IN_USE_COPY);
+    expect(deleteTriggerOf(tree).props.disabled).toBe(false);
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  test("a forgotten refusal leaves no anchor behind for the next refusal on the same group", () => {
+    // The anchor map is rebuilt from the live refusal store every run. If
+    // a stale anchor could be inherited, a later refusal on the same group
+    // would be measured against a version that is already gone — which is
+    // the same "born already superseded" defect reached another way.
+    groups = [groupWith(3)];
+    groupsUpdatedAt = 1;
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    askThenConfirmDelete(tree);
+    rejectPendingDelete(new Error("boom"));
+    expect(textOf(tree)).toContain(GENERIC_COPY);
+
+    // Leaving the group forgets a RETRYABLE refusal — the store empties.
+    act(() => {
+      (
+        nodesWithTestId(tree, "modifier-group-cancel")[0].props
+          .onPress as () => void
+      )();
+    });
+    expect(sectionAlerts(tree)).toHaveLength(0);
+
+    // Reads move on, then the same group is refused again.
+    groupsUpdatedAt = 5;
+    rerenderSection(tree);
+    openEditorFor(tree, "group-3571");
+    askThenConfirmDelete(tree);
+    rejectPendingDelete(inUseRejection());
+
+    expect(sectionAlerts(tree)).not.toHaveLength(0);
+    expect(textOf(tree)).toContain(IN_USE_COPY);
+    act(() => {
+      tree.unmount();
+    });
+  });
+});
+
+/* ================================================================== *
+ * PR #3615 REWORK CYCLE 3, P3 — the in-dialog error is held for as
+ * long as its dialog is open.
+ *
+ * The copy inside the confirmation is the assertive alert cycle 1 added
+ * precisely so a VoiceOver or TalkBack operator hears WHY the delete
+ * failed. Read through the reconciliation, a newer read could remove it
+ * mid-announcement while the dialog the operator was still reading sat
+ * open with no stated reason at all. Reconciliation answers "is the
+ * SECTION still telling the truth about this group?"; the open dialog is
+ * a different question — one attempt the operator is still inside.
+ * ================================================================== */
+
+describe("#3615 rework cycle 3 — the open confirmation holds its own failure copy", () => {
+  test("a newer read cannot wipe the in-dialog error while the dialog is still open", () => {
+    groups = [groupWith(3)];
+    groupsUpdatedAt = 1;
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    refuseTheDelete(tree, new Error("boom"));
+    expect(dialogOf(tree).props.visible).toBe(true);
+    expect(dialogOf(tree).props.errorMessage).toBe(GENERIC_COPY);
+
+    // A read settles underneath the open dialog. The SECTION's standing
+    // statement is released — that is cycle 2's deliberate semantic and
+    // it is not being undone — but the dialog must keep the reason the
+    // attempt the operator is still looking at failed.
+    groupsUpdatedAt = 2;
+    rerenderSection(tree);
+
+    expect(dialogOf(tree).props.visible).toBe(true);
+    expect(dialogOf(tree).props.errorMessage).toBe(GENERIC_COPY);
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  test("the held copy is not immortal — starting the retry clears it", () => {
+    groups = [groupWith(3)];
+    groupsUpdatedAt = 1;
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    refuseTheDelete(tree, new Error("boom"));
+    expect(dialogOf(tree).props.errorMessage).toBe(GENERIC_COPY);
+
+    // The same destructive action IS the retry. Once it is in flight the
+    // previous attempt's reason is no longer the current state of play.
+    act(() => {
+      (dialogOf(tree).props.onConfirm as () => void)();
+    });
+
+    expect(deleteMutate).toHaveBeenCalledTimes(2);
+    expect(dialogOf(tree).props.errorMessage).toBeNull();
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  test("closing the confirmation takes the held copy with it", () => {
+    groups = [groupWith(3)];
+    groupsUpdatedAt = 1;
+    const tree = render();
+    openEditorFor(tree, "group-3571");
+    refuseTheDelete(tree, new Error("boom"));
+    expect(dialogOf(tree).props.errorMessage).toBe(GENERIC_COPY);
+
+    act(() => {
+      (dialogOf(tree).props.onClose as () => void)();
+    });
+
+    expect(dialogOf(tree).props.visible).toBe(false);
+    expect(dialogOf(tree).props.errorMessage).toBeNull();
+    act(() => {
+      tree.unmount();
     });
   });
 });
