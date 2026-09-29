@@ -24,10 +24,18 @@
 --       fresh owner row, deleting their own row, deleting the new owner's row,
 --       or calling any of the three admin team RPCs. Read access to their own
 --       historical row is expected and asserted to be read-ONLY.
---   T2  THE RE-INVITATION DOOR. The sibling ownership-transfer RPC
---       (accept_invite_and_transfer_brand_ownership) and the whole
---       brand_team_members write surface are checked for an EXECUTE or policy
---       grant that would let a rank-0 ex-owner re-enter without an admin.
+--   T2  THE WRITE SURFACE THAT KEEPS REMOVAL HOLDING. Removal only holds while
+--       every write door into brand_team_members is gated on rank >= 50, so the
+--       policy shape is pinned by exact predicate from the catalog — the day a
+--       self-addressed "a member may update their own row" policy appears, the
+--       contract silently stops being enforceable. Plus the re-invitation door:
+--       the ex-owner holds EXECUTE on the sibling transfer RPC, so it is proved
+--       BEHAVIOURALLY that they can neither guess nor mint the token it needs.
+--   T2b THE SIBLING TRANSFER PATH, DRIVEN FOR REAL, reported and NOT pinned.
+--       accept_invite_and_transfer_brand_ownership is the OTHER live path that
+--       changes brands.account_id, and it still ships the brand_admin demotion
+--       this issue implemented, tested and rejected — so the registry's "ANY
+--       path" rule holds on admin_reassign_brand_owner alone.
 --   T3  THE GUARD THE IMPLEMENTOR DID NOT TEST. Group G covers
 --       not_authorized / reason_required / not_found / invalid_new_owner. It
 --       does NOT cover the issue_2101 active-named-checkout refusal, which is
@@ -72,6 +80,14 @@
 --       audited admin_set_team_member_role RPC. The in-scope guarantee is
 --       asserted hard; the wider hole RAISEs WARNING rather than being frozen
 --       into an assertion, so that fixing it does not turn this suite red.
+--   T11 TWO CONCURRENT REASSIGNMENTS OF THE SAME BRAND, through dblink, also
+--       reported and NOT pinned. The RPC reads the outgoing owner from a
+--       snapshot taken with NO `FOR UPDATE` before it locks the brand row, so a
+--       second caller can revoke a STALE owner and leave the real one active at
+--       rank 60 — this issue's own defect, reintroduced by a race, with the
+--       stale value written into the audit row too. The sibling path locks the
+--       brand row first. What MUST hold either way (the calls serialize, one
+--       owner, no duplicate active rows, constraints intact) IS asserted.
 --
 -- Every group CALLS the shipped RPC and reads the server authority
 -- (biz_brand_effective_rank, the real RLS policies, the real constraints).
