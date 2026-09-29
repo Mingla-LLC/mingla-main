@@ -77,10 +77,17 @@ jobs:
           scripts/sites/__tests__/issue_2948_readback_wiring.test.mjs
           scripts/sites/__tests__/issue_3606_recovery_freshness.implementor.test.mjs
           scripts/sites/__tests__/issue_3606_recovery_freshness.tester.adversarial.test.mjs
+          scripts/sites/__tests__/issue_3628_deactivation_gate.test.mjs
 
   backup_restore:
     name: "Private backup and isolated restore"
     needs: contracts
+    # #3628 — this job publishes WHY it failed, so `deactivate` can act on a
+    # proven readiness violation instead of on "a run went red". Every node
+    # entrypoint below writes its classification through `safeCliFailure`.
+    outputs:
+      recovery_deactivate: ${{ steps.classify.outputs.deactivate }}
+      recovery_failure_code: ${{ steps.classify.outputs.code }}
     # #3606 — the hourly watchdog cron must never take a snapshot. Exclusion, not
     # inclusion: an expression that stops matching runs the backup anyway.
     if: >-
@@ -91,6 +98,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: mingla-sites-production
+    env:
+      SITES_RECOVERY_CLASSIFICATION_PATH: ${{ github.workspace }}/sites-recovery-classification.json
     services:
       restore-postgres:
         image: postgres:17.10-alpine
@@ -223,24 +232,83 @@ jobs:
           MINGLA_CORE_TO_CMS_CURRENT_KEY_B64: ${{ secrets.MINGLA_CORE_TO_CMS_CURRENT_KEY_B64 }}
         run: node scripts/sites/run-sites-retention.mjs
 
+      # #3628 — publish the failure classification. Runs ONLY on failure, and
+      # emits `deactivate=false` only when a step positively classified its own
+      # failure as a non-readiness fault. Anything else — no file, unreadable
+      # file, a step that died before writing one, a cancelled runner — leaves
+      # the output unset, and `deactivate` reads unset as "deactivate". The
+      # dangerous direction is silently holding a site up, so that is the one
+      # direction this step cannot produce by accident.
+      - name: Classify the recovery failure for the deactivation gate
+        id: classify
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs";
+          const out = process.env.GITHUB_OUTPUT;
+          const path = process.env.SITES_RECOVERY_CLASSIFICATION_PATH;
+          let code = "UNCLASSIFIED";
+          let deactivate = "true";
+          try {
+            const raw = JSON.parse(readFileSync(path, "utf8"));
+            if (typeof raw?.code === "string" && typeof raw?.deactivating === "boolean") {
+              code = raw.code;
+              deactivate = raw.deactivating ? "true" : "false";
+            }
+          } catch {
+            // Absent or unreadable stays at the fail-closed default above.
+          }
+          appendFileSync(out, `deactivate=${deactivate}\ncode=${code}\n`);
+          process.stdout.write(
+            `SITES_RECOVERY_CLASSIFICATION code=${code} deactivate=${deactivate}\n`,
+          );
+          NODE
+
   deactivate:
     name: "Fail-closed pilot deactivation"
     needs: [contracts, backup_restore]
     # Any scheduled/main run that does not finish the production backup and
-    # restore successfully is signed-deactivated before the safe alert. This
+    # restore successfully is signed-deactivated before the safe alert, UNLESS
+    # the failure was positively classified as a non-readiness fault. This still
     # includes a skipped backup_restore job caused by a contract failure.
     #
     # #3606 — the watchdog cron deliberately skips backup_restore, which would
     # otherwise read as "did not finish successfully" and deactivate the pilot
     # every hour. Only that exact routing is excused; every other skip still
     # deactivates, so a contract failure is unchanged.
+    #
+    # #3628 — `needs.backup_restore.result != 'success'` was the whole gate, and
+    # it cannot tell a proven readiness violation from a bad minute on the
+    # network. On 2026-09-28 a transient `S3_OBJECT_READ_FAILED` while reading
+    # one object made this job sign-deactivate the live gogi pilot 16 seconds
+    # later. The site returned 404 on every route for 15 hours, and recovery
+    # needed a credentialed operator run. The classifier that would have
+    # declined already existed and had already declined, in-process, one job
+    # earlier: `S3_OBJECT_READ_FAILED` is not in DEACTIVATING_RECOVERY_CODES.
+    # This condition consulted none of it.
+    #
+    # Holding is safe, and this is the part worth understanding before anyone
+    # tightens it back: this job is NOT what enforces recovery freshness. The
+    # runtime resolver re-checks the evidence on EVERY page request against its
+    # own 26-hour budget, so genuinely stale evidence takes the host down by
+    # itself, automatically, with no job involved. What this job adds is an
+    # IMMEDIATE signed shutdown when readiness is PROVEN violated — worth doing
+    # for a missing or disabled backup, never worth doing on a coin-flip.
+    #
+    # Polarity is deliberate and matches the watchdog exclusion above: only the
+    # literal string 'false', written by a step that successfully classified its
+    # own failure, holds the site up. Unset, empty, 'UNCLASSIFIED', a crashed
+    # runner or a cancelled job all still deactivate.
     if: >-
       always() &&
       github.event_name != 'pull_request' &&
       github.ref == 'refs/heads/main' &&
       github.event.schedule != '37 * * * *' &&
       github.event.inputs.mode != 'freshness-check' &&
-      needs.backup_restore.result != 'success'
+      needs.backup_restore.result != 'success' &&
+      needs.backup_restore.outputs.recovery_deactivate != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: mingla-sites-production
@@ -276,14 +344,30 @@ jobs:
       contents: read
       issues: write
     steps:
+      # #3628 — say which way the deactivation gate went. A failure that HELD
+      # the site up is the case a human most needs to see: the public site is
+      # still serving on evidence that is ageing, and the resolver's 26-hour
+      # budget is now the only thing standing between it and a 404. An alert
+      # that reads identically whether the pilot was torn down or deliberately
+      # left up is not telling anyone what happened.
       - name: Comment safe code and run URL on #2830
         env:
           GH_TOKEN: ${{ github.token }}
+          FAILURE_CODE: ${{ needs.backup_restore.outputs.recovery_failure_code }}
+          DEACTIVATE: ${{ needs.backup_restore.outputs.recovery_deactivate }}
         shell: bash
         run: |
           set -euo pipefail
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          body="SITES_BACKUP_ALERT error_code=SITES_BACKUP_OR_RESTORE_FAILED run_url=${run_url}"
+          code="${FAILURE_CODE:-UNCLASSIFIED}"
+          if [ "${DEACTIVATE:-true}" = "false" ]; then
+            outcome="PILOT_HELD_UP recovery_evidence_ageing"
+          else
+            outcome="PILOT_DEACTIVATED"
+          fi
+          # #2893 pins `error_code=...` immediately followed by `run_url=`;
+          # #3628's fields are additive and go after it, so that contract holds.
+          body="SITES_BACKUP_ALERT error_code=SITES_BACKUP_OR_RESTORE_FAILED run_url=${run_url} failure_code=${code} outcome=${outcome}"
           gh api --method POST \
             "repos/${GITHUB_REPOSITORY}/issues/2830/comments" \
             -f body="$body" >/dev/null
