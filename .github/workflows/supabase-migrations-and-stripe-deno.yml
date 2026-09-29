@@ -1000,6 +1000,20 @@ jobs:
           # same-menu writers and race concurrent membership changes.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3564_atomic_menu_item_reorder.tester.adversarial.pg17.test.sql
+          # Issue #3622 — reassigning a brand owner left the previous owner with
+          # rank 60 on a brand they no longer owned, because the owner-membership
+          # trigger is AFTER INSERT only and the reassign RPC never touched
+          # brand_team_members. Registered HERE because this is the ONLY gate that
+          # measures the change: the four admin strict-grep gates take the FIRST
+          # regex match across concatenated migrations, so they assert against the
+          # 20261208000001 definition and have never seen the replacement (that
+          # blind spot is issue #3633). This suite CALLS the RPC and asks
+          # biz_brand_effective_rank — the function that actually grants access —
+          # rather than checking that brands.account_id changed, which is what a
+          # test shaped around the old behaviour would have done while passing
+          # throughout the defect's whole life.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3622_reassign_owner_maintains_team_membership.implementor.happy.pg17.test.sql
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
