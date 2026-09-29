@@ -1014,6 +1014,27 @@ jobs:
           # throughout the defect's whole life.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3622_reassign_owner_maintains_team_membership.implementor.happy.pg17.test.sql
+          # Issue #3622 — INDEPENDENT TESTER axis. The implementor suite above
+          # proves the happy shape of the handover. This one attacks what that
+          # leaves open, and the first group is the one the contract rests on:
+          # #3622 chose REMOVAL over demotion BECAUSE a demoted owner restores
+          # themselves in one write, so removal is only a control if the person
+          # at rank 0 cannot get back — nine routes are driven as that person,
+          # under SET ROLE authenticated with their own JWT sub. It also covers
+          # the ONE preserved guard the implementor does not test (the #2101
+          # active-named-checkout refusal, which fires from a BEFORE UPDATE OF
+          # account_id trigger, i.e. from inside the statement the membership
+          # block was placed after — the only refusal whose failure mode is a
+          # HALF-APPLIED handover), snapshot-compares membership after every
+          # refusal instead of spot-checking one rank, walks the incoming-owner
+          # constraint states, replays five hops including two hand-backs,
+          # crosses the soft-delete gate in both directions, and proves the two
+          # halves roll back together. Kept LAST because its final group opens
+          # real concurrent sessions through dblink: it commits and then deletes
+          # its own 3622c* fixtures in the remote session, so a failing
+          # assertion still leaves nothing behind.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3622_reassign_owner_maintains_team_membership.tester.adversarial.pg17.test.sql
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
