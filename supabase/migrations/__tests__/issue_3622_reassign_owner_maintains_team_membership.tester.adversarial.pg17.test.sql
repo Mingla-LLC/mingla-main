@@ -80,14 +80,18 @@
 --       audited admin_set_team_member_role RPC. The in-scope guarantee is
 --       asserted hard; the wider hole RAISEs WARNING rather than being frozen
 --       into an assertion, so that fixing it does not turn this suite red.
---   T11 TWO CONCURRENT REASSIGNMENTS OF THE SAME BRAND, through dblink, also
---       reported and NOT pinned. The RPC reads the outgoing owner from a
---       snapshot taken with NO `FOR UPDATE` before it locks the brand row, so a
---       second caller can revoke a STALE owner and leave the real one active at
---       rank 60 — this issue's own defect, reintroduced by a race, with the
---       stale value written into the audit row too. The sibling path locks the
---       brand row first. What MUST hold either way (the calls serialize, one
---       owner, no duplicate active rows, constraints intact) IS asserted.
+--   T11 TWO CONCURRENT REASSIGNMENTS OF THE SAME BRAND, through dblink, fully
+--       ASSERTED. Without `FOR UPDATE` on the SELECT that captures the outgoing
+--       owner, a second caller reads that owner from a snapshot taken before it
+--       takes the row lock, so it revokes a STALE owner and leaves the real one
+--       active at rank 60 — this issue's own defect, reintroduced by a race,
+--       with the stale value written into the audit row too. Six properties are
+--       asserted: the calls serialize, the last committed writer owns the brand,
+--       nobody holds two active rows, the accepted/removed CHECK survives, the
+--       owner is never left with no membership row at all, and — the one that
+--       carries the defect itself — no brand_owner row outlives the handover.
+--       The last of those was a WARNING while the race was live and became an
+--       assertion when the lock landed; see the comment at the assertion.
 --
 -- Every group CALLS the shipped RPC and reads the server authority
 -- (biz_brand_effective_rank, the real RLS policies, the real constraints).
@@ -1099,18 +1103,22 @@ ROLLBACK;
 --   UPDATE public.brands SET account_id = p_new_account_id ... ;
 --   v_old_owner := (v_before->>'account_id')::uuid;
 --
--- There is no FOR UPDATE on that SELECT. Under READ COMMITTED a second session
--- can read `v_before` while the first handover is still uncommitted, then block
--- on the UPDATE, then proceed once the first commits — carrying a v_old_owner
--- that is no longer the owner. The sibling transfer path gets this right
+-- Without FOR UPDATE on that SELECT, a second session under READ COMMITTED can
+-- read `v_before` while the first handover is still uncommitted, then block on
+-- the UPDATE, then proceed once the first commits — carrying a v_old_owner that
+-- is no longer the owner. It revokes a ghost and leaves the real outgoing owner
+-- active at rank 60. The sibling transfer path has always taken that lock
 -- (`SELECT * INTO v_brand_record FROM public.brands WHERE id = ... FOR UPDATE`),
--- which is why this is worth measuring rather than theorising about.
+-- which is why this was worth measuring rather than theorising about. The lock
+-- is now on the reassign RPC too, so all SIX properties below are asserted.
 --
--- What is ASSERTED here is only what must be true either way: the two calls
--- serialize, exactly one of them ends up owning the brand, the constraints hold
--- and no (brand_id, user_id) ends with two active rows. Whether the interleaved
--- owner is left behind is REPORTED — WARNING if observed, NOTICE if the read is
--- ever taken under a lock — so that fixing it does not turn this suite red.
+-- DO NOT re-express the last of them as a check on the function's source. The
+-- explanatory comment the rework put INSIDE the function body contains the
+-- literal `FOR UPDATE`, so `position('FOR UPDATE' in prosrc)` answers TRUE over
+-- a version with no lock at all. The lock is a property of the statement, not
+-- of a phrase appearing somewhere in the text; this group races two real
+-- sessions and reads the resulting rows, which is the only thing that cannot be
+-- satisfied by a comment.
 --
 -- Fixtures are created and destroyed through a dblink session, so they are
 -- committed (both workers must see the same rows) yet nothing is left behind
@@ -1251,13 +1259,19 @@ BEGIN
       RAISE EXCEPTION 'ISSUE-3622 T11 FAIL: the race left the brand with NO active accepted brand_owner row — the owner has no membership record at all';
     END IF;
 
-    -- ---- what is REPORTED, not pinned ----
+    -- ---- the headline property, ASSERTED ----
+    -- This was a RAISE WARNING while the race was live: failing a suite over a
+    -- defect in code the branch had not yet fixed would only have made the lane
+    -- red without telling anybody anything new. The lock landed, so the premise
+    -- is gone — the condition no longer occurs, an assertion passes today, and
+    -- it goes red the moment the lock is removed. That is the fails-on-revert
+    -- property this group exists to provide, and it is the ONE assertion here
+    -- that carries the exact condition #3622 exists to prevent.
     IF v_stale > 0 OR v_stale_rank >= 60 THEN
-      RAISE WARNING 'ISSUE-3622 T11 DEFECT OBSERVED: two concurrent reassignments left % brand_owner row(s) active on a brand owned by somebody else, and the interleaved owner still reads rank % — the exact condition #3622 exists to prevent, reintroduced by a race. Cause: admin_reassign_brand_owner reads `SELECT to_jsonb(b) INTO v_before FROM public.brands` with NO FOR UPDATE before it takes the row lock, so the second caller revokes a STALE v_old_owner and leaves the real outgoing owner untouched. The audit row it writes records the stale `before` too. The sibling accept_invite_and_transfer_brand_ownership locks the brand row first. Reported on issue #3622, NOT asserted.',
+      RAISE EXCEPTION 'ISSUE-3622 T11 FAIL: two concurrent reassignments left % brand_owner row(s) active on a brand owned by somebody else, and the interleaved owner still reads rank % — the exact condition #3622 exists to prevent, reintroduced by a race. Cause: admin_reassign_brand_owner read `SELECT to_jsonb(b) INTO v_before FROM public.brands` WITHOUT `FOR UPDATE` before it took the row lock, so the second caller revoked a STALE v_old_owner and left the real outgoing owner untouched; the audit row it writes records the stale `before` too. The sibling accept_invite_and_transfer_brand_ownership takes the same lock. Restore `FOR UPDATE` on that SELECT. NOTE: do not check for the fix by matching the function source — the explanatory comment now inside the function body contains the literal `FOR UPDATE`, so `position(''FOR UPDATE'' in prosrc)` is TRUE over an unlocked version. This group measures the behaviour instead.',
         v_stale, v_stale_rank;
-    ELSE
-      RAISE NOTICE 'ISSUE-3622 T11: concurrent reassignments serialize AND leave no stale owner row (active=%, interleaved owner rank=%)', v_active, v_stale_rank;
     END IF;
+    RAISE NOTICE 'ISSUE-3622 T11: concurrent reassignments serialize AND leave no stale owner row (active=%, interleaved owner rank=%)', v_active, v_stale_rank;
   EXCEPTION WHEN others THEN
     v_err := sqlerrm;
   END;
